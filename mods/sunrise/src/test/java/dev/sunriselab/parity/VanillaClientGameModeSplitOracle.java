@@ -45,6 +45,7 @@ import net.minecraft.network.PacketProcessor;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundGameEventPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerAbilitiesPacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerAbilitiesPacket;
 import net.minecraft.tags.TagKey;
@@ -156,6 +157,7 @@ public final class VanillaClientGameModeSplitOracle {
     static final class SilentSocialManager extends PlayerSocialManager {
         SilentSocialManager() { super(null, null, null, null); }
         @Override public void addPlayer(PlayerInfo info) {}
+        @Override public void removePlayer(UUID id) {}
     }
 
     static final class RealLocalPlayer extends LocalPlayer {
@@ -344,10 +346,29 @@ public final class VanillaClientGameModeSplitOracle {
             gameMode.setLocalMode(gameType, prev);
         }
 
+        void handleLoginRetainingPlayer(GameType gameType, GameType prev) {
+            gameMode = new MultiPlayerGameMode(mc, listener);
+            mc.gameMode = gameMode;
+            gameMode.adjustPlayer(player);
+            gameMode.setLocalMode(gameType, prev);
+        }
+
         void handleRespawn(GameType gameType, GameType prev) throws Exception {
             spawnPlayer(0.5, 64.0, 0.5, false);
             gameMode.adjustPlayer(player);
             gameMode.setLocalMode(gameType, prev);
+        }
+
+        void handleRespawnKeepEntityData(GameType gameType, GameType prev) throws Exception {
+            Vec3 oldVel = player.getDeltaMovement();
+            spawnPlayer(0.5, 64.0, 0.5, false);
+            player.setDeltaMovement(oldVel);
+            gameMode.adjustPlayer(player);
+            gameMode.setLocalMode(gameType, prev);
+        }
+
+        void handlePlayerInfoRemove(UUID id) {
+            listener.handlePlayerInfoRemove(new ClientboundPlayerInfoRemovePacket(List.of(id)));
         }
 
         void handleChangeGameMode(float param) {
@@ -612,6 +633,62 @@ public final class VanillaClientGameModeSplitOracle {
         return steps;
     }
 
+    static List<Map<String, Object>> scenarioResolvedPlayerInfoRetention() throws Exception {
+        Harness h = new Harness();
+        List<Map<String, Object>> steps = new ArrayList<>();
+        h.handleLogin(GameType.SPECTATOR, null);
+        h.handlePlayerAbilities(0x00, 0.05F, 0.10F);
+        h.player.tick();
+        steps.add(h.snapshot("before_add_player"));
+
+        h.handlePlayerInfoAddAndMode(GameType.SPECTATOR);
+        h.player.tick();
+        steps.add(h.snapshot("resolved_spectator"));
+
+        h.handlePlayerInfoRemove(SELF_UUID);
+        h.player.tick();
+        steps.add(h.snapshot("after_remove_retains_spectator"));
+
+        h.handlePlayerInfoAddAndMode(GameType.ADVENTURE);
+        h.player.tick();
+        steps.add(h.snapshot("after_readd_adventure_retains_spectator"));
+
+        h.handleRespawn(GameType.ADVENTURE, null);
+        h.player.tick();
+        steps.add(h.snapshot("after_respawn_resolves_adventure"));
+        return steps;
+    }
+
+    static List<Map<String, Object>> scenarioRespawnKeepDataSpectatorClearsY() throws Exception {
+        Harness h = new Harness();
+        List<Map<String, Object>> steps = new ArrayList<>();
+        h.handleLogin(GameType.SURVIVAL, null);
+        h.handlePlayerInfoAddAndMode(GameType.SURVIVAL);
+        h.player.setDeltaMovement(new Vec3(0.25, 0.42, -0.1));
+        h.handleRespawnKeepEntityData(GameType.SURVIVAL, null);
+        steps.add(h.snapshot("after_respawn_keep_data"));
+
+        h.handlePlayerInfoMode(GameType.SPECTATOR);
+        steps.add(h.snapshot("after_player_info_spectator"));
+        return steps;
+    }
+
+    static List<Map<String, Object>> scenarioRetainedPlayerLoginKeepsSpeeds() throws Exception {
+        Harness h = new Harness();
+        List<Map<String, Object>> steps = new ArrayList<>();
+        h.handleLogin(GameType.CREATIVE, null);
+        h.handlePlayerInfoAddAndMode(GameType.SPECTATOR);
+        h.handlePlayerAbilities(0x0f, 0.125F, 0.2F);
+        steps.add(h.snapshot("before_second_login"));
+
+        h.handleLoginRetainingPlayer(GameType.SURVIVAL, GameType.CREATIVE);
+        steps.add(h.snapshot("after_second_login_survival"));
+
+        h.handleLoginRetainingPlayer(GameType.CREATIVE, GameType.SURVIVAL);
+        steps.add(h.snapshot("after_third_login_creative"));
+        return steps;
+    }
+
     public static void main(String[] args) throws Exception {
         net.minecraft.SharedConstants.tryDetectVersion();
         net.minecraft.server.Bootstrap.bootStrap();
@@ -630,6 +707,9 @@ public final class VanillaClientGameModeSplitOracle {
         scenarios.put("split_mode_physics_matrix", scenarioSplitModePhysicsMatrix());
         scenarios.put("live_player_info_transitions", scenarioLivePlayerInfoTransitions());
         scenarios.put("login_and_respawn_previous_mode", scenarioLoginAndRespawnPreviousMode());
+        scenarios.put("resolved_player_info_retention", scenarioResolvedPlayerInfoRetention());
+        scenarios.put("respawn_keep_data_spectator_clears_y", scenarioRespawnKeepDataSpectatorClearsY());
+        scenarios.put("retained_player_login_keeps_speeds", scenarioRetainedPlayerLoginKeepsSpeeds());
         root.put("scenarios", scenarios);
 
         Path out = Path.of(args[0]);

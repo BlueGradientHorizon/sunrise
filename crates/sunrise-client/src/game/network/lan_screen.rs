@@ -696,6 +696,20 @@ impl Game<'_> {
         }
     }
 
+    #[cfg(test)]
+    pub(in crate::game) fn world_options_personal_state(&self) -> Option<(i32, i32, u8)> {
+        self.world_options
+            .as_ref()
+            .map(|o| (o.personal_mode, o.initial.personal_mode, o.difficulty))
+    }
+
+    #[cfg(test)]
+    pub(in crate::game) fn set_world_options_difficulty_for_test(&mut self, difficulty: u8) {
+        if let Some(o) = self.world_options.as_mut() {
+            o.difficulty = difficulty;
+        }
+    }
+
     /// Escape: the question and RestrictionsScreen return to the options
     /// (their onClose), which close; the game rules ask first.
     pub(super) fn world_options_escape(&mut self) {
@@ -2058,5 +2072,23 @@ mod tests {
         assert!(o.port.editable);
         assert!(o.port.key(KeyCode::Backspace, false, false));
         assert_eq!(o.port.value, "2555");
+    }
+
+    /// `WorldOptionsScreen.updatePersonalGameModeButton`: external local-mode updates refresh
+    /// both `personal_mode` and its baseline without discarding unrelated edits.
+    #[test]
+    fn updating_personal_mode_refreshes_baseline_without_discarding_other_edits() {
+        let mut o = options(false, false);
+        assert_eq!((o.personal_mode, o.initial.personal_mode), (0, 0));
+        assert!(!o.active(Button::Apply));
+        o.difficulty = 3;
+        assert!(o.active(Button::Apply));
+        o.personal_mode = 1;
+        o.initial.personal_mode = 1;
+        assert_eq!((o.personal_mode, o.initial.personal_mode), (1, 1));
+        assert_eq!(o.difficulty, 3);
+        assert!(o.active(Button::Apply));
+        o.difficulty = o.initial.difficulty;
+        assert!(!o.active(Button::Apply));
     }
 }

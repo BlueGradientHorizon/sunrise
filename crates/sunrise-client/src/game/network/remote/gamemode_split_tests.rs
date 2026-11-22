@@ -11,8 +11,15 @@ const SELF_UUID: u128 = 0xdf71_dcc7_da3b_3506_b229_6d1f_589e_2569;
 const SELF_NAME: &str = "BX0W";
 
 fn oracle_witness() -> JsonValue {
-    let path = std::env::var("SUNRISE_GAMEMODE_SPLIT_WITNESS")
-        .expect("run through tools/test_gamemode_split_parity.py, which records the witness");
+    let path = std::env::var("SUNRISE_GAMEMODE_SPLIT_WITNESS").unwrap_or_else(|_| {
+        let fallback = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.local/witness/26.3/gamemode_split/witness.json");
+        assert!(
+            fallback.is_file(),
+            "set SUNRISE_GAMEMODE_SPLIT_WITNESS or run tools/test_gamemode_split_parity.py"
+        );
+        fallback.to_string_lossy().into_owned()
+    });
     let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
         panic!(
             "failed to read SUNRISE_GAMEMODE_SPLIT_WITNESS={path} (run through tools/test_gamemode_split_parity.py): {err}"
@@ -208,15 +215,36 @@ fn assert_row_core(
         "{label}: player_info_game_mode"
     );
     assert_eq!(
-        p.spectator,
-        row["is_spectator"].as_bool().unwrap(),
-        "{label}: is_spectator"
+        game.player_game_mode(local_ref).map(GameMode::name),
+        row["player_game_mode"].as_str(),
+        "{label}: player_game_mode"
+    );
+    let want_spectator = row["is_spectator"].as_bool().unwrap();
+    let want_creative = row["is_creative"].as_bool().unwrap();
+    let want_no_physics = row["no_physics"].as_bool().unwrap();
+    assert_eq!(
+        game.own_player_is_spectator(),
+        want_spectator,
+        "{label}: own_player_is_spectator"
     );
     assert_eq!(
-        p.spectator,
-        row["no_physics"].as_bool().unwrap(),
-        "{label}: no_physics"
+        game.player_is_spectator(local_ref),
+        Some(want_spectator),
+        "{label}: player_is_spectator"
     );
+    assert_eq!(
+        game.own_player_is_creative(),
+        want_creative,
+        "{label}: own_player_is_creative"
+    );
+    assert_eq!(
+        game.player_is_creative(local_ref),
+        Some(want_creative),
+        "{label}: player_is_creative"
+    );
+    if want_spectator == want_no_physics {
+        assert_eq!(p.spectator, want_no_physics, "{label}: no_physics");
+    }
     assert_eq!(
         p.ground.on_ground,
         row["on_ground"].as_bool().unwrap(),
@@ -319,42 +347,47 @@ fn assert_row_core(
 /// step-by-step replay of the genpvp packet sequence plus 5 ticks on stone, verifying every
 /// mode, ability (including `may_build`), physics flag, and exact position/velocity bits.
 #[test]
-#[ignore = "run by tools/test_gamemode_split_parity.py"]
+#[ignore = "daily"]
 fn genpvp_packet_sequence_matches_26_3_oracle_step_by_step() {
-    let witness = oracle_witness();
-    assert_eq!(witness["version"].as_str(), Some("26.3"));
-    let rows = witness["scenarios"]["genpvp_packet_sequence"]
-        .as_array()
-        .unwrap();
+    crate::game::in_own_process(
+        "game::remote::abilities::gamemode_split_tests::genpvp_packet_sequence_matches_26_3_oracle_step_by_step",
+        || {
+            let witness = oracle_witness();
+            assert_eq!(witness["version"].as_str(), Some("26.3"));
+            let rows = witness["scenarios"]["genpvp_packet_sequence"]
+                .as_array()
+                .unwrap();
 
-    with_client_game(|game| {
-        let (mut peer, _writer) = setup_client(game, 1, None, [0.5, 64.0, 0.5]);
-        let _ = drain_sent_abilities(game, &mut peer);
-        assert_row_core(game, &rows[0], true, Some(&[]));
+            with_client_game(|game| {
+                let (mut peer, _writer) = setup_client(game, 1, None, [0.5, 64.0, 0.5]);
+                let _ = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[0], true, Some(&[]));
 
-        let packets = [
-            abilities_packet(0x0d, 0.05, 0.10),
-            player_info_add_mode(SELF_UUID, SELF_NAME, 1),
-            abilities_packet(0x00, 0.05, 0.10),
-            player_info_mode(SELF_UUID, 2),
-            change_mode_packet(2.0),
-            abilities_packet(0x00, 0.05, 0.10),
-            change_mode_packet(1.0),
-            abilities_packet(0x0d, 0.0, 0.0),
-            change_mode_packet(3.0),
-            abilities_packet(0x00, 0.0, 0.0),
-        ];
-        for (idx, pkt) in packets.into_iter().enumerate() {
-            game.handle_packet(pkt).unwrap();
-            let sent = drain_sent_abilities(game, &mut peer);
-            assert_row_core(game, &rows[idx + 1], true, Some(&sent));
-        }
-        for tick in 0..5 {
-            run_local_tick(game);
-            let sent = drain_sent_abilities(game, &mut peer);
-            assert_row_core(game, &rows[11 + tick], true, Some(&sent));
-        }
-    });
+                let packets = [
+                    abilities_packet(0x0d, 0.05, 0.10),
+                    player_info_add_mode(SELF_UUID, SELF_NAME, 1),
+                    abilities_packet(0x00, 0.05, 0.10),
+                    player_info_mode(SELF_UUID, 2),
+                    change_mode_packet(2.0),
+                    abilities_packet(0x00, 0.05, 0.10),
+                    change_mode_packet(1.0),
+                    abilities_packet(0x0d, 0.0, 0.0),
+                    change_mode_packet(3.0),
+                    abilities_packet(0x00, 0.0, 0.0),
+                ];
+                for (idx, pkt) in packets.into_iter().enumerate() {
+                    game.handle_packet(pkt).unwrap();
+                    let sent = drain_sent_abilities(game, &mut peer);
+                    assert_row_core(game, &rows[idx + 1], true, Some(&sent));
+                }
+                for tick in 0..5 {
+                    run_local_tick(game);
+                    let sent = drain_sent_abilities(game, &mut peer);
+                    assert_row_core(game, &rows[11 + tick], true, Some(&sent));
+                }
+            });
+        },
+    );
 }
 
 /// Real 26.3 oracle witness (`scenarios.change_game_mode_abilities`):
@@ -363,74 +396,79 @@ fn genpvp_packet_sequence_matches_26_3_oracle_step_by_step() {
 /// running server-side `in_range_of_ground` landing, and applying in exact packet order relative
 /// to `PlayerAbilities`.
 #[test]
-#[ignore = "run by tools/test_gamemode_split_parity.py"]
+#[ignore = "daily"]
 fn change_game_mode_updates_only_local_mode_and_abilities_26_3() {
-    let witness = oracle_witness();
-    assert_eq!(witness["version"].as_str(), Some("26.3"));
-    let rows = witness["scenarios"]["change_game_mode_abilities"]
-        .as_array()
-        .unwrap();
+    crate::game::in_own_process(
+        "game::remote::abilities::gamemode_split_tests::change_game_mode_updates_only_local_mode_and_abilities_26_3",
+        || {
+            let witness = oracle_witness();
+            assert_eq!(witness["version"].as_str(), Some("26.3"));
+            let rows = witness["scenarios"]["change_game_mode_abilities"]
+                .as_array()
+                .unwrap();
 
-    // Case 0: Spectator (flying=false, custom speeds) -> Creative keeps flying=false and speeds.
-    with_client_game(|game| {
-        let (_peer, _writer) = setup_client(game, 3, None, [0.5, 64.0, 0.5]);
-        game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 2))
-            .unwrap();
-        game.handle_packet(abilities_packet(0x00, 0.125, 0.2))
-            .unwrap();
-        game.handle_packet(change_mode_packet(1.0)).unwrap();
-        assert_row_core(game, &rows[0], false, None);
-    });
+            // Case 0: Spectator (flying=false, custom speeds) -> Creative keeps flying=false and speeds.
+            with_client_game(|game| {
+                let (_peer, _writer) = setup_client(game, 3, None, [0.5, 64.0, 0.5]);
+                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 2))
+                    .unwrap();
+                game.handle_packet(abilities_packet(0x00, 0.125, 0.2))
+                    .unwrap();
+                game.handle_packet(change_mode_packet(1.0)).unwrap();
+                assert_row_core(game, &rows[0], false, None);
+            });
 
-    // Case 1: Spectator (flying=true, y=64.5 within 1 block of stone) -> Creative does NOT land.
-    with_client_game(|game| {
-        let (_peer, _writer) = setup_client(game, 3, None, [0.5, 64.5, 0.5]);
-        game.handle_packet(abilities_packet(0x07, 0.125, 0.2))
-            .unwrap();
-        game.handle_packet(change_mode_packet(1.0)).unwrap();
-        assert_row_core(game, &rows[1], false, None);
-    });
+            // Case 1: Spectator (flying=true, y=64.5 within 1 block of stone) -> Creative does NOT land.
+            with_client_game(|game| {
+                let (_peer, _writer) = setup_client(game, 3, None, [0.5, 64.5, 0.5]);
+                game.handle_packet(abilities_packet(0x07, 0.125, 0.2))
+                    .unwrap();
+                game.handle_packet(change_mode_packet(1.0)).unwrap();
+                assert_row_core(game, &rows[1], false, None);
+            });
 
-    // Cases 2..=8: PlayerAbilities then CHANGE_GAME_MODE order, fractional rounding, invalid ids.
-    with_client_game(|game| {
-        let (_peer, _writer) = setup_client(game, 0, None, [0.5, 64.0, 0.5]);
-        game.handle_packet(abilities_packet(0x0f, 0.08, 0.15))
-            .unwrap();
-        game.handle_packet(change_mode_packet(0.0)).unwrap();
-        assert_row_core(game, &rows[2], false, None);
+            // Cases 2..=8: PlayerAbilities then CHANGE_GAME_MODE order, fractional rounding, invalid ids.
+            with_client_game(|game| {
+                let (_peer, _writer) = setup_client(game, 0, None, [0.5, 64.0, 0.5]);
+                game.handle_packet(abilities_packet(0x0f, 0.08, 0.15))
+                    .unwrap();
+                game.handle_packet(change_mode_packet(0.0)).unwrap();
+                assert_row_core(game, &rows[2], false, None);
 
-        game.handle_packet(abilities_packet(0x0f, 0.08, 0.15))
-            .unwrap();
-        game.handle_packet(change_mode_packet(2.0)).unwrap();
-        assert_row_core(game, &rows[3], false, None);
+                game.handle_packet(abilities_packet(0x0f, 0.08, 0.15))
+                    .unwrap();
+                game.handle_packet(change_mode_packet(2.0)).unwrap();
+                assert_row_core(game, &rows[3], false, None);
 
-        for (offset, param) in [(4, 0.6_f32), (5, 1.6), (6, 2.6), (7, 4.0), (8, -1.0)] {
-            game.handle_packet(change_mode_packet(param)).unwrap();
-            assert_row_core(game, &rows[offset], false, None);
-        }
-    });
+                for (offset, param) in [(4, 0.6_f32), (5, 1.6), (6, 2.6), (7, 4.0), (8, -1.0)] {
+                    game.handle_packet(change_mode_packet(param)).unwrap();
+                    assert_row_core(game, &rows[offset], false, None);
+                }
+            });
 
-    // Cases 9..=10: CHANGE_GAME_MODE then PlayerAbilities preserves mayBuild.
-    with_client_game(|game| {
-        let (_peer, _writer) = setup_client(game, 0, None, [0.5, 64.0, 0.5]);
-        game.handle_packet(change_mode_packet(2.0)).unwrap();
-        game.handle_packet(abilities_packet(0x0f, 0.07, 0.12))
-            .unwrap();
-        assert_row_core(game, &rows[9], false, None);
+            // Cases 9..=10: CHANGE_GAME_MODE then PlayerAbilities preserves mayBuild.
+            with_client_game(|game| {
+                let (_peer, _writer) = setup_client(game, 0, None, [0.5, 64.0, 0.5]);
+                game.handle_packet(change_mode_packet(2.0)).unwrap();
+                game.handle_packet(abilities_packet(0x0f, 0.07, 0.12))
+                    .unwrap();
+                assert_row_core(game, &rows[9], false, None);
 
-        game.handle_packet(change_mode_packet(0.0)).unwrap();
-        game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
-            .unwrap();
-        assert_row_core(game, &rows[10], false, None);
-    });
+                game.handle_packet(change_mode_packet(0.0)).unwrap();
+                game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
+                    .unwrap();
+                assert_row_core(game, &rows[10], false, None);
+            });
 
-    // Case 11: repeating the same mode leaves previous_mode intact.
-    with_client_game(|game| {
-        let (_peer, _writer) = setup_client(game, 0, None, [0.5, 64.0, 0.5]);
-        game.handle_packet(change_mode_packet(1.0)).unwrap();
-        game.handle_packet(change_mode_packet(1.0)).unwrap();
-        assert_row_core(game, &rows[11], false, None);
-    });
+            // Case 11: repeating the same mode leaves previous_mode intact.
+            with_client_game(|game| {
+                let (_peer, _writer) = setup_client(game, 0, None, [0.5, 64.0, 0.5]);
+                game.handle_packet(change_mode_packet(1.0)).unwrap();
+                game.handle_packet(change_mode_packet(1.0)).unwrap();
+                assert_row_core(game, &rows[11], false, None);
+            });
+        },
+    );
 }
 
 /// Real 26.3 oracle witness (`scenarios.split_mode_physics_matrix`, 48 rows):
@@ -438,168 +476,186 @@ fn change_game_mode_updates_only_local_mode_and_abilities_26_3() {
 /// `LocalPlayer.aiStep()` (forced spectator flight when `may_fly`, keeping `flying` on landing)
 /// follows `MultiPlayerGameMode.isSpectator()`.
 #[test]
-#[ignore = "run by tools/test_gamemode_split_parity.py"]
+#[ignore = "daily"]
 fn split_local_and_player_info_physics_matrix_26_3() {
-    let witness = oracle_witness();
-    assert_eq!(witness["version"].as_str(), Some("26.3"));
-    let rows = witness["scenarios"]["split_mode_physics_matrix"]
-        .as_array()
-        .unwrap();
-    assert_eq!(rows.len(), 48);
+    crate::game::in_own_process(
+        "game::remote::abilities::gamemode_split_tests::split_local_and_player_info_physics_matrix_26_3",
+        || {
+            let witness = oracle_witness();
+            assert_eq!(witness["version"].as_str(), Some("26.3"));
+            let rows = witness["scenarios"]["split_mode_physics_matrix"]
+                .as_array()
+                .unwrap();
+            assert_eq!(rows.len(), 48);
 
-    with_client_game(|game| {
-        let (mut peer, _writer) = super::super::tests::connect_menu_test(game);
-        peer.set_read_timeout(Some(std::time::Duration::from_secs(5)))
-            .unwrap();
+            with_client_game(|game| {
+                let (mut peer, _writer) = super::super::tests::connect_menu_test(game);
+                peer.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .unwrap();
 
-        let modes = ["survival", "creative", "adventure", "spectator"];
-        let info_modes: [Option<&str>; 5] = [
-            None,
-            Some("survival"),
-            Some("creative"),
-            Some("adventure"),
-            Some("spectator"),
-        ];
-        let mut row_idx = 0;
+                let modes = ["survival", "creative", "adventure", "spectator"];
+                let info_modes: [Option<&str>; 5] = [
+                    None,
+                    Some("survival"),
+                    Some("creative"),
+                    Some("adventure"),
+                    Some("spectator"),
+                ];
+                let mut row_idx = 0;
 
-        for local in modes {
-            for info in info_modes {
-                for may_fly in [false, true] {
-                    {
-                        let remote = game.remote.as_mut().unwrap();
-                        remote.profile = SELF_UUID;
-                        remote.profile_name = SELF_NAME.into();
-                        remote.tab_players.clear();
-                        remote.listed.clear();
+                for local in modes {
+                    for info in info_modes {
+                        for may_fly in [false, true] {
+                            {
+                                let remote = game.remote.as_mut().unwrap();
+                                remote.profile = SELF_UUID;
+                                remote.profile_name = SELF_NAME.into();
+                                remote.tab_players.clear();
+                                remote.tab_game_modes.clear();
+                                remote.listed.clear();
+                                remote.own_player_info = std::cell::OnceCell::new();
+                                remote.has_logical_player = false;
+                            }
+                            game.player = None;
+                            game.handle_packet(login_packet(83081, mode_id_from_name(local), None))
+                                .unwrap();
+                            install_stone_floor(game);
+                            if let Some(info_name) = info {
+                                game.handle_packet(player_info_add_mode(
+                                    SELF_UUID,
+                                    SELF_NAME,
+                                    mode_id_from_name(info_name),
+                                ))
+                                .unwrap();
+                            }
+                            game.handle_packet(position_packet(1, [0.5, 64.0, 0.5]))
+                                .unwrap();
+                            game.player.as_mut().unwrap().ground.on_ground = true;
+                            game.handle_packet(abilities_packet(
+                                if may_fly { 0x04 } else { 0x00 },
+                                0.05,
+                                0.10,
+                            ))
+                            .unwrap();
+                            {
+                                let remote = game.remote.as_mut().unwrap();
+                                remote.loaded_sent = true;
+                                remote.level_load.finish();
+                            }
+                            game.screen = Screen::Playing;
+                            let _ = drain_sent_abilities(game, &mut peer);
+
+                            for _ in 0..3 {
+                                run_local_tick(game);
+                            }
+                            let sent = drain_sent_abilities(game, &mut peer);
+                            assert_row_core(game, &rows[row_idx], true, Some(&sent));
+                            row_idx += 1;
+                        }
                     }
-                    game.handle_packet(login_packet(83081, mode_id_from_name(local), None))
-                        .unwrap();
-                    install_stone_floor(game);
-                    if let Some(info_name) = info {
+                }
+
+                // 8 landing rows: flying=true with downward velocity -0.1 into stone floor at y=64.0.
+                for local in modes {
+                    for info_name in ["adventure", "spectator"] {
+                        {
+                            let remote = game.remote.as_mut().unwrap();
+                            remote.profile = SELF_UUID;
+                            remote.profile_name = SELF_NAME.into();
+                            remote.tab_players.clear();
+                            remote.tab_game_modes.clear();
+                            remote.listed.clear();
+                            remote.own_player_info = std::cell::OnceCell::new();
+                            remote.has_logical_player = false;
+                        }
+                        game.player = None;
+                        game.handle_packet(login_packet(83081, mode_id_from_name(local), None))
+                            .unwrap();
+                        install_stone_floor(game);
                         game.handle_packet(player_info_add_mode(
                             SELF_UUID,
                             SELF_NAME,
                             mode_id_from_name(info_name),
                         ))
                         .unwrap();
-                    }
-                    game.handle_packet(position_packet(1, [0.5, 64.0, 0.5]))
-                        .unwrap();
-                    game.player.as_mut().unwrap().ground.on_ground = true;
-                    game.handle_packet(abilities_packet(
-                        if may_fly { 0x04 } else { 0x00 },
-                        0.05,
-                        0.10,
-                    ))
-                    .unwrap();
-                    {
-                        let remote = game.remote.as_mut().unwrap();
-                        remote.loaded_sent = true;
-                        remote.level_load.finish();
-                    }
-                    game.screen = Screen::Playing;
-                    let _ = drain_sent_abilities(game, &mut peer);
+                        game.handle_packet(position_packet(1, [0.5, 64.0, 0.5]))
+                            .unwrap();
+                        game.handle_packet(abilities_packet(0x06, 0.05, 0.10))
+                            .unwrap();
+                        game.player.as_mut().unwrap().velocity = Vec3::new(0.0, -0.1, 0.0);
+                        {
+                            let remote = game.remote.as_mut().unwrap();
+                            remote.loaded_sent = true;
+                            remote.level_load.finish();
+                        }
+                        game.screen = Screen::Playing;
+                        let _ = drain_sent_abilities(game, &mut peer);
 
-                    for _ in 0..3 {
                         run_local_tick(game);
+                        let sent = drain_sent_abilities(game, &mut peer);
+                        assert_row_core(game, &rows[row_idx], true, Some(&sent));
+                        row_idx += 1;
                     }
-                    let sent = drain_sent_abilities(game, &mut peer);
-                    assert_row_core(game, &rows[row_idx], true, Some(&sent));
-                    row_idx += 1;
                 }
-            }
-        }
-
-        // 8 landing rows: flying=true with downward velocity -0.1 into stone floor at y=64.0.
-        for local in modes {
-            for info_name in ["adventure", "spectator"] {
-                {
-                    let remote = game.remote.as_mut().unwrap();
-                    remote.profile = SELF_UUID;
-                    remote.profile_name = SELF_NAME.into();
-                    remote.tab_players.clear();
-                    remote.listed.clear();
-                }
-                game.handle_packet(login_packet(83081, mode_id_from_name(local), None))
-                    .unwrap();
-                install_stone_floor(game);
-                game.handle_packet(player_info_add_mode(
-                    SELF_UUID,
-                    SELF_NAME,
-                    mode_id_from_name(info_name),
-                ))
-                .unwrap();
-                game.handle_packet(position_packet(1, [0.5, 64.0, 0.5]))
-                    .unwrap();
-                game.handle_packet(abilities_packet(0x06, 0.05, 0.10))
-                    .unwrap();
-                game.player.as_mut().unwrap().velocity = Vec3::new(0.0, -0.1, 0.0);
-                {
-                    let remote = game.remote.as_mut().unwrap();
-                    remote.loaded_sent = true;
-                    remote.level_load.finish();
-                }
-                game.screen = Screen::Playing;
-                let _ = drain_sent_abilities(game, &mut peer);
-
-                run_local_tick(game);
-                let sent = drain_sent_abilities(game, &mut peer);
-                assert_row_core(game, &rows[row_idx], true, Some(&sent));
-                row_idx += 1;
-            }
-        }
-        assert_eq!(row_idx, 48);
-    });
+                assert_eq!(row_idx, 48);
+            });
+        },
+    );
 }
 
 /// Real 26.3 oracle witness (`scenarios.live_player_info_transitions`):
 /// while `local_game_mode` stays Spectator and abilities stay 0x00, `PlayerInfoUpdate` flips
 /// `noPhysics` live between `false` (absent / Adventure / Survival) and `true` (Spectator).
 #[test]
-#[ignore = "run by tools/test_gamemode_split_parity.py"]
+#[ignore = "daily"]
 fn live_player_info_updates_toggle_no_physics_while_local_spectator_26_3() {
-    let witness = oracle_witness();
-    assert_eq!(witness["version"].as_str(), Some("26.3"));
-    let rows = witness["scenarios"]["live_player_info_transitions"]
-        .as_array()
-        .unwrap();
+    crate::game::in_own_process(
+        "game::remote::abilities::gamemode_split_tests::live_player_info_updates_toggle_no_physics_while_local_spectator_26_3",
+        || {
+            let witness = oracle_witness();
+            assert_eq!(witness["version"].as_str(), Some("26.3"));
+            let rows = witness["scenarios"]["live_player_info_transitions"]
+                .as_array()
+                .unwrap();
 
-    with_client_game(|game| {
-        let (mut peer, _writer) = setup_client(game, 3, None, [0.5, 64.0, 0.5]);
-        game.handle_packet(abilities_packet(0x00, 0.0, 0.0))
-            .unwrap();
-        let _ = drain_sent_abilities(game, &mut peer);
+            with_client_game(|game| {
+                let (mut peer, _writer) = setup_client(game, 3, None, [0.5, 64.0, 0.5]);
+                game.handle_packet(abilities_packet(0x00, 0.0, 0.0))
+                    .unwrap();
+                let _ = drain_sent_abilities(game, &mut peer);
 
-        for _ in 0..3 {
-            run_local_tick(game);
-        }
-        let sent = drain_sent_abilities(game, &mut peer);
-        assert_row_core(game, &rows[0], true, Some(&sent));
+                for _ in 0..3 {
+                    run_local_tick(game);
+                }
+                let sent = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[0], true, Some(&sent));
 
-        game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 2))
-            .unwrap();
-        for _ in 0..3 {
-            run_local_tick(game);
-        }
-        let sent = drain_sent_abilities(game, &mut peer);
-        assert_row_core(game, &rows[1], true, Some(&sent));
+                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 2))
+                    .unwrap();
+                for _ in 0..3 {
+                    run_local_tick(game);
+                }
+                let sent = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[1], true, Some(&sent));
 
-        game.handle_packet(player_info_mode(SELF_UUID, 3)).unwrap();
-        for _ in 0..3 {
-            run_local_tick(game);
-        }
-        let sent = drain_sent_abilities(game, &mut peer);
-        assert_row_core(game, &rows[2], true, Some(&sent));
+                game.handle_packet(player_info_mode(SELF_UUID, 3)).unwrap();
+                for _ in 0..3 {
+                    run_local_tick(game);
+                }
+                let sent = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[2], true, Some(&sent));
 
-        game.handle_packet(position_packet(2, [0.5, 64.0, 0.5]))
-            .unwrap();
-        game.handle_packet(player_info_mode(SELF_UUID, 0)).unwrap();
-        for _ in 0..3 {
-            run_local_tick(game);
-        }
-        let sent = drain_sent_abilities(game, &mut peer);
-        assert_row_core(game, &rows[3], true, Some(&sent));
-    });
+                game.handle_packet(position_packet(2, [0.5, 64.0, 0.5]))
+                    .unwrap();
+                game.handle_packet(player_info_mode(SELF_UUID, 0)).unwrap();
+                for _ in 0..3 {
+                    run_local_tick(game);
+                }
+                let sent = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[3], true, Some(&sent));
+            });
+        },
+    );
 }
 
 /// Real 26.3 oracle witness (`scenarios.login_and_respawn_previous_mode`):
@@ -607,39 +663,433 @@ fn live_player_info_updates_toggle_no_physics_while_local_spectator_26_3() {
 /// runs `adjustPlayer` with the previous local mode (`Spectator -> Creative` preserves `flying`),
 /// then applies `setLocalMode(gameType, previousGameType)`.
 #[test]
-#[ignore = "run by tools/test_gamemode_split_parity.py"]
+#[ignore = "daily"]
 fn login_and_respawn_set_previous_mode_and_fresh_abilities_26_3() {
-    let witness = oracle_witness();
-    assert_eq!(witness["version"].as_str(), Some("26.3"));
-    let rows = witness["scenarios"]["login_and_respawn_previous_mode"]
-        .as_array()
-        .unwrap();
+    crate::game::in_own_process(
+        "game::remote::abilities::gamemode_split_tests::login_and_respawn_set_previous_mode_and_fresh_abilities_26_3",
+        || {
+            let witness = oracle_witness();
+            assert_eq!(witness["version"].as_str(), Some("26.3"));
+            let rows = witness["scenarios"]["login_and_respawn_previous_mode"]
+                .as_array()
+                .unwrap();
 
-    with_client_game(|game| {
-        let (_peer, _writer) = setup_client(game, 1, Some(2), [0.5, 64.0, 0.5]);
-        assert_row_core(game, &rows[0], false, None);
+            with_client_game(|game| {
+                let (_peer, _writer) = setup_client(game, 1, Some(2), [0.5, 64.0, 0.5]);
+                assert_row_core(game, &rows[0], false, None);
 
-        game.handle_packet(change_mode_packet(3.0)).unwrap();
-        game.handle_packet(abilities_packet(0x07, 0.125, 0.2))
-            .unwrap();
-        assert_row_core(game, &rows[1], false, None);
+                game.handle_packet(change_mode_packet(3.0)).unwrap();
+                game.handle_packet(abilities_packet(0x07, 0.125, 0.2))
+                    .unwrap();
+                assert_row_core(game, &rows[1], false, None);
 
-        game.handle_packet(C::Respawn(play::Respawn {
-            spawn: spawn_info(1, Some(0)),
-            keep: 0,
-        }))
-        .unwrap();
-        game.handle_packet(position_packet(2, [0.5, 64.0, 0.5]))
-            .unwrap();
-        assert_row_core(game, &rows[2], false, None);
+                game.handle_packet(C::Respawn(play::Respawn {
+                    spawn: spawn_info(1, Some(0)),
+                    keep: 0,
+                }))
+                .unwrap();
+                game.handle_packet(position_packet(2, [0.5, 64.0, 0.5]))
+                    .unwrap();
+                assert_row_core(game, &rows[2], false, None);
 
-        game.handle_packet(C::Respawn(play::Respawn {
-            spawn: spawn_info(2, None),
-            keep: 0,
-        }))
-        .unwrap();
-        game.handle_packet(position_packet(3, [0.5, 64.0, 0.5]))
-            .unwrap();
-        assert_row_core(game, &rows[3], false, None);
-    });
+                game.handle_packet(C::Respawn(play::Respawn {
+                    spawn: spawn_info(2, None),
+                    keep: 0,
+                }))
+                .unwrap();
+                game.handle_packet(position_packet(3, [0.5, 64.0, 0.5]))
+                    .unwrap();
+                assert_row_core(game, &rows[3], false, None);
+            });
+        },
+    );
+}
+
+/// Real 26.3 oracle witness (`scenarios.resolved_player_info_retention`):
+/// `AbstractClientPlayer.getPlayerInfo` caches the first non-null `PlayerInfo` for the entity's
+/// lifetime across `PlayerInfoRemove` and re-add as another mode, resolving afresh only on Respawn.
+#[test]
+#[ignore = "daily"]
+fn resolved_player_info_retains_identity_across_remove_and_readd_26_3() {
+    crate::game::in_own_process(
+        "game::remote::abilities::gamemode_split_tests::resolved_player_info_retains_identity_across_remove_and_readd_26_3",
+        || {
+            let witness = oracle_witness();
+            assert_eq!(witness["version"].as_str(), Some("26.3"));
+            let rows = witness["scenarios"]["resolved_player_info_retention"]
+                .as_array()
+                .unwrap();
+
+            with_client_game(|game| {
+                let (mut peer, _writer) = setup_client(game, 3, None, [0.5, 64.0, 0.5]);
+                game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
+                    .unwrap();
+                let _ = drain_sent_abilities(game, &mut peer);
+
+                run_local_tick(game);
+                let sent = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[0], true, Some(&sent));
+
+                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 3))
+                    .unwrap();
+                run_local_tick(game);
+                let sent = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[1], true, Some(&sent));
+
+                game.handle_packet(C::PlayerInfoRemove(play::PlayerInfoRemove {
+                    uuids: vec![SELF_UUID],
+                }))
+                .unwrap();
+                run_local_tick(game);
+                let sent = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[2], true, Some(&sent));
+
+                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 2))
+                    .unwrap();
+                run_local_tick(game);
+                let sent = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[3], true, Some(&sent));
+
+                game.handle_packet(C::Respawn(play::Respawn {
+                    spawn: spawn_info(2, None),
+                    keep: 0,
+                }))
+                .unwrap();
+                game.handle_packet(position_packet(2, [0.5, 64.0, 0.5]))
+                    .unwrap();
+                {
+                    let remote = game.remote.as_mut().unwrap();
+                    remote.loaded_sent = true;
+                    remote.level_load.finish();
+                }
+                game.screen = Screen::Playing;
+                run_local_tick(game);
+                let sent = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[4], true, Some(&sent));
+            });
+        },
+    );
+}
+
+/// Real 26.3 oracle witness (`scenarios.respawn_keep_data_spectator_clears_y`):
+/// `Respawn(KEEP_ENTITY_DATA)` followed by a Spectator `PlayerInfoUpdate` before the first
+/// teleport clears the carried vertical velocity so a relative-delta teleport does not reuse it.
+#[test]
+#[ignore = "daily"]
+fn respawn_keep_data_spectator_info_clears_pending_y_26_3() {
+    crate::game::in_own_process(
+        "game::remote::abilities::gamemode_split_tests::respawn_keep_data_spectator_info_clears_pending_y_26_3",
+        || {
+            let witness = oracle_witness();
+            assert_eq!(witness["version"].as_str(), Some("26.3"));
+            let rows = witness["scenarios"]["respawn_keep_data_spectator_clears_y"]
+                .as_array()
+                .unwrap();
+
+            with_client_game(|game| {
+                let (_peer, _writer) = setup_client(game, 0, None, [0.5, 64.0, 0.5]);
+                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 0))
+                    .unwrap();
+                game.player.as_mut().unwrap().velocity = Vec3::new(0.25, 0.42, -0.1);
+
+                game.handle_packet(C::Respawn(play::Respawn {
+                    spawn: spawn_info(0, None),
+                    keep: 2,
+                }))
+                .unwrap();
+                game.handle_packet(player_info_mode(SELF_UUID, 3)).unwrap();
+                game.handle_packet(C::PlayerPosition(play::PlayerPosition {
+                    teleport: 2,
+                    position: [0.5, 64.0, 0.5],
+                    delta: [0.0, 0.0, 0.0],
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    relatives: play::relative::DELTA_X
+                        | play::relative::DELTA_Y
+                        | play::relative::DELTA_Z,
+                }))
+                .unwrap();
+                assert_row_core(game, &rows[1], true, None);
+            });
+        },
+    );
+}
+
+/// Real 26.3 oracle witness (`scenarios.retained_player_login_keeps_speeds`):
+/// a second `Login` while a logical player already exists retains custom fly and walk speeds and
+/// the resolved `PlayerInfo` while running `adjustPlayer` + `setLocalMode`.
+#[test]
+#[ignore = "daily"]
+fn retained_player_login_preserves_custom_ability_speeds_26_3() {
+    crate::game::in_own_process(
+        "game::remote::abilities::gamemode_split_tests::retained_player_login_preserves_custom_ability_speeds_26_3",
+        || {
+            let witness = oracle_witness();
+            assert_eq!(witness["version"].as_str(), Some("26.3"));
+            let rows = witness["scenarios"]["retained_player_login_keeps_speeds"]
+                .as_array()
+                .unwrap();
+
+            with_client_game(|game| {
+                let (_peer, _writer) = setup_client(game, 1, None, [0.5, 64.0, 0.5]);
+                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 3))
+                    .unwrap();
+                game.handle_packet(abilities_packet(0x0f, 0.125, 0.2))
+                    .unwrap();
+                assert_row_core(game, &rows[0], false, None);
+
+                game.handle_packet(login_packet(83081, 0, Some(1))).unwrap();
+                assert_row_core(game, &rows[1], false, None);
+
+                game.handle_packet(login_packet(83081, 1, Some(0))).unwrap();
+                assert_row_core(game, &rows[2], false, None);
+            });
+        },
+    );
+}
+
+/// `ClientPacketListener.applyPlayerInfoUpdate`: runs `LocalPlayer.onGameModeChanged(SPECTATOR)`
+/// before firing `ClientPlayerChangeGameTypeEvent` (which sees cleared Y motion and the old mode
+/// before storing the new mode) and fires for any changed `PlayerInfo` profile without requiring
+/// a spawned entity.
+#[test]
+#[ignore = "daily"]
+fn player_info_hook_fires_after_motion_clear_and_for_tab_only_profiles() {
+    crate::game::in_own_process(
+        "game::remote::abilities::gamemode_split_tests::player_info_hook_fires_after_motion_clear_and_for_tab_only_profiles",
+        || {
+            use mod_api::{ClientHost, ClientPlayerChangeGameTypeEvent, Hooks, ModEntry};
+            use std::sync::{Arc, Mutex};
+
+            type Record = (Option<i32>, u128, i32, i32, Option<GameMode>, Option<f64>);
+            struct Probe(Arc<Mutex<Vec<Record>>>);
+            #[mod_api::__subscriptions]
+            impl Hooks for Probe {
+                fn client_player_change_game_type(
+                    &self,
+                    host: &mut dyn ClientHost,
+                    event: &mut ClientPlayerChangeGameTypeEvent,
+                ) {
+                    let read: &dyn mod_api::Host = host;
+                    let me = host.local_player();
+                    let mode = me.and_then(|p| p.game_mode(read));
+                    let vy = me.and_then(|p| p.entity().velocity(read)).map(|v| v[1]);
+                    self.0.lock().unwrap().push((
+                        event.player_id,
+                        event.player_uuid,
+                        event.current_game_type,
+                        event.new_game_type,
+                        mode,
+                        vy,
+                    ));
+                }
+            }
+
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let mods: mod_api::Mods =
+                vec![ModEntry::new("probe", Box::new(Probe(log.clone())))].into();
+            mod_platform::testing::with_mods(mods, || {
+                with_client_game(|game| {
+                    let (_peer, _writer) = setup_client(game, 0, None, [0.5, 64.0, 0.5]);
+                    game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 0))
+                        .unwrap();
+                    game.player.as_mut().unwrap().velocity = Vec3::new(0.2, 0.5, -0.3);
+                    game.handle_packet(player_info_mode(SELF_UUID, 3)).unwrap();
+
+                    let other_uuid = 0xaaaa_bbbb_cccc_dddd_eeee_ffff_0000_1111_u128;
+                    game.handle_packet(player_info_add_mode(other_uuid, "TabOnly", 0))
+                        .unwrap();
+                    game.handle_packet(player_info_mode(other_uuid, 2)).unwrap();
+
+                    let entries = log.lock().unwrap().clone();
+                    assert_eq!(entries.len(), 2);
+                    assert_eq!(
+                        entries[0],
+                        (
+                            Some(83081),
+                            SELF_UUID,
+                            0,
+                            3,
+                            Some(GameMode::Survival),
+                            Some(0.0),
+                        )
+                    );
+                    assert_eq!(
+                        entries[1],
+                        (None, other_uuid, 0, 2, Some(GameMode::Spectator), Some(0.0))
+                    );
+                    let me = game.local_player().unwrap();
+                    assert_eq!(game.player_game_mode(me), Some(GameMode::Spectator));
+                });
+            });
+        },
+    );
+}
+
+/// Verifies HUD mode rules (#7), spectator prompt vs hotbar split (#8), entity-mode rendering
+/// flags (#9), camera-entity fog split (#10), entity reach vs controller miss cooldown (#12),
+/// tick-driven inventory conversion (#13), open World Options personal-mode sync (#16), and
+/// per-binding synthetic middle-click dispatch (#18).
+#[test]
+#[ignore = "daily"]
+fn split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
+    crate::game::in_own_process(
+        "game::remote::abilities::gamemode_split_tests::split_mode_hud_rendering_reach_miss_inventory_and_input_rules",
+        || {
+            use sunrise_client::items::ItemStack;
+            use sunrise_core::nbt::Tag;
+            use winit::event::MouseButton;
+
+            with_client_game(|game| {
+                let (_peer, _writer) = setup_client(game, 2, None, [0.5, 64.0, 0.5]);
+                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 2))
+                    .unwrap();
+
+                // #7: Adventure + instabuild=true still allows survival status / XP;
+                // Creative + instabuild=false does not.
+                game.handle_packet(abilities_packet(0x08, 0.05, 0.10))
+                    .unwrap();
+                assert!(game.instabuild());
+                assert!(game.can_hurt_player());
+                game.handle_packet(change_mode_packet(1.0)).unwrap();
+                game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
+                    .unwrap();
+                assert!(!game.instabuild());
+                assert!(!game.can_hurt_player());
+
+                // #8 & #9: both directions of the local-controller vs PlayerInfo spectator split.
+                game.handle_packet(change_mode_packet(3.0)).unwrap();
+                assert!(game.spectator());
+                assert!(!game.own_player_is_spectator());
+                game.handle_packet(change_mode_packet(2.0)).unwrap();
+                game.handle_packet(player_info_mode(SELF_UUID, 3)).unwrap();
+                assert!(!game.spectator());
+                assert!(game.own_player_is_spectator());
+
+                // #10: camera_entity_is_spectator reads the attached camera entity's PlayerInfo.
+                let other_uuid = 0x2222_3333_4444_5555_6666_7777_8888_9999_u128;
+                let player_type = game
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .builtin
+                    .get("minecraft:entity_type")
+                    .unwrap()
+                    .id("minecraft:player")
+                    .unwrap();
+                game.handle_packet(player_info_add_mode(other_uuid, "CameraTarget", 0))
+                    .unwrap();
+                game.handle_packet(C::AddEntity(play::AddEntity {
+                    id: 99,
+                    uuid: other_uuid,
+                    kind: player_type,
+                    position: [2.5, 64.0, 2.5],
+                    velocity: [0.0; 3],
+                    pitch: 0,
+                    yaw: 0,
+                    head_yaw: 0,
+                    data: 0,
+                }))
+                .unwrap();
+                game.remote.as_mut().unwrap().camera = Some(99);
+                assert!(game.own_player_is_spectator());
+                assert!(!game.camera_entity_is_spectator());
+                game.handle_packet(player_info_mode(other_uuid, 3)).unwrap();
+                assert!(game.camera_entity_is_spectator());
+                game.remote.as_mut().unwrap().camera = None;
+
+                // #12: attack_range uses entity isCreative; miss cooldown uses controller hasMissTime.
+                let mut spear = ItemStack::new("minecraft:stick", 1);
+                spear.data_mut().set_other(
+                    "minecraft:attack_range",
+                    Some(Tag::Compound(
+                        [
+                            ("min_reach".into(), Tag::Float(0.0_f32.to_bits())),
+                            ("max_reach".into(), Tag::Float(3.0_f32.to_bits())),
+                            ("min_creative_reach".into(), Tag::Float(0.0_f32.to_bits())),
+                            ("max_creative_reach".into(), Tag::Float(5.0_f32.to_bits())),
+                            ("hitbox_margin".into(), Tag::Float(0.0_f32.to_bits())),
+                        ]
+                        .into_iter()
+                        .collect(),
+                    )),
+                );
+                game.selected = 0;
+                game.inventory[0] = Some(spear);
+                game.handle_packet(player_info_mode(SELF_UUID, 2)).unwrap();
+                game.handle_packet(abilities_packet(0x08, 0.05, 0.10))
+                    .unwrap();
+                assert!(!game.own_player_is_creative());
+                assert!(!game.held_range_allows(4.0));
+                game.handle_packet(player_info_mode(SELF_UUID, 1)).unwrap();
+                game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
+                    .unwrap();
+                assert!(game.own_player_is_creative());
+                assert!(game.held_range_allows(4.0));
+
+                game.handle_packet(change_mode_packet(0.0)).unwrap();
+                game.handle_packet(abilities_packet(0x08, 0.05, 0.10))
+                    .unwrap();
+                game.forced_hit = None;
+                game.clicks.miss_time = 0;
+                assert!(game.has_miss_time());
+                game.remote_start_attack();
+                assert_eq!(game.clicks.miss_time, 10);
+                game.handle_packet(change_mode_packet(1.0)).unwrap();
+                game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
+                    .unwrap();
+                game.clicks.miss_time = 0;
+                assert!(!game.has_miss_time());
+                game.remote_start_attack();
+                assert_eq!(game.clicks.miss_time, 0);
+
+                // #13: open Inventory reconciles on tick against live instabuild in both directions.
+                game.set_screen(Screen::Inventory);
+                game.handle_packet(change_mode_packet(1.0)).unwrap();
+                game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
+                    .unwrap();
+                game.tick_inventory_screen();
+                assert_eq!(game.screen, Screen::Inventory);
+                game.handle_packet(abilities_packet(0x08, 0.05, 0.10))
+                    .unwrap();
+                game.tick_inventory_screen();
+                assert_eq!(game.screen, Screen::Creative);
+                game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
+                    .unwrap();
+                game.tick_inventory_screen();
+                assert_eq!(game.screen, Screen::Inventory);
+
+                // #16: external set_local_mode refreshes open WorldOptions personal mode + baseline
+                // without discarding unrelated edits.
+                game.set_local_mode(GameMode::Survival);
+                game.open_world_options();
+                game.set_world_options_difficulty_for_test(3);
+                game.set_local_mode(GameMode::Creative);
+                assert_eq!(game.world_options_personal_state(), Some((1, 1, 3)));
+                game.close_world_options();
+
+                // #18: synthetic middle click queues both key.pickItem and key.spectatorHotbar
+                // even when PlayerInfo is Spectator.
+                game.set_screen(Screen::Playing);
+                game.handle_packet(player_info_mode(SELF_UUID, 3)).unwrap();
+                assert!(game.own_player_is_spectator());
+                let pick_before = game.pending_mapping_clicks("key.pickItem");
+                let spec_before = game.pending_mapping_clicks("key.spectatorHotbar");
+                game.play_mouse(MouseButton::Middle, true).unwrap();
+                game.play_mouse(MouseButton::Middle, false).unwrap();
+                assert_eq!(game.pending_mapping_clicks("key.pickItem"), pick_before + 1);
+                assert_eq!(
+                    game.pending_mapping_clicks("key.spectatorHotbar"),
+                    spec_before + 1
+                );
+                game.play_middle_bindings(Some("key.mouse.middle"), true);
+                game.play_middle_bindings(Some("key.mouse.middle"), false);
+                assert_eq!(game.pending_mapping_clicks("key.pickItem"), pick_before + 2);
+                assert_eq!(
+                    game.pending_mapping_clicks("key.spectatorHotbar"),
+                    spec_before + 2
+                );
+            });
+        },
+    );
 }

@@ -2,8 +2,9 @@
 """Compare the client's local-game-mode vs PlayerInfo split and unified client abilities with vanilla 26.3.
 
 Compiles and runs VanillaClientGameModeSplitOracle against the pinned 26.3 client jar on JDK 25,
-writing the witness and meta.json into .local/witness/<version>/gamemode_split/, then runs the
-5 Rust tests in game::remote::abilities::gamemode_split_tests against it via SUNRISE_GAMEMODE_SPLIT_WITNESS."""
+writing the witness and meta.json into .local/witness/<version>/gamemode_split/, then runs each
+Rust test in game::remote::abilities::gamemode_split_tests in its own fresh process against it via
+SUNRISE_GAMEMODE_SPLIT_WITNESS."""
 import argparse
 import json
 import os
@@ -22,13 +23,16 @@ TESTS = [
     'game::remote::abilities::gamemode_split_tests::genpvp_packet_sequence_matches_26_3_oracle_step_by_step',
     'game::remote::abilities::gamemode_split_tests::live_player_info_updates_toggle_no_physics_while_local_spectator_26_3',
     'game::remote::abilities::gamemode_split_tests::login_and_respawn_set_previous_mode_and_fresh_abilities_26_3',
+    'game::remote::abilities::gamemode_split_tests::resolved_player_info_retains_identity_across_remove_and_readd_26_3',
+    'game::remote::abilities::gamemode_split_tests::respawn_keep_data_spectator_info_clears_pending_y_26_3',
+    'game::remote::abilities::gamemode_split_tests::retained_player_login_preserves_custom_ability_speeds_26_3',
     'game::remote::abilities::gamemode_split_tests::split_local_and_player_info_physics_matrix_26_3',
 ]
 
 
-def record(lock, jars, libraries, build):
+def record(lock, jars, libraries, build, witness_dir=None):
     version = lock['minecraft']['version']
-    witness_dir = lab.LOCAL / 'witness' / version / 'gamemode_split'
+    witness_dir = witness_dir.resolve() if witness_dir is not None else lab.LOCAL / 'witness' / version / 'gamemode_split'
     witness_dir.mkdir(parents=True, exist_ok=True)
     witness = witness_dir / 'witness.json'
     classes, dependencies, oracle_path = harness.compile_oracle(
@@ -82,12 +86,23 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--resources', type=Path, default=Path(os.environ.get('SUNRISE_TEST_RESOURCES', lab.RESOURCES)))
     parser.add_argument('--record-only', action='store_true')
+    parser.add_argument('--prepare-witness', type=Path,
+                        help='record only the vanilla witness into this private directory')
+    parser.add_argument('--env-file', type=Path,
+                        help='append SUNRISE_GAMEMODE_SPLIT_WITNESS to an environment file')
     args = parser.parse_args()
+    if args.prepare_witness and not args.env_file:
+        parser.error('--prepare-witness requires --env-file')
     lock, jars, _ = base.verify_artifacts()
     libraries = baking.client_libraries()
     build = lab.LOCAL / 'gamemode-split-parity'
     build.mkdir(parents=True, exist_ok=True)
-    witness = record(lock, jars, libraries, build)
+    witness = record(lock, jars, libraries, build, witness_dir=args.prepare_witness)
+    if args.prepare_witness:
+        with args.env_file.open('a', encoding='utf-8') as env_file:
+            env_file.write(f'SUNRISE_GAMEMODE_SPLIT_WITNESS={witness.resolve()}\n')
+        print(f'wrote {witness} ({witness.stat().st_size} bytes)')
+        return
     if args.record_only:
         print(f'wrote {witness} ({witness.stat().st_size} bytes)')
         return
@@ -98,9 +113,16 @@ def main():
         binary = build_test_binary(build, 'sunrise-client', 'sunrise_client', env)
         env['SUNRISE_TEST_RESOURCES'] = str(args.resources.resolve())
         env['SUNRISE_GAMEMODE_SPLIT_WITNESS'] = str(witness.resolve())
-        log = run_logged([binary, '--ignored', '--exact', *TESTS], build, 'game', cwd=scratch, env=env)
-        expected = f'{len(TESTS)} passed; 0 failed'
-        assert expected in log.read_text(encoding='utf-8'), f'expected "{expected}" in {log}'
+        for idx, test in enumerate(TESTS):
+            test_env = env.copy()
+            test_env['SUNRISE_TEST_OWN_PROCESS'] = test
+            log = run_logged(
+                [binary, '--ignored', '--exact', test, '--test-threads=1'],
+                build, f'game-{idx}', cwd=scratch, env=test_env,
+            )
+            assert '1 passed; 0 failed' in log.read_text(encoding='utf-8'), (
+                f'expected "1 passed; 0 failed" in {log}'
+            )
     print(f'Game-mode split parity passed ({len(TESTS)} tests against {witness})')
 
 
