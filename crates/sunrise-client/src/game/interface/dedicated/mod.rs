@@ -1357,7 +1357,6 @@ impl Game<'_> {
             let slow_ms = state.perf.slow_threshold_ms();
             let capturing = state.perf.capturing();
             let mut tick_detail = None;
-            let method_start = Instant::now();
             let ticked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut detail = |timing: super::levels::TickTiming| {
                     if capturing || timing.wall_ms > slow_ms {
@@ -1381,14 +1380,13 @@ impl Game<'_> {
                     None => self.tick_server_spans(paused, detail),
                 }
             }));
-            match ticked {
+            let tick_method = match ticked {
                 Ok(result) => result?,
                 Err(payload) => {
                     crashed = Some(panic_message(payload.as_ref()));
                     break;
                 }
-            }
-            let tick_method = method_start.elapsed();
+            };
             if state.report.as_ref().is_some_and(report::Recording::done) {
                 self.finish_perf_capture(&mut state, StopReason::Normal);
             }
@@ -1435,6 +1433,9 @@ impl Game<'_> {
             // behind skips them and says so, at most every 15 seconds.
             let wait_start = Instant::now();
             let (behind, idle) = self.wait_for_next_server_tick(&mut next, paused);
+            // `MinecraftServer.finishMeasuringTaskExecutionTime` ends the wait phase
+            // before any reporting; `logFullTickTime` keeps the entire tick-to-tick span.
+            let tick_end = Instant::now();
             if let Some(behind) = behind
                 && overload_warned.is_none_or(|at| at.elapsed() >= OVERLOAD_WARNING_INTERVAL)
             {
@@ -1444,8 +1445,6 @@ impl Game<'_> {
                     &overload_warning(behind, self.clock.tick_duration()),
                 );
             }
-            // `MinecraftServer.logFullTickTime`: the sample of the tick that ended.
-            let tick_end = Instant::now();
             if tick_sampling && let Some(host) = self.lan.as_ref() {
                 host.hub.send_to_each(
                     &recipients,
@@ -1458,7 +1457,7 @@ impl Game<'_> {
                                 idle,
                             )
                             .to_vec(),
-                            kind: 0,
+                            kind: sunrise_protocol::packets::play::DEBUG_SAMPLE_TICK_TIME,
                         },
                     ),
                 );
