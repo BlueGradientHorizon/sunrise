@@ -764,9 +764,15 @@ mod tests {
                 game.selected, 1,
                 "the prefix applied but the suffix did not"
             );
-            assert!(
-                matches!(turn.end, Some(Event::Disconnected { key: Some(key), from_server: false, .. }) if key == "disconnect.packetError")
-            );
+            assert!(matches!(
+                turn.end,
+                Some(Event::Disconnected {
+                    key: Some(key),
+                    from_server: false,
+                    after_login: true,
+                    ..
+                }) if key == "disconnect.packetError"
+            ));
         });
     }
 

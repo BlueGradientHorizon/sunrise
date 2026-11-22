@@ -113,7 +113,7 @@ impl PlayIo {
 
     /// `ClientCommonPacketListenerImpl.onPacketError`, after a main-thread handler fails.
     pub fn packet_error(&self) -> Event {
-        Reason::keyed("disconnect.packetError", &self.lang).ended(false)
+        Reason::keyed("disconnect.packetError", &self.lang).ended(false, true)
     }
 
     pub fn incompatible_payload(&self, detail: &str) -> Event {
