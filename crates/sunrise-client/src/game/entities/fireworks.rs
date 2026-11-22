@@ -1179,6 +1179,7 @@ impl Game<'_> {
             let mut credit = plan.lend(&mut self.last_hurt_by_player);
             if let Some(index) = self.mob_index.find(&self.mobs, id) {
                 let before = self.mobs[index].health;
+                let join = self.mobs[index].join;
                 let hurt = self.mobs[index].damage(
                     crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                     amount,
@@ -1193,10 +1194,14 @@ impl Game<'_> {
                 // LivingEntity.hurtServer: a player's rocket makes them the
                 // last player to hurt it (`setLastHurtByPlayer`), so its death
                 // message names them and their item.
-                if hurt && attacker == Some(Who::Player) {
-                    self.remember_mob_player_credit(id);
+                if let Some(index) = self.mob_index.find(&self.mobs, id)
+                    && self.mobs[index].join == join
+                {
+                    if hurt && attacker == Some(Who::Player) {
+                        self.remember_mob_player_credit(id);
+                    }
+                    self.finish_mob_damage_at(index);
                 }
-                self.finish_mob_damage_at(index);
             }
             self.settle_mob_hurt(id);
         }
