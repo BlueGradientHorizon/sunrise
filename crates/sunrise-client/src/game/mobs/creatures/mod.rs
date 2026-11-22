@@ -42,7 +42,7 @@ use super::{
     Dim, Game, InteractTarget,
     entity_culling::EntityCullDecision,
     native_mob_draw::PlayerRender,
-    native_projectiles::{Impact, ImpactTransaction, projectile_impact_event},
+    native_projectiles::{Impact, ImpactTransaction, PendingImpact, projectile_impact_event},
     view_vector,
 };
 use mod_api::{EquipmentSlot, LootDrops, SoundSource};
@@ -54,9 +54,11 @@ use sunrise_client::{
     arrows::EntityHit,
     blocks::Fluid,
     crafting::Recipes,
+    fast_hash::FxHashMap,
     graphics::EntityCullingMode,
     health::{Attack, HealthEvent, HurtSource, Hurting, Knock},
     items::{ItemStack, Items},
+    join_seq::JoinSeq,
     mesher::Vertex,
     mobs::{
         Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
@@ -4837,10 +4839,15 @@ impl Game<'_> {
                     }
                     let use_guests = (mob_shot || pvp) && seen.has_guests;
                     let (keep, hit) = match (p.arrow.is_some(), use_guests, winds.is_empty()) {
-                        (true, false, true) => sunrise_client::arrows::tick(p, &scene, pw.targets),
-                        (true, true, true) => {
-                            sunrise_client::arrows::tick(p, &scene, pw_guests.targets)
-                        }
+                        (true, false, true) => sunrise_client::arrows::tick_to_block_contact(
+                            p, &scene, pw.targets, hear,
+                        ),
+                        (true, true, true) => sunrise_client::arrows::tick_to_block_contact(
+                            p,
+                            &scene,
+                            pw_guests.targets,
+                            hear,
+                        ),
                         (true, with_guests, false) => {
                             let mut targets = if with_guests {
                                 pw_guests.targets.to_vec()
@@ -4848,7 +4855,7 @@ impl Game<'_> {
                                 pw.targets.to_vec()
                             };
                             targets.extend_from_slice(&winds);
-                            sunrise_client::arrows::tick(p, &scene, &targets)
+                            sunrise_client::arrows::tick_to_block_contact(p, &scene, &targets, hear)
                         }
                         (false, false, true) => p.tick(&pw),
                         (false, true, true) => p.tick(&pw_guests),
@@ -5058,9 +5065,11 @@ impl Game<'_> {
         let hears_impact = !impacts.is_empty();
         let scope = ImpactTransaction::new(self, hears_impact);
         let game = &mut *scope.game;
-        if hears_impact {
-            game.native_settle_impacts(&mut projectiles, impacts, &mut hits, &mut arrow_events);
-        }
+        let pending = if hears_impact {
+            game.native_settle_impacts(&mut projectiles, impacts, &mut hits, &mut arrow_events)
+        } else {
+            FxHashMap::default()
+        };
         for (id, block, position, movement) in snow_contacts {
             if !hears_impact || !game.projectile_removal_pending(id) {
                 game.powder_snow_particle(block, position, movement);
@@ -5113,7 +5122,7 @@ impl Game<'_> {
             sunrise_client::join_seq::RestoreOrder::SpawnsFirst,
         );
         section_steps::finish(game, section_steps);
-        let result = game.apply_projectile_hits(hits, &mut vehicle_winds, hears_impact);
+        let result = game.apply_projectile_hits(hits, &mut vehicle_winds, pending, hears_impact);
         scope.close(result.is_ok());
         self.creatures.bounced_followers.clear();
         result?;
@@ -5127,13 +5136,19 @@ impl Game<'_> {
         &mut self,
         hits: Vec<(Projectile, Hit)>,
         vehicle_winds: &mut super::wind::VehicleWinds,
+        mut pending: FxHashMap<JoinSeq, PendingImpact>,
         hears_impact: bool,
     ) -> Result<()> {
         for (p, hit) in hits {
             if hears_impact && self.projectile_removal_pending(p.id) {
                 continue;
             }
-            let Some((p, hit)) = self.broken_vehicle_retick(p, hit, vehicle_winds) else {
+            let Some((p, hit)) = (if let Some(contact) = pending.remove(&p.join) {
+                self.finish_captured_impact(p, hit, contact)
+                    .map(|p| (p, hit))
+            } else {
+                self.broken_vehicle_retick(p, hit, vehicle_winds)
+            }) else {
                 continue;
             };
             // A player's arrow on another player lands as the victim's hurt.

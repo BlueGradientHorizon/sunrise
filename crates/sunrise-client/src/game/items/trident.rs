@@ -796,6 +796,8 @@ impl Game<'_> {
                 let canceled_mob = if let Some((id, d)) = hit_mob {
                     let from = t.position;
                     let at = from.add_vector(t.velocity.scale(d));
+                    t.position = at;
+                    self.trident_block_effects(&mut t, from, at);
                     let hit = Hit::Entity {
                         who: Who::Mob(id),
                         at,
@@ -806,21 +808,13 @@ impl Game<'_> {
                         continue;
                     };
                     t = live;
-                    self.trident_block_effects(&mut t, from, at);
                     canceled
                 } else {
                     false
                 };
                 if canceled_mob {
-                    // No damage, sound or deflection: it flies on.
-                } else if let Some((id, d)) = hit_mob {
-                    // The trident stops where it met the box.
-                    let at = Vec3::new(
-                        t.position.x + t.velocity.x * d,
-                        t.position.y + t.velocity.y * d,
-                        t.position.z + t.velocity.z * d,
-                    );
-                    t.position = at;
+                    // No damage, sound or deflection: it flies on from the contact.
+                } else if let Some((id, _)) = hit_mob {
                     // `Breeze.deflection`: a trident is not a wind charge, so
                     // `PROJECTILE_DEFLECTION` turns it around. `onHit` does not
                     // run, so the breeze takes no damage and Channeling never fires.
@@ -1029,8 +1023,11 @@ impl Game<'_> {
                     let flight = t.velocity;
                     let clip =
                         clip_block_hit(&self.world, self.res.facts(), self.collision, from, flight);
-                    // Block effects reach the clip location before onHitBlock backs off.
-                    let fire_to = clip.map_or(from.add_vector(flight), |(at, _, _)| at);
+                    // AbstractArrow.stepMoveAndHit: move to the contact and apply the
+                    // flight's block effects before ProjectileImpactEvent or onHitBlock.
+                    let contact = clip.map_or(from.add_vector(flight), |(at, _, _)| at);
+                    t.position = contact;
+                    self.trident_block_effects(&mut t, from, contact);
                     // A canceled block hit stops at the existing back-off without sticking.
                     // Report the clipped point itself to the hook, before the back-off.
                     let canceled_block = if let Some((at, block, face)) = clip {
@@ -1049,7 +1046,6 @@ impl Game<'_> {
                     } else {
                         false
                     };
-                    self.trident_block_effects(&mut t, from, fire_to);
                     let clip = clip.map(|(at, block, face)| (back_off(at, flight), block, face));
                     if canceled_block && let Some((stop, _, _)) = clip {
                         t.position = stop;
@@ -1077,10 +1073,6 @@ impl Game<'_> {
                         let sound = t.hit_ground_sound();
                         self.audio
                             .play(&sound, Some([stop.x, stop.y, stop.z]), 1.0, 1.0);
-                    } else {
-                        // A MISS moves the whole segment.
-                        t.position =
-                            Vec3::new(from.x + flight.x, from.y + flight.y, from.z + flight.z);
                     }
                 }
                 if !t.in_ground {

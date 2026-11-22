@@ -16,11 +16,11 @@ use std::ops::Range;
 use sunrise_client::{
     arrows::{ArrowEvent, ArrowSound},
     fast_hash::{FxHashMap, FxHashSet},
-    join_seq::JoinList,
+    join_seq::{JoinList, JoinSeq},
     mobs::Who,
     projectiles::{Hit, Projectile},
 };
-use sunrise_core::geometry::Vec3;
+use sunrise_core::{geometry::Vec3, position::BlockPos};
 
 #[cfg(test)]
 #[path = "native_projectiles/impact_probe.rs"]
@@ -47,6 +47,13 @@ pub(super) struct Impact {
     pub hit_slot: usize,
     /// Where its arrow events are in the tick's `arrow_events`.
     pub events: Range<usize>,
+}
+
+/// A notified hit still waiting to be applied after the intervening callbacks.
+pub(super) struct PendingImpact {
+    keep: bool,
+    canceled: bool,
+    target: Option<ImpactTarget>,
 }
 
 /// The type the mods know a projectile by: a spectral arrow is its own.
@@ -384,16 +391,16 @@ impl Game<'_> {
         canceled
     }
 
-    /// Hand back the owning rows (including terminal impacts) while mods run. Retire an
-    /// ordinary terminal owner at the usual pre-effects boundary. Journaled removals instead
-    /// keep their row for root commit, but neither apply nor replay the captured hit.
+    /// Hand back the owning rows (including terminal impacts) while mods run. A veto
+    /// alone replays the flight; all other captured contacts keep their row until the
+    /// apply boundary (or, for an explicit discard, the removal sweep).
     pub(super) fn native_settle_impacts(
         &mut self,
         projectiles: &mut JoinList<Projectile, false>,
         impacts: Vec<Impact>,
         hits: &mut Vec<(Projectile, Hit)>,
         arrow_events: &mut Vec<(u32, Vec3, ArrowEvent)>,
-    ) {
+    ) -> FxHashMap<JoinSeq, PendingImpact> {
         // Close the already-lifted pass, not a new one over the spawn buffer.
         self.creatures.projectiles.restore(
             projectiles.take_owned_pass(),
@@ -418,29 +425,26 @@ impl Game<'_> {
         let mut flown = Vec::new();
         let mut retired = FxHashSet::default();
         let mut append = FxHashSet::default();
-        for (impact, cancel) in impacts.into_iter().zip(canceled) {
-            let before = impact.before;
+        let mut pending = FxHashMap::default();
+        for (impact, canceled) in impacts.into_iter().zip(canceled) {
+            let mut before = impact.before;
             let snapshot = &hits[impact.hit_slot].0;
-            let slot = places.get(&before.join).copied();
-            let live = !self.projectile_removal_pending(before.id) && slot.is_some();
-            let unchanged = live
-                && slot.is_some_and(|index| &projectiles[index] == snapshot)
+            if canceled
+                && !self.projectile_removal_pending(before.id)
+                && let Some(&index) = places.get(&before.join)
+                && &projectiles[index] == snapshot
                 && impact.target.is_some()
-                && impact.target == self.native_impact_target(impact.hit);
-            if unchanged && !cancel {
-                if !impact.keep {
-                    retired.insert(before.join);
+                && impact.target == self.native_impact_target(impact.hit)
+            {
+                drop_hits[impact.hit_slot] = true;
+                for i in impact.events {
+                    drop_events[i] = true;
                 }
-                continue;
-            }
-            drop_hits[impact.hit_slot] = true;
-            for i in impact.events {
-                drop_events[i] = unchanged || projectile_impact_event(&arrow_events[i].2);
-            }
-            if unchanged && let Some(index) = slot {
-                let mut before = before;
                 // Preserve the first shot already queued by the original flight.
                 before.has_been_shot = snapshot.has_been_shot;
+                if let (Some(arrow), Some(snapshot)) = (&mut before.arrow, &snapshot.arrow) {
+                    arrow.has_been_shot = snapshot.has_been_shot;
+                }
                 let (p, keep, events) = self.native_projectile_through(before);
                 flown.extend(events.into_iter().map(|(at, event)| (p.id, at, event)));
                 let join = p.join;
@@ -452,6 +456,15 @@ impl Game<'_> {
                 } else {
                     retired.insert(join);
                 }
+            } else {
+                pending.insert(
+                    before.join,
+                    PendingImpact {
+                        keep: impact.keep,
+                        canceled,
+                        target: impact.target,
+                    },
+                );
             }
         }
         projectiles.retain(|p| !retired.contains(&p.join));
@@ -472,6 +485,69 @@ impl Game<'_> {
             !drop_events[n - 1]
         });
         arrow_events.extend(flown);
+        pending
+    }
+
+    /// Apply the captured response against the live row and target. All earlier
+    /// hooks (including the first shot and preceding landings) have had their turn.
+    pub(super) fn finish_captured_impact(
+        &mut self,
+        snapshot: Projectile,
+        hit: Hit,
+        pending: PendingImpact,
+    ) -> Option<Projectile> {
+        let i = self.creatures.projectiles.locate(snapshot.join)?;
+        let live = &self.creatures.projectiles[i];
+        if live.position != snapshot.position
+            || live.velocity != snapshot.velocity
+            || live.owner != snapshot.owner
+            || live.guest != snapshot.guest
+            || live.owner_uuid != snapshot.owner_uuid
+            || live.kind != snapshot.kind
+            || live.stuck != snapshot.stuck
+            || live.arrow.as_ref().map(|a| a.no_physics)
+                != snapshot.arrow.as_ref().map(|a| a.no_physics)
+        {
+            return None;
+        }
+        let accepted = !pending.canceled
+            && pending.target.is_some()
+            && pending.target == self.native_impact_target(hit);
+        if live.arrow.is_some()
+            && let Hit::Block { pos, .. } = hit
+        {
+            let mut p = live.clone();
+            let keep = {
+                let rain = self.arrow_rain();
+                sunrise_client::arrows::finish_block_contact(
+                    &mut p,
+                    &self.arrow_scene(&rain),
+                    accepted.then(|| BlockPos::new(pos[0], pos[1], pos[2])),
+                )
+            };
+            let events = p
+                .arrow
+                .as_mut()
+                .map(|a| std::mem::take(&mut a.events))
+                .unwrap_or_default();
+            if keep && (!accepted || pending.keep) {
+                self.creatures.projectiles.store_back(i, p.clone());
+            } else {
+                self.creatures.projectiles.remove(i);
+            }
+            for event in events {
+                self.arrow_event(p.position, event);
+            }
+            return accepted.then_some(p);
+        }
+        if !accepted {
+            return None;
+        }
+        let p = live.clone();
+        if !pending.keep {
+            self.creatures.projectiles.remove(i);
+        }
+        Some(p)
     }
 
     /// `p`, as it was before its tick, flown that tick through what it hit
@@ -528,6 +604,9 @@ mod impact_panic_tests;
 #[cfg(test)]
 mod nested_spawn_tests {
     use super::*;
+    use crate::game::native_entity_refs::tests::run_fresh_cases;
+
+    const CASE: &str = "SUNRISE_PROJECTILE_NESTED_SPAWN_CASE";
 
     fn impact_handoff_balances_the_pass(park: bool) {
         use sunrise_client::join_seq::residency::{Change, Journal, Kind, Owner};
@@ -594,18 +673,37 @@ mod nested_spawn_tests {
     #[test]
     #[ignore = "daily"]
     fn impact_handoff_balances_the_active_owner() {
-        impact_handoff_balances_the_pass(false);
+        if !run_fresh_cases(
+            "game::native_projectiles::nested_spawn_tests::impact_handoff_balances_the_active_owner",
+            CASE,
+            &["active-owner"],
+        ) {
+            impact_handoff_balances_the_pass(false);
+        }
     }
 
     #[test]
     #[ignore = "daily"]
     fn impact_handoff_balances_the_parked_owner() {
-        impact_handoff_balances_the_pass(true);
+        if !run_fresh_cases(
+            "game::native_projectiles::nested_spawn_tests::impact_handoff_balances_the_parked_owner",
+            CASE,
+            &["parked-owner"],
+        ) {
+            impact_handoff_balances_the_pass(true);
+        }
     }
 
     #[test]
     #[ignore = "daily"]
     fn impact_exposure_retains_the_existing_spawn_buffer_for_the_next_pass() {
+        if run_fresh_cases(
+            "game::native_projectiles::nested_spawn_tests::impact_exposure_retains_the_existing_spawn_buffer_for_the_next_pass",
+            CASE,
+            &["spawn-buffer"],
+        ) {
+            return;
+        }
         crate::game::native_entity_refs::tests::with_game(|game| {
             fn shot(id: u32) -> Projectile {
                 let mut p = Projectile::new(

@@ -15,6 +15,8 @@ use sunrise_core::{geometry::Vec3, position::ChunkPos};
 #[derive(Clone, Copy)]
 pub(in crate::game) enum Action {
     Allow,
+    ClearBlockOnImpact,
+    ClearBlockOnShoot([i32; 3]),
     Cancel,
     Discard,
     DiscardAndCancel,
@@ -34,6 +36,7 @@ pub(in crate::game) struct Seen {
     pub block: [i32; 3],
     pub face: [i32; 3],
     pub at: [f64; 3],
+    pub projectile_pos: [f64; 3],
 }
 
 /// Listener observations, including any incorrectly triggered catch.
@@ -42,6 +45,7 @@ pub(in crate::game) struct Observed {
     pub hits: Mutex<Vec<Seen>>,
     pub catches: AtomicUsize,
     pub lands: AtomicUsize,
+    pub deaths: AtomicUsize,
     pub leaves: Mutex<Vec<u32>>,
 }
 
@@ -79,9 +83,15 @@ impl Hooks for Probe {
             block: event.block,
             face: event.face,
             at: event.at,
+            projectile_pos: projectile.position(host).unwrap(),
         });
         match self.action {
-            Action::Allow => Flow::Continue,
+            Action::Allow | Action::ClearBlockOnShoot(_) => Flow::Continue,
+            Action::ClearBlockOnImpact => {
+                let level = host.level(event.dimension).unwrap();
+                assert!(level.remove_block(host, event.block, false));
+                Flow::Continue
+            }
             Action::Cancel => Flow::Cancel,
             Action::Discard | Action::DiscardAndCancel | Action::AbortDiscard | Action::Remove => {
                 let remove = |host: &mut dyn ServerHost| {
@@ -113,11 +123,24 @@ impl Hooks for Probe {
 
     fn vanilla_game_event(
         &self,
-        _: &mut dyn ServerHost,
+        host: &mut dyn ServerHost,
         event: &mut mod_api::VanillaGameEventEvent<'_>,
     ) -> Flow {
-        if event.event == "minecraft:projectile_land" {
-            self.observed.lands.fetch_add(1, Ordering::Relaxed);
+        match event.event {
+            "minecraft:projectile_land" => {
+                self.observed.lands.fetch_add(1, Ordering::Relaxed);
+            }
+            "minecraft:entity_die" => {
+                self.observed.deaths.fetch_add(1, Ordering::Relaxed);
+            }
+            "minecraft:projectile_shoot" => {
+                if let Action::ClearBlockOnShoot(block) = self.action {
+                    assert!(!self.observed.hits.lock().unwrap().is_empty());
+                    let level = host.level(event.dimension).unwrap();
+                    assert!(level.remove_block(host, block, false));
+                }
+            }
+            _ => {}
         }
         Flow::Continue
     }

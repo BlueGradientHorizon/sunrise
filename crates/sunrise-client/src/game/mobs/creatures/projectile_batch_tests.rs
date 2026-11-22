@@ -4,7 +4,7 @@ use crate::game::{
     native_projectiles::impact_probe::{Action, with_probe},
 };
 use mod_api::{Flow, HearsProjectileImpactsEvent, Hooks, ProjectileImpactEvent, ServerHost};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::Ordering};
 use sunrise_client::{chunk::Chunk, join_seq::JoinSeq};
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
@@ -314,6 +314,16 @@ fn a_projectile_removed_in_its_impact_hook_stays_removed_after_replay() {
     }
     with_batch(true, |game, ids, joins, spawned, buffered| {
         assert!(game.entity(ids[1]).is_none());
+        let discarded = game
+            .creatures
+            .projectiles
+            .iter()
+            .find(|p| p.id == ids[1])
+            .unwrap();
+        assert_eq!(
+            discarded.position.x, 2.0,
+            "discard must not replay the flight"
+        );
         game.native_removals_flush();
         let list = &game.creatures.projectiles;
         assert_eq!(
@@ -328,7 +338,6 @@ fn a_projectile_removed_in_its_impact_hook_stays_removed_after_replay() {
 }
 
 fn terminal_egg(action: Action, abort: bool) {
-    use std::sync::atomic::Ordering;
     use sunrise_core::random::LegacyRandom;
 
     with_probe(action, true, |game, observed| {
@@ -360,6 +369,7 @@ fn terminal_egg(action: Action, abort: bool) {
             assert_eq!(hits[0].block, [2, 64, 0]);
         }
         assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
+        assert_eq!(observed.deaths.load(Ordering::Relaxed), 0);
         assert!(game.lan_entity_events.is_empty());
         assert_eq!(game.particles.len(), particles);
         assert_eq!(game.world.random.state(), random);
@@ -404,4 +414,161 @@ fn aborting_an_impact_discard_keeps_the_same_egg_in_flight() {
     ) {
         terminal_egg(Action::AbortDiscard, true);
     }
+}
+
+#[test]
+#[ignore = "daily"]
+fn two_discarded_eggs_leave_once_without_dying() {
+    if run_fresh_cases(
+        "game::creatures::projectile_batch_tests::two_discarded_eggs_leave_once_without_dying",
+        "SUNRISE_PROJECTILE_BATCH_CASE",
+        &["two-discards"],
+    ) {
+        return;
+    }
+    with_probe(Action::Discard, true, |game, observed| {
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        game.world.set(2, 64, 0, stone).unwrap();
+        let handles = [71, 72].map(|id| {
+            let mut egg = Projectile::new(ProjectileKind::Egg, Vec3::new(0.5, 64.5, 0.5), None);
+            egg.id = id;
+            egg.velocity = Vec3::new(3.0, 0.0, 0.0);
+            game.creatures.projectiles.push(egg);
+            game.entity(id).unwrap()
+        });
+        game.native_joins_skip();
+        game.tick_projectiles().unwrap();
+        assert!(
+            handles
+                .into_iter()
+                .all(|egg| game.entity_position(egg).is_none())
+        );
+        assert_eq!(game.creatures.projectiles.len(), 2);
+        game.native_leaves_flush();
+        assert!(game.creatures.projectiles.is_empty());
+        assert_eq!(*observed.leaves.lock().unwrap(), [71, 72]);
+        assert_eq!(observed.deaths.load(Ordering::Relaxed), 0);
+        assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_arrow_does_not_stick_when_the_impact_listener_clears_its_block() {
+    const CASE: &str = "SUNRISE_PROJECTILE_BATCH_CASE";
+    if run_fresh_cases(
+        "game::creatures::projectile_batch_tests::an_arrow_does_not_stick_when_the_impact_listener_clears_its_block",
+        CASE,
+        &["clear", "allow"],
+    ) {
+        return;
+    }
+    let clear = std::env::var(CASE).as_deref() == Ok("clear");
+    let action = if clear {
+        Action::ClearBlockOnImpact
+    } else {
+        Action::Allow
+    };
+    with_probe(action, true, |game, observed| {
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        game.world.set(2, 64, 0, stone).unwrap();
+        let mut p = Projectile::new(
+            ProjectileKind::Arrow {
+                base_damage: 2.0,
+                critical: false,
+                effect: None,
+            },
+            Vec3::new(0.5, 64.5, 0.5),
+            None,
+        );
+        p.id = 71;
+        p.velocity = Vec3::new(3.0, 0.0, 0.0);
+        game.creatures.projectiles.push(p);
+        game.audio.capture = Some(Vec::new());
+        game.tick_projectiles().unwrap();
+        let hits = observed.hits.lock().unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].at, [2.0, 64.5, 0.5]);
+        assert_eq!(hits[0].projectile_pos, hits[0].at);
+        let p = &game.creatures.projectiles[0];
+        let arrow = p.arrow.as_ref().unwrap();
+        if clear {
+            assert_eq!(
+                p.position.components(),
+                hits[0].at,
+                "refusal must not replay the flight"
+            );
+            assert_eq!(p.velocity, Vec3::new(3.0 * f64::from(0.99_f32), -0.05, 0.0));
+            assert_eq!(arrow.shake, 0);
+        } else {
+            assert_eq!(p.position.x, 2.0 - f64::from(0.05_f32));
+            assert_eq!(p.velocity, Vec3::ZERO);
+            assert_eq!(arrow.shake, 7);
+        }
+        assert_eq!(arrow.in_ground, !clear);
+        assert_eq!(observed.lands.load(Ordering::Relaxed), usize::from(!clear));
+        assert_eq!(
+            game.audio
+                .capture
+                .as_ref()
+                .unwrap()
+                .iter()
+                .any(|sound| { sound.event == "minecraft:entity.arrow.hit" }),
+            !clear
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_first_shot_listener_can_clear_the_eggs_captured_block_before_landing() {
+    if run_fresh_cases(
+        "game::creatures::projectile_batch_tests::a_first_shot_listener_can_clear_the_eggs_captured_block_before_landing",
+        "SUNRISE_PROJECTILE_BATCH_CASE",
+        &["clear-on-shoot"],
+    ) {
+        return;
+    }
+    with_probe(
+        Action::ClearBlockOnShoot([2, 64, 0]),
+        true,
+        |game, observed| {
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(2, 64, 0, stone).unwrap();
+            let mut egg = Projectile::new(ProjectileKind::Egg, Vec3::new(0.5, 64.5, 0.5), None);
+            egg.id = 71;
+            egg.velocity = Vec3::new(3.0, 0.0, 0.0);
+            game.creatures.projectiles.push(egg);
+            let handle = game.entity(71).unwrap();
+            let join = game.creatures.projectiles[0].join;
+            game.tick_projectiles().unwrap();
+            let hits = observed.hits.lock().unwrap();
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].block, [2, 64, 0]);
+            assert_ne!(game.world.block(2, 64, 0), stone);
+            assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
+            assert!(game.lan_entity_events.is_empty());
+            assert_eq!(game.entity(71), Some(handle));
+            assert_eq!(game.creatures.projectiles[0].join, join);
+            assert_eq!(
+                game.creatures.projectiles[0].position.components(),
+                hits[0].at
+            );
+        },
+    );
 }

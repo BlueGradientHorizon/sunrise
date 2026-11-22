@@ -33,8 +33,16 @@ fn a_discarded_trident_does_not_apply_its_captured_impact() {
                 .unwrap();
             game.world.set(2, 64, 0, stone).unwrap();
         }
+        let water = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:water")
+            .unwrap();
+        game.world.set(1, 64, 0, water).unwrap();
         let mut t = ThrownTrident::remote(71, Vec3::new(0.5, 64.5, 0.5), 0.0, 0.0);
         t.velocity = Vec3::new(4.0, 0.0, 0.0);
+        t.fire_ticks = 100;
         t.owner = 7;
         t.left_owner = true;
         t.loyalty = 1;
@@ -45,6 +53,7 @@ fn a_discarded_trident_does_not_apply_its_captured_impact() {
         game.audio.capture = Some(Vec::new());
         game.tick_tridents();
         assert!(game.entity_position(handle).is_none());
+        assert_eq!(game.tridents[0].fire_ticks, 0);
         game.native_leaves_flush();
         game.tick_tridents();
         game.native_leaves_flush();
@@ -52,17 +61,27 @@ fn a_discarded_trident_does_not_apply_its_captured_impact() {
         assert!(game.dropped.is_empty());
         assert_eq!(*observed.leaves.lock().unwrap(), [71]);
         assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
+        assert_eq!(observed.deaths.load(Ordering::Relaxed), 0);
         let hits = observed.hits.lock().unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].projectile, 71);
         assert_eq!(hits[0].kind, "minecraft:trident");
         assert_eq!(hits[0].entity, pig.then_some(72));
+        assert_eq!(hits[0].projectile_pos, hits[0].at);
         if pig {
             assert_eq!(game.mobs[0].health, 10.0);
         } else {
             assert_eq!(hits[0].block, [2, 64, 0]);
         }
-        assert!(game.audio.capture.as_ref().unwrap().iter().all(|sound| {
+        let sounds = game.audio.capture.as_ref().unwrap();
+        assert_eq!(
+            sounds
+                .iter()
+                .filter(|sound| { sound.event == "minecraft:entity.generic.extinguish_fire" })
+                .count(),
+            1
+        );
+        assert!(sounds.iter().all(|sound| {
             !matches!(
                 sound.event.as_str(),
                 "minecraft:item.trident.hit"
