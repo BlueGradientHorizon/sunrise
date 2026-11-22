@@ -845,7 +845,7 @@ impl Game<'_> {
             e.velocity = [v.x, v.y, v.z];
             [e.yaw, e.pitch] = row.rotation;
             e.head_yaw = row.rotation[0];
-            e.general = true;
+            e.general = Some(catalog.tracking(row.type_slot));
         }
     }
 

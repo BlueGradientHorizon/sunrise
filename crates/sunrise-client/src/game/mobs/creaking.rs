@@ -193,7 +193,19 @@ impl Game<'_> {
     /// After `Creaking.hurtServer` posts ENTITY_ACTION, check the live protector, let
     /// a player-credited hit reach the heart, then play the mob's hurt sound.
     pub(super) fn creaking_hurt(&mut self, home: [i32; 3], id: u32, by_player: bool) {
-        let key = (home[0], home[1], home[2]);
+        let Some(join) = self.mob_object(id).map(|m| m.join) else {
+            return;
+        };
+        let [x, y, z] = home;
+        let key = (x, y, z);
+        // Hearts can keep a row for their removal tick. The replaced block
+        // no longer supplies a protector to Creaking.hurtServer.
+        let live_heart = |game: &Self| {
+            &*game.res.facts().get(game.world.block(x, y, z)).name == "minecraft:creaking_heart"
+        };
+        if !live_heart(self) {
+            return;
+        }
         let Some((lease, entity)) = self.world.block_entities.take(&key) else {
             return;
         };
@@ -209,10 +221,18 @@ impl Game<'_> {
                 creaking_heart::creaking_hurt(h, home, w, lr, host, out);
             }
         });
-        self.world
+        let restored = self
+            .world
             .block_entities
             .put(lease, BlockEntity::CreakingHeart(heart));
-        if protects && let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
+        if protects
+            && restored
+            && live_heart(self)
+            && let Some(mob) = self
+                .mobs
+                .iter_mut()
+                .find(|m| m.id == id && m.join == join && !m.removed)
+        {
             let mut events = Vec::new();
             sunrise_client::mobs::creaking::sway(mob, &mut events);
             let _ = self.handle_mob_events(events);
