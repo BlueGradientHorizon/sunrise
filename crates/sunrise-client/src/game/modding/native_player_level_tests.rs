@@ -1,6 +1,7 @@
 //! A mod's write to a player in another level reaches their inventory at once. A give drops
 //! overflow in the player's level; a raw throw or block break still needs that level in place.
 use super::Dim;
+use super::native_entity_refs::tests::run_fresh_cases;
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{HostTransaction, ItemPlace, ServerHost};
 use sunrise_client::{items::ItemStack, lan::playerdata};
@@ -63,6 +64,13 @@ fn diamonds(game: &super::Game<'_>, conn: u32) -> u32 {
 #[test]
 #[ignore = "daily"]
 fn a_give_to_a_player_in_another_level_drops_overflow_there() {
+    if run_fresh_cases(
+        "game::native_player_level_tests::a_give_to_a_player_in_another_level_drops_overflow_there",
+        "SUNRISE_GIVE_OVERFLOW_CHILD",
+        &["overflow"],
+    ) {
+        return;
+    }
     with_guests(|game| {
         let diamond = in_the_nether(game);
         let resource = mod_api::ItemResource::of(&diamond);
@@ -166,6 +174,13 @@ fn a_give_to_a_player_in_another_level_drops_overflow_there() {
 #[test]
 #[ignore = "daily"]
 fn a_give_to_a_borrowed_player_drops_in_their_level() {
+    if run_fresh_cases(
+        "game::native_player_level_tests::a_give_to_a_borrowed_player_drops_in_their_level",
+        "SUNRISE_GIVE_OVERFLOW_CHILD",
+        &["borrowed"],
+    ) {
+        return;
+    }
     with_guests(|game| {
         let diamond = in_the_nether(game);
         game.lan

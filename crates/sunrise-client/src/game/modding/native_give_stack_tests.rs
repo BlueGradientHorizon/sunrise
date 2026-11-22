@@ -1,6 +1,9 @@
 //! `player_give_stack` against a real LAN guest and `item_from_snbt` on the public host.
 
-use super::{api_values::TryIntoApi, native_guest_turn_tests::with_guests};
+use super::{
+    api_values::TryIntoApi, native_entity_refs::tests::run_fresh_cases,
+    native_guest_turn_tests::with_guests,
+};
 use mod_api::{Host, ItemStack, PlayerDataRefusal, prelude::*};
 use sunrise_core::nbt::parse_snbt;
 
@@ -46,6 +49,13 @@ fn an_snbt_item_goes_through_the_api_unchanged() {
 #[test]
 #[ignore = "daily"]
 fn item_from_snbt_refuses_what_is_not_one_item_compound() {
+    if run_fresh_cases(
+        "game::native_give_stack_tests::item_from_snbt_refuses_what_is_not_one_item_compound",
+        "SUNRISE_ITEM_FROM_SNBT_CHILD",
+        &["snbt"],
+    ) {
+        return;
+    }
     with_guests(|game| {
         let host: &dyn Host = game;
         let count = |snbt: &str| host.item_from_snbt(snbt).map(|s| s.count());
