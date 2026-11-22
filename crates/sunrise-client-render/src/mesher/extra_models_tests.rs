@@ -62,6 +62,23 @@ fn extra_models_draw_with_the_blocks_place_and_light() {
     let chunk = with_extra(world.cube(), &[gold, gold]);
     region[1][1] = Some(&chunk);
     assert_eq!(quads(&mesher.mesh(&region, 0).solid), 18);
+
+    // SectionCompiler.compile skips all air states, not only the ordinary air palette ID.
+    let mut mixed = with_extra(world.cube(), &[gold]);
+    for (x, name) in [
+        (5, "minecraft:air"),
+        (8, "minecraft:cave_air"),
+        (11, "minecraft:void_air"),
+    ] {
+        let air = world.assets.registry.default_state(name).unwrap();
+        mixed.set(x, MIN_Y + 4, 2, air.0);
+        let cell = mixed.dynamic_cell(x, MIN_Y + 4, 2).unwrap();
+        mixed.extra_models.insert(cell, Arc::from([gold]));
+    }
+    region[1][1] = Some(&mixed);
+    let gold = on_layer(&mesher.mesh(&region, 0).solid, layer(&world, GOLD));
+    assert_eq!(quads(&gold), 6);
+    assert!(gold.iter().all(|v| (2.0..=3.0).contains(&v.pos[0])));
 }
 
 #[test]

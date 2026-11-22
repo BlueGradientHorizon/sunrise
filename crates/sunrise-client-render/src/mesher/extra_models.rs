@@ -99,7 +99,10 @@ impl Mesher<'_> {
             let pos @ [x, y, z] = [i32::from(x), wy - base_y, i32::from(z)];
             let cell = pi(x, y, z);
             let id = pad.blocks[cell];
-            if id == 0 || hidden[(y * 16 + z) as usize] >> x & 1 != 0 || masks.at(cell) & MODEL == 0
+            let state = &self.tables.info[id as usize];
+            if state.air
+                || hidden[(y * 16 + z) as usize] >> x & 1 != 0
+                || masks.at(cell) & MODEL == 0
             {
                 continue;
             }
@@ -107,7 +110,7 @@ impl Mesher<'_> {
                 pos,
                 cell,
                 id,
-                state: &self.tables.info[id as usize],
+                state,
                 world: BlockPos::new(center.x * 16 + x, wy, center.z * 16 + z),
                 visible: self.visible_faces(region, &pad, base_y, pos, masks),
             };

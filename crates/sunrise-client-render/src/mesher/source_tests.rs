@@ -118,6 +118,7 @@ fn fixture() -> (Scratch, Assets, RenderAssets, MeshTables, Biomes) {
         blocks_fluid_flow: Default::default(),
     };
     let air = Info {
+        air: true,
         solid: false,
         full: false,
         permeable: true,
@@ -146,8 +147,13 @@ fn fixture() -> (Scratch, Assets, RenderAssets, MeshTables, Biomes) {
     };
     let info = vec![
         air,
-        Info { model: true, ..air },
         Info {
+            air: false,
+            model: true,
+            ..air
+        },
+        Info {
+            air: false,
             model: true,
             emission: 13,
             fluid: FluidState::WATER,

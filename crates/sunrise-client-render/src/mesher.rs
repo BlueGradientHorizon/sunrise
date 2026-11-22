@@ -736,6 +736,8 @@ enum Tint {
 /// Per-state data the mesher needs on every block, flattened for speed.
 #[derive(Clone, Copy)]
 struct Info {
+    /// `BlockState.isAir`: ordinary, cave and void air all skip attachment models.
+    air: bool,
     /// `isSolidRender`.
     solid: bool,
     /// `isCollisionShapeFullBlock`: AO faces flush with a full block sample outside it.
@@ -1070,6 +1072,7 @@ impl MeshTables {
                     .or_insert_with(|| fluid::coverage(shape, d));
             }
             info.push(Info {
+                air: facts.is_air(BlockStateId(id as u32)),
                 solid: s.solid_render,
                 full: s.full_collision,
                 permeable: !s.solid_render || s.dampening == 0,
@@ -2422,7 +2425,7 @@ impl Mesher<'_> {
                     }
                     // The models a client mod draws as part of this block: after the section's
                     // own geometry and within its budget (`extra_models::add`).
-                    let extra = extra_models.and_then(|extra| {
+                    let extra = extra_models.filter(|_| !state.air).and_then(|extra| {
                         extra.get(&((sy as u32) << 12 | crate::chunk::index(x, y, z) as u32))
                     });
                     if !state.model && extra.is_none() {
