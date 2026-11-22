@@ -232,6 +232,7 @@ pub enum ClickedStackResult {
     /// slot's take side effects (such as furnace smelting experience, `recipes_used`, crafting
     /// remainders, or potion take hooks). Valid only in `ItemPart` overrides (refused for global
     /// listeners); `count` must be at least `1` and at most the slot's current stack size.
+    /// Two accepted takes run their effects separately, in carried-then-clicked order.
     Take(u32),
 }
 /// A listener's answer to [`StackedOnOther`], validated once and applied once.

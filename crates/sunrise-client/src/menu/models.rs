@@ -82,6 +82,8 @@ pub enum StackedClickedEdit {
     Set(Option<ItemStack>),
     /// Take `u32` items from the clicked slot via `Slot.safeTake` / `Slot.onTake`.
     Take(u32),
+    /// Two successive Parts each take from the slot, with a separate `Slot.onTake` per phase.
+    TakeThenTake { first: u32, second: u32 },
     /// Take `take` items via `Slot.onTake`, then directly write `then` to the slot (when a
     /// declining carried Part took items and the clicked Part replaced the remainder).
     TakeThenSet { take: u32, then: Option<ItemStack> },
@@ -137,6 +139,10 @@ pub trait StackedSlotTarget {
     fn item_max_stack(&self, stack: &ItemStack) -> u32;
     fn set_carried(&mut self, carried: Option<ItemStack>);
     fn set_clicked(&mut self, clicked: Option<ItemStack>);
+    /// Run a compound clicked-slot edit on private state, committing only when it succeeds.
+    fn with_staged(&mut self, edit: impl FnOnce(&mut dyn StackedSlotTarget) -> bool) -> bool
+    where
+        Self: Sized;
     /// Full take from a slot (`Slot.safeTake`, including `onTake` side effects).
     fn safe_take(&mut self, amount: u32, max_amount: u32) -> Option<ItemStack>;
     /// Partial take from an output/potion slot (`Slot.remove` followed by `Slot.onTake`).
@@ -161,6 +167,8 @@ pub struct SlotContext<'a> {
     pub(crate) player_slots: &'a [Option<ItemStack>],
     pub(crate) player_armor: Option<&'a [Option<ItemStack>; 4]>,
     pub(crate) player_offhand: Option<&'a Option<ItemStack>>,
+    /// A hosted rule sees the tentative slot as well as the stack being checked.
+    pub(crate) staged_slot: Option<(MenuContainer, usize, &'a ItemStack)>,
 }
 
 /// `menu_slot_rules` inside a menu click, which cannot reach the game: the game lends the menu

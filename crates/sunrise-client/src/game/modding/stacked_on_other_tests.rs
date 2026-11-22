@@ -1153,8 +1153,10 @@ mod item_part_tests {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
             let stick = r.item_key("minecraft:stick");
             let flint = r.item_key("minecraft:flint");
+            let ingot = r.item_key("minecraft:iron_ingot");
             r.item_part(stick, TaggedPart("stick"));
             r.item_part(flint, TaggedPart("flint"));
+            r.item_part(ingot, TaggedPart("iron_ingot"));
         }
         fn item_smelted(
             &self,
@@ -2308,6 +2310,7 @@ mod item_part_tests {
             "game::stacked_on_other_tests::item_part_tests::hosted_furnace_counts_transfers_separately_from_smelted_callbacks",
             || {
                 use sunrise_client::containers::{BlockEntity, Furnace, FurnaceKind};
+                use sunrise_client::lan::menu::input;
                 use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
                 with_part_and_furnace_hooks_mod(|| {
                     with_guests(|game| {
@@ -2364,9 +2367,9 @@ mod item_part_tests {
                             guest.inventory[0] = Some(ItemStack::new(ingot, 62));
                         });
                         set_part_script(PartScript::default());
-                        game.lan_guest_packet(12, click(1)); // QUICK_MOVE
+                        game.lan_guest_packet(12, click(input::QUICK_MOVE));
                         assert_eq!(
-                            game.world.block_entities[&pos].slots()[2],
+                            game.world.block_entities.get(&pos).unwrap().slots()[2],
                             Some(ItemStack::new(ingot, 2))
                         );
                         assert_eq!(
@@ -2386,13 +2389,53 @@ mod item_part_tests {
                             guest.inventory[0] = None;
                         });
                         set_part_script(PartScript::default());
-                        game.lan_guest_packet(12, click(2)); // SWAP
-                        assert_eq!(game.world.block_entities[&pos].slots()[2], None);
+                        game.lan_guest_packet(12, click(input::SWAP));
+                        assert_eq!(
+                            game.world.block_entities.get(&pos).unwrap().slots()[2],
+                            None
+                        );
                         assert_eq!(
                             game.lan.as_ref().unwrap().hub.guests[0].inventory[0],
                             Some(ItemStack::new(ingot, 2))
                         );
                         assert_eq!(smelted_events(), [(Some((ingot.to_owned(), 2)), 0)]);
+                        assert_eq!(extracted_events(), [(ingot.to_owned(), 2)]);
+
+                        let BlockEntity::Furnace(furnace) =
+                            game.world.block_entities.get_mut(&pos).unwrap()
+                        else {
+                            unreachable!()
+                        };
+                        furnace.items[2] = Some(ItemStack::new(ingot, 4));
+                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                            guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                        });
+                        set_part_script(PartScript {
+                            carried_phase_take_clicked: Some(1),
+                            cancel_clicked: true,
+                            handled: true,
+                            clicked_phase_take_clicked: Some(1),
+                            ..PartScript::default()
+                        });
+                        game.lan_guest_packet(12, click(input::PICKUP));
+                        assert_eq!(
+                            trace(),
+                            [
+                                ("stick", StackedOnOtherDirection::CarriedOnOther),
+                                ("iron_ingot", StackedOnOtherDirection::OtherStackedOnMe),
+                            ]
+                        );
+                        assert_eq!(
+                            game.world.block_entities.get(&pos).unwrap().slots()[2],
+                            Some(ItemStack::new(ingot, 2))
+                        );
+                        assert_eq!(
+                            smelted_events(),
+                            [
+                                (Some((ingot.to_owned(), 1)), 1),
+                                (Some((ingot.to_owned(), 1)), 1),
+                            ]
+                        );
                         assert_eq!(extracted_events(), [(ingot.to_owned(), 2)]);
                     });
                 });

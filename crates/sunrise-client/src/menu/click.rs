@@ -57,7 +57,7 @@ enum ClickStep {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct TakeTracker(Option<SlotTake>);
+pub(super) struct TakeTracker(std::collections::VecDeque<SlotTake>);
 
 /// Validate a direct `Slot.set` write for `StackedEditPolicy::Part` against `old` and `kind`.
 fn part_set_allowed(
@@ -99,7 +99,7 @@ fn part_set_allowed(
 }
 
 /// Apply one `ClickedStackResult::Take(amount)` on `target` for `StackedEditPolicy::Part`.
-fn part_take(target: &mut impl StackedSlotTarget, kind: StackedSlotKind, amount: u32) -> bool {
+fn part_take(target: &mut dyn StackedSlotTarget, kind: StackedSlotKind, amount: u32) -> bool {
     if kind == StackedSlotKind::Inert || amount == 0 {
         return false;
     }
@@ -190,6 +190,11 @@ pub fn apply_stacked_outcome(
                         }
                     }
                     StackedClickedEdit::Take(amount) => part_take(target, kind, *amount),
+                    StackedClickedEdit::TakeThenTake { first, second } => {
+                        target.with_staged(|slot| {
+                            part_take(slot, kind, *first) && part_take(slot, kind, *second)
+                        })
+                    }
                     StackedClickedEdit::TakeThenSet { take, then } => {
                         let Some(orig) = &old else {
                             outcome.refused.set(true);
@@ -297,6 +302,19 @@ impl StackedSlotTarget for MenuSlotTarget<'_, '_> {
 
     fn set_clicked(&mut self, clicked: Option<ItemStack>) {
         self.menu.set_by_player(self.env, self.slot, clicked);
+    }
+
+    fn with_staged(&mut self, edit: impl FnOnce(&mut dyn StackedSlotTarget) -> bool) -> bool {
+        let mut staged = self.menu.clone();
+        if !edit(&mut MenuSlotTarget {
+            menu: &mut staged,
+            env: self.env,
+            slot: self.slot,
+        }) {
+            return false;
+        }
+        self.menu.install_state(staged);
+        true
     }
 
     fn safe_take(&mut self, amount: u32, max_amount: u32) -> Option<ItemStack> {
@@ -693,18 +711,18 @@ impl Menu {
 
     /// Starts take recording for an authoritative block-backed mod menu click.
     pub fn track_takes(&mut self, track: bool) {
-        self.takes = track.then_some(TakeTracker(None));
+        self.takes = track.then(|| TakeTracker(Default::default()));
     }
 
-    /// The one take performed before the click yielded or finished.
+    /// The next take performed before the click yielded or finished.
     pub fn take_notice(&mut self) -> Option<SlotTake> {
-        self.takes.as_mut()?.0.take()
+        self.takes.as_mut()?.0.pop_front()
     }
 
     fn take_pending(&self) -> bool {
         self.takes
             .as_ref()
-            .is_some_and(|tracker| tracker.0.is_some())
+            .is_some_and(|tracker| !tracker.0.is_empty())
     }
 
     /// Suspend multi-slot clicks whenever `AnvilMenu.createResult` or `GrindstoneMenu.createResult`
@@ -750,7 +768,11 @@ impl Menu {
     pub(super) fn note_take(&mut self, s: usize, taken: &ItemStack) {
         if taken.count > 0 && self.tracks_take(s) {
             let left = self.slot(s).cloned();
-            self.takes.as_mut().unwrap().0 = Some((s, taken.clone(), left));
+            self.takes
+                .as_mut()
+                .unwrap()
+                .0
+                .push_back((s, taken.clone(), left));
         }
     }
 

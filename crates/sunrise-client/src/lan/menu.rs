@@ -744,7 +744,17 @@ impl View<'_> {
             && !crate::menu::fits_inside_container_items(self.loop_context, stack))
     }
     fn slot_rules(&self, i: usize, stack: &ItemStack, rules: &dyn Rules) -> (bool, bool, u32) {
-        let admission = rules.mod_container_insert_rule(i, self.get(i).as_ref(), stack);
+        self.slot_rules_with_held(i, stack, self.get(i).as_ref(), rules)
+    }
+
+    fn slot_rules_with_held(
+        &self,
+        i: usize,
+        stack: &ItemStack,
+        held: Option<&ItemStack>,
+        rules: &dyn Rules,
+    ) -> (bool, bool, u32) {
+        let admission = rules.mod_container_insert_rule(i, held, stack);
         let own = self.vanilla_may_place(i, stack, rules) && admission;
         let max = if self.container.is_none() && (5..=8).contains(&i) {
             1
@@ -760,7 +770,8 @@ impl View<'_> {
         else {
             return (own, true, max.min(item_max));
         };
-        let (index, context) = self.slot_context(i);
+        let (index, mut context) = self.slot_context(i);
+        context.staged_slot = held.map(|s| (context.container, index, s));
         let (place, pickup, max) = crate::menu::apply_menu_slot_rules(
             rules.slot_rules(),
             &menu.registry_id,
@@ -806,7 +817,7 @@ impl View<'_> {
                     .menu
                     .as_ref()
                     .is_none_or(|m| m.mod_type.is_none())
-                    || self.slot_rules(i, s, rules).1)
+                    || self.slot_rules_with_held(i, s, Some(s), rules).1)
         })
     }
     /// The ranges quick move uses: (container start..end, main, hotbar).
@@ -833,14 +844,12 @@ impl HostedSlotView<'_, '_> {
             self.view.set(self.slot, value);
         }
     }
-}
 
-impl crate::menu::SlotView for HostedSlotView<'_, '_> {
-    fn with_staged(
-        &mut self,
-        edit: &mut dyn FnMut(&mut dyn crate::menu::SlotView) -> bool,
-    ) -> bool {
-        let initial = self.item();
+    fn stage(&mut self, edit: impl FnOnce(&mut Self) -> bool) -> bool {
+        let initial = self
+            .staged
+            .clone()
+            .unwrap_or_else(|| self.view.get(self.slot));
         let previous = self.staged.replace(initial);
         let accepted = edit(self);
         let value = self.staged.take().expect("a staged slot");
@@ -849,6 +858,15 @@ impl crate::menu::SlotView for HostedSlotView<'_, '_> {
             self.set(value);
         }
         accepted
+    }
+}
+
+impl crate::menu::SlotView for HostedSlotView<'_, '_> {
+    fn with_staged(
+        &mut self,
+        edit: &mut dyn FnMut(&mut dyn crate::menu::SlotView) -> bool,
+    ) -> bool {
+        self.stage(|slot| edit(slot))
     }
     fn items(&self) -> &crate::items::Items {
         self.rules.items()
@@ -1207,13 +1225,7 @@ pub fn click(
     (drops, changed)
 }
 
-struct HostedSlotTarget<'a, 'v> {
-    view: &'a mut View<'v>,
-    slot: usize,
-    rules: &'a dyn Rules,
-}
-
-impl crate::menu::StackedSlotTarget for HostedSlotTarget<'_, '_> {
+impl crate::menu::StackedSlotTarget for HostedSlotView<'_, '_> {
     fn slot_kind(&self) -> crate::menu::StackedSlotKind {
         let is_result = (self.view.container.is_none() && self.slot == 0)
             || (self.view.container.is_some()
@@ -1237,11 +1249,11 @@ impl crate::menu::StackedSlotTarget for HostedSlotTarget<'_, '_> {
     }
 
     fn current_clicked(&self) -> Option<ItemStack> {
-        self.view.get(self.slot)
+        crate::menu::SlotView::item(self)
     }
 
     fn may_pickup(&self) -> bool {
-        self.view.may_pickup(self.slot, self.rules)
+        crate::menu::SlotView::may_pickup(self)
     }
 
     fn may_place(&self, stack: &ItemStack) -> bool {
@@ -1261,24 +1273,25 @@ impl crate::menu::StackedSlotTarget for HostedSlotTarget<'_, '_> {
     }
 
     fn set_clicked(&mut self, clicked: Option<ItemStack>) {
-        self.view.set(self.slot, clicked);
+        self.set(clicked);
+    }
+
+    fn with_staged(
+        &mut self,
+        edit: impl FnOnce(&mut dyn crate::menu::StackedSlotTarget) -> bool,
+    ) -> bool {
+        self.stage(|slot| edit(slot))
     }
 
     fn safe_take(&mut self, amount: u32, max_amount: u32) -> Option<ItemStack> {
-        let mut slot = HostedSlotView {
-            view: self.view,
-            slot: self.slot,
-            rules: self.rules,
-            staged: None,
-        };
-        crate::menu::SlotView::safe_take(&mut slot, amount, max_amount)
+        crate::menu::SlotView::safe_take(self, amount, max_amount)
     }
 
     fn take_partial(&mut self, amount: u32) -> Option<ItemStack> {
         if !self.may_pickup() {
             return None;
         }
-        let mut current = self.view.get(self.slot)?;
+        let mut current = self.current_clicked()?;
         let moved = amount.min(current.count);
         if moved == 0 {
             return None;
@@ -1286,8 +1299,7 @@ impl crate::menu::StackedSlotTarget for HostedSlotTarget<'_, '_> {
         let mut taken = current.clone();
         taken.count = moved;
         current.count -= moved;
-        self.view
-            .set(self.slot, (current.count > 0).then_some(current));
+        self.set((current.count > 0).then_some(current));
         Some(taken)
     }
 }
@@ -1303,10 +1315,11 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
     let mut resume = crate::menu::StackedResume::VanillaAll;
     if let Some(outcome) = rules.stacked() {
         resume = outcome.resume;
-        let mut target = HostedSlotTarget {
+        let mut target = HostedSlotView {
             view,
             slot: i,
             rules,
+            staged: None,
         };
         if !crate::menu::apply_stacked_outcome(&mut target, outcome) {
             return;

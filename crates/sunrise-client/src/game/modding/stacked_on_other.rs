@@ -333,8 +333,11 @@ fn fire(
                     }
                 }
                 *edit = match edit.take() {
-                    Some(StackedClickedEdit::Take(prev)) => {
-                        Some(StackedClickedEdit::Take(prev.saturating_add(count)))
+                    Some(StackedClickedEdit::Take(first)) => {
+                        Some(StackedClickedEdit::TakeThenTake {
+                            first,
+                            second: count,
+                        })
                     }
                     Some(StackedClickedEdit::Set(Some(set))) => {
                         Some(StackedClickedEdit::SetThenTake { set, take: count })

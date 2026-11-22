@@ -917,17 +917,19 @@ impl Game<'_> {
                         loop {
                             let after = menu.container_items();
                             write_back(game, menu, after != previous);
-                            let menu_live = if let Some(take) = menu.take_notice() {
+                            let mut menu_live = true;
+                            while let Some(take) = menu.take_notice() {
                                 if game.as_guest(conn, |game| {
                                     game.mod_menu_slot_take(pos, uuid, &menu_id, &take)
                                 }) != Some(true)
                                 {
                                     return None;
                                 }
-                                refresh(game, menu)
-                            } else {
-                                true
-                            };
+                                menu_live = refresh(game, menu);
+                                if !menu_live {
+                                    break;
+                                }
+                            }
                             let Some(step) = rest.ok()? else {
                                 break;
                             };
