@@ -63,7 +63,7 @@ impl ButtonSprites {
     }
 }
 
-/// Identifier of a widget mounted on the current screen during `Hooks::screen_init_post`.
+/// Identifier of a child on the current screen during `Hooks::screen_init_post`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // no wire: screen-local widget handle issued by the engine during `screen_init_post`, never serialized.
 // exhaustive: opaque per-screen handle whose inner value is private; mods only compare and pass it back.
@@ -482,6 +482,28 @@ pub trait ScreenWidget: Send + 'static {
     }
 }
 
+/// An initialized child listed by [`ScreenWidgets::children`].
+#[derive(Clone, Debug, PartialEq)]
+// no wire: live screen-local child snapshot containing an opaque ScreenWidgetId.
+#[non_exhaustive]
+pub struct ScreenChild {
+    /// The screen-local handle used to remove the child.
+    pub id: ScreenWidgetId,
+    /// `[x, y, width, height]` in GUI pixels at registration.
+    pub rect: [f32; 4],
+    /// The child's label, if it supplies one.
+    pub label: Option<Text>,
+}
+
+impl ScreenChild {
+    /// Build the value exposed by the engine's registrar.
+    // hidden: only the engine issues ScreenWidgetId handles for initialized children.
+    #[doc(hidden)]
+    pub fn new(id: ScreenWidgetId, rect: [f32; 4], label: Option<Text>) -> Self {
+        Self { id, rect, label }
+    }
+}
+
 /// Screen-scoped widget registrar passed to `Hooks::screen_init_post` (`ScreenEvent.Init.Post`).
 ///
 /// Widgets added here live as long as the current screen stays open and are cleared and rebuilt
@@ -489,6 +511,11 @@ pub trait ScreenWidget: Send + 'static {
 /// Mounting a widget with non-finite bounds returns an ID that is not present in the screen.
 // no wire: borrowed registrar scoped to a single `screen_init_post` dispatch.
 pub trait ScreenWidgets {
+    /// Registered children in initialization order (`ScreenEvent.Init.getListenersList`).
+    /// Includes earlier listeners' accepted edits and this listener's staged edits. Vanilla
+    /// controls are present on screens that register their initialized controls with the engine.
+    fn children(&self) -> &[ScreenChild];
+
     /// Mount a vanilla-style push button on the screen (`Screen.addRenderableWidget`).
     fn add_button(&mut self, button: Button) -> ScreenWidgetId;
 
@@ -503,9 +530,9 @@ pub trait ScreenWidgets {
     /// Returns `true` when `id` names a widget this listener mounted that can take focus.
     fn set_initial_focus(&mut self, id: ScreenWidgetId) -> bool;
 
-    /// Remove a widget this listener mounted during `screen_init_post` (`Screen.removeWidget`).
-    ///
-    /// Returns `true` if `id` was present and removed.
+    /// Remove a listed child (`ScreenEvent.Init.removeListener`), including one registered by
+    /// the game or mounted by an earlier listener. Returns `true` if the child was present.
+    /// This listener's removals take effect only if it completes normally.
     fn remove(&mut self, id: ScreenWidgetId) -> bool;
 }
 

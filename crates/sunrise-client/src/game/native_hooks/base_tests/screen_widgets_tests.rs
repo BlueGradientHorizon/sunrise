@@ -424,6 +424,134 @@ fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn init_post_edits_ordered_children_and_discards_a_failed_stage() {
+    if run_fresh_cases(
+        "game::native_hooks::base::screen_widgets_tests::init_post_edits_ordered_children_and_discards_a_failed_stage",
+        "SUNRISE_WIDGETS_EDIT_CHILD",
+        &["window"],
+    ) {
+        return;
+    }
+
+    struct EditChildren {
+        stage: u8,
+        log: Arc<Mutex<Vec<String>>>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for EditChildren {
+        fn screen_init_post(&self, _: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
+            if event.screen.id != "paused" {
+                return;
+            }
+            let widgets = &mut *event.widgets;
+            let resume_label = ApiText::translate("menu.returnToGame", vec![]);
+            let prior_label = ApiText::literal("Prior mount");
+            let replacement_label = ApiText::literal("Replacement");
+            match self.stage {
+                0 => {
+                    assert_eq!(widgets.children()[0].label.as_ref(), Some(&resume_label));
+                    let prior = widgets.add_button(Button::new(
+                        [20.0, 20.0, 80.0, 20.0],
+                        prior_label,
+                        |_, _| {},
+                    ));
+                    widgets.set_initial_focus(prior);
+                    self.log.lock().unwrap().push("added".into());
+                }
+                1 => {
+                    let prior = widgets.children().last().unwrap().id;
+                    assert_eq!(
+                        widgets.children().last().unwrap().label.as_ref(),
+                        Some(&prior_label)
+                    );
+                    let resume = widgets.children()[0].id;
+                    assert!(widgets.remove(resume));
+                    assert!(widgets.remove(prior));
+                    widgets.add_button(Button::inactive(
+                        [20.0, 20.0, 80.0, 20.0],
+                        ApiText::literal("Failed"),
+                    ));
+                    self.log.lock().unwrap().push("about to panic".into());
+                    panic!("discard both removals and the new mount");
+                }
+                2 => {
+                    let resume = &widgets.children()[0];
+                    assert_eq!(resume.label.as_ref(), Some(&resume_label));
+                    let (id, rect) = (resume.id, resume.rect);
+                    assert_eq!(
+                        widgets.children().last().unwrap().label.as_ref(),
+                        Some(&prior_label)
+                    );
+                    let prior = widgets.children().last().unwrap().id;
+                    assert!(widgets.remove(id));
+                    assert!(widgets.remove(prior));
+                    assert!(!widgets.remove(id));
+                    let log = self.log.clone();
+                    widgets.add_button(Button::new(rect, replacement_label, move |_, _| {
+                        log.lock().unwrap().push("replacement pressed".into());
+                    }));
+                }
+                _ => {
+                    let children = widgets.children();
+                    assert!(children.iter().all(|child| {
+                        child
+                            .label
+                            .as_ref()
+                            .is_none_or(|label| label != &resume_label && label != &prior_label)
+                    }));
+                    assert_eq!(
+                        children.last().unwrap().label.as_ref(),
+                        Some(&replacement_label)
+                    );
+                    self.log.lock().unwrap().push("published".into());
+                }
+            }
+        }
+    }
+
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let mods: Vec<_> = ["child_a", "child_b", "child_c", "child_d"]
+        .into_iter()
+        .enumerate()
+        .map(|(stage, id)| {
+            ModEntry::new(
+                id,
+                Box::new(EditChildren {
+                    stage: stage as u8,
+                    log: log.clone(),
+                }),
+            )
+        })
+        .collect();
+    with_mods(mods.into(), || {
+        with_client_game(|game| {
+            let (_event_loop, win_id) = attach_offscreen_window(game);
+            game.pause_menu = true;
+            game.set_screen(Screen::Paused);
+            assert_eq!(take_log(&log), ["added", "about to panic", "published"]);
+            assert_eq!(game.screen_state.widgets.len(), 1);
+            assert!(!game.screen_state.widgets.has_focus());
+            assert!(game.pause_child_removed(0));
+            assert!(!game.pause_child_removed(1));
+            let [x, y, _, _] = game.mounted_widget_targets()[0].rect;
+            move_mouse(game, win_id, f64::from(x + 5.0), f64::from(y + 5.0));
+            assert!(
+                !game.pause_click().unwrap(),
+                "removed vanilla action must not activate"
+            );
+            send_mouse_button(game, win_id, MouseButton::Left, true);
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+            assert_eq!(game.screen, Screen::Paused);
+            assert_eq!(take_log(&log), ["replacement pressed"]);
+            let notices = mod_api::__private::take_hook_panics();
+            assert_eq!(notices.len(), 1);
+            assert_eq!(notices[0].mod_id, "child_b");
+        });
+    });
+}
+
 /// Button `on_press` & synchronous screen transitions (Audit [86]):
 /// - Pressing a button mutates its `ButtonState` (`label`, `active`).
 /// - Enter and Space activate a focused button.

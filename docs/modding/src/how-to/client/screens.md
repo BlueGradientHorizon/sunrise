@@ -336,9 +336,12 @@ overlays alike. Mounted widgets are cleared when the screen closes or rebuilds i
 (for example on a resize that calls `Screen.rebuildWidgets`). A reposition-only resize preserves
 children and focus, and same-instance resizes preserve `MouseHandler` double-click timing. Keep
 text or selection that must survive a rebuild on your mod struct and seed the new widgets from it. Use
-`event.widgets.set_initial_focus(id)` to focus a mounted widget on open (`Screen.setInitialFocus`),
-or `event.widgets.remove(id)` to remove a widget added during the same `screen_init_post` call
-(`Screen.removeWidget`). There is no live focus setter or mutable lookup for built-in widgets.
+`event.widgets.set_initial_focus(id)` to focus a widget mounted by your listener on open
+(`Screen.setInitialFocus`). Read `event.widgets.children()` for the ordered child list and
+use `event.widgets.remove(child.id)` to remove a listed child (`ScreenEvent.Init.removeListener`).
+The list includes earlier accepted mounts and the native controls on the pause menu. A later
+listener sees your edits only if your callback completes normally. There is no live focus setter
+or mutable lookup for built-in widgets.
 A custom widget can track its own focus via `set_focused` and read or change the state it owns.
 
 ### Buttons with your own art

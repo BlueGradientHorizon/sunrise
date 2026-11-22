@@ -7,7 +7,7 @@ use mod_api::{
     __private::game::CallbackOwner,
     ScreenView, ScreenWidget, ScreenWidgetId, ScreenWidgets,
     client::widgets::{
-        Button, ButtonPress, ButtonState, TextEdit, TextField, TextFieldCallback,
+        Button, ButtonPress, ButtonState, ScreenChild, TextEdit, TextField, TextFieldCallback,
         is_allowed_chat_character,
     },
 };
@@ -25,6 +25,7 @@ use winit::keyboard::KeyCode;
 
 struct MountedWidgetsInner {
     entries: Vec<Option<MountedWidgetEntry>>,
+    removed_pause_actions: Vec<u8>,
     focused: Option<usize>,
     dragging: Option<(usize, i32)>,
 }
@@ -43,6 +44,7 @@ impl Default for MountedScreenWidgets {
             next_id: Cell::new(1),
             inner: RefCell::new(MountedWidgetsInner {
                 entries: Vec::new(),
+                removed_pause_actions: Vec::new(),
                 focused: None,
                 dragging: None,
             }),
@@ -113,6 +115,7 @@ impl MountedScreenWidgets {
         let (mut entries, focused) = {
             let mut inner = self.inner.borrow_mut();
             inner.dragging = None;
+            inner.removed_pause_actions.clear();
             (std::mem::take(&mut inner.entries), inner.focused.take())
         };
         if let Some(entry) = focused.and_then(|idx| entries.get_mut(idx)?.as_mut()) {
@@ -231,6 +234,8 @@ impl MountedWidgetEntry {
 struct ScreenWidgetMount {
     next_id: u64,
     entries: Vec<MountedWidgetEntry>,
+    children: Vec<ScreenChild>,
+    removed: Vec<ScreenWidgetId>,
     initial_focus: Option<ScreenWidgetId>,
 }
 
@@ -243,14 +248,6 @@ impl Drop for ScreenWidgetMount {
 }
 
 impl ScreenWidgetMount {
-    fn new(next_id: u64) -> Self {
-        Self {
-            next_id: next_id.max(1),
-            entries: Vec::new(),
-            initial_focus: None,
-        }
-    }
-
     fn alloc_id(&mut self) -> ScreenWidgetId {
         let raw = self.next_id;
         self.next_id = self.next_id.saturating_add(1).max(1);
@@ -265,20 +262,25 @@ impl ScreenWidgetMount {
             disabled: false,
             kind,
         };
-        let valid = match &entry.kind {
-            MountedWidgetKind::Button { state, .. } => valid_widget_rect(state.rect),
-            MountedWidgetKind::TextField { edit_box, .. } => {
-                valid_widget_rect([edit_box.x, edit_box.y, edit_box.width, edit_box.height])
+        let bounds = match &entry.kind {
+            MountedWidgetKind::Button { state, .. } => {
+                Some((state.rect, Some(state.label.clone())))
             }
+            MountedWidgetKind::TextField { edit_box, .. } => Some((
+                [edit_box.x, edit_box.y, edit_box.width, edit_box.height],
+                None,
+            )),
             MountedWidgetKind::Custom(widget) => call_owner(
                 &entry.owner,
                 &mut entry.disabled,
                 "screen_widget_bounds",
-                || valid_widget_rect(widget.bounds()),
-            )
-            .unwrap_or(false),
+                || (widget.bounds(), None),
+            ),
         };
-        if valid {
+        if let Some((rect, label)) = bounds
+            && valid_widget_rect(rect)
+        {
+            self.children.push(ScreenChild::new(id, rect, label));
             self.entries.push(entry);
         } else {
             entry.dispose();
@@ -288,6 +290,10 @@ impl ScreenWidgetMount {
 }
 
 impl ScreenWidgets for ScreenWidgetMount {
+    fn children(&self) -> &[ScreenChild] {
+        &self.children
+    }
+
     fn add_button(&mut self, button: Button) -> ScreenWidgetId {
         let (state, on_press) = button.into_parts();
         self.stage(MountedWidgetKind::Button { state, on_press })
@@ -338,14 +344,18 @@ impl ScreenWidgets for ScreenWidgetMount {
     }
 
     fn remove(&mut self, id: ScreenWidgetId) -> bool {
-        let Some(pos) = self.entries.iter().position(|entry| entry.id == id) else {
+        let Some(pos) = self.children.iter().position(|child| child.id == id) else {
             return false;
         };
-        let entry = self.entries.remove(pos);
+        self.children.remove(pos);
         if self.initial_focus == Some(id) {
             self.initial_focus = None;
         }
-        entry.dispose();
+        if let Some(pos) = self.entries.iter().position(|entry| entry.id == id) {
+            self.entries.remove(pos).dispose();
+        } else {
+            self.removed.push(id);
+        }
         true
     }
 }
@@ -441,28 +451,83 @@ impl Game<'_> {
         if !mod_api::__private::listened(mod_api::HookId::ScreenInitPost) {
             return;
         }
-        let mut next_id = self.screen_state.widgets.next_id.get();
-        let mut entries = Vec::new();
+        let mut mount = ScreenWidgetMount {
+            next_id: self.screen_state.widgets.next_id.get(),
+            entries: Vec::new(),
+            children: Vec::new(),
+            removed: Vec::new(),
+            initial_focus: None,
+        };
+        // Use the initialized layout, not last frame's draw registrations (which may
+        // still belong to a different screen, and omit children clipped offscreen).
+        let native = if view.id == "paused" {
+            self.pause_init_children()
+                .into_iter()
+                .map(|(action, rect, label)| {
+                    let id = mount.alloc_id();
+                    mount.children.push(ScreenChild::new(id, rect, label));
+                    (id, action)
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let mut entries: Vec<MountedWidgetEntry> = Vec::new();
+        let mut removed_pause_actions = Vec::new();
         let mut initial_focus = None;
         self.native_screen_init_post(view, |listen| {
-            let mut mount = ScreenWidgetMount::new(next_id);
-            let accepted = listen(&mut mount);
-            // Do not recycle IDs handed out to a failing listener.
-            next_id = mount.next_id;
-            if accepted {
-                initial_focus = mount.initial_focus.or(initial_focus);
+            let children = mount.children.clone();
+            if listen(&mut mount) {
+                for id in mount.removed.drain(..) {
+                    if initial_focus == Some(id) {
+                        initial_focus = None;
+                    }
+                    if let Some(pos) = entries.iter().position(|entry| entry.id == id) {
+                        entries.remove(pos).dispose();
+                    } else if let Some(&(_, action)) =
+                        native.iter().find(|&&(child, _)| child == id)
+                    {
+                        removed_pause_actions.push(action);
+                    }
+                }
+                initial_focus = mount.initial_focus.take().or(initial_focus);
                 entries.append(&mut mount.entries);
+            } else {
+                mount.children = children;
+                mount.initial_focus = None;
+                mount.removed.clear();
+                for entry in mount.entries.drain(..) {
+                    entry.dispose();
+                }
             }
-            // Unpublished registrations are disposed by the stage, under each owner's fence.
+            // IDs issued to a failed listener are never reused.
         });
-        self.screen_state.widgets.next_id.set(next_id);
+        self.screen_state.widgets.next_id.set(mount.next_id);
         let initial_focus =
             initial_focus.and_then(|id| entries.iter().position(|entry| entry.id == id));
-        self.screen_state.widgets.inner.borrow_mut().entries =
-            entries.into_iter().map(Some).collect();
+        let mut inner = self.screen_state.widgets.inner.borrow_mut();
+        inner.entries = entries.into_iter().map(Some).collect();
+        inner.removed_pause_actions = removed_pause_actions;
+        if self
+            .pause_focus
+            .is_some_and(|id| inner.removed_pause_actions.contains(&id))
+        {
+            self.pause_focus = None;
+        }
+        drop(inner);
         if let Some(idx) = initial_focus {
             self.set_mounted_widget_focus(Some(idx));
         }
+    }
+
+    /// Whether Init.Post removed this native PauseScreen action from the current build.
+    pub(in crate::game) fn pause_child_removed(&self, action: u8) -> bool {
+        self.screen_state
+            .widgets
+            .inner
+            .borrow()
+            .removed_pause_actions
+            .contains(&action)
     }
 
     /// Clear and dispose all mounted widgets for the current screen without

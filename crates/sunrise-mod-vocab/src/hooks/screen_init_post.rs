@@ -2,9 +2,9 @@
 
 pub trait Hooks {
     /// A screen initialized or rebuilt its children (`ScreenEvent.Init.Post`, vanilla's
-    /// `Screen.init` / `Screen.rebuildWidgets`). Use `event.widgets` to mount buttons, text
-    /// fields or custom widgets. A layout-only resize keeps the existing children and focus
-    /// and does not fire this hook. A panicking listener publishes no widget edits.
+    /// `Screen.init` / `Screen.rebuildWidgets`). Use `event.widgets` to list and remove children
+    /// or mount buttons, text fields, and custom widgets. A layout-only resize keeps the existing
+    /// children and focus and does not fire this hook. A panicking listener publishes no edits.
     #[hook(
         receiver = "read",
         dispatch = "flat",
