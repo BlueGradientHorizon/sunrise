@@ -55,9 +55,12 @@ world's enabled flags and the completed candidate registry and tag view. If an e
 an experimental world flag or a tag in its own registry, put that test in a downstream consumer instead.
 An unknown feature flag name is a decode error, distinct from a valid flag that is not enabled.
 At world open, a biome's `neoforge:value` (or its fields beside `neoforge:conditions`) must decode as a
-biome after its conditions pass. For example, the `effects` object must include `water_color`. A false
+biome after its conditions pass. Its effects and positional attributes must use their value formats, and
+its carver and placed-feature holder sets resolve against the world's generation registries. A false
 condition omits the biome without decoding it; a passing condition on an invalid biome fails world open.
-Only admitted biomes count for `registered`, bind as tag members and reach joining clients.
+Only admitted biomes count for `registered` and bind as tag members. The server keeps the generation
+settings and local attributes; joining clients receive only the admitted climate, effects and syncable
+attributes, without evaluating conditions again.
 
 ## Errors by loader
 

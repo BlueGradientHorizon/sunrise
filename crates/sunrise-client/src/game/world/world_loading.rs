@@ -573,6 +573,7 @@ impl WorldBiomeRegistry {
     pub(super) fn load(
         base: &Arc<Biomes>,
         root: &std::path::Path,
+        blocks: &sunrise_world::registry::BlockRegistry,
         stack: &super::functions::PackStack,
         overlay: &sunrise_world::loot::PackOverlay<'_>,
         read_errors: &std::collections::BTreeMap<String, String>,
@@ -582,7 +583,7 @@ impl WorldBiomeRegistry {
             borrow::Cow,
             collections::{BTreeMap, BTreeSet},
         };
-        use sunrise_world::worldgen::biome::BiomeDefinition;
+        use sunrise_world::worldgen::biome::{BiomeDefinition, BiomeGenerationRegistries};
         const KIND: &str = "worldgen/biome";
         if let Some((file, error)) = read_errors
             .iter()
@@ -600,35 +601,34 @@ impl WorldBiomeRegistry {
                 .map_err(|error| format!("biome {id}: {error}"))?;
             winners.insert(id, Cow::Owned(value));
         }
-        let mut files = BTreeMap::new();
+        let mut payloads = BTreeMap::new();
         let mut omitted = BTreeSet::new();
         for (id, winner) in winners {
             if !overlay.conditions.allows_id(&winner, KIND, id) {
                 omitted.insert(id.to_owned());
                 continue;
             }
-            let payload = if winner.get("neoforge:conditions").is_some() {
-                let mut payload = winner.into_owned();
-                if let Some(inner) = payload.get_mut("neoforge:value") {
-                    inner.take()
-                } else {
-                    if let Some(map) = payload.as_object_mut() {
-                        map.remove("neoforge:conditions");
-                    }
-                    payload
+            let payload = match winner {
+                Cow::Borrowed(winner) if winner.get("neoforge:conditions").is_none() => {
+                    // The unchanged prepared definition is already in both base readers.
+                    continue;
                 }
-            } else if let Cow::Owned(winner) = winner {
-                winner
-            } else {
-                // The unchanged prepared definition is already in both base readers.
-                continue;
+                winner => sunrise_world::conditions::into_payload(winner.into_owned()),
             };
-            let admitted =
-                BiomeDefinition::decode(payload).map_err(|error| format!("biome {id}: {error}"))?;
-            files.insert(id.to_owned(), admitted.into_json().to_string());
+            payloads.insert(id.to_owned(), payload);
         }
         let enabled: Vec<_> = stack.enabled_packs().collect();
         let (mut overrides, _) = sunrise_client::datapack::worldgen_overrides(&enabled, |_| true);
+        let mut files = BTreeMap::new();
+        if !payloads.is_empty() {
+            let dir = root.join("worldgen");
+            let mut generation = BiomeGenerationRegistries::load(&dir, &overrides, blocks)?;
+            for (id, payload) in payloads {
+                let admitted = BiomeDefinition::decode(payload, &mut generation)
+                    .map_err(|error| format!("biome {id}: {error}"))?;
+                files.insert(id, admitted.into_json().to_string());
+            }
+        }
         overrides.set_biome_winners(files.clone(), omitted.clone());
         let overrides = sunrise_client::vanillagen::biome_modifiers_over_packs(
             &root.join("worldgen"),
@@ -1622,6 +1622,11 @@ mod tests {
         std::fs::write(dir.join("fixture.json"), PACK_BIOME).unwrap();
         let resources = ResourceRoot::directory(root.path().to_owned());
         let base = Arc::new(Biomes::load_for_server(&resources).unwrap());
+        let blocks = sunrise_world::registry::BlockRegistry::from_facts_json(
+            br#"{"defaults":{"minecraft:air":0},"states":[["a",true,false,"","minecraft:air"]]}"#
+                .as_slice(),
+        )
+        .unwrap();
         let stack = crate::game::functions::PackStack {
             builtin: None,
             content: DataPack::from_source("sunrise-content".into(), resources.data().clone()),
@@ -1641,6 +1646,7 @@ mod tests {
             WorldBiomeRegistry::load(
                 &base,
                 root.path(),
+                &blocks,
                 &stack,
                 &PackOverlay {
                     files: &files,
@@ -1659,20 +1665,38 @@ mod tests {
             "data/minecraft/worldgen/biome/fixture.json: unknown load conditions [absent:wire_biome]"
         );
 
-        let mut invalid: Value = serde_json::from_str(PACK_BIOME).unwrap();
-        invalid.as_object_mut().unwrap().remove("effects");
-        let conditions = LoadConditions::new([]);
-        let error = load(
-            json!({"neoforge:conditions":[{"type":"neoforge:always"}],"neoforge:value":invalid}),
-            &conditions,
-        )
-        .err()
-        .expect("a passing condition does not excuse an invalid biome");
-        assert_eq!(
-            error.to_string(),
-            "biome minecraft:fixture: invalid world generation field: effects"
-        );
-        assert_eq!(conditions.check_errors(), Ok(()));
+        for (field, invalid, diagnostic) in [
+            (
+                "effects",
+                Value::Null,
+                "invalid world generation field: effects",
+            ),
+            (
+                "attributes",
+                json!({"minecraft:visual/ambient_particles":1}),
+                "minecraft:visual/ambient_particles",
+            ),
+            ("carvers", json!({}), "carvers:"),
+            (
+                "features",
+                json!([["demo:unknown"]]),
+                "unknown placed feature demo:unknown",
+            ),
+        ] {
+            let mut payload: Value = serde_json::from_str(PACK_BIOME).unwrap();
+            payload[field] = invalid;
+            let conditions = LoadConditions::new([]);
+            let error = load(
+                json!({"neoforge:conditions":[{"type":"neoforge:always"}],"neoforge:value":payload}),
+                &conditions,
+            )
+            .err()
+            .expect("a passing condition does not excuse an invalid biome");
+            let error = error.to_string();
+            assert!(error.starts_with("biome minecraft:fixture:"), "{error}");
+            assert!(error.contains(diagnostic), "{error}");
+            assert_eq!(conditions.check_errors(), Ok(()));
+        }
     }
 
     #[test]

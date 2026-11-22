@@ -2,82 +2,245 @@
 use super::{
     DecodeError,
     biome_temperature::BiomeTemperatureSettings,
+    block_feature::{FeatureBlockBindings, integer_properties},
+    carver::CarverCatalog,
     climate::{
         ClimateIndex, ClimateSampler, ClimateSearch, ClimateVolume, IndexError, Parameter,
         ParameterPoint,
     },
     density::identifier,
+    feature_catalog::{BiomePlacedFeature, FeatureCatalog},
+    generator::{
+        GeneratorError,
+        data::{build_tags, load_carvers, read_registry_bundle, registry_tag_definitions},
+    },
+    overrides::WorldgenOverrides,
 };
-use crate::environment_attributes::{AttributeMap, packed_rgb};
+use crate::{
+    environment_attributes::{AttributeMap, packed_rgb},
+    registry::BlockRegistry,
+};
 use serde_json::Value;
-use sunrise_core::density::{SampleError, SamplerContext};
+use std::{collections::BTreeMap, path::Path};
+use sunrise_core::{
+    density::{SampleError, SamplerContext},
+    nbt::{Compound, Tag},
+};
 
-/// The admitted biome file, retaining the fields needed by the generation and join readers.
-/// `Biome.DIRECT_CODEC` reads climate, positional attributes, special effects and generation
-/// settings. `Biome.NETWORK_CODEC` reads the same climate and effects, without the generation
-/// holder sets. Those sets are resolved by the generator against its worldgen registries.
+/// The carver and placed-feature registries used by `BiomeGenerationSettings.CODEC`.
+pub struct BiomeGenerationRegistries<'a> {
+    carvers: CarverCatalog,
+    features: FeatureCatalog,
+    dir: &'a Path,
+    packs: &'a WorldgenOverrides,
+    blocks: &'a BlockRegistry,
+    bindings: Option<FeatureBlockBindings<'a>>,
+}
+
+impl<'a> BiomeGenerationRegistries<'a> {
+    pub fn load(
+        dir: &'a Path,
+        packs: &'a WorldgenOverrides,
+        blocks: &'a BlockRegistry,
+    ) -> Result<Self, GeneratorError> {
+        let carvers = load_carvers(dir, packs)?;
+        let features = FeatureCatalog::from_resources(
+            &read_registry_bundle(dir, packs, "features")?.unwrap_or_default(),
+            &read_registry_bundle(dir, packs, "placed_features")?.unwrap_or_default(),
+            &registry_tag_definitions(dir, packs, "placed_feature", "placed_feature_tags")?,
+        )?;
+        Ok(Self {
+            carvers,
+            features,
+            dir,
+            packs,
+            blocks,
+            bindings: None,
+        })
+    }
+}
+
+/// A biome admitted by `Biome.DIRECT_CODEC`. Its local data retains the
+/// generation settings and attributes that never go to joining clients.
 pub struct BiomeDefinition(Value);
 
 impl BiomeDefinition {
-    pub fn decode(mut value: Value) -> Result<Self, DecodeError> {
-        BiomeTemperatureSettings::from_json(&value.to_string())?;
+    pub fn decode(
+        mut value: Value,
+        generation: &mut BiomeGenerationRegistries<'_>,
+    ) -> Result<Self, DecodeError> {
+        let fields = NetworkBiome::decode(&value)?;
+        // EnvironmentAttributeMap.CODEC_ONLY_POSITIONAL.
+        if let Some(attribute) = fields
+            .attributes
+            .attributes()
+            .find(|a| matches!(a.id, "gameplay/sky_light_level" | "gameplay/fast_lava"))
+        {
+            return Err(DecodeError::Registry(format!(
+                "attribute {} cannot be positional",
+                attribute.id
+            )));
+        }
         let record = value.as_object_mut().ok_or(DecodeError::Field("biome"))?;
-        if let Some(attributes) = record.get("attributes") {
-            let attributes = AttributeMap::parse(attributes).map_err(DecodeError::Registry)?;
-            // EnvironmentAttributes' two `notPositional` attributes, refused by
-            // EnvironmentAttributeMap.CODEC_ONLY_POSITIONAL.
-            if let Some(attribute) = attributes
-                .attributes()
-                .find(|a| matches!(a.id, "gameplay/sky_light_level" | "gameplay/fast_lava"))
-            {
-                return Err(DecodeError::Registry(format!(
-                    "attribute {} cannot be positional",
-                    attribute.id
-                )));
+        let carvers = record.get("carvers").ok_or(DecodeError::Field("carvers"))?;
+        generation
+            .carvers
+            .decode_set(&carvers.to_string())
+            .map_err(|error| DecodeError::Registry(format!("carvers: {error}")))?;
+        let features = record
+            .get("features")
+            .ok_or(DecodeError::Field("features"))?;
+        for holder in generation
+            .features
+            .biome_steps(features)?
+            .into_iter()
+            .flatten()
+        {
+            if let BiomePlacedFeature::Direct(json) = holder {
+                let bindings = match &mut generation.bindings {
+                    Some(bindings) => bindings,
+                    slot @ None => {
+                        let tags =
+                            read_registry_bundle(generation.dir, generation.packs, "block_tags")
+                                .and_then(|base| {
+                                    let mut warnings = Vec::new();
+                                    let tags = build_tags(
+                                        &base.unwrap_or_default(),
+                                        generation.packs,
+                                        "block_tags",
+                                        &mut warnings,
+                                        |id| generation.blocks.default_state(id).is_some(),
+                                    )?;
+                                    for warning in warnings {
+                                        log::warn!("{warning}");
+                                    }
+                                    Ok(tags)
+                                })
+                                .map_err(|error| DecodeError::Registry(error.to_string()))?;
+                        slot.insert(FeatureBlockBindings::with_tags(
+                            generation.blocks,
+                            integer_properties(generation.blocks),
+                            &tags,
+                        )?)
+                    }
+                };
+                generation
+                    .features
+                    .placed_feature_with_blocks(&json, bindings)?;
             }
         }
-        let effects = record
-            .get_mut("effects")
-            .and_then(Value::as_object_mut)
+        // Use the decoded special effects for the local readers too, including RGB vectors.
+        record.insert(
+            "effects".into(),
+            Value::Object(
+                fields
+                    .effects
+                    .into_iter()
+                    .map(|(key, value)| (key.to_owned(), Value::String(value)))
+                    .collect(),
+            ),
+        );
+        Ok(Self(value))
+    }
+
+    pub fn into_json(self) -> Value {
+        self.0
+    }
+
+    /// `Biome.NETWORK_CODEC` as used by `RegistrySynchronization.packRegistry`.
+    /// Encode the frozen holder, not its pack resource or load conditions.
+    pub fn encode_network(value: &Value) -> Result<Tag, DecodeError> {
+        use super::biome_temperature::TemperatureModifier;
+        let NetworkBiome {
+            climate,
+            attributes,
+            effects,
+        } = NetworkBiome::decode(value)?;
+        let mut nbt = Compound::from([
+            (
+                "has_precipitation".into(),
+                Tag::Byte(i8::from(climate.has_precipitation)),
+            ),
+            (
+                "temperature".into(),
+                Tag::Float(climate.base_temperature.to_bits()),
+            ),
+            ("downfall".into(), Tag::Float(climate.downfall.to_bits())),
+            (
+                "effects".into(),
+                Tag::compound(
+                    effects
+                        .into_iter()
+                        .map(|(key, value)| (key, Tag::String(value.as_str().into()))),
+                ),
+            ),
+        ]);
+        if climate.modifier == TemperatureModifier::Frozen {
+            nbt.insert("temperature_modifier".into(), Tag::String("frozen".into()));
+        }
+        let attributes = attributes
+            .into_network_nbt()
+            .map_err(DecodeError::Registry)?;
+        if !attributes.is_empty() {
+            nbt.insert("attributes".into(), Tag::Compound(attributes));
+        }
+        Ok(Tag::Compound(nbt))
+    }
+}
+
+/// Fields shared by the direct and network codecs; the latter encodes only
+/// the syncable subset of the attribute map.
+struct NetworkBiome {
+    climate: BiomeTemperatureSettings,
+    attributes: AttributeMap,
+    effects: BTreeMap<&'static str, String>,
+}
+
+impl NetworkBiome {
+    fn decode(value: &Value) -> Result<Self, DecodeError> {
+        let climate = BiomeTemperatureSettings::from_json(&value.to_string())?;
+        let attributes = value
+            .get("attributes")
+            .map(AttributeMap::parse)
+            .transpose()
+            .map_err(DecodeError::Registry)?
+            .unwrap_or_default();
+        let raw = value
+            .get("effects")
+            .and_then(Value::as_object)
             .ok_or(DecodeError::Field("effects"))?;
-        // BiomeSpecialEffects.CODEC and ExtraCodecs.STRING_RGB_COLOR. Canonical hex
-        // carries the decoded value to the renderer and the network, including vector inputs.
+        let mut effects = BTreeMap::new();
+        // BiomeSpecialEffects.CODEC and ExtraCodecs.STRING_RGB_COLOR.
         for (key, field, required) in [
             ("water_color", "effects.water_color", true),
             ("foliage_color", "effects.foliage_color", false),
             ("dry_foliage_color", "effects.dry_foliage_color", false),
             ("grass_color", "effects.grass_color", false),
         ] {
-            match effects.get_mut(key) {
+            match raw.get(key) {
                 Some(color) => {
                     let rgb = packed_rgb(color).ok_or(DecodeError::Field(field))?;
-                    *color = Value::String(format!("#{rgb:06x}"));
+                    effects.insert(key, format!("#{rgb:06x}"));
                 }
                 None if required => return Err(DecodeError::Field(field)),
                 None => {}
             }
         }
-        if let Some(modifier) = effects.get("grass_color_modifier")
-            && !matches!(modifier.as_str(), Some("none" | "dark_forest" | "swamp"))
-        {
-            return Err(DecodeError::Field("effects.grass_color_modifier"));
+        match raw.get("grass_color_modifier") {
+            None => {}
+            Some(modifier) => match modifier.as_str() {
+                Some("none") => {}
+                Some(name @ ("dark_forest" | "swamp")) => {
+                    effects.insert("grass_color_modifier", name.to_owned());
+                }
+                _ => return Err(DecodeError::Field("effects.grass_color_modifier")),
+            },
         }
-        // BiomeGenerationSettings.CODEC requires both fields. The carver holder set
-        // accepts a single holder, a tag or a list; feature steps are always a list.
-        if !record
-            .get("carvers")
-            .is_some_and(|set| set.is_string() || set.is_array() || set.is_object())
-        {
-            return Err(DecodeError::Field("carvers"));
-        }
-        if !record.get("features").is_some_and(Value::is_array) {
-            return Err(DecodeError::Field("features"));
-        }
-        Ok(Self(value))
-    }
-
-    pub fn into_json(self) -> Value {
-        self.0
+        Ok(Self {
+            climate,
+            attributes,
+            effects,
+        })
     }
 }
 

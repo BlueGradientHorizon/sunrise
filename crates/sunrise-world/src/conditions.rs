@@ -5,6 +5,18 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+/// The value passed to the selected registry codec by NeoForge's
+/// `ConditionalOps.ConditionalDecoder`, after conditions have been evaluated.
+pub fn into_payload(mut value: Value) -> Value {
+    if let Some(fields) = value.as_object_mut()
+        && fields.remove("neoforge:conditions").is_some()
+        && let Some(payload) = fields.remove("neoforge:value")
+    {
+        return payload;
+    }
+    value
+}
+
 /// Enabled package IDs captured by the engine for one owning data load.
 /// Readers share this immutable view; they never recover IDs from namespaces.
 /// Resource selection happens before evaluating ordinary JSON files. Stacked

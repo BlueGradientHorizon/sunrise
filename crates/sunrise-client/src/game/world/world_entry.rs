@@ -432,6 +432,7 @@ impl Game<'_> {
             Arc::new(world_loading::WorldBiomeRegistry::load(
                 self.res.biomes(),
                 root,
+                self.pack.assets.registry,
                 stack,
                 &registry_overlay,
                 &read_errors,

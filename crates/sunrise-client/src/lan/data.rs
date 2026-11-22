@@ -15,6 +15,7 @@ use sunrise_protocol::{
     packets::configuration::{RegistryData, RegistryEntry, RegistryTags, TagEntry, UpdateTags},
     registry::{Builtin, Dynamic},
 };
+use sunrise_world::worldgen::biome::BiomeDefinition;
 
 /// RegistryDataLoader.SYNCHRONIZED_REGISTRIES, in vanilla's order.
 pub const SYNCHRONIZED: &[&str] = &[
@@ -83,12 +84,13 @@ pub fn client_biomes(
     let files: Vec<(&str, Value)> = registry
         .iter()
         .filter_map(|(name, data)| {
-            let json = crate::scoreboard::tag_to_json(data.as_ref()?);
-            // Both sides through the NBT form: it turns 0.8 into the float it is sent as.
+            let data = data.as_ref()?;
+            // Compare the network projection, not the local generation settings.
             let same = known
                 .builtin_file(name)
-                .is_some_and(|own| crate::scoreboard::tag_to_json(&json_to_nbt(own)) == json);
-            (!same).then_some((name.as_str(), json))
+                .and_then(|own| BiomeDefinition::encode_network(own).ok())
+                .is_some_and(|own| &own == data);
+            (!same).then(|| (name.as_str(), crate::scoreboard::tag_to_json(data)))
         })
         .collect();
     if files.is_empty() {
@@ -671,12 +673,16 @@ impl SyncData {
                     data: names
                         .iter()
                         .map(|name| {
-                            table
+                            let file = table
                                 .pack_file(name)
                                 .or_else(|| table.builtin_file(name))
-                                .map_or_else(|| Tag::Compound(Default::default()), json_to_nbt)
+                                .ok_or_else(|| {
+                                format!("biome {name}: missing admitted definition")
+                            })?;
+                            BiomeDefinition::encode_network(file)
+                                .map_err(|error| format!("biome {name}: {error}"))
                         })
-                        .collect(),
+                        .collect::<Result<_, _>>()?,
                     from_pack: names
                         .iter()
                         .map(|&name| table.pack_file(name).is_some() || modified.contains(name))
@@ -756,12 +762,24 @@ impl SyncData {
                 overlay.conditions,
                 path,
             );
-            let mut entries = damage_entries.unwrap_or_else(|| {
+            let mut entries = if let Some(damage_entries) = damage_entries {
+                damage_entries
+            } else if *key == BIOME_REGISTRY {
+                entries
+                    .into_iter()
+                    .map(|((ns, path), value, packed)| {
+                        let payload = sunrise_world::conditions::into_payload(value);
+                        let data = BiomeDefinition::encode_network(&payload)
+                            .map_err(|error| format!("biome {ns}:{path}: {error}"))?;
+                        Ok::<_, String>(((ns, path), data, packed))
+                    })
+                    .collect::<Result<_, _>>()?
+            } else {
                 entries
                     .into_iter()
                     .map(|(key, value, packed)| (key, json_to_nbt(&value), packed))
                     .collect()
-            });
+            };
             if let Some(packed) = &packed {
                 packed.append_encoded(key, &mut entries);
             }

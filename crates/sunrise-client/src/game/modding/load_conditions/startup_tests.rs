@@ -82,6 +82,8 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
             .unwrap()
             .clone();
         enabled["effects"]["water_color"] = json!([1.0, 0.5, 0.0]);
+        enabled["attributes"]["minecraft:visual/cloud_height"] = json!(123.25);
+        enabled["attributes"]["minecraft:gameplay/increased_fire_burnout"] = json!(true);
         write(
             "worldgen/biome/enabled.json",
             json!({
@@ -130,6 +132,12 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
         let biomes = game.world_biomes_base.as_ref().unwrap();
         assert!(biomes.contains("demo:enabled"));
         assert_eq!(biomes.get(biomes.id("demo:enabled")).water, 0xff7f00);
+        let local = biomes.pack_file("demo:enabled").unwrap();
+        assert!(local["features"].is_array());
+        assert_eq!(
+            local["attributes"]["minecraft:gameplay/increased_fire_burnout"],
+            true
+        );
         assert!(!biomes.contains("demo:disabled"));
         for id in [
             "demo:static_tag",
@@ -169,6 +177,14 @@ fn first_open_conditions_see_static_tags_and_admitted_biomes() {
         let wire = sunrise_client::scoreboard::tag_to_json(&wire);
         assert_eq!(wire["effects"]["water_color"], "#ff7f00");
         assert!(wire.get("neoforge:value").is_none());
+        assert!(wire.get("carvers").is_none());
+        assert!(wire.get("features").is_none());
+        assert_eq!(wire["attributes"]["minecraft:visual/cloud_height"], 123.25);
+        assert!(
+            wire["attributes"]
+                .get("minecraft:gameplay/increased_fire_burnout")
+                .is_none()
+        );
     });
 }
 
