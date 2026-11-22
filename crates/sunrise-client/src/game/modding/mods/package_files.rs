@@ -394,7 +394,6 @@ mod tests {
         let content = read_contents(&[ContentRequest {
             path,
             manifest: &mods.selected[0].package.manifest,
-            declared: vec!["demo:registered_item".into()],
             admitted: mods.startup_admission().and_then(|a| a.package(id, path)),
         }])
         .pop()
