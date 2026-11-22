@@ -77,14 +77,10 @@ fn queried_parameters_reach_native_mod_condition() {
                     Default::default(),
                 )
                 .unwrap();
-            let holds = bindings.test(
-                None,
-                "reader:query",
-                &predicates["reader:pred"],
-                &ctx,
-                &mut random,
-                &Tags,
-            );
+            let holds = bindings
+                .condition(None, "reader:query", &predicates["reader:pred"])
+                .unwrap()
+                .test(&ctx, &mut random, &Tags);
             assert!(holds);
         },
     );

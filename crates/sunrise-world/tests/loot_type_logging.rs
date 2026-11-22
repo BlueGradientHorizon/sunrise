@@ -128,23 +128,16 @@ fn ordinary_callback_refusals_report_each_call_with_type_location_and_reason() {
     let mut random = sunrise_core::random::LegacyRandom::new(1);
     let mut stack = LootStack::new("minecraft:stick", 1);
     for _ in 0..2 {
-        bindings.apply(
-            None,
-            "test:broken",
-            &modifiers["test:mod"],
-            &ctx,
-            &mut random,
-            &EmptyTags,
-            &mut stack,
+        bindings
+            .function(None, "test:broken", &modifiers["test:mod"])
+            .unwrap()
+            .apply(&ctx, &mut random, &EmptyTags, &mut stack);
+        assert!(
+            !bindings
+                .condition(None, "test:broken", &predicates["test:pred"])
+                .unwrap()
+                .test(&ctx, &mut random, &EmptyTags,)
         );
-        assert!(!bindings.test(
-            None,
-            "test:broken",
-            &predicates["test:pred"],
-            &ctx,
-            &mut random,
-            &EmptyTags,
-        ));
     }
     RECORDS.with_borrow(|records| {
         assert_eq!(records.len(), 4, "{records:?}");

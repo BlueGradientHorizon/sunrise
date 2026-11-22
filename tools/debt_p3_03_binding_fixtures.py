@@ -15,10 +15,19 @@ OLD = re.compile(
     r"(\.bind_generation\(\n(?:[^\n]*\n){3}\s*Vec::new\(\),\n[ ]*)"
     r"(?:std::collections::)?HashMap::new\(\),"
 )
+LOOKUP = re.compile(
+    r"bindings\.(apply|test)\(\n( +)(None),\n +([^,\n]+),\n +([^,\n]+),\n"
+)
 for name, expected in FIXTURES.items():
     path = ROOT / "crates" / name
     before = path.read_text()
     after, changes = OLD.subn(r"\g<1>Default::default(),", before)
-    if changes != expected:
+    if changes not in (0, expected):
         raise SystemExit(f"{name}: expected {expected} fixture calls, found {changes}")
-    path.write_text(after)
+
+    def bound_call(match):
+        call, indent, *args = match.groups()
+        lookup = "function" if call == "apply" else "condition"
+        return f"bindings.{lookup}({', '.join(args)}).unwrap().{call}(\n{indent}"
+
+    path.write_text(LOOKUP.sub(bound_call, after))

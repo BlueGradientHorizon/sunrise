@@ -283,15 +283,10 @@ mod tests {
             )
             .unwrap();
         let mut random = sunrise_core::random::LegacyRandom::new(0);
-        bindings.apply(
-            None,
-            kind,
-            &modifiers["test:entry"],
-            ctx,
-            &mut random,
-            tags,
-            stack,
-        );
+        bindings
+            .function(None, kind, &modifiers["test:entry"])
+            .unwrap()
+            .apply(ctx, &mut random, tags, stack);
     }
     fn test_type(
         kind: &str,
@@ -322,14 +317,10 @@ mod tests {
             )
             .unwrap();
         let mut random = sunrise_core::random::LegacyRandom::new(0);
-        *holds = bindings.test(
-            None,
-            kind,
-            &predicates["test:entry"],
-            ctx,
-            &mut random,
-            tags,
-        );
+        *holds = bindings
+            .condition(None, kind, &predicates["test:entry"])
+            .unwrap()
+            .test(ctx, &mut random, tags);
     }
     use mod_platform::testing::with_mods;
     use sunrise_core::nbt::Tag;
