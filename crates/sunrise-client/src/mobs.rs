@@ -7956,6 +7956,9 @@ mod live_damage_reduction_tests {
         };
         assert!(mob.damage(&mut test_level.level(), 49.0, source));
 
+        // NeoForge's Witch.getDamageAfterMagicAbsorb applies 0.85 to the superclass's
+        // local result (25 after armor, 20 after Resistance, 12 after protection),
+        // not to the container's live 15. The modified reduction still comes off live damage.
         assert_eq!(
             STAGES.with_borrow(Clone::clone),
             vec![
@@ -8002,15 +8005,15 @@ mod live_damage_reduction_tests {
                     post_ticks: 15,
                     side_effects: false,
                     prev_reduction: 6.0,
-                    taken: 12.75,
+                    taken: 10.200001,
                 },
                 StageSample {
                     stage: Reduction::Absorption,
                     original: 49.0,
-                    new_damage: 7.25,
+                    new_damage: 9.799999,
                     post_ticks: 15,
                     side_effects: false,
-                    prev_reduction: 7.75,
+                    prev_reduction: 5.200001,
                     taken: 4.0,
                 },
             ]
@@ -8018,14 +8021,14 @@ mod live_damage_reduction_tests {
         assert_eq!(
             POST.with_borrow(Clone::clone),
             Some(PostSample {
-                inflicted: 7.25,
-                health_damage: 4.75,
+                inflicted: 9.799999,
+                health_damage: 7.299999,
                 absorption: 2.5,
                 side_effects: false,
                 post_ticks: 15,
             })
         );
-        assert_eq!(mob.health, 95.25);
+        assert_eq!(mob.health, 92.7);
         assert_eq!(mob.absorption, 1.5);
         assert_eq!(mob.invulnerable, 15);
         assert_eq!(mob.last_hurt, 49.0);

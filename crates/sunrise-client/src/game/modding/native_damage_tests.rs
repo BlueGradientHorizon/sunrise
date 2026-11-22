@@ -1862,6 +1862,8 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
         }),
     )];
     if breath {
+        // Each fresh child needs the bridge that lets baseTick hear KeepLowAir.
+        crate::entry::install_client_hooks();
         mods.push(mod_api::ModEntry::new(
             "keep-low-air",
             Box::new(KeepLowAir(id)),
@@ -2027,7 +2029,10 @@ impl Hooks for GuestLandingProbe {
 #[ignore = "daily"]
 fn guest_landing_posts_before_its_ground_hit() {
     use crate::game::native_player_death::tests::add_guest;
-    use sunrise_client::{chunk::Chunk, lan::guest::GuestMove};
+    use sunrise_client::{
+        chunk::Chunk,
+        lan::{guest::GuestMove, hub::CommittedMove},
+    };
 
     let trace = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![mod_api::ModEntry::new(
@@ -2050,33 +2055,44 @@ fn guest_landing_posts_before_its_ground_hit() {
                 .unwrap();
             game.world.set(15, 78, 1, honey).unwrap();
             let landing = Vec3::new(15.5, 78.9375, 1.5);
+            let start = Vec3::new(landing.x, landing.y + 0.25, landing.z);
             let next = [16.5, landing.y, landing.z];
-            let mut body = PlayerMotion::new(game.motion, landing).unwrap();
+            let mut body = PlayerMotion::new(game.motion, start).unwrap();
             body.fall_distance = 10.0;
             game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                 guest.loaded = true;
                 guest.load_timeout = 0;
-                guest.place(next);
+                guest.place(start.components());
                 // Even honey's reduced hit kills this body.
                 guest.health = 0.5;
                 guest.motion = Some(Box::new(body));
-                guest.moves.extend([
-                    GuestMove {
-                        position: landing.components(),
-                        delta: [0.0, -0.25, 0.0],
-                        on_ground: true,
-                        sneaking: false,
-                    },
-                    GuestMove {
-                        position: next,
-                        delta: [1.0, 0.0, 0.0],
-                        on_ground: false,
-                        sneaking: false,
-                    },
-                ]);
             });
             let entity = game.lan.as_ref().unwrap().hub.guests[0].entity_id;
-            game.guest_server_tick(1, true);
+            game.entity_section_joined(entity as u32, start.components());
+            // Fall handling belongs to each accepted packet, not to the body tick's move history.
+            for (from, position, on_ground) in [
+                (start.components(), landing.components(), true),
+                (landing.components(), next, false),
+            ] {
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.accept_move(position);
+                    guest.on_ground = on_ground;
+                });
+                game.guest_accepted_move(
+                    1,
+                    CommittedMove {
+                        from,
+                        horizontal_collision: false,
+                        jump_yaw: None,
+                        movement: GuestMove {
+                            position,
+                            delta: std::array::from_fn(|axis| position[axis] - from[axis]),
+                            on_ground,
+                            sneaking: false,
+                        },
+                    },
+                );
+            }
             assert_eq!(
                 *trace.lock().unwrap(),
                 [
