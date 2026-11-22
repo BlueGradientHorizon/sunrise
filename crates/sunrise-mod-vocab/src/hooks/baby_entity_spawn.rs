@@ -17,10 +17,11 @@ pub trait Hooks {
     /// must be a baby. Set `cancel` for no baby either: the parents still rest and lose their love (their
     /// ages were already set to 6000), but there is no baby, no experience, no
     /// `animals_bred` statistic, no advancement and no heart particles. The
-    /// inheritance draws the construction made stay spent. A panicking callback is
-    /// reported and disabled for the session, and this breeding is cancelled. Refusing
-    /// the baby rolls back journaled listener writes in its level. Every handle is
-    /// borrowed for one listener only. Not fired for turtles, frogs and sniffers
+    /// construction draws stay spent. A panicking callback is reported and disabled for the
+    /// session, and this breeding is cancelled. A refusal (including an explicit veto or
+    /// a stale parent) rolls back journaled listener writes in the breeding level. An accepted
+    /// baby is applied before deferred join callbacks run. Every handle is borrowed for one
+    /// listener only. Not fired for turtles, frogs and sniffers
     /// (an egg, no baby), or their hatching; armadillos take the ordinary animal path and are
     /// included. Villagers do not post this animal-only event, matching NeoForge's documented `Animal.spawnChildFromBreeding` posting site; a rejected villager join instead leaves the child's bed free. On the server.
     #[notes = r#"## Baby entity spawn
@@ -31,7 +32,7 @@ pub trait Hooks {
     #[hook(
         dispatch = "api_carrier",
         side = "server",
-        version = 2,
+        version = 3,
         contract = "cancel",
         out = "cancel",
         neoforge = "BabyEntitySpawnEvent",

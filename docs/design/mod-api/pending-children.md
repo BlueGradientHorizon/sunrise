@@ -99,11 +99,12 @@ What is built:
   previous listener's leases, so a list, child or ownership token kept from an earlier listener answers
   `Expired`.
 - **Consumed once.** After dispatch the list is frozen and validated (kind, dimension, finite position and
-  yaw, baby state, species size), and the survivors join in order. A cancel, an emptied list,
-  a parent or world that changed under the listener (a parent's position, kind, age, love,
-  variant, colour or tameness differs from what the baby was built from), or an invalid final child spawns
-  nothing and replays nothing. Cancelling keeps the construction draws and the parent's death; breeding's
-  veto leaves both parents at age 6000 and love 0 with no experience, statistic or hearts.
+  yaw, baby state, species size). The survivors are inserted in order inside the savepoint, before deferred
+  join callbacks. A cancel, an emptied list, a parent or world that changed under the listener (a parent
+  was removed or its position, kind, age, love, variant, colour or tameness differs from what the baby
+  was built from), or an invalid final child spawns nothing and replays nothing. Cancelling keeps the
+  construction draws and the parent's death; breeding's veto leaves both parents at age 6000 and love 0
+  with no experience, statistic or hearts.
 - **Unpublished while waiting.** A baby breeding hands over keeps its UUID, and its constructor
   attachments when nothing is bound to them, outside the game's tables until it joins; a split child
   has none before it joins. A removed or replaced baby, and a panicking listener, leave no state behind.

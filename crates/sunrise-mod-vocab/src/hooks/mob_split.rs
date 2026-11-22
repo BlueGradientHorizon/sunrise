@@ -21,11 +21,10 @@ pub trait Hooks {
     /// Set `cancel` (or leave the list empty) to spawn no children: the
     /// children's construction draws stay spent and the parent still dies.
     /// A panicking callback is reported and disabled for the session, and this split is
-    /// cancelled. Refusing the split rolls back journaled listener writes in its level.
-    /// What the list holds when the hook returns is spawned once, in order,
-    /// through the usual join. A listener that changes the world in a way that
-    /// stops the split from being valid, or a list that ends up invalid,
-    /// spawns nothing. Only for a parent above size 1, once its children are
+    /// cancelled. A refusal (including an explicit veto) rolls back journaled listener writes
+    /// in the split's level. The accepted children are inserted once, in order, before deferred
+    /// join callbacks run. If the listener invalidates the split, or the list ends up invalid,
+    /// nothing spawns. Only for a parent above size 1, once its children are
     /// made. With no listener nothing is allocated for the list. On the
     /// server.
     #[notes = r#"## Mob split
@@ -37,7 +36,7 @@ pub trait Hooks {
     #[hook(
         dispatch = "api_carrier",
         side = "server",
-        version = 2,
+        version = 3,
         contract = "cancel",
         out = "cancel",
         neoforge = "MobSplitEvent",
