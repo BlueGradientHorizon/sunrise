@@ -2772,11 +2772,18 @@ impl Entity for FallingBlock {
 }
 
 impl Entity for Projectile {
-    stored_ground!(@state);
-    fn body_fall_distance(&self) -> f64 {
-        self.arrow
-            .as_ref()
-            .map_or(self.fall_distance, |arrow| arrow.fall_distance)
+    stored_ground!();
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        (
+            sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
+            Some(PowderSnowSubject {
+                fall_distance: self
+                    .arrow
+                    .as_ref()
+                    .map_or(self.fall_distance, |arrow| arrow.fall_distance),
+                ..Default::default()
+            }),
+        )
     }
     fn reset_fall_distance(&mut self) {
         if let Some(arrow) = self.arrow.as_deref_mut() {

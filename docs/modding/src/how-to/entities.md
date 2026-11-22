@@ -16,7 +16,9 @@ The flag follows the live entity across dimensions but is never saved. The sette
 checks for a supporting block under the current footprint, without moving the entity. The first miss
 keeps its prior support; another miss clears it. Passing `false` clears support immediately. Use
 `entity.on_ground(host)` to read the flag and `entity.on_block(host)` to read the block position vanilla
-uses for contact. This write does not apply landing effects or change velocity or fall distance.
+uses for contact. If the support check cannot finish, the call returns `Unavailable`: the new flag takes
+effect, but the previous supporting block stays recorded. This write does not apply landing effects or
+change velocity or fall distance.
 
 Use `EntityRef::hurt` on the server with the fully qualified id of a registered damage type, vanilla
 or modded. Hurt hooks see that exact id. The direct and causing entities are separate from the type:
