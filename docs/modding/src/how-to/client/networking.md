@@ -152,7 +152,7 @@ A typed payload sends a value of your own type on a registered channel. Its body
 little-endian numbers and lengths; it is not the vanilla packet codec. Use a raw channel
 when another implementation requires a specific byte format.
 
-Use owned `String` fields, not static strings or interned level keys: the network codec never
+Use owned string fields such as `String`, `Cow<'static, str>`, `Box<str>`, or `Arc<str>`, not static strings or interned level keys: the network codec never
 interns incoming text. The registrar also refuses Wire forms that allocate outside the shared
 budget, such as `Identifier`, `SpawnerKey`, `CustomSpawners`, `ModelPart` and JSON values,
 even in nested fields. Send bounded owned fields and convert explicitly where you need those types.
