@@ -831,7 +831,7 @@ mod tests {
         kind.id = "minecraft:zombie".into();
         let mut rider = Mob::new(72, Arc::new(kind), Vec3::new(2.0, 80.0, 0.5), 0.0);
         rider.extra.mount = Some(71);
-        rider.on_ground = true;
+        rider.ground.on_ground = true;
         rider.ai.nav.speed_modifier = 3.75;
         rider.ai.nav.target_pos = Some([1, 2, 3]);
         rider.ai.goals.clear();

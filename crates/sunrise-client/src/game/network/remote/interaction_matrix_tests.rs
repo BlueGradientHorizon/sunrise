@@ -232,8 +232,8 @@ fn matrix(mods: mod_api::Mods) {
     // registration-time declarations (a custom statistic) refuse once the registry is frozen.
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
-        // The fixture declares blocks of its own: the game stands over the content root its mods make,
-        // built once for both of this matrix's games.
+        // The fixture declares a block-entity type of its own: the game stands over the content
+        // root its mods make, built once for both of this matrix's games.
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let root = crate::game::mods::content_root(&base, &Default::default())
             .unwrap()
@@ -339,11 +339,17 @@ fn matrix(mods: mod_api::Mods) {
 #[test]
 #[ignore = "daily"]
 fn native_interaction_shared_matrix() {
-    matrix(
-        vec![mod_api::ModEntry::new(
-            "interaction_fixture",
-            Box::new(Native),
-        )]
-        .into(),
+    // Loading the fixture's block-entity type freezes the process-wide block entity type table.
+    crate::game::in_own_process(
+        "game::remote::interaction_event_tests::interaction_matrix_tests::native_interaction_shared_matrix",
+        || {
+            matrix(
+                vec![mod_api::ModEntry::new(
+                    "interaction_fixture",
+                    Box::new(Native),
+                )]
+                .into(),
+            );
+        },
     );
 }
