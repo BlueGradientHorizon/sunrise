@@ -30,12 +30,20 @@ const CHILD: &str = "SUNRISE_STEERABLE_BOARDING_CHILD";
 const VEHICLE: u32 = 42;
 const MOB_RIDER: u32 = 43;
 const PLAYER: u32 = 44;
+const OTHER_PLAYER: u32 = 45;
 const CONN: u32 = 1;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Passenger {
+    Empty,
+    Mob,
+    Guest,
+}
 
 fn scene(
     game: &mut Game<'_>,
     kind: &str,
-    occupied: bool,
+    passenger: Passenger,
     saddled: bool,
     held: Option<&str>,
     secondary: bool,
@@ -44,36 +52,48 @@ fn scene(
     let mob_type = |id| game.res.mob_types().get(id).unwrap().clone();
     let mut vehicle = Mob::new(VEHICLE, mob_type(kind), at, 0.0);
     vehicle.set_saddle(saddled.then(|| ItemStack::new("minecraft:saddle", 1)));
-    let mut passenger = Mob::new(MOB_RIDER, mob_type("minecraft:chicken"), at, 0.0);
-    passenger.extra.mount = occupied.then_some(VEHICLE);
+    let mob_rider = (passenger == Passenger::Mob).then(|| {
+        let mut rider = Mob::new(MOB_RIDER, mob_type("minecraft:chicken"), at, 0.0);
+        rider.extra.mount = Some(VEHICLE);
+        rider
+    });
     game.mobs.clear();
     game.mobs.push(vehicle);
-    if occupied {
-        game.mobs.push(passenger);
+    if let Some(rider) = mob_rider {
+        game.mobs.push(rider);
     }
 
     let (sender, _packets) = mpsc::channel();
-    let mut guest = Guest::new(
-        Joined {
-            conn: CONN,
-            uuid: 1,
-            name: "BoardingPlayer".into(),
-            properties: Vec::new(),
-            info: ClientInformation::new(2),
-            brand: "fixture".into(),
-            sender: PlayerSender::new(sender, Arc::default()),
-            latency: Arc::new(AtomicI32::new(0)),
-            address: "127.0.0.1:1".parse().unwrap(),
-            expected: false,
-        },
-        PLAYER as i32,
-        [0.5, 100.0, 0.5],
-        2,
-    );
-    guest.dimension = game.dim.id().to_owned();
-    guest.placed = true;
-    guest.loaded = true;
-    guest.load_timeout = 0;
+    let make_guest = |conn, id: u32, name: &str, position| {
+        let mut guest = Guest::new(
+            Joined {
+                conn,
+                uuid: u128::from(conn),
+                name: name.into(),
+                properties: Vec::new(),
+                info: ClientInformation::new(2),
+                brand: "fixture".into(),
+                sender: PlayerSender::new(sender.clone(), Arc::default()),
+                latency: Arc::new(AtomicI32::new(0)),
+                address: "127.0.0.1:1".parse().unwrap(),
+                expected: false,
+            },
+            id as i32,
+            position,
+            2,
+        );
+        guest.dimension = game.dim.id().to_owned();
+        guest.placed = true;
+        guest.loaded = true;
+        guest.load_timeout = 0;
+        guest
+    };
+    let mut guest = make_guest(CONN, PLAYER, "BoardingPlayer", [0.5, 100.0, 0.5]);
+    let guest_rider = (passenger == Passenger::Guest).then(|| {
+        let mut rider = make_guest(CONN + 1, OTHER_PLAYER, "SeatedPlayer", [at.x, at.y, at.z]);
+        rider.vehicle = Some(VEHICLE);
+        rider
+    });
     guest.inventory[guest.selected] = held.map(|item| ItemStack::new(item, 1));
     // PlayerInput and Interact agree about secondary use. Interact's handling
     // of stale PlayerInput is a different packet-parity problem.
@@ -99,10 +119,13 @@ fn scene(
     let guests = &mut game.lan.as_mut().unwrap().hub.guests;
     guests.clear();
     guests.push(guest);
+    if let Some(rider) = guest_rider {
+        guests.push(rider);
+    }
     game.reset_entity_residency();
     assert_eq!(
         game.has_seated_passengers(VEHICLE),
-        occupied,
+        passenger != Passenger::Empty,
         "fixture seat"
     );
     game.level_pass = Default::default();
@@ -115,6 +138,7 @@ fn scene(
         .map(|(_, id, player)| match (id, player) {
             (MOB_RIDER, false) => "mob",
             (PLAYER, true) => "player",
+            (OTHER_PLAYER, true) => "other_player",
             _ => panic!("unexpected passenger {id}"),
         })
         .collect::<Vec<_>>();
@@ -167,32 +191,49 @@ fn interact_with_a_pig_or_strider() {
             .unwrap();
             game.streaming
                 .insert_remote(&mut game.world, Chunk::empty(0, 0));
-            game.next_entity = PLAYER + 1;
+            game.next_entity = OTHER_PLAYER + 1;
             let report = std::env::var_os("SUNRISE_STEERABLE_BOARDING_REPORT");
             let mut rows = serde_json::Map::new();
             for (kind, food) in [
                 ("pig", "minecraft:carrot"),
                 ("strider", "minecraft:warped_fungus"),
             ] {
-                for (name, occupied, saddled, held, secondary, seats) in [
-                    ("empty", false, true, None, false, vec!["player"]),
-                    ("occupied", true, true, None, false, vec!["mob"]),
-                    ("secondary", false, true, None, true, vec![]),
-                    ("occupied_feed", true, true, Some(food), false, vec!["mob"]),
+                use Passenger::{Empty, Guest, Mob};
+                for (name, passenger, saddled, held, secondary, seats) in [
+                    ("empty", Empty, true, None, false, vec!["player"]),
+                    ("occupied", Mob, true, None, false, vec!["mob"]),
+                    ("secondary", Empty, true, None, true, vec![]),
+                    ("occupied_feed", Mob, true, Some(food), false, vec!["mob"]),
                     (
                         "occupied_saddle",
-                        true,
+                        Mob,
                         false,
                         Some("minecraft:saddle"),
                         false,
                         vec!["mob"],
+                    ),
+                    (
+                        "player_occupied",
+                        Guest,
+                        true,
+                        None,
+                        false,
+                        vec!["other_player"],
+                    ),
+                    (
+                        "player_occupied_saddle",
+                        Guest,
+                        false,
+                        Some("minecraft:saddle"),
+                        false,
+                        vec!["other_player"],
                     ),
                 ] {
                     let label = format!("{kind}/{name}");
                     let observed = scene(
                         game,
                         &format!("minecraft:{kind}"),
-                        occupied,
+                        passenger,
                         saddled,
                         held,
                         secondary,

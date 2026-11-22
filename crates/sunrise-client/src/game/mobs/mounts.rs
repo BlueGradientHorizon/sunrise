@@ -297,12 +297,13 @@ impl Game<'_> {
         let held = self.held().cloned();
         let m = &self.mobs[index];
         let species = m.species();
+        // Pigs and striders check occupancy only for boarding, not for saddling.
+        if matches!(species, Species::Pig | Species::Strider) {
+            return self.interact_steerable(index, item);
+        }
         // A server player rides it already (`isVehicle`: no seat, no feeding).
         if self.ridden_by_guest(m.id) {
             return false;
-        }
-        if matches!(species, Species::Pig | Species::Strider) {
-            return self.interact_steerable(index, item);
         }
         if sunrise_client::mobs::llama::is_llama(species) {
             return self.interact_llama(index, item);
