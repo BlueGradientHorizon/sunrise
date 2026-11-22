@@ -11,8 +11,10 @@ use super::{
     commands::Target,
     journal_level_write::PendingWrite,
     native_hooks::{mod_sound_ok, sound_id},
+    transactions::After,
 };
 use mod_api::{EntityRef, PlayerRef, SoundSource};
+use sunrise_core::random::RandomSource;
 
 impl Game<'_> {
     /// Where `player` is reached now: the window's own player or a guest.
@@ -37,31 +39,36 @@ impl Game<'_> {
     }
     /// `StopSoundCommand` for one player: their client stops the playing
     /// sounds that match `sound` (an event id) and `source`; `None` matches
-    /// any. True means sent.
+    /// any. True means accepted, not delivered.
     pub(super) fn player_stop_sound(
         &mut self,
         player: PlayerRef,
         sound: Option<&str>,
         source: Option<SoundSource>,
     ) -> bool {
-        if self.native_player_sound_target(player).is_none() {
+        let Some(target) = self.native_player_sound_target(player) else {
             return false;
-        }
+        };
         if sound.is_some_and(|s| !sound_id(s)) {
             return false;
         }
-        self.emit_level_effect(PendingWrite::PlayerStopSound {
-            level: self.dim,
-            player,
-            sound: sound.map(str::to_owned),
-            source: source.map(SoundSource::index),
-        });
+        let source = source.map(SoundSource::index);
+        if !self.has_level_transaction() {
+            self.stop_sound_for(&[target], sound, source);
+        } else {
+            self.after_commit(After::LevelWrite(Box::new(PendingWrite::PlayerStopSound {
+                level: self.dim,
+                player,
+                sound: sound.map(str::to_owned),
+                source,
+            })));
+        }
         true
     }
     /// `PlaySoundCommand` for one player: plays sound event `sound` at the
     /// player, for them only, under `source`'s volume slider. The seed is the
-    /// level random's `nextLong`, drawn once per call. True means sent, not
-    /// heard.
+    /// level random's `nextLong`, drawn when the sound publishes. True means
+    /// accepted, not delivered.
     pub(super) fn player_play_sound(
         &mut self,
         player: PlayerRef,
@@ -81,15 +88,20 @@ impl Game<'_> {
         {
             return false;
         }
-        self.emit_level_effect(PendingWrite::PlayerSound {
-            level: self.dim,
-            player,
-            sound: sound.to_owned(),
-            at,
-            source: source.index(),
-            volume,
-            pitch,
-        });
+        if !self.has_level_transaction() {
+            let seed = self.world.random.next_long();
+            self.play_sound_to(target, sound, at, volume, pitch, source.index(), seed);
+        } else {
+            self.after_commit(After::LevelWrite(Box::new(PendingWrite::PlayerSound {
+                level: self.dim,
+                player,
+                sound: sound.to_owned(),
+                at,
+                source: source.index(),
+                volume,
+                pitch,
+            })));
+        }
         true
     }
     /// `Level.playSound(null, entity, sound, source, volume, pitch)`: plays
