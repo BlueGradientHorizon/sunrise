@@ -11,7 +11,7 @@ use sunrise_client::{
     chunk::Chunk,
     hud::HudBatch,
     lan::PlayerSender,
-    raw_payloads::{Endpoint, Incoming, Side, Transport},
+    raw_payloads::{Classified, Endpoint, Incoming, Side, Transport},
 };
 use sunrise_protocol::{
     packets::{configuration as cfg, play},
@@ -102,18 +102,14 @@ fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner()
             transport.finish_configuration().unwrap();
             let (sender, sent) = PlayerSender::payload_executor_test_sender(transport.clone());
             let endpoint = Endpoint::server(sender);
-            let incoming = || {
-                Incoming::new(
-                    &transport,
-                    Phase::Play,
-                    cfg::CustomPayload {
-                        channel: CHANNEL.into(),
-                        data: vec![],
-                    },
-                )
-                .unwrap()
+            let packet = || cfg::CustomPayload {
+                channel: CHANNEL.into(),
+                data: vec![],
             };
+            let incoming = || Incoming::new(&transport, Phase::Play, packet()).unwrap();
             let message = incoming();
+            // Admit a repeat before the panic to exercise the guard on already-queued work.
+            let queued_repeat = incoming();
             let receiver = message.receiver.clone();
             assert!(receiver.enabled());
             game.run_payload(endpoint.clone(), message);
@@ -129,8 +125,13 @@ fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner()
                 .encode()]
             );
             assert!(!receiver.enabled());
-            game.run_payload(endpoint, incoming());
+            game.run_payload(endpoint, queued_repeat);
             assert_eq!(handler.calls.load(Ordering::Relaxed), 1);
+            // Later packets for the poisoned raw receiver are skipped before admission.
+            assert!(matches!(
+                Incoming::classify(&transport, Phase::Play, packet()),
+                Ok(Classified::Raw(deliveries)) if deliveries.is_empty()
+            ));
 
             // The client drains the shared queue, not the server action that aborted.
             game.options.dedicated = None;
