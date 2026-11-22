@@ -1,3 +1,15 @@
-ids = ["hook:weather_change", "method:Hooks::weather_change", "type:WeatherChangeEvent"]
-why = "Vanilla MinecraftServer.setWeatherParameters writes the rain and thunder parameters together; NeoForge's ServerLevel weather patch changes packet routing, not the parameter write. Sunrise contains a failing weather callback without stopping other listeners or undoing Host writes. A panic is logged with the mod and hook, queues an error toast, and disables only that mod's weather_change listener for the session. A phase refusal or nested attempt to enter the same active callback is logged each time and does not disable it."
-migrate = "Keep Hooks::weather_change and its WeatherChangeEvent parameter. To veto the proposed weather parameters, return Flow::Cancel or set event.cancelled and return normally; a callback that panics or is refused leaves the last accepted cancellation in place. Do not depend on your own weather_change callback running again before it returns; other eligible listeners can still hear a nested dispatch."
+# The surface diff does not include unchanged signatures. These items also
+# change behavior: method:Hooks::weather_change, type:WeatherChangeEvent,
+# handle:LevelRef::set_weather and handle:LevelRef::set_weather_levels.
+ids = [
+    "hook:weather_change",
+    "hook:weather_change.clear_ticks",
+    "hook:weather_change.weather_ticks",
+    "type:WeatherChangeEvent.clear_ticks",
+    "type:WeatherChangeEvent.weather_ticks",
+    "hook:thunder_change",
+    "method:Hooks::thunder_change",
+    "type:ThunderChangeEvent",
+]
+why = "Vanilla MinecraftServer.setWeatherParameters writes one server-wide set of signed timers and flags through WeatherData. Level.setRainLevel and Level.setThunderLevel clamp both interpolants through Mth.clamp. NeoForge's ServerLevel.advanceWeatherCycle patch changes which players get the weather packets but has no weather/thunder veto pair. Sunrise now offers one veto before each parameter write, never rolling back a listener's work. A panicking callback is logged with the mod and hook, shown in an error toast, and disabled for the session; a veto, phase refusal or reentry refusal is logged each time without disabling it."
+migrate = "Replace Hooks::thunder_change and ThunderChangeEvent with Hooks::weather_change and WeatherChangeEvent. If you implement both, merge their logic into one listener: inspect event.thundering and veto with Flow::Cancel or event.cancelled; this now skips the whole write, not just thunder. Rebuild for hook version 2 and use event.clear_ticks or event.weather_ticks for the proposed signed timers; event.dimension names the origin, not a per-level destination. Dispatch tests calling dispatch_weather_change insert clear_ticks and weather_ticks before the two flags. Keep calling level.set_weather(host, clear_ticks, weather_ticks, raining, thundering); false now means invalid level or a veto, not negative timers or a parked origin. Nested writes skip callbacks already active on the thread and can commit even if the outer write is vetoed. Keep calling level.set_weather_levels(host, rain, thunder) on the level in place; infinities now clamp to endpoints, NaN still returns false."

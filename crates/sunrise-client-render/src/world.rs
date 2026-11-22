@@ -267,13 +267,21 @@ impl Weather {
         self.rain_level.1 =
             (self.rain_level.1 + if self.raining { 0.01 } else { -0.01 }).clamp(0.0, 1.0);
     }
+    /// `Level.setRainLevel` and `Level.setThunderLevel`: clamp both strengths to
+    /// `[0, 1]` and set both the previous and current interpolants.
+    pub fn set_levels(&mut self, rain: f32, thunder: f32) {
+        let rain = rain.clamp(0.0, 1.0);
+        let thunder = thunder.clamp(0.0, 1.0);
+        self.rain_level = (rain, rain);
+        self.thunder_level = (thunder, thunder);
+    }
+
     /// The levels at their targets at once (rain 1 while it rains, else 0, and thunder the
     /// same), both halves, so the frame shows them at any partial tick: a frozen world under
     /// `SUNRISE_STILL`, which would otherwise have to run about a hundred ticks to fade them.
     pub fn settle_levels(&mut self) {
         let target = |on: bool| if on { 1.0 } else { 0.0 };
-        self.rain_level = (target(self.raining), target(self.raining));
-        self.thunder_level = (target(self.thundering), target(self.thundering));
+        self.set_levels(target(self.raining), target(self.thundering));
     }
     /// Level.getRainLevel / getThunderLevel (thunder scales with rain).
     pub fn levels(&self, partial: f32) -> (f32, f32) {

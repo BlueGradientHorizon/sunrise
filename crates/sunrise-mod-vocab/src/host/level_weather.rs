@@ -35,13 +35,13 @@ pub trait LevelWeatherBackend {
 #[sunrise_mod_api_macros::host_area]
 pub trait LevelWeatherBackendMut {
     /// Side: server.
-    /// Sets the weather as `/weather` does (`ServerLevel.setWeatherParameters`): clear for
-    /// `clear_ticks`, or raining (and thundering) for `weather_ticks`, after which the
-    /// weather cycle goes on as usual. Rain and thunder then fade in or out as vanilla's do;
-    /// `set_weather_levels` sets their strength at once. The `weather_change` hook may cancel
-    /// all of it and `thunder_change` the thunder. The players see it after the next sync.
-    /// False for a negative time, a call from inside `weather_change` or `thunder_change`, a
-    /// parked level, a stale handle or a client.
+    /// Sets the server-wide weather parameters (`MinecraftServer.setWeatherParameters`).
+    /// `level` names the origin and may be any resident level, including a parked one.
+    /// The clear timer takes `clear_ticks`, and both rain and thunder timers take
+    /// `weather_ticks`, as signed values without command parsing. Rain and thunder fade
+    /// toward the given states; `set_weather_levels` sets their strength immediately.
+    /// Returns false for an invalid level (including on a client) or when `weather_change`
+    /// vetoes the whole write. A veto does not undo a listener's other writes.
     #[access(WorldOnly)]
     fn level_set_weather(
         &mut self,
@@ -53,9 +53,9 @@ pub trait LevelWeatherBackendMut {
     ) -> bool;
     /// Side: server.
     /// How strong the rain and thunder are now (`Level.setRainLevel`, `setThunderLevel`),
-    /// each clamped to 0 to 1 and set without fading. They still drift toward the weather
-    /// the level has (`set_weather`) by 0.01 a tick, as vanilla's do. False for a value that
-    /// isn't finite, a parked level, a stale handle or a client.
+    /// each clamped to 0 to 1 (including infinities) and set without fading. They still drift
+    /// toward the weather the level has (`set_weather`) by 0.01 a tick, as vanilla's do.
+    /// Returns false for NaN, a parked level, a stale handle or a client.
     #[access(WorldOnly)]
     fn level_set_weather_levels(&mut self, level: LevelRef, rain: f32, thunder: f32) -> bool;
     /// Side: server.

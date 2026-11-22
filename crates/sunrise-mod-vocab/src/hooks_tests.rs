@@ -618,6 +618,9 @@ fn nested_weather_dispatch_skips_only_the_active_listener() {
             self.0.lock().unwrap().push(("reenter", event.thundering));
             if event.raining && !event.thundering {
                 dispatch_weather_change(host, event.dimension, 0, 2, true, true, &mut false);
+                // Inputs are local to this listener, not outputs to the next.
+                event.clear_ticks = 99;
+                event.weather_ticks = 100;
             }
             Flow::Continue
         }
@@ -630,6 +633,10 @@ fn nested_weather_dispatch_skips_only_the_active_listener() {
             host: &mut dyn ServerHost,
             event: &mut WeatherChangeEvent<'_>,
         ) -> Flow {
+            assert_eq!(
+                (event.clear_ticks, event.weather_ticks),
+                (0, if event.thundering { 2 } else { 1 })
+            );
             self.0.lock().unwrap().push(("peer", event.thundering));
             if event.thundering {
                 // Both listeners are now active. Neither should hear this deeper event;

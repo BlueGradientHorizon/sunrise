@@ -956,15 +956,17 @@ pub(super) fn emit<'a>(
             )
         };
         // Each listener gets a fresh event with the original inputs. Writable borrowed
-        // payloads can still share their pointee. Write-back, the owner filter and chunk
-        // I/O checks use the outer event and cannot use a listener-local one.
-        let (build, local_event) = if hook.event_per_listener || isolated_collect {
-            // A replace answer is returned outside the event. A regular collect
-            // output borrows one slot, reborrowed for each listener above. Answered
-            // collect batches and cancellation do not use this mode. An isolated collector's
-            // one return value is outside the event too; each mod gets the original inputs.
-            let reply_outside_event =
-                matches!(contract, Contract::Listen | Contract::Replace) || isolated_collect;
+        // payloads can still share their pointee. The owner filter and chunk I/O checks
+        // use the outer event and cannot use a listener-local one.
+        let isolated_cancel = mod_cancel && hook.isolate_listener;
+        let (build, local_event) = if hook.event_per_listener || isolated_collect || isolated_cancel
+        {
+            // Replace answers and isolated collector replies are returned outside
+            // the event. An isolated veto chains only the accepted cancellation.
+            // Regular collect outputs borrow one slot, reborrowed above.
+            let reply_outside_event = matches!(contract, Contract::Listen | Contract::Replace)
+                || isolated_collect
+                || isolated_cancel;
             let shared_collect_output = collected.is_some() && !answered && !collect_cancel;
             if (!reply_outside_event && !shared_collect_output)
                 || !stack_outputs.is_empty()
@@ -1288,20 +1290,26 @@ pub(super) fn emit<'a>(
                     o = out.unwrap()
                 ),
             ),
-            None if mod_cancel && hook.isolate_listener => {
+            None if isolated_cancel => {
                 let accepted = fresh_name("accepted_cancelled", &mut used);
+                let flow_cancelled = fresh_name("flow_cancelled", &mut used);
                 (
                     String::new(),
                     format!(
-                        "let mut {accepted} = {event}.cancelled;\n\
+                        "let mut {accepted} = *{o};\n\
                          for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{\n\
                              if {accepted} && !{receives} {{ continue; }}\n\
+                             {local_event}\n\
                              {event}.cancelled = {accepted};\n\
                              if let Some(flow) = super::runtime::isolated_listener(\n\
                                  HookId::{hook_id}, \"{name}\", {mod_entry}, contained,\n\
                                  |{mod_item}| {mod_item}.{name}({invoke}),\n\
                              ) {{\n\
-                                 {accepted} = {event}.cancelled || matches!(flow, Flow::Cancel);\n\
+                                 let {flow_cancelled} = matches!(flow, Flow::Cancel);\n\
+                                 if {flow_cancelled} || (!{accepted} && {event}.cancelled) {{\n\
+                                     log::warn!(\"mod {{}}: hook {name} requested a veto\", {mod_entry}.id);\n\
+                                 }}\n\
+                                 {accepted} = {event}.cancelled || {flow_cancelled};\n\
                              }}\n\
                          }}\n\
                          *{o} = {accepted};",

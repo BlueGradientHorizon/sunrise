@@ -1698,7 +1698,6 @@ sunrise-client game::native_level_spawning::tests::a_level_spawns_a_mob_as_its_e
 sunrise-client game::native_level_spawning::tests::a_levels_spawn_policy_changes_what_its_next_pass_spawns lib daily resources
 sunrise-client game::native_level_ticking::tests::ticking_reads_follow_live_tickets_bounds_and_residency lib daily resources
 sunrise-client game::native_level_ticking::tests::ticking_reads_refuse_each_unavailable_handle_independently lib daily resources
-sunrise-client game::native_level_weather::tests::a_listener_calling_its_own_setter_is_refused lib daily resources
 sunrise-client game::native_level_weather::tests::local_difficulty_and_tick_rate_reach_the_game lib daily resources
 sunrise-client game::native_level_weather::tests::local_difficulty_matches_vanilla_values_for_an_unloaded_chunk lib daily resources
 sunrise-client game::native_level_weather::tests::weather_writes_set_the_level_in_place_and_refuse_others lib daily resources
