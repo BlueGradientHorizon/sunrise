@@ -15,6 +15,9 @@ pub trait Hooks {
     /// Only Parts on the contacted state run, after that block's vanilla step behavior.
     /// The server lends the level random host as `fall_on` does, and accepts
     /// `event.write_entity(EntityWrite::…)` for the stepping entity before the inside scan.
+    /// Hurt writes apply to players, mobs, dropped items and experience orbs.
+    /// Use `LevelHost::entity_type_is_living(event.kind)` when the block only affects living
+    /// bodies, as magma does.
     /// Boats, minecarts, armor stands and projectiles ignore contact hurt.
     /// `event.request(LandingWrite::…)` queues a change at `pos` through the `fall_on`
     /// drain: requests apply at the batch end if `pos` still holds `state`.
@@ -24,7 +27,7 @@ pub trait Hooks {
     /// Keep movement answers consistent between the two sides and on replay.
     #[hook(
         side = "both",
-        version = 2,
+        version = 3,
         contract = "collect",
         out = "movement",
         scope = "block",

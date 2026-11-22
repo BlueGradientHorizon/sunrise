@@ -126,7 +126,7 @@ slot_keys!(registries;
         crate::content::registry_keys::ENCHANTMENTS.read().ok()?.as_ref()?.identifiers.get(id).copied()
     };
     EntityTypeKey => as_entity_type_key, "entity_type", |id: &crate::Identifier| {
-        crate::content::registry_keys::resolved_entity_types().get()?.identifiers.get(id).copied()
+        crate::content::registry_keys::resolved_entity_types().get()?.names().identifiers.get(id).copied()
     };
     FluidKey => as_fluid_key, "fluid", |id: &crate::Identifier| {
         crate::parts::resolved_fluids().get()?.identifiers.get(id).copied()

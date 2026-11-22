@@ -73,9 +73,9 @@ block entity. A replacement installed by the listener does not inherit the
 original entity's saved tag or lock. The replacement keeps its own items and
 saved data, including a lock set on its new handle, even if the position returns
 to the state the first write requested. On abort, the journal restores the
-original entity and undoes those edits. `host.edit_blocks` also restores the
-original blocks and block entities on abort; it publishes whole chunks on commit
-without drops or neighbor updates. If both kinds of write touch one position,
+original entity and undoes those edits. `host.edit_blocks` also quietly restores the
+original blocks, block entities and connection groups on abort; it publishes whole
+chunks with their resulting connection groups on commit, without drops or neighbor updates. If both kinds of write touch one position,
 they replay in call order; a later bulk edit cannot substitute its new block
 entity for the ordinary removal's old one. `LevelRef::destroy_block` returns
 `Ok(None)` while a transaction is open, before running loot, experience or break

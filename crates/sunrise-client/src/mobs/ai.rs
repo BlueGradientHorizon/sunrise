@@ -49,6 +49,9 @@ mod inside_walk_tests {
     static KILL_AFTER: AtomicUsize = AtomicUsize::new(usize::MAX);
     static PANIC_AFTER: AtomicUsize = AtomicUsize::new(usize::MAX);
     static ENABLED: AtomicBool = AtomicBool::new(false);
+    std::thread_local! {
+        static KILL_DAMAGE: std::cell::Cell<Option<mod_api::DamageTypeKey>> = const { std::cell::Cell::new(None) };
+    }
 
     fn in_contact_test_process(test: &str) -> bool {
         const CHILD: &str = "SUNRISE_TEST_MOB_CONTACT_CHILD";
@@ -91,7 +94,10 @@ mod inside_walk_tests {
         if seen > KILL_AFTER.load(Ordering::SeqCst) {
             staged.run_after(
                 mod_api::InsideEffect::Freeze,
-                mod_api::EntityWrite::Hurt { amount: 1000.0 },
+                mod_api::EntityWrite::Hurt {
+                    damage_type: KILL_DAMAGE.get().unwrap(),
+                    amount: 1000.0,
+                },
             );
         }
         staged.run_after(
@@ -215,10 +221,9 @@ mod inside_walk_tests {
         if !in_contact_test_process("a_killing_write_stops_the_mobs_flush") {
             return;
         }
-        reset(0, usize::MAX, true);
-        let ran = crate::mobs::world::with_built_test_world(
-            &[],
+        let ran = crate::mobs::world::with_built_contact_test_world(
             |world, registry| {
+                reset(0, usize::MAX, true);
                 world.chunks.insert(
                     (0, 0),
                     std::sync::Arc::new(crate::chunk::Chunk::empty(0, 0)),
@@ -229,7 +234,8 @@ mod inside_walk_tests {
                 }
                 install_walk_hooks();
             },
-            |w, types| {
+            |w, types, generic| {
+                KILL_DAMAGE.set(Some(generic));
                 let mut mob = mob_at_move(types);
                 let mut level = crate::health::TestLevel::new(0);
                 let mut events = Vec::new();
@@ -2110,10 +2116,9 @@ impl MobBlockWalk {
     }
 }
 
-/// A typed entity write an `entity_inside` part queued for a mob, applied in
-/// its own tick. `Hurt` uses the generic damage kind: the block's own hurts
-/// keep their named kinds in the walk's arms above. Generic contact damage
-/// has no attacker. The hurt's own teleport is settled before the write returns.
+/// Apply a contact Part's queued write in the mob's own tick. Hurt uses the
+/// level's registered type without an attacker and settles any resulting
+/// teleport before the next write.
 fn apply_entity_write(
     m: &mut Mob,
     w: &MobWorld,
@@ -2131,10 +2136,17 @@ fn apply_entity_write(
             m.fall_distance = 0.0;
             m.stuck_multiplier = triple(v);
         }
-        mod_api::EntityWrite::Hurt { amount } => {
-            m.damage(level, amount, Damage::of(DamageKind::Generic));
-            // The hurt's own teleport, inside it (#1697).
-            hurt_teleports(m, w, events);
+        mod_api::EntityWrite::Hurt {
+            damage_type,
+            amount,
+        } => {
+            if let Some(named) =
+                super::NamedDamage::from_contact_key(w.side.damage_types(), damage_type)
+            {
+                m.damage(level, amount, Damage::of(DamageKind::Named(named)));
+                // The hurt's own teleport, inside it (#1697).
+                hurt_teleports(m, w, events);
+            }
         }
         mod_api::EntityWrite::ResetFallDistance => m.fall_distance = 0.0,
         mod_api::EntityWrite::SetFireTicks(ticks) => m.fire_ticks = ticks,
