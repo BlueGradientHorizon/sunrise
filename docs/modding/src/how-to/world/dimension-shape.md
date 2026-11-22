@@ -304,11 +304,15 @@ Both calls reach active or parked server levels without loading chunks; unavaila
 handles and clients answer `false` (adding answers `None`).
 
 Tickets are indexed by enclosing x/z chunk tile in memory only, never force chunks to load,
-and queries test matching tiles without calling mod predicates. They are removed
-on explicit removal or level unload; when added during an enabled mod call, the ticket is
-also attributed to that mod and cleared if that mod is disabled (re-enabling does not
-restore it). A reopened world starts empty: re-add from `level_load` or a block entity's
-load listener. Several boxes can describe a shape without a per-position mod predicate.
+and queries test matching tiles without calling mod predicates. Each ticket attaches to the
+covered chunk closest to its horizontal center (its master chunk, matching NeoForge's
+`FarmlandWaterManager.addAABBTicket`): unloading that chunk on the server invalidates the
+ticket (`FarmlandWaterManager.removeTickets`), while unloading other covered chunks leaves it
+active. Tickets are also removed on explicit removal or level unload; when added during an
+enabled mod call, the ticket is attributed to that mod and cleared if that mod is disabled
+(calling from a disabled installed mod is refused, and re-enabling does not restore old
+tickets). A reopened world starts empty: re-add from `level_load` or a block entity's load
+listener. Several boxes can describe a shape without a per-position mod predicate.
 Farmland checks the ticket before its vanilla water scan, so dry farmland inside moistens
 to 7. Removing the last covering ticket restores normal drying, while nearby water and
 rain continue working normally and the moisture-change veto still applies. Empty levels

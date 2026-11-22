@@ -703,9 +703,10 @@ handle, an entity the client doesn't track and a level it doesn't show:
   calling mod's: `quarry` and `mymod:quarry` both become `mymod:quarry`, and another mod's namespace refuses the mods at
   startup, as does an id registered twice (the error names the mod and the id). Pass `Some(Arc::new(callback))` to bind
   a `LoadingValidationCallback` to this controller, or `None` to restore its tickets without validation. The handle is
-  only made by the registrar and indexes the installed table, so a ticket call looks up no string. The registry-issued
-  handle itself authorizes active chunk-ticket operations without consulting the current caller; an invalid handle from
-  a refused registration does nothing.
+  only made by the registrar with an opaque registration identity, so a name or slot alone cannot forge one and a
+  ticket call looks up no string. The registry-issued handle itself authorizes active chunk-ticket operations without
+  consulting the current caller; an invalid handle from a refused registration or another registration table does
+  nothing.
 - `chunk.set_mod_forced(host, controller, owner, forced, natural_spawning)` (NeoForge's `TicketController.forceChunk`)
   holds or releases a chunk through `controller` and returns whether its tickets changed. `owner` is a
   `TicketOwner`, `Block([x, y, z])` or `Entity(uuid)`. A ticket is scoped by controller, owner, chunk and
@@ -720,8 +721,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
   `chunk_tickets.dat`, under the controller's id. When a world loads, the tickets of an id no loaded mod registers are
   dropped with a warning in the log, as NeoForge documents for a controller nobody registers; so are tickets from a
   file written before controllers, which are keyed by mod id. For an invalid controller handle (such as one from a
-  refused registration), a stale level handle, a client, or a chunk past the world's bounds, the calls return `false`
-  or `None`.
+  refused registration or another registration table), a stale level handle, a client, or a chunk past the world's
+  bounds, the calls return `false` or `None`.
 - A controller's `LoadingValidationCallback` (NeoForge's `LoadingValidationCallback.validateTickets`) runs once after
   `level_load` and before the level's first tick, only if that controller has saved tickets in the level. At startup all
   built-in levels are available before validation begins. It receives

@@ -1,20 +1,36 @@
 //! Construction before the immutable controller table exists.
 use crate::{
-    LoadingValidationCallback, callback_owner::CallbackOwner,
-    world::ticket_controller::RegisteredTicketValidator,
+    LoadingValidationCallback,
+    callback_owner::CallbackOwner,
+    world::ticket_controller::{RegisteredTicketValidator, issue_token},
 };
 use std::sync::Arc;
 
-/// Cold authoring access to the opaque token representation.
-pub fn ticket_controller(slot: u32) -> crate::TicketController {
-    crate::TicketController { slot }
+/// The sentinel handle returned for a refused controller registration.
+pub fn refused_ticket_controller() -> crate::TicketController {
+    crate::TicketController {
+        slot: u32::MAX,
+        token: 0,
+    }
 }
 
-/// Bind a saved-ticket validator to the mod that registered its controller.
-pub fn registered_ticket_validator(
+/// Build one controller table entry together with its newly issued opaque handle.
+/// Mints a fresh non-zero token, so it cannot forge a handle for an already-installed table.
+pub fn register_ticket_controller(
+    slot: u32,
+    id: Box<str>,
     mod_id: &'static str,
     mod_index: usize,
-    callback: Arc<LoadingValidationCallback>,
-) -> RegisteredTicketValidator {
-    RegisteredTicketValidator::new(callback, CallbackOwner::for_index(mod_id, mod_index))
+    validator: Option<Arc<LoadingValidationCallback>>,
+) -> (super::ControllerInfoInput, crate::TicketController) {
+    let token = issue_token();
+    let info = super::ControllerInfoInput {
+        id,
+        token,
+        validator: validator.map(|callback| {
+            RegisteredTicketValidator::new(callback, CallbackOwner::for_index(mod_id, mod_index))
+        }),
+    };
+    let handle = crate::TicketController { slot, token };
+    (info, handle)
 }
