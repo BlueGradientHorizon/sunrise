@@ -13,7 +13,7 @@ use std::{
     path::Path,
     sync::Arc,
 };
-use sunrise_core::random::RandomSource;
+use sunrise_core::{nbt::Tag, random::RandomSource};
 use sunrise_world::loot::number::int_value;
 use sunrise_world::registry::{BlockRegistry, BlockStateId};
 use sunrise_world::{
@@ -116,6 +116,26 @@ pub type ItemConsumable = sunrise_world::consumable::Consumable<String, ConsumeE
 pub fn parse_consumable(
     cons: &Value,
 ) -> std::result::Result<ItemConsumable, sunrise_core::json_nbt::JsonNbtError> {
+    let mut effects = Vec::new();
+    for effect in cons["on_consume_effects"].as_array().into_iter().flatten() {
+        let Some(kind) = effect["type"].as_str() else {
+            continue;
+        };
+        if let Some(builtin) = builtin_consume_effect_path(kind) {
+            if let Ok(tag) = sunrise_core::json_nbt::json_to_tag(effect)
+                && let Some(effect) = builtin_consume_effect(builtin, &tag)
+            {
+                effects.push(effect);
+            }
+        } else {
+            effects.push(ConsumeEffect::Native(NativeConsumeEffect {
+                kind: Arc::from(kind),
+                data: Arc::new(sunrise_core::json_nbt::json_to_tag(effect)?),
+                registered: None,
+                binding: mod_vocab::__private::ConsumeEffectBinding::resolve(kind),
+            }));
+        }
+    }
     Ok(ItemConsumable {
         seconds: cons["consume_seconds"].as_f64().map_or(1.6, |s| s as f32),
         animation: crate::use_animation::consumable_animation(cons),
@@ -125,114 +145,93 @@ pub fn parse_consumable(
             .unwrap_or("minecraft:entity.generic.eat")
             .to_owned(),
         particles: cons["has_consume_particles"].as_bool().unwrap_or(true),
-        effects: cons["on_consume_effects"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(parse_consume_effect)
-            .collect::<std::result::Result<Vec<_>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect(),
+        effects,
     })
 }
 
-/// One `ConsumeEffect.CODEC` entry. The type selects the built-in decoder
-/// or binds an installed native listener at the definition boundary.
-fn parse_consume_effect(
-    effect: &Value,
-) -> std::result::Result<Option<ConsumeEffect>, sunrise_core::json_nbt::JsonNbtError> {
-    let Some(kind) = effect.get("type").and_then(Value::as_str) else {
-        return Ok(None);
-    };
+fn builtin_consume_effect_path(kind: &str) -> Option<&str> {
     // `Identifier.bySeparator`: a bare or empty namespace is minecraft's.
-    let path = match kind.split_once(':') {
-        Some(("" | "minecraft", path)) => path,
-        Some(_) => {
-            let data = sunrise_core::json_nbt::json_to_tag(effect)?;
-            return Ok(Some(ConsumeEffect::Native(NativeConsumeEffect {
-                kind: Arc::from(kind),
-                data: Arc::new(data),
-                registered: None,
-                binding: mod_vocab::__private::ConsumeEffectBinding::resolve(kind),
-            })));
-        }
-        None => kind,
-    };
-    Ok(match path {
-        "apply_effects" => {
-            let probability = effect
-                .get("probability")
-                .and_then(|p| p.as_f64())
-                .map_or(1.0, |p| p as f32);
-            let mut specs = Vec::new();
-            if let Some(list) = effect.get("effects").and_then(|l| l.as_array()) {
-                specs.extend(list.iter().filter_map(consume_effect_spec));
-            }
-            Some(ConsumeEffect::ApplyEffects {
-                effects: specs,
-                probability,
-            })
-        }
+    match kind.split_once(':') {
+        Some(("minecraft" | "", path)) => Some(path),
+        None => Some(kind),
+        Some(_) => None,
+    }
+}
+
+/// Decode a built-in `ConsumeEffect.CODEC` entry from its tagged fields.
+fn builtin_consume_effect(builtin: &str, effect: &Tag) -> Option<ConsumeEffect> {
+    use crate::{item_data::component_bool, properties::component_float};
+
+    match builtin {
+        "apply_effects" => Some(ConsumeEffect::ApplyEffects {
+            effects: match effect.get("effects") {
+                Some(Tag::List(list)) => list.iter().filter_map(consume_effect_spec).collect(),
+                _ => Vec::new(),
+            },
+            // `ApplyStatusEffectsConsumeEffect.CODEC`: floatRange(0, 1).
+            probability: match effect.get("probability") {
+                Some(value) => component_float(value).filter(|p| (0.0..=1.0).contains(p))?,
+                None => 1.0,
+            },
+        }),
         "clear_all_effects" => Some(ConsumeEffect::ClearAllEffects),
-        "remove_effects" => {
-            let mut targets = Vec::new();
-            if let Some(eff) = effect.get("effects") {
-                if let Some(s) = eff.as_str() {
-                    targets.push(s.to_string());
-                } else if let Some(arr) = eff.as_array() {
-                    for item in arr {
-                        if let Some(s) = item.as_str() {
-                            targets.push(s.to_string());
-                        }
-                    }
-                }
-            }
-            Some(ConsumeEffect::RemoveEffects(targets))
-        }
+        "remove_effects" => Some(ConsumeEffect::RemoveEffects(match effect.get("effects") {
+            Some(Tag::String(id)) => vec![id.to_string_lossy()],
+            Some(Tag::List(ids)) => ids
+                .iter()
+                .filter_map(|id| match id {
+                    Tag::String(id) => Some(id.to_string_lossy()),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        })),
         "teleport_randomly" => Some(ConsumeEffect::TeleportRandomly(
             sunrise_world::teleport_consume::TeleportConsume {
-                diameter: effect
-                    .get("diameter")
-                    .and_then(serde_json::Value::as_f64)
-                    .map_or(16.0, |d| d as f32),
+                // `TeleportRandomlyConsumeEffect.CODEC`: ExtraCodecs.POSITIVE_FLOAT.
+                diameter: match effect.get("diameter") {
+                    Some(value) => component_float(value).filter(|d| *d > 0.0 && d.is_finite())?,
+                    None => 16.0,
+                },
                 directional_particles: effect
                     .get("directional_particles")
-                    .and_then(serde_json::Value::as_bool)
+                    .and_then(component_bool)
                     .unwrap_or(true),
             },
         )),
-        "play_sound" => effect.get("sound").and_then(|sound| {
+        "play_sound" => {
             use sunrise_core::identifier::Identifier;
-            let holder = if let Some(id) = sound.as_str() {
-                ConsumeSound::Registered(Identifier::parse(id).ok()?.to_string())
-            } else {
-                ConsumeSound::Direct {
-                    id: Identifier::parse(sound.get("sound_id")?.as_str()?)
-                        .ok()?
-                        .to_string(),
-                    // SoundEvent.DIRECT_CODEC uses lenientOptionalFieldOf("range").
-                    range: sound
-                        .get("range")
-                        .and_then(serde_json::Value::as_f64)
-                        .map(|range| range as f32),
+            let sound = effect.get("sound")?;
+            let holder = match sound {
+                Tag::String(id) => ConsumeSound::Registered(
+                    Identifier::parse(&id.to_string_lossy()).ok()?.to_string(),
+                ),
+                Tag::Compound(_) => {
+                    let Tag::String(id) = sound.get("sound_id")? else {
+                        return None;
+                    };
+                    ConsumeSound::Direct {
+                        id: Identifier::parse(&id.to_string_lossy()).ok()?.to_string(),
+                        // SoundEvent.DIRECT_CODEC uses lenientOptionalFieldOf("range").
+                        range: sound.get("range").and_then(component_float),
+                    }
                 }
+                _ => return None,
             };
             Some(ConsumeEffect::PlaySound(holder))
-        }),
+        }
         _ => None,
-    })
+    }
 }
 
 /// Admit custom effects from saved NBT, or install effects already decoded by
-/// the connection's Wire codecs. Only the built-in gameplay projection uses JSON.
+/// the connection's Wire codecs. Decode built-ins directly from their tagged fields.
 pub(crate) fn stack_effects(
     raw: &mut sunrise_core::nbt::Tag,
     key: &str,
     received: Option<&[sunrise_world::component_value::consume_effects::Admitted]>,
     mut refused: Option<&mut bool>,
 ) -> std::result::Result<Vec<ConsumeEffect>, String> {
-    use sunrise_core::nbt::Tag;
     use sunrise_world::component_value::consume_effects::admit;
 
     let Tag::Compound(_) = raw else {
@@ -248,14 +247,13 @@ pub(crate) fn stack_effects(
     };
     let mut effects = Vec::with_capacity(list.len());
     for entry in list {
-        let kind = entry.get("type").and_then(|t| match t {
-            Tag::String(name) => Some(name.to_string_lossy()),
-            _ => None,
-        });
-        if let Some(kind) = kind.filter(|kind| {
-            kind.split_once(':')
-                .is_some_and(|(ns, _)| !ns.is_empty() && ns != "minecraft")
-        }) {
+        let Some(Tag::String(kind)) = entry.get("type") else {
+            continue;
+        };
+        let kind = kind.to_string_lossy();
+        if let Some(builtin) = builtin_consume_effect_path(&kind) {
+            effects.extend(builtin_consume_effect(builtin, entry));
+        } else {
             let Tag::Compound(fields) = entry else {
                 return Err("expected consume effect map".into());
             };
@@ -294,11 +292,6 @@ pub(crate) fn stack_effects(
                 registered,
                 binding,
             }));
-        } else if let Some(effect) =
-            parse_consume_effect(&sunrise_client_core::scoreboard::tag_to_json(entry))
-                .map_err(|error| error.to_string())?
-        {
-            effects.push(effect);
         }
     }
     Ok(effects)
@@ -3421,15 +3414,29 @@ mod death_effects_tests {
     }
 }
 
-fn consume_effect_spec(e: &Value) -> Option<ConsumeEffectSpec> {
-    let flag = |key: &str, default: bool| e.get(key).and_then(|v| v.as_bool()).unwrap_or(default);
+fn consume_effect_spec(e: &Tag) -> Option<ConsumeEffectSpec> {
+    let Tag::String(id) = e.get("id")? else {
+        return None;
+    };
+    let flag = |key, default| {
+        e.get(key)
+            .and_then(crate::item_data::component_bool)
+            .unwrap_or(default)
+    };
+    let number = |key| {
+        e.get(key)
+            .and_then(crate::properties::component_int)
+            .unwrap_or(0)
+    };
+    let show_particles = flag("show_particles", true);
     Some(ConsumeEffectSpec {
-        id: e.get("id")?.as_str()?.to_string(),
-        duration: e.get("duration").and_then(|d| d.as_i64()).unwrap_or(0) as i32,
-        amplifier: e.get("amplifier").and_then(|a| a.as_i64()).unwrap_or(0) as i32,
+        id: id.to_string_lossy(),
+        duration: number("duration"),
+        // `MobEffectInstance.Details.MAP_CODEC` reads `ExtraCodecs.UNSIGNED_BYTE`.
+        amplifier: i32::from(number("amplifier") as u8),
         ambient: flag("ambient", false),
-        show_particles: flag("show_particles", true),
-        show_icon: flag("show_icon", flag("show_particles", true)),
+        show_particles,
+        show_icon: flag("show_icon", show_particles),
     })
 }
 
@@ -3489,18 +3496,42 @@ mod consume_effect_tests {
     use super::*;
 
     #[test]
-    fn effects_keep_their_ambient_and_particle_flags() {
-        let quiet =
-            serde_json::json!({"id": "minecraft:haste", "duration": 3600, "show_particles": false});
+    fn effect_details_decode_byte_numbers_and_boolean_defaults() {
+        let quiet = Tag::compound([
+            ("id", Tag::String("minecraft:haste".into())),
+            ("duration", Tag::Byte(100)),
+            ("amplifier", Tag::Byte(-56)),
+            ("show_particles", Tag::Byte(0)),
+        ]);
         let s = consume_effect_spec(&quiet).unwrap();
         assert_eq!(
             (s.id.as_str(), s.duration, s.amplifier),
-            ("minecraft:haste", 3600, 0)
+            ("minecraft:haste", 100, 200)
         );
-        assert!(!s.ambient && !s.show_particles);
-        let plain =
-            consume_effect_spec(&serde_json::json!({"id": "minecraft:regeneration"})).unwrap();
-        assert!(!plain.ambient && plain.show_particles);
+        assert!(!s.ambient && !s.show_particles && !s.show_icon);
+        let plain = Tag::compound([("id", Tag::String("minecraft:regeneration".into()))]);
+        let plain = consume_effect_spec(&plain).unwrap();
+        assert!(!plain.ambient && plain.show_particles && plain.show_icon);
+    }
+
+    #[test]
+    fn saved_consume_effects_reject_out_of_range_parameters() {
+        for (kind, field, invalid) in [
+            ("apply_effects", "probability", 1.5_f32),
+            ("teleport_randomly", "diameter", 0.0),
+            ("teleport_randomly", "diameter", f32::NAN),
+        ] {
+            let tag = Tag::compound([
+                ("type", Tag::String(kind.into())),
+                (field, Tag::Float(invalid.to_bits())),
+            ]);
+            let mut raw = Tag::compound([("on_consume_effects", Tag::List(vec![tag]))]);
+            assert!(
+                stack_effects(&mut raw, "on_consume_effects", None, None)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
     }
 
     #[test]
@@ -3522,75 +3553,61 @@ mod consume_effect_tests {
 
     #[test]
     fn a_mods_own_consume_effect_kind_is_kept() {
-        let v = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
-        // A mod's own kind: Native with its JSON.
-        let native =
-            parse_consume_effect(&v(r#"{"type":"mymod:energy_boost","amount":42}"#)).unwrap();
+        let effect = |value: Value| {
+            parse_consumable(&serde_json::json!({"on_consume_effects": [value]}))
+                .unwrap()
+                .effects
+                .pop()
+        };
+        let native = effect(serde_json::json!({"type": "mymod:energy_boost", "amount": 42}));
         assert!(matches!(&native, Some(ConsumeEffect::Native(effect))
-            if effect.kind.as_ref() == "mymod:energy_boost" && effect.data.get("amount") == Some(&sunrise_core::nbt::Tag::Byte(42))));
-        // A bare vanilla name and its namespaced form are the same kind.
-        let bare = parse_consume_effect(&v(
-            r#"{"type":"apply_effects","effects":[{"id":"minecraft:speed","duration":100}]}"#,
-        ))
-        .unwrap();
-        assert!(matches!(bare, Some(ConsumeEffect::ApplyEffects { .. })));
-        let named = parse_consume_effect(
-            &v(r#"{"type":"minecraft:apply_effects","effects":[{"id":"minecraft:speed","duration":100}]}"#),
-        ).unwrap();
-        assert!(matches!(named, Some(ConsumeEffect::ApplyEffects { .. })));
-        // An empty namespace is minecraft's too (`Identifier.bySeparator`).
-        let empty = parse_consume_effect(&v(r#"{"type":":clear_all_effects"}"#)).unwrap();
-        assert!(matches!(empty, Some(ConsumeEffect::ClearAllEffects)));
-        // An unknown minecraft: kind and a missing type are dropped.
-        assert!(
-            parse_consume_effect(&v(r#"{"type":"minecraft:future"}"#))
-                .unwrap()
-                .is_none()
-        );
-        assert!(
-            parse_consume_effect(&v(r#"{"amount":42}"#))
-                .unwrap()
-                .is_none()
-        );
+            if effect.kind.as_ref() == "mymod:energy_boost" && effect.data.get("amount") == Some(&Tag::Byte(42))));
+        // A bare or empty namespace resolves to minecraft's own type.
+        for kind in ["apply_effects", "minecraft:apply_effects", ":apply_effects"] {
+            assert!(matches!(
+                effect(serde_json::json!({
+                    "type": kind,
+                    "effects": [{"id": "minecraft:speed", "duration": 100}],
+                })),
+                Some(ConsumeEffect::ApplyEffects { .. })
+            ));
+        }
+        assert!(effect(serde_json::json!({"type": "minecraft:future"})).is_none());
+        assert!(effect(serde_json::json!({"amount": 42})).is_none());
     }
 
     #[test]
     fn play_sound_consume_effect_uses_lenient_optional_range() {
-        let v = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
+        let sound_effect = |s: &str| {
+            let tag = sunrise_core::json_nbt::parse_json_tag(s).unwrap();
+            builtin_consume_effect("play_sound", &tag)
+        };
         assert_eq!(
-            parse_consume_effect(&v(
-                r#"{"type":"minecraft:play_sound","sound":"minecraft:entity.fox.eat"}"#,
-            ))
-            .unwrap(),
+            sound_effect(r#"{"type":"minecraft:play_sound","sound":"minecraft:entity.fox.eat"}"#),
             Some(ConsumeEffect::PlaySound(ConsumeSound::Registered(
                 "minecraft:entity.fox.eat".into(),
             )))
         );
         assert_eq!(
-            parse_consume_effect(&v(
+            sound_effect(
                 r#"{"type":"minecraft:play_sound","sound":{"sound_id":"demo:chime","range":24.5}}"#,
-            ))
-            .unwrap(),
+            ),
             Some(ConsumeEffect::PlaySound(ConsumeSound::Direct {
                 id: "demo:chime".into(),
                 range: Some(24.5),
             }))
         );
         assert_eq!(
-            parse_consume_effect(&v(
-                r#"{"type":"minecraft:play_sound","sound":{"sound_id":"demo:chime"}}"#,
-            ))
-            .unwrap(),
+            sound_effect(r#"{"type":"minecraft:play_sound","sound":{"sound_id":"demo:chime"}}"#),
             Some(ConsumeEffect::PlaySound(ConsumeSound::Direct {
                 id: "demo:chime".into(),
                 range: None,
             }))
         );
         assert_eq!(
-            parse_consume_effect(&v(
+            sound_effect(
                 r#"{"type":"minecraft:play_sound","sound":{"sound_id":"demo:chime","range":"oops"}}"#,
-            ))
-            .unwrap(),
+            ),
             Some(ConsumeEffect::PlaySound(ConsumeSound::Direct {
                 id: "demo:chime".into(),
                 range: None,
