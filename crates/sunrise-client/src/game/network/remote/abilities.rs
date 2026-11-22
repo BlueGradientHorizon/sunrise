@@ -11,9 +11,33 @@ fn walking_speed(abilities: Option<&PlayerAbilities>) -> f32 {
 }
 
 impl Remote {
-    /// `PlayerInfo.getGameMode()` for our own UUID, `None` before `ADD_PLAYER`.
+    /// `AbstractClientPlayer.gameMode()`: resolves `PlayerInfo` once per entity lifetime.
     pub(in crate::game) fn own_player_info_game_mode(&self) -> Option<i32> {
+        if let Some(cell) = self.own_player_info.get() {
+            return Some(cell.load(std::sync::atomic::Ordering::Relaxed));
+        }
+        if let Some(cell) = self.tab_game_modes.get(&self.profile) {
+            let _ = self.own_player_info.set(Arc::clone(cell));
+            return Some(cell.load(std::sync::atomic::Ordering::Relaxed));
+        }
         self.tab_players.get(&self.profile).map(|t| t.game_mode)
+    }
+
+    /// `AbstractClientPlayer.gameMode()` for a remote player entity in `level_players`.
+    pub(in crate::game) fn remote_player_info_game_mode(&self, entity_id: i32) -> Option<i32> {
+        if let Some(slot) = self.level_player_infos.get(&entity_id)
+            && let Some(cell) = slot.get()
+        {
+            return Some(cell.load(std::sync::atomic::Ordering::Relaxed));
+        }
+        let uuid = self.level_players.get(&entity_id)?;
+        if let Some(cell) = self.tab_game_modes.get(uuid) {
+            if let Some(slot) = self.level_player_infos.get(&entity_id) {
+                let _ = slot.set(Arc::clone(cell));
+            }
+            return Some(cell.load(std::sync::atomic::Ordering::Relaxed));
+        }
+        self.tab_players.get(uuid).map(|t| t.game_mode)
     }
 
     /// Apply `GameType.updatePlayerAbilities` onto `LocalPlayer.abilities` and mirror `game_mode`.
@@ -48,6 +72,9 @@ impl Game<'_> {
     /// Sync `PlayerInfo` (`player.spectator`) and `MultiPlayerGameMode` (`player.local_spectator`) onto the body.
     pub(in crate::game) fn sync_remote_player_game_mode(&mut self) {
         debug_assert!(self.remote.is_some());
+        if self.player.is_none() {
+            return;
+        }
         let info_spectator = self.own_player_is_spectator();
         let local_spectator = self.spectator();
         if let Some(player) = self.player.as_mut() {

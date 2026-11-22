@@ -272,6 +272,7 @@ impl Game<'_> {
             joined: false,
             reconfiguring: None,
             logged_in: false,
+            has_logical_player: false,
             entity_id: 0,
             local_entity_silent: false,
             camera: None,
@@ -360,6 +361,8 @@ impl Game<'_> {
             custom_completions: Default::default(),
             players: HashMap::new(),
             tab_players: HashMap::new(),
+            tab_game_modes: HashMap::new(),
+            own_player_info: std::cell::OnceCell::new(),
             skin_textures: HashMap::new(),
             own_profile: OwnProfile::Idle,
             skins: HashMap::new(),
@@ -369,6 +372,7 @@ impl Game<'_> {
             online_mode: false,
             levels: Vec::new(),
             level_players: HashMap::new(),
+            level_player_infos: HashMap::new(),
             level_player_names: HashMap::new(),
             level_player_textures: HashMap::new(),
             glowing: Default::default(),
@@ -529,6 +533,7 @@ impl Game<'_> {
             joined: false,
             reconfiguring: None,
             logged_in: true,
+            has_logical_player: false,
             logged_out: false,
             local_entity_silent: false,
             entity_id: 0,
@@ -618,6 +623,8 @@ impl Game<'_> {
             custom_completions: Default::default(),
             players: HashMap::new(),
             tab_players: HashMap::new(),
+            tab_game_modes: HashMap::new(),
+            own_player_info: std::cell::OnceCell::new(),
             skin_textures: HashMap::new(),
             own_profile: OwnProfile::Idle,
             skins: HashMap::new(),
@@ -627,6 +634,7 @@ impl Game<'_> {
             online_mode: false,
             levels: Vec::new(),
             level_players: HashMap::new(),
+            level_player_infos: HashMap::new(),
             level_player_names: HashMap::new(),
             level_player_textures: HashMap::new(),
             glowing: Default::default(),
@@ -861,7 +869,10 @@ impl Game<'_> {
         let previous = spawn
             .previous_game_type
             .map(crate::game::game_mode::mode_from_id);
+        let body_flight = self.player.as_ref().map(|p| (p.flying, p.flying_speed));
         let r = self.remote.as_mut().unwrap();
+        let new_logical_player =
+            !matches!(entry, RemoteDimensionEntry::Login) || !r.has_logical_player;
         // A Sunrise server's bulk edit sends whole columns with the light
         // from before its relight; any other server's packet light is final.
         let relight_resent = r.quiet_commands;
@@ -876,7 +887,13 @@ impl Game<'_> {
         r.level = spawn.dimension.clone();
         r.level_key = mod_api::__private::dimension_key(&spawn.dimension);
         r.hashed_seed = spawn.seed;
-        r.abilities = sunrise_client::lan::abilities::PlayerAbilities::default();
+        if new_logical_player {
+            r.abilities = sunrise_client::lan::abilities::PlayerAbilities::default();
+            r.own_player_info = std::cell::OnceCell::new();
+        } else if let Some((flying, flying_speed)) = body_flight {
+            r.sync_body_flight(flying, flying_speed);
+        }
+        r.has_logical_player = true;
         // handleLogin/handleRespawn run adjustPlayer(newPlayer) before setLocalMode.
         r.abilities.update_for_mode(adjust_mode.id());
         r.flat = spawn.flat;
@@ -951,6 +968,7 @@ impl Game<'_> {
                 // The entity ids are the old world's; the new dimension's
                 // player entities re-map to their profiles on AddEntity.
                 r.level_players.clear();
+                r.level_player_infos.clear();
                 r.level_player_names.clear();
                 r.level_player_textures.clear();
                 // A new ClientLevel: a new chunk storage, centred on 0, 0.

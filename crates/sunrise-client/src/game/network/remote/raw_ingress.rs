@@ -467,6 +467,10 @@ impl Game<'_> {
                     r.clear_attachments();
                     r.players.clear();
                     r.tab_players.clear();
+                    r.tab_game_modes.clear();
+                    r.own_player_info = std::cell::OnceCell::new();
+                    r.level_player_infos.clear();
+                    r.has_logical_player = false;
                     r.listed.clear();
                     r.signatures = Default::default();
                     r.custom_completions.clear();

@@ -308,6 +308,9 @@ impl MotionWorld<'_, '_, '_> {
     /// ground and collisions are what its look packet sends; `updatePlayerPose` sits it up.
     pub fn rider_tick(&mut self, direction: [f32; 2]) -> Result<()> {
         self.passenger_base_tick()?;
+        if self.player.may_fly && self.player.local_spectator {
+            self.player.flying = true;
+        }
         self.rider_travel_tick(direction)?;
         self.passenger_sits_up()
     }
