@@ -3,7 +3,7 @@ use crate::{
     __private::{DeclarationKind, DeclarationRefusal},
     Answered, DeclarationError,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 /// Pre-resolved namespace ownership table derived once from the package inventory at load.
 // hidden: engine- and vocab-internal indexed authority, not a mod authoring surface.
