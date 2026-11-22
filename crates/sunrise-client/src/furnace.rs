@@ -297,7 +297,7 @@ mod tests {
     };
     use sunrise_core::random::{LegacyRandom, LevelRandom};
 
-    fn tick(
+    pub(super) fn tick(
         furnace: &mut Furnace,
         context: &LoopContext,
         recipes: &Recipes,
@@ -662,6 +662,7 @@ mod tests {
 
 #[cfg(test)]
 mod crafting_remainder_tests {
+    use super::tests::tick;
     use super::*;
     // A five-use tool: using it at damage four breaks it.
     fn worn(stack: &ItemStack) -> Option<ItemStack> {
