@@ -32,7 +32,7 @@ impl BlockPart for Effects {
         host: &mut dyn ClientHost,
         event: &mut AddHitEffectsEvent<'_>,
     ) -> Flow {
-        let id = event.state.block().id(&*host).to_string();
+        let id = event.state.block().id(&*host).unwrap().to_owned();
         self.calls
             .lock()
             .unwrap()
@@ -61,7 +61,7 @@ impl BlockPart for Effects {
         host: &mut dyn ClientHost,
         event: &mut AddDestroyEffectsEvent<'_>,
     ) -> Flow {
-        let id = event.state.block().id(&*host).to_string();
+        let id = event.state.block().id(&*host).unwrap().to_owned();
         self.calls
             .lock()
             .unwrap()
