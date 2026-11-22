@@ -6,16 +6,6 @@ use sunrise_assets::resource_source::ResourceSource;
 
 type Entry = (String, u32, u32);
 
-/// `SpriteSourceList.list` and `SpriteResourceLoader.loadSprite` for the non-mipmapped ITEMS atlas.
-pub(super) fn load(
-    root: &ResourceSource,
-    padding: u32,
-    maximum: u32,
-) -> crate::Result<HashMap<String, Rect>> {
-    let (entries, names) = collect_entries(root, "minecraft:items");
-    finish_atlas("minecraft:items", &entries, &names, 0, padding, maximum)
-}
-
 /// `SpriteLoader.stitch` for any atlas (`items`, `blocks`, `shield_patterns`) with vanilla mipmap
 /// clamping and anisotropic padding (`(1 << mip_level) << aniso_shift`).
 pub(super) fn load_atlas(

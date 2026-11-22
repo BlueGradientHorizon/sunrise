@@ -380,9 +380,11 @@ fn glint_atlas_boundaries() {
     .into_iter()
     .enumerate()
     {
-        let atlas = glint_atlas::load(
+        let atlas = glint_atlas::load_atlas(
             &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-            1 << i,
+            "minecraft:items",
+            0,
+            i as u32,
             16384,
         )
         .unwrap();
@@ -403,9 +405,11 @@ fn glint_atlas_boundaries() {
         1,
         [255; 4],
     );
-    let atlas = glint_atlas::load(
+    let atlas = glint_atlas::load_atlas(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-        1,
+        "minecraft:items",
+        0,
+        0,
         32768,
     )
     .unwrap();
@@ -414,9 +418,11 @@ fn glint_atlas_boundaries() {
         [book.u0, book.v0, book.u1, book.v1],
         [1.0 / 32768.0, 33.0 / 64.0, 17.0 / 32768.0, 49.0 / 64.0]
     );
-    let atlas = glint_atlas::load(
+    let atlas = glint_atlas::load_atlas(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-        1,
+        "minecraft:items",
+        0,
+        0,
         16384,
     )
     .unwrap();
@@ -427,10 +433,12 @@ fn glint_atlas_boundaries() {
     );
     assert_eq!(atlas["item/wide"].u0, atlas["missingno"].u0);
     assert!(
-        glint_atlas::load(
+        glint_atlas::load_atlas(
             &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-            1,
-            16
+            "minecraft:items",
+            0,
+            0,
+            16,
         )
         .is_err()
     );
@@ -478,9 +486,11 @@ fn invalid_and_generated_sprites_match_vanilla() {
             color,
         );
     }
-    let atlas = glint_atlas::load(
+    let atlas = glint_atlas::load_atlas(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-        1,
+        "minecraft:items",
+        0,
+        0,
         16384,
     )
     .unwrap();
@@ -529,9 +539,11 @@ fn namespaces_sharing_a_prefix_are_all_listed_in_the_glint_atlas() {
         16,
         [255; 4],
     );
-    let atlas = glint_atlas::load(
+    let atlas = glint_atlas::load_atlas(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-        1,
+        "minecraft:items",
+        0,
+        0,
         16384,
     )
     .unwrap();
@@ -558,9 +570,11 @@ fn invalid_texture_metadata_does_not_move_book_glint() {
         r#"{"texture":{"alpha_cutoff_bias":"0.5"}}"#,
     ] {
         fs::write(&metadata, invalid).unwrap();
-        let atlas = glint_atlas::load(
+        let atlas = glint_atlas::load_atlas(
             &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-            1,
+            "minecraft:items",
+            0,
+            0,
             16384,
         )
         .unwrap();
@@ -587,9 +601,11 @@ fn invalid_texture_metadata_does_not_move_book_glint() {
             .to_string(),
         )
         .unwrap();
-        let atlas = glint_atlas::load(
+        let atlas = glint_atlas::load_atlas(
             &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-            1,
+            "minecraft:items",
+            0,
+            0,
             16384,
         )
         .unwrap();
@@ -615,9 +631,11 @@ fn glint_atlas_reads_prepared_images_and_metadata_together() {
         256,
         [0, 255, 0, 255],
     );
-    let atlas = glint_atlas::load(
+    let atlas = glint_atlas::load_atlas(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-        1,
+        "minecraft:items",
+        0,
+        0,
         16384,
     )
     .unwrap();
@@ -635,9 +653,11 @@ fn glint_atlas_reads_prepared_images_and_metadata_together() {
 fn prepared_item_atlas_matches_pinned_vanilla() {
     let root =
         PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources"));
-    let atlas = glint_atlas::load(
+    let atlas = glint_atlas::load_atlas(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-        1,
+        "minecraft:items",
+        0,
+        0,
         16384,
     )
     .unwrap();
@@ -679,9 +699,11 @@ fn external_item_atlas_oracle() {
         .unwrap()
         .parse()
         .unwrap();
-    let sprites = glint_atlas::load(
+    let sprites = glint_atlas::load_atlas(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-        1 << glint_padding(if bit == 0 { 0 } else { 2 }, bit),
+        "minecraft:items",
+        0,
+        glint_padding(if bit == 0 { 0 } else { 2 }, bit) as u32,
         32768,
     )
     .unwrap();

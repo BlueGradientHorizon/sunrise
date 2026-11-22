@@ -2062,7 +2062,7 @@ mod tests {
         assert_eq!((mask.width, mask.height), (1, 1));
         assert_eq!(mask.frames, vec![vec![true], vec![false]]);
         assert!(sprites.translucent("example:item/mask"));
-        let atlas = glint_atlas::load(&source, 1, 1024).unwrap();
+        let atlas = glint_atlas::load_atlas(&source, "minecraft:items", 0, 0, 1024).unwrap();
         assert!(atlas.contains_key("example:item/mask"));
         assert_eq!(fs::read_dir(&folder).unwrap().count(), 0);
         fs::remove_dir(&folder).unwrap();
