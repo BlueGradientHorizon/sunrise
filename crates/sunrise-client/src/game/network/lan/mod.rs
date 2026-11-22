@@ -2311,16 +2311,23 @@ impl Game<'_> {
                         if self.enter_level(theirs).is_ok() {
                             let conn = guest.conn;
                             let host = self.lan.as_mut()?;
-                            let at = host.hub.guests.len();
                             let carrier = guest.entity_id as u32;
+                            let asleep = guest.bed.is_some();
                             host.hub.guests.push(*guest);
                             // A player logging out carries no mob a mod seated on it.
                             self.eject_player_riders(Some(carrier));
+                            // ServerPlayer.disconnect: stopSleepInBed(true, false).
+                            if asleep && let Some(gi) = self.guest_index(conn) {
+                                self.wake_guest(gi, true, false);
+                            }
                             self.guest_disconnected(conn);
                             let Some(host) = self.lan.as_mut() else {
                                 unreachable!("LanHost dropped inside a tick; closes are deferred")
                             };
-                            assert_eq!(host.hub.guests[at].conn, conn);
+                            let at =
+                                host.hub.guests.connection_index(conn).expect(
+                                    "a leaving player stays listed while their menu closes",
+                                );
                             *guest = host.hub.guests.remove(at);
                         }
                         if let Err(e) = self.enter_level(back) {
