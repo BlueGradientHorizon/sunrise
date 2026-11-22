@@ -838,7 +838,7 @@ impl Game<'_> {
         let (area, id) = (self.armor_stands[i].bounds(), self.armor_stands[i].id);
         let (center, on_ground) = (
             self.armor_stands[i].position,
-            self.armor_stands[i].on_ground,
+            self.armor_stands[i].ground.on_ground,
         );
         let hurt = self.punch_armor_stand(i);
         if hurt {
@@ -1056,15 +1056,16 @@ impl Game<'_> {
                 self.res.facts(),
                 self.collision,
             );
-            let mut scene = sunrise_client::collisions::SceneCollisions {
+            let scene = sunrise_client::collisions::SceneCollisions {
                 world,
                 binding: collision,
                 subject: None,
             };
             let side = game_side!(self);
             let step = a.tick_move(
-                &mut scene,
+                &scene,
                 facts,
+                Some(&self.res.motion().blocks),
                 &self.res.motion().climbing,
                 in_water,
                 Some(self.border.geometry()),
@@ -1085,8 +1086,8 @@ impl Game<'_> {
                 a.enchantment_fall_distance +=
                     f64::from((a.previous.y - a.position.y).max(0.0) as f32);
             }
-            let landed = a.on_ground && a.enchantment_fall_distance > 0.0;
-            if a.on_ground {
+            let landed = a.ground.on_ground && a.enchantment_fall_distance > 0.0;
+            if a.ground.on_ground {
                 a.enchantment_fall_distance = 0.0;
             }
             // LivingEntity.checkFallDamage: onChangedBlock before the block's
@@ -1103,14 +1104,12 @@ impl Game<'_> {
             }
             if step.is_some() && !self.armor_stands[i].no_physics(None) {
                 let stand = &self.armor_stands[i];
-                let (id, footprint, mut ground, mut velocity) = (
+                let (id, footprint, ground, mut velocity) = (
                     stand.id,
                     (stand.position, stand.bounds()),
-                    stand.support,
+                    stand.ground,
                     stand.velocity,
                 );
-                // The stand keeps the on-ground flag separately from its retained support.
-                ground.on_ground = stand.on_ground;
                 let writes = self.body_step_on((id, TYPE_ID), footprint, &ground, &mut velocity);
                 let stand = &mut self.armor_stands[i];
                 // `ArmorStand.hurtServer` does not take generic damage; the stand
@@ -1123,6 +1122,7 @@ impl Game<'_> {
                     Some(&mut stand.fire_ticks),
                 );
                 stand.velocity = velocity;
+                // BubbleColumnBlock.entityInside runs in the sweep after Block.stepOn.
                 let mut tops = Vec::new();
                 stand.push_by_bubble_column_over(
                     &self.world,
@@ -1201,8 +1201,9 @@ impl Game<'_> {
     /// `Entity.move(mover, delta)` for armor stand `i` (a lid's push or a mod's move), one with physics (vanilla's
     /// `!noPhysics`: not a marker, not `NoGravity`), the stand's own `shove` by `delta`. Stands tick
     /// before mobs here, while vanilla ticks a stand that joined after the
-    /// pushing `shulker` (one placed on it) after the shulker: `shove` makes
-    /// up for the order. A shulker box's lid moves it after every entity's tick.
+    /// pushing `shulker` (one placed on it) after the shulker. Only the settled
+    /// vertical velocity depends on that order. A shulker box's lid moves it
+    /// after every entity's tick.
     /// `grid` holds the stands' obstacles, built once per lid at its first stand.
     pub(super) fn shoves_armor_stand(
         &mut self,
@@ -1232,6 +1233,7 @@ impl Game<'_> {
             Some(self.border.geometry()),
             &nearby,
             travels_after,
+            !self.options.execution_role.is_client() && self.remote.is_none(),
             mover,
             &self.loop_context,
         );
@@ -1313,7 +1315,10 @@ impl Game<'_> {
     /// still steps). `canDestroyEgg` wants mob griefing before the level's roll.
     fn armor_stand_turtle_eggs(&mut self, i: usize, landed: bool) -> Result<()> {
         let stand = &self.armor_stands[i];
-        if !stand.on_ground || self.remote.is_some() || self.options.execution_role.is_client() {
+        if !stand.ground.on_ground
+            || self.remote.is_some()
+            || self.options.execution_role.is_client()
+        {
             return Ok(());
         }
         let p = stand.on_pos_legacy(|p| {

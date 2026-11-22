@@ -163,7 +163,7 @@ fn mob(game: &mut Game<'_>, id: u32, name: &str, position: Vec3) {
     let mut mob = Mob::new(id, kind, position, 0.0);
     mob.persistent = true;
     mob.no_ai = true;
-    mob.on_ground = true;
+    mob.ground.on_ground = true;
     game.mobs.push(mob);
 }
 

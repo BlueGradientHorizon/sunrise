@@ -1762,7 +1762,7 @@ fn effects_from_blocks_until_hurt(
     let (tick_from, tick_to) = (m.previous, m.position);
     // Block.stepOn for the block under a mob on the ground (`getOnPosLegacy`):
     // MagmaBlock.stepOn's hot floor, 1 damage (a mob never sneaks).
-    if m.on_ground && m.alive() {
+    if m.ground.on_ground && m.alive() {
         // 0.2 below the feet, or the supporting block when the centre is over
         // its edge.
         let [x, y, z] = m.block_on_legacy(w);
@@ -2205,7 +2205,7 @@ fn honey_slide(m: &mut Mob, p: [i32; 3], level: &mut DamageLevel<'_>, events: &m
     let new_delta_y = |dy: f64| (dy - 0.08) * f64::from(0.98_f32);
     let [x, y, z] = p.map(f64::from);
     let pos = m.position;
-    if m.on_ground || pos.y > y + 0.9375 - 1.0e-7 || old_delta_y(m.velocity.y) >= -0.08 {
+    if m.ground.on_ground || pos.y > y + 0.9375 - 1.0e-7 || old_delta_y(m.velocity.y) >= -0.08 {
         return;
     }
     let dx = (x + 0.5 - pos.x).abs();
@@ -2848,7 +2848,7 @@ pub(super) fn play_ambient(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>
             super::fox::awake_ambient(m, w)
         }
         // Turtle.getAmbientSound: the land ambient only on land and grown up, else silent.
-        Species::Turtle if m.fluids.in_water || !m.on_ground || m.is_baby() => return,
+        Species::Turtle if m.fluids.in_water || !m.ground.on_ground || m.is_baby() => return,
         Species::PolarBear if m.is_baby() => "entity.polar_bear.ambient_baby",
         // Turtle.getAmbientSound: only an adult on land makes a sound.
         Species::Turtle if turtle_ambient_silent(m) => return,
@@ -2901,7 +2901,7 @@ pub(super) fn play_ambient(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>
 /// `Turtle.getAmbientSound`: `entity.turtle.ambient_land` only when the turtle
 /// is out of water, on the ground and not a baby; otherwise `null` (silent).
 fn turtle_ambient_silent(m: &Mob) -> bool {
-    m.fluids.in_water || !m.on_ground || m.is_baby()
+    m.fluids.in_water || !m.ground.on_ground || m.is_baby()
 }
 /// `Animal.aiStep`: age-based love clearing and countdown, following the age step.
 /// Both the normal and NoAI paths run it after the age step.
@@ -3194,7 +3194,7 @@ fn ai_step_after_push(
     hurt_by_water(m, w, level, events);
     // Spider.tick: climbing while pressed against a wall.
     if m.kind.flags.climber {
-        m.climbing = m.horizontal_collision;
+        m.climbing = m.ground.horizontal_collision;
     }
     ageable_step(m, w, level, events);
     animal_step(m, events);
@@ -6394,11 +6394,11 @@ mod turtle_ambient_tests {
     #[test]
     fn a_turtle_is_silent_in_water_in_the_air_and_as_a_baby() {
         let mut m = turtle();
-        m.on_ground = true;
+        m.ground.on_ground = true;
         assert!(!turtle_ambient_silent(&m));
-        m.on_ground = false;
+        m.ground.on_ground = false;
         assert!(turtle_ambient_silent(&m));
-        m.on_ground = true;
+        m.ground.on_ground = true;
         m.fluids.in_water = true;
         assert!(turtle_ambient_silent(&m));
     }
@@ -7696,7 +7696,7 @@ mod noai_species_step_tests {
                     let mut m = Mob::new(1, kind, Vec3::new(x, 64.0, 8.5), 0.0);
                     m.no_ai = true;
                     m.persistent = true;
-                    m.on_ground = true;
+                    m.ground.on_ground = true;
                     m
                 };
                 let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
@@ -7713,7 +7713,7 @@ mod noai_species_step_tests {
                 let mut guardian = mob("minecraft:guardian", 14.5);
                 assert!(tick(&mut guardian, w, &mut level.level(), &mut events));
                 assert_eq!(guardian.velocity.y, 0.5);
-                assert!(!guardian.on_ground);
+                assert!(!guardian.ground.on_ground);
 
                 let mut camel = mob("minecraft:camel", 24.5);
                 camel.extra.camel_sitting = true;

@@ -246,7 +246,7 @@ pub fn travel(m: &mut Mob, w: &super::MobWorld) {
         y * f64::from(0.98_f32),
         m.velocity.z * f64::from(0.91_f32),
     );
-    m.on_ground = false;
+    m.ground.on_ground = false;
 }
 /// `Vex.tick`: the limited life costs a heart a second once spent.
 pub fn ai_step(m: &mut Mob, w: &super::MobWorld, level: &mut DamageLevel<'_>) {
