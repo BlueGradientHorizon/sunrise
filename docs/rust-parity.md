@@ -1,5 +1,8 @@
 # Sunrise Rust rewrite status
 
+This page records early port validation. Some subsystem notes and scoped benchmark reports are no longer in the tree.
+For current checks, see the [parity workflow](parity-workflow.md) and [port ledger](port-ledger.md).
+
 The behavior target is the repository's pinned **Minecraft Java Edition 26.3**.
 One-to-one parity with vanilla gameplay is the acceptance criterion. It has **not**
 been reached, but the Rust game is now playable: the [native client](native-client.md)
@@ -29,8 +32,7 @@ effect behavior, notification side effects and full entity/world lifecycle
 bindings remain unfinished. All pinned block-survival
 families now have native differential coverage. Full simulation callbacks,
 complete chunk generation, entity behavior, networking, rendering and playable
-integration remain unfinished. The linked subsystem documents and hashed reports
-record the exact tested scope and remaining gaps.
+integration remain unfinished.
 The `sunrise-assets` crate now decodes pinned cuboid models, with all 2,883 bundled
 block-model JSON files and 2,457 synthetic cases compared against the actual
 client parser. [Decoder scope and validation](native-client.md#validation)
@@ -175,8 +177,6 @@ client/server output, compiled oracle, and `report.json`. The report records
 source/input/output hashes, reference identities, tool versions, and matched
 line counts. A prior success report is removed before a new run can fail.
 CI runs the same comparison in addition to offline Rust and Python checks.
-The checked-in scoped validation report
-contains only metadata and digests from the local run, not game code or artifacts.
 
 The additional [world-data suite](world-data.md) checks NBT and region
 interoperability, saved palettes, all 35,723 registered block-state IDs, and
