@@ -2,6 +2,7 @@
 use crate::game::{
     FallingBlock, Game, InteractTarget, in_own_process,
     interactions::RemoteInteraction,
+    native_client_session::tests::finish_login,
     native_entity_refs::tests::{with_client_game, with_game},
     native_lifecycle::NativeLifecycle,
     persist::OffLevel,
@@ -722,8 +723,9 @@ fn middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block() {
                     let server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5]);
                     let mut conn = Connection::local(server);
                     conn.reader
-                        .set_read_timeout(Some(std::time::Duration::from_millis(500)))
+                        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                         .unwrap();
+                    finish_login(game, &mut conn);
                     ensure_chunk(game, 0, 0);
                     let stone = game
                         .pack
@@ -755,15 +757,18 @@ fn middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block() {
                         "{kind} has no server getPickResult"
                     );
                     game.test_remote_pick_click();
+                    game.send(play::Serverbound::Punch(sunrise_protocol::packets::Empty));
                     let (pkt_id, body) = conn.recv().expect("PickItemFromEntity packet");
                     let decoded = play::Serverbound::decode(pkt_id, &body).unwrap();
                     assert!(
                         matches!(&decoded, play::Serverbound::PickItemFromEntity(p) if p.id == id),
                         "expected PickItemFromEntity({id}) for {kind}, got {decoded:?}"
                     );
+                    let (pkt_id, body) = conn.recv().expect("play packet fence");
+                    let decoded = play::Serverbound::decode(pkt_id, &body).unwrap();
                     assert!(
-                        conn.recv().is_err(),
-                        "must not also send PickItemFromBlock for {kind}"
+                        matches!(decoded, play::Serverbound::Punch(_)),
+                        "expected the fence after the entity pick for {kind}, got {decoded:?}"
                     );
                 });
             }
