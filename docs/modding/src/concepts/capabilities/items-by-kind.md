@@ -57,8 +57,10 @@ as above; do not re-enter the provider or write inside the callback. Act on the 
 
 `transfer(host, from, to, resource, max, tx)` moves one kind: all or nothing, a partial take
 retried, and `StorageError::Overanswered` when a handler answers more than it was asked.
-`StorageError::TransactionUnavailable` means the host refused the transfer savepoint, not that
-there was no room or nothing to move.
+`StorageError::InvalidContext` means the caller did not supply the current context.
+`StorageError::TransactionUnavailable` means the host could not open the transfer savepoint;
+`StorageError::CommitRefused` means it ran and the host rolled back its requested commit.
+None of these is a zero transfer.
 It queries the source amount and destination space before extracting and inserting.
 A partial move can require additional calls. `transfer_matching(host, from, to, filter, max, tx)` moves up to `max`
 items accepted by the filter. It does not read the source when `max` is zero. Otherwise it visits the source once

@@ -1,7 +1,8 @@
 //! Scoped views and sequential host loans for entity-scoped and item-entity-scoped hooks.
 use crate::{
     ClientHost, EntityRef, EntityTypeKey, ItemEntityRef, ItemStack, ItemStackView, ServerHost,
-    StackWriteError, TransactionContext, TransactionError, TransactionUnavailable, WorldEpoch,
+    StackWriteError, TransactionContext, TransactionError, TransactionScopeError,
+    TransactionUnavailable, WorldEpoch,
 };
 
 /// Live resident view of a server general entity row during `general_entity_tick`.
@@ -96,6 +97,24 @@ impl<'a> EntityServerScope<'a> {
         Self(access)
     }
 
+    /// Borrows an already-open innermost transaction without opening or closing a frame.
+    /// Returns `None` without calling `f` if there is no current transaction to borrow.
+    pub fn current_transaction<T>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut EntityServerScope<'_>, &'loan TransactionContext) -> T,
+    ) -> Option<T> {
+        let mut f = Some(f);
+        let mut value = None;
+        self.0
+            .with_current_transaction_scope(&mut |access, tx| {
+                if let Some(f) = f.take() {
+                    value = Some(f(&mut EntityServerScope::new(access), tx));
+                }
+            })
+            .ok()?;
+        value
+    }
+
     /// Lend the live general entity row for `f`. Once `f` returns, you can use the Host
     /// and ask for another loan afterwards; each loan re-checks residency and returns
     /// `None` without running `f` if the entity was removed or left the level.
@@ -128,18 +147,14 @@ impl<'a> EntityServerScope<'a> {
     ) -> Result<T, TransactionError<E>> {
         let mut f = Some(f);
         let mut result = None;
-        self.0
-            .with_transaction_scope(&mut |access, tx| {
-                let Some(f) = f.take() else { return false };
-                let outcome = f(&mut EntityServerScope::new(access), tx);
-                let commit = outcome.is_ok();
-                result = Some(outcome);
-                commit
-            })
-            .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
-        result
-            .ok_or(TransactionError::Unavailable)?
-            .map_err(TransactionError::Aborted)
+        let settled = self.0.with_transaction_scope(&mut |access, tx| {
+            let Some(f) = f.take() else { return false };
+            let outcome = f(&mut EntityServerScope::new(access), tx);
+            let commit = outcome.is_ok();
+            result = Some(outcome);
+            commit
+        });
+        crate::item::transaction::finish_scope(settled, result)
     }
 }
 
@@ -369,6 +384,25 @@ impl<'a> ItemEntityServerScope<'a> {
         self.item_id
     }
 
+    /// Borrows an already-open innermost transaction without opening or closing a frame.
+    /// Returns `None` without calling `f` if there is no current transaction to borrow.
+    pub fn current_transaction<T>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut ItemEntityServerScope<'_>, &'loan TransactionContext) -> T,
+    ) -> Option<T> {
+        let item_id = self.item_id;
+        let mut f = Some(f);
+        let mut value = None;
+        self.access
+            .with_current_transaction_scope(&mut |access, tx| {
+                if let Some(f) = f.take() {
+                    value = Some(f(&mut ItemEntityServerScope::new(access, item_id), tx));
+                }
+            })
+            .ok()?;
+        value
+    }
+
     /// Lend the live dropped-item entity for `f`. Once `f` returns, you can use the Host
     /// and ask for another loan afterwards; each loan re-checks residency and returns
     /// `None` without running `f` if the item was removed.
@@ -402,18 +436,14 @@ impl<'a> ItemEntityServerScope<'a> {
         let item_id = self.item_id;
         let mut f = Some(f);
         let mut result = None;
-        self.access
-            .with_transaction_scope(&mut |access, tx| {
-                let Some(f) = f.take() else { return false };
-                let outcome = f(&mut ItemEntityServerScope::new(access, item_id), tx);
-                let commit = outcome.is_ok();
-                result = Some(outcome);
-                commit
-            })
-            .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
-        result
-            .ok_or(TransactionError::Unavailable)?
-            .map_err(TransactionError::Aborted)
+        let settled = self.access.with_transaction_scope(&mut |access, tx| {
+            let Some(f) = f.take() else { return false };
+            let outcome = f(&mut ItemEntityServerScope::new(access, item_id), tx);
+            let commit = outcome.is_ok();
+            result = Some(outcome);
+            commit
+        });
+        crate::item::transaction::finish_scope(settled, result)
     }
 }
 
@@ -437,14 +467,25 @@ pub trait ResidentGeneralEntity {
 pub trait EntityServerAccess {
     fn with_view(&mut self, f: &mut dyn FnMut(EntitySubjectView<'_>));
     fn host(&mut self) -> &mut dyn ServerHost;
+    /// Lends the current scope without opening or settling a transaction.
+    fn with_current_transaction_scope(
+        &mut self,
+        _callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn EntityServerAccess,
+            &'loan TransactionContext,
+        ),
+    ) -> Result<(), TransactionUnavailable> {
+        Err(TransactionUnavailable)
+    }
+
     fn with_transaction_scope(
         &mut self,
         _callback: &mut dyn for<'loan> FnMut(
             &'loan mut dyn EntityServerAccess,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
-        Err(TransactionUnavailable)
+    ) -> Result<bool, TransactionScopeError> {
+        Err(TransactionScopeError::Unavailable)
     }
 }
 
@@ -490,13 +531,24 @@ pub trait ResidentItemEntity {
 pub trait ItemEntityServerAccess {
     fn with_view(&mut self, f: &mut dyn FnMut(ItemEntitySubjectView<'_>));
     fn host(&mut self) -> &mut dyn ServerHost;
+    /// Lends the current scope without opening or settling a transaction.
+    fn with_current_transaction_scope(
+        &mut self,
+        _callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn ItemEntityServerAccess,
+            &'loan TransactionContext,
+        ),
+    ) -> Result<(), TransactionUnavailable> {
+        Err(TransactionUnavailable)
+    }
+
     fn with_transaction_scope(
         &mut self,
         _callback: &mut dyn for<'loan> FnMut(
             &'loan mut dyn ItemEntityServerAccess,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
-        Err(TransactionUnavailable)
+    ) -> Result<bool, TransactionScopeError> {
+        Err(TransactionScopeError::Unavailable)
     }
 }

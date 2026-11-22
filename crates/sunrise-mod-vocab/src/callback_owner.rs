@@ -242,8 +242,11 @@ impl CallbackOwner {
                 Ok::<(), core::convert::Infallible>(())
             })
         }) {
-            Ok(Err(crate::TransactionError::Unavailable)) => {
-                log::warn!("mod {id}: scheduled task refused: transaction unavailable");
+            Ok(Err(
+                error @ (crate::TransactionError::Unavailable
+                | crate::TransactionError::CommitRefused),
+            )) => {
+                log::warn!("mod {id}: scheduled task refused: {error}");
                 Ok(())
             }
             Ok(Err(crate::TransactionError::Aborted(never))) => match never {},

@@ -278,9 +278,11 @@ pub mod tests {
             }) {
                 Ok(moved) => Ok(moved),
                 Err(crate::TransactionError::Aborted(over)) => Err(over),
-                Err(crate::TransactionError::Unavailable) => {
-                    panic!("TankWorld supports transactions")
-                }
+                Err(
+                    error @ (crate::TransactionError::InvalidContext
+                    | crate::TransactionError::Unavailable
+                    | crate::TransactionError::CommitRefused),
+                ) => Err(error),
             }
         }
     }
@@ -447,13 +449,23 @@ pub mod tests {
                 self,
             ))
         }
+        fn with_current_transaction_scope(
+            &mut self,
+            callback: &mut dyn for<'loan> FnMut(
+                &'loan mut dyn ServerHost,
+                &'loan TransactionContext,
+            ),
+        ) -> Result<(), mod_vocab::TransactionUnavailable> {
+            FakeJournal::with_current_scope(self, |host| &host.journal, callback)
+        }
+
         fn with_transaction_scope(
             &mut self,
             callback: &mut dyn for<'loan> FnMut(
                 &'loan mut dyn ServerHost,
                 &'loan TransactionContext,
             ) -> bool,
-        ) -> Result<(), crate::TransactionUnavailable> {
+        ) -> Result<bool, crate::TransactionScopeError> {
             FakeJournal::with_scope(
                 self,
                 |world| &mut world.journal,

@@ -15,10 +15,11 @@ fn update(host: &mut dyn ServerHost) -> Result<(), TransactionError<()>> {
 }
 ```
 
-The closure's `Ok(value)` commits and returns `Ok(value)`. Its `Err(error)`
+The closure's `Ok(value)` requests a commit; the scope returns `Ok(value)` only if it commits. Its `Err(error)`
 rolls back the transaction's journaled work and returns `TransactionError::Aborted(error)`.
 `TransactionError::Unavailable` means the host could not open the transaction and did not
-call the closure. Handle that separately from an error in your own work. The callback
+call the closure. `TransactionError::CommitRefused` means the closure requested a commit,
+but the host rolled back its writes (for example, a captured packet could not reserve bytes). The callback
 receives `&mut dyn ServerHost`, even if you call `transaction` on a concrete or generic
 host. Use that type in explicitly typed callbacks and in the helpers they call, and
 keep concrete-host-only setup and assertions outside the loan.
@@ -42,7 +43,8 @@ Other entry points use the same result type:
 To lend a temporary scratch item slot inside a scoped transaction—either a single fixed-item
 slot or a two-slot copy for dispenser-style exchanges—use `host.scratch_stack` and
 `host.scratch_slots` on `HostTransaction`. Both return `Result<(T, …), ScratchError<E>>`,
-publish the resulting stack or slots only on commit, restore lent slots on nested abort, and
+publish the resulting stack or slots only on commit (otherwise a refused commit returns
+`ScratchError::CommitRefused`), restore lent slots on nested abort, and
 keep closed loans out of enclosing journals; see
 [Scratch stacks and wrapped places](capabilities/item-places-and-components.md#scratch-stacks-and-wrapped-places).
 
@@ -191,14 +193,28 @@ with `Wire`. It cannot outlive the closure, and only the scope ends the transact
 
 Writes must use the context for the **innermost** open transaction on that host.
 An ancestor context (even from the same host), a context from another host, or a
-context passed to a host with no open transaction is a programming error: the
-operation panics rather than reporting that nothing moved, even for a zero-amount
-write. This follows NeoForge's `TransactionManager.validateCurrentTransaction`.
-When opening a nested transaction, use its new `tx` until that closure returns.
+context passed to a host with no open transaction is refused without calling the
+handler or panicking, even for a zero-amount write. The innermost-frame rule follows
+NeoForge's `TransactionManager.validateCurrentTransaction`. Use the inner `tx` until
+that closure returns.
 
+Result-bearing writes report `InvalidContext` in their own error type. Count-only
+and boolean writes return zero or false, and world-fluid pickup returns `None`.
 Resource helpers that accept `Option<&TransactionContext>` require `Some(tx)` for
-that same innermost frame or `None` when opening a root transaction. They also panic
-on a mismatch, including `None` while a transaction is already open.
+that same innermost frame or `None` when opening a root transaction. A mismatch,
+including `None` while one is open, returns `TransactionError::InvalidContext`.
+
+## Joining an open transaction
+
+Use `host.current_transaction(|host, tx| …)` to borrow the innermost open frame without
+creating a child. This follows NeoForge's `Transaction.getCurrentOpenedTransaction`, but
+lends the context only for the closure. The resident block-entity, entity and item-entity
+server scopes and the server payload context also offer `current_transaction`.
+
+It returns `None` without running the closure when no frame is available. Otherwise,
+`tx.depth()` is unchanged and writes commit or roll back with the enclosing frame.
+Returning or unwinding from the borrowed closure does not close that frame. Use
+`transaction` instead when the action needs its own commit or rollback.
 
 ## Inspecting a transaction
 

@@ -1296,9 +1296,9 @@ pub(super) fn emit<'a>(
                          }}) {{\
                              Ok(answer) => answer,\
                              Err(TransactionError::Aborted(never)) => match never {{}},\
-                             Err(TransactionError::Unavailable) => {{\
-                                 log::warn!(\"mod {{}}: {name} callback refused: transaction unavailable\", {mod_id_expr});\
-                                 Flow::Continue\
+                             Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
+                                 log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
+                                 {stack_restore} Flow::Continue\
                              }}\
                          }}\
                      }}"
@@ -1320,9 +1320,9 @@ pub(super) fn emit<'a>(
                          match HostTransaction::transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{ {commit} }}) {{\
                              Ok(answer) => answer,\
                              Err(TransactionError::Aborted(never)) => match never {{}},\
-                             Err(TransactionError::Unavailable) => {{\
-                                 log::warn!(\"mod {{}}: {name} callback refused: transaction unavailable\", {mod_id_expr});\
-                                 {no_answer}\
+                             Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
+                                 log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
+                                 {restore_statement} {no_answer}\
                              }}\
                          }}\
                      }}"

@@ -302,7 +302,9 @@ impl ResourceHandler<FluidResource> for GameFluids {
         resource: &FluidResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let Some(backend) = crate::backend_mut_of(host) else {
             return 0;
         };
@@ -317,7 +319,9 @@ impl ResourceHandler<FluidResource> for GameFluids {
         resource: &FluidResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let held = crate::backend_of(host).and_then(|backend| backend.fluid_tank(self.0, index));
         if !held.is_some_and(|held| resource.matches(&held)) {
             return 0;
@@ -453,7 +457,9 @@ impl ResourceHandler<FluidResource> for GameBucket {
         resource: &FluidResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let empty = self.place.with_stack(host, |stack| stack.item()) == Some(self.buckets[0]);
         match self.bucket_of(resource) {
             Some(full) if index == 0 && empty && amount >= BUCKET => self.exchange(host, tx, full),
@@ -468,7 +474,9 @@ impl ResourceHandler<FluidResource> for GameBucket {
         resource: &FluidResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let held = self.resource(host, index);
         match held {
             Some(held) if held == *resource && amount >= BUCKET => {

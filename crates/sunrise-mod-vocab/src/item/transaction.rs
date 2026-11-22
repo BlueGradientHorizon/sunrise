@@ -92,35 +92,70 @@ pub enum TransactionLifecycle {
     RootClosing,
 }
 
-// no wire: a local refusal to lend transaction authority, not a mod boundary payload.
-// exhaustive: a unit marker.
-/// This host cannot open a transaction in the current phase.
+// no wire: local admission refusal, not a mod boundary payload.
+/// There is no open transaction this caller can borrow.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TransactionUnavailable;
 
 impl fmt::Display for TransactionUnavailable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("transaction unavailable in the current phase")
+        f.write_str("no current transaction is available")
     }
 }
 
 impl std::error::Error for TransactionUnavailable {}
 
+// no wire: local scope settlement, not a mod boundary payload.
+/// A host could not open a transaction, or refused it during commit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransactionScopeError {
+    /// The callback did not run.
+    Unavailable,
+    /// The callback requested commit, but its writes were rolled back.
+    CommitRefused,
+}
+
+impl fmt::Display for TransactionScopeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Unavailable => "transaction unavailable in the current phase",
+            Self::CommitRefused => "transaction commit refused; changes rolled back",
+        })
+    }
+}
+
+impl std::error::Error for TransactionScopeError {}
+
 // no wire: the error belongs to a local closure and can contain any Rust type.
-// exhaustive: the closure either did not run or ran and returned an error.
+// exhaustive: all transaction refusal and callback failure outcomes.
 /// Why [`HostTransaction::transaction`] did not commit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransactionError<E> {
+    /// The supplied context does not identify the innermost open transaction on this host.
+    InvalidContext,
     /// The host could not open a transaction. The closure was not called.
     Unavailable,
+    /// The closure returned `Ok`, but the host refused the commit and rolled back its writes.
+    CommitRefused,
     /// The closure returned this error. Its writes were rolled back.
     Aborted(E),
+}
+
+impl<E> From<TransactionScopeError> for TransactionError<E> {
+    fn from(error: TransactionScopeError) -> Self {
+        match error {
+            TransactionScopeError::Unavailable => Self::Unavailable,
+            TransactionScopeError::CommitRefused => Self::CommitRefused,
+        }
+    }
 }
 
 impl<E> TransactionError<TransactionError<E>> {
     pub(crate) fn flatten(self) -> TransactionError<E> {
         match self {
+            Self::InvalidContext => TransactionError::InvalidContext,
             Self::Unavailable => TransactionError::Unavailable,
+            Self::CommitRefused => TransactionError::CommitRefused,
             Self::Aborted(inner) => inner,
         }
     }
@@ -129,7 +164,9 @@ impl<E> TransactionError<TransactionError<E>> {
 impl<E: fmt::Display> fmt::Display for TransactionError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unavailable => TransactionUnavailable.fmt(f),
+            Self::InvalidContext => f.write_str("invalid transaction context"),
+            Self::Unavailable => TransactionScopeError::Unavailable.fmt(f),
+            Self::CommitRefused => TransactionScopeError::CommitRefused.fmt(f),
             Self::Aborted(error) => error.fmt(f),
         }
     }
@@ -138,24 +175,24 @@ impl<E: fmt::Display> fmt::Display for TransactionError<E> {
 impl<E: std::error::Error + 'static> std::error::Error for TransactionError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Unavailable => None,
+            Self::InvalidContext | Self::Unavailable | Self::CommitRefused => None,
             Self::Aborted(error) => Some(error),
         }
     }
 }
 
-// no wire: a local refusal to open a scratch transaction scope, not a mod boundary payload.
-// exhaustive: either the host cannot open a transaction or the initial stack failed write validation.
-/// Why this host could not open a scratch item-place scope.
+// no wire: a local scratch transaction refusal, not a mod boundary payload.
+// exhaustive: transaction refusal or rejected initial stack.
+/// Why this host refused a scratch item-place scope.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ScratchUnavailable {
-    /// The host could not open a transaction in the current phase.
-    Transaction(TransactionUnavailable),
+pub enum ScratchScopeError {
+    /// The host could not open or commit the transaction.
+    Transaction(TransactionScopeError),
     /// The initial stack did not pass the game's write validation.
     Stack(StackWriteError),
 }
 
-impl fmt::Display for ScratchUnavailable {
+impl fmt::Display for ScratchScopeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Transaction(error) => error.fmt(f),
@@ -164,7 +201,7 @@ impl fmt::Display for ScratchUnavailable {
     }
 }
 
-impl std::error::Error for ScratchUnavailable {
+impl std::error::Error for ScratchScopeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Transaction(error) => Some(error),
@@ -174,7 +211,7 @@ impl std::error::Error for ScratchUnavailable {
 }
 
 // no wire: the error belongs to a local closure and can contain any Rust type.
-// exhaustive: either the scope could not open, the initial stack was rejected, or the closure aborted.
+// exhaustive: all scratch loan refusal and callback failure outcomes.
 /// Why [`HostTransaction::scratch_stack`] or [`HostTransaction::scratch_slots`] did not commit.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ScratchError<E> {
@@ -182,6 +219,8 @@ pub enum ScratchError<E> {
     Unavailable,
     /// The initial stack did not pass the game's write validation. The closure was not called.
     Stack(StackWriteError),
+    /// The closure returned `Ok`, but the host refused the commit and rolled back its writes.
+    CommitRefused,
     /// The closure returned this error. Its writes were rolled back.
     Aborted(E),
 }
@@ -189,7 +228,8 @@ pub enum ScratchError<E> {
 impl<E: fmt::Display> fmt::Display for ScratchError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unavailable => TransactionUnavailable.fmt(f),
+            Self::Unavailable => TransactionScopeError::Unavailable.fmt(f),
+            Self::CommitRefused => TransactionScopeError::CommitRefused.fmt(f),
             Self::Stack(error) => write!(f, "invalid scratch stack: {error:?}"),
             Self::Aborted(error) => error.fmt(f),
         }
@@ -199,29 +239,23 @@ impl<E: fmt::Display> fmt::Display for ScratchError<E> {
 impl<E: std::error::Error + 'static> std::error::Error for ScratchError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Unavailable | Self::Stack(_) => None,
+            Self::Unavailable | Self::CommitRefused | Self::Stack(_) => None,
             Self::Aborted(error) => Some(error),
         }
     }
 }
 
-/// Asserts that `expected` matches the innermost open transaction on `host` (`None` requiring no
-/// open transaction), panicking as NeoForge's `TransactionManager.validateCurrentTransaction`
-/// throws `IllegalStateException` on a mismatched, foreign, or ancestor context.
-#[track_caller]
-pub(crate) fn assert_transaction_matches(
-    host: &dyn ServerHost,
-    expected: Option<&TransactionContext>,
-) {
-    if host.transaction_matches(expected) {
-        return;
-    }
-    match expected {
-        Some(tx) => panic!(
-            "transaction context at depth {} does not match the host's innermost open transaction",
-            tx.depth()
-        ),
-        None => panic!("expected no open transaction on this host, but a transaction is open"),
+/// Combine the host's actual settlement with the callback's typed result.
+pub(crate) fn finish_scope<T, E>(
+    settled: Result<bool, TransactionScopeError>,
+    outcome: Option<Result<T, E>>,
+) -> Result<T, TransactionError<E>> {
+    let committed = settled.map_err(TransactionError::from)?;
+    match outcome {
+        Some(Ok(value)) if committed => Ok(value),
+        Some(Ok(_)) => Err(TransactionError::CommitRefused),
+        Some(Err(error)) => Err(TransactionError::Aborted(error)),
+        None => Err(TransactionError::Unavailable),
     }
 }
 
@@ -270,6 +304,37 @@ pub(crate) fn assert_transaction_matches(
 /// }
 /// ```
 pub trait HostTransaction: ServerHost {
+    /// Borrows the current transaction without opening or closing a scope. Returns `None`
+    /// without calling `f` when no transaction is open. Writes settle with the existing frame,
+    /// even if `f` unwinds and the enclosing action catches it.
+    ///
+    /// ```compile_fail
+    /// use mod_api::{HostTransaction, ServerHost, TransactionContext};
+    /// fn escape(host: &mut dyn ServerHost) {
+    ///     let _: Option<&TransactionContext> = host.current_transaction(|_, tx| tx);
+    /// }
+    /// ```
+    /// ```compile_fail
+    /// use mod_api::{HostTransaction, ServerHost};
+    /// fn close(host: &mut dyn ServerHost) {
+    ///     host.current_transaction(|host, tx| host.transaction_close(tx, true));
+    /// }
+    /// ```
+    fn current_transaction<T>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut dyn ServerHost, &'loan TransactionContext) -> T,
+    ) -> Option<T> {
+        let mut f = Some(f);
+        let mut value = None;
+        self.with_current_transaction_scope(&mut |host, tx| {
+            if let Some(f) = f.take() {
+                value = Some(f(host, tx));
+            }
+        })
+        .ok()?;
+        value
+    }
+
     /// Runs `f` in a transaction, nested in the open one if any (`Transaction.openRoot` and
     /// `open`). `Ok` commits into the transaction around it or, at the outermost, for good,
     /// with the world told of each change once. `Err` aborts, restoring every storage it wrote.
@@ -278,6 +343,7 @@ pub trait HostTransaction: ServerHost {
     ///
     /// An error returned by `f` becomes [`TransactionError::Aborted`]. If a transaction cannot
     /// be opened, [`TransactionError::Unavailable`] means `f` did not run.
+    /// [`TransactionError::CommitRefused`] means `f` returned `Ok` but its writes were rolled back.
     ///
     /// `f` gets a loan of `&mut dyn ServerHost`, even on a concrete receiver, and a
     /// [`TransactionContext`] to write in. Only the
@@ -294,17 +360,14 @@ pub trait HostTransaction: ServerHost {
     ) -> Result<T, TransactionError<E>> {
         let mut f = Some(f);
         let mut result = None;
-        self.with_transaction_scope(&mut |host, tx| {
+        let settled = self.with_transaction_scope(&mut |host, tx| {
             let Some(f) = f.take() else { return false };
             let outcome = f(host, tx);
             let commit = outcome.is_ok();
             result = Some(outcome);
             commit
-        })
-        .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
-        result
-            .ok_or(TransactionError::Unavailable)?
-            .map_err(TransactionError::Aborted)
+        });
+        finish_scope(settled, result)
     }
 
     /// Runs `f` in a transaction with a lent single-slot scratch [`ItemPlace`] initialised from
@@ -336,13 +399,19 @@ pub trait HostTransaction: ServerHost {
                 commit
             })
             .map_err(|error| match error {
-                ScratchUnavailable::Transaction(_) => ScratchError::Unavailable,
-                ScratchUnavailable::Stack(error) => ScratchError::Stack(error),
+                ScratchScopeError::Transaction(TransactionScopeError::Unavailable) => {
+                    ScratchError::Unavailable
+                }
+                ScratchScopeError::Transaction(TransactionScopeError::CommitRefused) => {
+                    ScratchError::CommitRefused
+                }
+                ScratchScopeError::Stack(error) => ScratchError::Stack(error),
             })?;
         match (slots, outcome) {
             (Some(slots), Some(Ok(value))) => Ok((value, slots)),
             (_, Some(Err(error))) => Err(ScratchError::Aborted(error)),
-            (None, Some(Ok(_))) | (_, None) => Err(ScratchError::Unavailable),
+            (None, Some(Ok(_))) => Err(ScratchError::CommitRefused),
+            (_, None) => Err(ScratchError::Unavailable),
         }
     }
 
@@ -375,13 +444,19 @@ pub trait HostTransaction: ServerHost {
                 commit
             })
             .map_err(|error| match error {
-                ScratchUnavailable::Transaction(_) => ScratchError::Unavailable,
-                ScratchUnavailable::Stack(error) => ScratchError::Stack(error),
+                ScratchScopeError::Transaction(TransactionScopeError::Unavailable) => {
+                    ScratchError::Unavailable
+                }
+                ScratchScopeError::Transaction(TransactionScopeError::CommitRefused) => {
+                    ScratchError::CommitRefused
+                }
+                ScratchScopeError::Stack(error) => ScratchError::Stack(error),
             })?;
         match (slots, outcome) {
             (Some(slots), Some(Ok(value))) => Ok((value, slots)),
             (_, Some(Err(error))) => Err(ScratchError::Aborted(error)),
-            (None, Some(Ok(_))) | (_, None) => Err(ScratchError::Unavailable),
+            (None, Some(Ok(_))) => Err(ScratchError::CommitRefused),
+            (_, None) => Err(ScratchError::Unavailable),
         }
     }
 }
@@ -393,7 +468,8 @@ mod tests {
     use super::*;
     use crate::testing::FakeHost;
     use crate::{
-        Host, ITEMS, Identifier, ItemResource, ItemStack, ResourceHandler, prelude::ItemsHost,
+        Host, ITEMS, Identifier, ItemResource, ItemStack, ResourceHandler,
+        prelude::{BlockEntitiesHost, ItemsHost},
     };
 
     const AT: [i32; 3] = [0, 64, 0];
@@ -414,21 +490,73 @@ mod tests {
         (fake, resource)
     }
 
+    #[test]
+    fn borrowing_the_current_transaction_leaves_settlement_to_its_opener() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let (mut fake, resource) = fake_with_stone();
+        let level = fake.level.level();
+        let items = level.capability(&mut fake, &ITEMS, AT, None).unwrap();
+        assert_eq!(
+            fake.current_transaction::<()>(|_, _| panic!("no frame")),
+            None
+        );
+        for commit in [false, true] {
+            let result = fake.transaction(|host, outer| {
+                let panicked = catch_unwind(AssertUnwindSafe(|| {
+                    host.current_transaction::<()>(|_, _| panic!("borrow unwound"));
+                }));
+                assert!(panicked.is_err());
+                assert!(host.transaction_matches(Some(outer)));
+                let moved = host.current_transaction(|host, joined| {
+                    assert_eq!(joined.depth(), outer.depth());
+                    assert!(host.transaction_matches(Some(joined)));
+                    assert!(host.transaction_matches(Some(outer)));
+                    items.extract_at(host, joined, 0, &resource, 1)
+                });
+                assert_eq!(moved, Some(1));
+                assert!(host.transaction_matches(Some(outer)));
+                assert_eq!(items.amount(host, 0), 0);
+                commit.then_some(()).ok_or(())
+            });
+            assert_eq!(
+                result,
+                if commit {
+                    Ok(())
+                } else {
+                    Err(TransactionError::Aborted(()))
+                }
+            );
+            assert!(fake.transaction_matches(None));
+            assert_eq!(items.amount(&fake, 0), if commit { 0 } else { 1 });
+        }
+    }
+
     struct NoTx;
     impl Host for NoTx {}
     crate::impl_host_areas!(NoTx);
-    impl ServerHost for NoTx {}
+    impl ServerHost for NoTx {
+        fn backend_mut(&mut self) -> Option<crate::BackendMutRef<'_>> {
+            panic!("an invalid context must be refused before backend lookup");
+        }
+    }
     crate::impl_server_host_areas!(NoTx);
 
     #[test]
-    #[should_panic(expected = "does not match the host's innermost open transaction")]
-    fn generated_handle_checks_a_foreign_context_before_backend_lookup() {
-        let mut owner = FakeHost::new();
+    fn generated_writes_refuse_a_foreign_context_before_backend_lookup() {
+        let (mut owner, _) = fake_with_stone();
         let level = owner.level.level();
-        let _ = owner.transaction(|_, tx| {
-            let _ = level.pickup_fluid(&mut NoTx, AT, None, tx);
-            Ok::<_, ()>(())
-        });
+        let block = owner.block_entity(level, AT).unwrap();
+        owner
+            .transaction(|_, tx| {
+                assert_eq!(level.pickup_fluid(&mut NoTx, AT, None, tx), None);
+                assert_eq!(
+                    block.set_item_slot(&mut NoTx, tx, 0, None),
+                    Err(crate::BlockEntityItemError::InvalidContext)
+                );
+                Ok::<_, ()>(())
+            })
+            .unwrap();
     }
 
     #[test]
@@ -452,8 +580,7 @@ mod tests {
     }
 
     #[test]
-    fn a_live_context_from_another_host_panics_on_write_and_leaves_state_unchanged() {
-        use std::panic::{AssertUnwindSafe, catch_unwind};
+    fn a_live_context_from_another_host_is_refused_and_leaves_state_unchanged() {
         let (mut owner, resource) = fake_with_stone();
         let mut other = owner.clone();
         let level = owner.level.level();
@@ -466,10 +593,11 @@ mod tests {
                         assert_eq!((foreign.depth(), own.depth()), (0, 0));
                         assert!(!host.transaction_matches(Some(foreign)));
                         assert!(host.transaction_matches(Some(own)));
-                        let caught = catch_unwind(AssertUnwindSafe(|| {
-                            items.extract_at(host, foreign, 0, &resource, 1)
-                        }));
-                        assert!(caught.is_err());
+                        assert_eq!(items.extract_at(host, foreign, 0, &resource, 1), 0);
+                        assert_eq!(
+                            items.extract(host, foreign, &resource, 1),
+                            Err(TransactionError::InvalidContext)
+                        );
                         assert_eq!(items.amount(host, 0), 1);
                         assert_eq!(items.extract_at(host, own, 0, &resource, 1), 1);
                         Ok::<_, ()>(())
@@ -486,21 +614,40 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "does not match the host's innermost open transaction")]
-    fn an_ancestor_context_panics_while_a_nested_transaction_is_open() {
+    fn an_ancestor_or_closed_context_is_refused_in_a_new_scope() {
         let (mut fake, resource) = fake_with_stone();
         let level = fake.level.level();
         let items = level.capability(&mut fake, &ITEMS, AT, None).unwrap();
 
-        let _ = fake.transaction(|host, outer| {
-            let _ = host.transaction(|host, inner| {
-                assert_eq!((outer.depth(), inner.depth()), (0, 1));
-                assert!(!host.transaction_matches(Some(outer)));
-                assert!(host.transaction_matches(Some(inner)));
-                items.extract_at(host, outer, 0, &resource, 1);
+        let closed = fake
+            .transaction(|host, outer| {
+                host.transaction(|host, inner| {
+                    assert_eq!((outer.depth(), inner.depth()), (0, 1));
+                    assert_eq!(
+                        items.extract(host, outer, &resource, 1),
+                        Err(TransactionError::InvalidContext)
+                    );
+                    Ok::<_, ()>(())
+                })
+                .unwrap();
+                Ok::<_, ()>(outer.frame)
+            })
+            .unwrap();
+        closed.lend(|stale| {
+            assert_eq!(
+                items.extract(&mut fake, stale, &resource, 1),
+                Err(TransactionError::InvalidContext)
+            );
+            fake.transaction(|host, own| {
+                assert_eq!(own.depth(), stale.depth());
+                assert_eq!(
+                    items.extract(host, stale, &resource, 1),
+                    Err(TransactionError::InvalidContext)
+                );
+                assert_eq!(items.amount(host, 0), 1);
                 Ok::<_, ()>(())
-            });
-            Ok::<_, ()>(())
+            })
+            .unwrap();
         });
     }
 

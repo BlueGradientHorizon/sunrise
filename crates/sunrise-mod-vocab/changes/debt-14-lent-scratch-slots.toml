@@ -4,13 +4,14 @@ ids = [
     "hook:dispense_item",
     "hook:dispense_method",
     "type:ScratchSlot",
-    "type:ScratchUnavailable",
-    "type:ScratchUnavailable.Transaction",
-    "type:ScratchUnavailable.Stack",
+    "type:ScratchScopeError",
+    "type:ScratchScopeError.Transaction",
+    "type:ScratchScopeError.Stack",
     "type:ScratchError",
     "type:ScratchError.Unavailable",
     "type:ScratchError.Stack",
     "type:ScratchError.Aborted",
+    "type:ScratchError.CommitRefused",
     "method:ServerHost::with_scratch_stack_scope",
     "method:ServerHost::with_scratch_slots_scope",
     "method:HostTransaction::scratch_stack",
@@ -55,6 +56,7 @@ let (value, (first, second)) = host.scratch_slots(stack, |host, tx, place| {
 Handle `ScratchError<E>` from both methods:
 - `ScratchError::Unavailable` when the host could not open a transaction (closure did not run);
 - `ScratchError::Stack(StackWriteError)` when the initial stack failed write validation (e.g. `UnknownItem` or `InvalidMaximum`; oversized initial counts are preserved, and the closure did not run on error);
+- `ScratchError::CommitRefused` when the closure requested commit, but the host rolled back its writes;
 - `ScratchError::Aborted(error)` when the closure returned `Err(error)` (writes rolled back and slots discarded).
 
 Update matches on `ItemPlace`: `ItemPlace::Scratch` now carries an opaque `ScratchSlot` instead of `u64`, `ItemPlace::ScratchSlots` is removed, and `ItemPlace` has no `Wire` implementation. Do not retain or send lent scratch handles outside their callback scope.
@@ -67,6 +69,7 @@ Note two related behavioural alignments:
 For a custom `ServerHost` test double that supports lent scratch slots, implement `ServerHost::with_scratch_stack_scope` and `ServerHost::with_scratch_slots_scope`:
 - return `Ok(Some(...))` when the callback commits,
 - return `Ok(None)` when the callback aborts,
-- return `Err(ScratchUnavailable::Transaction(TransactionUnavailable))` when no transaction can open (the default implementations return this), or
-- return `Err(ScratchUnavailable::Stack(error))` when the initial stack fails validation.
+- return `Err(ScratchScopeError::Transaction(TransactionScopeError::Unavailable))` when no transaction can open (the default implementations return this),
+- return `Err(ScratchScopeError::Transaction(TransactionScopeError::CommitRefused))` when a requested commit rolled back, or
+- return `Err(ScratchScopeError::Stack(error))` when the initial stack fails validation.
 '''

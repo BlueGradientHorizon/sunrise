@@ -81,6 +81,15 @@ impl Hooks for Declares {
 #[test]
 #[ignore = "daily"]
 fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner() {
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+
+    if run_fresh_cases(
+        "game::payload_transport::work_panic_tests::a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner",
+        "SUNRISE_PAYLOAD_WORK_PANIC_CHILD",
+        &["run"],
+    ) {
+        return;
+    }
     let handler = Arc::new(Handler::default());
     let mods = vec![ModEntry::new(
         "work_probe",
@@ -88,7 +97,7 @@ fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner()
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        super::super::native_entity_refs::tests::with_game(|game| {
+        with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks

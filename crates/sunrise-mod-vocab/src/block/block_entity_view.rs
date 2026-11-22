@@ -1,7 +1,8 @@
 //! Sequential loans of a resident block entity and its server Host.
 use crate::{
     BlockEntityItemError, BlockEntityRef, BlockState, Compound, ItemKey, ItemStack, JavaString,
-    LevelRef, ServerHost, Tag, TransactionContext, TransactionError, TransactionUnavailable,
+    LevelRef, ServerHost, Tag, TransactionContext, TransactionError, TransactionScopeError,
+    TransactionUnavailable,
 };
 
 /// A resident block entity lent by a server callback. Its storage stays in the level.
@@ -171,6 +172,24 @@ impl<'a> BlockEntityScope<'a> {
         BlockEntityScope(&mut *self.0)
     }
 
+    /// Borrows an already-open innermost transaction without opening or closing a frame.
+    /// Returns `None` without calling `f` if there is no current transaction to borrow.
+    pub fn current_transaction<T>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut BlockEntityScope<'_>, &'loan TransactionContext) -> T,
+    ) -> Option<T> {
+        let mut f = Some(f);
+        let mut value = None;
+        self.0
+            .with_current_transaction_scope(&mut |access, tx| {
+                if let Some(f) = f.take() {
+                    value = Some(f(&mut BlockEntityScope::new(access), tx));
+                }
+            })
+            .ok()?;
+        value
+    }
+
     /// Lend the original subject for `f`. Once `f` returns, you can use the Host
     /// and then ask for the view again. A blockless menu or a removal or replacement
     /// of the original block entity returns `None` without calling `f`. A ticker's
@@ -212,19 +231,15 @@ impl<'a> BlockEntityScope<'a> {
     ) -> Result<T, TransactionError<E>> {
         let mut f = Some(f);
         let mut result = None;
-        self.0
-            .with_transaction_scope(&mut |access, tx| {
-                let Some(f) = f.take() else { return false };
-                let mut scope = BlockEntityScope::new(access);
-                let outcome = f(&mut scope, tx);
-                let commit = outcome.is_ok();
-                result = Some(outcome);
-                commit
-            })
-            .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
-        result
-            .ok_or(TransactionError::Unavailable)?
-            .map_err(TransactionError::Aborted)
+        let settled = self.0.with_transaction_scope(&mut |access, tx| {
+            let Some(f) = f.take() else { return false };
+            let mut scope = BlockEntityScope::new(access);
+            let outcome = f(&mut scope, tx);
+            let commit = outcome.is_ok();
+            result = Some(outcome);
+            commit
+        });
+        crate::item::transaction::finish_scope(settled, result)
     }
 }
 
@@ -234,14 +249,25 @@ impl<'a> BlockEntityScope<'a> {
 pub trait BlockEntityAccess {
     fn with_view(&mut self, f: &mut dyn FnMut(BlockEntityView<'_>));
     fn host(&mut self) -> &mut dyn ServerHost;
+    /// Lends the current scope without opening or settling a transaction.
+    fn with_current_transaction_scope(
+        &mut self,
+        _callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn BlockEntityAccess,
+            &'loan TransactionContext,
+        ),
+    ) -> Result<(), TransactionUnavailable> {
+        Err(TransactionUnavailable)
+    }
+
     fn with_transaction_scope(
         &mut self,
         _callback: &mut dyn for<'loan> FnMut(
             &'loan mut dyn BlockEntityAccess,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
-        Err(TransactionUnavailable)
+    ) -> Result<bool, TransactionScopeError> {
+        Err(TransactionScopeError::Unavailable)
     }
 }
 

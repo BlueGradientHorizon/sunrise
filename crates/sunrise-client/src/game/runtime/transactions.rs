@@ -32,7 +32,10 @@
 //! An entity added inside one goes at an abort, one removed is only marked until the root
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
 use super::{BlockEntity, BlockStateId, Dim, Game, machines::HopperState, maps::MapData};
-use mod_api::{__private::TransactionFrame, LevelRef, TransactionContext, TransactionLifecycle};
+use mod_api::{
+    __private::TransactionFrame, LevelRef, TransactionContext, TransactionLifecycle,
+    TransactionScopeError,
+};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
     block_entities::BlockEntityIdentity,
@@ -856,6 +859,12 @@ impl Level {
     }
 }
 
+pub(super) enum StorageSettlement {
+    Committed(Option<scratch::Scratch>),
+    Aborted,
+    Refused,
+}
+
 /// RAII guard for one open transaction frame. Dropping it without `close` aborts this frame
 /// and any nested frames still open inside it.
 pub(super) struct StorageScope<'a, 'g> {
@@ -864,7 +873,7 @@ pub(super) struct StorageScope<'a, 'g> {
 }
 
 impl StorageScope<'_, '_> {
-    pub(super) fn close(mut self, commit: bool) -> Option<scratch::Scratch> {
+    pub(super) fn close(mut self, commit: bool) -> Option<StorageSettlement> {
         self.frame
             .take()
             .and_then(|frame| self.game.close_storage_frame(frame, commit))
@@ -930,7 +939,7 @@ impl<'g> Game<'g> {
         &mut self,
         frame: TransactionFrame,
         commit: bool,
-    ) -> Option<scratch::Scratch> {
+    ) -> Option<StorageSettlement> {
         let at = self
             .transactions
             .iter()
@@ -972,14 +981,19 @@ impl<'g> Game<'g> {
     fn run_storage_scope<R>(
         &mut self,
         f: impl FnOnce(&mut Self, TransactionFrame) -> (R, bool),
-    ) -> (R, Option<scratch::Scratch>) {
+    ) -> (R, StorageSettlement) {
         let frame = self.open_storage_transaction();
         let guard = StorageScope {
             game: self,
             frame: Some(frame),
         };
         let (out, commit) = f(&mut *guard.game, frame);
-        (out, guard.close(commit))
+        let settled = guard.close(commit).unwrap_or(if commit {
+            StorageSettlement::Refused
+        } else {
+            StorageSettlement::Aborted
+        });
+        (out, settled)
     }
     /// Runs `f` inside a new (or nested) storage transaction, lending a scoped
     /// [`TransactionContext`]; commits on `Ok` and aborts on `Err` or unwind.
@@ -993,6 +1007,22 @@ impl<'g> Game<'g> {
             (outcome, commit)
         })
     }
+    /// Runs an API scope and reports actual settlement, not just the callback's intent.
+    pub(super) fn scoped_storage<T>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut Self, &'loan TransactionContext) -> Option<T>,
+    ) -> Result<Option<T>, TransactionScopeError> {
+        let (outcome, settled) = self.run_storage_scope(|game, frame| {
+            let outcome = frame.lend(|tx| f(game, tx));
+            let commit = outcome.is_some();
+            (outcome, commit)
+        });
+        match settled {
+            StorageSettlement::Committed(_) => Ok(outcome),
+            StorageSettlement::Aborted => Ok(None),
+            StorageSettlement::Refused => Err(TransactionScopeError::CommitRefused),
+        }
+    }
     /// Whether at least one storage transaction is currently open.
     pub(in crate::game) fn has_open_transaction(&self) -> bool {
         !self.transactions.is_empty()
@@ -1001,27 +1031,10 @@ impl<'g> Game<'g> {
     pub(in crate::game) fn current_storage_frame(&self) -> Option<TransactionFrame> {
         self.transactions.last().and_then(|level| level.frame)
     }
-    /// Asserts that `tx` is the live loan for this game's innermost open transaction, matching
-    /// NeoForge's `TransactionManager.validateCurrentTransaction`.
-    #[track_caller]
-    pub(in crate::game) fn assert_current_transaction(&self, tx: &TransactionContext) {
-        if self
-            .current_storage_frame()
+    /// Whether `tx` is the live loan for this game's innermost open transaction.
+    pub(super) fn transaction_context_is_current(&self, tx: &TransactionContext) -> bool {
+        self.current_storage_frame()
             .is_some_and(|frame| frame.matches(tx))
-        {
-            return;
-        }
-        match self.current_storage_frame() {
-            Some(current) => panic!(
-                "transaction context at depth {} does not match the innermost open transaction at depth {}",
-                tx.depth(),
-                current.depth(),
-            ),
-            None => panic!(
-                "transaction context at depth {} used with no open transaction",
-                tx.depth(),
-            ),
-        }
     }
     /// `transaction_lifecycle`: the close running, else whether one is open.
     pub(in crate::game) fn transaction_lifecycle(&self) -> TransactionLifecycle {
@@ -1052,11 +1065,12 @@ impl<'g> Game<'g> {
     /// Closes the innermost transaction: `commit` hands its changes to the one around it, or
     /// at the root makes them final and tells the world; otherwise every storage it wrote goes
     /// back to how it was. Nothing happens with none open.
-    fn close_storage_transaction(&mut self, commit: bool) -> Option<scratch::Scratch> {
+    fn close_storage_transaction(&mut self, commit: bool) -> Option<StorageSettlement> {
         let mut level = self.transactions.pop()?;
-        let commit = commit
-            && !(level.packets.is_some()
-                && sunrise_client::lan::conn::transaction_packets::Scope::refused());
+        let refused = commit
+            && level.packets.is_some()
+            && sunrise_client::lan::conn::transaction_packets::Scope::refused();
+        let commit = commit && !refused;
         // Expire the loan before replay can reenter mods. Its closed row must never join
         // another journal, even if the current frame's commit is nested.
         let owned = level.owned_scratch.take().and_then(|id| {
@@ -1088,7 +1102,13 @@ impl<'g> Game<'g> {
         if retire {
             guard.game.world.block_entities.publish_retirement();
         }
-        owned.filter(|_| commit)
+        Some(if commit {
+            StorageSettlement::Committed(owned)
+        } else if refused {
+            StorageSettlement::Refused
+        } else {
+            StorageSettlement::Aborted
+        })
     }
     /// What closing `level` does, with the closing phase already set.
     fn close_level(&mut self, mut level: Level, commit: bool) {
@@ -2951,6 +2971,53 @@ mod tests {
     };
     use std::{sync::Arc, time::Instant};
     use sunrise_client::{chunk::Chunk, items::ItemStack};
+
+    #[test]
+    #[ignore = "daily"]
+    fn packet_refusal_rolls_back_the_child_and_reaches_the_transaction_caller() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use mod_api::prelude::BlockStatesHost;
+        use std::sync::{atomic::AtomicUsize, mpsc};
+        use sunrise_client::lan::{PlayerSender, conn::transaction_packets::Scope};
+
+        if run_fresh_cases(
+            "game::transactions::tests::packet_refusal_rolls_back_the_child_and_reaches_the_transaction_caller",
+            "SUNRISE_TRANSACTION_PACKET_REFUSAL_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
+        with_game(|game| {
+            const AT: [i32; 3] = [1, 64, 1];
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let level = game.level("minecraft:overworld").unwrap();
+            let before = level.block_state(game, AT);
+            let stone = BlockStatesHost::block_state_id(game, "minecraft:stone").unwrap();
+            let (send, receive) = mpsc::channel();
+            // A real bounded LAN sender with no room left to reserve another packet.
+            let sender = PlayerSender::new(send, Arc::new(AtomicUsize::new(usize::MAX)));
+            let _packets = Scope::begin();
+            let result = game.transaction(|host, _| {
+                let child = host.transaction(|host, _| {
+                    assert_eq!(
+                        level.set_block(host, AT, stone, BlockUpdateFlags::NONE),
+                        Ok(true)
+                    );
+                    assert_eq!(level.block_state(host, AT), Some(stone));
+                    sender.send(vec![1]);
+                    Ok::<_, ()>(())
+                });
+                assert_eq!(child, Err(TransactionError::CommitRefused));
+                assert_eq!(level.block_state(host, AT), before);
+                Ok::<_, ()>(())
+            });
+            assert_eq!(result, Err(TransactionError::CommitRefused));
+            assert_eq!(level.block_state(game, AT), before);
+            assert!(receive.try_recv().is_err());
+        });
+    }
 
     #[test]
     #[ignore = "daily"]

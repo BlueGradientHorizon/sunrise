@@ -62,17 +62,25 @@ enum Flow {
     Cancel,
 }
 trait Host {}
-trait ServerHost: Host {}
+trait ServerHost: Host {
+    fn transaction_refusal(
+        &mut self,
+    ) -> Option<item::transaction::TransactionError<core::convert::Infallible>> {
+        None
+    }
+}
 trait ClientHost: Host {}
 
 mod item {
     pub(super) mod transaction {
         use super::super::ServerHost;
 
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub(in crate::tests) enum TransactionError<E> {
             Aborted(E),
-            #[allow(dead_code)]
             Unavailable,
+            InvalidContext,
+            CommitRefused,
         }
 
         // The game exercises the actual journal; these fixtures have no world state.
@@ -87,9 +95,47 @@ mod item {
                 &mut self,
                 call: impl FnOnce(&mut dyn ServerHost, &()) -> Result<T, E>,
             ) -> Result<T, TransactionError<E>> {
-                call(self, &()).map_err(TransactionError::Aborted)
+                match self.transaction_refusal() {
+                    None => call(self, &()).map_err(TransactionError::Aborted),
+                    Some(TransactionError::Unavailable) => Err(TransactionError::Unavailable),
+                    Some(TransactionError::InvalidContext) => Err(TransactionError::InvalidContext),
+                    Some(TransactionError::CommitRefused) => {
+                        call(self, &()).map_err(TransactionError::Aborted)?;
+                        Err(TransactionError::CommitRefused)
+                    }
+                    Some(TransactionError::Aborted(never)) => match never {},
+                }
             }
         }
+    }
+}
+
+#[test]
+fn transaction_fixture_distinguishes_admission_and_settlement_refusal() {
+    use core::convert::Infallible;
+    use item::transaction::{HostTransaction, TransactionError};
+
+    struct RefusingHost(Option<TransactionError<Infallible>>);
+    impl Host for RefusingHost {}
+    impl ServerHost for RefusingHost {
+        fn transaction_refusal(&mut self) -> Option<TransactionError<Infallible>> {
+            self.0.take()
+        }
+    }
+
+    for (refusal, ran) in [
+        (TransactionError::Unavailable, false),
+        (TransactionError::InvalidContext, false),
+        (TransactionError::CommitRefused, true),
+    ] {
+        let mut host = RefusingHost(Some(refusal));
+        let mut called = false;
+        let result = (&mut host as &mut dyn ServerHost).transaction(|_, _| {
+            called = true;
+            Ok::<_, Infallible>(())
+        });
+        assert_eq!(result, Err(refusal));
+        assert_eq!(called, ran);
     }
 }
 

@@ -107,23 +107,39 @@ impl EntityServerAccess for GeneralTickAccess<'_, '_, '_> {
         self.game
     }
 
+    fn with_current_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn mod_api::EntityServerAccess,
+            &'loan mod_api::TransactionContext,
+        ),
+    ) -> Result<(), mod_api::TransactionUnavailable> {
+        let frame = self
+            .game
+            .current_storage_frame()
+            .ok_or(mod_api::TransactionUnavailable)?;
+        frame.lend(|tx| callback(self, tx));
+        Ok(())
+    }
+
     fn with_transaction_scope(
         &mut self,
         callback: &mut dyn for<'loan> FnMut(
             &'loan mut dyn mod_api::EntityServerAccess,
             &'loan mod_api::TransactionContext,
         ) -> bool,
-    ) -> Result<(), mod_api::TransactionUnavailable> {
+    ) -> Result<bool, mod_api::TransactionScopeError> {
         let (subject, kind) = (self.subject, self.kind);
-        let _ = self.game.storage_transaction(|game, tx| {
-            let mut child = GeneralTickAccess {
-                game,
-                subject,
-                kind,
-            };
-            callback(&mut child, tx).then_some(()).ok_or(())
-        });
-        Ok(())
+        self.game
+            .scoped_storage(|game, tx| {
+                let mut child = GeneralTickAccess {
+                    game,
+                    subject,
+                    kind,
+                };
+                callback(&mut child, tx).then_some(())
+            })
+            .map(|settled| settled.is_some())
     }
 }
 

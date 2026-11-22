@@ -134,6 +134,8 @@ pub enum PartStateError {
     Changed,
     /// A transaction could not be opened on the host in the current phase.
     Unavailable,
+    /// The edit ran, but the host rolled back its requested commit.
+    CommitRefused,
     /// The attachment store refused the value: it does not decode (its saved bytes are
     /// kept), does not encode, or the key holds another Rust type.
     Attachment {
@@ -155,6 +157,7 @@ impl fmt::Display for PartStateError {
             Self::Reentrant => f.write_str("this holder's state is already being edited"),
             Self::Changed => f.write_str("the state changed while it was being edited"),
             Self::Unavailable => f.write_str("transactions are unavailable in the current phase"),
+            Self::CommitRefused => f.write_str("the host refused to commit the state edit"),
             Self::Attachment {
                 namespace,
                 name,
@@ -486,7 +489,10 @@ pub fn edit_part_state<H: PartStateHolder, T: Clone + Send + Sync + 'static, R>(
     }) {
         Ok(answer) => Ok(answer),
         Err(crate::TransactionError::Aborted(error)) => Err(error),
-        Err(crate::TransactionError::Unavailable) => Err(PartStateError::Unavailable),
+        Err(crate::TransactionError::InvalidContext | crate::TransactionError::Unavailable) => {
+            Err(PartStateError::Unavailable)
+        }
+        Err(crate::TransactionError::CommitRefused) => Err(PartStateError::CommitRefused),
     }
 }
 

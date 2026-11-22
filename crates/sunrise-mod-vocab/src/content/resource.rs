@@ -543,11 +543,10 @@ pub trait ResourceHandler<R> {
     /// Unsupported handlers return false without mutation.
     fn set_max_stack_size(
         &self,
-        host: &mut dyn ServerHost,
-        tx: &TransactionContext,
+        _host: &mut dyn ServerHost,
+        _tx: &TransactionContext,
         _limit: u32,
     ) -> bool {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         false
     }
 
@@ -597,7 +596,8 @@ pub trait ResourceHandler<R> {
     /// Puts up to `amount` of `resource` in wherever it goes: by default index by index from 0.
     /// Prefer this to `insert_at` unless targeting a specific index. The default runs in its
     /// own journal and rolls back with `TransactionError::Aborted(Overanswered)` if an index
-    /// answers more than requested. A refused savepoint returns `TransactionError::Unavailable`.
+    /// answers more than requested. An invalid loan returns `TransactionError::InvalidContext`
+    /// before querying the handler; a refused savepoint returns `TransactionError::Unavailable`.
     fn insert(
         &self,
         host: &mut dyn ServerHost,
@@ -605,7 +605,9 @@ pub trait ResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> Result<u32, TransactionError<Overanswered>> {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         let size = self.size(host);
         in_turn(host, amount, 0..size, |host, tx, index, left| {
             Ok(self.insert_at(host, tx, *index, resource, left))
@@ -621,7 +623,9 @@ pub trait ResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> Result<u32, TransactionError<Overanswered>> {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         let size = self.size(host);
         in_turn(host, amount, 0..size, |host, tx, index, left| {
             Ok(self.extract_at(host, tx, *index, resource, left))
@@ -744,7 +748,9 @@ pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
         answer => answer,
     }
     .or_else(|error| match error {
+        TransactionError::InvalidContext => Err(TransactionError::InvalidContext),
         TransactionError::Unavailable => Err(TransactionError::Unavailable),
+        TransactionError::CommitRefused => Err(TransactionError::CommitRefused),
         TransactionError::Aborted(Ok(_)) => Ok(N::default()),
         TransactionError::Aborted(Err(error)) => Err(error),
     })

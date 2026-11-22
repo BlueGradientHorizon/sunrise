@@ -327,14 +327,15 @@ impl Drop for ItemPlace {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ItemPlaceEditError {
+    /// The supplied context does not identify this host's innermost open transaction.
+    InvalidContext,
     /// The place is empty or cannot be reached.
     NotHeld,
     /// The place has no whole-stack edit (a virtual transfer wrapper such as `OneByOne` or
     /// `InfiniteMaterials`).
     UnsupportedPlace,
-    /// The backend, transaction or storage refused the write. For native player slots,
-    /// hands, cursors and equipment, a missing backend or a closed transaction refuses before the
-    /// editor runs.
+    /// The backend or storage refused the write. For native player slots, hands, cursors
+    /// and equipment, a missing backend refuses before the editor runs.
     Unavailable,
     /// The component edits did not pass the game's write validation; none were applied.
     Stack(StackWriteError),
@@ -493,7 +494,9 @@ impl ResourceHandler<ItemResource> for GameItemItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let Some(offer) = resource.to_stack(amount) else {
             return 0;
         };
@@ -518,7 +521,9 @@ impl ResourceHandler<ItemResource> for GameItemItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let Some((Some(out), changed)) = self
             .0
             .with_stack(host, |stack| stack.project())
@@ -685,7 +690,9 @@ impl ItemPlace {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let swap = |host: &mut dyn ServerHost, tx: &TransactionContext| {
             let old = self.resource(host).ok_or(())?;
             let out = self.extract(host, tx, &old, amount);
@@ -710,7 +717,9 @@ impl ItemPlace {
         tx: &TransactionContext,
         amount: i32,
     ) -> Result<(), crate::CraftedByError> {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return Err(crate::CraftedByError::InvalidContext);
+        }
         if !matches!(self, Self::MenuSlot { .. } | Self::PlayerCursor { .. }) {
             return Err(crate::CraftedByError::NotHeld);
         }
@@ -726,8 +735,8 @@ impl ItemPlace {
     ///
     /// For a player slot (including armour and off hand), hand, open menu cursor, or a mob's or
     /// armour stand's equipment, the game resolves the occupied slot before lending the editor.
-    /// An unavailable backend, a closed `tx`, or an empty or unreadable slot refuses before the
-    /// callback runs. The game validates the changed overrides together against the stack's
+    /// An unavailable backend, a mismatched `tx`, or an empty or unreadable slot refuses before
+    /// the callback runs. The game validates the changed overrides together against the stack's
     /// effective limits before writing any of them. Only those changes are applied, in place
     /// like `ItemStack.set`; an unchanged batch needs no write. The result reaches clients
     /// through the usual menu, cursor, inventory or equipment sync, including synchronized
@@ -743,7 +752,9 @@ impl ItemPlace {
         tx: &TransactionContext,
         edit: impl FnOnce(&mut ItemComponentEditor<'_>),
     ) -> Result<(), ItemPlaceEditError> {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return Err(ItemPlaceEditError::InvalidContext);
+        }
         let mut place = self;
         while let Self::Strict(inner) = place {
             place = inner;
@@ -798,7 +809,9 @@ impl ItemPlace {
         amount: u32,
         insert: bool,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         if amount == 0 {
             return 0;
         }
