@@ -17,12 +17,16 @@ def main() -> None:
     ):
         path = ROOT / name
         source = path.read_text()
-        before = "        self.guest_close_all(conn);\n"
-        # Save and travel call the same close but do not construct a new menu.
-        marker = "        // ServerPlayer.openMenu closes the menu that was open.\n" + before
-        assert source.count(marker) == expected, name
-        for start in reversed([match.start() for match in re.finditer(re.escape(marker), source)]):
-            body = start + len(marker)
+        # Saving closes the UI without constructing a replacement.
+        marker = re.compile(
+            r"(?:        // ServerPlayer\.openMenu closes the menu that was open\.\n)?"
+            r"        self\.guest_close_all\(conn\);\n"
+            r"(?!        self\.lan_crafting_removed)"
+        )
+        matches = list(marker.finditer(source))
+        assert len(matches) == expected, name
+        for match in reversed(matches):
+            start, body = match.span()
             end = source.index("\n    }", body)
             tail = re.sub(r"\bself\b", "game", source[body:end])
             indented = "\n".join("    " + line if line else line for line in tail.split("\n"))

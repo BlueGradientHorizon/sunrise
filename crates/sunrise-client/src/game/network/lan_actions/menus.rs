@@ -246,91 +246,92 @@ impl Game<'_> {
         let previous_window = self.lan.as_ref().and_then(|host| {
             super::super::native_menus::open_menu_of(host, conn).map(|(window, ..)| window)
         });
-        self.guest_close_all(conn);
-        // A hand-off from `open_menu` must not count one player twice. A direct
-        // handle open has no earlier `startOpen`; only it starts the block's lid.
-        let counts_openers =
-            !opener_started && matches!(slots, Slots::Block(_) | Slots::Double(_, _));
-        // A mod menu type's block tells the client where it is, with what its
-        // mod writes (`openMenu` with an extra-data writer); a stock menu
-        // sends nothing more.
-        let extra = match slots {
-            Slots::Block(k) if self.mod_menu_at(k).is_some() => {
-                let mut data = None;
-                self.native_menu_extra_data(uuid, menu, &block, [k.0, k.1, k.2], &mut data);
-                let data = data.unwrap_or_default();
-                if data.len() > sunrise_protocol::menu_extra::MAX_DATA {
-                    log::error!(
-                        "Sunrise: {block}'s menu ({menu}) extra data ({} bytes) exceeds {} bytes; refusing open",
-                        data.len(),
-                        sunrise_protocol::menu_extra::MAX_DATA
-                    );
-                    if let Some(container) = previous_window
-                        && let Some(host) = self.lan.as_mut()
-                        && super::super::native_menus::open_menu_of(host, conn).is_none()
-                    {
-                        host.hub
-                            .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
+        self.guest_replace_menu(conn, false, |game| {
+            // A hand-off from `open_menu` must not count one player twice. A direct
+            // handle open has no earlier `startOpen`; only it starts the block's lid.
+            let counts_openers =
+                !opener_started && matches!(slots, Slots::Block(_) | Slots::Double(_, _));
+            // A mod menu type's block tells the client where it is, with what its
+            // mod writes (`openMenu` with an extra-data writer); a stock menu
+            // sends nothing more.
+            let extra = match slots {
+                Slots::Block(k) if game.mod_menu_at(k).is_some() => {
+                    let mut data = None;
+                    game.native_menu_extra_data(uuid, menu, &block, [k.0, k.1, k.2], &mut data);
+                    let data = data.unwrap_or_default();
+                    if data.len() > sunrise_protocol::menu_extra::MAX_DATA {
+                        log::error!(
+                            "Sunrise: {block}'s menu ({menu}) extra data ({} bytes) exceeds {} bytes; refusing open",
+                            data.len(),
+                            sunrise_protocol::menu_extra::MAX_DATA
+                        );
+                        if let Some(container) = previous_window
+                            && let Some(host) = game.lan.as_mut()
+                            && super::super::native_menus::open_menu_of(host, conn).is_none()
+                        {
+                            host.hub
+                                .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
+                        }
+                        return MenuOpen::Refused;
                     }
-                    return MenuOpen::Refused;
+                    Some(data)
                 }
-                Some(data)
-            }
-            _ => None,
-        };
-        if self.world.block_entities.generation(&pos) != generation {
-            if let Some(container) = previous_window
-                && let Some(host) = self.lan.as_mut()
-                && super::super::native_menus::open_menu_of(host, conn).is_none()
-            {
-                host.hub
-                    .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
-            }
-            return MenuOpen::Stale;
-        }
-        let Some(gi) = self.guest_index(conn) else {
-            return MenuOpen::Refused;
-        };
-        // Park the opener's window-0 cursor and build the first contents from
-        // their inventory, even when an open through BlockEntityRef runs in their turn.
-        if self
-            .with_own_record(gi, |host, _| {
-                if host
-                    .hub
-                    .open_menu_window(conn, menu, title, Some(pos), slots, items, extra)
-                    .is_none()
+                _ => None,
+            };
+            if game.world.block_entities.generation(&pos) != generation {
+                if let Some(container) = previous_window
+                    && let Some(host) = game.lan.as_mut()
+                    && super::super::native_menus::open_menu_of(host, conn).is_none()
                 {
-                    if let Some(container) = previous_window
-                        && super::super::native_menus::open_menu_of(host, conn).is_none()
-                    {
-                        host.hub
-                            .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
-                    }
-                    return None;
-                }
-                if !hidden.is_empty() {
                     host.hub
-                        .hide_menu_slots(conn, hidden.iter().copied().map(usize::from).collect());
+                        .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
                 }
-                let _ = host.hub.update_guest(conn, |g| {
-                    if let Some(m) = g.menu.as_mut() {
-                        m.opener_block = Some(block.as_str().into());
+                return MenuOpen::Stale;
+            }
+            let Some(gi) = game.guest_index(conn) else {
+                return MenuOpen::Refused;
+            };
+            // Park the opener's window-0 cursor and build the first contents from
+            // their inventory, even when an open through BlockEntityRef runs in their turn.
+            if game
+                .with_own_record(gi, |host, _| {
+                    if host
+                        .hub
+                        .open_menu_window(conn, menu, title, Some(pos), slots, items, extra)
+                        .is_none()
+                    {
+                        if let Some(container) = previous_window
+                            && super::super::native_menus::open_menu_of(host, conn).is_none()
+                        {
+                            host.hub
+                                .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
+                        }
+                        return None;
                     }
-                });
-                Some(())
-            })
-            .is_none()
-        {
-            return MenuOpen::Refused;
-        }
-        // `ContainerOpenersCounter.incrementOpeners`: a direct handle open
-        // starts the lid once, sounding on its first opener. A spectator's
-        // `startOpen` does nothing, so its close must have nothing to decrement.
-        if counts_openers && !spectator && self.container_openers_changed(pos, true) {
-            self.container_edge_sound(pos, true);
-        }
-        self.player_menu_opening(conn);
-        MenuOpen::Opened
+                    if !hidden.is_empty() {
+                        host.hub
+                            .hide_menu_slots(conn, hidden.iter().copied().map(usize::from).collect());
+                    }
+                    let _ = host.hub.update_guest(conn, |g| {
+                        if let Some(m) = g.menu.as_mut() {
+                            m.opener_block = Some(block.as_str().into());
+                        }
+                    });
+                    Some(())
+                })
+                .is_none()
+            {
+                return MenuOpen::Refused;
+            }
+            // `ContainerOpenersCounter.incrementOpeners`: a direct handle open
+            // starts the lid once, sounding on its first opener. A spectator's
+            // `startOpen` does nothing, so its close must have nothing to decrement.
+            if counts_openers && !spectator && game.container_openers_changed(pos, true) {
+                game.container_edge_sound(pos, true);
+            }
+            game.player_menu_opening(conn);
+            MenuOpen::Opened
+        })
     }
 
     /// `ContainerEntity.interactWithContainerVehicle` for a guest: the menu
@@ -422,22 +423,22 @@ impl Game<'_> {
         else {
             return false;
         };
-        // ServerPlayer.openMenu closes the menu that was open.
-        self.guest_close_all(conn);
-        let Some(gi) = self.guest_index(conn) else {
-            return false;
-        };
-        if self
-            .with_own_record(gi, |host, _| {
-                host.hub
-                    .open_menu_window(conn, menu, title, Some(pos), slots, items, None)
-            })
-            .is_none()
-        {
-            return false;
-        }
-        self.player_menu_opening(conn);
-        true
+        self.guest_replace_menu(conn, false, |game| {
+            let Some(gi) = game.guest_index(conn) else {
+                return false;
+            };
+            if game
+                .with_own_record(gi, |host, _| {
+                    host.hub
+                        .open_menu_window(conn, menu, title, Some(pos), slots, items, None)
+                })
+                .is_none()
+            {
+                return false;
+            }
+            game.player_menu_opening(conn);
+            true
+        })
     }
 
     /// The guest's open container is closing (`AbstractContainerMenu.removed`):

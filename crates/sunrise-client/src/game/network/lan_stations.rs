@@ -107,64 +107,64 @@ impl Game<'_> {
         if self.guest_may_open(conn, menu_type, Some(station.pos)) != Some(true) {
             return true;
         }
-        // ServerPlayer.openMenu closes the menu that was open.
-        self.guest_close_all(conn);
-        let title = sunrise_protocol::text::translatable(station.kind.title_key(), &[]);
-        let Some(window) = self
-            .lan
-            .as_mut()
-            .and_then(|host| host.hub.open_window(conn, menu_type, title))
-        else {
-            return true;
-        };
-        let mut menu = Box::new(Menu::new(kind));
-        menu.set_registry_id(Some(menu_type));
-        if kind == Kind::Stonecutter {
-            menu.stone.server_buttons = self
+        self.guest_replace_menu(conn, false, |game| {
+            let title = sunrise_protocol::text::translatable(station.kind.title_key(), &[]);
+            let Some(window) = game
                 .lan
-                .as_ref()
-                .map(|host| host.hub.sync_data().stonecutter_buttons.clone());
-        }
-        // Without a mod the take runs AnvilMenu.onTake's order in the click itself.
-        let hooked = !mod_api::__private::mods().is_empty();
-        menu.anvil_hook = kind == Kind::Anvil && hooked;
-        // Likewise GrindstoneMenu's result onTake.
-        menu.grind_hook = kind == Kind::Grindstone && hooked;
-        menu.item_smithed_hook = kind == Kind::Smithing && hooked;
-        if kind == Kind::Enchanting {
-            // Player.enchantmentSeed, made when first needed.
-            let needs_seed = self
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
-                .is_some_and(|g| g.xp_seed == 0);
-            let drawn = needs_seed.then(|| self.world.random.next_int());
-            if let Some(host) = self.lan.as_mut() {
-                let _ = host.hub.update_guest(conn, |g| {
-                    if let Some(drawn) = drawn {
-                        g.xp_seed = drawn;
-                    }
-                    menu.data[3] = g.xp_seed;
+                .as_mut()
+                .and_then(|host| host.hub.open_window(conn, menu_type, title))
+            else {
+                return true;
+            };
+            let mut menu = Box::new(Menu::new(kind));
+            menu.set_registry_id(Some(menu_type));
+            if kind == Kind::Stonecutter {
+                menu.stone.server_buttons = game
+                    .lan
+                    .as_ref()
+                    .map(|host| host.hub.sync_data().stonecutter_buttons.clone());
+            }
+            // Without a mod the take runs AnvilMenu.onTake's order in the click itself.
+            let hooked = !mod_api::__private::mods().is_empty();
+            menu.anvil_hook = kind == Kind::Anvil && hooked;
+            // Likewise GrindstoneMenu's result onTake.
+            menu.grind_hook = kind == Kind::Grindstone && hooked;
+            menu.item_smithed_hook = kind == Kind::Smithing && hooked;
+            if kind == Kind::Enchanting {
+                // Player.enchantmentSeed, made when first needed.
+                let needs_seed = game
+                    .lan
+                    .as_ref()
+                    .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
+                    .is_some_and(|g| g.xp_seed == 0);
+                let drawn = needs_seed.then(|| game.world.random.next_int());
+                if let Some(host) = game.lan.as_mut() {
+                    let _ = host.hub.update_guest(conn, |g| {
+                        if let Some(drawn) = drawn {
+                            g.xp_seed = drawn;
+                        }
+                        menu.data[3] = g.xp_seed;
+                    });
+                }
+            }
+            if kind == Kind::Beacon {
+                menu.data = game.beacon_data(station.pos).to_vec();
+            }
+            if let Some(host) = game.lan.as_mut() {
+                *host.menus.entry(conn).or_default().station = Some(GuestStation {
+                    window,
+                    state: 0,
+                    kind: station.kind,
+                    pos: station.pos,
+                    menu,
+                    sent_data: Vec::new(),
+                    last_sound: 0,
                 });
             }
-        }
-        if kind == Kind::Beacon {
-            menu.data = self.beacon_data(station.pos).to_vec();
-        }
-        if let Some(host) = self.lan.as_mut() {
-            *host.menus.entry(conn).or_default().station = Some(GuestStation {
-                window,
-                state: 0,
-                kind: station.kind,
-                pos: station.pos,
-                menu,
-                sent_data: Vec::new(),
-                last_sound: 0,
-            });
-        }
-        self.lan_send_station(conn);
-        self.player_menu_opening(conn);
-        true
+            game.lan_send_station(conn);
+            game.player_menu_opening(conn);
+            true
+        })
     }
 
     /// Runs `op` on the guest's open station (window `window`, any when
@@ -553,26 +553,26 @@ impl Game<'_> {
         {
             return;
         }
-        // ServerPlayer.openMenu closes the menu that was open.
-        self.guest_close_all(conn);
-        let title = sunrise_protocol::text::translatable("container.lectern", &[]);
-        let Some(window) = self
-            .lan
-            .as_mut()
-            .and_then(|host| host.hub.open_window(conn, "minecraft:lectern", title))
-        else {
-            return;
-        };
-        if let Some(host) = self.lan.as_mut() {
-            host.play.entry(conn).or_default().lectern = Some(GuestLectern {
-                window,
-                state: 0,
-                key,
-                sent: None,
-            });
-        }
-        self.lan_send_lectern(conn, true);
-        self.player_menu_opening(conn);
+        self.guest_replace_menu(conn, false, |game| {
+            let title = sunrise_protocol::text::translatable("container.lectern", &[]);
+            let Some(window) = game
+                .lan
+                .as_mut()
+                .and_then(|host| host.hub.open_window(conn, "minecraft:lectern", title))
+            else {
+                return;
+            };
+            if let Some(host) = game.lan.as_mut() {
+                host.play.entry(conn).or_default().lectern = Some(GuestLectern {
+                    window,
+                    state: 0,
+                    key,
+                    sent: None,
+                });
+            }
+            game.lan_send_lectern(conn, true);
+            game.player_menu_opening(conn);
+        })
     }
 
     /// The lectern's book and page for the client: everything (`all`), or

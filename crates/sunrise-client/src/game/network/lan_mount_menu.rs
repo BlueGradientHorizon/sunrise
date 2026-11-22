@@ -34,23 +34,23 @@ impl Game<'_> {
         if self.guest_may_open(conn, "minecraft:horse_inventory", None) != Some(true) {
             return;
         }
-        // ServerPlayer.openMenu closes the menu that was open.
-        self.guest_close_all(conn);
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        let Some(window) = host.hub.open_mount_window(conn, columns as i32, mob as i32) else {
-            return;
-        };
-        host.play.entry(conn).or_default().mount_window = Some(GuestMount {
-            window,
-            mob,
-            columns,
-            state: 0,
-            sent: None,
-        });
-        self.lan_send_mount(conn);
-        self.player_menu_opening(conn);
+        self.guest_replace_menu(conn, false, |game| {
+            let Some(host) = game.lan.as_mut() else {
+                return;
+            };
+            let Some(window) = host.hub.open_mount_window(conn, columns as i32, mob as i32) else {
+                return;
+            };
+            host.play.entry(conn).or_default().mount_window = Some(GuestMount {
+                window,
+                mob,
+                columns,
+                state: 0,
+                sent: None,
+            });
+            game.lan_send_mount(conn);
+            game.player_menu_opening(conn);
+        })
     }
 
     /// `HorseInventoryMenu` over mount `index`, with the player's inventory

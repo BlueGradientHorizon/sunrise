@@ -1430,20 +1430,20 @@ impl Game<'_> {
         if self.guest_may_open(conn, "minecraft:crafting", Some(pos)) != Some(true) {
             return;
         }
-        // ServerPlayer.openMenu closes the menu that was open.
-        self.guest_close_all(conn);
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        let title = sunrise_protocol::text::translatable("container.crafting", &[]);
-        let Some(window) = host.hub.open_window(conn, "minecraft:crafting", title) else {
-            return;
-        };
-        let mut menu = Box::new(Menu::new(Kind::Crafting));
-        menu.set_registry_id(Some("minecraft:crafting"));
-        *host.menus.entry(conn).or_default().crafting.table = Some((window, 0, menu, pos));
-        self.lan_send_table_content(conn);
-        self.player_menu_opening(conn);
+        self.guest_replace_menu(conn, false, |game| {
+            let Some(host) = game.lan.as_mut() else {
+                return;
+            };
+            let title = sunrise_protocol::text::translatable("container.crafting", &[]);
+            let Some(window) = host.hub.open_window(conn, "minecraft:crafting", title) else {
+                return;
+            };
+            let mut menu = Box::new(Menu::new(Kind::Crafting));
+            menu.set_registry_id(Some("minecraft:crafting"));
+            *host.menus.entry(conn).or_default().crafting.table = Some((window, 0, menu, pos));
+            game.lan_send_table_content(conn);
+            game.player_menu_opening(conn);
+        })
     }
 
     /// A click on the guest's crafting table window; false for other windows.

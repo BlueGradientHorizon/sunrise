@@ -116,32 +116,32 @@ impl Game<'_> {
             self.merchant_closed(&mut state);
             return;
         }
-        // ServerPlayer.openMenu closes the menu that was open.
-        self.guest_close_all(conn);
-        let Some(window) = self
-            .lan
-            .as_mut()
-            .and_then(|host| host.hub.open_merchant_window(conn, title))
-        else {
-            self.merchant_closed(&mut state);
-            return;
-        };
-        let mut gm = GuestMerchant {
-            window,
-            state: 0,
-            slots: [None, None, None],
-            merchant: Box::new(state),
-            sent: Vec::new(),
-            sent_level: 0,
-            sent_xp: 0,
-        };
-        self.lan_send_offers(conn, &mut gm, true);
-        self.lan_send_merchant_content(conn, &mut gm);
-        if let Some(host) = self.lan.as_mut() {
-            host.menus.entry(conn).or_default().merchant.restore(());
-            host.play.entry(conn).or_default().merchant = Some(gm);
-        }
-        self.player_menu_opening(conn);
+        self.guest_replace_menu(conn, false, |game| {
+            let Some(window) = game
+                .lan
+                .as_mut()
+                .and_then(|host| host.hub.open_merchant_window(conn, title))
+            else {
+                game.merchant_closed(&mut state);
+                return;
+            };
+            let mut gm = GuestMerchant {
+                window,
+                state: 0,
+                slots: [None, None, None],
+                merchant: Box::new(state),
+                sent: Vec::new(),
+                sent_level: 0,
+                sent_xp: 0,
+            };
+            game.lan_send_offers(conn, &mut gm, true);
+            game.lan_send_merchant_content(conn, &mut gm);
+            if let Some(host) = game.lan.as_mut() {
+                host.menus.entry(conn).or_default().merchant.restore(());
+                host.play.entry(conn).or_default().merchant = Some(gm);
+            }
+            game.player_menu_opening(conn);
+        })
     }
     /// `Entity.getDisplayName` of the merchant, the screen's title: its name
     /// (custom, else the profession's) with the show_entity hover event and
