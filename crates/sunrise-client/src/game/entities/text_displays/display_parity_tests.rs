@@ -1676,8 +1676,12 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
         remote.logged_in = true;
         remote.entity_id = 7;
 
-        let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
-        game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
+        for cz in -1..=0 {
+            let chunk = sunrise_client::chunk::Chunk::empty(0, cz);
+            game.world
+                .chunks
+                .insert((0, cz), std::sync::Arc::new(chunk));
+        }
 
         let td_kind = game
             .remote
@@ -2035,8 +2039,8 @@ fn review_parity_witness_matches_vanilla_26_3() {
         .pose([0.0; 3], [0.0; 2], [0.0; 2])
         .transform_position([1.0, 1.0, 0.0]);
     assert_eq!(
-        td_pt[0].to_bits(),
-        hex_u32(&jm["rot_neg45_trans_16m_bits"][0])
+        td_pt.map(f32::to_bits).to_vec(),
+        hex_u32_vec(&jm["compose_rot_neg45_trans_16m_bits"])
     );
     let norm = |q: [f32; 4]| {
         let len_sq = q[0] * q[0] + (q[1] * q[1] + (q[2] * q[2] + q[3] * q[3]));

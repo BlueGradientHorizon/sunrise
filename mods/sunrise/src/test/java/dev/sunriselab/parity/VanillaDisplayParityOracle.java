@@ -1808,12 +1808,22 @@ public final class VanillaDisplayParityOracle {
             out.add("glow_color_override", gl);
         }
 
-        // 15. JOML exact arithmetic: translateX(16777216) * rotateZ(-45deg) on (1, 1, 0).
+        // 15. JOML exact arithmetic: translateX(16777216) * rotateZ(-45deg) on (1, 1, 0),
+        // plus Transformation.compose (the real vanilla Display path) and Quaternionf.slerp.
         {
-            Matrix4f m = new Matrix4f().translate(16777216.0F, 0.0F, 0.0F).rotateZ((float) Math.toRadians(-45.0));
+            float ang = (float) Math.toRadians(-45.0);
+            Matrix4f m = new Matrix4f().translate(16777216.0F, 0.0F, 0.0F).rotateZ(ang);
             Vector3f p = m.transformPosition(new Vector3f(1.0F, 1.0F, 0.0F));
             JsonObject jm = new JsonObject();
             jm.add("rot_neg45_trans_16m_bits", fArr(p.x(), p.y(), p.z()));
+            Transformation tx = new Transformation(
+                new Vector3f(16777216.0F, 0.0F, 0.0F),
+                new Quaternionf(0.0F, 0.0F, (float) Math.sin(ang * 0.5F), (float) Math.cos(ang * 0.5F)),
+                new Vector3f(1.0F, 1.0F, 1.0F),
+                new Quaternionf()
+            );
+            Vector3f cp = tx.getMatrix().transformPosition(new Vector3f(1.0F, 1.0F, 0.0F));
+            jm.add("compose_rot_neg45_trans_16m_bits", fArr(cp.x(), cp.y(), cp.z()));
             Quaternionf qa = new Quaternionf(0.1F, 0.2F, 0.3F, 0.9F).normalize();
             Quaternionf qb = new Quaternionf(-0.4F, 0.5F, -0.2F, 0.7F).normalize();
             Quaternionf qs = new Quaternionf(qa).slerp(qb, 0.37F);
