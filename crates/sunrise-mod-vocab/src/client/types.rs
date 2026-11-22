@@ -21,6 +21,7 @@ pub enum ToastKind {
 }
 
 /// The optional 16×16 GUI icon of a [`ModToast`].
+// no wire: part of a local ClientHost::add_toast argument, not a wire field.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum ToastIcon {
@@ -31,6 +32,7 @@ pub enum ToastIcon {
 }
 
 /// A client mod notification submitted through `ClientHost::add_toast`.
+// no wire: local ClientHost::add_toast argument, not a wire field.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct ModToast {
