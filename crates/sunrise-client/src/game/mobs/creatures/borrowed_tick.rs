@@ -626,6 +626,17 @@ impl Game<'_> {
                                 &mut movement,
                             )
                         }
+                        Some(Pause::Drink { resume, .. }) => {
+                            sunrise_client::mobs::riders::resume_after_drink(
+                                &mut mobs,
+                                i,
+                                &w,
+                                &mut level,
+                                resume,
+                                &mut events,
+                                &mut movement,
+                            )
+                        }
                         Some(Pause::AfterDamage(damage)) => {
                             sunrise_client::mobs::riders::resume_after_damage(
                                 &mut mobs,
@@ -840,21 +851,13 @@ impl Game<'_> {
                     );
                     views_dirty |= mobs.stamp() != before_brain;
                     if sting.is_none()
-                        && events[from..].iter().any(|e| {
-                            matches!(
-                                e,
-                                MobEvent::DeathProtectionEffects { .. }
-                                    | MobEvent::EffectMob { .. }
-                            )
-                        })
+                        && events[from..]
+                            .iter()
+                            .any(|e| matches!(e, MobEvent::EffectMob { .. }))
                     {
                         let mut idx = from;
                         while idx < events.len() {
-                            if matches!(
-                                events[idx],
-                                MobEvent::DeathProtectionEffects { .. }
-                                    | MobEvent::EffectMob { .. }
-                            ) {
+                            if matches!(events[idx], MobEvent::EffectMob { .. }) {
                                 pending_effects.push(events.remove(idx));
                             } else {
                                 idx += 1;
@@ -1006,11 +1009,16 @@ impl Game<'_> {
                         Pause::Consumption { decision, .. } => {
                             self.apply_fox_consumption(decision);
                         }
+                        Pause::Drink { stack, .. } => {
+                            self.finish_mob_drink(id, stack);
+                        }
                         Pause::Breathing { air, .. } => {
                             air_answer = self.ask_mob_breath(air);
                         }
                         Pause::AfterDamage(_) => {
-                            if sunrise_client::mobs::creaking::has_pending_hurt(&self.mobs[i]) {
+                            if self.mobs[i].has_protected_hurt()
+                                || sunrise_client::mobs::creaking::has_pending_hurt(&self.mobs[i])
+                            {
                                 // The earlier emissions (e.g. drowning bubbles) precede this hurt.
                                 let before_hurt = events.split_off(resume_from);
                                 let _ = self.handle_mob_events(before_hurt);
