@@ -538,7 +538,7 @@ mod tests {
             assert_eq!(
                 game.inventory[game.selected]
                     .as_ref()
-                    .map(|s| (s.item.as_str(), s.count)),
+                    .map(|s| (s.item.as_ref(), s.count)),
                 Some(("minecraft:diamond", 3))
             );
 

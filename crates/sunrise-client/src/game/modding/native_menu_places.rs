@@ -980,7 +980,6 @@ mod tests {
             assert_eq!(shown(game), None, "mirrored after the turn, not inside it");
             game.run_native_menu_events();
             assert_eq!(shown(game), Some(5));
-            let player = game.player(123).unwrap();
             let host: &mut dyn ServerHost = game;
             assert_eq!(menu.container_id(host), Some(window));
 
