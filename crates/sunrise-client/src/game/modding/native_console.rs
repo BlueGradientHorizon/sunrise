@@ -1,12 +1,39 @@
 //! Native access to the server console: operator-visible logs and command source output.
 use super::{Game, commands::execute::Source};
 use mod_api::{CommandFeedback, CommandResult, TextFormError};
-use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex, Weak, mpsc::Sender};
 use sunrise_client::{logging, text::Text};
 
 pub(in crate::game) enum Output {
-    Plain(Vec<String>),
+    Plain,
     Stream(Sender<Result<CommandFeedback, TextFormError>>),
+}
+
+/// Output sink owned by a native console command source.
+#[derive(Clone, Debug)]
+pub(in crate::game) enum ConsoleOutput {
+    Silent,
+    Plain(Weak<Mutex<Vec<String>>>),
+    Stream(Sender<Result<CommandFeedback, TextFormError>>),
+}
+
+impl ConsoleOutput {
+    pub(in crate::game) fn send(&self, kind: fn(mod_api::Text) -> CommandFeedback, text: &Text) {
+        match self {
+            Self::Silent => {}
+            Self::Plain(lines) => {
+                if let Some(lines) = lines.upgrade()
+                    && let Ok(mut lines) = lines.lock()
+                {
+                    lines.push(text.plain());
+                }
+            }
+            Self::Stream(output) => {
+                // Only a receiver that has stopped listening can refuse this send.
+                let _ = output.send(sunrise_client_lib::api_text::to_api(text).map(kind));
+            }
+        }
+    }
 }
 
 impl Game<'_> {
@@ -33,11 +60,12 @@ impl Game<'_> {
 
     /// `Commands::run_command_with_output`: collect the console source's output as plain text.
     pub(super) fn native_run_command_with_output(&mut self, line: &str) -> CommandResult {
-        self.run_console_command(line, Some(Output::Plain(Vec::new())))
+        self.run_console_command(line, Some(Output::Plain))
     }
 
-    /// Run at owner permission from the world spawn. Nested runs use their own source and output,
-    /// leaving the calling command's execution state, result callbacks and output untouched.
+    /// Run at owner permission from the world spawn level (`MinecraftServer.createCommandSourceStack`).
+    /// Nested runs use their own source and output, leaving the calling command's execution state,
+    /// result callbacks and output untouched.
     pub(in crate::game) fn run_console_command(
         &mut self,
         line: &str,
@@ -56,34 +84,43 @@ impl Game<'_> {
         } else {
             line
         };
-        let source = Source {
-            native_console: true,
-            silent: output.is_none(),
-            ..self.server_source()
+        let (sink, plain_lines) = match output {
+            None => (ConsoleOutput::Silent, None),
+            Some(Output::Plain) => {
+                let lines = Arc::new(Mutex::new(Vec::new()));
+                let weak = Arc::downgrade(&lines);
+                (ConsoleOutput::Plain(weak), Some(lines))
+            }
+            Some(Output::Stream(sender)) => (ConsoleOutput::Stream(sender), None),
         };
-        let outer = self.command_source.replace(source);
+        let silent = matches!(sink, ConsoleOutput::Silent);
         let filter = std::mem::replace(&mut self.native_command_filter, true);
         let outer_exec = std::mem::take(&mut self.exec);
         let outer_results = self.cmds.results.take();
-        let outer_output = std::mem::replace(&mut self.native_console_output, output);
         let outer_chat = self.chat_capture.take();
-        let success = self.as_console(|g| g.run_command(line));
+        let success = self.as_console_in_spawn_level(|g| {
+            let source = Source {
+                silent,
+                native_output: Some(sink),
+                ..g.server_source()
+            };
+            g.command_source = Some(source);
+            g.run_command(line)
+        });
         self.chat_capture = outer_chat;
         self.exec = outer_exec;
         self.cmds.results = outer_results;
         self.native_command_filter = filter;
-        self.command_source = outer;
-        let output = std::mem::replace(&mut self.native_console_output, outer_output);
-        let feedback = match output {
-            Some(Output::Plain(lines)) => lines,
-            _ => Vec::new(),
-        };
+        let feedback = plain_lines
+            .map(|lines| std::mem::take(&mut *lines.lock().unwrap()))
+            .unwrap_or_default();
         CommandResult::new(success, feedback)
     }
 
     pub(super) fn native_console_source(&self) -> bool {
         self.command_source
-            .is_some_and(|source| source.native_console)
+            .as_ref()
+            .is_some_and(|source| source.native_output.is_some())
     }
 
     /// Deliver to the command source rather than the ambient player chat capture or log.
@@ -92,17 +129,14 @@ impl Game<'_> {
         kind: fn(mod_api::Text) -> CommandFeedback,
         text: Text,
     ) {
-        if !self.native_console_source() {
-            self.system_message(text);
+        if let Some(output) = self
+            .command_source
+            .as_ref()
+            .and_then(|source| source.native_output.as_ref())
+        {
+            output.send(kind, &text);
             return;
         }
-        match &mut self.native_console_output {
-            Some(Output::Plain(lines)) => lines.push(text.plain()),
-            Some(Output::Stream(output)) => {
-                // Only a receiver that has stopped listening can refuse this send.
-                let _ = output.send(sunrise_client_lib::api_text::to_api(&text).map(kind));
-            }
-            None => {}
-        }
+        self.system_message(text);
     }
 }

@@ -147,10 +147,14 @@ pub trait Commands {
         )
     }
     /// Side: server.
-    /// Runs a console command and collects all its source messages as plain text, in order,
-    /// without truncation. For structured text and separate success and failure messages,
-    /// use [`Self::run_command_with_feedback`]. Both methods have the same execution result
-    /// and source routing. A command can fail after already sending success feedback.
+    /// Runs a console command from the world spawn level (`MinecraftServer.createCommandSourceStack`)
+    /// and returns a synchronous snapshot of every source message emitted before the call returns,
+    /// as plain text in order and without truncation. Messages sent by delayed command listeners
+    /// after dispatch returns (such as `/test` completion summaries) are not waited for or
+    /// included; use [`Self::run_command_with_feedback`] to receive structured messages including
+    /// delayed ones, and to tell success, failure and direct system messages apart. Both methods
+    /// have the same execution result and source routing. A command can fail after already sending
+    /// success feedback.
     fn run_command_with_output(&mut self, line: &str) -> CommandResult {
         crate::world::phase::unprovided(
             "Commands::run_command_with_output",
@@ -159,12 +163,21 @@ pub trait Commands {
         )
     }
     /// Side: server.
-    /// Runs `line` as the server console, dropping one leading slash, and sends the command
-    /// source's structured messages to `output` in order as they occur. Logs, player messages
-    /// and operator broadcasts are not source feedback. Nested calls have their own output.
-    /// Output is not truncated; the receiver decides what to keep or display. A component that
-    /// cannot be represented is sent as a `TextFormError` in its place. Dropping the receiver
-    /// stops delivery but does not interrupt the command.
+    /// Runs `line` as the server console from the world spawn level
+    /// (`MinecraftServer.createCommandSourceStack`), dropping one leading slash, and sends the
+    /// command source's structured messages to `output` in order as they occur. Logs, chat to
+    /// other recipients and operator broadcasts are not source feedback; outgoing confirmations
+    /// addressed to a non-player command source (such as `/msg`) are delivered as
+    /// [`CommandFeedback::System`]. Nested calls have their own output. Output is not truncated;
+    /// the receiver decides what to keep or display. A component that cannot be represented is
+    /// sent as a `TextFormError` in its place. Dropping the receiver stops delivery but does not
+    /// interrupt the command.
+    ///
+    /// The channel closes once the command returns and every delayed listener bound to that
+    /// command source (such as a `/test` runner's summary displayer or `/fetchprofile`) finishes
+    /// and drops its source. On the server thread, drain with `try_iter()` or `try_recv()` rather
+    /// than blocking iteration so delayed commands can keep ticking; a background reader thread
+    /// may block until disconnection.
     ///
     /// Returns whether the command ran without failing. A blank line or no open server runs
     /// nothing and returns `false` without sending a message. Commands handled only by the

@@ -246,6 +246,321 @@ fn native_console_delivers_all_source_feedback_in_order() {
     );
 }
 
+fn translation_key(text: &Text) -> Option<&str> {
+    if let TextContent::Translatable { key, .. } = &text.content {
+        return Some(key.as_str());
+    }
+    text.children.iter().find_map(translation_key)
+}
+
+fn guest_chats(
+    receiver: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+) -> Vec<sunrise_core::nbt::Tag> {
+    use sunrise_protocol::packets::play::Clientbound;
+    let mut result = Vec::new();
+    for sent in receiver.try_iter() {
+        let bodies = match sent {
+            sunrise_client::lan::Out::Packet(p) => vec![p],
+            sunrise_client::lan::Out::Packets(p) => p,
+            sunrise_client::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
+        };
+        for body in bodies {
+            let mut reader = sunrise_protocol::buf::Reader::new(&body);
+            let id = reader.varint().unwrap();
+            if let Clientbound::SystemChat(p) = Clientbound::decode(id, reader.rest()).unwrap() {
+                result.push(p.content);
+            }
+        }
+    }
+    result
+}
+
+struct FailGameTest;
+
+impl mod_api::GameTestFunction for FailGameTest {
+    fn run(&self, _: &mut dyn ServerHost, _: &mod_api::GameTestContext) -> mod_api::GameTestResult {
+        mod_api::GameTestResult::Fail("probe failed".into())
+    }
+}
+
+struct DelayedSummaryTests;
+
+#[mod_api::__subscriptions]
+impl Hooks for DelayedSummaryTests {
+    fn register_game_tests(
+        &self,
+        _: &dyn mod_api::Host,
+        event: &mut mod_api::RegisterGameTestsEvent<'_>,
+    ) {
+        event
+            .functions
+            .register("feedback_probe:fail", Arc::new(FailGameTest))
+            .unwrap();
+        event
+            .functions
+            .register_test(
+                "feedback_probe:required_fail",
+                mod_api::GameTestDefinition::new(
+                    "minecraft:empty".into(),
+                    "feedback_probe:fail".into(),
+                ),
+            )
+            .unwrap();
+        let mut optional = mod_api::GameTestDefinition::new(
+            "minecraft:empty".into(),
+            "feedback_probe:fail".into(),
+        );
+        optional.required = false;
+        event
+            .functions
+            .register_test("feedback_probe:optional_fail", optional)
+            .unwrap();
+    }
+}
+
+/// `TestCommand.trackAndStartRunner` / `TestSummaryDisplayer`: delayed summary lines
+/// reach the issuing native console source after the command returns, then the channel closes.
+/// `run_command_with_output` returns only the synchronous snapshot collected during dispatch.
+#[test]
+#[ignore = "daily"]
+fn native_console_delivers_delayed_game_test_summary_and_closes() {
+    use std::sync::mpsc::TryRecvError;
+    mod_platform::testing::with_mods(
+        vec![mod_api::ModEntry::new(
+            "feedback_probe",
+            Box::new(DelayedSummaryTests),
+        )]
+        .into(),
+        || {
+            with_guests(|game| {
+                game.build_registries();
+                game.snapshot_test_defs();
+                let layout = game.world.layout();
+                for cx in -2..=2 {
+                    for cz in -2..=2 {
+                        game.world.chunks.insert(
+                            (cx, cz),
+                            Arc::new(sunrise_client::chunk::Chunk::with_layout(cx, cz, layout)),
+                        );
+                        let _ = game
+                            .block_ticks
+                            .add_empty_chunk(sunrise_core::position::ChunkPos::new(cx, cz));
+                    }
+                }
+                let (send, receive) = std::sync::mpsc::channel();
+                assert!(Commands::run_command_with_feedback(
+                    game,
+                    "test run feedback_probe:*",
+                    send,
+                ));
+                let sync_messages: Vec<_> = receive.try_iter().collect();
+                assert_eq!(sync_messages.len(), 2, "{sync_messages:?}");
+                assert!(matches!(
+                    &sync_messages[0],
+                    Ok(CommandFeedback::Success(text))
+                        if translation_key(text) == Some("commands.test.run.running")
+                ));
+                assert!(matches!(
+                    &sync_messages[1],
+                    Ok(CommandFeedback::Success(text))
+                        if translation_key(text) == Some("commands.test.batch.starting")
+                ));
+                assert!(
+                    matches!(receive.try_recv(), Err(TryRecvError::Empty)),
+                    "the delayed summary listener keeps the channel open until completion"
+                );
+
+                for _ in 0..8 {
+                    game.tick_game_tests();
+                }
+                let delayed: Vec<_> = receive.try_iter().collect();
+                assert_eq!(delayed.len(), 4, "{delayed:?}");
+                assert!(matches!(
+                    &delayed[0],
+                    Ok(CommandFeedback::Success(text))
+                        if translation_key(text) == Some("commands.test.summary")
+                ));
+                let Ok(CommandFeedback::Failure(failed)) = &delayed[1] else {
+                    panic!("expected required-failure summary: {:?}", delayed[1]);
+                };
+                assert!(
+                    matches!(failed.style.color.as_deref(), Some("red" | "#FF5555")),
+                    "required failure keeps red style: {failed:?}"
+                );
+                assert_eq!(
+                    translation_key(failed),
+                    Some("commands.test.summary.failed")
+                );
+                assert!(matches!(
+                    &delayed[2],
+                    Ok(CommandFeedback::System(text))
+                        if translation_key(text) == Some("commands.test.summary.optional_failed")
+                ));
+                assert!(matches!(
+                    &delayed[3],
+                    Ok(CommandFeedback::Success(text))
+                        if translation_key(text) == Some("test.run.coordinates")
+                ));
+                assert!(
+                    matches!(receive.try_recv(), Err(TryRecvError::Disconnected)),
+                    "the channel closes once the runner finishes and flushes its summary"
+                );
+
+                let plain =
+                    Commands::run_command_with_output(game, "test run minecraft:always_pass");
+                assert!(plain.success);
+                assert_eq!(plain.feedback.len(), 2, "{plain:?}");
+                for _ in 0..8 {
+                    game.tick_game_tests();
+                }
+            })
+        },
+    );
+}
+
+/// `MsgCommand.sendMessage` -> `CommandSourceStack.sendChatMessage`: a non-player native
+/// console source receives the outgoing whisper confirmation as `CommandFeedback::System`,
+/// separately from the target player's incoming message.
+#[test]
+#[ignore = "daily"]
+fn native_console_msg_routes_outgoing_confirmation_to_source() {
+    use std::sync::mpsc::TryRecvError;
+    use sunrise_core::nbt::Tag;
+    with_guests(|game| {
+        game.build_registries();
+        let (tx12, rx12) = std::sync::mpsc::channel();
+        let (tx13, rx13) = std::sync::mpsc::channel();
+        for guest in &mut game.lan.as_mut().unwrap().hub.guests {
+            let tx = if guest.conn == 12 {
+                tx12.clone()
+            } else {
+                tx13.clone()
+            };
+            guest.sender = sunrise_client::lan::PlayerSender::new(tx, Arc::default());
+        }
+
+        let (send, receive) = std::sync::mpsc::channel();
+        assert!(Commands::run_command_with_feedback(
+            game,
+            "msg guest12 hello there",
+            send,
+        ));
+        for guest in &game.lan.as_ref().unwrap().hub.guests {
+            guest.sender.flush();
+        }
+        let messages: Vec<_> = receive.try_iter().collect();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        let Ok(CommandFeedback::System(outgoing)) = &messages[0] else {
+            panic!("expected outgoing system confirmation: {:?}", messages[0]);
+        };
+        assert_eq!(
+            translation_key(outgoing),
+            Some("commands.message.display.outgoing")
+        );
+        assert_eq!(outgoing.style.italic, Some(true));
+        assert!(matches!(
+            receive.try_recv(),
+            Err(TryRecvError::Disconnected)
+        ));
+
+        let received12 = guest_chats(&rx12);
+        assert_eq!(received12.len(), 1, "{received12:?}");
+        assert!(matches!(
+            &received12[0],
+            Tag::Compound(fields)
+                if fields.get(&"translate".into())
+                    == Some(&Tag::String("commands.message.display.incoming".into()))
+        ));
+        assert!(guest_chats(&rx13).is_empty());
+
+        let plain = Commands::run_command_with_output(game, "msg guest12 second whisper");
+        assert!(plain.success);
+        assert_eq!(plain.feedback.len(), 1, "{plain:?}");
+        assert!(plain.feedback[0].contains("guest12"), "{plain:?}");
+        assert!(plain.feedback[0].contains("second whisper"), "{plain:?}");
+    });
+}
+
+/// `MinecraftServer.createCommandSourceStack`: direct native console commands run in the
+/// world spawn level (`findRespawnDimension`) even when another dimension is active, and
+/// restore the previous level afterwards.
+#[test]
+#[ignore = "daily"]
+fn native_console_runs_in_world_spawn_level_and_restores_dimension() {
+    use std::sync::mpsc::TryRecvError;
+    with_guests(|game| {
+        game.build_registries();
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        let overworld_layout = game.world.layout();
+        game.world.chunks.insert(
+            (0, 0),
+            Arc::new(sunrise_client::chunk::Chunk::with_layout(
+                0,
+                0,
+                overworld_layout,
+            )),
+        );
+        let _ = game
+            .block_ticks
+            .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0));
+
+        game.enter_command_level(super::Dim::Nether).unwrap();
+        let nether_layout = game.world.layout();
+        game.world.chunks.insert(
+            (0, 0),
+            Arc::new(sunrise_client::chunk::Chunk::with_layout(
+                0,
+                0,
+                nether_layout,
+            )),
+        );
+        let _ = game
+            .block_ticks
+            .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0));
+        assert_eq!(game.dim, super::Dim::Nether);
+
+        let (send, receive) = std::sync::mpsc::channel();
+        assert!(Commands::run_command_with_feedback(
+            game,
+            "setblock 1 64 1 minecraft:stone",
+            send,
+        ));
+        assert_eq!(
+            game.dim,
+            super::Dim::Nether,
+            "previous dimension must be restored"
+        );
+        assert_ne!(
+            game.world.block(1, 64, 1),
+            stone,
+            "nether must stay untouched"
+        );
+        let messages: Vec<_> = receive.try_iter().collect();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert!(matches!(
+            &messages[0],
+            Ok(CommandFeedback::Success(text))
+                if translation_key(text) == Some("commands.setblock.success")
+        ));
+        assert!(matches!(
+            receive.try_recv(),
+            Err(TryRecvError::Disconnected)
+        ));
+
+        game.enter_command_level(super::Dim::Overworld).unwrap();
+        assert_eq!(
+            game.world.block(1, 64, 1),
+            stone,
+            "command must run in the world spawn level"
+        );
+    });
+}
+
 /// A call made while another capture is open captures its own lines, and the outer capture
 /// keeps what it had and goes on.
 #[test]

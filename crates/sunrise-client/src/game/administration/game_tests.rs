@@ -340,10 +340,18 @@ struct Runner {
 
 /// The command stack and its output source are different: `execute as`
 /// changes the actor, while the player who issued the command receives it.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct SummarySource {
     source: Source,
     recipient: Option<Target>,
+}
+
+/// Which `CommandSourceStack` method a delayed `/test` summary line uses.
+#[derive(Clone, Copy)]
+enum SummaryKind {
+    Success { broadcast: bool },
+    Failure,
+    System,
 }
 
 /// `StructureGridSpawner.DimensionGridState`.
@@ -410,20 +418,30 @@ enum Out {
     Players(Text),
     Source {
         context: SummarySource,
+        kind: SummaryKind,
         text: Text,
-        broadcast: bool,
     },
     Coordinates(SummarySource, Vec<Dim>),
 }
 
-fn summary_line(context: Option<SummarySource>, text: Text, broadcast: bool) -> Out {
+fn summary_line(context: Option<SummarySource>, kind: SummaryKind, text: Text) -> Out {
     match context {
         Some(context) => Out::Source {
             context,
+            kind,
             text,
-            broadcast,
         },
-        None => Out::Console { text, broadcast },
+        None => match kind {
+            SummaryKind::Success { broadcast } => Out::Console { text, broadcast },
+            SummaryKind::Failure => Out::Console {
+                text: Text::empty().append(text).with_color(text::RED),
+                broadcast: false,
+            },
+            SummaryKind::System => Out::Console {
+                text,
+                broadcast: false,
+            },
+        },
     }
 }
 
@@ -492,8 +510,11 @@ impl Game<'_> {
     /// `TestCommand.trackAndStartRunner`: command summaries retain their
     /// original source. Test-block actions and verify keep their existing path.
     pub(super) fn track_and_start_command_runner(&mut self, infos: Vec<Info>, grid: Grid) {
-        let mut source = self.command_source.unwrap_or_else(|| self.player_source());
-        let recipient = if self.console_broadcast.is_some() {
+        let mut source = self
+            .command_source
+            .clone()
+            .unwrap_or_else(|| self.player_source());
+        let recipient = if self.console_broadcast.is_some() || source.native_output.is_some() {
             None
         } else {
             self.lan_acting
@@ -663,10 +684,16 @@ impl Game<'_> {
         if self.game_tests.command_start {
             self.feedback(starting);
         } else {
-            self.game_tests.outbox.push(Out::Console {
-                text: starting,
-                broadcast: true,
-            });
+            let context = self
+                .game_tests
+                .runner
+                .as_ref()
+                .and_then(|r| r.summary_source.clone());
+            self.game_tests.outbox.push(summary_line(
+                context,
+                SummaryKind::Success { broadcast: true },
+                starting,
+            ));
         }
         if let Some(runner) = self.game_tests.runner.as_mut() {
             runner.batch_pending = spawned.len();
@@ -691,6 +718,7 @@ impl Game<'_> {
         if runner.scheduled.is_empty() {
             runner.batches = Vec::new();
             runner.stopped = true;
+            runner.summary_source = None;
             return;
         }
         let scheduled = std::mem::take(&mut runner.scheduled);
@@ -1306,40 +1334,39 @@ impl Game<'_> {
             .count();
         let halt = runner.halt_on_error;
         if all_done {
-            let context = runner.summary_source;
+            let context = runner.summary_source.clone();
             let out = &mut self.game_tests.outbox;
             out.push(summary_line(
-                context,
+                context.clone(),
+                SummaryKind::Success { broadcast: true },
                 Text::translate("commands.test.summary", &[number(total as i32)])
                     .with_color(text::WHITE),
-                true,
             ));
             if failed_required > 0 {
                 out.push(summary_line(
-                    context,
+                    context.clone(),
+                    SummaryKind::Failure,
                     Text::translate(
                         "commands.test.summary.failed",
                         &[number(failed_required as i32)],
-                    )
-                    .with_color(text::RED),
-                    false,
+                    ),
                 ));
             } else {
                 out.push(summary_line(
-                    context,
+                    context.clone(),
+                    SummaryKind::Success { broadcast: true },
                     Text::translate("commands.test.summary.all_required_passed", &[])
                         .with_color(text::GREEN),
-                    true,
                 ));
             }
             if failed_optional > 0 {
                 out.push(summary_line(
-                    context,
+                    context.clone(),
+                    SummaryKind::System,
                     Text::translate(
                         "commands.test.summary.optional_failed",
                         &[number(failed_optional as i32)],
                     ),
-                    false,
                 ));
             }
             if let Some(context) = context {
@@ -1501,10 +1528,10 @@ impl Game<'_> {
                 Out::Console { text, broadcast } => self.test_console_output(text, broadcast),
                 Out::Source {
                     context,
+                    kind,
                     text,
-                    broadcast,
                 } => {
-                    self.test_source_output(context, text, broadcast);
+                    self.test_source_output(&context, kind, text);
                 }
                 Out::Coordinates(context, dimensions) => {
                     if let Some(Target::Guest(conn)) = context.recipient
@@ -1512,8 +1539,8 @@ impl Game<'_> {
                     {
                         continue;
                     }
-                    self.with_source(context.source, |g| {
-                        g.output_test_summary_coordinates(context, &dimensions)
+                    self.with_source(context.source.clone(), |g| {
+                        g.output_test_summary_coordinates(&context, &dimensions)
                     });
                 }
                 Out::Players(text) => {
@@ -1547,15 +1574,14 @@ impl Game<'_> {
 
     /// `TestSummaryDisplayer`: feedback uses the original issuer, without
     /// executing another command or invoking the command's result callbacks.
-    fn test_source_output(&mut self, context: SummarySource, text: Text, broadcast: bool) {
+    fn test_source_output(&mut self, context: &SummarySource, kind: SummaryKind, text: Text) {
         if let Some(recipient) = context.recipient {
             let delivered = self.for_player(recipient, |g| {
-                g.with_source(context.source, |g| {
-                    if broadcast {
-                        g.feedback(text);
-                    } else {
-                        g.feedback_unbroadcast(text);
-                    }
+                g.with_source(context.source.clone(), |g| match kind {
+                    SummaryKind::Success { broadcast: true } => g.feedback(text),
+                    SummaryKind::Success { broadcast: false } => g.feedback_unbroadcast(text),
+                    SummaryKind::Failure => g.command_failure(text),
+                    SummaryKind::System => g.command_system_message(text),
                 });
             });
             if delivered.is_some() {
@@ -1565,9 +1591,24 @@ impl Game<'_> {
                 };
                 self.send_admin_feedback(issuer);
             }
+        } else if context.source.native_output.is_some() {
+            self.with_source(context.source.clone(), |g| match kind {
+                SummaryKind::Success { broadcast: true } => {
+                    g.feedback(text);
+                    g.send_admin_feedback(None);
+                }
+                SummaryKind::Success { broadcast: false } => g.feedback_unbroadcast(text),
+                SummaryKind::Failure => g.command_failure(text),
+                SummaryKind::System => g.command_system_message(text),
+            });
         } else if !context.source.silent {
-            self.with_source(context.source, |g| {
+            self.with_source(context.source.clone(), |g| {
                 let previous = g.console_broadcast;
+                let broadcast = matches!(kind, SummaryKind::Success { broadcast: true });
+                let text = match kind {
+                    SummaryKind::Failure => Text::empty().append(text).with_color(text::RED),
+                    _ => text,
+                };
                 g.test_console_output(text, broadcast);
                 g.console_broadcast = previous;
             });
@@ -1577,7 +1618,7 @@ impl Game<'_> {
     /// `TestCommand.outputPlayerCoordinates` / `outputTestCoordinates` after
     /// the summary. Surface reads reuse the existing test-position helper,
     /// including its missing-chunk policy; this is not a new loading policy.
-    fn output_test_summary_coordinates(&mut self, context: SummarySource, dimensions: &[Dim]) {
+    fn output_test_summary_coordinates(&mut self, context: &SummarySource, dimensions: &[Dim]) {
         if let Some(Target::Guest(conn)) = context.recipient
             && self.command_guest(conn).is_none()
         {
@@ -1601,6 +1642,7 @@ impl Game<'_> {
         if let Some((pos, dim, rotation)) = player {
             self.test_source_output(
                 context,
+                SummaryKind::Success { broadcast: false },
                 summary_coordinates(
                     "test.player.coordinates",
                     pos.map(|v| v.floor() as i32),
@@ -1608,7 +1650,6 @@ impl Game<'_> {
                     rotation.map(|v| v.floor() as i32),
                     text::GOLD,
                 ),
-                false,
             );
         }
         let pos = player
@@ -1625,6 +1666,7 @@ impl Game<'_> {
             }
             self.test_source_output(
                 context,
+                SummaryKind::Success { broadcast: false },
                 summary_coordinates(
                     "test.run.coordinates",
                     [pos[0], y, pos[2]],
@@ -1632,7 +1674,6 @@ impl Game<'_> {
                     [0, 0],
                     text::YELLOW,
                 ),
-                false,
             );
         }
     }

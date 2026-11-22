@@ -16,8 +16,8 @@ for file in (
     path = game / file
     source = path.read_text()
     source, count = re.subn(
-        r"(?m)^( +)origin_player: (?:false|self\.player\.is_some\(\)),\n(?! +native_console:)",
-        r"\g<0>\1native_console: false,\n",
+        r"(?m)^( +)origin_player: (?:false|self\.player\.is_some\(\)),\n(?! +native_output:)",
+        r"\g<0>\1native_output: None,\n",
         source,
     )
     expected = 2 if file.endswith("/execute.rs") else 1
