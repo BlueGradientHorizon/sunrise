@@ -1314,7 +1314,7 @@ impl MotionWorld<'_, '_, '_> {
         self.finish_fluid_tick(None)?;
         let keys = self.prepare_local_sprint(keys)?;
         sprint(self.player, keys)?;
-        self.finish_local_tick(keys)
+        self.finish_local_tick_body(keys)
     }
     /// The base tick starts before any `LocalPlayer.aiStep` work.
     pub fn begin_local_tick(&mut self) -> Result<()> {
@@ -1335,9 +1335,12 @@ impl MotionWorld<'_, '_, '_> {
         }
         Ok(keys)
     }
-    /// Finish the local tick with the fluid and sprint decisions already applied.
+    /// Finish the live client tick with the fluid and sprint decisions already applied.
     #[sunrise_mod_api_macros::replaceable]
     pub fn finish_local_tick(&mut self, keys: crate::sprint::Keys) -> Result<()> {
+        self.finish_local_tick_body(keys)
+    }
+    fn finish_local_tick_body(&mut self, keys: crate::sprint::Keys) -> Result<()> {
         self.player.shift_key_down = keys.shift;
         let direction = keys.direction();
         self.player.move_vector = direction;

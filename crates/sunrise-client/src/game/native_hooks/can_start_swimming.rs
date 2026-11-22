@@ -15,7 +15,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn has_swim_eligibility_listener(&self) -> bool {
-        mod_api::__private::enabled_listened(mod_api::HookId::CanStartSwimming)
+        mod_api::__private::listened(mod_api::HookId::CanStartSwimming)
     }
 
     fn ask_swim_eligibility(&self, check: SwimmingCheck) -> Option<bool> {
@@ -57,7 +57,7 @@ impl Game<'_> {
         let Some(player) = self.player.as_mut() else {
             return Ok(());
         };
-        if !mod_api::__private::enabled_listened(mod_api::HookId::CanStartSwimming) {
+        if !mod_api::__private::listened(mod_api::HookId::CanStartSwimming) {
             return match vehicle_sprint {
                 Some((can_sprint, local)) => {
                     player.sprint_input_tick_riding(keys, window, can_sprint, local)

@@ -899,15 +899,7 @@ impl Game<'_> {
     pub(super) fn remote_rider_sprint(&mut self, keys: Keys, window: i32) -> crate::Result<()> {
         let mount = self.mobs.iter().position(|m| self.drives(m));
         let can_sprint = mount.is_some_and(|i| equine::can_sprint(self.mobs[i].species()));
-        self.player_sprint_tick(keys, window, Some((can_sprint, mount.is_some())))?;
-        // Camel.getRiddenSpeed gets the sprint state the player left on its last tick.
-        let sprinting = self.player.as_ref().is_some_and(|p| p.sprinting);
-        if let Some(i) = mount
-            && let Some(rider) = self.mobs[i].rider.as_mut()
-        {
-            rider.sprint = sprinting;
-        }
-        Ok(())
+        self.player_sprint_tick(keys, window, Some((can_sprint, mount.is_some())))
     }
 
     /// `LivingEntity.travelRidden`, then `LocalPlayer.aiStep`, on the
@@ -925,6 +917,8 @@ impl Game<'_> {
         let (yaw, pitch) = (self.yaw, self.pitch);
         // The first ridden tick reads what the player's last walking tick applied.
         let walked = self.player.as_ref().map_or([0.0; 2], |p| p.applied_input);
+        // Camel.getRiddenSpeed reads the live controller flag before the rider ticks.
+        let sprint = self.player.as_ref().is_some_and(|p| p.sprinting);
         let m = &mut self.mobs[i];
         let last = m.rider.unwrap_or(equine::Rider {
             strafe: walked[0],
@@ -936,6 +930,7 @@ impl Game<'_> {
             yaw,
             pitch,
             steer,
+            sprint,
             client: false,
             ..last
         });
@@ -990,7 +985,7 @@ impl Game<'_> {
             pitch,
             jump: if jump > 0.0 { jump } else { pending },
             steer,
-            sprint: last.sprint,
+            sprint,
             jumping: keys.jump,
             sneak: keys.shift,
             client: false,
@@ -1391,6 +1386,47 @@ mod tests {
             "the release waits a tick"
         );
         assert_eq!(zza(&mut game, Keys::default()), 0.0);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_sprinting_rider_boards_a_camel_at_sprint_speed() {
+        crate::game::in_own_process(
+            "game::remote_vehicles::tests::a_sprinting_rider_boards_a_camel_at_sprint_speed",
+            || {
+                use sunrise_client::{items::ItemStack, mobs::camel, motion::PlayerMotion};
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
+                    let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                    game.connect_local(client, "CamelRider").unwrap();
+                    let remote = game.remote.as_mut().unwrap();
+                    remote.joined = true;
+                    remote.entity_id = 42;
+                    game.world.game_time = 1_000;
+                    let at = Vec3::new(4.5, 80.0, 4.5);
+                    let mut player = PlayerMotion::new(game.motion, at).unwrap();
+                    player.entity_id = 42;
+                    player.applied_input = [0.0, 0.98];
+                    player.set_sprinting(true).unwrap();
+                    game.player = Some(player);
+                    let root = crate::game::native_entity_refs::tests::fixture_root();
+                    let types = MobTypes::load(&root).unwrap();
+                    let kind = std::sync::Arc::new(types.types["minecraft:camel"].clone());
+                    let mut mount = Mob::new(7, kind, at, 0.0);
+                    mount.set_saddle(Some(ItemStack::new("minecraft:saddle", 1)));
+                    camel::finish_load(&mut mount, game.world.game_time);
+                    assert!(!camel::refuse_to_move(&mount));
+                    assert_eq!(mount.extra.anim_ticks, 0);
+                    let expected = mount.movement_speed() as f32 + 0.1_f32;
+                    game.mobs.push(mount);
+                    game.apply_remote_passengers(7, &[42]);
+                    assert!(game.mobs[0].rider.is_none(), "before the first driven tick");
+                    assert!(game.remote_ride(Keys::default()));
+                    assert_eq!(game.mobs[0].ai.speed.to_bits(), expected.to_bits());
+                    assert_eq!(game.mobs[0].ai.zza, 0.98, "the last walking input");
+                    assert!(game.player.as_ref().unwrap().sprinting);
+                });
+            },
+        );
     }
 
     /// #2920: the client reports where it moved the mount, and a released
