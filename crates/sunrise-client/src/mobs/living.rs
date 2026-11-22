@@ -4279,8 +4279,8 @@ mod tests {
                     // `Entity.baseTick` set the fluid state before the move, and ended the first tick.
                     m.update_fluids(w, &mut events);
                     m.first_tick = false;
-                    m.on_ground = true;
-                    m.supporting = m.supporting_block(w, Vec3::ZERO);
+                    m.ground.on_ground = true;
+                    m.update_ground_support(w, Vec3::ZERO);
                     let effect = m.restitution_contact(w);
                     m.fall_distance = 6.0;
                     let start = m.health;
