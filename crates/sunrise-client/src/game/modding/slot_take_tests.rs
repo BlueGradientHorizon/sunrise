@@ -223,7 +223,9 @@ impl MenuPart for Rules {
         }
     }
 }
-struct TakeMod;
+struct TakeMod {
+    menu_slot_take: bool,
+}
 #[mod_api::__subscriptions]
 impl Hooks for TakeMod {
     fn item_crafted(&self, _: &mut dyn mod_api::ServerHost, _: &mut ItemCraftedEvent<'_>) {
@@ -235,7 +237,9 @@ impl Hooks for TakeMod {
         let stone = r.block_key("minecraft:stone");
         r.block_part(stone, Pot);
         let kind = r.block_entity_type("pot").blocks(&[]).build();
-        r.block_entity_part(&kind, Pot).unwrap();
+        if self.menu_slot_take {
+            r.block_entity_part(&kind, Pot).unwrap();
+        }
     }
 }
 
@@ -269,9 +273,23 @@ fn took(slot: usize, taken: u32, left: u32) -> Heard {
     (12, MENU.to_owned(), slot, stone(taken), left)
 }
 
-/// Guest 12 with the pot of menu type `menu_type` at `POS` open.
 fn with_pot(menu_type: &'static ModMenuType, test: impl FnOnce(&mut crate::game::Game<'_>)) {
-    let mods: Mods = vec![ModEntry::new("take", Box::new(TakeMod))].into();
+    with_pot_parts(
+        menu_type,
+        TakeMod {
+            menu_slot_take: true,
+        },
+        test,
+    );
+}
+
+/// Guest 12 with the pot of menu type `menu_type` at `POS` open.
+fn with_pot_parts(
+    menu_type: &'static ModMenuType,
+    parts: TakeMod,
+    test: impl FnOnce(&mut crate::game::Game<'_>),
+) {
+    let mods: Mods = vec![ModEntry::new("take", Box::new(parts))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
         with_guests(|game| {
@@ -793,7 +811,12 @@ fn a_click_sends_the_other_slots_written_by_contents_changed() {
     crate::game::in_own_process(
         "game::slot_take_tests::a_click_sends_the_other_slots_written_by_contents_changed",
         || {
-            with_pot(pot_type(SLOTS, None), |game| {
+            // A slot-take subscriber would flush these writes before the click computes
+            // its changed-slot list, hiding whether the last-sent comparison works.
+            let parts = TakeMod {
+                menu_slot_take: false,
+            };
+            with_pot_parts(pot_type(SLOTS, None), parts, |game| {
                 set(
                     game,
                     &[
