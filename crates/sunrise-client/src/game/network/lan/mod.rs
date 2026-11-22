@@ -5746,7 +5746,12 @@ mod merchant_packet_tests {
         if run_fresh_cases(
             "game::lan::merchant_packet_tests::merchant_take_keeps_packet_snapshot_until_price_refresh",
             CHILD,
-            &["nonbuyer-first", "buyer-first", "sound-replaces-menu"],
+            &[
+                "nonbuyer-first",
+                "buyer-first",
+                "sound-replaces-menu",
+                "sound-replaces-suspended-menu",
+            ],
         ) {
             return;
         }
@@ -6206,13 +6211,41 @@ mod merchant_packet_tests {
                     Some((true, false))
                 );
             };
-            if case == "sound-replaces-menu" {
+            if case.starts_with("sound-replaces-") {
                 let mods = vec![mod_api::ModEntry::new(
                     "replace_on_trade_voice",
                     Box::new(ReplaceOnTradeVoice),
                 )]
                 .into();
-                mod_platform::testing::with_mods(mods, || buyer_hit(game, 1.0));
+                mod_platform::testing::with_mods(mods, || {
+                    if case == "sound-replaces-suspended-menu" {
+                        let mut inner = crate::game::native_item_places::tests::guest(2);
+                        inner.dimension = "minecraft:overworld".into();
+                        game.lan.as_mut().unwrap().hub.guests.push(inner);
+                        game.as_guest(1, |game| {
+                            game.as_guest(2, |game| {
+                                // A player-owned event (such as a cloud) can refresh prices
+                                // even when that player isn't the current actor.
+                                sunrise_client::mobs::villager::ext_mut(&mut game.mobs[0])
+                                    .gossips
+                                    .add(
+                                        [0, 0, 0, 2],
+                                        sunrise_client::gossip::GossipType::MinorNegative,
+                                        sunrise_client::gossip::REPUTATION_CHANGE_PER_EVENT,
+                                    );
+                                game.lan_merchant_reputation(
+                                    77,
+                                    Some([0, 0, 0, 2]),
+                                    TradeFeedback::AtHurt(Some(1.0)),
+                                );
+                            })
+                            .unwrap();
+                        })
+                        .unwrap();
+                    } else {
+                        buyer_hit(game, 1.0);
+                    }
+                });
                 let host = game.lan.as_ref().unwrap();
                 let buyer = host.hub.guest(1).unwrap();
                 let replacement = buyer.menu.as_ref().expect("sound hook opened a new window");
