@@ -323,9 +323,9 @@ fn run_case(
         let got_land = posted
             .iter()
             .any(|(id, _, _)| *id == "minecraft:projectile_land");
-        if exp_land && !got_land {
+        if exp_land != got_land {
             errors.push(format!(
-                "{label} t={}: expected minecraft:projectile_land, got {:?}",
+                "{label} t={}: minecraft:projectile_land expected {exp_land} got {got_land} ({:?})",
                 expected.tick,
                 posted.iter().map(|(id, _, _)| *id).collect::<Vec<_>>()
             ));
@@ -375,6 +375,7 @@ fn run_case(
 
     // Retrieve rod and verify durability damage and pull velocity.
     let vel_before = target_kinematics(game, tracked).map(|(_, v)| v);
+    let hook_pos_before = game.hook.as_ref().map(|h| h.position);
     let rod = ItemStack::new("minecraft:fishing_rod", 1);
     let damage = game.retrieve_hook(&rod) as i32;
     if damage != case.retrieve_damage {
@@ -386,23 +387,21 @@ fn run_case(
     if let Some((_, vel)) = target_kinematics(game, tracked) {
         let got_vel = vec_bits(vel);
         if matches!(tracked, TrackedTarget::Item(_)) {
-            // ItemEntity.tick zeroes ground y-velocity when (tickCount + id) % 4 == 0, so compare pull delta.
             let before = vel_before.unwrap();
-            let parse = |s: &str| f64::from_bits(u64::from_str_radix(s, 16).unwrap());
-            let exp_before = &case.ticks.last().unwrap().target_vel_bits;
+            let owner_pos = game.player.as_ref().unwrap().position;
+            let expected_y =
+                hook_pos_before.map_or(before.y, |hp| before.y + (owner_pos.y - hp.y) * 0.1);
             let exp_after = &case.target_vel_after_retrieve_bits;
-            let got_delta = [vel.x - before.x, vel.y - before.y, vel.z - before.z];
-            let exp_delta = [
-                parse(&exp_after[0]) - parse(&exp_before[0]),
-                parse(&exp_after[1]) - parse(&exp_before[1]),
-                parse(&exp_after[2]) - parse(&exp_before[2]),
-            ];
             if got_vel[0] != exp_after[0]
                 || got_vel[2] != exp_after[2]
-                || (got_delta[1] - exp_delta[1]).abs() > 1e-12
+                || (hook_pos_before.is_some() && vel.y.to_bits() != expected_y.to_bits())
             {
                 errors.push(format!(
-                    "{label}: pull delta expected {exp_delta:?} got {got_delta:?} (vel {vel:?})"
+                    "{label}: item pull expected x={} z={} y={:016x} got {:?}",
+                    exp_after[0],
+                    exp_after[2],
+                    expected_y.to_bits(),
+                    got_vel
                 ));
             }
         } else if got_vel != case.target_vel_after_retrieve_bits {

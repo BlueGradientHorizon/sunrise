@@ -626,10 +626,19 @@ fn witness_trident_enderman_dodge_122() {
                 ));
                 break;
             }
-            let teleported = target.position.distance_squared(target_pos0) > 1e-6;
-            if teleported != exp.target_teleported {
+            let exp_tp = exp
+                .game_events
+                .iter()
+                .filter(|e| e.id == "minecraft:teleport")
+                .count();
+            let got_tp = events
+                .iter()
+                .filter(|&&e| e == "minecraft:teleport")
+                .count();
+            let teleported = got_tp > 0 || vec_bits(target.position) != vec_bits(target_pos0);
+            if teleported != exp.target_teleported || got_tp != exp_tp {
                 failures.push(format!(
-                    "{label} t={}: target_teleported expected {} got {teleported}",
+                    "{label} t={}: target_teleported expected {} (tp={exp_tp}) got {teleported} (tp={got_tp})",
                     exp.tick, exp.target_teleported
                 ));
                 break;

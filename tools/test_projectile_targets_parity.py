@@ -144,10 +144,11 @@ def main():
         assert len(binaries) == 1, f'expected one sunrise_client test binary, got {binaries}'
         env['SUNRISE_TEST_RESOURCES'] = str(args.resources.resolve())
         env['SUNRISE_PROJECTILE_WITNESS_DIR'] = str(witness_dir.resolve())
-        log = run([binaries[0], *chosen, '--exact', '--ignored', '--nocapture'], 'rust', cwd=scratch, env=env)
-        expected = f'{len(chosen)} passed; 0 failed'
-        if expected not in log.read_text(encoding='utf-8'):
-            sys.exit(f'expected {expected!r} in {log}')
+        for idx, test in enumerate(chosen):
+            # Run each witness test in a fresh process so process-global registries stay isolated.
+            log = run([binaries[0], test, '--exact', '--ignored', '--nocapture'], f'rust-{idx}', cwd=scratch, env=env)
+            if '1 passed; 0 failed' not in log.read_text(encoding='utf-8'):
+                sys.exit(f'expected 1 passed; 0 failed for {test} in {log}')
 
     print(f'Projectile targets parity passed ({len(chosen)} tests against {witness_dir})')
 
