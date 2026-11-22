@@ -4,8 +4,7 @@
 //! touches the world; the game builds a candidate before it commits any table and keeps the old
 //! set when building fails. See `docs/design/mod-api/mod-datapack-registries.md`.
 use super::datapack_registry::{
-    DatapackDecodeError, DatapackEntry, DatapackFieldKind, DatapackRegistryDeclaration,
-    DatapackValue, valid_namespaced,
+    DatapackDecodeError, DatapackEntry, DatapackRegistryDeclaration, valid_namespaced,
 };
 use super::datapack_snapshot::{
     MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ENTRIES, MAX_SNAPSHOT_REGISTRIES, snapshot_size,
@@ -49,7 +48,7 @@ pub enum DatapackLoadReason {
     },
     /// A reference names an entry of a declared registry that no pack defines.
     UnresolvedReference {
-        /// The referring field.
+        /// The referring field's path (`chain`, `drops[2].next`).
         field: String,
         /// The registry the field names.
         registry: String,
@@ -173,15 +172,10 @@ impl DatapackCandidate {
                 let text =
                     std::str::from_utf8(bytes).map_err(|_| fail(DatapackLoadReason::NotUtf8))?;
                 // Account raw source bytes above; conditions belong to the engine,
-                // not to the declaring mod's schema.
-                let stripped = serde_json::from_str::<serde_json::Value>(text)
-                    .ok()
-                    .and_then(|mut json| {
-                        json.as_object_mut()?.remove("neoforge:conditions")?;
-                        serde_json::to_string(&json).ok()
-                    });
+                // not to the declaring mod's schema. The file is decoded as written, so a
+                // map keeps its file order.
                 let decoded = declaration
-                    .decode_entry(stripped.as_deref().unwrap_or(text))
+                    .decode_entry_ignoring(text, &["neoforge:conditions"])
                     .map_err(|error| fail(DatapackLoadReason::Decode(error)))?;
                 entries.insert(entry, decoded);
             }
@@ -321,14 +315,18 @@ pub(super) fn resolve_references(
 ) -> Result<(), Box<DatapackLoadError>> {
     for declaration in declarations {
         for (entry, decoded) in &registries[&declaration.key] {
-            for field in &declaration.fields {
-                let DatapackFieldKind::Reference { registry } = &field.kind else {
-                    continue;
-                };
+            // Every reference, at any depth: a list's items, a map's keys and values, a record's fields.
+            let mut found = Vec::new();
+            for (field, (_, value)) in declaration.fields.iter().zip(&decoded.values) {
+                super::datapack_registry::references(
+                    &field.kind,
+                    value,
+                    &super::datapack_registry::joined("", &field.name),
+                    &mut found,
+                );
+            }
+            for (path, registry, target) in found {
                 let Some(targets) = registries.get(registry) else {
-                    continue;
-                };
-                let Some(DatapackValue::Text(target)) = decoded.get(&field.name) else {
                     continue;
                 };
                 if !targets.contains_key(target) {
@@ -338,9 +336,9 @@ pub(super) fn resolve_references(
                         file: declaration.entry_file(entry).unwrap_or_default(),
                         pack: String::new(),
                         reason: DatapackLoadReason::UnresolvedReference {
-                            field: field.name.clone(),
-                            registry: registry.clone(),
-                            target: target.clone(),
+                            field: path,
+                            registry: registry.to_owned(),
+                            target: target.to_owned(),
                         },
                     }));
                 }
@@ -425,7 +423,9 @@ impl From<DatapackCandidate> for DatapackRegistrySet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::datapack_registry::{DatapackField, DatapackRegistrySync};
+    use crate::world::datapack_registry::{
+        DatapackField, DatapackFieldKind, DatapackRegistrySync, DatapackValue,
+    };
 
     /// `example:spell`: `{power: integer 0..100, next: reference to example:spell = example:fire}`.
     fn spell() -> DatapackRegistryDeclaration {
@@ -826,6 +826,121 @@ mod tests {
         let error = DatapackCandidate::build(&declarations, &[]).unwrap_err();
         assert_eq!(error.registry, "example:over");
         assert_eq!(error.reason, DatapackLoadReason::TooManyRegistries);
+    }
+
+    /// `example:book`: a list of chapter records, each with an optional `next` reference to a
+    /// spell, and a map of spells by reference key.
+    fn book() -> DatapackRegistryDeclaration {
+        let spell_ref = || DatapackFieldKind::Reference {
+            registry: "example:spell".into(),
+        };
+        DatapackRegistryDeclaration {
+            mod_id: "example".into(),
+            key: "example:book".into(),
+            fields: vec![
+                DatapackField::required(
+                    "chapters",
+                    DatapackFieldKind::List {
+                        of: Box::new(DatapackFieldKind::Record {
+                            fields: vec![
+                                DatapackField::required(
+                                    "pages",
+                                    DatapackFieldKind::Int { min: 1, max: 99 },
+                                ),
+                                DatapackField::optional("spell", spell_ref()),
+                            ],
+                        }),
+                        min_len: 0,
+                        max_len: None,
+                    },
+                ),
+                DatapackField::with_default(
+                    "costs",
+                    DatapackFieldKind::Map {
+                        key: crate::world::datapack_registry::DatapackKeyKind::Reference {
+                            registry: "example:spell".into(),
+                        },
+                        value: Box::new(DatapackFieldKind::Int { min: 0, max: 9 }),
+                    },
+                    DatapackValue::Map(Vec::new()),
+                ),
+            ],
+            sync: DatapackRegistrySync::Required,
+        }
+    }
+
+    fn chapter_pages(set: &DatapackRegistrySet, entry: &str, chapter: usize) -> Option<i64> {
+        let handle = set.handle("example:book", entry).unwrap();
+        set.get(&handle).unwrap().get("chapters")?.as_list()?[chapter]
+            .get("pages")?
+            .as_int()
+    }
+
+    /// A nested reference, in a list's record or a map's key, resolves against the whole
+    /// candidate; one to a missing entry refuses the candidate and names its path.
+    #[test]
+    fn nested_references_resolve_and_a_missing_one_names_its_path() {
+        let spells = file("data/example/example/spell/fire.json", &[r#"{"power": 1}"#]);
+        let good = [
+            spells.clone(),
+            file(
+                "data/example/example/book/tome.json",
+                &[
+                    r#"{"chapters": [{"pages": 3}, {"pages": 5, "spell": "example:fire"}],
+                      "costs": {"example:fire": 2}}"#,
+                ],
+            ),
+        ];
+        let set = DatapackRegistrySet::first(
+            DatapackCandidate::build(&[spell(), book()], &good).unwrap(),
+            1,
+        );
+        assert_eq!(chapter_pages(&set, "example:tome", 1), Some(5));
+        let refused = |text: &str| {
+            let files = [
+                spells.clone(),
+                file("data/example/example/book/tome.json", &[text]),
+            ];
+            match *DatapackCandidate::build(&[spell(), book()], &files).unwrap_err() {
+                DatapackLoadError {
+                    reason: DatapackLoadReason::UnresolvedReference { field, target, .. },
+                    ..
+                } => (field, target),
+                other => panic!("{other:?}"),
+            }
+        };
+        assert_eq!(
+            refused(r#"{"chapters": [{"pages": 3}, {"pages": 5, "spell": "example:ice"}]}"#),
+            ("chapters[1].spell".to_owned(), "example:ice".to_owned())
+        );
+        assert_eq!(
+            refused(r#"{"chapters": [], "costs": {"example:ice": 2}}"#),
+            ("costs.example:ice".to_owned(), "example:ice".to_owned())
+        );
+    }
+
+    /// A higher pack's file replaces a nested entry whole on reload.
+    #[test]
+    fn a_reload_replaces_a_nested_entry() {
+        let one = [file(
+            "data/example/example/book/tome.json",
+            &[r#"{"chapters": [{"pages": 3}]}"#],
+        )];
+        let first =
+            DatapackRegistrySet::first(DatapackCandidate::build(&[book()], &one).unwrap(), 1);
+        assert_eq!(chapter_pages(&first, "example:tome", 0), Some(3));
+        let two = [file(
+            "data/example/example/book/tome.json",
+            &[
+                r#"{"chapters": [{"pages": 3}]}"#,
+                r#"{"chapters": [{"pages": 8}, {"pages": 9}]}"#,
+            ],
+        )];
+        let second = first
+            .reload(DatapackCandidate::build(&[book()], &two).unwrap())
+            .unwrap();
+        assert_eq!(chapter_pages(&second, "example:tome", 0), Some(8));
+        assert_eq!(chapter_pages(&second, "example:tome", 1), Some(9));
     }
 }
 

@@ -27,6 +27,9 @@ POLICIES = {
     "serde_json::Value": "iterative preflight before serde; wire/depth_tests.rs",
     "serde_json::Map": "iterative preflight before serde; wire/depth_tests.rs",
     "WalkedIngredient": "no Wire; private parser work tree",
+    "DatapackField": "generic 32; wire/depth_tests.rs",
+    "DatapackFieldKind": "generic 32; wire/depth_tests.rs",
+    "DatapackValue": "generic 32; wire/depth_tests.rs",
 }
 
 

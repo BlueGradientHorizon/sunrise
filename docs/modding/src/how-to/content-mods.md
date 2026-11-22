@@ -996,12 +996,59 @@ world load.
 
 A code mod can declare a datapack registry of its own with `Registrar::declare_datapack_registry(path, sync,
 fields)` (NeoForge's `DataPackRegistryEvent.NewRegistry`).
-`path` lands in a namespace the mod owns (`spell` of `example` is `example:spell`; explicit IDs may use extra manifest namespaces or a content package served via `served_by`), and `fields` is a flat record
-schema: `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`, `Identifier` or `Reference { registry }`,
-each required or given a default. Entry `addon:fire` is `data/addon/example/spell/fire.json`
+`path` lands in a namespace the mod owns (`spell` of `example` is `example:spell`; explicit IDs may use extra manifest namespaces or a content package served via `served_by`), and `fields` is the
+entry's record schema. Its scalar kinds are `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`,
+`Identifier` and `Reference { registry }`, and they nest, as vanilla's codecs do:
+
+- `List { of, min_len, max_len }` is a JSON array (`Codec.list`, `sizeLimitedListOf`; no cap unless `max_len` is set);
+- `Map { key, value }` is a JSON object with `Text`, `Identifier` or `Reference` keys (`Codec.unboundedMap`), its
+  pairs in the order the file wrote them (`as_map` lists them so, on the server and on clients); two keys naming the
+  same id (`zombie` and `minecraft:zombie`) are a duplicate;
+- `Record { fields }` is a nested object with the same field rules as the entry's own (a nested
+  `RecordCodecBuilder`).
+
+Each field, at any depth, is required (`DatapackField::required`), given a default (`with_default`) or optional with
+no default (`DatapackField::optional`, `optionalFieldOf`), which reads as `None` when left out. An optional kind
+stands only for a whole field, never inside a list, a map or another optional. Defaults are checked against their
+kinds at every depth, and an id or reference default is normalised wherever it sits (`stone` is `minecraft:stone`,
+map keys included).
+A list has no length cap unless its `max_len` sets one; what bounds it otherwise is the entry file's size and the
+JSON parser's nesting limit, and the registry snapshot's size limit for one that syncs. Read nested values with
+`as_list`, `as_map`, `get` and the scalar accessors (`as_int`, `as_text`...):
+
+```rust,ignore
+let int = |min, max| DatapackFieldKind::Int { min, max };
+r.declare_datapack_registry("model", DatapackRegistrySync::Required, vec![
+    DatapackField::required("entity", DatapackFieldKind::Identifier),
+    DatapackField::required("drops", DatapackFieldKind::List {
+        of: Box::new(DatapackFieldKind::Record { fields: vec![
+            DatapackField::required("item", DatapackFieldKind::Identifier),
+            DatapackField::with_default("count", int(1, 64), DatapackValue::Int(1)),
+        ] }),
+        min_len: 1,
+        max_len: None,
+    }),
+    DatapackField::with_default("tiers", DatapackFieldKind::Map {
+        key: DatapackKeyKind::Text { max_len: 16 },
+        value: Box::new(DatapackFieldKind::Record { fields: vec![
+            DatapackField::required("data_per_kill", int(0, 1000)),
+        ] }),
+    }, DatapackValue::Map(Vec::new())),
+    DatapackField::optional("color", DatapackFieldKind::Text { max_len: 7 }),
+])?;
+// Later, from an entry's values: the count of its second drop, the data a superior kill gives.
+let count = entry.get("drops").and_then(|d| d.as_list()?.get(1)?.get("count")?.as_int());
+let data = entry.get("tiers").and_then(|t| t.get("superior")?.get("data_per_kill")?.as_int());
+```
+
+Entry `addon:fire` is `data/addon/example/spell/fire.json`
 (`DatapackRegistryDeclaration::entry_file`), the registry's namespace being a folder as NeoForge's modded
-registries have it. The game decodes entries against the schema without running mod code: an undeclared key, a missing required key, a wrong type or an out-of-range value fails
-the entry, and a default never stands in for invalid data. The engine adds no entry-size or field-count limit
+registries have it. The game decodes entries against the schema without running mod code: an undeclared key, a missing required key, a wrong type, an out-of-range value or a list
+of the wrong length fails the entry, at any depth, and a default never stands in for invalid data. The error names
+the value's path (`drops[3].item`, `tiers.basic.data_per_kill`); a key with a character other than letters, digits,
+`_`, `:`, `/` and `-` is quoted as the file spells it (`tiers["basic.data_per_kill"]`). A reference resolves against
+the whole candidate set wherever it sits. A feature type's config (`register_feature_type`) uses the same scalar kinds
+but stays a flat record: a nested or `Reference` config field is refused at registration. The engine adds no entry-size or field-count limit
 of its own. Only both-side packages (and both-side served namespace suppliers) may declare registries. The game loads entries from mod content and enabled data packs.
 
 Use `level.datapack_entries(host, registry)` to list owned entry IDs in sorted order and
