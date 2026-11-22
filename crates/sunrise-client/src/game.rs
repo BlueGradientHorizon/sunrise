@@ -5824,9 +5824,14 @@ impl Game<'_> {
             // A shader pack keeps the cache off (`render_with_cache_options_and_callbacks`),
             // so nothing warms it.
             let warm_cache = self.pack_ids.is_none();
-            for entity in
-                r.block_entities_in_range(self.settings.chunk_fade as f32, camera, view, long_range)
-            {
+            for entity in r.block_entities_in_range(
+                self.settings.chunk_fade as f32,
+                camera,
+                view,
+                self.effective_render_distance(),
+                long_range,
+                off_screen,
+            ) {
                 let (pos, state) = *entity.block;
                 if !self.live_block_entity_render(pos, state) {
                     continue;
@@ -8978,7 +8983,7 @@ impl Game<'_> {
             shadow_scene_revision: (self.world.revision, self.world.chunks.membership_revision()),
             shadow_cache: self.settings.sunrise.shadow_cache,
             distance,
-            detail_distance: (self.streaming.radius * 16) as f32,
+            detail_distance: (self.effective_render_distance() * 16) as f32,
             depth_far,
             underwater,
             water_plane: if title
