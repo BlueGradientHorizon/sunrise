@@ -2203,7 +2203,7 @@ mod item_part_tests {
                     game.lan
                         .as_mut()
                         .unwrap()
-                        .play
+                        .menus
                         .get_mut(&12)
                         .unwrap()
                         .merchant
