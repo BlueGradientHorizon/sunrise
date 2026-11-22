@@ -691,6 +691,8 @@ class ScopedOs:
 
     def __getattr__(self, name):
         return getattr(os, name)
+
+
 class PrebuiltContentsTests(unittest.TestCase):
     def folder(self, *names: str) -> Path:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
