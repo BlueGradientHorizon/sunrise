@@ -1777,6 +1777,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             [0.5, 64.0, 2.5]
         };
         let (mut player, output) = guest(1, 2123, at);
+        let player_entity_id = player.entity_id;
         player.load_timeout = 0;
         player.inventory[0] = Some(ItemStack::new(item, 1));
         player.inventory[1] = Some(ItemStack::new("minecraft:ender_pearl", 1));
@@ -1821,12 +1822,19 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         }
 
         let replies = packets(&output);
+        // LivingEntity.swing broadcasts ClientboundSwingAnimationPacket, not Animate.
+        let swings: Vec<_> = replies
+            .iter()
+            .filter_map(|p| match p {
+                C::SwingAnimation(swing) => Some((swing.id, swing.hand)),
+                _ => None,
+            })
+            .collect();
         assert_eq!(
-            replies
-                .iter()
-                .filter(|p| matches!(p, C::Animate(_)))
-                .count(),
-            usize::from(case == "success"),
+            swings.as_slice(),
+            (case == "success")
+                .then_some((player_entity_id, 0))
+                .as_slice(),
         );
         let response = replies
             .into_iter()
