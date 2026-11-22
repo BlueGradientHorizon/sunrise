@@ -66,12 +66,7 @@ READERS = {
     # The ignored-test inventory reads the game's modules and the vocabulary's export fragments.
     "sunrise-game-discovery": ["crates/sunrise-client/src", "crates/sunrise-mod-vocab/src"],
     "sunrise-mod-api": MOD_API_GEN,
-    # Its daily stable-release test drives the release gate's Python through the real surface differ.
-    "sunrise-mod-api-gen": [
-        *MOD_API_GEN, "crates/sunrise-mod-vocab/extension-tags",
-        "tests/stable_mod_api_integration.py", "tests/test_stable_mod_api.py", "tools/ci/nightly.py",
-        "tools/release_train.py",
-    ],
+    "sunrise-mod-api-gen": [*MOD_API_GEN, "crates/sunrise-mod-vocab/extension-tags"],
     "sunrise-mod-api-gen-tests": MOD_API_GEN,
     # content_keys' source guard searches these crates' sources for the files that define declaration types.
     "sunrise-mod-package": [
@@ -92,6 +87,11 @@ READERS = {
         "crates/sunrise-theme/fonts", "crates/sunrise-theme/icons", "docs/api/server-reference.md",
     ],
     "sunrise-shader-api": ["docs/api/shaders-reference.md", "docs/api/shaders-reference-0.2.md"],
+    # Its daily stable-release test drives the release gate's Python through the real surface differ.
+    "sunrise-stage": [
+        "tests/stable_mod_api_integration.py", "tests/test_stable_mod_api.py", "tools/ci/nightly.py",
+        "tools/release_train.py",
+    ],
     # Commands (tokens, icons, package), not tests: listed so the scan finds nothing unexplained.
     "xtask": [
         "crates/sunrise-client/src", "crates/sunrise-mod-vocab/src/hooks", "crates/sunrise-perf/web",

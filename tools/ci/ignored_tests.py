@@ -147,8 +147,12 @@ def compile_diagnostics(output):
         elif re.match(r"^\s*--> [\w./-]+:\d+:\d+$", line):
             headings.append(line)
     for line in headings[:20]:
+        location = re.match(r"^\s*--> ([\w./-]+):\d+:\d+$", line)
+        # A location is published only when it is a tracked source: a generated file's path is the runner's own.
+        if location and source_lines(location[1]) is None:
+            line, location = "  --> location withheld (not a tracked Rust source)", None
         print("  compiler: " + line[:300] + (" [shortened]" if len(line) > 300 else ""))
-        if line.strip().startswith("--> "):
+        if location:
             panic_source(line.strip()[4:], kind="compiler")
     if len(headings) > 20:
         print(f"  compiler diagnostics truncated: {len(headings) - 20} more headings")

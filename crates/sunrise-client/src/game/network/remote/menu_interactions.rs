@@ -84,6 +84,14 @@ impl Game<'_> {
             };
             clicks.push((slot, button, input));
         }
+        if mod_api::__private::has_part_hook(mod_api::HookId::ItemStackedOnOther)
+            && clicks
+                .iter()
+                .any(|&(_, _, input)| matches!(input, Input::Pickup | Input::QuickCraft))
+            && let Some(done) = self.remote_stacked_menu_ops(container, &clicks)
+        {
+            return done;
+        }
         let mut prepared = None;
         let mut threw = false;
         if self
@@ -141,6 +149,199 @@ impl Game<'_> {
             self.swing_hand(Hand::Main, SwingAnimation::DEFAULT);
         }
         true
+    }
+
+    /// Client-prediction path for `remote_menu_ops` when an `ItemPart` listens to
+    /// `item_stacked_on_other`: splits `clicks` into gestures (each `QuickCraft` 0..=2 drag as one
+    /// gesture, each other click as one gesture), runs `ItemPart` overrides on the client host
+    /// (`HostSide::Client`) for each resolved pickup gesture inside one rollbackable outer
+    /// transaction, hashes and sends the predicted `ContainerClick` packets, and keeps server
+    /// reconciliation authoritative.
+    ///
+    /// Returns `None` when the open menu is not modeled by `sunrise_client::menu` (or an engine
+    /// step throws), letting `remote_menu_ops` fall back to unpredicted clicks.
+    fn remote_stacked_menu_ops(
+        &mut self,
+        container: i32,
+        clicks: &[(i16, i32, Input)],
+    ) -> Option<bool> {
+        use crate::game::stacked_on_other::{Pickup, local_pickup_id};
+
+        let mut gestures: Vec<&[(i16, i32, Input)]> = Vec::new();
+        let mut i = 0;
+        while i < clicks.len() {
+            if clicks[i].2 == Input::QuickCraft && (clicks[i].1 & 3) == 0 {
+                let start = i;
+                i += 1;
+                while i < clicks.len() && clicks[i].2 == Input::QuickCraft {
+                    let end = (clicks[i].1 & 3) == 2;
+                    i += 1;
+                    if end {
+                        break;
+                    }
+                }
+                gestures.push(&clicks[start..i]);
+            } else {
+                gestures.push(&clicks[i..i + 1]);
+                i += 1;
+            }
+        }
+
+        let seal = self.transaction_open();
+        let saved_craft_grid = self.craft_grid.clone();
+        let saved_craft_result = self.remote.as_ref().and_then(|r| r.craft_result.clone());
+        let tracks_craft_result = matches!(
+            self.remote_menu().1.as_str(),
+            "inventory" | "minecraft:crafting"
+        );
+        let mut all_predicted: Vec<Predicted> = Vec::with_capacity(clicks.len());
+        let mut threw = false;
+
+        for gesture in gestures {
+            let mut found = None;
+            let mut engine_threw = false;
+            let modeled = self.menu_session(|menu, env, _| {
+                let (last, prefix) = gesture.split_last()?;
+                for &(slot, button, input) in prefix {
+                    if menu.click(env, i32::from(slot), button, input).is_err() {
+                        engine_threw = true;
+                        return Some(false);
+                    }
+                }
+                found = menu.stacked_click(env, i32::from(last.0), last.1, last.2);
+                Some(false)
+            });
+            if !modeled || engine_threw {
+                self.transaction_close(&seal, false);
+                self.craft_grid = saved_craft_grid;
+                if let Some(r) = self.remote.as_mut() {
+                    r.craft_result = saved_craft_result;
+                }
+                return None;
+            }
+
+            if let Some(frozen) = found.filter(|f| Self::stacked_listens_for_side(false, f)) {
+                let (carried, resolved_slot, primary) =
+                    (frozen.carried.clone(), frozen.slot, frozen.primary);
+                let mut step_result: Option<(Vec<Predicted>, bool)> = None;
+                let pickup = self.stacked_pickup(
+                    local_pickup_id(),
+                    frozen.clone(),
+                    move |game| (game.carried == carried).then(|| frozen.clone()),
+                    |game, carried, clicked| {
+                        let mut took = false;
+                        let _ = game.menu_session(|menu, env, _| {
+                            if let Some((_, prefix)) = gesture.split_last() {
+                                for &(slot, button, input) in prefix {
+                                    if menu.click(env, i32::from(slot), button, input).is_err() {
+                                        return Some(false);
+                                    }
+                                }
+                            }
+                            took = menu.probe_carried_vanilla_override(
+                                env,
+                                resolved_slot,
+                                primary,
+                                carried,
+                                clicked,
+                            );
+                            Some(false)
+                        });
+                        took
+                    },
+                    |game, answer| {
+                        let player = game.native_acting_id();
+                        game.journal_player(player);
+                        if let Some(key) = game.container {
+                            game.journal_block_entity(key);
+                        }
+                        game.menu_session_with_game(|_, m, env, _| {
+                            let Some(predicted) = predict_clicks_with(m, env, gesture, answer)
+                            else {
+                                return Some(false);
+                            };
+                            step_result = Some(predicted);
+                            Some(true)
+                        });
+                    },
+                );
+                if pickup == Pickup::Refused {
+                    self.transaction_close(&seal, false);
+                    self.craft_grid = saved_craft_grid;
+                    if let Some(r) = self.remote.as_mut() {
+                        r.craft_result = saved_craft_result;
+                    }
+                    return Some(false);
+                }
+                let Some((predicted, dropped)) = step_result else {
+                    self.transaction_close(&seal, false);
+                    self.craft_grid = saved_craft_grid;
+                    if let Some(r) = self.remote.as_mut() {
+                        r.craft_result = saved_craft_result;
+                    }
+                    return None;
+                };
+                if tracks_craft_result && let Some(r) = self.remote.as_mut() {
+                    for (.., changed, _) in &predicted {
+                        if let Some((_, result)) = changed.iter().find(|(slot, _)| *slot == 0) {
+                            r.craft_result = result.clone();
+                        }
+                    }
+                }
+                all_predicted.extend(predicted);
+                threw |= dropped;
+            } else {
+                let player = self.native_acting_id();
+                self.journal_player(player);
+                if let Some(key) = self.container {
+                    self.journal_block_entity(key);
+                }
+                let mut step_result: Option<(Vec<Predicted>, bool)> = None;
+                let modeled = self.menu_session_with_game(|_, m, env, _| {
+                    let Some(predicted) = predict_clicks(m, env, gesture) else {
+                        return Some(false);
+                    };
+                    step_result = Some(predicted);
+                    Some(true)
+                });
+                let Some((predicted, dropped)) = step_result.filter(|_| modeled) else {
+                    self.transaction_close(&seal, false);
+                    self.craft_grid = saved_craft_grid;
+                    if let Some(r) = self.remote.as_mut() {
+                        r.craft_result = saved_craft_result;
+                    }
+                    return None;
+                };
+                if tracks_craft_result && let Some(r) = self.remote.as_mut() {
+                    for (.., changed, _) in &predicted {
+                        if let Some((_, result)) = changed.iter().find(|(slot, _)| *slot == 0) {
+                            r.craft_result = result.clone();
+                        }
+                    }
+                }
+                all_predicted.extend(predicted);
+                threw |= dropped;
+            }
+        }
+
+        let packets = match self.prepare_clicks(container, &all_predicted) {
+            Ok(packets) => packets,
+            Err(error) => {
+                log::warn!("Refused menu click: {error}");
+                self.transaction_close(&seal, false);
+                self.craft_grid = saved_craft_grid;
+                if let Some(r) = self.remote.as_mut() {
+                    r.craft_result = saved_craft_result;
+                }
+                return Some(false);
+            }
+        };
+        self.transaction_close(&seal, true);
+        self.send_clicks(&all_predicted, packets);
+        if threw {
+            self.swing_hand(Hand::Main, SwingAnimation::DEFAULT);
+        }
+        Some(true)
     }
     /// A QUICK_MOVE on the server's open menu with nothing predicted: the
     /// client's slots stay as they are and every slot it moved comes back from
@@ -228,7 +429,6 @@ impl Game<'_> {
             None => (),
         }
     }
-
     /// Don't publish an unhashable local prediction. The server runs the click
     /// normally and broadcasts changed slots; an unhashable cursor claims no match.
     fn send_unpredicted_clicks(
@@ -282,7 +482,11 @@ impl Game<'_> {
             .collect()
     }
 
-    fn send_clicks(&mut self, clicks: &[Predicted], packets: Vec<play::ContainerClick>) {
+    pub(in crate::game) fn send_clicks(
+        &mut self,
+        clicks: &[Predicted],
+        packets: Vec<play::ContainerClick>,
+    ) {
         // A result the engine claims to have changed is the one the server
         // agrees to (through `HashedStack.matches`), so it sends none: keep it. A result the
         // engine doesn't claim (a recipe it doesn't know) the server sends.

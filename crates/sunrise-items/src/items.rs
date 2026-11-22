@@ -1,11 +1,14 @@
 //! Items from vanilla's default-component reports, block<->item mapping,
 //! tool mining rules and block loot tables (`LootTable`/`LootPool` semantics
 //! for the condition, entry and modifier types used by block drops).
+mod entity_type_tags;
 #[path = "ingredient_defaults.rs"]
-mod ingredient_defaults;
+pub(crate) mod ingredient_defaults;
+pub use entity_type_tags::EntityTypeTags;
 #[path = "loot_query.rs"]
 mod loot_query;
 use crate::{Result, blocks::BlockFacts};
+pub use ingredient_defaults::LoadEntityTags;
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
@@ -350,8 +353,6 @@ pub struct ItemInfo {
     /// `equippable.damage_on_hurt`: the item wears when its wearer is hurt
     /// (false for the elytra).
     pub equip_damage_on_hurt: bool,
-    /// `equippable.allowed_entities` resolved to entity type ids; None allows all.
-    pub equip_allowed: Option<HashSet<String>>,
     pub equip_sound: Option<String>,
     /// `jukebox_playable`: the jukebox song it plays.
     pub jukebox_song: Option<String>,
@@ -374,6 +375,27 @@ pub struct ItemInfo {
     /// None for vanilla's items.
     pub template: Option<Arc<str>>,
 }
+/// Vanilla 26.3 `BundleItem` item ids (`Items.BUNDLE` and all 16 `Items.DYED_BUNDLE`).
+pub const VANILLA_BUNDLE_ITEMS: [&str; 17] = [
+    "minecraft:bundle",
+    "minecraft:black_bundle",
+    "minecraft:blue_bundle",
+    "minecraft:brown_bundle",
+    "minecraft:cyan_bundle",
+    "minecraft:gray_bundle",
+    "minecraft:green_bundle",
+    "minecraft:light_blue_bundle",
+    "minecraft:light_gray_bundle",
+    "minecraft:lime_bundle",
+    "minecraft:magenta_bundle",
+    "minecraft:orange_bundle",
+    "minecraft:pink_bundle",
+    "minecraft:purple_bundle",
+    "minecraft:red_bundle",
+    "minecraft:white_bundle",
+    "minecraft:yellow_bundle",
+];
+
 impl ItemInfo {
     /// Whether this item is the vanilla item `vanilla`, or a content mod's item
     /// copied from it: what vanilla's `instanceof` on the item's class asks
@@ -381,6 +403,16 @@ impl ItemInfo {
     /// `new FishingRodItem(...)` would).
     pub fn is(&self, vanilla: &str) -> bool {
         &*self.id == vanilla || self.template.as_deref() == Some(vanilla)
+    }
+
+    /// Whether this item has vanilla's `BundleItem` class: `minecraft:bundle`, any of the 16 dyed
+    /// bundles, or a content mod's item copied from one via `template` (`ItemInfo::is`).
+    ///
+    /// Unlike [`ItemInfo::bundle`], which checks only for a default `minecraft:bundle_contents`
+    /// component, this matches vanilla 26.3's item-class dispatch for
+    /// `BundleItem.overrideStackedOnOther` / `BundleItem.overrideOtherStackedOnMe`.
+    pub fn is_bundle_item(&self) -> bool {
+        VANILLA_BUNDLE_ITEMS.iter().any(|&v| self.is(v))
     }
 }
 /// `Item.Properties.craftRemainder` (not a data component, so not in the
@@ -761,6 +793,7 @@ pub struct Items {
     pub block_tag_order: HashMap<String, Vec<String>>,
     /// Fluid tags in the same order.
     pub fluid_tag_order: HashMap<String, Vec<String>>,
+    pub entity_type_tags: Arc<EntityTypeTags>,
     loot: Arc<sunrise_world::loot::LootTables>,
     loot_types: sunrise_world::loot::types::Types,
     loot_modifiers: HashMap<String, Value>,
@@ -795,6 +828,19 @@ impl Items {
         }
         items
     }
+
+    /// Replace the generation seen by both entity queries and enchantment effects.
+    pub fn set_entity_type_tags(&mut self, tags: EntityTypeTags) {
+        let ids = Arc::make_mut(&mut self.component_registry)
+            .by_registry
+            .entry(EntityTypeTags::REGISTRY.into())
+            .or_default();
+        ids.tags = tags.ordered().keys().cloned().collect();
+        ids.tags.sort();
+        Arc::make_mut(&mut self.enchantments).entity_tags = tags.members().clone();
+        self.entity_type_tags = Arc::new(tags);
+    }
+
     /// The states' names [`Self::block_tag_flags`] was built against.
     pub fn block_state_names(&self) -> Arc<[Arc<str>]> {
         Arc::clone(&self.block_tag_flags.names)
@@ -1045,7 +1091,14 @@ impl Items {
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
     ) -> Result<Self> {
-        let mut items = Self::load_registry(root, registry, facts, overlay, defaults)?;
+        let mut items = Self::load_registry(
+            root,
+            registry,
+            facts,
+            overlay,
+            defaults,
+            LoadEntityTags::Prepared,
+        )?;
         items.load_resource_registries(root, overlay, defaults)?;
         items.load_table_loot(root, overlay, defaults)?;
         Ok(items)
@@ -1053,12 +1106,14 @@ impl Items {
 
     /// Load the item registry and tags before admitting dependent registries.
     /// The owning load must then install instruments, enchantments and loot.
+    /// When the game already owns mob types, use their frozen registry order.
     pub fn load_registry(
         root: &Path,
         registry: &BlockRegistry,
         facts: &BlockFacts,
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
+        entity_tags: LoadEntityTags<'_>,
     ) -> Result<Self> {
         let mut block_for_item: HashMap<&str, BlockStateId> = HashMap::new();
         for (i, s) in facts.states.iter().enumerate() {
@@ -1077,10 +1132,15 @@ impl Items {
                 block_for_item.entry(item).or_insert(state);
             }
         }
-        let mut items =
-            Self::load_with(root, &block_for_item, &bindings, overlay, defaults, |id| {
-                registry.default_state(id).is_some()
-            })?;
+        let mut items = Self::load_with(
+            root,
+            &block_for_item,
+            &bindings,
+            overlay,
+            defaults,
+            entity_tags,
+            |id| registry.default_state(id).is_some(),
+        )?;
         items.block_items = Arc::new(
             facts
                 .states
@@ -1151,10 +1211,15 @@ impl Items {
     ) -> Result<Self> {
         let block_items = ingredient_defaults::block_items(root)?;
         let bindings = BlockBindings::load(root)?;
-        let mut items =
-            Self::load_with(root, &HashMap::new(), &bindings, overlay, defaults, |id| {
-                block_items.contains_key(id)
-            })?;
+        let mut items = Self::load_with(
+            root,
+            &HashMap::new(),
+            &bindings,
+            overlay,
+            defaults,
+            LoadEntityTags::Prepared,
+            |id| block_items.contains_key(id),
+        )?;
         load_registries(&mut items)?;
         items.block_items = Arc::new(block_items);
         Ok(items)
@@ -1166,9 +1231,12 @@ impl Items {
         bindings: &BlockBindings,
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
+        entity_tags: LoadEntityTags<'_>,
         contains_block: impl Fn(&str) -> bool,
     ) -> Result<Self> {
-        let entity_tags = load_tags(root, "entity_type", overlay)?;
+        let (component_registry, entity_type_tags) =
+            ingredient_defaults::component_tables(root, overlay, entity_tags)?;
+        let entity_tags = entity_type_tags.members();
         let by_item = |name: &str| -> Result<HashMap<String, String>> {
             let path = root.join(name);
             match fs::read(&path) {
@@ -1295,16 +1363,6 @@ impl Items {
                     equip_damage_on_hurt: c["minecraft:equippable"]["damage_on_hurt"]
                         .as_bool()
                         .unwrap_or(true),
-                    equip_allowed: match &c["minecraft:equippable"]["allowed_entities"] {
-                        Value::String(spec) => Some(entity_spec(&entity_tags, spec)),
-                        Value::Array(list) => Some(
-                            list.iter()
-                                .filter_map(Value::as_str)
-                                .flat_map(|spec| entity_spec(&entity_tags, spec))
-                                .collect(),
-                        ),
-                        _ => None,
-                    },
                     equip_sound: c["minecraft:equippable"]["equip_sound"]
                         .as_str()
                         .map(str::to_owned),
@@ -1394,7 +1452,7 @@ impl Items {
                     attack_speed: modifier("minecraft:attack_speed"),
                 },
             );
-            if let Some(parsed) = worn_mob_visibility(c, &entity_tags) {
+            if let Some(parsed) = worn_mob_visibility(c, entity_tags) {
                 mob_visibility.insert(id.clone(), parsed);
             }
             order.push(id);
@@ -1404,7 +1462,8 @@ impl Items {
             items,
             block_items: Default::default(),
             suspicious_stew_effects: Arc::new(bindings.stew_effects_by_item()),
-            component_registry: ingredient_defaults::component_registry(root, &entity_tags)?,
+            component_registry,
+            entity_type_tags,
             mob_visibility,
             order,
             registry_order,
@@ -1444,7 +1503,7 @@ impl Items {
         defaults: &ItemDefaults,
     ) -> Result<()> {
         self.install_registries(
-            crate::enchant::Enchantments::load_with(root, overlay, defaults)?,
+            crate::enchant::Enchantments::load_definitions(root, overlay, defaults)?,
             load_instruments(root, overlay),
         );
         Ok(())
@@ -1453,9 +1512,10 @@ impl Items {
     /// Install the dependent registries and the component decoder's matching ids.
     pub fn install_registries(
         &mut self,
-        enchantments: crate::enchant::Enchantments,
+        mut enchantments: crate::enchant::Enchantments,
         instruments: HashMap<String, Instrument>,
     ) {
+        enchantments.entity_tags = self.entity_type_tags.members().clone();
         Arc::make_mut(&mut self.component_registry).enchantments = enchantments
             .list
             .iter()
@@ -1560,11 +1620,12 @@ impl Items {
     }
 
     /// Ordered bindings for data loaders, keyed by the vanilla registry directory.
-    pub fn ordered_tags(&self) -> [(&'static str, &sunrise_world::loot::RegistryTags); 3] {
+    pub fn ordered_tags(&self) -> [(&'static str, &sunrise_world::loot::RegistryTags); 4] {
         [
             ("block", &self.block_tag_order),
             ("item", &self.item_tag_order),
             ("fluid", &self.fluid_tag_order),
+            ("entity_type", self.entity_type_tags.ordered()),
         ]
     }
 
@@ -5706,6 +5767,49 @@ mod tests {
         assert!(modded.items["minecraft:fishing_rod"].is("minecraft:fishing_rod"));
         assert!(!modded.items["minecraft:stick"].is("minecraft:fishing_rod"));
         assert_eq!(modded.items["minecraft:fishing_rod"].template, None);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// `ItemInfo::is_bundle_item` checks vanilla's `BundleItem` class (including templated content
+    /// items), not merely carrying a default `minecraft:bundle_contents` component.
+    #[test]
+    fn is_bundle_item_checks_bundle_item_class_not_bundle_contents_default() {
+        let root =
+            std::env::temp_dir().join(format!("sunrise-bundle-item-class-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("data/minecraft/loot_table")).unwrap();
+        let items = r#"{
+            "minecraft:bundle": {"minecraft:bundle_contents": []},
+            "minecraft:red_bundle": {"minecraft:bundle_contents": []},
+            "minecraft:stick": {},
+            "ruby:pouch": {"minecraft:bundle_contents": []},
+            "ruby:dyed_pouch": {"minecraft:bundle_contents": []}
+        }"#;
+        fs::write(root.join("items.json"), items).unwrap();
+        fs::write(
+            root.join(MOD_ITEM_TEMPLATES),
+            r#"{"ruby:dyed_pouch": "minecraft:red_bundle"}"#,
+        )
+        .unwrap();
+        let defaults = sunrise_world::item_defaults::read(&root).unwrap();
+        let catalog = Items::catalog(&root, &PackOverlay::NONE, &defaults).unwrap();
+        assert!(catalog.items["minecraft:bundle"].is_bundle_item());
+        assert!(catalog.items["minecraft:red_bundle"].is_bundle_item());
+        assert!(catalog.items["ruby:dyed_pouch"].is_bundle_item());
+        assert!(catalog.items["ruby:pouch"].bundle);
+        assert!(
+            !catalog.items["ruby:pouch"].is_bundle_item(),
+            "a default bundle_contents component alone does not make an item a BundleItem"
+        );
+        assert!(!catalog.items["minecraft:stick"].is_bundle_item());
+        if let Some(prepared) = prepared_items() {
+            for id in VANILLA_BUNDLE_ITEMS {
+                assert!(
+                    prepared.get(id).is_some_and(ItemInfo::is_bundle_item),
+                    "prepared catalog must recognize vanilla BundleItem {id}"
+                );
+            }
+        }
         fs::remove_dir_all(&root).unwrap();
     }
 }
