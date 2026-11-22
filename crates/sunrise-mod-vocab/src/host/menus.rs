@@ -77,8 +77,8 @@ pub trait MenusBackend {
     fn menu_container_id(&self, menu: MenuRef) -> Option<i32>;
     /// Side: both.
     /// Registry menu type (`AbstractContainerMenu.getType`): `Some(Some(id))` for a
-    /// server-opened menu (`minecraft:furnace`, `minecraft:generic_9x3`, a mod's menu type);
-    /// `Some(None)` for the player's inventory menu and, on a client, a mount's inventory,
+    /// supported registry-backed menu (such as `minecraft:furnace`, `minecraft:generic_9x3`, or
+    /// a mod's menu type); `Some(None)` for the player's inventory menu and, on a client, a mount's inventory,
     /// which have no MenuType in vanilla. The outer None means a stale, foreign or unavailable
     /// menu: a server's mount menu handles are unavailable, and on a client only the local
     /// player's supported live menu is available.
