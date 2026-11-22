@@ -7316,15 +7316,15 @@ impl Game<'_> {
             self.draw_screen_with_post_hook(&mut batch);
             return batch;
         }
-        if let Some(title) = &mut self.title {
-            if std::mem::take(&mut title.onboarding_finished) {
-                // Options.onboardingAccessibilityFinished.
-                self.settings.file.set(
-                    "onboardAccessibility",
-                    sunrise_client::options_file::V::Bool(false),
-                );
-                self.settings.save(&Self::options_path());
-            }
+        if let Some(title) = &mut self.title
+            && std::mem::take(&mut title.onboarding_finished)
+        {
+            // Options.onboardingAccessibilityFinished.
+            self.settings.file.set(
+                "onboardAccessibility",
+                sunrise_client::options_file::V::Bool(false),
+            );
+            self.settings.save(&Self::options_path());
         }
         if let Some(title) = &self.title {
             for found in title.lan_found_narrations((w, h)) {
