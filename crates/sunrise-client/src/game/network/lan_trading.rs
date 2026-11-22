@@ -8,7 +8,7 @@ use super::{
 };
 use sunrise_client::{
     items::ItemStack,
-    menu::{Env, Input, Kind, Menu},
+    menu::{Env, Input, Kind, Menu, QuickCraftDrag},
     merchant,
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -20,6 +20,8 @@ pub(super) struct GuestMerchant {
     state: i32,
     /// The payment slots and the result.
     pub(super) slots: [Option<ItemStack>; 3],
+    /// Persistent quick-craft (drag) state across rebuilt merchant menus.
+    pub(super) drag: QuickCraftDrag,
     pub(super) merchant: Box<MerchantState>,
     /// The offers the client was last sent.
     sent: Vec<merchant::MerchantOffer>,
@@ -126,6 +128,7 @@ impl Game<'_> {
                 window,
                 state: 0,
                 slots: [None, None, None],
+                drag: QuickCraftDrag::default(),
                 merchant: Box::new(state),
                 sent: Vec::new(),
                 sent_level: 0,
@@ -288,10 +291,14 @@ impl Game<'_> {
             return false;
         }
         let probe = matches!(run, MerchantRun::Probe);
+        let refused = match &run {
+            MerchantRun::Decided(Some(stacked)) => Some(&stacked.refused),
+            _ => None,
+        };
         let Some((mut menu, made)) = self.read_merchant_menu(conn, gm, run, op) else {
             return false;
         };
-        if probe {
+        if probe || refused.is_some_and(std::cell::Cell::get) {
             return true;
         }
         self.journal_guest_merchant(conn);
@@ -306,6 +313,7 @@ impl Game<'_> {
             menu.slot(1).cloned(),
             menu.slot(2).cloned(),
         ];
+        gm.drag = menu.quick_craft_state();
         if let Some(host) = self.lan.as_mut() {
             host.hub.guests.update(gi, |g| {
                 for i in 0..36 {
@@ -437,6 +445,7 @@ impl Game<'_> {
             menu.set_slot(&env, i, s.clone());
         }
         menu.merchant = Some(session);
+        menu.set_quick_craft_state(gm.drag.clone());
         let env = match &run {
             MerchantRun::Decided(stacked) => Env {
                 stacked: *stacked,
@@ -488,7 +497,7 @@ impl Game<'_> {
         let op = move |menu: &mut Menu, env: &Env| {
             let _ = menu.click(env, slot, button, input);
         };
-        if !Self::stacked_listened() || input != Input::Pickup {
+        if !Self::stacked_listened() || !matches!(input, Input::Pickup | Input::QuickCraft) {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         }
         // Freeze what the click finds as the guest's trade state makes it, without a write.
@@ -502,7 +511,7 @@ impl Game<'_> {
                 found = menu.stacked_click(env, slot, button, input);
             },
         );
-        let Some(frozen) = found else {
+        let Some(frozen) = found.filter(Self::stacked_listens_for) else {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         };
         let route = match self.lan.as_mut() {
@@ -513,7 +522,12 @@ impl Game<'_> {
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn));
-        let (carried, same) = (frozen.carried.clone(), frozen.clone());
+        let (carried, same, resolved_slot, primary) = (
+            frozen.carried.clone(),
+            frozen.clone(),
+            frozen.slot,
+            frozen.primary,
+        );
         let mut handled = true;
         let pickup = self.stacked_pickup(
             route,
@@ -521,6 +535,25 @@ impl Game<'_> {
             move |game| {
                 let now = game.lan.as_ref()?.hub.guests.get(gi?)?.carried.clone();
                 (now == carried).then(|| same.clone())
+            },
+            |game, carried, clicked| {
+                let mut took = false;
+                let _ = game.lan_merchant_op_with(
+                    conn,
+                    Some(p.container),
+                    false,
+                    MerchantRun::Probe,
+                    |menu, env| {
+                        took = menu.probe_carried_vanilla_override(
+                            env,
+                            resolved_slot,
+                            primary,
+                            carried,
+                            clicked,
+                        );
+                    },
+                );
+                took
             },
             |game, answer| {
                 game.journal_guest_click(conn);
@@ -893,6 +926,7 @@ mod tests {
             window: 3,
             state: 0,
             slots: [None, None, None],
+            drag: QuickCraftDrag::default(),
             merchant: Box::new(MerchantState {
                 session: Box::new(session),
                 scroll: 0,

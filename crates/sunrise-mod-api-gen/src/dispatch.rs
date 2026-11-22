@@ -34,6 +34,18 @@ fn rollback_pointee_is_copy(field_ty: &Type) -> bool {
     }
 }
 
+fn part_trait_and_table(kind: PartKind) -> (&'static str, &'static str) {
+    match kind {
+        PartKind::Block => ("BlockPart", "block"),
+        PartKind::BlockEntity => ("BlockEntityPart", "block_entity"),
+        PartKind::Item => ("ItemPart", "item"),
+        PartKind::Menu => ("MenuPart", "menu"),
+        PartKind::Effect => ("MobEffectPart", "effect"),
+        PartKind::Fluid => ("FluidPart", "fluid"),
+        PartKind::Entity => ("EntityPart", "entity"),
+    }
+}
+
 pub(super) fn is_render(hook: &Hook) -> bool {
     hook.target.starts_with("mod_render::render::")
 }
@@ -338,15 +350,7 @@ pub(super) fn emit<'a>(
             None => None,
             Some(scope) => {
                 let key = scope.key.as_str();
-                let (part_trait, table) = match scope.kind {
-                    PartKind::Block => ("BlockPart", "block"),
-                    PartKind::BlockEntity => ("BlockEntityPart", "block_entity"),
-                    PartKind::Item => ("ItemPart", "item"),
-                    PartKind::Menu => ("MenuPart", "menu"),
-                    PartKind::Effect => ("MobEffectPart", "effect"),
-                    PartKind::Fluid => ("FluidPart", "fluid"),
-                    PartKind::Entity => ("EntityPart", "entity"),
-                };
+                let (part_trait, table) = part_trait_and_table(scope.kind);
                 if is_render {
                     return Err(format!("render hook {name} cannot be scoped"));
                 }
@@ -1088,7 +1092,32 @@ pub(super) fn emit<'a>(
                 .entry(*part_trait)
                 .or_default()
                 .push_str(&method_source),
-            None => traits.push_str(&method_source),
+            None => {
+                traits.push_str(&method_source);
+                if let Some(part_kind) = hook.part {
+                    let (part_trait, _) = part_trait_and_table(part_kind);
+                    let mut part_method = String::new();
+                    for line in hook.doc.trim().lines() {
+                        part_method.push_str(&format!(
+                            "///{}{line}\n",
+                            if line.is_empty() { "" } else { " " }
+                        ));
+                    }
+                    part_method.push_str(&format!("/// Side: {side}.\n"));
+                    if let Some(out) = out {
+                        part_method.push_str(&format!(
+                            "///\n/// Return `Flow::Cancel` to take it: this sets `{out}`, and later parts are skipped.\n"
+                        ));
+                    }
+                    part_method.push_str(&format!(
+                        "fn {name}({trait_params}){result} {{ {unused} {default} }}\n"
+                    ));
+                    part_traits
+                        .entry(part_trait)
+                        .or_default()
+                        .push_str(&part_method);
+                }
+            }
         }
         let trait_name = scoped
             .as_ref()
@@ -1423,14 +1452,22 @@ pub(super) fn emit<'a>(
                 "{local_event} {snapshot_statement}{invocation} {local_write_back} {stack_after}"
             )
         };
+        let cancel_invocation =
+            |callee: &str, owner: &str| run(owner, "continue;", &listener_call(callee));
+        let plain_cancel_step = |invocation: &str| {
+            let cancel = format!(
+                "{snapshot_statement}if matches!({invocation}, Flow::Cancel) {{ {event}.cancelled = true; }}"
+            );
+            if stack_after.is_empty() {
+                cancel
+            } else {
+                format!("{cancel}; {stack_after}")
+            }
+        };
         // Global cancel hooks use the same snapshot and invoke path even when they validate
         // outputs. Only a completed listener has a proposal for the validator to check.
         let cancel_step = if mod_cancel {
-            let invocation = run(
-                &format!("{mod_entry}.id"),
-                "continue;",
-                &listener_call(&mod_item),
-            );
+            let invocation = cancel_invocation(&mod_item, &format!("{mod_entry}.id"));
             if hook.independent_listener && local_cancel {
                 let out = cancel_out.unwrap();
                 let vetoed = fresh_name("vetoed", &mut used);
@@ -1463,14 +1500,7 @@ pub(super) fn emit<'a>(
                      {event}.cancelled |= {saved}.{previous_cancel} || matches!({flow}, Flow::Cancel);"
                 )
             } else {
-                let cancel = format!(
-                    "{snapshot_statement}if matches!({invocation}, Flow::Cancel) {{ {event}.cancelled = true; }}"
-                );
-                if stack_after.is_empty() {
-                    cancel
-                } else {
-                    format!("{cancel}; {stack_after}")
-                }
+                plain_cancel_step(&invocation)
             }
         } else {
             String::new()
@@ -1482,6 +1512,20 @@ pub(super) fn emit<'a>(
             "return Ok(());"
         } else {
             "return;"
+        };
+        let part_routing = if hook.context == Some(PhaseContext::Worldgen) {
+            "super::worldgen_parts()".to_owned()
+        } else {
+            format!("super::parts(HookId::{hook_id}, \"{name}\")")
+        };
+        let part_routing = format!(
+            "\nif !super::has_part_hook(HookId::{hook_id}) {{ {empty_return} }} let {part_table} = {part_routing};"
+        );
+        let hook_parts = format!("{part_table}.for_hook(HookId::{hook_id})");
+        let part_selection = |lookup: &str| {
+            format!(
+                "{part_routing} let {part_list} = {hook_parts}.map_or(&[][..], |table| table.{lookup}); if {part_list}.is_empty() {{ {empty_return} }}"
+            )
         };
         let active_guard = fresh_name("_active_listener", &mut used);
         let enter_active = |owner: &str| {
@@ -1622,26 +1666,13 @@ pub(super) fn emit<'a>(
             Some((_, lookup)) => (
                 // The parts are looked up first: the key may be moved into the event. A worldgen
                 // Part method runs on the worker threads too: it reads the server's published table.
-                {
-                    let table = if hook.context == Some(PhaseContext::Worldgen) {
-                        "super::worldgen_parts()".to_owned()
-                    } else {
-                        format!("super::parts(HookId::{hook_id}, \"{name}\")")
-                    };
-                    let routing = format!(
-                        "\nif !super::has_part_hook(HookId::{hook_id}) {{ {empty_return} }} let {part_table} = {table};"
-                    );
-                    let table = format!("{part_table}.for_hook(HookId::{hook_id})");
-                    if hook.inert.is_some() {
-                        let entry = fresh_name("part_entry", &mut used);
-                        format!(
-                            "{routing} let Some({entry}) = {table}.and_then(|table| table.{lookup}) else {{ {empty_return} }}; let {part_list} = {entry}.parts(); let {inert_owner} = if super::any_mod_disabled() {{ {entry}.disabled_owner_slot() }} else {{ None }};"
-                        )
-                    } else {
-                        format!(
-                            "{routing} let {part_list} = {table}.map_or(&[][..], |table| table.{lookup}); if {part_list}.is_empty() {{ {empty_return} }}"
-                        )
-                    }
+                if hook.inert.is_some() {
+                    let entry = fresh_name("part_entry", &mut used);
+                    format!(
+                        "{part_routing} let Some({entry}) = {hook_parts}.and_then(|table| table.{lookup}) else {{ {empty_return} }}; let {part_list} = {entry}.parts(); let {inert_owner} = if super::any_mod_disabled() {{ {entry}.disabled_owner_slot() }} else {{ None }};"
+                    )
+                } else {
+                    part_selection(lookup)
                 },
                 if isolated_menu_place {
                     let host = &host.as_ref().unwrap().0;
@@ -1792,6 +1823,27 @@ pub(super) fn emit<'a>(
             dispatch.push_str(&format!(
                 "{lints}#[doc(hidden)] pub fn dispatch_{name}({dispatch_signature}){dispatch_return} {{ {unpack}{early_return}\n{body} }}\n"
             ));
+            if let Some(part_kind) = hook.part {
+                if is_render {
+                    return Err(format!("render hook {name} cannot have a part"));
+                }
+                let (_, table) = part_trait_and_table(part_kind);
+                let part_key = fresh_name("part_key", &mut used);
+                let host_count = usize::from(host.is_some());
+                let part_dispatch_signature = dispatch_params[..host_count]
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(format!("{part_key}: &str")))
+                    .chain(dispatch_params[host_count..].iter().cloned())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let lookup = part_selection(&format!("{table}(|| Some({part_key}))"));
+                let part_step = plain_cancel_step(&cancel_invocation(&part_item, &listener_id));
+                let o = cancel_out.unwrap();
+                dispatch.push_str(&format!(
+                    "#[doc(hidden)] pub fn dispatch_{name}_part({part_dispatch_signature}) {{ {unpack}if *{o} {{ return; }} {lookup} {build} for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {part_step} if {event}.cancelled {{ break; }} }} *{o} = {event}.cancelled; {write_back} }}\n"
+                ));
+            }
         }
     }
     if !calls.is_empty() {
@@ -3201,6 +3253,45 @@ fn main() {{
         assert!(fire.contains(
             "pub(super)fnfire_can_perform_action(context:&mod_api::ItemAbilityContext<'_>,call:mod_api::__private::CanPerformActionCall<'_>){mod_api::dispatch_can_perform_action(context,call);}"
         ));
+    }
+
+    #[test]
+    fn part_cancel_hook_emits_global_and_part_dispatch_under_one_hook_id() {
+        let hook = Hook {
+            name: "stacked_part_test".into(),
+            contract: Contract::Cancel,
+            out: Some("canceled".into()),
+            part: Some(PartKind::Item),
+            call: vec![
+                ("value".into(), "u32".into()),
+                ("canceled".into(), "&mut bool".into()),
+            ],
+            dispatch: DispatchStyle::Flat,
+            ..Hook::sample(
+                "sunrise_client::game::native_hooks::stacked_part_test::Game<'_>::native_stacked_part_test",
+                Side::Server,
+            )
+        };
+        let emitted = emit(std::iter::once(&hook), &[], true).unwrap();
+        assert_eq!(emitted.hook_count, 1);
+        assert!(emitted.hook_ids.contains("StackedPartTest,"));
+        assert!(emitted.traits.contains("fn stacked_part_test("));
+        let item_part = emitted
+            .part_traits
+            .get("ItemPart")
+            .expect("part = \"item\" must emit an ItemPart method");
+        assert!(item_part.contains("fn stacked_part_test("));
+
+        let compact: String = emitted
+            .dispatch
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(compact.contains("pubfndispatch_stacked_part_test("));
+        assert!(compact.contains("pubfndispatch_stacked_part_test_part(host:&mutdynServerHost,part_key:&str,value:u32,canceled:&mutbool)"));
+        assert!(compact.contains("super::has_part_hook(HookId::StackedPartTest)"));
+        assert!(compact.contains("super::parts(HookId::StackedPartTest,\"stacked_part_test\")"));
+        assert!(compact.contains("table.item(||Some(part_key))"));
     }
 }
 fn contains_boundary(ty: &Type, names: &[&str]) -> bool {

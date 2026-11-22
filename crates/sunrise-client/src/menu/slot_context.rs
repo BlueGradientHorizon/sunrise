@@ -45,11 +45,17 @@ impl<'a> SlotContext<'a> {
             player_slots: &guest.inventory,
             player_armor: Some(&guest.armor),
             player_offhand: Some(&guest.offhand),
+            staged_slot: None,
         }
     }
 
     /// What slot `index` of `container` holds, keyed as `MenuSlotContext::slot`.
     pub fn slot(&self, container: MenuContainer, index: usize) -> Option<&'a ItemStack> {
+        if let Some((staged_container, staged_index, stack)) = self.staged_slot
+            && (container, index) == (staged_container, staged_index)
+        {
+            return stack;
+        }
         match container {
             MenuContainer::Main => {
                 if self.main_crafting.is_some_and(|crafting| {
@@ -108,6 +114,7 @@ impl Menu {
             player_slots: &self.state.containers[PLAYER],
             player_armor: None,
             player_offhand: None,
+            staged_slot: None,
         }
     }
 }

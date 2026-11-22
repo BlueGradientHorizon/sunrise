@@ -23,7 +23,9 @@ use sunrise_world::native_load_context::{LoopContext, LoopSide};
 mod models;
 pub use models::{
     AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlaceEdits, GrindstoneTakeEdits,
-    PendingGrindstoneTake, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome,
+    PendingGrindstoneTake, QuickCraftDrag, SlotContext, SlotRules, SlotView, StackedClick,
+    StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume, StackedSlotKind,
+    StackedSlotTarget,
 };
 mod slot_context;
 use equippable::limit_slot_max_for;
@@ -31,10 +33,11 @@ pub use slot_context::{LiveSlotRules, apply_menu_slot_rules, lan_container};
 use std::sync::Arc;
 
 mod bundle;
+pub use bundle::{vanilla_carried_override, vanilla_clicked_override};
 pub mod container_items;
 pub use container_items::fits_inside_container_items;
 mod click;
-pub use click::{ClickContinuation, SlotTake};
+pub use click::{ClickContinuation, SlotTake, apply_stacked_outcome};
 mod storage;
 pub use storage::{MutationStamp, Snapshot};
 mod equip_movement;
@@ -3149,7 +3152,8 @@ pub(crate) mod tests {
             let handled = |clicked| StackedOutcome {
                 canceled: true,
                 handled: true,
-                clicked: Some(clicked),
+                resume: StackedResume::Done,
+                clicked: Some(StackedClickedEdit::Set(clicked)),
                 ..StackedOutcome::default()
             };
             // The result slot's onTake would not run: nothing goes in, nothing is taken out.
@@ -3186,7 +3190,8 @@ pub(crate) mod tests {
             let answer = StackedOutcome {
                 canceled: true,
                 handled: true,
-                clicked: Some(None),
+                resume: StackedResume::Done,
+                clicked: Some(StackedClickedEdit::Set(None)),
                 carried: Some(potion.clone()),
                 ..StackedOutcome::default()
             };

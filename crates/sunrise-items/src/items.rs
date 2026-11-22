@@ -395,6 +395,27 @@ pub struct ItemInfo {
     /// None for vanilla's items.
     pub template: Option<Arc<str>>,
 }
+/// Vanilla 26.3 `BundleItem` item ids (`Items.BUNDLE` and all 16 `Items.DYED_BUNDLE`).
+pub const VANILLA_BUNDLE_ITEMS: [&str; 17] = [
+    "minecraft:bundle",
+    "minecraft:black_bundle",
+    "minecraft:blue_bundle",
+    "minecraft:brown_bundle",
+    "minecraft:cyan_bundle",
+    "minecraft:gray_bundle",
+    "minecraft:green_bundle",
+    "minecraft:light_blue_bundle",
+    "minecraft:light_gray_bundle",
+    "minecraft:lime_bundle",
+    "minecraft:magenta_bundle",
+    "minecraft:orange_bundle",
+    "minecraft:pink_bundle",
+    "minecraft:purple_bundle",
+    "minecraft:red_bundle",
+    "minecraft:white_bundle",
+    "minecraft:yellow_bundle",
+];
+
 impl ItemInfo {
     /// Whether this item is the vanilla item `vanilla`, or a content mod's item
     /// copied from it: what vanilla's `instanceof` on the item's class asks
@@ -402,6 +423,16 @@ impl ItemInfo {
     /// `new FishingRodItem(...)` would).
     pub fn is(&self, vanilla: &str) -> bool {
         &*self.id == vanilla || self.template.as_deref() == Some(vanilla)
+    }
+
+    /// Whether this item has vanilla's `BundleItem` class: `minecraft:bundle`, any of the 16 dyed
+    /// bundles, or a content mod's item copied from one via `template` (`ItemInfo::is`).
+    ///
+    /// Unlike [`ItemInfo::bundle`], which checks only for a default `minecraft:bundle_contents`
+    /// component, this matches vanilla 26.3's item-class dispatch for
+    /// `BundleItem.overrideStackedOnOther` / `BundleItem.overrideOtherStackedOnMe`.
+    pub fn is_bundle_item(&self) -> bool {
+        VANILLA_BUNDLE_ITEMS.iter().any(|&v| self.is(v))
     }
 }
 /// Vanilla items registered as `BundleItem` (`Items.BUNDLE` and `Items.DYED_BUNDLE`).
@@ -5878,6 +5909,49 @@ mod tests {
         assert!(modded.items["minecraft:fishing_rod"].is("minecraft:fishing_rod"));
         assert!(!modded.items["minecraft:stick"].is("minecraft:fishing_rod"));
         assert_eq!(modded.items["minecraft:fishing_rod"].template, None);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// `ItemInfo::is_bundle_item` checks vanilla's `BundleItem` class (including templated content
+    /// items), not merely carrying a default `minecraft:bundle_contents` component.
+    #[test]
+    fn is_bundle_item_checks_bundle_item_class_not_bundle_contents_default() {
+        let root =
+            std::env::temp_dir().join(format!("sunrise-bundle-item-class-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("data/minecraft/loot_table")).unwrap();
+        let items = r#"{
+            "minecraft:bundle": {"minecraft:bundle_contents": []},
+            "minecraft:red_bundle": {"minecraft:bundle_contents": []},
+            "minecraft:stick": {},
+            "ruby:pouch": {"minecraft:bundle_contents": []},
+            "ruby:dyed_pouch": {"minecraft:bundle_contents": []}
+        }"#;
+        fs::write(root.join("items.json"), items).unwrap();
+        fs::write(
+            root.join(MOD_ITEM_TEMPLATES),
+            r#"{"ruby:dyed_pouch": "minecraft:red_bundle"}"#,
+        )
+        .unwrap();
+        let defaults = sunrise_world::item_defaults::read(&root).unwrap();
+        let catalog = Items::catalog(&root, &PackOverlay::NONE, &defaults).unwrap();
+        assert!(catalog.items["minecraft:bundle"].is_bundle_item());
+        assert!(catalog.items["minecraft:red_bundle"].is_bundle_item());
+        assert!(catalog.items["ruby:dyed_pouch"].is_bundle_item());
+        assert!(catalog.items["ruby:pouch"].bundle);
+        assert!(
+            !catalog.items["ruby:pouch"].is_bundle_item(),
+            "a default bundle_contents component alone does not make an item a BundleItem"
+        );
+        assert!(!catalog.items["minecraft:stick"].is_bundle_item());
+        if let Some(prepared) = prepared_items() {
+            for id in VANILLA_BUNDLE_ITEMS {
+                assert!(
+                    prepared.get(id).is_some_and(ItemInfo::is_bundle_item),
+                    "prepared catalog must recognize vanilla BundleItem {id}"
+                );
+            }
+        }
         fs::remove_dir_all(&root).unwrap();
     }
 }

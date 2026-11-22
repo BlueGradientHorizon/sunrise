@@ -900,7 +900,8 @@ impl Game<'_> {
                 _ => {}
             }
             // FurnaceResultSlot.checkTakeAchievements and its observable effects may run
-            // only after the click, including any outer menu decision, is committed.
+            // only after the click, including any outer menu decision, is committed, and only for
+            // actual takes (`onTake` / `onQuickCraft`), never direct `Slot.set` edits.
             let award_recipes = std::mem::take(&mut menu.furnace_awarded);
             let smelted = std::mem::take(&mut menu.item_smelted);
             if (award_recipes || !smelted.is_empty())
@@ -982,16 +983,20 @@ impl Game<'_> {
                                 // Listener edits are now the step's inputs. Don't overwrite them.
                                 previous = menu.container_items();
                                 step
-                            } else if let Some(overflow) = step.after_menu_closed() {
-                                overflow
                             } else {
-                                break;
+                                let Some(owed) = step.after_menu_closed() else {
+                                    break;
+                                };
+                                // Losing the block queues a close, so the admitted cursor is
+                                // still live here. Never settle this write on a different window.
+                                game.lan.as_ref()?.hub.guest(conn).filter(|g| live(g))?;
+                                owed
                             };
-                            let next = game.guest_menu_edit(gi, menu, None, |menu, env| {
+                            let next = game.guest_menu_edit(gi, menu, stacked, |menu, env| {
                                 menu.resume_click(env, step)
                             })?;
                             if !menu_live {
-                                // Only the player's overflow was owed. Don't write back the menu.
+                                // Only the player-side write was owed. Don't write back the menu.
                                 break;
                             }
                             rest = Ok(next);
