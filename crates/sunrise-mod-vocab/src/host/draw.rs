@@ -269,33 +269,6 @@ pub trait DrawContext {
     fn gui_draw_item_with(&mut self, stack: &ItemStack, at: [f32; 2], text: Option<&str>) {
         unimplemented!("DrawContext::gui_draw_item_with")
     }
-    /// Draws a button and registers it for narration and controller focus like `AbstractButton`.
-    /// `rect` is `[x, y, w, h]` in GUI pixels. The label is centred, scrolls when it is too wide,
-    /// and is grey when inactive. [`crate::client::widgets::Widgets`] uses this to draw its buttons.
-    ///
-    /// `None` uses the vanilla nine-slice for the button's state. With [`ButtonSprites`] the
-    /// full custom sprite stretches into `rect`, and the label moves by `label_offset`. Inactive
-    /// takes precedence over highlighted. An omitted or unknown state id falls back to the custom
-    /// normal sprite, then to the vanilla nine-slice for the current state.
-    fn widget_button(
-        &mut self,
-        rect: [f32; 4],
-        label: &Text,
-        active: bool,
-        highlighted: bool,
-        sprites: Option<&ButtonSprites>,
-    ) -> Result<(), TextFormError> {
-        unimplemented!("DrawContext::widget_button")
-    }
-    /// A text field as the game's screens draw one (`EditBox`): its text from the first
-    /// character `field.scroll` shows, scrolled on to keep the cursor in view, the selection
-    /// highlighted, the caret, the suggestion, the `widget/text_field` sprite when bordered, and
-    /// a record for the narrator and a controller's focus. Answers the scroll it drew with and
-    /// the x of each shown character boundary, for the next press. What
-    /// [`crate::client::widgets::Widgets`] draws its fields with.
-    fn widget_text_field(&mut self, field: &TextFieldView) -> TextFieldLayout {
-        unimplemented!("DrawContext::widget_text_field")
-    }
 }
 /// What a block entity, mob or player submit hook draws with, in blocks under a pose stack (`PoseStack`): one per hook call.
 pub trait BlockEntityDrawContext {

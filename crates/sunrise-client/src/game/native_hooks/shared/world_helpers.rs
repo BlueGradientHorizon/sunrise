@@ -153,8 +153,6 @@ impl Game<'_> {
                 self.apply_screen(Screen::Playing, None);
             }
         }
-        self.screen_state.observed = self.observed_now();
-        self.shown_init_post();
     }
 }
 

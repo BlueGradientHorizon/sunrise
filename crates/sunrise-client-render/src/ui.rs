@@ -892,8 +892,8 @@ impl Scroll {
     }
     /// `mouseDragged` while held: above or below the list jumps to an end,
     /// otherwise the thumb follows the pointer.
-    pub fn drag(&mut self, y: f32, top: f32, bottom: f32, content: f32) {
-        let Some(last) = self.held else { return };
+    pub fn drag(&mut self, y: f32, top: f32, bottom: f32, content: f32) -> bool {
+        let Some(last) = self.held else { return false };
         let max = Self::max(top, bottom, content);
         if y < top {
             self.amount = 0.0;
@@ -906,6 +906,7 @@ impl Scroll {
         }
         self.clamp(top, bottom, content);
         self.held = Some(y);
+        true
     }
     /// `onRelease`.
     pub fn release(&mut self) {
@@ -1282,10 +1283,12 @@ impl Caret {
         atlas: &HudAtlas,
         (id, value, max): (crate::clipboard::FieldId, &mut String, usize),
         x: f32,
-    ) {
+    ) -> bool {
         if self.held && self.last_click.is_some_and(|(_, field)| field == id) {
             self.edit(id, value, max, |edit| edit.drag_to(atlas, x));
+            return true;
         }
+        false
     }
     /// The button was released: drags no longer select.
     pub fn release(&mut self) -> bool {

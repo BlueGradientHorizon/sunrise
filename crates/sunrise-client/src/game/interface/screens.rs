@@ -13,30 +13,6 @@ use sunrise_core::nbt::Tag;
 use winit::keyboard::KeyCode;
 
 impl Screen {
-    /// The screens whose own `keyPressed` takes every press: the social
-    /// screen, the command block and block editors, the debug options.
-    pub(super) fn takes_presses(self) -> bool {
-        matches!(
-            self,
-            Self::Social | Self::CommandBlock | Self::DebugOptions | Self::BlockEditor
-        )
-    }
-}
-
-impl Game<'_> {
-    /// A press on a screen that `takes_presses`, to that screen.
-    pub(super) fn screen_press(&mut self, event: &winit::event::KeyEvent) {
-        match self.screen {
-            Screen::Social => self.social_key(event),
-            Screen::CommandBlock => self.command_block_key(event),
-            Screen::DebugOptions => self.debug_options_key(event),
-            Screen::BlockEditor => self.block_editor_key(event),
-            _ => {}
-        }
-    }
-}
-
-impl Screen {
     /// `Screen.isPauseScreen`: whether this screen, open in a single-player
     /// world, stops the world ticking (`Gui.isPausing` -> `Minecraft.pause`).
     /// The class default is true. 26.3's false overrides are
@@ -591,10 +567,11 @@ impl Game<'_> {
             self.pause_focus = Some(id);
             self.audio.play_button_click();
             self.execute_pause_action(id)?;
+            return Ok(true);
         }
         Ok(hit.is_some())
     }
-    pub(super) fn pause_key(&mut self, key: KeyCode) -> Result<()> {
+    pub(super) fn pause_key(&mut self, key: KeyCode) -> Result<bool> {
         let (w, h) = {
             let size = self
                 .renderer
@@ -624,7 +601,7 @@ impl Game<'_> {
         let friends = self.friends_shown();
         active_ids.extend(pause_icon_focus_ids(friends));
         if active_ids.is_empty() {
-            return Ok(());
+            return Ok(false);
         }
         match key {
             KeyCode::Tab => {
@@ -658,6 +635,7 @@ impl Game<'_> {
                     }
                 };
                 self.pause_focus = next;
+                Ok(true)
             }
             KeyCode::ArrowUp | KeyCode::ArrowDown | KeyCode::ArrowLeft | KeyCode::ArrowRight => {
                 let mut rects: Vec<(u8, f32, f32, f32)> = buttons
@@ -708,16 +686,19 @@ impl Game<'_> {
                 } else {
                     self.pause_focus = Some(active_ids[0]);
                 }
+                Ok(true)
             }
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                 if let Some(hit) = self.pause_focus {
                     self.audio.play_button_click();
                     self.execute_pause_action(hit)?;
+                    Ok(true)
+                } else {
+                    Ok(false)
                 }
             }
-            _ => {}
+            _ => Ok(false),
         }
-        Ok(())
     }
     /// DeathScreen: gradient, the title at double size, the cause and score.
     pub(super) fn draw_death_screen(&mut self, batch: &mut HudBatch) {
@@ -921,22 +902,23 @@ impl Game<'_> {
         self.death_action(hit)?;
         Ok(hit.is_some())
     }
-    pub(super) fn death_key(&mut self, key: KeyCode) -> Result<()> {
+    pub(super) fn death_key(&mut self, key: KeyCode) -> Result<bool> {
         if self
             .ui
             .died_at
             .is_some_and(|t| t.elapsed().as_millis() < 1000)
         {
-            return Ok(());
+            return Ok(false);
         }
         if let Some(opened) = self.ui.death_confirm {
             if opened.elapsed().as_millis() < 1000 {
-                return Ok(());
+                return Ok(false);
             }
-            match key {
+            return match key {
                 KeyCode::Escape => {
                     self.audio.play_button_click();
                     self.death_confirm_answer(false)?;
+                    Ok(true)
                 }
                 KeyCode::Tab => {
                     let reverse = self.has_shift_down();
@@ -951,17 +933,24 @@ impl Game<'_> {
                             }
                         }
                     };
+                    Ok(true)
                 }
-                KeyCode::ArrowLeft => self.death_focus = Some(0),
-                KeyCode::ArrowRight => self.death_focus = Some(1),
+                KeyCode::ArrowLeft => {
+                    self.death_focus = Some(0);
+                    Ok(true)
+                }
+                KeyCode::ArrowRight => {
+                    self.death_focus = Some(1);
+                    Ok(true)
+                }
                 KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                     let yes = self.death_focus != Some(1);
                     self.audio.play_button_click();
                     self.death_confirm_answer(yes)?;
+                    Ok(true)
                 }
-                _ => {}
-            }
-            return Ok(());
+                _ => Ok(false),
+            };
         }
         match key {
             KeyCode::Tab => {
@@ -977,24 +966,31 @@ impl Game<'_> {
                         }
                     }
                 };
+                Ok(true)
             }
-            KeyCode::ArrowUp => self.death_focus = Some(0),
-            KeyCode::ArrowDown => self.death_focus = Some(1),
+            KeyCode::ArrowUp => {
+                self.death_focus = Some(0);
+                Ok(true)
+            }
+            KeyCode::ArrowDown => {
+                self.death_focus = Some(1);
+                Ok(true)
+            }
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                 let Some(hit) = self.death_focus else {
-                    return Ok(());
+                    return Ok(false);
                 };
                 self.audio.play_button_click();
                 if hit == 1 && !self.level.hardcore {
                     self.ui.death_confirm = Some(std::time::Instant::now());
                     self.death_focus = Some(0);
-                    return Ok(());
+                    return Ok(true);
                 }
                 self.death_action(Some(hit))?;
+                Ok(true)
             }
-            _ => {}
+            _ => Ok(false),
         }
-        Ok(())
     }
     /// The confirm screen's answer: yes leaves the world, no respawns
     /// (`DeathScreen.handleExitToTitleScreen`'s callback).

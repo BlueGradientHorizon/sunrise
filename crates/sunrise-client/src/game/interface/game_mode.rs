@@ -30,17 +30,19 @@ impl Game<'_> {
                 if let Some(c) = self.carried.take() {
                     let _ = self.add_stack_to_inventory(c);
                 }
-                self.activate_screen(Screen::Creative);
+                self.screen = Screen::Creative;
                 self.release_mappings_on_screen_open();
                 self.refresh_creative_tabs();
                 self.creative_screen.reopen();
                 self.refresh_saved_hotbars();
+                self.commit_screen_transition();
             }
             next if next != self.screen => {
-                self.activate_screen(next);
+                self.screen = next;
                 if next != Screen::Playing {
                     self.release_mappings_on_screen_open();
                 }
+                self.commit_screen_transition();
             }
             _ => {}
         }

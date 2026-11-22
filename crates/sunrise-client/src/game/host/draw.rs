@@ -184,29 +184,6 @@ impl DrawContext for GameDrawContext<'_, '_> {
         self.game
             .native_gui_draw_item_with(&mut *self.surface, &stack, at, text)
     }
-    fn widget_button(
-        &mut self,
-        rect: [f32; 4],
-        label: &Text,
-        active: bool,
-        highlighted: bool,
-        sprites: Option<&ButtonSprites>,
-    ) -> Result<(), mod_api::text::TextFormError> {
-        let label = sunrise_client_lib::api_text::to_engine_inprocess(label);
-        self.game.native_widget_button(
-            &mut *self.surface,
-            rect,
-            &label,
-            active,
-            highlighted,
-            sprites,
-        );
-        Ok(())
-    }
-    fn widget_text_field(&mut self, field: &TextFieldView) -> TextFieldLayout {
-        self.game
-            .native_widget_text_field(&mut *self.surface, field)
-    }
 }
 /// `Font.lineHeight`: nine GUI pixels a line, before `scale`.
 const LINE_HEIGHT: f32 = 9.0;

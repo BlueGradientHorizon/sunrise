@@ -9,6 +9,112 @@ pub(super) fn drop_whole_stack(modifiers: winit::keyboard::ModifiersState) -> bo
 }
 
 impl Game<'_> {
+    /// The receiving container's `keyPressed` runs before the input Post hook.
+    /// `AbstractContainerScreen` reports inventory close as handled but still
+    /// performs swap, clone and throw before returning false for those actions.
+    pub(super) fn container_screen_key(
+        &mut self,
+        raw: KeyCode,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+    ) -> Result<bool> {
+        let creative = self.screen == Screen::Creative;
+        let search = creative && self.creative_screen.tab().search;
+        self.creative_ignore_text = false;
+        let binding = sunrise_client::keybinds::key_name(raw);
+        let chat = binding == Some(self.settings.keys.get("key.chat"));
+        if creative
+            && !search
+            && chat
+            && let Some(tab) = self.creative_screen.search_tab()
+        {
+            select_creative_tab(&mut self.creative_screen, &mut self.inv_clicks, tab);
+            self.build_screen();
+            self.creative_ignore_text = true;
+            return Ok(true);
+        }
+        if raw == KeyCode::Escape {
+            self.key_pressed(raw, raw)?;
+            return Ok(true);
+        }
+        // A focused mounted child has already received the key. Do not type it
+        // into an unrelated editor that happens to be focused behind it.
+        if !self.screen_state.widgets.has_focus() {
+            if search && !self.mod_browser_typing() {
+                if self.search_tab_hotbar_key(raw) {
+                    self.creative_ignore_text = true;
+                    return Ok(true);
+                }
+                if let Some(shortcut) = shortcut {
+                    self.creative_search_shortcut(shortcut);
+                } else {
+                    let before = self.creative_screen.search.value.clone();
+                    let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
+                    self.creative_screen.search.key(raw, ctrl, shift);
+                    if self.creative_screen.search.value != before {
+                        self.creative_screen.scroll = 0.0;
+                    }
+                }
+                return Ok(true);
+            }
+            if self.recipe_search_focused() {
+                self.recipe_key(raw, shortcut);
+                return Ok(true);
+            }
+            if self.mod_browser_typing() {
+                if self.mod_browser_key(raw, shortcut) {
+                    return Ok(true);
+                }
+                // Unlike the vanilla search tabs, the browser's focused child
+                // can decline a key and leave it to the container.
+            } else if self.station_typing() {
+                if let Some(shortcut) = shortcut {
+                    self.station_shortcut(shortcut);
+                } else {
+                    self.station_key(raw);
+                }
+                return Ok(true);
+            } else if !creative
+                && (self.merchant_key(raw)
+                    || (chat && self.recipe_focus_search())
+                    || self.recipe_book_key(raw))
+            {
+                return Ok(true);
+            }
+        }
+        if binding == Some(self.settings.keys.get("key.inventory")) {
+            self.direct_craft_stop();
+            self.close_inventory_key();
+            return Ok(true);
+        }
+        if self.sort_key_press(raw) {
+            return Ok(true);
+        }
+        if let Some(key) = self.settings.keys.container_hotbar_key(raw) {
+            self.inventory_hotkey(key);
+        }
+        if binding == Some(self.settings.keys.get("key.pickItem")) {
+            self.inventory_pick_key();
+        } else if binding == Some(self.settings.keys.get("key.drop")) {
+            self.inventory_hotkey(KeyCode::KeyQ);
+        }
+        Ok(false)
+    }
+
+    /// `AbstractContainerScreen.keyPressed`: the inventory binding closes the current menu.
+    pub(super) fn close_inventory_key(&mut self) {
+        if self.screen == Screen::Creative {
+            self.pad_clear_focus();
+            if let Some(c) = self.carried.take() {
+                let _ = self.add_stack_to_inventory(c);
+            }
+            self.set_screen_with(Screen::Playing, |g| g.close_creative_menu());
+        } else {
+            self.close_container();
+            self.set_screen(Screen::Playing);
+        }
+        self.capture(true);
+    }
+
     /// `CreativeModeInventoryScreen.keyPressed` on the search tab: a hotbar
     /// key over a slot swaps before the search box sees it.
     pub(super) fn search_tab_hotbar_key(&mut self, code: KeyCode) -> bool {
@@ -262,15 +368,15 @@ impl Game<'_> {
         self.click_inventory(right)
     }
     /// Mouse movement while a quick craft drag is running.
-    pub(super) fn inventory_drag_move(&mut self) {
+    pub(super) fn inventory_drag_move(&mut self) -> bool {
         if self.tweaks_on() && self.tweak_drag_move(self.inventory_target().0) {
-            return;
+            return true;
         }
         let Some((ty, slots)) = self.inv_drag.clone() else {
-            return;
+            return self.carried.is_some() || self.inventory_target().0.is_some();
         };
         let Some(r) = self.renderer.as_ref() else {
-            return;
+            return true;
         };
         let batch = HudBatch::new(
             [r.config.width, r.config.height],
@@ -285,6 +391,7 @@ impl Game<'_> {
         {
             slots.push(slot);
         }
+        true
     }
     /// `AbstractContainerMenu.canTakeItemForPickAll` for Sunrise slot `slot`
     /// of the open menu: false for a crafting result (a mod menu type's too),
@@ -451,6 +558,7 @@ impl Game<'_> {
         let tweaked = self.tweak_release();
         let (slot, outside) = self.inventory_target();
         let dragged = self.inv_drag.as_ref().is_some_and(|(_, s)| !s.is_empty());
+        let had_drag = self.inv_drag.is_some();
         let release = self.inv_clicks.release(
             &Target::of(slot, outside),
             Self::screen_button(right),
@@ -460,12 +568,16 @@ impl Game<'_> {
             false,
         );
         match (release, Target::of(slot, outside)) {
-            (Release::QuickCraft, _) => self.inventory_release(),
+            (Release::QuickCraft, _) => {
+                self.inventory_release();
+                true
+            }
             (Release::Click(input), Target::Outside) => {
                 self.inv_drag = None;
                 self.throw_click(right, input);
+                true
             }
-            (Release::Click(input), Target::Slot(slot)) if self.inv_drag.is_some() => {
+            (Release::Click(input), Target::Slot(slot)) if had_drag => {
                 // The drag never reached a slot: a plain click where it ends.
                 self.inv_drag = None;
                 if !self.click_open_inventory(Some(slot), i32::from(right), input) {
@@ -474,6 +586,11 @@ impl Game<'_> {
                 if let Some(key) = self.container {
                     self.container_changed(key);
                 }
+                true
+            }
+            _ => {
+                self.inv_drag = None;
+                !matches!(release, Release::Nothing)
             }
             (Release::Swallowed, _) => self.inv_drag = None,
             _ => return self.inv_drag.take().is_some() || tweaked,

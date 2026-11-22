@@ -16,25 +16,18 @@ class ScreenKeyReleasedHookTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
     def test_cancelled_release_still_releases_every_binding(self):
         client = ROOT / "crates/sunrise-client/src"
-        source = "".join((client / path).read_text(encoding="utf-8")
-                         for path in ("game/runtime/window_handler.rs", "game.rs"))
+        source = (client / "game.rs").read_text(encoding="utf-8")
         play_input = (client / "game/interface/play_input.rs").read_text(encoding="utf-8")
         key_codes = (client / "game/interface/key_codes.rs").read_text(encoding="utf-8")
         key_codes = key_codes.replace("\npub(super) fn", "\n    pub(super) fn")
-        gate = method(native_hook_sources(), "screen_key_released")
+        gate = method(native_hook_sources(), "screen_key_released_on")
         mappings = "\n".join(method(play_input, name) for name in (
             "mapped_key_event", "remove_device_key", "sync_device_key",
         ))
         buttons = "\n".join(method(key_codes, name) for name in (
             "keyboard_button", "gameplay_has_keyboard", "container_key_clones",
         ))
-        start = source.index("            if let WindowEvent::KeyboardInput", source.index("let result: Result<()> = (|| {"))
-        opening = source.index("{", source.index("&& self.screen_key_released(key)", start))
-        end, depth = opening + 1, 1
-        while depth:
-            depth += (source[end] == "{") - (source[end] == "}")
-            end += 1
-        dispatch = source[start:end]
+        dispatch = method(source, "dispatch_screen_key")
         fixture = r"""
 use std::{cell::Cell, collections::HashSet};
 type KeyCode = i32;
@@ -45,7 +38,7 @@ enum WindowEvent { KeyboardInput { event: KeyEvent }, Other }
 struct KeyEvent { state: ElementState, physical_key: PhysicalKey }
 #[derive(Clone, Copy, Debug, PartialEq)] enum KeyAction { Press, Release, Repeat }
 #[derive(Clone, Copy, Debug, PartialEq)] enum MouseButton { Left, Middle }
-#[derive(Clone, Copy, PartialEq)] enum Screen { Playing, Options }
+#[derive(Clone, Copy, PartialEq)] enum Screen { Playing, Chat, Options, Social, WorldOptions, CommandBlock, BlockEditor, DebugOptions, Win }
 fn glfw_modifiers(bits: u32) -> u32 { bits }
 BUTTONS
 mod keybinds {
@@ -55,8 +48,14 @@ mod keybinds {
         pub fn by_default_key(key: i32) -> Option<Self> { (key == 1).then_some(Self) }
     }
 }
-mod sunrise_client { pub(crate) use crate::keybinds; }
-enum Source { Keyboard }
+mod sunrise_client { pub(crate) use crate::{clipboard, keybinds}; }
+#[derive(PartialEq)] enum Source { Keyboard }
+trait EventLoopCtl {}
+impl EventLoopCtl for () {}
+struct ObservedScreen;
+impl ObservedScreen { fn view(&self) -> &'static str { "options" } }
+mod clipboard { pub struct EditShortcut; }
+struct ScreenState { screen_instance: u64 }
 struct Bindings;
 impl Bindings {
     fn translate_all(&self, _: i32) -> Vec<std::result::Result<i32, MouseButton>> {
@@ -78,13 +77,20 @@ impl Replay { fn playing(&self) -> bool { false } }
 #[derive(Debug, PartialEq)] enum Binding { Key(i32), Mouse(MouseButton) }
 struct Game { keys: HashSet<i32>, settings: Settings, screen: Screen, title: Option<()>, modifiers: u32,
     vanilla_mappings: VanillaMappings, replay: Replay,
-    open: bool, cancel: bool, calls: Cell<usize>, handled: usize, released: Vec<Binding> }
+    screen_state: ScreenState, open: bool, cancel: bool, calls: Cell<usize>, handled: usize, released: Vec<Binding> }
 impl Game {
     fn screen_over_playing(&self) -> bool { false }
     fn mod_mappings_screen_open(&self) -> bool {
         !gameplay_has_keyboard(self.screen, self.title.is_some(), self.screen_over_playing())
     }
-    fn screen_view_now(&self) -> Option<&'static str> { self.open.then_some("options") }
+    fn observed_input_screen(&self) -> Option<ObservedScreen> { self.open.then_some(ObservedScreen) }
+    fn screen_key_pressed_on(&self, _: Option<&ObservedScreen>, _: i32, _: bool) -> bool { false }
+    fn screen_key_post_on(&self, _: Option<&ObservedScreen>, _: i32, _: bool, _: bool) -> bool { false }
+    fn screen_key_response(&mut self, _: &dyn EventLoopCtl, _: i32, _: bool, _: bool,
+        _: Option<clipboard::EditShortcut>) -> Result<bool> { Ok(false) }
+    fn mounted_widget_captures_input(&mut self) -> bool { false }
+    fn observed_overlay_now(&self) -> Option<()> { None }
+    fn title_input_active(&self) -> bool { self.title.is_some() }
     fn native_screen_key_released_pre(&self, screen: &&str, name: &str, modifiers: u32, canceled: &mut bool) {
         assert_eq!((*screen, name, modifiers), ("options", "key.keyboard.a", 5));
         self.calls.set(self.calls.get() + 1); *canceled = self.cancel;
@@ -98,8 +104,13 @@ impl Game {
     fn inventory_pick_key(&mut self) { panic!("release cannot clone") }
     GATE
     MAPPINGS
+    DISPATCH
     fn dispatch(&mut self, event: WindowEvent) -> Result<()> {
-        DISPATCH
+        if let WindowEvent::KeyboardInput { event: KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(key) } } = event
+            && self.dispatch_screen_key(&(), key, false, false, None, Source::Keyboard)?
+        {
+            return Ok(());
+        }
         self.handled += 1; Ok(())
     }
 }
@@ -114,7 +125,7 @@ fn release_and_screen_gates() {
         (true, true, ElementState::Released, PhysicalKey::Unidentified, 0, 1)] {
         let mut game = Game { keys: HashSet::from([1]), settings: Settings { keys: Bindings }, screen: Screen::Options,
             vanilla_mappings: VanillaMappings { movement: MappingState { is_down: true }, events: vec![] },
-            replay: Replay, title: None, modifiers: 5, open, cancel, calls: Cell::new(0), handled: 0, released: vec![] };
+            replay: Replay, title: None, modifiers: 5, screen_state: ScreenState { screen_instance: 0 }, open, cancel, calls: Cell::new(0), handled: 0, released: vec![] };
         game.dispatch(WindowEvent::KeyboardInput { event: KeyEvent { state, physical_key: key } }).unwrap();
         assert_eq!((game.calls.get(), game.handled), (expected_calls, handled));
         if handled == 0 {

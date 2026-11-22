@@ -27,9 +27,8 @@ impl Game<'_> {
     }
     /// A key press while a world is open (keyboard or control socket). `key`
     /// is the vanilla default the pressed mapping translates to, `raw` the
-    /// physical key as pressed (the same where the caller had no window key):
-    /// `Screen.keyPressed` hears the raw one, and only a raw key settles what
-    /// the container's hotbar keys are now (`checkHotbarKeyPressed`).
+    /// physical key as pressed (the same where the caller had no window key).
+    /// The input dispatcher runs a receiving screen's key actions separately.
     pub(super) fn key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
         // Scripted presses and controller presses are delivered to the same mappings
         // as window input; direct screen keys remain immediate.
@@ -83,10 +82,8 @@ impl Game<'_> {
             }
             return Ok(());
         }
-        if self.sort_key_press(key)
-            || sunrise_client::keybinds::key_name(key).is_some_and(|name| {
-                self.hud_editor_key_press(name) || self.shader_pack_key_press(name)
-            })
+        if sunrise_client::keybinds::key_name(key)
+            .is_some_and(|name| self.hud_editor_key_press(name) || self.shader_pack_key_press(name))
         {
             return Ok(());
         }
@@ -95,7 +92,9 @@ impl Game<'_> {
         }
         match key {
             KeyCode::Escape => match self.screen {
-                Screen::Options => self.options_key(KeyCode::Escape, None)?,
+                Screen::Options => {
+                    self.options_key(KeyCode::Escape, None)?;
+                }
                 Screen::Playing => {
                     if self.replay.playing() && self.captured {
                         self.capture(false);
@@ -222,10 +221,10 @@ impl Game<'_> {
                 _ => {}
             },
             _ if self.screen == Screen::Paused && self.pause_menu => {
-                self.pause_key(key)?;
+                let _ = self.pause_key(key)?;
             }
             _ if self.screen == Screen::Dead => {
-                self.death_key(key)?;
+                let _ = self.death_key(key)?;
             }
             _ if self.screen == Screen::Stats => self.stats_key(raw),
             _ => {}
