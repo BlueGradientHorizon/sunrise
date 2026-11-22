@@ -623,7 +623,7 @@ pub(super) fn emit<'a>(
             let field_ty = if let Some(entry) = batch_entry {
                 syn::parse_quote!(&mut Vec<#entry>)
             } else {
-                ty.clone()
+                (*ty).clone()
             };
             let (field, scalar) = lifetimes.field(&field_ty);
             if hook.output_validator.is_some()
