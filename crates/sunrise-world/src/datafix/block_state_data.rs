@@ -1,7 +1,7 @@
 //! `BlockStateData`: the table that maps the 1.12 block states (`blockId << 4 | data`)
 //! to 1.13 block states, and the 1.12 `Name` + `Properties` tags to those ids.
 //! The table is vanilla's `register` calls, one line each in call order, from the
-//! prepared resources (`tables::tables().block_state_data`, exported from the
+//! prepared resources (`tables::block_state_data()`, exported from the
 //! player's jar). A line is tab separated: the 1.12 id (`blockId << 4 | data`), the
 //! 1.13 state's name and properties, then the name and properties of each 1.12 state
 //! that maps to it; properties are `key=value` joined by `;`, sorted by key.
@@ -162,7 +162,7 @@ fn parse_data(lines: &[&str]) -> std::io::Result<Data> {
 pub fn data() -> &'static Data {
     use super::tables;
     static DATA: OnceLock<std::io::Result<Data>> = OnceLock::new();
-    let data = DATA.get_or_init(|| parse_data(tables::tables().block_state_data));
+    let data = DATA.get_or_init(|| parse_data(tables::block_state_data()));
     tables::required(data.as_ref())
 }
 
