@@ -77,6 +77,7 @@ impl Game<'_> {
     }
 
     /// `DataSlot.set` of an owning mod's blockless menu, journaled by window generation.
+    /// The client reads the committed updates as live frame data, not opening bytes.
     pub(super) fn menu_set_data_slot(
         &mut self,
         menu: MenuRef,
@@ -98,7 +99,7 @@ impl Game<'_> {
             return Err(WrongOwner);
         }
         let &committed = open.blockless_data.get(index).ok_or(InvalidIndex)?;
-        let (conn, index) = (guest.conn, index as u16);
+        let conn = guest.conn;
         let key = (conn, guest.menu_generation, index);
         if self.pending_menu_data(key).unwrap_or(committed) == value {
             return Ok(false);
@@ -115,8 +116,8 @@ impl Game<'_> {
     /// one of its buttons does (`MultiPlayerGameMode.handleInventoryButtonClick`,
     /// `ContainerButtonClick`): the server's menu decides what it does
     /// (`clickMenuButton`, and `menu_button` for a mod's menu). For a client
-    /// mod's own input on a menu's screen where `screen_click` doesn't come,
-    /// such as a key or the wheel; no sound, that is the screen's. Refuses
+    /// mod's own input on a menu's screen other than a press, such as a key
+    /// or the wheel; no sound, that is the screen's. Refuses
     /// stale menus, non-client hosts and the inventory menu, which no server
     /// opened. True means sent, not that the menu took it.
     pub(super) fn menu_click_button(&mut self, menu: MenuRef, button: i32) -> bool {
@@ -222,15 +223,12 @@ impl Game<'_> {
         }
     }
 
-    fn native_menu_guest(&self, menu: MenuRef) -> Option<&Guest> {
+    pub(super) fn native_menu_guest(&self, menu: MenuRef) -> Option<&Guest> {
         let guest = self.native_menu_player(menu.fields().player)?;
         let host = self.lan.as_ref()?;
         (host.hub.holder_guest(guest.uuid, self.dim.id())?.conn == guest.conn).then_some(())?;
         (guest.menu_generation == menu.fields().generation).then_some(())?;
         if let Some(open) = &guest.menu {
-            // A native menu's slots are the mods' own: its hidden ones only
-            // keep the game's clicks out. The handle remains live so visible
-            // slots can still be backed and used.
             (open.window == menu.fields().window).then_some(guest)
         } else {
             let play = host.play.get(&guest.conn);
@@ -248,8 +246,8 @@ impl Game<'_> {
     }
 
     /// A player's current supported menu. Refuses crafting tables, merchants,
-    /// workstations, lecterns and mounts. Hidden slots remain unavailable through
-    /// the slot methods without invalidating the menu handle. Also refuses stale
+    /// workstations, lecterns and mounts. Local screen hides do not change server access.
+    /// Also refuses stale
     /// players and players whose state is swapped out by another active turn.
     /// The acting player's inventory, equipment, cursor and ender reads use Game's state.
     /// On a client, only the local player's supported menu is available.
@@ -342,12 +340,6 @@ impl Game<'_> {
         };
         if slot >= open.slot_count() {
             return None;
-        }
-        if open.hidden.contains(&slot) {
-            // The screen hides the click target, not a handler explicitly bound to that slot.
-            return self
-                .native_menu_place(guest.conn, open.window, slot)
-                .map(MenuSlotBacking::Place);
         }
         // A block menu whose block entities no longer show its slots (a chest's, over a
         // furnace set in its place) backs none of them, the player's included, until the close
@@ -463,10 +455,21 @@ impl Game<'_> {
         Some(rules.slot_gives(&env, slot))
     }
 
+    pub(super) fn menu_slot_gives_with_stack(
+        &self,
+        menu: MenuRef,
+        slot: usize,
+        stack: &ItemStack,
+    ) -> Option<bool> {
+        let (mut rules, env) = self.native_menu_rules(menu, slot)?;
+        rules.load_slot(slot, Some(stack.clone()));
+        Some(rules.slot_gives(&env, slot))
+    }
+
     pub(super) fn menu_owned_slot_limit(&self, menu: MenuRef, slot: usize) -> Option<u32> {
         let open = self.native_menu_guest(menu)?.menu.as_ref()?;
         let limit = *open.owned_slots()?.get(slot)?;
-        (!open.hidden.contains(&slot)).then_some(u32::from(limit))
+        Some(u32::from(limit))
     }
 
     /// The menu engine's model of `menu`, holding slot `slot`, for its slots' rules: the
@@ -491,8 +494,8 @@ impl Game<'_> {
                 };
                 let kind = match entity.and_then(|e| machine_menu(e, open.mod_type)) {
                     Some((kind, _)) => kind,
-                    None if let Some(layout) =
-                        open.mod_type.filter(|t| t.owned_slots.is_some()) =>
+                    None if open.slots == Slots::Native
+                        && let Some(layout) = open.mod_type =>
                     {
                         Kind::Mod(layout)
                     }
@@ -522,7 +525,11 @@ impl Game<'_> {
             rules.set_container_limits(limits);
             rules.set_block_pos(open.pos.map(|(x, y, z)| [x, y, z]));
             if open.owned_slots().is_some() {
-                rules.load_container(&env, &guest.native_menu);
+                rules.load_container(&env, &guest.native_menu, None);
+            } else if open.slots == Slots::Native && open.mod_type.is_some() {
+                for (i, stack) in guest.native_menu.iter().take(open.size).enumerate() {
+                    rules.load_slot(i, stack.clone());
+                }
             }
         }
         (slot < rules.slot_count()).then_some(())?;
@@ -739,28 +746,36 @@ mod tests {
 
     const PANEL: &str = "test:panel";
 
-    #[derive(Clone)]
     struct Panel {
-        slots: usize,
         opening: Arc<Mutex<Option<(MenuRef, usize)>>>,
-    }
-    #[mod_api::sunrise_part]
-    impl mod_api::MenuPart for Panel {
-        fn screen(
-            &self,
-            _: &dyn mod_api::Host,
-            _: &mut mod_api::ScreenEvent<'_>,
-        ) -> Option<mod_api::Screen> {
-            Some(mod_api::Screen {
-                slots: vec![Some(mod_api::ScreenSlot::default()); self.slots],
-                ..Default::default()
-            })
-        }
     }
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Panel {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.menu_part(PANEL, self.clone());
+            r.register_menu_screen(
+                PANEL,
+                Arc::new(
+                    |_: &dyn mod_api::ClientHost, open: mod_api::MenuScreenOpen<'_>| {
+                        Some(mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                            width: 176.0,
+                            height: 166.0,
+                            slots: (0..open.backing_slots)
+                                .map(|index| {
+                                    Some(mod_api::ScreenSlot {
+                                        position: [
+                                            8.0 + (index % 9) as f32 * 18.0,
+                                            18.0 + (index / 9) as f32 * 18.0,
+                                        ],
+                                        no_item_icon: None,
+                                    })
+                                })
+                                .collect(),
+                            ..Default::default()
+                        }))
+                    },
+                ),
+            )
+            .unwrap();
         }
 
         fn screen_opening(
@@ -783,7 +798,6 @@ mod tests {
     ) {
         let opening = Arc::new(Mutex::new(None));
         let panel = Panel {
-            slots,
             opening: opening.clone(),
         };
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(panel))].into();
@@ -812,9 +826,6 @@ mod tests {
                                 "minecraft:menu".into(),
                                 sunrise_protocol::registry::Ids::from_names(vec![PANEL.into()]),
                             );
-                        let _phase = mod_api::__private::PhaseOwner::scope(
-                            mod_api::__private::ModPhase::World,
-                        );
                         test(game, &opening);
                     })
                 },

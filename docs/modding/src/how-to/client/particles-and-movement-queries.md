@@ -47,7 +47,8 @@ velocity and the level's light.
 A particle provider (`Hooks::register_particle_providers`) moves a mod's own particle type with code. The type is
 named by its id (`mymod:spark`), its sprite set and spawn values are the declarative
 `assets/<namespace>/particles/<path>.json`, and it is spawned with `ParticleOptions::simple` on the key
-`Registrar::particle_key` issued for the id.
+`Registrar::particle_key` issued for the id. The last successful registration for a name wins;
+[a failed registration callback](../../concepts/load-phases.md#registration-and-setup) leaves the earlier provider in place.
 
 The game calls `ParticleProvider::tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView)`
 once per type per tick, after it has aged the particles, with every live particle of the type; it is not called
@@ -70,6 +71,18 @@ reads full sky where present and no block light; below a loaded column both laye
 for padding sections and unloaded borders is tracked in [#2761](https://github.com/sunrise-org/sunrise/issues/2761).
 
 Dispatch reuses its batch storage once it has enough capacity.
+
+### Particle render groups
+
+In `Hooks::register_particle_groups`, call `event.register(id, factory)` with an
+`Identifier` having a nonempty namespace and path (any namespace, including `minecraft`,
+is allowed) and a factory returning `ParticleGroup { blend, particles }`. The hook runs
+once at client startup; each accepted factory runs once per particle engine construction.
+Duplicate IDs fail client startup without invoking any factory (matching NeoForge
+`RegisterParticleGroupsEvent`). Reloading resources re-associates sprite sets with the
+groups already built; it does not call factories again. Provider registration is separate:
+a group chooses the draw layer and quota for the listed particle types, not how those
+particles move.
 
 ## Client fireworks
 

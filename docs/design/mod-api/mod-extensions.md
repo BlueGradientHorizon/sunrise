@@ -61,7 +61,7 @@ The derive implements the existing trait (`crates/sunrise-mod-vocab/src/wire/wir
 | `vec!["ab".to_string()]` | std, hand-written | 4 | `01 00 00 00 02 00 00 00 61 62` |
 | `serde_json::json!(1)` | JSON string | 4 | `01 00 00 00 31` |
 
-The first derive PR commits these as a golden test, plus one case per shape and per hand-written impl that becomes a derive. It runs against the generated impls first, then against the derive, so any byte change fails it.
+The first derive PR commits these as a golden test, plus one case per shape and per hand-written impl that becomes a derive. It runs against the generated impls first, then against the derive, so any byte change fails it. `BlockStateId` was subsequently removed from the mod API; its bytes above are historical.
 
 **Nesting.** A derived record counts one `nested` level, exactly as the generated one does. A few hand-written impls that become derives (listed below) don't nest today. That changes no bytes; it only uses one more level of the shared 1040-level budget on those types. The budget is sized for 512 nested NBT levels, and `Tag` is already a generated variant enum.
 
@@ -157,9 +157,10 @@ Many hand-written impls exist only because the type is built through a checked c
 | `wire_types.rs`: slot keys (9 `u32`, `UnresolvedFluid` `u64`) | 1 macro | **stay hand-written** | the host checks each slot with `from_slot`; the guest carries it unchecked, which differs by target |
 | `wire_types.rs`: field-by-field handles and values with plain constructors (`WorldEpoch`, `TickId`, `EntityRef` and the 9 entity handles, `LevelRef`, `ChunkRef`, `GlobalPos`, `Corners`, `PackageKind`, `Side`, `PackageInfo`, …) | ~35 | **derive**, after checking the field order matches the hand impl's `put` order | same bytes. `PackageKind`/`Side` return `WireError::Tag` in place of `Invalid` for an unknown case, a different error with the same refusal |
 | `wire_types.rs`: impls whose `take` validates or converts (`Identifier`, `LevelKey`, `ConfigPath`, `JavaString`, `BlockState`, `BlockStateRange`, `Components`, `ItemStack`, `StatePredicate`, …) | ~25 | **`#[wire(via = …)]`** where one simple form exists (`LevelKey`, `ConfigPath` via `String`); **hand-written** where `take` runs several steps (`ItemStack`, `Identifier` as two strings) | validation stays where it is |
-| `attachment_query.rs`: `AttachmentHolder` | 1 | **derive** | already a declaration-ordered `u32` case plus payload |
-| `attachment_query.rs`: `AttachmentWriteToken`, `AttachmentBatch` | 2 | **stay hand-written** | tokens with generation checks |
 | `wire_patch.rs`: `RecordPatch` | 1 | **deleted by #2242** | — |
+
+Attachment holders, write tokens, batches and read scopes stay in process and do not implement
+`Wire`. Attachment persistence and synchronization use the registered value codec.
 
 The first PR classifies every impl in a table in its description, with the golden test proving each "derive" row.
 
