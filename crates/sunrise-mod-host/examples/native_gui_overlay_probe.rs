@@ -43,9 +43,9 @@ impl Probe {
 
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
-    fn compute_camera_angles(&self, _: &dyn ClientHost, event: &mut ComputeCameraAnglesEvent<'_>) {
+    fn compute_camera_angles(&self, _: &dyn ClientHost, event: &mut ComputeCameraAnglesEvent) {
         let frame = self.frame.fetch_add(1, Ordering::SeqCst);
-        *event.yaw = [0.0_f32, 90.0, 180.0, -90.0][frame as usize % 4];
+        event.yaw = [0.0_f32, 90.0, 180.0, -90.0][frame as usize % 4];
         self.yaw.store(event.yaw.to_bits(), Ordering::SeqCst);
     }
 

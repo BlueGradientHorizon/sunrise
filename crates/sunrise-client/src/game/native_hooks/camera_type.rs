@@ -106,7 +106,7 @@ mod camera_type_tests {
         fn compute_camera_angles(
             &self,
             host: &dyn ClientHost,
-            event: &mut mod_api::ComputeCameraAnglesEvent<'_>,
+            event: &mut mod_api::ComputeCameraAnglesEvent,
         ) {
             self.0
                 .angles
@@ -115,8 +115,8 @@ mod camera_type_tests {
             assert_eq!(host.camera_type(), CameraType::ThirdPersonFront);
             host.set_camera_type(CameraType::ThirdPersonBack);
             assert_eq!(host.camera_type(), CameraType::ThirdPersonBack);
-            *event.yaw += 15.0;
-            *event.roll = 10.0;
+            event.yaw += 15.0;
+            event.roll = 10.0;
         }
         fn camera_position(&self, _: &dyn ClientHost, _: &mut mod_api::CameraPositionEvent<'_>) {
             self.0
