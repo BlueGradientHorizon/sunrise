@@ -410,6 +410,11 @@ impl RemoteTextDisplay {
     pub(super) fn position(&self) -> glam::DVec3 {
         self.position
     }
+    /// `Display.shouldRenderAtSqrDistance`: strict `<`, uninterpolated position, live `view_range`.
+    pub(super) fn in_range(&self, camera: glam::DVec3, view_scale: f64) -> bool {
+        let range = f64::from(self.data.view_range) * 64.0 * view_scale;
+        (self.position - camera).length_squared() < range * range
+    }
     pub(super) fn render_position(&self, partial: f64) -> glam::DVec3 {
         lerp_dvec3(self.previous, self.position, partial)
     }
@@ -747,8 +752,8 @@ impl Game<'_> {
             .text_displays
             .get_mut(&id)?
             .apply_teleport_packet(position, yaw, pitch, relatives);
-        if let Some(t) = self.remote.as_mut().and_then(|r| r.entities.get_mut(&id)) {
-            t.position = resolved;
+        if let Some(r) = self.remote.as_mut() {
+            r.set_tracked_position(id, resolved);
         }
         if !interpolated && self.display_has_indirect_local_player(id as u32) {
             self.seat_local_player_after_display_snap();
@@ -781,38 +786,18 @@ impl Game<'_> {
         let cz = pos.z.floor() as i32 >> 4;
         self.world.chunks.contains_key(&(cx, cz))
     }
-    /// Immediate vehicle of `id`, if any.
-    fn entity_vehicle(&self, id: u32) -> Option<u32> {
-        if self
-            .remote
-            .as_ref()
-            .is_some_and(|r| r.entity_id as u32 == id)
-        {
-            return self.riding;
-        }
-        if let Some(d) = self.text_displays.get(&(id as i32)) {
-            return d.vehicle;
-        }
-        if let Some(m) = self.mob_index.get(&self.mobs, id) {
-            return m.extra.mount;
-        }
-        if let Some(a) = self.armor_stands.iter().find(|a| a.id == id) {
-            return a.vehicle;
-        }
-        if let Some(i) = self.interactions.get(&(id as i32)) {
-            return i.vehicle;
-        }
-        None
-    }
-    fn entity_has_ancestor(&self, mut passenger: u32, ancestor: u32) -> bool {
+    fn entity_has_ancestor(&self, passenger: u32, ancestor: u32) -> bool {
+        let Some(mut cur) = self.entity(passenger) else {
+            return false;
+        };
         for _ in 0..16 {
-            let Some(v) = self.entity_vehicle(passenger) else {
+            let Some(v) = self.entity_vehicle(cur) else {
                 return false;
             };
-            if v == ancestor {
+            if v.id() == ancestor {
                 return true;
             }
-            passenger = v;
+            cur = v;
         }
         false
     }
@@ -835,7 +820,8 @@ impl Game<'_> {
         if let Some(d) = self.text_displays.get(&(id as i32)) {
             return Some(d.position);
         }
-        if let Some(m) = self.mob_index.get(&self.mobs, id) {
+        if let Some(i) = self.mob_index.find_ref(&self.mobs, id) {
+            let m = &self.mobs[i];
             return Some(glam::DVec3::new(m.position.x, m.position.y, m.position.z));
         }
         if let Some(b) = self.boats.iter().find(|b| b.id == id) {
@@ -854,17 +840,23 @@ impl Game<'_> {
     }
     /// `Entity.hasIndirectPassenger(minecraft.player)`.
     pub(super) fn display_has_indirect_local_player(&self, id: u32) -> bool {
-        let Some(mut v) = self.riding else {
+        let Some(first) = self.riding else {
+            return false;
+        };
+        if first == id {
+            return true;
+        }
+        let Some(mut cur) = self.entity(first) else {
             return false;
         };
         for _ in 0..16 {
-            if v == id {
-                return true;
-            }
-            let Some(next) = self.entity_vehicle(v) else {
+            let Some(next) = self.entity_vehicle(cur) else {
                 return false;
             };
-            v = next;
+            if next.id() == id {
+                return true;
+            }
+            cur = next;
         }
         false
     }
@@ -916,8 +908,8 @@ impl Game<'_> {
                 return false;
             }
             root = cur;
-            match self.entity_vehicle(cur) {
-                Some(next) if next != cur => cur = next,
+            match self.entity(cur).and_then(|e| self.entity_vehicle(e)) {
+                Some(next) if next.id() != cur => cur = next.id(),
                 _ => break,
             }
         }
@@ -1026,8 +1018,7 @@ impl Game<'_> {
         view_scale: f64,
         frustum: Option<&sunrise_client::gfx::JoinedFrusta>,
     ) -> bool {
-        let range = f64::from(display.data.view_range) * 64.0 * view_scale;
-        if !((display.position - camera).length_squared() < range * range) {
+        if !display.in_range(camera, view_scale) {
             return false;
         }
         if display.no_culling {
@@ -1718,9 +1709,14 @@ mod tests {
                 glint_uv: [0.0; 2],
             }; 4]
         };
-        collector.push_slice(submit_distance_sq(0.0, 0.0, -2.0), &make(1)); // near tag
-        collector.push_slice(submit_distance_sq(0.0, 0.0, -5.0), &make(2)); // far display
-        collector.push_slice(submit_distance_sq(0.0, 0.0, -5.0), &make(3)); // tie display
+        let submit = |collector: &mut SeeThroughCollector, dist_sq: f32, verts: &[Vertex]| {
+            let start = collector.start();
+            collector.buffer_mut().extend_from_slice(verts);
+            collector.finish(start, dist_sq);
+        };
+        submit(&mut collector, submit_distance_sq(0.0, 0.0, -2.0), &make(1)); // near tag
+        submit(&mut collector, submit_distance_sq(0.0, 0.0, -5.0), &make(2)); // far display
+        submit(&mut collector, submit_distance_sq(0.0, 0.0, -5.0), &make(3)); // tie display
         let mut out = Vec::new();
         collector.flush(&mut out);
         let order: Vec<u32> = out.as_chunks::<4>().0.iter().map(|q| q[0].color).collect();

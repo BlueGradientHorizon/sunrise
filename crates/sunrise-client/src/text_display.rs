@@ -1128,7 +1128,7 @@ mod tests {
         let lines_len = cache.lines.lines.len();
 
         // Changing opacity/background repaints without rebuilding line layout.
-        d.background = 0x8011_2233;
+        d.background = 0x8011_2233u32.cast_signed();
         d.opacity = 128u8 as i8;
         assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision));
         cache.update(&atlas, &d, 0);
