@@ -2004,7 +2004,7 @@ mod tests {
     #[test]
     fn block_entity_edits_merge_deep_and_drop_keys() {
         let nbt = |v: Value| match json_to_nbt(&v) {
-            Tag::Compound(c) => c,
+            Tag::Compound(c) => Box::new(c),
             _ => unreachable!(),
         };
         let vault = nbt(json!({"id": "minecraft:vault",
@@ -2016,7 +2016,7 @@ mod tests {
         else {
             panic!("append_static")
         };
-        let merged = edited(Some(&vault), &[], &data);
+        let merged = edited(Some(vault.clone()), &[], &data);
         assert_eq!(
             merged,
             nbt(json!({"id": "minecraft:vault",
@@ -2030,7 +2030,7 @@ mod tests {
             panic!("sunrise:edit")
         };
         assert_eq!(
-            edited(Some(&vault), &remove, &data),
+            edited(Some(vault), &remove, &data),
             nbt(json!({"id": "minecraft:vault",
                 "config": {"loot_table": "x:new", "key_item": {"id": "minecraft:trial_key"}}}))
         );
