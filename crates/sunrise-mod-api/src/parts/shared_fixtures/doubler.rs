@@ -1,6 +1,9 @@
 /// Doubles every comparator reading, and attaches `Gauge` to `test:gauge`, `TagGauge` to
 /// tag `test:gauged` and `Press` to `test:press`.
-pub(crate) struct Doubler;
+pub(crate) struct Doubler {
+    /// Only the isolated capability host admits `test:robot`.
+    pub(crate) mock_robot: bool,
+}
 #[mod_api::__subscriptions]
 impl Hooks for Doubler {
     fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
@@ -32,9 +35,11 @@ impl Hooks for Doubler {
         r.block_entity_capability_before_game(&ITEMS, &item_overstates, |_, _, _, _, offer| {
             offer.offer(|| Box::new(ItemOverstates))
         });
-        r.entity_capability(&ENTITY_ITEMS, "test:robot", |_, _, ()| {
-            Some(Box::new(Cargo))
-        });
+        if self.mock_robot {
+            r.entity_capability(&ENTITY_ITEMS, "test:robot", |_, _, ()| {
+                Some(Box::new(Cargo))
+            });
+        }
         // A battery reached from any side but below, as a mod's sided entity storage.
         r.entity_capability(
             &ENTITY_ENERGY,

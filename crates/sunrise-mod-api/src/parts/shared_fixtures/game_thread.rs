@@ -1,7 +1,7 @@
 /// The test mods, their parts installed, on a thread that runs a game.
 pub fn game_thread() -> crate::Mods {
     let mods: crate::Mods = vec![
-        ModEntry::new("doubler", Box::new(Doubler)),
+        ModEntry::new("doubler", Box::new(Doubler { mock_robot: false })),
         ModEntry::new("chemist", Box::new(Chemist)),
         ModEntry::new("test", Box::new(FixtureContent)),
     ]
