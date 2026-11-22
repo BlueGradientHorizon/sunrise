@@ -13,6 +13,11 @@ the loader retains each typed value with its owner for the resource generation.
 Recipe content still syncs as bounded JSON, and raw recipe JSON keeps its size
 limit. Recipe placement, book sync and vanilla display packets are unaffected.
 
+`Wire` decodes owned strings (`String`,
+`Cow<'static, str>`, `Box<str>`, `Arc<str>`), never `&'static str`; `#[derive(Wire)]` rejects borrowed
+fields including `&'static str`, and `ItemPlace` and `MobGoalEntry` stay process-local and do not
+implement `Wire`.
+
 Hook events are native callback records, not binary messages. If you need to send data from
 an event, copy the fields you intend to send into your own `Wire` payload type. The same applies to
 [loader metadata](load-phases.md) such as `PackageInfo`, `DataLoadOrigin` and `LoopSide`: read it locally,

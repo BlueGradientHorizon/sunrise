@@ -199,11 +199,6 @@
     "category": "dispatch table",
     "reason": "Thread-local dispatch inventory for isolated engine tests."
   },
-  "wire/static_strings.rs::intern::STRINGS": {
-    "type": "OnceLock<Mutex<HashSet<&'staticstr>>>",
-    "category": "immutable cache",
-    "reason": "Bounded interning for decoded static strings; entries are immutable, shared by value, and never evicted."
-  },
   "world/scheduler.rs::allocate::NEXT_ID": {
     "type": "AtomicU64",
     "category": "monotonic counter",
