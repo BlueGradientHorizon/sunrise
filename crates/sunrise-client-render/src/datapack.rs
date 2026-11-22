@@ -870,7 +870,7 @@ pub fn read_recipe_priority_layer(
 
 impl DataStore {
     pub fn load(packs: &[&DataPack]) -> Self {
-        let kinds: Vec<_> = [
+        let mut kinds: Vec<_> = [
             "advancement",
             "banner_pattern",
             "damage_type",
@@ -897,6 +897,7 @@ impl DataStore {
         .into_iter()
         .chain(crate::providers::NUMBER_PROVIDER_KINDS)
         .collect();
+        kinds.sort_unstable();
         let mut s = Self::default();
         for pack in packs {
             let builtin = pack.id == "vanilla";
