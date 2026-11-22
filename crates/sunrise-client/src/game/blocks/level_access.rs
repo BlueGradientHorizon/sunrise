@@ -1246,10 +1246,13 @@ impl LevelAccess for GameLevel<'_> {
         if !self.collision.publishes_shapes(state) {
             return None;
         }
-        match self.world.block_entities.get(&(pos.x, pos.y, pos.z))? {
-            BlockEntity::Mod(entity) => entity.shapes().map(|shapes| shapes.collision().clone()),
-            _ => None,
-        }
+        sunrise_client::collisions::published_shapes(
+            self.world,
+            self.registry,
+            state,
+            [pos.x, pos.y, pos.z],
+        )
+        .map(|shapes| shapes.collision().clone())
     }
     fn remove_block_entity(&mut self, pos: BlockPos, old: BlockStateId, side_effects: bool) -> u8 {
         if let Some(change) = &mut self.command_block_transition
