@@ -1,7 +1,6 @@
 //! Baking special model nodes at load and writing their layers atomically at draw time.
 use super::{
-    ItemDrawEnv, ItemLayerOutput, ItemRenderer, LayerGeometry, LayerRender, LayerTints, corners,
-    glam_matrix,
+    ItemDrawEnv, ItemRenderer, LayerGeometry, LayerRender, LayerTints, corners, glam_matrix,
     registered_providers::{
         ItemProviderTables, decode_item_model, decode_range_property, decode_select_property,
         decode_tint_source,
@@ -26,9 +25,9 @@ use sunrise_assets::{
     bake::{ModelQuad, facing},
     item_bake::{BakedItemModel, MISSING_SPRITE, SpriteLookup, bake_resolved},
     item_model::{
-        ClientItem, Context, FoilType, ItemModelDecoders, ItemModelLoader, LayerTransform,
-        RangePropertyLoader, RegisteredSpecialModel, SelectPropertyLoader, SpecialModelLoader,
-        StackView, TintSourceLoader, identifier,
+        ClientItem, Context, DisplayContext, FoilType, ItemModelDecoders, ItemModelLoader,
+        LayerTransform, RangePropertyLoader, RegisteredSpecialModel, SelectPropertyLoader,
+        SpecialModelLoader, StackView, TintSourceLoader, identifier,
     },
     math::Mat4 as AssetMatrix,
     model::{Direction, Material},
@@ -174,7 +173,7 @@ impl ItemRenderer {
         text: &str,
         providers: &ItemProviderTables<'_>,
     ) -> Result<ClientItem, DecodeError> {
-        let special = |kind: &str, base: &str, fields: &Map<String, Value>| {
+        let special = |kind: &mod_api::Identifier, base: &str, fields: &Map<String, Value>| {
             let Some(factory) = providers.special.and_then(|factories| factories.get(kind)) else {
                 return Ok(None);
             };

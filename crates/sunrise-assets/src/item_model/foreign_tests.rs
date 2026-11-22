@@ -127,15 +127,17 @@ fn a_special_type_draws_by_its_renderer_or_fails_by_name() {
     // A mod may replace a vanilla type: its models then go to the mod's renderer.
     let skillet = RegisteredSpecialModel(Arc::new(2));
     let bell = RegisteredSpecialModel(Arc::new(()));
+    let empty_path = RegisteredSpecialModel(Arc::new(3));
     let load =
-        |kind: &str, base: &str, json: &Map<String, Value>| -> std::result::Result<_, String> {
-            Ok(match kind {
+        |kind: &sunrise_core::identifier::Identifier, base: &str, json: &Map<String, Value>| {
+            Ok(match kind.to_string().as_str() {
                 "foreigntest:skillet" => {
                     assert_eq!(base, "minecraft:item/pan");
                     assert_eq!(json["handle"], serde_json::json!(2));
                     Some(skillet.clone())
                 }
                 "minecraft:bell" => Some(bell.clone()),
+                "example:" => Some(empty_path.clone()),
                 _ => None,
             })
         };
@@ -165,12 +167,14 @@ fn a_special_type_draws_by_its_renderer_or_fails_by_name() {
 
 #[test]
 fn a_registered_vanilla_override_error_rejects_only_its_enclosing_item() {
-    let load = |kind: &str, _: &str, _: &Map<String, Value>| -> std::result::Result<_, String> {
-        match kind {
+    let load =
+        |kind: &sunrise_core::identifier::Identifier, _: &str, _: &Map<String, Value>| match kind
+            .to_string()
+            .as_str()
+        {
             "minecraft:bell" => Err("the bell override rejected its model".into()),
             _ => Ok(None),
-        }
-    };
+        };
     let composite = r#"{"model":{"type":"composite","models":[
         {"type":"model","model":"a:plain"},
         {"type":"select","property":"display_context","cases":[{"when":"gui","model":
