@@ -907,6 +907,17 @@ impl Game<'_> {
     /// pot's saved `sherds` (back, left, right, front).
     pub(super) fn block_anim(&self, pos: [i32; 3], partial: f32) -> BlockAnim {
         let state = self.world.block(pos[0], pos[1], pos[2]);
+        // A replacement may draw before its first ConduitBlockEntity.clientTick.
+        if matches!(self.be_anims.ticker(state.0), Some(Ticker::Conduit))
+            && let Some(&owner) = self.be_anims.owners.get(&pos)
+            && self
+                .world
+                .block_entities
+                .generation(&(pos[0], pos[1], pos[2]))
+                != Some(owner)
+        {
+            return BlockAnim::default();
+        }
         let sherds = if &*self.res.facts().get(state).name == "minecraft:decorated_pot" {
             let sherds = self.saved_tag(pos).and_then(|t| t.get("sherds"));
             ["back", "left", "right", "front"].map(|side| match sherds.and_then(|s| s.get(side)) {
@@ -921,11 +932,7 @@ impl Game<'_> {
             Default::default()
         };
         self.be_anims
-            .block_anim(pos, self.world.game_time, partial, sherds, || {
-                self.world
-                    .block_entities
-                    .generation(&(pos[0], pos[1], pos[2]))
-            })
+            .block_anim(pos, self.world.game_time, partial, sherds)
     }
     /// The client chest ticker, also used when replaying a moved chest.
     pub(super) fn tick_chest_lid(&mut self, pos: [i32; 3]) {
