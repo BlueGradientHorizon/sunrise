@@ -1,5 +1,8 @@
 //! Stable entity material grouping with renderer-owned, reusable CPU scratch.
 use super::Vertex;
+pub use sunrise_render_core::entity::{
+    TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
+};
 
 /// Entity materials by a quad's overlay (`Vertex::layer`), in draw order:
 /// ordinary entities, world text drawn with a depth bias (35,
@@ -20,10 +23,6 @@ use super::Vertex;
 /// (`SubmitNodeCollection.canRenderAsSolid`).
 /// Material storage order is independent of their draw stages.
 const MATERIALS: usize = 21;
-/// Opaque `Font.DisplayMode.POLYGON_OFFSET` text (`SubmitNodeCollection.canRenderAsSolid`).
-pub const TEXT_POLYGON_OFFSET_SOLID_OVERLAY: u32 = 50;
-/// Opaque `Font.DisplayMode.NORMAL` text, including the outline behind a sign's offset fill.
-pub const TEXT_NORMAL_SOLID_OVERLAY: u32 = 51;
 const _: () = assert!(
     TEXT_POLYGON_OFFSET_SOLID_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY
         && TEXT_POLYGON_OFFSET_SOLID_OVERLAY != GLINT_ONLY_OVERLAY

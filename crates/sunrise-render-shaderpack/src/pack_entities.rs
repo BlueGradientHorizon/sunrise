@@ -6,6 +6,7 @@
 
 use std::ops::Range;
 
+use sunrise_render_core::entity::{TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY};
 use sunrise_shaders::render_stage;
 
 // `FLUID_OVERLAY` and the terrain overlays are only read by the tests' probes.
@@ -861,30 +862,42 @@ fn material_program(span: &EntitySpan, layer: u32, drawn: [bool; PROGRAMS]) -> O
     })
 }
 
-/// Split only where an available variant changes a quad's program. Keep contiguous runs,
-/// their vertex order and the original single draw when no material variant is usable.
+/// Split where a quad's program changes, keeping contiguous runs in vertex order.
 fn material_runs<'a>(
     vertices: &'a [Vertex],
     spans: &'a [EntitySpan],
     drawn: [bool; PROGRAMS],
 ) -> impl Iterator<Item = (EntitySpan, Range<usize>, Option<usize>)> + 'a {
     runs(vertices.len(), spans).flat_map(move |(span, range)| {
-        let split = match program_of(&span) {
-            Some(BLOCK) => drawn[BLOCK_TRANSLUCENT],
-            Some(PARTICLE) => drawn[PARTICLE_TRANSLUCENT],
-            _ => false,
+        let program = program_of(&span);
+        let split =
+            program == Some(BLOCK) || (program == Some(PARTICLE) && drawn[PARTICLE_TRANSLUCENT]);
+        let program_at = move |i: usize| {
+            let layer = vertices[i].layer;
+            // Both halves of sign text must reach the native text passes. The pack's
+            // block program does not distinguish normal and polygon-offset depth.
+            if program == Some(BLOCK)
+                && matches!(
+                    layer & 0xffff,
+                    TEXT_NORMAL_SOLID_OVERLAY | TEXT_POLYGON_OFFSET_SOLID_OVERLAY
+                )
+            {
+                None
+            } else {
+                material_program(&span, layer, drawn)
+            }
         };
         let mut start = range.start;
         std::iter::from_fn(move || {
             if start >= range.end {
                 return None;
             }
-            let program = material_program(&span, vertices[start].layer, drawn);
+            let program = program_at(start);
             let end = if split {
                 (start..range.end)
                     .step_by(4)
                     .skip(1)
-                    .find(|&i| material_program(&span, vertices[i].layer, drawn) != program)
+                    .find(|&i| program_at(i) != program)
                     .unwrap_or(range.end)
             } else {
                 range.end
@@ -1257,7 +1270,7 @@ mod gpu_span_tests {
     use sunrise_render_core::{PosedModelRuns, SkinRunJob};
     #[test]
     #[ignore = "daily"]
-    fn native_fluid_stays_native_while_model_uses_pack() {
+    fn native_materials_stay_native_while_model_uses_pack() {
         let _gpu = crate::test_gpu::lock();
         let adapter = crate::test_gpu::adapter().unwrap();
         let (device, queue) =
@@ -1270,6 +1283,8 @@ mod gpu_span_tests {
             super::TERRAIN_MODEL_CUTOUT_OVERLAY,
             super::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY,
             super::TERRAIN_MODEL_TRANSLUCENT_OVERLAY,
+            TEXT_NORMAL_SOLID_OVERLAY,
+            TEXT_POLYGON_OFFSET_SOLID_OVERLAY,
         ] {
             let mut mixed = vec![
                 Vertex {
@@ -1320,13 +1335,13 @@ mod gpu_span_tests {
                 if hidden {
                     assert!(
                         rest.is_empty(),
-                        "hidden native fluid must not leak into the visible pass"
+                        "hidden native geometry must not leak into the visible pass"
                     );
                 } else {
                     assert_eq!(
                         bytemuck::cast_slice::<_, u8>(&rest),
                         bytemuck::cast_slice::<_, u8>(&mixed[4..]),
-                        "fluid UV/layer payload cannot be sampled from the entity atlas"
+                        "native geometry must reach Sunrise with its UV and layer intact"
                     );
                 }
             }
