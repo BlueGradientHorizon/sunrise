@@ -452,7 +452,6 @@ sunrise-client game::creatures::loaded_arrow_shot_tests::mob_launch_uses_only_th
 sunrise-client game::creatures::loaded_arrow_shot_tests::rocket_and_mob_trident_post_only_on_their_first_tick lib daily resources
 sunrise-client game::creatures::loaded_mob_arrow_permission_tests::loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit lib daily resources
 sunrise-client game::creatures::local_sound_event_tests::local_mob_events_play_without_entering_the_shared_capture lib daily resources
-sunrise-client game::creatures::mob_dispatch_panic_tests::mob_despawn_listener_panic_preserves_owned_rows_and_lent_random lib daily resources
 sunrise-client game::creatures::mob_griefing_tests::a_mod_denies_one_entity_griefing lib daily resources
 sunrise-client game::creatures::mob_pearl_hook_tests::mob_pearls_use_the_hook_and_recheck_listener_writes_without_player_side_effects lib daily resources
 sunrise-client game::creatures::mob_pearl_hook_tests::player_pearl_keeps_acting_context_cancellation_and_mutable_damage lib daily resources
