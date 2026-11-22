@@ -583,7 +583,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::{fixture_resident_column, with_game};
     use sunrise_client::{entities::ArmorStand, items::ItemStack, mobs::Mob};
     use sunrise_core::geometry::Vec3;
     use sunrise_items::equipment::{CHEST, HEAD, MAINHAND};
@@ -953,6 +953,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_held_sword_raises_the_attack_damage_until_it_is_put_away() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let damage = "minecraft:attack_damage";
             game.mobs[0].set_equipment_stack(MAINHAND, stack("minecraft:diamond_sword"));
@@ -980,6 +981,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_stand_and_the_dragon_wear_armor_modifiers() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let armor = "minecraft:armor";
             game.armor_stands[0]
@@ -1052,6 +1054,7 @@ mod tests {
     fn a_stacks_own_modifiers_replace_its_items() {
         use sunrise_core::nbt::Tag;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             spawn(game);
             let damage = "minecraft:attack_damage";
             let mut own = ItemStack::new("minecraft:diamond_sword", 1);
@@ -1361,6 +1364,7 @@ mod tests {
         let mods = vec![mod_api::ModEntry::new("plated", Box::new(Plated))].into();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
+                fixture_resident_column(&mut game.world, (0, 0));
                 spawn(game);
                 let chestplate = stack("minecraft:netherite_chestplate");
                 game.mobs[0].set_equipment_stack(CHEST, chestplate);

@@ -882,7 +882,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::{Game, commands::Target};
-    use crate::game::native_entity_refs::tests::collect_entity_visit;
+    use crate::game::native_entity_refs::tests::{collect_entity_visit, fixture_resident_column};
     use mod_api::{
         self, EntityMountEvent, EntityReadError, EntityRef, EntityUnleashEvent, Flow, Hooks,
         LivingRef, ServerHost, StartRidingRefusal,
@@ -957,6 +957,7 @@ mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
+                fixture_resident_column(&mut game.world, (0, 0));
                 game.options.dedicated = Some(Vec::new());
                 for (index, vehicle_kind) in [
                     "minecraft:armor_stand",
@@ -1341,6 +1342,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_nested_tree_lists_passengers_depth_first_and_shares_its_root() {
         super::super::native_entity_refs::tests::with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let camel = add_mob(game, 80, "minecraft:camel", Vec3::ZERO);
             let first = add_mob(game, 81, "minecraft:pig", Vec3::ZERO);
             let second = add_mob(game, 82, "minecraft:pig", Vec3::ZERO);
@@ -1507,6 +1509,7 @@ mod tests {
     fn passengers_keep_the_order_they_boarded_in_not_the_mob_list() {
         use sunrise_core::nbt::Tag;
         super::super::native_entity_refs::tests::with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let camel = add_mob(game, 80, "minecraft:camel", Vec3::ZERO);
             let first = add_mob(game, 81, "minecraft:pig", Vec3::ZERO);
             let second = add_mob(game, 82, "minecraft:pig", Vec3::ZERO);
@@ -1633,6 +1636,7 @@ mod tests {
         use super::super::boats::Boat;
         use sunrise_client::items::ItemStack;
         super::super::native_entity_refs::tests::with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let ravager = add_mob(game, 90, "minecraft:ravager", Vec3::ZERO);
             let zombie = add_mob(game, 91, "minecraft:zombie", Vec3::ZERO);
             assert_eq!(ravager.controlling_passenger(game), None);
@@ -2045,6 +2049,7 @@ mod tests {
     #[ignore = "daily"]
     fn dismount_location_answers_without_a_ride_or_a_live_handle() {
         super::super::native_entity_refs::tests::with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let at = Vec3::new(0.5, 64.0, 0.5);
             let cow = add_mob(game, 130, "minecraft:cow", at);
             let rider = add_mob(game, 131, "minecraft:zombie", at);

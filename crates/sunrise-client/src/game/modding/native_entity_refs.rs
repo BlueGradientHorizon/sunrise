@@ -1486,6 +1486,17 @@ mod ray_tests {
 
 #[cfg(test)]
 pub(super) mod tests {
+    /// Install an empty column only where a fixture needs existing bodies to be tracked.
+    pub(in crate::game) fn fixture_resident_column(
+        world: &mut sunrise_client::world::World,
+        key: (i32, i32),
+    ) {
+        if !world.chunks.contains_key(&key) {
+            let chunk = sunrise_client::chunk::Chunk::with_layout(key.0, key.1, world.layout());
+            world.chunks.insert(key, std::sync::Arc::new(chunk));
+        }
+    }
+
     /// Run `test` on a game-sized stack, preserving libtest's thread name and panic payload.
     pub(in crate::game) fn run_with_game_stack(test: impl FnOnce() + Send + 'static) {
         let mut worker =

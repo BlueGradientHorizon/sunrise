@@ -271,7 +271,7 @@ mod lifetime_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::{fixture_resident_column, with_game};
     use sunrise_client::{
         join_seq::{RestoreOrder, residency::table::EntityLookup},
         mobs::Mob,
@@ -478,6 +478,7 @@ mod tests {
         use crate::game::Dim;
         use mod_api::EntityReadError;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.reset_entity_residency();
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(410, kind.clone(), Vec3::ZERO, 0.0));

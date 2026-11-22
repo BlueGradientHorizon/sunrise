@@ -1221,7 +1221,9 @@ mod off_level_tests {
 #[cfg(test)]
 mod nested_vehicle_discard_tests {
     use super::*;
-    use crate::game::native_entity_refs::tests::{collect_all_entities, collect_entities_in};
+    use crate::game::native_entity_refs::tests::{
+        collect_all_entities, collect_entities_in, fixture_resident_column,
+    };
     use std::sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -1516,6 +1518,7 @@ mod nested_vehicle_discard_tests {
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, false, |game| {
+                    fixture_resident_column(&mut game.world, (0, 1));
                     game.mobs.clear();
                     game.player = Some(
                         sunrise_client::motion::PlayerMotion::new(
@@ -1830,6 +1833,8 @@ mod nested_vehicle_discard_tests {
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, true, |game| {
+                    fixture_resident_column(&mut game.world, (0, 0));
+                    fixture_resident_column(&mut game.world, (0, 1));
                     super::super::native_player_death::tests::add_guest(game);
                     game.native_level_opened(super::super::Dim::Overworld);
                     game.build_registries();
@@ -2003,6 +2008,7 @@ mod nested_vehicle_discard_tests {
                 .into();
                 mod_platform::testing::with_mods(mods, || {
                     with_vehicle_tree(cart, true, |game| {
+                        fixture_resident_column(&mut game.world, (0, 1));
                         game.next_entity = game.next_entity.max(100);
                         let items = vec![Some(sunrise_client::items::ItemStack::new(
                             "minecraft:diamond",
@@ -2487,6 +2493,8 @@ mod nested_vehicle_discard_tests {
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_vehicle_tree(cart, false, |game| {
+                    fixture_resident_column(&mut game.world, (0, 0));
+                    fixture_resident_column(&mut game.world, (0, 1));
                     game.mob_object_mut(72).unwrap().extra.vehicle_order = 1;
                     let later = game.mob_object_mut(73).unwrap();
                     later.extra.mount = Some(71);

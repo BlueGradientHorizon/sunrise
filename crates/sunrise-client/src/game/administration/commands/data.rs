@@ -1993,7 +1993,7 @@ fn strip_finalize_tree(tag: &mut Tag) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::{fixture_resident_column, with_game};
     use sunrise_core::geometry::Vec3;
 
     /// `lan_guest_joined`'s placement-only pass, between a forced write and
@@ -2037,6 +2037,7 @@ mod tests {
     #[ignore = "daily"]
     fn merging_display_nbt_keeps_the_uuid_and_forces_the_start_delay() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let mut raw = Compound::new();
             raw.insert(
                 "Pos".into(),

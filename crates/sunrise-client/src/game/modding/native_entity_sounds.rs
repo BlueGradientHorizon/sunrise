@@ -153,7 +153,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::dispense_fixture;
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{fixture_resident_column, with_game};
     use mod_api::{EntityRef, SoundSource, WorldEpoch};
     use sunrise_client::command::args::GameMode;
     use sunrise_client::mobs::Mob;
@@ -208,6 +208,7 @@ mod tests {
     #[ignore = "daily"]
     fn play_sound_queues_at_the_entity_in_its_source() {
         super::super::native_guest_turn_tests::with_guests(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let cow = spawn(game, 10, "minecraft:cow");
             assert!(game.entity_play_sound(cow, "minecraft:entity.cow.ambient", 0.5, 1.5));
             let sound = &game.creatures.lan_sounds[0];

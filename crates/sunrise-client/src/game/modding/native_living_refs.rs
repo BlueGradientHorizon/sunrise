@@ -1578,6 +1578,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_handle_lists_its_attributes_and_reads_its_modifiers() {
+        use crate::game::native_entity_refs::tests::fixture_resident_column;
         use mod_api::{AttributeOperation, AttributeOperation::*, Identifier, ModifierLifetime::*};
         use sunrise_client::entities::ArmorStand;
         use sunrise_client::mobs::Mob;
@@ -1588,6 +1589,7 @@ pub(in crate::game) mod tests {
             AttributeModifier::new(Identifier::parse(id).unwrap(), amount, operation)
         };
         super::super::native_entity_refs::tests::with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let zombie_kind = game
                 .res
                 .mob_types()

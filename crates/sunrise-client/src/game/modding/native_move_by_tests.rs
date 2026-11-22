@@ -1,6 +1,8 @@
 //! `EntityRef::move_by` and the hanging entities `LevelRef::visit_entities_in` visits.
 
-use super::native_entity_refs::tests::{collect_game_entities_in, with_game};
+use super::native_entity_refs::tests::{
+    collect_game_entities_in, fixture_resident_column, with_game,
+};
 use mod_api::MoveCause;
 use sunrise_client::entities::{ArmorStand, ItemFrame, Painting};
 use sunrise_core::geometry::Vec3;
@@ -55,6 +57,7 @@ fn with_scene(test: impl FnOnce(&mut super::Game<'_>)) {
 #[ignore = "daily"]
 fn an_area_query_lists_the_frames_and_paintings_in_the_box() {
     with_scene(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
         let level = game.level("minecraft:overworld").unwrap();
         let frame = game.entity(FRAME).unwrap();
         let painting = game.entity(PAINTING).unwrap();

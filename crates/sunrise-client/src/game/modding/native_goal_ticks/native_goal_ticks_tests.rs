@@ -4,7 +4,7 @@
 //!
 //! The `zombie` fixture is shared with the behavior tests (#824).
 use super::super::creatures;
-use super::super::native_entity_refs::tests::with_game;
+use super::super::native_entity_refs::tests::{fixture_resident_column, with_game};
 use mod_api::{
     EntityPart, EntityRef, Goal, GoalContext, GoalFlags, Hooks, LivingRef, ModEntry,
     RegisterGoalsEvent, Registrar, RegistrationContext,
@@ -382,6 +382,7 @@ fn set_target_follows_the_write_rules() {
     crate::game::api_values::install_parts(&[ModEntry::new("targets", Box::new(TargetMod))])
         .unwrap();
     with_game(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
         zombie(game, 40, [3.5, 65.0, 3.5]);
         zombie(game, 41, [13.5, 65.0, 13.5]);
         let other = game.entity(41).unwrap();
@@ -755,6 +756,9 @@ fn set_target_refuses_what_the_write_handle_refuses() {
     crate::game::api_values::install_parts(&[ModEntry::new("golems", Box::new(TargetMod))])
         .unwrap();
     with_game(|game| {
+        for column in [(0, 0), (1, 1), (2, 2)] {
+            fixture_resident_column(&mut game.world, column);
+        }
         mob_of(game, 90, "minecraft:iron_golem", [3.5, 65.0, 3.5]);
         mob_of(game, 91, "minecraft:zombie", [13.5, 65.0, 13.5]);
         mob_of(game, 92, "minecraft:creeper", [23.5, 65.0, 23.5]);

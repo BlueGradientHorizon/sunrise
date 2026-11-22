@@ -614,11 +614,15 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn handle_teleport_keeps_display_easing() {
-        use crate::game::{commands::OtherEntity, native_entity_refs::tests::with_game};
+        use crate::game::{
+            commands::OtherEntity,
+            native_entity_refs::tests::{fixture_resident_column, with_game},
+        };
         use sunrise_core::geometry::Vec3;
         use sunrise_core::nbt::Tag;
 
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let tag = Tag::compound([("teleport_duration", Tag::Int(4))]);
             let display = game
                 .read_display_nbt("minecraft:text_display", &tag)

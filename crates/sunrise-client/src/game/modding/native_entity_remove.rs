@@ -367,10 +367,14 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn selectors_stop_matching_a_discarded_entity_before_the_sweep() {
-        use super::super::{commands::OtherEntity, native_entity_refs::tests::with_game};
+        use super::super::{
+            commands::OtherEntity,
+            native_entity_refs::tests::{fixture_resident_column, with_game},
+        };
         use sunrise_core::geometry::Vec3;
 
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.others.push(OtherEntity {
                 attachment_lifetime: Default::default(),
                 knot_check: None,
@@ -697,11 +701,12 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn entity_kill_kills_mobs_non_mobs_parked_entities_and_refuses_stale() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::{fixture_resident_column, with_game};
         use super::*;
         use sunrise_client::{entities::ExperienceOrb, mobs::Mob};
 
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             // Killing a living mob in the current level kills it; a second kill
             // while already dead returns Ok(false).
             let zombie_kind = game

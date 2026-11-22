@@ -1,6 +1,6 @@
 //! The experience orb's saved form (docs: `entity_nbt::orb_to_nbt`) and live
 //! `ExperienceOrbRef` reads and writes.
-use crate::game::native_entity_refs::tests::with_game;
+use crate::game::native_entity_refs::tests::{fixture_resident_column, with_game};
 use mod_api::ExperienceOrbWriteError;
 use sunrise_client::entities::ExperienceOrb;
 use sunrise_client::entity_nbt::{orb_to_nbt, orbs_from_nbt};
@@ -49,6 +49,7 @@ fn every_accepted_orb_value_and_count_survives_save_and_reload() {
 #[ignore = "daily"]
 fn experience_orb_ref_writes_live_ints_and_refuses_invalid_count() {
     with_game(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
         game.options.dedicated = Some(Vec::new());
         game.orbs.push(orb(7, 3, 2));
         let entity = game.entity(7).expect("live orb entity");

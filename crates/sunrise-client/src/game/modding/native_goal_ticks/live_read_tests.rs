@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::native_entity_refs::tests::with_game;
+use crate::game::native_entity_refs::tests::{fixture_resident_column, with_game};
 use mod_api::{ActiveEffect, AttributeOperation, EntityReadError};
 use std::ops::ControlFlow;
 use sunrise_core::geometry::Vec3;
@@ -227,6 +227,7 @@ fn scoped_host_resolves_other_real_players_from_the_game() {
         // to the player and then the loaned vehicle before visiting the actor.
         let mut carried = Mob::new(9003, kind, Vec3::ZERO, 0.0);
         carried.extra.mount = Some(13);
+        fixture_resident_column(&mut game.world, (0, 0));
         game.mobs.push(carried);
         let mut world = game.mob_world_base(&[]);
         world.goal_host = Some(game);
@@ -306,6 +307,7 @@ fn body_yaw_is_the_raw_mob_yaw_and_none_for_others() {
     use crate::game::native_guest_turn_tests::with_guests;
 
     with_guests(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
         let kind = game
             .res
             .mob_types()

@@ -6,7 +6,9 @@
 //! fault, structural fault or a UUID a live entity already owns — with zero
 //! published rows.
 use super::*;
-use crate::game::native_entity_refs::tests::{collect_entity_visit, with_game};
+use crate::game::native_entity_refs::tests::{
+    collect_entity_visit, fixture_resident_column, with_game,
+};
 use std::collections::HashMap;
 
 /// Declares a saved type, a `noSave` type, and a type an experiment enables.
@@ -403,6 +405,7 @@ fn general_tree_loads_joins_and_saves_one_record() {
 #[ignore = "daily"]
 fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
     with_types(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
         let cart_uuid = [1, 2, 3, 4];
         let rider_uuid = [2, 3, 4, 5];
         let cart = Tag::Compound(
@@ -1782,6 +1785,8 @@ fn a_general_rider_fills_a_chest_boat_and_keeps_it_from_being_pushed() {
 
     with_types(|game| {
         let at = Vec3::new(8.5, 64.0, 8.5);
+        fixture_resident_column(&mut game.world, (0, 0));
+        fixture_resident_column(&mut game.world, (1, 0));
         let (full, empty, pig) = (5000, 5001, 5002);
         game.boats
             .push(Boat::new(full, "oak".into(), at, 0.0).with_chest());

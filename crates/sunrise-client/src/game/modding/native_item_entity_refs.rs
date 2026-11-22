@@ -149,7 +149,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{fixture_resident_column, with_game};
     use super::*;
     use crate::game::api_values::test_snapshot;
     use mod_api::{HostTransaction, WorldEpoch};
@@ -160,6 +160,7 @@ mod tests {
     #[ignore = "daily"]
     fn item_handles_preserve_stacks_and_distinguish_target_from_thrower() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.options.dedicated = Some(Vec::new());
             let mut stack = ItemStack {
                 item: "minecraft:diamond_pickaxe".into(),

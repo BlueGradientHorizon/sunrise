@@ -291,7 +291,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::lan::LanSettings;
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{fixture_resident_column, with_game};
     use super::super::native_sound_refs::tests::{guest, packets};
     use mod_api::{HostSide, SoundSource};
     use std::sync::{Arc, Mutex};
@@ -456,6 +456,7 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 host(game);
+                fixture_resident_column(&mut game.world, (0, 0));
                 let (a, rx) = guest(21, 21, [1.0, 64.0, 2.0]);
                 game.lan.as_mut().unwrap().hub.guests.push(a);
                 let mob = |game: &mut super::Game<'_>, id, kind: &str, x| {

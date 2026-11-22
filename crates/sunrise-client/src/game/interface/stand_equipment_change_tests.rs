@@ -8,7 +8,7 @@ use sunrise_client::{entities::ArmorStand, items::ItemStack};
 use sunrise_core::geometry::Vec3;
 use sunrise_items::equipment::{BODY, HEAD, MAINHAND, SADDLE};
 
-use super::native_entity_refs::tests::with_game;
+use super::native_entity_refs::tests::{fixture_resident_column, with_game};
 
 use super::api_values::TryIntoApi;
 type Heard = Vec<(
@@ -142,6 +142,7 @@ fn listener_edits_to_later_slots_take_effect_in_the_same_pass() {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("rewriter", Box::new(rewriter))].into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.armor_stands.push(ArmorStand::new(17, Vec3::ZERO, 0.0));
             game.armor_stands[0].equipment[HEAD] = Some(old_helmet.clone());
             game.armor_stand_location_effects(0, false);

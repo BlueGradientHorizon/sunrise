@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::{
     commands::Target,
-    native_entity_refs::tests::{with_client_game, with_game},
+    native_entity_refs::tests::{fixture_resident_column, with_client_game, with_game},
 };
 use mod_api::{EntityEnteringSectionEvent, Hooks, HostSide};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -1134,6 +1134,8 @@ fn ticked_live_preserves_order_removals_and_reindexed_rows() {
             let start = Vec3::new(8.5, 70.0, 8.5);
             let mid = Vec3::new(24.5, 70.0, 8.5);
             let end = Vec3::new(40.5, 70.0, 8.5);
+            fixture_resident_column(&mut game.world, (1, 0));
+            fixture_resident_column(&mut game.world, (2, 0));
             let mob_a = floating_cow(game, [start.x, start.y, start.z]);
             let mob_b = floating_cow(game, [start.x, start.y, start.z]);
             let mob_c = floating_cow(game, [start.x, start.y, start.z]);

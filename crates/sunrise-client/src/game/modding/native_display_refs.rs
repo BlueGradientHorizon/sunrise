@@ -402,7 +402,10 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::api_values::TryIntoApi;
-    use super::super::{commands::OtherEntity, native_entity_refs::tests::with_game};
+    use super::super::{
+        commands::OtherEntity,
+        native_entity_refs::tests::{fixture_resident_column, with_game},
+    };
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::{geometry::Vec3, nbt::Tag};
@@ -433,6 +436,7 @@ mod tests {
     #[ignore = "daily"]
     fn displays_narrow_by_kind_and_share_the_display_state() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let text = push(game, 21, "minecraft:text_display");
             let block = push(game, 22, "minecraft:block_display");
             let item = push(game, 23, "minecraft:item_display");
@@ -513,6 +517,7 @@ mod tests {
     #[ignore = "daily"]
     fn display_kinds_keep_their_own_state_and_refuse_the_others() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let text = push(game, 21, "minecraft:text_display");
             let block = push(game, 22, "minecraft:block_display");
             let item = push(game, 23, "minecraft:item_display");
@@ -632,6 +637,7 @@ mod tests {
         use sunrise_protocol::entity_data::{Value, serializer};
 
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let text = push(game, 21, "minecraft:text_display");
             // No display fields in the raw record. An unrelated key still survives a save.
             game.persist
@@ -754,6 +760,7 @@ mod tests {
                 ("Rotation", Tag::List(vec![Tag::Float(0.0f32.to_bits()); 2])),
                 ("text", keybind.clone()),
             ]);
+            fixture_resident_column(&mut game.world, (0, 0));
             let id = game
                 .load_other_transferred(tag, "minecraft:text_display", None)
                 .unwrap();

@@ -79,7 +79,10 @@ fn with_game(f: impl FnOnce(&mut Game<'_>)) {
 #[test]
 #[ignore = "daily"]
 fn receiver_kill_stages_orb_removal_until_commit_and_kills_a_resident_knot_once() {
-    super::native_entity_refs::tests::with_game(|game| {
+    use super::native_entity_refs::tests::{fixture_resident_column, with_game};
+
+    with_game(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
         let at = [4.25, 70.0, 4.75];
         game.summon_with_nbt("minecraft:experience_orb", at, "{Value:1s}")
             .unwrap();

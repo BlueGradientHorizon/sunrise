@@ -1007,6 +1007,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn conversion_post_reads_original_and_lightning_outcome() {
+        use super::super::native_entity_refs::tests::{fixture_resident_column, with_game};
         use mod_api::{
             EntityJoinLevelEvent, EquipmentSlot, Flow, Hooks, LivingConversionPostEvent,
             LivingConversionPreEvent,
@@ -1108,7 +1109,9 @@ mod tests {
             }),
         )]);
         install(mods);
-        super::super::native_entity_refs::tests::with_game(|game| {
+        with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
+            fixture_resident_column(&mut game.world, (6, 6));
             let piglin_type = game
                 .res
                 .mob_types()

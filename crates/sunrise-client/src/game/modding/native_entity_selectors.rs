@@ -90,6 +90,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::native_entity_refs::tests::fixture_resident_column;
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -348,6 +349,7 @@ mod tests {
                     // source. Enter a real guest turn so its UUID/name/permission
                     // and entity identity are installed by the production path.
                     game.as_guest(12, |game| {
+                        fixture_resident_column(&mut game.world, (0, 0));
                         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                         for (id, x) in [(111, 1.0), (112, 2.0), (113, 1.5), (114, 0.5), (115, 3.0)]
                         {

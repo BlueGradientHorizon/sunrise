@@ -359,7 +359,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{fixture_resident_column, with_game};
     use mod_api::{ActiveEffect, EntityReadError, EntityRef, Host, LivingRef, WorldEpoch};
     use std::ops::ControlFlow;
     use sunrise_client::mobs::Mob;
@@ -397,6 +397,7 @@ mod tests {
         use sunrise_client::entities::ArmorStand;
 
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let kind = game
                 .res
                 .mob_types()
@@ -458,6 +459,7 @@ mod tests {
     fn an_effects_icon_flag_is_written_and_read_for_players_and_mobs() {
         use sunrise_client::motion::PlayerMotion;
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             game.mobs.push(Mob::new(23, kind, Vec3::ZERO, 0.0));
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -739,6 +741,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_mob_takes_effects_by_the_games_own_paths() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             for (id, kind) in [
                 (12, "minecraft:zombie"),
                 (13, "minecraft:spider"),

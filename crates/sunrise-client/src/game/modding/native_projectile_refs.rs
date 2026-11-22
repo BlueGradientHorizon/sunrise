@@ -394,7 +394,9 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        fireworks::Rocket, native_entity_refs::tests::with_game, trident::ThrownTrident,
+        fireworks::Rocket,
+        native_entity_refs::tests::{fixture_resident_column, with_game},
+        trident::ThrownTrident,
     };
     use super::*;
     use mod_api::WorldEpoch;
@@ -517,6 +519,7 @@ mod tests {
     #[ignore = "daily"]
     fn projectile_handles_read_and_write_owner_deflection_and_arrow_state() {
         with_game(|game| {
+            fixture_resident_column(&mut game.world, (0, 0));
             game.options.dedicated = Some(Vec::new());
             let kind = game
                 .res

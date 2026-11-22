@@ -138,7 +138,9 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::Dim;
-    use super::super::native_entity_refs::tests::{collect_entity_visit, with_game};
+    use super::super::native_entity_refs::tests::{
+        collect_entity_visit, fixture_resident_column, with_game,
+    };
     use super::*;
     use mod_api::{EntityReadError, MobRef, WorldEpoch};
     use std::ops::ControlFlow;
@@ -484,6 +486,8 @@ mod tests {
     #[ignore = "daily"]
     fn the_dragons_parts_resolve_as_entities_of_their_own() {
         with_game(|game| {
+            // The parts are visible with their parent, not by their own positions.
+            fixture_resident_column(&mut game.world, (0, 0));
             let (entity, _) = dragon_in(game);
             place_parts(game);
             assert_parts_are_the_dragons_own(game, entity);
