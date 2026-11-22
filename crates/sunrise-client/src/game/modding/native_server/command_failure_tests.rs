@@ -63,6 +63,15 @@ impl mod_api::Hooks for FailingCommand {
                     Err(leaf.into())
                 }));
         }
+        for (name, first) in [("rejectmetaedge", 32_762), ("rejectmetaover", 32_763)] {
+            event
+                .commands
+                .push(mod_api::Command::new(name).executes(move |_, _, _| {
+                    Err(mod_api::Text::literal("a".repeat(first))
+                        .append(mod_api::Text::literal("b".repeat(32_762)))
+                        .into())
+                }));
+        }
     }
 }
 
@@ -261,6 +270,80 @@ fn tracked_executor_failure_survives_saved_depth_boundary() {
                         }
                     }
                 })
+            })
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn cart_failure_metadata_keeps_timestamp_and_literal_fragments() {
+    use sunrise_client::lan::entity::States;
+    use sunrise_core::nbt::Tag;
+    use sunrise_protocol::{
+        entity_data::{Value, serializer},
+        ids::play::clientbound::SET_ENTITY_DATA,
+        packets::play::SetEntityData,
+    };
+
+    in_own_process(
+        "game::native_server::command_failure_tests::cart_failure_metadata_keeps_timestamp_and_literal_fragments",
+        || {
+            with_failure_sources(|game| {
+                // Eleven ASCII bytes of timestamp take the flattened output to
+                // 65,535 and 65,536 modified UTF-8 bytes, respectively.
+                for (command, first) in [("rejectmetaedge", 32_762), ("rejectmetaover", 32_763)] {
+                    game.carts
+                        .update(0, |cart| cart.command.set_command(command));
+                    game.world.game_time += 1;
+                    assert!(game.perform_cart_command(99));
+                    let mut states = States::default();
+                    game.lan_object_states(&mut states, false, 0);
+                    let cart = states
+                        .as_slice()
+                        .iter()
+                        .find(|state| state.id == 99)
+                        .unwrap();
+                    let body = Clientbound::SetEntityData(SetEntityData {
+                        id: cart.id,
+                        values: cart.meta.clone(),
+                    })
+                    .encode();
+                    let mut reader = Reader::new(&body);
+                    assert_eq!(reader.varint().unwrap(), SET_ENTITY_DATA);
+                    let Clientbound::SetEntityData(meta) =
+                        Clientbound::decode(SET_ENTITY_DATA, reader.rest()).unwrap()
+                    else {
+                        unreachable!();
+                    };
+                    assert_eq!(meta.id, 99);
+                    let (_, kind, Value::Text(output)) = meta
+                        .values
+                        .iter()
+                        .find(|(index, _, _)| *index == 14)
+                        .unwrap()
+                    else {
+                        panic!("cart output is not a component");
+                    };
+                    assert_eq!(*kind, serializer::COMPONENT);
+                    let Some(Tag::String(prefix)) = output.get("text") else {
+                        panic!("cart output does not preserve the timestamp component");
+                    };
+                    let prefix = prefix.to_string_lossy();
+                    assert_eq!(prefix.len(), 11);
+                    assert!(chrono::NaiveTime::parse_from_str(&prefix, "[%H:%M:%S] ").is_ok());
+                    let decoded = crate::game::remote::remote_text(output);
+                    assert_eq!(
+                        decoded.plain(),
+                        format!("{prefix}{}{}", "a".repeat(first), "b".repeat(32_762))
+                    );
+                    assert!(
+                        decoded
+                            .spans
+                            .iter()
+                            .any(|span| span.style.color == Some(text::RED))
+                    );
+                }
             })
         },
     );

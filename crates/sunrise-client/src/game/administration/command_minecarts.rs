@@ -11,6 +11,18 @@ use super::{
 use sunrise_client::{command_block::Mode, text::Text};
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 
+impl Minecart {
+    /// Snapshot the same component codec used for the saved output and the
+    /// failure-text admission check, rather than the edit screen's plain text.
+    pub(super) fn sync_command_output(&mut self) {
+        self.synced_output = self
+            .command
+            .last_output
+            .as_ref()
+            .map(|text| sunrise_client::scoreboard::component_tag(&text.component_view()));
+    }
+}
+
 impl Game<'_> {
     fn edit_command_cart<R>(
         &mut self,
@@ -27,8 +39,8 @@ impl Game<'_> {
     /// into its synched data (`DATA_ID_COMMAND_NAME`, `DATA_ID_LAST_OUTPUT`).
     pub(super) fn cart_command_updated(&mut self, id: u32) {
         self.edit_command_cart(id, |c| {
-            c.synced_command = c.command.command.clone();
-            c.synced_output = c.command.last_output_string();
+            c.synced_command.clone_from(&c.command.command);
+            c.sync_command_output();
         });
     }
     /// `BaseCommandBlock.performCommand` for the cart: false when it already
