@@ -278,11 +278,15 @@ pub mod tests {
             }) {
                 Ok(moved) => Ok(moved),
                 Err(crate::TransactionError::Aborted(over)) => Err(over),
-                Err(
-                    error @ (crate::TransactionError::InvalidContext
-                    | crate::TransactionError::Unavailable
-                    | crate::TransactionError::CommitRefused),
-                ) => Err(error),
+                Err(crate::TransactionError::InvalidContext) => {
+                    Err(crate::TransactionError::InvalidContext)
+                }
+                Err(crate::TransactionError::Unavailable) => {
+                    Err(crate::TransactionError::Unavailable)
+                }
+                Err(crate::TransactionError::CommitRefused) => {
+                    Err(crate::TransactionError::CommitRefused)
+                }
             }
         }
     }
