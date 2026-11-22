@@ -18,7 +18,7 @@ impl Game<'_> {
     /// `MinecraftServer.isPublished`: `DedicatedServer`'s is always true, `IntegratedServer`'s
     /// while it is open to LAN (`multiplayerScope != OFF`).
     pub(super) fn server_is_published(&self) -> bool {
-        self.options.dedicated.is_some() || self.published_port().is_some()
+        self.is_dedicated_server() || self.published_port().is_some()
     }
     /// `PlayerList.setViewDistance` on a dedicated server; the tickets read the settings.
     pub(super) fn server_set_view_distance(&mut self, distance: i32) -> bool {
@@ -73,11 +73,22 @@ mod tests {
     }
 
     /// A single-player world's server is published while it is open to LAN, and no longer once
-    /// it closes; a dedicated server always is.
+    /// it closes, though it runs headless (`options.dedicated` set) throughout; a dedicated
+    /// server always is.
     #[test]
     #[ignore = "daily"]
     fn the_server_is_published_while_open_to_lan() {
+        use super::super::execution_role::ExecutionRole;
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_server_distances::tests::the_server_is_published_while_open_to_lan",
+            "SUNRISE_TEST_SERVER_PUBLISHED_CASE",
+            &["published"],
+        ) {
+            return;
+        }
         with_guests(|game| {
+            assert_eq!(game.options.execution_role, ExecutionRole::IntegratedServer);
+            game.options.dedicated = Some(Vec::new());
             game.serving = Some(super::super::integrated::Serving::fixture(0));
             let published = |game: &mut super::super::Game<'_>| {
                 let host: &dyn mod_api::ServerHost = game;
@@ -94,7 +105,7 @@ mod tests {
             assert!(game.unpublish());
             assert!(!published(game), "the LAN closed");
             game.serving = None;
-            game.options.dedicated = Some(Vec::new());
+            game.options.execution_role = ExecutionRole::DedicatedServer;
             assert!(published(game), "a dedicated server");
         });
     }
