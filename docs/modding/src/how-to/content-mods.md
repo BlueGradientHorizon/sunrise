@@ -1054,7 +1054,8 @@ most `slots`. Malformed declarations are refused at registration rather than cla
 An optional `menu` opens only when the menu type is supported and its slot count matches `slots`;
 an unsupported or mismatched menu is ignored without changing `slots`. Mod block-entity `Items`
 entries save slot indices `0..=255` as unsigned bytes and extended indices (`>= 256`) as NBT `Int`
-`Slot` values.
+`Slot` values. Structure templates and chunk saves both load these entries against the placed
+block's declared container shape.
 
 For state-dependent admission, implement `BlockEntityPart::can_place_item`
 (vanilla's `Container.canPlaceItem`). Its `CanPlaceItemEvent` gives the server part the block
