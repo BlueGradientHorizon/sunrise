@@ -1610,6 +1610,46 @@ impl Game<'_> {
         );
     }
 
+    /// Save the guest's inventory and current cursor wherever their turn lent
+    /// them. A suspended guest cannot be re-entered to take this snapshot.
+    pub(super) fn journal_guest_inventory(&mut self, conn: u32) {
+        let owner = JournaledPlayer::Guest(conn);
+        if self
+            .transactions
+            .last()
+            .is_none_or(|level| level.players.contains_key(&owner))
+        {
+            return;
+        }
+        let Some(home) = self.player_storage_home(owner) else {
+            return;
+        };
+        let kept = match home {
+            PlayerStorageHome::Game => KeptPlayer {
+                inventory: self.inventory.clone(),
+                armor: self.armor.clone(),
+                offhand: self.offhand.clone(),
+                equipment: self.equipment.clone(),
+                carried: self.carried.clone(),
+            },
+            PlayerStorageHome::Guest(index) => {
+                let g = &self.lan.as_ref().expect("resolved guest").hub.guests[index];
+                KeptPlayer {
+                    inventory: g.inventory.clone(),
+                    armor: g.armor.clone(),
+                    offhand: g.offhand.clone(),
+                    equipment: g.equipment.clone(),
+                    carried: g.carried.clone(),
+                }
+            }
+        };
+        self.transactions
+            .player_write()
+            .expect("open transaction")
+            .players
+            .insert(owner, kept);
+    }
+
     /// Follow the actual storage, even when public handles cannot resolve the player.
     /// Each outstanding swap holds the immediately preceding actor in the inner guest's row.
     fn player_storage_home(&self, owner: JournaledPlayer) -> Option<PlayerStorageHome> {

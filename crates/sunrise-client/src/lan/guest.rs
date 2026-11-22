@@ -600,6 +600,25 @@ impl Guest {
         self.next_window
     }
 
+    /// The wire window and its parked cursor, before a transactional replacement.
+    /// The guest's active cursor is saved with their inventory through its loan.
+    pub fn menu_before_replacement(&self) -> impl FnOnce(&mut Self) + use<> {
+        let menu = self.menu.clone();
+        let native = self.native_menu.clone();
+        let window = self.next_window;
+        let generation = self.menu_generation;
+        let inactive = self.inactive_inventory_carried.clone();
+        let sent = self.open_carried_sent.clone();
+        move |guest| {
+            guest.menu = menu;
+            guest.native_menu = native;
+            guest.next_window = window;
+            guest.menu_generation = generation;
+            guest.inactive_inventory_carried = inactive;
+            guest.open_carried_sent = sent;
+        }
+    }
+
     /// Retire an open menu, returning its carried stack for `AbstractContainerMenu.removed`.
     pub fn close_menu_cursor(&mut self, window: i32) -> Option<ItemStack> {
         self.open_carried_sent.take_if(|(id, _)| *id == window)?;
