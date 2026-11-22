@@ -8,20 +8,19 @@ use sunrise_world::{
 };
 impl MotionWorld<'_, '_, '_> {
     pub(super) fn environment_hurt(&mut self, source: &str, damage: f32) -> Result<()> {
-        if self.player.invulnerable || self.player.spectator {
-            return Ok(());
-        }
-        // Frost walker's `damage_immunity`: #burn_from_stepping (magma, campfire).
-        if self.player.burn_from_stepping_immune
-            && matches!(source, "minecraft:hot_floor" | "minecraft:campfire")
-        {
-            return Ok(());
-        }
         let id = self
             .health
             .damage
             .id(source)
             .ok_or("missing environment damage type")?;
+        self.environment_hurt_type(id, damage)
+    }
+
+    pub(super) fn environment_hurt_type(
+        &mut self,
+        id: sunrise_world::damage_source::DamageTypeId,
+        damage: f32,
+    ) -> Result<()> {
         let rules = self.scene.health_rules;
         self.player.hurt(
             &mut crate::health::DamageLevel::of(
@@ -30,7 +29,8 @@ impl MotionWorld<'_, '_, '_> {
                 self.tag_items,
                 self.block_registries,
                 self.damage_hooks,
-            ),
+            )
+            .with_player_equipment(self.side.player_equipment()),
             self.health,
             rules,
             id,
@@ -177,7 +177,8 @@ impl MotionWorld<'_, '_, '_> {
                     self.tag_items,
                     self.block_registries,
                     self.damage_hooks,
-                ),
+                )
+                .with_player_equipment(self.side.player_equipment()),
                 self.health,
                 rules,
                 id,

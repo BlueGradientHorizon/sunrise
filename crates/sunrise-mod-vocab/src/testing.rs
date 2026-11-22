@@ -303,7 +303,7 @@ impl FakeHost {
                 Err(errors)
             };
         }
-        crate::content::registry_keys::resolve_entity_types(ids)
+        crate::content::registry_keys::resolve_entity_types(ids, |_| None)
     }
     /// Player `uuid` online as entity `entity` in the level, joined if missing.
     pub fn join(&mut self, uuid: u128, entity: u32) -> &mut FakePlayer {

@@ -1523,8 +1523,13 @@ pub(in crate::game) fn register_iterated_registries(
             SpawnerTypeFacts::general_entity(width, height),
         );
     }
-    mod_api::__private::resolve_entity_types(prepared.chain(general.keys()))
-        .map_err(|errors| errors.join("\n"))?;
+    let rows = super::entity_type_rows::entity_type_rows(root);
+    mod_api::__private::resolve_entity_types(prepared.chain(general.keys()), |id| {
+        rows.contains(id)
+            .then(|| rows.is_living(id))
+            .or_else(|| general.slot(id).map(|_| false))
+    })
+    .map_err(|errors| errors.join("\n"))?;
     if let Some(ids) = builtin.get("minecraft:game_event") {
         mod_api::__private::resolve_game_events(ids.names.iter().map(String::as_str))
             .map_err(|errors| errors.join("\n"))?;
