@@ -59,7 +59,7 @@ ids = [
     "handle:ItemPlace::extract",
     "handle:ItemPlace::exchange",
     "handle:ItemPlace::on_crafted_by",
-    "type:CraftedByError.InvalidContext",
+    "type:item::item_stack::CraftedByError.InvalidContext",
     "handle:ItemPlace::edit",
     "type:ItemPlaceEditError.InvalidContext",
     "handle:ItemComponentHandler::write",

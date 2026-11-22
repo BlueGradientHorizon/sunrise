@@ -562,29 +562,39 @@ pub mod tests {
             )
         };
         type Setup = fn(&mut GameTank, &mut GameTank);
-        let cases: [(&str, Setup, u32); 6] = [
-            // Each successful extraction matches the half that was inserted: 500, 250, …, 1.
-            ("half of each offer", |_, t| t.halving = true, 999),
+        let cases: [(&str, Setup, u32); 7] = [
+            // NeoForge ResourceHandlerUtil.moveInternal visits each source index once.
+            ("half of each offer", |_, t| t.halving = true, 500),
             (
                 "half of each offer, from quarters",
                 |s, t| (s.quarters, t.halving) = (true, true),
-                750,
+                500,
             ),
             (
                 "half of each offer, from a drain-only tank",
                 |s, t| (s.fills, t.halving) = (false, true),
-                999,
+                500,
             ),
-            // Half its room: moves of 500, 250, then 125, which quarters can't give.
+            // Half its room: 500 fits a quarter-quantized source; 375 (half of 750) cannot be
+            // extracted exactly, so the transfer rolls back to 0.
             (
                 "half its room, from quarters",
                 |s, t| (s.quarters, t.half_room) = (true, true),
-                750,
+                500,
+            ),
+            (
+                "non-quarter half room, from quarters",
+                |s, t| {
+                    s.quarters = true;
+                    t.half_room = true;
+                    t.capacity = 750;
+                },
+                0,
             ),
             (
                 "half its room, from a drain-only tank",
                 |s, t| (s.fills, t.half_room) = (false, true),
-                999,
+                500,
             ),
             // It probes as available for 999 but cannot supply 999 after that much was inserted.
             ("a source giving one less", |s, _| s.short = true, 0),
