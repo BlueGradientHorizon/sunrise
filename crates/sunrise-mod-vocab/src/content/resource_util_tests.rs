@@ -521,7 +521,7 @@ fn stacking_moves_each_allowed_resource_into_an_existing_stack() {
 }
 
 #[test]
-fn each_extractability_probe_starts_with_unchanged_storage() {
+fn extractability_scan_sees_a_zero_answer_write_then_rolls_back_both_slots() {
     struct Probe(Capability<dyn ResourceHandler<ItemResource>>);
 
     impl ResourceHandler<ItemResource> for Probe {
@@ -564,7 +564,7 @@ fn each_extractability_probe_starts_with_unchanged_storage() {
                 assert_eq!(self.0.extract_at(host, tx, slot, r, amount), 3);
                 return 0;
             }
-            if self.0.amount(host, 0) == 3 {
+            if self.0.amount(host, 0) == 0 {
                 self.0.extract_at(host, tx, slot, r, amount)
             } else {
                 0

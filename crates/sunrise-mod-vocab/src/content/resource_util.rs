@@ -573,12 +573,11 @@ pub fn extract_first<R>(
     }
 }
 
-/// The first resource `filter` accepts that can be extracted. Opens a rollback scope before
-/// reading the handler and tries each candidate's whole int amount in a separate scope so a
-/// failed candidate cannot affect the next. Pass `Some(tx)` for the innermost open transaction
-/// or `None` to probe at the root. Panics if `tx` does not match the host's innermost open
-/// transaction (including passing `None` while a transaction is open). Returns `Ok(None)`
-/// if nothing matched, or `Err` for refusal or an overanswer.
+/// The first resource `filter` accepts that can be extracted. One rollback scope covers
+/// the whole scan, including all writes made by earlier attempts. Pass `Some(tx)` for the
+/// innermost open transaction or `None` to probe at the root. Panics if `tx` does not match
+/// the host's innermost open transaction (including passing `None` while one is open).
+/// Returns `Ok(None)` if nothing matched, or `Err` for refusal or an overanswer.
 pub fn find_extractable_resource<R>(
     host: &mut dyn ServerHost,
     handler: &dyn ResourceHandler<R>,
@@ -594,38 +593,26 @@ fn probe_extractable<R>(
     handler: &dyn ResourceHandler<R>,
     filter: impl Fn(&R) -> bool,
 ) -> Result<Option<R>, TransactionError<Overanswered>> {
-    let mut remaining: Option<Range<usize>> = None;
-    while remaining.as_ref().is_none_or(|indices| !indices.is_empty()) {
-        let probe: Result<std::convert::Infallible, _> = host.transaction(|host, tx| {
-            let indices = remaining.get_or_insert_with(|| 0..handler.size(host));
-            for index in indices {
-                let Ok(amount) = u32::try_from(handler.amount_int(host, index)) else {
-                    continue;
-                };
-                let Some(resource) = handler
-                    .resource(host, index)
-                    .filter(|r| amount != 0 && filter(r))
-                else {
-                    continue;
-                };
-                let answer = handler.extract_at(host, tx, index, &resource, amount);
-                // Roll back before looking at another candidate, even on a zero answer.
-                return Err(Some((resource, amount, answer)));
-            }
-            Err(None)
-        });
-        match probe {
-            Ok(never) => match never {},
-            Err(TransactionError::Unavailable) => return Err(TransactionError::Unavailable),
-            Err(TransactionError::Aborted(None)) => return Ok(None),
-            Err(TransactionError::Aborted(Some((resource, amount, answer)))) => {
-                if checked_transfer(answer, amount).map_err(TransactionError::Aborted)? > 0 {
-                    return Ok(Some(resource));
-                }
+    let probe: Result<std::convert::Infallible, _> = host.transaction(|host, tx| {
+        for index in 0..handler.size(host) {
+            let Some(resource) = handler.resource(host, index).filter(|r| filter(r)) else {
+                continue;
+            };
+            let Ok(amount) = u32::try_from(handler.amount_int(host, index)) else {
+                continue;
+            };
+            let answer = handler.extract_at(host, tx, index, &resource, amount);
+            if checked_transfer(answer, amount).map_err(Err)? > 0 {
+                return Err(Ok(Some(resource)));
             }
         }
+        Err(Ok(None))
+    });
+    match probe {
+        Ok(never) => match never {},
+        Err(TransactionError::Unavailable) => Err(TransactionError::Unavailable),
+        Err(TransactionError::Aborted(result)) => result.map_err(TransactionError::Aborted),
     }
-    Ok(None)
 }
 
 /// A borrowed move endpoint. Pass a capability reference to retain its provider's name in
