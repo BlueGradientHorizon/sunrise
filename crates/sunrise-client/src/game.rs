@@ -4269,6 +4269,8 @@ struct Game<'a> {
     save_after_guest_turn: bool,
     /// Guests whose records are displaced by nested player swaps, outer first.
     lan_guest_swaps: Vec<u32>,
+    /// Bodies and their statistics displaced by guest turns, outer first.
+    lan_displaced_players: Vec<lan_actions::DisplacedPlayer>,
     /// Connections whose turn a panic interrupted this tick: the turn helpers record the
     /// player before re-raising, the end-of-turn path records it before its callbacks run and
     /// clears it after a clean put-back. Cleared at the start of every server tick; the crash
@@ -8342,9 +8344,14 @@ impl Game<'_> {
             // A shader pack keeps the cache off (`render_with_cache_options_and_callbacks`),
             // so nothing warms it.
             let warm_cache = self.pack_ids.is_none();
-            for entity in
-                r.block_entities_in_range(self.settings.chunk_fade as f32, camera, view, long_range)
-            {
+            for entity in r.block_entities_in_range(
+                self.settings.chunk_fade as f32,
+                camera,
+                view,
+                self.effective_render_distance(),
+                long_range,
+                off_screen,
+            ) {
                 let (pos, state) = *entity.block;
                 if !self.live_block_entity_render(pos, state) {
                     continue;
@@ -8493,21 +8500,29 @@ impl Game<'_> {
                     );
             }
             // Mod block entities: their mods draw them (`native_block_entity_submit`),
-            // culled by the bounds they give. A world without any (`has_mods`) has none
-            // to find among its other unrendered block entities (furnaces, hoppers...).
+            // culled by the eye-visible section filter (ordinary renderers) and the bounds
+            // they give. A world without any (`has_mods`) has none to find among its other
+            // unrendered block entities (furnaces, hoppers...).
+            let radius = self.effective_render_distance();
+            let untemplated = self.untemplated_mod_block_entities(camera);
             let mods = self
                 .world
                 .block_entities
                 .has_mods()
                 .then(|| {
-                    r.visible_block_entities(self.settings.chunk_fade as f32)
-                        .filter(|(_, state)| !self.res.block_entity_render().renders(*state))
+                    r.visible_block_entities(self.settings.chunk_fade as f32, camera, view, radius)
+                        .filter(|((_, state), _)| !self.res.block_entity_render().renders(*state))
                 })
                 .into_iter()
                 .flatten();
-            let untemplated = self.untemplated_mod_block_entities(camera);
+            let untemplated_eye = untemplated.iter().map(|block| {
+                (
+                    block,
+                    r.block_entity_section_in_eye_view(block.0, camera, view.as_ref(), radius),
+                )
+            });
             self.mod_block_entity_geometry(
-                mods.chain(untemplated.iter()),
+                mods.chain(untemplated_eye),
                 camera,
                 alpha as f32,
                 &mut out,
@@ -10958,24 +10973,27 @@ impl Game<'_> {
         self.follow_audio_stream_entities();
         pr.lap("pr_listener");
         let block = [
-            camera.x.floor() as i32,
-            camera.y.floor() as i32,
-            camera.z.floor() as i32,
+            sunrise_core::mth::floor(camera.x),
+            sunrise_core::mth::floor(camera.y),
+            sunrise_core::mth::floor(camera.z),
         ];
-        // The camera inside an opaque block sees nothing through it: disable.
+        // Camera.extractRenderState: only spectator inside a solidRender block disables smartCull.
         let cave_culling = self.settings.sunrise.cave_culling
-            && !self
-                .res
-                .facts()
-                .get(self.world.block(block[0], block[1], block[2]))
-                .solid_render;
-        // The cave culling search runs on its worker while the frame is prepared.
-        if cave_culling
-            && self.title.is_none()
+            && !(self.spectator()
+                && self
+                    .res
+                    .facts()
+                    .get(self.world.block(block[0], block[1], block[2]))
+                    .solid_render);
+        // The bounded section graph runs on its worker while the frame is prepared, even when
+        // smart culling is off (`SectionOcclusionGraph.runUpdates`).
+        let effective_detail_distance = (self.effective_render_distance() * 16) as f32;
+        if self.title.is_none()
             && let Some(renderer) = self.renderer.as_mut()
         {
+            renderer.sync_loaded_columns(&self.world.chunks);
             sunrise_client::spans::time("occlusion", || {
-                renderer.start_occlusion(camera, (self.streaming.radius * 16) as f32)
+                renderer.start_occlusion(camera, effective_detail_distance, cave_culling)
             });
         }
         pr.lap("pr_occlusion");
@@ -11533,7 +11551,8 @@ impl Game<'_> {
             shadow_scene_revision: (self.world.revision, self.world.chunks.membership_revision()),
             shadow_cache: self.settings.sunrise.shadow_cache,
             distance,
-            detail_distance: (self.streaming.radius * 16) as f32,
+            detail_distance: (self.effective_render_distance() * 16) as f32,
+            shadow_distance: Some((self.streaming.radius * 16) as f32),
             depth_far,
             underwater,
             water_plane: if title
@@ -12058,16 +12077,18 @@ impl Game<'_> {
         {
             return true;
         }
-        if let Some(saving) = &mut self.pending_save {
+        if self.pending_save.is_some() {
             match event {
                 WindowEvent::CloseRequested => {
-                    if self.settings.quit_shortcuts
+                    if (self.settings.quit_shortcuts
                         || !sunrise_client::input::is_quit_shortcut_down(
                             self.modifiers,
                             &self.physical_keys,
-                        )
+                        ))
+                        && let Err(error) = self.begin_closing_save(true)
                     {
-                        saving.quit = true;
+                        self.error = Some(error);
+                        event_loop.exit();
                     }
                 }
                 WindowEvent::Focused(focused) => {
@@ -12497,6 +12518,10 @@ impl Game<'_> {
                             self.keys.clear();
                             let options = self.toggle_options();
                             self.vanilla_mappings.set_keys_up_on_focus_loss(options);
+                            // GLFW releases every held key and button when
+                            // the window loses focus, so a mod's mappings go
+                            // up as vanilla's do; their pending clicks stay.
+                            self.mod_keys.set_all_up();
                             self.capture(false);
                         }
                         self.regrab_on_refocus = held;
@@ -14095,6 +14120,7 @@ impl<'a> Game<'a> {
             lan_building_boxes: Default::default(),
             save_after_guest_turn: false,
             lan_guest_swaps: Vec::new(),
+            lan_displaced_players: Vec::new(),
             interrupted_turns: Vec::new(),
             crash_save: Default::default(),
             lan_ender_menus: Vec::new(),
@@ -14424,7 +14450,7 @@ pub(crate) fn run_with(
 }
 
 /// The right and left arms of a player model layer (`PlayerModel.rightArm`
-/// and `leftArm`, with their sleeves).
+/// and `leftArm`, with their sleeves), each keeping the layer.
 fn player_arms(
     root: &std::path::Path,
     key: &str,
@@ -14434,11 +14460,7 @@ fn player_arms(
         Some(document) => document.model(key),
         None => sunrise_client::mobs::load_model(root, key),
     };
-    ["right_arm", "left_arm"].map(|name| {
-        model
-            .as_ref()
-            .and_then(|m| m.children.iter().find(|c| c.name == name).cloned())
-    })
+    ["right_arm", "left_arm"].map(|name| model.as_ref().and_then(|m| m.detached_child(name)))
 }
 
 /// The most `Player.sleepCounter` reaches: 100 asleep, then up to here over the

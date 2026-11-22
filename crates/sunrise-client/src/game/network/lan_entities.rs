@@ -378,8 +378,6 @@ impl Game<'_> {
                     let empty = Tag::String("".into());
                     e.defaults
                         .push((13, serializer::STRING, Value::String(String::new())));
-                    e.defaults
-                        .push((14, serializer::COMPONENT, Value::Text(empty)));
                     if !c.synced_command.is_empty() {
                         e.meta.push((
                             13,
@@ -387,13 +385,14 @@ impl Game<'_> {
                             Value::String(c.synced_command.clone()),
                         ));
                     }
-                    if !c.synced_output.is_empty() {
-                        e.meta.push((
-                            14,
-                            serializer::COMPONENT,
-                            Value::Text(Tag::String(c.synced_output.as_str().into())),
-                        ));
+                    if let Some(output) = &c.synced_output
+                        && *output != empty
+                    {
+                        e.meta
+                            .push((14, serializer::COMPONENT, Value::Text(output.clone())));
                     }
+                    e.defaults
+                        .push((14, serializer::COMPONENT, Value::Text(empty)));
                 }
                 _ => {}
             }

@@ -9,7 +9,8 @@ pub trait PlayerProgressBackend {
     /// Side: server.
     /// The value of statistic `stat_type` for `key` (`minecraft:stone`,
     /// `minecraft:jump`...), as `ServerStatsCounter.getValue`: 0 when never
-    /// counted.
+    /// counted. Reads the player's own counter even during a nested turn that
+    /// displaces them. In `player_stat_award` the award has not been applied yet.
     fn player_stat(&self, player: PlayerRef, stat_type: StatType, key: &str) -> Option<i32>;
 }
 /// The handles' writes of the `player_progress` area, implemented by the game and reached through [`BackendMut`].

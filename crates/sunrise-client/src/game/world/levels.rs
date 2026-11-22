@@ -1591,15 +1591,16 @@ impl Game<'_> {
 
     /// `tick_server` as a server thread runs it, timed whenever spans are on.
     pub(super) fn tick_server_timed(&mut self, paused: bool) -> Result<()> {
-        self.tick_server_spans(paused, |_| {})
+        self.tick_server_spans(paused, |_| {}).map(|_| ())
     }
 
-    /// `tick_server_timed`, handing the tick's timing to `record` while spans are on.
+    /// Return the time in `tick_server` itself, and hand its detailed timing to `record`
+    /// while spans are on. The recording and thread-work bookkeeping are outside that time.
     pub(super) fn tick_server_spans(
         &mut self,
         paused: bool,
         record: impl FnOnce(TickTiming),
-    ) -> Result<()> {
+    ) -> Result<Duration> {
         let started = Instant::now();
         sunrise_threads::work::tick_start();
         let result = self.tick_server_recorded(paused, record);
@@ -1611,15 +1612,19 @@ impl Game<'_> {
         &mut self,
         paused: bool,
         record: impl FnOnce(TickTiming),
-    ) -> Result<()> {
+    ) -> Result<Duration> {
         if self.options.spikes.is_none() && !sunrise_client::spans::recording_here() {
-            return self.tick_server(paused);
+            let started = Instant::now();
+            self.tick_server(paused)?;
+            return Ok(started.elapsed());
         }
         // Discard between-tick work (such as the chunk pump) before timing this tick.
         sunrise_client::spans::take_raw();
-        let (started, cpu) = (Instant::now(), sunrise_client::spans::thread_cpu());
+        let cpu = sunrise_client::spans::thread_cpu();
+        let started = Instant::now();
         let result = self.tick_server(paused);
-        let wall = started.elapsed().as_secs_f32() * 1000.0;
+        let method = started.elapsed();
+        let wall = method.as_secs_f32() * 1000.0;
         let cpu = sunrise_client::spans::thread_cpu()
             .zip(cpu)
             .map(|(end, start)| (end - start).as_secs_f32() * 1000.0);
@@ -1641,39 +1646,42 @@ impl Game<'_> {
             cpu_ms: cpu,
             raw,
         });
-        result
+        result.map(|()| method)
     }
 
     /// The end of `MinecraftServer.runServer`'s loop for a server thread:
     /// the next tick starts one tick length after this one, or straight away
     /// while the sprint runs (`checkShouldSprintThisTick`). A server more
     /// than two seconds behind skips the ticks it missed: that returns how far
-    /// behind it was, for the overload warning.
+    /// behind it was, for the overload warning, and how long the thread blocked on
+    /// workers or slept (`MinecraftServer.waitForTasks`'s idle time).
     pub(super) fn wait_for_next_server_tick(
         &mut self,
         next: &mut Instant,
         paused: bool,
-    ) -> Option<Duration> {
+    ) -> (Option<Duration>, Duration) {
         let now = Instant::now();
+        let mut idle = Duration::ZERO;
         if !paused && self.clock.sprinting() {
             *next = now;
-            return None;
+            return (None, idle);
         }
         *next += self.clock.tick_duration();
         if *next > now {
             // The chunks loading (the players', force-loaded ones, a
             // `/pregen` task) keep the workers fed until the next tick.
-            self.pump_chunks(*next, paused);
+            idle = self.pump_chunks(*next, paused);
             let now = Instant::now();
             if *next > now {
                 std::thread::sleep(*next - now);
+                idle += now.elapsed();
             }
         } else if now - *next > Duration::from_secs(2) {
             let behind = now - *next;
             *next = now;
-            return Some(behind);
+            return (Some(behind), idle);
         }
-        None
+        (None, idle)
     }
 
     /// The levels this server tick runs, in `MinecraftServer.levels` order
@@ -1851,6 +1859,7 @@ impl Game<'_> {
         self.enter_level(dim)?;
         // Vanilla saves the level's chunks before their unload hooks.
         self.native_chunks_loaded();
+        self.abort_abandoned_transactions(0);
         if let Err(why) = self.save_level(true) {
             // Not saved: the level stays parked, and the level in place is the one before.
             self.enter_level(back)?;
@@ -1858,6 +1867,8 @@ impl Game<'_> {
         }
         let chunks: Vec<_> = self.world.chunks.values().cloned().collect();
         self.native_chunks_unloaded(&chunks);
+        // Save and unload listeners can leave frames open; undo them before dropping the level.
+        self.abort_abandoned_transactions(0);
         // Its entities' attachments are saved with them; they leave memory too.
         for id in self.persist.uuids.keys() {
             self.entity_attachments.remove(id);

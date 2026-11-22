@@ -65,11 +65,10 @@ impl Game<'_> {
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
         self.debug_entries.invalidate();
-        self.streaming.radius = self
-            .settings
-            .render_distance
-            .min(p.chunk_radius.saturating_add(1))
-            .max(2);
+        self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+            self.settings.render_distance,
+            Some(p.chunk_radius),
+        );
 
         // handleLogin: startWaitingForNewLevel(.., Reason.OTHER).
         self.enter_remote_dimension(

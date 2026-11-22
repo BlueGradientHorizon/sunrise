@@ -1,11 +1,11 @@
 //! Commands and their authority.
 
-use crate::{CommandInvocation, CommandSource, ServerHost};
+use crate::{CommandInvocation, CommandSource, ServerHost, Text};
 use std::sync::Arc;
 
 // no wire: a native executor runs only in the server process.
-/// The server's retained callable for an executable command usage.
-pub type CommandExecutor = dyn Fn(&mut dyn ServerHost, &CommandSource, &CommandInvocation) -> Option<i32>
+/// The server's retained callable for an executable command usage. See [`Command::executes`].
+pub type CommandExecutor = dyn Fn(&mut dyn ServerHost, &CommandSource, &CommandInvocation) -> Result<i32, Box<Text>>
     + Send
     + Sync
     + 'static;
@@ -87,8 +87,12 @@ impl Command {
     /// The executor runs as the registering mod, after permission checks and argument
     /// resolution. The source identifies the origin and permission, independent of
     /// `execute as`; feedback respects silence, track-output and the acting player.
-    /// Return `Some(n)` for success with result `n` (including zero), or `None` for
-    /// failure. A failed executor or disabled owner never gives another mod a turn.
+    /// Return `Ok(n)` for success with result `n` (including zero), or
+    /// `Err(message.into())` with a [`Text`] for failure.
+    /// Failure text defaults to red and does not depend on `sendCommandFeedback`.
+    /// It is not shown for forked commands, silent sources, or sources that do not accept failures.
+    /// A failure stores zero for both `execute store success` and `execute store result`. Neither a failed
+    /// executor nor a disabled owner gives another mod a turn.
     /// A panic is reported with the mod's name and disables this usage's executor for the
     /// session. It aborts the executor's writes in the caller's open transaction and does
     /// not publish a result to `execute store`. A failed invocation also aborts any
@@ -98,7 +102,11 @@ impl Command {
     /// Capture owned or shared state rather than borrowing the registration event.
     pub fn executes(
         self,
-        executor: impl Fn(&mut dyn ServerHost, &CommandSource, &CommandInvocation) -> Option<i32>
+        executor: impl Fn(
+            &mut dyn ServerHost,
+            &CommandSource,
+            &CommandInvocation,
+        ) -> Result<i32, Box<Text>>
         + Send
         + Sync
         + 'static,

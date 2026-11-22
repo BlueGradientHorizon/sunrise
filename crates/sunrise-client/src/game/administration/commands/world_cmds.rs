@@ -769,16 +769,44 @@ impl Game<'_> {
         source: usize,
         seed: i64,
     ) {
+        self.send_player_sound(t, sound, at, volume, pitch, source, seed, false);
+    }
+    /// Direct packet delivery for a committed `PlayerRef::play_sound`, bypassing `guest_packets`
+    /// during a guest turn so packet order matches commit order across all effect kinds.
+    pub(in crate::game) fn deliver_player_sound(
+        &mut self,
+        t: Target,
+        sound: &str,
+        at: [f64; 3],
+        volume: f32,
+        pitch: f32,
+        source: usize,
+        seed: i64,
+    ) {
+        self.send_player_sound(t, sound, at, volume, pitch, source, seed, true);
+    }
+    fn send_player_sound(
+        &mut self,
+        t: Target,
+        sound: &str,
+        at: [f64; 3],
+        volume: f32,
+        pitch: f32,
+        source: usize,
+        seed: i64,
+        committing: bool,
+    ) {
         let guest = match t {
             Target::Guest(conn) => Some(conn),
-            _ => self.lan_acting,
+            Target::Player => self.lan_acting,
+            _ => return,
         };
         match guest.and_then(|conn| Some((conn, self.lan.as_ref()?))) {
             Some((conn, host)) => {
                 let packet = host
                     .hub
                     .sound_packet(sound, at, volume, pitch, source as i32, seed);
-                if t == Target::Player {
+                if t == Target::Player && !committing {
                     self.guest_packets.push(packet);
                 } else {
                     host.hub.send_to(conn, &packet);
@@ -796,22 +824,45 @@ impl Game<'_> {
         sound: Option<&str>,
         source: Option<usize>,
     ) {
+        self.send_player_stop_sound(targets, sound, source, false);
+    }
+    /// Direct packet delivery for a committed `PlayerRef::stop_sound`, bypassing `guest_packets`
+    /// during a guest turn so packet order matches commit order across all effect kinds.
+    pub(in crate::game) fn deliver_player_stop_sound(
+        &mut self,
+        t: Target,
+        sound: Option<&str>,
+        source: Option<usize>,
+    ) {
+        self.send_player_stop_sound(&[t], sound, source, true);
+    }
+    fn send_player_stop_sound(
+        &mut self,
+        targets: &[Target],
+        sound: Option<&str>,
+        source: Option<usize>,
+        committing: bool,
+    ) {
         let packet = C::StopSound(play::StopSound {
             source: source.map(|s| s as i32),
             sound: sound.map(str::to_owned),
         });
         for &t in targets {
-            match t {
-                Target::Player if self.lan_acting.is_some() => {
+            let guest = match t {
+                Target::Guest(conn) => Some(conn),
+                Target::Player => self.lan_acting,
+                _ => continue,
+            };
+            match guest {
+                Some(_) if t == Target::Player && !committing => {
                     self.guest_packets.push(packet.clone());
                 }
-                Target::Player => self.audio.stop_sounds(sound, source),
-                Target::Guest(conn) => {
+                Some(conn) => {
                     if let Some(host) = self.lan.as_ref() {
                         host.hub.send_to(conn, &packet);
                     }
                 }
-                _ => {}
+                None => self.audio.stop_sounds(sound, source),
             }
         }
     }

@@ -499,13 +499,11 @@ impl Game<'_> {
         if stop || !ready {
             self.stop_remote_mining();
         }
-        if !ready {
-            self.agent_attack_clicks_left(0);
-            return;
+        if ready {
+            sunrise_client::interaction_input::tick(&mut RemoteInputWorld(self));
         }
-        sunrise_client::interaction_input::tick(&mut RemoteInputWorld(self));
-        self.agent_attack_clicks_left(self.remote_attack_clicks_queued());
-        if self.clicks.miss_time > 0 {
+        self.finish_agent_attack_input(ready);
+        if ready && self.clicks.miss_time > 0 {
             self.clicks.miss_time -= 1;
         }
     }

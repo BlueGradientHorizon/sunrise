@@ -396,10 +396,10 @@ impl Renderer {
         let mirror_low = mirror_plane
             .zip(eye)
             .map(|(plane, eye)| 2.0 * (plane - frame.camera.y as f32) - eye.y);
-        let culling = !frame.title && frame.cave_culling;
-        if culling {
+        let bounded = !frame.title;
+        if bounded {
             crate::spans::time("occlusion", || {
-                self.start_occlusion(camera, frame.detail_distance)
+                self.start_occlusion(camera, frame.detail_distance, frame.cave_culling)
             });
         }
         // A shader pack's shadow pass draws the sections in its camera's box, all of them (the
@@ -496,7 +496,7 @@ impl Renderer {
                 radius,
                 &view,
             )
-            .with_reach(self.occlusion.reach().filter(|_| culling))
+            .with_reach(self.occlusion.reach().filter(|_| bounded))
             .with_eye(eye)
             .with_view_proj(jittered)
             .with_occlude(self.cull_on);
@@ -540,7 +540,7 @@ impl Renderer {
                 camera,
                 radius,
                 &Frusta(view, mirror),
-                |k| !culling || reachable.contains(k),
+                |k| !bounded || reachable.contains(k),
                 |x, z| {
                     (!cutout.is_empty() && cutout.contains(&(x, z)))
                         || (!leaving.is_empty() && leaving.contains(&(x, z)))
@@ -592,33 +592,20 @@ impl Renderer {
         let mut shadow_visible = std::mem::take(&mut self.shadow_visible);
         shadow_visible.clear();
         if let Some(v) = &shadow_view {
-            let radius = (frame.detail_distance / 16.0) as i32;
-            let light = ShadowCull::new(shadow_box(v))
-                .with_casters(v.view_casters.then(|| shadow_casters(cull_proj, v.light)))
-                .with_reach(v.distance);
             let mut boxed = std::mem::take(&mut self.shadow_boxed_scratch);
             let mut seen = std::mem::take(&mut self.shadow_seen_scratch);
             crate::spans::time("shadow visibility", || {
-                // Within the unculled distance every section, then those in the light's box.
-                if let Some(d) = v.unculled {
-                    let all = ShadowCull::new(Frustum::from_planes([glam::Vec4::W; 6]))
-                        .with_reach(v.distance);
-                    let near = radius.min((d / 16.0).ceil() as i32);
-                    self.sections.visible(
-                        camera,
-                        near,
-                        &all,
-                        |_| true,
-                        |_, _| false,
-                        &mut shadow_visible,
-                    );
-                }
-                boxed.clear();
-                self.sections
-                    .visible(camera, radius, &light, |_| true, |_, _| false, &mut boxed);
-                seen.clear();
-                seen.extend(shadow_visible.iter().map(|s| s.key));
-                shadow_visible.extend(boxed.drain(..).filter(|s| !seen.contains(&s.key)));
+                collect_shadow_sections(
+                    &self.sections,
+                    camera,
+                    frame.shadow_distance,
+                    frame.detail_distance,
+                    v,
+                    cull_proj,
+                    &mut shadow_visible,
+                    &mut boxed,
+                    &mut seen,
+                );
             });
             self.shadow_boxed_scratch = boxed;
             self.shadow_seen_scratch = seen;
@@ -1408,12 +1395,9 @@ impl Renderer {
             oit_on,
         );
         self.entity_batch.append_shadow_only(frame.shadow_only);
-        // The posed models' vertices come first: the ordinary entities' draw takes them in.
-        let posed = if pack_skin {
-            0
-        } else {
-            skin.map_or(0, |s| s.vertices)
-        };
+        let ordinary_skin = skin.filter(|_| !pack_skin);
+        let posed = ordinary_skin.map_or(0, |s| s.vertices);
+        self.entity_order.prepare(entities, ordinary_skin, oit_on);
         let entity_quads = entity_quads + posed / 4;
         let weather_quads = frame.weather.len() as u32 / 4;
         let world_quads = entity_quads
@@ -1570,12 +1554,12 @@ impl Renderer {
                 mapped_at_creation: false,
             });
         }
-        if !all_entities.is_empty() {
+        for (dst, range) in self.entity_order.cpu_uploads(all_entities.len() as u32) {
             self.uploads.buffer(
                 &mut encoder,
                 &self.entity_buffer,
-                u64::from(posed) * std::mem::size_of::<Vertex>() as u64,
-                bytemuck::cast_slice(all_entities),
+                u64::from(dst) * std::mem::size_of::<Vertex>() as u64,
+                bytemuck::cast_slice(&all_entities[range.start as usize..range.end as usize]),
             );
         }
         if pack_entities {
@@ -1623,11 +1607,14 @@ impl Renderer {
                 oit_on,
                 &mut self.prepared_cuts,
             );
+            for cut in &mut self.prepared_cuts {
+                *cut = self.entity_order.prepared_cut(*cut);
+            }
             prepared_model::fill_instance_ranges(
                 entity_quads * 4,
                 &self.prepared_draws,
                 &self.prepared_cuts,
-                posed,
+                0,
                 &mut self.prepared_ranges,
             );
         }
@@ -1655,7 +1642,7 @@ impl Renderer {
                     &mut encoder,
                     skin,
                     &self.entity_buffer,
-                    0,
+                    self.entity_order.posed_jobs(skin),
                     outline_base,
                 );
             }
@@ -3678,6 +3665,43 @@ impl Renderer {
             },
         )
     }
+}
+
+/// Shadow caster walk radius in chunks: uses `shadow_distance` (the loaded streaming radius)
+/// when supplied, staying separate from the effective eye distance (`detail_distance`).
+pub(super) fn shadow_walk_radius(shadow_distance: Option<f32>, detail_distance: f32) -> i32 {
+    (shadow_distance.unwrap_or(detail_distance) / 16.0) as i32
+}
+
+/// Collects shadow caster sections using the shadow walk radius (separate from eye distance)
+/// and the pack's light-volume, view-caster, and reach tests.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn collect_shadow_sections<T>(
+    sections: &resident::Resident<T>,
+    camera: DVec3,
+    shadow_distance: Option<f32>,
+    detail_distance: f32,
+    v: &external::ShadowView,
+    cull_proj: Mat4,
+    shadow_visible: &mut Vec<resident::Visible>,
+    boxed: &mut Vec<resident::Visible>,
+    seen: &mut crate::fast_hash::FxHashSet<SectionKey>,
+) {
+    let radius = shadow_walk_radius(shadow_distance, detail_distance);
+    let light = ShadowCull::new(shadow_box(v))
+        .with_casters(v.view_casters.then(|| shadow_casters(cull_proj, v.light)))
+        .with_reach(v.distance);
+    // Within the unculled distance every section, then those in the light's box.
+    if let Some(d) = v.unculled {
+        let all = ShadowCull::new(Frustum::from_planes([glam::Vec4::W; 6])).with_reach(v.distance);
+        let near = radius.min((d / 16.0).ceil() as i32);
+        sections.visible(camera, near, &all, |_| true, |_, _| false, shadow_visible);
+    }
+    boxed.clear();
+    sections.visible(camera, radius, &light, |_| true, |_, _| false, boxed);
+    seen.clear();
+    seen.extend(shadow_visible.iter().map(|s| s.key));
+    shadow_visible.extend(boxed.drain(..).filter(|s| !seen.contains(&s.key)));
 }
 
 /// Marks `layers` in `active`, a bit per animated sprite layer (`Renderer::animate`).

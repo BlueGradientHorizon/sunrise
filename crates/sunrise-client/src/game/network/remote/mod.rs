@@ -664,7 +664,7 @@ const BACKLOG_LIMIT: Duration = Duration::from_millis(50);
 const TICK_DECODE_WAIT: Duration = Duration::from_millis(250);
 /// The open menu name of a server's horse inventory, then its chest's
 /// columns (the packet names no `MenuType`).
-const MOUNT_MENU: &str = "sunrise:mount";
+pub(in crate::game) const MOUNT_MENU: &str = "sunrise:mount";
 /// ServerboundPlayerInputPacket's shift bit.
 const SHIFT_INPUT: u8 = 1 << 5;
 
@@ -1377,11 +1377,10 @@ impl Game<'_> {
                 }
             }
             C::SetChunkCacheRadius(p) => {
-                self.streaming.radius = self
-                    .settings
-                    .render_distance
-                    .min(p.distance.saturating_add(1))
-                    .max(2);
+                self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+                    self.settings.render_distance,
+                    Some(p.distance),
+                );
                 if let Some(r) = self.remote.as_mut() {
                     r.view_distance = p.distance;
                     let center = r.chunk_center;
@@ -2066,6 +2065,10 @@ fn keep_client_state(old: Option<&BlockEntity>, new: &mut BlockEntity) {
             new.sections.clone_from(&old.sections);
             new.checking.clone_from(&old.checking);
             (new.last_check_y, new.levels) = (old.last_check_y, old.levels);
+        }
+        // `eruptionTick` is set once, when the level is set; an update tag leaves it.
+        (Some(BlockEntity::PotentSulfur(old)), BlockEntity::PotentSulfur(new)) => {
+            new.eruption_tick = old.eruption_tick;
         }
         _ => {}
     }
