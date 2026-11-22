@@ -155,8 +155,8 @@ fn in_attributes(list: &[Token<'_>]) -> Vec<bool> {
     for at in 0..list.len() {
         let outer = open.last().copied().unwrap_or(false);
         match token(list, at) {
-            Some(Token::Punct(b'(' | b'[' | b'{')) => {
-                let attribute = token(list, at) == Some(&Token::Punct(b'['))
+            Some(Token::Punct(bracket @ (b'(' | b'[' | b'{'))) => {
+                let attribute = *bracket == b'['
                     && at >= 1
                     && (token(list, at - 1) == Some(&Token::Punct(b'#'))
                         || (at >= 2
