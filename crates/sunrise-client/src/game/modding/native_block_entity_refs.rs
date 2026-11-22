@@ -1125,10 +1125,13 @@ mod tests {
             loaded_block_entity(&world, pos),
             Some(BlockEntity::DaylightDetector)
         ));
-        world
-            .block_entities
-            .insert(key, BlockEntity::Mod(Box::default()));
+        let (lease, detached) = world.block_entities.take(&key).unwrap();
         assert!(loaded_block_entity(&world, pos).is_none());
+        assert!(world.block_entities.put(lease, detached));
+        assert!(matches!(
+            loaded_block_entity(&world, pos),
+            Some(BlockEntity::DaylightDetector)
+        ));
         let outside_pos = [-1, world.shape.max_y(), 0];
         world
             .block_entities

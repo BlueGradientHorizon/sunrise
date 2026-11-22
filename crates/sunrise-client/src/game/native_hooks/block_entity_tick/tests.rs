@@ -1671,7 +1671,11 @@ fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
 #[test]
 #[ignore = "daily"]
 fn blockless_scope_returns_none_for_view_and_keeps_host_and_transaction_working() {
-    with_game(|game| {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::blockless_scope_returns_none_for_view_and_keeps_host_and_transaction_working";
+    if run_fresh_cases(NAME, "SUNRISE_BLOCKLESS_SCOPE", &["run"]) {
+        return;
+    }
+    with_ticker(|game, _| {
         let subject = place_subject(game, KIND);
         let mut access = ResidentBlockEntityAccess::blockless(game);
         let mut scope = BlockEntityScope::new(&mut access);
@@ -1696,7 +1700,11 @@ fn blockless_scope_returns_none_for_view_and_keeps_host_and_transaction_working(
 #[test]
 #[ignore = "daily"]
 fn items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transactions() {
-    with_game(|game| {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transactions";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_ITEMS_CHANGED", &["run"]) {
+        return;
+    }
+    with_ticker(|game, _| {
         let subject = place_subject(game, KIND);
         let (handle, state) = game.resident_block_entity_target(POS).unwrap();
         assert_eq!(handle, subject);
