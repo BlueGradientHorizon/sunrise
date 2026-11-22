@@ -2600,6 +2600,9 @@ pub(crate) mod tests {
     mod thrown_item_swing_tests {
         include!("thrown_item_swing_tests.rs");
     }
+    mod client_emitters_tests {
+        include!("client_emitters_tests.rs");
+    }
     mod tracking_state_tests {
         include!("tracking_state_tests.rs");
     }
