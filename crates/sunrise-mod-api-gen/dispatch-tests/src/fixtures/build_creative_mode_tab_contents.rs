@@ -4,8 +4,6 @@ mod api {
     }
 }
 
-use mod_api::mod_api::CreativeTabPermissions;
-
 impl mod_api::mod_api::CreativeTabOutput for Vec<&'static str> {
     fn record(&mut self, marker: &'static str) {
         self.push(marker);
