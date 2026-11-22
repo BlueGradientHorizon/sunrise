@@ -1492,8 +1492,8 @@ sunrise-client game::native_hooks::enchantment_and_lang_tests::a_trait_mod_measu
 sunrise-client game::native_hooks::enchantment_and_lang_tests::enchantment_registry_returns_records_and_unknown_cost lib daily resources
 sunrise-client game::native_hooks::enchantment_and_lang_tests::translate_gives_the_text_of_a_defined_key_and_none_otherwise lib daily resources
 sunrise-client game::native_hooks::entity_inside::entity_inside_tests::landing_writes_apply_at_the_batch_end lib daily resources
-sunrise-client game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_flush lib daily resources
-sunrise-client game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_items_flush lib daily resources
+sunrise-client game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_flush lib daily child-process
+sunrise-client game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_items_flush lib daily child-process
 sunrise-client game::native_hooks::entity_inside::sweep_tests::a_panicking_part_leaves_the_arrow_list_whole lib daily resources
 sunrise-client game::native_hooks::entity_inside::sweep_tests::a_panicking_part_leaves_the_item_batch_restored lib daily resources
 sunrise-client game::native_hooks::entity_inside::sweep_tests::a_panicking_part_leaves_the_players_tick_restored lib daily resources

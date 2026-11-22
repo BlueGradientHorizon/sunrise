@@ -978,8 +978,8 @@ impl Game<'_> {
                     item.velocity.z * v[2],
                 );
             }
-            mod_api::EntityWrite::Hurt { amount, .. } => {
-                let _ = item.hurt(amount as i32);
+            mod_api::EntityWrite::Hurt { amount } => {
+                self.hurt_moving_item(item, amount);
             }
             mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,
             mod_api::EntityWrite::SetFireTicks(ticks) => item.fire_ticks = ticks,
@@ -1167,6 +1167,9 @@ impl Game<'_> {
         if !client {
             // `Entity.applyEffectsFromBlocks`' checkInsideBlocks, at the batch.
             self.sweep_item_inside(item);
+            if item.health <= 0 {
+                return (false, true);
+            }
         }
         if let Some(pos) = step.vertical_contact {
             let state = self.world.block(pos.x, pos.y, pos.z);
