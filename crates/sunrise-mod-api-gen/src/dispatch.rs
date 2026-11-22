@@ -2977,6 +2977,7 @@ fn listened(_: generated::HookId) -> bool {{ true }}
 fn entered_with_id(_: generated::HookId, _: &str) -> impl Iterator<Item = (&'static str, &'static Gatherer)> {{ MODS.iter().map(|(id, m)| (*id, m)) }}
 mod runtime {{
     pub fn invoke<T>(_: super::generated::HookId, _: &str, _: &str, call: impl FnOnce() -> T) -> Option<T> {{ Some(call()) }}
+    pub fn discard_registration<T>(_: (super::generated::HookId, &'static str), _: Option<&'static str>, value: T) {{ drop(value); }}
 }}
 impl Gatherer {{ fn gather(&self, _: &mut dyn generated::ServerHost, event: &mut generated::GatherEvent<'_>) {{ assert!(event.entries.is_empty()); event.entries.extend(self.pushes); }} }}
 mod generated {{
