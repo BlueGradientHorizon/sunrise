@@ -455,6 +455,8 @@ pub struct RegistrationData {
     runtime_files: Arc<std::collections::BTreeMap<String, Arc<dyn crate::RuntimeFileSource>>>,
     /// Each enabled package's content files, by mod ID.
     package_files: Arc<std::collections::BTreeMap<String, Arc<dyn crate::PackageFileSource>>>,
+    /// Registration exposes only the enabled and admitted rows, not all installed code.
+    visible_mods: Option<LoadedMods>,
 }
 
 impl RegistrationData {
@@ -473,6 +475,7 @@ impl RegistrationData {
             block_entity_coverage: None,
             runtime_files: Default::default(),
             package_files: Default::default(),
+            visible_mods: None,
             registries: registries
                 .into_iter()
                 .map(|(name, ids)| (name, ids.into()))
@@ -507,6 +510,15 @@ impl RegistrationData {
         mut self,
         files: std::collections::BTreeMap<String, Arc<dyn crate::PackageFileSource>>,
     ) -> Self {
+        let installed = LoadedMods::new();
+        self.visible_mods = Some(LoadedMods {
+            entries: installed
+                .iter()
+                .filter(|p| files.contains_key(p.id()))
+                .cloned()
+                .collect(),
+            authority: installed.authority,
+        });
         self.package_files = Arc::new(files);
         self
     }
@@ -637,7 +649,7 @@ impl std::error::Error for RegistrationReadError {}
 /// captured once before the first of them runs, so an answer never depends on
 /// dispatch order or on which hook asks:
 ///
-/// - [`mods`](Self::mods): the loaded packages.
+/// - [`mods`](Self::mods): the enabled, admitted packages at startup.
 /// - [`registry`](Self::registry): the built-in registries, as `registries.json` lists them.
 ///   Entries that mods declare during registration are not in it; a mod already has its own
 ///   declarations on its event or registrar.
@@ -724,9 +736,13 @@ impl RegistrationContext {
             .ok_or(RegistrationReadError::Unavailable)
     }
 
-    /// The loaded-mod view, independent of this phase's event or registrar.
+    /// Packages enabled and admitted at startup, independent of the event or registrar.
+    /// Native code switched off at startup still registers but does not appear here.
     pub fn mods(&self) -> &LoadedMods {
-        &self.mods
+        self.data
+            .as_ref()
+            .and_then(|data| data.visible_mods.as_ref())
+            .unwrap_or(&self.mods)
     }
 
     /// A built-in registry's names in ID order, for validating the keys a mod declares.
@@ -802,7 +818,7 @@ pub trait DataLoadContext {
     /// A loaded mod's setting captured at the owning load boundary, without file I/O.
     fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 
-    /// The same loaded-mod view available during registration.
+    /// The installed package snapshot, including native code switched off at startup.
     fn mods(&self) -> LoadedMods;
 }
 
@@ -908,7 +924,7 @@ pub trait LoopContext {
     /// A loaded mod's setting captured when this context was built, without file I/O.
     fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 
-    /// The same loaded-mod view available during registration.
+    /// The installed package snapshot, including native code switched off at startup.
     fn mods(&self) -> LoadedMods;
 }
 
@@ -1016,7 +1032,7 @@ pub trait WorldgenHost {
     /// A loaded mod's setting captured when the server built this view, without file I/O.
     fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 
-    /// The same loaded-mod view available during registration.
+    /// The installed package snapshot, including native code switched off at startup.
     fn mods(&self) -> LoadedMods;
 
     /// `BlockState.setValue`: `state` with its property `key` set to `value`; `state` itself

@@ -107,7 +107,7 @@ impl PackageFiles {
 impl crate::RegistrationContext {
     /// The `assets/…` and `data/…` file list used to load package `id`.
     /// The caller can read its own package or any other package [`mods`](Self::mods) lists.
-    /// A native mod switched off in settings still registers, so its package is listed.
+    /// Native code switched off at startup still registers but its package files are not exposed.
     /// Admission checks file namespaces against the manifest. A refusal removes a content-only
     /// package; a native still registers, but its files are unreadable. Checks that need
     /// registration results run later.

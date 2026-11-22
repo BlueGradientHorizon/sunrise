@@ -51,8 +51,9 @@ Registration runs once: `register`, `component_types`, `blocks`, `items` and `st
 receive no `Host` and read startup facts through `RegistrationContext`.
 `register` also receives `&mut dyn Registrar` for writing declarations. The context's `mods()`, `registry(name)` and `setting(mod_id, key)` read
 one view captured before the first of them runs, so every registration step sees the same values
-whatever the dispatch order: the loaded packages, the built-in registries as `registries.json`
-lists them (not what mods declare during registration) and the settings on disk when the snapshot is captured. A
+whatever the dispatch order: the enabled, admitted packages, the built-in registries as `registries.json`
+lists them (not what mods declare during registration) and the installed packages' settings on disk. Native code
+switched off at startup still registers, but `mods()` and `package_files(id)` do not expose its package. A
 mod validates the keys it declares against them from `Hooks::register`; a name that is not a
 namespaced identifier, an unknown registry, an empty or path-like setting key, a package that is
 not loaded, or a context the engine gave no data returns a `RegistrationReadError`. From registration on,

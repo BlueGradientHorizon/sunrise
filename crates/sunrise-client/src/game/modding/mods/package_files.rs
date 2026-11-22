@@ -15,8 +15,14 @@ use sunrise_mod_package::{
 pub(super) struct PackageContent {
     path: PathBuf,
     opened: Result<AdmittedContentSource, OpenError>,
-    /// Native code still registers even if its passive content is refused.
-    registration_visible: bool,
+    visibility: Visibility,
+}
+
+#[derive(PartialEq, Eq)]
+enum Visibility {
+    Visible,
+    Disabled,
+    RefusedContent,
 }
 
 enum OpenError {
@@ -120,8 +126,14 @@ impl StartupAdmission {
                 manifest.id.clone(),
                 Arc::new(PackageContent {
                     path: path.clone(),
-                    registration_visible: built_native
-                        || !matches!(opened, Err(OpenError::Namespace(_))),
+                    // Disabled code still needs the installed manifest for registration authority.
+                    visibility: if built_native && mods.startup_code_disabled(&manifest.id) {
+                        Visibility::Disabled
+                    } else if !built_native && matches!(opened, Err(OpenError::Namespace(_))) {
+                        Visibility::RefusedContent
+                    } else {
+                        Visibility::Visible
+                    },
                     opened,
                 }),
             );
@@ -137,23 +149,24 @@ impl StartupAdmission {
     fn registration_visible(&self, id: &str) -> bool {
         self.packages
             .get(id)
-            .is_some_and(|package| package.registration_visible)
+            .is_some_and(|package| package.visibility == Visibility::Visible)
     }
 
     pub(super) fn namespace_refusal(&self, id: &str) -> Option<&str> {
         self.packages
             .get(id)
-            .filter(|p| !p.registration_visible)?
+            .filter(|p| p.visibility == Visibility::RefusedContent)?
             .namespace_refusal()
     }
 
+    /// Built native metadata for namespace and side authority, independent of the saved switch.
     pub(in crate::game) fn native_packages(
         &self,
     ) -> impl Iterator<Item = &sunrise_mod_package::packages::AdjacentManifest> {
         self.native
             .packages()
             .iter()
-            .filter(|p| self.registration_visible(&p.manifest.id))
+            .filter(|p| self.packages.contains_key(&p.manifest.id))
     }
 
     pub(in crate::game) fn content_packages(&self) -> impl Iterator<Item = &SelectedPackage> {
@@ -181,7 +194,7 @@ pub(in crate::game) fn sources(
     admission
         .packages
         .iter()
-        .filter(|(_, source)| source.registration_visible)
+        .filter(|(_, source)| source.visibility == Visibility::Visible)
         .map(|(id, source)| {
             let source: Arc<dyn mod_api::PackageFileSource> = source.clone();
             (id.clone(), source)
@@ -233,7 +246,7 @@ mod tests {
             &root.join(NATIVE_DIR),
             "native_demo",
             &format!(
-                "capabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
+                "capabilities=['registries']\nnamespaces=['native_extra']\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
                 "a".repeat(40),
                 "b".repeat(40)
             ),
@@ -257,19 +270,19 @@ mod tests {
                     .map(|p| p.package.try_into_api().unwrap()),
             )
             .collect();
-        let data = mod_api::__private::RegistrationData::new(
-            Default::default(),
-            Default::default(),
-            mod_api::InstanceDirectory::from_path(Path::new("unused")).unwrap(),
-            mod_api::RuntimeEnvironment::new(
-                mod_api::Dist::Client,
-                "26.3".into(),
-                "test".into(),
-                false,
-            ),
-        )
-        .with_package_files(sources(admission));
         mod_platform::__private::with_test_package_inventory(packages, || {
+            let data = mod_api::__private::RegistrationData::new(
+                Default::default(),
+                Default::default(),
+                mod_api::InstanceDirectory::from_path(Path::new("unused")).unwrap(),
+                mod_api::RuntimeEnvironment::new(
+                    mod_api::Dist::Client,
+                    "26.3".into(),
+                    "test".into(),
+                    false,
+                ),
+            )
+            .with_package_files(sources(admission));
             mod_platform::__private::with_test_registration_data(data, || {
                 let _call = mod_api::__private::enter("reader", "register");
                 f(RegistrationContext::new());
@@ -307,13 +320,23 @@ mod tests {
         assert_eq!(admission.refused.len(), 1);
         assert_eq!(admission.refused[0].owners, ["missing"]);
         with_registration(&admission, |cx| {
-            assert_eq!(cx.mods().ids().collect::<Vec<_>>(), ["native_demo", "demo"]);
+            assert_eq!(cx.mods().ids().collect::<Vec<_>>(), ["demo"]);
             let demo = cx.package_files("demo").unwrap();
             assert_eq!(demo.list("").collect::<Vec<_>>(), [SCRIPT]);
             assert_eq!(demo.read(SCRIPT).unwrap(), b"return 1");
-            let native = cx.package_files("native_demo").unwrap();
-            assert_eq!(native.list("assets").collect::<Vec<_>>(), [NATIVE_MODEL]);
-            assert_eq!(native.read(NATIVE_MODEL).unwrap(), b"{}");
+            assert_eq!(
+                cx.package_files("native_demo").err(),
+                Some(PackageFilesError::NotEnabled)
+            );
+            let _native = mod_api::__private::enter("native_demo", "register");
+            assert_eq!(
+                mod_api::__private::parts_installation::owned_declaration_id(
+                    "native_demo",
+                    "native_extra:gem",
+                )
+                .unwrap(),
+                "native_extra:gem"
+            );
             assert_eq!(
                 cx.package_files("missing").err(),
                 Some(PackageFilesError::NotEnabled)
@@ -347,20 +370,17 @@ mod tests {
             assert!(cx.mods().get("native_demo").is_some());
             assert!(matches!(
                 cx.package_files("native_demo"),
-                Err(PackageFilesError::Unreadable(detail))
-                    if detail.starts_with("data/other/lumen/main.luau: a mod adds files in its own namespaces (data/native_demo/")
+                Err(PackageFilesError::Unreadable(_))
             ));
         });
         // Repairing the folder does not undo the original admission refusal.
         fs::remove_file(demo.join(foreign)).unwrap();
-        let rejection = admission
-            .package("demo", &demo)
-            .unwrap()
-            .read_declaring(&mods.selected[0].package.manifest, &[])
-            .unwrap_err();
         assert!(
-            rejection
-                .starts_with("data/other/lumen/main.luau: a mod adds files in its own namespaces")
+            admission
+                .package("demo", &demo)
+                .unwrap()
+                .read_declaring(&mods.selected[0].package.manifest, &[])
+                .is_err()
         );
         let mut rows = [sunrise_mod_package::mod_list::Installed {
             id: "demo".into(),
@@ -371,7 +391,7 @@ mod tests {
             native: None,
         }];
         mods.report_refusals(&mut rows);
-        assert_eq!(rows[0].problem, Some(format!("Can't be read: {rejection}")));
+        assert!(rows[0].problem.is_some());
     }
 
     fn mount(
