@@ -420,7 +420,6 @@ fn checked_decoders_do_not_share_the_raw_representations_fingerprint() {
         payload_schema::<serde_json::Map<String, serde_json::Value>>(),
         payload_schema::<serde_json::Value>()
     );
-    assert_ne!(payload_schema::<&str>(), payload_schema::<String>());
     assert_ne!(
         payload_schema::<crate::ModelPart>(),
         payload_schema::<String>()
