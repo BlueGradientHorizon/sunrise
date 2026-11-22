@@ -441,6 +441,7 @@ impl Game<'_> {
                 // offers its own far terrain, or none, and announces its
                 // own features again.
                 if let Some(remote) = &mut self.remote {
+                    remote.has_logical_player = false;
                     remote.viewed.clear();
                     remote.far_terrain = None;
                     remote.quiet_commands = false;

@@ -1019,10 +1019,14 @@ impl Game<'_> {
             .detach_tracking_target(TrackingTarget::LocalPlayer, || {
                 player.map(player_tracking_body)
             });
-        self.drop_remote_player();
-        // handleLogin / handleRespawn: ClientLevel.addEntity admits the local player
-        // now, before the position packet creates its motion body.
-        self.resident_entities.local_player.renew();
+        if new_logical_player {
+            self.drop_remote_player();
+            // handleLogin / handleRespawn: ClientLevel.addEntity admits the local player
+            // now, before the position packet creates its motion body.
+            self.resident_entities.local_player.renew();
+        } else {
+            self.retain_remote_player_on_login();
+        }
         // handleLogin / handleRespawn: LocalPlayer.setPortalCooldown, so a
         // player who arrives standing in a portal gets no overlay from it.
         self.portals.player.cooldown = spawn.portal_cooldown;
@@ -1046,5 +1050,38 @@ impl Game<'_> {
         {
             r.level_load.set_transition_screen(presentation);
         }
+    }
+
+    /// `ClientPacketListener.handleLogin` when `Minecraft.player != null`: retain the live player, run `resetPos`, rebind residency, and reset input.
+    fn retain_remote_player_on_login(&mut self) {
+        self.reset_client_item_use();
+        self.hook.discard();
+        if let Some(r) = self.remote.as_mut() {
+            r.respawn_velocity = None;
+        }
+        let retained_max_health = self.player.as_mut().map(|player| {
+            let _ = player.set_pose(sunrise_client::pose::Pose::Standing);
+            player.velocity = Vec3::ZERO;
+            player.pitch = 0.0;
+            let max_health = player
+                .attribute("minecraft:max_health")
+                .ok()
+                .map(|v| v as f32);
+            if let Some(max) = max_health {
+                let _ = player.set_health(max, false);
+            }
+            max_health
+        });
+        if let Some(max_health) = retained_max_health {
+            self.pitch = 0.0;
+            if let Some(max) = max_health
+                && let Some(r) = self.remote.as_mut()
+            {
+                r.health.0 = max;
+            }
+            self.ui.death_time = 0;
+            self.input_player_replaced();
+        }
+        self.bind_local_player_residency();
     }
 }
