@@ -832,4 +832,61 @@ mod tests {
             Some(true)
         );
     }
+
+    /// A synced registry delivers the nested tree to a client: lists, maps, records and an
+    /// absent optional field arrive as the server decoded them, and a client refuses a nested
+    /// value its schema does not accept.
+    #[test]
+    fn a_synced_registry_delivers_the_nested_tree() {
+        let declaration = crate::world::datapack_registry::tests::model();
+        let server = DatapackRegistrySet::first(
+            DatapackCandidate::build(
+                std::slice::from_ref(&declaration),
+                &[(
+                    "data/addon/example/model/zombie.json".to_owned(),
+                    vec![(
+                        "pack".to_owned(),
+                        br#"{"entity": "zombie", "drops": [{"item": "rotten_flesh", "count": 2}],
+                            "tiers": {"basic": {"data_per_kill": 1}}}"#
+                            .to_vec(),
+                    )],
+                )],
+            )
+            .unwrap(),
+            1,
+        );
+        let snapshot = server.snapshot(std::slice::from_ref(&declaration), |_| true);
+        let received = DatapackSnapshot::decode(&snapshot.encode().unwrap()).unwrap();
+        assert_eq!(received, snapshot);
+        let candidate = received
+            .candidate(std::slice::from_ref(&declaration))
+            .unwrap();
+        let client = DatapackRegistrySet::received(&received, candidate, 9);
+        let handle = client.handle("example:model", "addon:zombie").unwrap();
+        let server_handle = server.handle("example:model", "addon:zombie").unwrap();
+        assert_eq!(
+            client.get(&handle).unwrap(),
+            server.get(&server_handle).unwrap()
+        );
+        let entry = client.get(&handle).unwrap();
+        let drops = entry.get("drops").and_then(DatapackValue::as_list).unwrap();
+        assert_eq!(
+            drops[0].get("count").and_then(DatapackValue::as_int),
+            Some(2)
+        );
+        assert_eq!(entry.get("color"), None);
+        // A nested count out of its bounds is refused, as a top-level one is.
+        let mut bad = received.clone();
+        let DatapackValue::List(items) = &mut bad.registries[0].entries[0].values[1] else {
+            panic!("drops");
+        };
+        let DatapackValue::Record(fields) = &mut items[0] else {
+            panic!("a drop");
+        };
+        fields[1].1 = DatapackValue::Int(65);
+        assert!(matches!(
+            bad.candidate(std::slice::from_ref(&declaration)),
+            Err(DatapackSnapshotError::InvalidEntry { .. })
+        ));
+    }
 }
