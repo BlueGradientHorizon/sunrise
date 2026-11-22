@@ -33,5 +33,5 @@ pub trait Hooks {
         target = "sunrise_client_lib::stations::native_item_name",
         neoforge = "Item.getName"
     )]
-    fn item_name();
+    fn item_name(stack: &mod_api::ItemStack, name: &mut Option<mod_api::Text>);
 }
