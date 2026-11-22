@@ -1115,6 +1115,9 @@ impl Game<'_> {
         if !client {
             // `Entity.applyEffectsFromBlocks`' checkInsideBlocks, at the batch.
             self.sweep_item_inside(item);
+            if item.health <= 0 {
+                return (false, true);
+            }
         }
         if let Some(pos) = step.vertical_contact {
             let state = self.world.block(pos.x, pos.y, pos.z);
