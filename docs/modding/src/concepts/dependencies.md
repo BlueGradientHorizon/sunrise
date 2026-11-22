@@ -17,9 +17,19 @@ linking anything from them. Missing required dependencies, incompatible versions
 cycles refuse loading with the mods named. An optional dependency can be absent, but when installed
 it must match its version requirement.
 
-A standalone build wires only the code projects it is given. Other requirements stay in
-`sunrise-mod.toml` and are checked against the installed packages at install and startup.
-Code that references an unsupplied library still fails to compile.
+`cargo sunrise-mod build`, `run` and `check` use the same native libraries. For a library you
+are working on locally, pass `--with <path>` for its project folder or `.smod`; repeat the flag
+for more libraries. A local copy takes precedence over the registry and still has to satisfy the
+declared version. Otherwise the tool resolves the required libraries through the Sunrise mod
+registry for the project's Minecraft version, including their own requirements. To include an
+optional library, supply it with `--with`; an optional declaration alone never fetches one from the
+registry. The tool tries in-range registry versions newest first. A library pinned to another Sunrise
+build must carry a uses list that shows it fits the project's SDK. The tool does not change its pin.
+
+`check` type-checks the wired code without producing mod binaries, and `build` packages only the
+project itself. `run` puts the resolved native libraries and local content packages supplied with
+`--with` alongside the project in the development game. Content-only dependencies don't generate
+Rust links.
 
 The [registry index and installers](../reference/registry-index.md#planning-installs-and-removals) use these
 same manifest declarations. A new submission must resolve with the listed dependencies on its Minecraft release.
