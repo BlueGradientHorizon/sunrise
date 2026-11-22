@@ -406,10 +406,7 @@ mod tests {
         use serde_json::json;
         use std::sync::Arc;
 
-        let name = concat!(
-            module_path!(),
-            "::host_nbt_and_owned_stack_text_follow_component_semantics"
-        );
+        let name = "game::native_text_json::tests::host_nbt_and_owned_stack_text_follow_component_semantics";
         if run_fresh_cases(name, "SUNRISE_ITEM_STACK_TEXT_CHILD", &["components"]) {
             return;
         }
