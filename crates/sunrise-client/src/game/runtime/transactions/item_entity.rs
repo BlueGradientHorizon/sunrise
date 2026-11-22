@@ -25,7 +25,7 @@ impl Game<'_> {
     /// an empty stack (`ItemEntity.tick` discards an empty item on its next tick). Journals the
     /// previous stack under an open transaction so an abort restores it.
     pub(super) fn journal_set_item_entity_direct(&mut self, id: u32, stack: ItemStack) -> bool {
-        if self.serving.is_none() && self.options.dedicated.is_none() {
+        if !self.is_logical_server() {
             return false;
         }
         let Some(e) = self.dropped.iter_mut().find(|e| e.id == id) else {

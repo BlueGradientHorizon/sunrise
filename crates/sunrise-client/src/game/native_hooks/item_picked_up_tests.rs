@@ -14,6 +14,9 @@ fn decide(delay: i32, target: Option<[i32; 4]>, answer: TriState) -> bool {
 fn no_opinion_keeps_vanilla_rule() {
     assert!(decide(0, None, TriState::Default));
     assert!(decide(0, Some(ME), TriState::Default));
+    assert!(decide(-5, None, TriState::Default));
+    assert!(decide(-5, Some(ME), TriState::Default));
+    assert!(!decide(-5, Some(OTHER), TriState::Default));
     assert!(!decide(0, Some(OTHER), TriState::Default));
     assert!(!decide(40, None, TriState::Default));
     assert!(!decide(40, Some(ME), TriState::Default));
