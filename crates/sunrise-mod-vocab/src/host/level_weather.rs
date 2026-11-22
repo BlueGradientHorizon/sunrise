@@ -8,9 +8,11 @@ use crate::*;
 pub trait LevelWeatherBackend {
     /// Side: both.
     /// The rain and thunder levels, each 0.0 to 1.0 (`Level.getRainLevel`,
-    /// `getThunderLevel` at partial tick 1.0): both 0 in a level with no weather.
-    /// Reads any open server level or the client's current synchronized level;
-    /// None for a stale handle, an unavailable level or a client not logged in.
+    /// `getThunderLevel` at partial tick 1.0, with thunder scaled by rain): both 0
+    /// in a level with no weather. Strengths are local to each level, including
+    /// parked levels. Reads any open server level or the client's current
+    /// synchronized level; None for a stale handle, an unavailable level or a
+    /// client not logged in.
     #[access(WorldOnly)]
     fn level_weather(&self, level: LevelRef) -> Option<(f32, f32)>;
     /// Side: server.
@@ -26,7 +28,9 @@ pub trait LevelWeatherBackend {
     #[access(WorldOnly)]
     fn level_is_raining_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<bool>;
     /// Side: server.
-    /// Whether it thunders (`Level.isThundering`: a thunder level above 0.9).
+    /// Whether it thunders in the named server level (`Level.isThundering`): its
+    /// own rain-scaled thunder strength exceeds the double value `0.9` in a level
+    /// that can have weather. Does not read the shared thunder flag.
     #[access(WorldOnly)]
     fn level_is_thundering(&self, level: LevelRef) -> Option<bool>;
 }

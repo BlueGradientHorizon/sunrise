@@ -11,3 +11,4 @@ sunrise-client game::native_level_weather::tests::weather_veto_does_not_undo_lis
 sunrise-client game::native_server_distances::tests::a_mod_reads_and_sets_the_servers_distances lib daily child-process
 sunrise-client game::remote::tests::client_epochs_tests::a_dimension_change_replaces_a_signed_world_border lib daily child-process
 sunrise-client game::remote::tests::client_epochs_tests::a_dimension_change_uses_the_destination_weather_strengths lib daily child-process
+sunrise-client game::viewed_worlds::tests::a_dry_view_stays_dry_after_shared_weather_changes_and_promotion lib daily child-process

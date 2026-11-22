@@ -12,6 +12,7 @@ use super::{
     entity::{Entities, EntityState},
     equipment_cache,
     guest::{Guest, InboxItem, SentEffect, stack_to_network},
+    weather,
 };
 use crate::{
     chunk::Chunk,
@@ -2282,25 +2283,10 @@ impl Hub {
         g.send(&C::InitializeBorder(super::border::initialize(ctx.border)));
         g.send(&self.time_packet(ctx.world, ctx.clock_rate));
         g.send(&self.default_spawn(spawn, ctx.spawn_angle, ctx.spawn_dimension));
-        let (rain, thunder) = ctx.world.weather.levels(1.0);
-        if ctx
-            .world
-            .shape
-            .can_have_weather(g.dimension == "minecraft:the_end")
-            && crate::world::weather_flags((rain, thunder)).0
-        {
-            g.send(&C::GameEvent(play::GameEvent {
-                event: game_event::START_RAINING,
-                param: 0.0,
-            }));
-            g.send(&C::GameEvent(play::GameEvent {
-                event: game_event::RAIN_LEVEL,
-                param: rain,
-            }));
-            g.send(&C::GameEvent(play::GameEvent {
-                event: game_event::THUNDER_LEVEL,
-                param: thunder,
-            }));
+        if weather::state(ctx.world, &g.dimension).0 {
+            // PlayerList uses the getters here, including thunder scaled by rain.
+            let (rain, thunder) = ctx.world.weather.levels(1.0);
+            weather::send_updates(None, (true, rain, thunder), |packet| g.send(packet));
         }
         if load_start {
             g.send(&C::GameEvent(play::GameEvent {
@@ -2866,31 +2852,11 @@ impl Hub {
             None => self.last_level_clock = (i64::MIN, 0.0),
         }
         self.sync_ticking(ctx.tick_rate, ctx.tick_frozen, ctx.tick_steps);
-        let w = &world.weather;
-        let (raining, rain, thunder) = self.weather;
-        if w.raining != raining {
-            self.broadcast_level(&C::GameEvent(play::GameEvent {
-                event: if w.raining {
-                    game_event::START_RAINING
-                } else {
-                    game_event::STOP_RAINING
-                },
-                param: 0.0,
-            }));
-        }
-        if (w.rain_level.1 - rain).abs() > f32::EPSILON {
-            self.broadcast_level(&C::GameEvent(play::GameEvent {
-                event: game_event::RAIN_LEVEL,
-                param: w.rain_level.1,
-            }));
-        }
-        if (w.thunder_level.1 - thunder).abs() > f32::EPSILON {
-            self.broadcast_level(&C::GameEvent(play::GameEvent {
-                event: game_event::THUNDER_LEVEL,
-                param: w.thunder_level.1,
-            }));
-        }
-        self.weather = (w.raining, w.rain_level.1, w.thunder_level.1);
+        let state = weather::state(world, &self.config.dimension);
+        weather::send_updates(Some(self.weather), state, |packet| {
+            self.broadcast_level(packet);
+        });
+        self.weather = state;
     }
 
     // ---- chunks --------------------------------------------------------

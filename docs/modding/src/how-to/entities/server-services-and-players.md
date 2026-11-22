@@ -219,9 +219,11 @@ To change the interpolated strengths immediately instead, call
 including a parked level. Both strengths clamp to 0–1, including infinities. NaN
 or an unavailable level is refused. This setter changes neither other levels'
 strengths nor the shared parameters, and does not call `weather_change`.
-`level.is_raining(host)` follows the level's visible strength, not the shared rain
-flag. It compares against the double threshold `0.2`, so `0.2_f32` counts as rain
-in a level that can have weather.
+`level.weather(host)` reads the named level's own strengths (thunder scaled by rain)
+at partial tick 1. These strengths stay with the level across swaps and idle ticks.
+`level.is_raining(host)` and `level.is_thundering(host)` compare those strengths, not
+the shared flags, against the double thresholds `0.2` and `0.9` respectively.
+`0.2_f32` counts as rain in a level that can have weather.
 
 ## World borders
 
