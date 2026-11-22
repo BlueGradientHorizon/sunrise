@@ -319,6 +319,7 @@ fn cross_build_fit_distinguishes_a_refused_target_from_a_removed_one() {
             }],
         },
     );
+    std::fs::create_dir(dir.join(".sunrise")).unwrap();
     let surface_file = dir.join(".sunrise/surface.json");
     std::fs::write(&surface_file, serde_json::to_vec(&surface(&[])).unwrap()).unwrap();
     let checked = check(&Plan {
