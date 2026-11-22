@@ -149,6 +149,29 @@ template block writes still call the rotation Part at their placed world positio
 | Mirroring | Stays the game's: vanilla's table, or the template's for a mod block. |
 | Panics | A panicking part is contained with a warning, and the game's state is placed. |
 
+## Step effects
+
+`BlockPart::step_on` is the block's `Block.stepOn` callback. It runs on the `getOnPosLegacy`
+state of a grounded entity affected by blocks, after the move's restitution and block speed factor
+but before the entity's inside-block effects. An idle grounded item still steps even when it does
+not move. Each effects pass has its own callback; this is not a landing notification.
+
+Register the Part on the block. `StepOnEvent` carries the contacted `state` and `pos`, the entity id
+and kind, whether it is `stepping_carefully`, its world-space `bounds` as `[min, max]` XYZ corners,
+and its current `movement` (velocity). Edit `movement` to change what the rest of this tick sees.
+Non-finite edits are ignored; there is no veto. Keep movement answers consistent on both sides and
+on replay.
+
+`LevelRandomSide::Client` lends a read-only level. Only the server arm accepts writes, and it
+lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { amount })` applies damage to the stepping body through its own damage path, before the inside scan.
+Use `bounds` to test overlap with a surface that is smaller than the block. `event.request(LandingWrite::…)`
+queues a write at `pos`. The `fall_on` drain applies the ordered block writes after the entity batch,
+only if the block still holds the contacted state. An invalid state or non-finite movement or damage
+refuses that Part's outputs. Other Parts' accepted writes and movement edits remain. This replaces `Hooks::block_step_on`, the former server-only notice.
+
+Boats and minecarts do not take damage from `EntityWrite::Hurt` in `step_on` or `entity_inside` yet
+([#4177](https://github.com/sunrise-org/sunrise/issues/4177)).
+
 ## Landing writes
 
 `BlockPart::bounce_restitution` answers the block's coefficient for a qualifying downward collision,

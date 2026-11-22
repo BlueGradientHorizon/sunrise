@@ -1030,17 +1030,22 @@ pub(super) fn generate(root: &Path) -> Result<String, String> {
     let imports = standard_imports(&syn::parse_file(&methods).map_err(|e| e.to_string())?);
     let side_enum = |name: &str, server: &str, client: &str| {
         format!(
-            "/// The logical side of a hook's host.\n// no wire: borrows the active host; passed as call context.\npub enum {name}<'a> {{\n/// The hook fired on the server.\nServer({server}),\n/// The hook fired on the client.\nClient({client}) }}\n"
+            "/// The logical side of a hook's host.\n// exhaustive: a logical simulation runs on exactly one of these two sides.\n// no wire: borrows the active host; passed as call context.\npub enum {name}<'a> {{\n/// The hook fired on the server.\nServer({server}),\n/// The hook fired on the client.\nClient({client}) }}\n"
         )
     };
     let sides = format!(
-        "{}{}",
+        "{}{}{}",
         side_enum(
             "HostSide",
             "&'a mut dyn ServerHost",
             "&'a mut dyn ClientHost"
         ),
-        side_enum("LevelSide", "&'a dyn LevelHost", "&'a dyn LevelHost")
+        side_enum("LevelSide", "&'a dyn LevelHost", "&'a dyn LevelHost"),
+        side_enum(
+            "LevelRandomSide",
+            "&'a mut dyn LevelRandomHost",
+            "&'a dyn LevelHost"
+        )
     );
     let (host_supers, server_supers, client_supers) = (
         supertraits("Host"),
