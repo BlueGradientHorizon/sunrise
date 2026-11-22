@@ -173,6 +173,15 @@ rotation. They arrive with the row, when the client starts tracking it, and go w
 published whole generation rather than consulting the client holder. A refusal to publish an
 over-budget render generation does not change the client's synced copy.
 
+## Player construction and saved data
+
+On the server, `entity_constructing` runs with a fresh player attachment map. Set
+initial values there without reading the player's saved state. On join, disk entries
+overwrite matching constructor entries before `player_load_from_file`. On death or End
+credits respawn, the eligible entries from the old player overwrite matching constructor
+entries before `player_clone`. Entries set by the constructor that the load or copy does
+not replace stay on the new player, including entries without a codec.
+
 ## Copying on respawn and conversion
 
 `copy_on_death` requires a codec. On death respawn, only opted-in (`copy_on_death`)
@@ -182,10 +191,10 @@ player. On return from the End after credits (`was_death = false`), every serial
 entry (any entry with a codec, including raw entries of an absent mod) is copied to the
 replacement via its encoded representation, while entries without a codec stay only on
 the retained old player. In both cases the copy runs even when no mod subscribes to
-`player_clone`, and the replacement starts from fresh encoded entries rather than sharing
-decoded instances with the old player. A mob's conversion (a villager struck into a witch,
-a zombie villager cured, a piglin zombified, a tadpole grown) copies every entry with a
-codec, raw entries of an absent mod included, to the new mob through its encoded form,
+`player_clone`, and copied entries start encoded rather than sharing decoded instances with
+the old player. A mob's conversion (a villager struck into a witch, a zombie villager
+cured, a piglin zombified, a tadpole grown) copies every entry with a codec, raw entries
+of an absent mod included, to the new mob through its encoded form,
 over what its construction set; entries without a codec stay on the removed mob. A
 cancelled `living_conversion_pre` copies nothing, `living_conversion_post` sees the copy,
 and the copy is not synced on its own (the new mob's spawn carries its synced entries).
@@ -196,8 +205,8 @@ and the copy is not synced on its own (the new mob's spawn carries its synced en
 `event.player` UUID. During that hook, `event.original.attachment(&COUNTER)` reads the old
 player's value even when `copy_on_death` is false or the type has no codec, returning its
 default without inserting it if absent; `COUNTER.get(host, Holder::Player(event.player))` reads
-the replacement's retained value or fresh default. This works on death and on return from
-the End. The original's `has_attachment`, `existing_attachment` (decoding and caching a
+the replacement's copied value, constructor value, or default. This works on death and
+on return from the End. The original's `has_attachment`, `existing_attachment` (decoding and caching a
 saved entry once without inserting a default), `with_decoded_attachment`, `set_attachment`,
 and `remove_attachment` work on the retained old player without touching the replacement.
 Cache writes, explicit writes and removals on the original are journaled to `host.transaction`,

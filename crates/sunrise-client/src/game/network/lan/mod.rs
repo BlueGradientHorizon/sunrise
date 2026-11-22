@@ -3043,7 +3043,11 @@ impl Game<'_> {
         entities: &[EntityState],
         spawn: [f64; 3],
     ) {
+        let Some(uuid) = self.command_guest(conn).map(|guest| guest.uuid) else {
+            return;
+        };
         let spawn_level = self.world_spawn_level();
+        self.initialize_server_player(uuid, conn);
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -3053,7 +3057,7 @@ impl Game<'_> {
         let in_place = host.hub.config.dimension.clone();
         let levels = host.hub.config.levels;
         let owner = host.owner.as_mut();
-        let Some((known, uuid, name)) = host.hub.update_guest(conn, |g| {
+        let Some((known, name)) = host.hub.update_guest(conn, |g| {
             // PlayerList.loadPlayerData: the owner gets the world's player file,
             // everyone else their own.
             let known = match owner.filter(|o| o.uuid == g.uuid) {
@@ -3066,13 +3070,11 @@ impl Game<'_> {
             if !levels.has(&g.dimension) {
                 g.dimension = spawn_level.id().to_owned();
             }
-            // PlayerEvent.LoadFromFile: the player's data is read and applied,
-            // the player not yet placed.
-            (known, g.uuid, g.name.clone())
+            (known, g.name.clone())
         }) else {
             return;
         };
-        self.initialize_server_player(uuid, conn);
+        // PlayerEvent.LoadFromFile: data applied, the player not yet placed.
         self.native_player_load_from_file(uuid, &name, &playerdata::directory(&root));
         let Some(host) = self.lan.as_mut() else {
             return;

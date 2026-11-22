@@ -1,0 +1,3 @@
+ids = ["hook:entity_constructing"]
+why = "A server player's constructing listener now sees the fresh attachment map, as at NeoForge's EntityEvent.EntityConstructing. Player file entries are applied afterward (vanilla 26.3 PrepareSpawnTask.Ready.spawn and Entity.load); respawn overlays eligible old-player entries afterward (PlayerList.respawn and ServerPlayer.restoreFrom). Untouched constructor entries stay in memory without an NBT round trip."
+migrate = "No source or hook version change. Use entity_constructing to set initial attachments, not to inspect saved or copied values. Use player_load_from_file for notification after the join's file has been applied, or player_clone to inspect the replacement's copied values and the callback-scoped original."
