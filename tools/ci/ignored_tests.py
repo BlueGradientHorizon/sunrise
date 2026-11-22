@@ -548,7 +548,7 @@ def assertion_source(path, line):
 def failure_diagnostics(output):
     """One record per failed result occurrence, including repeated names across targets.
 
-    Panic contexts use libtest's name model and the first panic for that name.
+    Panic contexts use libtest's name model and the last panic for that name: the one the test failed on.
     They cannot disambiguate identical names in different targets.
     Beside the classified reason, a record shows the statement that panicked and any part of the payload (a
     message, an operand) that occurs verbatim in the tracked source around it (public_text): the checkout's own text,
@@ -564,6 +564,10 @@ def failure_diagnostics(output):
     # rustc's own output does.
     compiler_codes = {}
     pending_codes = None
+    # Which captured-output block a line is in (a result line or a test's `---- … ----` header starts the next), and
+    # the block each kept context came from.
+    block = 0
+    kept_block = {}
     # The tracked (path, line) of the current panic, and whether its `left:`/`right:` operand lines may follow.
     where = None
     operands_pending = False
@@ -644,12 +648,20 @@ def failure_diagnostics(output):
         if found := RESULT.match(line):
             if found[2] == "FAILED":
                 failures.append(found[1])
+        if RESULT.match(line) or line.startswith("---- "):
+            block += 1
         if panic:
             context = []
             thread_name = panic[1]
-            if thread_name not in contexts:
+            if thread_name in contexts and kept_block[thread_name] == block:
+                # A test that catches a panic it raises on purpose (a listener's) fails on its last one: a later
+                # panic in the same captured output replaces the earlier.
+                contexts[thread_name] = context
+                compiler_codes.pop(thread_name, None)
+            elif thread_name not in contexts:
                 if len(contexts) < DIAGNOSTIC_CONTEXTS:
                     contexts[thread_name] = context
+                    kept_block[thread_name] = block
                 else:
                     skipped_contexts += 1
                     continue
