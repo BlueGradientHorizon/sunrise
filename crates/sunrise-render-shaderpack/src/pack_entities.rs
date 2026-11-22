@@ -1259,8 +1259,7 @@ mod gpu_span_tests {
     #[ignore = "daily"]
     fn native_fluid_stays_native_while_model_uses_pack() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
+        let adapter = crate::test_gpu::adapter().unwrap();
         let (device, queue) =
             pollster::block_on(adapter.request_device(&Default::default())).unwrap();
         let layout = crate::pack_draw::DrawUniforms::new(&device);
@@ -1395,13 +1394,14 @@ mod gpu_span_tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn end_portal_faces_reach_the_shadow_pass_with_their_block_entity() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::test_gpu::adapter() else {
             return;
         };
-        let Ok((device, queue)) = pollster::block_on(adapter.request_device(&Default::default()))
+        let Some((device, queue)) =
+            crate::test_gpu::optional_device_with(&adapter, &Default::default())
         else {
             return;
         };
@@ -1450,13 +1450,14 @@ mod gpu_span_tests {
     /// A boat's water patch (`RenderTypes.waterMask`) is a draw of its own, depth only, that casts
     /// no shadow; with no pack program for entities, Sunrise draws it with the boat.
     #[test]
+    #[ignore = "daily"]
     fn a_boats_water_patch_draws_depth_only() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::test_gpu::adapter() else {
             return;
         };
-        let Ok((device, queue)) = pollster::block_on(adapter.request_device(&Default::default()))
+        let Some((device, queue)) =
+            crate::test_gpu::optional_device_with(&adapter, &Default::default())
         else {
             return;
         };
@@ -1522,13 +1523,14 @@ mod gpu_span_tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn posed_and_cpu_draws_keep_offsets_uniforms_and_special_fallbacks() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::test_gpu::adapter() else {
             return;
         };
-        let Ok((device, queue)) = pollster::block_on(adapter.request_device(&Default::default()))
+        let Some((device, queue)) =
+            crate::test_gpu::optional_device_with(&adapter, &Default::default())
         else {
             return;
         };
