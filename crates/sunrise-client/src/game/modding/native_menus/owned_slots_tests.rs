@@ -804,10 +804,27 @@ fn a_player_turn_closes_its_native_window_and_returns_both_kinds_of_stack_once()
     });
 }
 
+fn assert_inventory_cursor(game: &mut Game<'_>, rx: &mpsc::Receiver<Out>, cursor: &ItemStack) {
+    let hub = &mut game.lan.as_mut().unwrap().hub;
+    let expected = hub
+        .stack(&Some(cursor.clone()))
+        .expect("registered cursor item");
+    hub.send_inventory(0);
+    assert!(matches!(
+        sent(rx).as_slice(),
+        [C::ContainerSetContent(snapshot)]
+            if snapshot.container == 0 && snapshot.carried.as_ref() == Some(&expected)
+    ));
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_transactional_replacement_keeps_the_old_menu_until_commit() {
     with_owned_menu(true, |game, rx, key| {
+        let inventory_cursor = ItemStack::new("minecraft:dirt", 3);
+        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.carried = Some(inventory_cursor.clone());
+        });
         let (window, old) = open(game, key);
         let player = game.player(123).unwrap();
         let stick =
@@ -815,10 +832,8 @@ fn a_transactional_replacement_keeps_the_old_menu_until_commit() {
         let resource = ItemResource::of(&stick);
         let old_slot = ItemPlace::MenuSlot { menu: old, slot: 1 };
         let carried = Some(ItemStack::new("minecraft:stone", 2));
-        let inventory_cursor = Some(ItemStack::new("minecraft:dirt", 3));
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.carried = carried.clone();
-            g.inactive_inventory_carried = inventory_cursor.clone();
         });
         game.transaction(|host, tx| {
             assert_eq!(old_slot.insert(host, tx, &resource, 2), 2);
@@ -863,8 +878,9 @@ fn a_transactional_replacement_keeps_the_old_menu_until_commit() {
         assert_eq!(CLOSE_NOTICES.get(), 0);
         let guest = &game.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(guest.carried, carried);
-        assert_eq!(guest.inactive_inventory_carried, inventory_cursor);
         assert!(guest.inventory.iter().all(Option::is_none));
+        assert!(sent(&rx).is_empty());
+        assert_inventory_cursor(game, &rx, &inventory_cursor);
 
         let staged = replace(game, true).unwrap();
         game.run_native_menu_events();
@@ -877,7 +893,6 @@ fn a_transactional_replacement_keeps_the_old_menu_until_commit() {
         assert_eq!(CLOSE_NOTICES.get(), 1);
         let guest = &game.lan.as_ref().unwrap().hub.guests[0];
         assert!(guest.carried.is_none());
-        assert_eq!(guest.inactive_inventory_carried, inventory_cursor);
         assert_eq!(
             guest
                 .inventory
@@ -895,6 +910,7 @@ fn a_transactional_replacement_keeps_the_old_menu_until_commit() {
                 .iter()
                 .any(|p| matches!(p, C::OpenScreen(p) if p.container == next))
         );
+        assert_inventory_cursor(game, &rx, &inventory_cursor);
     });
 }
 
@@ -997,12 +1013,14 @@ fn a_click_panic_keeps_a_committed_owned_slot_edit_without_running_default() {
 #[ignore = "daily"]
 fn a_close_requested_in_a_click_transaction_preserves_both_cursors_on_abort() {
     with_owned_menu(false, |game, rx, key| {
-        let (window, menu) = open(game, key);
-        let carried = ItemStack::new("minecraft:stone", 2);
         let inventory_cursor = ItemStack::new("minecraft:dirt", 3);
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.carried = Some(inventory_cursor.clone());
+        });
+        let (window, menu) = open(game, key);
+        let carried = ItemStack::new("minecraft:stone", 2);
+        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.carried = Some(carried.clone());
-            g.inactive_inventory_carried = Some(inventory_cursor.clone());
         });
         sent(&rx);
         CLOSE_NOTICES.set(0);
@@ -1014,13 +1032,10 @@ fn a_close_requested_in_a_click_transaction_preserves_both_cursors_on_abort() {
         assert_eq!(menu.container_id(game), Some(window));
         let guest = &game.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(guest.carried.as_ref(), Some(&carried));
-        assert_eq!(
-            guest.inactive_inventory_carried.as_ref(),
-            Some(&inventory_cursor)
-        );
         assert!(guest.inventory.iter().all(Option::is_none));
         assert_eq!(CLOSE_NOTICES.get(), 0);
         assert!(!sent(&rx).iter().any(|p| matches!(p, C::ContainerClose(_))));
+        assert_inventory_cursor(game, &rx, &inventory_cursor);
 
         CLICK_ACTION.set(Some(ClickAction::Close { commit: Some(true) }));
         click(game, window, 0);
@@ -1028,7 +1043,6 @@ fn a_close_requested_in_a_click_transaction_preserves_both_cursors_on_abort() {
         assert_eq!(menu.container_id(game), None);
         let guest = &game.lan.as_ref().unwrap().hub.guests[0];
         assert_eq!(guest.carried.as_ref(), Some(&inventory_cursor));
-        assert!(guest.inactive_inventory_carried.is_none());
         assert_eq!(
             guest.inventory[20],
             Some(ItemStack::new("minecraft:gold_ingot", 1))
@@ -1048,6 +1062,14 @@ fn a_close_requested_in_a_click_transaction_preserves_both_cursors_on_abort() {
                 .iter()
                 .any(|p| matches!(p, C::ContainerClose(p) if p.container == window))
         );
+        let cursors = game
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| guest.take_menu_cursors().collect::<Vec<_>>());
+        assert_eq!(cursors, [inventory_cursor]);
     });
 }
 
