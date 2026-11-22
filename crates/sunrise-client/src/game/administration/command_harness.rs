@@ -321,6 +321,37 @@ impl Game<'_> {
                         }
                     }
                 }
+                "mob_damage_state" => {
+                    let uuid = u128::from_str_radix(
+                        &op["uuid"]
+                            .as_str()
+                            .ok_or("mob damage state: missing UUID")?
+                            .replace('-', ""),
+                        16,
+                    )?;
+                    let Some(super::commands::Target::Mob(id)) = self.target_by_uuid(uuid) else {
+                        return Err("mob damage state: missing loaded mob".into());
+                    };
+                    let index = self
+                        .mob_index
+                        .find(&self.mobs, id)
+                        .ok_or("mob damage state: missing row")?;
+                    let mob = &mut self.mobs[index];
+                    if let Some(seed) = op["no_action_time"].as_i64() {
+                        mob.ai.no_action_time = i32::try_from(seed)?;
+                    }
+                    let state = json!({
+                        "no_action_time": mob.ai.no_action_time,
+                        "cooldown": mob.invulnerable,
+                        "hurt_time": mob.hurt_time,
+                        "health": format!("{:08x}", mob.health.to_bits()),
+                        "sleeping": mob.pose() == mod_api::Pose::Sleeping,
+                        "position": mob.position.components().map(|v| format!("{:016x}", v.to_bits())),
+                        "rotation": ([mob.yaw, mob.head_pitch].map(|v| format!("{:08x}", v.to_bits()))),
+                    });
+                    out.push_str(&json!({"cmd": op["label"], "state": state}).to_string());
+                    out.push('\n');
+                }
                 "projectile_saved_type" => {
                     let uuid = u128::from_str_radix(
                         &op["uuid"]

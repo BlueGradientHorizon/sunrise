@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare live /damage results, health and motion for mob enchantment immunity."""
+"""Compare live mob equipment immunity, Resistance credit, and cooldown wake-up."""
 import argparse
 import json
 import os
@@ -26,7 +26,7 @@ def scene():
     def command(cmd, field=None, result=None):
         ops.append({'op': 'cmd', 'cmd': '/' + cmd, 'record': field is not None})
         if field is not None:
-            fields[ops[-1]['cmd']] = field, result
+            fields[(len(fields), ops[-1]['cmd'])] = field, result
 
     command('tick freeze')
     command('gamerule spawn_mobs false')
@@ -50,16 +50,63 @@ def scene():
         command(f'damage {uuid} 2 minecraft:{damage} at {x + 1.5} 100 5.5', f'{name}/hit', accepts)
         for key in ['Health', 'HurtTime', 'Motion[0]', 'Motion[1]', 'Motion[2]']:
             command(f'data get entity {uuid} {key}', f'{name}/{key}', True)
+    command('scoreboard objectives add resisted minecraft.custom:minecraft.damage_dealt_resisted')
+    command('scoreboard players set @s resisted 0')
+    arrow = '000000cb-0000-0000-0000-000000000010'
+    command('summon arrow 14.5 100 5.5 {UUID:[I;203,0,0,16],NoGravity:1b}', 'projectile/summon', True)
+    other = '000000cb-0000-0000-0000-000000000011'
+    command('summon pig 14.5 100 8.5 {UUID:[I;203,0,0,17],NoAI:1b}', 'non_player/summon', True)
+    for n, (name, damage, source) in enumerate([
+        ('melee', 'player_attack', 'by @s'),
+        ('projectile', 'arrow', f'by {arrow} from @s'),
+        ('non_player', 'arrow', f'by {arrow} from {other}'),
+        ('direct_player_only', 'player_attack', f'by @s from {other}'),
+        ('bypass', 'out_of_world', 'by @s'),
+        ('rounded_zero', 'player_attack', 'by @s'),
+    ], 32):
+        uuid = f'000000cb-0000-0000-0000-{n:012x}'
+        command(f'summon pig {n - 28}.5 100 12.5 {{UUID:[I;203,0,0,{n}],NoAI:1b,NoGravity:1b}}',
+                f'{name}/victim', True)
+        command(f'effect give {uuid} minecraft:resistance infinite 0 true', f'{name}/effect', True)
+        amount = '0.125' if name == 'rounded_zero' else '5.25'
+        command(f'damage {uuid} {amount} minecraft:{damage} {source}', f'{name}/hit', True)
+        command(f'data get entity {uuid} Health', f'{name}/Health', True)
+        ops.append({'op': 'cmd', 'cmd': '/scoreboard players get @s resisted'})
+        fields[(len(fields), ops[-1]['cmd'])] = f'{name}/stat', True
+
+    villager = '000000cb-0000-0000-0000-000000000040'
+    command('setblock 8 100 8 red_bed[part=head,facing=north,occupied=true] strict')
+    command('setblock 8 100 9 red_bed[part=foot,facing=north,occupied=true] strict')
+    command('setblock 9 100 8 stone strict')
+    command('summon villager 8.5 100 8.5 {UUID:[I;203,0,0,64],NoAI:1b,NoGravity:1b}', 'wake/summon', True)
+    command(f'damage {villager} 4 minecraft:generic at 10.5 100 8.5', 'wake/seed_hit', True)
+    command(f'data merge entity {villager} {{sleeping_pos:[I;8,100,8]}}', 'wake/sleep', True)
+    ops.append({'op': 'mob_damage_state', 'uuid': villager, 'no_action_time': 611, 'label': 'wake/before'})
+    fields[(len(fields), 'wake/before')] = 'wake/before', None
+    command(f'damage {villager} 1 minecraft:generic at 10.5 100 8.5', 'wake/weak_hit', False)
+    ops.append({'op': 'mob_damage_state', 'uuid': villager, 'label': 'wake/after'})
+    fields[(len(fields), 'wake/after')] = 'wake/after', None
+    command(f'execute unless data entity {villager} sleeping_pos', 'wake/cleared', True)
+    command('execute if block 8 100 8 red_bed[part=head,facing=north,occupied=false]', 'wake/bed', True)
+    command(f'data get entity {villager} Brain.memories."minecraft:last_woken".value', 'wake/last_woken', True)
     return ops, fields
 
 
 def observed(path, fields):
     records = [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines()]
-    if [row['cmd'] for row in records] != list(fields):
+    if [(i, row['cmd']) for i, row in enumerate(records)] != list(fields):
         raise ValueError('Incomplete or reordered mob damage recording')
     observations = {}
-    for row in records:
-        field, expected_success = fields[row['cmd']]
+    for i, row in enumerate(records):
+        field, expected_success = fields[(i, row['cmd'])]
+        if 'state' in row:
+            state = row['state']
+            if field == 'wake/before':
+                # A just-loaded sleeper refreshes its bed position on its first tick;
+                # this fixture deliberately does not tick between loading and the hit.
+                state = {k: v for k, v in state.items() if k not in ('position', 'rotation')}
+            observations.update((f'{field}/{k}', v) for k, v in state.items())
+            continue
         result, = row['results']
         value = result
         if field.endswith(('/Health', '/HurtTime', '/Motion[0]', '/Motion[1]', '/Motion[2]')):
@@ -103,6 +150,11 @@ def main():
                             [work / 'universe', script, vanilla, '1'], 'java',
                             jvm=['-Dsunrise.parity.flat=true'])
     expected = observed(vanilla, fields)
+    if not (expected['wake/before/sleeping'] and not expected['wake/after/sleeping']
+            and expected['wake/before/cooldown'] == expected['wake/after/cooldown']
+            and expected['wake/before/health'] == expected['wake/after/health']
+            and expected['wake/before/no_action_time'] == 611 and expected['wake/after/no_action_time'] == 0):
+        raise ValueError('Vanilla wake fixture did not reject a weak hit while waking the mob')
     if args.reference_only:
         print(f'{RECORDING}: Minecraft {lock["minecraft"]["version"]} reference captured')
         return 0
