@@ -21,11 +21,14 @@ Following vanilla `Feature.place`, `WorldGenRegion.ensureCanWrite`, `WorldGenReg
 (`ChunkPyramid.GENERATION_PYRAMID`), `ProtoChunk.getHeightAccessorForGeneration`,
 `BelowZeroRetrogen.UPGRADE_HEIGHT_ACCESSOR`, `ImposterProtoChunk`, `BlockEntity.loadWithComponents`
 and `Level.setBlock`, registered feature types borrow the caller's world and random directly.
-`FEATURES` admits the center chunk and its eight neighbors, restricted throughout by the center's
-generation height when upgrading; `ensure_can_write` exposes that admission check, `set_block`
-returns the owning world's result immediately, reads (`block`, `block_in_tag`, `height`) observe
-completed writes, and `block_entity` validates against the current block without requiring this
-call to have placed it (while keeping read-only full chunks immutable). Returned `FeatureError`s
+`FEATURES` admits writes in the center chunk and its eight neighbors, restricted throughout by the
+center's generation height when upgrading, while reads cover `ChunkPyramid.GENERATION_PYRAMID`'s
+eight-chunk `STRUCTURE_STARTS` dependency radius (distance 2..=8 logs `warnIfReadOutsideWriteZone`
+and serves resident columns or empty `STRUCTURE_STARTS` holders when no resident proto or full
+column exists); `ensure_can_write` exposes that admission check, `set_block` returns the owning
+world's result immediately, reads (`block`, `block_in_tag`, `height`) observe completed writes,
+and `block_entity` validates against the current block without requiring this call to have placed
+it (while keeping read-only full chunks immutable). Returned `FeatureError`s
 preserve their native cause chain, log the registering mod, feature type and origin each time,
 and end only that invocation without undoing writes or draws or disabling later invocations. Only
 a callback panic disables that registered callback for the session with a log and error toast.

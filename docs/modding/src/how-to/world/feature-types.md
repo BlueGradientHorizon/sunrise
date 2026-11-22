@@ -89,10 +89,14 @@ the modifiers before you drew from.
 
 During FEATURES decoration, `WorldGenRegion.ensureCanWrite` allows the center chunk and its
 adjacent chunks, including diagonals. If the center is upgrading, its generation height also
-restricts writes throughout that region, regardless of the target chunk. The live level allows
-the preflight check and enforces its own bounds when writing. `set_block` returns the world's
-result: vanilla's live level returns `false` for an unchanged state, but an admitted write in
-a generation region can return `true` without changing a block. A read the level can't answer
+restricts writes throughout that region, regardless of the target chunk. Reads follow
+`ChunkPyramid.GENERATION_PYRAMID`'s eight-chunk `STRUCTURE_STARTS` dependency radius: chunks
+at Chebyshev distance 2..=8 log vanilla's unsafe-read warning and return resident blocks and
+heights or an empty `STRUCTURE_STARTS` holder (`minecraft:air` inside build height,
+`minecraft:void_air` outside, height `min_y`), while reads past radius 8 return `None`. The live
+level allows the preflight check and enforces its own bounds when writing. `set_block` returns the
+world's result: vanilla's live level returns `false` for an unchanged state, but an admitted write
+in a generation region can return `true` without changing a block. A read the level can't answer
 is `None`. These operations do not load chunks.
 
 `block_entity` can update a block entity that was there before this invocation. The saved

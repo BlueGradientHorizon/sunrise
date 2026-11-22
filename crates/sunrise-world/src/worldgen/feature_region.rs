@@ -272,6 +272,15 @@ impl<'r, B: TerrainBlockStates> TerrainRegion<'r, B> {
             UpgradeWriteHeight::new(min_y, height)
         }))
     }
+    pub(super) fn air(&self) -> BlockStateId {
+        self.chunks[0].air()
+    }
+    pub(super) fn void_air(&self) -> BlockStateId {
+        self.chunks[0].void_air()
+    }
+    pub(super) fn block_properties_table(&self) -> &B {
+        self.chunks[0].block_properties_table()
+    }
     pub fn chunk_mut(&mut self, x: i32, z: i32) -> Result<&mut TerrainChunk<'r, B>, RegionError> {
         match self.index(x, z) {
             Some(i) => Ok(&mut self.chunks[i]),

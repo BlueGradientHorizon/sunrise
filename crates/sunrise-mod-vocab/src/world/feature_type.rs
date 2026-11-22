@@ -105,7 +105,10 @@ pub trait FeatureContext {
     fn state_with(&self, block: BlockKey, properties: &[(&str, &str)]) -> BlockState;
     /// `BlockState.isAir`.
     fn is_air(&self, state: BlockState) -> bool;
-    /// The current block at `pos`, or `None` where the level can't be read.
+    /// The current block at `pos`, or `None` where the level can't be read. During `FEATURES`,
+    /// reads reach the eight-chunk `STRUCTURE_STARTS` dependency radius around the center chunk;
+    /// reads outside the one-chunk write zone log vanilla's unsafe-read warning and return
+    /// resident blocks or empty `STRUCTURE_STARTS` air (`void_air` outside build height).
     fn block(&mut self, pos: [i32; 3]) -> Option<BlockState>;
     /// `BlockState.is(tag)` of the block at `pos`: whether it is in block tag `tag`
     /// (`minecraft:leaves`), or `None` where the level can't be read.
@@ -123,6 +126,9 @@ pub trait FeatureContext {
     /// `BlockUpdateFlags::NEIGHBORS | CLIENTS`.
     fn set_block(&mut self, pos: [i32; 3], state: BlockState, flags: BlockUpdateFlags) -> bool;
     /// `WorldGenLevel.getHeight` of the heightmap kind at `(x, z)`, including completed writes.
+    /// During `FEATURES`, reads within the eight-chunk `STRUCTURE_STARTS` dependency radius
+    /// outside the one-chunk write zone log vanilla's unsafe-read warning and return the resident
+    /// column's height or `min_y` for an empty `STRUCTURE_STARTS` holder.
     fn height(&mut self, kind: HeightmapType, x: i32, z: i32) -> Option<i32>;
     /// Apply saved block-entity NBT (its `id` and fields) to the current block at `pos`, as
     /// `WorldGenRegion.getBlockEntity` and `BlockEntity.loadWithComponents` do; the block need

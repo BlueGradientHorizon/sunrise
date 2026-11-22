@@ -148,6 +148,41 @@ impl TerrainBlockStates for GenBlockStates {
     }
 }
 
+/// Read-only view of resident columns in the `FEATURES` `STRUCTURE_STARTS` dependency ring
+/// (Chebyshev distance `2..=8` around the center chunk, `ChunkPyramid.GENERATION_PYRAMID`).
+/// A chunk absent here has no resident proto or full column yet and reads as an empty
+/// `STRUCTURE_STARTS` `ProtoChunk` (`minecraft:air` inside build height, `minecraft:void_air`
+/// outside, `FluidState::EMPTY`, and height `min_y`), matching vanilla `WorldGenRegion`.
+pub trait DecorationDependencies {
+    /// Block state at `[x, y, z]` when chunk `(x >> 4, z >> 4)` has a resident proto or full
+    /// column, or `None` when that chunk is a `STRUCTURE_STARTS`-only holder.
+    fn resident_block(&self, position: [i32; 3]) -> Option<BlockStateId>;
+    /// `WorldGenRegion.getHeight` (`Heightmap.getFirstAvailable`) at `(x, z)` for build
+    /// range `build = (min_y, max_y)` when chunk `(x >> 4, z >> 4)` has a resident proto
+    /// or full column, or `None` when that chunk is a `STRUCTURE_STARTS`-only holder.
+    fn resident_height(
+        &self,
+        kind: HeightmapType,
+        x: i32,
+        z: i32,
+        build: (i32, i32),
+        properties: &GenBlockStates,
+    ) -> Option<i32> {
+        let (min_y, max_y) = build;
+        // Confirm the column is resident before scanning vertically.
+        self.resident_block([x, min_y, z])?;
+        for y in (min_y..max_y).rev() {
+            if let Some(state) = self.resident_block([x, y, z]) {
+                let props = properties.get(state);
+                if !props.is_air_block() && kind.is_opaque(props) {
+                    return Some(y + 1);
+                }
+            }
+        }
+        Some(min_y)
+    }
+}
+
 /// The seed-independent resources, at the path the internals list names.
 pub mod data;
 pub use data::GeneratorData;
@@ -1846,6 +1881,7 @@ trait SeededPipeline: Send + Sync {
         &self,
         worker: &mut WorkerState,
         region: &mut [ProtoChunk; 9],
+        dependencies: Option<&dyn DecorationDependencies>,
     ) -> Result<DecorateStats, GeneratorError>;
     fn data(&self) -> &Arc<GeneratorData>;
     /// What the shared caches hold, for `sunrise-ctl memory`.
@@ -1951,6 +1987,7 @@ where
         &self,
         worker: &mut WorkerState,
         region: &mut [ProtoChunk; 9],
+        dependencies: Option<&dyn DecorationDependencies>,
     ) -> Result<DecorateStats, GeneratorError> {
         match &self.decoration {
             Some(decoration) => {
@@ -1963,6 +2000,7 @@ where
                     region,
                     &mut random,
                     self.structures.as_ref(),
+                    dependencies,
                 )
             }
             // A mod's level that asks for neither structures nor features has nothing to place.
@@ -3078,7 +3116,19 @@ impl GeneratorWorker {
         &mut self,
         region: &mut [ProtoChunk; 9],
     ) -> Result<DecorateStats, GeneratorError> {
-        self.pipeline.decorate(&mut self.state, region)
+        self.decorate_with_dependencies(region, None)
+    }
+    /// [`Self::decorate`] with optional read-only resident columns for the
+    /// `FEATURES` `STRUCTURE_STARTS` dependency ring (Chebyshev distance `2..=8`).
+    /// Columns absent from `dependencies` read as empty `STRUCTURE_STARTS` proto
+    /// chunks (`WorldGenRegion` + `ChunkPyramid.GENERATION_PYRAMID`).
+    pub fn decorate_with_dependencies(
+        &mut self,
+        region: &mut [ProtoChunk; 9],
+        dependencies: Option<&dyn DecorationDependencies>,
+    ) -> Result<DecorateStats, GeneratorError> {
+        self.pipeline
+            .decorate(&mut self.state, region, dependencies)
     }
     /// Skip placed features when decorating and keep structure pieces only
     /// (for structure placement parity checks).
