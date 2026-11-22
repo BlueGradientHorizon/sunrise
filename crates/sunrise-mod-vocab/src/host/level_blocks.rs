@@ -159,8 +159,9 @@ pub trait LevelBlocksBackendMut {
     /// `Err(PlacementStateError::NoVerticalLook)` when the block's own rule reads the
     /// placer's vertical look (pointed dripstone), and
     /// `Err(PlacementStateError::ReplacingClickedCycle)` when the clicked block's
-    /// `canBeReplaced` asks `replacingClickedOnBlock` (a slab or snow layer clicked with its
-    /// own item). A Part's answer replaces the block's rule, so it is never refused.
+    /// `canBeReplaced` asks `replacingClickedOnBlock` (a single slab or a snow layer clicked
+    /// with its own item), which is settled before any Part is asked. A Part's answer
+    /// replaces the block's rule, so a block whose Part answers is never `NoVerticalLook`.
     ///
     /// Returns `Ok(None)` for vanilla's `null`, a part's `Some(None)`, an unknown block
     /// or item key, an unloaded or out-of-bounds destination, or a non-finite hit or

@@ -441,8 +441,9 @@ rather than answered:
   override. Pointed dripstone and sulfur spikes (`SpeleothemBlock`) read it, whatever their
   supports, as does a block built on one of them when no Part answers for it.
 - `Err(PlacementStateError::ReplacingClickedCycle)`: the clicked block's `canBeReplaced` asks
-  `replacingClickedOnBlock`, which for a directional context is that same `canBeReplaced`. Slabs
-  and snow layers ask it when the context holds their own item.
+  `replacingClickedOnBlock`, which for a directional context is that same `canBeReplaced`. A slab
+  that isn't double, or a snow layer under eight layers, asks it when the context holds its own
+  item.
 
 A Part's answer replaces the block's rule, so a block whose Part answers is never refused for
 `NoVerticalLook`. A player context answers both questions.

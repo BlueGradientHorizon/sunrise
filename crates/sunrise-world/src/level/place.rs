@@ -52,7 +52,8 @@ pub enum DirectionalRefusal {
     /// The clicked block's `canBeReplaced` reads `replacingClickedOnBlock`, which a
     /// `DirectionalPlaceContext` answers with `canPlace()`: that same `canBeReplaced` of
     /// the same block, so vanilla recurses until the stack overflows. In vanilla this is a
-    /// `SlabBlock` or `SnowLayerBlock` clicked with its own item.
+    /// `SlabBlock` that isn't double, or a `SnowLayerBlock` under eight layers, clicked
+    /// with its own item.
     ReplacingClickedCycle,
 }
 

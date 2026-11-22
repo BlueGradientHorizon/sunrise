@@ -122,7 +122,8 @@ pub enum PlacementStateError {
     /// A `PlacementSource::Directional` query whose clicked block's `canBeReplaced` reads
     /// `replacingClickedOnBlock`. A `DirectionalPlaceContext` answers that with `canPlace()`,
     /// which is the same `canBeReplaced` of the same block, so vanilla never returns. In
-    /// vanilla that is a slab or a snow layer clicked holding its own item.
+    /// vanilla that is a slab that isn't double, or a snow layer under eight layers,
+    /// clicked holding its own item.
     ReplacingClickedCycle,
 }
 
