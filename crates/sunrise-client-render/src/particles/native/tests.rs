@@ -1,8 +1,9 @@
 use super::super::*;
 use crate::chunk::{Chunk, Light};
 use mod_api::{
-    __private::game::RegistrationContextNew, BlockState, Identifier, LightLayer, ModParticle,
-    ParticleBatch, ParticleFacing, ParticleLevelView, ParticleProvider, RegistrationContext,
+    __private::game::{RegistrationContextNew, capture_callback_panic_notices},
+    BlockState, CustomParticle, Identifier, LightLayer, ParticleFacing, ParticleLevelView,
+    ParticleProvider, ParticleSpawn, ParticleTickView, RegistrationContext,
 };
 use std::{
     collections::BTreeMap,
@@ -87,34 +88,39 @@ impl Scene {
         }
     }
 }
-/// A scoped registration for fixtures that exercise a provider's existing batch behavior.
-pub(in crate::particles) fn provider_factories(
-    id: &str,
-    provider: Arc<dyn ParticleProvider>,
+/// Freeze a set of providers from one scoped fixture mod, without touching the live registry.
+pub(in crate::particles) fn provider_factories<const N: usize>(
+    providers: [(&str, Arc<dyn ParticleProvider>); N],
 ) -> Arc<native::Factories> {
     struct Shared(Arc<dyn ParticleProvider>);
     impl ParticleProvider for Shared {
-        fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView) {
-            self.0.tick(particles, level);
+        fn create_particle(
+            &self,
+            spawn: &mut ParticleSpawn<'_>,
+            particle: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            self.0.create_particle(spawn, particle)
         }
     }
-    struct Register(Identifier, Arc<dyn ParticleProvider>);
+    struct Register<const N: usize>([(Identifier, Arc<dyn ParticleProvider>); N]);
     #[mod_api::__subscriptions]
-    impl mod_api::Hooks for Register {
+    impl<const N: usize> mod_api::Hooks for Register<N> {
         fn register_particle_providers(
             &self,
             _: &RegistrationContext,
             event: &mut mod_api::RegisterParticleProvidersEvent<'_>,
         ) {
-            let provider = self.1.clone();
-            event.register_sprite_set(self.0.clone(), move |_| Shared(provider.clone()));
+            for (id, provider) in &self.0 {
+                let provider = Arc::clone(provider);
+                event.register_sprite_set(id.clone(), move |_| Shared(Arc::clone(&provider)));
+            }
         }
     }
 
-    let id = Identifier::parse(id).unwrap();
+    let providers = providers.map(|(id, provider)| (Identifier::parse(id).unwrap(), provider));
     let mods = vec![mod_api::ModEntry::new(
         "provider_fixture",
-        Box::new(Register(id, provider)),
+        Box::new(Register(providers)),
     )];
     mod_platform::testing::with_mods(mods.into(), || {
         let mut staged = Vec::new();
@@ -127,11 +133,23 @@ fn engine() -> ParticleEngine {
     fixture_engine(Arc::default())
 }
 
-fn fixture_engine(factories: Arc<native::Factories>) -> ParticleEngine {
-    let root = ResourceSource::indexed(BTreeMap::from([(
-        "assets/example/particles/orbit.json".into(),
-        Resource::bytes(br#"{"textures":["example:one","example:two"]}"#.to_vec()),
-    )]));
+pub(in crate::particles) fn fixture_options() -> mod_api::ParticleOptions {
+    // These fixtures test particle behavior after ingress, not key resolution.
+    mod_api::ParticleOptions::simple(mod_api::__private::parts_installation::particle_key(0))
+}
+
+fn fixture_pack() -> (ResourceSource, HashMap<String, Rect>) {
+    let root = ResourceSource::indexed(
+        ["orbit", "peer"]
+            .into_iter()
+            .map(|name| {
+                (
+                    format!("assets/example/particles/{name}.json"),
+                    Resource::bytes(br#"{"textures":["example:one","example:two"]}"#.to_vec()),
+                )
+            })
+            .collect(),
+    );
     let rect = Rect {
         u0: 0.0,
         v0: 0.0,
@@ -144,8 +162,13 @@ fn fixture_engine(factories: Arc<native::Factories>) -> ParticleEngine {
         ("example:particle/one".into(), rect),
         ("example:particle/two".into(), rect),
     ]);
+    (root, atlas)
+}
+
+fn fixture_engine(factories: Arc<native::Factories>) -> ParticleEngine {
+    let (root, atlas) = fixture_pack();
     let mut e = ParticleEngine::with_factories(&root, &atlas, &HashSet::new(), &[], factories);
-    // The game's table of block states; the providers here read none of them.
+    // The game's table of block states; most fixture providers read none of them.
     e.set_block_state_source(|| Some(Arc::new(Vec::<BlockState>::new())));
     e
 }
@@ -219,24 +242,6 @@ fn controlled_particle_keeps_owned_motion_sprite_interpolation_and_expiry() {
     );
     assert!(vertices.is_empty());
 }
-/// One engine tick of a single provider particle: the age step, then the provider's batch.
-fn tick_one(e: &mut ParticleEngine, p: &mut Particle, level: &ParticleLevel<'_>) {
-    e.tick_particle(p, level);
-    e.tick_providers(std::slice::from_mut(p), level);
-}
-fn engine_with(provider: Arc<dyn ParticleProvider>) -> ParticleEngine {
-    fixture_engine(provider_factories("example:orbit", provider))
-}
-fn provided(e: &mut ParticleEngine) -> Particle {
-    e.make(
-        &ParticleOptions::named("example:orbit"),
-        [1.0; 3],
-        [0.0; 3],
-        5,
-        SpawnScope::BARE,
-    )
-    .unwrap()
-}
 /// A particle a provider poses on each of its ticks (`rolls[age - 1]`), drawn half a tick
 /// into the last one with the camera turned by `base`, as the renderer builds its corners.
 fn drawn(
@@ -245,25 +250,47 @@ fn drawn(
     center: [f64; 3],
     base: glam::Quat,
 ) -> Vec<[f32; 3]> {
-    struct Pose(ParticleFacing, Vec<f32>, [f64; 3]);
+    struct Pose(Arc<[f32]>, ParticleFacing);
     impl ParticleProvider for Pose {
-        fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
-            for particle in particles {
-                particle.position = self.2;
-                particle.previous = self.2;
-                particle.size = 1.0;
-                particle.facing = self.0;
-                particle.roll = self.1[particle.age as usize - 1];
+        fn create_particle(
+            &self,
+            _: &mut ParticleSpawn<'_>,
+            particle: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            particle.set_lifetime(20);
+            particle.set_size(1.0);
+            particle.set_facing(self.1);
+            Some(Box::new(Roll(Arc::clone(&self.0))))
+        }
+    }
+    struct Roll(Arc<[f32]>);
+    impl CustomParticle for Roll {
+        fn tick(&mut self, particle: &mut dyn ParticleTickView, _: &dyn ParticleLevelView) {
+            if particle.advance_age() {
+                particle.set_roll(self.0[particle.age() as usize - 1]);
             }
         }
     }
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine_with(Arc::new(Pose(facing, rolls.to_vec(), center)));
-    let mut p = provided(&mut e);
-    p.lifetime = 20;
+    let mut e = fixture_engine(provider_factories([(
+        "example:orbit",
+        Arc::new(Pose(rolls.into(), facing)),
+    )]));
+    let mut p = e
+        .make(
+            &ParticleOptions::named("example:orbit"),
+            center,
+            [0.0; 3],
+            5,
+            SpawnScope {
+                level: Some(&level),
+                mod_options: Some(&fixture_options()),
+            },
+        )
+        .unwrap();
     for _ in rolls {
-        tick_one(&mut e, &mut p, &level);
+        e.tick_particle(&mut p, &level);
     }
     assert!(!p.removed);
     e.particles.push(p);
@@ -419,12 +446,421 @@ fn the_providers_level_view_reads_the_loaded_chunks_states() {
     });
 }
 #[test]
+fn owned_particles_construct_before_fifo_admission_tick_in_order_and_drop_once() {
+    #[derive(Debug, PartialEq)]
+    enum Event {
+        Create(i32, i32),
+        Tick(i32, i32, i32, f64, f64),
+        Drop(i32),
+    }
+    type Events = Arc<Mutex<Vec<Event>>>;
+
+    struct Start {
+        events: Events,
+        key: mod_api::ParticleKey,
+        stone: BlockState,
+        thread: std::thread::ThreadId,
+    }
+    struct Move {
+        events: Events,
+        id: i32,
+        steps: i32,
+        thread: std::thread::ThreadId,
+    }
+    impl ParticleProvider for Start {
+        fn create_particle(
+            &self,
+            spawn: &mut ParticleSpawn<'_>,
+            particle: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            assert_eq!(std::thread::current().id(), self.thread);
+            assert_eq!((spawn.options.ty, spawn.options.scale), (self.key, 2.5));
+            assert_eq!(spawn.velocity, [0.25, 0.0, 0.0]);
+            assert_eq!(spawn.position, particle.position());
+            assert_eq!(spawn.level.block_state([1, 64, 3]), self.stone);
+            assert_eq!(spawn.level.brightness(LightLayer::Block, [1, 64, 3]), 4);
+            let id = spawn.position[0] as i32;
+            let draw = spawn.random.next_int();
+            self.events.lock().unwrap().push(Event::Create(id, draw));
+            particle.set_has_physics(false);
+            particle.set_velocity([1.0, 0.0, 0.0]);
+            particle.set_friction(1.0);
+            particle.set_lifetime(if id == 10 { 2 } else { 7 });
+            Some(Box::new(Move {
+                events: Arc::clone(&self.events),
+                id,
+                steps: 0,
+                thread: self.thread,
+            }))
+        }
+    }
+    impl CustomParticle for Move {
+        fn tick(&mut self, particle: &mut dyn ParticleTickView, level: &dyn ParticleLevelView) {
+            assert_eq!(std::thread::current().id(), self.thread);
+            assert_eq!(level.brightness(LightLayer::Sky, [1, 64, 3]), 11);
+            self.steps += 1;
+            if self.id == 10 {
+                particle.tick_base();
+            } else if particle.advance_age() {
+                particle.move_by([f64::from(self.steps), 0.0, 0.0]);
+                if self.steps == 2 {
+                    particle.remove();
+                }
+            }
+            self.events.lock().unwrap().push(Event::Tick(
+                self.id,
+                self.steps,
+                particle.age(),
+                particle.previous_position()[0],
+                particle.position()[0],
+            ));
+        }
+    }
+    impl Drop for Move {
+        fn drop(&mut self) {
+            self.events.lock().unwrap().push(Event::Drop(self.id));
+        }
+    }
+
+    mod_platform::testing::with_mods(Vec::new().into(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
+        mod_api::__private::resolve_particles(["example:orbit"], |_| {
+            Some(mod_api::__private::ParticleKind::Custom)
+        })
+        .unwrap();
+        mod_api::__private::resolve_block_keys(["minecraft:air", "minecraft:stone"], |_| {
+            sunrise_mod_runtime::block_definitions::BlockDefinition::new(&[&BTreeMap::new()], 0)
+                .map_err(|error| format!("{error:?}"))
+        })
+        .unwrap();
+        let key = mod_api::__private::particle_named_key("example:orbit").unwrap();
+        let state = |name| {
+            mod_api::__private::block_state_from_ordinal(
+                mod_api::__private::block_key(name).unwrap(),
+                0,
+            )
+        };
+        let events = Events::default();
+        let factories = provider_factories([(
+            "example:orbit",
+            Arc::new(Start {
+                events: Arc::clone(&events),
+                key,
+                stone: state("minecraft:stone"),
+                thread: std::thread::current().id(),
+            }),
+        )]);
+        let mut scene = Scene::new();
+        let mut chunk = lit_chunk();
+        chunk.set(1, 64, 3, 1);
+        scene.world.chunks.insert((0, 0), Arc::new(chunk));
+        let level = scene.level();
+        let mut e = fixture_engine(factories);
+        e.set_block_state_source(|| {
+            let states = ["minecraft:air", "minecraft:stone"].map(|name| {
+                mod_api::__private::block_state_from_ordinal(
+                    mod_api::__private::block_key(name).unwrap(),
+                    0,
+                )
+            });
+            Some(Arc::new(states))
+        });
+        e.options_to_api = Some(|options| {
+            let key = mod_api::__private::particle_named_key(options.mod_particle.as_deref()?)?;
+            let mut converted = mod_api::ParticleOptions::simple(key);
+            converted.scale = options.scale;
+            Some(converted)
+        });
+        e.camera = [0.0, 64.0, 0.0];
+        e.live_limit = Some(2);
+        e.parallel_min = 1;
+        e.parallel_threads = 2;
+        e.seed_randoms(0, 0, 0);
+        let mut options = ParticleOptions::named("example:orbit");
+        options.scale = 2.5;
+        let mut typed = mod_api::ParticleOptions::simple(key);
+        typed.scale = 2.5;
+        for x in [40, 10, 20, 30] {
+            e.add_with_level(
+                &options,
+                [f64::from(x), 64.0, 3.0],
+                [0.25, 0.0, 0.0],
+                ParticleSpawnFlags::default(),
+                &level,
+                (x != 20).then_some(&typed),
+            );
+        }
+        use Event::*;
+        // The far-away spawn never reaches the provider. All three near ones are built and
+        // draw from java.util.Random(0) before the FIFO admits the first two.
+        let created = [
+            Create(10, -1155484576),
+            Create(20, -723955400),
+            Create(30, 1033096058),
+        ];
+        assert_eq!(*events.lock().unwrap(), created);
+        assert_eq!((e.len(), e.pending.len()), (0, 3));
+        e.tick(&level);
+        assert_eq!((e.len(), e.pending.len()), (2, 0));
+        e.tick(&level);
+        e.tick(&level);
+        assert_eq!(e.len(), 1);
+        e.tick(&level);
+        assert_eq!(e.len(), 0);
+        let mut expected = Vec::from(created);
+        expected.extend([
+            Drop(30),
+            Tick(10, 1, 1, 10.0, 11.0),
+            Tick(20, 1, 1, 20.0, 21.0),
+            Tick(10, 2, 2, 11.0, 12.0),
+            Tick(20, 2, 2, 21.0, 23.0),
+            Drop(20),
+            Tick(10, 3, 3, 12.0, 12.0),
+            Drop(10),
+        ]);
+        assert_eq!(*events.lock().unwrap(), expected);
+    });
+}
+
+#[test]
+fn a_tick_panic_disables_only_that_registration_across_instances_and_reload() {
+    use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+    #[derive(Default)]
+    struct Calls {
+        creates: AtomicUsize,
+        ticks: AtomicUsize,
+        drops: AtomicUsize,
+    }
+    struct Start(Arc<Calls>, bool);
+    struct Tick(Arc<Calls>, bool);
+    impl ParticleProvider for Start {
+        fn create_particle(
+            &self,
+            _: &mut ParticleSpawn<'_>,
+            _: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            self.0.creates.fetch_add(1, Relaxed);
+            Some(Box::new(Tick(Arc::clone(&self.0), self.1)))
+        }
+    }
+    impl CustomParticle for Tick {
+        fn tick(&mut self, particle: &mut dyn ParticleTickView, _: &dyn ParticleLevelView) {
+            self.0.ticks.fetch_add(1, Relaxed);
+            assert!(!self.1, "fixture tick panic");
+            particle.advance_age();
+        }
+    }
+    impl Drop for Tick {
+        fn drop(&mut self) {
+            self.0.drops.fetch_add(1, Relaxed);
+        }
+    }
+    let broken = Arc::new(Calls::default());
+    let healthy = Arc::new(Calls::default());
+    let mut e = fixture_engine(provider_factories([
+        ("example:orbit", Arc::new(Start(Arc::clone(&broken), true))),
+        ("example:peer", Arc::new(Start(Arc::clone(&healthy), false))),
+    ]));
+    let scene = Scene::new();
+    let level = scene.level();
+    let typed = fixture_options();
+    let spawn = |e: &mut ParticleEngine, name| {
+        e.add_with_level(
+            &ParticleOptions::named(name),
+            [1.0; 3],
+            [0.0; 3],
+            ParticleSpawnFlags::default(),
+            &level,
+            Some(&typed),
+        );
+    };
+    let ((), notices) = capture_callback_panic_notices(|| {
+        for name in ["example:orbit", "example:orbit", "example:peer"] {
+            spawn(&mut e, name);
+        }
+        e.tick(&level); // admissions only
+        assert_eq!(e.len(), 3);
+        e.tick(&level);
+        assert_eq!(e.len(), 1);
+        assert_eq!(broken.ticks.load(Relaxed), 1); // a second instance didn't enter the poisoned tick
+        assert_eq!(broken.drops.load(Relaxed), 2);
+        assert_eq!(healthy.ticks.load(Relaxed), 1);
+        let (root, atlas) = fixture_pack();
+        e.reload(&root, &atlas, &HashSet::new());
+        assert_eq!(healthy.drops.load(Relaxed), 1);
+        for name in ["example:orbit", "example:peer", "example:peer"] {
+            spawn(&mut e, name);
+        }
+        e.tick(&level);
+        // Create is a different callback kind and is still enabled even for `orbit`.
+        assert_eq!((e.len(), broken.creates.load(Relaxed)), (3, 3));
+        e.tick(&level);
+        assert_eq!((e.len(), broken.ticks.load(Relaxed)), (2, 1));
+        assert_eq!(broken.drops.load(Relaxed), 3);
+        assert_eq!(healthy.ticks.load(Relaxed), 3);
+        spawn(&mut e, "example:peer");
+        e.clear();
+        assert_eq!(healthy.drops.load(Relaxed), 4); // live and pending, once each
+        assert_eq!(e.len(), 0);
+        assert!(e.pending.is_empty());
+    });
+    let [notice] = notices.as_slice() else {
+        panic!("expected one toast, got {notices:?}")
+    };
+    assert_eq!(notice.mod_id, "provider_fixture");
+    assert_eq!(notice.operation, "tick_custom_particle");
+    assert!(notice.message.contains("fixture tick panic"));
+}
+
+#[test]
+fn malformed_writes_are_refused_without_expiry_and_age_sprite_selection_is_exact() {
+    struct Probe;
+    impl ParticleProvider for Probe {
+        fn create_particle(
+            &self,
+            _: &mut ParticleSpawn<'_>,
+            particle: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            let position = [31_000_000.0, 0.0, 0.0];
+            assert!(particle.set_position(position));
+            assert!(!particle.set_position([f64::NAN; 3]));
+            assert_eq!(particle.position(), position);
+            assert!(particle.set_velocity([f64::MAX, 0.0, 0.0]));
+            assert!(!particle.set_velocity([f64::INFINITY; 3]));
+            assert!(!particle.move_by([f64::NAN; 3]));
+            assert_eq!(particle.velocity(), [f64::MAX, 0.0, 0.0]);
+            assert!(particle.set_size(32.0));
+            assert!(!particle.set_size(f32::INFINITY));
+            assert_eq!(particle.size(), 32.0);
+            assert!(particle.set_roll(f32::MAX));
+            assert!(!particle.set_roll(f32::NAN));
+            assert_eq!(particle.roll(), f32::MAX);
+            assert!(particle.set_facing(ParticleFacing::Fixed([0.0, 0.0, 0.0, f32::MAX])));
+            assert!(!particle.set_facing(ParticleFacing::Fixed([0.0; 4])));
+            assert_eq!(
+                particle.facing(),
+                ParticleFacing::Fixed([0.0, 0.0, 0.0, 1.0])
+            );
+
+            assert!(particle.set_sprite_index(1));
+            assert!(!particle.set_sprite_index(2));
+            particle.set_lifetime(0);
+            assert!(!particle.set_sprite_from_age());
+            assert_eq!(particle.sprite_index(), 1);
+            particle.set_lifetime(4);
+            particle.set_age(3);
+            assert!(particle.set_sprite_from_age());
+            assert_eq!(particle.sprite_index(), 0);
+            particle.set_age(4);
+            assert!(particle.set_sprite_from_age());
+            assert_eq!(particle.sprite_index(), 1);
+            particle.set_age(8);
+            assert!(!particle.set_sprite_from_age());
+            assert_eq!(particle.sprite_index(), 1);
+            assert!(particle.is_alive());
+
+            particle.set_age(i32::MAX);
+            particle.set_lifetime(i32::MAX);
+            Some(Box::new(Self))
+        }
+    }
+    impl CustomParticle for Probe {}
+
+    let scene = Scene::new();
+    let level = scene.level();
+    let mut e = fixture_engine(provider_factories([("example:orbit", Arc::new(Probe))]));
+    let mut particle = e
+        .make(
+            &ParticleOptions::named("example:orbit"),
+            [0.0; 3],
+            [0.0; 3],
+            1,
+            SpawnScope {
+                level: Some(&level),
+                mod_options: Some(&fixture_options()),
+            },
+        )
+        .unwrap();
+    assert!(particle.is_alive());
+    assert_eq!(
+        e.snapshot(&particle).quad.unwrap().sprite,
+        "example:particle/two"
+    );
+    e.tick_particle(&mut particle, &level);
+    assert!(!particle.is_alive());
+    assert_eq!(particle.age, i32::MIN); // Java post-increment, even on the expiry tick.
+    assert_eq!(particle.previous, [31_000_000.0, 0.0, 0.0]);
+}
+
+#[test]
+fn a_phase_refused_tick_does_not_poison_or_retire_the_particle() {
+    use mod_api::__private::{LoadAccess, ModPhase, PhaseOwner, check_access};
+    struct Probe;
+    impl ParticleProvider for Probe {
+        fn create_particle(
+            &self,
+            _: &mut ParticleSpawn<'_>,
+            particle: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            particle.set_velocity([0.0; 3]);
+            Some(Box::new(Self))
+        }
+    }
+    impl CustomParticle for Probe {
+        fn tick(&mut self, particle: &mut dyn ParticleTickView, _: &dyn ParticleLevelView) {
+            check_access("fixture_provider_world_access", LoadAccess::WorldOnly);
+            particle.tick_base();
+        }
+    }
+    let scene = Scene::new();
+    let level = scene.level();
+    let mut e = fixture_engine(provider_factories([("example:orbit", Arc::new(Probe))]));
+    let ((), notices) = capture_callback_panic_notices(|| {
+        let mut particle = e
+            .make(
+                &ParticleOptions::named("example:orbit"),
+                [0.0; 3],
+                [0.0; 3],
+                1,
+                SpawnScope {
+                    level: Some(&level),
+                    mod_options: Some(&fixture_options()),
+                },
+            )
+            .unwrap();
+        {
+            let _scope = PhaseOwner::scope(ModPhase::Reloading);
+            for _ in 0..2 {
+                e.tick_particle(&mut particle, &level);
+                assert!(particle.is_alive());
+                assert_eq!(particle.age, 0);
+            }
+        }
+        let _scope = PhaseOwner::scope(ModPhase::World);
+        e.tick_particle(&mut particle, &level);
+        assert!(particle.is_alive());
+        assert_eq!(particle.age, 1);
+    });
+    assert!(notices.is_empty());
+}
+
+#[test]
 fn the_last_factory_binds_once_per_load_and_other_types_stay_declarative() {
     struct Drift(f64);
     impl ParticleProvider for Drift {
-        fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
-            for particle in particles {
-                particle.position[0] = self.0;
+        fn create_particle(
+            &self,
+            _: &mut ParticleSpawn<'_>,
+            _: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            Some(Box::new(Self(self.0)))
+        }
+    }
+    impl CustomParticle for Drift {
+        fn tick(&mut self, particle: &mut dyn ParticleTickView, _: &dyn ParticleLevelView) {
+            if particle.advance_age() {
+                let [_, y, z] = particle.position();
+                particle.set_position([self.0, y, z]);
             }
         }
     }
@@ -506,18 +942,22 @@ fn the_last_factory_binds_once_per_load_and_other_types_stay_declarative() {
 
         let scene = Scene::new();
         let level = scene.level();
+        let options = fixture_options();
         let spawn = |e: &mut ParticleEngine, name: &str| {
             e.make(
                 &ParticleOptions::named(name),
                 [0.0; 3],
                 [0.0; 3],
                 3,
-                SpawnScope::BARE,
+                SpawnScope {
+                    level: Some(&level),
+                    mod_options: Some(&options),
+                },
             )
         };
         let mut orbit = spawn(&mut e, "mymod:orbit").unwrap();
         assert_eq!((orbit.lifetime, orbit.size), (7, 0.3));
-        tick_one(&mut e, &mut orbit, &level);
+        e.tick_particle(&mut orbit, &level);
         assert_eq!(orbit.position[0], 2.0);
         assert_eq!(*binds.lock().unwrap(), [(2, 2)]);
         e.push(orbit);

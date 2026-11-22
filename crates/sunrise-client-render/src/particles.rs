@@ -239,7 +239,6 @@ pub type BlockStates = Arc<dyn AsRef<[mod_api::BlockState]> + Send + Sync>;
 /// provider binding and render group. The binding distinguishes an unregistered type from one
 /// whose factory failed. After a spawn finds the set, its ticks and draws use the resolved
 /// provider and group directly.
-#[derive(Clone)]
 struct ModSet {
     set: u32,
     behaviour: Option<ModBehaviour>,
@@ -292,7 +291,7 @@ pub struct Particle {
     /// `Particle.random`: the particle's own generator (`RandomSource.create()`).
     random: LegacyRandom,
     controller: Option<Box<dyn native::Controller>>,
-    /// A mod provider's particle: its state, ticked in the provider's batch.
+    /// A mod provider's owned instance, ticked only on the owning thread.
     /// Boxed so a vanilla particle carries one pointer for it.
     provided: Option<Box<native::Provided>>,
     /// A resource pack's Polytone custom particle type, for its `limit` and `exclusion_radius`.
@@ -673,7 +672,7 @@ impl Particle {
         self.previous = self.position;
         self.o_roll = self.roll;
         let alive = self.age < self.lifetime;
-        self.age = self.age.saturating_add(1);
+        self.age = self.age.wrapping_add(1);
         self.removed |= !alive;
         alive
     }
@@ -833,7 +832,7 @@ impl Particle {
     fn base_tick(&mut self, level: &ParticleLevel) {
         self.previous = self.position;
         let age = self.age;
-        self.age += 1;
+        self.age = self.age.wrapping_add(1);
         if age >= self.lifetime {
             self.removed = true;
             return;
@@ -1151,14 +1150,10 @@ pub struct ParticleEngine {
     mod_sets: HashMap<String, ModSet>,
     /// Startup registrations by name. Each sprite load binds these factories into `mod_sets`.
     provider_factories: Arc<native::Factories>,
-    /// Where the providers' `ParticleLevelView` finds every engine block state as a mod reads
-    /// it, asked only when a provider has particles to tick.
+    /// Where `ParticleLevelView` finds the mod equivalents of engine block states.
     block_state_source: fn() -> Option<BlockStates>,
     /// The game's conversion for bound native providers when the spawn has no original API options.
     pub options_to_api: Option<fn(&ParticleOptions) -> Option<mod_api::ParticleOptions>>,
-    /// How many provider particles live, in every list and still waiting to join.
-    provided_live: Arc<std::sync::atomic::AtomicUsize>,
-    batch: native::Batch,
     set_sprites: Vec<Vec<u32>>,
     /// How many live particles it takes to tick them on several threads (`tick_all`), and how many threads.
     parallel_min: usize,
@@ -1296,8 +1291,6 @@ impl ParticleEngine {
             provider_factories,
             block_state_source: || None,
             options_to_api: None,
-            provided_live: Arc::default(),
-            batch: native::Batch::default(),
             set_sprites: Vec::new(),
             parallel_min: PARALLEL_MIN,
             live_limit: None,
@@ -1319,10 +1312,8 @@ impl ParticleEngine {
         engine.reload(root, atlas, translucent);
         engine
     }
-    /// Where a provider's level view finds the block states, by engine state id: the game's
-    /// table, or `None` while it has none, which stops the providers from running so that none
-    /// reads a state the engine cannot name. It is called only when a provider has particles
-    /// to tick.
+    /// Where a provider's level view finds the block states, by engine state ID.
+    /// `None` refuses the current creation or tick. Unrelated particles are unaffected.
     pub fn set_block_state_source(&mut self, source: fn() -> Option<BlockStates>) {
         self.block_state_source = source;
     }
@@ -1362,10 +1353,10 @@ impl ParticleEngine {
         self.set_sprites.clear();
         self.item_sprites.clear();
         self.load_sprites(root);
-        for (slot, (name, factory)) in self.provider_factories.iter().enumerate() {
+        for (name, factory) in self.provider_factories.iter() {
             if let Some(set) = self.mod_sets.get_mut(name) {
                 let sprites = particle_sprite_set(self.set_sprites[set.set as usize].len());
-                set.provider = factory.bind(slot, sprites);
+                set.provider = factory.bind(sprites);
             } else {
                 log::warn!(
                     "Particle provider {name} from mod {} has no nonempty particles/<path>.json sprite set",
@@ -1962,12 +1953,7 @@ impl ParticleEngine {
             return Some(particle);
         }
         if let Some(name) = &o.mod_particle {
-            // The batch provider only reads the level during its tick.
-            let SpawnScope {
-                level: _level,
-                mod_options: _mod_options,
-            } = scope;
-            return self.make_named(name.as_ref(), p, v, seed);
+            return self.make_named(name.as_ref(), o, p, v, seed, scope);
         }
         let set = self.set_of(ty);
         let mut local = LegacyRandom::new(seed);
@@ -3618,7 +3604,6 @@ impl ParticleEngine {
         let mut particles = std::mem::take(&mut self.particles);
         self.spawned_in_tick = Some(Vec::new());
         self.tick_all(&mut particles, level);
-        self.tick_providers(&mut particles, level);
         particles.retain(|p| !p.removed);
         self.particles = particles;
         for handle in 0..self.groups.len() {
@@ -3626,7 +3611,6 @@ impl ParticleEngine {
             for p in &mut particles {
                 self.tick_particle(p, level);
             }
-            self.tick_providers(&mut particles, level);
             particles.retain(|p| !p.removed);
             self.groups[handle].particles = particles;
         }
@@ -3702,7 +3686,7 @@ impl ParticleEngine {
             }
             Behaviour::Controlled { .. } => {
                 if let Some(mut provided) = p.provided.take() {
-                    provided.age(p);
+                    provided.tick(self, p, level);
                     p.provided = Some(provided);
                 } else if let Some(mut controller) = p.controller.take() {
                     let update = controller.tick(p, level);

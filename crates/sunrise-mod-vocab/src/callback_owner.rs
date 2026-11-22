@@ -28,6 +28,25 @@ pub struct CallbackPanicNotice {
 
 static PANIC_NOTICES: Mutex<VecDeque<CallbackPanicNotice>> = Mutex::new(VecDeque::new());
 
+#[cfg(feature = "testing")]
+thread_local! {
+    static TEST_NOTICES: RefCell<Option<Vec<CallbackPanicNotice>>> = const { RefCell::new(None) };
+}
+
+/// Capture this test thread's notices without publishing to the game's shared toast queue.
+#[cfg(feature = "testing")]
+pub fn capture_callback_panic_notices<T>(f: impl FnOnce() -> T) -> (T, Vec<CallbackPanicNotice>) {
+    struct Restore(Option<Vec<CallbackPanicNotice>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            TEST_NOTICES.set(self.0.take());
+        }
+    }
+    let _restore = Restore(TEST_NOTICES.replace(Some(Vec::new())));
+    let result = f();
+    (result, TEST_NOTICES.take().expect("scoped panic notices"))
+}
+
 thread_local! {
     static CONTAINED: Cell<u32> = const { Cell::new(0) };
     static CAUGHT: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -171,15 +190,26 @@ fn record_callback_panic(
     operation: &'static str,
     message: String,
 ) {
+    let notice = CallbackPanicNotice {
+        mod_id: owner,
+        kind,
+        operation,
+        message,
+    };
+    #[cfg(feature = "testing")]
+    let Some(notice) = TEST_NOTICES.with_borrow_mut(|notices| match notices {
+        Some(notices) => {
+            notices.push(notice);
+            None
+        }
+        None => Some(notice),
+    }) else {
+        return;
+    };
     PANIC_NOTICES
         .lock()
         .unwrap_or_else(|error| error.into_inner())
-        .push_back(CallbackPanicNotice {
-            mod_id: owner,
-            kind,
-            operation,
-            message,
-        });
+        .push_back(notice);
 }
 
 /// Owner identity and poison state for one retained mod callback.
@@ -248,6 +278,11 @@ impl CallbackOwner {
     /// Whether this callback is still enabled for this session.
     pub fn is_enabled(&self) -> bool {
         enabled_opt(self.index, &self.poisoned)
+    }
+
+    /// Whether a panic poisoned this callback, independently of the mod's current enablement.
+    pub fn is_poisoned(&self) -> bool {
+        self.poisoned.load(Ordering::Acquire)
     }
 
     /// Invoke retained code with its owner's enablement, attribution and panic policy.

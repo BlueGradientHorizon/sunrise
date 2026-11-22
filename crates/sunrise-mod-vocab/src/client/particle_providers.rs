@@ -1,59 +1,17 @@
 //! Code-defined particle providers, as a client mod registers them in `register_particle_providers`
 //! (NeoForge's `RegisterParticleProvidersEvent` and `ParticleProvider`).
 //!
-//! A provider owns one of the mod's own particle types, named by its ID (`mymod:spark`) and spawned
-//! with `ParticleOptions::simple` on the key `Registrar::particle_key` issued for it. Its factory
-//! binds once per sprite load, after the game's sprite discovery. The sprite set and the
-//! `sunrise:behaviour` of `assets/<namespace>/particles/<path>.json` give the spawn values; the
-//! bound provider then moves the particle every tick.
-use crate::{BlockState, Identifier, LightLayer, RegisterParticleProvidersEvent};
-
-/// One particle of a provider's type, as its tick reads and writes it: the fields of vanilla's
-/// `Particle` a `tick` moves. Plain numbers, so a tick allocates nothing.
-#[derive(Clone, Debug, PartialEq)]
-// exhaustive: the game builds it for each tick and a mod only edits its fields
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct ModParticle {
-    /// `Particle.x/y/z`: the position now. A tick moves the particle by writing it.
-    pub position: [f64; 3],
-    /// `Particle.xo/yo/zo`: where it was a tick ago, which a frame interpolates from. The game
-    /// sets it to `position` before each tick; a tick that teleports the particle sets it too.
-    pub previous: [f64; 3],
-    /// `Particle.xd/yd/zd`: the velocity the spawn gave it (the declared one, or the spawn
-    /// call's). The game applies no vanilla motion to a provider's particle, so a tick moves
-    /// `position` by it, or not.
-    pub velocity: [f64; 3],
-    /// `Particle.age`, the ticks this particle has run: 1 on its first tick. The game advances it
-    /// before each tick.
-    pub age: i32,
-    /// `Particle.lifetime`: the particle expires on the tick after `age` reaches it. A tick may
-    /// change it.
-    pub lifetime: i32,
-    /// `SingleQuadParticle.quadSize`: the billboard's half-width in blocks.
-    pub size: f32,
-    /// `Particle.rCol/gCol/bCol/alpha`, each 0 to 1.
-    pub rgba: [f32; 4],
-    /// The sprite drawn, an index in the sprite set `particles/<path>.json` lists (the last one
-    /// when it is past the list).
-    pub frame: u32,
-    /// `Particle.remove()`: set it to expire the particle before its lifetime is up.
-    pub removed: bool,
-    /// Four numbers that stay with this particle from one tick to the next, zero when it
-    /// spawns.
-    pub state: [f64; 4],
-    /// How the quad turns toward the viewer (`SingleQuadParticle.getFacingCameraMode`).
-    pub facing: ParticleFacing,
-    /// `SingleQuadParticle.roll`: the quad's turn about its own normal, in radians. The game
-    /// interpolates it from the value the previous tick left, as vanilla's `oRoll` does, and
-    /// draws no turn at all while it is zero. A roll beyond half of `f32::MAX` in either
-    /// direction expires the particle, so that the interpolation stays a finite number.
-    pub roll: f32,
-}
+//! A sprite-set factory binds once per resource load. The bound provider constructs an owned
+//! particle for each admitted spawn request, before the particle engine considers its group quota.
+use crate::{
+    BlockState, Identifier, LightLayer, ParticleOptions, RandomSource,
+    RegisterParticleProvidersEvent,
+};
 
 /// How a provider's particle quad is oriented (`SingleQuadParticle.FacingCameraMode`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 // exhaustive: a closed set the game matches without a wildcard
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: presentation state for a live local particle, not a spawn option.
 pub enum ParticleFacing {
     /// `LOOKAT_XYZ`: the quad faces the camera. The default.
     #[default]
@@ -68,58 +26,13 @@ pub enum ParticleFacing {
     Fixed([f32; 4]),
 }
 
-/// The particles of one provider's batch. Edit them through [`ParticleBatch::get_mut`],
-/// [`ParticleBatch::iter_mut`] or a `for` loop: those methods preserve the batch's length and
-/// order. Set [`ModParticle::removed`] to expire a particle. The helpers that build the batch
-/// and take it back are internal. If a callback returns a different length, the game expires
-/// the batch's particles.
-///
-/// Dispatch reuses its batch storage once it has enough capacity.
-#[derive(Clone, Debug, PartialEq)]
-// exhaustive: its field is private; the game builds it
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct ParticleBatch(Vec<ModParticle>);
-
-impl ParticleBatch {
-    /// How many particles the batch holds.
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-    /// Whether the batch holds none.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-    /// The particle at `index`.
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut ModParticle> {
-        self.0.get_mut(index)
-    }
-    /// Every particle, in order.
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, ModParticle> {
-        self.0.iter_mut()
-    }
-}
-/// Internal constructor: wrap the game's `particles` for a provider tick.
-pub fn particle_batch_from_vec(particles: Vec<ModParticle>) -> ParticleBatch {
-    ParticleBatch(particles)
-}
-/// The particles back, for the game to reuse their storage.
-pub fn particle_batch_into_vec(batch: ParticleBatch) -> Vec<ModParticle> {
-    batch.0
-}
-impl<'a> IntoIterator for &'a mut ParticleBatch {
-    type Item = &'a mut ModParticle;
-    type IntoIter = std::slice::IterMut<'a, ModParticle>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter_mut()
-    }
-}
-
-/// What a provider's tick reads of the level around its particles: the loaded world as
+/// What a provider or particle reads of the level around its particles: the loaded world as
 /// `Particle` code reads it (`level.getBlockState`, `level.getBrightness`). Read-only. `block_state`
 /// reads air where a chunk is absent. `brightness` reads the render level's stored light, with sky
 /// always zero in a dimension without skylight. The current client gives absent columns and
 /// positions above build height full sky where present and no block light; below a loaded column
-/// it gives zero on both layers. Retained and padding light are tracked in Sunrise #2761.
+/// it gives zero on both layers. The loan lasts only for the current callback.
+// no wire: reads the loaded level in process.
 pub trait ParticleLevelView {
     /// `BlockGetter.getBlockState`: the state at `pos`.
     fn block_state(&self, pos: [i32; 3]) -> BlockState;
@@ -127,23 +40,146 @@ pub trait ParticleLevelView {
     fn brightness(&self, layer: LightLayer, pos: [i32; 3]) -> u8;
 }
 
-/// A mod's particle provider: NeoForge's `ParticleProvider`, created by a factory registered with
-/// [`RegisterParticleProvidersEvent::register_sprite_set`]. Particles of a type share the bound
-/// provider, so per-particle data lives in [`ModParticle::state`], not in the provider.
-///
-/// A tick has no `Host`: the engine ticks particles inside the render crate, which reaches no
-/// gameplay. It does read the level through [`ParticleLevelView`].
+/// Inputs borrowed on the particle engine's owning thread for one construction call.
+/// Keep only owned data in the particle returned by the provider.
+// no wire: holds live options, level and random loans for the duration of the call.
+#[non_exhaustive]
+pub struct ParticleSpawn<'a> {
+    /// The registered request and its typed options, before construction.
+    pub options: &'a ParticleOptions,
+    /// The raw position the caller requested, in world coordinates.
+    pub position: [f64; 3],
+    /// The raw auxiliary velocity slots the caller supplied, before constructor defaults.
+    pub velocity: [f64; 3],
+    /// Read-only access to loaded block states and stored light.
+    pub level: &'a dyn ParticleLevelView,
+    /// The engine's provider random. Draws advance the live stream in call order.
+    pub random: &'a mut dyn RandomSource,
+}
+
+/// Construct the factory's temporary loan of the live spawn inputs.
+pub fn particle_spawn<'a>(
+    options: &'a ParticleOptions,
+    position: [f64; 3],
+    velocity: [f64; 3],
+    level: &'a dyn ParticleLevelView,
+    random: &'a mut dyn RandomSource,
+) -> ParticleSpawn<'a> {
+    ParticleSpawn {
+        options,
+        position,
+        velocity,
+        level,
+        random,
+    }
+}
+
+/// Read-only access to one live particle, borrowed for the current callback only.
+// no wire: reads the engine-owned particle directly, not a snapshot.
+pub trait ParticleView {
+    /// The current position, in world coordinates.
+    fn position(&self) -> [f64; 3];
+    /// The previous tick's position, which rendering interpolates from.
+    fn previous_position(&self) -> [f64; 3];
+    /// The current velocity in blocks per tick.
+    fn velocity(&self) -> [f64; 3];
+    /// `Particle.age`: zero at construction, advanced by the particle's tick.
+    fn age(&self) -> i32;
+    /// `Particle.lifetime`: the base tick removes the particle when its pre-increment age reaches this.
+    fn lifetime(&self) -> i32;
+    /// Whether the latest collision step hit the ground.
+    fn on_ground(&self) -> bool;
+    /// Whether the particle has not been removed.
+    fn is_alive(&self) -> bool;
+    /// `SingleQuadParticle.quadSize`: the billboard half-width in blocks.
+    fn size(&self) -> f32;
+    /// Red, green, blue and alpha of the quad.
+    fn rgba(&self) -> [f32; 4];
+    /// The selected zero-based index in the bound sprite set.
+    fn sprite_index(&self) -> usize;
+    /// How the quad faces the viewer or world.
+    fn facing(&self) -> ParticleFacing;
+    /// `SingleQuadParticle.roll`: rotation about the quad normal, in radians.
+    fn roll(&self) -> f32;
+    /// The prior roll that rendering interpolates from if the current roll is nonzero.
+    fn previous_roll(&self) -> f32;
+}
+
+/// Authoritative access to one particle during its construction or tick on the owning thread.
+/// A write takes effect immediately. Invalid setter inputs are reported with the mod's name
+/// and return `false` without changing the field or killing the particle. Do not retain this view.
+// no wire: mutates a live particle and borrows its level and sprite set in process.
+pub trait ParticleTickView: ParticleView {
+    /// `Particle.setPos`: set the position and rebuild its collision box.
+    fn set_position(&mut self, position: [f64; 3]) -> bool;
+    /// Set the interpolation origin, for example to snap to a teleported position.
+    fn set_previous_position(&mut self, position: [f64; 3]) -> bool;
+    /// `Particle.setParticleSpeed`: replace the velocity, without moving yet.
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool;
+    /// Set the current age in ticks.
+    fn set_age(&mut self, age: i32);
+    /// `Particle.setLifetime`: set the age at which the base tick will remove this particle.
+    fn set_lifetime(&mut self, lifetime: i32);
+    /// Set the gravity coefficient applied by the base tick.
+    fn set_gravity(&mut self, gravity: f32) -> bool;
+    /// Set the velocity multiplier applied by the base tick after movement.
+    fn set_friction(&mut self, friction: f32) -> bool;
+    /// Whether to collide with blocks when moving.
+    fn set_has_physics(&mut self, has_physics: bool);
+    /// Set the billboard half-width, independent of the physics box.
+    fn set_size(&mut self, size: f32) -> bool;
+    /// Set red, green, blue and alpha without clamping them.
+    fn set_rgba(&mut self, rgba: [f32; 4]) -> bool;
+    /// Select an exact zero-based sprite index. An absent index is reported, not clamped.
+    fn set_sprite_index(&mut self, index: usize) -> bool;
+    /// `SingleQuadParticle.setSpriteFromAge`: select `age * (frame_count - 1) / lifetime`
+    /// with Java integer arithmetic. A removed particle is left unchanged; zero lifetime
+    /// or a missing index is reported. Returns whether a sprite was selected.
+    fn set_sprite_from_age(&mut self) -> bool;
+    /// Set the quad facing. A fixed quaternion must be finite and nonzero and is normalized.
+    fn set_facing(&mut self, facing: ParticleFacing) -> bool;
+    /// Set rotation about the quad normal, in radians.
+    fn set_roll(&mut self, roll: f32) -> bool;
+    /// `Particle.move`: apply a displacement using the particle's collision box and live level.
+    fn move_by(&mut self, displacement: [f64; 3]) -> bool;
+    /// Record the previous position and roll, increment age, and remove at the same pre-increment
+    /// lifetime check as `Particle.tick`. Returns false on expiry. Does not move the particle.
+    fn advance_age(&mut self) -> bool;
+    /// Run `Particle.tick`: capture the previous pose, check lifetime, then apply gravity,
+    /// movement and friction. Sprite selection is separate.
+    fn tick_base(&mut self);
+    /// `Particle.remove`: mark this particle to be retired by the engine.
+    fn remove(&mut self);
+}
+
+/// An owned native particle instance. Its fields are its private per-particle state. It is
+/// constructed, ticked and destroyed by the particle engine, not copied to a worker or a batch.
+// no wire: owns executable behavior and private instance state.
+pub trait CustomParticle: Send + Sync + 'static {
+    /// Tick this instance on the owning thread, with particle and level loans for this call.
+    /// The default runs the base tick. Overrides may call `tick_base` or use `advance_age`
+    /// and move themselves. A panic disables this registration's tick callback for the session
+    /// and retires its instances without disabling other registrations.
+    fn tick(&mut self, particle: &mut dyn ParticleTickView, _level: &dyn ParticleLevelView) {
+        particle.tick_base();
+    }
+}
+
+/// A mod's particle provider, bound to a sprite set by
+/// [`RegisterParticleProvidersEvent::register_sprite_set`]. The provider is shared by that
+/// type's spawns; the `CustomParticle` it constructs is not shared.
+// no wire: retained native factory called with scoped level and particle loans.
 pub trait ParticleProvider: Send + Sync + 'static {
-    /// `Particle.tick` for every live particle of this provider's type: one call per type per
-    /// tick, with the whole batch. The game has set `previous` and `age`
-    /// on each already and expires a particle once `age` passes `lifetime`; the tick sets
-    /// `position`, `frame`, `size`, `rgba`, `lifetime`, `removed`, `facing` and `roll`. A number
-    /// that is not finite expires the particle. Batch iteration preserves length and order.
-    /// Set `removed` to expire a particle. If a callback returns a different length, the engine
-    /// expires the batch's particles. Not called when no particle of the type is alive.
-    /// A failed call does not apply the batch. A panic disables this provider registration for
-    /// the session and is reported with its mod in the log and the client error toast.
-    fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView);
+    /// `ParticleProvider.createParticle`: construct one instance synchronously with the spawn
+    /// inputs and a mutable view seeded with the particle's constructor defaults. Return `None`
+    /// to decline this spawn. A returned particle joins the normal pending queue and may still
+    /// be rejected by group admission. A panic disables this registration's create callback for
+    /// the session and is reported with the mod's name in the log and client error toast.
+    fn create_particle(
+        &self,
+        spawn: &mut ParticleSpawn<'_>,
+        particle: &mut dyn ParticleTickView,
+    ) -> Option<Box<dyn CustomParticle>>;
 }
 
 /// The nonempty sprite set bound for a provider on this resource load. It describes the frames

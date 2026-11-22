@@ -1947,9 +1947,8 @@ declarations to newly spawned particles; live particles keep their spawn-time va
 The engine copies fixed-size numeric data at spawn and performs no new allocations per particle
 tick. Declarations support linear size/opacity curves and constant gravity/friction; for per-particle
 code, call `event.register_sprite_set(id, factory)` in `register_particle_providers` ("Particle
-providers"). The game binds the factory when that type's sprites load. The resulting provider
-replaces the declared motion (its tick moves the particle) but the declared spawn values still
-seed it.
+providers"). The game binds the factory when that type's sprites load. The declared spawn values
+seed each new instance; that instance owns its tick behavior.
 
 `register_particle_groups(context, event)` binds a namespaced `Identifier` to a factory with
 `event.register(id, factory)` once at client startup. The factory captures owned data

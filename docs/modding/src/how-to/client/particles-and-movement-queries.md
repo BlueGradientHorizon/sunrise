@@ -44,53 +44,79 @@ velocity and the level's light.
 
 ### Particle providers
 
-A particle provider (`Hooks::register_particle_providers`) moves a mod's own particle type with code. The type is
-named by its id (`mymod:spark`), its sprite set and spawn values are the declarative
-`assets/<namespace>/particles/<path>.json`, and it is spawned with `ParticleOptions::simple` on the key
-`Registrar::particle_key` issued for the ID. Register a factory on the client at startup:
+A particle provider (`Hooks::register_particle_providers`) gives a registered particle type its own
+construction and tick behavior. The type is named by its ID (`mymod:spark`); its sprite set and
+spawn defaults come from `assets/<namespace>/particles/<path>.json`. Make a request with
+`ParticleOptions::simple` (or another typed option constructor) on the key returned by
+`Registrar::particle_key`. Register a factory on the client at startup:
 
 ```rust,ignore
+struct SparkProvider;
+struct Spark { rise: f64 }
+
+impl ParticleProvider for SparkProvider {
+    fn create_particle(
+        &self,
+        spawn: &mut ParticleSpawn<'_>,
+        particle: &mut dyn ParticleTickView,
+    ) -> Option<Box<dyn CustomParticle>> {
+        particle.set_lifetime(20);
+        Some(Box::new(Spark { rise: spawn.velocity[1] }))
+    }
+}
+
+impl CustomParticle for Spark {
+    fn tick(&mut self, particle: &mut dyn ParticleTickView, _level: &dyn ParticleLevelView) {
+        if particle.advance_age() {
+            particle.move_by([0.0, self.rise, 0.0]);
+            particle.set_sprite_from_age();
+        }
+    }
+}
+
 fn register_particle_providers(
     &self,
     _context: &RegistrationContext,
     event: &mut RegisterParticleProvidersEvent<'_>,
 ) {
-    event.register_sprite_set(Identifier::parse("mymod:spark").unwrap(), |sprites| {
-        SparkProvider::new(sprites.frame_count())
-    });
+    event.register_sprite_set(Identifier::parse("mymod:spark").unwrap(), |_| SparkProvider);
 }
 ```
 
 The factory captures owned `Send + Sync + 'static` data and returns a `ParticleProvider`.
 The last accepted registration for an ID wins. Its factory runs once per sprite load, including
-reloads, with a `ParticleSpriteSet` that describes the nonempty frame list for that load. No
-atlas data or engine handles are exposed. A missing set or failed bind is reported for the ID
-and its mod; that type does not spawn, rather than falling back to declarative motion. Types
-without a provider registration still use their declarations.
+reloads, with a `ParticleSpriteSet` whose `frame_count()` reports the number of frames. No atlas
+or engine handles are exposed. A missing set or failed bind is reported for the ID and its mod;
+that type does not spawn. Types without a registration still use their declarations.
 
-The game calls `ParticleProvider::tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView)`
-once per type per tick, after it has aged the particles, with every live particle of the type; it is not called
-when none is alive, and a registered provider with no particle alive is not visited. Batch iteration
-(`for particle in particles`) preserves length and order. Set `removed` to expire a particle. If a callback
-returns a different length, the engine expires the batch's particles.
+After the camera-distance and Particles-setting checks, `create_particle` runs synchronously.
+`ParticleSpawn` borrows the original typed options, raw position and velocity, the loaded level
+and the engine's live provider RNG. The mutable `ParticleTickView` starts with the declaration's
+spawn defaults. Return `None` to decline this spawn, or return a fresh owned instance with its
+state in its own fields. It joins the ordinary FIFO; the render group can still reject it when
+admitting particles. The views are loans for that call only, not values to retain in the instance.
 
-Each `ModParticle` carries the particle's pose and look: `position`, `previous`, `velocity`, `size`, `rgba`, `frame`,
-`state` (four numbers kept from tick to tick), a `facing` and a `roll`. `facing` is `Camera` (vanilla's
-`LOOKAT_XYZ`), `AroundY` (`LOOKAT_Y`, which uses the camera's rotation about Y alone) or `Fixed([x, y, z, w])`, a
-world-fixed unit quaternion that turns the quad's default plane (corners in XY, facing +Z); a quad lying flat facing up is
-`[-sin(pi/4), 0, 0, cos(pi/4)]`. `roll` turns the quad about its own normal in radians, interpolated from the previous
-tick's value, and nothing is drawn rotated while it is zero. A number that is not finite, a position past the world's limit,
-a quaternion of no length and a roll beyond half of `f32::MAX` expire the particle.
+The default `CustomParticle::tick` calls `tick_base` for vanilla's lifetime check, movement and
+friction. If you override it, call `tick_base` or use `advance_age` to capture the previous pose
+and check the lifetime before applying your own motion. Age starts at zero and the base check
+removes the particle when its age at the start of the tick reaches its lifetime. Call `remove`
+to end it sooner. `move_by` uses the collision box and loaded level; `set_position` relocates the
+particle with its collision box, without changing the previous position used for interpolation.
 
-`ParticleLevelView` reads the loaded level around the particles, read-only: `block_state(pos)` and
-`brightness(layer, pos)`. A missing chunk reads as air. Light follows the render world's stored light; a dimension
-without skylight always reads zero on the sky layer. Currently, an absent chunk or a position above the build height
-reads full sky where present and no block light; below a loaded column both layers read zero. The client light storage
-for padding sections and unloaded borders is tracked in [#2761](https://github.com/sunrise-org/sunrise/issues/2761).
+Use `set_sprite_index` for an exact frame or `set_sprite_from_age` for vanilla's
+`age * (frame_count - 1) / lifetime`. An invalid index or a zero divisor is reported and leaves
+the sprite unchanged. Malformed inputs to other setters are reported without changing their
+field or expiring the particle. `ParticleFacing::Camera` faces the camera; `AroundY` uses the
+camera quaternion's Y and W components alone; `Fixed([x, y, z, w])` sets a world orientation.
+`set_roll` turns the quad about its own normal, interpolated from the previous roll when the
+current roll is nonzero.
 
-Dispatch reuses its batch storage once it has enough capacity. A provider callback panic is
-reported in the log and error toast with the mod's name, and disables that registration for the
-session. Live provider particles are discarded when the sprite sets reload.
+`ParticleLevelView` reads loaded `block_state(pos)` and stored `brightness(layer, pos)` during
+construction and tick. A missing chunk reads as air; the sky layer always reads zero in a
+dimension without sky light. The instance ticks on the particle engine's owning thread. A panic
+is reported in the log and error toast with the mod's name and disables that registration's
+panicking callback kind for the session; other callbacks continue. A phase refusal is reported
+without disabling the callback. Existing native instances are discarded when sprites reload.
 
 ### Particle render groups
 

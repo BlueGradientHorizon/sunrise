@@ -100,13 +100,13 @@ impl Group {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        native::tests::{Scene, provider_factories},
+        native::tests::{Scene, fixture_options, provider_factories},
         *,
     };
     use super::{Group, ParticleGroup, freeze};
     use mod_api::{
-        __private::game::RegistrationContextNew, Identifier, ParticleBatch, ParticleLevelView,
-        ParticleProvider, RegistrationContext,
+        __private::game::RegistrationContextNew, CustomParticle, Identifier, ParticleLevelView,
+        ParticleProvider, ParticleSpawn, ParticleTickView, RegistrationContext,
     };
     use std::{collections::BTreeMap, sync::Mutex};
     use sunrise_assets::resource_source::Resource;
@@ -200,13 +200,20 @@ mod tests {
         });
     }
 
-    /// Moves a particle to a fixed spot on each tick, so a drawn quad says where it is.
+    /// Stays at the spawn point while participating in the usual lifetime check.
     struct Stay;
     impl ParticleProvider for Stay {
-        fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
-            for particle in particles {
-                particle.position = particle.previous;
-            }
+        fn create_particle(
+            &self,
+            _: &mut ParticleSpawn<'_>,
+            _: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            Some(Box::new(Self))
+        }
+    }
+    impl CustomParticle for Stay {
+        fn tick(&mut self, particle: &mut dyn ParticleTickView, _: &dyn ParticleLevelView) {
+            particle.advance_age();
         }
     }
 
@@ -256,7 +263,7 @@ mod tests {
         }
         /// An engine with the shade provider and already constructed group definitions.
         fn engine(&self, groups: Vec<Group>) -> ParticleEngine {
-            let factories = provider_factories("mymod:shade", Arc::new(Stay));
+            let factories = provider_factories([("mymod:shade", Arc::new(Stay))]);
             let mut e = ParticleEngine::with_factories(
                 &self.root,
                 &self.atlas,
@@ -266,6 +273,7 @@ mod tests {
             );
             e.groups = groups;
             e.resolve_groups();
+            e.set_block_state_source(|| Some(Arc::new(Vec::<mod_api::BlockState>::new())));
             e
         }
         fn reload(&self, e: &mut ParticleEngine) {
@@ -273,9 +281,18 @@ mod tests {
         }
     }
 
-    fn spawn(e: &mut ParticleEngine, options: &ParticleOptions, x: f64) {
+    fn spawn(e: &mut ParticleEngine, level: &ParticleLevel<'_>, options: &ParticleOptions, x: f64) {
         let mut p = e
-            .make(options, [x, 0.0, 0.0], [0.0; 3], 1, SpawnScope::BARE)
+            .make(
+                options,
+                [x, 0.0, 0.0],
+                [0.0; 3],
+                1,
+                SpawnScope {
+                    level: Some(level),
+                    mod_options: Some(&fixture_options()),
+                },
+            )
             .unwrap();
         p.lifetime = 2;
         p.size = 0.5;
@@ -336,10 +353,15 @@ mod tests {
             ("mymod:glow", 2.0),
             ("mymod:orbit", 4.0),
         ] {
-            spawn(&mut e, &ParticleOptions::named(name), x);
+            spawn(&mut e, &level, &ParticleOptions::named(name), x);
         }
-        spawn(&mut e, &ParticleOptions::named("mymod:plain"), 1.0);
-        spawn(&mut e, &ParticleOptions::simple(ParticleType::Flame), 0.0);
+        spawn(&mut e, &level, &ParticleOptions::named("mymod:plain"), 1.0);
+        spawn(
+            &mut e,
+            &level,
+            &ParticleOptions::simple(ParticleType::Flame),
+            0.0,
+        );
         e.tick(&level);
         assert_eq!(
             (
@@ -374,13 +396,17 @@ mod tests {
             group("mymod:shade", ParticleBlend::Opaque, &["mymod:shade"]),
         ]);
         let options = ParticleOptions::named("mymod:glow");
-        let mut full = e
-            .make(&options, [0.0; 3], [0.0; 3], 1, SpawnScope::BARE)
-            .unwrap();
-        full.lifetime = 100;
-        e.groups[0].particles = vec![full; MAX_PARTICLES];
+        e.groups[0].particles = (0..MAX_PARTICLES)
+            .map(|_| {
+                let mut particle = e
+                    .make(&options, [0.0; 3], [0.0; 3], 1, SpawnScope::BARE)
+                    .unwrap();
+                particle.lifetime = 100;
+                particle
+            })
+            .collect();
         for name in ["mymod:glow", "mymod:shade", "mymod:plain"] {
-            spawn(&mut e, &ParticleOptions::named(name), 0.0);
+            spawn(&mut e, &level, &ParticleOptions::named(name), 0.0);
         }
         e.tick(&level);
         // Group 0 is full, so its newcomer is refused; the other groups and the built-in one

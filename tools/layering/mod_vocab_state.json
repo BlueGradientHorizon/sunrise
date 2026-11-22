@@ -39,6 +39,11 @@
     "category": "reentrancy guard",
     "reason": "Per-thread flag marking that a retained mod callback is currently running under CallbackOwner containment so the panic hook knows the unwind will be caught and reported."
   },
+  "callback_owner.rs::TEST_NOTICES": {
+    "type": "RefCell<Option<Vec<CallbackPanicNotice>>>",
+    "category": "scoped test fixture",
+    "reason": "With the testing feature, captures retained callback panic notices only inside the owning test thread's scope, without touching the shared toast queue."
+  },
   "client/arm_pose.rs::TEST_POSES": {
     "type": "std::cell::Cell<Option<&'static[PoseInfo]>>",
     "category": "Parts lookup table",

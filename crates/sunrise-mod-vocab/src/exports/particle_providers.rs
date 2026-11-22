@@ -1,13 +1,12 @@
 use client::particle_providers::ParticleProviderRegistration;
 pub use client::particle_providers::{
-    ModParticle, ParticleBatch, ParticleFacing, ParticleLevelView, ParticleProvider,
-    ParticleSpriteSet,
+    CustomParticle, ParticleFacing, ParticleLevelView, ParticleProvider, ParticleSpawn,
+    ParticleSpriteSet, ParticleTickView, ParticleView,
 };
 mod __private {
-    pub use crate::client::particle_providers::{particle_batch_from_vec, particle_batch_into_vec};
     mod game {
         pub use crate::client::particle_providers::{
-            ParticleProviderRegistration, particle_sprite_set,
+            ParticleProviderRegistration, particle_spawn, particle_sprite_set,
         };
     }
 }

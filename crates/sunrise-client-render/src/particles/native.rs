@@ -1,15 +1,19 @@
 //! Opt-in, compiled particle behavior. The ordinary engine still owns the
 //! particle, its sprite set, interpolation, rendering and total count limits.
 use super::{
-    Behaviour, Particle, ParticleEngine, ParticleLevel, ParticleOptions, ParticleType, Sprite,
+    Behaviour, Particle, ParticleEngine, ParticleLevel, ParticleOptions, ParticleType, SpawnScope,
+    Sprite,
 };
 use mod_api::{
-    __private::game::{CallbackOwner, ParticleProviderRegistration},
-    Answered, BlockState, Identifier, LightLayer, ModParticle, ParticleFacing, ParticleLevelView,
-    ParticleProvider, ParticleSpriteSet,
+    __private::game::{CallbackOwner, ParticleProviderRegistration, particle_spawn},
+    Answered, BlockState, CustomParticle, Identifier, LightLayer, ParticleFacing,
+    ParticleLevelView, ParticleProvider, ParticleSpriteSet, ParticleTickView, ParticleView,
 };
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{collections::BTreeMap, fmt::Debug, sync::Arc, sync::OnceLock};
+use std::{
+    collections::BTreeMap,
+    fmt::Debug,
+    sync::{Arc, OnceLock},
+};
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
 /// Requests made by one particle tick, submitted through normal spawn limits.
@@ -20,9 +24,9 @@ pub struct ParticleUpdate {
     pub spawned: Vec<(ParticleOptions, [f64; 3], [f64; 3])>,
 }
 
-/// Owned behavior for a compiled native particle. Cloning a particle clones its
-/// controller state. Do not retain world references; inspect `level` each tick.
-pub trait ParticleController: Clone + Debug + Send + Sync + 'static {
+/// Engine-side controller for a compiled particle, separate from mod providers.
+/// Do not retain world references; inspect `level` each tick.
+pub trait ParticleController: Debug + Send + Sync + 'static {
     /// Call `particle.advance_age()` for ordinary lifetime/interpolation, or
     /// explicitly maintain those fields for an overridden source tick.
     fn tick(&mut self, particle: &mut Particle, level: &ParticleLevel<'_>) -> ParticleUpdate;
@@ -77,11 +81,18 @@ pub(super) fn freeze(providers: Vec<Answered<ParticleProviderRegistration>>) -> 
             continue;
         };
         let key = answer.id.to_string();
+        let callbacks = Arc::new(ProviderCallbacks {
+            id: answer.id.clone(),
+            create: CallbackOwner::for_mod(mod_id),
+            tick: CallbackOwner::for_mod(mod_id),
+            dispose: CallbackOwner::for_mod(mod_id),
+        });
         if let Some(previous) = factories.insert(
             key,
             Factory {
                 registration: Some(answer),
                 owner,
+                callbacks,
             },
         ) {
             let registration = previous.registration.as_ref().expect("frozen factory");
@@ -98,21 +109,24 @@ pub(super) fn freeze(providers: Vec<Answered<ParticleProviderRegistration>>) -> 
 pub(super) struct Factory {
     registration: Option<ParticleProviderRegistration>,
     owner: CallbackOwner,
+    callbacks: Arc<ProviderCallbacks>,
 }
 
 impl Factory {
-    pub(super) fn bind(&self, slot: usize, sprites: ParticleSpriteSet) -> Binding {
+    pub(super) fn bind(&self, sprites: ParticleSpriteSet) -> Binding {
         let registration = self.registration.as_ref().expect("frozen factory");
+        let mut binding = BoundProvider {
+            callbacks: Arc::clone(&self.callbacks),
+            provider: None,
+        };
+        // If a factory catches its own phase unwind, a returned provider is still disposed
+        // under its owner instead of being dropped by the refusal boundary.
         match self
             .owner
             .call("particle provider", "bind_particle_provider", || {
-                BoundProvider {
-                    id: registration.id.clone(),
-                    owner: self.owner.clone(),
-                    tick: Some((registration.factory)(sprites)),
-                }
+                binding.provider = Some((registration.factory)(sprites));
             }) {
-            Ok(provider) => Binding::Bound(slot, Arc::new(provider)),
+            Ok(()) => Binding::Bound(binding),
             Err(error) => {
                 log::warn!("Particle provider {}: {error}", registration.id);
                 Binding::Unavailable
@@ -127,7 +141,7 @@ impl Factory {
 
 impl Drop for Factory {
     fn drop(&mut self) {
-        self.owner.dispose(
+        self.callbacks.dispose.dispose(
             "particle provider",
             "drop_particle_provider_factory",
             self.registration.take(),
@@ -135,103 +149,113 @@ impl Drop for Factory {
     }
 }
 
-#[derive(Clone)]
 pub(super) enum Binding {
     Declarative,
     Unavailable,
-    Bound(usize, Arc<BoundProvider>),
+    Bound(BoundProvider),
+}
+
+/// Set up once for the winning registration and shared across loads and instances.
+struct ProviderCallbacks {
+    id: Identifier,
+    create: CallbackOwner,
+    tick: CallbackOwner,
+    dispose: CallbackOwner,
 }
 
 pub(super) struct BoundProvider {
-    id: Identifier,
-    owner: CallbackOwner,
-    tick: Option<Box<dyn ParticleProvider>>,
+    callbacks: Arc<ProviderCallbacks>,
+    provider: Option<Box<dyn ParticleProvider>>,
 }
 
 impl Drop for BoundProvider {
     fn drop(&mut self) {
-        self.owner.dispose(
-            "particle provider",
-            "drop_particle_provider",
-            self.tick.take(),
-        );
+        if let Some(provider) = self.provider.take() {
+            self.callbacks
+                .dispose
+                .dispose("particle provider", "drop_particle_provider", provider);
+        }
     }
 }
 
-/// How far from the origin a provider may move a particle: the world border's limit. Past it, or
-/// not a number, the particle expires rather than reach the renderer.
-const LIMIT: f64 = 3.0e7;
-
-/// How large a roll a provider may leave, in radians: half of `f32::MAX`, so the difference of
-/// two accepted rolls, which the renderer interpolates, is a finite number. Past it, or not a
-/// number, the particle expires.
-const ROLL_LIMIT: f32 = f32::MAX / 2.0;
-
-/// A particle of a mod's code-defined type. It owns the particle's behaviour for the engine: age
-/// and expiry stay the engine's, the motion is the provider's, called once per type per tick with
-/// every live particle of the type ([`Batch::run`]). Holds the provider the type resolved to when
-/// its sprite sets loaded, so a tick dispatches straight to it.
+/// One native instance and the quad presentation state initialized with its sprite set.
 pub(super) struct Provided {
-    provider: Arc<BoundProvider>,
-    /// The provider's dense slot among the registered ones, which its batch is filled by.
-    slot: usize,
-    /// `ModParticle::state`, kept from one tick to the next.
-    state: [f64; 4],
-    /// The frame of the sprite set drawn, as the provider last saw it.
-    frame: u32,
-    /// The engine aged the particle this tick and the provider has not run on it yet.
-    pending: bool,
-    /// How the quad turns toward the viewer, as the provider last set it.
+    callbacks: Arc<ProviderCallbacks>,
+    instance: Option<Box<dyn CustomParticle>>,
+    frame: usize,
     facing: Facing,
-    /// The engine's count of live provider particles, which this one is part of until it drops.
-    live: Arc<AtomicUsize>,
 }
-/// A provider particle's facing, as the renderer keeps it (`ParticleFacing`, the quaternion
-/// already normalised).
+
 #[derive(Clone, Copy, Debug)]
 enum Facing {
     Camera,
     AroundY,
     Fixed(glam::Quat),
 }
-impl Clone for Provided {
-    fn clone(&self) -> Self {
-        self.live.fetch_add(1, Ordering::Relaxed);
-        Self {
-            provider: self.provider.clone(),
-            slot: self.slot,
-            state: self.state,
-            frame: self.frame,
-            pending: self.pending,
-            facing: self.facing,
-            live: self.live.clone(),
+
+impl Drop for Provided {
+    fn drop(&mut self) {
+        if let Some(instance) = self.instance.take() {
+            self.callbacks
+                .dispose
+                .dispose("particle provider", "drop_custom_particle", instance);
         }
     }
 }
-impl Drop for Provided {
-    fn drop(&mut self) {
-        self.live.fetch_sub(1, Ordering::Relaxed);
-    }
-}
+
 impl Debug for Provided {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Provided")
-            .field("state", &self.state)
+            .field("id", &self.callbacks.id)
             .field("frame", &self.frame)
             .finish_non_exhaustive()
     }
 }
+
 impl Provided {
-    fn new(provider: Arc<BoundProvider>, slot: usize, frame: u32, live: &Arc<AtomicUsize>) -> Self {
-        live.fetch_add(1, Ordering::Relaxed);
-        Self {
-            provider,
-            slot,
-            state: [0.0; 4],
-            frame,
-            pending: false,
-            facing: Facing::Camera,
-            live: live.clone(),
+    pub(super) fn tick(
+        &mut self,
+        engine: &ParticleEngine,
+        particle: &mut Particle,
+        level: &ParticleLevel<'_>,
+    ) {
+        let owner = &self.callbacks.tick;
+        // A sibling instance may already have poisoned the shared callback.
+        if owner.is_poisoned() {
+            particle.remove();
+            return;
+        }
+        let Some(states) = (engine.block_state_source)() else {
+            log::warn!(
+                "Particle provider {} from mod {}: no block states for tick",
+                self.callbacks.id,
+                owner.id()
+            );
+            return;
+        };
+        let level = ProviderLevel {
+            level,
+            states: (*states).as_ref(),
+        };
+        let set = particle.set.expect("provided particle has a sprite set");
+        let mut view = LiveParticle {
+            particle,
+            level: level.level,
+            sprites: &engine.set_sprites[set as usize],
+            frame: &mut self.frame,
+            facing: &mut self.facing,
+            callbacks: &self.callbacks,
+        };
+        if let Err(error) = owner.call("particle provider", "tick_custom_particle", || {
+            self.instance
+                .as_mut()
+                .expect("owned particle")
+                .tick(&mut view, &level);
+        }) {
+            log::warn!("Particle provider {}: {error}", self.callbacks.id);
+            if owner.is_poisoned() {
+                particle.remove();
+            }
         }
     }
     /// The quad's rotation at `partial` of a tick (`SingleQuadParticle.extract`): the facing's
@@ -273,174 +297,239 @@ impl Provided {
         };
         glam::Quat::from_xyzw(turned.x, turned.y, turned.z, turned.w)
     }
-    /// The engine's part of the tick: age, `previous` and expiry. A particle that survives it
-    /// joins this tick's batch.
-    pub(super) fn age(&mut self, particle: &mut Particle) {
-        self.pending = particle.advance_age();
+}
+
+struct LiveParticle<'a, 'l> {
+    particle: &'a mut Particle,
+    level: &'a ParticleLevel<'l>,
+    sprites: &'a [u32],
+    frame: &'a mut usize,
+    facing: &'a mut Facing,
+    callbacks: &'a ProviderCallbacks,
+}
+
+impl LiveParticle<'_, '_> {
+    #[cold]
+    fn reject(&self, input: &'static str) -> bool {
+        log::warn!(
+            "Particle provider {} from mod {}: invalid {input}",
+            self.callbacks.id,
+            self.callbacks.tick.id(),
+        );
+        false
     }
 }
 
-/// The batches of one tick, kept between ticks so native dispatch allocates nothing once warm.
-/// One pass over the particles sorts them into a bucket per provider (by the dense slot the
-/// provider was given when it registered); each provider then runs once on its bucket.
-#[derive(Default)]
-pub(super) struct Batch {
-    /// The particle indices of each provider slot's batch.
-    buckets: Vec<Vec<usize>>,
-    /// The slots whose bucket holds a particle this pass, in the order they were first met.
-    active: Vec<usize>,
-    views: Vec<ModParticle>,
-}
-impl Batch {
-    /// Sorts the particles the engine aged this tick into a bucket per provider slot. Whether
-    /// any provider has a particle to tick.
-    pub(super) fn gather(&mut self, particles: &[Particle]) -> bool {
-        for slot in self.active.drain(..) {
-            self.buckets[slot].clear();
-        }
-        for (i, p) in particles.iter().enumerate() {
-            if let Some(provided) = p.provided.as_ref().filter(|q| q.pending) {
-                let slot = provided.slot;
-                if self.buckets.len() <= slot {
-                    self.buckets.resize_with(slot + 1, Vec::new);
-                }
-                if self.buckets[slot].is_empty() {
-                    self.active.push(slot);
-                }
-                self.buckets[slot].push(i);
-            }
-        }
-        !self.active.is_empty()
+impl ParticleView for LiveParticle<'_, '_> {
+    fn position(&self) -> [f64; 3] {
+        self.particle.position
     }
-    /// Calls each provider once with the particles [`Batch::gather`] found for it, then takes the
-    /// results back: a particle that leaves a number past the world's limit or not finite
-    /// expires.
-    pub(super) fn run(
-        &mut self,
-        particles: &mut [Particle],
-        level: &dyn ParticleLevelView,
-        mut set_frame: impl FnMut(&mut Particle, usize),
-    ) {
-        for &slot in &self.active {
-            let bucket = &self.buckets[slot];
-            let provider = particles[bucket[0]]
-                .provided
-                .as_ref()
-                .map(|provided| provided.provider.clone())
-                .expect("a bucket holds provider particles");
-            self.views.clear();
-            for &i in bucket {
-                let p = &particles[i];
-                let provided = p
-                    .provided
-                    .as_ref()
-                    .expect("a bucket holds provider particles");
-                self.views.push(ModParticle {
-                    position: p.position,
-                    previous: p.previous,
-                    velocity: p.velocity,
-                    age: p.age,
-                    lifetime: p.lifetime,
-                    size: p.size,
-                    rgba: p.rgba,
-                    frame: provided.frame,
-                    removed: false,
-                    state: provided.state,
-                    facing: p.facing(),
-                    roll: p.roll,
-                });
-            }
-            let mut batch =
-                mod_api::__private::particle_batch_from_vec(std::mem::take(&mut self.views));
-            let ran = provider
-                .owner
-                .call("particle provider", "tick_particle_provider", || {
-                    provider
-                        .tick
-                        .as_ref()
-                        .expect("bound provider")
-                        .tick(&mut batch, level);
-                });
-            self.views = mod_api::__private::particle_batch_into_vec(batch);
-            if let Err(error) = ran {
-                log::warn!("Particle provider {}: {error}", provider.id);
-                for &i in bucket {
-                    particles[i]
-                        .provided
-                        .as_mut()
-                        .expect("a bucket holds provider particles")
-                        .pending = false;
-                }
-                continue;
-            }
-            if self.views.len() != bucket.len() {
-                // A guest handed back a batch of another size: nothing of it can be matched to a particle.
-                for &i in bucket {
-                    particles[i].remove();
-                }
-                continue;
-            }
-            for (view, &i) in self.views.iter().zip(bucket) {
-                if let Some(frame) = particles[i].take(view) {
-                    set_frame(&mut particles[i], frame);
-                }
-            }
-        }
+    fn previous_position(&self) -> [f64; 3] {
+        self.particle.previous
     }
-}
-impl Particle {
-    /// The facing the provider sees.
+    fn velocity(&self) -> [f64; 3] {
+        self.particle.velocity
+    }
+    fn age(&self) -> i32 {
+        self.particle.age
+    }
+    fn lifetime(&self) -> i32 {
+        self.particle.lifetime
+    }
+    fn on_ground(&self) -> bool {
+        self.particle.on_ground
+    }
+    fn is_alive(&self) -> bool {
+        self.particle.is_alive()
+    }
+    fn size(&self) -> f32 {
+        self.particle.size
+    }
+    fn rgba(&self) -> [f32; 4] {
+        self.particle.rgba
+    }
+    fn sprite_index(&self) -> usize {
+        *self.frame
+    }
     fn facing(&self) -> ParticleFacing {
-        match self.provided.as_ref().map(|q| q.facing) {
-            Some(Facing::Fixed(q)) => ParticleFacing::Fixed(q.to_array()),
-            Some(Facing::AroundY) => ParticleFacing::AroundY,
-            _ => ParticleFacing::Camera,
+        match *self.facing {
+            Facing::Camera => ParticleFacing::Camera,
+            Facing::AroundY => ParticleFacing::AroundY,
+            Facing::Fixed(q) => ParticleFacing::Fixed(q.to_array()),
         }
     }
-    /// What a provider's tick left of the particle, validated as the renderer needs it.
-    fn take(&mut self, view: &ModParticle) -> Option<usize> {
-        let finite = |v: &[f64; 3]| v.iter().all(|c| c.abs() <= LIMIT);
-        let facing = match view.facing {
-            ParticleFacing::Fixed(q) => {
-                let q = glam::Quat::from_array(q);
-                let length_squared = q.length_squared();
-                (length_squared.is_finite() && length_squared > 0.0)
-                    .then(|| Facing::Fixed(q.normalize()))
-            }
-            ParticleFacing::AroundY => Some(Facing::AroundY),
-            ParticleFacing::Camera => Some(Facing::Camera),
-        };
-        let provided = self.provided.as_mut()?;
-        provided.pending = false;
-        let Some(facing) = facing else {
-            self.remove();
-            return None;
-        };
-        if view.removed
-            || !finite(&view.position)
-            || !finite(&view.previous)
-            || !finite(&view.velocity)
-            || !view.size.is_finite()
-            || !view.roll.is_finite()
-            || view.roll.abs() > ROLL_LIMIT
-            || !view.rgba.iter().all(|c| c.is_finite())
-        {
-            self.remove();
-            return None;
+    fn roll(&self) -> f32 {
+        self.particle.roll
+    }
+    fn previous_roll(&self) -> f32 {
+        self.particle.o_roll
+    }
+}
+
+impl ParticleTickView for LiveParticle<'_, '_> {
+    fn set_position(&mut self, position: [f64; 3]) -> bool {
+        if !position.into_iter().all(f64::is_finite) {
+            return self.reject("position");
         }
-        self.position = view.position;
-        self.previous = view.previous;
-        self.velocity = view.velocity;
-        self.lifetime = view.lifetime;
-        // The declarative range of a mod particle's size (`sunrise:behaviour`) and of its colour.
-        self.size = view.size.clamp(0.0, 16.0);
-        self.rgba = view.rgba.map(|c| c.clamp(0.0, 1.0));
-        self.roll = view.roll;
-        provided.facing = facing;
-        provided.state = view.state;
-        let changed = view.frame != provided.frame;
-        provided.frame = view.frame;
-        changed.then_some(view.frame as usize)
+        self.particle.set_pos(position);
+        true
+    }
+
+    fn set_previous_position(&mut self, position: [f64; 3]) -> bool {
+        if !position.into_iter().all(f64::is_finite) {
+            return self.reject("previous position");
+        }
+        self.particle.previous = position;
+        true
+    }
+
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
+        if !velocity.into_iter().all(f64::is_finite) {
+            return self.reject("velocity");
+        }
+        self.particle.velocity = velocity;
+        true
+    }
+
+    fn set_age(&mut self, age: i32) {
+        self.particle.age = age;
+    }
+    fn set_lifetime(&mut self, lifetime: i32) {
+        self.particle.lifetime = lifetime;
+    }
+    fn set_has_physics(&mut self, has_physics: bool) {
+        self.particle.has_physics = has_physics;
+    }
+
+    fn set_gravity(&mut self, gravity: f32) -> bool {
+        if !gravity.is_finite() {
+            return self.reject("gravity");
+        }
+        self.particle.gravity = gravity;
+        true
+    }
+
+    fn set_friction(&mut self, friction: f32) -> bool {
+        if !friction.is_finite() {
+            return self.reject("friction");
+        }
+        self.particle.friction = friction;
+        true
+    }
+
+    fn set_size(&mut self, size: f32) -> bool {
+        if !size.is_finite() {
+            return self.reject("quad size");
+        }
+        self.particle.size = size;
+        true
+    }
+
+    fn set_rgba(&mut self, rgba: [f32; 4]) -> bool {
+        if !rgba.into_iter().all(f32::is_finite) {
+            return self.reject("quad color");
+        }
+        self.particle.rgba = rgba;
+        true
+    }
+
+    fn set_sprite_index(&mut self, index: usize) -> bool {
+        let Some(&sprite) = self.sprites.get(index) else {
+            return self.reject("sprite index");
+        };
+        *self.frame = index;
+        self.particle.sprite = Sprite::Index(sprite);
+        true
+    }
+
+    fn set_sprite_from_age(&mut self) -> bool {
+        if !self.particle.is_alive() {
+            return false;
+        }
+        let lifetime = self.particle.lifetime;
+        if lifetime == 0 {
+            return self.reject("zero lifetime for sprite selection");
+        }
+        let index = self
+            .particle
+            .age
+            .wrapping_mul((self.sprites.len() - 1) as i32)
+            .wrapping_div(lifetime);
+        self.set_sprite_index(index as usize)
+    }
+
+    fn set_facing(&mut self, facing: ParticleFacing) -> bool {
+        *self.facing = match facing {
+            ParticleFacing::Camera => Facing::Camera,
+            ParticleFacing::AroundY => Facing::AroundY,
+            ParticleFacing::Fixed(q) => {
+                // Widen for the norm so every finite nonzero f32 quaternion can be normalized.
+                let q = glam::DQuat::from_array(q.map(f64::from));
+                let length = q.length();
+                if !length.is_finite() || length == 0.0 {
+                    return self.reject("fixed facing");
+                }
+                Facing::Fixed(glam::Quat::from_array(
+                    q.to_array().map(|value| (value / length) as f32),
+                ))
+            }
+        };
+        true
+    }
+
+    fn set_roll(&mut self, roll: f32) -> bool {
+        if !roll.is_finite() {
+            return self.reject("roll");
+        }
+        self.particle.roll = roll;
+        true
+    }
+
+    fn move_by(&mut self, displacement: [f64; 3]) -> bool {
+        if !displacement.into_iter().all(f64::is_finite) {
+            return self.reject("displacement");
+        }
+        self.particle.move_by(self.level, displacement);
+        true
+    }
+
+    fn advance_age(&mut self) -> bool {
+        self.particle.advance_age()
+    }
+
+    fn tick_base(&mut self) {
+        self.particle.o_roll = self.particle.roll;
+        self.particle.base_tick(self.level);
+    }
+
+    fn remove(&mut self) {
+        self.particle.remove();
+    }
+}
+
+struct ProviderRandom<'a>(&'a mut LegacyRandom);
+
+impl mod_api::RandomSource for ProviderRandom<'_> {
+    fn next_int(&mut self) -> i32 {
+        self.0.next_int()
+    }
+    fn next_int_bound(&mut self, bound: i32) -> i32 {
+        self.0.next_int_bound(bound).unwrap_or(0)
+    }
+    fn next_long(&mut self) -> i64 {
+        self.0.next_long()
+    }
+    fn next_boolean(&mut self) -> bool {
+        self.0.next_boolean()
+    }
+    fn next_float(&mut self) -> f32 {
+        self.0.next_float()
+    }
+    fn next_double(&mut self) -> f64 {
+        self.0.next_double()
+    }
+    fn next_gaussian(&mut self) -> f64 {
+        self.0.next_gaussian()
     }
 }
 
@@ -470,85 +559,96 @@ impl ParticleEngine {
     pub(super) fn make_named(
         &mut self,
         name: &str,
+        options: &ParticleOptions,
         p: [f64; 3],
         v: [f64; 3],
         seed: i64,
+        scope: SpawnScope<'_, '_>,
     ) -> Option<Particle> {
-        // A native mod's SimpleParticleType: vanilla's TextureSheetParticle with
-        // the sprite set its particles/<name>.json names, no tint, 20..40 ticks.
         let entry = self.mod_sets.get(name)?;
         let (set, behaviour, group) = (entry.set, entry.behaviour, entry.group);
         let provider = match &entry.provider {
             Binding::Declarative => None,
             Binding::Unavailable => return None,
-            Binding::Bound(slot, provider) => {
-                if !provider.owner.is_enabled() {
-                    log::warn!(
-                        "Particle provider {name}: mod {} callback is disabled",
-                        provider.owner.id()
-                    );
-                    return None;
-                }
-                Some((*slot, Arc::clone(provider)))
-            }
+            Binding::Bound(provider) => Some(provider),
         };
         let mut r = LegacyRandom::new(seed);
         let mut q = Particle::moving(&mut r, ParticleType::Smoke, p, v);
-        q.ty = ParticleType::Smoke;
-        q.gravity = 0.0;
-        q.rgba = [1.0; 4];
         q.lifetime = 20 + r.next_int_bound(20).unwrap_or(0);
         q.set = Some(set);
         q.group = group;
         let sprites = &self.set_sprites[set as usize];
-        q.sprite =
-            Sprite::Index(sprites[r.next_int_bound(sprites.len() as i32).unwrap_or(0) as usize]);
+        let mut frame = r.next_int_bound(sprites.len() as i32).unwrap_or(0) as usize;
         if let Some(behaviour) = behaviour {
             behaviour.apply(&mut q, v, &mut r);
             if behaviour.starts_on_first_sprite() {
-                q.sprite = Sprite::Index(sprites[0]);
+                frame = 0;
             }
         }
-        if let Some((slot, provider)) = provider {
-            // The declared values seed the particle; the provider owns its tick from here.
-            // Its sprite is chosen by frame, so the set stays attached.
-            let frame = sprites
-                .iter()
-                .position(|&s| matches!(q.sprite, Sprite::Index(i) if i == s))
-                .unwrap_or(0);
-            q.set = Some(set);
-            q.behaviour = Behaviour::Controlled { translucent: true };
-            q.provided = Some(Box::new(Provided::new(
-                provider,
-                slot,
-                frame as u32,
-                &self.provided_live,
-            )));
-        }
-        Some(q)
-    }
-
-    /// The providers' part of a tick: each provider once with every particle of its type that
-    /// `tick_particle` aged. Nothing runs while no provider particle lives.
-    pub(super) fn tick_providers(&mut self, particles: &mut [Particle], level: &ParticleLevel) {
-        if self
-            .provided_live
-            .load(std::sync::atomic::Ordering::Relaxed)
-            == 0
-        {
-            return;
-        }
-        let mut batch = std::mem::take(&mut self.batch);
-        if batch.gather(particles)
-            && let Some(states) = (self.block_state_source)()
-        {
-            let view = ProviderLevel {
+        q.sprite = Sprite::Index(sprites[frame]);
+        if let Some(provider) = provider {
+            let callbacks = &provider.callbacks;
+            let owner = &callbacks.create;
+            let Some((level, states)) = scope
+                .level
+                .and_then(|level| (self.block_state_source)().map(|states| (level, states)))
+            else {
+                log::warn!(
+                    "Particle provider {name} from mod {}: spawn has no live level or block states",
+                    owner.id()
+                );
+                return None;
+            };
+            let converted;
+            let options = if let Some(original) = scope.mod_options {
+                original
+            } else if let Some(value) = self.options_to_api.and_then(|convert| convert(options)) {
+                converted = value;
+                &converted
+            } else {
+                log::warn!(
+                    "Particle provider {name} from mod {}: spawn options could not be converted",
+                    owner.id()
+                );
+                return None;
+            };
+            let level = ProviderLevel {
                 level,
                 states: (*states).as_ref(),
             };
-            batch.run(particles, &view, |p, frame| self.set_sprite_frame(p, frame));
+            let mut random = ProviderRandom(&mut self.random);
+            let mut spawn = particle_spawn(options, p, v, &level, &mut random);
+            let mut provided = Provided {
+                callbacks: Arc::clone(callbacks),
+                instance: None,
+                frame,
+                facing: Facing::Camera,
+            };
+            let mut view = LiveParticle {
+                particle: &mut q,
+                level: level.level,
+                sprites,
+                frame: &mut provided.frame,
+                facing: &mut provided.facing,
+                callbacks,
+            };
+            if let Err(error) = owner.call("particle provider", "create_custom_particle", || {
+                provided.instance = provider
+                    .provider
+                    .as_ref()
+                    .expect("bound provider")
+                    .create_particle(&mut spawn, &mut view);
+            }) {
+                log::warn!("Particle provider {name}: {error}");
+                return None;
+            }
+            // None is the provider's deliberate decision not to spawn, not an error.
+            provided.instance.as_ref()?;
+            q.set = Some(set);
+            q.behaviour = Behaviour::Controlled { translucent: true };
+            q.provided = Some(Box::new(provided));
         }
-        self.batch = batch;
+        Some(q)
     }
 }
 

@@ -10,7 +10,31 @@ ids = [
     "handle:RegisterParticleProvidersEvent::register_sprite_set",
     "type:ParticleSpriteSet",
     "handle:ParticleSpriteSet::frame_count",
+    "trait:ParticleProvider",
     "method:ParticleProvider::tick",
+    "method:ParticleProvider::create_particle",
+    "type:ParticleBatch",
+    "method:ParticleBatch::len",
+    "method:ParticleBatch::is_empty",
+    "method:ParticleBatch::get_mut",
+    "method:ParticleBatch::iter_mut",
+    "method:ParticleBatch::into_iter",
+    "fn:__private::particle_batch_from_vec",
+    "fn:__private::particle_batch_into_vec",
+    "type:ModParticle",
+    "type:ParticleFacing",
+    "trait:ParticleLevelView",
+    "type:ParticleSpawn",
+    "trait:ParticleView",
+    "trait:ParticleTickView",
+    "trait:CustomParticle",
+    "method:CustomParticle::tick",
 ]
-why = "Following NeoForge RegisterParticleProvidersEvent.registerSpriteSet and vanilla ParticleResources.register/reload and ParticleEngine.makeParticle, provider registrations now stage factories with the registering mod's identity. The last registration for each particle ID is bound to the nonempty sprite set on each load; a type with a failed bind does not silently use declaration-only motion. Provider callbacks use the owner's enablement and panic reporting. The tick batch and registered ParticleOptions and codecs are unchanged."
-migrate = "Keep the register_particle_providers(&self, context: &RegistrationContext, event: &mut RegisterParticleProvidersEvent<'_>) listener. Replace event.providers.register(\"mymod:spark\".into(), Arc::new(Spark(...))) with event.register_sprite_set(Identifier::parse(\"mymod:spark\").unwrap(), |sprites| Spark(...)). Return a concrete ParticleProvider from the closure; use move and clone owned captures if needed to build a fresh provider each time. If the provider needs the number of frames, read sprites.frame_count() inside the closure. Remove ParticleProviders and ParticleProviderRegistry imports, custom registry construction and into_providers calls: register via the event, not by writing or reading a map. Keep the matching particles/spark.json, ParticleOptions and the ParticleProvider::tick implementation."
+why = "NeoForge RegisterParticleProvidersEvent.registerSpriteSet and vanilla ParticleResources.register/reload bind one sprite-set provider per type. Vanilla ParticleProvider.createParticle and ParticleEngine.makeParticle/add construct the real instance before FIFO group admission, using the live level and random. Particle.tick owns movement, previous position and lifetime, and SingleQuadParticle.setSpriteFromAge uses ParticleResources.MutableSpriteSet.get. The game now lends live views and keeps a native instance instead of copying batches or treating render data as expiry. Panics disable the panicking callback kind for its registration, not other callbacks of the mod. Registered ParticleOptions and network codecs are unchanged."
+migrate = '''
+Keep the `register_particle_providers(&self, context: &RegistrationContext, event: &mut RegisterParticleProvidersEvent<'_>)` listener. Replace `event.providers.register("mymod:spark".into(), Arc::new(SparkProvider(...)))` with `event.register_sprite_set(Identifier::parse("mymod:spark").unwrap(), |sprites| SparkProvider(...))`. Return a concrete `ParticleProvider` from the closure; capture owned data and clone only captures you want to share across loads. Use `sprites.frame_count()` inside the factory if needed. Remove `ParticleProviders`, `ParticleProviderRegistry` and `into_providers`; register through the event, not a map. Keep the matching `particles/spark.json` and registered `ParticleOptions`.
+
+Replace `ParticleProvider::tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView)` with `create_particle(&self, spawn: &mut ParticleSpawn<'_>, particle: &mut dyn ParticleTickView) -> Option<Box<dyn CustomParticle>>`. Instead of iterating a batch, construct a fresh instance and move the fields that used to go in `ModParticle::state` into that instance's own struct fields. Read the requested options, raw position and velocity, live level and provider random as `spawn.options`, `spawn.position`, `spawn.velocity`, `spawn.level` and `spawn.random`. Use `particle` to change the declaration's spawn defaults. Return `None` to decline this spawn; return `Some(Box::new(instance))` to submit it. Don't retain any borrow from `spawn` or `particle`.
+
+Move each former batch loop body to `impl CustomParticle for YourInstance { fn tick(&mut self, particle: &mut dyn ParticleTickView, level: &dyn ParticleLevelView) { ... } }`. The default runs vanilla `tick_base()`. A custom tick that used the previously incremented age and previous pose should call `if !particle.advance_age() { return; }` before its body. Use `position()`, `previous_position()`, `velocity()`, `age()`, `lifetime()`, `size()`, `rgba()`, `sprite_index()`, `facing()`, `roll()` and `is_alive()` for the old fields (`sprite_index` replaces `frame`, `is_alive` inverts `removed`). Replace writes with `set_position`, `set_previous_position`, `set_velocity`, `set_age`, `set_lifetime`, `set_size`, `set_rgba`, `set_sprite_index`, `set_facing` and `set_roll`; call `remove()` instead of setting `removed`. Use `move_by(delta)` to resolve movement against the level. If frame selection was age-driven, use `set_sprite_from_age()`; exact frame indices no longer clamp. Bad input is reported and leaves the particle alive and the field unchanged. Remove `ModParticle`, `ParticleBatch`, their iteration and conversion code, and any Wire encoding of their state or `ParticleFacing`; facing is local presentation state now.
+'''
