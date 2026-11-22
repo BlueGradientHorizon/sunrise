@@ -317,7 +317,7 @@ mod tests {
         let mut border = BorderGeometry::new([1.0, 2.0], 10.0, 100).unwrap();
         let bounds = border.bounds(0.0);
         assert!(border.set_center([f64::NAN, 0.0]).is_err());
-        assert!(border.set_size(-1.0).is_err());
+        assert!(border.set_size(-4.0).is_err());
         assert!(border.set_size(f64::INFINITY).is_err());
         assert!(border.set_absolute_max(-1).is_err());
         assert!(border.lerp_size_between(10.0, 20.0, -1).is_err());

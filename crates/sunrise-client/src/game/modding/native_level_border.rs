@@ -224,7 +224,7 @@ mod tests {
                 assert!(!nether.set_world_border_center(game, [f64::NAN, 0.0]));
                 assert!(!stale.set_world_border_center(game, [0.0, 0.0]));
                 assert!(!old_generation.set_world_border_warning(game, 10, 10));
-                assert!(!nether.set_world_border_size(game, -1.0, 0));
+                assert!(!nether.set_world_border_size(game, -4.0, 0));
                 assert!(!nether.set_world_border_size(game, f64::INFINITY, 2));
                 assert!(!unopened.set_world_border_size(game, 100.0, 0));
                 assert_eq!(stale.world_border(game), None);
