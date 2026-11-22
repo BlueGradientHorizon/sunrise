@@ -727,8 +727,9 @@ impl WorldBiomeRegistry {
                 .collect(),
             omitted.clone(),
         );
-        let modified = sunrise_client::vanillagen::biome_modifiers_over_packs(&dir, &overrides);
-        let mut overrides = modified.unwrap_or(overrides);
+        let mut overrides =
+            sunrise_client::vanillagen::biome_modifiers_over_packs(&dir, &overrides)?
+                .unwrap_or(overrides);
         let mut final_files = files.clone();
         final_files.extend(
             overrides

@@ -279,13 +279,14 @@ impl Game<'_> {
             .map_or(&self.pack.data_source, |root| root.data());
         let changes = next_root
             .as_ref()
-            .map_or(&self.pack.data_changes, |root| root.data_changes());
+            .map_or(&self.pack.data_changes, |root| root.data_changes())
+            .clone();
         let additional = super::pack_finders::data_packs(&self.mods);
         let stack = pack_stack(
             &self.world_root,
             &resources,
             data,
-            changes,
+            &changes,
             self.cmds.vanilla_disabled,
             enabled_features,
             &additional,
@@ -314,7 +315,7 @@ impl Game<'_> {
                 let mut options = self.options.clone();
                 options.resources.clone_from(&resources);
                 let mut pack = self.pack.clone();
-                pack.data_changes = changes.clone();
+                pack.data_changes = changes;
                 pack.additional_data = additional.clone().into();
                 terrain = Some(
                     opening

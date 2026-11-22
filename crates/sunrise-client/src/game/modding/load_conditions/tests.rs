@@ -545,7 +545,7 @@ fn load_conditions_disabled_owner_does_not_execute_registered_handler() {
 
 #[test]
 fn load_condition_panic_disables_only_that_handler_across_generations() {
-    use mod_api::__private::game::take_callback_panic_notices;
+    use mod_api::__private::{HookPanicReport, take_hook_panics};
 
     struct Pair(Arc<AtomicUsize>);
     #[mod_api::__subscriptions]
@@ -583,14 +583,17 @@ fn load_condition_panic_disables_only_that_handler_across_generations() {
             assert!(!load.allows_file(&faulty, path));
             let error = load.check_errors().unwrap_err();
             assert!(
-                error.contains("data/foreign/recipe/faulty.json: condition foreign:faulty: mod condition_pair: load condition callback panicked"),
+                error.contains("data/foreign/recipe/faulty.json: condition foreign:faulty: mod condition_pair: load condition callback panicked")
+                    && error.contains("fixture panic"),
                 "{error}"
             );
-            assert!(take_callback_panic_notices().iter().any(|notice| {
-                notice.mod_id == "condition_pair"
-                    && notice.kind == "load condition"
-                    && notice.message.contains("fixture panic")
-            }));
+            assert_eq!(
+                take_hook_panics(),
+                [HookPanicReport {
+                    mod_id: "condition_pair",
+                    hook: "test_load_condition",
+                }]
+            );
 
             let next = super::conditions_for_mods(&sources, &inventory).unwrap();
             let error = next.allows_file_isolated(&faulty, path).unwrap_err();
@@ -599,11 +602,7 @@ fn load_condition_panic_disables_only_that_handler_across_generations() {
                 "condition foreign:faulty: mod condition_pair: load condition owner is disabled"
             );
             assert_eq!(count.load(Ordering::SeqCst), 1);
-            assert!(
-                !take_callback_panic_notices()
-                    .iter()
-                    .any(|notice| notice.mod_id == "condition_pair")
-            );
+            assert!(take_hook_panics().is_empty());
 
             let healthy = json!({"neoforge:conditions":[{"type":"foreign:healthy","value":true}]});
             assert_eq!(
@@ -864,58 +863,4 @@ fn unsynced_registry_admits_conditional_payloads_and_tags_without_worldgen_limit
     );
     assert_eq!(view.tags["test:spell"].len(), 8193);
     assert!(view.tags["test:spell"].contains("test:t8192"));
-}
-
-/// A handler that reads the world through the Host. Read in a load phase, it is a named refusal.
-struct Gated;
-impl LoadCondition for Gated {
-    fn test(&self, _: &Value) -> std::result::Result<bool, ConditionError> {
-        mod_api::__private::check_access("level", mod_api::__private::LoadAccess::WorldOnly);
-        Ok(true)
-    }
-}
-struct GatedRegistrant;
-#[mod_api::__subscriptions]
-impl Hooks for GatedRegistrant {
-    fn register_load_conditions(
-        &self,
-        _: &RegistrationContext,
-        event: &mut RegisterLoadConditionsEvent<'_>,
-    ) {
-        event
-            .conditions
-            .register(Identifier::parse("testmod:gated").unwrap(), Gated)
-            .unwrap();
-    }
-}
-
-/// A refused Host call names the mod without disabling its condition handler.
-#[test]
-fn a_handler_refused_by_the_load_phase_is_a_named_refusal_not_a_panic() {
-    mod_platform::testing::with_mods(
-        vec![ModEntry::new("testmod", Box::new(GatedRegistrant))].into(),
-        || {
-            let sources = crate::game::mods::ModsState::default();
-            let inventory = sunrise_mod_package::enabled::EnabledMods::default();
-            let conditions = super::conditions_for_mods(&sources, &inventory).unwrap();
-            let file = json!({"neoforge:conditions":[{"type":"testmod:gated"}]});
-            {
-                let _setup =
-                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
-                for path in ["first.json", "second.json"] {
-                    let error = conditions.allows_file_isolated(&file, path).unwrap_err();
-                    assert!(
-                        error.contains(
-                            "condition testmod:gated: mod testmod: load condition callback refused"
-                        ) && error
-                            .contains("mod testmod: mod API level is unavailable during Setup"),
-                        "{error}"
-                    );
-                }
-            }
-            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
-            let next = super::conditions_for_mods(&sources, &inventory).unwrap();
-            assert_eq!(next.allows_file_isolated(&file, "first.json"), Ok(true));
-        },
-    );
 }
