@@ -717,23 +717,16 @@ fn move_resources_by<R>(
         u32,
     ) -> Result<u32, TransactionError<Overanswered>>,
 ) -> Result<u32, TransactionError<Overanswered>> {
-    with_move_transaction(host, tx, |host| {
+    with_move_transaction(host, tx, max, 0, |host| {
         let mut moved = 0;
         for index in 0..from.handler.size(host) {
             if moved == max {
                 break;
             }
-            while moved < max {
-                let Some(resource) = from.handler.resource(host, index).filter(|r| filter(r))
-                else {
-                    break;
-                };
-                let went = move_slot(host, &from, index, &resource, max - moved, &insert)?;
-                if went == 0 {
-                    break;
-                }
-                moved += went;
-            }
+            let Some(resource) = from.handler.resource(host, index).filter(|r| filter(r)) else {
+                continue;
+            };
+            moved += move_slot(host, &from, (index, &resource), max - moved, false, &insert)?;
         }
         Ok(moved)
     })
@@ -783,7 +776,7 @@ fn move_first_by<R: PartialEq>(
         u32,
     ) -> Result<u32, TransactionError<Overanswered>>,
 ) -> Result<Option<(R, u32)>, TransactionError<Overanswered>> {
-    with_move_transaction(host, tx, |host| {
+    with_move_transaction(host, tx, max, None, |host| {
         let mut selected = None;
         let mut moved = 0;
         for index in 0..from.handler.size(host) {
@@ -799,7 +792,7 @@ fn move_first_by<R: PartialEq>(
             {
                 continue;
             }
-            let went = move_slot(host, &from, index, &resource, max - moved, &insert)?;
+            let went = move_slot(host, &from, (index, &resource), max - moved, true, &insert)?;
             if went == 0 {
                 continue;
             }
@@ -813,9 +806,15 @@ fn move_first_by<R: PartialEq>(
 fn with_move_transaction<T>(
     host: &mut dyn ServerHost,
     tx: Option<&TransactionContext>,
+    max: u32,
+    empty: T,
     run: impl FnOnce(&mut dyn ServerHost) -> Result<T, TransactionError<Overanswered>>,
 ) -> Result<T, TransactionError<Overanswered>> {
     assert_transaction_matches(host, tx);
+    if max == 0 {
+        return Ok(empty);
+    }
+    // Keep the checked move atomic if a later index gives a malformed answer.
     host.transaction(|host, _| run(host))
         .map_err(TransactionError::flatten)
 }
@@ -823,9 +822,9 @@ fn with_move_transaction<T>(
 fn move_slot<R>(
     host: &mut dyn ServerHost,
     from: &Attributed<'_, R>,
-    index: usize,
-    resource: &R,
-    max: u32,
+    (index, resource): (usize, &R),
+    want: u32,
+    skip_rejected: bool,
     insert: &impl Fn(
         &mut dyn ServerHost,
         &TransactionContext,
@@ -833,10 +832,6 @@ fn move_slot<R>(
         u32,
     ) -> Result<u32, TransactionError<Overanswered>>,
 ) -> Result<u32, TransactionError<Overanswered>> {
-    let want = max.min(from.handler.amount(host, index));
-    if want == 0 {
-        return Ok(0);
-    }
     // The destination must see the source before extraction, even though the probe may write.
     let probe: Result<std::convert::Infallible, TransactionError<u32>> =
         host.transaction(|host, tx| Err(from.handler.extract_at(host, tx, index, resource, want)));
@@ -852,7 +847,8 @@ fn move_slot<R>(
     }
     match host.transaction(|host, tx| {
         let accepted = insert(host, tx, resource, available).map_err(Some)?;
-        if accepted == 0 {
+        // `moveFirst` does not extract from a rejected resource or select it.
+        if skip_rejected && accepted == 0 {
             return Err(None);
         }
         let taken = from.handler.extract_at(host, tx, index, resource, accepted);

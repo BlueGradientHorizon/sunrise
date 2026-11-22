@@ -897,6 +897,61 @@ fn maximum_batch_moves_without_splitting_a_quantized_handler() {
 }
 
 #[test]
+fn moves_probe_the_remaining_request_once_per_source_index() {
+    struct Metered(RefCell<Vec<(usize, u32)>>);
+    impl ResourceHandler<Chemical> for Metered {
+        fn size(&self, _: &mut dyn ServerHost) -> usize {
+            2
+        }
+        fn resource(&self, _: &mut dyn ServerHost, _: usize) -> Option<Chemical> {
+            Some(HYDROGEN)
+        }
+        fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
+            3
+        }
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&Chemical>) -> u32 {
+            3
+        }
+        fn insert_at(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &TransactionContext,
+            _: usize,
+            _: &Chemical,
+            _: u32,
+        ) -> u32 {
+            0
+        }
+        fn extract_at(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &TransactionContext,
+            index: usize,
+            _: &Chemical,
+            amount: u32,
+        ) -> u32 {
+            self.0.borrow_mut().push((index, amount));
+            amount.min(1)
+        }
+    }
+
+    let mut fake = FakeHost::new();
+    let source = Metered(RefCell::new(Vec::new()));
+    let from: &dyn ResourceHandler<Chemical> = &source;
+    let to: &dyn ResourceHandler<Chemical> = &VoidingResourceHandler;
+    assert_eq!(
+        move_resources(&mut fake, from, to, |_| true, 5, None),
+        Ok(2)
+    );
+    assert_eq!(source.0.take(), [(0, 5), (0, 1), (1, 4), (1, 1)]);
+    assert_eq!(
+        move_first(&mut fake, from, to, |_| true, 5, None),
+        Ok(Some((HYDROGEN, 2)))
+    );
+    assert_eq!(source.0.take(), [(0, 5), (0, 1), (1, 4), (1, 1)]);
+}
+
+#[test]
 fn moves_accept_public_wrappers_without_registering_providers() {
     let host: &mut dyn ServerHost = &mut FakeHost::new();
     let source = RangedResourceHandler::of_single_index(
@@ -961,6 +1016,23 @@ fn transfers_and_probes_report_a_refused_scope_on_every_attempt() {
     };
     let from_handler: &dyn ResourceHandler<Chemical> = &from;
     let to_handler: &dyn ResourceHandler<Chemical> = &to;
+    assert_eq!(
+        move_resources(&mut host, from_handler, to_handler, |_| true, 0, None),
+        Ok(0)
+    );
+    assert_eq!(
+        move_resources_stacking(&mut host, from_handler, to_handler, |_| true, 0, None),
+        Ok(0)
+    );
+    assert_eq!(
+        move_first(&mut host, from_handler, to_handler, |_| true, 0, None),
+        Ok(None)
+    );
+    assert_eq!(
+        move_first_stacking(&mut host, from_handler, to_handler, |_| true, 0, None),
+        Ok(None)
+    );
+    assert_eq!(host.refusals, 0);
     let empty = EmptyResourceHandler;
     let no_match: [(&dyn ResourceHandler<Chemical>, bool); 2] =
         [(&empty, true), (from_handler, false)];
