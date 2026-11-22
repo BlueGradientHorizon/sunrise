@@ -40,6 +40,8 @@ pub trait LevelEffectsBackendMut {
     /// count sends one particle moving along `spread`). Block particle types
     /// need `state`; item particles need `options.item_stack` (validated against
     /// the item registry and stack limits). Trail and vibration remain unsupported.
+    /// A custom particle uses its registered stream codec and is sent only to Sunrise
+    /// clients. The receiving factory reads the same decoded value for every spawn.
     /// True means queued, not drawn.
     /// Inside an open transaction, delivery waits for the outermost commit in this level, in call
     /// order across deferred effects, and is discarded on rollback or an aborted nested

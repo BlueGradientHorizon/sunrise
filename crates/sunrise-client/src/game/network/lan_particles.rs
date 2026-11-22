@@ -12,9 +12,7 @@ use sunrise_core::{
     random::RandomSource,
 };
 use sunrise_protocol::{
-    entity_data::{
-        MOD_PARTICLE_ID, Particle, ParticleData, PositionSource as NetworkPositionSource,
-    },
+    entity_data::{Particle, ParticleData, PositionSource as NetworkPositionSource},
     packets::play::{self, Clientbound as C},
 };
 use sunrise_world::registry::BlockStateId;
@@ -72,28 +70,15 @@ fn send_native_nearby(
     }
 }
 
-/// One of a packet's `count` particles (`handleParticleEvent`): its position
-/// and speed. DEFAULT (0) draws both from a Gaussian; ALTERNATIVE (1) and
-/// ALTERNATIVE_WITH_SPEED (2) spread over `[0, dist)`, the first keeping
-/// the speeds as they are, the second scaling each by `nextDouble`.
-fn spread(
-    r: &mut impl RandomSource,
-    randomization: i32,
-    pos: [f64; 3],
-    dist: [f64; 3],
-    speed: [f64; 3],
-) -> ([f64; 3], [f64; 3]) {
-    if matches!(randomization, 1 | 2) {
-        let at = [0, 1, 2].map(|k| pos[k] + r.next_double() * dist[k]);
-        let v = if randomization == 2 {
-            [0, 1, 2].map(|k| speed[k] * r.next_double())
-        } else {
-            speed
-        };
-        (at, v)
-    } else {
-        let at = [0, 1, 2].map(|k| pos[k] + r.next_gaussian() * dist[k]);
-        (at, [0, 1, 2].map(|k| r.next_gaussian() * speed[k]))
+/// Resolve and decode a custom envelope once, before any effect can spawn it.
+pub(super) fn decode_mod_particle(name: &str, bytes: &[u8]) -> Option<ParticleOptions> {
+    match mod_api::__private::decode_particle_stream(name, bytes) {
+        Ok(Some(value)) => ParticleOptions::typed(value),
+        Ok(None) => Some(ParticleOptions::named(name)),
+        Err(error) => {
+            log::warn!("Cannot decode particle {name}: {error}");
+            None
+        }
     }
 }
 
@@ -398,10 +383,8 @@ impl Game<'_> {
         p: &Particle,
         at: [f64; 3],
     ) -> Option<ParticleOptions> {
-        if p.id == MOD_PARTICLE_ID
-            && let Some(ParticleData::Mod(name)) = &p.data
-        {
-            return Some(ParticleOptions::named(name.clone()));
+        if let Some(ParticleData::Mod { name, options }) = &p.data {
+            return decode_mod_particle(name, options);
         }
         let name = self
             .remote
@@ -504,24 +487,15 @@ impl Game<'_> {
         if self.pvp_hides_particle(options.ty) {
             return;
         }
-        let (d, s) = (p.dist.map(f64::from), p.max_speed.map(f64::from));
-        // ClientLevel.addParticle: the camera's 32 blocks and the Particles
-        // option, unless the packet or the type overrides the limiter.
-        let add = |particles: &mut sunrise_client::particles::ParticleEngine, at, v| {
-            particles.add_with(&options, at, v, p.override_limiter, p.always_show);
-        };
-        if p.count == 0 {
-            add(
-                &mut self.particles,
-                p.pos,
-                [s[0] * d[0], s[1] * d[1], s[2] * d[2]],
-            );
+        let Some(remote) = &mut self.remote else {
             return;
-        }
-        for _ in 0..p.count {
-            let (at, v) = spread(self.particles.random(), p.randomization, p.pos, d, s);
-            add(&mut self.particles, at, v);
-        }
+        };
+        self.particles.handle_level_particles(
+            &mut remote.particle_packet_random,
+            &self.world,
+            p,
+            &options,
+        );
     }
 
     /// `ClientPacketListener.handleExplosion`: the blast's particles (its
@@ -541,7 +515,14 @@ impl Game<'_> {
             self.audio.play(&sound, Some(p.center), 4.0, pitch);
         }
         if let Some(options) = self.received_particle(&p.particle, p.center) {
-            self.particles.add(&options, p.center, [1.0, 0.0, 0.0]);
+            self.particles.add_with_world(
+                Some(&self.world),
+                &options,
+                p.center,
+                [1.0, 0.0, 0.0],
+                false,
+                false,
+            );
         }
         // A wind charge's burst lists none, and one this client can't draw is left out.
         let block_particles: Vec<_> = p
@@ -931,27 +912,6 @@ pub(in crate::game) mod tests {
     use sunrise_core::random::LegacyRandom;
     use sunrise_protocol::packets::play;
 
-    /// The Nether's evaporation smoke (ALTERNATIVE, dist 1, speed 0) lands
-    /// inside the block from its corner and stands still; DEFAULT spreads
-    /// both ways.
-    #[test]
-    fn alternative_particles_spread_from_the_corner_over_dist() {
-        let mut r = LegacyRandom::new(1);
-        let mut below = false;
-        for _ in 0..200 {
-            let (at, v) = spread(&mut r, 1, [3.0, 64.0, -7.0], [1.0; 3], [0.0; 3]);
-            assert!((3.0..4.0).contains(&at[0]), "{at:?}");
-            assert!((64.0..65.0).contains(&at[1]), "{at:?}");
-            assert!((-7.0..-6.0).contains(&at[2]), "{at:?}");
-            assert_eq!(v, [0.0; 3]);
-            let (_, v) = spread(&mut r, 2, [0.0; 3], [0.0; 3], [0.5, 0.0, 2.0]);
-            assert!((0.0..0.5).contains(&v[0]) && v[1] == 0.0 && (0.0..2.0).contains(&v[2]));
-            let (at, _) = spread(&mut r, 0, [0.0; 3], [1.0; 3], [0.0; 3]);
-            below |= at.iter().any(|&c| c < 0.0);
-        }
-        assert!(below, "DEFAULT is a Gaussian around the position");
-    }
-
     /// `PowderSnowBlock.entityInside`: vertical-only movement skips the roll;
     /// horizontal movement uses nextBoolean, then X and Z floats in order.
     #[test]
@@ -1126,6 +1086,148 @@ pub(in crate::game) mod tests {
             play::Clientbound::LevelParticles(p) => p,
             other => panic!("expected LevelParticles packet, got {other:?}"),
         }
+    }
+
+    thread_local! {
+        pub(in crate::game) static PARTICLE_MAP_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+
+    pub(in crate::game) struct MeasuredParticle;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for MeasuredParticle {
+        fn register(
+            &self,
+            registrar: &mut dyn mod_api::Registrar,
+            _: &mod_api::RegistrationContext,
+        ) {
+            registrar.register_particle_type(
+                "measured",
+                false,
+                mod_api::ParticleMapCodec::new(
+                    |fields, _| match fields.get(&"measure".into()) {
+                        Some(mod_api::Tag::Int(value)) => {
+                            PARTICLE_MAP_READS.set(PARTICLE_MAP_READS.get() + 1);
+                            Ok(*value)
+                        }
+                        _ => Err("measure must be an integer".into()),
+                    },
+                    |value, _| {
+                        Ok(mod_api::Compound::from([(
+                            "measure".into(),
+                            mod_api::Tag::Int(*value),
+                        )]))
+                    },
+                ),
+                mod_api::ParticleStreamCodec::mapped(
+                    |value, _| Ok(value),
+                    |value, _| {
+                        if *value >= 0 {
+                            Ok(*value)
+                        } else {
+                            Err("negative measure".into())
+                        }
+                    },
+                ),
+            );
+        }
+    }
+
+    #[test]
+    fn typed_particle_packet_is_shared_by_spawns_and_kept_from_vanilla_peers() {
+        let entries = [mod_api::ModEntry::new("test", Box::new(MeasuredParticle))];
+        mod_platform::__private::part_tests::install_parts_fixture(&entries).unwrap();
+        crate::game::mods::resolve_particle_providers(&Default::default()).unwrap();
+        let (mut hub, sunrise, vanilla) =
+            test_hub("TypedParticle", vec!["minecraft:crit".into()], None);
+        hub.guests.update_all(|guest| {
+            if guest.conn == 1 {
+                guest.brand = "sunrise".into();
+            }
+            guest.position = [1.0, 2.0, 3.0];
+        });
+        let typed = mod_api::__private::decode_particle_map(
+            "test:measured",
+            &mod_api::Compound::from([("measure".into(), mod_api::Tag::Int(257))]),
+        )
+        .unwrap()
+        .unwrap();
+        let options = ParticleOptions::typed(typed).unwrap();
+        let at = [1.0, 2.0, 3.0];
+        send_hub_level_particles(&hub, &options, at, [0.25, 0.5, 1.0], 2.0, 2, None);
+        assert!(vanilla.try_recv().is_err());
+        let mut packet = level_particles(&sunrise);
+        let Some(ParticleData::Mod {
+            name,
+            options: bytes,
+        }) = &packet.particle.data
+        else {
+            panic!("missing mod particle envelope")
+        };
+        assert_eq!(name, "test:measured");
+        assert_eq!(bytes, &[1, 1, 0, 0]);
+        assert!(decode_mod_particle(name, &bytes[..3]).is_none());
+        assert!(decode_mod_particle(name, &[1, 1, 0, 0, 0]).is_none());
+        let decoded = decode_mod_particle(name, bytes).unwrap();
+        assert_eq!(decoded.typed_particle, options.typed_particle);
+        let world = sunrise_client::world::World::new(BlockStateId(0), 1);
+        let mut engine = sunrise_client::particles::ParticleEngine::new(
+            &Default::default(),
+            &Default::default(),
+            &Default::default(),
+        );
+        engine.created_requests = Some(Vec::new());
+        let mut random = LegacyRandom::new(23);
+        engine.handle_level_particles(&mut random, &world, &packet, &decoded);
+        let created = engine.created_requests.as_mut().unwrap();
+        assert_eq!(created.len(), 2);
+        for request in created.drain(..) {
+            assert_eq!(request.0.typed_particle, decoded.typed_particle);
+        }
+        packet.count = 0;
+        packet.dist = [0.1, -0.2, 0.7];
+        packet.max_speed = [0.3, 0.4, 0.9];
+        engine.handle_level_particles(&mut random, &world, &packet, &decoded);
+        let created = engine.created_requests.take().unwrap();
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].1, at);
+        assert_eq!(
+            created[0].2.map(f64::to_bits),
+            [
+                0x3f9e_b852_0000_0000,
+                0xbfb4_7ae1_6000_0000,
+                0x3fe4_28f5_c000_0000
+            ]
+        );
+
+        send_hub_level_particles(
+            &hub,
+            &ParticleOptions::simple(ParticleType::from_name("crit").unwrap()),
+            at,
+            [0.0; 3],
+            0.0,
+            1,
+            None,
+        );
+        let Out::Packet(vanilla) = vanilla.try_recv().unwrap() else {
+            panic!("expected vanilla particle packet")
+        };
+        let Out::Packet(sunrise) = sunrise.try_recv().unwrap() else {
+            panic!("expected vanilla particle packet")
+        };
+        assert_eq!(vanilla, sunrise);
+        // Numeric particle ID with no mod envelope or appended stream body.
+        let mut expected = vec![
+            sunrise_protocol::ids::play::clientbound::LEVEL_PARTICLES as u8,
+            0,
+            0,
+            0,
+        ];
+        for coordinate in at {
+            expected.extend(coordinate.to_be_bytes());
+        }
+        expected.extend([0; 6 * 4]);
+        expected.extend([1, 0]);
+        assert_eq!(vanilla, expected);
     }
 
     /// `ShulkerBullet.hurtServer`: fifteen crit particles (spread 0.2, speed 0.0)

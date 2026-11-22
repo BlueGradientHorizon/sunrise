@@ -22,6 +22,15 @@ the outermost commit and discard on rollback or an aborted nested transaction. O
 level where it was requested (checking `global_sound_events` at commit for `global_level_event`) and delivers
 packets in call order alongside deferred sounds, particles, and entity events.
 
+## Sending particles
+
+`LevelRef::send_particles` sends a particle to players within 32 blocks in the level. Supply
+`ty.options(value)` for a [registered particle type](../client/particles-and-movement-queries.md#particle-providers)
+and `None` for its block state. The mod belongs on both sides; custom particles are not sent to
+vanilla clients. The server encodes the registered stream value once per packet, and a receiving
+client decodes it once for all the spawns. A count of zero still spawns one particle, with
+auxiliary values of `speed × spread` on each axis.
+
 ## The global events
 
 Vanilla plays three ids through the global form: 1023, the wither's spawn (`WitherBoss`); 1028, the ender

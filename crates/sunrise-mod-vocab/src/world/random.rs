@@ -115,25 +115,53 @@ impl From<(u64, Option<f64>)> for LegacyRandomSource {
 
 impl RandomSource for LegacyRandomSource {
     fn next_int(&mut self) -> i32 {
-        EngineRandom::next_int(&mut self.0)
+        BorrowedRandom(&mut self.0).next_int()
     }
     fn next_int_bound(&mut self, bound: i32) -> i32 {
-        EngineRandom::next_int_bound(&mut self.0, bound).unwrap_or(0)
+        BorrowedRandom(&mut self.0).next_int_bound(bound)
     }
     fn next_long(&mut self) -> i64 {
-        EngineRandom::next_long(&mut self.0)
+        BorrowedRandom(&mut self.0).next_long()
     }
     fn next_boolean(&mut self) -> bool {
-        EngineRandom::next_boolean(&mut self.0)
+        BorrowedRandom(&mut self.0).next_boolean()
     }
     fn next_float(&mut self) -> f32 {
-        EngineRandom::next_float(&mut self.0)
+        BorrowedRandom(&mut self.0).next_float()
     }
     fn next_double(&mut self) -> f64 {
-        EngineRandom::next_double(&mut self.0)
+        BorrowedRandom(&mut self.0).next_double()
     }
     fn next_gaussian(&mut self) -> f64 {
-        EngineRandom::next_gaussian(&mut self.0)
+        BorrowedRandom(&mut self.0).next_gaussian()
+    }
+}
+// no wire: borrowed RNG adapter used only when crossing into a native callback.
+// hidden: the renderer lends its provider RNG through the native callback.
+#[doc(hidden)]
+// exhaustive: a game-only adapter around the precise engine RNG loan.
+pub struct BorrowedRandom<'a>(pub &'a mut LegacyRandom);
+impl RandomSource for BorrowedRandom<'_> {
+    fn next_int(&mut self) -> i32 {
+        EngineRandom::next_int(self.0)
+    }
+    fn next_int_bound(&mut self, bound: i32) -> i32 {
+        EngineRandom::next_int_bound(self.0, bound).unwrap_or(0)
+    }
+    fn next_long(&mut self) -> i64 {
+        EngineRandom::next_long(self.0)
+    }
+    fn next_boolean(&mut self) -> bool {
+        EngineRandom::next_boolean(self.0)
+    }
+    fn next_float(&mut self) -> f32 {
+        EngineRandom::next_float(self.0)
+    }
+    fn next_double(&mut self) -> f64 {
+        EngineRandom::next_double(self.0)
+    }
+    fn next_gaussian(&mut self) -> f64 {
+        EngineRandom::next_gaussian(self.0)
     }
 }
 

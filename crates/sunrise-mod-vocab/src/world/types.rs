@@ -1374,6 +1374,15 @@ impl LevelSide<'_> {
     }
 }
 
+impl LevelRandomSide<'_> {
+    pub(crate) fn reborrow(&mut self) -> LevelRandomSide<'_> {
+        match self {
+            Self::Server(host) => LevelRandomSide::Server(&mut **host),
+            Self::Client(host) => LevelRandomSide::Client(*host),
+        }
+    }
+}
+
 /// NeoForge's `TriState`: force a part of an action off or on, or leave it
 /// to vanilla.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1425,7 +1434,8 @@ pub trait LevelHost {
     /// The block-state facts service, as `host.block_states()` gives it on a game host: the
     /// same tables and the same answers, so a part can ask a neighbour's `weathering_age`
     /// inside `random_tick`. Read-only and allocation-free per read. A level view with no
-    /// tables answers every fact with `None` (or `BlockStateError::Unavailable`).
+    /// tables answers `None`, `BlockStateError::Unavailable` or `LevelReadError::Unavailable`,
+    /// according to the read's result type.
     ///
     /// Computed from this level view's tables.
     #[sunrise_mod_api_macros::computed_in_mod]

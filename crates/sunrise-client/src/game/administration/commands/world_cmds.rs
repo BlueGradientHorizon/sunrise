@@ -881,100 +881,120 @@ impl Game<'_> {
 
     pub(super) fn cmd_particle(&mut self, ctx: &Context) -> R<i32> {
         use sunrise_client::particles::{ParticleOptions, ParticleType};
-        let Some(Arg::Str(spec)) = ctx.get("name").cloned() else {
-            return Ok(0);
-        };
-        // ParticleArgument: `id` then optional SNBT options (`dust{color:[1,0,0],scale:2}`).
-        let (name, options_text) = match spec.find('{') {
-            Some(i) => (&spec[..i], &spec[i..]),
-            None => (spec.as_str(), ""),
-        };
-        let ty = ParticleType::from_name(name).ok_or_else(|| err("particle.notFound", &[&name]))?;
-        let opts = match sunrise_client::command::snbt::parse_fully(options_text) {
-            Ok(Tag::Compound(c)) if !options_text.is_empty() => Some(c),
-            _ => None,
-        };
-        let field = |key: &str| opts.as_ref().and_then(|c| c.get(&key.into()).cloned());
-        let string = |t: &Tag| match t {
-            Tag::String(s) => Some(s.to_string_lossy()),
-            _ => None,
-        };
-        // The block state of a block particle, for its packet.
-        let mut block_state = None;
-        let options = match ty {
-            // ItemParticleOption: an item id, or a stack {id, ...}.
-            ParticleType::Item => {
-                let id = match field("item") {
-                    Some(Tag::String(s)) => s.to_string_lossy(),
-                    Some(Tag::Compound(c)) => {
-                        c.get(&"id".into()).and_then(string).unwrap_or_default()
-                    }
-                    _ => String::new(),
-                };
-                let id = if id.contains(':') {
-                    id
-                } else {
-                    format!("minecraft:{id}")
-                };
-                self.item_particle(&sunrise_client::items::ItemStack::new(&id, 1))
+        let (name, options, block_state) = match ctx.get("name") {
+            Some(Arg::Particle(opts)) => {
+                use crate::game::api_values::TryIntoEngine;
+                let options = opts
+                    .try_into_engine(self.items())
+                    .map_err(|_| err("particle.invalidOptions", &[]))?;
+                let name = options
+                    .mod_particle
+                    .as_deref()
+                    .unwrap_or(options.ty.name())
+                    .to_owned();
+                (name, options, None)
             }
-            ParticleType::ItemSlime | ParticleType::ItemSnowball | ParticleType::ItemCobweb => {
-                self.ensure_item_particle_sprites();
-                ParticleOptions::simple(ty)
-            }
-            ParticleType::Block
-            | ParticleType::BlockCrumble
-            | ParticleType::FallingDust
-            | ParticleType::DustPillar
-            | ParticleType::BlockMarker => {
-                // BlockParticleOption: a block id, or {Name, Properties}.
-                let text = match field("block_state") {
-                    Some(Tag::String(s)) => s.to_string_lossy(),
-                    Some(Tag::Compound(c)) => {
-                        let name = c.get(&"Name".into()).and_then(string).unwrap_or_default();
-                        let props: Vec<String> = match c.get(&"Properties".into()) {
-                            Some(Tag::Compound(p)) => p
-                                .iter()
-                                .filter_map(|(k, v)| {
-                                    string(v).map(|v| format!("{}={v}", k.to_string_lossy()))
-                                })
-                                .collect(),
-                            _ => Vec::new(),
+            Some(Arg::Str(spec)) => {
+                // ParticleArgument: `id` then optional SNBT options (`dust{color:[1,0,0],scale:2}`).
+                let (name, options_text) = match spec.find('{') {
+                    Some(i) => (&spec[..i], &spec[i..]),
+                    None => (spec.as_str(), ""),
+                };
+                let ty = ParticleType::from_name(name)
+                    .ok_or_else(|| err("particle.notFound", &[&name]))?;
+                let opts = match sunrise_client::command::snbt::parse_fully(options_text) {
+                    Ok(Tag::Compound(c)) if !options_text.is_empty() => Some(c),
+                    _ => None,
+                };
+                let field = |key: &str| opts.as_ref().and_then(|c| c.get(&key.into()).cloned());
+                let string = |t: &Tag| match t {
+                    Tag::String(s) => Some(s.to_string_lossy()),
+                    _ => None,
+                };
+                // The block state of a block particle, for its packet.
+                let mut block_state = None;
+                let options = match ty {
+                    // ItemParticleOption: an item id, or a stack {id, ...}.
+                    ParticleType::Item => {
+                        let id = match field("item") {
+                            Some(Tag::String(s)) => s.to_string_lossy(),
+                            Some(Tag::Compound(c)) => {
+                                c.get(&"id".into()).and_then(string).unwrap_or_default()
+                            }
+                            _ => String::new(),
                         };
-                        if props.is_empty() {
-                            name
+                        let id = if id.contains(':') {
+                            id
                         } else {
-                            format!("{name}[{}]", props.join(","))
+                            format!("minecraft:{id}")
+                        };
+                        self.item_particle(&sunrise_client::items::ItemStack::new(&id, 1))
+                    }
+                    ParticleType::ItemSlime
+                    | ParticleType::ItemSnowball
+                    | ParticleType::ItemCobweb => {
+                        self.ensure_item_particle_sprites();
+                        ParticleOptions::simple(ty)
+                    }
+                    ParticleType::Block
+                    | ParticleType::BlockCrumble
+                    | ParticleType::FallingDust
+                    | ParticleType::DustPillar
+                    | ParticleType::BlockMarker => {
+                        // BlockParticleOption: a block id, or {Name, Properties}.
+                        let text = match field("block_state") {
+                            Some(Tag::String(s)) => s.to_string_lossy(),
+                            Some(Tag::Compound(c)) => {
+                                let name =
+                                    c.get(&"Name".into()).and_then(string).unwrap_or_default();
+                                let props: Vec<String> = match c.get(&"Properties".into()) {
+                                    Some(Tag::Compound(p)) => p
+                                        .iter()
+                                        .filter_map(|(k, v)| {
+                                            string(v)
+                                                .map(|v| format!("{}={v}", k.to_string_lossy()))
+                                        })
+                                        .collect(),
+                                    _ => Vec::new(),
+                                };
+                                if props.is_empty() {
+                                    name
+                                } else {
+                                    format!("{name}[{}]", props.join(","))
+                                }
+                            }
+                            _ => String::new(),
+                        };
+                        let mut reader = sunrise_client::command::Reader::new(&text);
+                        let block = sunrise_client::command::args::ArgType::BlockState
+                            .parse(&mut reader, &self.ui.registries);
+                        match block {
+                            Ok(Arg::Block(b)) => {
+                                let state = self.block_state(&b)?;
+                                block_state = Some(state);
+                                let at = self
+                                    .position_arg(ctx, "pos")
+                                    .unwrap_or_else(|| self.source_position())
+                                    .map(|c| c.floor() as i32);
+                                let (sprite, tint) = self
+                                    .particle_sprite(state, at)
+                                    .unwrap_or_else(|| ("block/stone".into(), 0xFFFFFF));
+                                ParticleOptions::block(ty, sprite, tint)
+                            }
+                            _ => ParticleOptions::simple(ty),
                         }
                     }
-                    _ => String::new(),
+                    // Every other type with options decodes its own codec
+                    // (`ParticleTypes.CODEC`): dust, spells, sculk charge, shriek,
+                    // geysers. A type without options keeps the defaults.
+                    _ => opts
+                        .as_ref()
+                        .and_then(|c| crate::game::potions::particle_options(ty, c))
+                        .unwrap_or_else(|| ParticleOptions::simple(ty)),
                 };
-                let mut reader = sunrise_client::command::Reader::new(&text);
-                let block = sunrise_client::command::args::ArgType::BlockState
-                    .parse(&mut reader, &self.ui.registries);
-                match block {
-                    Ok(Arg::Block(b)) => {
-                        let state = self.block_state(&b)?;
-                        block_state = Some(state);
-                        let at = self
-                            .position_arg(ctx, "pos")
-                            .unwrap_or_else(|| self.source_position())
-                            .map(|c| c.floor() as i32);
-                        let (sprite, tint) = self
-                            .particle_sprite(state, at)
-                            .unwrap_or_else(|| ("block/stone".into(), 0xFFFFFF));
-                        ParticleOptions::block(ty, sprite, tint)
-                    }
-                    _ => ParticleOptions::simple(ty),
-                }
+                (name.to_owned(), options, block_state)
             }
-            // Every other type with options decodes its own codec
-            // (`ParticleTypes.CODEC`): dust, spells, sculk charge, shriek,
-            // geysers. A type without options keeps the defaults.
-            _ => opts
-                .as_ref()
-                .and_then(|c| crate::game::potions::particle_options(ty, c))
-                .unwrap_or_else(|| ParticleOptions::simple(ty)),
+            _ => return Ok(0),
         };
         let pos = self
             .position_arg(ctx, "pos")
@@ -1015,6 +1035,21 @@ impl Game<'_> {
         let reached: Vec<Target> = viewers
             .into_iter()
             .filter(|&t| {
+                if options.mod_particle.is_some() {
+                    let conn = match t {
+                        Target::Player => self.lan_acting,
+                        Target::Guest(conn) => Some(conn),
+                        _ => None,
+                    };
+                    if conn.is_some_and(|conn| {
+                        self.lan
+                            .as_ref()
+                            .and_then(|host| host.hub.guest(conn))
+                            .is_none_or(|g| !g.is_sunrise())
+                    }) {
+                        return false;
+                    }
+                }
                 self.target_position(t).is_some_and(|p| {
                     let c = p.map(|v| v.floor() + 0.5);
                     (c[0] - pos[0]).powi(2) + (c[1] - pos[1]).powi(2) + (c[2] - pos[2]).powi(2)
@@ -1043,28 +1078,39 @@ impl Game<'_> {
                 })
             });
         let mut local = false;
-        for &t in &reached {
+        let mut sent = 0;
+        for t in reached {
             match (t, &packet) {
-                (Target::Player, Some(p)) if self.lan_acting.is_some() => {
-                    self.guest_packets.push(p.clone());
+                (Target::Player, _) if self.lan_acting.is_none() => {
+                    local = true;
+                    sent += 1;
                 }
-                (Target::Player, _) => local = true,
+                (Target::Player, Some(p)) => {
+                    self.guest_packets.push(p.clone());
+                    sent += 1;
+                }
                 (Target::Guest(conn), Some(p)) => {
-                    if let Some(host) = self.lan.as_ref() {
+                    if let Some(host) = &self.lan {
                         host.hub.send_to(conn, p);
+                        sent += 1;
                     }
                 }
                 _ => {}
             }
         }
-        let reached = reached.len() as i32;
-        if !local {
-        } else if count <= 0 {
+        if sent == 0 {
+            return Err(err("commands.particle.failed", &[]));
+        }
+        if local && count <= 0 {
             // handleParticleEvent, count 0: one particle, the speed times
             // the delta as velocity (both sent as floats, multiplied as floats).
-            self.particles
-                .create(&options, pos, delta.map(|d| f64::from(speed * d as f32)));
-        } else {
+            self.particles.create_with_world(
+                Some(&self.world),
+                &options,
+                pos,
+                delta.map(|d| f64::from(speed * d as f32)),
+            );
+        } else if local {
             for _ in 0..count {
                 let r = self.particles.random();
                 let p = [
@@ -1077,14 +1123,19 @@ impl Game<'_> {
                     r.next_gaussian() * f64::from(speed),
                     r.next_gaussian() * f64::from(speed),
                 ];
-                self.particles.create(&options, p, v);
+                if !self
+                    .particles
+                    .create_with_world(Some(&self.world), &options, p, v)
+                {
+                    break;
+                }
             }
         }
         self.feedback(Text::translate(
             "commands.particle.success",
-            &[Text::literal(name.to_owned())],
+            &[Text::literal(name)],
         ));
-        Ok(reached)
+        Ok(sent)
     }
 
     // ---- /attribute ---------------------------------------------------------------------
