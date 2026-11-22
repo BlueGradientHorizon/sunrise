@@ -18,7 +18,7 @@ mod roll_loot_tests;
 #[path = "native_entity_refs/save_lending.rs"]
 mod save_lending;
 use super::{
-    Dim, Game,
+    Game,
     commands::Target,
     entity::{Entity as _, entity_lists_of, for_each_entity},
     remote::Remote,
@@ -75,16 +75,30 @@ fn clip_entity_ray(
 }
 
 impl Game<'_> {
-    /// The logged-in window and network id for an entity handle in its current world.
-    pub(super) fn native_client_entity_context(&self, entity: EntityRef) -> Option<(&Remote, i32)> {
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
-        (self.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
-        Some((remote, i32::try_from(entity.id()).ok()?))
+    /// The window's live level and network id for a handle in its current world generation.
+    pub(super) fn native_client_entity_context(
+        &self,
+        entity: EntityRef,
+    ) -> Result<(&Remote, i32), EntityReadError> {
+        let remote = self
+            .remote
+            .as_ref()
+            .filter(|remote| remote.has_level())
+            .ok_or(EntityReadError::Unavailable)?;
+        let epoch = self
+            .native_lifecycle
+            .epoch()
+            .ok_or(EntityReadError::Unavailable)?;
+        if epoch != entity.epoch() {
+            return Err(EntityReadError::Stale);
+        }
+        let id = i32::try_from(entity.id()).map_err(|_| EntityReadError::Stale)?;
+        Ok((remote, id))
     }
 
     /// An entity tracked by the remote client but absent from local entity lists.
     pub(super) fn native_client_tracked(&self, entity: EntityRef) -> Option<(&str, [f64; 3])> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
+        let (remote, id) = self.native_client_entity_context(entity).ok()?;
         remote.tracked_entity(id)
     }
 
@@ -125,45 +139,50 @@ impl Game<'_> {
     /// the ones the server tracks to it). None for a stale handle, with no
     /// login, or for an entity the client doesn't have.
     pub(super) fn native_client_entity_target(&self, entity: EntityRef) -> Option<Target> {
+        self.native_client_entity_body_target(entity).ok()
+    }
+
+    /// Resolve a projected body without mistaking packet-only tracking for a retired handle.
+    fn native_client_entity_body_target(
+        &self,
+        entity: EntityRef,
+    ) -> Result<Target, EntityReadError> {
         let (remote, id) = self.native_client_entity_context(entity)?;
         if id == remote.entity_id {
-            return self.player.as_ref().map(|_| Target::Player);
+            return self
+                .player
+                .as_ref()
+                .map(|_| Target::Player)
+                .ok_or(EntityReadError::Unavailable);
         }
         // The server tracks the dragon alone; its parts are the client's own copies of it.
         if let Some(part) = self.level_dragon_part(entity.id()) {
-            return Some(part);
+            return Ok(part);
         }
-        remote.tracked(id)?;
-        match self.level_entity(id)? {
-            Target::Mob(mob) if !self.mobs.iter().any(|m| m.id == mob && !m.removed) => None,
-            target => Some(target),
+        remote.tracked_entity(id).ok_or(EntityReadError::Stale)?;
+        match self.level_entity(id) {
+            Some(Target::Mob(mob)) if !self.mobs.iter().any(|m| m.id == mob && !m.removed) => {
+                Err(EntityReadError::Unavailable)
+            }
+            Some(target) => Ok(target),
+            None => Err(EntityReadError::Unavailable),
         }
     }
-    /// What a handle names for a read that works on both sides: the server's
-    /// entity (`native_entity_target`) or, on a client, its own copy of it.
+    /// What a handle names for an optional body read that works on both sides.
     pub(super) fn native_entity_read_target(&self, entity: EntityRef) -> Option<Target> {
-        if self.is_logical_server() {
-            self.native_entity_target(entity)
-        } else {
-            self.native_client_entity_target(entity)
-        }
+        self.native_entity_visit_target(entity).ok()
     }
-    /// Resolve a read target, distinguishing a stale handle from a missing body
-    /// of a tracked entity or a client without a live world.
+    /// Resolve the resident server body or the client projection, separating a stale
+    /// handle from a body or world that the current view cannot read.
     pub(super) fn native_entity_visit_target(
         &self,
         entity: EntityRef,
-    ) -> Result<Target, mod_api::EntityReadError> {
-        self.native_entity_read_target(entity).ok_or_else(|| {
-            if !self.is_logical_server()
-                && (self.remote.as_ref().is_none_or(|remote| !remote.logged_in)
-                    || self.native_client_tracked(entity).is_some())
-            {
-                mod_api::EntityReadError::Unavailable
-            } else {
-                mod_api::EntityReadError::Stale
-            }
-        })
+    ) -> Result<Target, EntityReadError> {
+        if self.is_logical_server() {
+            self.native_server_entity_target(entity)
+        } else {
+            self.native_client_entity_body_target(entity)
+        }
     }
     /// The entity `id` (the id events carry) as a handle for the `entity_*`
     /// methods: None with no world open, or for no such entity in the level
@@ -215,10 +234,7 @@ impl Game<'_> {
         entity: EntityRef,
         visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, EntityReadError> {
-        let Target::Dragon(id) = self
-            .native_entity_read_target(entity)
-            .ok_or(EntityReadError::Stale)?
-        else {
+        let Target::Dragon(id) = self.native_entity_visit_target(entity)? else {
             return Ok(ControlFlow::Continue(()));
         };
         // Project the eight part handles together before calling the visitor on any of them.
@@ -275,14 +291,7 @@ impl Game<'_> {
         else {
             return ControlFlow::Continue(());
         };
-        let builtins = [Dim::Overworld, Dim::Nether, Dim::End]
-            .into_iter()
-            .filter(|dim| *dim == self.dim || self.levels.parked.contains_key(dim));
-        let extras = std::iter::once(self.dim)
-            .chain(self.levels.parked.keys().copied())
-            .filter(|dim| matches!(dim, Dim::Extra(_)));
-        builtins
-            .chain(extras)
+        self.loaded_dims()
             .map(|dim| self.level_ref(epoch, dim.key()))
             .try_for_each(visit)
     }
@@ -1007,7 +1016,7 @@ impl Game<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<&super::remote::RemoteGeneral> {
-        let (remote, id) = self.native_client_entity_context(entity)?;
+        let (remote, id) = self.native_client_entity_context(entity).ok()?;
         remote.general.shown(id)
     }
     /// The entity's type (`Entity.getType`): `minecraft:zombie`. API

@@ -118,7 +118,7 @@ impl Builtin {
             let Some(entries) = registry["entries"].as_object() else {
                 continue;
             };
-            let mut names = vec![String::new(); entries.len()];
+            let mut slots = vec![None; entries.len()];
             for (entry, value) in entries {
                 let id = value["protocol_id"]
                     .as_u64()
@@ -132,14 +132,25 @@ impl Builtin {
                         "{entry}: protocol_id {id} out of range"
                     )));
                 }
-                if id >= names.len() {
-                    names.resize(id + 1, String::new());
+                if id >= slots.len() {
+                    slots.resize(id + 1, None);
                 }
-                if !names[id].is_empty() {
+                if slots[id].is_some() {
                     return Err(Error::new(format!("{entry}: duplicate protocol_id {id}")));
                 }
-                names[id] = entry.clone();
+                slots[id] = (!entry.is_empty()).then_some(entry.as_str());
             }
+            // Publish canonical IDs in report order by numeric slot. Invalid IDs leave
+            // gaps, just like an unassigned slot; other entries keep their network IDs.
+            let names = slots
+                .into_iter()
+                .map(|entry| {
+                    entry
+                        .and_then(|entry| Identifier::parse(entry).ok())
+                        .map(|id| id.to_string())
+                        .unwrap_or_default()
+                })
+                .collect();
             registries.insert(name.clone(), Ids::from_names(names));
         }
         Ok(Self { registries })

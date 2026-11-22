@@ -105,23 +105,21 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// The side's own copy of the entity for a read. On a client only tracked
-    /// entities and the local player have handles.
+    /// Resolve the server body or the client's packet-tracked riding state.
     fn riding_read(&self, entity: EntityRef) -> Result<RidingRead<'_>, EntityReadError> {
         if self.is_logical_server() {
             return self
-                .native_entity_target(entity)
-                .map(RidingRead::Server)
-                .ok_or(EntityReadError::Stale);
+                .native_server_entity_target(entity)
+                .map(RidingRead::Server);
         }
-        let remote = self
-            .remote
-            .as_ref()
-            .filter(|remote| remote.logged_in)
-            .ok_or(EntityReadError::Unavailable)?;
-        (self.entity(entity.id()) == Some(entity))
-            .then_some(RidingRead::Client(remote))
-            .ok_or(EntityReadError::Stale)
+        let (remote, id) = self.native_client_entity_context(entity)?;
+        if id == remote.entity_id
+            || remote.tracked_entity(id).is_some()
+            || self.level_dragon_part(entity.id()).is_some()
+        {
+            return Ok(RidingRead::Client(remote));
+        }
+        Err(EntityReadError::Stale)
     }
 
     /// What the entity rides (`Entity.getVehicle`), if its vehicle has a handle.
@@ -233,11 +231,7 @@ impl Game<'_> {
         entity: EntityRef,
         visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, EntityReadError> {
-        if !self.is_logical_server() {
-            return Err(EntityReadError::Unavailable);
-        }
-        self.native_entity_target(entity)
-            .ok_or(EntityReadError::Stale)?;
+        self.native_server_entity_target(entity)?;
         Ok(visit_passenger_tree(
             entity.id(),
             |vehicle, after| self.next_passenger_seat(vehicle, after),

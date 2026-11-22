@@ -209,6 +209,8 @@ pub enum PayloadSendError {
     StaleToken(PayloadId),
     /// `IPayloadContext::send_to` is for `Droppable` channels only.
     NotDroppable(PayloadId),
+    /// The current side, phase or world view cannot supply tracking recipients.
+    Unavailable,
 }
 
 impl crate::NoBackend for PayloadSendError {

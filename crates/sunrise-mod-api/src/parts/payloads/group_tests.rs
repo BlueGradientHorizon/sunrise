@@ -41,6 +41,7 @@ struct Double {
     watchers: Vec<PlayerRef>,
     /// Entity id to the players it is sent to.
     trackers: HashMap<u32, Vec<PlayerRef>>,
+    tracking_unavailable: bool,
     /// Players whose send is refused, as one who left after the list was read.
     refused: Vec<PlayerRef>,
     sent: Vec<(u32, Vec<u8>)>,
@@ -66,6 +67,10 @@ impl ServerHost for Double {
 }
 impl crate::prelude::ServicesServerHost for Double {
     fn players(&self) -> &dyn Players {
+        assert!(
+            !self.tracking_unavailable,
+            "looked up and_self after a refusal"
+        );
         &self.everyone
     }
 }
@@ -92,6 +97,9 @@ impl crate::prelude::LevelChunksBackend for Double {
         chunk: ChunkRef,
         visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, LevelReadError> {
+        if self.tracking_unavailable {
+            return Err(LevelReadError::Unavailable);
+        }
         if !self.levels.contains_key(&chunk.level()) {
             return Err(LevelReadError::Stale);
         }
@@ -104,6 +112,9 @@ impl crate::prelude::EntityIdentityBackend for Double {
         entity: EntityRef,
         visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, EntityReadError> {
+        if self.tracking_unavailable {
+            return Err(EntityReadError::Unavailable);
+        }
         Ok(self
             .trackers
             .get(&entity.id())
@@ -150,6 +161,7 @@ impl crate::prelude::PayloadsServerHost for Double {
         id: &PayloadId,
         bytes: PayloadBytes,
     ) -> u32 {
+        assert!(!self.tracking_unavailable, "tried delivery after a refusal");
         players
             .iter()
             .filter(|player| {
@@ -207,7 +219,8 @@ fn setup() -> (Double, ToClient<Counter>, ToClient<Counter>) {
             (4, [1.0, 64.0, 0.0]),
         ]),
         watchers: vec![b, d],
-        trackers: HashMap::from([(2, vec![a, c]), (9, vec![a, b, c])]),
+        trackers: HashMap::from([(2, vec![a, c]), (4, Vec::new()), (9, vec![a, b, c])]),
+        tracking_unavailable: false,
         refused: Vec::new(),
         sent: Vec::new(),
     };
@@ -337,16 +350,49 @@ fn tracking_an_entity_reaches_its_trackers_and_itself_once_when_asked() {
     );
     assert_eq!(recipients(&host), [1, 3, 2]);
     host.sent.clear();
-    // Player 4 has no tracking rows but is still included if requested.
+    // Player 4 has an empty tracker set but is still included if requested.
     assert_eq!(
         down.send_tracking_entity(&mut host, entity(4), true, &value),
         Ok(1)
     );
     assert_eq!(recipients(&host), [4]);
     host.sent.clear();
-    // A stale entity has no trackers.
+    // A stale entity has no recipients, even if the caller requests and_self.
     assert_eq!(
-        down.send_tracking_entity(&mut host, entity(77), false, &value),
+        down.send_tracking_entity(&mut host, entity(77), true, &value),
+        Ok(0)
+    );
+    assert!(host.sent.is_empty());
+}
+
+#[test]
+fn unavailable_tracking_refuses_before_any_further_lookup_or_delivery() {
+    let (mut host, down, _) = setup();
+    host.tracking_unavailable = true;
+    let value = Counter { counter: 1 };
+    let chunk = ChunkRef::new(overworld(), [0, 0]);
+    let entity = player(2).entity();
+    assert_eq!(
+        down.send_tracking_chunk(&mut host, chunk, &value),
+        Err(PayloadSendError::Unavailable)
+    );
+    assert_eq!(
+        down.send_tracking_entity(&mut host, entity, true, &value),
+        Err(PayloadSendError::Unavailable)
+    );
+    assert!(host.sent.is_empty());
+}
+
+#[test]
+fn an_empty_tracking_view_is_a_successful_send_to_zero_players() {
+    let (mut host, down, _) = setup();
+    host.watchers.clear();
+    let value = Counter { counter: 1 };
+    let chunk = ChunkRef::new(overworld(), [0, 0]);
+    let entity = player(4).entity();
+    assert_eq!(down.send_tracking_chunk(&mut host, chunk, &value), Ok(0));
+    assert_eq!(
+        down.send_tracking_entity(&mut host, entity, false, &value),
         Ok(0)
     );
     assert!(host.sent.is_empty());

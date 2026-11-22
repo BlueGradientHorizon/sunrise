@@ -74,8 +74,9 @@ pub trait EntityIdentityBackend {
     /// and no living state; the handle stops resolving with the dragon.
     /// Return `ControlFlow::Break(())` to stop (`Ok(Break(()))`). `Ok(Continue(()))` means
     /// the visit completed, without calling `visit` for a non-multipart entity. A stale handle
-    /// returns [`EntityReadError::Stale`]; unavailable world access or a multipart entity whose
-    /// parts cannot all be resolved returns [`EntityReadError::Unavailable`]. No refusal calls `visit`.
+    /// returns [`EntityReadError::Stale`]. If the world is unreadable, the body is parked or
+    /// only packet-tracked, or not all parts can be resolved, returns
+    /// [`EntityReadError::Unavailable`]. No refusal calls `visit`.
     #[access(WorldOnly)]
     fn entity_visit_parts(
         &self,

@@ -466,3 +466,33 @@ mod condition_tests {
         assert_eq!(tags["test:hot"], ["test:fire"]);
     }
 }
+
+#[cfg(test)]
+mod network_entry_tests {
+    use super::*;
+
+    #[test]
+    fn builtin_entries_visit_only_canonical_ids_in_numeric_order() {
+        let builtin = Builtin::parse(
+            r#"{"minecraft:item":{"entries":{
+                "minecraft:Bad":{"protocol_id":2},
+                "minecraft:apple":{"protocol_id":5},
+                "stick":{"protocol_id":1}
+            }}}"#,
+        )
+        .unwrap();
+        let mut seen = Vec::new();
+        assert_eq!(
+            visit_network_entries(&builtin, &Dynamic::default(), "minecraft:item", &mut |id| {
+                seen.push(id.to_owned());
+                ControlFlow::Continue(())
+            }),
+            Ok(ControlFlow::Continue(()))
+        );
+        assert_eq!(seen, ["minecraft:stick", "minecraft:apple"]);
+        let items = builtin.get("minecraft:item").unwrap();
+        assert_eq!(items.id("minecraft:stick"), Some(1));
+        assert_eq!(items.id("minecraft:Bad"), None);
+        assert_eq!(items.id("minecraft:apple"), Some(5));
+    }
+}

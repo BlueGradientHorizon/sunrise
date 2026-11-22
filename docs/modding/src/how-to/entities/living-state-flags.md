@@ -59,8 +59,9 @@ contact is false. It is deliberately not equivalent to checking the current `eye
 `entity.eye_fluid(host)` returns `Some(Some(id))` with an `&'static str` in fluid and
 `Some(None)` in air. Both reads return `None` for unsupported kinds or stale handles.
 `entity.visit_fluid_heights(host, &mut visit)` lends each body contact's ID and depth,
-deepest first, with water before lava on a tie. No contacts is a successful empty visit;
-a stale or unreadable body returns `EntityReadError`.
+deepest first, with water before lava on a tie. No contacts is a successful empty visit.
+A retired handle returns `EntityReadError::Stale`; a parked or otherwise unreadable body
+returns `EntityReadError::Unavailable` without calling the visitor.
 
 `PlayerRef::trigger_consume_item(host, &stack)` is server-only and fires just
 `CriteriaTriggers.CONSUME_ITEM.trigger(serverPlayer, stack)`, the vanilla public call that NeoForge
@@ -78,7 +79,8 @@ refuses `minecraft:` trigger identifiers.
 `living.visit_attribute_modifiers(host, id, &mut visit)` lends an `AttributeModifierView`
 for each modifier in addition order. Return `ControlFlow::Break(())` to stop and copy a
 borrowed ID only to retain it. An attribute with no modifiers is a successful empty visit;
-an unknown or unreadable attribute returns `EntityReadError::Unavailable` instead.
+an unknown or unreadable attribute returns `EntityReadError::Unavailable` instead. Like fluid
+visits, these distinguish a retired handle from a body the current view cannot read.
 
 ## Portals and leashes
 
@@ -188,8 +190,9 @@ walking through retained objects without lending their handles: it still visits 
 below an off-level passenger. Both visitors take an `EntityRef` and return `ControlFlow<()>`.
 Return `ControlFlow::Break(())` to stop, or `ControlFlow::Continue(())` to visit the next rider.
 `Ok(Continue(()))` means the visit completed, even if there were no handles. A stale handle returns
-`Err(EntityReadError::Stale)`, and an unavailable read returns `Err(EntityReadError::Unavailable)`.
-Push handles into your own collection inside the visitor only if you need to keep a list.
+`Err(EntityReadError::Stale)`. A parked server vehicle or otherwise unreadable view returns
+`Err(EntityReadError::Unavailable)`. Push handles into your own collection inside the visitor
+only if you need to keep a list.
 
 `root_vehicle` also traverses retained intermediaries, but returns `None` if the actual root is
 off-level; it never returns a resident descendant in its place. `is_passenger_of_same_vehicle`
@@ -203,9 +206,10 @@ object into the level or exposes a handle for it.
 
 On a client, `vehicle`, `is_passenger`, `visit_passengers`, `root_vehicle` and
 `is_vehicle` read the riding relationships sent in the server's passenger
-packets. They work for every tracked entity and the local player. A stale or
-untracked input returns `None` for the optional reads and `Err(EntityReadError::Stale)`
-for the visitor. Passenger lists for unknown vehicles and entities that cannot
+packets. They work for every tracked entity and the local player without a projected body.
+A stale or untracked input returns `None` for the optional reads and `Err(EntityReadError::Stale)`
+for the visitor while a client world is live. With no live client world, the visitor returns
+`Err(EntityReadError::Unavailable)`. Passenger lists for unknown vehicles and entities that cannot
 carry passengers (markers and ominous item spawners) are ignored. Unknown
 passengers and links that would form a cycle do not board. `visit_passengers`
 visits client handles in packet seat order. The other riding reads and all

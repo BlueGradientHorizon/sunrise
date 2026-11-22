@@ -35,11 +35,12 @@ pub trait EntityRidingBackend {
     /// each behind those aboard, except that a server player goes first when the first is no
     /// player. Only resident handles are visited; retained off-level passengers are omitted.
     /// Dying passengers stay aboard until removed. On a client, unknown passengers and
-    /// links that would form a cycle do not board; the visit follows packet seat order.
-    /// Return `ControlFlow::Break(())` to stop (`Ok(Break(()))`). `Ok(Continue(()))` means
-    /// the visit completed, including when no passenger has a handle. A stale or untracked
-    /// vehicle returns [`EntityReadError::Stale`]; unavailable world access returns
-    /// [`EntityReadError::Unavailable`]. A refusal never calls `visit`.
+    /// links that would form a cycle do not board; the visit follows packet seat order and
+    /// does not require a projected vehicle body. Return `ControlFlow::Break(())` to stop
+    /// (`Ok(Break(()))`). `Ok(Continue(()))` means the visit completed, including when no
+    /// passenger has a handle. A stale or untracked vehicle returns [`EntityReadError::Stale`];
+    /// unreadable world access or a parked server body returns [`EntityReadError::Unavailable`].
+    /// A refusal never calls `visit`.
     #[access(WorldOnly)]
     fn entity_visit_passengers(
         &self,
@@ -59,8 +60,8 @@ pub trait EntityRidingBackend {
     /// intermediaries without lending a handle for them; resident descendants are still visited.
     /// Return `ControlFlow::Break(())` to stop (`Ok(Break(()))`). `Ok(Continue(()))` means
     /// the visit completed, including when there are no resident descendants. A stale vehicle
-    /// returns [`EntityReadError::Stale`]; a client or unavailable world access returns
-    /// [`EntityReadError::Unavailable`]. A refusal never calls `visit`.
+    /// returns [`EntityReadError::Stale`]; a parked vehicle, a client or unreadable world access
+    /// returns [`EntityReadError::Unavailable`]. A refusal never calls `visit`.
     #[access(WorldOnly)]
     fn entity_visit_indirect_passengers(
         &self,
