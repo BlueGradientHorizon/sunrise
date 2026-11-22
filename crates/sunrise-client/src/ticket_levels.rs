@@ -1083,6 +1083,38 @@ mod tests {
         assert!(everywhere.random_ticking(1000, -1000));
     }
 
+    #[test]
+    fn player_spawn_loads_a_square_without_simulation_and_expires_after_loading() {
+        let mut tickets = ChunkTickets::default();
+        tickets.add_spawn((32, -17), SpawnTicketKind::Player);
+        for _ in 0..40 {
+            tickets.tick_spawn(|_, _| false);
+        }
+        tickets.update(Some(Sources::default()));
+        let levels = tickets.levels();
+        let (x, z) = (32, -17);
+        let map = levels.0.as_ref().unwrap();
+        assert_eq!(map.get(x, z), (30, UNLOADED));
+        assert_eq!(map.get(x + 3, z - 3), (FULL, UNLOADED));
+        assert_eq!(map.get(x + 4, z - 3), (UNLOADED, UNLOADED));
+        assert!(!levels.block_ticking(x, z));
+        for _ in 0..20 {
+            tickets.tick_spawn(|_, _| true);
+        }
+        assert_eq!(tickets.spawn_areas().count(), 1);
+        tickets.add_spawn((32, -17), SpawnTicketKind::Player);
+        for _ in 0..20 {
+            tickets.tick_spawn(|_, _| true);
+        }
+        assert_eq!(tickets.spawn_areas().count(), 1);
+        tickets.tick_spawn(|_, _| true);
+        tickets.update(Some(Sources::default()));
+        assert_eq!(
+            tickets.levels().0.as_ref().unwrap().get(x, z),
+            (UNLOADED, UNLOADED)
+        );
+    }
+
     /// `EnderDragonFight.tick` holds the arena's `TicketType.DRAGON` ticket
     /// (radius 9, level 24) for as long as a player watches the fight, so the
     /// island ticks with its watcher far outside their simulation distance,
@@ -1174,9 +1206,8 @@ mod tests {
                 players,
                 forced,
                 portal: Vec::new(),
-                spawn: Vec::new(),
-                // Tiled maps hold the arena too.
                 spawn: vec![((15, -16), 3)],
+                // Tiled maps hold the arena too.
                 dragon: (case % 3 == 0).then(|| (next(spread), next(spread))),
                 viewed: Vec::new(),
                 view_distance: 2 + next(12).abs(),
