@@ -16,7 +16,6 @@ pub trait LevelEffectsBackendMut {
     /// nothing. A `minecraft:` event must be registered; a mod's goes by name
     /// and is heard where its resources define it. True means queued, not
     /// heard.
-    #[access(WorldOnly)]
     fn level_play_sound(
         &mut self,
         level: LevelRef,
@@ -35,7 +34,6 @@ pub trait LevelEffectsBackendMut {
     /// need `state`; item particles need `options.item_stack` (validated against
     /// the item registry and stack limits). Trail and vibration remain unsupported.
     /// True means queued, not drawn.
-    #[access(WorldOnly)]
     fn level_send_particles(
         &mut self,
         level: LevelRef,
@@ -53,14 +51,12 @@ pub trait LevelEffectsBackendMut {
     /// block with state id `data`). No player is left out, the acting one
     /// included. False for an event that carries a block state (2001, 2014,
     /// 3008) when `data` isn't one.
-    #[access(WorldOnly)]
     fn level_level_event(&mut self, level: LevelRef, id: i32, pos: [i32; 3], data: i32) -> bool;
     /// Side: server.
     /// Plays the break effect of `state` at `pos`: the particles and the sound of a block of
     /// that state breaking, for the players near it (`Level.levelEvent(2001, pos,
     /// Block.getId(state))`). Nothing is written: the block at `pos` stays. False off the level
     /// in place, for a stale handle and on a client.
-    #[access(WorldOnly)]
     fn level_block_break_effect(
         &mut self,
         level: LevelRef,
@@ -82,7 +78,6 @@ pub trait LevelEffectsBackendMut {
     /// the players of this level near `pos` get it. False for the same events
     /// and data `level_event` refuses, a parked level, a stale handle or a
     /// client.
-    #[access(WorldOnly)]
     fn level_global_level_event(
         &mut self,
         level: LevelRef,
@@ -96,7 +91,6 @@ pub trait LevelEffectsBackendMut {
     /// wardens and allays receive the optional source and affected state.
     /// Returns false without emitting for an unknown event, invalid position,
     /// stale or foreign source, unregistered state, client or inactive level.
-    #[access(WorldOnly)]
     fn level_game_event(
         &mut self,
         level: LevelRef,
@@ -122,7 +116,6 @@ pub trait LevelEffectsBackendMut {
     /// vanilla: a big blast costs the blocks its rays find, and one of 0 or
     /// below finds none. Refused, with nothing exploded and no hook told, as
     /// [`ExplodeError`] says.
-    #[access(WorldOnly)]
     fn level_explode(
         &mut self,
         level: LevelRef,
@@ -149,7 +142,6 @@ pub trait LevelEffectsBackendMut {
     /// asked with that `ExplosionStart`. `Unavailable` for a stale level or `source`, a chunk
     /// that isn't loaded (it is never loaded) or a state the game doesn't know; None only from a
     /// host without a game. The level does not change.
-    #[access(WorldOnly)]
     fn level_explosion_resistance(
         &mut self,
         level: LevelRef,
@@ -168,7 +160,6 @@ pub trait LevelEffectsBackendMut {
     /// Refused, with nothing read, for an inverted area or more than
     /// `ResistanceCells::MAX` (262,144) cells: it runs on the server tick, so read big areas in
     /// pieces.
-    #[access(WorldOnly)]
     fn level_explosion_resistances(
         &mut self,
         level: LevelRef,
@@ -200,7 +191,6 @@ pub trait LevelEffectsBackendMut {
     /// when their turn came. `Err`, with nothing changed, for more than 65,536 positions
     /// (`ExplosionDestroyError::MAX_POSITIONS`), a stale level or `source`, or a centre or
     /// radius that isn't finite or a negative radius.
-    #[access(WorldOnly)]
     fn level_explosion_destroy_blocks(
         &mut self,
         level: LevelRef,

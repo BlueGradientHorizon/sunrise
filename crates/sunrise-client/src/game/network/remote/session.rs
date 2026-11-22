@@ -62,6 +62,7 @@ impl Game<'_> {
                 info.clone(),
                 lang.clone(),
                 item_data,
+                Arc::clone(&self.client_reports),
             ),
             (None, Some(cookies)) => Session::connect_transferred(
                 address,
@@ -71,6 +72,7 @@ impl Game<'_> {
                 lang.clone(),
                 cookies,
                 item_data,
+                Arc::clone(&self.client_reports),
             ),
             (None, None) => {
                 let connect = if lan {
@@ -85,6 +87,7 @@ impl Game<'_> {
                     info.clone(),
                     lang.clone(),
                     item_data,
+                    Arc::clone(&self.client_reports),
                 )
             }
         };
@@ -139,6 +142,7 @@ impl Game<'_> {
             user,
             local,
         } = opening;
+        self.reset_client_item_use();
         self.realm_session = realm;
         self.lan_session = lan;
         self.reset_tutorial();
@@ -192,7 +196,6 @@ impl Game<'_> {
         self.container = None;
         self.carried = None;
         self.using = None;
-        self.end_mod_use();
         self.clicks.miss_time = 0;
         // A new LocalPlayer has no effects: the server sends what it has
         // (ClientboundUpdateMobEffectPacket on placement).
@@ -246,6 +249,7 @@ impl Game<'_> {
         self.remote = Some(Remote {
             selector_metadata_supported: true,
             professions: self.client_professions()?,
+            display_address: Remote::display_address_for(&session.address),
             session,
             brand: "unknown".into(),
             recipe_viewer: Default::default(),
@@ -382,8 +386,6 @@ impl Game<'_> {
             is_destroying: false,
             interaction_swing: [true; 2],
             destroy_delay: 0,
-            input: Default::default(),
-            pending_keys: InputQueue::new(queued_keys::PENDING_KEYS),
             swap_answer: [false; 2],
             stop_mining: false,
             flat: false,
@@ -413,6 +415,7 @@ impl Game<'_> {
     }
     /// Prepare a client session and remote state to receive packets from a studio replay.
     pub(in crate::game) fn init_remote_for_replay(&mut self) -> Result<()> {
+        self.reset_client_item_use();
         self.realm_session = false;
         self.lan_session = false;
         self.reset_tutorial();
@@ -478,7 +481,6 @@ impl Game<'_> {
         self.container = None;
         self.carried = None;
         self.using = None;
-        self.end_mod_use();
 
         self.set_mode_id(0);
         self.experience = Experience {
@@ -509,6 +511,7 @@ impl Game<'_> {
         self.remote = Some(Remote {
             selector_metadata_supported: true,
             professions: self.client_professions()?,
+            display_address: Remote::display_address_for(&session.address),
             session,
             brand: "sunrise-studio".into(),
             recipe_viewer: Default::default(),
@@ -642,8 +645,6 @@ impl Game<'_> {
             is_destroying: false,
             interaction_swing: [true; 2],
             destroy_delay: 0,
-            input: Default::default(),
-            pending_keys: InputQueue::new(queued_keys::PENDING_KEYS),
             swap_answer: [false; 2],
             stop_mining: false,
             flat: false,
@@ -710,14 +711,6 @@ impl Game<'_> {
         self.kept_block_entities.get_mut().clear();
         self.mod_view_distances.take();
         self.clear_narrator();
-        // updateLevelInEngines(null): every sound stops and the music manager
-        // lets go of its track. Leaving a server comes straight here, not
-        // through finish_close_world, so the biome's ambient loop would
-        // otherwise play on over the title screen until the next world.
-        self.ambience.clear(&mut self.audio);
-        self.music.stop_playing(None, &mut self.audio);
-        self.audio.leave_level();
-        self.mod_sounds.clear();
         // A world is leaving either way: its icon attempt goes with it.
         self.world_icon = None;
         // Minecraft.disconnect: the client level goes.
@@ -736,7 +729,12 @@ impl Game<'_> {
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
-        // Minecraft.disconnect's updateLevelInEngines: the title changes with the screen, not a frame later.
+        // Minecraft.disconnect -> updateLevelInEngines(null), after logout and level
+        // unload: stop even the sounds a listener started during teardown.
+        self.ambience.clear(&mut self.audio);
+        self.music.stop_playing(None, &mut self.audio);
+        self.audio.leave_level();
+        self.mod_sounds.clear();
         self.update_window_title();
         self.gui.atlas.clear_object_skins();
         self.server_packs_disconnect();
@@ -746,9 +744,9 @@ impl Game<'_> {
         // Gui.setScreen -> KeyMapping.releaseAll: the title or disconnect
         // screen releases every held key. Its release goes to that screen,
         // so a key kept here would still be down in the next world (#3246).
-        self.keys.clear();
-        self.left = false;
-        self.right = false;
+        self.clear_device_keys();
+        self.set_mapping_held("key.attack", false);
+        self.set_mapping_held("key.use", false);
         // The shared world is closing: its invite code ends with it.
         self.friends_lan_closed();
         // Minecraft.disconnect waits for the integrated server before showing the title.
@@ -814,7 +812,7 @@ impl Game<'_> {
     pub(in crate::game) fn enter_remote_dimension(
         &mut self,
         spawn: &play::SpawnInfo,
-        keep_world: bool,
+        entry: RemoteDimensionEntry,
         reason: sunrise_client::level_loading::Reason,
     ) {
         // Every level has the sea level its server says (`CommonPlayerSpawnInfo.seaLevel`): the
@@ -836,13 +834,20 @@ impl Game<'_> {
         r.state_id = 0;
         // handleRespawn keeps the ClientLevel only for the same level key:
         // two levels sharing a dimension type are still two levels.
-        let same = keep_world && r.heard_level.as_deref() == Some(spawn.dimension.as_str());
-        let transition_screen = sunrise_client_render::dimension_transition::select(
-            mod_api::__private::dimension_key(&spawn.dimension),
-            r.heard_level
-                .as_deref()
-                .map(mod_api::__private::dimension_key),
-        );
+        let same = matches!(
+            entry,
+            RemoteDimensionEntry::Respawn | RemoteDimensionEntry::DeathRespawn
+        ) && r.heard_level.as_deref() == Some(spawn.dimension.as_str());
+        // An open LevelLoadingScreen keeps its presentation, even if it is vanilla.
+        // New screens for login and death do not receive transition keys.
+        let transition_from = if matches!(entry, RemoteDimensionEntry::Respawn)
+            && !r.level_load.is_active()
+            && r.heard_level.is_some()
+        {
+            Some(r.level_key)
+        } else {
+            None
+        };
         if !same {
             self.forget_all_remote_columns();
         }
@@ -874,8 +879,10 @@ impl Game<'_> {
         }
         // startWaitingForNewLevel: `LevelLoadTracker.startClientLoad` and the
         // `LevelLoadingScreen`.
+        let transition_factory = transition_from.and_then(|from| {
+            sunrise_client_render::dimension_transition::select(r.level_key, from)
+        });
         r.level_load.start_client_load(client_millis(), reason);
-        r.level_load.set_transition_screen(transition_screen);
         // A replacement LocalPlayer has a fresh ambient mood and sendPosition baseline.
         self.ambience.moodiness = 0.0;
         r.position_sender = Default::default();
@@ -883,7 +890,6 @@ impl Game<'_> {
         self.set_mode_id(spawn.game_type);
         self.dim = Dim::from_id(&spawn.dimension);
         self.build_level_environments();
-        self.audio.set_world(&spawn.dimension);
         // ClientPacketListener.handleLogin / handleRespawn: the server's
         // Player.getLastDeathLocation, for the recovery compass.
         self.level.last_death = spawn
@@ -892,8 +898,6 @@ impl Game<'_> {
             .map(|d| (d.dimension.clone(), d.pos));
         if !same {
             self.clock.reset_client_level_tick_state();
-            // A new ClientLevel: Minecraft.setLevel stops every sound.
-            self.stop_sounds_for_new_level();
             let mut streaming = Streaming::new(
                 Arc::new(NoTerrain),
                 self.worker_context(),
@@ -957,7 +961,10 @@ impl Game<'_> {
             if let Some(old) = old {
                 self.native_client_level_unload(&old);
             }
+            // Minecraft.setLevel -> updateLevelInEngines, after the old-level unload.
+            self.stop_sounds_for_new_level();
         }
+        self.audio.set_world(&spawn.dimension);
         self.streaming.relight_resent = relight_resent;
         let has_sky = self
             .remote
@@ -983,5 +990,21 @@ impl Game<'_> {
             self.initialize_entity(Holder::Player(profile), "minecraft:player");
         }
         self.finish_remote_level();
+        if let Some(registration) = transition_factory
+            && registration.factory_owner.is_enabled()
+            && let Ok(presentation) = registration.factory_owner.call(
+                "dimension transition screen",
+                "dimension_transition_screen_factory",
+                || {
+                    sunrise_client_render::dimension_transition::ActiveTransitionScreen::new(
+                        registration.draw_owner.clone(),
+                        registration.factory.create(self, reason.into()),
+                    )
+                },
+            )
+            && let Some(r) = self.remote.as_mut()
+        {
+            r.level_load.set_transition_screen(presentation);
+        }
     }
 }

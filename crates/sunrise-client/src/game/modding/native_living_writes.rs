@@ -471,7 +471,7 @@ mod tests {
                 );
                 crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
                 game.screen = super::super::Screen::Playing;
-                game.right = true;
+                game.set_mapping_held("key.use", true);
                 let player = game.living(game.entity(20).unwrap()).unwrap();
                 test(game, &uses, player);
             });
@@ -735,7 +735,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_use_with_the_button_up_is_released_on_its_next_tick() {
         with_uses(|game, uses, player| {
-            game.right = false;
+            game.set_mapping_held("key.use", false);
             game.offhand = Some(ItemStack::new("minecraft:bow", 1));
             assert!(game.living_start_using_item(player, Hand::Off));
             game.tick_using();

@@ -1,7 +1,6 @@
 //! One demand-driven creative catalog per logical side, and the scoped edit event.
 use super::*;
 use crate::game::api_values::{TryIntoApi, TryIntoEngine, stack_value};
-use mod_api::__private::{ModPhase, current_phase};
 use mod_api::{
     CreativeModeTabInfo, CreativeModeTabs, CreativeTabChange, CreativeTabEdit,
     CreativeTabEditError, CreativeTabList, CreativeTabPermissions, CreativeTabPlacement,
@@ -222,7 +221,7 @@ impl Game<'_> {
         &mut self,
         permissions: CreativeTabPermissions,
     ) -> Result<Arc<CreativeModeTabs>, CreativeTabReadError> {
-        if current_phase() != ModPhase::World {
+        if self.native_lifecycle.epoch().is_none() {
             return Err(CreativeTabReadError::Unavailable);
         }
         let lists = self.build_creative(permissions)?;
@@ -246,7 +245,7 @@ impl Game<'_> {
     pub(in crate::game) fn built_creative_tabs(
         &self,
     ) -> Result<Option<Arc<CreativeModeTabs>>, CreativeTabReadError> {
-        if current_phase() != ModPhase::World || self.native_lifecycle.epoch().is_none() {
+        if self.native_lifecycle.epoch().is_none() {
             return Err(CreativeTabReadError::Unavailable);
         }
         Ok(self.creative_contents.published.as_ref().map(|published| {
@@ -265,7 +264,7 @@ impl Game<'_> {
 
     /// The search tab's canonical display list (not the client-only UI additions).
     pub(in crate::game) fn creative_search_items(&mut self) -> Vec<ItemStack> {
-        if current_phase() != ModPhase::World {
+        if self.native_lifecycle.epoch().is_none() {
             return Vec::new();
         }
         let Ok(lists) = self.build_creative(self.creative_permissions()) else {
@@ -403,9 +402,6 @@ impl Game<'_> {
         edit: CreativeTabEdit,
         apply: impl FnOnce(&mut TabContents, &Items) -> Result<T, CreativeTabEditError>,
     ) -> Result<T, CreativeTabEditError> {
-        if current_phase() != ModPhase::World {
-            return Err(CreativeTabEditError::Stale);
-        }
         let Some(active) = &self.creative_contents.active else {
             return Err(CreativeTabEditError::Stale);
         };
@@ -469,8 +465,8 @@ fn comparison_key(
     items: &Items,
 ) -> Result<ItemStack, mod_api::StackWriteError> {
     if i32::try_from(stack.damage).is_err() {
-        return Err(mod_api::StackWriteError::DamageExceeded {
-            maximum: i32::MAX as u32,
+        return Err(mod_api::StackWriteError::InvalidComponents {
+            reason: mod_api::StackError::InvalidDamage,
         });
     }
     normalize_components(&mut stack, items);
