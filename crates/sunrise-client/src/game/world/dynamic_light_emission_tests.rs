@@ -9,7 +9,6 @@ use crate::game::{
     native_client_session::tests::logged_client,
     native_entity_refs::tests::{run_fresh_cases, with_game_role},
 };
-use mod_api::__private::{ModPhase, PhaseOwner};
 use mod_api::*;
 use std::sync::{
     Arc, Mutex,
@@ -171,7 +170,6 @@ fn with_lights_sides(
             remote.level_key = mod_api::__private::dimension_key(&remote.level);
             server
         });
-        let _phase = PhaseOwner::scope(ModPhase::World);
         let registry = &game.pack.assets.registry;
         let states = States {
             lamp: registry.default_state(LAMP).unwrap(),
@@ -223,7 +221,8 @@ fn light_query_uses_the_supplied_state_and_its_declared_default() {
                 Ok(4)
             );
             assert_eq!(level.get_light_emission(host, unloaded, air), Ok(0));
-            let invalid = BlockStateRecord::new(static_state.block(), u16::MAX).into();
+            let invalid =
+                mod_api::__private::block_state_from_ordinal(static_state.block(), u16::MAX);
             assert_eq!(
                 level.get_light_emission(host, unloaded, invalid),
                 Err(LevelReadError::Unavailable)
@@ -234,13 +233,6 @@ fn light_query_uses_the_supplied_state_and_its_declared_default() {
                 stale.get_light_emission(host, [1, 65, 2], dynamic),
                 Err(LevelReadError::Stale)
             );
-            {
-                let _phase = PhaseOwner::scope(ModPhase::Setup);
-                assert_eq!(
-                    level.get_light_emission(host, [1, 65, 2], dynamic),
-                    Err(LevelReadError::Unavailable)
-                );
-            }
             assert!(depth.take().is_empty());
             assert_eq!(game.world.chunks.len(), 1);
         },

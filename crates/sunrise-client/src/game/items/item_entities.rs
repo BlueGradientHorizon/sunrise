@@ -161,7 +161,12 @@ impl Game<'_> {
                     break 'tick;
                 }
                 if merging && !no_physics {
-                    self.item_landing_event(item.id, item.previous, item.position, item.on_ground);
+                    self.item_landing_event(
+                        item.id,
+                        item.previous,
+                        item.position,
+                        item.ground.on_ground,
+                    );
                     self.entity_powder_snow_particles(
                         item.previous,
                         item.position,
@@ -422,9 +427,6 @@ impl Game<'_> {
     /// `ExperienceOrb.awardWithDirection`: `award` whose fresh orbs start
     /// `roughly` that way (`new ExperienceOrb(level, pos, roughly, value)`).
     pub(super) fn spawn_orbs_toward(&mut self, at: [f64; 3], roughly: [f64; 3], mut value: u32) {
-        if value > 0 {
-            self.journal_level_random();
-        }
         while value > 0 {
             let v = ExperienceOrb::split(value);
             value -= v;
@@ -644,7 +646,7 @@ impl Game<'_> {
             // `getExperienceValue` sizes: 1 to 2477.
             value: value as i32,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,

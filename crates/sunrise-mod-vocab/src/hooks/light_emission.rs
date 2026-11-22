@@ -27,6 +27,8 @@ pub trait Hooks {
     /// contract does, so keep the answer a pure function of the level, `pos` and
     /// `state`. Diverges from upstream: new hook.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "both",
         version = 2,
         contract = "replace",
@@ -36,5 +38,10 @@ pub trait Hooks {
         host = "read",
         neoforge = "IBlockExtension.getLightEmission, IBlockStateExtension.getLightEmission"
     )]
-    fn light_emission();
+    fn light_emission(
+        dimension: LevelDimension,
+        pos: BlockPos,
+        state: BlockState,
+        emission: &mut Option<u8>,
+    );
 }

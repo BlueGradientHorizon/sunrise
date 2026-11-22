@@ -2,15 +2,12 @@
 //! end crystals on a server's client (`ClientPacketListener.handleAddEntity`
 //! and `handleSetEntityData`): the server simulates them, the client draws
 //! them where it says and interpolates their moves.
-use super::{FallStep, FallingBlock, Game, fireworks::fireworks_of};
+use super::{FallingBlock, Game, fireworks::fireworks_of};
 use crate::game::native_ticks::{TickRound, places_of, slot_place};
 use sunrise_client::items::ItemStack;
 use sunrise_client::join_seq::{JoinList, RestoreOrder};
+use sunrise_client::particles::{ParticleOptions, ParticleType};
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
-use sunrise_client::{
-    collisions::SceneCollisions,
-    particles::{ParticleOptions, ParticleType},
-};
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
 use sunrise_protocol::entity_data::Value;
 use sunrise_world::registry::BlockStateId;
@@ -226,7 +223,7 @@ impl Game<'_> {
                 velocity,
                 fuse: 80,
                 ticks: 0,
-                on_ground: false,
+                ground: Default::default(),
                 fall_distance: 0.0,
                 stuck: Vec3::ZERO,
                 in_water: false,
@@ -252,7 +249,7 @@ impl Game<'_> {
                 portal: Default::default(),
                 drop_item: false,
                 fall_distance: 0.0,
-                on_ground: false,
+                ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,
                 stuck: Vec3::ZERO,
@@ -580,9 +577,10 @@ impl Game<'_> {
             Some(self.border.geometry()),
             Some(&self.res.motion().blocks),
         );
+        let side = game_side!(self);
         self.tnts.retain_mut(|t| {
             // A fluid lookup that fails leaves it where its move put it.
-            let _ = t.tick(
+            let _ = t.tick_among(
                 world,
                 collision,
                 assets,
@@ -591,6 +589,8 @@ impl Game<'_> {
                 &self.loop_context,
                 border,
                 blocks,
+                Some(&side),
+                &[],
             );
             t.fuse > 0
         });
@@ -602,18 +602,12 @@ impl Game<'_> {
         for p in smoking {
             self.particles.add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
         }
-        // FallingBlockEntity.tick runs on a client too: the block falls by
-        // itself between the server's updates (every 20 ticks), then waits
-        // where it lands for the server to place it and remove it.
+        // Clients simulate motion and drag; only the server places/removes the landing block.
         let mut falling = self.falling.lift();
         #[cfg(test)]
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::Falling);
         falling.for_each_mut(|f| {
-            if let Ok(FallStep::Landed(_)) = self.fall_step(f, false, &[]) {
-                // Block.updateEntityMovementAfterFallOn, then getAirDrag 0.98F.
-                let drag = f64::from(0.98_f32);
-                f.velocity = Vec3::new(f.velocity.x * drag, 0.0, f.velocity.z * drag);
-            }
+            let _ = self.fall_step(f, false, &[]);
         });
         self.falling.restore(
             falling,
@@ -717,14 +711,7 @@ impl Game<'_> {
         #[cfg(test)]
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::RemoteRocket);
         for r in &mut rockets {
-            r.remote_step(
-                &mut SceneCollisions {
-                    world: &self.world,
-                    binding: self.collision,
-                    subject: None,
-                },
-                &self.loop_context,
-            );
+            r.remote_step(self.body_motion(&game_side!(self)));
             if let Some(target) = r.attached_to {
                 if me == Some(target) {
                     continue;
@@ -1282,6 +1269,33 @@ mod nested_spawn_tests {
             .default_state("minecraft:sand")
             .unwrap();
         spawn(game, "minecraft:falling_block", sand.0 as i32, id);
+    }
+    #[test]
+    #[ignore = "daily"]
+    fn client_falling_block_keeps_collision_bounce_through_drag() {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            use std::sync::Arc;
+            let slime = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:slime_block")
+                .unwrap();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            game.world.set(4, 63, 4, slime).unwrap();
+            falling(game, 48);
+            game.falling.update(0, |f| {
+                f.position = Vec3::new(4.5, 64.25, 4.5);
+                f.velocity = Vec3::new(0.0, -0.96, 0.0);
+            });
+            game.tick_remote_projectiles(|_, p| p);
+            let f = &game.falling[0];
+            assert_eq!(f.position.y.to_bits(), 64.0_f64.to_bits());
+            assert_eq!(f.velocity.y.to_bits(), 0.7878808308504466_f64.to_bits());
+            assert!(f.ground.on_ground);
+        });
     }
     fn projectile(game: &mut Game<'_>, id: u32) {
         spawn(game, "minecraft:shulker_bullet", 0, id);

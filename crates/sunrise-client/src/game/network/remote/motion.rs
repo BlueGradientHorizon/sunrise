@@ -193,7 +193,7 @@ impl Game<'_> {
             let at = Vec3::new(position[0], position[1], position[2]);
             if let Some(d) = self.dropped.iter_mut().find(|d| d.id == id as u32) {
                 d.position = at;
-                d.on_ground = on_ground;
+                d.ground.on_ground = on_ground;
                 return;
             }
             if let Some(i) = self.falling.iter().rposition(|f| f.id == id as u32) {
@@ -202,7 +202,7 @@ impl Game<'_> {
             }
             if let Some(t) = self.tnts.iter_mut().rev().find(|t| t.id == id as u32) {
                 t.position = at;
-                t.on_ground = on_ground;
+                t.ground.on_ground = on_ground;
                 return;
             }
             // ExperienceOrb.createInterpolationHandler is a
@@ -210,7 +210,7 @@ impl Game<'_> {
             // ticks (`tick_remote_entities`), while `ExperienceOrb.tick` keeps
             // moving it.
             if let Some(o) = self.orbs.iter_mut().find(|o| o.id == id as u32) {
-                o.on_ground = on_ground;
+                o.ground.on_ground = on_ground;
                 r.lerps.insert(
                     id,
                     Lerp {
