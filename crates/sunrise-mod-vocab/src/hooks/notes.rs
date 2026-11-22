@@ -723,7 +723,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
   refused registration), a stale level handle, a client, or a chunk past the world's bounds, the calls return `false`
   or `None`.
 - A controller's `LoadingValidationCallback` (NeoForge's `LoadingValidationCallback.validateTickets`) runs once after
-  `level_load` and before the level's first tick, only if that controller has saved tickets in the level. It receives
+  `level_load` and before the level's first tick, only if that controller has saved tickets in the level. At startup all
+  built-in levels are available before validation begins. It receives
   the server Host, the opened `LevelRef` (even if parked), and a `TicketValidation` containing only that controller's
   saved tickets (NeoForge's `TicketHelper`). Tickets added in `level_load` are not staged for validation. A panic logs
   and queues an error toast naming the mod and disables only that controller's validator for the session. A phase

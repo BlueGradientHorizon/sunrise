@@ -1573,7 +1573,7 @@ The pinned Fabric revision is `2065040b236a0d5ac011bd6a45625dc49579b222` (`fabri
 
 Pinned Fabric revision `2065040b236a0d5ac011bd6a45625dc49579b222` (`fabric-26.3/`); Sunrise is cited by function name, never by line. Scope: the `misc-toast` dossier, from `toast_add` to `xp_orb_targeting`. All are gaps, so no `fabric` keys are added.
 
-Saved chunk-ticket validation is a controller callback, not a hook. The pinned Fabric event index has no event that lends a controller its saved tickets before activation.
+Saved chunk-ticket validation is a registry-bound controller validator (`Registrar::register_ticket_controller` with a `LoadingValidationCallback`), not a catalog hook. The pinned Fabric event index has no event that lends a controller its saved tickets before activation.
 
 | Sunrise hook | Fabric event considered / status | Evidence and porting boundary |
 |---|---|---|

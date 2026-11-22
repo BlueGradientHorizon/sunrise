@@ -881,7 +881,7 @@ Scope = the 20 hooks below; each status applies the moment, side, information an
 Paper API 26.3 (`26.3.build.244-stable`), public Javadoc; Sunrise cited by function name.
 A key is added only where moment, server side, information and result all agree; otherwise the row records the boundary.
 
-Saved chunk-ticket validation is a controller callback, not a hook. No Paper event exposes a level's saved chunk tickets to the controller that owns them.
+Saved chunk-ticket validation is a registry-bound controller validator (`Registrar::register_ticket_controller` with a `LoadingValidationCallback`), not a catalog hook. No Paper event exposes a level's saved chunk tickets to the controller that owns them.
 
 | Sunrise hook | Paper event / status | Evidence and porting boundary |
 |---|---|---|

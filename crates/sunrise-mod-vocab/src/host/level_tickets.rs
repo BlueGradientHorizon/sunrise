@@ -7,7 +7,8 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait LevelTicketsBackend {
     /// Side: server.
-    /// Whether any watered-area ticket covers this block. Minimum bounds are inclusive and
+    /// Whether any watered-area ticket covers this block
+    /// (`FarmlandWaterManager.hasBlockWaterTicket`). Minimum bounds are inclusive and
     /// maximum bounds exclusive on all three axes. Reads active and parked levels, loads no
     /// chunks, and calls no mod predicates. False on clients or for a stale/unavailable level.
     #[access(WorldOnly)]
@@ -59,9 +60,10 @@ pub trait LevelTicketsBackendMut {
         max: [i32; 3],
     ) -> Option<WaterTicket>;
     /// Side: server.
-    /// Remove this watered area by its handle identity, leaving overlapping tickets intact.
-    /// Any holder with the [`WaterTicket`] handle can remove it without caller attribution.
-    /// False if already removed, stale, unloaded, or called on a client.
+    /// Remove this watered area by its handle identity (`SimpleTicket.invalidate`), leaving
+    /// overlapping tickets intact. Any holder with the [`WaterTicket`] handle can remove it
+    /// without caller attribution. False if already removed, stale, unloaded, or called on a
+    /// client.
     #[access(WorldOnly)]
     fn water_ticket_remove(&mut self, water_ticket: WaterTicket) -> bool;
     /// Side: server.

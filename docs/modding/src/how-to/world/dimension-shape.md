@@ -221,6 +221,72 @@ synchronous, `/locate`-cost search, not a cheap loaded-chunk lookup: cache resul
 per-tick use. The radius counts placement-cell rings (at most 100); stronghold rings are
 checked regardless of radius. It does not load or generate chunks.
 
+## Chunk tickets
+
+Register a named ticket controller once at startup in `Hooks::register` with
+`r.register_ticket_controller("quarry", validator)`. Keep the returned `TicketController`
+handle (for example in a `OnceLock`) and pass it to `chunk.set_mod_forced` and
+`level.mod_forced_chunks`. Active reads and writes authorize by the registry-issued handle
+itself rather than the current caller, so helpers or shared subsystems that hold the handle
+can manage that controller's tickets directly while separate controllers stay isolated.
+
+Pass `Some(Arc::new(...))` to bind a `LoadingValidationCallback` that prunes stale saved
+tickets when a level opens, or `None` to restore saved tickets without validation:
+
+```rust,ignore
+use std::sync::{Arc, OnceLock};
+use mod_api::{
+    Hooks, LevelRef, Registrar, RegistrationContext, ServerHost, TicketController,
+    TicketOwner, TicketValidation,
+};
+
+pub static QUARRY_TICKETS: OnceLock<TicketController> = OnceLock::new();
+
+#[mod_api::sunrise_mod]
+impl Hooks for MyMod {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let quarry_block = r.block_key("mymod:quarry");
+        let controller = r.register_ticket_controller(
+            "quarry",
+            Some(Arc::new(
+                move |host: &mut dyn ServerHost,
+                      level: LevelRef,
+                      tickets: &mut dyn TicketValidation| {
+                    let stale: Vec<[i32; 3]> = tickets
+                        .block_tickets()
+                        .keys()
+                        .copied()
+                        .filter(|&pos| level.block(host, pos) != Some(quarry_block))
+                        .collect();
+                    for pos in stale {
+                        tickets.remove_block_tickets(pos);
+                    }
+                },
+            )),
+        );
+        let _ = QUARRY_TICKETS.set(controller);
+    }
+}
+
+pub fn hold_quarry_chunk(host: &mut dyn ServerHost, level: LevelRef, pos: [i32; 3]) -> bool {
+    let Some(&controller) = QUARRY_TICKETS.get() else {
+        return false;
+    };
+    let Some(chunk) = level.chunk_ref(host, [pos[0] >> 4, pos[2] >> 4]) else {
+        return false;
+    };
+    chunk.set_mod_forced(host, controller, TicketOwner::Block(pos), true, false)
+}
+```
+
+`tickets.block_tickets()` and `tickets.entity_tickets()` borrow read-only `BTreeMap` views
+of the controller's original saved tickets for the whole callback even after removals, while
+`remove_block_tickets`, `remove_block_ticket`, `remove_entity_tickets` and
+`remove_entity_ticket` update the staged rows immediately. Use `level.dimension().id(host)`
+when the validator needs the opening level's dimension name. See
+[Validating saved chunk tickets](runtime-levels.md#validating-saved-chunk-tickets) for
+startup and runtime-level validation timing and panic handling.
+
 ## Watered-area tickets
 
 On the server, `level.add_water_ticket(host, min, max)` returns an `Option<WaterTicket>`
@@ -229,11 +295,12 @@ for a sprinkler's watered area. Bounds are integer and half-open on **all three 
 use `[4, 64, 4]` and `[9, 65, 9]`; `[8, 64, 8]` is inside, `[9, 64, 4]` is outside.
 Empty or reversed boxes are refused; any nonempty box is accepted without a column cap.
 
-Keep the handle, then call `ticket.remove(host)` when the sprinkler stops or breaks.
-Removal returns whether that ticket was removed; overlapping tickets remain independent.
-Any holder with the `WaterTicket` handle can remove it without consulting the current
-caller. `level.has_water_ticket(host, pos)` tests whether any ticket covers a block. Both
-calls reach active or parked server levels without loading chunks; unavailable/stale
+`WaterTicket` is an in-process handle and does not implement `Wire` — never serialize or
+persist it. Retain the handle in memory, then call `ticket.remove(host)` when the sprinkler
+stops or breaks. Removal returns whether that ticket was removed; overlapping tickets remain
+independent. Any holder with the `WaterTicket` handle can remove it without consulting the
+current caller. `level.has_water_ticket(host, pos)` tests whether any ticket covers a block.
+Both calls reach active or parked server levels without loading chunks; unavailable/stale
 handles and clients answer `false` (adding answers `None`).
 
 Tickets are indexed by enclosing x/z chunk tile in memory only, never force chunks to load,
