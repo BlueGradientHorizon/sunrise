@@ -739,7 +739,7 @@ fn invalid_scratch_stack_and_unavailable_host_refuse_without_running_closure() {
         ),
     ];
 
-    for (invalid, expected) in cases {
+    for (invalid, expected) in &cases {
         let single = host.scratch_stack(invalid.clone(), |_, _, _| -> Result<(), ()> {
             panic!("closure must not run for invalid stack");
         });
@@ -747,22 +747,27 @@ fn invalid_scratch_stack_and_unavailable_host_refuse_without_running_closure() {
         let two = host.scratch_slots(invalid.clone(), |_, _, _| -> Result<(), ()> {
             panic!("closure must not run for invalid stack");
         });
-        assert_eq!(two, Err(ScratchError::Stack(expected)));
+        assert_eq!(two, Err(ScratchError::Stack(expected.clone())));
+    }
+    assert!(host.journal.closed().is_empty());
+    assert_eq!(host.scratch_live_count(), 0);
+    assert!(host.scratch_kept_frame_counts().is_empty());
 
-        // `dispense_container` treats scratch validation failures as unhandled (`None`) rather
-        // than falling through to `dispense_default`.
+    // `dispense_container` treats scratch validation failures as unhandled (`None`) rather
+    // than falling through to `dispense_default`, aborting its outer transaction cleanly.
+    for (invalid, _) in &cases {
         let event = crate::DispenseItemEvent {
             dimension: "minecraft:overworld",
             pos: [0, 64, 0],
             facing: Direction::East,
-            stack: &invalid,
+            stack: invalid,
         };
         assert_eq!(
             crate::block::fluid_util::dispense_container(&mut host, &event),
             None
         );
     }
-    assert!(host.journal.closed().is_empty());
+    assert_eq!(host.journal.closed(), &[(1, false); 3]);
     assert_eq!(host.scratch_live_count(), 0);
     assert!(host.scratch_kept_frame_counts().is_empty());
 
