@@ -1307,12 +1307,7 @@ impl Game<'_> {
             C::RecipeBookSettings(p) => self.remote_recipe_book_settings(p),
             C::PlaceGhostRecipe(p) => self.remote_ghost_recipe(p),
             C::MerchantOffers(p) => self.remote_merchant_offers(p),
-            C::ContainerClose(_) => {
-                // LocalPlayer.clientSideCloseContainer: restore the inventory
-                // menu before closing the current screen, without an onClose echo.
-                self.remote_close_local();
-                self.close_screen_to_level()?;
-            }
+            C::ContainerClose(_) => self.close_screen_to_level()?,
             C::TagQuery(p) => self.answer_tag_query(p.transaction, p.tag),
             C::Unknown(id, data)
                 if id == sunrise_protocol::ids::play::clientbound::COMMAND_SUGGESTIONS =>
@@ -2471,6 +2466,9 @@ pub(crate) mod tests {
     }
     mod menu_packets_tests {
         include!("menu_packets_tests.rs");
+    }
+    mod client_close_tests {
+        include!("client_close_tests.rs");
     }
     mod menu_title_tests {
         include!("menu_title_tests.rs");

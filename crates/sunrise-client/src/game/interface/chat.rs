@@ -1059,10 +1059,7 @@ impl Game<'_> {
         }
     }
     /// `ChatScreen.removed` after another screen interrupted chat.
-    pub(super) fn remove_interrupted_chat_screen(&mut self) {
-        if self.screen == Screen::Chat {
-            return;
-        }
+    pub(super) fn remove_chat_screen(&mut self) {
         if let Some(chat) = self.ui.chat_screen.take() {
             self.keep_chat_draft(chat.value(), ChatExit::Interrupted);
             self.ui.chat_draft_shown = false;
@@ -1075,7 +1072,9 @@ impl Game<'_> {
     /// woken (`onPlayerWokeUp`) it closes, or turns into the plain chat
     /// screen if something was typed.
     pub(super) fn tick_in_bed_chat(&mut self) {
-        self.remove_interrupted_chat_screen();
+        if self.screen != Screen::Chat {
+            self.remove_chat_screen();
+        }
         if self.ui.in_bed_chat {
             if self.sleeping.is_none() {
                 self.ui.in_bed_chat = false;
