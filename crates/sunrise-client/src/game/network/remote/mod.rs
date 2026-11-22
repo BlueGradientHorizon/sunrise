@@ -103,6 +103,7 @@ pub(in crate::game) use chat::{ChatTrust, Decoration};
 use chat_received::QueuedChat;
 pub(in crate::game) mod client_level_tick;
 mod effect;
+mod entity_data_schema;
 mod entity_section_steps;
 mod inventory;
 mod item_use;
@@ -1214,7 +1215,7 @@ impl Game<'_> {
             C::MoveVehicle(p) => self.apply_move_vehicle_packet(p),
             C::MoveMinecartAlongTrack(p) => self.remote_move_minecart(p),
             C::RotateHead(p) => self.apply_rotate_head_packet(p),
-            C::SetEntityData(p) => self.apply_set_entity_data_packet(p),
+            C::SetEntityData(p) => self.apply_set_entity_data_packet(p)?,
             C::SetEquipment(p) => self.apply_set_equipment_packet(p),
             C::TakeItemEntity(p) => self.apply_take_item_entity_packet(p),
             C::SetEntityMotion(p) => self.apply_set_entity_motion_packet(p)?,

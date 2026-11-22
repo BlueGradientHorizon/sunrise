@@ -585,7 +585,7 @@ impl Game<'_> {
 
 /// Protocol error raised while handling a play packet (`ClientCommonPacketListenerImpl.onPacketError`).
 #[derive(Debug)]
-struct PacketError(&'static str);
+pub(super) struct PacketError(pub(super) &'static str);
 
 impl std::fmt::Display for PacketError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
