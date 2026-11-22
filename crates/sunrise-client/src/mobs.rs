@@ -5013,10 +5013,8 @@ impl Mob {
         };
         let (slot, effects) = if let Some(effects) = main {
             (sunrise_items::equipment::MAINHAND, effects)
-        } else if let Some(effects) = off {
-            (sunrise_items::equipment::OFFHAND, effects)
         } else {
-            return None;
+            (sunrise_items::equipment::OFFHAND, off?)
         };
         if level.totem_canceled(
             crate::health::Hurting::Mob(self, source),
