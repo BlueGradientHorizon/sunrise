@@ -2236,30 +2236,37 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             );
             send_mouse_button(game, win_id, MouseButton::Left, false);
 
-            //    KeyPressed.Post returning Flow::Cancel blocks mapped_key_event_from (Advancements
-            //    handles KeyL only after KeyPressed.Post, via immediate_key_pressed).
+            // Advancements consumes its binding itself, so Post never sees it and cannot veto it.
             game.set_screen(Screen::Advancements);
             take_log(&log);
             cancel_key_post.store(true, Ordering::SeqCst);
             send_key_control(game, "key l down");
-            assert_eq!(game.screen, Screen::Advancements);
-            assert_eq!(
-                take_log(&log),
-                vec![
-                    "key_press_pre:advancements:key.keyboard.l",
-                    "key_press_post:advancements:key.keyboard.l",
-                ]
-            );
-            cancel_key_post.store(false, Ordering::SeqCst);
-            send_key_control(game, "key l down");
             assert_eq!(game.screen, Screen::Playing);
             assert_eq!(
                 take_log(&log),
-                vec![
+                ["key_press_pre:advancements:key.keyboard.l"]
+            );
+
+            game.set_screen(Screen::Advancements);
+            game.settings.keys.set("key.advancements", "key.keyboard.u");
+            take_log(&log);
+            send_key_control(game, "key l down");
+            assert_eq!(game.screen, Screen::Advancements);
+            assert_eq!(
+                take_log(&log),
+                [
                     "key_press_pre:advancements:key.keyboard.l",
-                    "key_press_post:advancements:key.keyboard.l",
+                    "key_press_post:advancements:key.keyboard.l"
                 ]
             );
+            send_key_control(game, "key u down");
+            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(
+                take_log(&log),
+                ["key_press_pre:advancements:key.keyboard.u"]
+            );
+            game.settings.keys.set("key.advancements", "key.keyboard.l");
+            cancel_key_post.store(false, Ordering::SeqCst);
 
             // 8) Advancements blank-space press/release and no-tab scroll report unhandled.
             game.set_screen(Screen::Advancements);

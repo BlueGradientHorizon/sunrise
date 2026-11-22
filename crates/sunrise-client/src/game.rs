@@ -13264,6 +13264,15 @@ impl Game<'_> {
         if self.screen_state.screen_instance != instance {
             return Ok(false);
         }
+        // AdvancementsScreen.keyPressed consumes its own binding before its children.
+        if self.screen == Screen::Advancements
+            && self.observed_overlay_now().is_none()
+            && sunrise_client::keybinds::key_name(key)
+                == Some(self.settings.keys.get("key.advancements"))
+        {
+            self.close_advancements();
+            return Ok(true);
+        }
         if key == KeyCode::Escape
             && self.screen == Screen::Mod
             && self.observed_overlay_now().is_none()
