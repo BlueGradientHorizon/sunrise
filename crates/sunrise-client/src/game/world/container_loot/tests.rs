@@ -953,9 +953,10 @@ impl mod_api::Hooks for FillListener {
         if self.mode == 3 {
             event.drops.clear();
             let key = mod_api::__private::item_key("minecraft:diamond").unwrap();
-            event
-                .drops
-                .extend((0..30).map(|_| mod_api::ItemStack::new(key, 1).unwrap()));
+            let stack = mod_api::ItemStack::new(key, 1).unwrap();
+            for _ in 0..30 {
+                event.drops.push(stack.clone()).unwrap();
+            }
         } else if self.mode != 0 {
             event.drops.clear();
             let id = if self.mode == 1 {
@@ -964,9 +965,8 @@ impl mod_api::Hooks for FillListener {
                 "minecraft:diamond"
             };
             let key = mod_api::__private::item_key(id).unwrap();
-            event
-                .drops
-                .push(mod_api::ItemStack::new(key, if self.mode == 1 { 3 } else { 100 }).unwrap());
+            let stack = mod_api::ItemStack::new(key, if self.mode == 1 { 3 } else { 100 }).unwrap();
+            event.drops.push(stack).unwrap();
         }
     }
 }

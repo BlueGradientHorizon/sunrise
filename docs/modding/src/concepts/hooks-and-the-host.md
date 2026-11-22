@@ -242,17 +242,14 @@ each listener sees the changes before it. To exercise dispatch behavior, use the
 When a collection or slot field is a `HookList`, call `get`, `set`,
 `push`, `insert`, `remove` or `swap` rather than replacing a vector. Fixed-size lists such as the
 brewing stand expose `get`, `set` and `swap`, not insert or remove. Handle each edit's `Result`:
-an invalid entry is refused in place, and the game names the listener and field. Earlier accepted
-edits and a separate cancellation stand. Only finished callbacks publish their list edits. An
-ordinary scalar reply is checked when the callback returns; a refused replacement does not win
-a first-answer hook. Operations with their own transaction, such as swapping the two hands or
-menu quick-move, keep their atomic write contracts.
+an invalid entry is refused in place without undoing earlier accepted edits. Only finished
+callbacks publish their list edits.
 
-The generator validates edited stack-list outputs inside each listener's owning scope. A refused stack
-output retains the immediately preceding accepted value, not the event's initial value. Scalar
-outputs and cancellation still commit; later listeners see the accepted stacks and run independently
-under the usual cancellation rules. Each refused output logs one warning naming the mod, hook,
-output and conversion error.
+Ordinary checked outputs are admitted independently when the callback returns. A refused output
+keeps its last accepted value without discarding another output or a cancellation; a refused
+replacement does not win a first-answer hook. Each refusal logs a warning naming the mod, hook,
+output and error. Operations with their own transaction, such as swapping the two hands or
+menu quick-move, keep their atomic write contracts.
 
 Hook methods take `&self` and require `Send + Sync`. The process-wide mod list is installed once, like mixin module statics. One mod instance serves both
 the window's game and the server-thread game. A hook can also fire again inside

@@ -87,11 +87,12 @@ of one. Invalid values produce typed errors, not clamped values. A transfer requ
 different: `ItemResource` plus a separate amount can request or return more than one
 resident stack's capacity. The resident writes it produces must pass validation.
 
-Game inventory, menus, trades and models keep their engine-owned representations. Where a
-native hook or host method takes an owned API snapshot, the game converts only after a listener
-guard and stages every mutable result before committing any captured output. Invalid hook
-edits retain those captured engine values. The same durability rules govern writable hook
-outputs: a valid damage value above that stack's maximum reaches later listeners and the game.
+Game inventory, menus, trades and models keep their engine-owned representations. Native hooks
+project owned API stacks only when a listener is present. The game admits ordinary changed
+outputs independently when that listener returns, leaving the last accepted value in place for
+any refusal. A `HookList` validates each edit that supplies a stack; a refused edit leaves other
+edits intact. The same durability rules govern writable hook outputs: a valid damage value above
+that stack's maximum reaches later listeners and the game.
 Consuming mutable events such as `bonemeal` and
 `item_after_vertical_collision` lend `Option<ItemStack>` so a listener can consume the value by
 setting `None`.
@@ -108,7 +109,7 @@ tick, menu-button and menu-quick-move bridges validate their captured snapshot o
 before applying them. These are output guarantees, not whole-world transactions: independent
 `ServerHost` storage writes, commands, messages and other effects are not rolled back on a
 refused output. Carrier-form callbacks such as `bonemeal` and `item_after_vertical_collision`
-also retain their captured stack outputs on refusal but do not journal independent host writes.
+also keep the last accepted stack on refusal without rolling back independent host writes.
 
 A client without this mod predicts vanilla here; the server corrects it.
 

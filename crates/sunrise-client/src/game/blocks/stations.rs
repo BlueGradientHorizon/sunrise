@@ -3010,7 +3010,7 @@ mod tests {
                     .push((mod_api::Text::literal("attribute listener"), u32::MAX));
             }
 
-            fn item_tooltip(&self, host: &dyn ClientHost, event: &mut ItemTooltipEvent<'_, '_>) {
+            fn item_tooltip(&self, host: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
                 if self.0.swap(true, Ordering::Relaxed) {
                     event
                         .lines
@@ -3279,7 +3279,7 @@ mod tests {
                 let item = r.item_key("minecraft:stick");
                 r.item_part(item, Lore);
             }
-            fn item_tooltip(&self, _: &dyn ClientHost, event: &mut ItemTooltipEvent<'_, '_>) {
+            fn item_tooltip(&self, _: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
                 assert_eq!(
                     event
                         .lines
@@ -3676,7 +3676,7 @@ mod tests {
         struct ValidListener;
         #[mod_api::__subscriptions]
         impl Hooks for ValidListener {
-            fn item_tooltip(&self, host: &dyn ClientHost, event: &mut ItemTooltipEvent<'_, '_>) {
+            fn item_tooltip(&self, host: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
                 assert_eq!(event.stack.item().id(host), Some("minecraft:white_banner"));
                 assert_eq!(event.stack.count(), 3);
                 assert!(event.display.name_visible(false));
@@ -3691,7 +3691,7 @@ mod tests {
         struct InvalidListener(Arc<AtomicBool>);
         #[mod_api::__subscriptions]
         impl Hooks for InvalidListener {
-            fn item_tooltip(&self, _: &dyn ClientHost, event: &mut ItemTooltipEvent<'_, '_>) {
+            fn item_tooltip(&self, _: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
                 let mut too_deep = Text::literal("leaf");
                 for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
                     too_deep = Text::literal("parent").append(too_deep);

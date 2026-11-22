@@ -1753,9 +1753,12 @@ pub(super) fn emit<'a>(
                     )
                 } else if let Some(inert) = &hook.inert {
                     let inert = if inert_signal {
-                        "*inert = true;"
+                        "*inert = true;".to_owned()
+                    } else if let Some((out, _)) = checked_replacement {
+                        // The inert assignment only changes the API slot. Admission writes the engine slot.
+                        format!("{inert} if {out}.is_some() {{ let _ = __accept_{out}(&*{out}); }}")
                     } else {
-                        inert
+                        inert.clone()
                     };
                     // The synthetic answer occupies the owner's original place in the chain.
                     // Earlier enabled Parts still get their regular call and can answer first.
