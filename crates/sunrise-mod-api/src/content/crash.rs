@@ -135,6 +135,7 @@ pub(crate) fn ensure_installed() -> Result<(), &'static str> {
             details,
             registration_open: crate::load_state::is_registration_open,
             packages: crate::load_state::current_packages,
+            visible_packages: crate::load_state::visible_packages,
             namespace_authority: crate::load_state::current_namespace_authority,
             owns_namespace: crate::load_state::owns_namespace,
             registration_data: crate::load_state::registration_data,

@@ -35,14 +35,12 @@ impl Game<'_> {
                     let _ = self.add_stack_to_inventory(c);
                 }
                 self.set_screen(Screen::Creative);
-                self.release_mappings_on_screen_open();
                 self.refresh_creative_tabs();
                 self.creative_screen.reopen();
                 self.refresh_saved_hotbars();
             }
             Screen::Inventory => {
                 self.set_screen(Screen::Inventory);
-                self.release_mappings_on_screen_open();
             }
             _ => {}
         }

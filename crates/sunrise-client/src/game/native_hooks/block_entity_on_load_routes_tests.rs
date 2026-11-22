@@ -33,19 +33,14 @@ mod tests {
         fn block_entity_tick(&self, _: &mut BlockEntityTickEvent<'_>) {
             self.log.lock().unwrap().push(("tick", -1));
         }
-        fn block_entity_load_additional(
-            &self,
-            host: &dyn LevelHost,
-            event: &mut BlockEntityLoadAdditionalEvent<'_>,
-        ) {
+        fn block_entity_load_additional(&self, event: &mut BlockEntityLoadAdditionalEvent<'_>) {
             if self.report_payload {
                 let count = event.tag.get(&"count".into()).unwrap();
-                assert_eq!(
-                    host.block_entity_data(event.entity)
-                        .unwrap()
-                        .get(&"count".into()),
-                    Some(count)
-                );
+                let seen = event
+                    .subject
+                    .with_view(|view| view.nbt().get(&"count".into()).cloned())
+                    .expect("live resident block entity");
+                assert_eq!(seen.as_ref(), Some(count));
                 let Tag::Int(count) = count else {
                     panic!("save count is an int")
                 };
@@ -55,21 +50,31 @@ mod tests {
                 event.tag = OTHER.get_or_init(Compound::new);
             }
         }
-        fn block_entity_on_load(&self, host: HostSide, event: &mut BlockEntityOnLoadEvent) {
-            let (label, data) = match &host {
-                HostSide::Server(h) => ("load", event.entity.data(&**h).unwrap()),
-                HostSide::Client(h) => ("client_load", event.entity.data(&**h).unwrap()),
+        fn block_entity_on_load(&self, event: &mut BlockEntityOnLoadEvent<'_>) {
+            let (label, count, pos, level) = match &mut event.subject {
+                BlockEntitySideScope::Server(scope) => scope
+                    .with_view(|view| {
+                        let Some(Tag::Int(count)) = view.nbt().get(&"count".into()) else {
+                            panic!("missing saved count")
+                        };
+                        ("load", *count, view.position(), view.level())
+                    })
+                    .expect("live resident server block entity"),
+                BlockEntitySideScope::Client(scope) => scope
+                    .with_view(|view| {
+                        let Some(Tag::Int(count)) = view.nbt().get(&"count".into()) else {
+                            panic!("missing saved count")
+                        };
+                        ("client_load", *count, view.position(), view.level())
+                    })
+                    .expect("live resident client block entity"),
             };
-            let Some(Tag::Int(count)) = data.get(&"count".into()) else {
-                panic!("missing saved count")
-            };
-            self.log.lock().unwrap().push((label, *count));
+            self.log.lock().unwrap().push((label, count));
             if self.replace.load(Ordering::SeqCst) {
-                let HostSide::Server(host) = host else {
+                let BlockEntitySideScope::Server(scope) = &mut event.subject else {
                     panic!()
                 };
-                let pos = event.entity.position(host).unwrap();
-                let level = event.entity.level(host).unwrap();
+                let host = scope.host();
                 let state = BlockState::of(&host.block_states(), self.replacement, &[]).unwrap();
                 let air = BlockState::of(&host.block_states(), self.air, &[]).unwrap();
                 assert_eq!(
@@ -88,18 +93,15 @@ mod tests {
     impl BlockPart for PayloadPeer {}
     #[mod_api::sunrise_part]
     impl BlockEntityPart for PayloadPeer {
-        fn block_entity_load_additional(
-            &self,
-            _: &dyn LevelHost,
-            event: &mut BlockEntityLoadAdditionalEvent<'_>,
-        ) {
+        fn block_entity_load_additional(&self, event: &mut BlockEntityLoadAdditionalEvent<'_>) {
             let Some(Tag::Int(count)) = event.tag.get(&"count".into()) else {
                 panic!("the second Part did not read the applied payload");
             };
-            self.0
-                .lock()
-                .unwrap()
-                .push((event.entity, *count, event.pos, event.level));
+            let (entity, pos, level) = event
+                .subject
+                .with_view(|view| (view.handle(), view.position(), view.level()))
+                .expect("live resident block entity");
+            self.0.lock().unwrap().push((entity, *count, pos, level));
         }
     }
 

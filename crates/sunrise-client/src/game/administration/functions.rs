@@ -288,16 +288,15 @@ impl Game<'_> {
             let tables = self
                 .stage_world_tables(&stack, false, &resources)
                 .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
-            let wire_items = tables
-                .tables
-                .as_ref()
-                .map_or_else(|| self.res.items(), |tables| &tables.items);
             let wire = super::lan::sync::prepare_world_sync_data(
                 &resources,
                 &self.res.core.item_data,
-                wire_items,
                 &super::pack_files(&tables.tables),
                 &tables.health.damage,
+                tables
+                    .tables
+                    .as_ref()
+                    .map_or_else(|| self.res.shared_items(), |tables| tables.items.clone()),
                 tables
                     .tables
                     .as_ref()
@@ -1589,6 +1588,49 @@ mod tests {
                 "reload listener test_mod:listener: test_mod:machine: outer cause: middle cause: inner cause"
             ),
             "{reply}"
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn mob_entity_membership_follows_world_pack_reload() {
+        crate::game::in_own_process(
+            "game::functions::tests::mob_entity_membership_follows_world_pack_reload",
+            || {
+                crate::game::native_entity_refs::tests::with_game(|game| {
+                    let world = tempfile::tempdir().unwrap();
+                    game.world_root = world.path().to_owned();
+                    let pack = world.path().join("datapacks/snow_walkers");
+                    let tags = pack.join("data/minecraft/tags/entity_type");
+                    std::fs::create_dir_all(&tags).unwrap();
+                    let f = sunrise_core::version::DATA_PACK_FORMAT;
+                    std::fs::write(
+                        pack.join("pack.mcmeta"),
+                        serde_json::json!({"pack": {
+                            "description": "Snow walkers", "pack_format": f.0,
+                            "min_format": [f.0, f.1], "max_format": [f.0, f.1]
+                        }})
+                        .to_string(),
+                    )
+                    .unwrap();
+                    let tag_file = tags.join("powder_snow_walkable_mobs.json");
+                    std::fs::write(&tag_file, r#"{"replace":true,"values":["minecraft:cow"]}"#)
+                        .unwrap();
+                    game.reload_datapacks(false, &[]).unwrap();
+                    let walkable = "minecraft:powder_snow_walkable_mobs";
+                    let world = game.mob_world_base(&[]);
+                    assert!(world.entity_has(walkable, "minecraft:cow"));
+                    assert!(!world.entity_has(walkable, "minecraft:fox"));
+
+                    std::fs::write(&tag_file, r#"{"replace":true,"values":["minecraft:fox"]}"#)
+                        .unwrap();
+                    // This unopened-world fixture has no operator player. Run at console authority.
+                    assert!(game.as_console(|game| game.run_command("reload")));
+                    let world = game.mob_world_base(&[]);
+                    assert!(!world.entity_has(walkable, "minecraft:cow"));
+                    assert!(world.entity_has(walkable, "minecraft:fox"));
+                });
+            },
         );
     }
 

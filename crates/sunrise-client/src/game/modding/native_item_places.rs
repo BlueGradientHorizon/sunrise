@@ -114,8 +114,9 @@ impl Game<'_> {
                 .find(|m| m.id == id && m.extra.chested)?;
             let size = super::mount_menu::mount_columns(m) * 3;
             if m.extra.items.len() < size {
+                let dim = self.dim;
                 if let Some(level) = self.transactions.last_mut() {
-                    level.keep_mob_length(id, m.extra.items.len());
+                    level.keep_mob_length(dim, id, m.extra.items.len());
                 }
                 m.extra.items.resize(size, None);
             }
@@ -219,8 +220,7 @@ impl Game<'_> {
     /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
     /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
     pub(super) fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
-        let tag = sunrise_client::command::args::normalize(tag);
-        self.res.mob_data().entity_has(&tag, entity_type)
+        self.entity_tag_matches(tag, entity_type)
     }
     /// Lend a native place's stack without encoding components. Reading a chest vehicle's
     /// `EntitySlot` unpacks its pending loot table without a player
@@ -396,8 +396,9 @@ impl Game<'_> {
                 let Some((patch, edits)) = prepared else {
                     return Ok(());
                 };
+                let dim = self.dim;
                 if let Some(level) = self.transactions.last_mut() {
-                    level.keep_equipment(entity, equipment, mob_gear.as_deref());
+                    level.keep_equipment(dim, entity, equipment, mob_gear.as_deref());
                 }
                 let held = equipment[index].as_mut().expect("prepared equipment slot");
                 apply(held, patch);
@@ -770,8 +771,8 @@ impl Game<'_> {
         });
         went
     }
-    /// `ItemAccess.extract` at those places: up to `stack.count` of the item and components of
-    /// `stack`, how many came out. An item entity emptied stays, empty, until the root commit
+    /// `ItemAccess.extract` at those places: up to `amount` of the item and components of
+    /// `resource`, how many came out. An item entity emptied stays, empty, until the root commit
     /// removes it. A creative player's hand gives without losing any (`forInfiniteMaterials`).
     pub(super) fn game_extract(
         &mut self,
@@ -780,10 +781,6 @@ impl Game<'_> {
         amount: u32,
         tx: &Transaction,
     ) -> u32 {
-        let stack = ItemStack {
-            count: amount,
-            ..resource.clone()
-        };
         if !self.transaction_holds(tx) {
             return 0;
         }
@@ -792,12 +789,12 @@ impl Game<'_> {
         }
         self.notice_menu_place_write(place);
         if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
-            return self.scratch_extract(*id, &stack);
+            return self.scratch_extract(*id, resource, amount);
         }
-        // How many of `stack` `held` gives.
+        let items = self.res.shared_items();
         let taken = |held: Option<&ItemStack>| {
-            held.filter(|held| held.same_item_same_components(&stack))
-                .map_or(0, |held| held.count.min(stack.count))
+            held.filter(|held| held.same_item_same_components_with_prototype(resource, &items))
+                .map_or(0, |held| held.count.min(amount))
         };
         let left = |held: &ItemStack, took: u32| ItemStack {
             count: held.count - took,
@@ -2930,6 +2927,65 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn player_slot_extract_matches_resident_damage_without_max_damage() {
+        crate::game::in_own_process(
+            "game::native_item_places::tests::player_slot_extract_matches_resident_damage_without_max_damage",
+            || {
+                with_game(|game| {
+                    open_to_lan(game);
+                    game.lan.as_mut().unwrap().hub.guests.push(guest(1));
+                    let slot = ItemPlace::PlayerSlot {
+                        player: 123,
+                        slot: 3,
+                    };
+                    let mut paper = ItemStack::new("minecraft:paper", 2);
+                    paper.damage = 40;
+                    let mut explicit_default = paper.clone();
+                    explicit_default.data_mut().set_other(
+                        "minecraft:max_stack_size",
+                        Some(sunrise_core::nbt::Tag::Int(64)),
+                    );
+                    let mut different_damage = explicit_default.clone();
+                    different_damage.damage = 41;
+                    let different_damage =
+                        ItemResource::of(&different_damage.try_into_api().unwrap());
+                    for (mut resident, equivalent) in [
+                        (paper.clone(), paper.clone()),
+                        (paper.clone(), explicit_default.clone()),
+                        (explicit_default, paper),
+                    ] {
+                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                            guest.inventory[3] = Some(resident.clone());
+                        });
+                        let resource = slot.resource(game).unwrap();
+                        assert_eq!(resource.as_stack().damage_component(), Some(40));
+                        let removed = game.transaction(|host, tx| {
+                            Ok::<_, ()>(slot.extract(host, tx, &different_damage, 1))
+                        });
+                        assert_eq!(removed, Ok(0));
+                        assert_eq!(
+                            game.lan.as_ref().unwrap().hub.guests[0].inventory[3],
+                            Some(resident.clone()),
+                        );
+
+                        let equivalent = ItemResource::of(&equivalent.try_into_api().unwrap());
+                        let removed = game.transaction(|host, tx| {
+                            Ok::<_, ()>(slot.extract(host, tx, &equivalent, 1))
+                        });
+                        assert_eq!(removed, Ok(1));
+                        resident.count = 1;
+                        assert_eq!(
+                            game.lan.as_ref().unwrap().hub.guests[0].inventory[3],
+                            Some(resident),
+                        );
+                    }
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn a_creative_players_selected_stack_takes_what_fits_and_keeps_it() {
         with_game(|game| {
             open_to_lan(game);
@@ -4542,8 +4598,10 @@ pub(super) mod tests {
         impl Hooks for TrashCan {
             fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
                 let lodestone = r.block_key("minecraft:lodestone");
-                r.block_capability(&mod_api::ITEMS, &lodestone, |_, _, _, entity| {
-                    entity.is_none().then(|| Box::new(Voids) as _)
+                r.block_capability(&mod_api::ITEMS, &lodestone, |_, _, _, entity, offer| {
+                    if entity.is_none() {
+                        offer.offer(|| Box::new(Voids));
+                    }
                 });
             }
         }

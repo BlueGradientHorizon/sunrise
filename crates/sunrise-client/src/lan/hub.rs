@@ -2573,6 +2573,12 @@ impl Hub {
                         .update(i, |g| g.inbox.push_back(InboxItem::Packet(packet, credit)));
                     continue;
                 }
+                // A player whose body was removed still controls the respawn button.
+                S::ClientCommand(c) if c.action == 0 && self.guests[i].respawning => {
+                    self.guests
+                        .update(i, |g| g.inbox.push_back(InboxItem::Packet(packet, credit)));
+                    continue;
+                }
                 _ => {}
             }
             credits.extend(credit);
@@ -2768,7 +2774,7 @@ impl Hub {
         if std::env::var_os("SUNRISE_NET_DEBUG").is_some() {
             log::info!("[lan] {} left: {reason}", g.name);
         }
-        if !g.placed {
+        if !g.joined() {
             return g;
         }
         // `PlayerList.remove`: the entities it tracked stop (`removePairing`). The stops stay
@@ -3193,11 +3199,28 @@ impl Hub {
         state: Option<sunrise_world::registry::BlockStateId>,
     ) -> Option<Particle> {
         use crate::particles::ParticleType as T;
-        // A native mod's own type: no registry id, so the sentinel and the name.
+        // Custom types use the existing Sunrise-only particle envelope.
         if let Some(name) = &options.mod_particle {
+            let bytes = if let Some((value, _)) = &options.typed_particle {
+                match mod_api::__private::encode_particle_stream(
+                    value,
+                    sunrise_protocol::frame::MAX_UNCOMPRESSED,
+                ) {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        log::warn!("Cannot encode particle {name}: {error}");
+                        return None;
+                    }
+                }
+            } else {
+                Vec::new()
+            };
             return Some(Particle {
                 id: sunrise_protocol::entity_data::MOD_PARTICLE_ID,
-                data: Some(ParticleData::Mod(name.to_string())),
+                data: Some(ParticleData::Mod {
+                    name: name.to_string(),
+                    options: bytes,
+                }),
             });
         }
         let name = format!("minecraft:{}", options.ty.name());
@@ -4492,6 +4515,13 @@ impl Hub {
                     events.push(HostEvent::Packet(conn, Box::new(S::UseItemOn(p))));
                     *held = self.move_queued(i);
                 }
+                S::CustomPayload(p)
+                    if p.channel
+                        == sunrise_protocol::packets::custom_payload::CAULDRON_USE_CHANNEL =>
+                {
+                    events.push(HostEvent::Packet(conn, Box::new(S::CustomPayload(p))));
+                    *held = self.move_queued(i);
+                }
                 // handleInteract is the game's too, like handleAttack above: a move queued
                 // behind it waits for the next tick.
                 S::Interact(p) => {
@@ -4943,6 +4973,27 @@ impl Hub {
         crate::item_sync::from_network(s, &self.sync.builtin, &self.sync.dynamic)
     }
 
+    /// ServerLevel.removePlayerImmediately: remove the old body and its pairs, not
+    /// the connection or the tab-list entry. `respawn` places the new body later.
+    pub fn remove_player_for_respawn(&mut self, i: usize) {
+        let id = self.guests.update(i, |g| {
+            g.stop_riding();
+            g.placed = false;
+            g.respawning = true;
+            g.pending_move = None;
+            super::chunk_watch::unwatch_all(&mut self.chunk_watches, g);
+            for id in g.tracker.ids() {
+                g.send(&C::RemoveEntities(play::RemoveEntities { ids: vec![id] }));
+            }
+            g.tracker.clear();
+            g.sent_chunks.clear();
+            g.chunk_queue.clear();
+            g.viewed.forget_views();
+            g.entity_id
+        });
+        self.respawned(id);
+    }
+
     /// ServerLevel.removePlayerImmediately, then addRespawnedPlayer: the other players
     /// lose the dead player's entity (ServerEntity.removePairing) and are sent the
     /// respawned one as a new entity at the next tick. Their clients would otherwise keep
@@ -4970,39 +5021,25 @@ impl Hub {
     /// start" event and the chunk under the player, so the packets follow vanilla's order.
     /// `rotation` is the facing a mod's `player_respawn_position` chose; none
     /// is the level's respawn direction.
-    pub fn respawn(&mut self, i: usize, at: [f64; 3], rotation: Option<[f32; 2]>, ctx: &TickCtx) {
+    pub fn respawn(
+        &mut self,
+        i: usize,
+        at: [f64; 3],
+        rotation: Option<[f32; 2]>,
+        keep_attributes: bool,
+        ctx: &TickCtx,
+    ) {
         let info = self.spawn_info(i, 0, ctx.sea_level);
         self.close_container_for(i);
-        let id = self.guests.update(i, |g| {
-            // The old player leaves its level with its chunks (ChunkMap.removeEntity).
-            super::chunk_watch::unwatch_all(&mut self.chunk_watches, g);
-            // PlayerList.respawn: into the level in place (the respawn level).
-            g.dimension = self.config.dimension.clone();
+        self.guests.update(i, |g| {
             // A new player: a mod's collision exclusions were the dead one's (#3717).
             g.collision_exclusions.clear();
             // restartClientLoadTimerAfterRespawn: the client loads a whole new level before it
             // reports it loaded.
             g.load_timeout = super::guest::CLIENT_LOADED_TIMEOUT;
             g.loading = true;
-            // ServerLevel.removePlayerImmediately: the dead player's
-            // Entity.setRemoved (KILLED) stops its riding; the new player rides
-            // nothing.
-            g.stop_riding();
-            // ServerLevel.removePlayerImmediately: every entity paired with the dead player is
-            // removed (ServerEntity.removePairing, one packet each). Its chunks are dropped
-            // without ForgetLevelChunk (PlayerChunkSender.dropChunk skips dead players): the
-            // client keeps them and they are all sent again.
-            for id in g.tracker.ids() {
-                g.send(&C::RemoveEntities(play::RemoveEntities { ids: vec![id] }));
-            }
-            g.tracker.clear();
-            g.sent_chunks.clear();
-            g.chunk_queue.clear();
-            g.viewed.forget_views();
-            g.entity_id
-        });
-        self.respawned(id);
-        self.guests.update(i, |g| {
+            g.sent_health = None;
+            g.sent_health_data = false;
             g.sent_pose = crate::pose::Pose::Standing;
             // ServerPlayer.restoreFrom: the game mode again (onUpdateAbilities).
             g.send(&g.abilities_packet());
@@ -5012,11 +5049,9 @@ impl Hub {
             g.place(at);
             g.send(&C::Respawn(play::Respawn {
                 spawn: info,
-                keep: 0,
+                keep: i8::from(keep_attributes),
             }));
-            // The respawned player is a new one, without effects; so is the
-            // client's (ClientPacketListener.handleRespawn).
-            g.effects = Default::default();
+            // The client's new body needs the full replacement effect state.
             g.sent_effects.clear();
             g.center = None;
             g.sent_chunks.clear();
@@ -5043,10 +5078,14 @@ impl Hub {
             g.post_effects_dirty = false;
             g.send(&C::PostEffects(play::PostEffects { effects: list }));
         });
+        self.send_active_effects(i);
         self.send_level_info(i, ctx, true);
         self.send_permission_level(i);
         // ServerLevel.addRespawnedPlayer: the chunk tracking starts again at the player.
         self.guests.update(i, |g| {
+            g.placed = true;
+            g.respawning = false;
+            g.placed_at = self.ticks;
             let (cx, cz) = g.chunk();
             g.send(&C::SetChunkCacheCenter(play::SetChunkCacheCenter {
                 x: cx,
@@ -5117,10 +5156,10 @@ impl Hub {
         portal_cooldown: i32,
         ctx: &TickCtx,
     ) {
+        let left = self.guests[i].dimension.clone();
         let info = self.spawn_info(i, portal_cooldown, ctx.sea_level);
         self.close_container_for(i);
         self.before_travel(i);
-        let left = self.guests[i].dimension.clone();
         self.guests.update(i, |g| {
             // Out of the old level with its chunks (ChunkMap.removeEntity).
             super::chunk_watch::unwatch_all(&mut self.chunk_watches, g);
@@ -5629,7 +5668,8 @@ mod tests {
         hub.guests.update(0, |g| g.sneaking = true);
         hub.sync_player_state(0);
         drain(&rx);
-        hub.respawn(0, [0.5, 64.0, 0.5], Some([0.0; 2]), &ctx);
+        hub.remove_player_for_respawn(0);
+        hub.respawn(0, [0.5, 64.0, 0.5], Some([0.0; 2]), false, &ctx);
         assert_eq!(drain(&rx).1, [0]);
         assert_eq!(hub.guests[0].sent_pose, Pose::Standing);
         hub.sync_player_state(0);
@@ -6378,7 +6418,8 @@ mod tests {
         assert!(hub.guests[0].menu.is_none());
         assert_eq!(hub.guests[0].recipe_book.custom.get("test:cooking"), flags);
         open(&mut hub);
-        hub.respawn(0, [0.5, 64.0, 0.5], None, &ctx);
+        hub.remove_player_for_respawn(0);
+        hub.respawn(0, [0.5, 64.0, 0.5], None, false, &ctx);
         assert!(hub.guests[0].menu.is_none());
         assert_eq!(hub.guests[0].recipe_book.custom.get("test:cooking"), flags);
     }
@@ -6751,10 +6792,10 @@ mod tests {
     /// the list changes, and when the entity is paired as it joins.
     #[test]
     fn a_named_effect_particle_is_sent_only_to_sunrise_clients() {
-        // id, name length, name.
-        const NAMED: [u8; 19] = [
+        // id, name length, name, empty options length.
+        const NAMED: [u8; 20] = [
             0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 13, b'e', b'x', b'a', b'm', b'p', b'l', b'e', b':', b's',
-            b'w', b'i', b'r', b'l',
+            b'w', b'i', b'r', b'l', 0,
         ];
         // ClientboundSetEntityDataPacket: the packet's id, then the entity's.
         let data = |entity: u8, entries: &[&[u8]]| {

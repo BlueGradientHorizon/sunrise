@@ -1374,6 +1374,15 @@ impl LevelSide<'_> {
     }
 }
 
+impl LevelRandomSide<'_> {
+    pub(crate) fn reborrow(&mut self) -> LevelRandomSide<'_> {
+        match self {
+            Self::Server(host) => LevelRandomSide::Server(&mut **host),
+            Self::Client(host) => LevelRandomSide::Client(*host),
+        }
+    }
+}
+
 /// NeoForge's `TriState`: force a part of an action off or on, or leave it
 /// to vanilla.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1422,10 +1431,23 @@ impl TriState {
 /// }
 /// ```
 pub trait LevelHost {
+    /// Whether the exact, namespaced `id` is a living entity type (`LivingEntity`).
+    /// Includes living content types, players and armor stands, whether alive or not in a level.
+    /// Returns `None` before the registry is complete or when no classification exists for `id`.
+    /// This is a load-owned registry read, not an entity lookup. It allocates nothing and gives
+    /// the same answer on either side; no entity need be loaded.
+    #[sunrise_mod_api_macros::computed_in_mod]
+    fn entity_type_is_living(&self, id: &str) -> Option<bool> {
+        crate::content::registry_keys::resolved_entity_types()
+            .get()?
+            .is_living(id)
+    }
+
     /// The block-state facts service, as `host.block_states()` gives it on a game host: the
     /// same tables and the same answers, so a part can ask a neighbour's `weathering_age`
     /// inside `random_tick`. Read-only and allocation-free per read. A level view with no
-    /// tables answers every fact with `None` (or `BlockStateError::Unavailable`).
+    /// tables answers `None`, `BlockStateError::Unavailable` or `LevelReadError::Unavailable`,
+    /// according to the read's result type.
     ///
     /// Computed from this level view's tables.
     #[sunrise_mod_api_macros::computed_in_mod]
@@ -1466,6 +1488,15 @@ pub trait LevelHost {
     /// Clients return their local block entity handle, not unsynced server contents. Owning
     /// game thread only, never reachable from a worker-thread hook body.
     fn block_entity(&self, _pos: [i32; 3]) -> Option<crate::BlockEntityRef> {
+        None
+    }
+    /// Whether the first provider for [`crate::ITEMS`] at `pos` and `side` answers, as in
+    /// NeoForge's `Level.getCapability(Capabilities.Item.BLOCK, pos, side)`. `None` as the
+    /// side means unsided, not a search over faces. An empty or slotless handler can answer.
+    /// Returns `Some(false)` for a resident block with no answer, and `None` for an unavailable
+    /// view, unloaded chunk or invalid position. Clients use only their resident world and
+    /// installed providers. Does not allocate a handler, open loot, load chunks or query the server.
+    fn has_item_capability(&self, _pos: [i32; 3], _side: Option<Direction>) -> Option<bool> {
         None
     }
     /// The slots on this side, as `ItemsHost::container_size` reads them.
@@ -1779,7 +1810,10 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     ) -> bool {
         unimplemented!("LevelWriteHost::set_block_property")
     }
-    /// Play a sound for nearby players through `play_sound`.
+    /// Play a sound for nearby players. Inside an open transaction in the active level, the
+    /// level-sound hook runs synchronously; only the resolved sound waits for the owning level's
+    /// outermost commit and draws its seed when published. An abort discards it. Outside a
+    /// transaction a queued sound draws its seed at the call, even if a later hook cancels it.
     fn play_sound(
         &mut self,
         _sound: &str,
@@ -1792,7 +1826,8 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     }
     /// `ServerLevel.sendParticles` through `native_send_particles`.
     /// Item particles require `options.item_stack`; invalid stacks return false, and so does an
-    /// item crumb whose colour has a component outside 0 to 1.
+    /// item crumb whose colour has a component outside 0 to 1. Inside an open transaction the
+    /// particles wait for the outermost commit and are discarded on abort.
     fn send_particles(
         &mut self,
         _options: &ParticleOptions,
@@ -1805,7 +1840,9 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
         unimplemented!("LevelWriteHost::send_particles")
     }
     /// `LevelAccessor.levelEvent(null, id, pos, data)` through `native_level_event`: the event
-    /// is queued with the write's own events, in order, and plays when the write is done.
+    /// is queued with the write's own events, in order. Inside an open transaction it plays at the
+    /// outermost commit, in call order with the other deferred effects, and is discarded on abort;
+    /// otherwise it plays when the write is done.
     /// `LevelRef::level_event` takes the same `id` and `data`.
     fn level_event(&mut self, _id: i32, _pos: [i32; 3], _data: i32) -> bool {
         unimplemented!("LevelWriteHost::level_event")

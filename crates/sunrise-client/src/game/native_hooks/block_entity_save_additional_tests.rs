@@ -472,13 +472,16 @@ mod tests {
         }
         fn block_drops(
             &self,
-            level: &dyn LevelHost,
+            _: &dyn LevelHost,
             event: &mut mod_api::BlockDropsEvent<'_>,
         ) -> mod_api::Flow {
+            assert!(
+                event.block_entity.is_none(),
+                "a player break has already removed the block entity from the world"
+            );
             let stored = event
-                .block_entity
-                .and_then(|entity| level.block_entity_data(entity))
-                .and_then(|mut tag| tag.remove(&"count".into()));
+                .block_entity_data
+                .and_then(|tag| tag.get(&"count".into()).cloned());
             self.0.lock().unwrap().push(("drops", stored));
             mod_api::Flow::Continue
         }

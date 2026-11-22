@@ -1196,24 +1196,25 @@ impl Game<'_> {
     }
 
     /// The button came up: a held scrollbar lets go (onRelease).
-    pub(super) fn world_options_release(&mut self) {
+    pub(super) fn world_options_release(&mut self) -> bool {
         if let Some(o) = self.world_options.as_mut()
             && let Some(rules) = o.rules.as_mut()
         {
-            rules.release();
+            return rules.release();
         }
+        false
     }
 
-    pub(super) fn world_options_click(&mut self) {
+    pub(super) fn world_options_click(&mut self) -> bool {
         let Some(mut o) = self.world_options.take() else {
-            return;
+            return false;
         };
         let (w, h) = self.gui_size();
         match o.view {
             View::Options => {}
             View::GameRules => {
                 let atlas = &self.gui.atlas;
-                let exit = o.rules.as_mut().and_then(|rules| {
+                let (exit, handled) = o.rules.as_mut().map_or((None, false), |rules| {
                     if rules.clicks_button(atlas, self.cursor, (w, h)) {
                         self.audio.play_button_click();
                     }
@@ -1223,7 +1224,7 @@ impl Game<'_> {
                 if let Some(exit) = exit {
                     self.close_game_rules(exit);
                 }
-                return;
+                return handled;
             }
             View::LockQuestion => {
                 let p = Popup::lock_question(&self.gui.atlas.font, o.difficulty, (w, h));
@@ -1236,12 +1237,15 @@ impl Game<'_> {
                 }
                 match hit {
                     // Yes: apply, then back to the pause menu; No: back to the options.
-                    Some(0) => return self.apply_and_close_world_options(o),
+                    Some(0) => {
+                        self.apply_and_close_world_options(o);
+                        return true;
+                    }
                     Some(_) => o.view = View::Options,
                     None => {}
                 }
                 self.world_options = Some(o);
-                return;
+                return hit.is_some();
             }
             View::Restrictions => {
                 let r =
@@ -1263,7 +1267,7 @@ impl Game<'_> {
                     self.open_options_at(false, sunrise_client::options_ui::Page::Chat);
                     self.options_to_world_options = true;
                 }
-                return;
+                return action || done;
             }
         }
         let inside = self.cursor.1 >= HEADER && self.cursor.1 < h - FOOTER;
@@ -1314,14 +1318,19 @@ impl Game<'_> {
             Some(Button::Cancel) => {
                 self.world_options = Some(o);
                 self.close_world_options();
-                return;
+                return true;
             }
             // A new lock asks first.
             Some(Button::Apply) if o.locked != o.initial.locked => o.view = View::LockQuestion,
-            Some(Button::Apply) => return self.apply_and_close_world_options(o),
+            Some(Button::Apply) => {
+                self.apply_and_close_world_options(o);
+                return true;
+            }
             None => {}
         }
+        let handled = hit.is_some() || o.port.focused;
         self.world_options = Some(o);
+        handled
     }
 
     fn apply_and_close_world_options(&mut self, o: WorldOptions) {

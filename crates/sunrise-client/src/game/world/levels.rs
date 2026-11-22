@@ -1708,6 +1708,7 @@ impl Game<'_> {
                     // A pending portal arrival keeps its destination level
                     // running so it can land and tick (the portal ticket).
                     || !self.arrival_chunks(*d).is_empty()
+                    || self.server_trips.iter().any(|trip| trip.spawn_destination_areas(*d).next().is_some())
                     // A portal ticket keeps its dimension active
                     // (`TicketType.shouldKeepDimensionActive`).
                     || !self.portal_tickets_in(*d).is_empty()
@@ -1850,6 +1851,7 @@ impl Game<'_> {
         self.enter_level(dim)?;
         // Vanilla saves the level's chunks before their unload hooks.
         self.native_chunks_loaded();
+        self.abort_abandoned_transactions(0);
         if let Err(why) = self.save_level(true) {
             // Not saved: the level stays parked, and the level in place is the one before.
             self.enter_level(back)?;
@@ -1857,6 +1859,8 @@ impl Game<'_> {
         }
         let chunks: Vec<_> = self.world.chunks.values().cloned().collect();
         self.native_chunks_unloaded(&chunks);
+        // Save and unload listeners can leave frames open; undo them before dropping the level.
+        self.abort_abandoned_transactions(0);
         // Its entities' attachments are saved with them; they leave memory too.
         for id in self.persist.uuids.keys() {
             self.entity_attachments.remove(id);
@@ -3388,7 +3392,6 @@ impl Game<'_> {
             // `ServerLevel.tickTime`, once the clock has moved on.
             span("scheduled_functions", || self.run_scheduled_functions());
         }
-        self.tick_totem();
         self.update_totem_ready();
         span("tick_command_extras", || self.tick_command_extras());
         self.tick_world(running)

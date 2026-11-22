@@ -116,7 +116,7 @@ impl Hooks for Stacked {
         assert!(!refuse, "stacked listener failed");
         if replace {
             event.result.handled = true;
-            event.result.clicked = mod_api::StackResult::Set(None);
+            event.result.clicked = mod_api::ClickedStackResult::Set(None);
             event.cancelled = true;
             return Flow::Cancel;
         }
@@ -759,7 +759,8 @@ fn a_panicking_trade_listener_undoes_the_take_and_the_next_trade_works() {
             assert!(game.transactions.is_empty());
             script(Script::default());
             assert!(game.lan_merchant_click(12, &click));
-            assert_eq!((CALLS.get(), result(game), stat(game)), (1, 1, 1));
+            assert_eq!(CALLS.get(), 0, "the panicking listener stays disabled");
+            assert_eq!((result(game), stat(game)), (1, 1));
         })
     });
 }
@@ -782,7 +783,8 @@ fn a_second_trade_panic_undoes_the_entire_shift_click() {
             assert!(game.transactions.is_empty());
             script(Script::default());
             assert!(game.lan_merchant_click(12, &click));
-            assert_eq!((CALLS.get(), result(game), stat(game)), (3, 3, 3));
+            assert_eq!(CALLS.get(), 0, "the panicking listener stays disabled");
+            assert_eq!((result(game), stat(game)), (3, 3));
         })
     });
 }
@@ -884,15 +886,16 @@ fn a_trade_refused_inside_the_stacked_pickup_undoes_the_whole_take() {
                     unchanged(game, 2);
                     corrected(&rx, click.container, 2);
                 }
-                // Even without a trade listener, a failed pickup or an attempted result
-                // replacement leaves the take untouched and corrects the client's result slot.
+                // Even without a trade listener, an attempted result replacement or a failed
+                // pickup leaves the take untouched and corrects the client's result slot. Run
+                // the panicking case last because a panicking callback is retired for the session.
                 for script_value in [
                     Script {
-                        refuse_stacked: true,
+                        replace_stacked_result: true,
                         ..Script::default()
                     },
                     Script {
-                        replace_stacked_result: true,
+                        refuse_stacked: true,
                         ..Script::default()
                     },
                 ] {

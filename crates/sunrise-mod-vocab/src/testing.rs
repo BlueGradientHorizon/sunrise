@@ -303,7 +303,7 @@ impl FakeHost {
                 Err(errors)
             };
         }
-        crate::content::registry_keys::resolve_entity_types(ids)
+        crate::content::registry_keys::resolve_entity_types(ids, |_| None)
     }
     /// Player `uuid` online as entity `entity` in the level, joined if missing.
     pub fn join(&mut self, uuid: u128, entity: u32) -> &mut FakePlayer {
@@ -497,11 +497,81 @@ impl ClientHost for FakeHost {}
 crate::impl_client_host_areas!(FakeHost);
 
 impl Backend for FakeHost {}
+impl crate::LevelHost for FakeHost {
+    fn block_entity_data(&self, _: BlockEntityRef) -> Option<crate::Compound> {
+        None
+    }
+    fn block_entity(&self, pos: [i32; 3]) -> Option<BlockEntityRef> {
+        crate::prelude::BlockEntitiesHost::block_entity(self, self.level.level(), pos)
+    }
+    fn block_state(&self, pos: [i32; 3]) -> Option<crate::BlockState> {
+        let name = self
+            .level
+            .block_at(self.level.level(), pos)
+            .unwrap_or("minecraft:air");
+        let block = crate::__private::block_key(name).or_else(|| {
+            crate::parts::requested_keys()
+                .blocks
+                .slots
+                .get(name)
+                .copied()
+                .map(crate::BlockKey)
+        });
+        // The stand-in can hold a container without a published block registry. That
+        // unnamed state never selects a block-keyed provider.
+        Some(crate::block::block_state::block_state_from_ordinal(
+            block.unwrap_or(crate::BlockKey(u32::MAX)),
+            0,
+        ))
+    }
+    fn has_item_capability(&self, pos: [i32; 3], side: Option<crate::Direction>) -> Option<bool> {
+        let at = BlockSide {
+            level: self.level.level(),
+            pos,
+            side,
+        };
+        let mut answer = None;
+        crate::prelude::LevelBlocksBackend::level_with_capability_site(
+            self,
+            at,
+            &mut |view, site| {
+                answer = Some(crate::__private::item_capability_present(view, site));
+            },
+        )
+        .ok()?;
+        answer
+    }
+}
 impl crate::prelude::LevelBlocksBackend for FakeHost {
     fn level_block(&self, level: LevelRef, pos: [i32; 3]) -> Option<crate::BlockKey> {
         self.level
             .block_at(level, pos)
             .and_then(crate::__private::block_key)
+    }
+    fn level_with_capability_site(
+        &self,
+        at: BlockSide,
+        visit: &mut dyn FnMut(&dyn crate::LevelHost, crate::BlockCapabilitySite),
+    ) -> Result<(), crate::LevelReadError> {
+        if at.level != self.level.level() {
+            return Err(crate::LevelReadError::Unavailable);
+        }
+        let Some(state) = crate::LevelHost::block_state(self, at.pos) else {
+            return Err(crate::LevelReadError::Unavailable);
+        };
+        let resident =
+            crate::prelude::BlockEntitiesHost::block_entity(self, at.level, at.pos).map(|entity| {
+                (
+                    entity,
+                    crate::prelude::BlockEntitiesBackend::block_entity_kind(self, entity),
+                )
+            });
+        let builtin_items = crate::prelude::ItemsBackend::container_size(self, at).is_some();
+        visit(
+            self,
+            crate::BlockCapabilitySite::new(at, state, resident, builtin_items),
+        );
+        Ok(())
     }
     /// The named block's first state: the fake keeps no properties.
     fn level_block_state(&self, level: LevelRef, pos: [i32; 3]) -> Option<crate::BlockState> {
