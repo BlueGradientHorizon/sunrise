@@ -5,9 +5,7 @@
 //! lightning on a hit (`channeling.json`).
 use super::level_sounds::LevelSound;
 use super::{Game, commands::Target, minecarts::CartHit};
-use crate::game::collision_source::Mover;
 use mod_api::{__private::TransactionFrame, SoundSource};
-use sunrise_client::motion::MotionWorld;
 use sunrise_client::{
     arrows::{Pickup, back_off, clip_block_hit},
     collisions::SceneCollisions,

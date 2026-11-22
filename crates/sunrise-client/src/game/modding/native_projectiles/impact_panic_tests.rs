@@ -45,7 +45,7 @@ impl Hooks for PanicAfterAdmission {
             assert!(self.admitted.load(Ordering::SeqCst));
             // Hook dispatch now contains the panic. The callback's own transaction
             // still has to abort its tentative spawn before dispatch resumes.
-            let _: Result<(), ()> = host.transaction(|host, _| {
+            let _ = host.transaction::<(), ()>(|host, _| {
                 let spawned = host.summon(
                     event.dimension,
                     "minecraft:snowball",
