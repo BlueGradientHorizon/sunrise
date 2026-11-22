@@ -389,6 +389,9 @@ mod tests {
                 let _event_loop = frame_scene(game);
                 game.screen = Screen::Playing;
                 game.settings.view_bobbing = false;
+                // This scene freezes before the camera tick that initializes the FOV scale.
+                game.view.fov_modifier = 1.0;
+                game.view.old_fov_modifier = 1.0;
                 game.settings.chunk_fade = 0.0;
                 game.settings.sunrise.lod_distance = 0;
                 game.settings.sunrise.taa = false;
