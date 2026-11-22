@@ -1418,7 +1418,7 @@ fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
                     assert_eq!(*trace.dry_out_velocity.lock().unwrap(), Some([0.0; 3]));
                     let dolphin = game.mobs.iter().find(|m| m.id == 225043).unwrap();
                     assert_eq!(dolphin.velocity.y, 0.5, "one hop after death and Post");
-                    assert!(!dolphin.on_ground);
+                    assert!(!dolphin.ground.on_ground);
                     assert_eq!(dolphin.extra.counter, 0, "dry-out ran only once");
                 }
             });

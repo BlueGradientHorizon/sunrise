@@ -251,7 +251,7 @@ pub fn drowned_move_control(m: &mut Mob, w: &super::MobWorld) {
             m.velocity.z + s * zd * 0.005,
         );
     } else {
-        if !m.on_ground {
+        if !m.ground.on_ground {
             m.velocity = Vec3::new(m.velocity.x, m.velocity.y - 0.008, m.velocity.z);
         }
         let speed = m.movement_speed();

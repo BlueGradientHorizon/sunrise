@@ -329,14 +329,14 @@ pub(super) fn ai_step(
         }
         S::Tadpole => {
             grow_up(m, events);
-            if !m.fluids.in_water && m.on_ground && m.vertical_collision_below {
+            if !m.fluids.in_water && m.ground.on_ground && m.vertical_collision_below {
                 let (a, b) = (m.random.next_float(), m.random.next_float());
                 m.velocity = Vec3::new(
                     m.velocity.x + f64::from((a * 2.0 - 1.0) * 0.05),
                     m.velocity.y + 0.4,
                     m.velocity.z + f64::from((b * 2.0 - 1.0) * 0.05),
                 );
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 m.voice("entity.tadpole.flop", events);
             }
             // Tadpole.aiStep: the age lock's particles, after the age.
@@ -344,14 +344,14 @@ pub(super) fn ai_step(
         }
         S::Cod | S::Salmon | S::TropicalFish | S::Pufferfish => {
             // AbstractFish.aiStep flops on land (applied before travel next tick).
-            if !m.fluids.in_water && m.on_ground && m.vertical_collision_below {
+            if !m.fluids.in_water && m.ground.on_ground && m.vertical_collision_below {
                 let (a, b) = (m.random.next_float(), m.random.next_float());
                 m.velocity = Vec3::new(
                     m.velocity.x + f64::from((a * 2.0 - 1.0) * 0.05),
                     m.velocity.y + 0.4,
                     m.velocity.z + f64::from((b * 2.0 - 1.0) * 0.05),
                 );
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 let flop = match m.species() {
                     S::Cod => "entity.cod.flop",
                     S::Salmon => "entity.salmon.flop",
@@ -385,7 +385,7 @@ pub(super) fn ai_step(
 
 /// `Dolphin.tick`: after the dry-out hurt, a grounded dolphin hops and turns.
 pub(super) fn dolphin_hop(m: &mut Mob) {
-    if m.on_ground {
+    if m.ground.on_ground {
         let (a, b) = (m.random.next_float(), m.random.next_float());
         m.velocity = Vec3::new(
             m.velocity.x + f64::from((a * 2.0 - 1.0) * 0.2),
@@ -393,7 +393,7 @@ pub(super) fn dolphin_hop(m: &mut Mob) {
             m.velocity.z + f64::from((b * 2.0 - 1.0) * 0.2),
         );
         m.yaw = m.random.next_float() * 360.0;
-        m.on_ground = false;
+        m.ground.on_ground = false;
     }
 }
 

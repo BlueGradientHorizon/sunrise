@@ -501,7 +501,7 @@ fn a_health_boosted_partner_below_its_maximum_is_no_mate() {
         let mut m = Mob::new(id, kind.clone(), Vec3::new(x, 64.0, 0.5), 0.0);
         m.extra.tame = true;
         m.extra.in_love = 600;
-        m.on_ground = true;
+        m.ground.on_ground = true;
         finalize::set_base(&mut m, Attr::MaxHealth, 30.0);
         m.health = 30.0;
         m

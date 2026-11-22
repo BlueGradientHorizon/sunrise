@@ -13,12 +13,13 @@ use sunrise_core::{
 };
 use sunrise_world::{
     block_collision::{BlockCollisionRegistry, DynamicCollisionWorld, ShulkerCollisionState},
-    block_collision_scan::{BlockCollisionWorld, CollisionBlock},
+    block_collision_scan::{BlockCollisionWorld, CollisionBlock, CollisionScanError},
     collision::CachedCollisionRegistry,
     collision_context::{CollisionContext, CollisionEntity, CollisionItem},
     dynamic_support::DynamicSupportWorld,
     entity_obstruction::EntityIdentity,
     fluid::{FluidKind, FluidState},
+    ground_support::{GroundState, find_supporting_block},
     liquid_collision::LiquidCollisionWorld,
     piston_shape::PistonCollisionWorld,
     powder_snow_collision::{PowderSnowEntity, PowderSnowWorld},
@@ -252,6 +253,26 @@ where
     }
 }
 impl<'w> SceneCollisions<'w, '_> {
+    /// `Entity.checkSupportingBlock` against this entity's contextual shapes.
+    pub fn update_ground_support(
+        &mut self,
+        ground: &mut GroundState,
+        feet: Vec3,
+        bounds: Aabb,
+        movement: Option<Vec3>,
+        context: CollisionContext<'_>,
+    ) -> std::result::Result<(), CollisionScanError<io::Error>> {
+        ground.check_support(ground.on_ground, bounds, movement, |bounds| {
+            find_supporting_block(
+                self,
+                context.at_entity_height(feet.y),
+                feet,
+                bounds,
+                usize::MAX,
+            )
+        })
+    }
+
     /// Position contexts permit geometric movement probes without inventing a
     /// player, inventory, effects or fluid-standing behavior. A supplied subject
     /// collides as a living entity with its captured main-hand stack.

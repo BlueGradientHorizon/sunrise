@@ -5,7 +5,8 @@ automatic releases that follow. Releases are automatic and frequent so the lates
 Since 2026-10-28 Sunrise ships the **Nightly** instead of `vX.Y.Z` releases (Ludovic's decision; the Team proposed
 it): the batch train builds a Nightly, it is published once its smoke test passed and no `release-blocker` is open,
 and launchers and Nightly servers update to it ([The Nightly and stable releases](#the-nightly-and-stable-releases)). Stable releases (`26.3-<semver>`) are
-cut from a Nightly, and a server installed on one updates within its line ([Release branches](#release-branches)).
+published from the approved head of `release/26.3`, which is cut from a green daily's commit and takes later fixes by
+pull request, and a server installed on one updates within its line ([Release branches](#release-branches)).
 
 ## Pull request checks
 

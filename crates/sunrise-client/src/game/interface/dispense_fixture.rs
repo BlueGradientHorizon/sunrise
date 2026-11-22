@@ -1232,7 +1232,7 @@ impl Game<'_> {
         if kind == "minecraft:armor_stand" {
             let mut stand = sunrise_client::entities::ArmorStand::new(id, at, yaw);
             stand.marker = e["marker"].as_bool().unwrap_or(false);
-            stand.on_ground = e["ground"].as_bool().unwrap_or(false);
+            stand.ground.on_ground = e["ground"].as_bool().unwrap_or(false);
             stand.show_arms = e["arms"].as_bool().unwrap_or(false);
             stand.disabled_slots = e["disabled"].as_i64().unwrap_or(0) as i32;
             if let Some(last_hit) = e["last_hit"].as_i64() {
@@ -1281,7 +1281,7 @@ impl Game<'_> {
         if flag("loot") {
             mob.extra.pick_up_loot = true;
         }
-        mob.on_ground = flag("ground");
+        mob.ground.on_ground = flag("ground");
         if let Some(health) = e["health"].as_f64() {
             mob.attrs.max_health = health as f32;
             mob.health = health as f32;

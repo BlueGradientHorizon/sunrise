@@ -1806,14 +1806,14 @@ impl Goal for LeapAtTarget {
             return false;
         };
         let d = m.distance_sqr(t.position);
-        if !(4.0..=16.0).contains(&d) || !m.on_ground {
+        if !(4.0..=16.0).contains(&d) || !m.ground.on_ground {
             return false;
         }
         self.target = [t.position.x, t.position.y, t.position.z];
         m.random.next_int_bound(reduced(5)).unwrap_or(1) == 0
     }
     fn can_continue(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
-        !m.on_ground
+        !m.ground.on_ground
     }
     fn start(&mut self, m: &mut Mob, _: &mut Cx) {
         let mut d = [
@@ -3109,7 +3109,7 @@ impl Goal for TryFindWater {
         MOVE
     }
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        if !m.on_ground || m.fluids.in_water {
+        if !m.ground.on_ground || m.fluids.in_water {
             return false;
         }
         let (bx, by, bz) = (

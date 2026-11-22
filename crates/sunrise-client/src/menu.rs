@@ -1253,7 +1253,11 @@ impl Menu {
         // neither side's game resolves with a key only Sunrise gives.
         let hover = self.state.containers[MAIN][0]
             .as_ref()
-            .map(|i| crate::lang::returned_to_server(|| crate::stations::hover_name(env.names, i)))
+            .map(|i| {
+                crate::lang::returned_to_server(|| {
+                    crate::stations::hover_name_in(env.loop_context, env.names, i).plain()
+                })
+            })
             .unwrap_or_default();
         let out = crate::stations::anvil_result(
             env.enchantments,
@@ -1415,8 +1419,9 @@ impl Menu {
         // The box (an EditBox of 50) keeps the first 50 UTF-16 units of what it is given.
         let name = if input.custom_name().is_some() {
             // As vanilla's client names it: the name goes to the server.
-            let hover =
-                crate::lang::returned_to_server(|| crate::stations::hover_name(env.names, &input));
+            let hover = crate::lang::returned_to_server(|| {
+                crate::stations::hover_name_in(env.loop_context, env.names, &input).plain()
+            });
             let mut units = 0;
             hover
                 .chars()

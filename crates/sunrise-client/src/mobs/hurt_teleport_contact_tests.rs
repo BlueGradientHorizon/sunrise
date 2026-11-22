@@ -37,7 +37,7 @@ pub(super) fn enderman(types: &crate::mobs::MobTypes, seed: i64) -> Mob {
     let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
     register(&mut m);
     m.random = sunrise_core::random::LegacyRandom::new(seed);
-    m.on_ground = true;
+    m.ground.on_ground = true;
     m.stuck_multiplier = Vec3::ZERO;
     m
 }
@@ -472,10 +472,7 @@ fn freezing_cramming_and_a_mod_hurt_each_teleport_inside_the_hurt() {
                     w,
                     &mut crate::health::TestLevel::new(0).level(),
                     &mut Vec::new(),
-                    mod_api::EntityWrite::Hurt {
-                        source: None,
-                        amount: 2.0,
-                    },
+                    mod_api::EntityWrite::Hurt { amount: 2.0 },
                 );
                 assert_eq!(m.position, expected.position, "mod hurt, seed {seed}");
                 assert_eq!(
@@ -635,10 +632,7 @@ fn two_hurts_in_a_tick_each_teleport_inside_their_own_hurt() {
                     w,
                     &mut level.level(),
                     &mut events,
-                    mod_api::EntityWrite::Hurt {
-                        source: None,
-                        amount: 2.0,
-                    },
+                    mod_api::EntityWrite::Hurt { amount: 2.0 },
                 );
                 freeze_tick(&mut m, w, &mut level.level(), &mut events);
                 assert_eq!(
