@@ -1,6 +1,5 @@
 //! `AbstractHorse.aiStep` clears a horse's `EatingHaystack` after 51 ticks.
 //! A llama keeps the loaded flag because `Llama.canEatGrass` is false.
-use super::*;
 use crate::entity_nbt::{mob_from_nbt, mob_to_nbt};
 use crate::mobs::world::with_test_world;
 use std::sync::Arc;
