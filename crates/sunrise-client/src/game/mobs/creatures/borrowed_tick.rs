@@ -198,6 +198,7 @@ impl Game<'_> {
             let mut air_answer = None;
             let mut retry_rider = None;
             let mut removing_vehicle = None;
+            let mut pending_effects: Vec<MobEvent> = Vec::new();
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
@@ -838,6 +839,28 @@ impl Game<'_> {
                         true,
                     );
                     views_dirty |= mobs.stamp() != before_brain;
+                    if sting.is_none()
+                        && events[from..].iter().any(|e| {
+                            matches!(
+                                e,
+                                MobEvent::DeathProtectionEffects { .. }
+                                    | MobEvent::EffectMob { .. }
+                            )
+                        })
+                    {
+                        let mut idx = from;
+                        while idx < events.len() {
+                            if matches!(
+                                events[idx],
+                                MobEvent::DeathProtectionEffects { .. }
+                                    | MobEvent::EffectMob { .. }
+                            ) {
+                                pending_effects.push(events.remove(idx));
+                            } else {
+                                idx += 1;
+                            }
+                        }
+                    }
                     cursor += 1;
                     if !kept
                         && !was_removed
@@ -847,7 +870,11 @@ impl Game<'_> {
                         removing_vehicle = Some(id);
                         break;
                     }
-                    if sting.is_some() || section_hint.is_some() || tell_post.is_some() {
+                    if sting.is_some()
+                        || section_hint.is_some()
+                        || tell_post.is_some()
+                        || !pending_effects.is_empty()
+                    {
                         break;
                     }
                 }
@@ -864,6 +891,7 @@ impl Game<'_> {
                 && section_hint.is_none()
                 && tell_pre.is_none()
                 && tell_post.is_none()
+                && pending_effects.is_empty()
             {
                 break;
             }
@@ -885,7 +913,7 @@ impl Game<'_> {
             }
             // A yield just to tell a tick hook or a crossing doesn't by itself
             // change the list. Keep the same slots unless rows have left or joined.
-            let same_rows = !settle && !gone_rows;
+            let same_rows = !settle && !gone_rows && pending_effects.is_empty();
             if !same_rows {
                 mobs.retain(|m| {
                     // Give the departing vehicle back for its pre-removal effects
@@ -930,6 +958,9 @@ impl Game<'_> {
                     // Restaging the committed position isn't a listener write.
                     restored = (!written).then(|| self.mobs.stamp());
                 }
+                if !pending_effects.is_empty() {
+                    let _ = self.handle_mob_events(std::mem::take(&mut pending_effects));
+                }
                 if let Some(sting) = sting {
                     let before_hurt = events.drain(brain_from..sting.at).collect();
                     let _ = self.handle_mob_events(before_hurt);
@@ -943,18 +974,23 @@ impl Game<'_> {
                         .mob_object(sting.fish)
                         .is_some_and(|mob| sting.same_fish(mob))
                     {
-                        let victim = self
-                            .mob_index
-                            .find(&self.mobs, sting.target)
-                            .map(|i| &mut self.mobs[i]);
-                        let mut aftermath = sting.poison(victim);
+                        if let Some(ticks) = sting.poison_ticks()
+                            && self
+                                .mob_object(sting.target)
+                                .is_some_and(|mob| sting.same_target(mob))
+                        {
+                            self.add_mob_effect(
+                                sting.target,
+                                sunrise_client::effects::EffectInstance::new("poison", ticks, 0),
+                                self.entity(sting.fish),
+                            );
+                        }
                         if let Some(sound) = self
                             .mob_object(sting.fish)
                             .and_then(|fish| sting.sound(fish))
                         {
-                            aftermath.push(sound);
+                            let _ = self.handle_mob_events(vec![sound]);
                         }
-                        let _ = self.handle_mob_events(aftermath);
                     } else {
                         events.truncate(brain_from);
                         resume_brain = None;
