@@ -330,11 +330,8 @@ mod tests {
             );
             let _native = mod_api::__private::enter("native_demo", "register");
             assert_eq!(
-                mod_api::__private::parts_installation::owned_declaration_id(
-                    "native_demo",
-                    "native_extra:gem",
-                )
-                .unwrap(),
+                mod_api::__private::owned_declaration_id("native_demo", "native_extra:gem")
+                    .unwrap(),
                 "native_extra:gem"
             );
             assert_eq!(
