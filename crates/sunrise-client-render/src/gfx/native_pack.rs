@@ -381,6 +381,7 @@ file = \"material.wgsl\"
     /// sky adds the terrain's 10 to the frame's 9: that is the pack's error to report, not
     /// a validation panic (#10095).
     #[test]
+    #[ignore = "daily"]
     fn a_pack_the_backend_refuses_is_an_error_not_a_panic() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some(adapter) = crate::gfx::test_gpu::adapter() else {

@@ -2,6 +2,7 @@
 /// A mod samples `BlockSpriteArrays` as the renderer hands them over: a layer of the second
 /// array through its view, texels sharp and repeating with the nearest sampler.
 #[test]
+#[ignore = "daily"]
 fn a_pass_samples_a_sprite_layer_sharp() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some((_, device, queue)) = crate::gfx::test_gpu::optional_device() else {

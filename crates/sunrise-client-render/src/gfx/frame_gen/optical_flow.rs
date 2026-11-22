@@ -691,6 +691,7 @@ pub(super) mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn repeated_cuts_and_stable_frames_update_the_history() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {

@@ -554,6 +554,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn a_pack_fragment_shader_colours_the_outline() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
@@ -568,6 +569,7 @@ mod tests {
     /// A pack's own include with a bigger block than vanilla's (an older `DynamicTransforms`)
     /// is not used, and the outline draws natively, rather than failing at the draw.
     #[test]
+    #[ignore = "daily"]
     fn a_pack_block_bigger_than_vanillas_falls_back() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, _)) = device() else {

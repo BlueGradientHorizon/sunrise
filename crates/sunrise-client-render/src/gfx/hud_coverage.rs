@@ -382,6 +382,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn disabled_coverage_builds_only_the_original_pipeline() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some(adapter) = crate::gfx::test_gpu::adapter() else {

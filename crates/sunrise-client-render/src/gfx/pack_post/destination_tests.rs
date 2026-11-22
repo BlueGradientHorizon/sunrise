@@ -348,6 +348,7 @@ impl Fixture {
 }
 
 #[test]
+#[ignore = "daily"]
 fn partial_writes_retain_the_alternate_with_flip_scale_and_mrt_controls() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Fixture::new() else { return };
@@ -406,6 +407,7 @@ fn partial_writes_retain_the_alternate_with_flip_scale_and_mrt_controls() {
 }
 
 #[test]
+#[ignore = "daily"]
 fn frame_clear_and_retained_history_apply_before_partial_post_writes() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Fixture::new() else { return };
@@ -529,6 +531,7 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
 /// frame's clear. Where that first write discards, Iris 1.11.7 reads the clear value (a probe
 /// pack of our own with these three programs reads 0 there, not the previous frame's 0.25).
 #[test]
+#[ignore = "daily"]
 fn a_cleared_buffer_starts_every_frame_cleared_on_both_textures() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Fixture::new() else { return };

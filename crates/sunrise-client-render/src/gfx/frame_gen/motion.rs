@@ -358,6 +358,7 @@ mod tests {
     /// An entity seen last frame gets its vertices' own motion, in this frame's camera
     /// space; a new one, one whose shape changed and untagged geometry get none.
     #[test]
+    #[ignore = "daily"]
     fn tracks_each_entity_by_id() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = super::super::optical_flow::tests::device() else {
@@ -405,6 +406,7 @@ mod tests {
     /// Without `new_runs`, what is staged is what frame generation always staged: each
     /// matched quad as two triangles, translucent items flagged, nothing else.
     #[test]
+    #[ignore = "daily"]
     fn without_new_runs_only_matched_entities_are_staged() {
         let Some((device, queue)) = super::super::optical_flow::tests::device() else {
             return;
@@ -435,6 +437,7 @@ mod tests {
 
     /// Without the atlas, nothing can say where a translucent item shows: it is left out.
     #[test]
+    #[ignore = "daily"]
     fn translucent_items_need_the_atlas() {
         let Some((device, queue)) = super::super::optical_flow::tests::device() else {
             return;
@@ -497,6 +500,7 @@ mod tests {
     /// `(0, 0, 0, 1)`; a matched one keeps its vector and `z = 1`; an untagged shadow (no
     /// depth writes) stays 0. Without it, only the matched one is drawn.
     #[test]
+    #[ignore = "daily"]
     fn new_runs_write_w_only_when_asked() {
         let Some((device, queue)) = super::super::optical_flow::tests::device() else {
             return;

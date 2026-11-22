@@ -1781,6 +1781,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn counters_see_the_overdraw_that_draw_order_makes() {
         let _gpu = crate::test_gpu::lock();
         let Some((device, queue)) = stats_device() else {

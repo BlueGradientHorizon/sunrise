@@ -2455,6 +2455,7 @@ mod tests {
     /// The chain runs over the frame and the result lands on it: invert into
     /// `swap`, then a blit modulated by (1, 0, 0.5, 1) back onto the frame.
     #[test]
+    #[ignore = "daily"]
     fn a_chain_draws_onto_the_frame() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
@@ -2852,6 +2853,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn a_chain_naming_an_unknown_shader_fails_once() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
@@ -2955,6 +2957,7 @@ mod tests {
 
     /// Frame orientation survives a chain through an intermediate target.
     #[test]
+    #[ignore = "daily"]
     fn a_chain_keeps_the_frame_upright() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
@@ -2987,6 +2990,7 @@ mod tests {
     /// A chain with its own GLSL, a target read twice, a depth input and a
     /// `textures/effect` image: nothing here is one of vanilla's shaders.
     #[test]
+    #[ignore = "daily"]
     fn a_chain_runs_its_own_glsl() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = depth_device() else {
@@ -3030,6 +3034,7 @@ mod tests {
     /// The frame's depth reaches a pass as 26.3 keeps it, reverse-Z (the sky 0, a near pixel
     /// close to 1), not as GL's window depth.
     #[test]
+    #[ignore = "daily"]
     fn a_pass_reads_the_frame_depth_as_it_is() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = depth_device() else {
@@ -3159,6 +3164,7 @@ mod tests {
     /// A chain `preload` loaded arrives with its pipelines compiled on the loading
     /// thread, and runs as one loaded in its frame does.
     #[test]
+    #[ignore = "daily"]
     fn a_preloaded_archive_chain_arrives_compiled() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = depth_device() else {
@@ -3235,6 +3241,7 @@ mod tests {
     /// Vanilla's own chains run on the GPU without a validation error (skipped
     /// without the prepared resources).
     #[test]
+    #[ignore = "daily"]
     fn vanilla_chains_run() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
@@ -3270,6 +3277,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn vanilla_chains_load() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {

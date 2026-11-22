@@ -245,6 +245,7 @@ mod tests {
     /// DirectX 12 with both its compilers (#16258). DXC needs `dxcompiler.dll` beside the
     /// test or on `PATH`; a device this machine lacks is skipped.
     #[test]
+    #[ignore = "daily"]
     fn a_stage_s_name_does_not_stop_it_compiling() {
         let _gpu = crate::gfx::test_gpu::lock();
         for (adapter, name) in crate::gfx::test_gpu::each_adapter() {
@@ -274,6 +275,7 @@ mod tests {
     /// Vanilla's sky and two packs over the same globals: one that returns its input draws
     /// vanilla's pixels, one that inverts them draws the inverse (and stays opaque).
     #[test]
+    #[ignore = "daily"]
     fn a_pack_gets_vanilla_s_colour_and_draws_opaque() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some(adapter) = crate::gfx::test_gpu::adapter() else {

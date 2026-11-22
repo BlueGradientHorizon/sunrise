@@ -906,6 +906,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn gpu_layers_match_the_cpu_chains_every_tick() {
         let _gpu = crate::gfx::test_gpu::lock();
         layers_match_the_cpu_chains_every_tick(true);
@@ -913,6 +914,7 @@ mod tests {
 
     /// Without compute shaders (OpenGL before 4.3): the same layers.
     #[test]
+    #[ignore = "daily"]
     fn copied_layers_match_the_cpu_chains_every_tick() {
         let _gpu = crate::gfx::test_gpu::lock();
         layers_match_the_cpu_chains_every_tick(false);
@@ -1012,6 +1014,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn inactive_sprites_are_skipped_by_collect() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, _)) = device() else {

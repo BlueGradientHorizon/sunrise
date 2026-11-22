@@ -1394,6 +1394,7 @@ mod gpu_span_tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn end_portal_faces_reach_the_shadow_pass_with_their_block_entity() {
         let _gpu = crate::test_gpu::lock();
         let Some(adapter) = crate::test_gpu::adapter() else {
@@ -1449,6 +1450,7 @@ mod gpu_span_tests {
     /// A boat's water patch (`RenderTypes.waterMask`) is a draw of its own, depth only, that casts
     /// no shadow; with no pack program for entities, Sunrise draws it with the boat.
     #[test]
+    #[ignore = "daily"]
     fn a_boats_water_patch_draws_depth_only() {
         let _gpu = crate::test_gpu::lock();
         let Some(adapter) = crate::test_gpu::adapter() else {
@@ -1521,6 +1523,7 @@ mod gpu_span_tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn posed_and_cpu_draws_keep_offsets_uniforms_and_special_fallbacks() {
         let _gpu = crate::test_gpu::lock();
         let Some(adapter) = crate::test_gpu::adapter() else {

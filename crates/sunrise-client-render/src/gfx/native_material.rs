@@ -864,6 +864,7 @@ mod tests {
     /// its colours decoded on the way in and encoded on the way out as the entries do, draws
     /// what 0.1's does (vanilla's) within an 8-bit step.
     #[test]
+    #[ignore = "daily"]
     fn an_identity_0_2_material_is_vanilla_s_within_an_8_bit_step() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some(adapter) = crate::gfx::test_gpu::adapter() else {
@@ -979,6 +980,7 @@ mod tests {
     /// field comes out of the pack's module bit for bit as out of the engine's terrain, on every
     /// device here, and the two layouts agree (#16127).
     #[test]
+    #[ignore = "daily"]
     fn a_pack_s_solid_corners_are_the_engine_s() {
         use crate::mesher::{TerrainVertex, packed};
         use wgpu::util::DeviceExt;

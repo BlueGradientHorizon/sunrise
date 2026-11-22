@@ -335,6 +335,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn successful_readback_releases_slot() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((_device, _queue, mut timer)) = mapped_timer() else {
@@ -351,6 +352,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn destroyed_readback_stops_timing_without_unmapping() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue, mut timer)) = mapped_timer() else {

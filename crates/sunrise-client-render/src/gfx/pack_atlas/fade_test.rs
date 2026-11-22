@@ -16,6 +16,7 @@ impl Drop for ProbePack {
 }
 
 #[test]
+#[ignore = "daily"]
 fn terrain_fade_reaches_pack_pixels_through_real_instances() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(adapter) = crate::gfx::test_gpu::adapter() else {
@@ -183,6 +184,7 @@ fn terrain_fade_reaches_pack_pixels_through_real_instances() {
 /// `sunriseTier`: the HDR tier the mesher marks a light source's faces with (`mesher::emitting`),
 /// read by a pack's terrain program, flat or instanced.
 #[test]
+#[ignore = "daily"]
 fn terrain_tier_reaches_pack_pixels() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(adapter) = crate::gfx::test_gpu::adapter() else {

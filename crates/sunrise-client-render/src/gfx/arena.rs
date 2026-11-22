@@ -839,6 +839,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn writes_recorded_before_a_grow_reach_the_grown_page() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
@@ -873,6 +874,7 @@ mod tests {
     /// Released together, every range of a page leaves it one free range (a far teleport
     /// empties the arena at once), while a page keeping some ranges frees only the others.
     #[test]
+    #[ignore = "daily"]
     fn ranges_released_at_once_free_exactly_their_vertices() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
@@ -907,6 +909,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn a_sparse_page_empties_into_the_others_and_is_reclaimed() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
@@ -984,6 +987,7 @@ mod tests {
     /// `translucent_at` along. GPU culling's records of the sections with solid
     /// quads move with them.
     #[test]
+    #[ignore = "daily"]
     fn compaction_moves_what_sections_hold_in_the_section_arena() {
         let _gpu = crate::gfx::test_gpu::lock();
         use super::super::{Part, SectionGpu, gpu_culling, move_off_page};
@@ -1120,6 +1124,7 @@ mod tests {
     /// quads a shrink moves (`move_off_page`) keep naming their section, or flat draws would
     /// put them at another section's origin.
     #[test]
+    #[ignore = "daily"]
     fn moved_translucent_quads_keep_their_section_s_flat_id() {
         let _gpu = crate::gfx::test_gpu::lock();
         use super::super::{Part, SectionGpu, flat, move_off_page, upload::Uploads};
@@ -1256,6 +1261,7 @@ mod tests {
     /// least: wgpu clears what a binding covers and nothing wrote when the frame is
     /// submitted, so a grown page bound whole had its new tail cleared on the GPU.
     #[test]
+    #[ignore = "daily"]
     fn large_pages_are_bound_up_to_their_last_range_in_use() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
@@ -1280,6 +1286,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn empty_pages_are_reclaimed_without_moving_live_ranges() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
@@ -1325,6 +1332,7 @@ mod tests {
     /// Every arena's pages stay within its cap and the device's limits: the
     /// whole-page storage bindings of flat draws and shader packs included.
     #[test]
+    #[ignore = "daily"]
     fn pages_stay_within_their_caps_and_the_device_limits() {
         let _gpu = crate::gfx::test_gpu::lock();
         let devices = devices();
@@ -1360,6 +1368,7 @@ mod tests {
     /// storage. Otherwise, as while a shader pack's terrain draws flat (gfx's
     /// `translucent_split`), translucent quads keep to the section arena.
     #[test]
+    #[ignore = "daily"]
     fn translucent_arenas_follow_the_layout() {
         let _gpu = crate::gfx::test_gpu::lock();
         let devices = devices();
@@ -1395,6 +1404,7 @@ mod tests {
 
     /// Pages double up to `PAGE_BYTES`, then grow by `PAGE_BYTES` at most.
     #[test]
+    #[ignore = "daily"]
     fn large_pages_grow_by_bounded_steps() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, _)) = device() else {
@@ -1422,6 +1432,7 @@ mod tests {
     /// The other range of each mesh stays; the emptied page takes no new range until
     /// `trim` returns it. Translucent vertices and sorted indices alike.
     #[test]
+    #[ignore = "daily"]
     fn a_large_page_moves_into_one_of_the_size_its_ranges_get() {
         let _gpu = crate::gfx::test_gpu::lock();
         use super::super::{Part, SectionGpu, begin_shrink, move_off_page};
@@ -1564,6 +1575,7 @@ mod tests {
     /// them, at least the first page's size) halves them or is `PAGE_BYTES`
     /// smaller: at the smallest page that shrinks and at the largest.
     #[test]
+    #[ignore = "daily"]
     fn large_pages_shrink_when_that_halves_them_or_saves_a_page() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, _)) = device() else {
@@ -1608,6 +1620,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn clearing_an_arena_releases_buffers_and_can_allocate_again() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
@@ -1705,6 +1718,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn full_video_memory_spills_to_system_memory() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device_with(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS) else {
@@ -1740,6 +1754,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn no_memory_left_is_not_an_error() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {

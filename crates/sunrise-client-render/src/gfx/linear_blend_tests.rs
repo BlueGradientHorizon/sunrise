@@ -215,6 +215,7 @@ fn assert_near(got: [f32; 4], want: [f32; 3], what: &str) {
 // "linear" it mixes light, `0.25 * decode(src) + 0.75 * decode(bg)`: Sunrise's
 // (0.4606, 0.2200, 0.1965), the pack's (0.4590, 0.1467, 0.4132).
 #[test]
+#[ignore = "daily"]
 fn translucent_draws_blend_in_the_light_the_frame_holds() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = gpu() else {
@@ -239,6 +240,7 @@ fn translucent_draws_blend_in_the_light_the_frame_holds() {
 // (0.3, 0.7, 1.5) decodes to (0.0707, 0.4563, 2.4401), the pack's light (0.25, 0.5, 2.0) and
 // the clear colour, gamma (0.8, 0.2, 0.5), to (0.6121, 0.0290, 0.2176).
 #[test]
+#[ignore = "daily"]
 fn stages_read_the_same_light_under_either_blend() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = gpu() else {
@@ -272,6 +274,7 @@ fn stages_read_the_same_light_under_either_blend() {
 // visible: under "linear" the frame stores (0.5 * 0.8 + 0.5 * 0.4812)^2.2 = 0.3757, not the
 // 0.5 a mix in light gives; under "gamma" the result is already gamma, 0.5 * 0.8 + 0.5 * 0.2.
 #[test]
+#[ignore = "daily"]
 fn a_fading_section_mixes_toward_the_fog_in_gamma() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some((device, queue)) = gpu() else {

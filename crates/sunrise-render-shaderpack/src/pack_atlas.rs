@@ -934,6 +934,7 @@ mod tests {
 
     /// Two arrays of 2x2 sprites, one layer split; each layer a colour of its own.
     #[test]
+    #[ignore = "daily"]
     fn layers_land_in_their_cells() {
         let _gpu = crate::test_gpu::lock();
         let Some(adapter) = crate::test_gpu::adapter() else {
@@ -1059,6 +1060,7 @@ mod tests {
     /// vanilla's `Stitcher` by hand: holders of 6, 4 and 3 px at (0, 0), (8, 0) and (8, 4) in a 16
     /// by 8 atlas. Each sprite has its own pixels, and its padding repeats its edge.
     #[test]
+    #[ignore = "daily"]
     fn stitched_sprites_keep_their_own_size_and_padding() {
         let _gpu = crate::test_gpu::lock();
         let Some(adapter) = crate::test_gpu::adapter() else {
@@ -1254,18 +1256,21 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn stitched_material_maps_share_colour_rectangles() {
         let _gpu = crate::test_gpu::lock();
         material_fixture(false);
     }
 
     #[test]
+    #[ignore = "daily"]
     fn animated_stitched_material_updates_only_its_rectangle() {
         let _gpu = crate::test_gpu::lock();
         material_fixture(true);
     }
 
     #[test]
+    #[ignore = "daily"]
     fn terrain_inputs_respects_separate_ao() {
         let _gpu = crate::test_gpu::lock();
         let Some(adapter) = crate::test_gpu::adapter() else {

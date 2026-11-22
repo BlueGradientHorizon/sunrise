@@ -1496,6 +1496,7 @@ mod tests {
     /// plus the base vertex. With culling, phase 2's runs hold the indices
     /// of the draws the test saw, in order, and their calls count them.
     #[test]
+    #[ignore = "daily"]
     fn flatten_writes_the_indices_of_the_per_section_draws() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some(adapter) = crate::gfx::test_gpu::adapter() else {

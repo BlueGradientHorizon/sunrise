@@ -598,6 +598,7 @@ mod tests {
     /// texture and the armour glint, and an item's: the shader writes what
     /// `expand` does, to the bit, after the vertices before them.
     #[test]
+    #[ignore = "daily"]
     fn the_shader_writes_what_the_cpu_reference_computes() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {

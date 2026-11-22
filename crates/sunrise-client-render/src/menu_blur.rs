@@ -406,6 +406,7 @@ mod tests {
     /// Released between two screens, the blur makes its targets again and
     /// blurs the same.
     #[test]
+    #[ignore = "daily"]
     fn blurs_the_same_after_its_targets_were_released() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some(adapter) = crate::gfx::test_gpu::adapter() else {
@@ -428,6 +429,7 @@ mod tests {
     /// On a software adapter the blur runs at half size and still blurs the
     /// frame much as at full size: stripes two pixels wide turn to an even grey.
     #[test]
+    #[ignore = "daily"]
     fn the_half_size_blur_blurs_like_the_full_size_one() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some(adapter) = crate::gfx::test_gpu::adapter() else {

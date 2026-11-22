@@ -43,6 +43,7 @@ fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
 }
 
 #[test]
+#[ignore = "daily"]
 fn resident_buffer_survives_frames_and_refreshes_with_the_atlas() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some((device, _)) = device() else {
@@ -84,6 +85,7 @@ fn resident_buffer_survives_frames_and_refreshes_with_the_atlas() {
 /// The actual entity shader and celestial blend, comparing the old combined
 /// vertex stream with a resident sky draw followed by a separate flash draw.
 #[test]
+#[ignore = "daily"]
 fn separate_draws_match_combined_celestial_pixels() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some((device, queue)) = device() else {

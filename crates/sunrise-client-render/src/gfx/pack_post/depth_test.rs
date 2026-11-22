@@ -430,6 +430,7 @@ fn check(sampler: &str, stage: Stage, scene: Scene, expected: [u8; 4]) {
 }
 
 #[test]
+#[ignore = "daily"]
 fn hand_is_in_depth1_and_excluded_from_depth2() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -443,6 +444,7 @@ fn hand_is_in_depth1_and_excluded_from_depth2() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn depth2_only_without_hand_excludes_water() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -456,6 +458,7 @@ fn depth2_only_without_hand_excludes_water() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn depth1_only_without_hand_excludes_water_control() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -469,6 +472,7 @@ fn depth1_only_without_hand_excludes_water_control() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn water_only_program_populates_both_opaque_snapshots() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -479,6 +483,7 @@ fn water_only_program_populates_both_opaque_snapshots() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn deferred_depth2_only_excludes_hand() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -492,6 +497,7 @@ fn deferred_depth2_only_excludes_hand() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn deferred_depth1_contains_hand_control() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -505,6 +511,7 @@ fn deferred_depth1_contains_hand_control() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn direct_fragment_gets_world_depth_control() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -515,6 +522,7 @@ fn direct_fragment_gets_world_depth_control() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn attached_compute_gets_world_depth() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -525,6 +533,7 @@ fn attached_compute_gets_world_depth() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn compute_only_gets_world_depth_control() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -535,6 +544,7 @@ fn compute_only_gets_world_depth_control() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn earlier_compute_child_gets_world_depth() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -545,6 +555,7 @@ fn earlier_compute_child_gets_world_depth() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn attached_compute_depth1_without_hand_excludes_water() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -558,6 +569,7 @@ fn attached_compute_depth1_without_hand_excludes_water() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn attached_compute_depth2_without_hand_excludes_water() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -571,6 +583,7 @@ fn attached_compute_depth2_without_hand_excludes_water() {
     );
 }
 #[test]
+#[ignore = "daily"]
 fn attached_compute_preserves_distinct_hand_snapshots() {
     let _gpu = crate::gfx::test_gpu::lock();
     check(
@@ -808,6 +821,7 @@ fn shadow_depth_map_reads(
 }
 
 #[test]
+#[ignore = "daily"]
 fn shadow_depth_is_read_linearly_through_a_plain_sampler() {
     let _gpu = crate::gfx::test_gpu::lock();
     // Iris 1.11.7 filters both (probe packs of our own; the PR has the readings).
@@ -817,6 +831,7 @@ fn shadow_depth_is_read_linearly_through_a_plain_sampler() {
 }
 
 #[test]
+#[ignore = "daily"]
 fn shadow_depth_reads_filter_directly_and_with_a_texel_offset() {
     let _gpu = crate::gfx::test_gpu::lock();
     // texture2D on the sampler itself, and textureOffset one texel to the right: both a quarter
@@ -836,6 +851,7 @@ fn shadow_depth_reads_filter_directly_and_with_a_texel_offset() {
 }
 
 #[test]
+#[ignore = "daily"]
 fn shadow_depth_filter_weights_are_256ths_as_in_our_iris_readings() {
     let _gpu = crate::gfx::test_gpu::lock();
     // The map is at the far plane but for texel (8, 8), which is nearer. Reads between texels
@@ -871,6 +887,7 @@ fn shadow_depth_filter_weights_are_256ths_as_in_our_iris_readings() {
 }
 
 #[test]
+#[ignore = "daily"]
 fn shadowtex_nearest_settings_read_the_nearest_texel() {
     let _gpu = crate::gfx::test_gpu::lock();
     for (line, expected) in [

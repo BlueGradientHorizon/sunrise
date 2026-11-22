@@ -161,6 +161,7 @@ pub(super) fn draw(
 }
 
 #[test]
+#[ignore = "daily"]
 fn a_pack_text_shader_reads_the_light_as_vanilla_does() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some((device, queue)) = device() else {

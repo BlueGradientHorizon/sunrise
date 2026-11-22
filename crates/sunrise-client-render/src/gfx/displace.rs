@@ -757,6 +757,7 @@ mod tests {
     /// margin), and by the view not at all wholly past one side. FXC dropped
     /// the view's side test and drew nothing (#16168).
     #[test]
+    #[ignore = "daily"]
     fn the_pick_takes_the_quads_in_view_on_every_backend() {
         let mut tested = false;
         for (adapter, name) in crate::gfx::test_gpu::each_adapter() {
@@ -814,6 +815,7 @@ mod tests {
     /// and a quad spilled to its own vertices, on two pages) are written out as the very words
     /// of their vertices, as a wide section's are copied (#16127).
     #[test]
+    #[ignore = "daily"]
     fn compact_sections_give_the_grid_the_words_of_their_vertices_on_every_backend() {
         use crate::mesher::{TerrainVertex, packed};
         // Whole faces of blocks on the grid, each its own layer, grey level and light: records.
