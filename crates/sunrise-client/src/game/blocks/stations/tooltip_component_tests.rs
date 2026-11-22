@@ -112,6 +112,24 @@ fn text_lines(components: &[PreparedTooltipItem]) -> Vec<String> {
         .collect()
 }
 
+/// Pack-independent ASCII metrics: each lowercase letter and the space have the given advance.
+fn synthetic_ascii_fonts<const N: usize>(fonts: [(&str, i32); N]) -> sunrise_client::font::Font {
+    use sunrise_client::resource_source::{Resource, ResourceSource};
+    let files = fonts.into_iter().map(|(name, advance)| {
+        let advances: std::collections::BTreeMap<_, _> = ('a'..='z')
+            .chain([' '])
+            .map(|c| (c.to_string(), advance))
+            .collect();
+        let definition =
+            serde_json::json!({"providers": [{"type": "space", "advances": advances}]});
+        (
+            format!("assets/minecraft/font/{name}.json"),
+            Resource::bytes(definition.to_string().into_bytes()),
+        )
+    });
+    sunrise_client::font::Font::metrics(&ResourceSource::indexed(files.collect()))
+}
+
 /// Covers NeoForge wrapping fixtures A–K end-to-end through `gather_tooltip_components`,
 /// factory registration & last-wins override, and graceful omission of unregistered components.
 #[test]
@@ -252,18 +270,16 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
     with_mod_factories(mods, |game| {
         let stick = ItemStack::new("minecraft:stick", 1);
         *config.bundle.lock().unwrap() = Some(populated_bundle().try_into_api().unwrap());
+        game.gui.atlas.font = synthetic_ascii_fonts([("default", 5)]);
         let font = &game.gui.atlas.font;
         let long_text = sunrise_client::text::Text::literal(
             "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron",
         );
-        assert!(font.width_text(&long_text) > 320.0);
-
-        let split_plain = |width: i32| -> Vec<String> {
-            font.split_formatted(&long_text, width as f32)
-                .into_iter()
-                .map(|line| line.plain())
-                .collect()
-        };
+        const RIGHT_WRAP: [&str; 3] = [
+            "alpha beta gamma delta epsilon",
+            "zeta eta theta iota kappa lambda",
+            "mu nu xi omicron",
+        ];
 
         // Fixtures A & B: fits right and right-edge flip without wrapping.
         let short = sunrise_client::text::Text::literal("alpha beta");
@@ -288,7 +304,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 (320.0, 240.0),
             )
             .unwrap_ready();
-        assert_eq!(text_lines(&right_wrap), split_plain(160));
+        assert_eq!(text_lines(&right_wrap), RIGHT_WRAP);
 
         // Fixture D: left-half narrow screen wrap (mouse_x < screen_width / 2 -> 320 - 16 - 100 = 204).
         let left_wrap = game
@@ -299,7 +315,13 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 (320.0, 240.0),
             )
             .unwrap_ready();
-        assert_eq!(text_lines(&left_wrap), split_plain(204));
+        assert_eq!(
+            text_lines(&left_wrap),
+            [
+                "alpha beta gamma delta epsilon zeta eta",
+                "theta iota kappa lambda mu nu xi omicron",
+            ]
+        );
 
         // Fixture E: exact midpoint (mouse_x == screen_width / 2 -> 320 - 16 - 160 = 144).
         let mid_wrap = game
@@ -310,19 +332,30 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 (320.0, 240.0),
             )
             .unwrap_ready();
-        assert_eq!(text_lines(&mid_wrap), split_plain(144));
+        assert_eq!(
+            text_lines(&mid_wrap),
+            [
+                "alpha beta gamma delta",
+                "epsilon zeta eta theta iota",
+                "kappa lambda mu nu xi",
+                "omicron"
+            ]
+        );
 
         // Fixture F: explicit max_width wraps a tooltip that otherwise fits.
         config.max_width.store(50, Ordering::Relaxed);
         let max_wrap = game
             .gather_tooltip_components(
                 &stick,
-                vec![(long_text.clone(), u32::MAX)],
+                vec![(
+                    sunrise_client::text::Text::literal("alpha beta gamma delta"),
+                    u32::MAX,
+                )],
                 10,
                 (320.0, 240.0),
             )
             .unwrap_ready();
-        assert_eq!(text_lines(&max_wrap), split_plain(50));
+        assert_eq!(text_lines(&max_wrap), ["alpha beta", "gamma", "delta"]);
 
         // Fixture G: max_width tighter than screen wrap (80 < 160) wins.
         config.max_width.store(80, Ordering::Relaxed);
@@ -334,7 +367,17 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 (320.0, 240.0),
             )
             .unwrap_ready();
-        assert_eq!(text_lines(&tighter), split_plain(80));
+        assert_eq!(
+            text_lines(&tighter),
+            [
+                "alpha beta gamma",
+                "delta epsilon",
+                "zeta eta theta",
+                "iota kappa",
+                "lambda mu nu xi",
+                "omicron"
+            ]
+        );
 
         // Fixture H: max_width wider than screen wrap (200 > 160) keeps screen wrap width.
         config.max_width.store(200, Ordering::Relaxed);
@@ -346,7 +389,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 (320.0, 240.0),
             )
             .unwrap_ready();
-        assert_eq!(text_lines(&wider), split_plain(160));
+        assert_eq!(text_lines(&wider), RIGHT_WRAP);
 
         // Fixtures I & J: empty line preserved, custom override wins, bundle kept.
         config.max_width.store(60, Ordering::Relaxed);
@@ -359,11 +402,20 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 (320.0, 240.0),
             )
             .unwrap_ready();
-        let expected_wrapped = split_plain(60);
-        let n = expected_wrapped.len();
-        assert!(n > 1);
-        assert_eq!(mixed.len(), n + 4);
-        assert_eq!(text_lines(&mixed[..n]), expected_wrapped);
+        let n = 7;
+        assert_eq!(mixed.len(), 11);
+        assert_eq!(
+            text_lines(&mixed[..n]),
+            [
+                "alpha beta",
+                "gamma delta",
+                "epsilon zeta",
+                "eta theta",
+                "iota kappa",
+                "lambda mu nu",
+                "xi omicron",
+            ]
+        );
         // Empty text line preserved as a single empty text component right after wrapped text.
         assert_eq!(text_lines(&mixed[n..=n]), [""]);
         // Override factory won: WideData(250, 12) -> WideClient(500, 12).
@@ -753,15 +805,14 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
     with_mod_factories(mods, |game| {
         let stick = ItemStack::new("minecraft:stick", 1);
         *state.bundle_stack.lock().unwrap() = Some(populated_bundle().try_into_api().unwrap());
+        game.gui.atlas.font = synthetic_ascii_fonts([("default", 5), ("alt", 14)]);
         let line = sunrise_client::text::Text::literal("one two three four five six");
-        let expected_wrapped = game.gui.atlas.font.split_formatted(&line, 55.0);
-        let wrapped_count = expected_wrapped.len();
-        assert!(wrapped_count > 1);
 
         let mut prepared = game
             .gather_tooltip_components(&stick, vec![(line, u32::MAX)], 10, (320.0, 240.0))
             .unwrap_ready();
-        assert_eq!(prepared.len(), wrapped_count + 2);
+        assert_eq!(prepared.len(), 5);
+        assert_eq!(text_lines(&prepared), ["one two", "three four", "five six"]);
 
         // Mode 1: move place and switch font to minecraft:alt without rewrapping.
         let mut batch = HudBatch::scratch([320, 240]);
@@ -773,12 +824,9 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
             &DefaultTooltipPositioner,
             true,
         );
-        let expected_h = (wrapped_count as i32) * 10 + 45 + 12;
-        assert_eq!(rect, Some([52.0, 38.0, 130.0, expected_h as f32]));
-        assert_eq!(
-            state.pre_observed_texts.load(Ordering::Relaxed),
-            wrapped_count
-        );
+        // "three four" is 140px in alt; the box has three text lines, the bundle and custom panel.
+        assert_eq!(rect, Some([52.0, 38.0, 140.0, 87.0]));
+        assert_eq!(state.pre_observed_texts.load(Ordering::Relaxed), 3);
         assert!(state.pre_saw_bundle.load(Ordering::Relaxed));
         assert!(state.pre_saw_custom.load(Ordering::Relaxed));
         assert_eq!(
@@ -787,7 +835,9 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
                 "w:minecraft:alt",
                 "h:minecraft:alt",
                 "t:minecraft:alt",
+                "h:minecraft:alt",
                 "i:minecraft:alt",
+                "h:minecraft:alt",
             ]
         );
         assert_eq!(state.draws.load(Ordering::Relaxed), 1);
