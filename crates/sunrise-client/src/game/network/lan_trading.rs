@@ -1062,6 +1062,7 @@ mod tests {
             10,
         );
         guest.placed = true;
+        let window = guest.next_menu_window();
         game.lan.as_mut().unwrap().hub.guests.push(guest);
 
         let villager = spawn(game, 40, "minecraft:villager");
@@ -1086,7 +1087,7 @@ mod tests {
             session.sequences.insert(id, random);
         }
         let gm = GuestMerchant {
-            window: 3,
+            window,
             state: 0,
             slots: [None, None, None],
             drag: QuickCraftDrag::default(),
@@ -1121,7 +1122,7 @@ mod tests {
         with_game(|game| {
             let (_villager, rx, mut offer) = open_trade(game, 1);
             offer.uses = 3;
-            {
+            let window = {
                 let gm = game
                     .lan
                     .as_mut()
@@ -1135,7 +1136,8 @@ mod tests {
                 gm.merchant.session.offers[0] = offer.clone();
                 gm.merchant.session.xp = 17;
                 gm.slots[1] = Some(ItemStack::new("minecraft:coal", 2));
-            }
+                gm.window
+            };
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.carried = Some(ItemStack::new("minecraft:apple", 3))
             });
@@ -1174,7 +1176,7 @@ mod tests {
                 game.lan_guest_packet(
                     12,
                     play::Serverbound::ContainerClick(play::ContainerClick {
-                        container: 3,
+                        container: window,
                         state: 0,
                         slot: 2,
                         button: 0,
