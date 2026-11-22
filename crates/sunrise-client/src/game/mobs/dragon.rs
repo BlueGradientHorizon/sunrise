@@ -44,6 +44,18 @@ use sunrise_core::{
 };
 use sunrise_protocol::entity_data::Value;
 
+/// `EnderDragon.recreateFromPacket`: part `part` (`0..8`) gets wire id `dragon_id + 1 + part`
+/// using Java's wrapping 32-bit integer arithmetic.
+pub(in crate::game) fn dragon_part_id(dragon_id: u32, part: usize) -> u32 {
+    dragon_id.wrapping_add(1).wrapping_add(part as u32)
+}
+
+/// Inverse of [`dragon_part_id`]: returns the `0..8` part index when `candidate_id` belongs to `dragon_id`.
+pub(in crate::game) fn dragon_part_index(dragon_id: u32, candidate_id: u32) -> Option<usize> {
+    let offset = candidate_id.wrapping_sub(dragon_id.wrapping_add(1));
+    (offset < 8).then_some(offset as usize)
+}
+
 /// `HealOrHarmMobEffect.applyInstantaneousEffect` at an `AreaEffectCloud`'s
 /// 0.5 scale: `(int) (scale * (6 << amplifier) + 0.5)`.
 fn harm_amount(amplifier: u32) -> f32 {
@@ -1626,8 +1638,11 @@ impl Game<'_> {
     /// Resolves a crosshair target id (including synthetic dragon-part and crystal ids) to its wire entity id.
     pub(in crate::game) fn wire_entity_id(&self, id: u32) -> Option<i32> {
         if (SPECIAL..SPECIAL + 8).contains(&id) {
-            let dragon = self.dragon.as_ref().filter(|d| d.id != 0)?;
-            return Some((dragon.id + 1 + (id - SPECIAL)) as i32);
+            let dragon = self
+                .dragon
+                .as_ref()
+                .filter(|d| d.id != 0 || self.remote.is_some())?;
+            return Some(dragon_part_id(dragon.id, (id - SPECIAL) as usize) as i32);
         }
         if id >= CRYSTAL_IDS
             && let Some(crystal) = self.crystals.get((id - CRYSTAL_IDS) as usize)
@@ -4853,12 +4868,11 @@ impl Game<'_> {
     }
     /// The remote dragon, if `id` is it or one of its parts.
     fn remote_dragon_mut(&mut self, id: i32) -> Option<&mut Dragon> {
-        let Ok(uid) = u32::try_from(id) else {
-            return None;
-        };
-        self.dragon
-            .as_mut()
-            .filter(|d| d.id == uid || (d.id != 0 && (d.id + 1..=d.id + 8).contains(&uid)))
+        let uid = id as u32;
+        let remote = self.remote.is_some();
+        self.dragon.as_mut().filter(|d| {
+            (d.id != 0 || remote) && (d.id == uid || dragon_part_index(d.id, uid).is_some())
+        })
     }
     /// `handleSetEntityData`: LivingEntity.DATA_HEALTH_ID and
     /// EnderDragon.DATA_PHASE (`onSyncedDataUpdated` sets the phase).

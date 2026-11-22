@@ -257,7 +257,7 @@ impl Game<'_> {
             Some(CrosshairTarget::Entity { entity, .. }) => (
                 !self.interactions.contains_key(&(entity.id() as i32))
                     && Self::has_pick_result(self.native_client_entity_target(entity)),
-                self.level_dragon_part(entity.id()).is_none(),
+                self.resident_dragon_part(entity.id()).is_none(),
             ),
             _ => (false, false),
         };

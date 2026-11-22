@@ -153,10 +153,13 @@ impl Game<'_> {
             let p = crystal.position;
             return Some([p.x, p.y, p.z]);
         }
-        if let Some(d) = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)
-            && let Some(part) = id.checked_sub(d.id + 1).filter(|&i| i < 8)
+        if let Some(d) = self
+            .dragon
+            .as_ref()
+            .filter(|d| d.id != 0 || self.remote.is_some())
+            && let Some(part) = super::dragon::dragon_part_index(d.id, id)
         {
-            let p = d.parts[part as usize].0;
+            let p = d.parts[part].0;
             return Some([p.x, p.y, p.z]);
         }
         None

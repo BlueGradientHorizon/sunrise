@@ -14,7 +14,9 @@ impl Game<'_> {
         if parts {
             let mut cursor = None;
             while let Some(id) = self.dragon.next_part(&mut cursor) {
-                if bounds.intersects(dragon.part_geometry((id - dragon.id - 1) as usize).1) {
+                if let Some(part) = crate::game::dragon::dragon_part_index(dragon.id, id)
+                    && bounds.intersects(dragon.part_geometry(part).1)
+                {
                     visit_id(id)?;
                 }
             }

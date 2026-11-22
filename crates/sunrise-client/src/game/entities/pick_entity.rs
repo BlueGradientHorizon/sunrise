@@ -45,7 +45,7 @@ impl Game<'_> {
         let pickable = !self.interactions.contains_key(&id)
             && !is_synthetic_dragon_part
             && Self::has_pick_result(self.level_entity(id));
-        let suggest_uuid = !is_synthetic_dragon_part && self.level_dragon_part(hit.id).is_none();
+        let suggest_uuid = !is_synthetic_dragon_part && self.resident_dragon_part(hit.id).is_none();
         Some(CrosshairEntityHit {
             id,
             distance: hit.distance_sq.sqrt(),
@@ -236,12 +236,16 @@ impl Game<'_> {
             };
             push_box(crystal.join, id, crystal.bounds());
         }
-        if let Some(d) = self.dragon.as_ref().filter(|d| d.alive()) {
-            if d.id != 0 {
+        if let Some(d) = self.dragon.as_ref().filter(|d| !self.is_pick_camera(d.id)) {
+            if d.id != 0 || self.remote.is_some() {
                 for i in 0..8 {
-                    push_box(d.join, d.id + 1 + i as u32, d.part_geometry(i).1);
+                    push_box(
+                        d.join,
+                        super::dragon::dragon_part_id(d.id, i),
+                        d.part_geometry(i).1,
+                    );
                 }
-            } else if self.remote.is_none() {
+            } else {
                 for i in 0..8 {
                     push_box(
                         d.join,
