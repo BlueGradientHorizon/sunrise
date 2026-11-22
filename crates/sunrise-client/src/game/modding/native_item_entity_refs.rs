@@ -261,7 +261,7 @@ mod tests {
             let taken = game.dropped.lift();
             assert!(item.with_stack(game, |_| ()).is_none());
             assert!(!item.set_no_pickup_delay(game));
-            game.dropped = taken;
+            game.put_back_dropped(taken);
             // Committing an empty stack leaves the item resident until its next tick discards it.
             assert_eq!(item.set_stack(game, None), Ok(true));
             assert_eq!(game.dropped.len(), 1);
