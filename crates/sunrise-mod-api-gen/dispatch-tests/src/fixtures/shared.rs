@@ -45,6 +45,12 @@ mod content {
         pub(in crate::tests) fn item_id(key: super::super::ItemKey<'_>) -> Option<&str> {
             Some(key.0)
         }
+        pub(in crate::tests) fn effect_id(key: super::super::EffectKey) -> Option<&'static str> {
+            match key.0 {
+                0 => Some("test:effect"),
+                _ => None,
+            }
+        }
     }
 }
 
@@ -308,6 +314,7 @@ struct Parts {
     owner_slot: Option<(BlockKey, usize)>,
     block_entities: Vec<&'static dyn BlockEntityPart>,
     items: Vec<&'static dyn ItemPart>,
+    effects: Vec<&'static dyn MobEffectPart>,
     menus: Vec<&'static dyn MenuPart>,
     fluids: Vec<&'static dyn FluidPart>,
     entities: Vec<&'static dyn EntityPart>,
@@ -317,6 +324,7 @@ static NO_PARTS: Parts = Parts {
     owner_slot: None,
     block_entities: Vec::new(),
     items: Vec::new(),
+    effects: Vec::new(),
     menus: Vec::new(),
     fluids: Vec::new(),
     entities: Vec::new(),
@@ -338,6 +346,7 @@ fn has_part_hook(_: HookId) -> bool {
     !parts.blocks.is_empty()
         || !parts.block_entities.is_empty()
         || !parts.items.is_empty()
+        || !parts.effects.is_empty()
         || !parts.menus.is_empty()
         || !parts.entities.is_empty()
 }
@@ -383,6 +392,12 @@ impl Parts {
     }
     fn item<'k>(&self, _: impl FnOnce() -> Option<&'k str>) -> &[&'static dyn ItemPart] {
         &self.items
+    }
+    fn effect<'k>(&self, id: impl FnOnce() -> Option<&'k str>) -> &[&'static dyn MobEffectPart] {
+        match id() {
+            Some("test:effect") => &self.effects,
+            _ => &[],
+        }
     }
     fn menu<'k>(&self, _: impl FnOnce() -> Option<&'k str>) -> &[&'static dyn MenuPart] {
         &self.menus
