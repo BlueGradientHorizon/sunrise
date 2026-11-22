@@ -17,16 +17,19 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.client.Camera;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.OptionInstance;
 import net.minecraft.client.Options;
 import net.minecraft.client.entity.ClientAvatarState;
 import net.minecraft.client.gui.Gui;
+import net.minecraft.client.gui.Hud;
 import net.minecraft.client.gui.screens.LevelLoadingScreen;
 import net.minecraft.client.gui.screens.social.PlayerSocialManager;
 import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;
@@ -38,13 +41,17 @@ import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.FirstPersonHandsAndItems;
 import net.minecraft.client.player.KeyboardInput;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.player.RemotePlayer;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.tutorial.Tutorial;
+import net.minecraft.client.waypoints.ClientWaypointManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.network.PacketProcessor;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundGameEventPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerAbilitiesPacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerAbilitiesPacket;
 import net.minecraft.tags.TagKey;
@@ -60,8 +67,13 @@ import net.minecraft.world.entity.InsideBlockEffectApplier;
 import net.minecraft.world.entity.InterpolationHandler;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeMap;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
+import net.minecraft.world.entity.animal.equine.Horse;
+import net.minecraft.world.entity.animal.pig.Pig;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Abilities;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.player.Inventory;
@@ -156,6 +168,7 @@ public final class VanillaClientGameModeSplitOracle {
     static final class SilentSocialManager extends PlayerSocialManager {
         SilentSocialManager() { super(null, null, null, null); }
         @Override public void addPlayer(PlayerInfo info) {}
+        @Override public void removePlayer(UUID id) {}
     }
 
     static final class RealLocalPlayer extends LocalPlayer {
@@ -199,8 +212,6 @@ public final class VanillaClientGameModeSplitOracle {
         @Override public boolean isSprinting() { return false; }
         @Override public void setSprinting(boolean v) {}
         @Override public boolean isMobilityRestricted() { return false; }
-        @Override public boolean isPassenger() { return false; }
-        @Override public Entity getVehicle() { return null; }
         @Override public boolean isInShallowWater() { return false; }
         @Override public boolean isUnderWater() { return false; }
         @Override public boolean isMovingSlowly() { return false; }
@@ -235,12 +246,41 @@ public final class VanillaClientGameModeSplitOracle {
         @Override protected boolean updateFluidInteraction() { return false; }
     }
 
+    static final class SaddledHorse extends Horse {
+        float maxHealth;
+        float health;
+
+        SaddledHorse() { super(null, null); }
+        @Override public boolean isSaddled() { return true; }
+        @Override public double getAttributeValue(Holder<Attribute> a) {
+            return a == Attributes.MAX_HEALTH ? maxHealth : 0.0;
+        }
+        @Override public float getHealth() { return health; }
+    }
+
+    static final class SimplePig extends Pig {
+        float maxHealth;
+        float health;
+
+        SimplePig() { super(null, null); }
+        @Override public double getAttributeValue(Holder<Attribute> a) {
+            return a == Attributes.MAX_HEALTH ? maxHealth : 0.0;
+        }
+        @Override public float getHealth() { return health; }
+    }
+
+    static final class SimpleRemotePlayer extends RemotePlayer {
+        SimpleRemotePlayer() { super(null, null); }
+    }
+
     static final class Harness {
         final Minecraft mc;
         final Options options;
         final StoneFloorLevel level;
         final RecordingListener listener;
         final Map<UUID, PlayerInfo> infoMap;
+        final Camera mainCamera;
+        final Hud hud;
         MultiPlayerGameMode gameMode;
         RealLocalPlayer player;
 
@@ -266,6 +306,12 @@ public final class VanillaClientGameModeSplitOracle {
             var services = new net.minecraft.server.Services(
                 null, com.mojang.authlib.services.ServicesKeySet.EMPTY, null, null, null);
             field(Minecraft.class, "services").set(mc, services);
+            mainCamera = make(Camera.class);
+            var renderer = make(GameRenderer.class);
+            field(GameRenderer.class, "mainCamera").set(renderer, mainCamera);
+            field(Minecraft.class, "gameRenderer").set(mc, renderer);
+            hud = make(Hud.class);
+            field(Hud.class, "minecraft").set(hud, mc);
 
             level = make(StoneFloorLevel.class);
             level.border = new WorldBorder();
@@ -278,6 +324,7 @@ public final class VanillaClientGameModeSplitOracle {
             infoMap = new HashMap<>();
             field(ClientPacketListener.class, "playerInfoMap").set(listener, infoMap);
             field(ClientPacketListener.class, "listedPlayers").set(listener, new java.util.HashSet<PlayerInfo>());
+            field(ClientPacketListener.class, "waypointManager").set(listener, new ClientWaypointManager());
 
             gameMode = new MultiPlayerGameMode(mc, listener);
             mc.gameMode = gameMode;
@@ -334,6 +381,7 @@ public final class VanillaClientGameModeSplitOracle {
             p.input = new KeyboardInput(options);
             this.player = p;
             mc.player = p;
+            field(Camera.class, "entity").set(mainCamera, p);
         }
 
         void handleLogin(GameType gameType, GameType prev) throws Exception {
@@ -344,10 +392,29 @@ public final class VanillaClientGameModeSplitOracle {
             gameMode.setLocalMode(gameType, prev);
         }
 
+        void handleLoginRetainingPlayer(GameType gameType, GameType prev) {
+            gameMode = new MultiPlayerGameMode(mc, listener);
+            mc.gameMode = gameMode;
+            gameMode.adjustPlayer(player);
+            gameMode.setLocalMode(gameType, prev);
+        }
+
         void handleRespawn(GameType gameType, GameType prev) throws Exception {
             spawnPlayer(0.5, 64.0, 0.5, false);
             gameMode.adjustPlayer(player);
             gameMode.setLocalMode(gameType, prev);
+        }
+
+        void handleRespawnKeepEntityData(GameType gameType, GameType prev) throws Exception {
+            Vec3 oldVel = player.getDeltaMovement();
+            spawnPlayer(0.5, 64.0, 0.5, false);
+            player.setDeltaMovement(oldVel);
+            gameMode.adjustPlayer(player);
+            gameMode.setLocalMode(gameType, prev);
+        }
+
+        void handlePlayerInfoRemove(UUID id) {
+            listener.handlePlayerInfoRemove(new ClientboundPlayerInfoRemovePacket(List.of(id)));
         }
 
         void handleChangeGameMode(float param) {
@@ -612,6 +679,136 @@ public final class VanillaClientGameModeSplitOracle {
         return steps;
     }
 
+    static List<Map<String, Object>> scenarioResolvedPlayerInfoRetention() throws Exception {
+        Harness h = new Harness();
+        List<Map<String, Object>> steps = new ArrayList<>();
+        h.handleLogin(GameType.SPECTATOR, null);
+        h.handlePlayerAbilities(0x00, 0.05F, 0.10F);
+        h.player.tick();
+        steps.add(h.snapshot("before_add_player"));
+
+        h.handlePlayerInfoAddAndMode(GameType.SPECTATOR);
+        h.player.tick();
+        steps.add(h.snapshot("resolved_spectator"));
+
+        h.handlePlayerInfoRemove(SELF_UUID);
+        h.player.tick();
+        steps.add(h.snapshot("after_remove_retains_spectator"));
+
+        h.handlePlayerInfoAddAndMode(GameType.ADVENTURE);
+        h.player.tick();
+        steps.add(h.snapshot("after_readd_adventure_retains_spectator"));
+
+        h.handleRespawn(GameType.ADVENTURE, null);
+        h.player.tick();
+        steps.add(h.snapshot("after_respawn_resolves_adventure"));
+        return steps;
+    }
+
+    static List<Map<String, Object>> scenarioRespawnKeepDataSpectatorClearsY() throws Exception {
+        Harness h = new Harness();
+        List<Map<String, Object>> steps = new ArrayList<>();
+        h.handleLogin(GameType.SURVIVAL, null);
+        h.handlePlayerInfoAddAndMode(GameType.SURVIVAL);
+        h.player.setDeltaMovement(new Vec3(0.25, 0.42, -0.1));
+        h.handleRespawnKeepEntityData(GameType.SURVIVAL, null);
+        steps.add(h.snapshot("after_respawn_keep_data"));
+
+        h.handlePlayerInfoMode(GameType.SPECTATOR);
+        steps.add(h.snapshot("after_player_info_spectator"));
+        return steps;
+    }
+
+    static List<Map<String, Object>> scenarioRetainedPlayerLoginKeepsSpeeds() throws Exception {
+        Harness h = new Harness();
+        List<Map<String, Object>> steps = new ArrayList<>();
+        h.handleLogin(GameType.CREATIVE, null);
+        h.handlePlayerInfoAddAndMode(GameType.SPECTATOR);
+        h.handlePlayerAbilities(0x0f, 0.125F, 0.2F);
+        steps.add(h.snapshot("before_second_login"));
+
+        h.handleLoginRetainingPlayer(GameType.SURVIVAL, GameType.CREATIVE);
+        steps.add(h.snapshot("after_second_login_survival"));
+
+        h.handleLoginRetainingPlayer(GameType.CREATIVE, GameType.SURVIVAL);
+        steps.add(h.snapshot("after_third_login_creative"));
+        return steps;
+    }
+
+    static SaddledHorse makeHorse(Entity rider, float maxHealth, float health) throws Exception {
+        SaddledHorse horse = make(SaddledHorse.class);
+        horse.maxHealth = maxHealth;
+        horse.health = health;
+        field(Entity.class, "passengers").set(horse, com.google.common.collect.ImmutableList.of(rider));
+        return horse;
+    }
+
+    static SimplePig makePig(Entity rider, float maxHealth, float health) throws Exception {
+        SimplePig pig = make(SimplePig.class);
+        pig.maxHealth = maxHealth;
+        pig.health = health;
+        field(Entity.class, "passengers").set(
+            pig, rider == null ? com.google.common.collect.ImmutableList.of() : com.google.common.collect.ImmutableList.of(rider));
+        return pig;
+    }
+
+    static List<Map<String, Object>> scenarioHudCameraMounts() throws Exception {
+        Method getCameraPlayer = Hud.class.getDeclaredMethod("getCameraPlayer");
+        Method getVehicleWithHealth = Hud.class.getDeclaredMethod("getPlayerVehicleWithHealth");
+        Method getVehicleMaxHearts = Hud.class.getDeclaredMethod("getVehicleMaxHearts", LivingEntity.class);
+        Method nextContextualInfoState = Hud.class.getDeclaredMethod("nextContextualInfoState");
+        getCameraPlayer.setAccessible(true);
+        getVehicleWithHealth.setAccessible(true);
+        getVehicleMaxHearts.setAccessible(true);
+        nextContextualInfoState.setAccessible(true);
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        Harness h = new Harness();
+        h.handleLogin(GameType.SPECTATOR, null);
+        h.handlePlayerInfoAddAndMode(GameType.ADVENTURE);
+
+        SaddledHorse localHorse = makeHorse(h.player, 30.0F, 24.0F);
+        ArmorStand stand = make(ArmorStand.class);
+        SimplePig freePig = makePig(null, 10.0F, 10.0F);
+        SimpleRemotePlayer remoteUnmounted = make(SimpleRemotePlayer.class);
+        SimpleRemotePlayer remoteOnPig = make(SimpleRemotePlayer.class);
+        SimplePig remotePig = makePig(remoteOnPig, 10.0F, 8.0F);
+        field(Entity.class, "vehicle").set(remoteOnPig, remotePig);
+        SimpleRemotePlayer remoteOnHorse = make(SimpleRemotePlayer.class);
+        SaddledHorse remoteHorse = makeHorse(remoteOnHorse, 30.0F, 20.0F);
+        field(Entity.class, "vehicle").set(remoteOnHorse, remoteHorse);
+
+        record Case(String step, GameType mode, Entity localMount, Entity camera, String cameraKind) {}
+        List<Case> cases = List.of(
+            new Case("spectator_local_mounted_camera_self", GameType.SPECTATOR, localHorse, h.player, "local"),
+            new Case("spectator_local_mounted_camera_armor_stand", GameType.SPECTATOR, localHorse, stand, "non_player"),
+            new Case("spectator_local_mounted_camera_pig", GameType.SPECTATOR, localHorse, freePig, "non_player"),
+            new Case("survival_local_mounted_camera_armor_stand", GameType.SURVIVAL, localHorse, stand, "non_player"),
+            new Case("spectator_local_mounted_camera_remote_unmounted", GameType.SPECTATOR, localHorse, remoteUnmounted, "remote_player"),
+            new Case("spectator_local_mounted_camera_remote_mounted_pig", GameType.SPECTATOR, localHorse, remoteOnPig, "remote_player"),
+            new Case("spectator_local_unmounted_camera_remote_mounted_horse", GameType.SPECTATOR, null, remoteOnHorse, "remote_player")
+        );
+        for (Case tc : cases) {
+            h.handleChangeGameMode((float) tc.mode().getId());
+            field(Entity.class, "vehicle").set(h.player, tc.localMount());
+            field(Camera.class, "entity").set(h.mainCamera, tc.camera());
+            Player cameraPlayer = (Player) getCameraPlayer.invoke(h.hud);
+            LivingEntity vehicle = (LivingEntity) getVehicleWithHealth.invoke(h.hud);
+            int hearts = (int) getVehicleMaxHearts.invoke(h.hud, vehicle);
+            Object contextual = nextContextualInfoState.invoke(h.hud);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("step", tc.step());
+            row.put("local_game_mode", modeName(h.gameMode.getPlayerMode()));
+            row.put("camera_kind", tc.cameraKind());
+            row.put("camera_is_player", cameraPlayer != null);
+            row.put("vehicle_max_hearts", hearts);
+            row.put("vehicle_health_bits", vehicle == null ? null : f32Bits(vehicle.getHealth()));
+            row.put("contextual_info", contextual.toString().toLowerCase(Locale.ROOT));
+            rows.add(row);
+        }
+        return rows;
+    }
+
     public static void main(String[] args) throws Exception {
         net.minecraft.SharedConstants.tryDetectVersion();
         net.minecraft.server.Bootstrap.bootStrap();
@@ -630,6 +827,10 @@ public final class VanillaClientGameModeSplitOracle {
         scenarios.put("split_mode_physics_matrix", scenarioSplitModePhysicsMatrix());
         scenarios.put("live_player_info_transitions", scenarioLivePlayerInfoTransitions());
         scenarios.put("login_and_respawn_previous_mode", scenarioLoginAndRespawnPreviousMode());
+        scenarios.put("resolved_player_info_retention", scenarioResolvedPlayerInfoRetention());
+        scenarios.put("respawn_keep_data_spectator_clears_y", scenarioRespawnKeepDataSpectatorClearsY());
+        scenarios.put("retained_player_login_keeps_speeds", scenarioRetainedPlayerLoginKeepsSpeeds());
+        scenarios.put("hud_camera_mounts", scenarioHudCameraMounts());
         root.put("scenarios", scenarios);
 
         Path out = Path.of(args[0]);

@@ -582,7 +582,7 @@ impl Game<'_> {
                 .and_then(|uuid| r.tab_players.get(uuid));
             let mob_team =
                 listed.map_or_else(|| teams.of(Who::Mob(m.id)), |t| board.players_team(&t.name));
-            if listed.is_some_and(|t| t.game_mode == SPECTATOR)
+            if r.remote_player_info_game_mode(m.id as i32) == Some(SPECTATOR)
                 || !sunrise_client::scoreboard::pushable_by(mob_team, player_team, true)
             {
                 continue;

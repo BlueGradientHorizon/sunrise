@@ -43,7 +43,7 @@ impl Game<'_> {
 
     /// An item emptied in a transaction stays, empty, until root commit removes it.
     pub(super) fn journal_set_item_entity_at(&mut self, index: usize, stack: ItemStack) -> bool {
-        let Some(level) = self.transactions.last_mut() else {
+        let Some(level) = self.transactions.level_frame(self.dim) else {
             return self.native_set_item_entity(index, stack);
         };
         let item = &mut self.dropped[index];
@@ -60,7 +60,7 @@ impl Game<'_> {
         true
     }
 
-    /// Lend a validated item slot and its first-write journal, if a transaction is open.
+    /// Lend an item in the active level and the first-write journal of its innermost open frame.
     pub(super) fn journal_item_fields(
         &mut self,
         index: usize,
@@ -71,7 +71,7 @@ impl Game<'_> {
         let item = &mut self.dropped[index];
         let kept = self
             .transactions
-            .last_mut()
+            .level_frame(self.dim)
             .map(|level| level.item_entities.entry(item.join).or_default());
         (item, kept)
     }

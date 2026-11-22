@@ -78,7 +78,10 @@ impl Game<'_> {
             CameraPlayer::Own => self.riding?,
             CameraPlayer::Other(i) => {
                 let rider = self.mobs[i].id as i32;
-                self.remote.as_ref()?.entities.get(&rider)?.vehicle?
+                self.remote
+                    .as_ref()
+                    .and_then(|r| r.entities.get(&rider)?.vehicle)
+                    .or(self.mobs[i].extra.mount)?
             }
         };
         if let Some(m) = self.mob_index.get(&self.mobs, id) {
@@ -98,6 +101,16 @@ impl Game<'_> {
             .and_then(|attr| self.remote_attribute(id as i32, attr))
             .map_or(20.0, |v| v as f32);
         Some((max_health, stand.health))
+    }
+
+    /// `Hud.extractVehicleHealth`: `(max_hearts, health)` of `camera_vehicle`, when positive.
+    pub(in crate::game) fn camera_vehicle_health(
+        &mut self,
+        camera: CameraPlayer,
+    ) -> Option<(i32, f32)> {
+        let (max_health, health) = self.camera_vehicle(camera)?;
+        let hearts = sunrise_client::hud_layout::vehicle_max_hearts(max_health);
+        (hearts > 0).then_some((hearts, health))
     }
 
     /// `Hud.extractPlayerHealth` inputs for `VanillaGuiLayer::PlayerHealth`; None draws nothing.

@@ -2856,24 +2856,39 @@ impl GameLevel<'_> {
                     .as_ref()
                     .unwrap_or(&self.guest_boxes),
             )
-            .chain(&self.cart_boxes)
             .map(boxed)
             .chain(b.mobs.iter().filter(|m| !m.removed).map(Mob::bounds))
             .chain(
-                b.armor_stands
+                b.non_mob_building_blocker_boxes(self.cart_boxes.iter().map(boxed), self.crystals),
+            )
+            .collect()
+    }
+}
+
+impl<'w> entity::EntityLists<'w> {
+    /// Non-player, non-mob boxes with `Entity.blocksBuilding`. The block level
+    /// supplies its minecart snapshot; the mob level reads the live cart boxes.
+    fn non_mob_building_blocker_boxes(
+        self,
+        carts: impl Iterator<Item = Aabb> + 'w,
+        crystals: &'w [dragon::Crystal],
+    ) -> impl Iterator<Item = Aabb> + 'w {
+        carts
+            .chain(
+                self.armor_stands
                     .iter()
                     .filter(|s| !s.marker)
                     .map(|s| s.bounds()),
             )
-            .chain(b.boats.iter().map(boats::Boat::bounds))
-            .chain(self.crystals.iter().map(dragon::Crystal::bounds))
-            .chain(b.tnts.iter().map(tnt::PrimedTnt::bounds))
+            .chain(self.boats.iter().map(boats::Boat::bounds))
+            .chain(crystals.iter().map(dragon::Crystal::bounds))
+            .chain(self.tnts.iter().map(tnt::PrimedTnt::bounds))
             .chain(
-                b.falling
+                self.falling
                     .iter()
+                    .filter(|f| f.blocks_building)
                     .map(|f| sunrise_client::falling_block::bounds(f.position)),
             )
-            .collect()
     }
 }
 /// A landing's block game event, emitted after its world write is applied.
@@ -2895,6 +2910,9 @@ struct FallingBlock {
     /// Its entity id: from the entity counter on the server, the server's on a client.
     id: u32,
     state: BlockStateId,
+    /// `FallingBlockEntity.fall` and `recreateFromPacket` set `blocksBuilding`;
+    /// constructing an entity from NBT leaves the default false.
+    blocks_building: bool,
     /// `DATA_START_POS`: spawn position used to select weighted block models.
     start_pos: BlockPos,
     position: Vec3,
@@ -3043,8 +3061,7 @@ use condition_reload_state::PreparedWorldReload;
 
 impl WorldTables {
     /// The registries [`WorldTables::pack_tags`] holds.
-    const PACK_TAG_REGISTRIES: [&'static str; 3] =
-        ["entity_type", "worldgen/biome", "worldgen/structure"];
+    const PACK_TAG_REGISTRIES: [&'static str; 2] = ["worldgen/biome", "worldgen/structure"];
 }
 
 /// The equipment slot of `armor[index]`: head, chest, legs, feet.
@@ -6211,6 +6228,7 @@ impl Game<'_> {
                         join: Default::default(),
                         id: self.next_entity,
                         state,
+                        blocks_building: true,
                         start_pos: pos,
                         position: p,
                         previous: p,
@@ -7469,12 +7487,10 @@ impl Game<'_> {
             let mount = if !show_hud {
                 None
             } else {
-                self.camera_vehicle(camera).map(|(max_health, health)| {
-                    (hud_layout::vehicle_max_hearts(max_health), health)
-                })
+                self.camera_vehicle_health(camera)
             };
             // NeoForge applies hudVisible and survivalVisible to the vanilla bodies only.
-            let show_survival_status = show_hud && !self.creative && !spectator;
+            let show_survival_status = show_hud && self.can_hurt_player();
             self.gui_layer(
                 VanillaGuiLayer::PlayerHealth,
                 &mut batch,
@@ -7566,7 +7582,6 @@ impl Game<'_> {
                     g.audio.capture = capture;
                 }
             });
-
             use sunrise_client::locator_bar::ContextualBar;
             // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
             self.gui_layer(
@@ -7576,14 +7591,8 @@ impl Game<'_> {
                     if !show_hud {
                         return;
                     }
-                    let has_experience = !g.creative && !spectator;
-                    let contextual = ContextualBar::next(
-                        g.waypoints.has_waypoints(),
-                        !spectator && g.jumpable_mount(),
-                        g.mount_jumping(),
-                        has_experience,
-                        g.experience_recent(),
-                    );
+                    let has_experience = g.can_hurt_player();
+                    let contextual = g.contextual_bar();
                     if contextual == ContextualBar::JumpableVehicle {
                         g.draw_jump_bar(batch, wi, hi);
                     }
@@ -7626,7 +7635,7 @@ impl Game<'_> {
                 &mut batch,
                 &mut |g, batch| {
                     if show_hud && !spectator {
-                        g.draw_selected_name(batch, !g.creative);
+                        g.draw_selected_name(batch, g.can_hurt_player());
                     }
                 },
             );
@@ -8125,7 +8134,7 @@ impl Game<'_> {
         self.mark_motion(out.len(), 0);
         laps.lap("eg_other_creatures");
         // These billboards stay in their later pass, outside the ordered body runs.
-        for m in self.drawn_mobs() {
+        for m in &self.mobs {
             if self.hides_as_camera(m.id) {
                 continue;
             }
@@ -8156,7 +8165,7 @@ impl Game<'_> {
         if self.own_body_in_view()
             && let Some(p) = &self.player
             && p.is_on_fire()
-            && !(p.spectator || self.own_render_canceled())
+            && !p.spectator
         {
             let feet = self
                 .previous_position
@@ -8219,7 +8228,7 @@ impl Game<'_> {
                 )
             };
             let mut casters: Vec<(glam::DVec3, f32, f32)> = sunrise_client::shadows::mob_casters(
-                self.drawn_mobs().filter(|m| !self.hides_as_camera(m.id)),
+                self.mobs.iter().filter(|m| !self.hides_as_camera(m.id)),
                 a,
             )
             .collect();

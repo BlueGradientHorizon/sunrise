@@ -524,7 +524,6 @@ impl Game<'_> {
     pub(super) fn controls_camera(&self) -> bool {
         self.remote_camera_id().is_none()
     }
-
     /// `Minecraft.getCameraEntity`: local player, live tracked entity, or detached snapshot.
     pub(in crate::game) fn camera_subject(&self) -> Option<ResolvedCameraEntity> {
         if let Some(r) = self.remote.as_ref()
@@ -540,6 +539,12 @@ impl Game<'_> {
             return self.live_entity_camera_subject(r, id);
         }
         self.local_player_camera_subject()
+    }
+
+    /// `camera.entity().isSpectator()`: for lava and powdered-snow fog (`setupFog`).
+    pub(in crate::game) fn camera_entity_is_spectator(&self) -> bool {
+        self.camera_subject()
+            .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator)
     }
 
     /// `Camera.getCameraEntityPartialTicks`: `1.0` when frozen unless player or player-ridden.
@@ -966,13 +971,19 @@ impl Game<'_> {
             let dead = camera.living.and_then(|l| l.dead);
             let fog_effects =
                 CameraFogEffects::from_effects(&m.extra.client_effects, m.extra.darkness_blend);
+            let is_spectator = is_player
+                && remote
+                    .remote_player_info_game_mode(id)
+                    .map_or(m.extra.spectator, |mode| {
+                        mode == sunrise_client::tab_list::SPECTATOR
+                    });
             return Some(ResolvedCameraEntity {
                 entity_id: uid,
                 camera,
                 is_local_player: false,
                 is_player,
                 may_build: is_player,
-                is_spectator: is_player && m.extra.spectator,
+                is_spectator,
                 is_sleeping,
                 blocks_sky: fog_effects.blindness.is_some() || fog_effects.darkness_blend.is_some(),
                 fog_effects,
@@ -1421,6 +1432,13 @@ impl Game<'_> {
         let Some(id) = self.remote_camera_id() else {
             return CameraPlayer::Own;
         };
+        if self
+            .remote
+            .as_ref()
+            .is_some_and(|r| id == r.entity_id as u32)
+        {
+            return CameraPlayer::Own;
+        }
         if let Some(detached) = self
             .remote
             .as_ref()

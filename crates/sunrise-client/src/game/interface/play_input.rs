@@ -432,16 +432,25 @@ impl Game<'_> {
             }
         }
     }
-    /// Two mappings with one default button are separate mappings all the same
-    /// (`Minecraft.handleKeybinds`): whether the middle-button action a physical `input` translated
-    /// to is one of those it is bound to, for this player now.
-    pub(super) fn shared_default_acts(&self, button: MouseButton, input: Option<&str>) -> bool {
-        button != MouseButton::Middle
-            || input.is_none_or(|input| {
-                self.settings
-                    .keys
-                    .middle_acts(input, self.own_player_is_spectator())
-            })
+    /// Dispatch a synthetic middle-button-family edge to every non-toggle binding on `input`
+    /// (or the default middle-button bindings when no physical input is named), leaving
+    /// spectator-only gating to each action's consumer (`Minecraft.handleKeybinds`).
+    pub(super) fn play_middle_bindings(&mut self, input: Option<&str>, pressed: bool) {
+        if self.mod_mappings_screen_open() || self.sleeping.is_some() {
+            return;
+        }
+        if let Some(input) = input {
+            self.vanilla_mappings
+                .mouse_event(&self.settings.keys, input, pressed, false);
+        } else {
+            for name in ["key.pickItem", "key.spectatorHotbar"] {
+                let slot = sunrise_client::keybinds::VanillaMappingSlot::by_name(name)
+                    .expect("known mapping");
+                self.vanilla_mappings
+                    .state_mut(slot)
+                    .button(pressed, false, false);
+            }
+        }
     }
     /// A mouse button while playing (window or control socket).
     pub(super) fn play_mouse(&mut self, button: MouseButton, pressed: bool) -> Result<()> {
@@ -451,20 +460,21 @@ impl Game<'_> {
         if self.sleeping.is_some() {
             return Ok(());
         }
-        let name = match button {
-            MouseButton::Left => "key.attack",
-            MouseButton::Right => "key.use",
-            MouseButton::Middle if self.own_player_is_spectator() => "key.spectatorHotbar",
-            MouseButton::Middle => "key.pickItem",
+        let names: &[&str] = match button {
+            MouseButton::Left => &["key.attack"],
+            MouseButton::Right => &["key.use"],
+            MouseButton::Middle => &["key.pickItem", "key.spectatorHotbar"],
             _ => return Ok(()),
         };
-        let slot =
-            sunrise_client::keybinds::VanillaMappingSlot::by_name(name).expect("known mapping");
-        let enabled = sunrise_client::keymapping::toggle_index(slot)
-            .is_some_and(|i| self.toggle_options()[i]);
-        self.vanilla_mappings
-            .state_mut(slot)
-            .button(pressed, false, enabled);
+        for name in names {
+            let slot =
+                sunrise_client::keybinds::VanillaMappingSlot::by_name(name).expect("known mapping");
+            let enabled = sunrise_client::keymapping::toggle_index(slot)
+                .is_some_and(|i| self.toggle_options()[i]);
+            self.vanilla_mappings
+                .state_mut(slot)
+                .button(pressed, false, enabled);
+        }
         Ok(())
     }
 }

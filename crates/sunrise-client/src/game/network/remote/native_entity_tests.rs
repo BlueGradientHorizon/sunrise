@@ -384,6 +384,9 @@ impl super::Remote {
         let mut me = sunrise_client::tab_list::TabPlayer::new(self.profile, "SessionReadTest");
         me.latency = latency;
         self.tab_players.insert(self.profile, me);
+        self.tab_game_modes
+            .entry(self.profile)
+            .or_insert_with(|| Arc::new(std::sync::atomic::AtomicI32::new(0)));
     }
 }
 

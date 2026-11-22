@@ -525,15 +525,12 @@ impl Game<'_> {
         size: [u32; 2],
         scale: f32,
     ) -> BlockScreenEffects {
-        // `LevelExtractor.getViewBlockingState`: 8 points around the eye, each
-        // tested with `BlockState.isViewBlocking` against the near plane.
-        // ScreenEffectRenderer: none of it for a spectator (noPhysics).
-        let spectator = self.own_player_is_spectator();
+        // LevelExtractor.getViewBlockingState checks player.noPhysics (p.spectator); submit checks isSpectator.
         let modded = mod_api::__private::listened(mod_api::HookId::ExtractBlockScreenEffect);
         let player_partial_tick = self.clock.camera_fraction() as f32;
         let mut block = None;
         let mut custom = [None, None, None];
-        if !spectator {
+        if !p.spectator {
             // Frustum.getNearPlaneBounds from culling projection (max(fov, option_fov), camera rot).
             let cull_fov = self
                 .fov_degrees(partial, eye)
@@ -602,7 +599,7 @@ impl Game<'_> {
                 }
             }
         }
-        let first_person = self.camera_type.is_first_person() && !spectator;
+        let first_person = self.camera_type.is_first_person() && !self.own_player_is_spectator();
         let water = first_person && {
             // LevelExtractor uses the player's tick-sampled eye state, not camera fog geometry.
             // Keep the existing mod override explicit, applied to that answer at the eye.

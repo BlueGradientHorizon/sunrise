@@ -100,7 +100,10 @@ impl Game<'_> {
                         if path == "looking_at_entity" {
                             vec![format!("{}Targeted Entity", overlay::UNDERLINE), kind]
                         } else {
-                            overlay::tag_lines(&self.res.mob_data().entity_tags, &kind)
+                            overlay::tag_lines(
+                                self.items().entity_type_tags.members().iter(),
+                                &kind,
+                            )
                         }
                     });
                     d.group("looking_at_entity", lines);

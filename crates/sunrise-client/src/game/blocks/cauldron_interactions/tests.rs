@@ -1684,7 +1684,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         };
         assert!(read_uses(game).is_empty());
         game.remote.as_mut().unwrap().joined = true;
-        game.set_mode_id(0);
+        game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
         setup(game, "minecraft:cauldron", None, item, 1);
         let aim = (35.0, -12.0);
         (game.yaw, game.pitch) = aim;
