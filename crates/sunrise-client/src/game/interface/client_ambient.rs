@@ -175,7 +175,8 @@ impl Game<'_> {
                 .mobs
                 .iter()
                 .find(|m| m.id == id)
-                .and_then(|m| m.supporting),
+                .and_then(|m| m.ground.supporting_block)
+                .map(|p| [p.x, p.y, p.z]),
             _ => None,
         };
         let mob = match target {

@@ -1116,7 +1116,7 @@ impl Game<'_> {
                     "profession": m.extra.profession.index(),
                     "targets": m.ai.targets.running_names(),
                     "path": m.ai.nav.path.as_ref().map(|p| p.nodes.len() - p.next.min(p.nodes.len())),
-                    "on_ground": m.on_ground,
+                    "on_ground": m.ground.on_ground,
                     "variant": m.extra.variant,
                     "color": m.extra.color,
                     "sheared": m.extra.sheared,
@@ -7357,7 +7357,7 @@ impl Game<'_> {
             Species::Parrot
                 if m.extra.tame
                     && m.extra.owner == Some(acting)
-                    && m.on_ground
+                    && m.ground.on_ground
                     && !parrot_poisonous =>
             {
                 m.extra.sitting = !m.extra.sitting;

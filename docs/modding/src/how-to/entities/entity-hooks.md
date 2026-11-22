@@ -104,9 +104,10 @@ removes the body, no restitution query runs. The `entity_move` hook fires once w
 cancelled move returns `[0.0; 3]`. See the generated reference for which bodies the handle can move
 and for the relative-teleport semantics of player moves.
 
-`EntityRef::on_block(host)` uses the supporting block retained by the last move for players and the
-nonliving bodies that keep ground support, including items, boats and minecarts. It does not rerun
-collision detection. If there is no retained support, it reads the block at vanilla's feet offset.
+`EntityRef::on_block(host)` uses the block retained by the last support check for players, mobs,
+armor stands and nonliving bodies that keep ground support, including items, boats and minecarts.
+It does not rerun collision detection. If there is no retained support, it reads the block at
+vanilla's feet offset.
 
 `living_travel` runs on the server, after the player's swim steering or at a
 mob's travel entry. It receives the loop context, not a `Host`, and lets a
