@@ -117,11 +117,11 @@ This executor accepts a player source and returns `Ok(1)` when the move is queue
 ```rust,ignore
 event.commands.push(Command::new("pocket").executes(|host, source, _| {
     let CommandSource::Player { player, .. } = source else {
-        return Err(Text::translate("mymod.commands.player_required", vec![]));
+        return Err(Text::translate("mymod.commands.player_required", vec![]).into());
     };
     player.entity().teleport_to_level(host, "mymod:pocket", [8.5, 100.0, 8.5], None)
         .then_some(1)
-        .ok_or_else(|| Text::translate("mymod.commands.teleport_failed", vec![]))
+        .ok_or_else(|| Text::translate("mymod.commands.teleport_failed", vec![]).into())
 }));
 ```
 

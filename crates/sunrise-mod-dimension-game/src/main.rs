@@ -56,11 +56,11 @@ fn travel(
     host: &dyn ServerHost,
     source: &CommandSource,
     command: &CommandInvocation,
-) -> Result<String, Text> {
+) -> Result<String, Box<Text>> {
     let (CommandSource::Player { player, .. }, Some(CommandArgumentValue::String(level))) =
         (source, command.argument("level"))
     else {
-        return Err(Text::literal("Expected a player and a level"));
+        return Err(Text::literal("Expected a player and a level").into());
     };
     let name = player
         .name(host)

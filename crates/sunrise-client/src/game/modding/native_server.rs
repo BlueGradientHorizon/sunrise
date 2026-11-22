@@ -3732,11 +3732,11 @@ mod tests {
                             if level.set_block(host, pos, state, mod_api::BlockUpdateFlags::NONE)
                                 != Ok(true)
                             {
-                                return Err(mod_api::Text::literal("block not placed"));
+                                return Err(mod_api::Text::literal("block not placed").into());
                             }
                             if usage == "ordinaryfailure" {
                                 refuses.fetch_add(1, Ordering::Relaxed);
-                                return Err(mod_api::Text::literal("ordinary failure"));
+                                return Err(mod_api::Text::literal("ordinary failure").into());
                             }
                             panic!("executor regression panic");
                         },
@@ -4289,7 +4289,7 @@ mod tests {
                     // Replaced by the later accepted registration; failure must not fall back here.
                     mod_api::Command::new("unhandled").executes(|_, _, _| Ok(99)),
                     mod_api::Command::new("unhandled")
-                        .executes(|_, _, _| Err(mod_api::Text::literal("refused"))),
+                        .executes(|_, _, _| Err(mod_api::Text::literal("refused").into())),
                 ]);
             }
         }

@@ -10,10 +10,11 @@ impl mod_api::Hooks for FailingCommand {
         _: &mut dyn mod_api::ServerHost,
         event: &mut mod_api::RegisterCommandsEvent<'_>,
     ) {
-        event.commands.push(
-            mod_api::Command::new("rejecttest")
-                .executes(|_, _, _| Err(mod_api::Text::literal("No room for another item"))),
-        );
+        event
+            .commands
+            .push(mod_api::Command::new("rejecttest").executes(|_, _, _| {
+                Err(mod_api::Text::literal("No room for another item").into())
+            }));
     }
 }
 

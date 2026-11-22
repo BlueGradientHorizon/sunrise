@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 // no wire: a native executor runs only in the server process.
 /// The server's retained callable for an executable command usage. See [`Command::executes`].
-pub type CommandExecutor = dyn Fn(&mut dyn ServerHost, &CommandSource, &CommandInvocation) -> Result<i32, Text>
+pub type CommandExecutor = dyn Fn(&mut dyn ServerHost, &CommandSource, &CommandInvocation) -> Result<i32, Box<Text>>
     + Send
     + Sync
     + 'static;
@@ -87,8 +87,8 @@ impl Command {
     /// The executor runs as the registering mod, after permission checks and argument
     /// resolution. The source identifies the origin and permission, independent of
     /// `execute as`; feedback respects silence, track-output and the acting player.
-    /// Return `Ok(n)` for success with result `n` (including zero), or `Err(message)`
-    /// for failure. A failure is shown in red even when `sendCommandFeedback` is off,
+    /// Return `Ok(n)` for success with result `n` (including zero), or
+    /// `Err(message.into())` with a [`Text`] for failure. A failure is shown in red even when `sendCommandFeedback` is off,
     /// unless the source is silent or does not accept failure output. It stores zero
     /// for both `execute store success` and `execute store result`. Neither a failed
     /// executor nor a disabled owner gives another mod a turn.
@@ -101,7 +101,11 @@ impl Command {
     /// Capture owned or shared state rather than borrowing the registration event.
     pub fn executes(
         self,
-        executor: impl Fn(&mut dyn ServerHost, &CommandSource, &CommandInvocation) -> Result<i32, Text>
+        executor: impl Fn(
+            &mut dyn ServerHost,
+            &CommandSource,
+            &CommandInvocation,
+        ) -> Result<i32, Box<Text>>
         + Send
         + Sync
         + 'static,

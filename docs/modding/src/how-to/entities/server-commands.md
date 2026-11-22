@@ -11,7 +11,7 @@ a live `PlayerRef`, not selector text.
 Only the executor whose registration owns the parsed node runs, with its mod's
 identity. If the owner is disabled after registration, the command is refused.
 Return `Ok(n)` for success with integer result `n` (zero is also success), or
-`Err(Text)` for failure with a message. The message is red and does not depend
+`Err(message.into())` with a `Text` for failure. The message is red and does not depend
 on `sendCommandFeedback`; silent sources and sources that don't accept failures
 still see nothing. "Unknown or incomplete command" remains a parse error for input
 that matches no usage. Neither failure nor a disabled owner tries another executor.
@@ -221,7 +221,7 @@ impl Hooks for MyMod {
         event.commands.push(Command::new("machine use <machine:mymod:machine>").executes(
             |host, _, command| {
                 let Some(CommandArgumentValue::Custom { value, .. }) = command.argument("machine") else {
-                    return Err(Text::translate("example.commands.machine.missing", vec![]));
+                    return Err(Text::translate("example.commands.machine.missing", vec![]).into());
                 };
                 host.commands()
                     .feedback(Text::literal(value.as_str()))
