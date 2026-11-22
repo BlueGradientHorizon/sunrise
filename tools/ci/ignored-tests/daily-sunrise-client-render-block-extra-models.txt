@@ -4,3 +4,4 @@ sunrise-client-render mesher::extra_models_tests::a_stale_handle_draws_nothing l
 sunrise-client-render mesher::extra_models_tests::extra_faces_are_culled_by_neighbours_and_keep_their_pass lib daily resources
 sunrise-client-render mesher::extra_models_tests::extra_models_draw_with_the_blocks_place_and_light lib daily resources
 sunrise-client-render mesher::extra_models_tests::extra_models_stay_within_the_sections_limits lib daily resources
+sunrise-client-render streaming::tests::a_resend_keeps_models_at_unchanged_resident_cells lib daily resources

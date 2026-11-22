@@ -1388,12 +1388,13 @@ impl Streaming {
     /// from before its relight, then the new light; another server's is already
     /// right, which matters where the neighbours this light needs aren't all
     /// here).
-    pub fn replace_remote(&mut self, world: &mut World, chunk: Chunk) {
+    pub fn replace_remote(&mut self, world: &mut World, mut chunk: Chunk) {
         let key = (chunk.x, chunk.z);
         let Some(old) = world.chunks.get(&key).cloned() else {
             return self.insert_remote(world, chunk);
         };
         if !self.lit.contains(&key) {
+            keep_resent_extra_models(&old, &mut chunk);
             return self.insert_remote(world, chunk);
         }
         take_resent_column(world, &old, chunk, self.relight_resent);
@@ -3745,6 +3746,19 @@ fn keep_unchanged_sections(
     }
     out
 }
+/// A resend keeps the client-owned models of cells that still hold the same block.
+fn keep_resent_extra_models(old: &Chunk, chunk: &mut Chunk) {
+    for (&old_cell, models) in &old.extra_models {
+        let (x, y, z) = old.dynamic_cell_coords(old_cell);
+        let (x, z) = (i32::from(x), i32::from(z));
+        if let Some(cell) = chunk.dynamic_cell(x, y, z)
+            && old.get(x, y, z) == chunk.get(x, y, z)
+        {
+            chunk.extra_models.insert(cell, models.clone());
+        }
+    }
+}
+
 /// Takes the server's new `chunk` over the resident column `old`: the sections
 /// whose blocks did not change keep `old`'s (with `chunk`'s biomes and light),
 /// and the sections whose blocks changed remesh. `relight` says the packet's
@@ -3773,6 +3787,7 @@ pub fn take_resent_column(world: &mut World, old: &Chunk, mut chunk: Chunk, reli
             }
         }
     }
+    keep_resent_extra_models(old, &mut chunk);
     let kept = keep_unchanged_sections(old, &mut chunk, &mut cells);
     chunk.light_loaded = old.light_loaded;
     chunk.lit = true;
@@ -5542,6 +5557,37 @@ mod tests {
         chunk.lit = true;
         world.chunks.insert((2, -3), Arc::new(chunk.clone()));
         chunk
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_resend_keeps_models_at_unchanged_resident_cells() {
+        for lit in [false, true] {
+            let (mut world, mut streaming, stone) = fixture();
+            let resend = |first| {
+                let mut chunk = Chunk::empty(2, -3);
+                chunk.set(1, 10, 1, first);
+                chunk.set(2, 10, 1, stone);
+                chunk
+            };
+            let first = mod_api::__private::built::model_ref(1, 7);
+            let second = mod_api::__private::built::model_ref(1, 8);
+            let (x, y, z) = (33, 10, -47);
+            streaming.insert_remote(&mut world, resend(stone));
+            world.set_extra_models(x, y, z, &[first]).unwrap();
+            world.set_extra_models(x + 1, y, z, &[second]).unwrap();
+            for (state, expected) in [(stone, &[first][..]), (0, &[][..])] {
+                if !lit {
+                    streaming.lit.remove(&(2, -3));
+                }
+                streaming.replace_remote(&mut world, resend(state));
+                assert_eq!(world.extra_models(x, y, z), expected, "lit={lit}");
+                assert_eq!(world.extra_models(x + 1, y, z), [second], "lit={lit}");
+            }
+            world.unload_chunk((2, -3));
+            streaming.replace_remote(&mut world, resend(stone));
+            assert!(world.extra_models(x + 1, y, z).is_empty());
+        }
     }
 
     #[test]
