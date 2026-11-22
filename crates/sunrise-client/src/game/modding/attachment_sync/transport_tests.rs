@@ -3,7 +3,8 @@
 //! epoch send, and what an oversized message does to the connection.
 use super::super::Game;
 use mod_api::{
-    AttachmentAccess, AttachmentCodec, AttachmentKey, AttachmentStore, Attachments, Host,
+    AttachmentAccess, AttachmentCodec, AttachmentHolder, AttachmentKey, AttachmentStore,
+    Attachments, Host,
 };
 use std::{
     sync::atomic::{AtomicUsize, Ordering},
@@ -123,12 +124,13 @@ pub(super) fn set_level(game: &Game<'_>, value: i32, commit: bool) {
 /// The window's synced copy of the level's value.
 fn window_value(game: &mut Game<'_>, key: &mod_api::AttachmentKey<i32>) -> Option<i32> {
     let host: &dyn Host = game;
+    let holder = AttachmentHolder::Level(host.level(host.dimension())?);
     let batch = host.attachment_query("sync_route", "value").unwrap();
-    let rows = batch.query(key).unwrap();
-    rows.iter().try_next().unwrap().map(|row| {
-        row.with_value(game.attachment_frame_borrow(), |value| *value)
-            .unwrap()
-    })
+    batch
+        .query(key)
+        .unwrap()
+        .get(game.attachment_frame_borrow(), holder)
+        .unwrap()
 }
 
 /// Let the server's hub tick `n` times, so later edits land in a later pass.
@@ -573,6 +575,7 @@ fn attachment_sync_follows_the_negotiated_route() {
             wait_server_ticks(game, 2);
             set_level(game, 13, true);
             assert_eq!(values_until(&mut sunrise, Holder::Level, 13), [13]);
+            wait_window(game, &value_key, Some(13));
 
             // A message prepared against an epoch that ended before the root commit publishes
             // nothing, on the TCP and the memory connection alike.
