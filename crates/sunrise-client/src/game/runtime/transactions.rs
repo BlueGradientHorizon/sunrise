@@ -962,6 +962,17 @@ impl<'g> Game<'g> {
             .filter(|after| matches!(after, After::Payload(_)))
             .count()
     }
+    /// Pending item-stat effects in the innermost transaction (before publication).
+    #[cfg(test)]
+    pub(in crate::game) fn pending_transaction_item_stats(&self) -> usize {
+        self.transactions
+            .last()
+            .unwrap()
+            .after
+            .iter()
+            .filter(|after| matches!(after, After::Effect(DeferredEffect::ItemStat { .. })))
+            .count()
+    }
 
     /// Opens a transaction and gives back its frame identity.
     pub(in crate::game) fn open_storage_transaction(&mut self) -> TransactionFrame {
@@ -1061,6 +1072,25 @@ impl<'g> Game<'g> {
             let commit = outcome.is_ok();
             (outcome, commit)
         })
+    }
+    /// Runs `f` inside a new (or nested) storage transaction and reports whether a requested
+    /// commit was refused and rolled back.
+    pub(in crate::game) fn storage_transaction_settled<T, E>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut Self, &'loan TransactionContext) -> Result<T, E>,
+    ) -> Result<T, mod_api::TransactionError<E>> {
+        let (outcome, settled) = self.run_storage_scope(|game, frame| {
+            let outcome = frame.lend(|tx| f(game, tx));
+            let commit = outcome.is_ok();
+            (outcome, commit)
+        });
+        match (outcome, settled) {
+            (Ok(value), StorageSettlement::Committed(_)) => Ok(value),
+            (Ok(_), StorageSettlement::Refused | StorageSettlement::Aborted) => {
+                Err(mod_api::TransactionError::CommitRefused)
+            }
+            (Err(error), _) => Err(mod_api::TransactionError::Aborted(error)),
+        }
     }
     /// Runs an API scope and reports actual settlement, not just the callback's intent.
     pub(super) fn scoped_storage<T>(

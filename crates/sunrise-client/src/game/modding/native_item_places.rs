@@ -580,7 +580,7 @@ impl Game<'_> {
                 .data()
                 .is_some_and(|data| data.map_post_processing.is_some())
         {
-            self.storage_transaction(|game, tx| {
+            self.storage_transaction_settled(|game, tx| {
                 let maps = game.level_maps([&held]);
                 Menu::map_crafted(Some(&maps), &mut held);
                 // Reserve before calling the handler, which can make other maps. A refusal
@@ -609,6 +609,12 @@ impl Game<'_> {
                 }
                 game.notice_menu_place_write(place);
                 Ok(())
+            })
+            .map_err(|error| match error {
+                mod_api::TransactionError::Aborted(error) => error,
+                mod_api::TransactionError::CommitRefused => CraftedByError::CommitRefused,
+                mod_api::TransactionError::InvalidContext => CraftedByError::InvalidContext,
+                mod_api::TransactionError::Unavailable => CraftedByError::Unavailable,
             })?;
         }
         self.defer_effect(DeferredEffect::ItemStat {
@@ -3403,12 +3409,14 @@ pub(super) mod tests {
 
     fn with_crafted_by_handler_map(
         accepts_replacement: bool,
+        on_insert: Option<sunrise_client::lan::PlayerSender>,
         test: impl FnOnce(&mut super::Game<'_>, ItemPlace, i32, mod_api::ItemStack),
     ) {
         use crate::game::maps::MapData;
         use mod_api::__private::game::Fields;
         use mod_api::{
-            AttachedItems, AttachmentType, Holder, MenuReplace, MenuSlotPlace, StackList,
+            AttachedItems, AttachmentType, Holder, MenuReplace, MenuSlotPlace, ResourceHandler,
+            StackList, TransactionContext,
         };
         use sunrise_core::nbt::{JavaString, Tag};
 
@@ -3421,21 +3429,91 @@ pub(super) mod tests {
             sync: false,
         };
 
-        struct MapStorage(bool);
+        struct MapSlotHandler {
+            inner: AttachedItems,
+            on_insert: Option<sunrise_client::lan::PlayerSender>,
+        }
+
+        impl ResourceHandler<ItemResource> for MapSlotHandler {
+            fn size(&self, host: &mut dyn ServerHost) -> usize {
+                self.inner.size(host)
+            }
+            fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<ItemResource> {
+                self.inner.resource(host, index)
+            }
+            fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
+                self.inner.amount(host, index)
+            }
+            fn capacity(
+                &self,
+                host: &mut dyn ServerHost,
+                index: usize,
+                resource: Option<&ItemResource>,
+            ) -> u32 {
+                self.inner.capacity(host, index, resource)
+            }
+            fn is_valid(
+                &self,
+                host: &mut dyn ServerHost,
+                index: usize,
+                resource: &ItemResource,
+            ) -> bool {
+                self.inner.is_valid(host, index, resource)
+            }
+            fn insert_at(
+                &self,
+                host: &mut dyn ServerHost,
+                tx: &TransactionContext,
+                index: usize,
+                resource: &ItemResource,
+                amount: u32,
+            ) -> u32 {
+                let inserted = self.inner.insert_at(host, tx, index, resource, amount);
+                if inserted > 0
+                    && let Some(sender) = &self.on_insert
+                {
+                    sender.send(vec![1]);
+                }
+                inserted
+            }
+            fn extract_at(
+                &self,
+                host: &mut dyn ServerHost,
+                tx: &TransactionContext,
+                index: usize,
+                resource: &ItemResource,
+                amount: u32,
+            ) -> u32 {
+                self.inner.extract_at(host, tx, index, resource, amount)
+            }
+        }
+
+        struct MapStorage {
+            accepts_replacement: bool,
+            on_insert: Option<sunrise_client::lan::PlayerSender>,
+        }
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for MapStorage {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                let valid: fn(&ItemResource) -> bool = if self.0 { |_| true } else { |_| false };
+                let valid: fn(&ItemResource) -> bool = if self.accepts_replacement {
+                    |_| true
+                } else {
+                    |_| false
+                };
+                let on_insert = self.on_insert.clone();
                 r.entity_capability_before_game(
                     &ENTITY_ITEMS,
                     "minecraft:pig",
                     move |_, entity, ()| {
-                        Some(Box::new(AttachedItems::single(
-                            &MAP_SLOT,
-                            Holder::Entity(entity.id()),
-                            1,
-                            valid,
-                        )))
+                        Some(Box::new(MapSlotHandler {
+                            inner: AttachedItems::single(
+                                &MAP_SLOT,
+                                Holder::Entity(entity.id()),
+                                1,
+                                valid,
+                            ),
+                            on_insert: on_insert.clone(),
+                        }))
                     },
                 );
             }
@@ -3443,7 +3521,10 @@ pub(super) mod tests {
 
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "crafted_map_fixture",
-            Box::new(MapStorage(accepts_replacement)),
+            Box::new(MapStorage {
+                accepts_replacement,
+                on_insert,
+            }),
         )]
         .into();
         crate::game::api_values::install_parts(&mods).unwrap();
@@ -3509,7 +3590,7 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn crafted_by_replaces_the_map_in_a_handler_backed_slot() {
-        with_crafted_by_handler_map(true, |game, place, source, original| {
+        with_crafted_by_handler_map(true, None, |game, place, source, original| {
             assert_eq!(
                 game.storage_transaction(|game, tx| place.on_crafted_by(game, tx, 3)),
                 Ok(())
@@ -3546,7 +3627,7 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn crafted_by_refused_handler_write_drops_the_map_and_stat() {
-        with_crafted_by_handler_map(false, |game, place, source, original| {
+        with_crafted_by_handler_map(false, None, |game, place, source, original| {
             // Catch the refusal and commit the caller's transaction anyway.
             assert_eq!(
                 game.storage_transaction(|game, tx| Ok::<_, ()>(place.on_crafted_by(game, tx, 3))),
@@ -3566,6 +3647,48 @@ pub(super) mod tests {
                 .get(&12)
                 .map_or(0, |play| play.stats.get("crafted", "minecraft:filled_map"));
             assert_eq!(crafted, 0);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn crafted_by_packet_refusal_returns_commit_refused_and_drops_map_and_stat() {
+        use std::sync::{atomic::AtomicUsize, mpsc};
+        use sunrise_client::lan::{PlayerSender, conn::transaction_packets::Scope};
+
+        let (send, receive) = mpsc::channel();
+        // A real bounded LAN sender with no room left to reserve another packet.
+        let sender = PlayerSender::new(send, Arc::new(AtomicUsize::new(usize::MAX)));
+        with_crafted_by_handler_map(true, Some(sender), |game, place, source, original| {
+            let _packets = Scope::begin();
+            let outer = game.storage_transaction_settled(|game, tx| {
+                let crafted = place.on_crafted_by(game, tx, 3);
+                assert_eq!(crafted, Err(CraftedByError::CommitRefused));
+                assert_eq!(game.pending_transaction_item_stats(), 0);
+                assert_eq!(
+                    place.with_stack(game, |stack| stack.project()).flatten(),
+                    Some(original.clone())
+                );
+                assert!(game.map(source + 1).is_none());
+                assert_eq!(game.peek_map_id(), source + 1);
+                Ok::<_, ()>(())
+            });
+            assert_eq!(outer, Err(TransactionError::CommitRefused));
+            assert_eq!(
+                place.with_stack(game, |stack| stack.project()).flatten(),
+                Some(original)
+            );
+            assert!(game.map(source + 1).is_none());
+            assert_eq!(game.peek_map_id(), source + 1);
+            let crafted = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .play
+                .get(&12)
+                .map_or(0, |play| play.stats.get("crafted", "minecraft:filled_map"));
+            assert_eq!(crafted, 0);
+            assert!(receive.try_recv().is_err());
         });
     }
 

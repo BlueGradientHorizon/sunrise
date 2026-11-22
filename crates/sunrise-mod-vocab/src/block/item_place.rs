@@ -710,7 +710,9 @@ impl ItemPlace {
     /// server-side menu take does. This awards the player's `crafted` statistic, applies item
     /// post-processing such as a filled map's pending scale or lock, and runs the normal stat
     /// hook. Only a [`MenuSlot`](Self::MenuSlot) or [`PlayerCursor`](Self::PlayerCursor) is
-    /// accepted; the changed stack and statistic are part of `tx`.
+    /// accepted; the changed stack and statistic are part of `tx`. Returns
+    /// [`CraftedByError::CommitRefused`] without queueing the crafted statistic if the host rolls
+    /// back the inner replacement commit.
     pub fn on_crafted_by(
         &self,
         host: &mut dyn ServerHost,

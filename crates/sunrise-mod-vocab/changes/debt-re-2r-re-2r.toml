@@ -60,6 +60,7 @@ ids = [
     "handle:ItemPlace::exchange",
     "handle:ItemPlace::on_crafted_by",
     "type:item::item_stack::CraftedByError.InvalidContext",
+    "type:item::item_stack::CraftedByError.CommitRefused",
     "handle:ItemPlace::edit",
     "type:ItemPlaceEditError.InvalidContext",
     "handle:ItemComponentHandler::write",
@@ -94,5 +95,5 @@ An override of `ResourceHandler::insert` or `extract` now returns `Result<u32, T
 
 Keep using `event.subject.transaction(|tick, tx| …)` in a block-entity tick, with the new result type. Alternate `tick.host()` and `tick.with_view(…)` as before. General and item-entity server scopes also lend `&TransactionContext` and return `Result<T, TransactionError<E>>`. In a server main-thread payload handler, use `cx.transaction(|cx, tx| …)` on `&mut dyn IPayloadContext` if a savepoint must include payload replies and writes via `cx.server_host()` (main-thread `cx.finish_configuration_task` is not staged or rolled back). Reborrow the payload context after each host borrow. It also returns `Result<T, TransactionError<E>>`. `cx.enqueue_work(work)` and `PayloadWork::run` keep their signatures. Handle an enqueue error as before; aborting a child still discards its journaled writes and replies but does not undo callback disablement or hide a panic report. Do not add a second panic report in your handler. For a custom host or payload test double that supports transactions, implement its `with_transaction_scope` to lend the receiver and current context and return `Ok(true)` after commit, `Ok(false)` after callback abort, `Err(TransactionScopeError::Unavailable)` if the callback cannot run, or `Err(TransactionScopeError::CommitRefused)` if its requested commit is refused. Implement `ServerHost::transaction_matches` to match only the innermost frame or no frame for `None`. A custom server test host can delegate to `testing::FakeJournal::with_scope` and `matches`. For `with_current_transaction_scope`, lend the innermost frame without opening or closing it (or return `Err(TransactionUnavailable)`); a custom test host can delegate to `testing::FakeJournal::with_current_scope`.
 
-For `BlockEntityPartState::edit_state` and `EntityPartState::edit_state`, handle `PartStateError::Unavailable`: the host did not open a transaction and the edit closure did not run. `PartStateError::CommitRefused` means the edit ran but was rolled back.
+For `BlockEntityPartState::edit_state` and `EntityPartState::edit_state`, handle `PartStateError::Unavailable`: the host did not open a transaction and the edit closure did not run. `PartStateError::CommitRefused` means the edit ran but was rolled back. For `ItemPlace::on_crafted_by`, handle `CraftedByError::CommitRefused` when the host rolls back the inner replacement commit without queueing the crafted statistic.
 '''
