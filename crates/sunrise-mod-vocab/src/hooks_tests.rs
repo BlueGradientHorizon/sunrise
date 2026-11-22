@@ -729,10 +729,11 @@ fn world_data_and_tick_queries_take_their_hosts(
     level: LevelRef,
 ) {
     let _: Option<RespawnData> = level.respawn_data(read);
-    let _: Option<()> = level.visit_map_data(read, 0, &mut |map: MapState<'_>| {
-        let _: &str = map.dimension;
-        let _: &[u8] = map.colors;
-    });
+    let _: Result<Option<()>, LevelReadError> =
+        level.visit_map_data(read, 0, &mut |map: MapState<'_>| {
+            let _: &str = map.dimension;
+            let _: &[u8] = map.colors;
+        });
     let _: Option<bool> = level.can_see_sky(read, [0, 64, 0]);
     let _: Option<bool> = level.line_of_sight(read, [0.0, 65.0, 0.0], [8.0, 65.0, 0.0]);
     let _: bool = level.set_respawn_data(server, [0, 64, 0], 90.0, 0.0);

@@ -1,4 +1,4 @@
-//! Refusals of reads through a level handle.
+//! Refusals of level and registry reads.
 
 /// Why a `LevelRef` read cannot return its requested state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,6 +17,28 @@ impl crate::AccessRefusal for LevelReadError {
     }
 }
 impl crate::NoBackend for LevelReadError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
+/// Why the current side's registry could not be visited.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+// no wire: this refusal is returned only to the in-process registry visitor
+pub enum RegistryReadError {
+    /// No registry has this key, or this side does not expose it.
+    UnknownRegistry,
+    /// There is no live registry backend or the phase does not allow world access.
+    Unavailable,
+}
+
+impl crate::AccessRefusal for RegistryReadError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+impl crate::NoBackend for RegistryReadError {
     fn no_backend() -> Self {
         Self::Unavailable
     }

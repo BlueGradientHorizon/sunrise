@@ -31,17 +31,18 @@ pub trait LevelSavedDataBackend {
     /// Side: server.
     /// Map `id`'s saved data (`ServerLevel.getMapData(new MapId(id))`): read from memory, or
     /// from `data/minecraft/maps/<id>.dat` when nothing has loaded it yet, without keeping it.
-    /// Maps belong to the world, not to a level. Calls `visit` once on `Some(())`, lending the
-    /// dimension and pixels for the call only. To retain data after the visit, copy it inside `visit`.
-    /// None on a client, for a stale handle and for a map id nothing ever made; none of these
-    /// calls the visitor.
+    /// Maps belong to the world, not to a level. Calls `visit` once on `Ok(Some(()))`, lending
+    /// the dimension and pixels for the call only. Copy them inside `visit` to retain them.
+    /// A missing map returns `Ok(None)`. A retired level or world generation returns
+    /// [`LevelReadError::Stale`]; a client, an absent backend or a phase without World access
+    /// returns [`LevelReadError::Unavailable`]. None of these calls the visitor.
     #[access(WorldOnly)]
     fn level_visit_map_data(
         &self,
         level: LevelRef,
         id: i32,
         visit: &mut dyn FnMut(MapState<'_>),
-    ) -> Option<()>;
+    ) -> Result<Option<()>, LevelReadError>;
 }
 /// The handles' writes of the `level_saved_data` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

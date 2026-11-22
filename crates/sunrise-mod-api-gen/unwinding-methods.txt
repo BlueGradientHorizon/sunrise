@@ -490,7 +490,6 @@ keys::item_keys
 keys::item_registry_id
 keys::menu_key_id
 keys::menu_keys
-keys::registry_entries
 keys::registry_entry
 keys::registry_entry_in_tag
 keys::registry_entry_key_slot
@@ -525,8 +524,6 @@ level_collision::level_clip
 level_collision::level_collision_boxes
 level_collision::level_has_collisions
 level_collision::level_line_of_sight
-level_datapacks::level_datapack_entries
-level_datapacks::level_datapack_read
 level_datapacks::level_recipe_for
 level_datapacks::level_roll_loot
 level_dimension::dimension_key_id
@@ -582,7 +579,6 @@ level_saved_data::level_request_save
 level_saved_data::level_respawn_data
 level_saved_data::level_set_map_data
 level_saved_data::level_set_respawn_data
-level_saved_data::level_visit_map_data
 level_signals::level_best_neighbor_signal
 level_signals::level_direct_signal
 level_signals::level_direct_signal_to

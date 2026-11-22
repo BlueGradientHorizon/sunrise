@@ -6,7 +6,8 @@ use super::Game;
 use mod_api::world::mod_chunk_tickets::ModTicket;
 use mod_api::{
     BlockHit, BlockTransformPreview, ChunkRef, ChunkStatus, ClipBlock, ClipFluid, GlobalPos, Hand,
-    Identifier, LevelRef, LightLayer, MapState, PlayerRef, RespawnData, TicketController, Vec3,
+    Identifier, LevelReadError, LevelRef, LightLayer, MapState, PlayerRef, RespawnData,
+    TicketController, Vec3,
 };
 use sunrise_client::{streaming::Streaming, world::World};
 use sunrise_core::{
@@ -856,18 +857,20 @@ impl Game<'_> {
         self.set_world_spawn(super::Dim::from_id(level.dimension_id()), pos, [yaw, pitch]);
         true
     }
-    /// Visit map `id`'s saved data as it stands (`with_map`). None on a client, for a stale
-    /// handle and for a map nothing made.
+    /// Visit map `id`'s world-shared saved data (`ServerLevel.getMapData`).
     pub(super) fn level_visit_map_data(
         &self,
         level: LevelRef,
         id: i32,
         visit: &mut dyn FnMut(MapState<'_>),
-    ) -> Option<()> {
-        if !self.native_world_data_allowed(level) {
-            return None;
+    ) -> Result<Option<()>, LevelReadError> {
+        if !self.is_logical_server() {
+            return Err(LevelReadError::Unavailable);
         }
-        self.with_map(id, |map| {
+        if !self.level_handle_current(level) {
+            return Err(LevelReadError::Stale);
+        }
+        Ok(self.with_map(id, |map| {
             visit(MapState {
                 center: map.center,
                 scale: map.scale,
@@ -877,7 +880,7 @@ impl Game<'_> {
                 unlimited: map.unlimited,
                 colors: &map.colors,
             });
-        })
+        }))
     }
     /// Repaint map `id` (`MapData::paint`). False for another length, a stale handle, a
     /// client, a map nothing made and a map whose pixels are all as given.
@@ -1369,7 +1372,7 @@ mod tests {
             let mut colors = Vec::new();
             assert_eq!(
                 level.visit_map_data(game, id, &mut |map| colors = map.colors.to_vec()),
-                Some(())
+                Ok(Some(()))
             );
             assert_eq!(colors.len(), 128 * 128);
             colors[5 + 2 * 128] = 34;
@@ -1380,21 +1383,41 @@ mod tests {
             );
             assert!(!level.set_map_data(game, id, &colors[..10]));
             assert_eq!(
-                level.visit_map_data(game, id, &mut |map| {
+                nether.visit_map_data(game, id, &mut |map| {
                     assert_eq!(map.colors[5 + 2 * 128], 34);
                     assert_eq!((map.center, map.scale), ([0, 0], 0));
                     assert_eq!(map.dimension, "minecraft:overworld");
                 }),
-                Some(())
+                Ok(Some(())),
+                "a parked level reads the same world map"
             );
+            let retired = LevelRef::with_generation(level.epoch(), level.dimension(), 1);
+            let mut unexpected_map: fn(mod_api::MapState<'_>) = |_| panic!("visited a refused map");
+            for invalid in [stale, retired] {
+                assert_eq!(
+                    invalid.visit_map_data(game, id, &mut unexpected_map),
+                    Err(mod_api::LevelReadError::Stale)
+                );
+            }
+            {
+                let _phase =
+                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
+                assert_eq!(
+                    level.visit_map_data(game, id, &mut unexpected_map),
+                    Err(mod_api::LevelReadError::Unavailable)
+                );
+            }
+            let server_role = game.options.execution_role;
+            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
             assert_eq!(
-                stale.visit_map_data(game, id, &mut |_| panic!("visited a stale handle")),
-                None
+                level.visit_map_data(game, id, &mut unexpected_map),
+                Err(mod_api::LevelReadError::Unavailable)
             );
+            game.options.execution_role = server_role;
             assert!(!stale.set_map_data(game, id, &colors));
             assert_eq!(
                 level.visit_map_data(game, i32::MAX, &mut |_| panic!("visited a missing map")),
-                None,
+                Ok(None),
                 "a map nothing made"
             );
 
