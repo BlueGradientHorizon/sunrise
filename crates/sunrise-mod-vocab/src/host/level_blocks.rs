@@ -21,6 +21,23 @@ pub trait LevelBlocksBackend {
         entity: Option<(u32, &str)>,
     ) -> Result<Option<f32>, LevelReadError>;
     /// Side: both.
+    /// The enchanting power of the supplied `state` at `pos` (`IBlockStateExtension.getEnchantPowerBonus`).
+    /// The state need not occupy that position; `table_pos` is context passed to the Part,
+    /// not a block that the query looks up. The tag default is 1.0 for providers, 0.0 otherwise.
+    /// Returns the Part's answer unchanged, even if it is non-finite. This read never loads
+    /// chunks or applies transmitter, bookshelf offset or offer-cost rules.
+    /// Returns `Stale` for a stale handle, or `Unavailable` for an unreadable view or an
+    /// unknown state. If an enchanting-power provider for this state is already active
+    /// on this thread in this game, returns `Unavailable` even at a different level or position.
+    /// Delegation to another state is allowed.
+    fn level_get_enchant_power_bonus(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        state: BlockState,
+        table_pos: [i32; 3],
+    ) -> Result<f32, LevelReadError>;
+    /// Side: both.
     /// How fast `tool` (None is an empty hand) mines the block at `pos`: the tool's own mining
     /// speed on that block (`ItemStack.getDestroySpeed`, 1.0 for no tool; for a block it has no
     /// rule for, the tool's default mining speed), before the player's enchantments, attributes, water, ground and

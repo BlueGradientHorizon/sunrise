@@ -1337,7 +1337,7 @@ impl Game<'_> {
                 h.position.y + moved.y,
                 h.position.z + moved.z,
             );
-            self.restitute_bobber(
+            self.move_bobber_response(
                 h.id,
                 h.position,
                 &mut h.ground,
@@ -1357,7 +1357,7 @@ impl Game<'_> {
         );
         Some(h)
     }
-    fn restitute_bobber(
+    fn move_bobber_response(
         &mut self,
         id: u32,
         position: Vec3,
@@ -1395,6 +1395,11 @@ impl Game<'_> {
             0.0,
         );
         *velocity = self.finish_body_restitution(entity, position, response);
+        let side = game_side!(self);
+        let motion = self.body_motion(&side);
+        motion.apply_block_speed(position, velocity);
+        let writes = self.body_step_on(entity, (position, bounds(position)), ground, velocity);
+        super::entity::apply_contact_writes(writes, velocity, None, None, None);
     }
     /// The players a hook can catch: everyone but spectators and the dead
     /// (`Projectile.canHitEntity`), the host and the guests in the level.
@@ -2326,7 +2331,7 @@ impl Game<'_> {
                 position.y + moved.y,
                 position.z + moved.z,
             );
-            self.restitute_bobber(id, position, &mut ground, wanted, moved, &mut velocity);
+            self.move_bobber_response(id, position, &mut ground, wanted, moved, &mut velocity);
             if state == State::Flying && (ground.on_ground || ground.horizontal_collision) {
                 velocity = Vec3::ZERO;
             }

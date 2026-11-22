@@ -17,7 +17,6 @@ use sunrise_client::{
 };
 use sunrise_core::{
     geometry::{Aabb, Vec3},
-    position::BlockPos,
     random::RandomSource,
 };
 pub(super) const TYPE_ID: &str = "minecraft:armor_stand";
@@ -1062,9 +1061,8 @@ impl Game<'_> {
                 binding: collision,
                 subject: None,
             };
-            let mut tops: Vec<BlockPos> = Vec::new();
             let side = game_side!(self);
-            if let Some(step) = a.tick_move(
+            let step = a.tick_move(
                 &scene,
                 facts,
                 Some(&self.res.motion().blocks),
@@ -1074,17 +1072,12 @@ impl Game<'_> {
                 &nearby,
                 &self.loop_context,
                 &side,
-            ) {
-                // LivingEntity.aiStep: `travel` first, then the blocks' push.
+            );
+            if let Some(step) = step {
+                // LivingEntity.aiStep: `travel` settles before applyEffectsFromBlocks.
                 a.tick_settle(medium, step);
-                a.push_by_bubble_column_over(world, registry, facts, collision, |pos| {
-                    tops.push(pos)
-                });
             }
             let section_step = (a.id, a.previous, a.position);
-            for pos in tops {
-                self.bubble_column_particles(pos);
-            }
             let a = &mut self.armor_stands[i];
             if in_water {
                 a.enchantment_fall_distance = 0.0;
@@ -1108,6 +1101,39 @@ impl Game<'_> {
                 let stand = &self.armor_stands[i];
                 let (position, bounds) = (stand.position, stand.bounds());
                 self.post_landing_event(position, bounds, true);
+            }
+            if step.is_some() && !self.armor_stands[i].no_physics(None) {
+                let stand = &self.armor_stands[i];
+                let (id, footprint, ground, mut velocity) = (
+                    stand.id,
+                    (stand.position, stand.bounds()),
+                    stand.ground,
+                    stand.velocity,
+                );
+                let writes = self.body_step_on((id, TYPE_ID), footprint, &ground, &mut velocity);
+                let stand = &mut self.armor_stands[i];
+                // `ArmorStand.hurtServer` does not take generic damage; the stand
+                // has no stuck multiplier or active-effect list in its travel row.
+                super::entity::apply_contact_writes(
+                    writes,
+                    &mut velocity,
+                    Some(&mut stand.enchantment_fall_distance),
+                    None,
+                    Some(&mut stand.fire_ticks),
+                );
+                stand.velocity = velocity;
+                // BubbleColumnBlock.entityInside runs in the sweep after Block.stepOn.
+                let mut tops = Vec::new();
+                stand.push_by_bubble_column_over(
+                    &self.world,
+                    registry,
+                    self.res.facts(),
+                    collision,
+                    |pos| tops.push(pos),
+                );
+                for pos in tops {
+                    self.bubble_column_particles(pos);
+                }
             }
             self.armor_stands[i].apply_honey_slide(&self.world, self.res.facts());
             let a = &self.armor_stands[i];

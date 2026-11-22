@@ -637,8 +637,57 @@ fn signum(v: f64) -> f64 {
 /// entity stops there and is not kept: the game hands it to
 /// `finish_entity_hit` once it has hurt the entity.
 pub fn tick(p: &mut Projectile, scene: &ArrowScene, targets: &[(Who, Aabb)]) -> (bool, Hit) {
-    tick_with(p, scene, targets, true, false)
+    tick_to_block_contact(p, scene, targets, false)
 }
+
+/// With block impact listeners, stop after moving to the captured contact and
+/// applying the flight's block effects. The caller applies the hit response, if
+/// accepted, then runs the remainder of the tick.
+pub fn tick_to_block_contact(
+    p: &mut Projectile,
+    scene: &ArrowScene,
+    targets: &[(Who, Aabb)],
+    defer_block_hit: bool,
+) -> (bool, Hit) {
+    tick_with(p, scene, targets, true, false, defer_block_hit)
+}
+
+/// `AbstractArrow.onHitBlock` for an accepted block contact.
+pub fn apply_block_contact(p: &mut Projectile, scene: &ArrowScene, block: BlockPos) {
+    let Some(mut st) = p.arrow.take() else {
+        return;
+    };
+    Ticker {
+        p,
+        st: &mut st,
+        scene,
+        client: false,
+    }
+    .on_hit_block(block, scene.block(block));
+    p.stuck = st.in_ground;
+    p.arrow = Some(st);
+}
+
+/// Run drag, gravity and the projectile base tick after a block contact. Returns
+/// false if the arrow expired. The caller publishes `PROJECTILE_LAND` first
+/// when the contact was accepted.
+pub fn finish_block_contact(p: &mut Projectile, scene: &ArrowScene) -> bool {
+    let Some(mut st) = p.arrow.take() else {
+        return false;
+    };
+    Ticker {
+        p,
+        st: &mut st,
+        scene,
+        client: false,
+    }
+    .finish();
+    p.stuck = st.in_ground;
+    let keep = !st.removed;
+    p.arrow = Some(st);
+    keep
+}
+
 /// One arrow tick whose hit is canceled (`ProjectileImpactEvent`): the arrow
 /// flies through its full movement: not stuck, nothing hurt, no hit.
 pub fn tick_through(
@@ -646,12 +695,12 @@ pub fn tick_through(
     scene: &ArrowScene,
     targets: &[(Who, Aabb)],
 ) -> (bool, Hit) {
-    tick_with(p, scene, targets, false, false)
+    tick_with(p, scene, targets, false, false, false)
 }
 /// Simulate a remote arrow without server-only despawn or block reactions.
 /// Entity hits remain authoritative on the server.
 pub fn tick_client(p: &mut Projectile, scene: &ArrowScene) -> (bool, Hit) {
-    let out = tick_with(p, scene, &[], true, true);
+    let out = tick_with(p, scene, &[], true, true, false);
     // `Entity.playSound` passes no player to `Level.playSound`, and
     // `ClientLevel.playSeededSound` plays only for its own player: the server's
     // sound packets carry the hit and splash. The sounds' draws still happened.
@@ -666,6 +715,7 @@ fn tick_with(
     targets: &[(Who, Aabb)],
     impact: bool,
     client: bool,
+    defer_block_hit: bool,
 ) -> (bool, Hit) {
     let Some(mut st) = p.arrow.take() else {
         return (false, Hit::None);
@@ -680,7 +730,7 @@ fn tick_with(
         scene,
         client,
     }
-    .tick(targets, impact);
+    .tick(targets, impact, defer_block_hit);
     p.stuck = st.in_ground;
     let keep = !st.removed && !matches!(hit, Hit::Entity { .. });
     p.arrow = Some(st);
@@ -782,7 +832,7 @@ impl Ticker<'_, '_, '_, '_> {
     fn trident(&self) -> bool {
         matches!(self.p.kind, ProjectileKind::Trident)
     }
-    fn tick(&mut self, targets: &[(Who, Aabb)], impact: bool) -> Hit {
+    fn tick(&mut self, targets: &[(Who, Aabb)], impact: bool, defer_block_hit: bool) -> Hit {
         // ThrownTrident.tick.
         if self.trident() && self.st.in_ground_time > 4 {
             self.st.dealt_damage = true;
@@ -899,8 +949,10 @@ impl Ticker<'_, '_, '_, '_> {
             original.z + movement.z,
         );
         if physics && impact {
-            hit = self.step_move_and_hit(original, end, targets, impact);
-            if matches!(hit, Hit::Entity { .. }) {
+            hit = self.step_move_and_hit(original, end, targets, defer_block_hit);
+            if matches!(hit, Hit::Entity { .. })
+                || defer_block_hit && matches!(hit, Hit::Block { .. })
+            {
                 return hit;
             }
         } else {
@@ -995,7 +1047,7 @@ impl Ticker<'_, '_, '_, '_> {
         from: Vec3,
         to: Vec3,
         targets: &[(Who, Aabb)],
-        impact: bool,
+        defer_block_hit: bool,
     ) -> Hit {
         let ignored = self
             .st
@@ -1033,10 +1085,6 @@ impl Ticker<'_, '_, '_, '_> {
         self.p.position = next;
         self.apply_effects_from_blocks(from, next);
         if let Some((who, at, _)) = best {
-            // A canceled impact ends the search, the arrow where it would have hit.
-            if !impact {
-                return Hit::None;
-            }
             // AbstractArrow.onHitEntity: past pierce level + 1 entities the
             // arrow is discarded before it hurts the next one.
             if (self.st.pierce as i8) > 0 {
@@ -1058,10 +1106,9 @@ impl Ticker<'_, '_, '_, '_> {
         if self.scene.is_air(state) {
             return Hit::None;
         }
-        if !impact {
-            return Hit::None;
+        if !defer_block_hit {
+            self.on_hit_block(pos, state);
         }
-        self.on_hit_block(pos, state);
         Hit::Block {
             pos: [pos.x, pos.y, pos.z],
             at,

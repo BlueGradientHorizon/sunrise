@@ -1593,12 +1593,12 @@ impl Game<'_> {
             let (_, provider) = self.provider_arg(ctx, registry)?;
             if integer {
                 // ContextIntProvider.getInt: an ArithmeticException reads as 0.
-                let value = self.provider_int(&provider, &compute, 0).unwrap_or(0);
+                let value = self.provider_int(&provider, &compute).unwrap_or(0);
                 vec![Tag::Int(value)]
             } else {
                 // ContextFloatProvider.getFloat: a failure or a non-finite
                 // value reads as 0.
-                let value = self.provider_float(&provider, &compute, 0).unwrap_or(0.0);
+                let value = self.provider_float(&provider, &compute).unwrap_or(0.0);
                 let value = if value.is_finite() { value } else { 0.0 };
                 vec![Tag::Float(value.to_bits())]
             }
