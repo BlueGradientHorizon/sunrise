@@ -201,9 +201,9 @@ pub trait BlockEntitiesBackendMut {
     ) -> Result<bool, BlockEntityDataError>;
     /// Side: server.
     /// Replace internal storage under the innermost transaction; ITEMS routing is separate.
-    /// A mismatched `tx` panics. A committed change marks the chunk unsaved but sends no
-    /// notification. Call set_changed explicitly to notify. Removed, replaced or reloaded holders return
-    /// BlockEntityItemError::Stale.
+    /// A mismatched `tx` returns `BlockEntityItemError::InvalidContext`. A committed change marks
+    /// the chunk unsaved but sends no notification. Call set_changed explicitly to notify.
+    /// Removed, replaced or reloaded holders return `BlockEntityItemError::Stale`.
     fn block_entity_set_item_slot(
         &mut self,
         entity: BlockEntityRef,

@@ -25,15 +25,24 @@ impl ServerHost for Game<'_> {
         Some(BackendMutRef::of(self))
     }
 
+    fn with_current_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(&'loan mut dyn ServerHost, &'loan TransactionContext),
+    ) -> Result<(), TransactionUnavailable> {
+        let frame = self.current_storage_frame().ok_or(TransactionUnavailable)?;
+        frame.lend(|tx| callback(self, tx));
+        Ok(())
+    }
+
     fn with_transaction_scope(
         &mut self,
         callback: &mut dyn for<'loan> FnMut(
             &'loan mut dyn ServerHost,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
-        let _ = self.storage_transaction(|game, tx| callback(game, tx).then_some(()).ok_or(()));
-        Ok(())
+    ) -> Result<bool, TransactionScopeError> {
+        self.scoped_storage(|game, tx| callback(game, tx).then_some(()))
+            .map(|settled| settled.is_some())
     }
 
     fn with_scratch_stack_scope(
@@ -44,17 +53,19 @@ impl ServerHost for Game<'_> {
             &'loan TransactionContext,
             &'loan ItemPlace,
         ) -> bool,
-    ) -> Result<Option<Option<ItemStack>>, ScratchUnavailable> {
+    ) -> Result<Option<Option<ItemStack>>, ScratchScopeError> {
         let engine_stack = self
             .boundary_items()
             .ok_or(StackWriteError::Unavailable)
             .and_then(|items| stack.try_into_engine_preserving_count(items))
-            .map_err(ScratchUnavailable::Stack)?;
-        let taken = self.scratch_scope(
-            Some(engine_stack.item.clone()),
-            engine_stack,
-            |game, tx, place| callback(game, tx, place),
-        );
+            .map_err(ScratchScopeError::Stack)?;
+        let taken = self
+            .scratch_scope(
+                Some(engine_stack.item.clone()),
+                engine_stack,
+                |game, tx, place| callback(game, tx, place),
+            )
+            .map_err(ScratchScopeError::Transaction)?;
         Ok(taken.map(|taken| taken.stack.and_then(|stack| stack.try_into_api().ok())))
     }
 
@@ -66,15 +77,17 @@ impl ServerHost for Game<'_> {
             &'loan TransactionContext,
             &'loan ItemPlace,
         ) -> bool,
-    ) -> Result<Option<(Option<ItemStack>, Option<ItemStack>)>, ScratchUnavailable> {
+    ) -> Result<Option<(Option<ItemStack>, Option<ItemStack>)>, ScratchScopeError> {
         let engine_stack = self
             .boundary_items()
             .ok_or(StackWriteError::Unavailable)
             .and_then(|items| stack.try_into_engine_preserving_count(items))
-            .map_err(ScratchUnavailable::Stack)?;
-        let taken = self.scratch_scope(None, engine_stack, |game, tx, place| {
-            callback(game, tx, place)
-        });
+            .map_err(ScratchScopeError::Stack)?;
+        let taken = self
+            .scratch_scope(None, engine_stack, |game, tx, place| {
+                callback(game, tx, place)
+            })
+            .map_err(ScratchScopeError::Transaction)?;
         Ok(taken.map(|taken| {
             (
                 taken.stack.and_then(|stack| stack.try_into_api().ok()),

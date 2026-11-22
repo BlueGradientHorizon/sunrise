@@ -241,10 +241,15 @@ pub fn declare_action(action: Action, rect: [f32; 4], enabled: bool) {
 /// The buttons of the last drawn frame that declared their job, if it drew `screen`: until the
 /// screen just opened is drawn, the one it replaced can't be pressed.
 pub fn last_actions(screen: u64) -> Vec<DeclaredAction> {
-    if ACTION_SCREENS.get().1 != screen {
+    if !last_input_screen_is(screen) {
         return Vec::new();
     }
     ACTIONS.with_borrow(|(_, last)| last.clone())
+}
+
+/// Whether the last drawn input targets belong to this screen.
+pub fn last_input_screen_is(screen: u64) -> bool {
+    ACTION_SCREENS.get().1 == screen
 }
 
 /// The frame being drawn shows `screen` (the controller's own key for it).

@@ -26,7 +26,7 @@ pub trait Hooks {
         out = "canceled",
         neoforge = "ScreenEvent.MouseButtonPressed.Pre",
         cancellable = true,
-        version = 2
+        version = 3
     )]
     fn screen_mouse_button_pressed_pre(
         screen: &ScreenView<'_>,

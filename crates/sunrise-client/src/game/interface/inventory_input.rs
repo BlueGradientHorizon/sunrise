@@ -551,8 +551,8 @@ impl Game<'_> {
             self.container_changed(key);
         }
     }
-    /// Mouse release over an inventory screen: `mouseReleased` ends or
-    /// cancels the drag, drops a stack released outside, or clicks.
+    /// Settle the slot action before releasing a screen child. Return true
+    /// only for an early swallowed release or a mouse tweak that took it.
     pub(super) fn inventory_mouse_release(&mut self, right: bool) -> bool {
         use sunrise_client::container_screen::{Release, Target};
         let tweaked = self.tweak_release();
@@ -583,10 +583,13 @@ impl Game<'_> {
                     self.container_changed(key);
                 }
             }
-            (Release::Swallowed, _) => self.inv_drag = None,
-            _ => return self.inv_drag.take().is_some() || tweaked,
+            (Release::Swallowed, _) => {
+                self.inv_drag = None;
+                return true;
+            }
+            _ => self.inv_drag = None,
         }
-        true
+        tweaked
     }
     /// A press of the pick block button (`keyPickItem`, the middle button by
     /// default) over an inventory screen: `mouseClicked` with `cloning`
@@ -642,10 +645,13 @@ impl Game<'_> {
                 self.inv_drag = None;
                 self.click_open_inventory(Some(slot), 2, input);
             }
-            (Release::Swallowed, _) => self.inv_drag = None,
-            _ => return self.inv_drag.take().is_some(),
+            (Release::Swallowed, _) => {
+                self.inv_drag = None;
+                return true;
+            }
+            _ => self.inv_drag = None,
         }
-        true
+        false
     }
     /// Mouse release: finishes a quick craft drag (one slot is a plain click).
     pub(super) fn inventory_release(&mut self) {

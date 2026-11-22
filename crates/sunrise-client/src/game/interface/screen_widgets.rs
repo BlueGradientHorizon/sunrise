@@ -7,7 +7,7 @@ use mod_api::{
     __private::game::CallbackOwner,
     ScreenView, ScreenWidget, ScreenWidgetId, ScreenWidgets,
     client::widgets::{
-        Button, ButtonPress, ButtonState, TextEdit, TextField, TextFieldCallback,
+        Button, ButtonPress, ButtonState, ScreenChild, TextEdit, TextField, TextFieldCallback,
         is_allowed_chat_character,
     },
 };
@@ -25,6 +25,7 @@ use winit::keyboard::KeyCode;
 
 struct MountedWidgetsInner {
     entries: Vec<Option<MountedWidgetEntry>>,
+    removed_pause_actions: Vec<u8>,
     focused: Option<usize>,
     dragging: Option<(usize, i32)>,
 }
@@ -43,6 +44,7 @@ impl Default for MountedScreenWidgets {
             next_id: Cell::new(1),
             inner: RefCell::new(MountedWidgetsInner {
                 entries: Vec::new(),
+                removed_pause_actions: Vec::new(),
                 focused: None,
                 dragging: None,
             }),
@@ -110,12 +112,15 @@ impl MountedScreenWidgets {
     /// Bump the screen-widget generation, clear focus/drag state, and dispose all entries.
     pub(super) fn clear(&self) {
         self.generation.set(self.generation.get().wrapping_add(1));
-        let entries = {
+        let (mut entries, focused) = {
             let mut inner = self.inner.borrow_mut();
-            inner.focused = None;
             inner.dragging = None;
-            std::mem::take(&mut inner.entries)
+            inner.removed_pause_actions.clear();
+            (std::mem::take(&mut inner.entries), inner.focused.take())
         };
+        if let Some(entry) = focused.and_then(|idx| entries.get_mut(idx)?.as_mut()) {
+            entry.apply_focus(false);
+        }
         for entry in entries.into_iter().flatten() {
             entry.dispose();
         }
@@ -163,6 +168,23 @@ impl MountedWidgetEntry {
         owner.dispose("screen widget", "screen_widget_drop", kind);
     }
 
+    fn press_button(&mut self, game: &mut Game<'_>) -> bool {
+        let MountedWidgetKind::Button { state, on_press } = &mut self.kind else {
+            return false;
+        };
+        let Some(callback) = on_press.as_mut() else {
+            return true;
+        };
+        let rect = state.rect;
+        let answer = call_owner(&self.owner, &mut self.disabled, "button_press", || {
+            callback(state, game);
+        });
+        if !valid_widget_rect(state.rect) {
+            state.rect = rect;
+        }
+        answer.is_some()
+    }
+
     fn can_focus(&mut self) -> bool {
         if self.disabled || !self.owner.is_enabled() {
             self.disabled = true;
@@ -177,7 +199,7 @@ impl MountedWidgetEntry {
                 &self.owner,
                 &mut self.disabled,
                 "screen_widget_focusable",
-                || widget.visible() && widget.active(),
+                || widget.visible() && widget.active() && valid_widget_rect(widget.bounds()),
             )
             .unwrap_or(false),
         }
@@ -212,6 +234,8 @@ impl MountedWidgetEntry {
 struct ScreenWidgetMount {
     next_id: u64,
     entries: Vec<MountedWidgetEntry>,
+    children: Vec<ScreenChild>,
+    removed: Vec<ScreenWidgetId>,
     initial_focus: Option<ScreenWidgetId>,
 }
 
@@ -224,32 +248,55 @@ impl Drop for ScreenWidgetMount {
 }
 
 impl ScreenWidgetMount {
-    fn new(next_id: u64) -> Self {
-        Self {
-            next_id: next_id.max(1),
-            entries: Vec::new(),
-            initial_focus: None,
-        }
-    }
-
     fn alloc_id(&mut self) -> ScreenWidgetId {
         let raw = self.next_id;
         self.next_id = self.next_id.saturating_add(1).max(1);
         ScreenWidgetId::from_raw(raw)
     }
-}
 
-impl ScreenWidgets for ScreenWidgetMount {
-    fn add_button(&mut self, button: Button) -> ScreenWidgetId {
-        let (state, on_press) = button.into_parts();
+    fn stage(&mut self, kind: MountedWidgetKind) -> ScreenWidgetId {
         let id = self.alloc_id();
-        self.entries.push(MountedWidgetEntry {
+        let mut entry = MountedWidgetEntry {
             id,
             owner: widget_callback_owner(),
             disabled: false,
-            kind: MountedWidgetKind::Button { state, on_press },
-        });
+            kind,
+        };
+        let bounds = match &entry.kind {
+            MountedWidgetKind::Button { state, .. } => {
+                Some((state.rect, Some(state.label.clone())))
+            }
+            MountedWidgetKind::TextField { edit_box, .. } => Some((
+                [edit_box.x, edit_box.y, edit_box.width, edit_box.height],
+                None,
+            )),
+            MountedWidgetKind::Custom(widget) => call_owner(
+                &entry.owner,
+                &mut entry.disabled,
+                "screen_widget_bounds",
+                || (widget.bounds(), None),
+            ),
+        };
+        if let Some((rect, label)) = bounds
+            && valid_widget_rect(rect)
+        {
+            self.children.push(ScreenChild::new(id, rect, label));
+            self.entries.push(entry);
+        } else {
+            entry.dispose();
+        }
         id
+    }
+}
+
+impl ScreenWidgets for ScreenWidgetMount {
+    fn children(&self) -> &[ScreenChild] {
+        &self.children
+    }
+
+    fn add_button(&mut self, button: Button) -> ScreenWidgetId {
+        let (state, on_press) = button.into_parts();
+        self.stage(MountedWidgetKind::Button { state, on_press })
     }
 
     fn add_text_field(&mut self, field: TextField) -> ScreenWidgetId {
@@ -271,32 +318,18 @@ impl ScreenWidgets for ScreenWidgetMount {
                 text
             })
         });
-        let id = self.alloc_id();
-        self.entries.push(MountedWidgetEntry {
-            id,
-            owner: widget_callback_owner(),
-            disabled: false,
-            kind: MountedWidgetKind::TextField {
-                edit_box,
-                hint,
-                active: parts.active,
-                visible: parts.visible,
-                on_change: parts.on_change,
-                on_submit: parts.on_submit,
-            },
-        });
-        id
+        self.stage(MountedWidgetKind::TextField {
+            edit_box,
+            hint,
+            active: parts.active,
+            visible: parts.visible,
+            on_change: parts.on_change,
+            on_submit: parts.on_submit,
+        })
     }
 
     fn add_widget(&mut self, widget: Box<dyn ScreenWidget>) -> ScreenWidgetId {
-        let id = self.alloc_id();
-        self.entries.push(MountedWidgetEntry {
-            id,
-            owner: widget_callback_owner(),
-            disabled: false,
-            kind: MountedWidgetKind::Custom(widget),
-        });
-        id
+        self.stage(MountedWidgetKind::Custom(widget))
     }
 
     fn set_initial_focus(&mut self, id: ScreenWidgetId) -> bool {
@@ -311,14 +344,18 @@ impl ScreenWidgets for ScreenWidgetMount {
     }
 
     fn remove(&mut self, id: ScreenWidgetId) -> bool {
-        let Some(pos) = self.entries.iter().position(|entry| entry.id == id) else {
+        let Some(pos) = self.children.iter().position(|child| child.id == id) else {
             return false;
         };
-        let entry = self.entries.remove(pos);
+        self.children.remove(pos);
         if self.initial_focus == Some(id) {
             self.initial_focus = None;
         }
-        entry.dispose();
+        if let Some(pos) = self.entries.iter().position(|entry| entry.id == id) {
+            self.entries.remove(pos).dispose();
+        } else {
+            self.removed.push(id);
+        }
         true
     }
 }
@@ -346,6 +383,10 @@ fn call_owner<R>(
             None
         }
     }
+}
+
+fn valid_widget_rect([x, y, w, h]: [f32; 4]) -> bool {
+    [x, y, w, h, x + w, y + h].into_iter().all(f32::is_finite)
 }
 
 fn point_in_rect(mouse: [f32; 2], rect: [f32; 4]) -> bool {
@@ -387,12 +428,15 @@ impl MountedWidgetEntry {
                 &mut self.disabled,
                 "screen_widget_target",
                 || {
-                    (widget.visible() && widget.active()).then(|| Target {
-                        rect: widget.bounds(),
-                        kind: Kind::Mounted {
-                            id: self.id.raw(),
-                            field: widget.captures_input(),
-                        },
+                    let rect = widget.bounds();
+                    (widget.visible() && widget.active() && valid_widget_rect(rect)).then(|| {
+                        Target {
+                            rect,
+                            kind: Kind::Mounted {
+                                id: self.id.raw(),
+                                field: widget.captures_input(),
+                            },
+                        }
                     })
                 },
             )
@@ -407,28 +451,83 @@ impl Game<'_> {
         if !mod_api::__private::listened(mod_api::HookId::ScreenInitPost) {
             return;
         }
-        let mut next_id = self.screen_state.widgets.next_id.get();
-        let mut entries = Vec::new();
+        let mut mount = ScreenWidgetMount {
+            next_id: self.screen_state.widgets.next_id.get(),
+            entries: Vec::new(),
+            children: Vec::new(),
+            removed: Vec::new(),
+            initial_focus: None,
+        };
+        // Use the initialized layout, not last frame's draw registrations (which may
+        // still belong to a different screen, and omit children clipped offscreen).
+        let native = if view.id == "paused" {
+            self.pause_init_children()
+                .into_iter()
+                .map(|(action, rect, label)| {
+                    let id = mount.alloc_id();
+                    mount.children.push(ScreenChild::new(id, rect, label));
+                    (id, action)
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let mut entries: Vec<MountedWidgetEntry> = Vec::new();
+        let mut removed_pause_actions = Vec::new();
         let mut initial_focus = None;
         self.native_screen_init_post(view, |listen| {
-            let mut mount = ScreenWidgetMount::new(next_id);
-            let accepted = listen(&mut mount);
-            // Do not recycle IDs handed out to a failing listener.
-            next_id = mount.next_id;
-            if accepted {
-                initial_focus = mount.initial_focus.or(initial_focus);
+            let children = mount.children.clone();
+            if listen(&mut mount) {
+                for id in mount.removed.drain(..) {
+                    if initial_focus == Some(id) {
+                        initial_focus = None;
+                    }
+                    if let Some(pos) = entries.iter().position(|entry| entry.id == id) {
+                        entries.remove(pos).dispose();
+                    } else if let Some(&(_, action)) =
+                        native.iter().find(|&&(child, _)| child == id)
+                    {
+                        removed_pause_actions.push(action);
+                    }
+                }
+                initial_focus = mount.initial_focus.take().or(initial_focus);
                 entries.append(&mut mount.entries);
+            } else {
+                mount.children = children;
+                mount.initial_focus = None;
+                mount.removed.clear();
+                for entry in mount.entries.drain(..) {
+                    entry.dispose();
+                }
             }
-            // Unpublished registrations are disposed by the stage, under each owner's fence.
+            // IDs issued to a failed listener are never reused.
         });
-        self.screen_state.widgets.next_id.set(next_id);
+        self.screen_state.widgets.next_id.set(mount.next_id);
         let initial_focus =
             initial_focus.and_then(|id| entries.iter().position(|entry| entry.id == id));
-        self.screen_state.widgets.inner.borrow_mut().entries =
-            entries.into_iter().map(Some).collect();
+        let mut inner = self.screen_state.widgets.inner.borrow_mut();
+        inner.entries = entries.into_iter().map(Some).collect();
+        inner.removed_pause_actions = removed_pause_actions;
+        if self
+            .pause_focus
+            .is_some_and(|id| inner.removed_pause_actions.contains(&id))
+        {
+            self.pause_focus = None;
+        }
+        drop(inner);
         if let Some(idx) = initial_focus {
             self.set_mounted_widget_focus(Some(idx));
         }
+    }
+
+    /// Whether Init.Post removed this native PauseScreen action from the current build.
+    pub(in crate::game) fn pause_child_removed(&self, action: u8) -> bool {
+        self.screen_state
+            .widgets
+            .inner
+            .borrow()
+            .removed_pause_actions
+            .contains(&action)
     }
 
     /// Clear and dispose all mounted widgets for the current screen without
@@ -536,9 +635,12 @@ impl Game<'_> {
         f: impl FnOnce(&mut Self, &mut MountedWidgetEntry) -> R,
     ) -> Option<R> {
         let generation = self.screen_state.widgets.generation();
-        let mut entry = {
+        let (mut entry, focused) = {
             let mut inner = self.screen_state.widgets.inner.borrow_mut();
-            inner.entries.get_mut(idx)?.take()?
+            (
+                inner.entries.get_mut(idx)?.take()?,
+                inner.focused == Some(idx),
+            )
         };
         if entry.disabled || !entry.owner.is_enabled() {
             entry.disabled = true;
@@ -565,6 +667,10 @@ impl Game<'_> {
                 entry.dispose();
             }
         } else {
+            // Teardown could not blur this entry while it was out of the table.
+            if focused {
+                entry.apply_focus(false);
+            }
             entry.dispose();
         }
         Some(result)
@@ -605,13 +711,14 @@ impl Game<'_> {
                             let mark = widgets::frame_mark();
                             let hovered = point_in_rect(mouse, state.rect);
                             let label: Text = state.label.try_into_engine(&()).unwrap_or_default();
-                            ui::button_as(
+                            ui::button_focused_as(
                                 batch,
                                 &self.gui.atlas,
                                 state.rect,
                                 &label,
                                 state.active,
-                                hovered || focused,
+                                hovered,
+                                focused,
                                 state.sprites.as_ref(),
                                 |rect| Narratable::button(label.plain(), rect, state.active),
                             );
@@ -661,6 +768,9 @@ impl Game<'_> {
                                     return;
                                 }
                                 let bounds = widget.bounds();
+                                if !valid_widget_rect(bounds) {
+                                    return;
+                                }
                                 if widget.active() {
                                     widgets::target_as(
                                         bounds,
@@ -713,8 +823,9 @@ impl Game<'_> {
         }
     }
 
-    /// Dispatch a mouse click to mounted widgets in insertion order
-    /// (`ContainerEventHandler.getChildAt` / `AbstractWidget.mouseClicked`).
+    /// Dispatch a mouse click to the first hit mounted child in insertion order.
+    /// A hit consumes the click independently of whether the child takes focus
+    /// (`ContainerEventHandler.mouseClicked`). A miss leaves focus alone.
     pub(super) fn mounted_widget_mouse_clicked(
         &mut self,
         mouse: [f32; 2],
@@ -801,9 +912,11 @@ impl Game<'_> {
                                 &mut entry.disabled,
                                 "screen_widget_hit_test",
                                 || {
+                                    let rect = widget.bounds();
                                     widget.visible()
                                         && widget.active()
-                                        && (id.is_some() || hit_rect(widget.bounds()))
+                                        && valid_widget_rect(rect)
+                                        && hit_rect(rect)
                                 },
                             )
                             .unwrap_or(false);
@@ -820,24 +933,22 @@ impl Game<'_> {
                 Hit::Miss => continue,
                 Hit::Button => {
                     if button != 0 {
-                        continue;
+                        return id.is_none();
                     }
-                    self.set_mounted_widget_focus(Some(idx));
                     self.audio.play_button_click();
-                    let _ = self.with_mounted_widget(idx, |game, entry| {
-                        if let MountedWidgetKind::Button { state, on_press } = &mut entry.kind
-                            && let Some(callback) = on_press.as_mut()
-                        {
-                            call_owner(&entry.owner, &mut entry.disabled, "button_press", || {
-                                callback(state, game);
-                            });
-                        }
-                    });
+                    let accepted =
+                        self.with_mounted_widget(idx, |game, entry| entry.press_button(game));
+                    if accepted == Some(true)
+                        && self.screen_state.widgets.generation() == generation
+                    {
+                        self.set_mounted_widget_focus(Some(idx));
+                        self.screen_state.widgets.inner.borrow_mut().dragging = Some((idx, button));
+                    }
                     return true;
                 }
                 Hit::TextField => {
                     if button != 0 {
-                        continue;
+                        return id.is_none();
                     }
                     self.set_mounted_widget_focus(Some(idx));
                     let shift = (modifiers & 1) != 0;
@@ -876,22 +987,16 @@ impl Game<'_> {
                             }
                         })
                         .unwrap_or(false);
-                    if self.screen_state.widgets.generation() != generation {
-                        return handled;
-                    }
-                    if handled {
+                    if handled && self.screen_state.widgets.generation() == generation {
                         self.set_mounted_widget_focus(Some(idx));
                         if button == 0 {
                             self.screen_state.widgets.inner.borrow_mut().dragging =
                                 Some((idx, button));
                         }
-                        return true;
                     }
+                    return id.is_none() || handled;
                 }
             }
-        }
-        if id.is_none() {
-            self.clear_mounted_widget_focus();
         }
         false
     }
@@ -910,6 +1015,9 @@ impl Game<'_> {
             return false;
         }
         self.screen_state.widgets.inner.borrow_mut().dragging = None;
+        if self.screen_state.widgets.focused_index() != Some(idx) {
+            return false;
+        }
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
             MountedWidgetKind::TextField {
                 active, visible, ..
@@ -921,7 +1029,7 @@ impl Game<'_> {
                 || widget.mouse_released(game, mouse, button, modifiers),
             )
             .unwrap_or(false),
-            MountedWidgetKind::Button { .. } => false,
+            MountedWidgetKind::Button { .. } => true,
         })
         .unwrap_or(false)
     }
@@ -937,7 +1045,7 @@ impl Game<'_> {
         let Some((idx, drag_button)) = self.screen_state.widgets.inner.borrow().dragging else {
             return false;
         };
-        if drag_button != button {
+        if drag_button != button || self.screen_state.widgets.focused_index() != Some(idx) {
             return false;
         }
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
@@ -960,7 +1068,7 @@ impl Game<'_> {
                 || widget.mouse_dragged(game, mouse, button, delta, modifiers),
             )
             .unwrap_or(false),
-            MountedWidgetKind::Button { .. } => false,
+            MountedWidgetKind::Button { .. } => true,
         })
         .unwrap_or(false)
     }
@@ -1005,9 +1113,11 @@ impl Game<'_> {
                             &mut entry.disabled,
                             "screen_widget_mouse_scrolled",
                             || {
+                                let rect = widget.bounds();
                                 if widget.visible()
                                     && widget.active()
-                                    && point_in_rect(mouse, widget.bounds())
+                                    && valid_widget_rect(rect)
+                                    && point_in_rect(mouse, rect)
                                 {
                                     widget.mouse_scrolled(game, mouse, scroll, modifiers)
                                 } else {
@@ -1048,7 +1158,7 @@ impl Game<'_> {
             return false;
         };
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
-            MountedWidgetKind::Button { state, on_press } => {
+            MountedWidgetKind::Button { state, .. } => {
                 if !state.visible
                     || !state.active
                     || !matches!(key, KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space)
@@ -1056,11 +1166,7 @@ impl Game<'_> {
                     return false;
                 }
                 game.audio.play_button_click();
-                if let Some(callback) = on_press.as_mut() {
-                    call_owner(&entry.owner, &mut entry.disabled, "button_press", || {
-                        callback(state, game);
-                    });
-                }
+                entry.press_button(game);
                 true
             }
             MountedWidgetKind::TextField {

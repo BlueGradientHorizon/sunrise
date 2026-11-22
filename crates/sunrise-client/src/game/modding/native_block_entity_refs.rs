@@ -331,7 +331,9 @@ impl Game<'_> {
         slot: u32,
         stack: Option<ItemStack>,
     ) -> Result<bool, BlockEntityItemError> {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return Err(BlockEntityItemError::InvalidContext);
+        }
         let key = self
             .native_block_entity_write_key(entity)
             .ok_or(BlockEntityItemError::Stale)?;

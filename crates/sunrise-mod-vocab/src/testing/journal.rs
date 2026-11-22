@@ -1,6 +1,6 @@
 //! The transaction journal fake: what a host keeps on each transaction it opens.
 use crate::item::transaction::TransactionFrame;
-use crate::{ServerHost, TransactionContext, TransactionUnavailable};
+use crate::{ServerHost, TransactionContext, TransactionScopeError, TransactionUnavailable};
 
 // no wire: in-process testing harness state, not a mod boundary payload.
 /// A test host's transaction journal, as the game's keeps its storages: the state each open
@@ -56,7 +56,7 @@ impl<S> FakeJournal<S> {
             &'loan mut dyn ServerHost,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
+    ) -> Result<bool, TransactionScopeError> {
         Self::with_scope_with(host, journal, snapshot, restore, |host, tx| {
             callback(host, tx)
         })
@@ -69,7 +69,7 @@ impl<S> FakeJournal<S> {
         snapshot: fn(&H) -> S,
         restore: fn(&mut H, S),
         run: impl for<'loan> FnOnce(&'loan mut H, &'loan TransactionContext) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
+    ) -> Result<bool, TransactionScopeError> {
         struct Scope<'a, H, S> {
             host: &'a mut H,
             journal: fn(&mut H) -> &mut FakeJournal<S>,
@@ -129,6 +129,18 @@ impl<S> FakeJournal<S> {
         };
         let commit = frame.lend(|tx| run(&mut *scope.host, tx));
         scope.commit = commit;
+        drop(scope);
+        Ok(commit)
+    }
+
+    /// Lends the current frame without opening or closing a transaction.
+    pub fn with_current_scope<H: ServerHost>(
+        host: &mut H,
+        journal: fn(&H) -> &Self,
+        callback: &mut dyn for<'loan> FnMut(&'loan mut dyn ServerHost, &'loan TransactionContext),
+    ) -> Result<(), TransactionUnavailable> {
+        let &(frame, _) = journal(host).kept.last().ok_or(TransactionUnavailable)?;
+        frame.lend(|tx| callback(host, tx));
         Ok(())
     }
 

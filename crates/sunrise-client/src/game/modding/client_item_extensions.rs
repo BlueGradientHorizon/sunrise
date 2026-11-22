@@ -4,14 +4,22 @@ use mod_api::{
     __private::game::discard_registration, ArmorModelRef, ArmorTextureRef, ClientItemExtensions,
     ClientItemExtensionsRegistrar, HookId, ItemKey, ModelPart,
 };
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+use std::{
+    borrow::Cow,
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
 };
 use sunrise_client::{
     fast_hash::FxHashMap,
     mobs::{Part, Polygon},
 };
+
+pub(super) static DEFAULT_TOOLTIP_FONT_ID: LazyLock<mod_api::Identifier> = LazyLock::new(|| {
+    mod_api::Identifier::from_parts("minecraft", "default")
+        .expect("minecraft:default is a valid identifier")
+});
 
 pub(super) struct ItemExtensionsPart {
     pub attached: mod_api::Attached<dyn ClientItemExtensions>,
@@ -330,24 +338,24 @@ impl Game<'_> {
     pub(super) fn item_tooltip_font(
         &self,
         stack: &sunrise_client::items::ItemStack,
-    ) -> mod_api::Identifier {
+    ) -> Cow<'static, mod_api::Identifier> {
         use super::api_values::TryIntoApi;
-        let default = || mod_api::Identifier::parse("minecraft:default").unwrap();
+        let default = Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID);
         let state = &self.armor_stand_assets.extensions;
         if state.items.is_empty() {
-            return default();
+            return default;
         }
         let Some(item) = mod_api::__private::item_key(&stack.item) else {
-            return default();
+            return default;
         };
         let Some(part) = state.items.get(&item) else {
-            return default();
+            return default;
         };
         if !part.attached.enabled() || part.failed.load(Ordering::Relaxed) {
-            return default();
+            return default;
         }
         let Ok(api_stack) = stack.try_into_api() else {
-            return default();
+            return default;
         };
         let provider = &**part.attached.part();
         part.callback_owner
@@ -356,7 +364,7 @@ impl Game<'_> {
             })
             .ok()
             .flatten()
-            .unwrap_or_else(default)
+            .map_or(default, Cow::Owned)
     }
 
     pub(super) fn extended_equipment_materials<'a>(

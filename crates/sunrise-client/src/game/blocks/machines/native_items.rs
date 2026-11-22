@@ -281,7 +281,9 @@ impl Game<'_> {
         limit: u32,
         tx: &TransactionContext,
     ) -> bool {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return false;
+        }
         if !(1..=99).contains(&limit) {
             return false;
         }
@@ -356,7 +358,12 @@ impl Game<'_> {
         amount: u32,
         tx: &TransactionContext,
     ) -> Option<ItemStack> {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return Some(ItemStack {
+                count: amount,
+                ..resource.clone()
+            });
+        }
         let stack = ItemStack {
             count: amount,
             ..resource.clone()
@@ -461,7 +468,9 @@ impl Game<'_> {
         amount: u64,
         tx: &TransactionContext,
     ) -> u64 {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return 0;
+        }
         if amount == 0 {
             return 0;
         }
@@ -515,7 +524,9 @@ impl Game<'_> {
         amount: u64,
         tx: &TransactionContext,
     ) -> u64 {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return 0;
+        }
         if amount == 0 {
             return 0;
         }
@@ -580,7 +591,9 @@ impl Game<'_> {
         max: u32,
         tx: &TransactionContext,
     ) -> Option<ItemStack> {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return None;
+        }
         let view = self.capability_view(at)?;
         let slot = view.capability_slots(at.side).nth(slot)?;
         let c = self.containers();

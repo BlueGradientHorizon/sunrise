@@ -190,23 +190,39 @@ impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
         self.game
     }
 
+    fn with_current_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn mod_api::ItemEntityServerAccess,
+            &'loan mod_api::TransactionContext,
+        ),
+    ) -> Result<(), mod_api::TransactionUnavailable> {
+        let frame = self
+            .game
+            .current_storage_frame()
+            .ok_or(mod_api::TransactionUnavailable)?;
+        frame.lend(|tx| callback(self, tx));
+        Ok(())
+    }
+
     fn with_transaction_scope(
         &mut self,
         callback: &mut dyn for<'loan> FnMut(
             &'loan mut dyn mod_api::ItemEntityServerAccess,
             &'loan mod_api::TransactionContext,
         ) -> bool,
-    ) -> Result<(), mod_api::TransactionUnavailable> {
+    ) -> Result<bool, mod_api::TransactionScopeError> {
         let (subject, index) = (self.subject, self.index);
-        let _ = self.game.storage_transaction(|game, tx| {
-            let mut child = ItemEntityTickAccess {
-                game,
-                subject,
-                index,
-            };
-            callback(&mut child, tx).then_some(()).ok_or(())
-        });
-        Ok(())
+        self.game
+            .scoped_storage(|game, tx| {
+                let mut child = ItemEntityTickAccess {
+                    game,
+                    subject,
+                    index,
+                };
+                callback(&mut child, tx).then_some(())
+            })
+            .map(|settled| settled.is_some())
     }
 }
 

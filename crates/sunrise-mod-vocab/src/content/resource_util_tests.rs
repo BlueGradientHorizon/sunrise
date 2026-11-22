@@ -46,6 +46,11 @@ impl ResourceHandler<Chemical> for Tanks {
         chemical: &Chemical,
         amount: u32,
     ) -> u32 {
+        let chemical = if *chemical == HYDROGEN_ALIAS {
+            &HYDROGEN
+        } else {
+            chemical
+        };
         let mut tanks = self.0.borrow_mut();
         let Some(tank) = tanks.get_mut(index) else {
             return 0;
@@ -83,6 +88,7 @@ impl ResourceHandler<Chemical> for Tanks {
 }
 
 const HYDROGEN: Chemical = Chemical("test:hydrogen");
+const HYDROGEN_ALIAS: Chemical = Chemical("test:h");
 
 #[test]
 fn a_combined_handler_numbers_both_and_fills_the_second_when_the_first_is_full() {
@@ -150,12 +156,12 @@ fn an_empty_index_is_full_only_when_it_cannot_hold_anything() {
 }
 
 #[test]
-fn insert_stacking_tops_up_a_holding_index_before_an_empty_one() {
+fn insert_stacking_tries_occupied_indices_even_when_the_resource_is_an_alias() {
     let tanks = Tanks::new(vec![None, Some((HYDROGEN, 10))]);
     let handler: &dyn ResourceHandler<Chemical> = &tanks;
     let mut fake = FakeHost::new();
     let host: &mut dyn ServerHost = &mut fake;
-    let went = insert_stacking(host, handler, &HYDROGEN, 95, None);
+    let went = insert_stacking(host, handler, &HYDROGEN_ALIAS, 95, None);
     assert_eq!(went, Ok(95));
     // The default `insert` would have filled index 0 first.
     assert_eq!(
@@ -521,7 +527,7 @@ fn stacking_moves_each_allowed_resource_into_an_existing_stack() {
 }
 
 #[test]
-fn each_extractability_probe_starts_with_unchanged_storage() {
+fn extractability_scan_sees_a_zero_answer_write_then_rolls_back_both_slots() {
     struct Probe(Capability<dyn ResourceHandler<ItemResource>>);
 
     impl ResourceHandler<ItemResource> for Probe {
@@ -564,7 +570,7 @@ fn each_extractability_probe_starts_with_unchanged_storage() {
                 assert_eq!(self.0.extract_at(host, tx, slot, r, amount), 3);
                 return 0;
             }
-            if self.0.amount(host, 0) == 3 {
+            if self.0.amount(host, 0) == 0 {
                 self.0.extract_at(host, tx, slot, r, amount)
             } else {
                 0
@@ -600,42 +606,43 @@ fn extract_first_only_takes_the_selected_resource_and_commits_its_root() {
 
 #[test]
 fn optional_tokens_must_name_the_current_transaction() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
     let (mut fake, r) = items_host(&["minecraft:stone"]);
     let stone = &r[0];
     chest(&mut fake, A, &[Some((stone, 5))]);
     let items = items_at(&mut fake, A);
-    let assert_panics = |host: &mut dyn ServerHost, token: Option<&TransactionContext>| {
-        assert!(
-            catch_unwind(AssertUnwindSafe(|| {
-                insert_stacking(host, &items, stone, 1, token)
-            }))
-            .is_err()
+    let assert_refused = |host: &mut dyn ServerHost, token: Option<&TransactionContext>| {
+        assert_eq!(
+            insert_stacking(host, &items, stone, 1, token),
+            Err(TransactionError::InvalidContext)
         );
-        assert!(
-            catch_unwind(AssertUnwindSafe(|| {
-                extract_first(host, &items, |_| true, 1, token)
-            }))
-            .is_err()
+        assert_eq!(
+            extract_first(
+                host,
+                &items,
+                |_| panic!("invalid context reached the filter"),
+                1,
+                token
+            ),
+            Err(TransactionError::InvalidContext)
         );
-        assert!(
-            catch_unwind(AssertUnwindSafe(|| {
-                find_extractable_resource(host, &items, |_| true, token)
-            }))
-            .is_err()
+        assert_eq!(
+            find_extractable_resource(host, &items, |_| true, token),
+            Err(TransactionError::InvalidContext)
         );
-        assert!(
-            catch_unwind(AssertUnwindSafe(|| {
-                move_resources(host, &items, &items, |_| true, 1, token)
-            }))
-            .is_err()
+        assert_eq!(
+            move_resources(host, &items, &items, |_| true, 1, token),
+            Err(TransactionError::InvalidContext)
+        );
+        assert_eq!(
+            move_first(host, &items, &items, |_| true, 0, token),
+            Err(TransactionError::InvalidContext)
         );
     };
     let host: &mut dyn ServerHost = &mut fake;
     host.transaction(|host, parent| {
-        assert_panics(host, None);
+        assert_refused(host, None);
         host.transaction(|host, _| {
-            assert_panics(host, Some(parent));
+            assert_refused(host, Some(parent));
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -891,6 +898,61 @@ fn maximum_batch_moves_without_splitting_a_quantized_handler() {
 }
 
 #[test]
+fn moves_probe_the_remaining_request_once_per_source_index() {
+    struct Metered(RefCell<Vec<(usize, u32)>>);
+    impl ResourceHandler<Chemical> for Metered {
+        fn size(&self, _: &mut dyn ServerHost) -> usize {
+            2
+        }
+        fn resource(&self, _: &mut dyn ServerHost, _: usize) -> Option<Chemical> {
+            Some(HYDROGEN)
+        }
+        fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
+            3
+        }
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&Chemical>) -> u32 {
+            3
+        }
+        fn insert_at(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &TransactionContext,
+            _: usize,
+            _: &Chemical,
+            _: u32,
+        ) -> u32 {
+            0
+        }
+        fn extract_at(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &TransactionContext,
+            index: usize,
+            _: &Chemical,
+            amount: u32,
+        ) -> u32 {
+            self.0.borrow_mut().push((index, amount));
+            amount.min(1)
+        }
+    }
+
+    let mut fake = FakeHost::new();
+    let source = Metered(RefCell::new(Vec::new()));
+    let from: &dyn ResourceHandler<Chemical> = &source;
+    let to: &dyn ResourceHandler<Chemical> = &VoidingResourceHandler;
+    assert_eq!(
+        move_resources(&mut fake, from, to, |_| true, 5, None),
+        Ok(2)
+    );
+    assert_eq!(source.0.take(), [(0, 5), (0, 1), (1, 4), (1, 1)]);
+    assert_eq!(
+        move_first(&mut fake, from, to, |_| true, 5, None),
+        Ok(Some((HYDROGEN, 2)))
+    );
+    assert_eq!(source.0.take(), [(0, 5), (0, 1), (1, 4), (1, 1)]);
+}
+
+#[test]
 fn moves_accept_public_wrappers_without_registering_providers() {
     let host: &mut dyn ServerHost = &mut FakeHost::new();
     let source = RangedResourceHandler::of_single_index(
@@ -921,13 +983,23 @@ fn transfers_and_probes_report_a_refused_scope_on_every_attempt() {
     crate::impl_host_areas!(Refuses);
     crate::impl_server_host_areas!(Refuses);
     impl ServerHost for Refuses {
+        fn with_current_transaction_scope(
+            &mut self,
+            callback: &mut dyn for<'loan> FnMut(
+                &'loan mut dyn ServerHost,
+                &'loan TransactionContext,
+            ),
+        ) -> Result<(), crate::TransactionUnavailable> {
+            FakeJournal::with_current_scope(self, |host| &host.journal, callback)
+        }
+
         fn with_transaction_scope(
             &mut self,
             callback: &mut dyn for<'loan> FnMut(
                 &'loan mut dyn ServerHost,
                 &'loan TransactionContext,
             ) -> bool,
-        ) -> Result<(), crate::TransactionUnavailable> {
+        ) -> Result<bool, crate::TransactionScopeError> {
             if self.allow_root && self.journal.matches(None) {
                 FakeJournal::with_scope(
                     self,
@@ -938,7 +1010,7 @@ fn transfers_and_probes_report_a_refused_scope_on_every_attempt() {
                 )
             } else {
                 self.refusals += 1;
-                Err(crate::TransactionUnavailable)
+                Err(crate::TransactionScopeError::Unavailable)
             }
         }
         fn transaction_matches(&self, tx: Option<&TransactionContext>) -> bool {
@@ -955,6 +1027,23 @@ fn transfers_and_probes_report_a_refused_scope_on_every_attempt() {
     };
     let from_handler: &dyn ResourceHandler<Chemical> = &from;
     let to_handler: &dyn ResourceHandler<Chemical> = &to;
+    assert_eq!(
+        move_resources(&mut host, from_handler, to_handler, |_| true, 0, None),
+        Ok(0)
+    );
+    assert_eq!(
+        move_resources_stacking(&mut host, from_handler, to_handler, |_| true, 0, None),
+        Ok(0)
+    );
+    assert_eq!(
+        move_first(&mut host, from_handler, to_handler, |_| true, 0, None),
+        Ok(None)
+    );
+    assert_eq!(
+        move_first_stacking(&mut host, from_handler, to_handler, |_| true, 0, None),
+        Ok(None)
+    );
+    assert_eq!(host.refusals, 0);
     let empty = EmptyResourceHandler;
     let no_match: [(&dyn ResourceHandler<Chemical>, bool); 2] =
         [(&empty, true), (from_handler, false)];

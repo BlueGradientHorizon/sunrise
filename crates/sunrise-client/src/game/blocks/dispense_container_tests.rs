@@ -2,11 +2,16 @@
 //! that returns it fills and empties a bucket-like container (its empty and full forms
 //! different items), picks up before it places, sends the remainder into the dispenser or out
 //! of its front, and dispenses an unchanged container where nothing moves.
-use crate::game::{Dim, Game, api_values::test_snapshot, dispense_fixture, transactions::After};
+use crate::game::{
+    Dim, Game, api_values::test_snapshot, dispense_fixture,
+    native_entity_refs::tests::run_fresh_cases, transactions::After,
+};
 use mod_api::{prelude::ItemsServerHost, *};
 use std::sync::{Arc, Mutex};
 use sunrise_client::{chunk::Chunk, items::ItemStack};
-use sunrise_core::{geometry::Direction, position::BlockPos, ticks::TickTypeId};
+use sunrise_core::{
+    geometry::Direction, position::BlockPos, random::RandomSource, ticks::TickTypeId,
+};
 use sunrise_world::{fluid::FluidKind, registry::BlockStateId};
 
 /// The dispenser, facing east, and the block in front of it.
@@ -50,11 +55,27 @@ impl ItemPart for DetachedReply {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct PickupSnapshot {
+    second_slot_count: u32,
+    next_random: i32,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Replacement {
+    #[default]
+    None,
+    DuringTransfer,
+    BeforeNotice,
+}
+
 #[derive(Clone, Default)]
 struct Notices {
     contents: Arc<Mutex<Vec<DimensionKey>>>,
     fluids: Arc<Mutex<Vec<(String, String)>>>,
     reopen_on_pickup: bool,
+    pickup_snapshots: Option<Arc<Mutex<Vec<PickupSnapshot>>>>,
+    replacement: Replacement,
 }
 
 #[mod_api::sunrise_part]
@@ -94,6 +115,8 @@ impl Hooks for Containers {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
         let dispenser = r.block_key("minecraft:dispenser");
         r.block_part(dispenser, self.0.clone());
+        let chest = r.block_key("minecraft:chest");
+        r.block_part(chest, self.0.clone());
         let dandelion = r.block_key("minecraft:dandelion");
         r.block_part(dandelion, SchedulingLiquidContainer);
         let stick = r.item_key("minecraft:stick");
@@ -119,11 +142,16 @@ impl Hooks for Containers {
                 )
             },
         );
+        let replace_during_transfer = self.0.replacement == Replacement::DuringTransfer;
         r.item_capability(
             &ITEM_FLUIDS,
             "minecraft:glass_bottle",
-            |_: &mut dyn ServerHost, place: &ItemPlace| {
-                Some(Box::new(Jug(place.clone())) as Box<dyn ResourceHandler<FluidResource>>)
+            move |_: &mut dyn ServerHost, place: &ItemPlace| {
+                Some(Box::new(Jug {
+                    place: place.clone(),
+                    replace_during_transfer,
+                })
+                    as Box<dyn ResourceHandler<FluidResource>>)
             },
         );
         r.item_capability(
@@ -145,8 +173,23 @@ impl Hooks for Containers {
             event.event,
             "minecraft:fluid_pickup" | "minecraft:fluid_place"
         ) {
-            if self.0.reopen_on_pickup && event.event == "minecraft:fluid_pickup" {
-                host.transaction(|_, _| Ok::<_, ()>(())).unwrap();
+            if event.event == "minecraft:fluid_pickup" {
+                if self.0.reopen_on_pickup {
+                    host.transaction(|_, _| Ok::<_, ()>(())).unwrap();
+                }
+                if self.0.replacement == Replacement::BeforeNotice {
+                    replace_dispenser_with_chest(host, event.dimension);
+                }
+                if let Some(snapshots) = &self.0.pickup_snapshots {
+                    let level = host.level(event.dimension).unwrap();
+                    let items = level.capability(host, &ITEMS, DISPENSER, None).unwrap();
+                    let second_slot_count = items.amount(host, 1);
+                    let next_random = level.with_random(host, |random| random.next_int()).unwrap();
+                    snapshots.lock().unwrap().push(PickupSnapshot {
+                        second_slot_count,
+                        next_random,
+                    });
+                }
             }
             self.0
                 .fluids
@@ -160,7 +203,10 @@ impl Hooks for Containers {
 
 /// An empty glass bottle a bucket of water turns into a potion: a mod's handler that acts on
 /// every container its place shows, as one written for a single container may.
-struct Jug(ItemPlace);
+struct Jug {
+    place: ItemPlace,
+    replace_during_transfer: bool,
+}
 impl ResourceHandler<FluidResource> for Jug {
     fn size(&self, _: &mut dyn ServerHost) -> usize {
         1
@@ -187,11 +233,14 @@ impl ResourceHandler<FluidResource> for Jug {
         }
         let potion = mod_api::__private::item_key("minecraft:potion").unwrap();
         let potion = ItemResource::of(&mod_api::ItemStack::new(potion, 1).unwrap());
-        let all = self.0.amount(host);
-        match self.0.exchange(host, tx, &potion, all) == all {
-            true => 1000,
-            false => 0,
+        let all = self.place.amount(host);
+        if self.place.exchange(host, tx, &potion, all) != all {
+            return 0;
         }
+        if self.replace_during_transfer {
+            replace_dispenser_with_chest(host, "minecraft:overworld");
+        }
+        1000
     }
     fn extract_at(
         &self,
@@ -263,6 +312,23 @@ impl ResourceHandler<FluidResource> for MultiStepJug {
     ) -> u32 {
         0
     }
+}
+
+fn replace_dispenser_with_chest(host: &mut dyn ServerHost, dimension: &str) {
+    let level = host.level(dimension).unwrap();
+    let chest = host.block_state_id("minecraft:chest").unwrap();
+    assert_eq!(
+        level.set_block(host, DISPENSER, chest, BlockUpdateFlags::NONE),
+        Ok(true)
+    );
+}
+
+fn spawn_dispenser_case(test: &str) -> bool {
+    run_fresh_cases(
+        &format!("game::dispense_container_tests::{test}"),
+        "SUNRISE_DISPENSE_CONTAINER_CASE",
+        &["dispenser"],
+    )
 }
 
 /// A dedicated server with a chunk at the origin, a stone floor, an empty dispenser facing east
@@ -352,6 +418,10 @@ fn item(stack: &Option<ItemStack>) -> Option<(String, u32)> {
 #[test]
 #[ignore = "daily"]
 fn a_bucket_like_container_fills_from_a_source_and_empties_into_the_air() {
+    if spawn_dispenser_case("a_bucket_like_container_fills_from_a_source_and_empties_into_the_air")
+    {
+        return;
+    }
     with_dispenser(|game, _| {
         set_front(game, "minecraft:water");
         let filled = dispense(game, ItemStack::new("minecraft:bucket", 1));
@@ -367,6 +437,11 @@ fn a_bucket_like_container_fills_from_a_source_and_empties_into_the_air() {
 #[test]
 #[ignore = "daily"]
 fn a_stack_of_three_in_a_full_dispenser_drops_the_new_container_out_of_the_front() {
+    if spawn_dispenser_case(
+        "a_stack_of_three_in_a_full_dispenser_drops_the_new_container_out_of_the_front",
+    ) {
+        return;
+    }
     with_dispenser(|game, _| {
         let pos = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
         for cell in game.world.block_entities.get_mut(&pos).unwrap().slots_mut() {
@@ -393,6 +468,11 @@ fn a_stack_of_three_in_a_full_dispenser_drops_the_new_container_out_of_the_front
 #[test]
 #[ignore = "daily"]
 fn a_failed_transfer_dispenses_one_unchanged_container_and_changes_nothing() {
+    if spawn_dispenser_case(
+        "a_failed_transfer_dispenses_one_unchanged_container_and_changes_nothing",
+    ) {
+        return;
+    }
     with_dispenser(|game, _| {
         set_front(game, "minecraft:stone");
         dispense_fixture::start_recording();
@@ -412,6 +492,9 @@ fn a_failed_transfer_dispenses_one_unchanged_container_and_changes_nothing() {
 #[test]
 #[ignore = "daily"]
 fn oversized_dispenser_stacks_keep_their_count_until_the_slot_write() {
+    if spawn_dispenser_case("oversized_dispenser_stacks_keep_their_count_until_the_slot_write") {
+        return;
+    }
     with_dispenser(|game, _| {
         let stack = ItemStack::new("minecraft:bucket", 20);
         game.world
@@ -447,6 +530,11 @@ fn oversized_dispenser_stacks_keep_their_count_until_the_slot_write() {
 #[test]
 #[ignore = "daily"]
 fn removed_max_stack_size_limits_dispenser_placement_and_scratch_insertion() {
+    if spawn_dispenser_case(
+        "removed_max_stack_size_limits_dispenser_placement_and_scratch_insertion",
+    ) {
+        return;
+    }
     with_dispenser(|game, _| {
         game.world
             .block_entities
@@ -485,6 +573,9 @@ fn removed_max_stack_size_limits_dispenser_placement_and_scratch_insertion() {
 #[test]
 #[ignore = "daily"]
 fn oversized_failed_transfer_runs_the_helpers_default_dispense() {
+    if spawn_dispenser_case("oversized_failed_transfer_runs_the_helpers_default_dispense") {
+        return;
+    }
     with_dispenser(|game, _| {
         set_front(game, "minecraft:stone");
         dispense_fixture::start_recording();
@@ -506,6 +597,9 @@ fn oversized_failed_transfer_runs_the_helpers_default_dispense() {
 #[test]
 #[ignore = "daily"]
 fn dispenser_remainder_merges_without_contents_changed() {
+    if spawn_dispenser_case("dispenser_remainder_merges_without_contents_changed") {
+        return;
+    }
     with_dispenser_notices(Notices::default(), |game, _, notices| {
         let notices = &notices.contents;
         game.world
@@ -514,11 +608,11 @@ fn dispenser_remainder_merges_without_contents_changed() {
             .unwrap()
             .slots_mut()[0] = Some(ItemStack::new("minecraft:stick", 10));
         let merge = |game: &mut Game<'_>| {
-            game.add_to_inventory_or_dispense(
-                SLOT_POS,
-                Direction::East,
-                ItemStack::new("minecraft:stick", 2),
-            );
+            let mut offered = ItemStack::new("minecraft:stick", 2);
+            offered
+                .data_mut()
+                .set_other("minecraft:max_stack_size", Some(Tag::Int(64)));
+            game.add_to_inventory_or_dispense(SLOT_POS, Direction::East, offered);
             assert_eq!(
                 game.world.block_entities.get(&SLOT_POS).unwrap().slots()[0],
                 Some(ItemStack::new("minecraft:stick", 12))
@@ -551,6 +645,9 @@ fn dispenser_remainder_merges_without_contents_changed() {
 #[test]
 #[ignore = "daily"]
 fn nested_dispense_settles_in_the_command_source_level() {
+    if spawn_dispenser_case("nested_dispense_settles_in_the_command_source_level") {
+        return;
+    }
     with_dispenser_notices(Notices::default(), |game, _, notices| {
         let notices = &notices.contents;
         let marker = ItemStack::new("minecraft:stick", 10);
@@ -676,6 +773,11 @@ fn nested_dispense_settles_in_the_command_source_level() {
 #[test]
 #[ignore = "daily"]
 fn nested_dispense_container_publishes_fluid_changes_only_in_the_source_level() {
+    if spawn_dispenser_case(
+        "nested_dispense_container_publishes_fluid_changes_only_in_the_source_level",
+    ) {
+        return;
+    }
     with_dispenser_notices(Notices::default(), |game, _, notices| {
         let overworld = game.server_source();
         let mut nether = overworld;
@@ -809,6 +911,11 @@ fn nested_dispense_container_publishes_fluid_changes_only_in_the_source_level() 
 #[test]
 #[ignore = "daily"]
 fn a_transaction_in_the_fluid_pickup_listener_does_not_delay_later_attachment_removal() {
+    if spawn_dispenser_case(
+        "a_transaction_in_the_fluid_pickup_listener_does_not_delay_later_attachment_removal",
+    ) {
+        return;
+    }
     use sunrise_mod_runtime::attachments::{AttachmentType, Holder};
 
     static VALUE: AttachmentType<i32> = AttachmentType {
@@ -880,7 +987,129 @@ fn a_transaction_in_the_fluid_pickup_listener_does_not_delay_later_attachment_re
 
 #[test]
 #[ignore = "daily"]
+fn dispenser_replacement_during_transfer_does_not_receive_the_remainder() {
+    if spawn_dispenser_case("dispenser_replacement_during_transfer_does_not_receive_the_remainder")
+    {
+        return;
+    }
+    run_dispenser_replacement(Replacement::DuringTransfer, |game, level| {
+        assert!(level.block_tick(game, DISPENSER));
+        assert!(
+            game.dropped
+                .iter()
+                .any(|item| item.stack.item.as_ref() == "minecraft:potion")
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn dispenser_replacement_before_notice_replay_does_not_receive_the_notice() {
+    if spawn_dispenser_case(
+        "dispenser_replacement_before_notice_replay_does_not_receive_the_notice",
+    ) {
+        return;
+    }
+    run_dispenser_replacement(Replacement::BeforeNotice, |game, level| {
+        game.storage_transaction(|game, _| {
+            assert!(level.block_tick(game, DISPENSER));
+            assert_eq!(
+                game.world.block_entities.get(&SLOT_POS).unwrap().slots()[1],
+                Some(ItemStack::new("minecraft:potion", 1))
+            );
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+    });
+}
+
+fn run_dispenser_replacement(replacement: Replacement, tick: impl FnOnce(&mut Game<'_>, LevelRef)) {
+    let notices = Notices {
+        replacement,
+        ..Notices::default()
+    };
+    with_dispenser_notices(notices, |game, level, notices| {
+        game.world
+            .block_entities
+            .get_mut(&SLOT_POS)
+            .unwrap()
+            .slots_mut()[0] = Some(ItemStack::new("minecraft:glass_bottle", 2));
+        let original = game.world.block_entities.identity(SLOT_POS).unwrap();
+        set_front(game, "minecraft:water");
+        tick(game, level);
+        assert_eq!(front(game), state(game, "minecraft:air"));
+        let [x, y, z] = DISPENSER;
+        assert_eq!(game.world.block(x, y, z), state(game, "minecraft:chest"));
+        let holder = game.world.block_entities.identity(SLOT_POS).unwrap();
+        assert_ne!(holder, original);
+        let contents = game.world.block_entities.get(&SLOT_POS).unwrap().slots();
+        assert!(
+            contents.iter().all(Option::is_none),
+            "replacement contents: {contents:?}"
+        );
+        assert!(
+            notices.contents.lock().unwrap().is_empty(),
+            "replacement was notified"
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn fluid_pickup_publishes_before_remainder_insertion_or_overflow_draws() {
+    if spawn_dispenser_case("fluid_pickup_publishes_before_remainder_insertion_or_overflow_draws") {
+        return;
+    }
+    let snapshots = Arc::new(Mutex::new(Vec::new()));
+    let notices = Notices {
+        pickup_snapshots: Some(snapshots.clone()),
+        ..Notices::default()
+    };
+    with_dispenser_notices(notices, |game, _, _| {
+        for full in [false, true] {
+            let slots = game
+                .world
+                .block_entities
+                .get_mut(&SLOT_POS)
+                .unwrap()
+                .slots_mut();
+            slots[0] = Some(ItemStack::new("minecraft:bucket", 2));
+            slots[1..].fill(full.then(|| ItemStack::new("minecraft:stone", 64)));
+            set_front(game, "minecraft:water");
+            // Call the behaviour directly so the dispenser's slot-selection draw is not involved.
+            let next_random = game.world.random.clone().next_int();
+            let left = dispense(game, ItemStack::new("minecraft:bucket", 2));
+            assert_eq!(left, Some(ItemStack::new("minecraft:bucket", 1)));
+            assert_eq!(
+                std::mem::take(&mut *snapshots.lock().unwrap()),
+                [PickupSnapshot {
+                    second_slot_count: if full { 64 } else { 0 },
+                    next_random,
+                }]
+            );
+            if full {
+                assert_eq!(game.dropped.len(), 1);
+                assert_eq!(
+                    game.dropped[0].stack,
+                    ItemStack::new("minecraft:water_bucket", 1)
+                );
+            } else {
+                let slots = game.world.block_entities.get(&SLOT_POS).unwrap().slots();
+                assert_eq!(slots[1], Some(ItemStack::new("minecraft:water_bucket", 1)));
+                assert!(game.dropped.is_empty());
+            }
+        }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_click() {
+    if spawn_dispenser_case(
+        "a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_click",
+    ) {
+        return;
+    }
     with_dispenser(|game, _| {
         crate::game::native_item_places::tests::open_to_lan(game);
         set_front(game, "minecraft:water");
@@ -967,6 +1196,9 @@ fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_cli
 #[test]
 #[ignore = "daily"]
 fn a_stack_of_custom_containers_gives_their_handler_one_at_a_time() {
+    if spawn_dispenser_case("a_stack_of_custom_containers_gives_their_handler_one_at_a_time") {
+        return;
+    }
     with_dispenser(|game, _| {
         set_front(game, "minecraft:water");
         let left = dispense(game, ItemStack::new("minecraft:glass_bottle", 3));
@@ -992,7 +1224,12 @@ fn a_stack_of_custom_containers_gives_their_handler_one_at_a_time() {
 #[test]
 #[ignore = "daily"]
 fn dispense_container_preserves_first_slot_caps_one_by_one_insert_and_rolls_back_in_enclosing_tx() {
-    with_dispenser(|game, _| {
+    if spawn_dispenser_case(
+        "dispense_container_preserves_first_slot_caps_one_by_one_insert_and_rolls_back_in_enclosing_tx",
+    ) {
+        return;
+    }
+    with_dispenser(|game, level| {
         let pos = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
 
         // 1. Actual final first slot (`4 -> 2`, not `stack - 1 = 3`) plus `OneByOne`-capped
@@ -1078,56 +1315,53 @@ fn dispense_container_preserves_first_slot_caps_one_by_one_insert_and_rolls_back
             "aborted tx must publish no events: {lines:?}"
         );
 
-        // 4. Aborting an enclosing transaction on a full dispenser (overflow drop path) defers
-        //    and discards both the dropped remainder and its click/smoke/pickup events; committing
-        //    publishes them.
+        // 4. Exercise the full tick, including the behaviour reply's own click and smoke.
+        //    Every slot holds empty buckets so the new filled one must be dropped regardless
+        //    of which slot the dispenser draws.
         for cell in game.world.block_entities.get_mut(&pos).unwrap().slots_mut() {
-            *cell = Some(ItemStack::new("minecraft:stone", 64));
+            *cell = Some(ItemStack::new("minecraft:bucket", 3));
         }
-        dispense_fixture::start_recording();
-        let aborted_drop = game.storage_transaction(|game, _| {
-            let mut answer = None;
-            let dim = game.dim.id();
-            let stack = ItemStack::new("minecraft:bucket", 3);
-            game.native_dispense_item(dim, DISPENSER, Direction::East, &stack, &mut answer);
-            assert!(answer.is_some());
-            assert!(game.dropped.is_empty(), "drop must wait for root commit");
-            Err::<(), _>(())
-        });
-        let lines = dispense_fixture::stop_recording();
-        assert_eq!(aborted_drop, Err(()));
-        assert_eq!(front(game), state(game, "minecraft:water"));
-        assert!(game.dropped.is_empty());
-        assert!(
-            lines.is_empty(),
-            "aborted overflow must publish no events: {lines:?}"
-        );
-
-        dispense_fixture::start_recording();
-        let committed_drop = game.storage_transaction(|game, _| {
-            let mut answer = None;
-            let dim = game.dim.id();
-            let stack = ItemStack::new("minecraft:bucket", 3);
-            game.native_dispense_item(dim, DISPENSER, Direction::East, &stack, &mut answer);
-            assert!(answer.is_some());
-            assert!(game.dropped.is_empty(), "drop waits until root commit");
-            Ok::<_, ()>(())
-        });
-        let lines = dispense_fixture::stop_recording();
-        assert_eq!(committed_drop, Ok(()));
-        assert_eq!(front(game), state(game, "minecraft:air"));
-        assert_eq!(game.dropped.len(), 1);
-        assert_eq!(&*game.dropped[0].stack.item, "minecraft:water_bucket");
-        assert!(
-            lines
+        for commit in [false, true] {
+            dispense_fixture::start_recording();
+            let outcome = game.storage_transaction(|game, _| {
+                assert!(level.block_tick(game, DISPENSER));
+                assert_eq!(front(game), state(game, "minecraft:air"));
+                assert!(game.dropped.is_empty(), "drop must wait for root commit");
+                commit.then_some(()).ok_or(())
+            });
+            let lines = dispense_fixture::stop_recording();
+            assert_eq!(outcome, commit.then_some(()).ok_or(()));
+            if commit {
+                assert_eq!(front(game), state(game, "minecraft:air"));
+                assert_eq!(game.dropped.len(), 1);
+                assert_eq!(&*game.dropped[0].stack.item, "minecraft:water_bucket");
+                assert_eq!(
+                    lines,
+                    [
+                        "G 6,64,5 minecraft:fluid_pickup",
+                        "L 1000 5,64,5 0", // overflow sound
+                        "L 2000 5,64,5 5", // overflow smoke
+                        "L 1000 5,64,5 0", // reply sound
+                        "L 2000 5,64,5 5", // reply smoke
+                    ]
+                );
+            } else {
+                assert_eq!(front(game), state(game, "minecraft:water"));
+                assert!(game.dropped.is_empty());
+                assert!(lines.is_empty(), "abort must be quiet: {lines:?}");
+            }
+            let count: u32 = game
+                .world
+                .block_entities
+                .get(&pos)
+                .unwrap()
+                .slots()
                 .iter()
-                .any(|line| line.ends_with("minecraft:fluid_pickup")),
-            "{lines:?}"
-        );
-        assert!(
-            lines.iter().any(|line| line.starts_with("L 1000 ")),
-            "{lines:?}"
-        );
-        assert_eq!(game.live_scratch_count(), 0);
+                .flatten()
+                .map(|stack| stack.count)
+                .sum();
+            assert_eq!(count, 27 - u32::from(commit));
+            assert_eq!(game.live_scratch_count(), 0);
+        }
     });
 }

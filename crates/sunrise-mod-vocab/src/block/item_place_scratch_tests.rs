@@ -638,33 +638,24 @@ fn foreign_host_scratch_place_reads_none_and_writes_zero() {
 }
 
 #[test]
-fn wrong_transaction_context_panics_before_mutating_lent_scratch_slot() {
+fn wrong_transaction_context_is_refused_before_mutating_lent_scratch_slot() {
     let (mut host_a, r) = host_with(&[("minecraft:stone", 64)]);
     let stone = &r[0];
     let stone_tagged = with_custom_value(stone, 9);
     let mut host_b = host_a.clone();
 
-    // Ancestor transaction context panics before mutating.
+    // Ancestor transaction context is refused before mutating.
     let ancestor = host_a.scratch_stack(stone.to_stack(5).unwrap(), |host, outer_tx, place| {
         host.transaction(|host, inner_tx| {
             assert_eq!((outer_tx.depth(), inner_tx.depth()), (0, 1));
-            assert!(
-                catch_unwind(AssertUnwindSafe(|| place.insert(host, outer_tx, stone, 1))).is_err()
-            );
-            assert!(
-                catch_unwind(AssertUnwindSafe(|| place.extract(host, outer_tx, stone, 1))).is_err()
-            );
-            assert!(
-                catch_unwind(AssertUnwindSafe(|| {
-                    place.exchange(host, outer_tx, &stone_tagged, 5)
-                }))
-                .is_err()
-            );
-            assert!(
-                catch_unwind(AssertUnwindSafe(|| {
-                    place.edit(host, outer_tx, |editor| editor.set_damage(2))
-                }))
-                .is_err()
+            assert_eq!(place.insert(host, outer_tx, stone, 1), 0);
+            assert_eq!(place.extract(host, outer_tx, stone, 1), 0);
+            assert_eq!(place.exchange(host, outer_tx, &stone_tagged, 5), 0);
+            assert_eq!(
+                place.edit(host, outer_tx, |_| panic!(
+                    "invalid context reached the editor"
+                )),
+                Err(ItemPlaceEditError::InvalidContext)
             );
             assert_eq!(place.amount(host), 5);
             assert_eq!(place.resource(host), Some(stone.clone()));
@@ -680,29 +671,19 @@ fn wrong_transaction_context_panics_before_mutating_lent_scratch_slot() {
     });
     assert_eq!(ancestor, Ok(((), Some(stone.to_stack(4).unwrap()))));
 
-    // Foreign host transaction context at the same depth panics before mutating.
+    // Foreign host transaction context at the same depth is refused before mutating.
     host_b
         .transaction(|_host_b, foreign_tx| {
             let res =
                 host_a.scratch_stack(stone.to_stack(5).unwrap(), |host_a, own_tx, place_a| {
                     assert_eq!((foreign_tx.depth(), own_tx.depth()), (0, 0));
-                    assert!(
-                        catch_unwind(AssertUnwindSafe(|| {
-                            place_a.insert(host_a, foreign_tx, stone, 1)
-                        }))
-                        .is_err()
-                    );
-                    assert!(
-                        catch_unwind(AssertUnwindSafe(|| {
-                            place_a.extract(host_a, foreign_tx, stone, 1)
-                        }))
-                        .is_err()
-                    );
-                    assert!(
-                        catch_unwind(AssertUnwindSafe(|| {
-                            place_a.edit(host_a, foreign_tx, |editor| editor.set_damage(2))
-                        }))
-                        .is_err()
+                    assert_eq!(place_a.insert(host_a, foreign_tx, stone, 1), 0);
+                    assert_eq!(place_a.extract(host_a, foreign_tx, stone, 1), 0);
+                    assert_eq!(
+                        place_a.edit(host_a, foreign_tx, |_| panic!(
+                            "invalid context reached the editor"
+                        )),
+                        Err(ItemPlaceEditError::InvalidContext)
                     );
                     assert_eq!(place_a.amount(host_a), 5);
                     assert_eq!(place_a.with_stack(host_a, |view| view.damage()), Some(0));
@@ -754,7 +735,7 @@ fn invalid_scratch_stack_and_unavailable_host_refuse_without_running_closure() {
     assert!(host.scratch_kept_frame_counts().is_empty());
 
     // `dispense_container` treats scratch validation failures as unhandled (`None`) rather
-    // than falling through to `dispense_default`, aborting its outer transaction cleanly.
+    // than falling through to `dispense_default`, without opening a transaction.
     for (invalid, _) in &cases {
         let event = crate::DispenseItemEvent {
             dimension: "minecraft:overworld",
@@ -767,7 +748,7 @@ fn invalid_scratch_stack_and_unavailable_host_refuse_without_running_closure() {
             None
         );
     }
-    assert_eq!(host.journal.closed(), &[(1, false); 3]);
+    assert!(host.journal.closed().is_empty());
     assert_eq!(host.scratch_live_count(), 0);
     assert!(host.scratch_kept_frame_counts().is_empty());
 

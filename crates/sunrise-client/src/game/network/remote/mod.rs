@@ -20,7 +20,7 @@ mod interaction_actions;
 mod interaction_prediction;
 use inventory::{
     CREATIVE_SYNCED, Predicted, changed_slots, creative_sync_slot, creative_sync_stacks,
-    mark_synced, menu_items, predict_clicks,
+    mark_synced, menu_items, predict_clicks, predict_clicks_with,
 };
 mod level_format;
 mod raw_ingress;
@@ -2714,7 +2714,7 @@ pub(crate) mod tests {
     }
 
     /// Spawns the connected client in the overworld as entity 7, profile 42.
-    pub(super) fn spawn_menu_test(
+    pub(crate) fn spawn_menu_test(
         game: &mut super::Game<'_>,
     ) -> sunrise_protocol::packets::play::SpawnInfo {
         use crate::game::remote::RemoteDimensionEntry;

@@ -96,7 +96,7 @@ A fluid container can pick up and place fluid in the world as a bucket does
 
 The three that move fluid each run in their own transaction, nested in one you have
 open. The world-fluid writes they use take the innermost `&TransactionContext` and
-panic if you pass a context from another frame. `level.pickup_fluid(host, pos, player, tx)`
+refuse a different context without making a change. `level.pickup_fluid(host, pos, player, tx)`
 and `level.place_fluid(host, pos, fluid, player, validate, tx)` decide everything at the
 call against the world as the transaction has it and write the block at once, so a
 second pickup of the same source in the transaction gets nothing. A block the fluid

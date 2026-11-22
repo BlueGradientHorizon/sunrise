@@ -182,7 +182,9 @@ impl ResourceHandler<ItemResource> for ContainerItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -197,7 +199,9 @@ impl ResourceHandler<ItemResource> for ContainerItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         self.place(host, index)
             .map_or(0, |place| place.extract(host, tx, resource, amount))
     }
@@ -284,7 +288,9 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -299,7 +305,9 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         self.place(host, index)
             .map_or(0, |place| place.extract(host, tx, resource, amount))
     }
@@ -436,7 +444,9 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -451,7 +461,9 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -475,7 +487,9 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         resource: &ItemResource,
         amount: u32,
     ) -> Result<u32, TransactionError<Overanswered>> {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         if !live(host, self.entity) {
             return Ok(0);
         }

@@ -125,24 +125,28 @@ resources, up to `max`, in source index order. The helper probes an extraction a
 back before asking the destination to insert. A step commits only if the source can then extract
 exactly what went in. An overanswer rolls back the entire helper call, even if you handle the error
 and commit the enclosing transaction. Use `Some(tx)` for the innermost transaction or `None` to open a
-root transaction. A foreign or ancestor context, or `None` while a transaction is open, panics.
-A refused root or nested scope returns `Err(TransactionError::Unavailable)`; it is not a
-successful zero transfer. Pass capability references to keep their provider names in
+root transaction. A foreign or ancestor context, or `None` while a transaction is open, returns
+`TransactionError::InvalidContext`. A scope that could not open returns `Unavailable`;
+a rolled-back commit returns `CommitRefused`. None of these is a successful zero transfer.
+A valid request for zero moves nothing without opening a scope. Each source index is visited
+once, probing the amount still requested. Pass capability references to keep their provider names in
 `TransactionError::Aborted(Overanswered)` errors. For a handler
 you compose directly, pass it as `&dyn ResourceHandler<R>`; the helper does not infer a provider.
 
-`move_resources_stacking` tops up matching destination indices before filling empty ones.
+`move_resources_stacking` tries occupied destination indices before empty ones; the handler decides
+which resources each index accepts.
 `move_first` and `move_first_stacking` move only the first resource the destination accepts,
 including more of the same resource from later source indices, and return which and how much.
 
 `index_of`, `contains`, `is_empty`, `is_full` and `is_valid` query the whole handler. `is_full`
 uses general capacity at empty indices, so an empty, zero-capacity index is already full.
 `comparator_signal` averages the fill over all indices: empty and zero-capacity indices contribute
-zero and overfilled indices contribute at most one. `insert_stacking` tops up matching indices
-before filling empty ones; an overanswer rolls it back and returns `TransactionError::Aborted(Overanswered)`. `extract_first`
+zero and overfilled indices contribute at most one. `insert_stacking` tries occupied indices
+before empty ones; an overanswer rolls it back and returns `TransactionError::Aborted(Overanswered)`. `extract_first`
 takes the first extractable resource matching a filter. `find_extractable_resource` and a
-positive-amount `extract_first` open a rollback scope before reading the handler. Each candidate
-is probed with its full int amount and rolled back before trying the next. These three helpers
+positive-amount `extract_first` open one rollback scope for the scan. After a resource passes the
+filter, its full int amount is probed. Later candidates see earlier attempts' journaled work;
+all of it rolls back when the scan finishes, before `extract_first` opens its extraction. These three helpers
 follow the same rule for `Some(tx)` and `None`. A scan with no match returns `Ok(None)` only if
 its required scopes opened; an empty handler or a filter that rejects everything still returns
 `Err(TransactionError::Unavailable)` if the host refuses the scope.

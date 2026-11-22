@@ -587,6 +587,8 @@ impl crate::NoBackend for StackWriteError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CraftedByError {
+    /// The supplied context does not identify this host's innermost open transaction.
+    InvalidContext,
     /// The place is not a menu slot or the carried stack, or it no longer holds a stack.
     NotHeld,
     /// The host has no server game backend, or the place is no longer usable.

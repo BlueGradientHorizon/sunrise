@@ -162,7 +162,9 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         if !self.is_valid(host, index, resource) {
             return 0;
         }
@@ -186,7 +188,9 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let Some((held, have)) = self
             .with_entry(host, index, Clone::clone)
             .filter(|(held, _)| held == resource)
@@ -250,7 +254,9 @@ impl EnergyHandler for AttachedEnergy {
         self.capacity
     }
     fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let held = self.amount(host);
         match amount
             .min(self.max_insert)
@@ -261,7 +267,9 @@ impl EnergyHandler for AttachedEnergy {
         }
     }
     fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let held = self.amount(host);
         match amount.min(self.max_extract).min(held) {
             0 => 0,

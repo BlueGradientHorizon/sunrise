@@ -916,7 +916,7 @@ pub mod tests {
                     &'loan mut dyn BlockEntityAccess,
                     &'loan mod_vocab::TransactionContext,
                 ) -> bool,
-            ) -> Result<(), mod_vocab::TransactionUnavailable> {
+            ) -> Result<bool, mod_vocab::TransactionScopeError> {
                 unreachable!()
             }
         }

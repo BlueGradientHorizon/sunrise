@@ -1,7 +1,6 @@
-# Follow-up to debt-59-mounted-screen-widgets.toml. Opening, Closing, and
-# screen_key_pressed_post (hook:screen_opening, hook:screen_closing,
-# hook:screen_key_pressed_post) honor their existing contracts here; none
-# changes its surface ID relative to main in item 59's diff.
+# Follow-up to debt-59-mounted-screen-widgets.toml. Opening and Closing
+# retain their existing contracts here. The v3 delivery changes for
+# screen_key_pressed_post and screen_char_typed_post are listed in that note.
 ids = [
     "hook:screen_init_post",
     "type:client::widgets::TextField",

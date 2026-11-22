@@ -735,7 +735,7 @@ impl Game<'_> {
     /// `settle_title_mode`, `show_title`, `hide_title`); what is left, an
     /// overlay closing, is announced here, through the same `screen_change`
     /// and in the same order, but after the change. `screen_init_post`
-    /// follows for every kind, on opening and on a resize.
+    /// follows on opening and when a resize rebuilds the receiver's children.
     fn observe_change(&mut self, current: Option<ObservedScreen>) {
         let changed = match (&self.screen_state.observed, &current) {
             (Some(old), Some(new)) => {
@@ -778,15 +778,38 @@ impl Game<'_> {
             }
             return;
         }
-        if matches!(
-            (&self.screen_state.observed, &current),
-            (Some(old), Some(new)) if old.screen_size != new.screen_size || old.rect != new.rect
-        ) && let Some(new) = &current
+        if let (Some(old), Some(new)) = (&self.screen_state.observed, &current)
+            && old.screen_size != new.screen_size
+            // Screen.resize calls repositionElements. Screen's default rebuilds
+            // widgets; these receivers override it to relayout existing children.
+            // A panel rect can also move independently (e.g. opening a recipe book).
+            && !matches!(
+                new.id,
+                "options"
+                    | "world_options"
+                    | "stats"
+                    | "advancements"
+                    | "social"
+                    | "debug_options"
+                    | "dialog"
+                    | "dialog_warning"
+                    | "confirm_link"
+                    | "link_prompt"
+                    | "code_of_conduct"
+                    | "world_select"
+                    | "world_create"
+                    | "world_create_flat"
+                    | "world_create_buffet"
+                    | "world_edit"
+                    | "world_recover"
+                    | "multiplayer"
+                    | "multiplayer_warning"
+                    | "disconnected"
+                    | "onboarding"
+            )
         {
-            self.screen_state.observed = current.clone();
             self.clear_screen_widgets();
             self.init_screen_widgets(&new.view());
-            return;
         }
         self.screen_state.observed = current;
     }

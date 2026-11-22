@@ -66,7 +66,9 @@ change what matches. The resource need not be valid for insertion: for example, 
 component already on a stack can match even when that stack has no maximum damage.
 
 Pass the innermost `&TransactionContext` to every write, including writes to lent scratch places.
-A foreign or ancestor context panics. Writes that open a nested scope, including exchange,
+A foreign or ancestor context refuses without calling the provider: amount-only writes return
+zero and `edit` returns `ItemPlaceEditError::InvalidContext`. Writes that open a nested scope,
+including exchange,
 restore changes at every level of nested items on abort. If a handler answers more than
 requested, the move is undone and the
 game warns once, naming the mod.
