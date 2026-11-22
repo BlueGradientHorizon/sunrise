@@ -11,7 +11,7 @@ use super::datapack_registry_set::{
 };
 use crate::wire::{Reader, Wire, Writer};
 use std::collections::{BTreeMap, BTreeSet};
-use sunrise_protocol::packets::custom_payload::SERVERBOUND_LIMIT;
+use sunrise_core::vanilla_bytes::SERVERBOUND_CUSTOM_PAYLOAD_LIMIT as SERVERBOUND_LIMIT;
 
 /// The most encoded bytes one split snapshot may carry: the 128 MiB default of NeoForge's
 /// `NeoForgeLocalConfig.splitPacketMaxSizeLimitMb`, applied in `GenericPacketSplitter.receivedPacket`.

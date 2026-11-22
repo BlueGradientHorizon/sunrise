@@ -2,6 +2,9 @@
 
 use crate::nbt::{self, Tag};
 
+/// `ServerboundCustomPayloadPacket.MAX_PAYLOAD_SIZE` in vanilla 26.3.
+pub const SERVERBOUND_CUSTOM_PAYLOAD_LIMIT: usize = 32_767;
+
 /// An outgoing packet body.
 #[derive(Default)]
 pub struct Writer {

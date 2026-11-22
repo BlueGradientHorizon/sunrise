@@ -48,8 +48,7 @@ pub struct PayloadTooLarge {
     pub limit: usize,
 }
 
-/// ServerboundCustomPayloadPacket.MAX_PAYLOAD_SIZE in vanilla 26.3.
-pub const SERVERBOUND_LIMIT: usize = 32_767;
+pub use sunrise_core::vanilla_bytes::SERVERBOUND_CUSTOM_PAYLOAD_LIMIT as SERVERBOUND_LIMIT;
 /// ClientboundCustomPayloadPacket.MAX_PAYLOAD_SIZE in vanilla 26.3.
 pub const CLIENTBOUND_LIMIT: usize = 1_048_576;
 
