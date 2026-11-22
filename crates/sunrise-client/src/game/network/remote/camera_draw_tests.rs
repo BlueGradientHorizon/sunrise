@@ -1,4 +1,5 @@
 use crate::game::native_entity_refs::tests::with_client_game;
+use crate::game::remote::RemoteDimensionEntry;
 use sunrise_client::camera::CameraType;
 use sunrise_client::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
@@ -35,7 +36,11 @@ fn local_player_and_camera_entity_draw_like_the_real_client() {
             portal_cooldown: 0,
             sea_level: 63,
         };
-        game.enter_remote_dimension(&spawn, false, sunrise_client::level_loading::Reason::Other);
+        game.enter_remote_dimension(
+            &spawn,
+            RemoteDimensionEntry::Login,
+            sunrise_client::level_loading::Reason::Other,
+        );
         let remote = game.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;

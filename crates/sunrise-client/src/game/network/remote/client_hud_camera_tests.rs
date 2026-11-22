@@ -1,4 +1,5 @@
 // 26.3 witness: real Hud, recorded into `.local` by `tools/test_camera_parity.py`.
+use crate::game::remote::RemoteDimensionEntry;
 use crate::game::{
     Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
 };
@@ -216,7 +217,7 @@ fn set_up(game: &mut Game<'_>, case: &serde_json::Value) {
         portal_cooldown: 0,
         sea_level: 63,
     };
-    game.enter_remote_dimension(&spawn_info, false, Reason::Other);
+    game.enter_remote_dimension(&spawn_info, RemoteDimensionEntry::Login, Reason::Other);
     let remote = game.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.entity_id = LOCAL;

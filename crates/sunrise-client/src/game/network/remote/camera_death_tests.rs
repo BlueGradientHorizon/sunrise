@@ -1,4 +1,5 @@
 use crate::game::native_entity_refs::tests::with_client_game;
+use crate::game::remote::RemoteDimensionEntry;
 use sunrise_client::{level_loading::Reason, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{
@@ -32,7 +33,7 @@ fn a_spectated_dying_living_entity_squeezes_the_fov_26_3() {
             portal_cooldown: 0,
             sea_level: 63,
         };
-        game.enter_remote_dimension(&spawn, false, Reason::Other);
+        game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
         let remote = game.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
