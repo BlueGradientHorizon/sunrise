@@ -1894,7 +1894,7 @@ fn block_item_glint_uses_blocks_atlas_uv_26_3() {
         "stone gui_draw_posed should emit 3 visible faces (18 glint vertices)"
     );
     let mut matched_faces = std::collections::HashSet::new();
-    for tri in gui_glint_verts.chunks_exact(3) {
+    for tri in gui_glint_verts.as_chunks::<3>().0 {
         let mut face_match = None;
         for (fi, wq) in expected_gui_quads.iter().enumerate() {
             let wpos = parse_quad_pos_bits(&wq["pos_bits"]);
@@ -2360,13 +2360,13 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
     let gui_glint_verts: Vec<&crate::hud::HudVertex> =
         batch.vertices.iter().filter(|v| v.uv[0] >= 2.0).collect();
     assert!(
-        !gui_glint_verts.is_empty() && gui_glint_verts.len() % 3 == 0,
+        !gui_glint_verts.is_empty() && gui_glint_verts.len().is_multiple_of(3),
         "shield_plain gui emitted unexpected glint vertex count {}",
         gui_glint_verts.len()
     );
     let mut front_plate_corners_matched = [false; 4];
     let (front_xy, front_uv) = &quad_corners[3];
-    for tri in gui_glint_verts.chunks_exact(3) {
+    for tri in gui_glint_verts.as_chunks::<3>().0 {
         let matched = quad_corners
             .iter()
             .any(|(xy, uv_bits)| tri.iter().all(|v| vert_matches_quad(v, xy, uv_bits)));
