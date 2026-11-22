@@ -114,13 +114,11 @@ pub(super) struct CombatTracker {
     /// Player`), not a mob whose UUID the TNT's `owner` names.
     pub(super) blast_owner_player: bool,
     pub(super) projectile_attacker: Option<(u32, Text)>,
-    pub(super) enchantment_projectile_attacker: Option<u32>,
+    /// The player shooter identified before the victim took the acting slot.
+    pub(super) enchantment_projectile_attacker: Option<i32>,
     /// The projectile hitting the player now is another player's that
     /// `ServerPlayer.canHarmPlayer` refuses (the `pvp` rule, an ally).
     pub(super) refuse_player_hit: bool,
-    /// The hit on the player now runs its post-attack effects (thorns) only
-    /// if the player lives through it (`WitherSkull.onHitEntity`).
-    pub(super) post_attack_if_alive: bool,
     /// The mob whose swing is being applied, when the caller knows it. Without
     /// it the attacker is the mob nearest to where the hit came from, which
     /// walks every mob.

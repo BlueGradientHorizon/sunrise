@@ -23,6 +23,7 @@ impl Game<'_> {
         let mut attack = match shot.owner {
             Some(Who::Player) => self
                 .player_entity_id_by_connection(shot.guest)
+                .or(self.combat.enchantment_projectile_attacker)
                 .map_or_else(Attack::default, |entity| self.attack_of(entity)),
             Some(Who::Mob(entity)) => self.attack_of(entity as i32),
             None => Attack::default(),
@@ -150,13 +151,7 @@ impl Game<'_> {
             };
         };
         let player = self.own_entity_id() as u32;
-        let mut attack = self.projectile_attack(shot);
-        if shot.owner == Some(Who::Player)
-            && let Some(id) = self.combat.enchantment_projectile_attacker
-        {
-            attack.attacker = id as i32;
-            attack.enchantment_attacker = self.enchantment_actor(id as i32);
-        }
+        let attack = self.projectile_attack(shot);
         let causing = if attack.attacker != 0 {
             attack.attacker
         } else {

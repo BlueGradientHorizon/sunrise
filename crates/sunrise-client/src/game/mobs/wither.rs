@@ -210,30 +210,25 @@ impl Game<'_> {
                 // WitherSkull.onHitEntity's source: the wither launched
                 // it, and `magic` names no entity and no position.
                 self.combat.projectile_owner = owner;
-                // EnchantmentHelper.doPostAttackEffects runs only on a
-                // target that lived.
-                self.combat.post_attack_if_alive = true;
                 if skull.from.is_none() {
                     self.combat.projectile_direct = None;
                 }
-                let hit = self.hurt_player_from(
-                    amount,
-                    skull.from,
-                    super::creatures::damage_type(kind, false),
-                    Some(owner),
-                    false,
-                );
-                if hit && wither_ticks > 0 {
-                    self.give_player_effect("minecraft:wither", wither_ticks, 1);
-                }
+                let damage_type = super::creatures::damage_type(kind, false);
+                let hit =
+                    self.hurt_player_from(amount, skull.from, damage_type, Some(owner), false);
                 // A totem that fired saves the player inside hurtServer:
-                // still alive, so no heal.
+                // still alive, so run the enchantments instead of healing the owner.
                 let killed = self
                     .player
                     .as_ref()
                     .is_some_and(|pl| killed(hit, pl.health.dead_or_dying(), pl.health.totem_used));
                 if killed {
                     self.heal_skull_owner(p, live_owner);
+                } else if hit && live_owner.is_some() {
+                    self.shot_post_attack(p, Who::Player, damage_type);
+                }
+                if hit && wither_ticks > 0 {
+                    self.give_player_effect("minecraft:wither", wither_ticks, 1);
                 }
             }
             // EnderDragonPart.hurtServer: EnderDragon.hurt routes it by the
