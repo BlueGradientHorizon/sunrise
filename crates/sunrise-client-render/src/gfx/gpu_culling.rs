@@ -2798,11 +2798,13 @@ mod tests {
             return None;
         }
         eprintln!("GPU culling on {} ({name})", adapter.get_info().name);
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            required_features: needed | timing,
-            ..Default::default()
-        }))
-        .ok()
+        crate::gfx::test_gpu::optional_device_with(
+            adapter,
+            &wgpu::DeviceDescriptor {
+                required_features: needed | timing,
+                ..Default::default()
+            },
+        )
     }
 
     /// `test` on each device here that draws counts with first instances
@@ -2863,6 +2865,7 @@ mod tests {
     /// (`FADING`, sent as updates or with the whole table): the pass leaves
     /// them to the CPU.
     #[test]
+    #[ignore = "daily"]
     fn the_gpu_draws_what_the_integer_test_keeps() {
         let _gpu = crate::gfx::test_gpu::lock();
         on_each_device(draws_match);
@@ -3223,6 +3226,7 @@ mod tests {
 
     /// Detail times both phases and the uploads and leaves counts and draws as an untimed frame's.
     #[test]
+    #[ignore = "daily"]
     fn detail_times_both_phases_and_leaves_the_draws_alone() {
         let _gpu = crate::gfx::test_gpu::lock();
         on_each_device(|device, queue| {
@@ -3333,6 +3337,7 @@ mod tests {
     /// buffer the device lost after its mapping goes `FAILED`, never copied into
     /// or unmapped again (as `timing::GpuTimer`'s), so the statistics stop.
     #[test]
+    #[ignore = "daily"]
     fn the_statistics_come_back_with_their_frame() {
         let _gpu = crate::gfx::test_gpu::lock();
         use super::super::submit::{AfterSubmit, Job};
@@ -3406,6 +3411,7 @@ mod tests {
     /// its origin's bits to a pixel of its own; a quad turned away leaves its
     /// pixel clear.
     #[test]
+    #[ignore = "daily"]
     fn the_count_draws_draw_each_kept_section_with_its_origin() {
         let _gpu = crate::gfx::test_gpu::lock();
         on_each_device(draws_land);
