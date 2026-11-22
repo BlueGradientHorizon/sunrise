@@ -52,6 +52,7 @@ mod world_helpers;
 use super::screen_build::ObservedScreen;
 use crate::game::api_values::{TryIntoApi, TryIntoEngine};
 use screen_chars::chars_to_type;
+use sunrise_client::containers::ModBlockEntity as EngineBlockEntity;
 
 struct ContentsChangedGuard<'a, 'game> {
     game: &'a mut Game<'game>,
