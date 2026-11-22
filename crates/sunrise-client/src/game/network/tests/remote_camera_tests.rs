@@ -72,6 +72,7 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
     let interactions = std::collections::HashMap::from([(
         15,
         crate::game::interactions::RemoteInteraction {
+            join: Default::default(),
             position: Vec3::new(0.5, 300.0, 0.5),
             previous: Vec3::new(0.5, 300.0, 0.5),
             yaw: 0.0,

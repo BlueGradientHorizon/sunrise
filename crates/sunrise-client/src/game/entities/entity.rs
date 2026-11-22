@@ -194,10 +194,6 @@ pub(super) trait Entity: EntityRules {
     fn is_pickable(&self) -> bool {
         false
     }
-    /// `Entity.getPickRadius`: extra box margin during crosshair ray picking.
-    fn pick_radius(&self) -> f64 {
-        0.0
-    }
     /// `instanceof LivingEntity`.
     fn is_living(&self) -> bool {
         false
@@ -3085,9 +3081,6 @@ impl Entity for Projectile {
     }
     fn is_pickable(&self) -> bool {
         super::deflect::attackable(self)
-    }
-    fn pick_radius(&self) -> f64 {
-        super::deflect::pick_radius(self)
     }
 }
 

@@ -223,11 +223,11 @@ fn pin_entity_pose(
             (f.position, f.previous, f.rotation) = (pos, pos, [yaw, pitch]);
         }
     });
-    for p in &mut game.creatures.projectiles {
+    game.creatures.projectiles.for_each_mut(|p| {
         if p.id == uid {
             (p.position, p.previous, p.yaw, p.pitch) = (pos, pos, yaw, pitch);
         }
-    }
+    });
     if let Some(d) = game.dragon.as_mut()
         && d.id == uid
     {
@@ -753,7 +753,7 @@ fn middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block() {
                     let (pkt_id, body) = conn.recv().expect("PickItemFromEntity packet");
                     let decoded = play::Serverbound::decode(pkt_id, &body).unwrap();
                     assert!(
-                        matches!(decoded, play::Serverbound::PickItemFromEntity(p) if p.id == id),
+                        matches!(&decoded, play::Serverbound::PickItemFromEntity(p) if p.id == id),
                         "expected PickItemFromEntity({id}) for {kind}, got {decoded:?}"
                     );
                     assert!(
@@ -908,6 +908,7 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
                     join: Default::default(),
                     id: 20,
                     state: sand,
+                    blocks_building: true,
                     start_pos: BlockPos::new(0, 65, 2),
                     position: fb_pos,
                     previous: fb_pos,
@@ -1042,6 +1043,7 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
                     join: Default::default(),
                     id: 202,
                     state: sand,
+                    blocks_building: true,
                     start_pos: BlockPos::new(0, 66, 2),
                     position: behind_fb,
                     previous: behind_fb,
@@ -1162,6 +1164,7 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
                     join: Default::default(),
                     id: 222,
                     state: sand,
+                    blocks_building: true,
                     start_pos: BlockPos::new(0, 65, 1),
                     position: shield_tnt,
                     previous: shield_tnt,

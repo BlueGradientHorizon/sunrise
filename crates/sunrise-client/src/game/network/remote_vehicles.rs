@@ -17,7 +17,7 @@ use super::{Game, Keys, remote::Remote};
 use std::collections::HashMap;
 use sunrise_client::mobs::{Mob, equine, happy_ghast};
 use sunrise_client::{keybinds, text::Text};
-use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_core::geometry::Vec3;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use sunrise_world::stepped_interpolation::PosRot;
 

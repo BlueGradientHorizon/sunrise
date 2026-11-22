@@ -8,7 +8,7 @@ use sunrise_client::{
     mobs::Who,
     projectiles::{Projectile, ProjectileKind, Turn},
 };
-use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_core::geometry::Vec3;
 
 /// `AbstractHurtingProjectile.getPickRadius`: the crosshair finds it a block
 /// round its box.
@@ -47,22 +47,10 @@ pub(super) fn aim_deflect(
     )
 }
 
-/// `Projectile.getPickRadius`: `isPickable() ? 1.0F : 0.0F` (`ShulkerBullet` inherits this).
-pub(super) fn pick_radius(p: &Projectile) -> f64 {
-    if attackable(p) { PICK_RADIUS } else { 0.0 }
-}
-
 /// A projectile a player's blow reaches under the vanilla default tag: a redirectable
 /// projectile or a shulker bullet (`ShulkerBullet.isPickable` is `true`).
 pub(super) fn attackable(p: &Projectile) -> bool {
     redirectable(p) || matches!(p.kind, ProjectileKind::ShulkerBullet { .. })
-}
-
-/// Its box for the crosshair: the entity's box inflated by `Projectile.getPickRadius` (1.0 when pickable).
-#[cfg(test)]
-fn pick_box(p: &Projectile) -> Aabb {
-    let radius = pick_radius(p);
-    p.bounds().inflate(Vec3::new(radius, radius, radius))
 }
 
 impl Game<'_> {
@@ -77,8 +65,12 @@ impl Game<'_> {
                 .get("minecraft:redirectable_projectile")
                 .is_some_and(|members| ids.id(kind).is_some_and(|id| members.contains(&id)));
         }
-        let data = self.res.mob_data();
-        if let Some(members) = data.entity_tags.get("minecraft:redirectable_projectile") {
+        if let Some(members) = self
+            .items()
+            .entity_type_tags
+            .members()
+            .get("minecraft:redirectable_projectile")
+        {
             return members.contains(kind);
         }
         matches!(
@@ -209,13 +201,9 @@ impl Game<'_> {
         let (Some(eye), Some(p)) = (self.eye_position(), self.creatures.projectiles.get(i)) else {
             return false;
         };
-        let b = pick_box(p);
+        let b = p.bounds();
         let (lo, hi) = (b.min_position(), b.max_position());
-        let r = pick_radius(&self.creatures.projectiles[i]);
-        let (lo, hi) = (
-            [lo.x + r, lo.y + r, lo.z + r],
-            [hi.x - r, hi.y - r, hi.z - r],
-        );
+        let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
         let d2: f64 = (0..3)
             .map(|a| (eye[a] - eye[a].clamp(lo[a], hi[a])).powi(2))
             .sum();
@@ -299,6 +287,18 @@ fn attack_deflect(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_core::geometry::Aabb;
+
+    /// `Projectile.getPickRadius`: `isPickable() ? 1.0F : 0.0F` (`ShulkerBullet` inherits this).
+    fn pick_radius(p: &Projectile) -> f64 {
+        if attackable(p) { PICK_RADIUS } else { 0.0 }
+    }
+
+    /// Its box for the crosshair: the entity's box inflated by `Projectile.getPickRadius` (1.0 when pickable).
+    fn pick_box(p: &Projectile) -> Aabb {
+        let radius = pick_radius(p);
+        p.bounds().inflate(Vec3::new(radius, radius, radius))
+    }
 
     #[test]
     fn only_ghast_fireballs_and_wind_charges_are_redirectable() {

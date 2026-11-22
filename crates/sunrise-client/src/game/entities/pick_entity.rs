@@ -8,14 +8,14 @@ use mod_api::{BlockPos, CrosshairTarget, EntityRef};
 use sunrise_client::{items::ItemStack, save::uuid_text};
 use sunrise_core::geometry::{Aabb, Vec3};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub(in crate::game) enum AttackRangePickResult {
     Entity(PickCandidate),
     Block(super::Hit),
     Miss,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub(in crate::game) enum CrosshairDecision {
     Entity(PickCandidate),
     Block(super::Hit),

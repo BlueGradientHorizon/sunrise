@@ -1656,7 +1656,7 @@ impl Game<'_> {
                 .dragon
                 .as_ref()
                 .filter(|d| d.id != 0 || self.remote.is_some())?;
-            return Some(dragon_part_id(dragon.id, (id - SPECIAL) as usize) as i32);
+            return Some(dragon_part_wire_id(dragon.id, (id - SPECIAL) as usize));
         }
         if id >= CRYSTAL_IDS
             && let Some(crystal) = self.crystals.get((id - CRYSTAL_IDS) as usize)
