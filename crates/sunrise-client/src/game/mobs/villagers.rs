@@ -595,21 +595,55 @@ impl Game<'_> {
         }
         self.lan_merchant_reputation(id);
     }
-    /// `Villager.updateSpecialPrices` with a trading player, after a restock
-    /// step: the screen takes the offers the brain restocked, prices from the
-    /// player's current reputation and Hero of the Village, and resends them.
+    /// The reputation and Hero of the Village amplifier of the player trading
+    /// with villager `id` (the local player's screen or a guest's).
+    fn trading_prices(&mut self, id: u32) -> Option<(i32, Option<i32>)> {
+        if self
+            .station
+            .as_ref()
+            .and_then(|s| s.merchant.as_ref())
+            .is_some_and(|m| m.mob == Some(id))
+        {
+            return Some((self.villager_reputation(id), self.hero_amplifier()));
+        }
+        let conn = self.lan_trade_conn(id)?;
+        let reputation = self
+            .player_uuid_of(Some(conn))
+            .map_or(0, |uuid| self.villager_reputation_of(id, uuid));
+        let hero = self.as_guest(conn, |game| game.hero_amplifier()).flatten();
+        Some((reputation, hero))
+    }
+    /// Before the mobs tick: each trading villager keeps its player's prices,
+    /// which its work step (inside the tick) prices the screen from.
+    pub(in crate::game) fn villager_trading_prices(&mut self) {
+        for i in 0..self.mobs.len() {
+            let m = &self.mobs[i];
+            if m.species() != Species::Villager || !m.extra.flag2 || m.extra.trade.is_none() {
+                continue;
+            }
+            let id = m.id;
+            let Some((reputation, hero)) = self.trading_prices(id) else {
+                continue;
+            };
+            if let Some(t) = self.mobs[i].extra.trade.as_mut() {
+                (t.reputation, t.hero) = (reputation, hero);
+            }
+        }
+    }
+    /// `Villager.restock` / `shouldRestock` with a trading player, after the
+    /// brain's work step: the live offers on the screen take the step (an edit
+    /// made since stays), priced for the player as the work step saw them;
+    /// `updateSellItem` then picks the result and the yes/no voice.
     pub(super) fn villager_offers_open(
         &mut self,
         id: u32,
-        offers: Vec<sunrise_client::merchant::MerchantOffer>,
+        step: sunrise_client::merchant::RestockStep,
+        (reputation, hero): (i32, Option<i32>),
         pitch: Option<f32>,
     ) {
-        let refresh = |menu: &mut sunrise_client::menu::Menu,
-                       env: &sunrise_client::menu::Env,
-                       reputation: i32,
-                       hero: Option<i32>| {
+        let refresh = |menu: &mut sunrise_client::menu::Menu, env: &sunrise_client::menu::Env| {
             if let Some(session) = menu.merchant.as_mut() {
-                session.offers = offers;
+                step.apply(&mut session.offers);
                 session.reputation = reputation;
                 session.hero = hero;
                 session.update_special_prices();
@@ -628,21 +662,12 @@ impl Game<'_> {
             .and_then(|s| s.merchant.as_ref())
             .is_some_and(|m| m.mob == Some(id));
         if local {
-            let (reputation, hero) = (self.villager_reputation(id), self.hero_amplifier());
             self.menu_session(|menu, env, _| {
-                refresh(menu, env, reputation, hero);
+                refresh(menu, env);
                 Some(true)
             });
         } else if let Some(conn) = self.lan_trade_conn(id) {
-            let reputation = self
-                .player_uuid_of(Some(conn))
-                .map_or(0, |uuid| self.villager_reputation_of(id, uuid));
-            let hero = self
-                .as_guest(conn, |game| game.hero_amplifier())
-                .flatten();
-            self.lan_merchant_op(conn, None, true, |menu, env| {
-                refresh(menu, env, reputation, hero)
-            });
+            self.lan_merchant_op(conn, None, true, refresh);
         }
     }
     /// `Villager.getPlayerReputation` of the local player.

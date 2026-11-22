@@ -2531,11 +2531,14 @@ pub enum MobEvent {
         mob: u32,
         pos: [i32; 3],
     },
-    /// A restock step of a villager with a trading player: its offers then,
-    /// and the pitch of the trade sound drawn when the screen has a payment.
+    /// A restock step of a villager with a trading player: what it did to the
+    /// offers, the player's prices at the work step, and the pitch of the
+    /// trade sound drawn when the screen has a payment.
     VillagerRestockStep {
         mob: u32,
-        offers: Vec<crate::merchant::MerchantOffer>,
+        step: crate::merchant::RestockStep,
+        reputation: i32,
+        hero: Option<i32>,
         pitch: Option<f32>,
     },
     /// A villager asks whether enough neighbours want an iron golem.

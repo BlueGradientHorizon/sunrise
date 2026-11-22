@@ -1184,12 +1184,9 @@ mod tests {
                     .unwrap()
             );
             assert_eq!(sent_offers(), 3);
-            // The mob still has the old offers; the screen has the new ones.
-            assert_eq!(
-                game.mobs[0].extra.trade.as_ref().unwrap().offers,
-                vec![first]
-            );
+            // The mob's offers are the screen's (the brain restocks them).
             let live = vec![changed.clone(), second.clone()];
+            assert_eq!(game.mobs[0].extra.trade.as_ref().unwrap().offers, live);
             assert_eq!(villager.offers(game), Some(live.try_into_api().unwrap()));
             assert_eq!(villager.xp(game), Some(40));
             assert_eq!(villager.level(game), Some(3));

@@ -49,13 +49,38 @@ pub struct Trader {
     /// A trading screen is open on this merchant with a payment in it, so a
     /// refresh of its prices makes the merchant say yes or no (`updateSellItem`).
     pub paying: bool,
+    /// The trading player's reputation and Hero of the Village amplifier, read
+    /// by the game before the mobs tick: what `updateSpecialPrices` sees at a
+    /// work step, whatever a callback after the tick changes.
+    pub reputation: i32,
+    pub hero: Option<i32>,
 }
-impl Trader {
-    fn update_demand(&mut self) {
-        for o in &mut self.offers {
-            o.update_demand();
+/// What a restock step does to the offers (`Villager.restock`, and the
+/// `catchUpDemand` of `shouldRestock` with the restocks it missed).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RestockStep {
+    CatchUp(i32),
+    Restock,
+}
+impl RestockStep {
+    pub fn apply(self, offers: &mut [MerchantOffer]) {
+        match self {
+            Self::CatchUp(missed) => {
+                if missed > 0 {
+                    offers.iter_mut().for_each(MerchantOffer::reset_uses);
+                }
+                for _ in 0..missed {
+                    offers.iter_mut().for_each(MerchantOffer::update_demand);
+                }
+            }
+            Self::Restock => {
+                offers.iter_mut().for_each(MerchantOffer::update_demand);
+                offers.iter_mut().for_each(MerchantOffer::reset_uses);
+            }
         }
     }
+}
+impl Trader {
     /// `Villager.shouldRestock`.
     pub fn should_restock(&mut self, game_time: i64, day: i64) -> bool {
         self.catch_up(game_time, day);
@@ -69,15 +94,7 @@ impl Trader {
         self.check_day = day;
         if new_day {
             self.last_restock = game_time;
-            let missed = 2 - self.restocks_today;
-            if missed > 0 {
-                for o in &mut self.offers {
-                    o.reset_uses();
-                }
-            }
-            for _ in 0..missed {
-                self.update_demand();
-            }
+            RestockStep::CatchUp(2 - self.restocks_today).apply(&mut self.offers);
             self.restocks_today = 0;
         }
         new_day
@@ -90,10 +107,7 @@ impl Trader {
     }
     /// `Villager.restock`.
     pub fn restock(&mut self, game_time: i64) {
-        self.update_demand();
-        for o in &mut self.offers {
-            o.reset_uses();
-        }
+        RestockStep::Restock.apply(&mut self.offers);
         self.last_restock = game_time;
         self.restocks_today += 1;
     }

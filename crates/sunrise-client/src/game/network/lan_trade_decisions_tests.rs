@@ -363,6 +363,103 @@ fn a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob() {
     });
 }
 
+/// A guest trades at a villager whose single offer is used up and costs 5 wheat; 4 are in the
+/// payment slot. Runs the villager's work-step restock (the brain) and returns its events.
+fn used_up_offer_work_step(game: &mut Game<'_>) -> Vec<sunrise_client::mobs::MobEvent> {
+    open(game, 1);
+    let gm = game.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
+    let screen = gm.merchant.as_mut().unwrap();
+    screen.slots = [Some(ItemStack::new("minecraft:wheat", 4)), None, None];
+    let offer = &mut screen.merchant.session.offers[0];
+    (offer.base_cost_a.stack.count, offer.uses) = (5, 10);
+    let t = game.mobs[0].extra.trade.as_mut().unwrap();
+    (t.offers[0].base_cost_a.stack.count, t.offers[0].uses) = (5, 10);
+    t.paying = true;
+    game.villager_trading_prices();
+    let mut mob = game.mobs[0].clone();
+    let mut events = Vec::new();
+    {
+        let w = game.mob_world_base(&[]);
+        sunrise_client::mobs::villager_brain::restock_if_due(&mut mob, &w, &mut events);
+    }
+    game.mobs[0] = mob;
+    events
+}
+
+/// `Villager.restock` prices the screen and `updateSellItem` picks its result at the work step: a
+/// Hero of the Village the player loses afterwards (a callback after the tick) still counts.
+#[test]
+#[ignore = "daily"]
+fn a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them() {
+    use sunrise_client::effects::EffectInstance;
+    with_guests(|game| {
+        game.as_guest(12, |g| {
+            g.potions
+                .effects
+                .add(EffectInstance::new("hero_of_the_village", 1000, 0));
+        });
+        let events = used_up_offer_work_step(game);
+        assert_eq!(events.len(), 1);
+        game.as_guest(12, |g| g.potions.effects.clear());
+        game.handle_mob_events(events).unwrap();
+        let screen = game.lan.as_ref().unwrap().play[&12].merchant.as_ref().unwrap();
+        assert_eq!(
+            screen.slots[2],
+            Some(ItemStack::new("minecraft:emerald", 1)),
+            "4 wheat pay the 5-wheat offer reduced by Hero of the Village"
+        );
+        assert_eq!(screen.merchant.session.hero, Some(0));
+    });
+}
+
+/// An offer edit a native hook makes after the work step (before its events are delivered) stays
+/// on the screen and in the save: the step is applied to the live offers, not replaced by a copy.
+#[test]
+#[ignore = "daily"]
+fn an_offer_edit_after_the_work_step_survives_the_restock() {
+    use super::api_values::TryIntoApi;
+    with_guests(|game| {
+        let events = used_up_offer_work_step(game);
+        let villager = game.merchant(game.entity(40).unwrap()).unwrap();
+        let mut edited = game.lan.as_ref().unwrap().play[&12]
+            .merchant
+            .as_ref()
+            .unwrap()
+            .merchant
+            .session
+            .offers[0]
+            .clone();
+        edited.result = ItemStack::new("minecraft:diamond", 1);
+        assert_eq!(
+            villager.set_offer(game, 0, edited.try_into_api().unwrap()),
+            Ok(true)
+        );
+        game.handle_mob_events(events).unwrap();
+        let screen = game.lan.as_ref().unwrap().play[&12].merchant.as_ref().unwrap();
+        let live = &screen.merchant.session.offers[0];
+        assert_eq!(live.result, ItemStack::new("minecraft:diamond", 1));
+        assert_eq!(live.uses, 0, "and the restock still applied");
+        let saved = sunrise_client::entity_nbt::mob_to_nbt(
+            &game.mobs[0],
+            [1, 2, 3, 4],
+            None,
+            Some(game.pack.assets.registry),
+            |_| None,
+            game.items(),
+        );
+        let loaded = sunrise_client::entity_nbt::mob_from_nbt(
+            &saved,
+            game.res.mob_types(),
+            999,
+            Some(game.pack.assets.registry),
+        )
+        .unwrap();
+        let t = loaded.extra.trade.as_ref().unwrap();
+        assert_eq!(t.offers[0].result, ItemStack::new("minecraft:diamond", 1));
+        assert_eq!(t.offers[0].uses, 0);
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn refusal_restores_crafted_score_and_another_merchants_offers() {

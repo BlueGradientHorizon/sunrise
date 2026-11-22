@@ -3354,25 +3354,28 @@ pub fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     // updates and resends its screen (a new day can send two); the trade
     // sound's pitch is drawn here, in work-step order.
     let mut steps = Vec::new();
+    let missed = 2 - t.restocks_today;
     if t.catch_up(w.game_time, day) {
-        steps.push(t.offers.clone());
+        steps.push(crate::merchant::RestockStep::CatchUp(missed));
     }
     if t.restock_due(w.game_time) {
         t.restock(w.game_time);
-        steps.push(t.offers.clone());
+        steps.push(crate::merchant::RestockStep::Restock);
     }
-    let paying = t.paying;
-    if !m.extra.flag2 {
+    let (paying, reputation, hero, empty) = (t.paying, t.reputation, t.hero, t.offers.is_empty());
+    if !m.extra.flag2 || empty {
         return;
     }
-    for offers in steps.into_iter().filter(|o| !o.is_empty()) {
+    for step in steps {
         let pitch = (paying && m.ambient_timer > -60).then(|| {
             m.ambient_timer = -80;
             m.voice_pitch()
         });
         events.push(MobEvent::VillagerRestockStep {
             mob: m.id,
-            offers,
+            step,
+            reputation,
+            hero,
             pitch,
         });
     }
