@@ -23,6 +23,25 @@ impl ServerHost for Game<'_> {
     fn backend_mut(&mut self) -> Option<BackendMutRef<'_>> {
         Some(BackendMutRef::of(self))
     }
+
+    fn with_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn ServerHost,
+            &'loan TransactionContext,
+        ) -> bool,
+    ) -> Result<(), TransactionUnavailable> {
+        let _ = self.storage_transaction(|game, tx| callback(game, tx).then_some(()).ok_or(()));
+        Ok(())
+    }
+
+    fn transaction_matches(&self, expected: Option<&TransactionContext>) -> bool {
+        match (self.current_storage_frame(), expected) {
+            (Some(frame), Some(tx)) => frame.matches(tx),
+            (None, None) => true,
+            _ => false,
+        }
+    }
 }
 
 impl ClientHost for Game<'_> {

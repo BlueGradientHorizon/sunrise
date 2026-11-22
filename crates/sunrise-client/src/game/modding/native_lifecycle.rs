@@ -305,7 +305,7 @@ impl Game<'_> {
                 let Some(mod_id) = owner else {
                     // Engine-owned work still follows the server's own failure policy.
                     let _: Result<(), std::convert::Infallible> =
-                        mod_api::run_transaction(game, |game, _| {
+                        game.storage_transaction(|game, _| {
                             task(game);
                             Ok(())
                         });

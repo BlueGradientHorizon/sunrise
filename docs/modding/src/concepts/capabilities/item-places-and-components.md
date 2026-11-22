@@ -61,8 +61,9 @@ Keep the contents in the stack and use these methods to access it:
 | `place.extract(host, tx, &resource, amount)` | How much was extracted |
 | `place.exchange(host, tx, &resource, amount)` | How much was exchanged, or 0 if the exchange fails |
 
-Each write runs in its own transaction nested in `tx`. Aborting restores changes at every
-level of nested items. If a handler answers more than requested, the move is undone and the
+Pass the innermost `&TransactionContext` to every write, including scratch-place operations.
+A foreign or ancestor context panics. Exchange uses a nested transaction so aborting restores
+changes at every level of nested items. If a handler answers more than requested, the move is undone and the
 game warns once, naming the mod.
 
 ## Exchanging one item

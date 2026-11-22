@@ -23,12 +23,12 @@ impl EnergyHandler for Buffer {
     fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
         self.1
     }
-    fn insert(&self, _: &mut dyn ServerHost, _: &Transaction, amount: u32) -> u32 {
+    fn insert(&self, _: &mut dyn ServerHost, _: &TransactionContext, amount: u32) -> u32 {
         let went = amount.min(self.1 - self.held());
         self.0.fetch_add(went, Ordering::Relaxed);
         went
     }
-    fn extract(&self, _: &mut dyn ServerHost, _: &Transaction, amount: u32) -> u32 {
+    fn extract(&self, _: &mut dyn ServerHost, _: &TransactionContext, amount: u32) -> u32 {
         let came = amount.min(self.held());
         self.0.fetch_sub(came, Ordering::Relaxed);
         came
@@ -83,4 +83,16 @@ fn the_comparator_reads_0_empty_15_full_and_vanillas_steps_between() {
     // 1 + floor(14 * 50 / 100).
     assert_eq!(signal(&mut *host, 50), 8);
     assert_eq!(signal(&mut *host, 1), 1);
+}
+
+#[test]
+#[should_panic(expected = "does not match the host's innermost open transaction")]
+fn move_energy_panics_with_an_ancestor_transaction_context() {
+    let source = capability(InfiniteEnergyHandler);
+    let target = capability(VoidingEnergyHandler);
+    let mut fake = FakeHost::new();
+    let _ = fake.transaction(|host, outer| {
+        let _ = host.transaction(|host, _| move_energy(host, &source, &target, 16, outer));
+        Ok::<_, ()>(())
+    });
 }

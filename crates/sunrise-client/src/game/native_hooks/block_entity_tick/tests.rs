@@ -160,7 +160,7 @@ fn read_only_and_noop_loans_do_not_journal_or_dirty() {
     }
     with_ticker(|game, _| {
         let subject = place_subject(game, KIND);
-        let result: Result<(), ()> = game.transaction(|game, _| {
+        let result: Result<(), ()> = game.storage_transaction(|game, _| {
             let mut access = access(game, subject);
             BlockEntityScope::new(&mut access)
                 .with_view(|mut view| {
@@ -223,7 +223,7 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
                 .ok_or(())?;
             Err(())
         });
-        assert_eq!(result, Err(()));
+        assert_eq!(result, Err(mod_api::TransactionError::Aborted(())));
         scope
             .with_view(|view| {
                 assert_eq!(view.data_slots(), [23]);
@@ -604,12 +604,13 @@ fn reentrant_removal_does_not_spill_the_same_saved_pot_twice() {
                 ]),
             );
             let level = game.level("minecraft:overworld").unwrap();
-            let seal = game.transaction_open();
-            assert_eq!(
-                game.level_set_block(level, AT, stone, BlockUpdateFlags::NONE),
-                Ok(true)
-            );
-            game.transaction_close(&seal, true);
+            game.storage_scope(|game, _| {
+                assert_eq!(
+                    game.level_set_block(level, AT, stone, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                ((), true)
+            });
             game.flush_spill();
 
             assert_eq!(game.world.block(POS.0, POS.1, POS.2), game.world.air);
@@ -874,10 +875,11 @@ fn strict_bulk_commit_publishes_whole_chunks_without_drops() {
             }],
         };
         game.world.block_log = Some(Vec::new());
-        let seal = game.transaction_open();
-        assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
-        assert!(game.world.bulk_log.is_empty());
-        game.transaction_close(&seal, true);
+        game.storage_scope(|game, _| {
+            assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
+            assert!(game.world.bulk_log.is_empty());
+            ((), true)
+        });
         let level = game.level("minecraft:overworld").unwrap();
         assert_eq!(game.world.block(POS.0, POS.1, POS.2), chest);
         let resident = game.block_entity(level, AT).unwrap();
@@ -941,20 +943,21 @@ fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
         row.items = vec![Some(original_stack.clone())];
         game.world.block_log = Some(Vec::new());
 
-        let seal = game.transaction_open();
-        if strict_first {
+        game.storage_scope(|game, _| {
+            if strict_first {
+                assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
+                game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[0] =
+                    Some(chest_stack.clone());
+            }
+            assert_eq!(
+                game.level_set_block(level, AT, glass, BlockUpdateFlags::KNOWN_SHAPE),
+                Ok(true)
+            );
             assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
-            game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[0] =
-                Some(chest_stack.clone());
-        }
-        assert_eq!(
-            game.level_set_block(level, AT, glass, BlockUpdateFlags::KNOWN_SHAPE),
-            Ok(true)
-        );
-        assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
-        let last_chest = game.block_entity(level, AT).unwrap();
-        assert_ne!(last_chest, subject);
-        game.transaction_close(&seal, true);
+            let last_chest = game.block_entity(level, AT).unwrap();
+            assert_ne!(last_chest, subject);
+            ((), true)
+        });
 
         assert_eq!(game.world.block(POS.0, POS.1, POS.2), chest);
         assert_eq!(game.block_entity(level, AT), Some(last_chest));
@@ -1056,22 +1059,25 @@ fn replacement_and_item_stack_journals_close_in_their_own_dimensions() {
                 Ok(true)
             );
         };
-        let outer = game.transaction_open();
-        replace(game, overworld);
-        game.enter_level(Dim::Nether).unwrap();
-        let aborted = game.transaction_open();
-        replace(game, nether);
-        game.transaction_close(&aborted, false);
-        let level = game.level("minecraft:the_nether").unwrap();
-        assert_eq!(game.block_entity(level, AT), Some(nether));
-        assert_eq!(game.world.block(POS.0, POS.1, POS.2), original);
-        assert_eq!(game.dropped[0].stack.count, 8);
-        assert_eq!(game.dropped.len(), 1);
-        let committed = game.transaction_open();
-        replace(game, nether);
-        game.transaction_close(&committed, true);
-        game.enter_level(Dim::Overworld).unwrap();
-        game.transaction_close(&outer, false);
+        game.storage_scope(|game, _| {
+            replace(game, overworld);
+            game.enter_level(Dim::Nether).unwrap();
+            game.storage_scope(|game, _| {
+                replace(game, nether);
+                ((), false)
+            });
+            let level = game.level("minecraft:the_nether").unwrap();
+            assert_eq!(game.block_entity(level, AT), Some(nether));
+            assert_eq!(game.world.block(POS.0, POS.1, POS.2), original);
+            assert_eq!(game.dropped[0].stack.count, 8);
+            assert_eq!(game.dropped.len(), 1);
+            game.storage_scope(|game, _| {
+                replace(game, nether);
+                ((), true)
+            });
+            game.enter_level(Dim::Overworld).unwrap();
+            ((), false)
+        });
         let level = game.level("minecraft:overworld").unwrap();
         assert_eq!(game.block_entity(level, AT), Some(overworld));
         assert_eq!(game.world.block(POS.0, POS.1, POS.2), original);
@@ -1540,7 +1546,7 @@ fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
         ])]);
 
         // Writing the equal encoded value is a no-op and does not journal.
-        let result: Result<(), ()> = game.transaction(|game, _| {
+        let result: Result<(), ()> = game.storage_transaction(|game, _| {
             let mut access = access(game, subject);
             BlockEntityScope::new(&mut access)
                 .with_view(|mut view| {

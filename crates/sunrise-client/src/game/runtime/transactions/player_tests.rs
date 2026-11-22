@@ -89,7 +89,7 @@ fn abort_restores_fake_players_with_the_same_uuid_in_different_levels() {
         write_player_storage(game, outside, 3);
         write_player_storage(game, inside, 5);
 
-        let result: Result<(), ()> = game.transaction(|game, _| {
+        let result: Result<(), ()> = game.storage_transaction(|game, _| {
             write_player_storage(game, outside, 7);
             write_player_storage(game, inside, 11);
             Err(())
@@ -115,7 +115,7 @@ fn abort_restores_player_inventory_and_data_after_the_acting_player_dies() {
         let player = game.player(12).unwrap();
         write_player_storage(game, player, 13);
         game.as_guest(12, |game| {
-            let result: Result<(), ()> = game.transaction(|game, _| {
+            let result: Result<(), ()> = game.storage_transaction(|game, _| {
                 write_player_storage(game, player, 17);
                 // Health itself is not a journaled write in this case.
                 game.player

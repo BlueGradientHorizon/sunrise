@@ -516,7 +516,7 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::super::native_item_places::tests::{guest, open_to_lan};
     use super::*;
-    use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost};
+    use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost, TransactionError};
     use std::sync::{Arc, mpsc};
     use sunrise_client::lan::{Out, PlayerSender};
     use sunrise_protocol::{
@@ -610,13 +610,13 @@ mod tests {
                                 assert_eq!(place.extract(host, tx, &resource, 1), 1);
                                 Err::<(), ()>(())
                             });
-                            assert_eq!(inner, Err(()));
+                            assert_eq!(inner, Err(TransactionError::Aborted(())));
                             inner_restored =
                                 place.with_stack(host, |stack| stack.project()).flatten();
                             assert_eq!(place.extract(host, tx, &resource, 1), 1);
                             Err::<(), ()>(())
                         });
-                        assert_eq!(aborted, Err(()));
+                        assert_eq!(aborted, Err(TransactionError::Aborted(())));
                         restored.push((
                             inner_restored,
                             place.with_stack(host, |stack| stack.project()).flatten(),
@@ -627,7 +627,7 @@ mod tests {
                             assert_eq!(menu.cursor().insert(host, tx, &resource, 1), 1);
                             Err::<(), ()>(())
                         });
-                        assert_eq!(aborted, Err(()));
+                        assert_eq!(aborted, Err(TransactionError::Aborted(())));
                         assert_eq!(
                             place.with_stack(host, |stack| stack.project()).flatten(),
                             Some(stack.clone().try_into_api().unwrap())
@@ -642,7 +642,7 @@ mod tests {
                             .unwrap();
                             Err::<(), ()>(())
                         });
-                        assert_eq!(aborted, Err(()));
+                        assert_eq!(aborted, Err(TransactionError::Aborted(())));
                         assert_eq!(
                             place.with_stack(host, |stack| stack.project()).flatten(),
                             Some(stack.clone().try_into_api().unwrap())
@@ -2240,26 +2240,29 @@ mod tests {
                                 .hub
                                 .resend_menu(1, window, &game.world);
                         };
-                        let abort = game.transaction_open();
-                        assert_eq!(menu.set_data_slot(game, 0, i32::MAX), Ok(true));
-                        assert!(sent(&rx).is_empty());
-                        resend(game);
-                        assert_eq!(
-                            updates(sent(&rx)),
-                            snapshot,
-                            "a resend cannot see the pending write"
-                        );
-                        game.transaction_close(&abort, false);
+                        game.storage_scope(|game, _| {
+                            assert_eq!(menu.set_data_slot(game, 0, i32::MAX), Ok(true));
+                            assert!(sent(&rx).is_empty());
+                            resend(game);
+                            assert_eq!(
+                                updates(sent(&rx)),
+                                snapshot,
+                                "a resend cannot see the pending write"
+                            );
+                            ((), false)
+                        });
                         assert_eq!(menu.set_data_slot(game, 0, -80_000), Ok(false));
                         assert!(sent(&rx).is_empty());
 
-                        let capture = game.transaction_open();
-                        game.transactions.last_mut().unwrap().packets =
-                            Some(sunrise_client::lan::conn::transaction_packets::Scope::begin());
-                        assert_eq!(menu.set_data_slot(game, 0, 100_000), Ok(true));
-                        resend(game);
-                        assert!(sent(&rx).is_empty());
-                        game.transaction_close(&capture, true);
+                        game.storage_scope(|game, _| {
+                            game.transactions.last_mut().unwrap().packets = Some(
+                                sunrise_client::lan::conn::transaction_packets::Scope::begin(),
+                            );
+                            assert_eq!(menu.set_data_slot(game, 0, 100_000), Ok(true));
+                            resend(game);
+                            assert!(sent(&rx).is_empty());
+                            ((), true)
+                        });
                         assert_eq!(
                             updates(sent(&rx)),
                             [
@@ -2275,18 +2278,20 @@ mod tests {
                         );
 
                         let host = game as &mut dyn ServerHost;
-                        let committed: Result<(), ()> = host.transaction(|host, _| {
-                            assert_eq!(menu.set_data_slot(host, 0, 1), Ok(true));
-                            let nested: Result<(), ()> = host.transaction(|host, _| {
-                                assert_eq!(menu.set_data_slot(host, 0, i32::MIN), Ok(true));
-                                assert_eq!(menu.set_data_slot(host, 1, 5), Ok(true));
+                        let committed: Result<(), TransactionError<()>> =
+                            host.transaction(|host, _| {
+                                assert_eq!(menu.set_data_slot(host, 0, 1), Ok(true));
+                                let nested: Result<(), TransactionError<()>> =
+                                    host.transaction(|host, _| {
+                                        assert_eq!(menu.set_data_slot(host, 0, i32::MIN), Ok(true));
+                                        assert_eq!(menu.set_data_slot(host, 1, 5), Ok(true));
+                                        Ok(())
+                                    });
+                                assert_eq!(nested, Ok(()));
+                                assert_eq!(menu.set_data_slot(host, 1, 0), Ok(true));
+                                assert!(sent(&rx).is_empty());
                                 Ok(())
                             });
-                            assert_eq!(nested, Ok(()));
-                            assert_eq!(menu.set_data_slot(host, 1, 0), Ok(true));
-                            assert!(sent(&rx).is_empty());
-                            Ok(())
-                        });
                         assert_eq!(committed, Ok(()));
                         assert_eq!(
                             updates(sent(&rx)),
@@ -2336,7 +2341,7 @@ mod tests {
                             .hub
                             .guests
                             .update(0, |g| g.next_window = window - 1);
-                        let replaced: Result<(), ()> =
+                        let replaced: Result<(), TransactionError<()>> =
                             (game as &mut dyn ServerHost).transaction(|host, _| {
                                 assert_eq!(menu.set_data_slot(host, 0, 900), Ok(true));
                                 assert_eq!(show(host, vec![5, 6]), Ok(Some(window)));

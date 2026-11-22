@@ -83,7 +83,7 @@ impl ResourceHandler<ItemResource> for Storage {
     fn insert_at(
         &self,
         _: &mut dyn ServerHost,
-        _: &Transaction,
+        _: &TransactionContext,
         _: usize,
         _: &ItemResource,
         _: u32,
@@ -93,12 +93,13 @@ impl ResourceHandler<ItemResource> for Storage {
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         assert_eq!(amount, 1);
-        assert_eq!(host.transaction_depth(tx), Some(0));
+        assert_eq!(tx.depth(), 0);
+        assert!(host.transaction_matches(Some(tx)));
         let item = mod_api::__private::item_key_id(resource.as_stack().item()).unwrap();
         self.probe
             .trace
@@ -141,13 +142,14 @@ impl ResourceHandler<ItemResource> for Storage {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         slot: usize,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
         assert_eq!(amount, 1);
-        assert_eq!(host.transaction_depth(tx), Some(0));
+        assert_eq!(tx.depth(), 0);
+        assert!(host.transaction_matches(Some(tx)));
         self.probe
             .trace
             .lock()

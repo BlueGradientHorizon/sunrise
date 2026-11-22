@@ -65,23 +65,29 @@ fn write_dirt(host: &mut dyn ServerHost) {
         player: 12,
         slot: 20,
     };
-    let seal = host.transaction_open();
-    let inserted = place.insert(host, seal.transaction(), &ItemResource::of(&dirt), 2);
-    host.transaction_close(&seal, true);
-    assert_eq!(inserted, 2);
+    assert!(!host.transaction_matches(None), "inside the action");
+    host.transaction(|host, tx| {
+        assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), 2);
+        Ok::<_, ()>(())
+    })
+    .unwrap();
 }
 
-fn write_dirt_unclosed(host: &mut dyn ServerHost) {
-    let key = mod_api::__private::item_key("minecraft:dirt").unwrap();
-    let dirt = mod_api::ItemStack::new(key, 1).unwrap();
-    let place = ItemPlace::PlayerSlot {
-        player: 12,
-        slot: 21,
-    };
-    let seal = host.transaction_open();
-    let inserted = place.insert(host, seal.transaction(), &ItemResource::of(&dirt), 3);
-    assert_eq!(inserted, 3);
-    // Deliberately leave `seal` open before panicking.
+fn replace_backing(host: &mut dyn ServerHost) {
+    let pos = [1, 64, 1];
+    let level = host.level("minecraft:overworld").unwrap();
+    let original = level.block_state(host, pos).unwrap();
+    let air = mod_api::BlockState::of(
+        &host.block_states(),
+        mod_api::__private::block_key("minecraft:air").unwrap(),
+        &[],
+    )
+    .unwrap();
+    let flags = mod_api::BlockUpdateFlags::KNOWN_SHAPE;
+    assert_eq!(level.set_block(host, pos, air, flags), Ok(true));
+    assert_eq!(level.set_block(host, pos, original, flags), Ok(true));
+    assert_eq!(level.block_state(host, pos), Some(original));
+    REPLACED.set(true);
 }
 
 struct Mod;
@@ -614,24 +620,25 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
 
             for commit in [false, true] {
                 *game.world.random = LegacyRandom::new(23);
-                let outer = game.transaction_open();
-                click(game, window, 2, 0);
-                assert_eq!(slot(game, 0), None);
-                assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0].carried,
-                    Some(ItemStack::new("minecraft:dirt", 1))
-                );
-                assert_eq!(game.orbs[game.orbs.locate(join).unwrap()].count, 2);
-                assert!(
-                    rx.try_recv().is_err(),
-                    "published station content before commit"
-                );
-                assert_eq!(
-                    game.lan_events.len(),
-                    events,
-                    "published level event before commit"
-                );
-                game.transaction_close(&outer, commit);
+                game.storage_scope(|game, _| {
+                    click(game, window, 2, 0);
+                    assert_eq!(slot(game, 0), None);
+                    assert_eq!(
+                        game.lan.as_ref().unwrap().hub.guests[0].carried,
+                        Some(ItemStack::new("minecraft:dirt", 1))
+                    );
+                    assert_eq!(game.orbs[game.orbs.locate(join).unwrap()].count, 2);
+                    assert!(
+                        rx.try_recv().is_err(),
+                        "published station content before commit"
+                    );
+                    assert_eq!(
+                        game.lan_events.len(),
+                        events,
+                        "published level event before commit"
+                    );
+                    ((), commit)
+                });
                 if !commit {
                     assert_eq!(slot(game, 0), Some(original.clone()));
                     assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));

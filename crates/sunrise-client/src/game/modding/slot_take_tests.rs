@@ -4,8 +4,9 @@
 //! prepared resources.
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::{
-    BlockEntityPart, BlockPart, Hooks, HostBlockStates, ITEMS, ItemCraftedEvent, ItemPlace,
-    ItemResource, MenuPart, MenuSlotRulesEvent, MenuSlotTakeEvent, ModEntry, Mods, Registrar,
+    BlockEntityPart, BlockPart, Hooks, HostBlockStates, HostTransaction, ITEMS, ItemCraftedEvent,
+    ItemPlace, ItemResource, MenuPart, MenuSlotRulesEvent, MenuSlotTakeEvent, ModEntry, Mods,
+    Registrar,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -108,15 +109,16 @@ impl BlockEntityPart for Pot {
             TakeScript::Hear => {}
             TakeScript::PanicWithoutReward => panic!("a broken craft listener"),
             TakeScript::Reward | TakeScript::Panic => {
-                let host = event.subject.host();
-                let tx = host.transaction_current().expect("a take is tentative");
-                assert_eq!(
-                    place.insert(host, &tx, &ItemResource::of(event.taken), 1),
-                    1
-                );
-                if matches!(SCRIPT.get(), TakeScript::Panic) {
-                    panic!("a broken listener");
-                }
+                assert!(!event.subject.host().transaction_matches(None));
+                let _: Result<(), mod_api::TransactionError<()>> =
+                    event.subject.transaction(|scope, tx| {
+                        let host = scope.host();
+                        assert_eq!(place.insert(host, tx, &ItemResource::of(event.taken), 1), 1);
+                        if matches!(SCRIPT.get(), TakeScript::Panic) {
+                            panic!("a broken listener");
+                        }
+                        Ok::<_, ()>(())
+                    });
             }
             TakeScript::Invalid => {
                 let err = event
@@ -188,33 +190,50 @@ impl BlockEntityPart for Pot {
                 assert!(event.subject.with_view(|_| ()).is_none());
             }
             TakeScript::SwapRoom => {
-                let host = event.subject.host();
-                let tx = host.transaction_current().expect("a take is tentative");
-                // The old slot stack has not been added to inventory or dropped yet.
-                let dirt = place.resource(host).expect("hotbar 8 still holds dirt");
-                assert_eq!(place.extract(host, &tx, &dirt, 64), 64);
+                assert!(!event.subject.host().transaction_matches(None));
+                let _: Result<(), mod_api::TransactionError<()>> =
+                    event.subject.transaction(|scope, tx| {
+                        let host = scope.host();
+                        // The old slot stack has not been added to inventory or dropped yet.
+                        let dirt = place.resource(host).expect("hotbar 8 still holds dirt");
+                        assert_eq!(place.extract(host, tx, &dirt, 64), 64);
+                        Ok::<_, ()>(())
+                    });
             }
             TakeScript::ReplacePickAllCursor if heard_count == 1 => {
-                let host = event.subject.host();
-                let tx = host.transaction_current().expect("a take is tentative");
-                let player = host.player(event.player).unwrap();
-                let cursor = player.container_menu(host).unwrap().cursor();
-                assert_eq!(
-                    cursor.extract(host, &tx, &ItemResource::of(event.taken), 4),
-                    4
-                );
-                let pearls = ItemResource::of(&api_item("minecraft:ender_pearl", 1));
-                assert_eq!(cursor.insert(host, &tx, &pearls, 14), 14);
+                assert!(!event.subject.host().transaction_matches(None));
+                let _: Result<(), mod_api::TransactionError<()>> =
+                    event.subject.transaction(|scope, tx| {
+                        let host = scope.host();
+                        let player = host.player(event.player).unwrap();
+                        let cursor = player.container_menu(host).unwrap().cursor();
+                        assert_eq!(
+                            cursor.extract(host, tx, &ItemResource::of(event.taken), 4),
+                            4
+                        );
+                        let pearls = ItemResource::of(&api_item("minecraft:ender_pearl", 1));
+                        assert_eq!(cursor.insert(host, tx, &pearls, 14), 14);
+                        Ok::<_, ()>(())
+                    });
             }
             TakeScript::LinkedWriteThenPanic => {
-                let host = event.subject.host();
-                let tx = host.transaction_current().expect("a take is tentative");
-                let level = host.level("minecraft:overworld").unwrap();
-                let items = level
-                    .capability(host, &ITEMS, [LINK.0, LINK.1, LINK.2], None)
-                    .unwrap();
-                LINK_INSERTED.set(items.insert_at(host, &tx, 0, &ItemResource::of(event.taken), 1));
-                panic!("a linked write failed");
+                assert!(!event.subject.host().transaction_matches(None));
+                let _: Result<(), mod_api::TransactionError<()>> =
+                    event.subject.transaction(|scope, tx| {
+                        let host = scope.host();
+                        let level = host.level("minecraft:overworld").unwrap();
+                        let items = level
+                            .capability(host, &ITEMS, [LINK.0, LINK.1, LINK.2], None)
+                            .unwrap();
+                        LINK_INSERTED.set(items.insert_at(
+                            host,
+                            tx,
+                            0,
+                            &ItemResource::of(event.taken),
+                            1,
+                        ));
+                        panic!("a linked write failed");
+                    });
             }
             TakeScript::RefillGrid | TakeScript::ReplacePickAllCursor => {}
         }

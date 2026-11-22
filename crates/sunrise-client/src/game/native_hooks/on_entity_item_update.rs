@@ -189,6 +189,25 @@ impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
     fn host(&mut self) -> &mut dyn mod_api::ServerHost {
         self.game
     }
+
+    fn with_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn mod_api::ItemEntityServerAccess,
+            &'loan mod_api::TransactionContext,
+        ) -> bool,
+    ) -> Result<(), mod_api::TransactionUnavailable> {
+        let (subject, route) = (self.subject, self.index);
+        let _ = self.game.storage_transaction(|game, tx| {
+            let mut child = ItemEntityTickAccess {
+                game,
+                subject: subject,
+                index: route,
+            };
+            callback(&mut child, tx).then_some(()).ok_or(())
+        });
+        Ok(())
+    }
 }
 
 #[cfg(test)]

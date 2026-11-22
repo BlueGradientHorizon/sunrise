@@ -1,8 +1,9 @@
 //! The old `ServerPlayer` retained across `restoreFrom`, independently of its replacement.
 use super::{Dim, Game};
 use mod_api::{
-    ActiveEffect, AttachmentError, AttachmentForm, AttachmentStore, AttachmentValue, Attachments,
-    Holder, InventoryView, LevelRef, OriginalPlayerAccess, PlayerExperience,
+    __private::TransactionFrame, ActiveEffect, AttachmentError, AttachmentForm, AttachmentStore,
+    AttachmentValue, Attachments, Holder, InventoryView, LevelRef, OriginalPlayerAccess,
+    PlayerExperience,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::Compound;
@@ -20,8 +21,8 @@ pub(super) struct PlayerState {
 /// default insertions, removals and decode caching roll back with an aborted transaction.
 pub(in crate::game) struct OriginalAttachmentSlot {
     map: Attachments,
-    active_frames: Vec<u64>,
-    journal: Vec<(u64, Attachments)>,
+    active_frames: Vec<TransactionFrame>,
+    journal: Vec<(TransactionFrame, Attachments)>,
 }
 
 impl OriginalAttachmentSlot {
@@ -33,11 +34,11 @@ impl OriginalAttachmentSlot {
         }
     }
 
-    pub(in crate::game) fn open_frame(&mut self, token: u64) {
+    pub(in crate::game) fn open_frame(&mut self, token: TransactionFrame) {
         self.active_frames.push(token);
     }
 
-    pub(in crate::game) fn close_frame(&mut self, token: u64, commit: bool) {
+    pub(in crate::game) fn close_frame(&mut self, token: TransactionFrame, commit: bool) {
         if let Some(pos) = self.active_frames.iter().rposition(|&t| t == token) {
             self.active_frames.remove(pos);
         }
@@ -365,8 +366,8 @@ mod tests {
     use super::*;
     use crate::game::native_guest_turn_tests::with_guests;
     use mod_api::{
-        AttachmentType, Holder, Hooks, HostTransaction, PlayerCloneEvent,
-        PlayerContainerCloseEvent, ServerHost,
+        __private::TransactionFrame, AttachmentType, Holder, Hooks, HostTransaction,
+        PlayerCloneEvent, PlayerContainerCloseEvent, ServerHost,
     };
     use sunrise_core::nbt::{JavaString, Tag};
 
@@ -716,7 +717,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn clone_removes_menus_and_retires_old_attachment_owner_before_copy() {
-        use mod_api::{AttachmentHolder, AttachmentRowError, AttachmentWriteToken};
+        use mod_api::{
+            __private::TransactionFrame, AttachmentHolder, AttachmentRowError, AttachmentWriteToken,
+        };
         use sunrise_mod_runtime::attachments::index::AttachmentIndex;
         type OldIndex = Arc<Mutex<AttachmentIndex<AttachmentHolder>>>;
 
@@ -1126,18 +1129,20 @@ mod tests {
                         });
                         let holder = Holder::Player(12);
                         RETAINED.set(game, holder, 17).unwrap();
-                        let txn = game.transaction_open();
-                        RETAINED.set(game, holder, 23).unwrap();
-                        game.guest_respawn(12);
-                        assert!(game.command_guest(12).unwrap().dead);
-                        game.transaction_close(&txn, false);
+                        game.storage_scope(|game, _| {
+                            RETAINED.set(game, holder, 23).unwrap();
+                            game.guest_respawn(12);
+                            assert!(game.command_guest(12).unwrap().dead);
+                            ((), false)
+                        });
                         assert!(game.command_guest(12).unwrap().dead);
                         assert_eq!(RETAINED.get(game, holder), Ok(17));
                         assert!(seen.lock().unwrap().is_empty());
-                        let txn = game.transaction_open();
-                        RETAINED.set(game, holder, 29).unwrap();
-                        game.guest_respawn(12);
-                        game.transaction_close(&txn, true);
+                        game.storage_scope(|game, _| {
+                            RETAINED.set(game, holder, 29).unwrap();
+                            game.guest_respawn(12);
+                            ((), true)
+                        });
                         assert!(!game.command_guest(12).unwrap().dead);
                         assert_eq!(RETAINED.get(game, holder), Ok(29));
                         assert_eq!(

@@ -13,8 +13,8 @@ use crate::item::item_stack::{component_edits::edit_item_components, read_stack_
 use crate::{
     BundleItems, Capability, Direction, ENTITY_ITEMS, EquipmentSlot, Hand, ITEMS,
     ItemComponentEditor, ItemKey, ItemResource, ItemStack, ItemStackView, LevelRef, MenuRef,
-    MenuSlotBacking, ResourceHandler, ServerHost, StackWriteError, Transaction, backend_mut_of,
-    backend_of,
+    MenuSlotBacking, ResourceHandler, ServerHost, StackWriteError, TransactionContext,
+    backend_mut_of, backend_of,
 };
 use std::{fmt::Debug, marker::PhantomData, num::NonZeroU32};
 
@@ -329,6 +329,7 @@ impl crate::NoBackend for ItemPlaceEditError {
 /// Like a handler, it holds no borrow: its stacks live where the mod keeps them (a player's
 /// attachments). While its mod is disabled, lookups refuse both reads and writes through its
 /// places; re-enabling the mod makes the same registrations available again.
+/// Write methods receive the innermost transaction context; pass it to delegated writes.
 pub trait PlaceProvider: Send + Sync + 'static {
     /// The stack at `key`, if any.
     fn stack(&self, host: &mut dyn ServerHost, key: u64) -> Option<ItemStack>;
@@ -338,7 +339,7 @@ pub trait PlaceProvider: Send + Sync + 'static {
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         key: u64,
         resource: &ItemResource,
         amount: u32,
@@ -347,7 +348,7 @@ pub trait PlaceProvider: Send + Sync + 'static {
     fn extract(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         key: u64,
         resource: &ItemResource,
         amount: u32,
@@ -415,7 +416,7 @@ impl GameItemItems {
     fn rewrite(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         changed: &ItemStack,
         moved: u32,
     ) -> u32 {
@@ -459,11 +460,12 @@ impl ResourceHandler<ItemResource> for GameItemItems {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(offer) = resource.to_stack(amount) else {
             return 0;
         };
@@ -483,11 +485,12 @@ impl ResourceHandler<ItemResource> for GameItemItems {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some((Some(out), changed)) = self
             .0
             .with_stack(host, |stack| stack.project())
@@ -619,7 +622,7 @@ impl ItemPlace {
     pub fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
@@ -631,7 +634,7 @@ impl ItemPlace {
     pub fn extract(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
@@ -647,12 +650,12 @@ impl ItemPlace {
     pub fn exchange(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        let _ = tx;
-        let swap = |host: &mut dyn ServerHost, tx: &Transaction| {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        let swap = |host: &mut dyn ServerHost, tx: &TransactionContext| {
             let old = self.resource(host).ok_or(())?;
             let out = self.extract(host, tx, &old, amount);
             match out == amount && self.insert(host, tx, resource, out) == out {
@@ -673,9 +676,10 @@ impl ItemPlace {
     pub fn on_crafted_by(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         amount: i32,
     ) -> Result<(), crate::CraftedByError> {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         if !matches!(self, Self::MenuSlot { .. } | Self::PlayerCursor { .. }) {
             return Err(crate::CraftedByError::NotHeld);
         }
@@ -705,9 +709,10 @@ impl ItemPlace {
     pub fn edit(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         edit: impl FnOnce(&mut ItemComponentEditor<'_>),
     ) -> Result<(), ItemPlaceEditError> {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let mut place = self;
         while let Self::Strict(inner) = place {
             place = inner;
@@ -757,11 +762,12 @@ impl ItemPlace {
     fn moved(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
         insert: bool,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         if amount == 0 {
             return 0;
         }
@@ -799,7 +805,7 @@ impl ItemPlace {
     fn moved_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
         insert: bool,
@@ -842,7 +848,7 @@ impl ItemPlace {
         // other indices (`forHandlerIndex`).
         let through = |handler: Capability<dyn ResourceHandler<ItemResource>>,
                        host: &mut dyn ServerHost,
-                       tx: &Transaction,
+                       tx: &TransactionContext,
                        slot: usize,
                        spills: bool| {
             let mut left = amount;
@@ -955,7 +961,7 @@ impl ItemPlace {
 /// have: the first empty slot, else dropped at the root commit.
 fn infinite_moved(
     host: &mut dyn ServerHost,
-    tx: &Transaction,
+    tx: &TransactionContext,
     player: u128,
     inner: &ItemPlace,
     resource: &ItemResource,
@@ -995,8 +1001,8 @@ fn infinite_moved(
 fn alone(
     place: &ItemPlace,
     host: &mut dyn ServerHost,
-    tx: &Transaction,
-    f: &mut dyn FnMut(&mut dyn ServerHost, &Transaction) -> Result<u32, ()>,
+    tx: &TransactionContext,
+    f: &mut dyn FnMut(&mut dyn ServerHost, &TransactionContext) -> Result<u32, ()>,
 ) -> Result<u32, ()> {
     match place {
         ItemPlace::Nested { parent, .. } => alone(parent, host, tx, &mut |host, tx| {
@@ -1012,8 +1018,8 @@ fn alone(
 fn one_of(
     parent: &ItemPlace,
     host: &mut dyn ServerHost,
-    tx: &Transaction,
-    f: impl FnOnce(&mut dyn ServerHost, &Transaction) -> Result<u32, ()>,
+    tx: &TransactionContext,
+    f: impl FnOnce(&mut dyn ServerHost, &TransactionContext) -> Result<u32, ()>,
 ) -> Result<u32, ()> {
     let split = parent
         .with_stack(host, |held| {

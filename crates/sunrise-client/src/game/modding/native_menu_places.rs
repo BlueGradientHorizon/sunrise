@@ -501,7 +501,7 @@ fn click_pickup(
 ) -> bool {
     let cursor = menu.cursor();
     let at = ItemPlace::MenuSlot { menu, slot };
-    game.transaction(|host, tx| {
+    game.storage_transaction(|host, tx| {
         let here = at.resource(host);
         let have = at.amount(host);
         if let Some(here) = &here
@@ -578,7 +578,7 @@ fn click_quick_move(
         true => (size, player_slots, true),
         false => (0, count, false),
     };
-    game.transaction(|host, tx| {
+    game.storage_transaction(|host, tx| {
         let mut left = amount;
         for merge in [true, false] {
             for i in 0..len {

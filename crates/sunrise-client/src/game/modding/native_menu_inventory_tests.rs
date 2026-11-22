@@ -1,7 +1,7 @@
 use super::api_values::TryIntoApi;
 use super::native_guest_turn_tests::with_guests;
 use mod_api::__private::game::Fields;
-use mod_api::{HostTransaction, ItemPlace, ServerHost};
+use mod_api::{HostTransaction, ItemPlace, ServerHost, TransactionError};
 use sunrise_client::{items::ItemStack, lan::playerdata};
 use sunrise_core::nbt::Tag;
 
@@ -347,12 +347,13 @@ mod owner {
                 slot: 0,
             };
             let dropped = game.dropped.len();
-            let moved: Result<(), ()> = (game as &mut dyn ServerHost).transaction(|host, tx| {
-                let taken = source.extract(host, tx, &diamond, 1);
-                assert_eq!(taken, 1);
-                assert_eq!(slot.insert(host, tx, &diamond, taken), 0);
-                Err(())
-            });
+            let moved: Result<(), TransactionError<()>> = (game as &mut dyn ServerHost)
+                .transaction(|host, tx| {
+                    let taken = source.extract(host, tx, &diamond, 1);
+                    assert_eq!(taken, 1);
+                    assert_eq!(slot.insert(host, tx, &diamond, taken), 0);
+                    Err(())
+                });
             assert!(moved.is_err());
             assert!(game.inventory.iter().all(Option::is_none));
             let giver = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
@@ -395,10 +396,11 @@ mod owner {
                 .unwrap();
             let player = game.players().server_players()[1];
             assert_eq!(player.uuid(), 13);
-            let aborted: Result<(), ()> = (game as &mut dyn ServerHost).transaction(|host, _| {
-                player.set_inventory_slot(host, 0, None).unwrap();
-                Err(())
-            });
+            let aborted: Result<(), TransactionError<()>> = (game as &mut dyn ServerHost)
+                .transaction(|host, _| {
+                    player.set_inventory_slot(host, 0, None).unwrap();
+                    Err(())
+                });
             assert!(aborted.is_err());
             player
                 .with_inventory(game, |view| {

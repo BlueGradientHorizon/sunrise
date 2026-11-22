@@ -322,7 +322,7 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
         let cursor = menu.cursor();
         let stick = ItemStack::new("minecraft:stick", 1).try_into_api().unwrap();
         let resource = ItemResource::of(&stick);
-        game.transaction(|host, tx| {
+        game.storage_transaction(|host, tx| {
             assert_eq!(cursor.insert(host, tx, &resource, 3), 3);
             Ok::<_, ()>(())
         })
@@ -341,7 +341,7 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
             "the full sync already sent the cursor"
         );
 
-        game.transaction(|host, tx| {
+        game.storage_transaction(|host, tx| {
             assert_eq!(cursor.extract(host, tx, &resource, 3), 3);
             Ok::<_, ()>(())
         })
@@ -849,10 +849,11 @@ fn a_replaced_or_aborted_drag_step_keeps_the_existing_drag() {
             assert_eq!(g.native_menu, [None, None]);
             assert_eq!(g.carried, stack(6));
             // An enclosing abort must discard this step and its publications as well.
-            let seal = game.transaction_open();
-            send_scoped_click(game, Flow::Continue, window, slot, step, QUICK_CRAFT);
-            assert!(sent(&rx).is_empty());
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                send_scoped_click(game, Flow::Continue, window, slot, step, QUICK_CRAFT);
+                assert!(sent(&rx).is_empty());
+                ((), false)
+            });
             assert!(sent(&rx).is_empty());
             send_scoped_click(game, Flow::Continue, window, slot, step, QUICK_CRAFT);
             sent(&rx);
@@ -917,11 +918,12 @@ fn a_click_refuses_opens_and_closes_only_on_commit() {
             CLOSE_NOTICES.set(0);
             WINDOW_REQUEST.set(Some((key, by_handle)));
 
-            let seal = game.transaction_open();
-            click(game, window, 0);
-            assert_eq!(game.menu(123, window), Some(menu));
-            assert!(sent(&rx).is_empty());
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                click(game, window, 0);
+                assert_eq!(game.menu(123, window), Some(menu));
+                assert!(sent(&rx).is_empty());
+                ((), false)
+            });
             game.run_native_menu_events();
             assert_eq!(game.menu(123, window), Some(menu));
             let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();

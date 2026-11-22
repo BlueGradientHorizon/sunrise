@@ -116,7 +116,7 @@ fn each_persistent_data_refusal_has_its_own_name_and_writes_nothing() {
             .update_connection(13, |g| g.dead = true);
         let persisted = JavaString::from("PlayerPersisted");
         let persisted_value = Tag::compound([("dead_edit", Tag::Int(42))]);
-        let _: Result<(), ()> = game.transaction(|host, _| {
+        let _: Result<(), ()> = game.storage_transaction(|host, _| {
             b.set_persistent_data_key(host, &key, None).unwrap();
             b.set_persistent_data_key(host, &persisted, Some(&persisted_value))
                 .unwrap();

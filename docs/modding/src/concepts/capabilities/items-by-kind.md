@@ -8,7 +8,8 @@ A block's `ItemStorage` answers by kind, with `u64` amounts:
 
 - `amount(host, resource)` and `space_for(host, resource)`: how much of one kind it holds, and the planning bound
   for that kind. The default handler decides offer-dependent admission on the actual insert, not in `space_for`.
-- `insert(host, tx, resource, amount)` and `extract(...)`: writes in the caller's transaction, never more than asked.
+- `insert(host, tx, resource, amount)` and `extract(...)`: write with the innermost
+  `&TransactionContext`, never moving more than asked.
 - `visit_entries(host, &mut visitor)`: calls `visitor(&kind, amount)` for each occupied entry, in provider order.
   For a container, this is the order of the slots exposed on the queried side, not necessarily physical slot order.
   Each slot has its own amount, even when several hold the same kind.
@@ -56,6 +57,8 @@ as above; do not re-enter the provider or write inside the callback. Act on the 
 
 `transfer(host, from, to, resource, max, tx)` moves one kind: all or nothing, a partial take
 retried, and `StorageError::Overanswered` when a handler answers more than it was asked.
+`StorageError::TransactionUnavailable` means the host refused the transfer savepoint, not that
+there was no room or nothing to move.
 It queries the source amount and destination space before extracting and inserting.
 A partial move can require additional calls. `transfer_matching(host, from, to, filter, max, tx)` moves up to `max`
 items accepted by the filter. It does not read the source when `max` is zero. Otherwise it visits the source once

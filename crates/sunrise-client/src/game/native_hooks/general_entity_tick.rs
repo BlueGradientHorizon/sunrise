@@ -106,6 +106,25 @@ impl EntityServerAccess for GeneralTickAccess<'_, '_, '_> {
     fn host(&mut self) -> &mut dyn ServerHost {
         self.game
     }
+
+    fn with_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn mod_api::EntityServerAccess,
+            &'loan mod_api::TransactionContext,
+        ) -> bool,
+    ) -> Result<(), mod_api::TransactionUnavailable> {
+        let (subject, route) = (self.subject, self.kind);
+        let _ = self.game.storage_transaction(|game, tx| {
+            let mut child = GeneralTickAccess {
+                game,
+                subject: subject,
+                kind: route,
+            };
+            callback(&mut child, tx).then_some(()).ok_or(())
+        });
+        Ok(())
+    }
 }
 
 impl Game<'_> {

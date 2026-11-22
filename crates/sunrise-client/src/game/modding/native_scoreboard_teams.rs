@@ -584,13 +584,14 @@ mod tests {
 
             // An aborted transaction puts the teams back, as it does the objectives.
             let before = game.score.board.clone();
-            let aborted: Result<(), ()> = game.transaction(|host, _| {
-                let temp = ScoreboardServerHost::add_team(host, "temp").map_err(|_| ())?;
-                temp.join(host, ScoreHolder::Name("p".into()))
-                    .map_err(|_| ())?;
-                assert!(temp.set_color(host, Some(TeamColor::Gold)));
-                Err(())
-            });
+            let aborted: Result<(), mod_api::TransactionError<()>> =
+                game.storage_transaction(|host, _| {
+                    let temp = ScoreboardServerHost::add_team(host, "temp").map_err(|_| ())?;
+                    temp.join(host, ScoreHolder::Name("p".into()))
+                        .map_err(|_| ())?;
+                    assert!(temp.set_color(host, Some(TeamColor::Gold)));
+                    Err(())
+                });
             assert!(aborted.is_err());
             assert_eq!(game.score.board, before);
             assert!(game.team("temp").is_none());

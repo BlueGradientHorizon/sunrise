@@ -9,7 +9,8 @@ use crate::game::native_entity_refs::tests::with_game;
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::item::menu::StackResult;
 use mod_api::{
-    Flow, Hooks, HostSide, ItemPlace, ItemResource, ItemStackedOnOtherEvent, ModEntry, Mods,
+    Flow, Hooks, HostSide, HostTransaction, ItemPlace, ItemResource, ItemStackedOnOtherEvent,
+    ModEntry, Mods,
 };
 use std::cell::RefCell;
 use sunrise_client::{items::ItemStack, menu::Input};
@@ -90,17 +91,15 @@ impl Hooks for Listener {
                 slot,
             };
             let dirt = api_stack("minecraft:dirt", 1);
-            let tx = host.transaction_current().expect("inside the action");
-            assert_eq!(
-                place.insert(&mut **host, &tx, &ItemResource::of(&dirt), 2),
-                2
-            );
-            if s.take_dirt_back {
-                assert_eq!(
-                    place.extract(&mut **host, &tx, &ItemResource::of(&dirt), 2),
-                    2
-                );
-            }
+            assert!(!host.transaction_matches(None), "inside the action");
+            host.transaction(|host, tx| {
+                assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), 2);
+                if s.take_dirt_back {
+                    assert_eq!(place.extract(host, tx, &ItemResource::of(&dirt), 2), 2);
+                }
+                Ok::<_, ()>(())
+            })
+            .unwrap();
         }
         if s.write_scoreboard
             && let HostSide::Server(host) = &mut host
@@ -306,9 +305,10 @@ fn an_outer_abort_after_an_applied_click_restores_the_inventory() {
         with_local(|game| {
             // Row 90: the click is Applied inside a transaction that then aborts.
             script(Script::default());
-            let seal = game.transaction_open();
-            assert_eq!(click(game), (3, 0, 0));
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                assert_eq!(click(game), (3, 0, 0));
+                ((), false)
+            });
             assert_eq!((count(&game.inventory[9]), count(&game.carried)), (0, 3));
         });
     });
@@ -735,15 +735,16 @@ mod families {
                     guest.carried = stone(3);
                 });
                 script(Script::default());
-                let seal = game.transaction_open();
-                game.lan_guest_packet(12, packet(window, 0));
-                assert_eq!(dispatches(), 1, "the click is decided");
-                assert_eq!(
-                    furnace_items(game)[0],
-                    Some(("minecraft:stone".to_owned(), 3))
-                );
-                assert_eq!(held(game), None);
-                game.transaction_close(&seal, false);
+                game.storage_scope(|game, _| {
+                    game.lan_guest_packet(12, packet(window, 0));
+                    assert_eq!(dispatches(), 1, "the click is decided");
+                    assert_eq!(
+                        furnace_items(game)[0],
+                        Some(("minecraft:stone".to_owned(), 3))
+                    );
+                    assert_eq!(held(game), None);
+                    ((), false)
+                });
                 assert_eq!(furnace_items(game), [None, None, None]);
                 assert_eq!(held(game), Some(("minecraft:stone".to_owned(), 3)));
                 // Take: the output slot's iron ingots onto an empty cursor.
@@ -755,12 +756,13 @@ mod families {
                     guest.carried = None;
                 });
                 script(Script::default());
-                let seal = game.transaction_open();
-                game.lan_guest_packet(12, packet(window, 2));
-                assert_eq!(dispatches(), 1, "the click is decided");
-                assert_eq!(furnace_items(game)[2], None);
-                assert_eq!(held(game), Some(("minecraft:iron_ingot".to_owned(), 5)));
-                game.transaction_close(&seal, false);
+                game.storage_scope(|game, _| {
+                    game.lan_guest_packet(12, packet(window, 2));
+                    assert_eq!(dispatches(), 1, "the click is decided");
+                    assert_eq!(furnace_items(game)[2], None);
+                    assert_eq!(held(game), Some(("minecraft:iron_ingot".to_owned(), 5)));
+                    ((), false)
+                });
                 assert_eq!(
                     furnace_items(game),
                     [None, None, Some(("minecraft:iron_ingot".to_owned(), 5))]
@@ -921,18 +923,20 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
             };
             // The hub's container click: the chest's slot and the cursor.
             give(game);
-            let seal = game.transaction_open();
-            game.lan_guest_packet(12, packet(window, 0));
-            assert_eq!(state(game), (3, 0, 0));
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                game.lan_guest_packet(12, packet(window, 0));
+                assert_eq!(state(game), (3, 0, 0));
+                ((), false)
+            });
             assert_eq!(state(game), (0, 3, 0));
             // The guest's inventory menu: close the chest before the window-0 click.
             game.guest_close_all(12);
             give(game);
-            let seal = game.transaction_open();
-            game.lan_guest_packet(12, packet(0, 9));
-            assert_eq!(state(game), (0, 0, 3));
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                game.lan_guest_packet(12, packet(0, 9));
+                assert_eq!(state(game), (0, 0, 3));
+                ((), false)
+            });
             assert_eq!(state(game), (0, 3, 0));
         });
     });

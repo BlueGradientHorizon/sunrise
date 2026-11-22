@@ -6,7 +6,7 @@
 //! world as it was, which the reference doesn't promise.
 use super::{Game, spill::Spill, transactions::After};
 use mod_api::{
-    FluidKey, FluidStack, GameEventContext, LevelRef, PlayerRef, SoundSource, Transaction,
+    FluidKey, FluidStack, GameEventContext, LevelRef, PlayerRef, SoundSource, TransactionContext,
 };
 use sunrise_core::position::BlockPos;
 use sunrise_world::{
@@ -84,14 +84,14 @@ impl Game<'_> {
     }
     /// `BucketPickup.pickupBlock` for a mod's fluid container at `pos` in the level in place,
     /// kept by transaction `tx`: the source taken, a bucket of it. None, with nothing done,
-    /// where the block gives no fluid, off the level in place, or for a transaction that is not
-    /// open.
+    /// where the block gives no fluid or off the level in place. Panics if `tx` does not match
+    /// the innermost open transaction.
     pub(in crate::game) fn level_pickup_fluid(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
         player: Option<PlayerRef>,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> Option<FluidStack> {
         if !self.fluid_write_allowed(level, pos, tx) {
             return None;
@@ -107,8 +107,8 @@ impl Game<'_> {
     /// `BucketItem.emptyContents` of a bucket of `fluid` at `pos` in the level in place, for
     /// a mod's fluid container, kept by transaction `tx`. Whether it was placed, or hissed away
     /// where water evaporates. False, with nothing done, for a fluid without a world form,
-    /// where it can't be placed, off the level in place, or for a transaction that is not
-    /// open.
+    /// where it can't be placed, or off the level in place. Panics if `tx` does not match the
+    /// innermost open transaction.
     pub(in crate::game) fn level_place_fluid(
         &mut self,
         level: LevelRef,
@@ -116,7 +116,7 @@ impl Game<'_> {
         fluid: FluidKey,
         player: Option<PlayerRef>,
         validate: bool,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> bool {
         if !self.fluid_write_allowed(level, pos, tx) {
             return false;
@@ -153,8 +153,9 @@ impl Game<'_> {
         self.journal_fluid_write(level, write, false, player);
         true
     }
-    fn fluid_write_allowed(&self, level: LevelRef, pos: [i32; 3], tx: &Transaction) -> bool {
-        self.transaction_holds_here(tx)
+    fn fluid_write_allowed(&self, level: LevelRef, pos: [i32; 3], tx: &TransactionContext) -> bool {
+        self.assert_current_transaction(tx);
+        self.current_transaction_is_here()
             && self.level_in_place(level)
             && self.native_level_write_allowed(level, pos)
     }
@@ -215,9 +216,10 @@ impl Game<'_> {
         fluid: FluidKey,
         pickup: bool,
         player: Option<PlayerRef>,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> bool {
-        if !self.transaction_holds_here(tx) || !self.level_in_place(level) {
+        self.assert_current_transaction(tx);
+        if !self.current_transaction_is_here() || !self.level_in_place(level) {
             return false;
         }
         let Some(id) = mod_api::__private::fluid_id(fluid) else {
