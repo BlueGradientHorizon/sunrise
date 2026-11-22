@@ -1086,6 +1086,12 @@ fn a_waiting_baby_publishes_its_uuid_only_when_it_joins() {
 #[test]
 #[ignore = "daily"]
 fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
+    use crate::game::native_entity_refs::tests::bind_local_player;
+    use sunrise_client::{
+        advancements::{Advancement, Criterion, Rewards, Tree},
+        motion::PlayerMotion,
+    };
+
     if run_fresh_cases(
         "game::creatures::pending_birth_tests::a_panicking_baby_listener_leaves_no_reserved_state_behind",
         "SUNRISE_BABY_PANIC_CHILD",
@@ -1096,13 +1102,36 @@ fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
     let calls = Arc::new(AtomicUsize::new(0));
     let record = calls.clone();
     with_baby(
-        move |_, _| {
+        move |_, event| {
+            assert_eq!(event.player, Some(7));
             record.fetch_add(1, Ordering::SeqCst);
             panic!("a listener fails");
         },
         |game| {
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            bind_local_player(game, 700, 7);
+            const ADVANCEMENT: &str = "test:breed";
+            const TRIGGER: &str = "minecraft:bred_animals";
+            let mut tree = Tree::default();
+            tree.list.push(Advancement {
+                id: ADVANCEMENT.into(),
+                parent: None,
+                display: None,
+                criteria: vec![Criterion {
+                    name: "bred".into(),
+                    trigger: TRIGGER.into(),
+                    conditions: serde_json::json!({}).into(),
+                }],
+                requirements: vec![vec!["bred".into()]],
+                rewards: Rewards::default(),
+            });
+            tree.by_id.insert(ADVANCEMENT.into(), 0);
+            tree.by_trigger.insert(TRIGGER.into(), vec![(0, 0)]);
+            game.adv.tree = Arc::new(tree);
+            game.adv.loaded = true;
+            let level_random = game.world.random.state();
             let (uuids, attachments) = (game.persist.uuids.len(), game.entity_attachments.len());
-            let (parent, partner, child) = breed_pair(game, "minecraft:cow");
+            let (parent, partner, child) = breed_pair_credited(game, "minecraft:cow", true);
             assert_eq!(child, None);
             assert_eq!(
                 game.mobs.iter().map(|m| m.id).collect::<Vec<_>>(),
@@ -1110,6 +1139,22 @@ fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
             );
             assert_eq!(game.persist.uuids.len(), uuids, "the baby's UUID is gone");
             assert_eq!(game.entity_attachments.len(), attachments);
+            assert_eq!(game.world.random.state(), level_random, "no level yaw draw");
+            // Cow.getBreedOffspring takes one nextBoolean from Java Random(0); the
+            // second draw is still next, since Animal's finalization did not draw XP.
+            assert_eq!(find(game, parent).random.next_int(), -723_955_400);
+            for id in [parent, partner] {
+                let mob = find(game, id);
+                assert_eq!(
+                    mob.extra.age, 6000,
+                    "NeoForge Animal.spawnChildFromBreeding"
+                );
+                assert_eq!(mob.extra.in_love, 0);
+                assert!(!game.love_cause.contains_key(&id));
+            }
+            assert!(game.orbs.is_empty());
+            assert_eq!(animals_bred(game), 0);
+            assert!(!game.adv.progress.has(ADVANCEMENT, "bred"));
             assert_eq!(calls.load(Ordering::SeqCst), 1);
             assert_eq!(
                 take_hook_panics(),
@@ -1119,10 +1164,14 @@ fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
                 }]
             );
 
-            let (_, _, child) = breed_pair(game, "minecraft:cow");
-            let baby = child.expect("the next baby joined");
-            assert!(find(game, baby).extra.age < 0);
-            assert!(game.persist.uuids.contains_key(&baby));
+            let (_, _, child) = breed_pair_credited(game, "minecraft:cow", true);
+            let baby = find(game, child.expect("the next baby joined"));
+            assert!(baby.extra.age < 0);
+            assert_eq!(baby.yaw, 0.0);
+            assert!(game.persist.uuids.contains_key(&baby.id));
+            assert_eq!(game.orbs.len(), 1);
+            assert_eq!(animals_bred(game), 1);
+            assert!(game.adv.progress.has(ADVANCEMENT, "bred"));
             assert_eq!(calls.load(Ordering::SeqCst), 1);
             assert!(take_hook_panics().is_empty());
         },

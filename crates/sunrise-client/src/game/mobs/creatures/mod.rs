@@ -4126,12 +4126,14 @@ impl Game<'_> {
             }
             _ => p.kind.id.clone(),
         };
+        // Animal.spawnChildFromBreeding places the child at yaw zero. Its constructor still
+        // spends LivingEntity's yaw draw on the child's stream, not the level's.
         let mut child = self.create_mob_reason(
             &kind,
             [p.position.x, p.position.y, p.position.z],
             true,
             SpawnSite::Raw,
-            None,
+            Some(0.0),
         )?;
         'offspring: {
             let child = &mut child;
