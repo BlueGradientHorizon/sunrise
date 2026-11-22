@@ -523,6 +523,17 @@ class OracleArgumentTests(unittest.TestCase):
                          [os.path.abspath(jar), os.path.abspath(oracle)])
 
 
+def hash_at_cold_start(cache, source, start):
+    import hashlib
+    from tools import parity_shim
+
+    parity_shim.CACHE = cache
+    start.wait()
+    hashes = parity_shim.Hashes()
+    with contextlib.closing(hashes.db):
+        assert hashes.file(str(source)) == hashlib.sha256(b"a").hexdigest()
+
+
 @unittest.skipIf(os.name == "nt", "oracle PATH shimming uses Unix executable symlink semantics")
 class OracleReuseTests(unittest.TestCase):
     """tools/parity_shim.py replays a run only when its inputs and outputs are as recorded."""
@@ -567,6 +578,19 @@ class OracleReuseTests(unittest.TestCase):
                                      capture_output=True, text=True, stdin=self.subprocess.DEVNULL, check=True)
         self.assertEqual(result.stdout, "done\n")
         return int((self.input.parent / "runs").read_text())
+
+    def test_parallel_shims_initialize_one_cold_cache(self):
+        import multiprocessing
+
+        cache = Path(self.env["PARITY_SHIM_CACHE"])
+        pool = multiprocessing.get_context("spawn")
+        start = pool.Barrier(4, timeout=10)
+        workers = [pool.Process(target=hash_at_cold_start, args=(cache, self.input, start)) for _ in range(4)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join()
+        self.assertEqual([worker.exitcode for worker in workers], [0] * len(workers))
 
     def test_reuses_until_an_input_or_output_changes(self):
         self.assertEqual(self.oracle(), 1)
