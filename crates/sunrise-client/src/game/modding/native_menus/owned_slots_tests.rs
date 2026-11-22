@@ -2020,7 +2020,7 @@ fn reentrant_open_during_travel_close_opens_after_change_level() {
         CLOSE_TRACE.with(|trace| trace.borrow_mut().clear());
         RECORD_CLOSE.set(true);
         REOPEN_ON_REMOVED.set(true);
-        game.start_server_trip(1, Dim::Nether, None, false);
+        game.start_server_trip(1, Dim::Nether, None);
         RECORD_CLOSE.set(false);
         CLOSE_TRACE.with(|trace| {
             assert_eq!(
