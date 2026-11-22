@@ -846,8 +846,9 @@ mod tests {
                     "data/addon/example/model/zombie.json".to_owned(),
                     vec![(
                         "pack".to_owned(),
-                        br#"{"entity": "zombie", "drops": [{"item": "rotten_flesh", "count": 2}],
-                            "tiers": {"basic": {"data_per_kill": 1}}}"#
+                        br#"{"neoforge:conditions": [], "entity": "zombie",
+                            "drops": [{"item": "rotten_flesh", "count": 2}],
+                            "tiers": {"elite": {"data_per_kill": 4}, "basic": {"data_per_kill": 1}}}"#
                             .to_vec(),
                     )],
                 )],
@@ -875,6 +876,30 @@ mod tests {
             Some(2)
         );
         assert_eq!(entry.get("color"), None);
+        // The map's pairs reach the client in the file's order, past the skipped conditions.
+        let tiers: Vec<_> = entry
+            .get("tiers")
+            .and_then(DatapackValue::as_map)
+            .unwrap()
+            .iter()
+            .map(|(key, _)| key.as_str())
+            .collect();
+        assert_eq!(tiers, ["elite", "basic"]);
+        // A received map naming one key twice is refused.
+        let tiers_at = declaration
+            .fields
+            .iter()
+            .position(|field| field.name == "tiers")
+            .unwrap();
+        let mut twice = received.clone();
+        let DatapackValue::Map(pairs) = &mut twice.registries[0].entries[0].values[tiers_at] else {
+            panic!("tiers");
+        };
+        pairs[1].0 = pairs[0].0.clone();
+        assert!(matches!(
+            twice.candidate(std::slice::from_ref(&declaration)),
+            Err(DatapackSnapshotError::InvalidEntry { .. })
+        ));
         // A nested count out of its bounds is refused, as a top-level one is.
         let mut bad = received.clone();
         let DatapackValue::List(items) = &mut bad.registries[0].entries[0].values[1] else {

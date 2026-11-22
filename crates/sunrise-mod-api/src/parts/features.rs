@@ -10,8 +10,9 @@ pub mod tests {
     use crate::*;
 
     /// A feature type twice, one in an unowned namespace, one without a name, one taking a
-    /// vanilla feature type's id, one with an invalid schema and one with a reference field:
-    /// every invalid registration is refused at startup, naming the mod.
+    /// vanilla feature type's id, one with an invalid schema, one with a reference field and
+    /// one with a nested field (whose map keys could be references): every invalid registration
+    /// is refused at startup, naming the mod.
     #[test]
     pub(crate) fn invalid_feature_types_refuse_registration() {
         use mod_api::{DatapackField, DatapackFieldKind, DatapackValue};
@@ -74,6 +75,19 @@ pub mod tests {
                     )],
                     Tree,
                 );
+                r.register_feature_type(
+                    "nested",
+                    vec![DatapackField::required(
+                        "by_spell",
+                        DatapackFieldKind::Map {
+                            key: mod_api::DatapackKeyKind::Reference {
+                                registry: "test:spell".into(),
+                            },
+                            value: Box::new(DatapackFieldKind::Bool),
+                        },
+                    )],
+                    Tree,
+                );
             }
         }
         let errors = install_parts(
@@ -82,13 +96,18 @@ pub mod tests {
             |_| false,
         )
         .unwrap_err();
-        assert_eq!(errors.len(), 6, "{errors:?}");
+        assert_eq!(errors.len(), 7, "{errors:?}");
         assert!(errors[0].contains("test registered feature type test:tree twice"));
         assert!(errors[1].contains("namespace"));
         assert!(errors[2].contains("invalid identifier \"test:\""));
         assert!(errors[3].contains("namespace"), "{}", errors[3]);
         assert!(errors[4].contains("test:doubled: invalid config schema: InvalidFieldName"));
         assert!(errors[5].contains("test:linked: config field \"next\" is a Reference"));
+        assert!(
+            errors[6].contains("test:nested: config field \"by_spell\" is nested"),
+            "{}",
+            errors[6]
+        );
     }
 }
 
@@ -121,19 +140,23 @@ impl FeaturesRegistrar for PartRegistrar {
                 "config field {:?} is a Reference, which feature configs don't resolve; use Identifier",
                 field.name
             )))
+        } else if let Some(field) = config.iter().find(|field| {
+            matches!(
+                field.kind,
+                crate::DatapackFieldKind::List { .. }
+                    | crate::DatapackFieldKind::Map { .. }
+                    | crate::DatapackFieldKind::Record { .. }
+                    | crate::DatapackFieldKind::Optional { .. }
+            )
+        }) {
+            // A feature config is a flat record of scalars: nested kinds (and the references
+            // they could hide, a reference map key's included) are a datapack registry's.
+            Some(refuse(format!(
+                "config field {:?} is nested, and a feature config is a flat record of scalars",
+                field.name
+            )))
         } else {
-            let mut defaults = Ok(());
-            for field in &mut config {
-                if matches!(field.kind, crate::DatapackFieldKind::Identifier)
-                    && let Some(crate::DatapackValue::Text(value)) = &mut field.default
-                {
-                    match crate::Identifier::parse(value) {
-                        Ok(parsed) => *value = parsed.to_string(),
-                        Err(_) => defaults = Err(crate::DatapackRegistrationError::InvalidDefault),
-                    }
-                }
-            }
-            defaults
+            mod_vocab::__private::parts_installation::normalize_datapack_defaults(&mut config)
                 .and_then(|()| {
                     mod_vocab::__private::parts_installation::validate_datapack_schema(&config)
                 })

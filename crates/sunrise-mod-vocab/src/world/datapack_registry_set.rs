@@ -173,15 +173,10 @@ impl DatapackCandidate {
                 let text =
                     std::str::from_utf8(bytes).map_err(|_| fail(DatapackLoadReason::NotUtf8))?;
                 // Account raw source bytes above; conditions belong to the engine,
-                // not to the declaring mod's schema.
-                let stripped = serde_json::from_str::<serde_json::Value>(text)
-                    .ok()
-                    .and_then(|mut json| {
-                        json.as_object_mut()?.remove("neoforge:conditions")?;
-                        serde_json::to_string(&json).ok()
-                    });
+                // not to the declaring mod's schema. The file is decoded as written, so a
+                // map keeps its file order.
                 let decoded = declaration
-                    .decode_entry(stripped.as_deref().unwrap_or(text))
+                    .decode_entry_ignoring(text, &["neoforge:conditions"])
                     .map_err(|error| fail(DatapackLoadReason::Decode(error)))?;
                 entries.insert(entry, decoded);
             }
@@ -352,7 +347,12 @@ pub(super) fn resolve_references(
             // Every reference, at any depth: a list's items, a map's keys and values, a record's fields.
             let mut found = Vec::new();
             for (field, (_, value)) in declaration.fields.iter().zip(&decoded.values) {
-                super::datapack_registry::references(&field.kind, value, &field.name, &mut found);
+                super::datapack_registry::references(
+                    &field.kind,
+                    value,
+                    &super::datapack_registry::joined("", &field.name),
+                    &mut found,
+                );
             }
             for (path, registry, target) in found {
                 let Some(targets) = registries.get(registry) else {
