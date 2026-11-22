@@ -86,7 +86,13 @@ fn a_pack_whose_clouds_vanilla_reads_past_fails_the_load() {
     if run_fresh_cases(
         NAME,
         CASE,
-        &["reload", "startup", "shader_reload", "shader_startup"],
+        &[
+            "reload",
+            "startup",
+            "shader_reload",
+            "shader_startup",
+            "filtered_reload",
+        ],
     ) {
         return;
     }
@@ -102,6 +108,20 @@ fn a_pack_whose_clouds_vanilla_reads_past_fails_the_load() {
     );
     match std::env::var(CASE).unwrap().as_str() {
         "reload" => a_reload_fails_and_drops_the_selection("file/past"),
+        "filtered_reload" => {
+            write_pack_with(
+                "filtered",
+                INNER,
+                &[(
+                    "pack.mcmeta",
+                    r#"{
+                    "pack":{"description":"filter clouds","min_format":[97,0],"max_format":[97,1]},
+                    "filter":{"block":[{"namespace":"minecraft","path":"shaders/core/clouds[.]fsh"}]}
+                }"#,
+                )],
+            );
+            a_reload_fails_and_drops_the_selection("file/filtered");
+        }
         "shader_reload" => a_reload_fails_and_drops_the_selection("file/oit_broken"),
         "shader_startup" => a_startup_load_fails_back_to_the_games_resources(
             "file/oit_broken",

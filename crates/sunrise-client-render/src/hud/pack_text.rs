@@ -133,7 +133,7 @@ fn translate_pair(
     };
     let own = |path: &str, text: &Option<String>| {
         let Some(text) = text else {
-            return false;
+            return defaults.contains(path);
         };
         match read_shader_file(defaults, path).ok().flatten() {
             Some(game) => resolved(root, text) != resolved(defaults, &game),
@@ -691,6 +691,40 @@ mod tests {
         }
         // A pack finds the GUI scale as ScreenSize.x * ProjMat[0][0] / 2.
         assert!((data[8] * data[64] / 2.0 - 4.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn filtering_a_required_cloud_stage_fails_the_load() {
+        use sunrise_assets::resource_source::Resource;
+        let vertex = "assets/minecraft/shaders/core/clouds.vsh";
+        let fragment = "assets/minecraft/shaders/core/clouds.fsh";
+        let stack = |paths: &[&str]| {
+            ResourceSource::indexed(
+                paths
+                    .iter()
+                    .map(|&path| (path.to_owned(), Resource::bytes(b"void main() {}".to_vec())))
+                    .collect(),
+            )
+        };
+        let game = stack(&[vertex, fragment]);
+        assert!(matches!(load_clouds(&game, &game), Ok(None)));
+        for (visible, hidden) in [
+            (&[vertex][..], fragment),
+            (&[fragment][..], vertex),
+            (&[][..], vertex),
+        ] {
+            let Err(error) = load_clouds(&stack(visible), &game) else {
+                panic!("load accepted a stack missing {hidden}");
+            };
+            assert_eq!(error.pipeline, crate::gfx::core_clouds::CLASSIC_PIPELINE);
+            assert_eq!(
+                error.why,
+                Refusal::StageHidden {
+                    path: hidden.into()
+                }
+                .to_string()
+            );
+        }
     }
 
     /// Packs in memory: vanilla's lightmap stages (in shape) as the defaults, and `own` files
