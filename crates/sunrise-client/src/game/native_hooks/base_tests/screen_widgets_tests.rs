@@ -617,6 +617,122 @@ fn button_on_press_state_mutation_keyboard_and_synchronous_transitions() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
+    if run_fresh_cases(
+        "game::native_hooks::base::screen_widgets_tests::mounted_button_sprites_keep_their_pixels_and_accessibility",
+        "SUNRISE_WIDGET_SPRITES_CHILD",
+        &["sprites"],
+    ) {
+        return;
+    }
+    use mod_api::client::widgets::ButtonSprites;
+    use sunrise_client::{
+        gfx::entity_pixel_test::render_hud,
+        hud::{GuiSprite, Rect, dynamic_textures::ImagePatch},
+        widgets::{self, Cursor, Kind, ScreenInfo, What},
+    };
+
+    const SIZE: [u32; 2] = [320, 240];
+    const SPRITES: [&str; 3] = ["fixture:normal", "fixture:highlighted", "fixture:disabled"];
+    const COLORS: [[u8; 4]; 3] = [[64, 16, 230, 255], [88, 96, 192, 255], [112, 176, 154, 255]];
+    const BOUNDS: [[f32; 4]; 3] = [
+        [10.0, 10.0, 50.0, 20.0],
+        [70.0, 10.0, 50.0, 20.0],
+        [130.0, 10.0, 50.0, 20.0],
+    ];
+
+    struct SpriteMod;
+    #[mod_api::__subscriptions]
+    impl Hooks for SpriteMod {
+        fn screen_init_post(&self, _: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
+            if event.screen.id != "paused" {
+                return;
+            }
+            let mut art = ButtonSprites::new(SPRITES[0]);
+            art.highlighted = Some(SPRITES[1].into());
+            art.disabled = Some(SPRITES[2].into());
+            event.widgets.add_button(
+                Button::new(BOUNDS[0], ApiText::literal("Normal"), |_, _| {}).sprites(art.clone()),
+            );
+            let focused = event.widgets.add_button(
+                Button::new(BOUNDS[1], ApiText::literal("Focused"), |_, _| {}).sprites(art.clone()),
+            );
+            event.widgets.set_initial_focus(focused);
+            event
+                .widgets
+                .add_button(Button::inactive(BOUNDS[2], ApiText::literal("Disabled")).sprites(art));
+        }
+    }
+
+    with_mods(
+        vec![ModEntry::new("sprite_fixture", Box::new(SpriteMod))].into(),
+        || {
+            with_client_game(|game| {
+                let atlas = &mut game.gui.atlas;
+                let [ox, oy] = atlas.dynamic_texture_pool.as_ref().unwrap().origin(0, 0);
+                let (aw, ah) = (atlas.width as f32, atlas.height as f32);
+                for (i, sprite) in SPRITES.into_iter().enumerate() {
+                    let x = ox + i as u32;
+                    atlas.gui.insert(
+                        sprite.into(),
+                        GuiSprite::Present {
+                            rect: Rect {
+                                u0: x as f32 / aw,
+                                v0: oy as f32 / ah,
+                                u1: (x + 1) as f32 / aw,
+                                v1: (oy + 1) as f32 / ah,
+                                w: 1,
+                                h: 1,
+                            },
+                            scaling: None,
+                        },
+                    );
+                }
+                game.set_screen(Screen::Paused);
+                game.cursor = (1.0, 1.0);
+                let _ = widgets::take_cursor();
+                widgets::set_narrating(true);
+                widgets::begin_screen(|| ScreenInfo::new("fixture", "Mounted sprite buttons"));
+                let mut batch = HudBatch::scratch(SIZE);
+                batch.image_patches.push(ImagePatch {
+                    origin: [ox, oy],
+                    size: [3, 1],
+                    rgba: COLORS.concat().into(),
+                });
+                game.draw_mounted_screen_widgets(&mut batch);
+                assert_eq!(widgets::take_cursor(), Cursor::Arrow);
+                widgets::end_frame(1);
+                widgets::set_narrating(false);
+
+                let pixels = render_hud(&batch, &game.gui.atlas, SIZE).expect("offscreen HUD");
+                for (rect, color) in BOUNDS.into_iter().zip(COLORS) {
+                    let [x, y, _, _] = rect;
+                    let at = (((y as u32 + 1) * SIZE[0] + x as u32 + 1) * 4) as usize;
+                    assert_eq!(pixels[at..at + 4], color);
+                }
+                let buttons = widgets::last();
+                assert_eq!(buttons.len(), 3);
+                for (i, button) in buttons.iter().enumerate() {
+                    assert_eq!([button.x, button.y, button.w, button.h], BOUNDS[i]);
+                    assert_eq!(button.enabled, i != 2);
+                    assert!(matches!(button.kind, Kind::Mounted { field: false, .. }));
+                }
+                let narration = widgets::take_last_narration();
+                assert_eq!(narration.items.len(), 3);
+                assert!(
+                    matches!(&narration.items[1].what, What::Button { message, active: true } if message == "Focused")
+                );
+                assert_eq!(narration.items[1].rect, BOUNDS[1]);
+                game.cursor = (11.0, 11.0);
+                game.draw_mounted_screen_widgets(&mut HudBatch::scratch(SIZE));
+                assert_eq!(widgets::take_cursor(), Cursor::PointingHand);
+            });
+        },
+    );
+}
+
 /// TextField local state, IME & double-click:
 /// - Typing, Backspace, Delete, Left/Right/Home/End, Ctrl+A, and Enter update local `EditBox`
 ///   and fire `on_change` / `on_submit` with no `DrawContext` round-trip.

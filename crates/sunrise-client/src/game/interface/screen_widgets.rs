@@ -646,13 +646,14 @@ impl Game<'_> {
                             let mark = widgets::frame_mark();
                             let hovered = point_in_rect(mouse, state.rect);
                             let label: Text = state.label.try_into_engine(&()).unwrap_or_default();
-                            ui::button_as(
+                            ui::button_focused_as(
                                 batch,
                                 &self.gui.atlas,
                                 state.rect,
                                 &label,
                                 state.active,
-                                hovered || focused,
+                                hovered,
+                                focused,
                                 state.sprites.as_ref(),
                                 |rect| Narratable::button(label.plain(), rect, state.active),
                             );

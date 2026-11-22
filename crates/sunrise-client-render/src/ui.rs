@@ -562,8 +562,26 @@ pub fn button_as(
     sprites: Option<&ButtonSprites>,
     narration: impl FnOnce([f32; 4]) -> crate::widgets::Narratable,
 ) {
+    button_focused_as(
+        batch, atlas, rect, label, active, hover, false, sprites, narration,
+    );
+}
+
+/// A button whose focus highlights its art but whose cursor depends only on pointer hover.
+#[allow(clippy::too_many_arguments)]
+pub fn button_focused_as(
+    batch: &mut HudBatch,
+    atlas: &HudAtlas,
+    rect: [f32; 4],
+    label: &Text,
+    active: bool,
+    hover: bool,
+    focused: bool,
+    sprites: Option<&ButtonSprites>,
+    narration: impl FnOnce([f32; 4]) -> crate::widgets::Narratable,
+) {
     button_with_room(
-        batch, atlas, rect, label, active, hover, false, 0.0, sprites, narration,
+        batch, atlas, rect, label, active, hover, focused, 0.0, sprites, narration,
     );
 }
 /// An options button whose focus highlights it without changing the mouse cursor.
