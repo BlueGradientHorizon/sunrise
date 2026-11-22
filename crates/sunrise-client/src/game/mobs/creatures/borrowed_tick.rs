@@ -1,5 +1,9 @@
 //! Resumable borrowed mob-tick region; the caller owns final restoration.
 use super::*;
+#[cfg(test)]
+thread_local! {
+    pub(in crate::game) static WORK_STEP: std::cell::Cell<Option<u32>> = const { std::cell::Cell::new(None) };
+}
 /// Route each player event to the player selected when it was emitted.
 /// Untagged events retain the previous per-tick guest binding.
 fn route_player_events(
@@ -559,6 +563,15 @@ impl Game<'_> {
                     } else {
                         super::super::tick_profile::start_mob(&mobs[i].kind)
                     };
+                    // Test seam: the work step of villager `id`, as its brain takes it.
+                    #[cfg(test)]
+                    if WORK_STEP.get() == Some(mobs[i].id) {
+                        sunrise_client::mobs::villager_brain::restock_if_due(
+                            &mut mobs[i],
+                            &w,
+                            &mut events,
+                        );
+                    }
                     let run_tick = || match resume.take() {
                         Some(Pause::Breathing { air, known_speed }) => {
                             sunrise_client::mobs::riders::resume_after_breathing(
@@ -854,6 +867,8 @@ impl Game<'_> {
                     &mut sections.borrow_mut(),
                 );
             }
+            // A work step's restock reaches the screen before any callback can edit it.
+            self.villager_restock_steps(&mut events);
             let callback_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if section_yield && let Some(sections) = section_table.as_ref() {
                     self.entity_sections_ticked_live(

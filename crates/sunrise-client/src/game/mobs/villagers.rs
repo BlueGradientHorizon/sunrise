@@ -633,6 +633,12 @@ impl Game<'_> {
     /// The restock steps the brain's work steps took this pass, applied in order
     /// to the trading screens (`events` keeps the rest).
     pub(in crate::game) fn villager_restock_steps(&mut self, events: &mut Vec<MobEvent>) {
+        if !events
+            .iter()
+            .any(|e| matches!(e, MobEvent::VillagerRestockStep { .. }))
+        {
+            return;
+        }
         let (steps, rest) = std::mem::take(events)
             .into_iter()
             .partition::<Vec<_>, _>(|e| matches!(e, MobEvent::VillagerRestockStep { .. }));

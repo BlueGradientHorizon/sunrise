@@ -334,7 +334,10 @@ fn a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob() {
             sent.iter()
                 .any(|p| matches!(p, Clientbound::ContainerSetContent(_)))
         );
-        let screen = game.lan.as_ref().unwrap().play[&12].merchant.as_ref().unwrap();
+        let screen = game.lan.as_ref().unwrap().play[&12]
+            .merchant
+            .as_ref()
+            .unwrap();
         assert_eq!(screen.merchant.session.offers[0].uses, 0);
         // An autosave with the screen open writes the live offers with the clock.
         let saved = sunrise_client::entity_nbt::mob_to_nbt(
@@ -404,7 +407,10 @@ fn a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them() {
         assert!(events.is_empty());
         // A callback after the tick takes the effect away: the result stays.
         game.as_guest(12, |g| g.potions.effects.clear());
-        let screen = game.lan.as_ref().unwrap().play[&12].merchant.as_ref().unwrap();
+        let screen = game.lan.as_ref().unwrap().play[&12]
+            .merchant
+            .as_ref()
+            .unwrap();
         assert_eq!(
             screen.slots[2],
             Some(ItemStack::new("minecraft:emerald", 1)),
@@ -414,52 +420,101 @@ fn a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them() {
     });
 }
 
-/// A native hook's offer edit after the work step is the last write: the restock was applied at
-/// the work step, so it neither resets the edit's uses nor recomputes its demand.
+/// Writes a diamond result, uses 3 and demand 17 to a villager's first offer in its own
+/// `EntityTick.Post` (a type named to `entity_tick_each`).
+struct EditInPost;
+#[mod_api::__subscriptions]
+impl Hooks for EditInPost {
+    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        registrar.entity_tick_each("minecraft:villager");
+    }
+
+    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
+        event.listened = true;
+    }
+
+    fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
+        let HostSide::Server(host) = host else {
+            panic!("server fixture");
+        };
+        let villager = host.merchant(host.entity(40).unwrap()).unwrap();
+        let mut offer = villager.offers(host).unwrap().remove(0);
+        let key = mod_api::__private::item_key("minecraft:diamond").unwrap();
+        offer.result = mod_api::ItemStack::new(key, 1).unwrap();
+        (offer.uses, offer.demand) = (3, 17);
+        assert!(villager.set_offer(host, 0, offer).unwrap());
+        assert_eq!(event.entities, [40]);
+        EDITED.set(true);
+    }
+}
+thread_local! {
+    static EDITED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// A native hook's offer edit in the villager's own `EntityTick.Post` is the last write: the
+/// restock reached the offers the player sees before any callback ran, so it neither resets the
+/// edit's uses nor recomputes its demand.
 #[test]
 #[ignore = "daily"]
 fn an_offer_edit_after_the_work_step_survives_the_restock() {
-    use super::api_values::TryIntoApi;
-    with_guests(|game| {
-        let mut events = used_up_offer_work_step(game);
-        game.villager_restock_steps(&mut events);
-        let villager = game.merchant(game.entity(40).unwrap()).unwrap();
-        let mut edited = game.lan.as_ref().unwrap().play[&12]
-            .merchant
-            .as_ref()
-            .unwrap()
-            .merchant
-            .session
-            .offers[0]
-            .clone();
-        edited.result = ItemStack::new("minecraft:diamond", 1);
-        (edited.uses, edited.demand) = (3, 17);
-        assert_eq!(
-            villager.set_offer(game, 0, edited.try_into_api().unwrap()),
-            Ok(true)
-        );
-        let screen = game.lan.as_ref().unwrap().play[&12].merchant.as_ref().unwrap();
-        let live = &screen.merchant.session.offers[0];
-        let got = |o: &sunrise_client::merchant::MerchantOffer| (o.result.clone(), o.uses, o.demand);
-        let want = (ItemStack::new("minecraft:diamond", 1), 3, 17);
-        assert_eq!(got(live), want, "the live menu");
-        let saved = sunrise_client::entity_nbt::mob_to_nbt(
-            &game.mobs[0],
-            [1, 2, 3, 4],
-            None,
-            Some(game.pack.assets.registry),
-            |_| None,
-            game.items(),
-        );
-        let loaded = sunrise_client::entity_nbt::mob_from_nbt(
-            &saved,
-            game.res.mob_types(),
-            999,
-            Some(game.pack.assets.registry),
-        )
-        .unwrap();
-        let t = loaded.extra.trade.as_ref().unwrap();
-        assert_eq!(got(&t.offers[0]), want, "the saved, reloaded mob");
+    let mods: Mods = vec![ModEntry::new("edit-in-post", Box::new(EditInPost))].into();
+    mod_platform::testing::with_mods(mods, || {
+        with_guests(|game| {
+            game.world_root = std::env::temp_dir().join(format!(
+                "sunrise-restock-post-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&game.world_root);
+            game.enter_level(super::Dim::Overworld).unwrap();
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            assert!(
+                game.entity_ticking_area()(0, 0),
+                "fixture chunk ticks entities"
+            );
+            open(game, 1);
+            game.mobs[0].position = sunrise_core::geometry::Vec3::new(1.0, 80.0, 0.5);
+            let gm = game.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
+            let offer = &mut gm.merchant.as_mut().unwrap().merchant.session.offers[0];
+            offer.uses = 10;
+            let t = game.mobs[0].extra.trade.as_mut().unwrap();
+            t.offers[0].uses = 10;
+            game.mobs[0].no_ai = true;
+            game.mobs[0].no_gravity = true;
+            super::creatures::borrowed_tick::WORK_STEP.set(Some(40));
+            EDITED.set(false);
+            game.tick_creature_entities().unwrap();
+            assert!(EDITED.get(), "the villager's own Post ran");
+            let screen = game.lan.as_ref().unwrap().play[&12]
+                .merchant
+                .as_ref()
+                .unwrap();
+            let live = &screen.merchant.session.offers[0];
+            let got =
+                |o: &sunrise_client::merchant::MerchantOffer| (o.result.clone(), o.uses, o.demand);
+            let want = (ItemStack::new("minecraft:diamond", 1), 3, 17);
+            assert_eq!(got(live), want, "the live menu");
+            let saved = sunrise_client::entity_nbt::mob_to_nbt(
+                &game.mobs[0],
+                [1, 2, 3, 4],
+                None,
+                Some(game.pack.assets.registry),
+                |_| None,
+                game.items(),
+            );
+            let loaded = sunrise_client::entity_nbt::mob_from_nbt(
+                &saved,
+                game.res.mob_types(),
+                999,
+                Some(game.pack.assets.registry),
+            )
+            .unwrap();
+            let t = loaded.extra.trade.as_ref().unwrap();
+            assert_eq!(got(&t.offers[0]), want, "the saved, reloaded mob");
+        });
     });
 }
 
