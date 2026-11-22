@@ -101,7 +101,7 @@ impl ParticleProvider<Rise> for Riser {
 }
 
 // In Hooks::register_particle_providers, using the retained `riser` type:
-providers.register_sprite_set(riser, Arc::new(Riser));
+event.providers.register_sprite_set(riser, Arc::new(Riser));
 // From a client hook:
 host.add_particle(&riser.options(Rise { lift: 5 }), at, [0.0; 3]);
 ```

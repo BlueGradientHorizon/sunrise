@@ -11,7 +11,7 @@ pub trait Hooks {
 
 Register a common `ParticleType<T>` in `Hooks::register`, supplying its map and stream codecs.
 `Hooks::register_particle_providers` binds it on the logical client with
-`providers.register_sprite_set(ty, Arc::new(provider))`. The matching sprite list is
+`event.providers.register_sprite_set(ty, Arc::new(provider))`. The matching sprite list is
 `assets/<namespace>/particles/<path>.json`. Spawn using `ty.options(value)`; a unit type uses
 `ParticleMapCodec::unit()`, `ParticleStreamCodec::wire()` and `ty.options(())`.
 
