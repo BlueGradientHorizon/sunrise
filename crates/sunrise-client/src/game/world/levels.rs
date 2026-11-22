@@ -1483,7 +1483,7 @@ impl Game<'_> {
             sunrise_client::spans::time("dedicated_streaming", || {
                 self.update_dedicated_streaming();
             });
-            self.tick_spawn_tickets(running == Some(true));
+            self.tick_spawn_tickets(running == Some(true), true);
             sunrise_client::spans::time("update_world", || self.update_world());
             let tick_span = sunrise_client::spans::guard("level_tick");
             // This level's moving colliders, solid to its movers for this tick only.

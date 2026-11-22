@@ -323,7 +323,7 @@ impl Game<'_> {
         Ok(task)
     }
 
-    pub(super) fn tick_spawn_tickets(&mut self, running: bool) {
+    pub(super) fn tick_spawn_tickets(&mut self, running: bool, notify: bool) {
         if self.tickets.spawn_areas().next().is_some() {
             // ServerChunkCache.tick doesn't purge in a frozen level, nor
             // does pause-when-empty tick the cache (it only polls chunk work).
@@ -332,7 +332,7 @@ impl Game<'_> {
                 self.tickets
                     .tick_spawn(|center| streaming.chunk_ready_for_saving(center));
             }
-            self.update_chunk_tickets();
+            self.rebuild_chunk_tickets(notify);
         }
     }
 

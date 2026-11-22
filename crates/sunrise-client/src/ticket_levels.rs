@@ -42,12 +42,15 @@ pub const ENTITY_TICKING: u8 = 31;
 pub const BLOCK_TICKING: u8 = 32;
 /// `ChunkLevel.FULL_CHUNK_LEVEL`: loaded, and no longer ticking.
 pub const FULL: u8 = BLOCK_TICKING + 1;
-/// The level of a chunk no ticket keeps `FULL` or better: unloaded as far as
-/// the tickets go. Sunrise keeps no level for the statuses below `FULL`, so
-/// every level past it is this one.
+/// The hook's existing not-FULL value, and lack of a simulation ticket.
 pub const UNLOADED: u8 = FULL + 1;
-/// What a chunk with no ticket near it has.
-const NONE: (u8, u8) = (UNLOADED, UNLOADED);
+/// `ChunkLevel.RADIUS_AROUND_FULL_CHUNK`: `ChunkPyramid.GENERATION_PYRAMID`'s
+/// FULL accumulated dependencies, including the extra rings for terrain,
+/// features and light past the eight `STRUCTURE_STARTS` dependencies.
+const GENERATION_HALO: i32 = 11;
+/// `ChunkLevel.MAX_LEVEL + 1` means no loading holder at all.
+const NO_HOLDER: u8 = FULL + GENERATION_HALO as u8 + 1;
+const NONE: (u8, u8) = (NO_HOLDER, UNLOADED);
 
 /// `TicketType.PORTAL`'s timeout, in ticks.
 const PORTAL_TIMEOUT: i64 = 300;
@@ -255,7 +258,7 @@ pub struct LevelChange {
 /// The chunks whose loading level differs between two maps (`None`: no
 /// tickets, every chunk unloaded), by chunk.
 fn level_changes(old: Option<&Map>, new: Option<&Map>) -> Vec<LevelChange> {
-    let level = |map: Option<&Map>, x, z| map.map_or(UNLOADED, |m| m.get(x, z).0);
+    let level = |map: Option<&Map>, x, z| map.map_or(UNLOADED, |m| m.get(x, z).0.min(UNLOADED));
     let mut changes = Vec::new();
     if let Some(old) = old {
         old.for_each_loaded(|x, z, was| {
@@ -313,7 +316,7 @@ impl Tiled {
         for &(center, radius) in &s.spawn {
             map.add(
                 center,
-                radius,
+                radius + GENERATION_HALO,
                 i32::from(FULL) - radius,
                 0,
                 i32::from(UNLOADED),
@@ -687,7 +690,11 @@ fn compute(s: &Sources, recording: bool) -> Map {
                 .iter()
                 .map(|&(p, level)| (p, ticket_radius(level, recording))),
         )
-        .chain(s.spawn.iter().copied())
+        .chain(
+            s.spawn
+                .iter()
+                .map(|&(center, radius)| (center, radius + GENERATION_HALO)),
+        )
         .chain(s.dragon.map(|arena| (arena, ARENA_RADIUS)))
         .chain(s.viewed.iter().map(|t| (t.center, t.reach(recording))));
     let Some((x0, z0, x1, z1)) = boxes.fold(None, |b, ((x, z), r)| {
@@ -747,8 +754,9 @@ fn compute(s: &Sources, recording: bool) -> Map {
         }
     }
     for &((cx, cz), radius) in &s.spawn {
-        for dz in -radius..=radius {
-            for dx in -radius..=radius {
+        let reach = radius + GENERATION_HALO;
+        for dz in -reach..=reach {
+            for dx in -reach..=reach {
                 let level = i32::from(FULL) - radius + dx.abs().max(dz.abs());
                 lower(cx + dx, cz + dz, level, i32::from(UNLOADED));
             }
@@ -821,8 +829,9 @@ fn compute_sparse(s: &Sources) -> FxHashMap<(i32, i32), (u8, u8)> {
         }
     }
     for &((cx, cz), radius) in &s.spawn {
-        for dz in -radius..=radius {
-            for dx in -radius..=radius {
+        let reach = radius + GENERATION_HALO;
+        for dz in -reach..=reach {
+            for dx in -reach..=reach {
                 let level = i32::from(FULL) - radius + dx.abs().max(dz.abs());
                 lower((cx + dx, cz + dz), level, i32::from(UNLOADED));
             }
@@ -889,7 +898,7 @@ mod tests {
                     panic!("expected grid")
                 };
                 assert_eq!(cells.len(), if recording { on_cells } else { off_cells });
-                assert_eq!(map.get(edge, 0).0, if recording { FULL } else { UNLOADED });
+                assert_eq!(map.get(edge, 0).0, if recording { FULL } else { NO_HOLDER });
                 if !recording {
                     assert!(cells.iter().all(|&(loading, _)| loading <= BLOCK_TICKING));
                 }
@@ -913,13 +922,13 @@ mod tests {
             ..Sources::default()
         });
         tickets.update(sources.clone());
-        assert_eq!(tickets.levels.0.as_ref().unwrap().get(17, 15).0, UNLOADED);
+        assert_eq!(tickets.levels.0.as_ref().unwrap().get(17, 15).0, NO_HOLDER);
         tickets.record_changes(true);
         assert_eq!(tickets.levels.0.as_ref().unwrap().get(17, 15).0, FULL);
         tickets.update(sources.clone());
         assert!(tickets.take_changes().is_empty());
         tickets.record_changes(false);
-        assert_eq!(tickets.levels.0.as_ref().unwrap().get(17, 15).0, UNLOADED);
+        assert_eq!(tickets.levels.0.as_ref().unwrap().get(17, 15).0, NO_HOLDER);
         tickets.update(sources);
         assert!(tickets.take_changes().is_empty());
         tickets.record_changes(true);
@@ -1102,7 +1111,9 @@ mod tests {
         let map = levels.0.as_ref().unwrap();
         assert_eq!(map.get(x, z), (30, UNLOADED));
         assert_eq!(map.get(x + 3, z - 3), (FULL, UNLOADED));
-        assert_eq!(map.get(x + 4, z - 3), (UNLOADED, UNLOADED));
+        assert_eq!(map.get(x + 4, z - 3), (34, UNLOADED));
+        assert_eq!(map.get(x + 14, z - 14), (44, UNLOADED));
+        assert_eq!(map.get(x + 15, z - 14), (45, UNLOADED));
         assert!(!levels.block_ticking(x, z));
         for _ in 0..20 {
             tickets.tick_spawn(|_| true);
@@ -1115,10 +1126,7 @@ mod tests {
         assert_eq!(tickets.spawn_areas().count(), 1);
         tickets.tick_spawn(|_| true);
         tickets.update(Some(Sources::default()));
-        assert_eq!(
-            tickets.levels().0.as_ref().unwrap().get(x, z),
-            (UNLOADED, UNLOADED)
-        );
+        assert_eq!(tickets.levels().0.as_ref().unwrap().get(x, z), NONE);
     }
 
     /// `EnderDragonFight.tick` holds the arena's `TicketType.DRAGON` ticket
@@ -1488,8 +1496,8 @@ mod tests {
             let (old, new) = (compute_sparse(&a), compute_sparse(&b));
             let mut expected = Vec::new();
             for &key in old.keys().chain(new.keys()) {
-                let was = old.get(&key).map_or(UNLOADED, |l| l.0);
-                let now = new.get(&key).map_or(UNLOADED, |l| l.0);
+                let was = old.get(&key).map_or(UNLOADED, |l| l.0.min(UNLOADED));
+                let now = new.get(&key).map_or(UNLOADED, |l| l.0.min(UNLOADED));
                 if was != now {
                     expected.push(change(key, was, now));
                 }
