@@ -1082,6 +1082,137 @@ fn a_posed_item_has_a_depth_of_its_own() {
     fs::remove_dir_all(root).ok();
 }
 
+#[test]
+fn translucent_standard_and_special_foil_emit_translucent_glint_overlay_with_distinct_uvs() {
+    let root = fixture("translucent-glint-oit");
+    png(
+        &root.join("assets/minecraft/textures/item/translucent_crystal.png"),
+        16,
+        16,
+        [200, 120, 255, 128],
+    );
+    let data = crate::test_resources::item_data(
+        &root,
+        sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
+    )
+    .unwrap();
+    let renderer = ItemRenderer::load(
+        &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        &data,
+    )
+    .unwrap();
+    renderer.prepare_glint_atlas(16384, (0, 2)).unwrap();
+    let hud_rect = Rect {
+        u0: 0.1,
+        v0: 0.2,
+        u1: 0.3,
+        v1: 0.4,
+        w: 16,
+        h: 16,
+    };
+    let sprites = HashMap::from([
+        ("item/translucent_crystal".to_owned(), hud_rect),
+        ("item/enchanted_book".to_owned(), hud_rect),
+    ]);
+    let glint = Glint {
+        millis: 123_456,
+        speed: 0.5,
+        alpha: 0.75,
+        scale: Glint::ITEM_SCALE,
+    };
+    let atlas_rect = renderer
+        .glint_atlas
+        .lock()
+        .unwrap()
+        .get_stitched("item/translucent_crystal")
+        .unwrap();
+    let expected_atlas_uv = [
+        [atlas_rect.u0, atlas_rect.v0],
+        [atlas_rect.u0, atlas_rect.v1],
+        [atlas_rect.u1, atlas_rect.v1],
+        [atlas_rect.u1, atlas_rect.v0],
+    ];
+    let expected_hud_uv = [
+        [hud_rect.u0, hud_rect.v0],
+        [hud_rect.u0, hud_rect.v1],
+        [hud_rect.u1, hud_rect.v1],
+        [hud_rect.u1, hud_rect.v0],
+    ];
+
+    for (foil, is_special) in [(FoilType::Standard, false), (FoilType::Special, true)] {
+        let mut out = Vec::new();
+        let st = state(
+            "minecraft:item/translucent_crystal",
+            foil,
+            DisplayContext::Ground,
+        );
+        st.submit(
+            &renderer,
+            &sprites,
+            &NoHost,
+            Mat4::IDENTITY,
+            &mut WorldSink {
+                out: &mut out,
+                light: 0xF0F0,
+                lights: None,
+                glint: Some(glint),
+                tier: 0,
+            },
+        );
+        assert_eq!(out.len(), 4);
+        assert!(
+            out.iter()
+                .all(|v| (v.layer & 0xFFFF) == crate::gfx::TRANSLUCENT_GLINT_ITEM_OVERLAY),
+            "translucent {foil:?} must use TRANSLUCENT_GLINT_ITEM_OVERLAY (OIT bucket 8)"
+        );
+        let uv0: [[u32; 2]; 4] = std::array::from_fn(|i| out[i].uv.map(f32::to_bits));
+        let guv: [[u32; 2]; 4] = std::array::from_fn(|i| out[i].glint_uv.map(f32::to_bits));
+        assert_eq!(uv0, expected_hud_uv.map(|p| p.map(f32::to_bits)));
+        let atlas_glint = expected_atlas_uv.map(|p| glint.uv(p).map(f32::to_bits));
+        if is_special {
+            assert_ne!(
+                guv, atlas_glint,
+                "special foil must project UV3, not atlas UV0"
+            );
+            assert_ne!(guv, uv0);
+        } else {
+            assert_eq!(guv, atlas_glint, "standard foil must use glint-atlas UV0");
+            assert_ne!(guv, uv0);
+        }
+
+        // `force_translucent` on an opaque sprite routes the same way.
+        let mut forced = state("minecraft:item/enchanted_book", foil, DisplayContext::Gui);
+        let LayerGeometry::Quads(baked) = &mut forced.layers[0].geometry else {
+            unreachable!();
+        };
+        let mut b = (**baked).clone();
+        b.quads[0].material.force_translucent = true;
+        *baked = Arc::new(b);
+        let mut forced_out = Vec::new();
+        forced.submit(
+            &renderer,
+            &sprites,
+            &NoHost,
+            Mat4::IDENTITY,
+            &mut WorldSink {
+                out: &mut forced_out,
+                light: 0xF0F0,
+                lights: None,
+                glint: Some(glint),
+                tier: 0,
+            },
+        );
+        assert_eq!(forced_out.len(), 4);
+        assert!(
+            forced_out
+                .iter()
+                .all(|v| (v.layer & 0xFFFF) == crate::gfx::TRANSLUCENT_GLINT_ITEM_OVERLAY)
+        );
+    }
+
+    fs::remove_dir_all(root).ok();
+}
+
 fn glint_witness_26_3() -> Value {
     let path = std::env::var("SUNRISE_ITEM_GLINT_WITNESS")
         .expect("SUNRISE_ITEM_GLINT_WITNESS must be set (run via tools/test_glint_parity.py)");

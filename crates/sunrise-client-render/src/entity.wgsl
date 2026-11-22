@@ -273,7 +273,7 @@ fn crumbling_uv(uv: vec2<f32>, packed_origin: vec2<f32>, sprite_size: vec2<f32>,
 }
 // CRUMBLING_UV_END
 @fragment fn fs_entity(in: Out, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
-    return entity_written_color(in, entity_color(in, front));
+    return entity_written_color(in, entity_color(in, front, true));
 }
 // Takes entity_color's result rather than calling it: FXC (DX12) fails with "argument pulled into
 // unrelated predicate" when entity_color's discards sit a function call below the entry point.
@@ -296,11 +296,11 @@ struct ClippedEntity {
     @builtin(frag_depth) depth: f32,
 }
 @fragment fn fs_entity_clipped(in: Out, @builtin(front_facing) front: bool) -> ClippedEntity {
-    let color = entity_written_color(in, entity_color(in, front));
+    let color = entity_written_color(in, entity_color(in, front, true));
     return ClippedEntity(color, min(in.clip.z + globals.world_view.y / in.proj.w, 1.0));
 }
 @fragment fn fs_entity_unmarked(in: Out, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
-    return frame_stored(entity_color(in, front));
+    return frame_stored(entity_color(in, front, true));
 }
 // core/glint.fsh (`RenderPipelines.GLINT`, e.g. `RenderTypes.patternedShieldGlint`):
 // samples the glint texture alone, fades by fog and `GlintAlpha`, and squares RGB
@@ -317,7 +317,7 @@ struct ClippedEntity {
     let rgb = color.rgb * fade;
     return frame_stored(vec4(rgb * rgb, 0.0));
 }
-fn entity_color(in: Out, front: bool) -> vec4<f32> {
+fn entity_color(in: Out, front: bool, apply_glint: bool) -> vec4<f32> {
     var uv = in.uv;
     if in.overlay == 6u { uv.y = in.wrap.x + fract(in.uv.y) * in.wrap.y; }
     if in.overlay == 11u || in.overlay == 12u {
@@ -351,17 +351,19 @@ fn entity_color(in: Out, front: bool) -> vec4<f32> {
     // lit texture, then the lightmap, then the glint and fog.
     color = vec4(mix(in.overlay_color.rgb, color.rgb, in.overlay_color.a), color.a);
     color *= in.light_color;
-    if in.overlay == 7u || in.overlay == 8u || in.overlay == 33u {
-        // 33: a translucent item with the glint.
-        // Enchantment glint: item.fsh's GLINT path, sampled from
-        // enchanted_glint_item at the `GLINT_TEXTURING` UV.
-        color = glint_over(color, textureSample(glint_tex, glint_sampler, in.glint_uv));
-    } else if in.overlay == 36u {
-        // Enchanted armour (mobs::render::ARMOR_GLINT): enchanted_glint_armor at the scrolling model UV.
-        color = glint_over(
-            color,
-            textureSample(glint_armor_tex, glint_sampler, armor_glint_uv(in.glint_uv)),
-        );
+    if apply_glint {
+        if in.overlay == 7u || in.overlay == 8u || in.overlay == 33u {
+            // 33: a translucent item with the glint.
+            // Enchantment glint: item.fsh's GLINT path, sampled from
+            // enchanted_glint_item at the `GLINT_TEXTURING` UV.
+            color = glint_over(color, textureSample(glint_tex, glint_sampler, in.glint_uv));
+        } else if in.overlay == 36u {
+            // Enchanted armour (mobs::render::ARMOR_GLINT): enchanted_glint_armor at the scrolling model UV.
+            color = glint_over(
+                color,
+                textureSample(glint_armor_tex, glint_sampler, armor_glint_uv(in.glint_uv)),
+            );
+        }
     }
     let f = max(linear_fog(in.fog_distance.x, globals.fog.x, globals.fog.y),
                 linear_fog(in.fog_distance.y, globals.fog.z, globals.fog.w));
