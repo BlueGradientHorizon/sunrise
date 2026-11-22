@@ -4867,6 +4867,7 @@ dependencies = [
  "sunrise-assets",
  "sunrise-core",
  "sunrise-game-discovery",
+ "sunrise-mod-source",
  "sunrise-mod-surface",
  "sunrise-mod-vocab",
  "sunrise-shader-api",
@@ -4902,6 +4903,7 @@ dependencies = [
 name = "sunrise-mod-source"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "proc-macro2",
  "quote",
  "sunrise-mod-surface",

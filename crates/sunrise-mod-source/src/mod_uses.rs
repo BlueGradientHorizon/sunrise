@@ -1,4 +1,5 @@
 //! A mod folder as `sunrise-stage uses` scans it: its Rust sources and what its manifest names.
+use crate::package;
 use mod_surface::scan::{Token, tokens};
 use std::path::{Path, PathBuf};
 
@@ -312,11 +313,13 @@ fn read_bounded(path: &Path, shown: &str, most: u64) -> Result<String, ReadError
     })
 }
 
-/// Reads `dir`: every `.rs` file outside the mod's `target/` and hidden folders, and
-/// `sunrise-mod.toml` when there is one, but not the files `skip` names (relative and
-/// `/`-separated), which are not the mod's own source. A `#[path]` or `include!` of a file the
-/// scan does not read, a skipped one included, is refused, and so is a `mod` declaration that
-/// may load a skipped file, and so is a skipped file that is the mod's library root.
+/// Reads `dir`: the `.rs` files its package carries ([`package::source_files`], the selection
+/// packing makes), and `sunrise-mod.toml` when there is one, but not the files `skip` names
+/// (relative and `/`-separated), which are not the mod's own source. A symbolic link among them,
+/// or a linked `src/`, is refused; any other entry that is not a regular file is left unread.
+/// A `#[path]` or `include!` of a file the scan does not read, a skipped one included, is
+/// refused, and so is a `mod` declaration that may load a skipped file, and so is a skipped file
+/// that is the mod's library root.
 pub fn read(dir: &Path, skip: &[&str]) -> Result<ModInput, ReadError> {
     let root = library_root(dir)?;
     if skip.contains(&root.as_str()) {
@@ -325,61 +328,51 @@ pub fn read(dir: &Path, skip: &[&str]) -> Result<ModInput, ReadError> {
     let mut input = ModInput::default();
     let mut total = 0u64;
     let mut brought: Vec<(String, String)> = Vec::new();
-    let mut pending = vec![dir.to_path_buf()];
-    while let Some(folder) = pending.pop() {
-        for entry in std::fs::read_dir(&folder).map_err(io(&folder))? {
-            let entry = entry.map_err(io(&folder))?;
-            let path = entry.path();
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            let kind = entry.file_type().map_err(io(&path))?;
-            if kind.is_symlink() {
-                return Err(ReadError::Symlink(path));
-            }
-            if kind.is_dir() {
-                let build_output = folder == dir && name == "target";
-                if !name.starts_with('.') && !build_output {
-                    pending.push(path);
-                }
-            } else if kind.is_file() && name.ends_with(".rs") {
-                let relative: Vec<String> = path
-                    .strip_prefix(dir)
-                    .unwrap_or(&path)
-                    .components()
-                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                    .collect();
-                let shown = relative.join("/");
-                if skip.contains(&shown.as_str()) {
-                    continue;
-                }
-                let text = read_bounded(&path, &shown, MAX_SOURCE_BYTES)?;
-                total += text.len() as u64;
-                if total > MAX_TOTAL_BYTES || input.sources.len() >= MAX_FILES {
-                    return Err(ReadError::TooLarge {
-                        what: format!("the mod's source ({} files)", input.sources.len() + 1),
-                        size: total,
-                        most: MAX_TOTAL_BYTES,
-                    });
-                }
-                if let Some(target) = declares_skipped(&text, &relative[..relative.len() - 1], skip)
-                {
-                    return Err(ReadError::NotScanned {
-                        file: shown,
-                        target: target.to_owned(),
-                    });
-                }
-                match references(&text, &relative[..relative.len() - 1]) {
-                    Ok(paths) => brought.extend(paths.into_iter().map(|p| (shown.clone(), p))),
-                    Err(target) => {
-                        return Err(ReadError::Escapes {
-                            file: shown,
-                            target,
-                        });
-                    }
-                }
-                input.sources.push((shown, text));
+    // A linked `src/` is not walked by the selection, so it is refused here, not read as empty.
+    let src = dir.join("src");
+    if std::fs::symlink_metadata(&src).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        return Err(ReadError::Symlink(src));
+    }
+    for shown in package::source_files(dir).map_err(io(dir))? {
+        if !shown.ends_with(".rs") || skip.contains(&shown.as_str()) {
+            continue;
+        }
+        let path = dir.join(&shown);
+        let kind = std::fs::symlink_metadata(&path)
+            .map_err(io(&path))?
+            .file_type();
+        if kind.is_symlink() {
+            return Err(ReadError::Symlink(path));
+        }
+        if !kind.is_file() {
+            continue;
+        }
+        let relative: Vec<String> = shown.split('/').map(str::to_owned).collect();
+        let text = read_bounded(&path, &shown, MAX_SOURCE_BYTES)?;
+        total += text.len() as u64;
+        if total > MAX_TOTAL_BYTES || input.sources.len() >= MAX_FILES {
+            return Err(ReadError::TooLarge {
+                what: format!("the mod's source ({} files)", input.sources.len() + 1),
+                size: total,
+                most: MAX_TOTAL_BYTES,
+            });
+        }
+        if let Some(target) = declares_skipped(&text, &relative[..relative.len() - 1], skip) {
+            return Err(ReadError::NotScanned {
+                file: shown,
+                target: target.to_owned(),
+            });
+        }
+        match references(&text, &relative[..relative.len() - 1]) {
+            Ok(paths) => brought.extend(paths.into_iter().map(|p| (shown.clone(), p))),
+            Err(target) => {
+                return Err(ReadError::Escapes {
+                    file: shown,
+                    target,
+                });
             }
         }
+        input.sources.push((shown, text));
     }
     input.sources.sort();
     for (file, target) in brought {
@@ -428,14 +421,15 @@ mod tests {
     }
 
     #[test]
-    fn reads_sources_outside_target_and_hidden_folders_and_the_manifest_names() {
+    fn reads_the_packaged_sources_and_the_manifest_names() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         write(root, "src/lib.rs", "a");
         write(root, "src/deep/b.rs", "b");
         write(root, "build.rs", "c");
         write(root, "target/debug/build/x.rs", "no");
-        write(root, "src/target/aim.rs", "d");
+        write(root, "src/target/aim.rs", "no");
+        write(root, "tools/generate.rs", "no");
         write(root, ".sunrise/sdk/api/lib.rs", "no");
         write(root, "src/notes.txt", "no");
         write(
@@ -454,8 +448,7 @@ mod tests {
             [
                 ("build.rs", "c"),
                 ("src/deep/b.rs", "b"),
-                ("src/lib.rs", "a"),
-                ("src/target/aim.rs", "d")
+                ("src/lib.rs", "a")
             ]
         );
         assert_eq!(input.manifest_names, ["registries"]);
@@ -642,10 +635,58 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         write(root, "src/lib.rs", "a");
-        std::os::unix::fs::symlink(root.join("src"), root.join("linked")).unwrap();
+        std::os::unix::fs::symlink(root.join("src/lib.rs"), root.join("src/linked.rs")).unwrap();
         assert_eq!(
             read(root, &[]).unwrap_err(),
-            ReadError::Symlink(root.join("linked"))
+            ReadError::Symlink(root.join("src/linked.rs"))
+        );
+        // A linked `src/` itself is refused, not scanned as empty.
+        let linked = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(root.join("src"), linked.path().join("src")).unwrap();
+        assert_eq!(
+            read(linked.path(), &[]).unwrap_err(),
+            ReadError::Symlink(linked.path().join("src"))
+        );
+    }
+
+    /// A file packing leaves out is not read, so its contents cannot stop the scan.
+    #[cfg(unix)]
+    #[test]
+    fn files_packing_leaves_out_are_not_read() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "src/lib.rs", "a");
+        // Packed, and Cargo's library root: read.
+        write(root, "README.rs", "r");
+        write(
+            root,
+            "Cargo.toml",
+            "[package]\nname = \"m\"\n[lib]\npath = \"README.rs\"\n",
+        );
+        let not_text = [0xff_u8, 0xfe];
+        for name in [
+            &b"src/a\\b.rs"[..],
+            b"src/\xff.rs",
+            b"node_modules/x.rs",
+            b"gen.rs",
+            b"build.rs/x.rs",
+        ] {
+            let path = root.join(std::ffi::OsStr::from_bytes(name));
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, not_text).unwrap();
+        }
+        std::os::unix::fs::symlink(root.join("src"), root.join("linked")).unwrap();
+        // A selected name that is not a regular file is not opened, so it cannot block the scan.
+        let fifo = std::ffi::CString::new(root.join("src/pipe.rs").as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o644) }, 0);
+        let input = read(root, &[]).unwrap();
+        assert_eq!(
+            input.sources,
+            [
+                ("README.rs".to_owned(), "r".to_owned()),
+                ("src/lib.rs".to_owned(), "a".to_owned())
+            ]
         );
     }
 }
