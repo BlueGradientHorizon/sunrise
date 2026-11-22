@@ -1473,7 +1473,6 @@ impl Game<'_> {
         let passenger_objects = self.retained_passenger_snapshot(uuid);
         let mut pending = self.creatures.pending.remove(level_id).unwrap_or_default();
         let primable = self.sulfur_cubes_adopted_explosive();
-        self.villager_trading_prices();
         let mut mobs = self.mobs.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);

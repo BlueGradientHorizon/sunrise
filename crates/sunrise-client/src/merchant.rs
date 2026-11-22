@@ -49,11 +49,6 @@ pub struct Trader {
     /// A trading screen is open on this merchant with a payment in it, so a
     /// refresh of its prices makes the merchant say yes or no (`updateSellItem`).
     pub paying: bool,
-    /// The trading player's reputation and Hero of the Village amplifier, read
-    /// by the game before the mobs tick: what `updateSpecialPrices` sees at a
-    /// work step, whatever a callback after the tick changes.
-    pub reputation: i32,
-    pub hero: Option<i32>,
 }
 /// What a restock step does to the offers (`Villager.restock`, and the
 /// `catchUpDemand` of `shouldRestock` with the restocks it missed).

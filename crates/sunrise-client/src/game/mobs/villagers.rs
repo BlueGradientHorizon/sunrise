@@ -12,6 +12,31 @@ use sunrise_core::{geometry::Vec3, position::BlockPos};
 fn block_of(p: Vec3) -> [i32; 3] {
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
+impl villager_brain::TradingPlayers for Game<'_> {
+    fn trading_player(&self, villager: u32) -> Option<villager_brain::TradingPlayer> {
+        if self
+            .station
+            .as_ref()
+            .and_then(|station| station.merchant.as_ref())
+            .is_some_and(|merchant| merchant.mob == Some(villager))
+        {
+            return Some(villager_brain::TradingPlayer {
+                uuid: self.level.player_uuid,
+                hero: self.hero_amplifier(),
+            });
+        }
+        let guest = self
+            .lan
+            .as_ref()?
+            .hub
+            .guest(self.lan_trade_conn(villager)?)?;
+        Some(villager_brain::TradingPlayer {
+            uuid: Some(sunrise_client::lan::playerdata::uuid_ints(guest.uuid)),
+            hero: guest.effects.amplifier("hero_of_the_village"),
+        })
+    }
+}
+
 impl Game<'_> {
     fn villager_index(&self, id: u32) -> Option<usize> {
         self.mobs
@@ -594,41 +619,6 @@ impl Game<'_> {
             });
         }
         self.lan_merchant_reputation(id);
-    }
-    /// The reputation and Hero of the Village amplifier of the player trading
-    /// with villager `id` (the local player's screen or a guest's).
-    fn trading_prices(&mut self, id: u32) -> Option<(i32, Option<i32>)> {
-        if self
-            .station
-            .as_ref()
-            .and_then(|s| s.merchant.as_ref())
-            .is_some_and(|m| m.mob == Some(id))
-        {
-            return Some((self.villager_reputation(id), self.hero_amplifier()));
-        }
-        let conn = self.lan_trade_conn(id)?;
-        let reputation = self
-            .player_uuid_of(Some(conn))
-            .map_or(0, |uuid| self.villager_reputation_of(id, uuid));
-        let hero = self.as_guest(conn, |game| game.hero_amplifier()).flatten();
-        Some((reputation, hero))
-    }
-    /// Before the mobs tick: each trading villager keeps its player's prices,
-    /// which its work step (inside the tick) prices the screen from.
-    pub(in crate::game) fn villager_trading_prices(&mut self) {
-        for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
-            if m.species() != Species::Villager || !m.extra.flag2 || m.extra.trade.is_none() {
-                continue;
-            }
-            let id = m.id;
-            let Some((reputation, hero)) = self.trading_prices(id) else {
-                continue;
-            };
-            if let Some(t) = self.mobs[i].extra.trade.as_mut() {
-                (t.reputation, t.hero) = (reputation, hero);
-            }
-        }
     }
     /// `Villager.restock` / `shouldRestock` with a trading player, at the
     /// brain's work step: the live offers on the screen take the step, priced

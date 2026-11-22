@@ -3440,6 +3440,8 @@ pub trait LiveMobs {
 pub struct MobWorld<'a> {
     pub mob_maps: &'a crate::neoforge_mob_maps::NeoForgeMobMaps,
     pub professions: &'a villager::ResolvedProfessions,
+    /// The player currently trading with a villager, read at the work step.
+    pub trading_players: Option<&'a dyn villager_brain::TradingPlayers>,
     /// What the motion value hooks are given: the loop context of the side that
     /// ticks these mobs.
     pub loop_context: &'a sunrise_world::native_load_context::LoopContext,

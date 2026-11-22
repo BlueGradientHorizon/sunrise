@@ -441,20 +441,14 @@ fn a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob() {
     );
 }
 
-/// A guest trading with the villager loses Hero of the Village in the villager's own Post.
-struct RemoveHeroInPost;
-#[mod_api::__subscriptions]
-impl Hooks for RemoveHeroInPost {
-    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        registrar.entity_tick_each("minecraft:villager");
-    }
+/// A guest trading with the villager loses Hero of the Village in its named Pre or Post.
+struct RemoveHero {
+    before_work: bool,
+}
 
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
-        event.listened = true;
-    }
-
-    fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
-        assert_eq!(event.entities, [40]);
+impl RemoveHero {
+    fn remove(host: HostSide<'_>, entities: &[u32]) {
+        assert_eq!(entities, [40]);
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
@@ -464,71 +458,115 @@ impl Hooks for RemoveHeroInPost {
     }
 }
 
+#[mod_api::__subscriptions]
+impl Hooks for RemoveHero {
+    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        registrar.entity_tick_each("minecraft:villager");
+    }
+
+    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
+        event.listened = true;
+    }
+
+    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
+        if self.before_work {
+            Self::remove(host, event.entities);
+        }
+    }
+
+    fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
+        if !self.before_work {
+            Self::remove(host, event.entities);
+        }
+    }
+}
+
 /// The result and the yes sound use the Hero discount seen during the work step, not after Post.
 #[test]
 #[ignore = "daily"]
 fn a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them() {
-    use sunrise_client::effects::EffectInstance;
-    super::in_own_process(
+    restock_after_hero_change(
         "game::lan_trade_decisions_tests::a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them",
-        || {
-            let mods: Mods = vec![ModEntry::new(
-                "remove-hero-in-post",
-                Box::new(RemoveHeroInPost),
-            )]
-            .into();
-            mod_platform::testing::with_mods(mods, || {
-                with_guests(|game| {
-                    let save = tempfile::tempdir().unwrap();
-                    open(game, 1);
-                    prepare_work(game, save.path());
-                    game.as_guest(12, |g| {
-                        g.potions
-                            .effects
-                            .add(EffectInstance::new("hero_of_the_village", 1000, 0));
-                    });
-                    let screen = work_screen_mut(game);
-                    screen.slots = [Some(ItemStack::new("minecraft:wheat", 4)), None, None];
-                    let offer = &mut screen.merchant.session.offers[0];
-                    (offer.base_cost_a.stack.count, offer.uses) = (5, 10);
-                    let trader = game.mobs[0].extra.trade.as_mut().unwrap();
-                    (
-                        trader.offers[0].base_cost_a.stack.count,
-                        trader.offers[0].uses,
-                    ) = (5, 10);
-                    trader.paying = true;
-                    // The voice from opening the screen has finished its cooldown by work time.
-                    game.mobs[0].ambient_timer = 0;
-                    game.audio.capture = Some(Vec::new());
-
-                    tick_work(game);
-
-                    game.as_guest(12, |g| assert_eq!(g.hero_amplifier(), None));
-                    let screen = work_screen(game);
-                    assert_eq!(
-                        screen.slots[2],
-                        Some(ItemStack::new("minecraft:emerald", 1))
-                    );
-                    assert_eq!(screen.merchant.session.hero, Some(0));
-                    let feedback: Vec<_> = game
-                        .audio
-                        .capture
-                        .as_ref()
-                        .unwrap()
-                        .iter()
-                        .map(|sound| sound.event.as_str())
-                        .filter(|&event| {
-                            matches!(
-                                event,
-                                "minecraft:entity.villager.yes" | "minecraft:entity.villager.no"
-                            )
-                        })
-                        .collect();
-                    assert_eq!(feedback, ["minecraft:entity.villager.yes"]);
-                })
-            });
-        },
+        false,
     );
+}
+
+/// If Pre takes the discount away, four wheat no longer buys an emerald.
+#[test]
+#[ignore = "daily"]
+fn a_restock_uses_price_changes_made_in_pre() {
+    restock_after_hero_change(
+        "game::lan_trade_decisions_tests::a_restock_uses_price_changes_made_in_pre",
+        true,
+    );
+}
+
+fn restock_after_hero_change(test: &str, before_work: bool) {
+    use sunrise_client::effects::EffectInstance;
+    super::in_own_process(test, || {
+        let mods: Mods = vec![ModEntry::new(
+            "remove-hero",
+            Box::new(RemoveHero { before_work }),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_guests(|game| {
+                let save = tempfile::tempdir().unwrap();
+                open(game, 1);
+                prepare_work(game, save.path());
+                game.as_guest(12, |g| {
+                    g.potions
+                        .effects
+                        .add(EffectInstance::new("hero_of_the_village", 1000, 0));
+                });
+                let screen = work_screen_mut(game);
+                screen.slots = [Some(ItemStack::new("minecraft:wheat", 4)), None, None];
+                let offer = &mut screen.merchant.session.offers[0];
+                (offer.base_cost_a.stack.count, offer.uses) = (5, 10);
+                let trader = game.mobs[0].extra.trade.as_mut().unwrap();
+                (
+                    trader.offers[0].base_cost_a.stack.count,
+                    trader.offers[0].uses,
+                ) = (5, 10);
+                trader.paying = true;
+                // The voice from opening the screen has finished its cooldown by work time.
+                game.mobs[0].ambient_timer = 0;
+                game.audio.capture = Some(Vec::new());
+
+                tick_work(game);
+
+                game.as_guest(12, |g| assert_eq!(g.hero_amplifier(), None));
+                let screen = work_screen(game);
+                assert_eq!(
+                    screen.slots[2],
+                    (!before_work).then(|| ItemStack::new("minecraft:emerald", 1))
+                );
+                assert_eq!(screen.merchant.session.hero, (!before_work).then_some(0));
+                let feedback: Vec<_> = game
+                    .audio
+                    .capture
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|sound| sound.event.as_str())
+                    .filter(|&event| {
+                        matches!(
+                            event,
+                            "minecraft:entity.villager.yes" | "minecraft:entity.villager.no"
+                        )
+                    })
+                    .collect();
+                assert_eq!(
+                    feedback,
+                    [if before_work {
+                        "minecraft:entity.villager.no"
+                    } else {
+                        "minecraft:entity.villager.yes"
+                    }]
+                );
+            })
+        });
+    });
 }
 
 /// Edits the restocked first offer in the villager's own named `EntityTick.Post`.

@@ -3341,6 +3341,16 @@ fn play_work_sound(m: &mut Mob, cx: &mut Bx) {
         }
     }
 }
+/// The live inputs to `Villager.updateSpecialPrices` belonging to the trading player.
+pub struct TradingPlayer {
+    pub uuid: Option<[i32; 4]>,
+    pub hero: Option<i32>,
+}
+
+pub trait TradingPlayers {
+    fn trading_player(&self, villager: u32) -> Option<TradingPlayer>;
+}
+
 /// What a work-step restock changes in the trading screen, with the player's prices and
 /// the trade sound's pitch as chosen at the work step.
 #[derive(Clone, Debug)]
@@ -3369,10 +3379,20 @@ fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         t.restock(w.game_time);
         crate::merchant::RestockStep::Restock
     });
-    let (paying, reputation, hero, empty) = (t.paying, t.reputation, t.hero, t.offers.is_empty());
-    if !m.extra.flag2 || empty {
+    if (catch_up.is_none() && restock.is_none()) || !m.extra.flag2 || t.offers.is_empty() {
         return;
     }
+    let paying = t.paying;
+    let Some(player) = w
+        .trading_players
+        .and_then(|players| players.trading_player(m.id))
+    else {
+        return;
+    };
+    let reputation = player
+        .uuid
+        .zip(super::villager::ext(m))
+        .map_or(0, |(uuid, ext)| ext.gossips.reputation(uuid));
     for step in catch_up.into_iter().chain(restock) {
         let pitch = (paying && m.ambient_timer > -60).then(|| {
             m.ambient_timer = -80;
@@ -3382,7 +3402,7 @@ fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
             mob: m.id,
             step,
             reputation,
-            hero,
+            hero: player.hero,
             pitch,
         }));
     }
