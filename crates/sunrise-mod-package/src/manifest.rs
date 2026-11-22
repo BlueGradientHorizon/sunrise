@@ -1152,8 +1152,8 @@ impl Package {
         Ok(Package { manifest, icon })
     }
     /// Select and validate a flat project's source and resource files deterministically. Any
-    /// other file in the folder (a `module.toml`, `.cargo/config.toml`, `rust-toolchain.toml`, a
-    /// `.rs` file outside `src/`) is left out of the package and so of the build.
+    /// other file in the folder (a `module.toml`, `tools/generate.rs`, `.cargo/config.toml`,
+    /// `rust-toolchain.toml`) is left out, and no folder but `src/` is read for source.
     pub fn directory_files(
         &self,
         root: &Path,
@@ -1185,19 +1185,28 @@ impl Package {
             ) -> Result<(), String> {
                 for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
                     let entry = entry.map_err(|e| e.to_string())?;
+                    let kind = entry.file_type().map_err(|e| e.to_string())?;
+                    // At the top only the root source files and `src/` can be selected: any
+                    // other folder, and a name that is not UTF-8, is left out unread.
+                    if dir == root
+                        && entry
+                            .file_name()
+                            .to_str()
+                            .is_none_or(|name| kind.is_dir() && name != "src")
+                    {
+                        continue;
+                    }
                     let path = entry.path();
                     let relative = path.strip_prefix(root).map_err(|e| e.to_string())?;
                     let name = relative
                         .to_str()
                         .ok_or("non-UTF-8 package path")?
                         .replace('\\', "/");
-                    let kind = entry.file_type().map_err(|e| e.to_string())?;
                     if kind.is_dir() {
                         if entry
                             .file_name()
                             .to_str()
                             .is_some_and(|name| NOT_PACKAGED.contains(&name))
-                            || matches!(name.as_str(), "assets" | "data" | RUNTIME_DIR)
                         {
                             continue;
                         }
@@ -1516,6 +1525,21 @@ mod tests {
             "[source.crates-io]\nreplace-with='local'\n",
         );
         write("rust-toolchain.toml", "[toolchain]\nchannel='nightly'\n");
+        // A folder beside the crate is never read, so a name packing could not encode is no bar.
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let junk = folder.path().join("node_modules");
+            std::fs::create_dir_all(&junk).unwrap();
+            std::fs::write(junk.join(std::ffi::OsStr::from_bytes(b"\xff.rs")), "").unwrap();
+            std::fs::write(
+                folder
+                    .path()
+                    .join(std::ffi::OsStr::from_bytes(b"\xff.toml")),
+                "",
+            )
+            .unwrap();
+        }
 
         let bytes = Package::pack_directory(folder.path()).unwrap();
         let archive = folder.path().join("butterflies.smod");
