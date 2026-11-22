@@ -1720,11 +1720,6 @@ pub(super) fn emit<'a>(
                         call(&part_item, &listener_id, "return Err(());", ""),
                     )
                 } else {
-                    let part_owner = if collision_owns_panic {
-                        "_"
-                    } else {
-                        &listener_id
-                    };
                     // A live menu click can have committed edits before a listener panics.
                     // Continue dispatch, but do not run the default after such a failure.
                     let on_abort = if name == "menu_clicked" {
@@ -1733,7 +1728,7 @@ pub(super) fn emit<'a>(
                         "continue;".to_owned()
                     };
                     format!(
-                        "for ({part_owner}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
+                        "for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
                         call(&part_item, &listener_id, &on_abort, "break"),
                     )
                 },
