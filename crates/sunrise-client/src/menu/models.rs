@@ -168,7 +168,7 @@ pub struct SlotContext<'a> {
     pub(crate) player_armor: Option<&'a [Option<ItemStack>; 4]>,
     pub(crate) player_offhand: Option<&'a Option<ItemStack>>,
     /// A hosted rule sees the tentative slot as well as the stack being checked.
-    pub(crate) staged_slot: Option<(MenuContainer, usize, &'a ItemStack)>,
+    pub(crate) staged_slot: Option<(MenuContainer, usize, Option<&'a ItemStack>)>,
 }
 
 /// `menu_slot_rules` inside a menu click, which cannot reach the game: the game lends the menu

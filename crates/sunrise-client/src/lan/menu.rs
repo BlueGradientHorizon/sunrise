@@ -771,7 +771,7 @@ impl View<'_> {
             return (own, true, max.min(item_max));
         };
         let (index, mut context) = self.slot_context(i);
-        context.staged_slot = held.map(|s| (context.container, index, s));
+        context.staged_slot = Some((context.container, index, held));
         let (place, pickup, max) = crate::menu::apply_menu_slot_rules(
             rules.slot_rules(),
             &menu.registry_id,
@@ -878,7 +878,11 @@ impl crate::menu::SlotView for HostedSlotView<'_, '_> {
             .unwrap_or_else(|| self.view.get(self.slot))
     }
     fn may_place(&self, stack: &ItemStack) -> bool {
-        self.view.may_place(self.slot, stack, self.rules)
+        self.view.enabled(self.slot)
+            && self
+                .view
+                .slot_rules_with_held(self.slot, stack, self.item().as_ref(), self.rules)
+                .0
     }
     fn may_pickup(&self) -> bool {
         self.view
@@ -1257,7 +1261,7 @@ impl crate::menu::StackedSlotTarget for HostedSlotView<'_, '_> {
     }
 
     fn may_place(&self, stack: &ItemStack) -> bool {
-        self.view.may_place(self.slot, stack, self.rules)
+        crate::menu::SlotView::may_place(self, stack)
     }
 
     fn slot_max(&self, stack: &ItemStack) -> u32 {
@@ -3558,8 +3562,11 @@ pub(crate) mod tests {
             fn max_stack(&self, item: &str) -> u32 {
                 if item == "minecraft:snowball" { 16 } else { 64 }
             }
-            fn may_pickup(&self, _slot: usize, stack: &ItemStack) -> bool {
-                self.may_pickup && stack.item.as_ref() != "minecraft:dirt"
+            fn may_pickup(&self, _slot: usize, _stack: &ItemStack) -> bool {
+                self.may_pickup
+            }
+            fn slot_rules(&self) -> Option<&dyn crate::menu::SlotRules> {
+                Some(self)
             }
             fn stacked(&self) -> Option<&StackedOutcome> {
                 Some(self.outcome)
@@ -3571,6 +3578,28 @@ pub(crate) mod tests {
                 _offered: &ItemStack,
             ) -> bool {
                 slot != 0
+            }
+        }
+        impl crate::menu::SlotRules for OutcomeRules<'_> {
+            fn listens(&self, menu: &str) -> bool {
+                menu == "test:result_menu"
+            }
+            fn rule(
+                &self,
+                _: &str,
+                slot: usize,
+                stack: &ItemStack,
+                context: crate::menu::SlotContext<'_>,
+                _: &mut bool,
+                may_pickup: &mut bool,
+                _: &mut u32,
+            ) {
+                if matches!(stack.item.as_ref(), "minecraft:dirt" | "minecraft:sand") {
+                    // On both pickup and placement queries for the replacement, the rule can
+                    // read the very stack being tested in the result slot.
+                    assert_eq!(context.slot(context.container, slot), Some(stack));
+                    *may_pickup &= stack.item.as_ref() != "minecraft:dirt";
+                }
             }
         }
         static RESULT_MENU: std::sync::OnceLock<crate::containers::ModMenuType> =

@@ -50,7 +50,7 @@ impl<'a> SlotContext<'a> {
         if let Some((staged_container, staged_index, stack)) = self.staged_slot
             && (container, index) == (staged_container, staged_index)
         {
-            return Some(stack);
+            return stack;
         }
         match container {
             MenuContainer::Main => {
