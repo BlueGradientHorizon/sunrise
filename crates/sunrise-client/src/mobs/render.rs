@@ -6,6 +6,7 @@ use super::{
     Mob, MobData, ModelNormals, Part, Species,
     anim::{self, Poses},
     living::wrap,
+    skin::Paint,
 };
 use crate::mesher::Vertex;
 use std::borrow::Cow;
@@ -20,6 +21,15 @@ pub use frame_model::{BakedFrameModel, BakedFrameModels, BakedFrameNode, FrameMo
 #[path = "invisible_body.rs"]
 mod invisible_body;
 pub use invisible_body::render_seen_invisible;
+
+/// Whether a mixin build installed a patched copy of the free function `$function` of this
+/// module. The prebuilt game's staging pass answers it from the function's replacement slot; a
+/// build without replacement slots has no patched functions.
+macro_rules! replaced {
+    ($function:ident) => {
+        false
+    };
+}
 
 /// Immutable resources and the optional frame-local gameplay animation observer.
 /// Ordinary tools and probes use MobData directly, with no callbacks.
@@ -1322,31 +1332,46 @@ pub fn draw_scrolled(
     overlay: u32,
     out: &mut Vec<Vertex>,
 ) {
-    draw_normals(
-        part,
-        base,
-        ModelNormals::new(base),
-        poses,
+    let paint = Paint {
         uv,
         scroll,
         color,
         light,
         overlay,
-        out,
+    };
+    draw_normals(
+        part,
+        base,
+        ModelNormals::new(base),
+        poses,
+        paint,
+        part.layer.as_deref(),
+        compiler(),
+        &mut Quads::new(out),
     );
 }
+/// [`compile_part`]'s signature, for a draw that goes through it.
+pub(super) type CompilePart =
+    fn(Option<&str>, &Part, glam::Mat4, ModelNormals, Paint, &Poses, &mut Quads<'_>);
+/// The replaced [`compile_part`], when a mod installed one. Asked once per draw, not per part:
+/// while no mod replaced it, the parts' polygons are pushed as they always were, without going
+/// through it.
+pub(super) fn compiler() -> Option<CompilePart> {
+    replaced!(compile_part).then_some(compile_part as CompilePart)
+}
+/// `ModelPart.render`: the part and its children under their poses. `layer` is the model
+/// layer of the tree drawn (its root's), `compile` the replaced [`compile_part`] when a mod
+/// installed one.
 #[allow(clippy::too_many_arguments)]
 fn draw_normals(
     part: &Part,
     base: glam::Mat4,
     normals: ModelNormals,
     poses: &Poses,
-    uv: [f32; 4],
-    scroll: f32,
-    color: u32,
-    light: u32,
-    overlay: u32,
-    out: &mut Vec<Vertex>,
+    paint: Paint,
+    layer: Option<&str>,
+    compile: Option<CompilePart>,
+    quads: &mut Quads<'_>,
 ) {
     let p = poses.pose(part);
     let m = posed(base, p);
@@ -1357,34 +1382,137 @@ fn draw_normals(
     // `skips` is a name lookup: ask once per part, not once per polygon. A part
     // hidden this way still draws its children, so only the polygons are gated.
     if !poses.skips(part) {
-        for poly in &part.polygons {
-            let normal = poly.vertex_normal(normals);
-            for v in poly.vertices {
-                let pos = m.transform_point3(glam::Vec3::new(v[0], v[1], v[2]) / 16.0);
-                // The armour glint scrolls the layer's model UV in the shader;
-                // the item path already passed its transformed UV.
-                let glint_uv = if overlay == ARMOR_GLINT {
-                    [v[3], v[4]]
-                } else {
-                    [0.0, 0.0]
-                };
-                out.push(Vertex {
-                    normal,
-                    pos: pos.to_array(),
-                    uv: [
-                        uv[0] + (uv[2] - uv[0]) * scroll_u(v[3], scroll),
-                        uv[1] + (uv[3] - uv[1]) * v[4],
-                    ],
-                    layer: overlay,
-                    color,
-                    light,
-                    glint_uv,
-                });
-            }
-        }
+        emit_part(compile, layer, part, (m, normals), paint, poses, quads);
     }
     for c in &part.children {
-        draw_normals(c, m, normals, poses, uv, scroll, color, light, overlay, out);
+        draw_normals(c, m, normals, poses, paint, layer, compile, quads);
+    }
+}
+/// One part's own geometry, as every draw of a baked model emits it: through the replaced
+/// [`compile_part`] when `compile` holds it, its polygons as they are otherwise. A part with
+/// neither polygons nor children (an empty leaf) has nothing a replacement could change, and
+/// is never handed to it. `posed` is the part's matrix and normals, as [`posed`] and
+/// `ModelNormals::part` give them.
+pub(super) fn emit_part(
+    compile: Option<CompilePart>,
+    layer: Option<&str>,
+    part: &Part,
+    (matrix, normals): (glam::Mat4, ModelNormals),
+    paint: Paint,
+    poses: &Poses,
+    quads: &mut Quads<'_>,
+) {
+    match compile {
+        Some(compile) if !(part.polygons.is_empty() && part.children.is_empty()) => {
+            compile(layer, part, matrix, normals, paint, poses, quads);
+        }
+        _ => push_polygons(&part.polygons, matrix, normals, paint, quads),
+    }
+}
+/// Where [`compile_part`] puts a part's geometry: whole quads, appended after what the draw
+/// already holds, which it can neither read nor remove.
+pub struct Quads<'a> {
+    out: &'a mut Vec<Vertex>,
+}
+impl<'a> Quads<'a> {
+    /// Quads appended to `out`.
+    pub(super) fn new(out: &'a mut Vec<Vertex>) -> Self {
+        Self { out }
+    }
+    /// Appends one quad, its four vertices in order.
+    pub fn push(&mut self, quad: [Vertex; 4]) {
+        self.out.extend_from_slice(&quad);
+    }
+}
+/// `ModelPart.compile` (`ModelPart.Cube.compile` per cube): emits one part's own geometry,
+/// posed by `matrix` (the part's, as [`posed`] gives it under its parents) with the normals of
+/// its pose, painted with `paint`. Its children are drawn after it, each through this function
+/// too. Parts hidden, scaled to nothing, with `skipDraw` set or with neither polygons nor
+/// children don't come here.
+///
+/// A native mod replaces this through `[[native.mixin]]` to emit a part's geometry its own
+/// way while the rest of the draw stays the game's: a limb bent in two segments, a squashed or
+/// stretched part, another mesh. `layer` is the model layer of the tree being drawn
+/// (`minecraft:player#main`; None for a model not read from `entity-models.json`) and
+/// `part.name` the part. An entity's own state reaches the replacement through `poses`, where
+/// the mod's mixin on `anim::setup` stores it ([`Poses::set_data`]); a draw posed without
+/// `anim` (an arrow, the first-person arm) passes empty poses. The replacement appends whole
+/// quads to `quads` and sees nothing drawn before; it can call [`push_polygons`] for the
+/// polygons it leaves as they are. A model is drawn on the GPU without this function unless
+/// one of its parts is taken by [`takes_part`], so a mod that replaces this function replaces
+/// that one too. Without a replacement, the same vertices in the same order as before this
+/// function existed.
+#[sunrise_mod_api_macros::replaceable]
+pub fn compile_part(
+    layer: Option<&str>,
+    part: &Part,
+    matrix: glam::Mat4,
+    normals: ModelNormals,
+    paint: Paint,
+    poses: &Poses,
+    quads: &mut Quads<'_>,
+) {
+    let _ = (layer, poses);
+    push_polygons(&part.polygons, matrix, normals, paint, quads);
+}
+/// Whether a native mod draws the part `part` of the model layer `layer`
+/// (`minecraft:player#main`) itself, in its replacement of [`compile_part`]. A model with a
+/// part taken is drawn on the CPU, where [`compile_part`] runs; the mob's other models stay on
+/// the GPU where the draw order allows it.
+///
+/// The answer must be fixed per (layer, part) for the whole session: it is asked once per
+/// model, the first time the GPU path sees it, and kept. What changes per entity or per frame
+/// (a bend that is on or off) belongs in the replacement of [`compile_part`], which can push
+/// the part's own polygons when that entity has nothing to change.
+#[sunrise_mod_api_macros::replaceable]
+pub fn takes_part(layer: &str, part: &str) -> bool {
+    let _ = (layer, part);
+    false
+}
+/// Whether a mixin replaced [`takes_part`]: while none has, no model is asked about.
+pub(super) fn parts_taken_hooked() -> bool {
+    replaced!(takes_part)
+}
+/// The quads of `polygons` posed by `m`: [`compile_part`]'s own body, which a replacement
+/// can call for the parts or polygons it leaves as they are.
+pub fn push_polygons(
+    polygons: &[super::Polygon],
+    m: glam::Mat4,
+    normals: ModelNormals,
+    paint: Paint,
+    quads: &mut Quads<'_>,
+) {
+    let Paint {
+        uv,
+        scroll,
+        color,
+        light,
+        overlay,
+    } = paint;
+    for poly in polygons {
+        let normal = poly.vertex_normal(normals);
+        quads.push(poly.vertices.map(|v| {
+            let pos = m.transform_point3(glam::Vec3::new(v[0], v[1], v[2]) / 16.0);
+            // The armour glint scrolls the layer's model UV in the shader;
+            // the item path already passed its transformed UV.
+            let glint_uv = if overlay == ARMOR_GLINT {
+                [v[3], v[4]]
+            } else {
+                [0.0, 0.0]
+            };
+            Vertex {
+                normal,
+                pos: pos.to_array(),
+                uv: [
+                    uv[0] + (uv[2] - uv[0]) * scroll_u(v[3], scroll),
+                    uv[1] + (uv[3] - uv[1]) * v[4],
+                ],
+                layer: overlay,
+                color,
+                light,
+                glint_uv,
+            }
+        }));
     }
 }
 /// A part's matrix under `base` for its pose (`ModelPart.translateAndRotate`
@@ -1421,7 +1549,7 @@ pub fn put(
     overlay: u32,
     out: &mut Vec<Vertex>,
 ) {
-    let paint = super::skin::Paint {
+    let paint = Paint {
         uv,
         scroll,
         color,
@@ -2174,29 +2302,44 @@ fn render_selected(
             }
         }
     }
-    // The GPU path takes the whole mob or none of it, so its draws keep their
-    // order: only plain draws of models it can pose (no custom models,
-    // translucent body or energy swirl, which the CPU path changes after
-    // drawing), and with improved transparency off the tagged layers too.
+    // The GPU path takes the mob only when its draws keep their order: only
+    // plain draws of models it can pose (no custom models, translucent body or
+    // energy swirl, which the CPU path changes after drawing), and with
+    // improved transparency off the tagged layers too.
+    // The first of the mob's draws (0 the body, 1 + i its layer i) whose model a mod takes a
+    // part of (`takes_part`): that model goes to the CPU, and the draws after it with it.
+    // The ordinary entity pass draws the GPU-posed vertices before the CPU's
+    // (`gfx::draw_frame`), so a draw before it can stay on the GPU and still come first; one
+    // after it can't. A taken body sends the whole mob to the CPU.
+    let mut cpu_from = None;
     let posable = match skin.as_deref_mut() {
         Some(skin) => {
+            let tagged = skin.models.tagged;
+            let mut placed = |part: &std::sync::Arc<Part>, draw: usize| match skin.route(part) {
+                super::skin::Route::Gpu => true,
+                super::skin::Route::Taken => {
+                    cpu_from.get_or_insert(draw);
+                    true
+                }
+                super::skin::Route::Cpu => false,
+            };
             body.custom.is_none()
                 && extra.is_empty()
                 && m.species() != Species::SulfurCube
                 && !translucent_body(m)
                 && energy_swirl(m, s.age).is_none()
-                && skin.supports(body_model)
-                && all_layers.iter().all(|layer| {
+                && placed(body_model, 0)
+                && all_layers.iter().enumerate().all(|(i, layer)| {
                     // With improved transparency off, a translucent layer's tag
                     // is the only difference from a plain draw.
-                    (skin.models.tagged && (eyes_layer(m, layer) || !layer.full_bright)
+                    (tagged && (eyes_layer(m, layer) || !layer.full_bright)
                         || !layer.full_bright && !translucent_layer(m, layer))
                         && cem.layer(&layer.model).is_none()
                         && layer
                             .equipment_model
                             .as_ref()
                             .or_else(|| m.kind.layer(&layer.model))
-                            .is_none_or(|part| skin.supports(part))
+                            .is_none_or(|part| placed(part, 1 + i))
                 })
         }
         None => false,
@@ -2204,6 +2347,9 @@ fn render_selected(
     if !posable {
         skin = None;
     }
+    // The draws `cpu_from` sends to the CPU pass this instead of `skin`.
+    let mut on_cpu: Option<&mut super::skin::Skin> = None;
+    let on_gpu = |draw: usize| cpu_from.is_none_or(|first| draw < first);
     let draw_body = |poses: &mut Poses, out: &mut Vec<Vertex>, skin: &mut Option<_>| {
         poses.apply_frame_visibility(true);
         // A player or mannequin whose skin has no atlas sprite (an evicted or
@@ -2253,7 +2399,7 @@ fn render_selected(
     // The translucent shell writes depth: draw the opaque core before it.
     let shell_last = m.species() == Species::SulfurCube;
     if !shell_last {
-        draw_body(poses, out, &mut skin);
+        draw_body(poses, out, if on_gpu(0) { &mut skin } else { &mut on_cpu });
     }
     // The worn armour's layers (and their emissive overlays, full bright).
     if !extra.is_empty() {
@@ -2342,10 +2488,15 @@ fn render_selected(
         // EquipmentLayerRenderer draws armour with OverlayTexture.NO_OVERLAY: never
         // the hurt tint, the armour glint (`ARMOR_GLINT`) when enchanted.
         let overlay = layer.equipment_overlay.unwrap_or(overlay);
+        let skin = if on_gpu(1 + i) {
+            &mut skin
+        } else {
+            &mut on_cpu
+        };
         let start = out.len();
         let first_job = skin.as_deref().map(|skin| skin.frame.jobs.len());
         put(
-            &mut skin,
+            skin,
             &part,
             base,
             draw_poses,
@@ -2358,7 +2509,7 @@ fn render_selected(
         );
         if let Some(glow) = emissive_uv(drawn) {
             put(
-                &mut skin,
+                skin,
                 &part,
                 base,
                 draw_poses,
@@ -3162,6 +3313,7 @@ mod tests {
             pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
             polygons,
             children: Vec::new(),
+            layer: None,
         };
         assert_eq!(
             cube_bounds(&part),
@@ -3951,6 +4103,7 @@ mod emissive_tests {
                 ],
             }],
             children: Vec::new(),
+            layer: None,
         });
         Mob::new(1, kind, sunrise_core::geometry::Vec3::ZERO, 0.0)
     }
@@ -4257,6 +4410,7 @@ mod random_texture_tests {
                 ],
             }],
             children: Vec::new(),
+            layer: None,
         });
         Mob::new(1, kind, sunrise_core::geometry::Vec3::ZERO, 0.0)
     }
@@ -4587,6 +4741,472 @@ mod translate_to_hand_tests {
                 translate_to_hand(&m, &model, base, &poses, left).unwrap(),
                 part_matrix(&model, base, &poses, arm, shift).unwrap()
             );
+        }
+    }
+}
+#[cfg(test)]
+mod compile_part_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// A humanoid layer's tree: five parts of one quad each (facing +x, their texture corners
+    /// apart), drawn body, head, left_arm, right_arm, right_leg (children in name order), so
+    /// `right_arm`'s four vertices are the 13th to the 16th.
+    fn humanoid_tree() -> serde_json::Value {
+        let part = |name: &str, u: f32, pose: [f32; 9]| {
+            let v = json!({
+                "pose": pose,
+                "polygons": [[[0, 0, 0, u, 0.25], [0, 12, 0, u, 0.35],
+                              [0, 12, 4, u + 0.1, 0.35], [0, 0, 4, u + 0.1, 0.25]]],
+                "normals": [[1, 0, 0]]
+            });
+            (name.to_owned(), v)
+        };
+        let children: serde_json::Map<_, _> = [
+            part("body", 0.0, [0.0, 0.0, 0.0, 0.1, 0.0, 0.0, 1.0, 1.0, 1.0]),
+            part("head", 0.1, [0.0, -2.0, 0.0, 0.0, 0.3, 0.0, 1.0, 1.0, 1.0]),
+            part(
+                "left_arm",
+                0.2,
+                [5.0, 2.0, 0.0, 0.3, -0.1, 0.0, 1.0, 1.0, 1.0],
+            ),
+            part(
+                "right_arm",
+                0.3,
+                [-5.0, 2.0, 0.0, -0.4, 0.1, 0.05, 1.0, 1.0, 1.0],
+            ),
+            part(
+                "right_leg",
+                0.4,
+                [-2.0, 12.0, 0.0, 0.2, 0.0, 0.0, 1.0, 1.25, 1.0],
+            ),
+        ]
+        .into_iter()
+        .collect();
+        json!({ "children": children })
+    }
+
+    /// The player layer on [`humanoid_tree`].
+    fn humanoid() -> Part {
+        Part::parse_layer("minecraft:player#main", &humanoid_tree())
+    }
+
+    fn paint() -> Paint {
+        Paint {
+            uv: [0.125, 0.25, 0.75, 0.875],
+            scroll: 0.0,
+            color: 0xff80_c0ff,
+            light: 0x70a0,
+            overlay: 0,
+        }
+    }
+
+    fn drawn(model: &Part, poses: &Poses, compile: Option<CompilePart>) -> Vec<Vertex> {
+        let base = glam::Mat4::from_translation(glam::Vec3::new(0.25, 1.5, -0.75))
+            * glam::Mat4::from_rotation_y(0.7);
+        let mut out = Vec::new();
+        draw_normals(
+            model,
+            base,
+            ModelNormals::new(base),
+            poses,
+            paint(),
+            model.layer.as_deref(),
+            compile,
+            &mut Quads::new(&mut out),
+        );
+        out
+    }
+
+    fn bytes(vertices: &[Vertex]) -> &[u8] {
+        bytemuck::cast_slice(vertices)
+    }
+
+    /// `draw_normals` as it was before `compile_part` was split out of it: the reference
+    /// for "with no replacement, a model draws as before".
+    fn before_split(
+        part: &Part,
+        base: glam::Mat4,
+        normals: ModelNormals,
+        poses: &Poses,
+        paint: Paint,
+        out: &mut Vec<Vertex>,
+    ) {
+        let Paint {
+            uv,
+            scroll,
+            color,
+            light,
+            overlay,
+        } = paint;
+        let p = poses.pose(part);
+        let m = posed(base, p);
+        if poses.is_hidden(part) || p[6] == 0.0 && p[7] == 0.0 && p[8] == 0.0 {
+            return;
+        }
+        let normals = normals.part(p);
+        if !poses.skips(part) {
+            for poly in &part.polygons {
+                let normal = poly.vertex_normal(normals);
+                for v in poly.vertices {
+                    let pos = m.transform_point3(glam::Vec3::new(v[0], v[1], v[2]) / 16.0);
+                    let glint_uv = if overlay == ARMOR_GLINT {
+                        [v[3], v[4]]
+                    } else {
+                        [0.0, 0.0]
+                    };
+                    out.push(Vertex {
+                        normal,
+                        pos: pos.to_array(),
+                        uv: [
+                            uv[0] + (uv[2] - uv[0]) * scroll_u(v[3], scroll),
+                            uv[1] + (uv[3] - uv[1]) * v[4],
+                        ],
+                        layer: overlay,
+                        color,
+                        light,
+                        glint_uv,
+                    });
+                }
+            }
+        }
+        for c in &part.children {
+            before_split(c, m, normals, poses, paint, out);
+        }
+    }
+
+    /// Without a replacement, `draw_scrolled` pushes the bytes the loop before the split
+    /// pushed, through a nonuniform scale, a skipped part, a hidden one, a scroll and the
+    /// armour glint; `compile_part`'s own body pushes those bytes too; and `render_model`,
+    /// which now emits through the same step, pushes what it pushed before.
+    #[test]
+    fn without_a_replacement_a_model_draws_as_before_the_split() {
+        let model = humanoid();
+        let mut poses = Poses::new(&model);
+        poses.get("right_arm")[6] = 0.5;
+        poses.skip_draw("head");
+        poses.visible("left_arm", false);
+        let base = glam::Mat4::from_translation(glam::Vec3::new(0.25, 1.5, -0.75))
+            * glam::Mat4::from_rotation_y(0.7)
+            * glam::Mat4::from_scale(glam::Vec3::new(0.9375, 0.9375, -0.9375));
+        for (scroll, overlay) in [(0.0, 0), (0.375, 0), (0.0, ARMOR_GLINT)] {
+            let p = Paint {
+                scroll,
+                overlay,
+                ..paint()
+            };
+            let mut expected = Vec::new();
+            before_split(
+                &model,
+                base,
+                ModelNormals::new(base),
+                &poses,
+                p,
+                &mut expected,
+            );
+            let mut now = Vec::new();
+            draw_scrolled(
+                &model, base, &poses, p.uv, p.scroll, p.color, p.light, p.overlay, &mut now,
+            );
+            assert_eq!(expected.len(), 12);
+            assert_eq!(bytes(&now), bytes(&expected));
+            let mut through = Vec::new();
+            draw_normals(
+                &model,
+                base,
+                ModelNormals::new(base),
+                &poses,
+                p,
+                model.layer.as_deref(),
+                Some(compile_part),
+                &mut Quads::new(&mut through),
+            );
+            assert_eq!(bytes(&through), bytes(&expected));
+        }
+        // `render_model` draws every part at its own pose, white, unscrolled.
+        let plain = Poses::new(&model);
+        for overlay in [0, ARMOR_GLINT] {
+            let p = Paint {
+                color: 0xFFFF_FFFF,
+                overlay,
+                ..paint()
+            };
+            let mut expected = Vec::new();
+            before_split(
+                &model,
+                base,
+                ModelNormals::new(base),
+                &plain,
+                p,
+                &mut expected,
+            );
+            let mut now = Vec::new();
+            crate::mobs::render_model(
+                &model,
+                base,
+                &|part| part.pose,
+                p.uv,
+                p.light,
+                overlay,
+                &mut now,
+            );
+            assert_eq!(expected.len(), 20);
+            assert_eq!(bytes(&now), bytes(&expected));
+        }
+    }
+
+    /// The `lower` fn-replace-check fixture's crate, as its helpers name it: its own `Bend`
+    /// type, and `note`.
+    mod fnr_lower {
+        include!("../../../../tools/ci/fn-replace-check/lower/src/shared.rs");
+        pub fn note(_: &str) {}
+    }
+    // The fixture's `pose`, `bend` and `takes` helpers, compiled here in `render`'s scope as the
+    // installer compiles them into its copy of this module.
+    include!("../../../../tools/ci/fn-replace-check/lower/src/mixins/pose.rs");
+    include!("../../../../tools/ci/fn-replace-check/lower/src/mixins/bend.rs");
+    include!("../../../../tools/ci/fn-replace-check/lower/src/mixins/takes.rs");
+
+    /// `anim::setup` with the fixture's `pose` RETURN row.
+    fn setup_installed(
+        m: &Mob,
+        s: &anim::State<'_>,
+        p: &mut Poses,
+        animations: &std::collections::HashMap<String, super::super::keyframes::Animation>,
+    ) {
+        // The row hands the helper the game's return value: `()` here.
+        anim::setup(m, s, p, animations);
+        pose((), m, p)
+    }
+    /// `compile_part` with the fixture's cancellable `bend` HEAD row.
+    fn compile_part_installed(
+        layer: Option<&str>,
+        part: &Part,
+        matrix: glam::Mat4,
+        normals: ModelNormals,
+        paint: Paint,
+        poses: &Poses,
+        quads: &mut Quads<'_>,
+    ) {
+        if bend(layer, part, matrix, normals, paint, poses, quads).is_break() {
+            return;
+        }
+        compile_part(layer, part, matrix, normals, paint, poses, quads);
+    }
+    /// `takes_part` with the fixture's `takes` RETURN row.
+    fn takes_part_installed(layer: &str, part: &str) -> bool {
+        takes(takes_part(layer, part), layer, part)
+    }
+
+    /// A zombie-animated mob drawn with `model`.
+    fn mob(species: Species, model: Part, layers: &[(&str, Part)]) -> Mob {
+        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+        kind.species = species;
+        kind.anim = super::super::Anim::Zombie;
+        kind.model = std::sync::Arc::new(model);
+        kind.layers = layers
+            .iter()
+            .map(|(key, part)| ((*key).to_owned(), std::sync::Arc::new(part.clone())))
+            .collect();
+        let mut mob = Mob::new(
+            1,
+            std::sync::Arc::new(kind),
+            sunrise_core::geometry::Vec3::ZERO,
+            0.0,
+        );
+        mob.age = 37;
+        mob
+    }
+
+    /// The fixture's rows from the pose write to the emitted quads: its `pose` row stores the
+    /// bend after the game's `setupAnim`, and its `bend` row draws `right_arm` of the player
+    /// layer as two segments with the lower one turned by the stored angle at the elbow; every
+    /// other part's bytes, and the arm's texture, colour, light and overlay, stay the game's.
+    /// Its `takes` row takes that arm, so the player model leaves the GPU and a zombie's stays.
+    #[test]
+    fn the_lower_fixture_bends_the_right_forearm_from_pose_write_to_quads() {
+        let model = humanoid();
+        let m = mob(Species::Zombie, model.clone(), &[]);
+        let state = anim::state(&m, 0.5);
+        let mut poses = Poses::new(&model);
+        setup_installed(&m, &state, &mut poses, &Default::default());
+        let mut game = Poses::new(&model);
+        anim::setup(&m, &state, &mut game, &Default::default());
+        let plain = drawn(&model, &game, None);
+        assert_eq!(plain.len(), 20);
+        assert_eq!(
+            bytes(&drawn(&model, &poses, None)),
+            bytes(&plain),
+            "the stored bend changes no pose"
+        );
+        let bent = drawn(&model, &poses, Some(compile_part_installed));
+        assert_eq!(bent.len(), 24);
+        assert_eq!(
+            bytes(&bent[..12]),
+            bytes(&plain[..12]),
+            "body, head, left_arm"
+        );
+        assert_eq!(bytes(&bent[20..]), bytes(&plain[16..]), "right_leg");
+        let arm = &plain[12..16];
+        for segment in [&bent[12..16], &bent[16..20]] {
+            for (v, a) in segment.iter().zip(arm) {
+                assert_eq!(
+                    (v.uv, v.color, v.light, v.layer, v.normal),
+                    (a.uv, a.color, a.light, a.layer, a.normal)
+                );
+            }
+        }
+        // The quad's first two corners run down the arm, 12 pixels. The upper segment starts
+        // at the shoulder and runs 6 of them; the lower one starts where it ends and runs 6
+        // more, turned 0.8 radians away from it.
+        let pos = |v: &Vertex| glam::Vec3::from_array(v.pos);
+        let (upper, lower) = (&bent[12..16], &bent[16..20]);
+        assert_eq!(upper[0].pos, arm[0].pos);
+        let along = pos(&upper[1]) - pos(&upper[0]);
+        let forearm = pos(&lower[1]) - pos(&lower[0]);
+        assert!(pos(&lower[0]).distance(pos(&upper[1])) < 1e-6, "the elbow");
+        assert!((along.length() - 6.0 / 16.0).abs() < 1e-6);
+        assert!((forearm.length() - 6.0 / 16.0).abs() < 1e-6);
+        let turned = along.angle_between(forearm);
+        assert!((turned - 0.8).abs() < 1e-4, "turned by {turned}");
+        // A model of another layer keeps its arm, bend stored or not.
+        let mut zombie = model.clone();
+        zombie.layer = Some("minecraft:zombie#main".into());
+        assert_eq!(
+            bytes(&drawn(&zombie, &poses, Some(compile_part_installed))),
+            bytes(&drawn(&zombie, &game, None))
+        );
+        // The `takes` row: the player model is drawn on the CPU, the zombie's on the GPU.
+        let mut models = super::super::skin::SkinModels::default();
+        models.takes = Some(takes_part_installed);
+        let mut frame = crate::gfx::entity_skin::SkinFrame::default();
+        let mut skin = super::super::skin::Skin::new(&mut models, &mut frame);
+        use super::super::skin::Route;
+        assert_eq!(skin.route(&std::sync::Arc::new(model)), Route::Taken);
+        assert_eq!(skin.route(&std::sync::Arc::new(zombie)), Route::Gpu);
+    }
+
+    /// A mob whose body and layer are two models: a model a mod takes a part of is drawn on
+    /// the CPU, and so is every draw after it; the draws before it stay on the GPU. The
+    /// ordinary entity pass draws the GPU-posed vertices first, then the CPU's
+    /// (`gfx::draw_frame`: "the posed models' vertices come first"), so the submitted order is
+    /// the game's, body before layer, whichever model is taken. The routing is decided once per
+    /// model and kept across frames.
+    #[test]
+    fn a_taken_model_leaves_the_gpu_and_the_mobs_other_models_keep_their_order() {
+        thread_local! {
+            static ASKED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+        }
+        fn none(_: &str, _: &str) -> bool {
+            ASKED.with(|asked| asked.set(asked.get() + 1));
+            false
+        }
+        fn body_arm(layer: &str, part: &str) -> bool {
+            ASKED.with(|asked| asked.set(asked.get() + 1));
+            layer == "minecraft:drowned#main" && part == "right_arm"
+        }
+        fn outer_arm(layer: &str, part: &str) -> bool {
+            ASKED.with(|asked| asked.set(asked.get() + 1));
+            layer == "minecraft:drowned#outer" && part == "right_arm"
+        }
+        let main = Part::parse_layer("minecraft:drowned#main", &humanoid_tree());
+        let outer = Part::parse_layer("minecraft:drowned#outer", &humanoid_tree());
+        let m = mob(
+            Species::Drowned,
+            main.clone(),
+            &[("drowned#main", main), ("drowned#outer", outer)],
+        );
+        let data = MobData {
+            states: Vec::new(),
+            placements: Default::default(),
+            heightmaps: Default::default(),
+            animations: Default::default(),
+            biome_tags: Default::default(),
+            villager_hats: Default::default(),
+            frame_models: BakedFrameModels::bake([m.kind.as_ref()]),
+            cem: Default::default(),
+            random_textures: Default::default(),
+            emissive: Default::default(),
+            blinks: Default::default(),
+            pois: Default::default(),
+            species_placements: Default::default(),
+            resolved: Default::default(),
+            mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
+        };
+        // The outer layer's sprite apart from the body's, so the two draws differ.
+        let atlas = |texture: &str| {
+            Some(if texture.contains("outer") {
+                [0.5, 0.0, 1.0, 0.5]
+            } else {
+                [0.0, 0.0, 0.5, 0.5]
+            })
+        };
+        // The whole mob on the CPU: the body's 20 vertices, then the outer layer's 20.
+        let mut cpu = Vec::new();
+        render_with_frame(
+            &m,
+            0.5,
+            glam::DVec3::ZERO,
+            &atlas,
+            0xf0f0,
+            &data,
+            &[],
+            &mut FrameDraw::new(false),
+            &mut cpu,
+        );
+        assert_eq!(cpu.len(), 40);
+        let (body, layer) = cpu.split_at(20);
+        assert_ne!(bytes(body), bytes(layer), "two draws apart");
+        // Which draw a vertex belongs to, by its sprite: the body's or the layer's.
+        let drawn_by = |u: f32| if u < 0.5 { "body" } else { "layer" };
+        // (stand-in for takes_part, the first of the mob's 40 vertices drawn on the CPU, parts
+        // asked)
+        for (takes, cpu_from, asked) in [
+            (none as fn(&str, &str) -> bool, 40, 12),
+            // The body taken: the layer after it can't come first, so the whole mob is on the
+            // CPU.
+            (body_arm, 0, 11),
+            // The layer taken: the body stays on the GPU, drawn before it.
+            (outer_arm, 20, 11),
+        ] {
+            ASKED.with(|a| a.set(0));
+            let mut models = super::super::skin::SkinModels::default();
+            models.takes = Some(takes);
+            let mut frame = crate::gfx::entity_skin::SkinFrame::default();
+            for _ in 0..2 {
+                frame.clear_draws();
+                let mut out = Vec::new();
+                let mut skin = super::super::skin::Skin::new(&mut models, &mut frame);
+                render_skinned(
+                    &m,
+                    0.5,
+                    glam::DVec3::ZERO,
+                    &atlas,
+                    0xf0f0,
+                    &data,
+                    &mut FrameDraw::new(false),
+                    &mut out,
+                    &mut skin,
+                );
+                // The CPU draws the end of the mob's draws, byte for byte; the GPU the start.
+                assert_eq!(bytes(&out), bytes(&cpu[cpu_from..]));
+                let posed: u32 = frame.jobs.iter().map(|job| job.count).sum();
+                assert_eq!(posed as usize, cpu_from);
+                // The order the entity pass submits: the posed jobs' vertices, then the CPU's.
+                let submitted: Vec<&str> = frame
+                    .jobs
+                    .iter()
+                    .flat_map(|job| std::iter::repeat_n(drawn_by(job.rect[0]), job.count as usize))
+                    .chain(out.iter().map(|v| drawn_by(v.uv[0])))
+                    .collect();
+                let game: Vec<&str> = cpu.iter().map(|v| drawn_by(v.uv[0])).collect();
+                assert_eq!(game[..20], ["body"; 20]);
+                assert_eq!(game[20..], ["layer"; 20]);
+                assert_eq!(submitted, game, "the body before its layer");
+            }
+            // Each model's parts asked once, on its first frame (a taken part ends its walk).
+            assert_eq!(ASKED.with(std::cell::Cell::get), asked);
         }
     }
 }
