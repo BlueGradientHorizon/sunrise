@@ -499,17 +499,17 @@ fn invalid_and_generated_sprites_match_vanilla() {
         serde_json::json!({"type":"paletted_permutations","textures":["test:trim"],"palette_key":"test:key","permutations":{"red":"test:red"}}),
     ]);
     fs::write(path, atlas.to_string()).unwrap();
-    for (name, w, h, color) in [
-        ("trim", 8, 16, [255; 4]),
-        ("key", 1, 1, [255; 4]),
-        ("red", 1, 1, [255, 0, 0, 255]),
+    for (path, w, h, color) in [
+        ("assets/test/textures/trim.png", 8, 16, [255; 4]),
+        ("assets/test/textures/palettes/key.png", 1, 1, [255; 4]),
+        (
+            "assets/test/textures/palettes/red.png",
+            1,
+            1,
+            [255, 0, 0, 255],
+        ),
     ] {
-        png(
-            &root.join(format!("assets/test/textures/{name}.png")),
-            w,
-            h,
-            color,
-        );
+        png(&root.join(path), w, h, color);
     }
     let atlas = glint_atlas::load_atlas(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),

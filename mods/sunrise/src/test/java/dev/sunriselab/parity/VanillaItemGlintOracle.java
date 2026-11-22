@@ -850,11 +850,13 @@ public final class VanillaItemGlintOracle {
                 "minecraft:item/enchanted_book",
                 "minecraft:item/compass_16",
                 "minecraft:item/compass_00",
+                "minecraft:trims/items/boots_trim_quartz",
                 "minecraft:missingno"
             }),
             "items_aniso2", recordAtlas(itemsAniso2, new String[] {
                 "minecraft:item/end_crystal",
                 "minecraft:item/enchanted_book",
+                "minecraft:trims/items/boots_trim_quartz",
                 "minecraft:missingno"
             }),
             "blocks_mip4_none", recordAtlas(blocksMip4None, new String[] {

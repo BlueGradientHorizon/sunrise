@@ -53,10 +53,10 @@ pub(super) fn load_atlas(
 fn collect_entries(root: &ResourceSource, atlas_id: &str) -> Vec<Entry> {
     let listing = atlas_sources::listing(root);
     let listed = listing.sprites(atlas_id);
-    let decode = |name: &str| {
+    let decode = |name: &str, directory: &str| {
         crate::hud::decode_bytes(
             &root
-                .read(&atlas_sources::texture_resource(name, "textures"))
+                .read(&atlas_sources::texture_resource(name, directory))
                 .ok()?,
         )
         .ok()
@@ -65,7 +65,7 @@ fn collect_entries(root: &ResourceSource, atlas_id: &str) -> Vec<Entry> {
     for (id, origin) in listed {
         let dimensions = match &origin {
             atlas_sources::SpriteOrigin::File(texture) => (|| {
-                let (w, h, _) = decode(texture)?;
+                let (w, h, _) = decode(texture, "textures")?;
                 let path = format!(
                     "{}.mcmeta",
                     atlas_sources::texture_resource(texture, "textures")
