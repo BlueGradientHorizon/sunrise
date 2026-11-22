@@ -327,9 +327,9 @@ impl LootModifierContext for Roll {
     ) -> Result<(), LootModifierError> {
         assert_eq!(table.to_string(), "test:raw");
         generated
-            .downcast_mut::<Vec<TestStack>>()
-            .expect("test list backing")
-            .push(TestStack::new("minecraft:gold_ingot", 0));
+            .access_mut()
+            .push_empty("minecraft:gold_ingot")
+            .set_count(0);
         Ok(())
     }
 }
