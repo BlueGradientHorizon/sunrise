@@ -1654,8 +1654,10 @@ fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
     };
     let make_unconvertible_bundle = || {
         let mut bundle = ItemStack::new("minecraft:bundle", 1);
-        bundle.data_mut().bundle_contents =
-            vec![ItemStack::new("missing:unregistered_inside_bundle", 1)];
+        bundle.data_mut().bundle_contents = vec![ItemStack::new("minecraft:stick", 1)];
+        bundle
+            .data_mut()
+            .set_other("!minecraft:damage", Some(sunrise_core::nbt::Tag::Int(7)));
         assert!(bundle.try_into_api().is_err());
         bundle
     };

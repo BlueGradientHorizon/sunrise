@@ -943,6 +943,7 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
                 relatives: 0,
             }))
             .unwrap();
+            game.remote.as_mut().unwrap().level_load.finish();
             let root = std::path::PathBuf::from(
                 std::env::var_os("SUNRISE_TEST_RESOURCES")
                     .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

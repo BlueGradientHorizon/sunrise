@@ -35,6 +35,7 @@ impl fmt::Debug for TransactionContext {
 // no wire: process-local identity of a journal frame.
 /// A key for the host that owns a journal frame, not a write capability or close handle.
 // hidden: the game's side of TransactionContext, re-exported through `__private`.
+// exhaustive: opaque hidden handle with private fields, constructed only via TransactionFrame::new.
 #[doc(hidden)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TransactionFrame {

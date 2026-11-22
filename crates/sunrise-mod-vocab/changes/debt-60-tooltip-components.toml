@@ -1,4 +1,5 @@
 ids = [
+    "type:HookId",
     "hook:tooltip_component",
     "method:ItemPart::tooltip_component",
     "type:TooltipComponentEvent",

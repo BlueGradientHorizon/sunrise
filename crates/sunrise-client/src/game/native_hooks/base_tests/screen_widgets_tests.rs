@@ -725,9 +725,10 @@ fn text_field_editing_ime_and_double_click_word_selection() {
                 std::mem::take(&mut *pressed_double_clicks.lock().unwrap()),
                 vec![false, true]
             );
-            // Replacing the double-click selection replaces "alpha", keeping " beta!".
+            // Vanilla EditBox.selectWord uses getWordPosition(1, pos, stripSpaces=true), which
+            // selects "alpha " including the trailing space; replacing it yields "Xbeta!".
             assert!(game.mounted_widget_char_typed('X', 0));
-            assert_eq!(take_log(&changes), vec!["X beta!"]);
+            assert_eq!(take_log(&changes), vec!["Xbeta!"]);
 
             // Clicking the non-capturing custom widget shifts focus off the text field.
             move_mouse(game, win_id, 40.0, 70.0);
@@ -1666,6 +1667,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                 take_log(&log),
                 vec!["press_pre:mod:0:false", "press_post:mod:0:false:true"]
             );
+            send_mouse_button(game, win_id, MouseButton::Left, false);
 
             // 8) Advancements blank-space press/release and no-tab scroll report unhandled.
             game.set_screen(Screen::Advancements);
