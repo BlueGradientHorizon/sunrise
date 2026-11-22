@@ -4227,7 +4227,7 @@ fn a_directional_placement_reads_the_clicked_block_and_refuses_what_vanilla_thro
         pos: at,
         hit_pos: at,
         face,
-        hit: Vec3::new(0.5, 64.0, 0.5),
+        hit: sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
         inside: false,
         source: PlacementSource::Directional { direction },
         item: item.into(),
@@ -4236,7 +4236,7 @@ fn a_directional_placement_reads_the_clicked_block_and_refuses_what_vanilla_thro
     let placing = |direction, face, item: &str| PlaceContext {
         clicked_pos: at,
         face,
-        hit: Vec3::new(0.5, 64.0, 0.5),
+        hit: sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
         inside: false,
         source: PlacementSource::Directional { direction },
         item: item.into(),
