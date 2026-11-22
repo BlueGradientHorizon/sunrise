@@ -234,6 +234,7 @@ impl Game<'_> {
         let theirs = super::super::Dim::from_id(&self.lan.as_ref()?.hub.guest(conn)?.dimension);
         // Opening a level or leaving the guest can itself fire hooks. Put the outer level
         // back even when one of those hooks, rather than `f`, unwinds.
+        let mut messages = Vec::new();
         let turn = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if theirs != back
                 && let Err(e) = self.enter_level(theirs)
@@ -241,20 +242,16 @@ impl Game<'_> {
                 log::error!("could not open {}: {e}", theirs.id());
                 return None;
             }
-            let swap = self.enter_guest_in_dimension(conn, back)?;
-            let (result, messages) = self.capture_guest_messages(f);
-            if result.is_err() {
-                self.record_interrupted_turn(conn);
-            }
-            let exit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                self.leave_guest(swap);
-            }));
-            self.send_guest_messages(conn, messages);
-            Some(match (exit, result) {
-                (Err(payload), _) => Err(payload),
-                (Ok(()), result) => result,
+            self.with_guest_swap(conn, back, |game| {
+                let (result, told) = game.capture_guest_messages(f);
+                messages = told;
+                if result.is_err() {
+                    game.record_interrupted_turn(conn);
+                }
+                result
             })
         }));
+        self.send_guest_messages(conn, messages);
         if self.dim != back
             && let Err(e) = self.enter_level(back)
         {

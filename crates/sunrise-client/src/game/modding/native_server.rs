@@ -1203,7 +1203,7 @@ impl Game<'_> {
         if slot >= 9 {
             return false;
         }
-        // `leave_guest` stores the selected slot back but sends nothing. Tell the same
+        // The guest turn stores the selected slot back but sends nothing. Tell the same
         // connection after the turn, whether the player was parked or already acting.
         let mut conn = None;
         if !self.native_as_resident_player(player, |game| {
