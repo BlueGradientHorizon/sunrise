@@ -2301,9 +2301,13 @@ impl Game<'_> {
         }
         match result {
             Ok(Ok(value)) => Ok(value),
-            Ok(Err(message)) => Err(sunrise_client::command::CommandError::new(
-                sunrise_client_lib::api_text::to_engine_inprocess(&message),
-            )),
+            // Failure text can reach a packet or a saved command block. An
+            // invalid component still reports an ordinary failed command.
+            Ok(Err(message)) => Err(sunrise_client_lib::api_text::to_serialized_engine(&message)
+                .map_or_else(
+                    |_| err("command.failed", &[]),
+                    sunrise_client::command::CommandError::new,
+                )),
             Err(RetainedFailure::Disabled) => Err(err("command.unknown.command", &[])),
             Err(RetainedFailure::Panicked) => {
                 Err(sunrise_client::command::CommandError::unexpected())
