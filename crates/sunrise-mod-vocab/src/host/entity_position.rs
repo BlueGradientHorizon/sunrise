@@ -62,7 +62,6 @@ pub trait EntityPositionBackendMut {
     /// head yaw, leaving their current body yaw alone. False for stale handles or when the
     /// server keeps no living body for this entity. Returns `Err(LevelWriteError::Unavailable)`
     /// when the host cannot write living state.
-    #[access(WorldOnly)]
     fn entity_set_body_yaw(&mut self, entity: EntityRef, yaw: f32)
     -> Result<bool, LevelWriteError>;
     /// Side: server.
