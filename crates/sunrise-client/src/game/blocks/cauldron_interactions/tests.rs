@@ -1,8 +1,8 @@
 use super::*;
 use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game_at};
 use mod_api::{
-    BlockUpdateFlags, CauldronDecision, CauldronUse, GameEventContext, Hooks, ItemPlace,
-    ItemResource, ServerHost, SoundSource, StatType,
+    BlockUpdateFlags, CauldronDecision, CauldronUse, Hooks, ItemPlace, ItemResource, ServerHost,
+    StatType,
 };
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use sunrise_client::cauldron::{Outcome, interactions::Entry};
@@ -52,6 +52,15 @@ impl mod_api::Interaction for Syrup {
             if hand.exchange(host, tx, &resource, 1) != 1 {
                 return Err(());
             }
+            let fluid = mod_api::__private::fluid_key("minecraft:water").unwrap();
+            assert!(input.level.play_fluid_effects(
+                host,
+                input.pos,
+                fluid,
+                false,
+                Some(input.player),
+                tx,
+            ));
             Ok(())
         })
         .unwrap();
@@ -61,22 +70,6 @@ impl mod_api::Interaction for Syrup {
         input
             .player
             .award_stat(host, StatType::Used, "test:syrup_bottle", 1);
-        let at = input.pos.map(|v| f64::from(v) + 0.5);
-        input.level.play_sound(
-            host,
-            "minecraft:item.bottle.empty",
-            at,
-            SoundSource::Blocks,
-            1.0,
-            1.0,
-            None,
-        );
-        input.level.game_event(
-            host,
-            "minecraft:fluid_place",
-            at,
-            GameEventContext::default(),
-        );
         CauldronDecision::Success
     }
 }
@@ -387,11 +380,13 @@ fn cauldron_syrup_applies_once() {
         assert_eq!(bottles(game), 1);
         assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 1);
         assert_eq!(game.stats.get("used", "test:syrup_bottle"), 1);
-        assert!(
+        assert_eq!(
             game.creatures
                 .lan_sounds
                 .iter()
-                .any(|sound| sound.sound == "minecraft:item.bottle.empty")
+                .filter(|sound| sound.sound == "minecraft:item.bucket.empty")
+                .count(),
+            1,
         );
         assert_eq!(events(), 1);
         crate::game::sculk::TEST_POSTED_EVENTS.with(|events| {
@@ -440,15 +435,20 @@ fn cauldron_outer_abort_discards_effects_and_drops() {
         return;
     }
     fixture(false, |game, seen| {
+        crate::game::native_item_places::tests::open_to_lan(game);
         for slot in game.inventory.iter_mut().skip(1) {
             *slot = Some(ItemStack::new("minecraft:stone", 64));
         }
         let seal = game.transaction_open();
         assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
         assert_eq!(events(), 0);
-        assert_eq!(game.audio.capture.as_ref().unwrap().len(), 0);
+        assert!(game.creatures.lan_sounds.is_empty());
+        assert!(game.audio.capture.as_ref().unwrap().is_empty());
         game.transaction_close(&seal, false);
         unchanged(game, seen);
+        assert_eq!(events(), 0);
+        assert!(game.creatures.lan_sounds.is_empty());
+        assert!(game.audio.capture.as_ref().unwrap().is_empty());
     });
 }
 #[test]
