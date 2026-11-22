@@ -315,7 +315,8 @@ fn read_bounded(path: &Path, shown: &str, most: u64) -> Result<String, ReadError
 
 /// Reads `dir`: the `.rs` files its package carries ([`package::source_files`], the selection
 /// packing makes), and `sunrise-mod.toml` when there is one, but not the files `skip` names
-/// (relative and `/`-separated), which are not the mod's own source. A symbolic link is refused.
+/// (relative and `/`-separated), which are not the mod's own source. A symbolic link among them,
+/// or a linked `src/`, is refused; any other entry that is not a regular file is left unread.
 /// A `#[path]` or `include!` of a file the scan does not read, a skipped one included, is
 /// refused, and so is a `mod` declaration that may load a skipped file, and so is a skipped file
 /// that is the mod's library root.
@@ -327,17 +328,24 @@ pub fn read(dir: &Path, skip: &[&str]) -> Result<ModInput, ReadError> {
     let mut input = ModInput::default();
     let mut total = 0u64;
     let mut brought: Vec<(String, String)> = Vec::new();
+    // A linked `src/` is not walked by the selection, so it is refused here, not read as empty.
+    let src = dir.join("src");
+    if std::fs::symlink_metadata(&src).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        return Err(ReadError::Symlink(src));
+    }
     for shown in package::source_files(dir).map_err(io(dir))? {
         if !shown.ends_with(".rs") || skip.contains(&shown.as_str()) {
             continue;
         }
         let path = dir.join(&shown);
-        if std::fs::symlink_metadata(&path)
+        let kind = std::fs::symlink_metadata(&path)
             .map_err(io(&path))?
-            .file_type()
-            .is_symlink()
-        {
+            .file_type();
+        if kind.is_symlink() {
             return Err(ReadError::Symlink(path));
+        }
+        if !kind.is_file() {
+            continue;
         }
         let relative: Vec<String> = shown.split('/').map(str::to_owned).collect();
         let text = read_bounded(&path, &shown, MAX_SOURCE_BYTES)?;
@@ -632,6 +640,13 @@ mod tests {
             read(root, &[]).unwrap_err(),
             ReadError::Symlink(root.join("src/linked.rs"))
         );
+        // A linked `src/` itself is refused, not scanned as empty.
+        let linked = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(root.join("src"), linked.path().join("src")).unwrap();
+        assert_eq!(
+            read(linked.path(), &[]).unwrap_err(),
+            ReadError::Symlink(linked.path().join("src"))
+        );
     }
 
     /// A file packing leaves out is not read, so its contents cannot stop the scan.
@@ -662,6 +677,9 @@ mod tests {
             std::fs::write(path, not_text).unwrap();
         }
         std::os::unix::fs::symlink(root.join("src"), root.join("linked")).unwrap();
+        // A selected name that is not a regular file is not opened, so it cannot block the scan.
+        let fifo = std::ffi::CString::new(root.join("src/pipe.rs").as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o644) }, 0);
         let input = read(root, &[]).unwrap();
         assert_eq!(
             input.sources,
