@@ -49,11 +49,15 @@ fn json_strings(v: &serde_json::Value) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "run by tools/test_network_parity.py"]
+#[ignore = "daily"]
 fn genpvp_ping_rotation_and_keepalive_bundle_apply_atomically_in_order_26_3() {
-    let _guard = super::PLAY_LOOP_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    crate::game::in_own_process(
+        "game::remote::raw_ingress::bundle_parity_tests::genpvp_ping_rotation_and_keepalive_bundle_apply_atomically_in_order_26_3",
+        genpvp_ping_rotation_and_keepalive_bundle_body,
+    );
+}
+
+fn genpvp_ping_rotation_and_keepalive_bundle_body() {
     let witness = bundle_witness();
     let ping_rot = &witness["genpvp_ping_rotation_dispatch"];
     let expected_ping_rot = json_strings(&ping_rot["sent_after_process"]);
@@ -162,11 +166,15 @@ fn genpvp_ping_rotation_and_keepalive_bundle_apply_atomically_in_order_26_3() {
 }
 
 #[test]
-#[ignore = "run by tools/test_network_parity.py"]
+#[ignore = "daily"]
 fn dependent_entity_bundle_never_splits_across_poll_or_tick_26_3() {
-    let _guard = super::PLAY_LOOP_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    crate::game::in_own_process(
+        "game::remote::raw_ingress::bundle_parity_tests::dependent_entity_bundle_never_splits_across_poll_or_tick_26_3",
+        dependent_entity_bundle_body,
+    );
+}
+
+fn dependent_entity_bundle_body() {
     let witness = bundle_witness();
     let case = &witness["dependent_entity_bundle"];
     let entity_type = case["entity_type"].as_str().unwrap();
@@ -347,8 +355,15 @@ fn dependent_entity_bundle_never_splits_across_poll_or_tick_26_3() {
 }
 
 #[test]
-#[ignore = "run by tools/test_network_parity.py"]
+#[ignore = "daily"]
 fn entity_data_validation_inline_painting_and_pre_login_bundle_errors_26_3() {
+    crate::game::in_own_process(
+        "game::remote::raw_ingress::bundle_parity_tests::entity_data_validation_inline_painting_and_pre_login_bundle_errors_26_3",
+        entity_data_validation_inline_painting_and_pre_login_bundle_errors_body,
+    );
+}
+
+fn entity_data_validation_inline_painting_and_pre_login_bundle_errors_body() {
     let bundle = bundle_witness();
     let entity_data = witness_json("entity_data.json");
     let assignment = &entity_data["metadata_assignment"];

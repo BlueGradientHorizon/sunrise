@@ -76,11 +76,15 @@ fn wait_for_pong(game: &mut Game<'_>, peer: &mut Connection, ping_id: i32) {
 }
 
 #[test]
-#[ignore = "run by tools/test_network_parity.py"]
+#[ignore = "daily"]
 fn post_effects_cleared_on_login_respawn_and_reconfigure_26_3() {
-    let _guard = super::PLAY_LOOP_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    crate::game::in_own_process(
+        "game::remote::raw_ingress::post_effects_parity_tests::post_effects_cleared_on_login_respawn_and_reconfigure_26_3",
+        post_effects_cleared_on_login_respawn_and_reconfigure_body,
+    );
+}
+
+fn post_effects_cleared_on_login_respawn_and_reconfigure_body() {
     let witness = post_effects_witness();
     let lifecycle = &witness["play_lifecycle"];
 
@@ -333,11 +337,15 @@ fn post_effects_cleared_on_login_respawn_and_reconfigure_26_3() {
 }
 
 #[test]
-#[ignore = "run by tools/test_network_parity.py"]
+#[ignore = "daily"]
 fn post_effects_before_login_disconnects_with_packet_error_26_3() {
-    let _guard = super::PLAY_LOOP_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    crate::game::in_own_process(
+        "game::remote::raw_ingress::post_effects_parity_tests::post_effects_before_login_disconnects_with_packet_error_26_3",
+        post_effects_before_login_disconnects_body,
+    );
+}
+
+fn post_effects_before_login_disconnects_body() {
     let witness = post_effects_witness();
     for (case_name, effects) in [
         ("empty", Vec::<String>::new()),

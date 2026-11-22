@@ -4887,8 +4887,29 @@ mod tests {
         )
     }
 
+    fn in_own_process(name: &str, body: impl FnOnce()) {
+        const OWN_PROCESS: &str = "SUNRISE_NET_TEST_OWN_PROCESS";
+        if std::env::var_os(OWN_PROCESS).is_some_and(|v| v == name) {
+            return body();
+        }
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([name, "--exact", "--include-ignored", "--test-threads=1"])
+            .env(OWN_PROCESS, name)
+            .output()
+            .unwrap();
+        let report = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            out.status.success() && report.contains("test result: ok. 1 passed;"),
+            "{name} failed in its own process:\n{report}"
+        );
+    }
+
     #[test]
-    #[ignore = "run by tools/test_network_parity.py"]
+    #[ignore = "daily"]
     fn bundle_holds_packets_until_closing_delimiter_and_emits_one_event_26_3() {
         let witness = network_witness("bundle.json");
         let (_dir, mut server, events, shared_writer, done_rx, thread) =
@@ -4987,7 +5008,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "run by tools/test_network_parity.py"]
+    #[ignore = "daily"]
     fn bundled_keepalive_waits_for_game_thread_in_bundle_order_26_3() {
         let witness = network_witness("bundle.json");
         let (_dir, mut server, events, shared_writer, _done_rx, thread) =
@@ -5057,7 +5078,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "run by tools/test_network_parity.py"]
+    #[ignore = "daily"]
     fn bundle_rejects_terminal_packet_and_oversize_over_4096_26_3() {
         let witness = network_witness("bundle.json");
         let generic_lang = || -> Language {
@@ -5262,92 +5283,100 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "run by tools/test_network_parity.py"]
+    #[ignore = "daily"]
     fn configuration_post_effects_disconnects_with_packet_error_26_3() {
-        let witness = network_witness("post_effects.json");
-        for (case_name, hex_key) in [
-            ("empty", "config_empty_hex"),
-            ("nonempty", "config_two_hex"),
-        ] {
-            let expected_key = witness["configuration_state"][case_name]["disconnect_key"]
-                .as_str()
-                .unwrap();
-            let raw_frame = network_hex(witness["wire"][hex_key].as_str().unwrap());
-            let (root, data) = empty_item_data(&format!("cfg-post-effects-{case_name}"));
-            let _dir = TempDirGuard(root);
-            let (client, server) = sunrise_protocol::connection::Pipe::pair();
-            let (mut reader, writer) = Connection::local(client).split();
-            reader
-                .set_read_timeout(Some(Duration::from_secs(5)))
-                .unwrap();
-            let shared_writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
-            let client_writer = shared_writer.clone();
-            let lang: Language = [(
-                "disconnect.packetError".to_owned(),
-                "Network Protocol Error".to_owned(),
-            )]
-            .into_iter()
-            .collect();
-            let thread = std::thread::spawn(move || {
-                drive_configuration(
-                    |send| {
-                        configure(
-                            &mut reader,
-                            &client_writer,
-                            &Arc::new(AtomicBool::new(true)),
-                            &lang,
-                            send,
-                            &Cookies::default(),
-                            &data,
-                            &crate::raw_payloads::Transport::empty(),
-                        )
-                    },
-                    |_| {},
-                )
-            });
-            let mut server = Connection::local(server);
-            server
-                .reader
-                .set_read_timeout(Some(Duration::from_secs(2)))
-                .unwrap();
-            let _ = server.send(&cfg::Clientbound::Ping(cfg::Ping { id: 19 }).encode());
-            let _ = server.send(&raw_frame);
-            let _ = server.send(&cfg::Clientbound::FinishConfiguration(Empty).encode());
-            let mut replies = Vec::new();
-            while let Ok((id, body)) = server.recv() {
-                replies.push(cfg::Serverbound::decode(id, &body).unwrap());
-            }
-            let ended = thread.join().unwrap();
-            drop(shared_writer);
-            let expected_replies: Vec<String> =
-                witness["configuration_state"][case_name]["sent_after_process"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|v| v.as_str().unwrap().to_owned())
+        in_own_process(
+            "net::tests::configuration_post_effects_disconnects_with_packet_error_26_3",
+            || {
+                let witness = network_witness("post_effects.json");
+                for (case_name, hex_key) in [
+                    ("empty", "config_empty_hex"),
+                    ("nonempty", "config_two_hex"),
+                ] {
+                    let expected_key = witness["configuration_state"][case_name]["disconnect_key"]
+                        .as_str()
+                        .unwrap();
+                    let raw_frame = network_hex(witness["wire"][hex_key].as_str().unwrap());
+                    let (root, data) = empty_item_data(&format!("cfg-post-effects-{case_name}"));
+                    let _dir = TempDirGuard(root);
+                    let (client, server) = sunrise_protocol::connection::Pipe::pair();
+                    let (mut reader, writer) = Connection::local(client).split();
+                    reader
+                        .set_read_timeout(Some(Duration::from_secs(5)))
+                        .unwrap();
+                    let shared_writer =
+                        Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+                    let client_writer = shared_writer.clone();
+                    let lang: Language = [(
+                        "disconnect.packetError".to_owned(),
+                        "Network Protocol Error".to_owned(),
+                    )]
+                    .into_iter()
                     .collect();
-            let got_replies: Vec<String> = replies
-                .iter()
-                .map(|packet| match packet {
-                    cfg::Serverbound::Pong(p) => format!("pong:{}", p.id),
-                    cfg::Serverbound::FinishConfiguration(_) => "finish_configuration".to_owned(),
-                    other => format!("{other:?}"),
-                })
-                .collect();
-            assert_eq!(
-                got_replies, expected_replies,
-                "config post_effects ({case_name}): earlier Ping must drain as Pong and FinishConfiguration must not send"
-            );
-            let got = match ended {
-                Ok(_) => "none".to_owned(),
-                Err(reason) => reason.key.unwrap_or(reason.text),
-            };
-            assert_eq!(got, expected_key, "config post_effects ({case_name})");
-        }
+                    let thread = std::thread::spawn(move || {
+                        drive_configuration(
+                            |send| {
+                                configure(
+                                    &mut reader,
+                                    &client_writer,
+                                    &Arc::new(AtomicBool::new(true)),
+                                    &lang,
+                                    send,
+                                    &Cookies::default(),
+                                    &data,
+                                    &crate::raw_payloads::Transport::empty(),
+                                )
+                            },
+                            |_| {},
+                        )
+                    });
+                    let mut server = Connection::local(server);
+                    server
+                        .reader
+                        .set_read_timeout(Some(Duration::from_secs(2)))
+                        .unwrap();
+                    let _ = server.send(&cfg::Clientbound::Ping(cfg::Ping { id: 19 }).encode());
+                    let _ = server.send(&raw_frame);
+                    let _ = server.send(&cfg::Clientbound::FinishConfiguration(Empty).encode());
+                    let mut replies = Vec::new();
+                    while let Ok((id, body)) = server.recv() {
+                        replies.push(cfg::Serverbound::decode(id, &body).unwrap());
+                    }
+                    let ended = thread.join().unwrap();
+                    drop(shared_writer);
+                    let expected_replies: Vec<String> =
+                        witness["configuration_state"][case_name]["sent_after_process"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|v| v.as_str().unwrap().to_owned())
+                            .collect();
+                    let got_replies: Vec<String> = replies
+                        .iter()
+                        .map(|packet| match packet {
+                            cfg::Serverbound::Pong(p) => format!("pong:{}", p.id),
+                            cfg::Serverbound::FinishConfiguration(_) => {
+                                "finish_configuration".to_owned()
+                            }
+                            other => format!("{other:?}"),
+                        })
+                        .collect();
+                    assert_eq!(
+                        got_replies, expected_replies,
+                        "config post_effects ({case_name}): earlier Ping must drain as Pong and FinishConfiguration must not send"
+                    );
+                    let got = match ended {
+                        Ok(_) => "none".to_owned(),
+                        Err(reason) => reason.key.unwrap_or(reason.text),
+                    };
+                    assert_eq!(got, expected_key, "config post_effects ({case_name})");
+                }
+            },
+        );
     }
 
     #[test]
-    #[ignore = "run by tools/test_network_parity.py"]
+    #[ignore = "daily"]
     fn unknown_entity_data_serializer_disconnects_play_session_like_26_3() {
         let witness = network_witness("entity_data.json");
         let mut reg = Dynamic::default();

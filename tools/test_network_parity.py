@@ -2,10 +2,10 @@
 """Compare play packet bundles, post_effects lifecycle, and strict entity_data decoding with vanilla 26.3.
 
 Compiles and runs VanillaNetworkParityOracle against the pinned 26.3 client jar on JDK 25,
-writing bundle.json, post_effects.json, entity_data.json, and meta.json into
-.local/witness/<version>/network/, then runs the 12 Rust tests across sunrise-protocol,
-sunrise-client-lib, and sunrise-client against them via SUNRISE_NETWORK_WITNESS_DIR."""
+writing bundle.json, post_effects.json, entity_data.json, and meta.json into a private witness
+directory, then runs each Rust parity test in its own process via SUNRISE_NETWORK_WITNESS_DIR."""
 import argparse
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -37,14 +37,17 @@ LIB_TESTS = [
 CLIENT_TESTS = [
     'game::remote::raw_ingress::bundle_parity_tests::genpvp_ping_rotation_and_keepalive_bundle_apply_atomically_in_order_26_3',
     'game::remote::raw_ingress::bundle_parity_tests::dependent_entity_bundle_never_splits_across_poll_or_tick_26_3',
+    'game::remote::raw_ingress::bundle_parity_tests::entity_data_validation_inline_painting_and_pre_login_bundle_errors_26_3',
     'game::remote::raw_ingress::post_effects_parity_tests::post_effects_cleared_on_login_respawn_and_reconfigure_26_3',
     'game::remote::raw_ingress::post_effects_parity_tests::post_effects_before_login_disconnects_with_packet_error_26_3',
 ]
 
+WITNESS_FILES = ('bundle.json', 'post_effects.json', 'entity_data.json')
 
-def record(lock, jars, libraries, build):
+
+def record(lock, jars, libraries, build, witness_dir=None):
     version = lock['minecraft']['version']
-    witness_dir = lab.LOCAL / 'witness' / version / 'network'
+    witness_dir = witness_dir or (lab.LOCAL / 'witness' / version / 'network')
     witness_dir.mkdir(parents=True, exist_ok=True)
     classes, dependencies, oracle_path = harness.compile_oracle(
         build, ORACLE, jars, libraries, lock['minecraft']['java_major']
@@ -64,6 +67,29 @@ def record(lock, jars, libraries, build):
         },
     ))
     return witness_dir
+
+
+def prepare_witness(work):
+    """Generate the private vanilla witness JSONs for daily CI shards without running Cargo."""
+    work = work.resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    build = work / 'build'
+    build.mkdir(parents=True, exist_ok=True)
+    for name in WITNESS_FILES:
+        (work / name).unlink(missing_ok=True)
+    log = work / 'prepare-witness.log'
+    with log.open('w', encoding='utf-8') as output:
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            try:
+                lock, jars, _ = base.verify_artifacts()
+                libraries = baking.client_libraries()
+                record(lock, jars, libraries, build, witness_dir=work)
+            except BaseException as exc:
+                print(exc, file=output, flush=True)
+                raise SystemExit(f'Network witness producer failed; private log: {log}') from None
+    if not all((work / name).is_file() for name in WITNESS_FILES):
+        raise SystemExit('Network witness producer did not write all required witness files')
+    return {'SUNRISE_NETWORK_WITNESS_DIR': str(work)}
 
 
 def run_logged(command, build, name, cwd=lab.ROOT, env=None):
@@ -99,7 +125,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--resources', type=Path, default=Path(os.environ.get('SUNRISE_TEST_RESOURCES', lab.RESOURCES)))
     parser.add_argument('--record-only', action='store_true')
+    parser.add_argument('--prepare-witness', type=Path,
+                        help='generate only the private vanilla witness JSONs in this directory')
+    parser.add_argument('--env-file', type=Path,
+                        help='append SUNRISE_NETWORK_WITNESS_DIR to an environment file')
     args = parser.parse_args()
+    if args.prepare_witness:
+        if not args.env_file:
+            parser.error('--prepare-witness requires --env-file')
+        environment = prepare_witness(args.prepare_witness)
+        with args.env_file.open('a', encoding='utf-8') as output:
+            for key, value in environment.items():
+                output.write(f'{key}={value}\n')
+        return
+    if args.env_file:
+        parser.error('--env-file requires --prepare-witness')
+
     lock, jars, _ = base.verify_artifacts()
     libraries = baking.client_libraries()
     build = lab.LOCAL / 'network-parity'
@@ -121,9 +162,14 @@ def main():
             ('sunrise-client', 'sunrise_client', 'client-tests', CLIENT_TESTS),
         ):
             binary = build_test_binary(build, package, target_name, env)
-            log = run_logged([binary, '--ignored', '--exact', *tests], build, name, cwd=scratch, env=env)
-            expected = f'{len(tests)} passed; 0 failed'
-            assert expected in log.read_text(encoding='utf-8'), f'expected "{expected}" in {log}'
+            for idx, test in enumerate(tests):
+                log = run_logged(
+                    [binary, '--ignored', '--exact', '--test-threads=1', test],
+                    build, f'{name}-{idx}', cwd=scratch, env=env,
+                )
+                assert '1 passed; 0 failed' in log.read_text(encoding='utf-8'), (
+                    f'expected "1 passed; 0 failed" for {test} in {log}'
+                )
 
     total = len(PROTOCOL_TESTS) + len(LIB_TESTS) + len(CLIENT_TESTS)
     print(f'Network parity passed ({total} tests against {witness_dir})')

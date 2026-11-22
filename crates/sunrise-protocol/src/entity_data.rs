@@ -1070,7 +1070,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "run by tools/test_network_parity.py"]
+    #[ignore = "daily"]
     fn unknown_entity_data_serializers_fail_decode_like_26_3() {
         let witness = entity_data_witness();
         let registries = painting_registries(&witness);
@@ -1124,7 +1124,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "run by tools/test_network_parity.py"]
+    #[ignore = "daily"]
     fn valid_26_3_optional_global_pos_and_painting_variant_decode_completely() {
         let witness = entity_data_witness();
         let registries = painting_registries(&witness);

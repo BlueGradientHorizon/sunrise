@@ -419,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "run by tools/test_network_parity.py"]
+    #[ignore = "daily"]
     fn configuration_decodes_post_effects_packet_26_3() {
         let dir = std::env::var("SUNRISE_NETWORK_WITNESS_DIR").expect(
             "SUNRISE_NETWORK_WITNESS_DIR must be set (run via tools/test_network_parity.py)",

@@ -616,9 +616,6 @@ impl std::fmt::Display for PacketError {
 impl std::error::Error for PacketError {}
 
 #[cfg(test)]
-static PLAY_LOOP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-#[cfg(test)]
 #[path = "bundle_parity_tests.rs"]
 mod bundle_parity_tests;
 
