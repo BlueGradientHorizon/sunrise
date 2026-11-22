@@ -219,7 +219,7 @@ fn draw(
                     full = true;
                     break 'models;
                 }
-                mesher.model_face(pad, groups, tints, out, at, face);
+                mesher.model_face(pad, groups, tints, out, at, face, false);
             }
         }
         if mesher.shader_pack {

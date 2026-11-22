@@ -93,6 +93,24 @@ fn extra_faces_are_culled_by_neighbours_and_keep_their_pass() {
     assert_eq!(quads(&glass_quads), 5, "the glass in the translucent pass");
     assert!(on_layer(&mesh.solid, layer(&world, GLASS)).is_empty());
     assert_eq!(quads(&mesh.solid), 5 + 5 + 5, "both stones and the gold");
+
+    mesher.opaque_ice = true;
+    let ice = world
+        .assets
+        .registry
+        .default_state("minecraft:ice")
+        .unwrap();
+    let mut chunk = Chunk::empty(0, 0);
+    chunk.set(2, MIN_Y + 4, 2, ice.0);
+    let chunk = with_extra(chunk, &[glass]);
+    region[1][1] = Some(&chunk);
+    let mesh = mesher.mesh(&region, 0);
+    assert_eq!(
+        quads(&on_layer(&mesh.solid, layer(&world, "minecraft:block/ice"))),
+        6
+    );
+    assert_eq!(quads(&on_layer(&mesh.translucent, layer(&world, GLASS))), 6);
+    assert!(on_layer(&mesh.solid, layer(&world, GLASS)).is_empty());
 }
 
 #[test]

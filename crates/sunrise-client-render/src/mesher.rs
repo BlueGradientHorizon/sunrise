@@ -2456,9 +2456,12 @@ impl Mesher<'_> {
                         ],
                         None => [x as f32, y as f32, z as f32],
                     };
-                    let interior_leaf = state.leaves
-                        && self.leaf_culling.is_interior()
-                        && scratch.leaf.interior(self.leaf_culling, x, y, z);
+                    // Options for the base block don't change an attached model's pass.
+                    let force_solid = state.leaves
+                        && (!self.cutout_leaves
+                            || self.leaf_culling.is_interior()
+                                && scratch.leaf.interior(self.leaf_culling, x, y, z))
+                        || self.opaque_ice && state.opaque_ice;
                     let visible = self.visible_faces(region, pad, base_y, [x, y, z], masks);
                     let at = CellFaces {
                         sample: FaceCell {
@@ -2471,12 +2474,19 @@ impl Mesher<'_> {
                         },
                         origin,
                         ao,
-                        interior_leaf,
                     };
                     let start = [out.solid.len(), out.translucent.len()];
                     for model in &models {
                         for face in &model.faces {
-                            self.model_face(pad, groups, &mut tints, &mut out, &at, face);
+                            self.model_face(
+                                pad,
+                                groups,
+                                &mut tints,
+                                &mut out,
+                                &at,
+                                face,
+                                force_solid,
+                            );
                         }
                     }
                     if self.shader_pack {
@@ -2697,6 +2707,7 @@ impl Mesher<'_> {
 
     /// One face of a model the block `at` draws, unless the neighbour on its cull side hides it
     /// or, on a pane with connected textures, the pane stacked there does.
+    #[allow(clippy::too_many_arguments)]
     fn model_face(
         &self,
         pad: &Padded,
@@ -2705,11 +2716,12 @@ impl Mesher<'_> {
         out: &mut SectionMesh,
         at: &CellFaces,
         face: &BakedFace,
+        force_solid: bool,
     ) {
         if !self.draws_model_face(pad, &at.sample, face) {
             return;
         }
-        self.face(pad, groups, tints, out, at, face);
+        self.face(pad, groups, tints, out, at, face, force_solid);
     }
 
     fn draws_model_face(&self, pad: &Padded, at: &FaceCell<'_>, face: &BakedFace) -> bool {
@@ -2750,14 +2762,10 @@ impl Mesher<'_> {
         out: &mut SectionMesh,
         at: &CellFaces<'_>,
         face: &BakedFace,
+        force_solid: bool,
     ) {
         let FaceCell { pos, id, state, .. } = at.sample;
-        let CellFaces {
-            origin,
-            ao,
-            interior_leaf,
-            ..
-        } = *at;
+        let CellFaces { origin, ao, .. } = *at;
         let q = &face.quad;
         // A quad's own light (a model's glowing part) may raise the tier; whether it
         // shines all over stays the block's.
@@ -2848,11 +2856,6 @@ impl Mesher<'_> {
             // The face's own UVs, already packed: no per-vertex rounding.
             std::array::from_fn(|i| (vertex(tint, i, face.uv_fixed[i]), q.uv[i]))
         };
-        // Opaque leaves (forceOpaque), leaves a leaf-culling mode proved internal and Opaque
-        // Ice draw in the solid layer whatever their sprite.
-        let force_solid = !self.cutout_leaves && state.leaves
-            || interior_leaf
-            || self.opaque_ice && state.opaque_ice;
         let own = TileLayer::Layer {
             layer: face.layer as u16,
             translucent: face.translucent,
@@ -3020,7 +3023,6 @@ struct CellFaces<'a> {
     /// The block's lower north-west corner with its offset.
     origin: [f32; 3],
     ao: bool,
-    interior_leaf: bool,
 }
 /// The cuts of a `ctm_compact` face, in quad parameters, without allocating: the first `.1`
 /// of `.0`.
