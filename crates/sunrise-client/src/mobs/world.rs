@@ -34,10 +34,9 @@ thread_local! {
     static NEAR_BUF_POOL: std::cell::RefCell<Vec<Vec<u32>>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
-/// What `push_entities` pushes: who, where, whether it rides a vehicle (`Entity.isPassenger`),
-/// whether it shares the pusher's root vehicle (`isPassengerOfSameVehicle`), and whether it is
-/// itself a vehicle.
-pub(super) type PushTarget = (Who, Vec3, bool, bool, bool);
+/// The selected object and whether it was a passenger for the cramming count.
+/// A paused round also pins the mob's join so it cannot push a replacement.
+pub(super) type PushTarget = (Who, bool, Option<crate::join_seq::JoinSeq>);
 thread_local! {
     static PUSH_TARGETS: std::cell::RefCell<Vec<PushTarget>> = const { std::cell::RefCell::new(Vec::new()) };
 }

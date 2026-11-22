@@ -95,7 +95,8 @@ and some are waiting for Ludovic:
   `crates/sunrise-release-sign/release-keys.txt` for `sunrise-org/sunrise` only; every other
   repository (`horizon-rust/horizon` and `arismoko/horizon` included) has no trusted keys and fails
   closed. Upstream's legacy checksum pins never authorize a Sunrise archive. The real private key
-  exists only as the secret `RELEASE_SIGNING_KEY`; dry runs receive no release secrets
+  exists only as a secret of the `release` environment, `RELEASE_SIGNING_KEY` or, after a rotation retired the
+  other, `RELEASE_SIGNING_KEY_NEXT` (either name can hold the active key); dry runs receive no release secrets
   and sign with an ephemeral test key instead. To rotate, first ship the next public key in
   `release-keys.txt` (and a new `verifier@X.Y.Z`, pinned in `packaging/server/install.sh` and `install.ps1`), with
   its private half set as whichever of `RELEASE_SIGNING_KEY` and `RELEASE_SIGNING_KEY_NEXT` is empty
@@ -141,8 +142,8 @@ and some are waiting for Ludovic:
   refuses it unless its SHA-256 is the one pinned in the script. The verifier then checks `SHA256SUMS.sig` (a Nightly's `SHA256SUMS.v2.sig`, for its
   own version) against the release keys built into it, then the archive against `SHA256SUMS`. Any failure stops
   the install with its cause; nothing falls back to GitHub's SHA-256. So the anchor is the pin on main, fetched
-  over HTTPS: it changes only by pull request, written by `tools/ci/pin_verifier.py` after `gh attestation verify`
-  accepts every binary as built by `verifier.yml` on main
+  over HTTPS: it changes only by pull request, and must match what `tools/ci/pin_verifier.py` writes once
+  `gh attestation verify` has accepted every binary as built by `verifier.yml` on main
   (docs/release-flow.md, "The install scripts' verifier"). The verifier binaries are not code-signed, so macOS
   Gatekeeper and Windows SmartScreen don't vouch for them; the pin does. `--insecure-checksum-only`
   (`-InsecureChecksumOnly`) skips the signature, with a loud warning, for CI fixtures; no install command in these

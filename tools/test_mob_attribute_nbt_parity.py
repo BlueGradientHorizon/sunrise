@@ -18,7 +18,6 @@ except ImportError:
 POS = 'Pos:[0.0d,64.0d,0.0d],Motion:[0.0d,0.0d,0.0d],Rotation:[0.0f,0.0f]'
 BONUS = '{id:"test:bonus",amount:0.5d,operation:"add_multiplied_base"}'
 LEADER_BONUS = '{id:"minecraft:leader_zombie_bonus",amount:10.0d,operation:"add_value"}'
-WITNESS = lab.ROOT / 'tools/witness/26.3/mob_loaded_health.tsv'
 
 
 def case(name, entity, attributes, equip=None, then=None, read=(), health='20.0f', extra='', check_health=False):
@@ -102,7 +101,7 @@ def format_loaded_health_witness(version, vanilla_lines):
             raise SystemExit(f'Java oracle failed: {line}')
         by_name[parts[0]] = parts[1:]
     rows = [
-        f'# Vanilla {version} mob loaded Health witness (recorded by tools/test_mob_attribute_nbt_parity.py --record).',
+        f'# Vanilla {version} mob loaded Health witness (recorded by tools/test_mob_attribute_nbt_parity.py).',
         '# Columns: name\tentity\tdefault_max_health_bits\tloaded_max_health_bits\tloaded_health_bits\tsaved_health_bits\tsnbt',
     ]
     for c in LOADED_HEALTH_CASES:
@@ -118,7 +117,6 @@ def format_loaded_health_witness(version, vanilla_lines):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--prepare', action='store_true')
-    parser.add_argument('--record', action='store_true', help='run only the vanilla Java oracle and write the 26.3 loaded-health witness')
     args = parser.parse_args()
     build = lab.LOCAL / 'rust-mob-attribute-nbt-parity'
     build.mkdir(parents=True, exist_ok=True)
@@ -138,14 +136,9 @@ def main():
     run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-cp', str(jars['server']) + os.pathsep + deps, '-d', classes, oracle], 'compile-java')
     run(['java', '-Xmx1G', '-cp', os.pathsep.join([str(classes), str(jars['server']), deps]), 'dev.sunriselab.parity.VanillaMobAttributeNbtOracle', cases, build / 'vanilla.txt'], 'java')
     vanilla = build.joinpath('vanilla.txt').read_text(encoding='utf-8').splitlines()
-    witness_text = format_loaded_health_witness(lock['minecraft']['version'], vanilla)
-    if args.record:
-        WITNESS.parent.mkdir(parents=True, exist_ok=True)
-        WITNESS.write_text(witness_text, encoding='utf-8')
-        print(f'Recorded {len(LOADED_HEALTH_CASES)} loaded-health cases to {WITNESS.relative_to(lab.ROOT)}')
-        return
-    if not WITNESS.exists() or WITNESS.read_text(encoding='utf-8') != witness_text:
-        raise SystemExit(f'{WITNESS.relative_to(lab.ROOT)} differs from vanilla {lock["minecraft"]["version"]}; rerun with --record')
+    # The recorded loaded-health witness stays in .local; the Rust test reads it from SUNRISE_MOB_LOADED_HEALTH_WITNESS.
+    witness = build / 'mob_loaded_health.tsv'
+    witness.write_text(format_loaded_health_witness(lock['minecraft']['version'], vanilla), encoding='utf-8')
     run(['cargo', 'build', '--profile', 'fast', '-p', 'sunrise-client-lib', '--example', 'client_probe'], 'compile-rust')
     binary = lab.cargo_target() / 'fast/examples/client_probe'
     run([binary, 'mob_attribute_nbt_fixture', lab.RESOURCES, cases, build / 'rust.txt'], 'rust')
@@ -163,7 +156,14 @@ def main():
     if problems:
         print('\n'.join(problems))
         raise SystemExit('mob attribute NBT divergences')
-    print(f'Mob attribute NBT parity passed ({len(CASES)} cases)')
+    test = 'mobs::finalize::load_tests::a_loaded_health_is_clamped_to_the_loaded_max_health'
+    with (build / 'loaded-health-test.log').open('w', encoding='utf-8') as log:
+        result = subprocess.run(['cargo', 'test', '-p', 'sunrise-client-lib', '--lib', '--', '--ignored', '--exact', test],
+                                cwd=lab.ROOT, timeout=3600, stdout=log, stderr=subprocess.STDOUT,
+                                env={**os.environ, 'SUNRISE_MOB_LOADED_HEALTH_WITNESS': str(witness)})
+    if result.returncode != 0:
+        raise SystemExit(f'{test} failed against the recorded witness; see {build / "loaded-health-test.log"}')
+    print(f'Mob attribute NBT parity passed ({len(CASES)} cases, loaded-health test against {witness})')
 
 
 if __name__ == '__main__':

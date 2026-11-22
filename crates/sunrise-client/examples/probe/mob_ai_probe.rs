@@ -1440,6 +1440,7 @@ pub fn main() -> sunrise_client::Result<()> {
                     &mut test_level.level(),
                     &mut events,
                     from,
+                    &w.teams,
                 );
                 villager_events(
                     &mut mobs,

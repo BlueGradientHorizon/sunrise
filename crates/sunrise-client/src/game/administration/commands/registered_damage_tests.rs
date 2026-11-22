@@ -5,6 +5,9 @@ use sunrise_client::{
 };
 use sunrise_world::damage_source::Catalog;
 
+#[path = "registered_damage_tests/creaking_borrowed.rs"]
+mod creaking_borrowed;
+
 #[test]
 fn formerly_aliased_types_keep_their_id_and_registry_tags() {
     let registry_backed = ["minecraft:indirect_magic", "minecraft:fly_into_wall"];
@@ -808,6 +811,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             .unwrap()
             .ai
             .last_hurt_by_player = 0;
+        game.last_hurt_by_player.remove(&creaking_id);
         assert!(
             !game.run_command("damage 00000055-0000-0000-0000-000000000001 1 minecraft:generic")
         );

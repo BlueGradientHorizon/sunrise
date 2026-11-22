@@ -17,7 +17,7 @@ use sunrise_client::actions::Action;
 use sunrise_client::entity_rules::EntityRules;
 use sunrise_client::{
     blocks::Fluid,
-    collisions::{EntityCollisions, SceneCollisions},
+    collisions::{EntityCollisions, SceneCollisions, no_collision_with_context},
     items::ItemStack,
     mesher::Vertex,
     mobs::{
@@ -875,12 +875,7 @@ impl Game<'_> {
         let moved = b.position.subtract(l.last.0);
         if moved.length_squared() > f64::from(1.0e-5_f32) {
             let to = l.target.add_vector(moved);
-            let mut scene = SceneCollisions {
-                world: &self.world,
-                binding: self.collision,
-                subject: None,
-            };
-            if scene.unobstructed(Boat::bounds_at(to)).unwrap_or(false) {
+            if self.boat_lerp_target_fits(b, to) {
                 l.target = to;
             }
         }
@@ -899,6 +894,65 @@ impl Game<'_> {
             b.lerp = Some(l);
         }
     }
+    /// `AbstractInterpolationHandler.adjustInterpolationPosition`: check the
+    /// shifted target against blocks, entities and the border at the boat's live pose.
+    fn boat_lerp_target_fits(&self, boat: &Boat, target: Vec3) -> bool {
+        let bounds = Boat::bounds_at(target);
+        let scene = SceneCollisions {
+            world: &self.world,
+            binding: self.collision,
+            subject: None,
+        };
+        let mut collisions = EntityCollisions::with_border(
+            scene,
+            self.border.geometry(),
+            [boat.position.x, boat.position.z],
+        );
+        let e = sunrise_core::geometry::COLLISION_EPSILON;
+        let boxes = self.entity_collisions(super::collision_source::Mover::Boat {
+            id: boat.id,
+            area: bounds.inflate(Vec3::new(e, e, e)),
+        });
+        collisions.entities = &boxes;
+        no_collision_with_context(
+            &mut collisions,
+            bounds,
+            CollisionContext::position(boat.position.y),
+        )
+    }
+
+    /// `Entity.recordMovement` for a both-side lid push: move an active
+    /// interpolation target by the displacement, if the boat fits there.
+    pub(super) fn record_boat_lid_movement(&mut self, i: usize, delta: Vec3) {
+        let boat = &self.boats[i];
+        if let Some(mut lerp) = boat.lerp {
+            let to = lerp.target.add_vector(delta);
+            if self.boat_lerp_target_fits(boat, to) {
+                lerp.target = to;
+            }
+            // The next step measures any *other* move since the last pose.
+            lerp.last.0 = lerp.last.0.add_vector(delta);
+            self.boats.update(i, |boat| boat.lerp = Some(lerp));
+        } else if let Some(lerp) = self
+            .remote
+            .as_ref()
+            .and_then(|r| r.lerps.get(&(boat.id as i32)))
+            && lerp.steps > 0
+        {
+            let [x, y, z] = lerp.target;
+            let to = Vec3::new(x, y, z).add_vector(delta);
+            if self.boat_lerp_target_fits(boat, to) {
+                self.remote
+                    .as_mut()
+                    .unwrap()
+                    .lerps
+                    .get_mut(&(boat.id as i32))
+                    .unwrap()
+                    .target = to.components();
+            }
+        }
+    }
+
     pub(super) fn tick_boat(&mut self, mut b: Boat, controlled: bool) -> Boat {
         b.previous = b.position;
         b.previous_yaw = b.yaw;
