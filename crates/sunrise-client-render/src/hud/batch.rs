@@ -133,6 +133,8 @@ impl HudPaintCheckpoint {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Blend {
     Picture(u64),
+    /// A run sampling a separately stitched registered atlas page.
+    AtlasPage(usize, AtlasBlend),
     /// `BlendFunction.TRANSLUCENT`.
     Alpha,
     /// `BlendFunction.INVERT` (`RenderPipelines.CROSSHAIR`, `GUI_INVERT`).
@@ -170,6 +172,15 @@ pub(super) fn hud_scissor(clip: [u32; 4], size: [u32; 2], zoom: f32) -> Option<[
     let (x, y) = (x.min(size[0]), y.min(size[1]));
     let (w, h) = (w.min(size[0] - x), h.min(size[1] - y));
     (w != 0 && h != 0).then_some([x, y, w, h])
+}
+
+/// The 2D sampling pipelines that can draw a registered atlas's sprite.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AtlasBlend {
+    Alpha,
+    Invert,
+    Additive,
+    Vignette,
 }
 
 /// What a `Blend::EndPortal` fill samples: the atlas rects (u0, v0, width,
@@ -238,6 +249,12 @@ impl HudBatch {
         match self.blends.last_mut() {
             Some((last, b)) if last.end == range.start && *b == blend => last.end = range.end,
             _ => self.blends.push((range, blend)),
+        }
+    }
+    /// Make an ordinary GUI sprite draw use its registered atlas page, if it has one.
+    pub fn bind_gui_atlas(&mut self, start: usize, atlas: &HudAtlas, name: &str) {
+        if let Some(page) = atlas.gui_atlas_page(name) {
+            self.blend_since(start, Blend::AtlasPage(page, AtlasBlend::Alpha));
         }
     }
     /// `GuiGraphicsExtractor.textHighlight`: with `invert_text` the area's
@@ -451,7 +468,9 @@ impl HudBatch {
     }
     pub fn sprite(&mut self, atlas: &HudAtlas, name: &str, x: f32, y: f32) {
         if let Some(r) = atlas.gui_draw_rect(name).copied() {
+            let start = self.vertices.len();
             self.rect_uv(x, y, r.w as f32, r.h as f32, r, u32::MAX);
+            self.bind_gui_atlas(start, atlas, name);
         }
     }
     pub fn sprite_scaled(
@@ -465,7 +484,9 @@ impl HudBatch {
         color: u32,
     ) {
         if let Some(r) = atlas.gui_draw_rect(name).copied() {
+            let start = self.vertices.len();
             self.rect_uv(x, y, w, h, r, color);
+            self.bind_gui_atlas(start, atlas, name);
         }
     }
     /// Draw part of a sprite, `fraction` of its width from the left.
@@ -473,7 +494,9 @@ impl HudBatch {
         if let Some(mut r) = atlas.gui_draw_rect(name).copied() {
             let w = r.w as f32 * fraction;
             r.u1 = r.u0 + (r.u1 - r.u0) * fraction;
+            let start = self.vertices.len();
             self.rect_uv(x, y, w, r.h as f32, r, u32::MAX);
+            self.bind_gui_atlas(start, atlas, name);
         }
     }
     /// Clip the quads drawn since `start` to `[x0, x1) x [y0, y1)` (the
@@ -553,8 +576,11 @@ impl HudBatch {
         moved.push(self.vertices.len() as u32);
         let at = |v: u32| moved[((v as usize).saturating_sub(start) / 6).min(moved.len() - 1)];
         for (range, _) in &mut self.blends {
-            if range.start as usize >= start {
-                *range = at(range.start)..at(range.end);
+            if range.end as usize > start {
+                if range.start as usize >= start {
+                    range.start = at(range.start);
+                }
+                range.end = at(range.end);
             }
         }
         self.blends.retain(|(range, _)| !range.is_empty());
@@ -667,7 +693,15 @@ impl HudBatch {
             InlineObject::Atlas { .. } => {
                 if let Some(rect) = atlas.inline_object_sprite(object) {
                     let size = crate::font::INLINE_OBJECT_SIZE;
+                    let start = self.vertices.len();
                     self.rect_uv(x, y, size, size, rect, tint);
+                    if let crate::text::InlineObject::Atlas {
+                        atlas: id, sprite, ..
+                    } = object
+                        && id.strip_prefix("minecraft:").unwrap_or(id) == "gui"
+                    {
+                        self.bind_gui_atlas(start, atlas, sprite);
+                    }
                 }
             }
         }
