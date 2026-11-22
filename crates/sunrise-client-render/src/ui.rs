@@ -1709,34 +1709,7 @@ impl EditBox {
     }
     /// Draw the field; `format` styles the visible text (command colouring).
     pub fn draw(&mut self, batch: &mut HudBatch, atlas: &HudAtlas, format: Option<&Text>) {
-        let caret = self.cursor_visible();
-        self.draw_with_caret(batch, atlas, format, caret);
-    }
-    /// The first character shown (`EditBox.displayPos`): a field kept outside the box (a
-    /// mod's) hands back the scroll its last draw answered.
-    pub fn set_scroll(&mut self, first: usize) {
-        self.display = first.min(char_len(&self.value));
-    }
-    /// After a draw: the first character shown and the GUI x of each shown character
-    /// boundary, from the start of the shown text to its end.
-    pub fn shown_edges(&self, atlas: &HudAtlas) -> (usize, Vec<f32>) {
-        let rest: String = self.value.chars().skip(self.display).collect();
-        let shown = atlas.font.fit(&rest, self.inner_width());
-        let edges = (0..=shown)
-            .map(|n| self.text_x() + atlas.font.width(&rest.chars().take(n).collect::<String>()))
-            .collect();
-        (self.display, edges)
-    }
-    /// [`Self::draw`] with the caret's blink decided by the caller: `caret` shows it (when it
-    /// is in view) for a field whose blink a mod keeps.
-    pub fn draw_with_caret(
-        &mut self,
-        batch: &mut HudBatch,
-        atlas: &HudAtlas,
-        format: Option<&Text>,
-        caret: bool,
-    ) {
-        self.draw_skinned_caret(batch, atlas, format, caret, None);
+        self.draw_with_skin(batch, atlas, format, None);
     }
     /// Draw with a custom nine-slice background and the field's own caret blink.
     pub fn draw_with_skin(
