@@ -478,6 +478,7 @@ fn expand_with(
         defer: bool,
         deferred: Vec<ImportRefusal>,
         seen: HashSet<String>,
+        seen_order: Vec<String>,
         guards: std::collections::HashMap<String, usize>,
         stack: Vec<String>,
         occupied: HashSet<usize>,
@@ -495,6 +496,12 @@ fn expand_with(
                     Ok(sunrise_polytone::globals::GLSL.to_owned())
                 }
                 None => Err(ImportRefusal::NotFound(id.to_owned())),
+            }
+        }
+
+        fn forget_since(&mut self, checkpoint: usize) {
+            for id in self.seen_order.drain(checkpoint..) {
+                self.seen.remove(&id);
             }
         }
 
@@ -525,16 +532,27 @@ fn expand_with(
             let guaranteed = guaranteed && !text.contains("\\\n") && !text.contains("\\\r\n");
             let cleaned = (self.defer && text.contains("/*")).then(|| strip_comments(text));
             let directives = cleaned.as_deref().unwrap_or(text);
-            let mut conditionals = 0usize;
+            // An include inherits what the caller's branch has already read. At a sibling
+            // branch or the end of this branch, remove only the IDs first seen in this arm.
+            let mut branches = Vec::new();
             for (line, directive_line) in text.lines().zip(directives.lines()) {
                 let directive = directive_line
                     .trim_start()
                     .strip_prefix('#')
                     .map(str::trim_start);
-                if let Some(directive) = directive {
+                if let Some(directive) = directive.filter(|_| self.defer && guaranteed) {
                     match directive.split(|c: char| !is_ident(c)).next() {
-                        Some("if" | "ifdef" | "ifndef") => conditionals += 1,
-                        Some("endif") => conditionals = conditionals.saturating_sub(1),
+                        Some("if" | "ifdef" | "ifndef") => branches.push(self.seen_order.len()),
+                        Some("else" | "elif") => {
+                            if let Some(&checkpoint) = branches.last() {
+                                self.forget_since(checkpoint);
+                            }
+                        }
+                        Some("endif") => {
+                            if let Some(checkpoint) = branches.pop() {
+                                self.forget_since(checkpoint);
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -548,8 +566,9 @@ fn expand_with(
                         .ok_or_else(|| ImportRefusal::Bad(target.to_owned()))?;
                     let paste = if self.defer {
                         let previously_seen = self.seen.contains(&id);
-                        if guaranteed && conditionals == 0 {
+                        if guaranteed && !previously_seen {
                             self.seen.insert(id.clone());
+                            self.seen_order.push(id.clone());
                         }
                         !once || (!previously_seen && !self.stack.contains(&id))
                     } else {
@@ -573,12 +592,7 @@ fn expand_with(
                         match self.file(&id) {
                             Ok(file) => {
                                 let parent = &id[..id.rfind('/').map_or(id.len(), |i| i + 1)];
-                                self.walk(
-                                    &file,
-                                    parent,
-                                    depth + 1,
-                                    guaranteed && conditionals == 0,
-                                )?;
+                                self.walk(&file, parent, depth + 1, guaranteed)?;
                             }
                             Err(
                                 refusal @ (ImportRefusal::NotFound(_)
@@ -611,6 +625,9 @@ fn expand_with(
                     return Err(ImportRefusal::TooLarge);
                 }
             }
+            if let Some(&checkpoint) = branches.first() {
+                self.forget_since(checkpoint);
+            }
             Ok(())
         }
     }
@@ -619,6 +636,7 @@ fn expand_with(
         defer,
         deferred: Vec::new(),
         seen: HashSet::new(),
+        seen_order: Vec::new(),
         guards: Default::default(),
         stack: Vec::new(),
         occupied: HashSet::new(),
@@ -1571,6 +1589,14 @@ mod tests {
         };
         expand_core_imports("#moj_import <left>\n#moj_import <right>", "", &read).unwrap();
         assert_eq!(calls.get(), 1);
+        calls.set(0);
+        expand_core_imports(
+            "#ifdef ENABLED\n#moj_import <left>\n#moj_import <right>\n#endif",
+            "",
+            &read,
+        )
+        .unwrap();
+        assert_eq!(calls.get(), 1);
         let repeated = expand_core_imports("#include <shared>\n#include <shared>", "", &read);
         assert_eq!(repeated.unwrap_err(), ImportRefusal::TooLarge);
     }
@@ -1579,6 +1605,8 @@ mod tests {
     fn only_an_active_include_consumes_a_legacy_import() {
         let fragment = "out vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }";
         let include = |_: &str| Some("float imported() { return 1.0; }".to_owned());
+        let siblings = "#if 0\n#moj_import <a>\n#elif 0\n#moj_import <a>\n#else\n#moj_import <a>\n#endif\nvoid main() { gl_Position = vec4(imported()); }";
+        translate_core(siblings, fragment, &[], &include, &GLUE).unwrap();
         for first in ["#include", "#moj_import"] {
             let vertex = format!(
                 "#define hz_moj_import_0\n#if 0\n#moj_import <a>\n#endif\n{first} <a>\n#moj_import <a>\nvoid main() {{ gl_Position = vec4(imported()); }}"
