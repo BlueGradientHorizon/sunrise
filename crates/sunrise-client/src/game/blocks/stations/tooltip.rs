@@ -282,34 +282,39 @@ impl Game<'_> {
         }
     }
 
-    /// Measure one [`PreparedTooltipItem`] in `tooltip_font` (`font_str` matching `tooltip_font.id`).
+    /// Initially measure width and height in encounter order, as `GuiGraphicsExtractor.tooltip`.
     fn measure_prepared_item(
         &self,
         item: &PreparedTooltipItem,
-        tooltip_font: &crate::game::host::draw::EngineTooltipFont<'_>,
-        font_str: &str,
+        font: &EngineTooltipFont<'_>,
     ) -> Option<(i32, i32)> {
-        Some(match item {
-            PreparedTooltipItem::Text { text, .. } => (
-                self.gui.atlas.font.width_text_with_font(text, font_str) as i32,
-                10,
-            ),
+        let width = match item {
+            PreparedTooltipItem::Text { text, .. } => {
+                self.gui.atlas.font.width_text_with_font(text, font.name()) as i32
+            }
+            PreparedTooltipItem::Bundle { .. } => sunrise_client::bundle::Contents::TOOLTIP_WIDTH,
+            PreparedTooltipItem::Custom(component) => component.width(font)?,
+        };
+        Some((width, self.prepared_item_height(item, font)?))
+    }
+
+    fn prepared_item_height(
+        &self,
+        item: &PreparedTooltipItem,
+        font: &EngineTooltipFont<'_>,
+    ) -> Option<i32> {
+        match item {
+            PreparedTooltipItem::Text { .. } => Some(10),
             PreparedTooltipItem::Bundle { contents, .. } => {
                 let desc_lines = if contents.items().is_empty() {
-                    self.bundle_description_lines(font_str)
+                    self.bundle_description_lines(font.name())
                 } else {
                     0
                 };
-                (
-                    sunrise_client::bundle::Contents::TOOLTIP_WIDTH,
-                    contents.tooltip_height(desc_lines, 9),
-                )
+                Some(contents.tooltip_height(desc_lines, 9))
             }
-            PreparedTooltipItem::Custom(component) => (
-                component.width(tooltip_font)?,
-                component.height(tooltip_font)?,
-            ),
-        })
+            PreparedTooltipItem::Custom(component) => component.height(font),
+        }
     }
 
     /// `RenderTooltipEvent.GatherComponents` followed by wrapping in the item's tooltip font
@@ -624,13 +629,11 @@ impl Game<'_> {
         } else {
             -2_i32
         };
-        let mut heights = Vec::with_capacity(components.len());
         for component in components.iter() {
-            let (cw, ch) = self.measure_prepared_item(component, &tooltip_font, chosen_font_str)?;
+            let (cw, ch) = self.measure_prepared_item(component, &tooltip_font)?;
             if cw > w {
                 w = cw;
             }
-            heights.push(ch);
             h = h.wrapping_add(ch);
         }
 
@@ -641,7 +644,7 @@ impl Game<'_> {
         self.tooltip_box(batch, stack, x as f32, y as f32, w as f32, h as f32);
 
         let mut local_y = y;
-        for (i, (component, &ch)) in components.iter().zip(&heights).enumerate() {
+        for (i, component) in components.iter().enumerate() {
             match component {
                 PreparedTooltipItem::Text { text, color } => {
                     batch.text_styled_with_font(
@@ -665,6 +668,10 @@ impl Game<'_> {
                     }
                 }
             }
+            let Some(ch) = self.prepared_item_height(component, &tooltip_font) else {
+                paint.discard(batch);
+                return None;
+            };
             local_y =
                 local_y
                     .wrapping_add(ch)
@@ -676,7 +683,7 @@ impl Game<'_> {
         }
 
         let mut local_y = y;
-        for (i, (component, &ch)) in components.iter().zip(&heights).enumerate() {
+        for (i, component) in components.iter().enumerate() {
             match component {
                 PreparedTooltipItem::Text { .. } => {}
                 PreparedTooltipItem::Bundle { contents, .. } => {
@@ -711,6 +718,10 @@ impl Game<'_> {
                     }
                 }
             }
+            let Some(ch) = self.prepared_item_height(component, &tooltip_font) else {
+                paint.discard(batch);
+                return None;
+            };
             local_y =
                 local_y
                     .wrapping_add(ch)

@@ -111,7 +111,7 @@ fn bundle_no_listener_order_and_draw_position() {
         assert!(elements[0].as_text().is_some());
         assert!(elements[1].as_bundle().is_some());
         assert_eq!(
-            game.measure_prepared_item(&elements[1], &font, sunrise_client::font::DEFAULT),
+            game.measure_prepared_item(&elements[1], &font),
             Some((96, 45))
         );
         assert!(elements[2].as_text().is_some());
@@ -187,7 +187,7 @@ fn bundle_empty_text_gathers_image_at_zero() {
         assert_eq!(elements.len(), 1);
         assert!(elements[0].as_bundle().is_some());
         assert_eq!(
-            game.measure_prepared_item(&elements[0], &font, sunrise_client::font::DEFAULT),
+            game.measure_prepared_item(&elements[0], &font),
             Some((96, 45))
         );
     });
@@ -209,7 +209,7 @@ fn bundle_empty_contents_keeps_image() {
         assert!(elements[0].as_text().is_some());
         assert!(elements[1].as_bundle().is_some());
         assert_eq!(
-            game.measure_prepared_item(&elements[1], &font, sunrise_client::font::DEFAULT),
+            game.measure_prepared_item(&elements[1], &font),
             Some((96, 39))
         );
         let batch = draw(game, &stack);

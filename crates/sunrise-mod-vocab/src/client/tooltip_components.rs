@@ -190,6 +190,8 @@ pub trait TooltipFont {
 /// pass runs [`draw_image`](Self::draw_image) for every component in order.
 pub trait ClientTooltipComponent: 'static {
     /// Height of this component in GUI pixels (`ClientTooltipComponent.getHeight`).
+    /// The box uses the height measured before drawing. The text and image passes each
+    /// measure height again after drawing the component to place the next one.
     fn height(&self, font: &dyn TooltipFont) -> i32;
 
     /// Width of this component in GUI pixels (`ClientTooltipComponent.getWidth`).

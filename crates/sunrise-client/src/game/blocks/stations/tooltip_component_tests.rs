@@ -11,6 +11,7 @@ use mod_api::{
     RenderTooltipGatherComponentsEvent, RenderTooltipPreEvent, RenderTooltipTextureEvent,
     TooltipComponent, TooltipComponentData, TooltipElement, TooltipFont, TooltipImageEvent,
 };
+use std::cell::Cell;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicI32, AtomicU8, AtomicUsize, Ordering},
@@ -372,7 +373,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
             .expect("override factory should prepare WideClient");
         assert_eq!((wide.0, wide.1), (500, 12));
         assert_eq!(
-            game.measure_prepared_item(&mixed[n + 1], &tooltip_font, sunrise_client::font::DEFAULT),
+            game.measure_prepared_item(&mixed[n + 1], &tooltip_font),
             Some((500, 12))
         );
         // Bundle component kept in order.
@@ -440,17 +441,20 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
     struct RecordingClient {
         tag: &'static str,
         w: i32,
-        h: i32,
+        h: Cell<i32>,
         log: Arc<Mutex<Vec<String>>>,
     }
     impl ClientTooltipComponent for RecordingClient {
         fn height(&self, _: &dyn TooltipFont) -> i32 {
-            self.h
+            self.h.get()
         }
         fn width(&self, _: &dyn TooltipFont) -> i32 {
             self.w
         }
         fn draw_text(&self, _: &dyn TooltipFont, x: i32, y: i32, _: &mut dyn DrawContext) {
+            if self.tag == "zero_w" {
+                self.h.set(10);
+            }
             self.log
                 .lock()
                 .unwrap()
@@ -465,6 +469,9 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
             height: i32,
             _: &mut dyn DrawContext,
         ) {
+            if self.tag == "zero_w" {
+                self.h.set(17);
+            }
             self.log
                 .lock()
                 .unwrap()
@@ -486,7 +493,7 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
                 .register::<ZeroWidthData, RecordingClient>(move |_| RecordingClient {
                     tag: "zero_w",
                     w: 0,
-                    h: 6,
+                    h: Cell::new(6),
                     log: log.clone(),
                 });
             let log = self.0.clone();
@@ -495,7 +502,7 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
                 .register::<ZeroHeightData, RecordingClient>(move |_| RecordingClient {
                     tag: "zero_h",
                     w: 12,
-                    h: 0,
+                    h: Cell::new(0),
                     log: log.clone(),
                 });
             let log = self.0.clone();
@@ -504,7 +511,7 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
                 .register::<PanelData, RecordingClient>(move |_| RecordingClient {
                     tag: "panel",
                     w: 80,
-                    h: 16,
+                    h: Cell::new(16),
                     log: log.clone(),
                 });
             let log = self.0.clone();
@@ -513,7 +520,7 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
                 .register::<SingleData, RecordingClient>(move |_| RecordingClient {
                     tag: "single",
                     w: 40,
-                    h: 16,
+                    h: Cell::new(16),
                     log: log.clone(),
                 });
         }
@@ -550,15 +557,17 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
         );
         // x = 10 + 12 = 22, y = 20 - 12 = 8, w = 80, h = 0 + 10 + 6 + 0 + 16 = 32.
         assert_eq!(rect, Some([22.0, 8.0, 80.0, 32.0]));
+        // The box keeps the original height, but the next component is placed using
+        // the zero-width component's new height after each draw callback.
         assert_eq!(
             std::mem::take(&mut *log.lock().unwrap()),
             [
                 "zero_w:text(22,20)",
-                "zero_h:text(22,26)",
-                "panel:text(22,26)",
+                "zero_h:text(22,30)",
+                "panel:text(22,30)",
                 "zero_w:image(22,20,80,32)",
-                "zero_h:image(22,26,80,32)",
-                "panel:image(22,26,80,32)",
+                "zero_h:image(22,37,80,32)",
+                "panel:image(22,37,80,32)",
             ]
         );
 
@@ -1280,8 +1289,8 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
     impl TooltipComponentData for CreatePanicData {}
     struct WidthPanicData;
     impl TooltipComponentData for WidthPanicData {}
-    struct HeightPanicData;
-    impl TooltipComponentData for HeightPanicData {}
+    struct HeightPanicData<const N: usize>;
+    impl<const N: usize> TooltipComponentData for HeightPanicData<N> {}
     struct HandPanicData;
     impl TooltipComponentData for HandPanicData {}
     struct DrawTextPanicData;
@@ -1302,14 +1311,34 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
         }
     }
 
-    struct HeightPanicClient(Arc<AtomicUsize>);
-    impl ClientTooltipComponent for HeightPanicClient {
+    struct HeightPanicClient<const N: usize> {
+        query: Cell<usize>,
+        calls: Arc<AtomicUsize>,
+    }
+    impl<const N: usize> ClientTooltipComponent for HeightPanicClient<N> {
         fn height(&self, _: &dyn TooltipFont) -> i32 {
-            self.0.fetch_add(1, Ordering::Relaxed);
-            panic!("tooltip height panic");
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            let next = self.query.get() + 1;
+            self.query.set(next);
+            assert_ne!(next, N, "tooltip height panic on query {N}");
+            10
         }
         fn width(&self, _: &dyn TooltipFont) -> i32 {
             10
+        }
+        fn draw_text(&self, _: &dyn TooltipFont, x: i32, y: i32, draw: &mut dyn DrawContext) {
+            draw.fill([x as f32, y as f32, 8.0, 8.0], 0xFFDE_AD04);
+        }
+        fn draw_image(
+            &self,
+            _: &dyn TooltipFont,
+            x: i32,
+            y: i32,
+            _: i32,
+            _: i32,
+            draw: &mut dyn DrawContext,
+        ) {
+            draw.fill([x as f32, y as f32, 8.0, 8.0], 0xFFDE_AD05);
         }
     }
 
@@ -1435,12 +1464,22 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
             _: &RegistrationContext,
             event: &mut RegisterClientTooltipComponentFactoriesEvent<'_>,
         ) {
-            let calls = self.0.clone();
-            event
-                .factories
-                .register::<HeightPanicData, HeightPanicClient>(move |_| {
-                    HeightPanicClient(calls.clone())
-                });
+            fn register<const N: usize>(
+                event: &mut RegisterClientTooltipComponentFactoriesEvent<'_>,
+                calls: Arc<AtomicUsize>,
+            ) {
+                event
+                    .factories
+                    .register::<HeightPanicData<N>, HeightPanicClient<N>>(move |_| {
+                        HeightPanicClient {
+                            query: Cell::new(0),
+                            calls: calls.clone(),
+                        }
+                    });
+            }
+            register::<1>(event, self.0.clone());
+            register::<2>(event, self.0.clone());
+            register::<3>(event, self.0.clone());
         }
     }
 
@@ -1607,16 +1646,21 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
             Err(TooltipComponentPrepareError::FactoryFailed { .. })
         ));
 
-        // 3. Height failure also aborts after a successful width measurement.
-        let height_comp = game
-            .prepare_tooltip_component(&TooltipComponent::custom(HeightPanicData))
-            .unwrap();
-        assert_aborts(height_comp);
-        assert_eq!(height_calls.load(Ordering::Relaxed), 1);
-        assert!(matches!(
-            game.prepare_tooltip_component(&TooltipComponent::custom(HeightPanicData)),
-            Err(TooltipComponentPrepareError::FactoryFailed { .. })
-        ));
+        // Height failure aborts at the initial measurement or after either pass. Even
+        // a failure after the image callback must discard all the tooltip's paint.
+        for (query, payload) in [
+            (1, TooltipComponent::custom(HeightPanicData::<1>)),
+            (2, TooltipComponent::custom(HeightPanicData::<2>)),
+            (3, TooltipComponent::custom(HeightPanicData::<3>)),
+        ] {
+            let before = height_calls.load(Ordering::Relaxed);
+            assert_aborts(game.prepare_tooltip_component(&payload).unwrap());
+            assert_eq!(height_calls.load(Ordering::Relaxed) - before, query);
+            assert!(matches!(
+                game.prepare_tooltip_component(&payload),
+                Err(TooltipComponentPrepareError::FactoryFailed { .. })
+            ));
+        }
 
         // 4. show_tooltip_with_item_in_hand panic: caught, returns false, disables factory.
         let hand_comp = game
