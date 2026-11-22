@@ -255,16 +255,14 @@ pub mod tests {
             let mut r = PartRegistrar::new("declarer");
             let key = (&mut r as &mut dyn Registrar)
                 .block_entity_type("other:press")
-                .transform(|data: &Compound, _: StructureTransform| Ok(data.clone()))
+                .transform(|_: &mut Compound, _: StructureTransform| Ok(()))
                 .build();
             assert!(r.refused.is_empty(), "{:?}", r.refused);
             assert!(r.block_entity_transforms.contains_key("other:press"));
             r.mod_id = "other";
             r.set_block_entity_transform(
                 key,
-                Arc::new(|data: &Compound, _: StructureTransform| {
-                    Ok::<_, TransformRefusal>(data.clone())
-                }),
+                Arc::new(|_: &mut Compound, _: StructureTransform| Ok::<_, TransformRefusal>(())),
             );
             assert_eq!(
                 r.refused,
