@@ -984,13 +984,20 @@ registries have it. The game loads entries from mod content and enabled data pac
 winning file for each entry. An unreadable winner fails the load and the error names its pack and file.
 The game decodes entries against the schema without running mod code: an undeclared key, a missing required
 key, a wrong type or an out-of-range value fails the entry, and a default never stands in for invalid data.
-Local loads do not use the byte or entry-count limits of network snapshots.
+Local loads do not use the byte limits of network offers or snapshots.
 
 Client-only packages cannot declare datapack registries. A `side = "server"` package can declare
 `DatapackRegistrySync::ServerOnly` (entries are never sent) or `DatapackRegistrySync::Optional`
 (entries are sent only to clients that offer the same registry and schema). Neither declaration by
 itself requires a client to install the mod. A `DatapackRegistrySync::Required` declaration requires
 `side = "both"`; otherwise the game refuses the server-only package at load and names the registry.
+
+A client's offer lists only synchronized registries and their schemas. It must fit one vanilla
+serverbound custom payload (32,767 bytes); an oversized offer stops the join rather than acting as
+an empty offer. The server encodes only the registries negotiated for that client, both at join and
+on reload. Their combined encoded snapshot can be up to 128 MiB (NeoForge's default split-packet
+limit). There is no separate count limit on registries, entries, tags or tag members. If the
+snapshot cannot be sent or validated, the connection ends without activating a partial snapshot.
 
 Use `level.datapack_entries(host, registry)` to list owned entry IDs in sorted order and
 `level.datapack_read(host, registry, entry_id, &mut visit)` to borrow the published entry

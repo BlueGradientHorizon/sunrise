@@ -11,13 +11,11 @@ use super::datapack_registry_set::{
 };
 use crate::wire::{Reader, Wire, Writer};
 use std::collections::{BTreeMap, BTreeSet};
+use sunrise_protocol::packets::custom_payload::SERVERBOUND_LIMIT;
 
-/// The most bytes an encoded snapshot may take.
-pub const MAX_SNAPSHOT_BYTES: usize = 64 << 20;
-/// The most registries a snapshot may carry.
-pub const MAX_SNAPSHOT_REGISTRIES: usize = 256;
-/// The most entries one registry of a snapshot may carry.
-pub const MAX_SNAPSHOT_ENTRIES: usize = 65_536;
+/// The most encoded bytes one split snapshot may carry: the 128 MiB default of NeoForge's
+/// `NeoForgeLocalConfig.splitPacketMaxSizeLimitMb`, applied in `GenericPacketSplitter.receivedPacket`.
+pub const MAX_SNAPSHOT_BYTES: usize = 128 << 20;
 
 /// One entry of a snapshot: its id and one value per field of the registry, in schema order.
 #[derive(Clone, Debug, PartialEq)]
@@ -60,10 +58,9 @@ pub struct DatapackSnapshot {
 // no wire: the game reports it and disconnects
 #[non_exhaustive]
 pub enum DatapackSnapshotError {
-    /// The bytes are not a snapshot, or are more than [`MAX_SNAPSHOT_BYTES`].
+    /// The bytes are not a valid Wire snapshot, or have bytes left over.
     Malformed,
-    /// More registries than [`MAX_SNAPSHOT_REGISTRIES`], or more entries, tags, or members
-    /// of one tag than [`MAX_SNAPSHOT_ENTRIES`].
+    /// The received bytes exceed [`MAX_SNAPSHOT_BYTES`].
     TooLarge,
     /// The snapshot has a registry this side did not declare.
     UnknownRegistry {
@@ -91,8 +88,8 @@ pub enum DatapackSnapshotError {
     Unresolved(Box<DatapackLoadError>),
 }
 
-/// Why a server refuses to send a client its registries: a registry the server declared as
-/// required is not one the client offered with the same schema.
+/// Why a server refuses a datapack registry offer: it cannot read the offer, or the
+/// client did not offer a required registry with the same schema.
 #[derive(Clone, Debug, PartialEq, Eq)]
 // no wire: the game turns it into a disconnect reason before any payload
 #[non_exhaustive]
@@ -104,7 +101,7 @@ pub enum DatapackNegotiationError {
         /// The mod that declared it.
         mod_id: String,
     },
-    /// The client's offer is not readable, or is over the bounds.
+    /// The client's offer is not readable or exceeds the serverbound custom payload limit.
     UnreadableOffer,
 }
 
@@ -177,34 +174,34 @@ impl DatapackRegistrySet {
 }
 
 impl DatapackSnapshot {
-    /// What a client offers its server: the registries `declarations` list as synchronized,
-    /// with their schemas, as wire bytes.
+    /// Encodes the synchronized registries and their schemas in one serverbound custom payload.
+    /// Returns `None` if the offer cannot be encoded within vanilla's
+    /// `ServerboundCustomPayloadPacket.MAX_PAYLOAD_SIZE` (32,767 bytes).
     pub fn encode_offer(declarations: &[DatapackRegistryDeclaration]) -> Option<Vec<u8>> {
-        let offer: Vec<DatapackRegistryDeclaration> = declarations
+        let offer = declarations
             .iter()
-            .filter(|declaration| declaration.sync != DatapackRegistrySync::ServerOnly)
-            .cloned()
-            .collect();
+            .filter(|declaration| declaration.sync != DatapackRegistrySync::ServerOnly);
         let mut writer = Writer::new();
-        writer.limit(MAX_SNAPSHOT_BYTES);
-        offer.put(&mut writer);
+        writer.limit(SERVERBOUND_LIMIT);
+        writer.put_len(offer.clone().count());
+        for declaration in offer {
+            writer.put(declaration);
+        }
         writer.error().is_none().then(|| writer.into_bytes())
     }
 
-    /// Reads a client's offer, refusing more than [`MAX_SNAPSHOT_REGISTRIES`] registries.
+    /// Reads one serverbound custom payload as an offer, refusing malformed bytes or a payload
+    /// larger than vanilla's `ServerboundCustomPayloadPacket.MAX_PAYLOAD_SIZE` (32,767 bytes).
     pub fn decode_offer(
         bytes: &[u8],
     ) -> Result<Vec<DatapackRegistryDeclaration>, DatapackNegotiationError> {
-        if bytes.len() > MAX_SNAPSHOT_BYTES {
+        if bytes.len() > SERVERBOUND_LIMIT {
             return Err(DatapackNegotiationError::UnreadableOffer);
         }
-        Reader::decode::<Vec<DatapackRegistryDeclaration>>(bytes)
-            .ok()
-            .filter(|offer| offer.len() <= MAX_SNAPSHOT_REGISTRIES)
-            .ok_or(DatapackNegotiationError::UnreadableOffer)
+        Reader::decode(bytes).map_err(|_| DatapackNegotiationError::UnreadableOffer)
     }
 
-    /// The wire bytes, or `None` when the snapshot is more than [`MAX_SNAPSHOT_BYTES`].
+    /// The Wire bytes, or `None` if the snapshot cannot be encoded within [`MAX_SNAPSHOT_BYTES`].
     pub fn encode(&self) -> Option<Vec<u8>> {
         let mut writer = Writer::new();
         writer.limit(MAX_SNAPSHOT_BYTES);
@@ -212,28 +209,25 @@ impl DatapackSnapshot {
         writer.error().is_none().then(|| writer.into_bytes())
     }
 
-    /// Reads wire bytes, refusing anything over [`MAX_SNAPSHOT_BYTES`], malformed or with
-    /// bytes left over.
+    /// Reads Wire bytes: excess bytes yield [`DatapackSnapshotError::TooLarge`]; invalid
+    /// encodings and trailing bytes yield [`DatapackSnapshotError::Malformed`].
     pub fn decode(bytes: &[u8]) -> Result<Self, DatapackSnapshotError> {
         if bytes.len() > MAX_SNAPSHOT_BYTES {
-            return Err(DatapackSnapshotError::Malformed);
+            return Err(DatapackSnapshotError::TooLarge);
         }
-        Reader::decode::<Self>(bytes).map_err(|_| DatapackSnapshotError::Malformed)
+        Reader::decode(bytes).map_err(|_| DatapackSnapshotError::Malformed)
     }
 
     /// Checks the snapshot against this side's `declarations` and builds the candidate to
     /// activate: every registry must be one this side declared with the same schema, every
     /// value must fit its field, ids must be valid and unique, references and tag members must
-    /// resolve, and a registry declared `Required` must be present. Counts are checked against
-    /// the snapshot bounds. A declared registry the snapshot lacks (server-only, or optional and
-    /// not negotiated) stays empty. Nothing is built unless everything passes.
+    /// resolve, and a registry declared `Required` must be present. A declared registry the
+    /// snapshot lacks (server-only, or optional and not negotiated) stays empty. Encoding and
+    /// transport limits do not enter into this validation. Nothing is built unless everything passes.
     pub fn candidate(
         &self,
         declarations: &[DatapackRegistryDeclaration],
     ) -> Result<DatapackCandidate, DatapackSnapshotError> {
-        if self.registries.len() > MAX_SNAPSHOT_REGISTRIES {
-            return Err(DatapackSnapshotError::TooLarge);
-        }
         let mut registries: BTreeMap<String, BTreeMap<String, DatapackEntry>> = declarations
             .iter()
             .map(|declaration| (declaration.key.clone(), BTreeMap::new()))
@@ -252,9 +246,6 @@ impl DatapackSnapshot {
                 || declaration.sync == DatapackRegistrySync::ServerOnly
             {
                 return Err(DatapackSnapshotError::SchemaMismatch { registry });
-            }
-            if sent.entries.len() > MAX_SNAPSHOT_ENTRIES {
-                return Err(DatapackSnapshotError::TooLarge);
             }
             let entries = registries.get_mut(&sent.key).expect("declared");
             for entry in &sent.entries {
@@ -301,14 +292,6 @@ impl DatapackSnapshot {
             synchronized: seen.into_iter().map(str::to_owned).collect(),
         };
         for sent in &self.registries {
-            if sent.tags.len() > MAX_SNAPSHOT_ENTRIES
-                || sent
-                    .tags
-                    .values()
-                    .any(|members| members.len() > MAX_SNAPSHOT_ENTRIES)
-            {
-                return Err(DatapackSnapshotError::TooLarge);
-            }
             candidate
                 .bind_tags(&sent.key, sent.tags.clone())
                 .map_err(DatapackSnapshotError::Unresolved)?;
@@ -613,17 +596,41 @@ mod tests {
             DatapackSnapshot::decode_offer(&bytes),
             Err(DatapackNegotiationError::UnreadableOffer)
         );
-        // More registries than the bound is refused.
-        let many: Vec<DatapackRegistryDeclaration> = (0..=MAX_SNAPSHOT_REGISTRIES)
+        // An offer can exceed the old registry count and still fit one custom payload.
+        let many: Vec<_> = (0..257)
             .map(|n| DatapackRegistryDeclaration {
-                key: format!("example:spell_{n}"),
+                key: format!("example:r{n}"),
+                fields: Vec::new(),
                 ..required.clone()
             })
             .collect();
+        let bytes = DatapackSnapshot::encode_offer(&many).unwrap();
+        assert_eq!(DatapackSnapshot::decode_offer(&bytes), Ok(many));
+
+        let with_default = |len| DatapackRegistryDeclaration {
+            fields: vec![DatapackField::with_default(
+                "body",
+                DatapackFieldKind::Text { max_len: 32_768 },
+                DatapackValue::Text("x".repeat(len)),
+            )],
+            ..required.clone()
+        };
+        let overhead = DatapackSnapshot::encode_offer(&[with_default(0)])
+            .unwrap()
+            .len();
+        let exact = [with_default(32_767 - overhead)];
+        let bytes = DatapackSnapshot::encode_offer(&exact).unwrap();
+        assert_eq!(bytes.len(), 32_767);
+        assert_eq!(DatapackSnapshot::decode_offer(&bytes).unwrap(), exact);
+
+        // This is a complete, valid Wire offer, one byte past the vanilla payload limit.
+        let oversized = [with_default(32_768 - overhead)];
+        assert!(DatapackSnapshot::encode_offer(&oversized).is_none());
         let mut writer = Writer::new();
-        many.put(&mut writer);
+        writer.put(oversized.as_slice());
+        assert_eq!(writer.bytes().len(), 32_768);
         assert_eq!(
-            DatapackSnapshot::decode_offer(&writer.into_bytes()),
+            DatapackSnapshot::decode_offer(writer.bytes()),
             Err(DatapackNegotiationError::UnreadableOffer)
         );
     }
@@ -643,33 +650,60 @@ mod tests {
             DatapackSnapshot::decode(&bytes),
             Err(DatapackSnapshotError::Malformed)
         );
+        let oversized = vec![0; (128 << 20) + 1];
+        assert_eq!(
+            DatapackSnapshot::decode(&oversized),
+            Err(DatapackSnapshotError::TooLarge)
+        );
     }
 
     #[test]
-    fn tag_bounds_apply_to_received_snapshots_not_local_candidates() {
-        let declaration = spell(DatapackRegistrySync::Required);
-        let declarations = std::slice::from_ref(&declaration);
-        let files = [(
-            "data/addon/example/spell/fire.json".to_owned(),
-            vec![("pack".to_owned(), br#"{"power": 7}"#.to_vec())],
-        )];
-        for tags in [
-            (0..65_537)
-                .map(|n| (format!("example:tag_{n}"), Vec::new()))
+    fn snapshots_accept_counts_past_the_old_limits() {
+        let declarations: Vec<_> = (0..257)
+            .map(|n| DatapackRegistryDeclaration {
+                mod_id: "example".into(),
+                key: format!("example:r{n:03}"),
+                fields: Vec::new(),
+                sync: DatapackRegistrySync::Required,
+            })
+            .collect();
+        let mut snapshot = DatapackSnapshot {
+            registries: declarations
+                .iter()
+                .map(|declaration| DatapackSnapshotRegistry {
+                    key: declaration.key.clone(),
+                    fields: Vec::new(),
+                    entries: Vec::new(),
+                    tags: BTreeMap::new(),
+                })
                 .collect(),
-            BTreeMap::from([("example:hot".into(), vec!["addon:fire".into(); 65_537])]),
-        ] {
-            let mut local = DatapackCandidate::build(declarations, &files).unwrap();
-            local.bind_tags("example:spell", tags).unwrap();
-            let snapshot =
-                DatapackRegistrySet::from_candidate(local).snapshot(declarations, |_| true);
-            let bytes = snapshot.encode().unwrap();
-            let received = DatapackSnapshot::decode(&bytes).unwrap();
-            assert_eq!(
-                received.candidate(declarations),
-                Err(DatapackSnapshotError::TooLarge)
-            );
-        }
+        };
+        let first = &mut snapshot.registries[0];
+        first.entries = (0..65_537)
+            .map(|n| DatapackSnapshotEntry {
+                id: format!("example:e{n:05}"),
+                values: Vec::new(),
+            })
+            .collect();
+        first.tags = (0..65_537)
+            .map(|n| (format!("example:t{n:05}"), Vec::new()))
+            .collect();
+        first.tags.insert(
+            "example:t00000".into(),
+            first.entries.iter().map(|entry| entry.id.clone()).collect(),
+        );
+
+        let bytes = snapshot.encode().unwrap();
+        let received = DatapackSnapshot::decode(&bytes).unwrap();
+        assert_eq!(received, snapshot);
+        drop(snapshot);
+        let client = DatapackRegistrySet::received(received.candidate(&declarations).unwrap());
+        assert!(client.registry_available("example:r256"));
+        assert_eq!(client.entries("example:r000").unwrap().len(), 65_537);
+        assert_eq!(
+            client.tag_contains("example:r000", "example:e00000", "example:t00000"),
+            Some(true)
+        );
     }
 
     #[test]
@@ -722,13 +756,15 @@ mod tests {
 
     #[test]
     fn omitted_optional_defaults_do_not_reduce_received_snapshot_capacity() {
-        const ENTRY_BYTES: usize = (1 << 20) - 2048;
+        const ENTRY_BYTES: usize = 1 << 16;
         let payload = DatapackRegistryDeclaration {
             mod_id: "example".into(),
             key: "example:payload".into(),
             fields: vec![DatapackField::required(
                 "body",
-                DatapackFieldKind::Text { max_len: 1 << 20 },
+                DatapackFieldKind::Text {
+                    max_len: ENTRY_BYTES as u32,
+                },
             )],
             sync: DatapackRegistrySync::Required,
         };
@@ -737,8 +773,8 @@ mod tests {
             key: "client:optional".into(),
             fields: vec![DatapackField::with_default(
                 "local_default",
-                DatapackFieldKind::Text { max_len: 1 << 18 },
-                DatapackValue::Text("d".repeat(1 << 18)),
+                DatapackFieldKind::Text { max_len: 1 << 14 },
+                DatapackValue::Text("d".repeat(1 << 14)),
             )],
             sync: DatapackRegistrySync::Optional,
         };
@@ -748,27 +784,23 @@ mod tests {
             registries: vec![DatapackSnapshotRegistry {
                 key: payload.key,
                 fields: payload.fields,
-                entries: (0..64)
-                    .map(|index| DatapackSnapshotEntry {
-                        id: format!("example:e{index}"),
-                        values: vec![DatapackValue::Text("x".repeat(ENTRY_BYTES))],
-                    })
-                    .collect(),
-                tags: BTreeMap::from([("example:hot".into(), vec!["example:e63".into()])]),
+                entries: vec![DatapackSnapshotEntry {
+                    id: "example:body".into(),
+                    values: vec![DatapackValue::Text("x".repeat(ENTRY_BYTES))],
+                }],
+                tags: BTreeMap::from([("example:hot".into(), vec!["example:body".into()])]),
             }],
         };
         let bytes = snapshot.encode().unwrap();
-        assert!(bytes.len() > MAX_SNAPSHOT_BYTES - (1 << 18));
-        drop(snapshot);
+        assert!(bytes.len() > 32_767, "a snapshot is not an offer");
         let received = DatapackSnapshot::decode(&bytes).unwrap();
-        drop(bytes);
         let candidate = received.candidate(&declarations).unwrap();
         let client = DatapackRegistrySet::received(candidate);
         assert!(client.registry_available("example:payload"));
         assert!(!client.registry_available("client:optional"));
         assert!(client.entries("client:optional").unwrap().is_empty());
         let Some(DatapackValue::Text(body)) = client
-            .get("example:payload", "example:e63")
+            .get("example:payload", "example:body")
             .unwrap()
             .get("body")
         else {
@@ -777,7 +809,7 @@ mod tests {
         assert_eq!(body.len(), ENTRY_BYTES);
         assert!(body.bytes().all(|byte| byte == b'x'));
         assert_eq!(
-            client.tag_contains("example:payload", "example:e63", "example:hot"),
+            client.tag_contains("example:payload", "example:body", "example:hot"),
             Some(true)
         );
     }

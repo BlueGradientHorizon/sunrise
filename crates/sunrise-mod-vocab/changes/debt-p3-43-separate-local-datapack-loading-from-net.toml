@@ -15,16 +15,30 @@ ids = [
     "type:DatapackLoadReason.CandidateTooLarge",
     "type:DatapackLoadReason.SnapshotTooLarge",
     "type:DatapackLoadReason.ReadFile",
+    "const:MAX_SNAPSHOT_BYTES",
+    "const:MAX_SNAPSHOT_REGISTRIES",
+    "const:MAX_SNAPSHOT_ENTRIES",
+    "handle:DatapackSnapshot::encode_offer",
+    "handle:DatapackSnapshot::decode_offer",
+    "handle:DatapackSnapshot::encode",
+    "handle:DatapackSnapshot::decode",
     "handle:DatapackSnapshot::candidate",
+    "type:DatapackSnapshotError",
+    "type:DatapackSnapshotError.Malformed",
     "type:DatapackSnapshotError.TooLarge",
+    "type:DatapackNegotiationError",
+    "type:DatapackNegotiationError.UnreadableOffer",
 ]
 why = """
 Registry declaration no longer means that clients need the mod. Like NeoForge's NewDatapackRegistryEvent.worldRegistry and reloadableRegistry and DataPackRegistriesHooks.addWorldRegistry, and vanilla's RegistryDataLoader.load, local loading is distinct from what is sent to clients. Only a Required registry makes a server-only package incompatible with the join-content rule; the load refusal names the registry.
 
-Vanilla's ResourceManagerRegistryLoadTask.load selects the winning resource and RegistryLoadTask.PendingRegistration.loadFromResource reads it with pack attribution. Local registry loading now reads the whole winner and checks its schema, references and tags without the transport ceilings. A snapshot that is actually received still has byte and count limits; validation does not encode it a second time.
+Vanilla's ResourceManagerRegistryLoadTask.load selects the winning resource and RegistryLoadTask.PendingRegistration.loadFromResource reads it with pack attribution. Local registry loading now reads the whole winner and checks its schema, references and tags without the transport ceilings.
+
+Only the negotiated snapshot is encoded. A single offer uses vanilla's ServerboundCustomPayloadPacket.MAX_PAYLOAD_SIZE (32,767 bytes), and each snapshot fragment, including its header, uses ClientboundCustomPayloadPacket.MAX_PAYLOAD_SIZE. A reassembled snapshot uses NeoForge's 128 MiB NeoForgeLocalConfig.splitPacketMaxSizeLimitMb default as applied by GenericPacketSplitter.receivedPacket. Like vanilla's ClientboundRegistryDataPacket.STREAM_CODEC using ByteBufCodecs.list(), there is no separate registry, entry, tag or tag-member ceiling; MAX_INITIAL_COLLECTION_SIZE is an allocation hint, not a rejection rule.
 """
 migrate = """
 - Keep the declare_datapack_registry call. When moving a registry to a side = "server" package, pass DatapackRegistrySync::ServerOnly to keep entries local, or DatapackRegistrySync::Optional to send entries only to clients that offer the same registry and schema. Keep DatapackRegistrySync::Required with side = "both" if joining clients must have the registry. DatapackRegistrationError::WrongSide now means the declaring package is client-only; a server-only package declaring Required is refused at package load instead.
 - Remove MAX_DATAPACK_ENTRY_BYTES and checks based on it; there is no replacement for local files. Keep calling DatapackCandidate::build(declarations, files), candidate.bind_tags(registry, tags), or declaration.decode_entry(text) as before. Remove DatapackLoadReason match arms for TooManyRegistries, EntryTooLarge, TooManyEntries, CandidateTooLarge and SnapshotTooLarge. Match the new DatapackLoadReason::ReadFile(message) for an I/O failure and report it with DatapackLoadError's registry, entry, pack and file fields. A failed read does not yield an empty file or trigger a lower-pack read.
-- Keep calling DatapackSnapshot::decode(bytes) followed by snapshot.candidate(declarations). Match DatapackSnapshotError::TooLarge instead of Unresolved carrying DatapackLoadReason::TooManyEntries when a received registry has too many tags or a tag has too many members.
+- Remove MAX_SNAPSHOT_REGISTRIES and MAX_SNAPSHOT_ENTRIES and any checks based on them. Keep calling DatapackSnapshot::encode() on the negotiated snapshot; None means it could not be encoded within MAX_SNAPSHOT_BYTES, now 128 MiB. Keep calling DatapackSnapshot::decode(bytes) followed by snapshot.candidate(declarations). Match TooLarge from decode for bytes over MAX_SNAPSHOT_BYTES, not Malformed or an error from candidate. Malformed still means invalid or trailing Wire bytes. Candidate still checks the declared schemas, entries, references and tags, without size or count checks.
+- Keep calling DatapackSnapshot::encode_offer(declarations) and DatapackSnapshot::decode_offer(bytes) for the one serverbound payload. Treat None from encode_offer as an encoding failure, not as an absence of synchronized registries. Handle UnreadableOffer from decode_offer for malformed bytes or more than 32,767 bytes, not for a registry count.
 """
