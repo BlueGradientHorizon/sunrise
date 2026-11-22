@@ -981,7 +981,6 @@ impl Game<'_> {
             if !(r.attached && boosted.is_none())
                 && !self.spectator()
                 && let Some(p) = self.player_view()
-                && p.alive
                 && p.bounds.intersects(reach)
             {
                 let pos = self.player.as_ref().map_or(Vec3::ZERO, |pl| pl.position);
@@ -993,8 +992,6 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_ref() {
                 for g in &host.hub.guests {
                     if host.hub.here(g)
-                        && g.loaded
-                        && !g.dead
                         && !g.spectator()
                         && Some(g.conn) != boosted
                         && super::lan_mobs::guest_bounds(g).intersects(reach)
@@ -1011,7 +1008,7 @@ impl Game<'_> {
                 }
             }
             for m in self.mobs.iter() {
-                if m.alive() && !m.removed && m.bounds().intersects(reach) {
+                if !m.removed && m.bounds().intersects(reach) {
                     candidates.push((
                         sunrise_client::projectiles::TargetOrder::entity(m.position, m.join.get()),
                         SplashTarget::Mob(m.id),
@@ -1059,7 +1056,7 @@ impl Game<'_> {
                             let world = self.mob_world_base(&[]);
                             self.mobs
                                 .iter()
-                                .find(|m| m.id == id && m.alive() && !m.removed)
+                                .find(|m| m.id == id && !m.removed)
                                 .and_then(|m| {
                                     let d2 = (m.position.x - from.x).powi(2)
                                         + (m.position.y - from.y).powi(2)
@@ -1181,11 +1178,18 @@ impl Game<'_> {
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
             let mut credit = plan.lend(&mut self.last_hurt_by_player);
             if let Some(index) = self.mob_index.find(&self.mobs, id) {
+                let before = self.mobs[index].health;
                 let hurt = self.mobs[index].damage(
                     crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                     amount,
                     Damage::fireworks(attacker, at),
                 );
+                // LivingEntity.actuallyHurt posts after health loss, before death settlement.
+                if self.mobs[index].health < before {
+                    let pos = self.mobs[index].position.components();
+                    let ctx = self.who_context(Some(Who::Mob(id)), None);
+                    self.post_game_event("minecraft:entity_damage", pos, ctx);
+                }
                 // LivingEntity.hurtServer: a player's rocket makes them the
                 // last player to hurt it (`setLastHurtByPlayer`), so its death
                 // message names them and their item.
