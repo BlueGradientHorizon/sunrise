@@ -2820,9 +2820,8 @@ impl OptionsUi {
                 rows
             }
             Page::Video => {
-                // Vanilla's VideoSettingsScreen as vanilla lays it out. No menu opens it (Video
-                // Settings... opens the graphics screen, which has all of it); it stays for
-                // `sunrise-ctl options video-vanilla` and the tests that pin vanilla's screen.
+                // Vanilla's VideoSettingsScreen as vanilla lays it out: what Video Settings...
+                // opens. Sunrise's graphics screen is `Page::Graphics`, from the Extras page.
                 let mut rows = vec![Row::Header("options.video.display.header")];
                 rows.push(Row::Big(Opt::ExclusiveMode));
                 rows.extend(pairs(&[
@@ -6196,6 +6195,43 @@ mod tests {
         assert_eq!(ui.page(), Page::NativeMod(0));
     }
 
+    /// OptionsScreen's Video Settings button opens VideoSettingsScreen, not Sunrise's graphics
+    /// screen, which has its own row on the Extras page.
+    #[test]
+    fn extras_opens_sunrise_graphics_and_video_settings_opens_vanilla() {
+        let atlas = atlas();
+        let mut s = Settings::default();
+        let mut ui = OptionsUi::default();
+        let (widgets, _, _, _) = ui.layout(&s, 427.0, 240.0);
+        let video = widgets.iter().find(|w| match &w.kind {
+            WKind::Button { label, .. } => label.plain() == lang::get("options.video"),
+            _ => false,
+        });
+        let Some(Widget {
+            kind: WKind::Button { act, .. },
+            ..
+        }) = video
+        else {
+            panic!("no Video Settings button");
+        };
+        assert!(matches!(act, Act::Push(Page::Video)), "{act:?}");
+        // Nothing of Sunrise's graphics screen sits on vanilla's.
+        ui.show(Page::Video);
+        let (widgets, _, _, _) = ui.layout(&s, 427.0, 4000.0);
+        assert!(!widgets.iter().any(|w| matches!(
+            &w.kind,
+            WKind::Button {
+                act: Act::Push(Page::Graphics | Page::ShaderPacks),
+                ..
+            }
+        )));
+        ui.show(Page::Extras);
+        let size = (480.0, 480.0);
+        let at = ui.extras.point_at(&s, size, ExtraRow::Graphics);
+        ui.click(&mut s, &atlas, at.0, at.1, size, [960, 960], false, false);
+        assert_eq!(ui.page(), Page::Graphics);
+    }
+
     #[test]
     fn exclusive_fullscreen_and_its_tooltips_follow_the_option() {
         let mut s = Settings::default();
@@ -6607,8 +6643,8 @@ mod tests {
         }
         assert_eq!(
             ui.extras.row_labels(&s).len(),
-            // And the note about the Zoom mod over them.
-            1 + crate::extras::rows().iter().filter(|r| r.is_ok()).count()
+            // And the note about the Zoom mod and the Sunrise Graphics row over them.
+            2 + crate::extras::rows().iter().filter(|r| r.is_ok()).count()
         );
         let press = |ui: &mut OptionsUi, s: &mut Settings, item: crate::extras::Item| {
             let at = ui.extras.point_at(s, size, ExtraRow::Item(item));
@@ -7527,9 +7563,9 @@ mod tests {
 
     /// Every setting a player reaches, from the Options screen through every button that opens
     /// a page, is in one place, and every page has one way in. Vanilla's own repeats stay as
-    /// vanilla has them; the graphics screen stands for Video Settings, so the vanilla video
-    /// options it shows count as Video Settings' (Menu Background Blur is in both of
-    /// vanilla's). Vanilla's Video Settings rows are all on the graphics screen.
+    /// vanilla has them; Video Settings is vanilla's own screen, and Sunrise's graphics screen
+    /// (opened from Extras) repeats its options, so they are not counted twice (Menu Background
+    /// Blur is in two of vanilla's). Vanilla's Video Settings rows are all on the graphics screen.
     #[test]
     fn every_setting_and_page_is_reached_from_one_place() {
         use std::collections::{BTreeMap, BTreeSet};
@@ -7575,6 +7611,8 @@ mod tests {
             ui.stack = vec![page];
             let (widgets, _, _, _) = ui.layout(&s, 427.0, 4000.0);
             let name = format!("{page:?}");
+            // Vanilla's Video Settings: the graphics screen has all its rows, listed above.
+            let counted = page != Page::Video;
             for w in &widgets {
                 let id = match &w.kind {
                     WKind::Slider { opt, .. } => format!("{opt:?}"),
@@ -7598,9 +7636,17 @@ mod tests {
                     },
                     _ => continue,
                 };
-                put(id, &name);
+                if counted {
+                    put(id, &name);
+                }
             }
         }
+        // The Extras page's Sunrise Graphics row opens the graphics screen (its shell has no
+        // widgets here; `extras_opens_sunrise_graphics_and_video_settings_opens_vanilla`).
+        ways_in
+            .entry(format!("{:?}", Page::Graphics))
+            .or_default()
+            .insert("Extras".to_owned());
         // Vanilla's own: the same option on two of its screens.
         let vanilla_repeats: BTreeMap<&str, &[&str]> = [
             ("MenuBlur", &["Accessibility", "Graphics"][..]),
@@ -7631,9 +7677,10 @@ mod tests {
             Some(1),
             "{ways_in:?}"
         );
-        assert!(
-            !seen.contains("Video"),
-            "vanilla's own layout has no way in"
+        assert_eq!(
+            ways_in.get("Video").map(|f| f.len()),
+            Some(1),
+            "{ways_in:?}"
         );
         // Every row of vanilla's Video Settings is on the graphics screen.
         ui.stack = vec![Page::Video];
@@ -7685,8 +7732,8 @@ mod tests {
             &main[main.len() - 3..],
             [Page::Sunrise, Page::Mods, Page::Credits]
         );
-        // Video Settings... is the graphics screen, as Sodium's.
-        assert!(main.contains(&Page::Graphics) && !main.contains(&Page::Video));
+        // Video Settings... is vanilla's VideoSettingsScreen; the graphics screen is Extras'.
+        assert!(main.contains(&Page::Video) && !main.contains(&Page::Graphics));
         ui.push(Page::Sunrise);
         assert_eq!(
             pushes(&mut ui),

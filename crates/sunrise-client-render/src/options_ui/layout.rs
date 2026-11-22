@@ -128,9 +128,9 @@ impl OptionsUi {
                 let entries = [
                     ("options.skinCustomisation", Some(Page::Skin)),
                     ("options.sounds", Some(Page::Sound)),
-                    // Video Settings... opens Sunrise's graphics screen, which holds every
-                    // video option, as Sodium's replaces vanilla's.
-                    ("options.video", Some(Page::Graphics)),
+                    // OptionsScreen's Video Settings button: VideoSettingsScreen. Sunrise's
+                    // graphics screen opens from the Extras page.
+                    ("options.video", Some(Page::Video)),
                     ("options.controls", Some(Page::Controls)),
                     ("options.language", Some(Page::Language)),
                     ("options.chat", Some(Page::Chat)),
