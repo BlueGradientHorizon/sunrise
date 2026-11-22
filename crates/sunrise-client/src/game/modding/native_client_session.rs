@@ -447,8 +447,8 @@ pub(super) mod tests {
             assert_eq!(list.copy_header(), Ok(Some(Text::literal("Header"))));
             assert_eq!(list.copy_footer(), Ok(Some(Text::literal("Footer"))));
             game.apply_packet(Clientbound::TabList(TabList {
-                header: Tag::String(String::new()),
-                footer: Tag::String(String::new()),
+                header: Tag::String("".into()),
+                footer: Tag::String("".into()),
             }))
             .unwrap();
             let list = game.client_session().client_tab_list().unwrap().unwrap();
