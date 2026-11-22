@@ -12060,16 +12060,18 @@ impl Game<'_> {
         {
             return true;
         }
-        if let Some(saving) = &mut self.pending_save {
+        if self.pending_save.is_some() {
             match event {
                 WindowEvent::CloseRequested => {
-                    if self.settings.quit_shortcuts
+                    if (self.settings.quit_shortcuts
                         || !sunrise_client::input::is_quit_shortcut_down(
                             self.modifiers,
                             &self.physical_keys,
-                        )
+                        ))
+                        && let Err(error) = self.begin_closing_save(true)
                     {
-                        saving.quit = true;
+                        self.error = Some(error);
+                        event_loop.exit();
                     }
                 }
                 WindowEvent::Focused(focused) => {
