@@ -712,7 +712,15 @@ fn an_earlier_restock_does_not_skip_a_paused_mobs_first_action() {
                     };
                     let mut fish = make(41, "minecraft:pufferfish", 7.5);
                     fish.extra.size = 2;
-                    let pig = make(42, "minecraft:pig", 7.75);
+                    // Outside normal body collision so a push cannot precede the sting,
+                    // but inside Pufferfish.aiStep's 0.3-block inflated hitbox.
+                    let pig = make(42, "minecraft:pig", 8.45);
+                    assert!(!fish.bounds().intersects(pig.bounds()));
+                    assert!(
+                        fish.bounds()
+                            .inflate(Vec3::new(0.3, 0.3, 0.3))
+                            .intersects(pig.bounds())
+                    );
                     let health = pig.health;
                     game.mobs.push(fish);
                     game.mobs.push(pig);
