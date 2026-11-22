@@ -1,0 +1,2 @@
+sunrise-client game::creatures::pending_birth_tests::a_panicking_baby_listener_leaves_no_reserved_state_behind lib daily child-process
+sunrise-client game::creatures::pending_birth_tests::a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable lib daily child-process

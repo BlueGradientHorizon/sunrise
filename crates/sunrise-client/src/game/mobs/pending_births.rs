@@ -61,9 +61,11 @@ impl Drop for HookScope {
 impl Game<'_> {
     /// Lends `initial` to the listeners `fire` calls and returns the children that survive them,
     /// in order, each with its entity number issued but not yet in any level. Empty means no
-    /// child: a cancel, a list a listener emptied, a stale parent (one of
-    /// `parents` is gone or no longer in the state the children were built from, or the world or
-    /// dimension changed) or a final child that breaks an invariant. Nothing is recomputed.
+    /// child: a cancel (including a contained listener panic), a list a listener emptied, a
+    /// stale parent (one of `parents` is gone or no longer in the state the children were built
+    /// from, or the world or dimension changed) or a final child that breaks an invariant.
+    /// A refusal rolls back journaled listener writes in the action's level, not construction.
+    /// Nothing is recomputed.
     ///
     /// `hook` is the hook `fire` dispatches: its listener count ends each listener's leases.
     /// `breeding` selects the one-baby limit and requires every child to be a baby. A child that
@@ -114,42 +116,49 @@ impl Game<'_> {
             let lent = self.lent_mobs.borrow();
             (lent.pending.clone(), lent.hook.clone())
         };
-        let _scope = HookScope {
-            previous: hook_cell.replace(Some(hook)),
-            cell: hook_cell.clone(),
-        };
         let run = catch_unwind(AssertUnwindSafe(|| {
-            PendingChildren::run_scoped(
-                &arena,
-                epoch.get(),
-                capacity,
-                initial,
-                |action| {
-                    let editor = Children::new(&*self, action, breeding);
-                    // The baseline: listeners entered from here on end the previous lease.
-                    super::native_pending_children::sync_listener(&arena, &hook_cell);
-                    let mut cancel = false;
-                    fire(self, &editor, &mut cancel);
-                    // A listener's Host writes ran against the live world: the frozen list is
-                    // only valid if what it was made from still stands.
-                    if self.lend_epoch() != epoch
-                        || self.dim != dim
-                        || before.iter().any(|(id, state)| {
-                            let now = self.mobs.iter().find(|m| m.id == *id).map(parent_state);
-                            now.is_none() || now.as_ref() != state.as_ref()
-                        })
-                    {
-                        return Decision::Stale;
-                    }
-                    if cancel {
-                        // Monotonic: a later reader of the frame sees it cancelled too.
-                        let _ = arena.borrow_mut().cancel(action);
-                        return Decision::Cancel;
-                    }
-                    Decision::Accept
-                },
-                |child| valid_child(&resources, dim, breeding, child),
-            )
+            mod_api::run_transaction(self, |game, _| {
+                let _scope = HookScope {
+                    previous: hook_cell.replace(Some(hook)),
+                    cell: hook_cell.clone(),
+                };
+                let mut cancel = false;
+                let frozen = PendingChildren::run_scoped(
+                    &arena,
+                    epoch.get(),
+                    capacity,
+                    initial,
+                    |action| {
+                        let editor = Children::new(game, action, breeding);
+                        // The baseline: listeners entered from here on end the previous lease.
+                        super::native_pending_children::sync_listener(&arena, &hook_cell);
+                        let failures = mod_api::runtime::isolated_failures();
+                        fire(game, &editor, &mut cancel);
+                        if mod_api::runtime::isolated_failures() != failures {
+                            cancel = true;
+                        } else if game.lend_epoch() != epoch
+                            || game.dim != dim
+                            || before.iter().any(|(id, state)| {
+                                let now = game.mobs.iter().find(|m| m.id == *id).map(parent_state);
+                                now.is_none() || now.as_ref() != state.as_ref()
+                            })
+                        {
+                            // The frozen list is only valid if what it was made from still stands.
+                            return Decision::Stale;
+                        }
+                        if cancel || arena.borrow().is_empty(action) == Ok(true) {
+                            cancel = true;
+                            let _ = arena.borrow_mut().cancel(action);
+                            return Decision::Cancel;
+                        }
+                        Decision::Accept
+                    },
+                    |child| valid_child(&resources, dim, breeding, child),
+                )
+                .map_err(|_| ())?;
+                // A cancelled arena finishes successfully with an empty batch; the journal aborts.
+                if cancel { Err(()) } else { Ok(frozen) }
+            })
         }));
         let mut kept = Vec::new();
         let panic = match run {
