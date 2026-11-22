@@ -15,7 +15,7 @@ impl Game<'_> {
         for &model in models {
             self.pack
                 .render
-                .resolve_model(model)
+                .validate_standalone_model(model)
                 .map_err(BlockExtraModelsError::Model)?;
         }
         let [x, y, z] = pos;
@@ -44,6 +44,8 @@ mod tests {
         ) {
             return;
         }
+        let _standalone =
+            sunrise_client::models::standalone_fixture(vec!["minecraft:block/gold_block".into()]);
         with_client_game(|game| {
             for phase in [ModPhase::Reloading, ModPhase::Setup, ModPhase::Config] {
                 let _phase = PhaseOwner::scope(phase);
@@ -59,6 +61,46 @@ mod tests {
                 Err(BlockExtraModelsError::NotLoaded),
                 "the World phase reaches the columns"
             );
+
+            let render = &game.pack.render;
+            let generation = render.generation;
+            let state = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            let slot = render.model_catalog.state_slots(state).unwrap()[0];
+            let model = mod_api::__private::built::model_ref(generation, slot);
+            assert!(
+                render.resolve_model(model).is_ok(),
+                "the state slot is baked"
+            );
+            assert!(
+                !render
+                    .model_catalog
+                    .standalone_slots()
+                    .any(|registered| registered == slot)
+            );
+            let held = render
+                .model(&mod_api::Identifier::parse("minecraft:block/gold_block").unwrap())
+                .unwrap();
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
+            ClientRenderClientHost::set_block_extra_models(game, [0, 64, 0], &[held]).unwrap();
+            let stale = mod_api::__private::built::model_ref(generation + 1, slot);
+            for (bad, reason) in [
+                (model, mod_api::ModelError::UnknownModel),
+                (stale, mod_api::ModelError::StaleModel),
+            ] {
+                assert_eq!(
+                    ClientRenderClientHost::set_block_extra_models(game, [0, 64, 0], &[bad]),
+                    Err(BlockExtraModelsError::Model(reason)),
+                );
+                assert_eq!(game.world.extra_models(0, 64, 0), [held]);
+            }
         });
     }
 }

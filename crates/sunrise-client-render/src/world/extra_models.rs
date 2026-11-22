@@ -2,14 +2,14 @@
 //! (`ClientRenderClientHost::set_block_extra_models`), kept in each column
 //! (`Chunk::extra_models`) so the meshing workers read them with the blocks and call no mod code.
 use super::World;
-use mod_api::{BLOCK_EXTRA_MODELS_MAX, BlockExtraModelsError, ModelRef};
+use mod_api::{BlockExtraModelsError, ModelRef};
 use std::sync::Arc;
 
 impl World {
     /// `models` replace the extra models of the block at (`x`, `y`, `z`); an empty list clears
     /// them. When they change, the block's section is meshed again. `NotLoaded` outside the
-    /// resident columns or the world's height and `TooMany` past [`BLOCK_EXTRA_MODELS_MAX`],
-    /// with nothing changed. The handles are the caller's to check.
+    /// resident columns or the world's height, with nothing changed. The handles are the
+    /// caller's to check.
     pub fn set_extra_models(
         &mut self,
         x: i32,
@@ -17,9 +17,6 @@ impl World {
         z: i32,
         models: &[ModelRef],
     ) -> Result<(), BlockExtraModelsError> {
-        if models.len() > BLOCK_EXTRA_MODELS_MAX {
-            return Err(BlockExtraModelsError::TooMany);
-        }
         let key = (x >> 4, z >> 4);
         let Some(chunk) = self.chunks.get_mut(&key) else {
             return Err(BlockExtraModelsError::NotLoaded);
@@ -135,17 +132,8 @@ mod tests {
     }
 
     #[test]
-    fn past_the_cap_or_outside_the_columns_nothing_changes() {
+    fn outside_the_columns_nothing_changes() {
         let mut world = world();
-        let full: Vec<_> = (0..BLOCK_EXTRA_MODELS_MAX as u32).map(model).collect();
-        world.set_extra_models(3, 70, 5, &full).unwrap();
-        world.dirty_sections.clear();
-        let over: Vec<_> = (0..=BLOCK_EXTRA_MODELS_MAX as u32).map(model).collect();
-        assert_eq!(
-            world.set_extra_models(3, 70, 5, &over),
-            Err(BlockExtraModelsError::TooMany)
-        );
-        assert_eq!(world.extra_models(3, 70, 5), full);
         assert_eq!(
             world.set_extra_models(40, 70, 5, &[model(1)]),
             Err(BlockExtraModelsError::NotLoaded),

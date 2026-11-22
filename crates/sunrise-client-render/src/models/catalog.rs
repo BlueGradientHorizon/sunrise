@@ -595,6 +595,12 @@ impl StateModels {
     pub fn standalone_slot(&self, name: &str) -> Option<u32> {
         self.standalone.get(name).copied()
     }
+    /// Whether this baked slot is the one published under its standalone model name.
+    pub(crate) fn is_standalone_slot(&self, slot: u32) -> bool {
+        self.baked
+            .get(slot as usize)
+            .is_some_and(|(variant, _)| self.standalone_slot(&variant.model) == Some(slot))
+    }
     /// Slots of registered standalone models, including models shared with block states.
     pub fn standalone_slots(&self) -> impl Iterator<Item = u32> + '_ {
         self.standalone.values().copied()

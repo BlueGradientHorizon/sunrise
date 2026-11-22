@@ -150,9 +150,8 @@ fn bytes(vertices: &[TerrainVertex]) -> &[u8] {
 }
 
 /// A checkerboard section, every face of its 2,048 stones open but those toward the absent
-/// neighbouring columns, each stone drawing `BLOCK_EXTRA_MODELS_MAX` gold cubes: 753,664 extra
-/// faces asked for, nearly three times the section's quads. The mesh stays within the section's quad and byte limits, keeps every stone face as
-/// it was, keeps the extra models in cell order and then list order up to the limit, and is the
+/// neighbouring columns, with enough gold cubes on each stone to exceed the upload budget.
+/// The mesh keeps every stone face, draws attachment faces in cell and list order, and is the
 /// same on every build.
 #[test]
 #[ignore = "daily"]
@@ -182,7 +181,8 @@ fn extra_models_stay_within_the_sections_limits() {
         }
     }
     let mut chunk = plain.clone();
-    let heavy: Arc<[_]> = vec![gold; mod_api::BLOCK_EXTRA_MODELS_MAX].into();
+    let copies = 64;
+    let heavy: Arc<[_]> = vec![gold; copies].into();
     for &[x, y, z] in &cells {
         let cell = chunk.dynamic_cell(x, MIN_Y + y, z).unwrap();
         chunk.extra_models.insert(cell, heavy.clone());
@@ -223,7 +223,7 @@ fn extra_models_stay_within_the_sections_limits() {
     };
     let faces =
         |vertices: &[TerrainVertex], cell| vertices.chunks(4).filter(|quad| of(quad, cell)).count();
-    let first = 4 * faces(&base.solid, cells[0]) * mod_api::BLOCK_EXTRA_MODELS_MAX;
+    let first = 4 * faces(&base.solid, cells[0]) * copies;
     assert!(first > 0);
     assert!(extra[..first].chunks(4).all(|quad| of(quad, cells[0])));
     assert_eq!(faces(extra, *cells.last().unwrap()), 0);
