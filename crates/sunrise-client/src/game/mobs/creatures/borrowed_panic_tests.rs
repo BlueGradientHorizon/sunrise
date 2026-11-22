@@ -392,7 +392,7 @@ fn run_output(family: Family, output: Output) {
                         }
                         if family == Family::MountedGoal {
                             mob.no_ai = false;
-                            mob.on_ground = true;
+                            mob.ground.on_ground = true;
                             // Collision on the vehicle's first tick must keep it grounded.
                             mob.velocity.y = -0.08;
                             mob.ai.nav.speed_modifier = if id == 72 { 3.75 } else { 9.25 };
@@ -406,7 +406,7 @@ fn run_output(family: Family, output: Output) {
                             mob.ai.last_hurt_by_player = 5;
                             if output != Output::Quiet {
                                 mob.no_ai = false;
-                                mob.on_ground = true;
+                                mob.ground.on_ground = true;
                             }
                             if matches!(output, Output::Egg | Output::Reset) {
                                 mob.extra.egg_time = 1;
@@ -430,7 +430,7 @@ fn run_output(family: Family, output: Output) {
                                 mob.position.y = 80.1;
                                 mob.velocity.y = -1.0;
                                 mob.fall_distance = 6.0;
-                                mob.on_ground = false;
+                                mob.ground.on_ground = false;
                             }
                             if matches!(family, Family::Damage | Family::Shield | Family::Totem) {
                                 mob.fire_ticks = 20;
@@ -443,7 +443,7 @@ fn run_output(family: Family, output: Output) {
                                 // NoAI skips aiStep's travel: this must be a
                                 // real moving mob, not just a grounded corpse.
                                 mob.no_ai = false;
-                                mob.on_ground = true;
+                                mob.ground.on_ground = true;
                                 mob.ai.speed = 0.2;
                             }
                             if family == Family::Totem {

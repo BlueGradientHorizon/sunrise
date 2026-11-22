@@ -15,6 +15,7 @@ use super::{
 };
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use sunrise_client::collisions::{PowderSnowSubject, SceneCollisions};
 use sunrise_client::entities::{
     ArmorStand, Cushion, ExperienceOrb, ItemEntity, ItemFrame, Painting,
 };
@@ -27,7 +28,10 @@ use sunrise_core::geometry::{Aabb, Direction, Vec3};
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::RandomSource as _;
-use sunrise_world::{level::data::PushReaction, move_gate::MoveGate, piston_push};
+use sunrise_world::{
+    block_collision_scan::CollisionScanError, collision_context::CollisionContext,
+    ground_support::GroundState, level::data::PushReaction, move_gate::MoveGate, piston_push,
+};
 
 /// Assign a stored owner's delayed id at its existing allocation point.
 /// Kinds without a lifetime slot pass None; a bound owner must keep its id.
@@ -124,11 +128,52 @@ pub(super) trait Entity: EntityRules {
     fn body_fall_distance(&self) -> f64 {
         0.0
     }
-    fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
+    fn ground_state(&self) -> Option<&GroundState> {
         None
     }
-    fn ground_state_mut(&mut self) -> Option<&mut sunrise_world::ground_support::GroundState> {
+    fn ground_state_mut(&mut self) -> Option<&mut GroundState> {
         None
+    }
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        (
+            sunrise_client::motion::BodyMotion::entity_context(self.id(), self.position()),
+            Some(PowderSnowSubject {
+                fall_distance: self.body_fall_distance(),
+                ..Default::default()
+            }),
+        )
+    }
+    /// Update the live owner's retained support. None is `Entity.setOnGround`'s null movement.
+    fn update_retained_ground(
+        &mut self,
+        world: &sunrise_client::world::World,
+        binding: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
+        on_ground: bool,
+        movement: Option<Vec3>,
+    ) -> Result<bool, CollisionScanError<std::io::Error>> {
+        let Some(mut ground) = self.ground_state().copied() else {
+            return Ok(false);
+        };
+        ground.on_ground = on_ground;
+        let (context, subject) = self.support_collision();
+        let mut scene = SceneCollisions {
+            world,
+            binding,
+            subject,
+        };
+        let scan = scene.update_ground_support(
+            &mut ground,
+            self.position(),
+            self.bounds(),
+            movement,
+            context,
+        );
+        if let Some(owner) = self.ground_state_mut() {
+            // Entity.setOnGround writes the flag before checking support.
+            *owner = ground;
+            return scan.map(|()| true);
+        }
+        Ok(false)
     }
     /// `Entity.maxUpStep`.
     fn get_step_height(&self) -> f32 {
@@ -331,10 +376,14 @@ pub(super) trait Entity: EntityRules {
         None
     }
     fn release_after_piston(&mut self, _no_block_collision: bool) {}
-    /// `setOnGroundWithMovement` at the end of a piston's or shulker lid's
-    /// `Entity.move`, for the kinds that keep the flag: on a server it runs
-    /// for every push, sideways ones and those the collision turned away included.
-    fn set_piston_on_ground(&mut self, _on_ground: bool) {}
+    /// Set the ground flag for a push, or for the carry pass's collider contact.
+    /// Terrain support still comes from `Entity.checkSupportingBlock`; a collider
+    /// is not `mainSupportingBlockPos`.
+    fn set_piston_on_ground(&mut self, on_ground: bool) {
+        if let Some(ground) = self.ground_state_mut() {
+            ground.on_ground = on_ground;
+        }
+    }
     /// `Entity.setOnGround` from outside the entity's own move (`/tp`'s
     /// `TeleportCommand.performTeleport`); kinds that keep no ground flag ignore it.
     fn set_on_ground(&mut self, _on_ground: bool) {}
@@ -741,11 +790,14 @@ mod render_bounds_tests {
     }
 }
 
-/// The common retained support owned by bodies that use `BodyMotion`.
+/// The common retained support owned by moving bodies.
 macro_rules! stored_ground {
     () => {
+        stored_ground!(fall_distance);
+    };
+    ($fall_distance:ident) => {
         fn body_fall_distance(&self) -> f64 {
-            self.fall_distance
+            self.$fall_distance
         }
         fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
             Some(&self.ground)
@@ -926,8 +978,8 @@ impl Game<'_> {
                     item.velocity.z * v[2],
                 );
             }
-            mod_api::EntityWrite::Hurt { amount, .. } => {
-                let _ = item.hurt(amount as i32);
+            mod_api::EntityWrite::Hurt { amount } => {
+                self.hurt_moving_item(item, amount);
             }
             mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,
             mod_api::EntityWrite::SetFireTicks(ticks) => item.fire_ticks = ticks,
@@ -1115,6 +1167,9 @@ impl Game<'_> {
         if !client {
             // `Entity.applyEffectsFromBlocks`' checkInsideBlocks, at the batch.
             self.sweep_item_inside(item);
+            if item.health <= 0 {
+                return (false, true);
+            }
         }
         if let Some(pos) = step.vertical_contact {
             let state = self.world.block(pos.x, pos.y, pos.z);
@@ -1925,13 +1980,14 @@ impl Game<'_> {
 
 impl Entity for Mob {
     const SERIALIZES_ATTACHMENTS: bool = true;
+    stored_ground!();
 
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
-
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        let (context, subject) = Mob::support_collision(self);
+        (context, Some(subject))
     }
     /// `Entity.noPhysics`: written through the mod API; no mob tick rewrites it
     /// (a vex sets it only for the length of its own, custom travel). Its own
@@ -2008,9 +2064,6 @@ impl Entity for Mob {
     fn bounds(&self) -> Aabb {
         Mob::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
     fn get_step_height(&self) -> f32 {
         self.kind.step_height as f32
     }
@@ -2049,9 +2102,6 @@ impl Entity for Mob {
         );
         self.needs_sync = true;
     }
-    fn is_supported_by(&self, pos: BlockPos) -> bool {
-        self.supporting == Some([pos.x, pos.y, pos.z])
-    }
     fn thunder_hit(&self) -> ThunderHit {
         if self.alive() {
             ThunderHit::Mob
@@ -2071,6 +2121,15 @@ impl Entity for Mob {
 
 impl Entity for ItemEntity {
     stored_ground!();
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        (
+            self.collision_context(),
+            Some(PowderSnowSubject {
+                fall_distance: self.fall_distance,
+                ..Default::default()
+            }),
+        )
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2406,6 +2465,11 @@ fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
 }
 
 impl Entity for ArmorStand {
+    stored_ground!(enchantment_fall_distance);
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        let (context, subject) = ArmorStand::support_collision(self);
+        (context, Some(subject))
+    }
     fn reset_fall_distance(&mut self) {
         self.enchantment_fall_distance = 0.0;
     }
@@ -2421,9 +2485,6 @@ impl Entity for ArmorStand {
         *position = position.add_vector(movement);
     }
 
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn rotation(&self) -> [f32; 2] {
         [self.yaw, self.pitch]
     }
@@ -2504,14 +2565,6 @@ impl Entity for ArmorStand {
     fn bounds(&self) -> Aabb {
         ArmorStand::bounds(self)
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    /// A living entity's own flag too: keeping the old support flag would run
-    /// Frost Walker while the stand is moving over open water.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
     fn is_living(&self) -> bool {
         true
     }
@@ -2558,6 +2611,9 @@ impl Entity for ArmorStand {
 
 impl Entity for PrimedTnt {
     stored_ground!();
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        (self.collision_context(), Some(self.powder_snow_subject()))
+    }
     fn reset_fall_distance(&mut self) {
         // Primed TNT keeps no fall distance here.
     }
@@ -2642,6 +2698,16 @@ impl Entity for PrimedTnt {
 
 impl Entity for FallingBlock {
     stored_ground!();
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        (
+            sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
+            Some(PowderSnowSubject {
+                fall_distance: self.fall_distance,
+                falling_block: true,
+                ..Default::default()
+            }),
+        )
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2709,6 +2775,18 @@ impl Entity for FallingBlock {
 
 impl Entity for Projectile {
     stored_ground!();
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        (
+            sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
+            Some(PowderSnowSubject {
+                fall_distance: self
+                    .arrow
+                    .as_ref()
+                    .map_or(self.fall_distance, |arrow| arrow.fall_distance),
+                ..Default::default()
+            }),
+        )
+    }
     fn reset_fall_distance(&mut self) {
         if let Some(arrow) = self.arrow.as_deref_mut() {
             arrow.fall_distance = 0.0;
@@ -2733,15 +2811,12 @@ impl Entity for Projectile {
         self.previous_yaw = self.yaw;
         self.previous_pitch = self.pitch;
     }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
     /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
     fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
+        self.ground.on_ground = on_ground;
     }
     fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
+        self.ground.on_ground = on_ground;
     }
     fn native_type(&self) -> Cow<'_, str> {
         self.entity_type().into()
@@ -2979,13 +3054,6 @@ impl Entity for ThrownTrident {
         let pitch = if pitch.is_nan() { previous[1] } else { pitch };
         self.yaw = yaw;
         self.pitch = pitch.clamp(-90.0, 90.0);
-    }
-    fn on_ground(&self) -> bool {
-        self.ground.on_ground
-    }
-    /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.ground.on_ground = on_ground;
     }
     fn set_on_ground(&mut self, on_ground: bool) {
         self.ground.on_ground = on_ground;
