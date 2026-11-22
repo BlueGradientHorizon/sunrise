@@ -1900,45 +1900,16 @@ pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
         step_on: |level, step, movement| {
             use self::bounce_restitution::StepOnView;
             use sunrise_client::block_contact::StepLevel;
-            let c = step.contact;
-            let Ok(state) = c.state.try_into_api() else {
-                return Vec::new();
-            };
-            use mod_api::LevelRandomSide;
-            let (mut hit, read);
-            let (side, mut writes) = match level {
-                StepLevel::Server(level) => {
-                    hit = HitLevel(level.reborrow());
-                    (
-                        LevelRandomSide::Server(&mut hit),
-                        mod_api::StepOnWrites::server(),
-                    )
-                }
-                StepLevel::Client(level) => {
-                    read = crate::game::native_surface::FrictionView(level);
-                    (
-                        LevelRandomSide::Client(&read),
-                        mod_api::StepOnWrites::default(),
-                    )
-                }
-            };
-            StepOnView {
-                level: side,
-                state: c.state,
+            match level {
+                StepLevel::Server(level) => StepOnView(mod_api::LevelRandomSide::Server(
+                    &mut HitLevel(level.reborrow()),
+                ))
+                .native_step_on(step, movement),
+                StepLevel::Client(level) => StepOnView(mod_api::LevelRandomSide::Client(
+                    &crate::game::native_surface::FrictionView(level),
+                ))
+                .native_step_on(step, movement),
             }
-            .native_step_on(mod_api::__private::StepOnCall {
-                entity: c.entity,
-                kind: c.kind,
-                state,
-                pos: mod_api::BlockPos::new(c.position.x, c.position.y, c.position.z),
-                stepping_carefully: step.carefully,
-                bounds: [
-                    step.bounds.min_position().components(),
-                    step.bounds.max_position().components(),
-                ],
-                movement,
-                writes: &mut writes,
-            })
         },
         any_inside: || mod_api::__private::has_scoped_hook(mod_api::HookId::EntityInside),
         inside_listens: |state| {

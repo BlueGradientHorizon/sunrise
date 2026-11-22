@@ -30,6 +30,7 @@ pub trait Hooks {
         scope = "block",
         key = "state",
         host = "level_random_side",
+        dispatch = "direct",
         target = "sunrise_client::game::native_hooks::bounce_restitution::StepOnView<'_>::native_step_on",
         neoforge = "none (vanilla Block.stepOn)"
     )]

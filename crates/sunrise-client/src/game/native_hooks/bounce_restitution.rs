@@ -17,68 +17,89 @@ impl FrictionView<'_> {
     }
 }
 
-pub(super) struct StepOnView<'a> {
-    pub(super) level: mod_api::LevelRandomSide<'a>,
-    pub(super) state: BlockStateId,
-}
+pub(super) struct StepOnView<'a>(pub(super) mod_api::LevelRandomSide<'a>);
 
 impl StepOnView<'_> {
     /// `Block.stepOn` before the simulation checks the blocks it traversed.
     pub(super) fn native_step_on(
         &mut self,
-        call: mod_api::__private::StepOnCall<'_>,
+        step: sunrise_client::block_contact::StepContact<'_>,
+        movement: &mut [f64; 3],
     ) -> Vec<mod_api::EntityWrite> {
-        use crate::game::api_values::TryIntoEngine;
-        let position = BlockPos::new(call.pos.x, call.pos.y, call.pos.z);
-        let side = match &mut self.level {
-            mod_api::LevelRandomSide::Server(level) => mod_api::LevelRandomSide::Server(*level),
-            mod_api::LevelRandomSide::Client(level) => mod_api::LevelRandomSide::Client(*level),
+        use crate::game::api_values::{TryIntoApi, TryIntoEngine};
+        let c = step.contact;
+        let Ok(state) = c.state.try_into_api() else {
+            return Vec::new();
+        };
+        let (side, mut queued) = match &mut self.0 {
+            mod_api::LevelRandomSide::Server(level) => (
+                mod_api::LevelRandomSide::Server(*level),
+                mod_api::StepOnWrites::server(),
+            ),
+            mod_api::LevelRandomSide::Client(level) => (
+                mod_api::LevelRandomSide::Client(*level),
+                mod_api::StepOnWrites::default(),
+            ),
         };
         let mut blocks = Vec::new();
         let mut entity_writes = Vec::new();
-        let mut composed = *call.movement;
-        mod_api::dispatch_step_on(side, call, |part, level, event| {
-            let previous = *event.movement;
-            part.step_on(level, event);
-            let (requests, writes) = event.__take_writes();
-            // Entity writes drain in order after the callbacks' direct velocity edits.
-            // Reuse the composed prefix unless this Part changed the starting velocity.
-            let edited = *event.movement != previous;
-            let mut velocity = if edited { *event.movement } else { composed };
-            let mut accepts = |write: &mod_api::EntityWrite| match *write {
-                mod_api::EntityWrite::Push(v) => {
-                    for (axis, push) in velocity.iter_mut().zip(v) {
-                        *axis += push;
+        let mut composed = *movement;
+        mod_api::dispatch_step_on(
+            side,
+            c.entity,
+            c.kind,
+            state,
+            mod_api::BlockPos::new(c.position.x, c.position.y, c.position.z),
+            step.carefully,
+            [
+                step.bounds.min_position().components(),
+                step.bounds.max_position().components(),
+            ],
+            &mut queued,
+            movement,
+            |part, level, event| {
+                let previous = *event.movement;
+                part.step_on(level, event);
+                let (requests, writes) = event.__take_writes();
+                // Entity writes drain in order after the callbacks' direct velocity edits.
+                // Reuse the composed prefix unless this Part changed the starting velocity.
+                let edited = *event.movement != previous;
+                let mut velocity = if edited { *event.movement } else { composed };
+                let mut accepts = |write: &mod_api::EntityWrite| match *write {
+                    mod_api::EntityWrite::Push(v) => {
+                        for (axis, push) in velocity.iter_mut().zip(v) {
+                            *axis += push;
+                        }
+                        velocity.iter().all(|v| v.is_finite())
                     }
-                    velocity.iter().all(|v| v.is_finite())
+                    mod_api::EntityWrite::SetMovement(v) => {
+                        velocity = v;
+                        v.iter().all(|v| v.is_finite())
+                    }
+                    mod_api::EntityWrite::StuckIn(v) => v.iter().all(|v| v.is_finite()),
+                    mod_api::EntityWrite::Hurt { amount } => amount.is_finite(),
+                    _ => true,
+                };
+                let valid = event.movement.iter().all(|v| v.is_finite())
+                    && (!edited || entity_writes.iter().all(&mut accepts))
+                    && writes.iter().all(accepts);
+                let kept = blocks.len();
+                if valid
+                    && requests
+                        .into_iter()
+                        .map(|write| write.try_into_engine(&()))
+                        .try_for_each(|write| write.map(|write| blocks.push(write)))
+                        .is_ok()
+                {
+                    composed = velocity;
+                    entity_writes.extend(writes);
+                } else {
+                    blocks.truncate(kept);
+                    *event.movement = previous;
                 }
-                mod_api::EntityWrite::SetMovement(v) => {
-                    velocity = v;
-                    v.iter().all(|v| v.is_finite())
-                }
-                mod_api::EntityWrite::StuckIn(v) => v.iter().all(|v| v.is_finite()),
-                mod_api::EntityWrite::Hurt { amount } => amount.is_finite(),
-                _ => true,
-            };
-            let valid = event.movement.iter().all(|v| v.is_finite())
-                && (!edited || entity_writes.iter().all(&mut accepts))
-                && writes.iter().all(accepts);
-            let kept = blocks.len();
-            if valid
-                && requests
-                    .into_iter()
-                    .map(|write| write.try_into_engine(&()))
-                    .try_for_each(|write| write.map(|write| blocks.push(write)))
-                    .is_ok()
-            {
-                composed = velocity;
-                entity_writes.extend(writes);
-            } else {
-                blocks.truncate(kept);
-                *event.movement = previous;
-            }
-        });
-        sunrise_client::block_contact::landed(self.state, position, blocks);
+            },
+        );
+        sunrise_client::block_contact::landed(c.state, c.position, blocks);
         entity_writes
     }
 }
