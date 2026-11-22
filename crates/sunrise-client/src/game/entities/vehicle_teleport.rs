@@ -764,7 +764,7 @@ impl Game<'_> {
         }
     }
 
-    /// The players seated on `vehicle` take `transition`: the acting body here (`leave_guest` publishes it), the others through the hub.
+    /// The players seated on `vehicle` take `transition`: the acting body here (the put-back at the end of `guest_turn` publishes it), the others through the hub.
     fn teleport_riding_players(
         &mut self,
         vehicle: u32,

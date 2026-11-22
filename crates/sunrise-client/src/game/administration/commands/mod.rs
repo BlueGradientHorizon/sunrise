@@ -1477,7 +1477,7 @@ impl Game<'_> {
                     p.ground.on_ground = true;
                 }
                 // A server player's teleport is told to the mods once their
-                // move is in the hub (`leave_guest`).
+                // move is in the hub (the put-back at the end of `guest_turn`).
                 if let (Some(conn), Some(uuid), Some(name), Some(from)) = (
                     self.lan_acting,
                     self.lan_acting_uuid,

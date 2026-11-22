@@ -7,7 +7,7 @@
 //! block log, the level events and the entity tracker.
 use super::{
     Dim, Game, GuestUse, Hit, InteractTarget, Mining, Screen,
-    building_players::{BuildingPlayer, BuildingPlayers, HubBodies, shared},
+    building_players::{BuildingPlayer, HubBodies, shared},
     lan::LanHost,
     lan_crafting::MenuRemoval,
     level_sounds::LevelSound,
