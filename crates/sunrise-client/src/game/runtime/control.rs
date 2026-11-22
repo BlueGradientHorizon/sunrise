@@ -1504,14 +1504,18 @@ impl Game<'_> {
 
     /// Release any untagged keyboard-standin holds on non-toggle keys bound to `physical`.
     fn release_control_keyboard_standin(&mut self, physical: KeyCode) {
-        for target in self.settings.keys.translate_all(physical) {
-            if let Ok(key) = target {
-                self.physical_keys.remove(&key);
-                if !matches!(key, KeyCode::ShiftLeft | KeyCode::ControlLeft)
-                    && self.keys.held_by(&key, Source::Keyboard)
-                {
-                    self.release_device_key(&key, Source::Keyboard);
-                }
+        for key in self
+            .settings
+            .keys
+            .translate_all(physical)
+            .into_iter()
+            .flatten()
+        {
+            self.physical_keys.remove(&key);
+            if !matches!(key, KeyCode::ShiftLeft | KeyCode::ControlLeft)
+                && self.keys.held_by(&key, Source::Keyboard)
+            {
+                self.release_device_key(&key, Source::Keyboard);
             }
         }
     }
