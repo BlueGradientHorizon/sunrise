@@ -773,6 +773,7 @@ fn write_requirement_review_game_lock(sdk_data: &Path) {
         ("log", "0.4.34"),
         ("parser", "3.1.0"),
         ("zero", "0.0.1"),
+        ("zero_pre", "0.0.1-alpha.1"),
     ] {
         lock.push_str(&format!(
             "[[package]]\nname='{name}'\nversion='{version}'\nsource='{CRATES_IO}'\n"
@@ -788,7 +789,7 @@ fn native_requirement_review_warns_on_an_edited_row_and_follows_target_path_depe
     write_requirement_review_game_lock(sdk.path());
     let old = package_for_requirement_review(
         files.path(),
-        "[package]\nname='coords_hud'\nversion='0.1.0'\n[dependencies]\nsyn='3.0.10'\n\
+        "[package]\nname='coords_hud'\nversion='0.1.0'\n[dependencies]\nsyn='3.0.10'\nolder={package='parser',version='=3.0.9'}\nzero_pre='0.0.*'\n\
          [target.'cfg(unix)'.build-dependencies]\nhelper={path='src/helper'}\n",
         "[package]\nname='helper'\nversion='0.1.0'\n[dev-dependencies]\n\
          other_json={package='serde_json',version='=1.0.154'}\nlog='>0.4.34, <0.5'\n",
@@ -809,9 +810,13 @@ fn native_requirement_review_warns_on_an_edited_row_and_follows_target_path_depe
         review.errors.is_empty() && review.notes.is_empty(),
         "{review:?}"
     );
-    assert_eq!(review.warnings.len(), 3, "{review:?}");
+    assert_eq!(review.warnings.len(), 5, "{review:?}");
     for (warning, (manifest, name, req, pins)) in review.warnings.iter().zip([
+        // Below the game's pin on its line: a build could only use it by moving the pin back.
+        ("Cargo.toml", "parser", "=3.0.9", "3.1.0"),
         ("Cargo.toml", "syn", "3.0.10", "3.0.5, 3.0.6"),
+        // A prerelease pin shares its line with its own release.
+        ("Cargo.toml", "zero_pre", "0.0.*", "0.0.1-alpha.1"),
         ("src/helper/Cargo.toml", "log", ">0.4.34, <0.5", "0.4.34"),
         ("src/helper/Cargo.toml", "serde_json", "=1.0.154", "1.0.151"),
     ]) {
@@ -826,7 +831,7 @@ fn native_requirement_review_warns_on_an_edited_row_and_follows_target_path_depe
             assert!(warning.contains(fact), "missing {fact}: {warning}");
         }
     }
-    assert!(!review.warnings[0].contains("2.0.119"), "{review:?}");
+    assert!(!review.warnings[1].contains("2.0.119"), "{review:?}");
 
     // A valid archive at the wrong digest path must not be attributed to the edited row.
     let mut wrong_hash = head[0].clone();

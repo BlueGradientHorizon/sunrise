@@ -180,7 +180,7 @@ pub(super) fn travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<(), super::living::TravelTrample> {
+) -> Result<(), super::living::TravelPause> {
     m.move_relative(m.ai.speed, input);
     m.travel_move(w, level, events, pause, |m, _, _, _| {
         m.velocity = m.velocity.scale(0.9);

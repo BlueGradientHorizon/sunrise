@@ -18,7 +18,7 @@ fn orb(at: Vec3) -> ExperienceOrb {
         velocity: Vec3::ZERO,
         value: 1,
         age: 0,
-        on_ground: false,
+        ground: Default::default(),
         count: 1,
         fire_ticks: 0,
         ticks: 0,

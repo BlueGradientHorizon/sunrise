@@ -191,6 +191,16 @@ impl Renderer {
         Ok(())
     }
 
+    /// Move a validated upload out of a candidate renderer until model apply.
+    pub fn take_prepared_models(&mut self) -> Option<PreparedModels> {
+        self.prepared_models.take()
+    }
+
+    /// Publish the already validated model buffer after the atlas is visible.
+    pub fn publish_prepared_models(&mut self, models: Option<PreparedModels>) {
+        self.prepared_models = models;
+    }
+
     /// The uploaded generation, when a prepared buffer is resident.
     pub fn prepared_generation(&self) -> Option<u64> {
         self.prepared_models

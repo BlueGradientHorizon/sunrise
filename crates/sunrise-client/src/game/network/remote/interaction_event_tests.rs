@@ -437,7 +437,7 @@ fn right_click_block_explicit_allow_overrides_sneak_skip_on_both_sides() {
                     .unwrap();
                 game.world.set(0, 63, 0, stone).unwrap();
                 game.forced_hit = Some(hit());
-                game.keys.insert(winit::keyboard::KeyCode::ShiftLeft);
+                game.insert_device_key(winit::keyboard::KeyCode::ShiftLeft);
                 if let Some(remote) = game.remote.as_mut() {
                     remote.last_input |= super::SHIFT_INPUT;
                 }
@@ -1660,9 +1660,11 @@ fn item_use_overlap_matrix_on_the_server() {
                                         }
                                     }
                                     if sneak {
-                                        game.keys.insert(winit::keyboard::KeyCode::ShiftLeft);
+                                        game.insert_device_key(winit::keyboard::KeyCode::ShiftLeft);
                                     } else {
-                                        game.keys.remove(&winit::keyboard::KeyCode::ShiftLeft);
+                                        game.remove_device_key(
+                                            &winit::keyboard::KeyCode::ShiftLeft,
+                                        );
                                     }
                                     *observer.0.lock().unwrap() = Controls {
                                         expected_hand: Some(hand),

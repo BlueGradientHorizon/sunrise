@@ -284,7 +284,7 @@ impl Game<'_> {
 
     /// `Leashable.angularFriction`.
     fn boat_angular_friction(&self, b: &Boat) -> f32 {
-        if b.on_ground {
+        if b.ground.on_ground {
             let (x, z) = (b.position.x.floor() as i32, b.position.z.floor() as i32);
             let y = (b.position.y - 0.500_001).floor() as i32;
             let state = self.world.block(x, y, z);
@@ -479,7 +479,7 @@ impl Game<'_> {
         let id = self.boats[i].id;
         // The sneak branch: the player's mobs and boats on leads are re-tied
         // to this boat.
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.held_mapping(Action::Sneak);
         if sneaking
             && self.tie_player_leads(glam::DVec3::new(c.x, c.y, c.z), Holder::Boat(id), None)
         {

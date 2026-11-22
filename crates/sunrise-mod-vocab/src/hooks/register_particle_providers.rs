@@ -6,11 +6,12 @@ pub trait Hooks {
     /// options, ticks its live particles in one batch, and extracts quads for visible particles. Later registration for the same type
     /// replaces the previous provider. Registration runs once before resources load; each reload
     /// rebinds the sprite sets and discards live provider particles.
+    /// If this listener panics or a phase call is refused, none of its registrations take effect.
     #[notes = r#"## Particle providers
 
 Register a common `ParticleType<T>` in `Hooks::register`, supplying its map and stream codecs.
 `Hooks::register_particle_providers` binds it on the logical client with
-`event.providers.register_sprite_set(ty, Arc::new(provider))`. The matching sprite list is
+`providers.register_sprite_set(ty, Arc::new(provider))`. The matching sprite list is
 `assets/<namespace>/particles/<path>.json`. Spawn using `ty.options(value)`; a unit type uses
 `ParticleMapCodec::unit()`, `ParticleStreamCodec::wire()` and `ty.options(())`.
 
@@ -39,11 +40,14 @@ Each visible particle also calls `ParticleProvider::extract` with the current fr
 submits its normal quad. An override may append independently placed opaque or translucent
 quads to its own sprite atlas or emit nothing."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
+        version = 3,
         contract = "listen",
+        staged_surface = "providers",
         context = "registration",
-        version = 2,
         neoforge = "RegisterParticleProvidersEvent"
     )]
-    fn register_particle_providers();
+    fn register_particle_providers(providers: &mut dyn ParticleProviders);
 }

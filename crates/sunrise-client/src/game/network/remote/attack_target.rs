@@ -40,9 +40,14 @@ impl Game<'_> {
                 if !living {
                     self.remote_object_attack();
                 }
-            } else if let Some(row) = self.shown_remote_general(id) {
+            } else if let Some(kind) = self
+                .remote
+                .as_ref()
+                .and_then(|r| r.general.rows.get(&id))
+                .map(|row| row.kind())
+            {
                 // A row reaches Player.attack but hurtClient is false.
-                self.remote_sweep_event(row.kind(), false);
+                self.remote_sweep_event(kind, false);
             }
         }
         self.reset_attack_strength();
