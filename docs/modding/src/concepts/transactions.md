@@ -79,9 +79,11 @@ original blocks, block entities and connection groups on abort; it publishes who
 on commit without drops or neighbor updates. When the edited level has no open
 transaction, it commits immediately even if a different level has a transaction open. If both kinds of write touch one position,
 they replay in call order; a later bulk edit cannot substitute its new block
-entity for the ordinary removal's old one. `LevelRef::destroy_block` returns
-`Ok(None)` while a transaction is open, before running loot, experience or break
-effects.
+entity for the ordinary removal's old one. `LevelRef::destroy_block` prepares loot and experience
+against the still-standing block, then writes its tentative replacement. Item entities, experience,
+break effects and the destruction game event publish only on commit. With `collect`, the prepared
+stacks are returned immediately instead of being spawned. A transaction in another level does not
+by itself defer destruction.
 
 `ItemEntityRef::set_stack` writes the replacement stack immediately and joins the
 innermost transaction in the item's level, if one is open. An abort restores the old

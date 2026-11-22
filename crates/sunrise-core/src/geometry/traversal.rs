@@ -39,6 +39,16 @@ pub fn traverse_blocks<T>(
     if !origin.is_finite() || !finish.is_finite() || delta.iter().any(|v| !v.is_finite()) {
         return Err(TraversalError::NonFinite);
     }
+    // A BlockPos has signed 32-bit coordinates. Do not let Mth.floor saturation
+    // or wrapping turn an out-of-domain ray into a walk through unrelated cells.
+    if [origin, finish].into_iter().any(|point| {
+        point
+            .components()
+            .into_iter()
+            .any(|v| v < f64::from(i32::MIN) || v >= f64::from(i32::MAX) + 1.0)
+    }) {
+        return Err(TraversalError::InvalidBounds);
+    }
     let mut position = origin.components().map(floor_i32);
     let sign = delta.map(|v| {
         if v == 0.0 {

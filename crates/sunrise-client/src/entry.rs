@@ -361,7 +361,6 @@ pub(crate) fn install_client_hooks() {
         collision_shape: |context, pos, state, query, shape| {
             crate::game::native_collision_shape::collision_shape(context, pos, state, query, shape);
         },
-        collision_shape_refused: crate::game::native_collision_shape::refused,
         player_stays_on_ground_surface: |context, entity, staying| {
             if !mod_api::__private::listened(mod_api::HookId::PlayerStaysOnGroundSurface) {
                 return;

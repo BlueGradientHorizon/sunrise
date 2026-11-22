@@ -388,9 +388,8 @@ local data; placement still follows the server's result. See [Capabilities](capa
 
 Redstone and shape reads on `LevelHost`, for placement and survival: `signal(pos, direction)`
 (`SignalGetter.getSignal`), `direct_signal`, `direct_signal_to`, `best_neighbor_signal(pos)`,
-`has_neighbor_signal(pos)` (what a lamp's or a door's placement reads) and `collision_shape(pos)` (the block's
-collision boxes at `pos`, block-local, a block entity's published shape included, empty for no collision, `None`
-for an unloaded position). The signal reads are the game's own, `block_signal` and `should_check_weak_power`
+`has_neighbor_signal(pos)` (what a lamp's or a door's placement reads) and `collision_shape(pos)` (the block-local `VoxelShape` at `pos`, including a block entity's published geometry;
+`None` for an unloaded position). Use `shape.boxes()` to visit the geometry without copying it. The signal reads are the game's own, `block_signal` and `should_check_weak_power`
 listeners included, and are the same ones `LevelRef` and the tick hooks give. `state_for_placement` and
 `can_survive` receive a level that answers them, so a block can place or survive by what powers it or what shape
 sits beside it. The levels of `state_for_placement`, `can_survive` and the level tick and shape-update hooks answer all of them;

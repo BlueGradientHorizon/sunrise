@@ -959,7 +959,7 @@ handle, an entity the client doesn't track and a level it doesn't show:
 - `block_entity.viewers(host)` lists the players with its container open on the server, read from their open menus
   when called: players in its level, not spectators or fake players, a double chest's menu on both halves. `None` for
   a stale handle or a client.
-- `level.block_shape(host, state, pos, kind)` reads a supplied state's block-local outline or collision boxes with an empty context, without changing the world's state; pass `level.block_state(host, pos)` for the stored state.
+- `level.visit_block_shape(host, state, pos, kind, &mut visit)` visits a supplied state's block-local outline or collision boxes with an empty context, without changing the world's state; pass `level.block_state(host, pos)` for the stored state.
   `None` for a client, unknown state, stale handle or closed level; parked levels can be read.
 - `level.visit_entities_in(host, min, max, &mut visit)` visits readable entities whose boxes intersect the given box
   in the active server level or the client's displayed level. The visitor can read them through the same host.
@@ -980,6 +980,9 @@ handle, an entity the client doesn't track and a level it doesn't show:
 `tool: None` means an empty hand. With `collect`, the returned stacks are not spawned as item entities;
 without it, a successful break returns an empty list after spawning them. The normal block-drop hook
 still runs once before either outcome; tool enchantments and vanilla random ordering are unchanged.
+In the block's level transaction the replacement is readable immediately; entities, experience and
+break effects wait for commit. Aborting restores the block. Another level's transaction alone does
+not defer destruction.
 `drop: false` suppresses resources. `None` means nothing broke, including an invalid write or air.
 `level.set_break_progress(host, breaker, pos, stage)` shows stages 0..9 or clears the crack otherwise;
 a machine uses a stable negative breaker id.

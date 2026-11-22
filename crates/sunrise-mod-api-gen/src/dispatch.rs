@@ -1302,11 +1302,14 @@ pub(super) fn emit<'a>(
         } else {
             ""
         };
-        // Camera extraction is per frame. Fail only the invocation, without quarantining
-        // the subscriber, while keeping the same scopes and output rollback as other hooks.
-        let camera_frame = matches!(
+        // Camera extraction and collision shape answers fail only the invocation, with
+        // the same per-listener scope and output rollback as other hooks.
+        let transient_answer = matches!(
             name,
-            "compute_camera_angles" | "camera_position" | "render_view_transform"
+            "compute_camera_angles"
+                | "camera_position"
+                | "render_view_transform"
+                | "collision_shape"
         );
         let callback = if hook.independent_listener {
             format!("super::runtime::Callback::IndependentHook(HookId::{hook_id})")
@@ -1314,8 +1317,10 @@ pub(super) fn emit<'a>(
             format!("HookId::{hook_id}")
         };
         let run = |mod_id_expr: &str, on_abort: &str, expression: &str| {
-            let invocation = if camera_frame {
-                format!("super::runtime::invoke_frame(\"{name}\", {mod_id_expr}, || {expression})")
+            let invocation = if transient_answer {
+                format!(
+                    "super::runtime::invoke_without_disabling(\"{name}\", {mod_id_expr}, || {expression})"
+                )
             } else {
                 format!(
                     "super::runtime::invoke({callback}, \"{name}\", {mod_id_expr}, || {expression})"
@@ -1383,14 +1388,8 @@ pub(super) fn emit<'a>(
                 expression
             }
         };
-        // Collision owns one answer for the whole block. Its enclosing adapter
-        // discards that answer and disables the block's Parts, not the mod's hook.
-        let collision_owns_panic = name == "collision_shape";
         // One callee's call: a mod's, or a scoped hook's part's.
         let call = |callee: &str, mod_id_expr: &str, on_abort: &str, exit: &str| {
-            if collision_owns_panic {
-                return format!("{callee}.{name}({invoke});");
-            }
             if let Some((field, stage, _)) = &staged {
                 let accepted = run(
                     mod_id_expr,
