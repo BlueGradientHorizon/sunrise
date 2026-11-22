@@ -330,11 +330,9 @@ impl Game<'_> {
                     .collect()
             })
             .unwrap_or_default();
-        let Some(r) = self.remote.as_mut() else {
+        if self.remote.is_none() {
             return;
-        };
-        let mut lerps = std::mem::take(&mut r.lerps);
-        let mut cart_lerps = std::mem::take(&mut r.cart_lerps);
+        }
         let mut using = Vec::new();
         let mut mob_fx = water_fx;
         let tick_listened = mod_api::__private::listened(mod_api::HookId::PlayerTickPre)
@@ -680,7 +678,12 @@ impl Game<'_> {
                 // the way to the server's position, so the frame draws the step
                 // from the old position.
                 let old = o.position;
-                if let Some(l) = lerps.get_mut(&(o.id as i32)).filter(|l| l.steps > 0) {
+                if let Some(l) = self
+                    .remote
+                    .as_mut()
+                    .and_then(|r| r.lerps.get_mut(&(o.id as i32)))
+                    .filter(|l| l.steps > 0)
+                {
                     let alpha = 1.0 / f64::from(l.steps);
                     o.position = Vec3::new(
                         o.position.x + (l.target[0] - o.position.x) * alpha,
@@ -711,7 +714,12 @@ impl Game<'_> {
                 // AbstractInterpolationHandler.applyPredictedMovement: the orb's
                 // own move carries the target along (vanilla also checks the
                 // moved target for collisions; that check is left out here).
-                if let Some(l) = lerps.get_mut(&(o.id as i32)).filter(|l| l.steps > 0) {
+                if let Some(l) = self
+                    .remote
+                    .as_mut()
+                    .and_then(|r| r.lerps.get_mut(&(o.id as i32)))
+                    .filter(|l| l.steps > 0)
+                {
                     l.target[0] += o.position.x - before.x;
                     l.target[1] += o.position.y - before.y;
                     l.target[2] += o.position.z - before.z;
@@ -750,6 +758,13 @@ impl Game<'_> {
         }
         // ClientLevel.tick: the sky flash fades in a frozen level too.
         self.flash = self.flash.saturating_sub(1);
+        // A shulker's lid in mob_fx can move an observing boat and shift
+        // its interpolation target. Lend the targets only after that push.
+        let Some(r) = self.remote.as_mut() else {
+            return;
+        };
+        let mut lerps = std::mem::take(&mut r.lerps);
+        let mut cart_lerps = std::mem::take(&mut r.cart_lerps);
         if running {
             self.guardian_bubbles();
             // The dragon: LivingEntity's interpolation, inside its aiStep.
