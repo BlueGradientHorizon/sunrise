@@ -200,8 +200,8 @@ fn a_state_past_the_registry_has_airs_facts() {
 
 #[test]
 fn resource_facts_require_explicit_sound_type_identity() {
+    use mod_vocab::BlockSoundTypeIdentity;
     use std::path::Path;
-    use sunrise_mod_vocab::BlockSoundTypeIdentity;
     use sunrise_world::registry::{BlockRegistry, BlockStateId};
 
     let registry = BlockRegistry::from_facts_json(

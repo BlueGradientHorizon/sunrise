@@ -2,9 +2,9 @@
 //! (`gameplay-facts.json`), indexed by registry state ID.
 mod decode;
 use crate::Result;
+use mod_vocab::{BlockSoundCause, BlockSoundType, BlockSoundTypeIdentity, SoundEventKey};
 use serde_json::Value;
 use std::{collections::HashMap, io, path::Path, sync::Arc};
-use sunrise_mod_vocab::{BlockSoundCause, BlockSoundType, BlockSoundTypeIdentity, SoundEventKey};
 use sunrise_world::{
     level::{Behaviours, GameplayStateSource, data::BlockSound},
     registry::{BlockRegistry, BlockStateId},
