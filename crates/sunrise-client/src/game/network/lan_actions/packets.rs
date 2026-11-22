@@ -381,11 +381,7 @@ impl Game<'_> {
                     // ServerPlayerGameMode.abortDestroyBlock clears the dig and the crack; the
                     // clock `destroy_pos` names is left to the next START (#4124).
                     host.play.entry(conn).or_default().dig_ended();
-                    let state = self.world.block(a.pos[0], a.pos[1], a.pos[2]).0 as i32;
-                    host.hub.send_to(
-                        conn,
-                        &C::BlockUpdate(play::BlockUpdate { pos: a.pos, state }),
-                    );
+                    host.hub.send_authoritative_block(conn, &self.world, a.pos);
                     self.guest_crack_progress(conn, a.pos, -1);
                     let Some(host) = self.lan.as_ref() else {
                         return;
@@ -1356,7 +1352,7 @@ impl Game<'_> {
         }
         if let Some(applied) = self
             .lan_owned_menu_click(conn, p)
-            .or_else(|| self.lan_mod_quick_move(conn, p))
+            .or_else(|| self.lan_mod_quick_move(conn, p, None))
         {
             return applied;
         }
@@ -1366,7 +1362,7 @@ impl Game<'_> {
         {
             return true;
         }
-        if let Some(applied) = self.lan_machine_click_asked(conn, p, Default::default()) {
+        if let Some(applied) = self.lan_machine_click(conn, p) {
             return applied;
         }
         if self.lan_station_click(conn, p)

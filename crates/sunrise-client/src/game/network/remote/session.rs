@@ -1,5 +1,17 @@
 use super::*;
 
+use sunrise_protocol::packets::configuration::{ClientInformation, Transfer};
+
+/// Connection already started; its eventual packets still belong to the next listener.
+pub(super) struct RemoteOpening {
+    session: Session,
+    builtin: Arc<Builtin>,
+    lang: Arc<Language>,
+    info: ClientInformation,
+    user: (String, u128),
+    local: bool,
+}
+
 impl Game<'_> {
     pub(in crate::game) fn connect_remote_session(
         &mut self,
@@ -10,84 +22,142 @@ impl Game<'_> {
         lan: bool,
         realm: bool,
     ) -> Result<()> {
-        self.realm_session = realm;
-        self.lan_session = lan;
-        self.reset_tutorial();
-        self.perf.world_opening();
-        // A server's own biomes come over the connection; the last local
-        // world's packed table must not name its ids. The window's own
-        // server thread keeps the one it just set.
-        if local.is_none() {
-            self.world_biomes = None;
-            self.world_biomes_base = None;
-        }
-        let root = self.options.resources.clone();
+        let opening = self.open_remote_session(address, name, local, cookies, lan, true)?;
+        self.install_remote_session(opening, lan, realm)
+    }
+
+    fn open_remote_session(
+        &mut self,
+        address: &str,
+        name: &str,
+        local: Option<sunrise_protocol::connection::Pipe>,
+        cookies: Option<sunrise_client::net::Cookies>,
+        lan: bool,
+        announce: bool,
+    ) -> Result<RemoteOpening> {
+        let root = &self.options.resources;
         let item_data = Arc::clone(&self.res.core.item_data);
-        let builtin = builtin_registries(&root).ok_or("Resources are incomplete: registries.json is missing or invalid. Click \"Prepare again\" in the launcher (or run sunrise-prepare), then try again.")?;
-        let lang = Arc::new(sunrise_client::net::load_language(&root));
-        // Options.createInformation: what the server learns about this player,
-        // sent again when one of those options changes.
+        let builtin = builtin_registries(root).ok_or("Resources are incomplete: registries.json is missing or invalid. Click \"Prepare again\" in the launcher (or run sunrise-prepare), then try again.")?;
+        let lang = Arc::new(sunrise_client::net::load_language(root));
         let info = self
             .settings
             .client_information(client_view_distance(self.settings.render_distance));
-        if local.is_none() {
-            mod_api::content::crash::set_detail(
-                "Server",
-                sunrise_client::net::shown_address(address),
-            );
-        }
         // A signed-in account always plays under its own name.
         let auth = self.auth();
         let name = auth.as_ref().map_or(name, |a| a.name.as_str());
-        let user = auth.as_ref().map_or_else(
-            || {
-                (
-                    name.to_owned(),
-                    sunrise_protocol::crypto::offline_uuid(name),
-                )
-            },
-            |a| (a.name.clone(), a.uuid),
+        let user = (
+            name.to_owned(),
+            auth.as_ref()
+                .map_or_else(|| sunrise_protocol::crypto::offline_uuid(name), |a| a.uuid),
         );
-        self.server_packs_connect(local.is_none().then_some(address), user);
-        let session = match local {
-            Some(pipe) => Session::connect_local(
+        let is_local = local.is_some();
+        if announce && !is_local {
+            self.connection_starts(address, name, lan);
+        }
+        let session = match (local, cookies) {
+            (Some(pipe), _) => Session::connect_local(
                 pipe,
                 name,
                 auth.clone(),
                 info.clone(),
                 lang.clone(),
-                item_data.clone(),
+                item_data,
+                Arc::clone(&self.client_reports),
             ),
-            None => {
-                self.connection_starts(address, name, lan);
-                match cookies {
-                    Some(cookies) => Session::connect_transferred(
-                        address,
-                        name,
-                        auth.clone(),
-                        info.clone(),
-                        lang.clone(),
-                        cookies,
-                        item_data.clone(),
-                    ),
-                    None => {
-                        let connect = if lan {
-                            Session::connect_lan
-                        } else {
-                            Session::connect
-                        };
-                        connect(
-                            address,
-                            name,
-                            auth.clone(),
-                            info.clone(),
-                            lang.clone(),
-                            item_data.clone(),
-                        )
-                    }
-                }
+            (None, Some(cookies)) => Session::connect_transferred(
+                address,
+                name,
+                auth.clone(),
+                info.clone(),
+                lang.clone(),
+                cookies,
+                item_data,
+                Arc::clone(&self.client_reports),
+            ),
+            (None, None) => {
+                let connect = if lan {
+                    Session::connect_lan
+                } else {
+                    Session::connect
+                };
+                connect(
+                    address,
+                    name,
+                    auth.clone(),
+                    info.clone(),
+                    lang.clone(),
+                    item_data,
+                    Arc::clone(&self.client_reports),
+                )
             }
         };
+        Ok(RemoteOpening {
+            session,
+            builtin,
+            lang,
+            info,
+            user,
+            local: is_local,
+        })
+    }
+
+    /// `handleTransfer`: close the old connection and start the new one now.
+    /// Keep the old listener installed for the remaining handlers of this bundle.
+    pub(super) fn start_remote_transfer(
+        &mut self,
+        transfer: Transfer,
+    ) -> Result<Option<RemoteOpening>> {
+        let Some(remote) = self.remote.as_ref() else {
+            return Ok(None);
+        };
+        remote.session.close_after_pending();
+        if remote.session.address == "local" {
+            return Ok(None);
+        }
+        let address = format!("{}:{}", transfer.host, transfer.port);
+        let name = remote.session.name.clone();
+        let cookies = remote.session.cookies.clone();
+        self.open_remote_session(&address, &name, None, Some(cookies), false, false)
+            .map(Some)
+    }
+
+    pub(super) fn install_remote_transfer(&mut self, opening: RemoteOpening) -> Result<()> {
+        self.connection_left(sunrise_hooks::connection::Left::Transferred);
+        self.leave_server(None)?;
+        self.connection_starts(&opening.session.address, &opening.session.name, false);
+        self.install_remote_session(opening, false, false)
+    }
+
+    fn install_remote_session(
+        &mut self,
+        opening: RemoteOpening,
+        lan: bool,
+        realm: bool,
+    ) -> Result<()> {
+        let RemoteOpening {
+            session,
+            builtin,
+            lang,
+            info,
+            user,
+            local,
+        } = opening;
+        self.reset_client_item_use();
+        self.realm_session = realm;
+        self.lan_session = lan;
+        self.reset_tutorial();
+        self.perf.world_opening();
+        if !local {
+            // A server's own biomes come over the connection, not from the last local world.
+            self.world_biomes = None;
+            self.world_biomes_base = None;
+            mod_api::content::crash::set_detail(
+                "Server",
+                sunrise_client::net::shown_address(&session.address),
+            );
+        }
+        self.server_packs_connect((!local).then_some(&session.address), user);
+        let root = self.options.resources.clone();
         let player_type = super::super::perspective::player_type(&root);
         let mut streaming = Streaming::new(
             Arc::new(NoTerrain),
@@ -98,6 +168,10 @@ impl Game<'_> {
         streaming.radius = self.settings.render_distance;
         self.streaming = streaming;
         self.reset_client_world(0);
+        let group_count = sunrise_client::chunk_map::ConnectionGroupCount::default();
+        self.world
+            .chunks
+            .track_connection_groups(group_count.clone());
         self.save = Arc::new(SaveDir::new(
             std::env::temp_dir().join("sunrise-remote-unused"),
             sunrise_client::save::LevelShape::OVERWORLD,
@@ -122,7 +196,6 @@ impl Game<'_> {
         self.container = None;
         self.carried = None;
         self.using = None;
-        self.end_mod_use();
         self.clicks.miss_time = 0;
         // A new LocalPlayer has no effects: the server sends what it has
         // (ClientboundUpdateMobEffectPacket on placement).
@@ -176,6 +249,7 @@ impl Game<'_> {
         self.remote = Some(Remote {
             selector_metadata_supported: true,
             professions: self.client_professions()?,
+            display_address: Remote::display_address_for(&session.address),
             session,
             brand: "unknown".into(),
             recipe_viewer: Default::default(),
@@ -238,6 +312,7 @@ impl Game<'_> {
             heard_level: None,
             level_load: sunrise_client::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
+            group_count,
             predictions: HashMap::new(),
             menu: ClientMenu::default(),
             ticked_before_player: std::collections::HashSet::new(),
@@ -310,8 +385,6 @@ impl Game<'_> {
             is_destroying: false,
             interaction_swing: [true; 2],
             destroy_delay: 0,
-            input: Default::default(),
-            pending_keys: InputQueue::new(queued_keys::PENDING_KEYS),
             swap_answer: [false; 2],
             stop_mining: false,
             flat: false,
@@ -331,7 +404,6 @@ impl Game<'_> {
             backlog_since: None,
             server_links: Vec::new(),
             debug_query: Default::default(),
-            transfer: None,
         });
         // The level's TickRateManager follows the server's ticking packets.
         self.clock = sunrise_client::clock::FixedStep::client();
@@ -342,6 +414,7 @@ impl Game<'_> {
     }
     /// Prepare a client session and remote state to receive packets from a studio replay.
     pub(in crate::game) fn init_remote_for_replay(&mut self) -> Result<()> {
+        self.reset_client_item_use();
         self.realm_session = false;
         self.lan_session = false;
         self.reset_tutorial();
@@ -377,6 +450,10 @@ impl Game<'_> {
         streaming.radius = self.settings.render_distance;
         self.streaming = streaming;
         self.reset_client_world(0);
+        let group_count = sunrise_client::chunk_map::ConnectionGroupCount::default();
+        self.world
+            .chunks
+            .track_connection_groups(group_count.clone());
         self.save = Arc::new(SaveDir::new(
             std::env::temp_dir().join("sunrise-replay-unused"),
             sunrise_client::save::LevelShape::OVERWORLD,
@@ -403,7 +480,6 @@ impl Game<'_> {
         self.container = None;
         self.carried = None;
         self.using = None;
-        self.end_mod_use();
 
         self.set_mode_id(0);
         self.experience = Experience {
@@ -434,6 +510,7 @@ impl Game<'_> {
         self.remote = Some(Remote {
             selector_metadata_supported: true,
             professions: self.client_professions()?,
+            display_address: Remote::display_address_for(&session.address),
             session,
             brand: "sunrise-studio".into(),
             recipe_viewer: Default::default(),
@@ -493,6 +570,7 @@ impl Game<'_> {
             heard_level: None,
             level_load: sunrise_client::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
+            group_count,
             predictions: HashMap::new(),
             menu: ClientMenu::default(),
             ticked_before_player: std::collections::HashSet::new(),
@@ -565,8 +643,6 @@ impl Game<'_> {
             is_destroying: false,
             interaction_swing: [true; 2],
             destroy_delay: 0,
-            input: Default::default(),
-            pending_keys: InputQueue::new(queued_keys::PENDING_KEYS),
             swap_answer: [false; 2],
             stop_mining: false,
             flat: false,
@@ -586,13 +662,24 @@ impl Game<'_> {
             backlog_since: None,
             server_links: Vec::new(),
             debug_query: Default::default(),
-            transfer: None,
         });
         self.clock = sunrise_client::clock::FixedStep::client();
         self.adv = Default::default();
         self.stats = Default::default();
         Ok(())
     }
+    /// Refuse a bad Play payload with the normal connection-error screen.
+    pub(in crate::game) fn refuse_play_payload(
+        &mut self,
+        error: impl std::fmt::Display,
+    ) -> Result<()> {
+        log::warn!("Sunrise: {error}");
+        self.leave_server(Some(Text::translate(
+            "disconnect.genericReason",
+            &[Text::literal(error.to_string())],
+        )))
+    }
+
     /// Disconnect and return to the multiplayer screen (DisconnectedScreen).
     pub(in crate::game) fn leave_server(&mut self, reason: Option<Text>) -> Result<()> {
         if reason.is_none() && self.integrated.as_ref().is_some_and(|s| !s.stopped()) {
@@ -622,14 +709,6 @@ impl Game<'_> {
         self.kept_block_entities.get_mut().clear();
         self.mod_view_distances.take();
         self.clear_narrator();
-        // updateLevelInEngines(null): every sound stops and the music manager
-        // lets go of its track. Leaving a server comes straight here, not
-        // through finish_close_world, so the biome's ambient loop would
-        // otherwise play on over the title screen until the next world.
-        self.ambience.clear(&mut self.audio);
-        self.music.stop_playing(None, &mut self.audio);
-        self.audio.leave_level();
-        self.mod_sounds.clear();
         // A world is leaving either way: its icon attempt goes with it.
         self.world_icon = None;
         // Minecraft.disconnect: the client level goes.
@@ -648,9 +727,13 @@ impl Game<'_> {
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
-        // Minecraft.disconnect's updateLevelInEngines: the title changes with the screen, not a frame later.
+        // Minecraft.disconnect -> updateLevelInEngines(null), after logout and level
+        // unload: stop even the sounds a listener started during teardown.
+        self.ambience.clear(&mut self.audio);
+        self.music.stop_playing(None, &mut self.audio);
+        self.audio.leave_level();
+        self.mod_sounds.clear();
         self.update_window_title();
-        super::super::lan::sync::forget_sync_data();
         self.gui.atlas.clear_object_skins();
         self.server_packs_disconnect();
         self.code_of_conduct = None;
@@ -659,19 +742,20 @@ impl Game<'_> {
         // Gui.setScreen -> KeyMapping.releaseAll: the title or disconnect
         // screen releases every held key. Its release goes to that screen,
         // so a key kept here would still be down in the next world (#3246).
-        self.keys.clear();
-        self.left = false;
-        self.right = false;
+        self.clear_device_keys();
+        self.set_mapping_held("key.attack", false);
+        self.set_mapping_held("key.use", false);
         // The shared world is closing: its invite code ends with it.
         self.friends_lan_closed();
-        // Single player's server thread saves the world before the title shows.
-        let single_player = match self.integrated.take() {
-            Some(server) => {
-                server.stop()?;
-                true
-            }
-            None => false,
-        };
+        // Minecraft.disconnect waits for the integrated server before showing the title.
+        let stopped = self
+            .integrated
+            .take()
+            .map(|server| server.stop())
+            .transpose();
+        // Keep the server's registry snapshot until the thread has joined, even on error.
+        super::super::lan::sync::forget_sync_data();
+        let single_player = stopped?.is_some();
         mod_api::content::crash::clear_detail("Server");
         self.clock = Default::default();
         self.adv = Default::default();
@@ -726,7 +810,7 @@ impl Game<'_> {
     pub(in crate::game) fn enter_remote_dimension(
         &mut self,
         spawn: &play::SpawnInfo,
-        keep_world: bool,
+        entry: RemoteDimensionEntry,
         reason: sunrise_client::level_loading::Reason,
     ) {
         // Every level has the sea level its server says (`CommonPlayerSpawnInfo.seaLevel`): the
@@ -748,13 +832,20 @@ impl Game<'_> {
         r.state_id = 0;
         // handleRespawn keeps the ClientLevel only for the same level key:
         // two levels sharing a dimension type are still two levels.
-        let same = keep_world && r.heard_level.as_deref() == Some(spawn.dimension.as_str());
-        let transition_screen = sunrise_client_render::dimension_transition::select(
-            mod_api::__private::dimension_key(&spawn.dimension),
-            r.heard_level
-                .as_deref()
-                .map(mod_api::__private::dimension_key),
-        );
+        let same = matches!(
+            entry,
+            RemoteDimensionEntry::Respawn | RemoteDimensionEntry::DeathRespawn
+        ) && r.heard_level.as_deref() == Some(spawn.dimension.as_str());
+        // An open LevelLoadingScreen keeps its presentation, even if it is vanilla.
+        // New screens for login and death do not receive transition keys.
+        let transition_from = if matches!(entry, RemoteDimensionEntry::Respawn)
+            && !r.level_load.is_active()
+            && r.heard_level.is_some()
+        {
+            Some(r.level_key)
+        } else {
+            None
+        };
         if !same {
             self.forget_all_remote_columns();
         }
@@ -783,8 +874,10 @@ impl Game<'_> {
         }
         // startWaitingForNewLevel: `LevelLoadTracker.startClientLoad` and the
         // `LevelLoadingScreen`.
+        let transition_factory = transition_from.and_then(|from| {
+            sunrise_client_render::dimension_transition::select(r.level_key, from)
+        });
         r.level_load.start_client_load(client_millis(), reason);
-        r.level_load.set_transition_screen(transition_screen);
         // A replacement LocalPlayer has a fresh ambient mood and sendPosition baseline.
         self.ambience.moodiness = 0.0;
         r.position_sender = Default::default();
@@ -792,7 +885,6 @@ impl Game<'_> {
         self.set_mode_id(spawn.game_type);
         self.dim = Dim::from_id(&spawn.dimension);
         self.build_level_environments();
-        self.audio.set_world(&spawn.dimension);
         // ClientPacketListener.handleLogin / handleRespawn: the server's
         // Player.getLastDeathLocation, for the recovery compass.
         self.level.last_death = spawn
@@ -801,8 +893,6 @@ impl Game<'_> {
             .map(|d| (d.dimension.clone(), d.pos));
         if !same {
             self.clock.reset_client_level_tick_state();
-            // A new ClientLevel: Minecraft.setLevel stops every sound.
-            self.stop_sounds_for_new_level();
             let mut streaming = Streaming::new(
                 Arc::new(NoTerrain),
                 self.worker_context(),
@@ -817,6 +907,11 @@ impl Game<'_> {
                 self.world.weather,
             );
             self.reset_client_world(spawn.seed);
+            if let Some(remote) = self.remote.as_ref() {
+                self.world
+                    .chunks
+                    .track_connection_groups(remote.group_count.clone());
+            }
             // Entity IDs belong to this ClientLevel, not the connection. A
             // same-level respawn keeps it; a replacement invalidates handles.
             self.native_lifecycle_open_started();
@@ -861,7 +956,10 @@ impl Game<'_> {
             if let Some(old) = old {
                 self.native_client_level_unload(&old);
             }
+            // Minecraft.setLevel -> updateLevelInEngines, after the old-level unload.
+            self.stop_sounds_for_new_level();
         }
+        self.audio.set_world(&spawn.dimension);
         self.streaming.relight_resent = relight_resent;
         let has_sky = self
             .remote
@@ -887,5 +985,21 @@ impl Game<'_> {
             self.initialize_entity(Holder::Player(profile), "minecraft:player");
         }
         self.finish_remote_level();
+        if let Some(registration) = transition_factory
+            && registration.factory_owner.is_enabled()
+            && let Ok(presentation) = registration.factory_owner.call(
+                "dimension transition screen",
+                "dimension_transition_screen_factory",
+                || {
+                    sunrise_client_render::dimension_transition::ActiveTransitionScreen::new(
+                        registration.draw_owner.clone(),
+                        registration.factory.create(self, reason.into()),
+                    )
+                },
+            )
+            && let Some(r) = self.remote.as_mut()
+        {
+            r.level_load.set_transition_screen(presentation);
+        }
     }
 }

@@ -18,7 +18,7 @@ mod tests {
     use sunrise_client::{chunk::Chunk, items::ItemStack};
     use sunrise_core::{geometry::Direction, position::BlockPos, ticks::TickPriority};
     use sunrise_world::{
-        level::{BlockMaps, Landing, LevelAccess},
+        level::{BlockMapValue, BlockMaps, Landing, LevelAccess},
         registry::BlockStateId,
     };
 
@@ -661,13 +661,13 @@ mod tests {
                 let replacement = registry
                     .default_state("minecraft:stripped_oak_log")
                     .unwrap();
-                let waxed = serde_json::json!({"waxed": "inert_test:machine"});
                 game.res
                     .behaviours()
                     .set_block_maps(Some(Arc::new(BlockMaps::from_values(
-                        [],
-                        [],
-                        [("minecraft:observer", &waxed)],
+                        [(
+                            "minecraft:observer",
+                            BlockMapValue::Waxable("inert_test:machine".into()),
+                        )],
                         |_| 0,
                     ))));
                 let hit = Hit {

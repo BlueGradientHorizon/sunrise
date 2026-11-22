@@ -726,8 +726,7 @@ struct CreativeTabFile {
     items: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, PartialEq, sunrise_mod_api_macros::Wire)]
-#[wire(crate = ::mod_vocab::wire)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FluidFile {
     sprite: Option<String>,
@@ -738,8 +737,7 @@ struct FluidFile {
 /// What makes a fluid exist in the world: a block holding it, as `minecraft:water`'s does, and
 /// how it flows. Each value defaults to water's, in `data/<id>/sunrise/fluid/` as in code
 /// (`Registrar::declare_world_fluid`).
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
-#[wire(crate = ::mod_vocab::wire)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct WorldFluid {
     /// Game ticks between two flow steps (`Fluid.getTickDelay`), 1 or more.
@@ -784,8 +782,7 @@ impl WorldFluid {
 /// How a fluid the mod names looks on the client (`data/<id>/sunrise/fluid/`), as
 /// NeoForge's `IClientFluidTypeExtensions`: `getStillTexture` and `getTintColor`.
 /// The fluid needs no block, so it can be a fluid only a tank holds.
-#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
-#[wire(crate = ::mod_vocab::wire)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FluidLook {
     /// `<mod id>:<path>`.
     pub id: String,
@@ -1016,9 +1013,9 @@ pub struct MenuType {
     /// Append the 36 player inventory slots (default: true).
     #[serde(default = "yes")]
     pub player_inventory: bool,
-    /// 0 to [`MAX_MENU_SLOTS`].
+    /// Number of integer data slots synced by the menu (`ContainerData`), 0 by default.
     #[serde(default)]
-    pub data_slots: u16,
+    pub data_slots: usize,
     /// Per-slot maxima for transient slots when the menu is opened with no backing block.
     /// When present, supplies one maximum (1–99) for each container slot. Cannot be combined
     /// with take-only `results` or a `crafting` layout.
@@ -1084,9 +1081,18 @@ impl MenuCrafting {
     }
 }
 
-/// the most container or data slots a mod menu type has, as many as a mod
-/// container (`native_block_entity_container`) may.
-pub const MAX_MENU_SLOTS: u16 = 256;
+/// The most total item slots a mod menu type may carry (container backing slots plus
+/// the 36 appended player inventory slots when `player_inventory` is true): `32,768`,
+/// matching vanilla's signed 16-bit slot index range `0..=32,767` (`i16::MAX`).
+pub const MAX_MENU_SLOTS: u16 = (i16::MAX as u16) + 1;
+
+/// The most data slots carried over vanilla's signed 16-bit `ClientboundContainerSetDataPacket`
+/// (`0..=32,767`, count `32,768`).
+pub const MAX_SIGNED_DATA_SLOTS: u16 = (i16::MAX as u16) + 1;
+
+/// The most data slots carried over the unsigned 16-bit `sunrise:menu_data` payload
+/// (`0..=65,535`, count `65,536`).
+pub const MAX_BLOCKLESS_DATA_SLOTS: usize = u16::MAX as usize + 1;
 
 #[derive(Debug, Clone)]
 enum Source {
@@ -1218,16 +1224,28 @@ pub fn clash(a: (&str, &[String]), b: (&str, &[String])) -> Option<String> {
 
 impl Content {
     /// The content of the mod at `path` (a `.smod` or a mod folder).
+    ///
+    /// For package-only checks (`cargo sunrise-mod build`, `check`, archive inspection) without
+    /// runtime code declarations, a `[native]` or `served_by` package may name a valid
+    /// `crafting_remainder` in one of its own namespaces; engine loading calls
+    /// [`Content::read_declaring`] with the actual code-declared items.
     pub fn read(path: &Path, manifest: &Manifest) -> Result<Content, String> {
-        Self::read_declaring(path, manifest, &[])
+        Self::read_inner(path, manifest, None)
     }
-    /// [`Content::read`] for a mod whose native code also declares items (`native_items`):
-    /// a file's `crafting_remainder` may name one of those `declared` ids, which are not in the
-    /// files.
+    /// [`Content::read`] for a mod whose native code (or serving host) also declares items
+    /// (`native_items` / `blocks`): a file's `crafting_remainder` may name one of those `declared`
+    /// ids, which are not in the files.
     pub fn read_declaring(
         path: &Path,
         manifest: &Manifest,
         declared: &[String],
+    ) -> Result<Content, String> {
+        Self::read_inner(path, manifest, Some(declared))
+    }
+    fn read_inner(
+        path: &Path,
+        manifest: &Manifest,
+        declared: Option<&[String]>,
     ) -> Result<Content, String> {
         let (source, sized) = if path.is_dir() {
             (Source::Dir(path.to_owned()), folder_files(path)?)
@@ -1330,6 +1348,7 @@ impl Content {
             items
                 .iter()
                 .map(|i| (i, in_own(&i.id).and_then(|()| check_item(i)))),
+            &[],
         )?;
         self.blocks.extend_from_slice(blocks);
         self.items.extend_from_slice(items);
@@ -1337,14 +1356,19 @@ impl Content {
     }
 
     /// Joins declarations whose fields and submitting namespaces were checked at registration.
+    /// `admitted_items` lists item IDs (items and item-bearing blocks) already admitted in
+    /// content packages served by this host, so code-declared items may name them as
+    /// `crafting_remainder`.
     pub fn declare_validated(
         &mut self,
         blocks: &[LocalDeclaration<Block>],
         items: &[LocalDeclaration<Item>],
+        admitted_items: &[&str],
     ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
         self.check_declaration_batch(
             blocks.iter().map(|b| (b.get(), Ok(()))),
             items.iter().map(|i| (i.get(), Ok(()))),
+            admitted_items,
         )?;
         self.blocks.extend(blocks.iter().map(|b| b.get().clone()));
         self.items.extend(items.iter().map(|i| i.get().clone()));
@@ -1355,6 +1379,7 @@ impl Content {
         &self,
         blocks: impl IntoIterator<Item = (&'a Block, Result<(), String>)>,
         items: impl IntoIterator<Item = (&'a Item, Result<(), String>)>,
+        admitted_items: &[&str],
     ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
         let mut ids: BTreeSet<&str> = self
             .blocks
@@ -1415,7 +1440,9 @@ impl Content {
         for item in valid_items {
             if let Some(rest) = &item.crafting_remainder
                 && (rest == "minecraft:air"
-                    || !vanilla_id(rest) && !item_ids.contains(rest.as_str()))
+                    || !vanilla_id(rest)
+                        && !item_ids.contains(rest.as_str())
+                        && !admitted_items.contains(&rest.as_str()))
             {
                 refuse(
                     DeclarationKind::Item,
@@ -1482,7 +1509,7 @@ impl Content {
     }
 
     /// Where content may go, and the declarations.
-    fn check(&mut self, manifest: &Manifest, declared: &[String]) -> Result<(), String> {
+    fn check(&mut self, manifest: &Manifest, declared: Option<&[String]>) -> Result<(), String> {
         let id = manifest.id.as_str();
         let mut blocks = Vec::new();
         let mut items = Vec::new();
@@ -1630,7 +1657,20 @@ impl Content {
                     "{name}: crafting_remainder {rest:?} is no remainder (leave it out)"
                 ));
             }
-            if !vanilla_id(&rest) && !ids.contains(&rest) && !declared.contains(&rest) {
+            let valid_id = namespaced_id(&rest);
+            let known_local = vanilla_id(&rest) || ids.contains(&rest);
+            let allowed = valid_id
+                && match declared {
+                    Some(declared) => known_local || declared.contains(&rest),
+                    None => {
+                        known_local
+                            || ((manifest.native.is_some() || manifest.served_by.is_some())
+                                && rest.split_once(':').is_some_and(|(ns, _)| {
+                                    manifest.owned_namespaces().any(|owned| owned == ns)
+                                }))
+                    }
+                };
+            if !allowed {
                 return Err(format!(
                     "{name}: crafting_remainder {rest:?} is not a vanilla item (minecraft:...) or one of this mod's"
                 ));
@@ -1772,10 +1812,10 @@ impl Content {
             let source = format!("{name} ({menu})");
             let file: MenuType =
                 serde_json::from_slice(&bytes).map_err(|e| format!("{source}: {e}"))?;
-            if file.slots > MAX_MENU_SLOTS || file.data_slots > MAX_MENU_SLOTS {
+            let total_slots = usize::from(file.slots) + if file.player_inventory { 36 } else { 0 };
+            if total_slots > usize::from(MAX_MENU_SLOTS) {
                 return Err(format!(
-                    "{source}: slots ({}) and data_slots ({}) are each 0 to {MAX_MENU_SLOTS}",
-                    file.slots, file.data_slots
+                    "{source}: total menu slots ({total_slots}) exceed {MAX_MENU_SLOTS}"
                 ));
             }
             if let Some(limits) = &file.owned_slots
@@ -2263,7 +2303,7 @@ fn open_zip(path: &Path) -> Result<zip::ZipArchive<std::fs::File>, String> {
 pub(crate) fn folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
     let mut out = Vec::new();
     for top in ["assets", "data"] {
-        walk(root, &root.join(top), &mut out)?;
+        walk(root, &root.join(top), &mut out, Some(MAX_FILES))?;
     }
     Ok(out)
 }
@@ -2271,16 +2311,18 @@ pub(crate) fn folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
 /// The files under a package folder's `runtime/`, as `(name below it, bytes)`. Symbolic links and
 /// other non-files are refused, not followed.
 pub(crate) fn runtime_folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
+    let runtime_root = root.join(crate::manifest::RUNTIME_DIR);
     let mut out = Vec::new();
-    walk(root, &root.join(crate::manifest::RUNTIME_DIR), &mut out)?;
-    let prefix = format!("{}/", crate::manifest::RUNTIME_DIR);
-    for (name, _) in &mut out {
-        *name = name.strip_prefix(&prefix).unwrap_or(name).to_owned();
-    }
+    walk(&runtime_root, &runtime_root, &mut out, None)?;
     Ok(out)
 }
 
-fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), String> {
+fn walk(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<(String, u64)>,
+    max_files: Option<usize>,
+) -> Result<(), String> {
     match std::fs::symlink_metadata(dir) {
         Ok(m) if !m.is_dir() => {
             return Err(format!(
@@ -2297,7 +2339,7 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), Str
         let path = entry.map_err(|e| e.to_string())?.path();
         let meta = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
         if meta.is_dir() {
-            walk(root, &path, out)?;
+            walk(root, &path, out, max_files)?;
         } else if meta.is_file() {
             let rel = path.strip_prefix(root).map_err(|e| e.to_string())?;
             let parts: Option<Vec<&str>> = rel.iter().map(|p| p.to_str()).collect();
@@ -2309,8 +2351,10 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), Str
                 path.display()
             ));
         }
-        if out.len() > MAX_FILES {
-            return Err(format!("more than {MAX_FILES} content files"));
+        if let Some(max) = max_files
+            && out.len() > max
+        {
+            return Err(format!("more than {max} content files"));
         }
     }
     Ok(())
@@ -2435,8 +2479,12 @@ capabilities = ["registries"]
             let content = load(value).unwrap();
             assert_eq!(content.blocks[0].properties.friction, Some(expected));
         }
-        // JSON has no NaN or infinity: a literal is a parse error, and a number past f32's range
-        // becomes infinity and is refused by the check.
+        // Just above the midpoint of two neighbouring f32 values: rounded once, from the decimal text.
+        let content = load("1.0000000596046448").unwrap();
+        let friction = content.blocks[0].properties.friction.unwrap();
+        assert_eq!(friction.to_bits(), 0x3f80_0001);
+        // JSON has no NaN or infinity: a literal is a parse error, and so is a number past f32's
+        // range. The finite check remains for declarations built in code.
         assert!(load("NaN").is_err());
         assert!(load("1e39").is_err());
     }
@@ -2798,6 +2846,77 @@ capabilities = ["registries"]
     }
 
     #[test]
+    fn served_package_crafting_remainder_defers_host_declaration_only_to_load() {
+        let served_manifest =
+            format!("{MANIFEST_TEXT}namespaces = [\"ruby_extra\"]\nserved_by = \"horizon_java\"\n");
+        let check = |label: &str, manifest: &str, remainder: &str, declared: Option<&[String]>| {
+            let body = format!(
+                r#"{{"template": "minecraft:mushroom_stew", "crafting_remainder": "{remainder}"}}"#
+            );
+            let dir = scratch(&format!("served-rem-{label}"));
+            let path = dir.join("m.smod");
+            std::fs::write(
+                &path,
+                Package::write_files(
+                    manifest,
+                    &[("data/ruby/sunrise/item/stew.json", body.as_bytes())],
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            let package = Package::read(&path).unwrap();
+            let result = match declared {
+                None => Content::read(&path, &package.manifest),
+                Some(declared) => Content::read_declaring(&path, &package.manifest, declared),
+            };
+            std::fs::remove_dir_all(&dir).unwrap();
+            result
+        };
+        // Package-only read (build/check/inspect) accepts owned-namespace host remainders.
+        for remainder in ["ruby:host_bowl", "ruby_extra:host_bowl"] {
+            let content = check("ok-read", &served_manifest, remainder, None).unwrap();
+            assert_eq!(
+                content.items[0].crafting_remainder.as_deref(),
+                Some(remainder)
+            );
+        }
+        // Package-only read still refuses minecraft:air, malformed IDs, foreign namespaces,
+        // and undeclared remainders on unserved content packages.
+        for (label, manifest, remainder) in [
+            ("air", served_manifest.as_str(), "minecraft:air"),
+            ("bad-id", served_manifest.as_str(), "ruby:Bad"),
+            ("foreign", served_manifest.as_str(), "other:bowl"),
+            ("unserved", MANIFEST_TEXT, "ruby:host_bowl"),
+        ] {
+            assert!(
+                check(label, manifest, remainder, None).is_err(),
+                "{label} ({remainder}) should be refused"
+            );
+        }
+        // Load-time admission (`read_declaring`) requires the host to actually declare the item.
+        assert!(
+            check(
+                "missing-host",
+                &served_manifest,
+                "ruby:host_bowl",
+                Some(&[])
+            )
+            .is_err()
+        );
+        let loaded = check(
+            "declared-host",
+            &served_manifest,
+            "ruby:host_bowl",
+            Some(&["ruby:host_bowl".to_owned()]),
+        )
+        .unwrap();
+        assert_eq!(
+            loaded.items[0].crafting_remainder.as_deref(),
+            Some("ruby:host_bowl")
+        );
+    }
+
+    #[test]
     fn items_patch_their_template_components() {
         let sword = br#"{"template": "minecraft:iron_sword", "components": {
             "minecraft:max_damage": 900,
@@ -2973,12 +3092,33 @@ capabilities = ["registries"]
                 None,
             ]
         );
+        let wide = smod(
+            "menu-wide-data",
+            MANIFEST_TEXT,
+            &[
+                (
+                    "data/ruby/sunrise/menu/wide.json",
+                    br#"{"slots": 1, "data_slots": 300}"#,
+                ),
+                (
+                    "data/ruby/sunrise/menu/huge.json",
+                    br#"{"slots": 1, "data_slots": 70000}"#,
+                ),
+            ],
+        )
+        .unwrap();
+        let wide_counts: Vec<_> = wide
+            .menu_types
+            .iter()
+            .map(|m| (m.id.as_str(), m.data_slots))
+            .collect();
+        assert_eq!(wide_counts, [("ruby:huge", 70_000), ("ruby:wide", 300)]);
         for (case, file, details) in [
-            ("menu-large", r#"{"slots": 257}"#, &["257"][..]),
+            ("menu-large-with-inv", r#"{"slots": 32733}"#, &["32769"][..]),
             (
-                "menu-data",
-                r#"{"slots": 1, "data_slots": 257}"#,
-                &["257"][..],
+                "menu-large-no-inv",
+                r#"{"slots": 32769, "player_inventory": false}"#,
+                &["32769"][..],
             ),
             (
                 "menu-result",
@@ -4436,7 +4576,3 @@ mod context_shape_tests {
         assert!(check_block(&block).is_err());
     }
 }
-
-#[cfg(test)]
-#[path = "fluid_wire_tests.rs"]
-mod fluid_wire_tests;

@@ -7,6 +7,7 @@ pub(super) enum MenuOpen {
     Opened,
     Cancelled,
     Refused,
+    NoProvider,
     Stale,
 }
 
@@ -185,6 +186,7 @@ pub(super) struct GuestSwap {
     xp: Experience,
     level_up_sound: sunrise_client::entities::LevelUpSound,
     host_keys: sunrise_client::held::HeldKeys,
+    saved_mappings: sunrise_client::keymapping::VanillaMappings,
     screen: Screen,
     host_sign: Option<super::sign_edit::SignEditor>,
     host_book: Option<super::books::BookScreen>,
@@ -208,8 +210,6 @@ pub(super) struct GuestSwap {
     attack_ticks: u32,
     attack_item: Option<std::sync::Arc<str>>,
     swing: sunrise_client::first_person::SwingState,
-    left: bool,
-    right: bool,
     riding: Option<u32>,
     host_station: Option<super::stations::Station>,
     sleeping: Option<[i32; 3]>,
@@ -543,6 +543,23 @@ mod tests {
     use super::{copied_respawn_point, eye_columns, reset_use_attack_strength};
     use crate::game::api_values::TryIntoApi;
     use sunrise_client::pose::Pose;
+
+    struct StopMenu(Option<mod_api::GameMode>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for StopMenu {
+        fn container_opened(
+            &self,
+            host: &mut dyn mod_api::ServerHost,
+            _: &mut mod_api::ContainerOpenedEvent<'_>,
+        ) -> mod_api::Flow {
+            if let Some(mode) = self.0 {
+                let player = host.players().acting_player().unwrap();
+                assert!(player.set_game_mode(host, mode));
+            }
+            mod_api::Flow::Cancel
+        }
+    }
+
     #[test]
     fn a_block_break_suppresses_its_positional_duplicate_but_not_an_entity_sound() {
         let mut sound = sunrise_client::audio::CapturedSound {
@@ -1034,7 +1051,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_menu_handle_and_use_each_count_the_guest_once() {
-        use mod_api::BlockUpdateFlags;
+        use crate::game::{Game, Hit, sculk::TEST_POSTED_EVENTS};
+        use mod_api::{BlockUpdateFlags, GameMode};
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
         super::super::native_guest_turn_tests::with_guests(|game| {
@@ -1043,115 +1061,159 @@ mod tests {
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let level = game.level("minecraft:overworld").unwrap();
-            let chest = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:chest")
-                .unwrap();
-            let pos = (0, 64, 0);
-            assert_eq!(
-                game.level_set_block(
-                    level,
-                    [pos.0, pos.1, pos.2],
-                    chest,
-                    BlockUpdateFlags::NEIGHBORS
-                ),
-                Ok(true)
-            );
-            // A handle starts here, without an earlier use's `open_menu`.
-            assert_eq!(game.open_block_menu(12, pos), super::MenuOpen::Opened);
-            assert_eq!(game.lid_openers.get(&pos), Some(&1));
-            game.guest_close_all(12);
-            assert!(!game.lid_openers.contains_key(&pos));
-            // A block use starts before leaving the guest turn; its hand-off
-            // must not start the same opener a second time.
-            assert!(
-                game.as_guest(12, |game| game
-                    .open_block_effect_menu([pos.0, pos.1, pos.2]))
-                    .is_some()
-            );
-            assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
-            assert_eq!(game.lid_openers.get(&pos), Some(&1));
-            game.guest_close_all(12);
-            assert!(!game.lid_openers.contains_key(&pos));
-            struct StopMenu;
-            #[mod_api::__subscriptions]
-            impl mod_api::Hooks for StopMenu {
-                fn container_opened(
-                    &self,
-                    _: &mut dyn mod_api::ServerHost,
-                    _: &mut mod_api::ContainerOpenedEvent<'_>,
-                ) -> mod_api::Flow {
-                    mod_api::Flow::Cancel
-                }
-            }
-            mod_platform::testing::with_mods(
-                vec![mod_api::ModEntry::new("stop_menu", Box::new(StopMenu))].into(),
-                || {
-                    assert!(
-                        game.as_guest(12, |game| game
-                            .open_block_effect_menu([pos.0, pos.1, pos.2]))
-                            .is_some()
-                    );
-                    assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
-                    assert!(!game.lid_openers.contains_key(&pos));
-                },
-            );
-            {
-                let value = 3;
-                game.lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .guests
-                    .update(0, |guest| guest.game_mode = value);
-            }
-            assert_eq!(game.open_block_menu(12, pos), super::MenuOpen::Opened);
-            assert!(!game.lid_openers.contains_key(&pos));
-            game.guest_close_all(12);
-            assert!(!game.lid_openers.contains_key(&pos));
-            // The incoming double-count bug kept a shulker open after its last close.
-            {
-                let value = 0;
-                game.lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .guests
-                    .update(0, |guest| guest.game_mode = value);
-            }
-            let shulker = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:shulker_box")
-                .unwrap();
+            let pos = (3, 64, 4);
             let at = [pos.0, pos.1, pos.2];
-            assert_eq!(
-                game.level_set_block(level, at, shulker, BlockUpdateFlags::NEIGHBORS),
-                Ok(true)
-            );
-            assert!(
-                game.as_guest(12, |game| game.open_block_effect_menu(at))
-                    .is_some()
-            );
-            assert_eq!(game.be_anims.shulkers[&at].open_count, 1);
-            game.guest_close_all(12);
-            assert_eq!(game.be_anims.shulkers[&at].open_count, 0);
-            assert_eq!(game.open_block_menu(12, pos), super::MenuOpen::Opened);
-            assert_eq!(game.be_anims.shulkers[&at].open_count, 1);
-            game.guest_close_all(12);
-            assert_eq!(game.be_anims.shulkers[&at].open_count, 0);
+            let hit = Hit {
+                pos: at,
+                inside: false,
+                face: [0, 1, 0],
+                point: [3.5, 65.0, 4.5],
+            };
+            let use_menu = |game: &mut Game<'_>| {
+                assert_eq!(
+                    game.as_guest(12, |game| game.use_hand(Some(&hit)).unwrap()),
+                    Some(true)
+                );
+            };
+            let take_signals = |game: &mut Game<'_>| {
+                let lids = std::mem::take(&mut game.lan_block_events)
+                    .into_iter()
+                    .filter_map(|(p, id, count, _)| (p == at && id == 1).then_some(count))
+                    .collect::<Vec<_>>();
+                let sounds = std::mem::take(game.audio.capture.as_mut().unwrap())
+                    .into_iter()
+                    .map(|sound| sound.event)
+                    .collect::<Vec<_>>();
+                let events = TEST_POSTED_EVENTS.with(|posted| {
+                    std::mem::take(posted.borrow_mut().as_mut().unwrap())
+                        .into_iter()
+                        .map(|(event, _, _)| event)
+                        .collect::<Vec<_>>()
+                });
+                (lids, sounds, events)
+            };
+            for block in ["chest", "ender_chest", "shulker_box"] {
+                game.audio.capture = None;
+                let state = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state(&format!("minecraft:{block}"))
+                    .unwrap();
+                assert_eq!(
+                    game.level_set_block(level, at, state, BlockUpdateFlags::NEIGHBORS),
+                    Ok(true)
+                );
+                game.audio.capture = Some(Vec::new());
+                TEST_POSTED_EVENTS.with(|posted| *posted.borrow_mut() = Some(Vec::new()));
+                let count = |game: &Game<'_>| {
+                    if block == "shulker_box" {
+                        game.be_anims.shulkers.get(&at).map_or(0, |s| s.open_count)
+                    } else {
+                        game.lid_openers.get(&pos).copied().unwrap_or(0)
+                    }
+                };
+                // A shulker's veto can change the acting player to spectator, but
+                // the use still spends the click and must never touch its opener count.
+                let switch = (block == "shulker_box").then_some(GameMode::Spectator);
+                mod_platform::testing::with_mods(
+                    vec![mod_api::ModEntry::new(
+                        "stop_menu",
+                        Box::new(StopMenu(switch)),
+                    )]
+                    .into(),
+                    || {
+                        use_menu(game);
+                        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                        assert!(guest.menu.is_none());
+                        assert_eq!(guest.spectator(), switch.is_some());
+                        assert_eq!(count(game), 0, "{block}");
+                        assert_eq!(take_signals(game), (vec![], vec![], vec![]), "{block}");
+                    },
+                );
+                if switch.is_some() {
+                    // In the reverse direction the rejected spectator must not
+                    // remove the other player's actual opener.
+                    assert_eq!(game.open_block_menu(13, pos), super::MenuOpen::Opened);
+                    assert_eq!(count(game), 1);
+                    take_signals(game);
+                    mod_platform::testing::with_mods(
+                        vec![mod_api::ModEntry::new(
+                            "stop_menu",
+                            Box::new(StopMenu(Some(GameMode::Survival))),
+                        )]
+                        .into(),
+                        || {
+                            assert_eq!(
+                                game.as_guest(12, |game| {
+                                    game.spectator_open_menu(at);
+                                    game.container == Some(pos)
+                                }),
+                                Some(true)
+                            );
+                            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                            assert!(!guest.spectator());
+                            assert!(guest.menu.is_none());
+                            assert_eq!(count(game), 1);
+                            assert_eq!(take_signals(game), (vec![], vec![], vec![]));
+                        },
+                    );
+                    game.guest_close_all(13);
+                    assert_eq!(count(game), 0);
+                    take_signals(game);
+                }
+                for direct in [false, true] {
+                    if direct {
+                        assert_eq!(game.open_block_menu(12, pos), super::MenuOpen::Opened);
+                    } else {
+                        use_menu(game);
+                    }
+                    assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
+                    assert_eq!(count(game), 1, "{block}");
+                    assert_eq!(
+                        take_signals(game),
+                        (
+                            vec![1],
+                            vec![format!("minecraft:block.{block}.open")],
+                            vec!["minecraft:container_open"],
+                        ),
+                        "{block}"
+                    );
+                    game.guest_close_all(12);
+                    assert_eq!(count(game), 0, "{block}");
+                    assert_eq!(
+                        take_signals(game),
+                        (
+                            vec![0],
+                            vec![format!("minecraft:block.{block}.close")],
+                            vec!["minecraft:container_close"],
+                        ),
+                        "{block}"
+                    );
+                }
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.game_mode = 3;
+                });
+                assert_eq!(game.open_block_menu(12, pos), super::MenuOpen::Opened);
+                assert_eq!(count(game), 0, "{block}");
+                game.guest_close_all(12);
+                assert_eq!(take_signals(game), (vec![], vec![], vec![]), "{block}");
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.game_mode = 0;
+                });
+            }
+            TEST_POSTED_EVENTS.with(|posted| *posted.borrow_mut() = None);
         });
     }
 
     #[test]
     #[ignore = "daily"]
     fn block_menu_click_keeps_spent_action_on_cancellation() {
+        use super::MenuOpen;
         use mod_api::BlockUpdateFlags;
         use std::sync::Arc;
         use sunrise_client::{chunk::Chunk, lan::guest::GuestKind};
+        use sunrise_core::nbt::Tag;
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -1168,16 +1230,45 @@ mod tests {
                 game.level_set_block(level, [0, 64, 0], chest, BlockUpdateFlags::NEIGHBORS),
                 Ok(true)
             );
-            assert!(!game.lan_open_container(12, (2, 64, 0)));
-            let mut guest = game.lan.as_mut().unwrap().hub.guests.remove(0);
-            guest.kind = GuestKind::Fake;
-            game.lan.as_mut().unwrap().hub.guests.insert(0, guest);
-            assert!(game.lan_open_container(12, (0, 64, 0)));
+            let pos = (0, 64, 0);
+            assert_eq!(
+                game.lan_open_container(12, (2, 64, 0)),
+                MenuOpen::NoProvider
+            );
+            assert_eq!(game.lan_open_container(999, pos), MenuOpen::Refused);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.kind = GuestKind::Fake;
+            });
+            assert_eq!(game.lan_open_container(12, pos), MenuOpen::Refused);
             assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
-            let mut guest = game.lan.as_mut().unwrap().hub.guests.remove(0);
-            guest.kind = GuestKind::Network;
-            game.lan.as_mut().unwrap().hub.guests.insert(0, guest);
-            assert!(game.lan_open_container(12, (0, 64, 0)));
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.kind = GuestKind::Network;
+            });
+            mod_platform::testing::with_mods(
+                vec![mod_api::ModEntry::new(
+                    "stop_menu",
+                    Box::new(StopMenu(None)),
+                )]
+                .into(),
+                || {
+                    assert_eq!(game.lan_open_container(12, pos), MenuOpen::Cancelled);
+                    assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+                },
+            );
+            let lock = Tag::compound([(
+                "lock",
+                Tag::compound([("items", Tag::String("minecraft:gold_ingot".into()))]),
+            )]);
+            assert_eq!(game.lan_open_container(13, pos), MenuOpen::Opened);
+            game.world.set_block_lock(pos, &lock);
+            assert_eq!(game.lan_open_container(12, pos), MenuOpen::Refused);
+            assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+            assert_eq!(game.lid_openers.get(&pos), Some(&1));
+            game.guest_close_all(13);
+            assert!(!game.lid_openers.contains_key(&pos));
+            game.world
+                .set_block_lock(pos, &Tag::Compound(Default::default()));
+            assert_eq!(game.lan_open_container(12, pos), MenuOpen::Opened);
             assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
         });
     }
@@ -2419,7 +2510,7 @@ mod pickup_xp_tests {
                 velocity: Vec3::ZERO,
                 value: 7,
                 age: 0,
-                on_ground: true,
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
                 count: 1,
                 fire_ticks: 0,
                 ticks: 0,

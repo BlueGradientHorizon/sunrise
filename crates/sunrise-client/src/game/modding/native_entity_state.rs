@@ -83,7 +83,7 @@ impl Game<'_> {
     pub(super) fn entity_is_shift_key_down(&self, entity: EntityRef) -> Option<bool> {
         if !self.is_logical_server() {
             return Some(match self.native_client_entity_target(entity)? {
-                Target::Player => self.keys.held(sunrise_client::actions::Action::Sneak),
+                Target::Player => self.held_mapping(sunrise_client::actions::Action::Sneak),
                 _ => false,
             });
         }
@@ -1002,7 +1002,7 @@ mod tests {
                 velocity: Vec3::ZERO,
                 value: 7,
                 age: 600,
-                on_ground: true,
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
                 count: 1,
                 fire_ticks: 0,
                 ticks: 21,
@@ -1098,7 +1098,7 @@ mod tests {
                 velocity: Vec3::ZERO,
                 value: 1,
                 age: 0,
-                on_ground: false,
+                ground: Default::default(),
                 count: 1,
                 fire_ticks: 0,
                 ticks: 0,
@@ -1158,7 +1158,7 @@ mod tests {
             game.next_entity += 1;
             let falling = game.next_entity;
             game.falling.push(FallingBlock {
-                on_ground: false,
+                ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,
                 attachment_lifetime: Default::default(),
@@ -1339,7 +1339,7 @@ mod tests {
             game.next_entity += 1;
             let id = game.next_entity;
             game.falling.push(FallingBlock {
-                on_ground: false,
+                ground: Default::default(),
                 fire_ticks: 0,
                 sync_velocity: false,
                 attachment_lifetime: Default::default(),
@@ -1698,10 +1698,10 @@ mod tests {
             let local = game.local_player().unwrap();
             let entity = game.entity(7).unwrap();
             assert_eq!(local.entity(), entity);
-            game.keys.insert(KeyCode::ShiftLeft);
+            game.insert_device_key(KeyCode::ShiftLeft);
             assert!(!game.player.as_ref().unwrap().shift_key_down);
             assert_eq!(entity.is_shift_key_down(game), Some(true));
-            game.keys.clear();
+            game.remove_device_key(&KeyCode::ShiftLeft);
             game.player.as_mut().unwrap().shift_key_down = true;
             assert_eq!(
                 entity.is_shift_key_down(game),
@@ -1715,7 +1715,7 @@ mod tests {
             assert_eq!(entity.is_shift_key_down(game), None);
         });
         with_player(|game, player| {
-            game.keys.clear();
+            game.clear_device_keys();
             game.player.as_mut().unwrap().shift_key_down = true;
             assert_eq!(
                 player.is_shift_key_down(game),

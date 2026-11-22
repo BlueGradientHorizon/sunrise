@@ -28,10 +28,17 @@ impl Game<'_> {
     /// For a client mod: each texture's sprite by name (`minecraft:block/stone`, `block/stone`), none for one no
     /// model uses. API 380.
     pub(super) fn texture_sprites(&self, textures: &[&str]) -> Vec<Option<SpriteRef>> {
-        let lookup = self.native_sprite_lookup();
+        let atlas = self
+            .stitching_block_atlas
+            .as_ref()
+            .unwrap_or(&self.pack.render);
+        let split = self
+            .renderer
+            .as_ref()
+            .map_or(u32::MAX, |r| r.sprite_split());
         textures
             .iter()
-            .map(|texture| lookup.texture(texture))
+            .map(|name| sunrise_client::block_sprites::texture_at(atlas, split, name))
             .collect()
     }
     /// For a client mod drawing a block's faces itself (a copycat drawing its material's, from
@@ -88,7 +95,10 @@ impl Game<'_> {
     /// For a client mod: changes each time the resources load (a resource pack turned on or off can move every
     /// sprite): ask `block_sprites` again then. API 380.
     pub(super) fn block_sprites_version(&self) -> u64 {
-        self.pack.context.render.generation
+        self.stitching_block_atlas
+            .as_ref()
+            .unwrap_or(&self.pack.render)
+            .generation
     }
     /// For a client mod: where GUI sprite `sprite` lies in the GUI atlas and its size, none for one the atlas lacks
     /// or whose entry its definition removed (a server's metrics-only atlas lacks them all). The atlas names its
@@ -292,6 +302,16 @@ mod texture_atlas_stitched_tests {
     #[cfg(unix)]
     #[ignore = "daily"]
     fn a_sprite_source_publishes_its_sprites_by_atlas_and_id_through_the_host() {
+        use mod_api::__private::game::RegistrationContextNew;
+
+        // Both resource loads need the source type, whose registry is process-wide.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_block_sprites::texture_atlas_stitched_tests::a_sprite_source_publishes_its_sprites_by_atlas_and_id_through_the_host",
+            "SUNRISE_SPRITE_SOURCE_ATLAS_TEST_CHILD",
+            &["atlas"],
+        ) {
+            return;
+        }
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let files: Vec<_> = ["blocks", "gui"]
             .map(|atlas| with_marker_entry(&base, atlas))
@@ -305,14 +325,27 @@ mod texture_atlas_stitched_tests {
         )]
         .into();
         with_mods(mods, || {
+            let role = crate::game::execution_role::ExecutionRole::Client;
+            let mut types = Vec::new();
+            super::Game::native_register_sprite_sources(
+                &mod_api::RegistrationContext::new(),
+                &mut types,
+            );
+            assert_eq!(
+                sunrise_client_render::mod_sprite_sources::register(types),
+                ["marker:own"]
+            );
             super::super::native_entity_refs::tests::with_game_role(
                 root.path().to_owned(),
-                crate::game::execution_role::ExecutionRole::Client,
+                role,
                 |game| {
                     game.texture_atlases_stitched();
                     {
-                        let marker = marker.lock().unwrap();
-                        assert!(marker.block.is_some(), "no model names the block sprite");
+                        let mut marker = marker.lock().unwrap();
+                        assert!(
+                            marker.block.take().is_some(),
+                            "no model names the block sprite"
+                        );
                         assert_eq!(marker.gui.map(|s| s.size), Some([3, 3]));
                     }
                     assert_eq!(

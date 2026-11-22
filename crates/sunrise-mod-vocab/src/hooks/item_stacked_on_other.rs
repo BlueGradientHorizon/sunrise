@@ -35,6 +35,7 @@ pub trait Hooks {
     /// through `Host` to what the click read, or panics refuse the click and roll back every
     /// write. During client prediction, server reconciliation remains authoritative.
     #[hook(
+        dispatch = "flat",
         side = "both",
         contract = "cancel",
         out = "canceled",
@@ -43,5 +44,9 @@ pub trait Hooks {
         cancellable = true,
         version = 5
     )]
-    fn item_stacked_on_other();
+    fn item_stacked_on_other(
+        event: &mod_api::item::menu::StackedOnOther,
+        result: &mut mod_api::item::menu::StackedOnOtherResult,
+        canceled: &mut bool,
+    );
 }

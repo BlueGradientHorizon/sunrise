@@ -266,7 +266,12 @@ impl Game<'_> {
         motion
             .collision_exclusions
             .clone_from(&g.collision_exclusions);
-        let _ = motion.set_health(g.health, false);
+        // The guest mirrors the body's last health. Do not run a health
+        // setter just for taking the body on loan: a pending max-health
+        // change has not reached LivingEntity.onAttributeUpdated yet.
+        if motion.health.health().to_bits() != g.health.to_bits() {
+            let _ = motion.set_health(g.health, false);
+        }
         motion.health.food.food = g.food;
         motion.health.food.saturation = g.saturation;
         let mut player = Some(*motion);
@@ -320,8 +325,11 @@ impl Game<'_> {
         // The host's held keys stay theirs: the guest holds only sneak, and a
         // screen the guest opens (`keys.clear()`) leaves the host walking.
         let host_keys = std::mem::take(&mut self.keys);
-        if g.sneaking {
-            self.keys.insert(KeyCode::ShiftLeft);
+        let saved_mappings = std::mem::take(&mut self.vanilla_mappings);
+        let sneaking = g.sneaking;
+        let guest_vehicle = g.vehicle;
+        if sneaking {
+            self.insert_device_key(KeyCode::ShiftLeft);
         }
         // The window's screens are the host's: a sign, book, command block or
         // mount menu the guest's action opens is not drawn over the host's
@@ -355,16 +363,15 @@ impl Game<'_> {
         std::mem::swap(&mut self.mount, &mut play.mount);
         // `Entity.portalCooldown` and `portalProcess` are the player's own.
         std::mem::swap(&mut self.portals.player, &mut play.portal);
-        let (left, right) = (self.left, self.right);
-        self.left = play.digging.is_some();
-        self.right = play.using.is_some() || self.using.is_some();
+        self.set_mapping_held("key.attack", play.digging.is_some());
+        self.set_mapping_held("key.use", play.using.is_some() || self.using.is_some());
         // The guest's vehicle (Entity.vehicle) for its turn.
-        let riding = std::mem::replace(&mut self.riding, g.vehicle);
+        let riding = std::mem::replace(&mut self.riding, guest_vehicle);
         // `Entity.isPassenger()` for that turn, from the same vehicle: the
         // guest's body keeps no swim (`Entity.updateSwimming` needs it false).
         // Taken from `g.vehicle` each turn, so boarding and getting out land.
         if let Some(p) = self.player.as_mut() {
-            p.is_passenger = g.vehicle.is_some();
+            p.is_passenger = guest_vehicle.is_some();
         }
         // Entity.collide: the guest's body collides with the level's world
         // border too, as it is this turn (it moves with /worldborder).
@@ -453,13 +460,6 @@ impl Game<'_> {
             &mut self.applied_modifiers,
             std::mem::take(&mut play.modifiers),
         );
-        // Its equipment's modifiers on its attributes from its first turn. A later change
-        // waits for the guest's body tick (`equipment_changed`, tick.rs).
-        if play.equipped.is_none() {
-            let held = self.inventory.get(self.selected).and_then(Option::as_ref);
-            equipment_changed(&mut play.equipped, &self.armor, held, self.offhand.as_ref());
-            self.put_equipment_modifiers();
-        }
         // The player's effects are on the new body before anything it does
         // (the movement that brought it, a landing): vanilla keeps the same
         // entity through a level change, with its attributes and effects.
@@ -491,6 +491,7 @@ impl Game<'_> {
             xp,
             level_up_sound,
             host_keys,
+            saved_mappings,
             screen,
             host_sign,
             host_book,
@@ -513,8 +514,6 @@ impl Game<'_> {
             attack_ticks,
             attack_item,
             swing,
-            left,
-            right,
             riding,
             host_station,
             sleeping,
@@ -629,6 +628,7 @@ impl Game<'_> {
             xp,
             level_up_sound,
             host_keys,
+            saved_mappings,
             screen,
             host_sign,
             host_book,
@@ -651,8 +651,6 @@ impl Game<'_> {
             attack_ticks,
             attack_item,
             swing,
-            left,
-            right,
             riding,
             host_station,
             sleeping,
@@ -820,8 +818,6 @@ impl Game<'_> {
         // ServerPlayer.displayClientMessage(_, true): the guest's action bar.
         let guest_message = std::mem::replace(&mut self.message, message);
         let guest_vehicle = std::mem::replace(&mut self.riding, riding);
-        self.left = left;
-        self.right = right;
         play.mining = std::mem::replace(&mut self.mining, mining);
         play.destroy_delay = std::mem::replace(&mut self.destroy_delay, destroy_delay);
         play.using = std::mem::replace(&mut self.using, using);
@@ -854,6 +850,7 @@ impl Game<'_> {
         // inventory key while riding).
         let guest_mount = std::mem::replace(&mut self.mount_menu, host_mount_menu).opened_mob();
         self.keys = host_keys;
+        self.vanilla_mappings = saved_mappings;
         let new_mode = self.mode_id();
         let turn_previous = std::mem::replace(&mut self.previous_mode, outer_previous);
         let turn_abilities = std::mem::replace(&mut self.acting_abilities, outer_abilities);
@@ -1069,15 +1066,8 @@ impl Game<'_> {
             }
         }
         self.stat_criteria_changed(&name, stat_events);
-        if let Some(pos) = opened
-            && !self.lan_open_container(conn, pos)
-            && self
-                .lan
-                .as_ref()
-                .is_some_and(|host| !host.hub.guests[i].spectator())
-        {
-            // Nothing the guest can use opened: its lid closes again.
-            self.container_openers_changed(pos, false);
+        if let Some(pos) = opened {
+            self.lan_open_container(conn, pos);
         }
         if let Some(station) = opened_station {
             self.lan_station_opened(conn, station);

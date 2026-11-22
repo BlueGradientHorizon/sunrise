@@ -171,6 +171,7 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
     use sunrise_client::lan::{ServerAdvancements, data::SyncData};
     use sunrise_world::loot::PackOverlay;
 
+    let _publication = sunrise_client::datapack_net::isolate_server_publication();
     let heard = Arc::default();
     mod_platform::testing::with_mods(
         vec![mod_api::ModEntry::new(
@@ -185,8 +186,10 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
         || {
             with_game(|game| {
                 game.world_root = game.options.game_dir.clone().unwrap();
+                // Load the world's tables before installing the test trees. Otherwise
+                // the first tick's scheduled functions replace the game's tree.
+                game.open_world_datapacks(&[]).unwrap();
                 open_to_lan(game);
-                game.build_registries();
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -219,12 +222,8 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
                 )
                 .unwrap();
                 let mut sync = SyncData::empty();
-                sync.advancements = ServerAdvancements::load(
-                    pack.path(),
-                    &PackOverlay::NONE,
-                    Default::default(),
-                    Default::default(),
-                );
+                sync.advancements =
+                    ServerAdvancements::load(pack.path(), &PackOverlay::NONE, Default::default());
                 game.with_advancement_hub(|hub, owners| {
                     hub.reload_resources(Arc::new(sync), owners)
                 });
@@ -252,7 +251,12 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
                 assert!(host.hub.native_advancement_grants.is_empty());
                 use Event::*;
                 let events = heard.lock().unwrap();
-                let position = |event: &Event| events.iter().position(|e| e == event).unwrap();
+                let position = |event: &Event| {
+                    events
+                        .iter()
+                        .position(|e| e == event)
+                        .unwrap_or_else(|| panic!("missing {event:?}; saw {events:?}"))
+                };
                 let post_entity = position(&EntityPost(20));
                 for criterion in ["tick", "levitation", "staged"] {
                     assert!(position(&Criterion(123, criterion.into())) < post_entity);

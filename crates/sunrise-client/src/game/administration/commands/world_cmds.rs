@@ -263,6 +263,7 @@ impl Game<'_> {
         attacker: i32,
         direct: Option<Target>,
     ) -> sunrise_client::health::Attack {
+        use sunrise_client::health::DirectEntity;
         let mut attack = self.attack_of(attacker);
         attack.direct = Some(
             direct
@@ -278,13 +279,42 @@ impl Game<'_> {
             Some(Target::Trident(id)) => {
                 if let Some(shot) = self.tridents.iter().find(|shot| shot.id == id) {
                     attack.projectile = Some(id as i32);
-                    attack.projectile_is_arrow = true;
+                    attack.projectile_kind = DirectEntity::Arrow;
                     Self::set_projectile_weapon(&mut attack, Some(&shot.stack));
                 }
             }
             _ => {}
         }
+        attack.direct_kind = Some(Self::target_direct_entity(
+            direct,
+            &self.creatures.projectiles,
+        ));
         attack
+    }
+    /// Classify an explicit `/damage` or `EntityRef::hurt` direct entity target.
+    pub(in crate::game) fn target_direct_entity(
+        direct: Option<Target>,
+        projectiles: &[sunrise_client::projectiles::Projectile],
+    ) -> sunrise_client::health::DirectEntity {
+        use sunrise_client::health::DirectEntity;
+        match direct {
+            Some(
+                Target::Player
+                | Target::Guest(_)
+                | Target::Mob(_)
+                | Target::Dragon(_)
+                | Target::Stand(_),
+            ) => DirectEntity::Living,
+            Some(Target::Projectile(id)) => projectiles
+                .iter()
+                .find(|shot| shot.id == id)
+                .map_or(DirectEntity::Projectile, |shot| {
+                    Self::projectile_direct_entity(&shot.kind)
+                }),
+            Some(Target::Trident(_)) => DirectEntity::Arrow,
+            Some(Target::Rocket(_) | Target::Hook(_)) => DirectEntity::Projectile,
+            _ => DirectEntity::Other,
+        }
     }
 
     fn hurt_target_from_source(
@@ -341,7 +371,7 @@ impl Game<'_> {
             Target::Mob(id) => {
                 let attacker = cause.or(by).and_then(|t| match t {
                     Target::Player | Target::Guest(_) => Some(Who::Player),
-                    Target::Mob(i) => Some(Who::Mob(i)),
+                    Target::Mob(i) | Target::Dragon(i) | Target::Stand(i) => Some(Who::Mob(i)),
                     _ => None,
                 });
                 let attacker_species = match attacker {
@@ -527,6 +557,7 @@ impl Game<'_> {
         for (mob, target) in reinforcements {
             self.call_reinforcements(mob, target);
         }
+        self.settle_mob_hurt(id);
         // Enderman.hurtServer's teleport, refused hit or not, before the command returns.
         if let Err(e) = self.settle_hurt_teleports() {
             log::warn!("Sunrise: /damage: enderman teleport: {e}");
@@ -1012,6 +1043,8 @@ impl Game<'_> {
     /// Read arms follow `AttributeCommand.getAttributeValue` and
     /// `AttributeCommand.getAttributeModifier`: effective values include modeled
     /// transient modifiers; base reads still use the unmodified base.
+    /// `AttributeCommand` writes the instance without delivering its dirty
+    /// callbacks; the living entity refreshes them at its own lifecycle boundary.
     pub(super) fn cmd_attribute(&mut self, id: &str, ctx: &Context) -> R<i32> {
         let targets = self.entities(ctx, "target", false)?;
         let Some(target) = targets.first().copied() else {
@@ -1115,12 +1148,6 @@ impl Game<'_> {
                     "attribute.base.set" => {
                         self.write_attribute(target, attribute, AttributeWrite::Base(value_arg))
                             .ok_or_else(|| no_attribute(&name, &description))?;
-                        // onAttributeUpdated: a lowered max_health clamps health.
-                        if attribute == "minecraft:max_health"
-                            && let Some(player) = self.player.as_mut()
-                        {
-                            let _ = player.clamp_health_to_max();
-                        }
                         Ok(Some((
                             1,
                             Text::translate(
@@ -1135,13 +1162,7 @@ impl Game<'_> {
                         let v = self
                             .player
                             .as_mut()
-                            .and_then(|p| {
-                                let v = p.attributes.value(Some(key), ValueKind::Base).ok();
-                                if attribute == "minecraft:max_health" {
-                                    let _ = p.clamp_health_to_max();
-                                }
-                                v
-                            })
+                            .and_then(|p| p.attributes.value(Some(key), ValueKind::Base).ok())
                             .unwrap_or(0.0);
                         Ok(Some((
                             1,
@@ -1170,12 +1191,6 @@ impl Game<'_> {
                                     name.clone(),
                                 ],
                             ));
-                        }
-                        // onAttributeUpdated: a lowered max_health clamps health.
-                        if attribute == "minecraft:max_health"
-                            && let Some(player) = self.player.as_mut()
-                        {
-                            let _ = player.clamp_health_to_max();
                         }
                         Ok(Some((
                             1,

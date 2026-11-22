@@ -18,8 +18,8 @@ cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks
 - `new <path> [--name "Name"]` writes the content template. `--template native` writes
   a flat native mod instead: `sunrise-mod.toml`, root `Cargo.toml`
   and `src/lib.rs`, and empty `assets/` and `data/` directories. The mod is pinned to the build of the current
-  Nightly (players have it), or to `--sunrise`'s: `nightly-<YYYY-MM-DD>`, or a commit sha (7 hex digits are enough when
-  they name one build). The native mod pins it in `[native] sunrise`. `Cargo.toml` names the API by path,
+  Nightly (players have it), or to `--sunrise`'s: a game release's tag (`nightly-<YYYY-MM-DD>`, a Stable tag such as
+  `26.3-0.1.0`, or `dev-<YYYY-MM-DD>-<short sha>`), or a commit sha (7 hex digits are enough when they name one build). The native mod pins it in `[native] sunrise`. `Cargo.toml` names the API by path,
   `sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }`, the only form a build
   takes. Every other form is refused under `E_SDK_SOURCE`, naming why: the old git form, a version alone (Cargo
   would take the crate from crates.io, where anyone can publish its name), another source, or another path. `new` fetches that build's SDK into `.sunrise/sdk/`,
@@ -98,11 +98,26 @@ Code mods declare content through `BlocksEvent` and `ItemsEvent`, using API-owne
 run before resources load. These are load-time declarations, not live registry entries. The game
 admits them with the content-file checks, atomically for each owner.
 A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none.
-New identifiers from code—including block entity types and other registrar
-declarations—may use any namespace owned by that mod's manifest. Bare names use
-the mod ID; an explicit owned namespace stays unchanged. An unowned namespace
-refuses registration with a diagnostic naming both the mod and namespace. Attaching a Part to an existing vanilla or
-foreign block or item is a reference, not a new declaration, and remains allowed.
+New identifiers from code across every namespace-owned registration—including
+blocks, items, block entity types, fluids, general entity types, attributes,
+custom stats, game rules, recipe types and serializers, recipe book types, menu
+recipe books, menu screen dispatch, mob-effect tick ownership (`MobEffectPart`),
+recipe property sets, render pipelines, armour models, arm poses, attachment
+types, biome modifiers, datapack registries, client dynamic textures, and
+runtime levels—may use any namespace owned by that mod's manifest, or any
+namespace of an installed content package that delegates to it via `served_by`
+(when the native host opts in with `[native] serves_content = true`; see
+[Manifest reference](../reference/manifest.md#sunrise-modtoml)). Only filesystem
+paths keyed strictly by package ID (such as `config/<mod_id>.toml`) stay scoped
+to the host's own ID. Bare names use the mod ID; an
+explicit owned namespace stays unchanged. An unowned namespace refuses
+registration with a diagnostic naming both the mod and namespace. A host cannot
+re-declare a block or item ID that its served content package already declares,
+and opting in with `serves_content = true` grants delegation to any installed
+content package that names the host—so a host runtime must inspect
+`context.mods()` and serve only packages it recognizes or generated. Attaching a
+Part to an existing vanilla or foreign block or item is a reference, not a new
+declaration, and remains allowed.
 
 Code declarations carry component patches as `Vec<(String, Option<Tag>)>`:
 `Some(tag)` sets the named component and `None` removes it (without a `!` prefix).
@@ -142,6 +157,7 @@ homepage = "https://..."     # optional: the Mods screen's Homepage button
 issues = "https://..."       # optional: the Mods screen's Issues button
 side = "both"
 namespaces = []              # optional: more namespaces the mod's files use (below)
+served_by = "my_runtime"     # optional (content only): native runtime mod with serves_content = true
 
 [properties]                 # optional: values other mods read (reference/manifest.md)
 tier = 3
@@ -205,9 +221,11 @@ takes `tick_delay` (1 or more, default 5), `drop_off` (1 to 7, default 1), `slop
 `source_conversion` (default false) and `bucket` (default true). The fluid is in no vanilla fluid tag, so entities don't
 swim in it or get pushed by it. In the world it draws its `sprite`, a block atlas texture such as `mymod:block/oil`, times
 its `tint`; with neither it looks like water, and a `tint` alone colours water's textures. A client mod's
-`register_fluid_models` hook collects `mod_api::FluidModel` values with separate flowing and overlay sprites.
-It is collected again before each resource bake, so a resource reload can change model identifiers as well as textures. Far terrain (LOD) omits mod fluids. LAN and dedicated server players play with them when they run the same mods: a client whose mods add different
-content is refused when it joins, with the reason.
+`register_fluid_models` hook accepts `mod_api::FluidModel` values with separate flowing and overlay sprites via
+`event.register(model)`. The hook runs again before each resource bake, so a resource reload can change model
+identifiers as well as textures. Far terrain (LOD) omits mod fluids. LAN and dedicated server players play with
+them when they run the same mods: a client whose mods add different content is refused when it joins, with
+the reason.
 
 Every Sunrise server checks loaded mods in the configuration phase (`sunrise_protocol::mod_list`, channel
 `sunrise:mod_list`), including when its own list is empty. Only the ids and versions of `side = "both"` mods cross
@@ -671,16 +689,20 @@ setup-animation invocation, after head, walk and riding setup but before arm
 priority and posing. Its read-only `ClientHost` and `event.humanoid` provide both
 held stacks, selected poses and `is_using_item`. `event.partial_tick` and optional
 `event.game_time` are captured for that draw; game time is absent outside a level.
-Use `event.parts.get(HumanoidPart::RightArm)` to read `[position, rotation]`, then
-`set_rotation` or `set_position` to change it. Positions are local texels and
-rotations are radians. A non-finite component is refused while other finite
-components apply; scale and visibility are not changed. Later ITEM, attack,
-crouch, bob and swim animation still apply. Armor stands then replace rotations
-with their saved pose, preserving position edits. Their armor models run the same
-setup independently. A model can animate more than
-once per frame, so listeners must not treat this as a once-per-entity frame
-notification or advance simulation from it. Both callbacks use the same finite
-part snapshot, with no callback or stack snapshot when nobody subscribes.
+`event.parts` is a `&mut dyn HumanoidPose` borrowed for this invocation's callback, not an
+owned or serializable snapshot. Use `event.parts.get(HumanoidPart::RightArm)` to read
+`[position, rotation]`, then `set_rotation` or `set_position` on that same view. The head, hat,
+body, arms and legs are editable if present; sleeves, jacket and pants are not. Positions are
+local texels and rotations are radians. Writes apply all three components
+immediately on any present editable part, matching `HumanoidModel.setupAnim`
+with no finiteness gate, so later listeners see those edits. Scale and visibility
+are not changed. Later ITEM, attack, crouch, bob and swim animation still apply.
+Armor stands then replace rotations with their saved pose, preserving position
+edits. Their armor models run the same setup independently. A model can animate
+more than once per frame, so listeners must not treat this as a once-per-entity
+frame notification or advance simulation from it. When nobody subscribes, there
+is no callback or held-stack snapshot. To read
+the completed animation, use a [layer's or Post hook's final model](client/model-drawing.md#read-the-final-body-model).
 
 ```json
 { "template": "minecraft:stick", "arm_pose": "toot_horn" }
@@ -716,8 +738,12 @@ round-trip through saved NBT; negative zero is not supported. A key such as
 
 `crafting_remainder` names what the item leaves in the crafting grid when a
 recipe uses it, as a milk bucket leaves a bucket (vanilla's
-`Item.Properties.craftRemainder`, not a data component): a vanilla item or
-one of the mod's own, refused at load otherwise. It holds on the crafting
+`Item.Properties.craftRemainder`, not a data component): a vanilla item, one
+of the mod's own, or, across a `served_by` delegation (see
+[Declare content in code](#declare-content-in-code)), an item or item-bearing block the other
+side declares: a served package's file may name one its serving runtime declares in that
+package's namespaces, and the runtime may name one from a package it serves. Anything else
+is refused at load. It holds on the crafting
 table, the inventory grid, the crafter and as furnace fuel (the last of the stack leaves it in
 the fuel slot, a stack with more left drops it), not in a brewing stand. What the item leaves once eaten
 or drunk is the `minecraft:use_remainder` component instead:
@@ -970,22 +996,39 @@ world load.
 
 A code mod can declare a datapack registry of its own with `Registrar::declare_datapack_registry(path, sync,
 fields)` (NeoForge's `DataPackRegistryEvent.NewRegistry`).
-`path` lands in the mod's namespace (`spell` of `example` is `example:spell`), and `fields` is a flat record
+`path` lands in a namespace the mod owns (`spell` of `example` is `example:spell`; explicit IDs may use extra manifest namespaces or a content package served via `served_by`), and `fields` is a flat record
 schema: `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`, `Identifier` or `Reference { registry }`,
 each required or given a default. Entry `addon:fire` is `data/addon/example/spell/fire.json`
 (`DatapackRegistryDeclaration::entry_file`), the registry's namespace being a folder as NeoForge's modded
 registries have it. The game decodes entries against the schema without running mod code: an undeclared key, a missing required key, a wrong type or an out-of-range value fails
 the entry, and a default never stands in for invalid data. The engine adds no entry-size or field-count limit
-of its own. Only both-side packages may declare registries. The game loads entries from mod content and enabled data packs.
+of its own. Only both-side packages (and both-side served namespace suppliers) may declare registries. The game loads entries from mod content and enabled data packs.
 
-Use the host's `level_datapack_entries(level, registry)` to list sorted entry IDs,
-`level_datapack_handle(level, registry, entry)` to obtain a `DatapackHandle`, and
-`level_datapack_read(level, &handle)` to copy decoded fields in schema order as
-`Vec<(String, DatapackValue)>`. Reads do not access disk. Handles fail with
-`StaleGeneration` after a reload or `WrongSession` in another world session.
-Unknown registries and stale or parked levels return `UnknownRegistry`; absent entries return
-`MissingEntry`. Listing returns `None` for an unavailable level or registry. Clients see only
-registries declared `Required` or `Optional` that their server sends at join and reload.
+Use `level.datapack_entries(host, registry)` to list owned entry IDs in sorted order and
+`level.datapack_read(host, registry, entry_id, &mut visit)` to borrow the published entry
+through a visitor. For example, keep only the `power` number:
+
+```rust,ignore
+let mut power = None;
+level.datapack_read(host, "example:spell", "addon:fire", &mut |entry| {
+    if let Some(mod_api::DatapackValue::Int(value)) = entry.get("power") {
+        power = Some(*value);
+    }
+})?;
+```
+
+Read `entry.values` in schema order or use `entry.get(name)` by field name. The active registry
+set stays pinned until the visitor returns, with no registry lock held and no disk access. Keep
+IDs to look up again, or copy only the fields you need to retain as a snapshot.
+
+The visitor runs once on success, never on error. On the logical server, both the active
+dimension and any loaded parked server dimension are accepted (matching vanilla
+`Level.registryAccess()`); stale epochs and unloaded dimensions are refused. Unknown or
+unavailable registries, stale or unloaded levels, and a missing published set give
+`UnknownRegistry`; a registry without the entry gives `MissingEntry`. A host without a backend
+returns `Unavailable`. Listing returns `None` for an unavailable level or registry, not for a
+known empty registry. Once a client receives a valid snapshot at join or reload, it reads those
+entries; any of its declared registries omitted from the snapshot have no entries there.
 
 A code mod can also use `Registrar::declare_entity_attributes(path, template, attributes)` during registration.
 That declaration starts from the vanilla template's attribute row, replacing the content row's overrides.
@@ -1049,7 +1092,8 @@ clicks and quick-move still use the declared rules and `menu_slot_rules` (vanill
 #### Menu types
 
 A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its container's slot count
-(0 to 256), the data slots its menu syncs (`ContainerData`, 0 to 256, 0 by default), and the slots players only take
+(0 to 32,767, the 16-bit signed index limit of vanilla container packets), the data slots its menu syncs (`ContainerData`,
+0 to 32,767, 0 by default), and the slots players only take
 from (`results`, as a furnace's result slot):
 
 ```json
@@ -1064,6 +1108,9 @@ A status or control screen that has no item slots at all can omit the player inv
 
 `player_inventory` defaults to `true`. Result, crafting, linked-slot and recipe-book mappings name declared
 container slots, never the optional player group. A mapping to an absent slot is refused at load.
+The `data_slots` count is separate from `slots`. Larger declarations can be stored on the server,
+but each sync packet retains its index range: 0 through 32,767 for a block-backed menu and
+0 through 65,535 for the negotiated blockless payload.
 
 For blockless opens, an optional `owned_slots` array declares [transient menu storage](../concepts/capabilities/menu-slots.md#menu-owned-slots).
 It must contain exactly `slots` entries, each the maximum stack size (1–99) of that slot.
@@ -1084,8 +1131,10 @@ slot, and one on the container goes to the inventory, as a chest's does. `result
 block entity container's faces and insertion rules, not the menu's `inputs` list. A block-backed menu syncs the block entity's
 `data` (16-bit on the network, as vanilla's). A [blockless menu](world/machine-menu-data.md#blockless-status-menus)
 gets its initial data from its opener and syncs subsequent signed `i32` changes without reopening. A Sunrise client shows it through the
-mod's own screen (`screen`); without one it closes again. `player.open_mod_menu` can open the same type without a
-block, and a registered recipe-book screen applies to either opening. Clients join a server only with the same mods' menu
+mod's [registered screen factory](world/machine-menu-data.md#the-menus-screen). If the factory is missing,
+the client warns and keeps its current menu. `player.open_mod_menu` can open the same type without a block.
+A recipe-book binding applies to either opening; the screen factory supplies its geometry and book.
+Clients join a server only with the same mods' menu
 types, as with its blocks, and a client that isn't Sunrise's is never sent one: the block opens nothing for it. Its
 clicks run on the server's vanilla menu engine (`menu::Kind::Mod`), shift-clicks routed as `ChestMenu`'s, and buttons
 reach the type's `MenuPart::menu_button` on both block-backed and blockless openings. A native mod can decide what a
@@ -1337,7 +1386,7 @@ A code mod declares the same modifiers without a file: `Registrar::declare_biome
 `AddSpawnCosts`, `RemoveSpawnCosts`, `AddCarvers`, `RemoveCarvers` or `ModifyBiome`, whose `Option` fields are the
 values above). `BiomeModifier::json` renders it as the file above, so a declared modifier and
 a shipped one are applied by the same code, in the same order (additions first, then removals, then modifications, mods in dispatch
-order, declarations in registration order). An id outside the mod's namespace or that is not a file path, a repeated
+order, declarations in registration order). An id outside the mod's owned namespaces (or `minecraft`) or that is not a file path, a repeated
 id, an empty list, a name that is not namespaced, an unknown generation step, a spawner of weight 0 or with its
 smallest group above its largest, a spawn cost that is not finite, a climate number that is not finite, a colour above
 0xFFFFFF and a temperature modifier other than `none` or `frozen` refuse the mods at startup, naming the mod.

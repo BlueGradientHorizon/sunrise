@@ -560,7 +560,7 @@ impl Game<'_> {
                 || p.health.invulnerable_time > 0,
             // EntitySelector.NO_CREATIVE_OR_SPECTATOR.
             creative: self.creative || self.spectator(),
-            sneaking: self.keys.held(Action::Sneak),
+            sneaking: self.held_mapping(Action::Sneak),
             swimming: p.swimming,
             look: view_vector(self.yaw, self.pitch),
             main_hand: self.held().map(|s| s.item.clone()),
@@ -1247,18 +1247,9 @@ impl Game<'_> {
                         hook: "spawn_cluster_size",
                         part: Some(attached.type_name()),
                     });
-                // Called outside the world (a reload or setup) a refused Host call is no answer.
-                match mod_api::__private::contain_outside_world(|| {
-                    attached
-                        .part()
-                        .spawn_cluster_size(self, lent, reason, spawner, vanilla)
-                }) {
-                    Ok(answer) => answer,
-                    Err(refusal) => {
-                        refusal.report();
-                        None
-                    }
-                }
+                attached
+                    .part()
+                    .spawn_cluster_size(self, lent, reason, spawner, vanilla)
             })
         })
     }
@@ -2159,13 +2150,77 @@ impl Game<'_> {
         if killed && let Some(Who::Mob(killer)) = source.attacker {
             self.zombie_killed(killer, target);
         }
+        self.settle_mob_hurt(target);
         hurt
     }
-    /// `LivingEntity.resolvePlayerResponsibleForDamage` after `source` hurt a
-    /// mob: a tame wolf's hit is its owner's (`setLastHurtByPlayer(uuid, 100)`),
-    /// so the kill drops experience and player-only loot and the owner, when
-    /// in the world, gets the credit (`getKillCredit`); a tame wolf without an
-    /// owner clears it. A player's own hits are recorded where they land.
+    /// Apply reactions that need the game in `hurtServer`, without waiting for
+    /// a mob tick: a Creaking's heart response or a Warden's anger and targeting.
+    /// Wardens can react even when the base hurt call returned false.
+    pub(in crate::game) fn settle_mob_hurt(&mut self, id: u32) {
+        use sunrise_client::mobs::{creaking, warden};
+
+        let Some(index) = self.mobs.iter().position(|m| {
+            m.id == id
+                && (creaking::has_pending_hurt(m)
+                    || m.extra
+                        .warden
+                        .as_ref()
+                        .is_some_and(|st| st.has_pending_hurt()))
+        }) else {
+            return;
+        };
+        if self.mobs[index].species() == Species::Creaking {
+            self.finish_creaking_hurt(index);
+            return;
+        }
+        let mut events = Vec::new();
+        let uuid = self.level.player_uuid;
+        let others: Vec<_> = self
+            .mobs
+            .iter()
+            .map(|m| seen(m, uuid, self.items()))
+            .collect();
+        let mut mob = self.mobs.swap_remove(index);
+        {
+            let world = self.mob_world_base(&others);
+            warden::handle_hurt(&mut mob, &world, &mut events);
+        }
+        self.mobs.push(mob);
+        let last = self.mobs.len() - 1;
+        if index < last {
+            self.mobs.swap(index, last);
+        }
+        if !events.is_empty() {
+            let _ = self.handle_mob_events(events);
+        }
+    }
+
+    pub(in crate::game) fn settle_creaking_hurt(&mut self, id: u32) {
+        if let Some(index) = self.mob_index.find(&self.mobs, id)
+            && sunrise_client::mobs::creaking::has_pending_hurt(&self.mobs[index])
+        {
+            self.finish_creaking_hurt(index);
+        }
+    }
+
+    fn finish_creaking_hurt(&mut self, index: usize) {
+        let mob = &mut self.mobs[index];
+        let (id, join) = (mob.id, mob.join);
+        let mut events = Vec::new();
+        let reaction = sunrise_client::mobs::creaking::take_hurt(mob, &mut events);
+        let _ = self.handle_mob_events(events);
+        if let Some((home, by_player)) = reaction
+            && self
+                .mob_object(id)
+                .is_some_and(|mob| mob.join == join && !mob.removed)
+        {
+            self.creaking_hurt(home, id, by_player);
+        }
+    }
+    /// `LivingEntity.resolvePlayerResponsibleForDamage` after `source` hurt a mob, through the
+    /// hit's credit loan (a tame wolf's hit is its owner's; an ownerless tame wolf clears it):
+    /// what an accepted hit's site commits, for tests that set up the credit without a hit.
+    #[cfg(test)]
     pub(super) fn resolve_player_responsible(&mut self, victim: u32, source: Damage) {
         if !matches!(source.attacker, Some(Who::Mob(_))) {
             return;
@@ -2193,18 +2248,9 @@ impl Game<'_> {
         &self,
         credit: super::combat::PlayerCredit,
     ) -> Option<Option<u32>> {
-        let uuid = sunrise_client::lan::playerdata::uuid_ints(credit.0);
-        if self.player.is_some()
-            && sunrise_client::mobs::tame::owned_by(Some(uuid), self.acting_uuid())
-        {
-            return Some(self.lan_acting);
-        }
-        let uuid = sunrise_client::lan::playerdata::ints_uuid(uuid);
-        self.lan
-            .iter()
-            .flat_map(|h| h.hub.guests.iter())
-            .find(|g| g.placed && g.uuid == uuid)
-            .map(|g| Some(g.conn))
+        crate::game::entity::player_resolver!(self)
+            .resolve(credit.0)
+            .map(|guest| guest.or(self.lan_acting))
     }
     /// `LivingEntity.dropFromGiftLootTable`: the gift table from its random
     /// sequence with the mob as `this` (a chicken's egg depends on its
@@ -2663,6 +2709,16 @@ impl Game<'_> {
                         }
                     }
                 }
+                MobEvent::PushJoined { id, join, velocity } => {
+                    if let Some(mob) = self.mob_object_mut(id).filter(|mob| mob.join == join) {
+                        mob.velocity = mob.velocity.add_vector(Vec3::new(
+                            velocity[0],
+                            velocity[1],
+                            velocity[2],
+                        ));
+                        mob.needs_sync = true;
+                    }
+                }
                 MobEvent::Knockback {
                     target,
                     power,
@@ -2698,8 +2754,7 @@ impl Game<'_> {
                         Lid::Shulker(shulker),
                         Vec3::new(delta[0], delta[1], delta[2]),
                     );
-                    // A client of a server pushes only its own player, as
-                    // the shulker box's lid does.
+                    // Use the same client push as a shulker box's lid.
                     if self.remote.is_some() {
                         self.lid_push_local(lid, area, delta);
                     } else {
@@ -2783,6 +2838,10 @@ impl Game<'_> {
                     // carries its kind. A sulfur cube's blast is TNT's.
                     let mut source =
                         super::explosion::ExplosionSource::default().with_silence(silent);
+                    if let Some(id) = source_mob {
+                        source = source
+                            .with_damage_direct(id, sunrise_client::health::DirectEntity::Living);
+                    }
                     if let Some(id) = source_mob
                         && matches!(species, Species::Creeper | Species::Wither)
                     {
@@ -2790,7 +2849,11 @@ impl Game<'_> {
                             Species::Creeper => "minecraft:creeper",
                             _ => "minecraft:wither",
                         };
-                        source = source.with_entity(id, kind);
+                        source = source.with_entity(
+                            id,
+                            kind,
+                            sunrise_client::health::DirectEntity::Living,
+                        );
                     }
                     let result = match species {
                         Species::Creeper | Species::Wither => self.with_hive_emptying_blast(|g| {
@@ -3639,11 +3702,6 @@ impl Game<'_> {
                     self.level_event_at(2001, pos, state.0 as i32);
                 }
                 MobEvent::Darkness { at, radius } => self.apply_darkness(at, radius),
-                MobEvent::CreakingHurt {
-                    home,
-                    by_player,
-                    id,
-                } => self.creaking_hurt(home, id, by_player),
                 MobEvent::CreakingTearDown { center, spread } => {
                     self.creaking_tear_down(center, spread)
                 }
@@ -4309,7 +4367,9 @@ impl Game<'_> {
             None => self.current_attack(),
         };
         attack.projectile = self.combat.attack().projectile;
+        attack.projectile_kind = self.combat.attack().projectile_kind;
         attack.direct = self.combat.attack().direct;
+        attack.direct_kind = self.combat.attack().direct_kind;
         attack.position = from;
         attack.projectile_weapon = self.combat.attack().projectile_weapon.clone();
         if let Some(a) = attacker.or(owner) {
@@ -4490,7 +4550,7 @@ impl Game<'_> {
     fn give_mob_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32, ambient: bool) {
         let immune = self.creative || self.spectator();
         if let Some(instance) = mob_effect_instance(effect, ticks, amplifier, ambient, immune) {
-            self.potions.effects.add(instance);
+            self.apply_player_effect(instance);
         }
     }
     /// `WitherRoseBlock.entityInside` for the player: on a server level that
@@ -5531,9 +5591,13 @@ impl Game<'_> {
             return;
         };
         let dimension = self.dim;
+        let failures = mod_api::runtime::isolated_failures();
         let _: std::result::Result<(), ()> = mod_api::run_transaction(self, |game, _| {
             let (mut target, _, cancel) =
                 game.native_pearl_teleport(owner, pearl.id, from, pearl.previous, 0.0, hit);
+            if mod_api::runtime::isolated_failures() != failures {
+                return Err(());
+            }
             // Listener writes stay in the transaction; never overwrite a changed,
             // dead, sleeping or removed owner using the old decision.
             if cancel
@@ -5581,6 +5645,12 @@ impl Game<'_> {
         let result = self.with_attack(attack, |g| g.projectile_hit_landed(p, hit));
         self.settle_dealt_absorbed(p.owner == Some(Who::Player));
         result?;
+        if let Hit::Entity {
+            who: Who::Mob(id), ..
+        } = hit
+        {
+            self.settle_mob_hurt(id);
+        }
         // The hit's hurt teleports an enderman or a shulker now (`hurtServer`).
         self.settle_hurt_teleports()
     }
@@ -6432,7 +6502,11 @@ impl Game<'_> {
                     fire,
                     super::explosion::ExplosionSource::default()
                         .with_silence(self.entity_silent(p.id))
-                        .with_entity(p.id, "minecraft:fireball"),
+                        .with_entity(
+                            p.id,
+                            "minecraft:fireball",
+                            sunrise_client::health::DirectEntity::LargeFireball,
+                        ),
                 );
                 self.combat.explosion_direct = None;
                 self.set_blast_by_player(false);
@@ -6960,8 +7034,8 @@ impl Game<'_> {
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         let acting = self.acting_player_uuid();
         let (acting_id, acting_entity_id) = (self.native_acting_id(), self.own_entity_id());
-        let sneaking =
-            self.keys.held(Action::Sneak) || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
+        let sneaking = self.held_mapping(Action::Sneak)
+            || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
         let held_damage = held.as_ref().map_or(0, |h| h.damage as i32);
         let held_extra = held.as_ref().and_then(|h| h.extra.clone());
         let feeder = sunrise_client::health::Attack {

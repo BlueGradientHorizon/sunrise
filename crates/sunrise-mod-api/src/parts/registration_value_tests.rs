@@ -189,6 +189,9 @@ fn render_hand_chains_pose_and_draw_until_cancelled() {
             self.0 += 1;
         }
     }
+    impl crate::HandDrawContext for Draw {
+        fn render_arm(&mut self, _: crate::MainHand) {}
+    }
     #[mod_api::__subscriptions]
     impl Hooks for HandMod {
         fn render_hand(&self, _host: &dyn ClientHost, event: &mut RenderHandEvent<'_, '_>) -> Flow {
@@ -760,7 +763,6 @@ fn an_item_update_reaches_only_the_parts_of_the_ticked_item_and_cancels_for_its_
 }
 
 #[test]
-#[should_panic(expected = "Commands::run_command")]
 fn an_unexpected_host_call_names_the_method() {
     /// A mod's own double, with only the services the hook reaches.
     struct Silent;
@@ -793,6 +795,21 @@ fn an_unexpected_host_call_names_the_method() {
             result: &mut result,
         },
     );
+    assert_eq!(result, None);
+    assert_eq!(
+        mod_vocab::__private::take_hook_panics(),
+        [mod_vocab::__private::HookPanicReport {
+            mod_id: "chatty",
+            hook: "use_on",
+        }]
+    );
+
+    // Test the default Host service outside dispatch, which contains the original panic.
+    let diagnostic = mod_vocab::__private::game::contain_unwind(|| {
+        Commands::run_command(&mut host, "say hello")
+    })
+    .unwrap_err();
+    assert!(diagnostic.contains("Commands::run_command"), "{diagnostic}");
 }
 
 /// The top of the block at the origin, clicked in its middle.

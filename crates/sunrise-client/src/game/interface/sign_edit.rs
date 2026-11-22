@@ -503,8 +503,8 @@ impl Game<'_> {
                 lines,
             });
             game.sign_load();
-            game.keys.clear();
-            game.right = false;
+            game.clear_device_keys();
+            game.set_mapping_held("key.use", false);
             game.capture(false);
         });
         if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
@@ -555,10 +555,8 @@ impl Game<'_> {
     /// the block, then the editor, on its client, and the guest may write on it.
     pub(super) fn lan_open_sign_editor(&mut self, conn: u32, edit: SignEditor) {
         let pos = [edit.pos.0, edit.pos.1, edit.pos.2];
-        let state = self.world.block(pos[0], pos[1], pos[2]).0 as i32;
         if let Some(host) = self.lan.as_mut() {
-            host.hub
-                .send_to(conn, &C::BlockUpdate(play::BlockUpdate { pos, state }));
+            host.hub.send_authoritative_block(conn, &self.world, pos);
             host.hub.send_to(
                 conn,
                 &C::OpenSignEditor(play::OpenSignEditor {
