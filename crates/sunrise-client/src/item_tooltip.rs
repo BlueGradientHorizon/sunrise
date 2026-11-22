@@ -365,10 +365,10 @@ impl PlayerHeadName {
     }
     /// The title as a component, for command feedback.
     pub fn text(&self) -> crate::text::Text {
-        crate::text::Text::translate(
-            "block.minecraft.player_head.named",
-            &[crate::text::Text::literal(self.0.clone())],
-        )
+        crate::text::Text::from(serde_json::json!({
+            "translate": "block.minecraft.player_head.named",
+            "with": [&self.0],
+        }))
     }
 }
 
@@ -2105,6 +2105,15 @@ mod tests {
             Some(Tag::compound([("name", Tag::String("Notch".into()))])),
         );
         assert_eq!(name_line(&compound, &translate), "Notch's Head");
+
+        let mut numeric = ItemStack::new("minecraft:player_head", 1);
+        numeric
+            .data_mut()
+            .set_other("minecraft:profile", Some(Tag::String("123".into())));
+        assert_eq!(
+            player_head_name(&numeric).unwrap().text().component(),
+            serde_json::json!({"translate": "block.minecraft.player_head.named", "with": ["123"]}),
+        );
 
         let mut id_only = ItemStack::new("minecraft:player_head", 1);
         id_only.data_mut().set_other(
