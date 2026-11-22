@@ -756,7 +756,7 @@ fn knockback_fires_and_lends_views_when_stacks_have_unprojectable_components_or_
             let mut credit = plan.lend(&mut game.last_hurt_by_player);
             let mob = &mut game.mobs[0];
             mob.velocity = Vec3::ZERO;
-            mob.on_ground = false;
+            mob.ground.on_ground = false;
             mob.knockback(
                 damage_level_of!(game, &attack, &mut credit, None),
                 0.4,
