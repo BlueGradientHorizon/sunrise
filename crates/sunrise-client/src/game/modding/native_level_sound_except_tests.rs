@@ -258,7 +258,8 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                     )
                     .unwrap(),
                 );
-                game.audio.set_listener(at, 0.0, 0.0);
+                game.audio
+                    .set_listener(at, [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]);
                 let end_portal_spawn = "minecraft:block.end_portal.spawn";
                 let portal_plays = |game: &super::Game<'_>| {
                     game.audio.heard.get(end_portal_spawn).copied().unwrap_or(0)
