@@ -951,7 +951,7 @@ fn an_entity_moved_into_another_level_is_told_once_at_its_next_crossing() {
 /// and never unwinds, whether or not a catalog has been published.
 #[test]
 fn section_host_reads_entity_type_defaults_without_unwinding() {
-    let host = LiveSectionHost(None);
+    let host = LiveSectionHost::new(None);
     let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         (
             mod_api::prelude::ItemsHost::entity_type_default_attribute(
@@ -988,7 +988,7 @@ fn section_host_and_game_read_the_same_entity_type_defaults() {
         return;
     }
     with_game(|game| {
-        let host = LiveSectionHost(None);
+        let host = LiveSectionHost::new(None);
         let read = |game: &crate::game::Game<'_>, entity_type: &str, attribute: &str| {
             let scoped = mod_api::prelude::ItemsHost::entity_type_default_attribute(
                 &host,
