@@ -2302,54 +2302,24 @@ fn render_selected(
             }
         }
     }
-    // The GPU path takes the mob only when its draws keep their order: only
-    // plain draws of models it can pose (no custom models, translucent body or
-    // energy swirl, which the CPU path changes after drawing), and with
-    // improved transparency off the tagged layers too.
-    // The first of the mob's draws (0 the body, 1 + i its layer i) whose model a mod takes a
-    // part of (`takes_part`): that model goes to the CPU, and the draws after it with it.
-    // The ordinary entity pass draws the GPU-posed vertices before the CPU's
-    // (`gfx::draw_frame`), so a draw before it can stay on the GPU and still come first; one
-    // after it can't. A taken body sends the whole mob to the CPU.
-    let mut cpu_from = None;
-    let posable = match skin.as_deref_mut() {
-        Some(skin) => {
-            let tagged = skin.models.tagged;
-            let mut placed = |part: &std::sync::Arc<Part>, draw: usize| match skin.route(part) {
-                super::skin::Route::Gpu => true,
-                super::skin::Route::Taken => {
-                    cpu_from.get_or_insert(draw);
-                    true
-                }
-                super::skin::Route::Cpu => false,
-            };
-            body.custom.is_none()
-                && extra.is_empty()
-                && m.species() != Species::SulfurCube
-                && !translucent_body(m)
-                && energy_swirl(m, s.age).is_none()
-                && placed(body_model, 0)
-                && all_layers.iter().enumerate().all(|(i, layer)| {
-                    // With improved transparency off, a translucent layer's tag
-                    // is the only difference from a plain draw.
-                    (tagged && (eyes_layer(m, layer) || !layer.full_bright)
-                        || !layer.full_bright && !translucent_layer(m, layer))
-                        && cem.layer(&layer.model).is_none()
-                        && layer
-                            .equipment_model
-                            .as_ref()
-                            .or_else(|| m.kind.layer(&layer.model))
-                            .is_none_or(|part| placed(part, 1 + i))
-                })
-        }
-        None => false,
-    };
-    if !posable {
+    // Only ordinary models can share the posed stream: no custom models, translucent
+    // body or energy swirl (which the CPU path changes after drawing). With improved
+    // transparency off, the layers' tags are the only difference from an ordinary draw.
+    if skin.as_deref().is_some_and(|skin| {
+        body.custom.is_some()
+            || !extra.is_empty()
+            || m.species() == Species::SulfurCube
+            || translucent_body(m)
+            || energy_swirl(m, s.age).is_some()
+            || all_layers.iter().any(|layer| {
+                !(skin.models.tagged && (eyes_layer(m, layer) || !layer.full_bright)
+                    || !layer.full_bright && !translucent_layer(m, layer))
+                    || cem.layer(&layer.model).is_some()
+            })
+    }) {
         skin = None;
     }
-    // The draws `cpu_from` sends to the CPU pass this instead of `skin`.
-    let mut on_cpu: Option<&mut super::skin::Skin> = None;
-    let on_gpu = |draw: usize| cpu_from.is_none_or(|first| draw < first);
+    let mut cpu_cut = out.len() as u32;
     let draw_body = |poses: &mut Poses, out: &mut Vec<Vertex>, skin: &mut Option<_>| {
         poses.apply_frame_visibility(true);
         // A player or mannequin whose skin has no atlas sprite (an evicted or
@@ -2399,7 +2369,7 @@ fn render_selected(
     // The translucent shell writes depth: draw the opaque core before it.
     let shell_last = m.species() == Species::SulfurCube;
     if !shell_last {
-        draw_body(poses, out, if on_gpu(0) { &mut skin } else { &mut on_cpu });
+        draw_body(poses, out, &mut skin);
     }
     // The worn armour's layers (and their emissive overlays, full bright).
     if !extra.is_empty() {
@@ -2488,15 +2458,10 @@ fn render_selected(
         // EquipmentLayerRenderer draws armour with OverlayTexture.NO_OVERLAY: never
         // the hurt tint, the armour glint (`ARMOR_GLINT`) when enchanted.
         let overlay = layer.equipment_overlay.unwrap_or(overlay);
-        let skin = if on_gpu(1 + i) {
-            &mut skin
-        } else {
-            &mut on_cpu
-        };
         let start = out.len();
         let first_job = skin.as_deref().map(|skin| skin.frame.jobs.len());
         put(
-            skin,
+            &mut skin,
             &part,
             base,
             draw_poses,
@@ -2509,7 +2474,7 @@ fn render_selected(
         );
         if let Some(glow) = emissive_uv(drawn) {
             put(
-                skin,
+                &mut skin,
                 &part,
                 base,
                 draw_poses,
@@ -2531,6 +2496,14 @@ fn render_selected(
         // layers get there among the marked ones): the tags in the overlay word,
         // no normal.
         if let (Some(skin), Some(first)) = (skin.as_deref_mut(), first_job) {
+            // Each model chooses its own route in `put`. Submit CPU draws accumulated
+            // since this mob's last posed draw before the new posed layer, not after it.
+            if let Some(job) = skin.frame.jobs.get(first)
+                && cpu_cut < start as u32
+            {
+                skin.frame.insert_cpu_before(job.dst, cpu_cut..start as u32);
+                cpu_cut = start as u32;
+            }
             let tagged = translucent_layer(m, layer);
             let eyes = layer.full_bright && m.species() != Species::Warden;
             for job in &mut skin.frame.jobs[first..] {
@@ -5086,12 +5059,8 @@ mod compile_part_tests {
         assert_eq!(skin.route(&std::sync::Arc::new(zombie)), Route::Gpu);
     }
 
-    /// A mob whose body and layer are two models: a model a mod takes a part of is drawn on
-    /// the CPU, and so is every draw after it; the draws before it stay on the GPU. The
-    /// ordinary entity pass draws the GPU-posed vertices first, then the CPU's
-    /// (`gfx::draw_frame`: "the posed models' vertices come first"), so the submitted order is
-    /// the game's, body before layer, whichever model is taken. The routing is decided once per
-    /// model and kept across frames.
+    /// The ordinary pass submits body before layer even when either draw is taken.
+    /// Placement is decided once per model and kept across frames.
     #[test]
     fn a_taken_model_leaves_the_gpu_and_the_mobs_other_models_keep_their_order() {
         thread_local! {
@@ -5160,15 +5129,10 @@ mod compile_part_tests {
         assert_ne!(bytes(body), bytes(layer), "two draws apart");
         // Which draw a vertex belongs to, by its sprite: the body's or the layer's.
         let drawn_by = |u: f32| if u < 0.5 { "body" } else { "layer" };
-        // (stand-in for takes_part, the first of the mob's 40 vertices drawn on the CPU, parts
-        // asked)
-        for (takes, cpu_from, asked) in [
-            (none as fn(&str, &str) -> bool, 40, 12),
-            // The body taken: the layer after it can't come first, so the whole mob is on the
-            // CPU.
-            (body_arm, 0, 11),
-            // The layer taken: the body stays on the GPU, drawn before it.
-            (outer_arm, 20, 11),
+        for (takes, cpu, lanes, asked) in [
+            (none as fn(&str, &str) -> bool, &[][..], ["GPU", "GPU"], 12),
+            (body_arm, body, ["CPU", "GPU"], 11),
+            (outer_arm, layer, ["GPU", "CPU"], 11),
         ] {
             ASKED.with(|a| a.set(0));
             let mut models = super::super::skin::SkinModels::default();
@@ -5189,21 +5153,25 @@ mod compile_part_tests {
                     &mut out,
                     &mut skin,
                 );
-                // The CPU draws the end of the mob's draws, byte for byte; the GPU the start.
-                assert_eq!(bytes(&out), bytes(&cpu[cpu_from..]));
-                let posed: u32 = frame.jobs.iter().map(|job| job.count).sum();
-                assert_eq!(posed as usize, cpu_from);
-                // The order the entity pass submits: the posed jobs' vertices, then the CPU's.
-                let submitted: Vec<&str> = frame
-                    .jobs
-                    .iter()
-                    .flat_map(|job| std::iter::repeat_n(drawn_by(job.rect[0]), job.count as usize))
-                    .chain(out.iter().map(|v| drawn_by(v.uv[0])))
-                    .collect();
-                let game: Vec<&str> = cpu.iter().map(|v| drawn_by(v.uv[0])).collect();
-                assert_eq!(game[..20], ["body"; 20]);
-                assert_eq!(game[20..], ["layer"; 20]);
-                assert_eq!(submitted, game, "the body before its layer");
+                assert_eq!(bytes(&out), bytes(cpu));
+                // Both models use ordinary quads; the entity batch leaves this CPU stream as-is.
+                // Use the production upload and skin job destinations. The ordinary pass's
+                // indices visit these buffer positions in order.
+                let mut order = crate::gfx::entity_skin::OrdinaryOrder::default();
+                order.prepare(&out, Some(&frame), false);
+                let mut submitted = [("", ""); 40];
+                for (dst, range) in order.cpu_uploads(out.len() as u32) {
+                    let src = &out[range.start as usize..range.end as usize];
+                    for (slot, vertex) in submitted[dst as usize..].iter_mut().zip(src) {
+                        *slot = ("CPU", drawn_by(vertex.uv[0]));
+                    }
+                }
+                for job in order.posed_jobs(&frame) {
+                    submitted[job.dst as usize..(job.dst + job.count) as usize]
+                        .fill(("GPU", drawn_by(job.rect[0])));
+                }
+                assert_eq!(submitted[..20], [(lanes[0], "body"); 20]);
+                assert_eq!(submitted[20..], [(lanes[1], "layer"); 20]);
             }
             // Each model's parts asked once, on its first frame (a taken part ends its walk).
             assert_eq!(ASKED.with(std::cell::Cell::get), asked);
