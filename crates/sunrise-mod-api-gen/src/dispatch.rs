@@ -1239,7 +1239,19 @@ pub(super) fn emit<'a>(
         };
         let listener_call = |callee: &str| {
             let expression = format!("{callee}.{name}({invoke})");
-            if matches!(
+            if panic_signal {
+                // Quick move chains the healthy Parts' proposals. Abort only the failing
+                // Part's storage writes before the shared panic boundary restores its outputs.
+                format!(
+                    "{event}.subject.transaction(|subject, _| -> Result<_, core::convert::Infallible> {{\
+                         Ok({callee}.{name}(&mut {event_type} {{\
+                             kind: {event}.kind, subject: subject.reborrow(),\
+                             container_slots: {event}.container_slots, slot: {event}.slot,\
+                             stack: &mut *{event}.stack,\
+                         }}))\
+                     }}).unwrap_or_else(|never| match never {{}})"
+                )
+            } else if matches!(
                 name,
                 "contents_changed" | "farmland_trample" | "register_configuration_tasks"
             ) {

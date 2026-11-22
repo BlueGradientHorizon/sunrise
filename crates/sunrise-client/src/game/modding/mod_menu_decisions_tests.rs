@@ -47,9 +47,9 @@ struct Script {
     panic_in_contents_changed: bool,
     /// `menu_button`: edit subject and world storage inside `subject.transaction(...)`, then panic.
     transactional_panic: bool,
-    /// `menu_quick_move`: replace the backing block at `POS` through the `Host` by cloning `SECOND`.
-    replace_backing: bool,
-    /// `menu_quick_move`: return `Flow::Cancel` after `replace_backing` (with a remainder).
+    /// `menu_quick_move`: remove the backing block at `POS` through the journaled `Host` path.
+    remove_backing: bool,
+    /// `menu_quick_move`: return `Flow::Cancel` after `remove_backing` (with a remainder).
     handle_replace: bool,
     /// `menu_quick_move`: remove the backing block at `POS` and open a fresh menu through the `Host`.
     remove_and_reopen: bool,
@@ -136,6 +136,13 @@ impl BlockEntityPart for Part {
             });
         }
         if s.invalid {
+            assert_eq!(
+                event
+                    .subject
+                    .with_view(|mut entity| entity.set_item_slot(2, Some(stone(4)))),
+                Some(Ok(true)),
+                "the rejected move must have a real destination write to roll back"
+            );
             let err = event
                 .subject
                 .with_view(|mut entity| entity.set_item_slot(1, Some(stone(65))))
@@ -228,26 +235,7 @@ impl BlockEntityPart for Part {
                     .run_command("clone 1 64 1 1 64 1 2 64 1 replace force")
             );
         }
-        if s.replace_backing {
-            assert!(
-                event
-                    .subject
-                    .host()
-                    .commands()
-                    .run_command("clone 2 64 1 2 64 1 1 64 1 replace force"),
-                "clone must replace the backing block at POS"
-            );
-            assert!(
-                event.subject.with_view(|_| ()).is_none(),
-                "view must become stale after the backing block is replaced"
-            );
-            if s.handle_replace {
-                *event.stack = Some(stone(1));
-                return Flow::Cancel;
-            }
-            return Flow::Continue;
-        }
-        if s.remove_and_reopen {
+        if s.remove_backing || s.remove_and_reopen {
             let host = event.subject.host();
             let level = host.level("minecraft:overworld").unwrap();
             let air = mod_api::BlockState::of(
@@ -265,16 +253,23 @@ impl BlockEntityPart for Part {
                 ),
                 Ok(true)
             );
-            host.open_menu(
-                12,
-                1,
-                mod_api::Text::literal("reopened by menu_quick_move"),
-                Vec::new(),
-                mod_api::MenuReplace::InPlace,
-            )
-            .unwrap()
-            .expect("guest is online");
-            return Flow::Cancel;
+            if s.remove_and_reopen {
+                host.open_menu(
+                    12,
+                    1,
+                    mod_api::Text::literal("reopened by menu_quick_move"),
+                    Vec::new(),
+                    mod_api::MenuReplace::InPlace,
+                )
+                .unwrap()
+                .expect("guest is online");
+            }
+            assert!(event.subject.with_view(|_| ()).is_none());
+            if s.handle_replace || s.remove_and_reopen {
+                *event.stack = Some(stone(1));
+                return Flow::Cancel;
+            }
+            return Flow::Continue;
         }
         if s.panic_in_contents_changed {
             let entity = event.subject.with_view(|view| view.handle()).unwrap();
@@ -292,7 +287,7 @@ impl BlockEntityPart for Part {
     fn menu_slot_take(&self, event: &mut MenuSlotTakeEvent<'_>) {
         if !SCRIPT.with(|s| {
             let s = s.borrow();
-            s.handle_cross || s.replace_backing
+            s.handle_cross || s.remove_backing
         }) {
             return;
         }
@@ -858,15 +853,14 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
                     .window;
                 game.lan_guest_packet(12, container_click(window, 0, 1));
             };
-            // The mod takes 9 of the 10 into two live slots and skips plain routing, with no
-            // implicit per-listener transaction.
+            // The mod takes 9 of the 10 into two live slots and skips plain routing.
             script(Script {
                 take: true,
                 ..Script::default()
             });
             click(game);
             assert_eq!(DISPATCHES.get(), 1);
-            assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [false]);
+            assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [true]);
             assert_eq!(depot(game), (1, 4, 5, 0));
             assert!(game.transactions.is_empty());
             // A complete move empties the source through the optional API remainder.
@@ -895,8 +889,8 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
                 .hub
                 .guests
                 .update(0, |g| g.inventory[20] = None);
-            // Boundary validation refuses an oversized stack write and an oversized remainder
-            // leaves the clicked slot untouched.
+            // The oversized remainder refuses the whole move, including the valid write of
+            // four stone to a second slot before the invalid output was proposed.
             open_depot(game);
             script(Script {
                 take: true,
@@ -1311,163 +1305,39 @@ fn menu_quick_move_validates_writes_and_contains_panics_on_live_resident_block_e
 
 #[test]
 #[ignore = "daily"]
-fn a_replaced_backing_block_or_reopened_menu_never_receives_old_quick_move_settlement_or_fallback()
-{
+fn a_stale_quick_move_restores_the_original_source_and_menu_without_fallback() {
     with_publication_mods(|| {
         with_live_depot_guests(|game| {
             game.build_registries();
-            let setup = |game: &mut crate::game::Game<'_>| {
-                let window = open_live_depot(game);
-                let stone = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:stone")
-                    .unwrap();
-                let cobble = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:cobblestone")
-                    .unwrap();
-                game.world
-                    .set(SECOND.0, SECOND.1, SECOND.2, cobble)
-                    .unwrap();
-                game.world.block_entities.set_mod_containers(
-                    [
-                        (
-                            stone.0,
-                            Arc::new(ModContainer {
-                                slots: 9,
-                                inputs: vec![0],
-                                menu: Some(QUICK_MOVE_MENU.into()),
-                                ..Default::default()
-                            }),
-                        ),
-                        (
-                            cobble.0,
-                            Arc::new(ModContainer {
-                                slots: 9,
-                                inputs: vec![0],
-                                ..Default::default()
-                            }),
-                        ),
-                    ]
-                    .into_iter()
-                    .collect(),
-                );
-                let mut replacement = ModBlockEntityFields {
-                    items: vec![None; 9],
-                    ..Default::default()
-                };
-                replacement.items[0] = Some(ItemStack::new("minecraft:gold_ingot", 3));
-                game.world.block_entities.insert(
-                    SECOND,
-                    BlockEntity::Mod(Box::new(ModBlockEntity::new(
-                        "healthy_menu:depot".into(),
-                        replacement,
-                    ))),
-                );
-                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                    g.inventory[20] = None;
-                });
-                window
-            };
-
-            // Handled quick move replaces the backing block: live Host writes survive, but the
-            // old remainder and `menu_slot_take` never touch the replacement, and the old window closes.
-            let window = setup(game);
-            script(Script {
-                write_dirt: true,
-                replace_backing: true,
-                handle_replace: true,
-                ..Script::default()
-            });
-            game.lan_guest_packet(12, container_click(window, 0, 1));
-            assert_eq!(DISPATCHES.get(), 1);
-            assert_eq!(
-                TAKE.get(),
-                None,
-                "replacement must not receive menu_slot_take for the old click"
-            );
-            assert_eq!(
-                inventory(game, 20),
-                2,
-                "valid live Host writes must survive"
-            );
-            assert_eq!(mod_entity_at(game, POS).id(), "healthy_menu:depot");
-            assert_eq!(
-                mod_entity_at(game, POS).items[0],
-                Some(ItemStack::new("minecraft:gold_ingot", 3)),
-                "old remainder must not overwrite the replacement holder"
-            );
-            assert!(
-                game.lan
-                    .as_ref()
-                    .unwrap()
-                    .hub
-                    .guest(12)
-                    .unwrap()
-                    .menu
-                    .is_none(),
-                "old menu closes once its backing holder is replaced"
-            );
-
-            // Unhandled quick move replaces the backing block: fallback routing never moves the
-            // replacement's items.
-            let window = setup(game);
-            script(Script {
-                replace_backing: true,
-                handle_replace: false,
-                ..Script::default()
-            });
-            game.lan_guest_packet(12, container_click(window, 0, 1));
-            assert_eq!(DISPATCHES.get(), 1);
-            assert_eq!(TAKE.get(), None);
-            assert_eq!(mod_entity_at(game, POS).id(), "healthy_menu:depot");
-            assert_eq!(
-                mod_entity_at(game, POS).items[0],
-                Some(ItemStack::new("minecraft:gold_ingot", 3)),
-                "fallback routing must not act on the replacement holder"
-            );
-            assert!(
-                game.lan
-                    .as_ref()
-                    .unwrap()
-                    .hub
-                    .guest(12)
-                    .unwrap()
-                    .menu
-                    .is_none()
-            );
-
-            // The fixture has a server role but no live server. Install one for Level.setBlock.
             let _serving = super::integrated::tests::install_serving(game, false);
-            // Removing the backing block and opening a new menu through the Host keeps the new
-            // menu open instead of closing it on post-hook resend.
-            let window = setup(game);
-            let old_generation = game
-                .lan
-                .as_ref()
-                .unwrap()
-                .hub
-                .guest(12)
-                .unwrap()
-                .menu_generation;
-            script(Script {
-                remove_and_reopen: true,
-                ..Script::default()
-            });
-            game.lan_guest_packet(12, container_click(window, 0, 1));
-            assert_eq!(DISPATCHES.get(), 1);
-            assert!(game.world.block_entities.get(&POS).is_none());
-            let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
-            assert_eq!(
-                guest.menu.as_ref().map(|menu| menu.slots),
-                Some(Slots::Native),
-                "post-hook resend must not close the newly opened menu"
-            );
-            assert_ne!(guest.menu_generation, old_generation);
+            for (handled, reopen) in [(true, false), (false, false), (true, true)] {
+                let window = open_live_depot(game);
+                let holder = game.world.block_entities.identity(POS).unwrap();
+                let generation = game.lan.as_ref().unwrap().hub.guests[0].menu_generation;
+                // The source is removed using the journal, with and without a new menu.
+                // Neither a proposed remainder, a take callback nor ordinary routing can
+                // settle this stale move. The inventory and original window roll back too.
+                script(Script {
+                    write_dirt: true,
+                    remove_backing: true,
+                    handle_replace: handled,
+                    remove_and_reopen: reopen,
+                    ..Script::default()
+                });
+                game.lan_guest_packet(12, container_click(window, 0, 1));
+                assert_eq!(DISPATCHES.get(), 1);
+                assert_eq!(TAKE.get(), None);
+                assert_eq!(game.world.block_entities.identity(POS), Some(holder));
+                assert_eq!(depot(game), (10, 0, 0, 0));
+                let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+                assert!(guest.inventory.iter().all(Option::is_none));
+                assert_eq!(guest.menu_generation, generation);
+                assert_eq!(
+                    guest.menu.as_ref().map(|m| (m.window, m.slots)),
+                    Some((window, Slots::Block(POS)))
+                );
+                assert!(game.transactions.is_empty());
+            }
         });
     });
 }
@@ -1701,6 +1571,13 @@ fn a_later_part_can_handle_the_same_quick_move_after_a_panic() {
     #[mod_api::sunrise_part]
     impl BlockEntityPart for FirstPart {
         fn menu_quick_move(&self, event: &mut MenuQuickMoveEvent<'_>) -> Flow {
+            let stack = event.stack.as_ref().unwrap().clone();
+            assert_eq!(
+                event
+                    .subject
+                    .with_view(|mut entity| entity.set_item_slot(3, Some(stack))),
+                Some(Ok(true))
+            );
             *event.stack = None;
             panic!("the first quick-move listener failed");
         }
@@ -1740,6 +1617,7 @@ fn a_later_part_can_handle_the_same_quick_move_after_a_panic() {
                 game.lan_guest_packet(12, container_click(window, 0, 1));
 
                 assert_eq!(depot(game), (1, 4, 5, 0));
+                assert_eq!(mod_entity_at(game, POS).items[3], None);
                 assert_eq!(
                     mod_api::__private::take_hook_panics(),
                     [mod_api::__private::HookPanicReport {
@@ -1862,45 +1740,41 @@ fn a_mod_quick_move_no_mod_took_is_left_to_the_games_routing() {
     let plain = run();
     assert_eq!(DISPATCHES.get(), 0);
     assert_eq!(decided(), 0);
-    // A listener that only looks is asked once directly (no decided action) and leaves the click
-    // to the same routing: the same result.
+    // A listener that only looks is asked once and leaves the click to the same routing.
     with_mod(|| {
         assert_eq!(run(), plain);
         assert_eq!(DISPATCHES.get(), 1);
         assert_eq!(decided(), 0);
-        assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [false]);
+        assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [true]);
     });
 }
 
 #[test]
 #[ignore = "daily"]
-fn an_untaken_quick_move_keeps_live_writes_and_falls_through_to_routing() {
+fn an_untaken_quick_move_discards_its_transfer_and_routes_once() {
     with_mod(|| {
         with_depot_guests(|game| {
             let window = open_depot(game);
             second_block(game);
-            // The listener moves 4 into the second block via `subject.transaction(...)` and
-            // returns unhandled: its committed cross-block write stays (no rollback-before-fallback)
-            // and the game's routing then moves the depot's 10 to inventory.
+            // The listener moves 4 into the second block and leaves 6 in the proposed source,
+            // but returns unhandled. Roll its transfer back before normal routing moves the 10.
             script(Script {
                 cross: true,
                 ..Script::default()
             });
             game.lan_guest_packet(12, container_click(window, 0, 1));
             assert_eq!(DISPATCHES.get(), 1);
-            assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [false]);
-            let (depot, second, inv) = stone_everywhere(game);
-            assert_eq!((depot, second, inv), (0, 4, 10));
+            assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [true]);
+            assert_eq!(stone_everywhere(game), (0, 0, 10));
             assert!(game.transactions.is_empty());
-            // The same click inside an enclosing transaction that aborts afterwards rolls back
-            // both the listener's cross-block write and the game's routing.
+
+            // Aborting an enclosing transaction also undoes that click's normal routing.
             let window = open_depot(game);
-            second_block(game);
             let seal = game.transaction_open();
             game.lan_guest_packet(12, container_click(window, 0, 1));
-            assert_eq!(stone_everywhere(game), (0, 4, inv + 10));
+            assert_eq!(stone_everywhere(game), (0, 0, 20));
             game.transaction_close(&seal, false);
-            assert_eq!(stone_everywhere(game), (10, 0, inv));
+            assert_eq!(stone_everywhere(game), (10, 0, 10));
         });
     });
 }
