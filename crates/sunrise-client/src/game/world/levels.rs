@@ -199,10 +199,8 @@ pub(super) struct Parked {
     spawn_scratch: super::natural_spawning::SpawnScratch,
     /// Server ticks since a player was last in the level.
     idle: u32,
-    /// The level's own world border (`ServerLevel.getWorldBorder`), and what its players were
-    /// last told of it (`LanHost::border_sent`).
+    /// The level's own world border (`ServerLevel.getWorldBorder`).
     border: sunrise_client::worldborder::WorldBorder,
-    border_sent: Option<sunrise_client::lan::border::Sent>,
 }
 
 impl Parked {
@@ -813,7 +811,6 @@ impl Game<'_> {
             spawn_scratch: Default::default(),
             idle: 0,
             border: self.load_border(dim),
-            border_sent: None,
         })
     }
 
@@ -1047,7 +1044,6 @@ impl Game<'_> {
         // missed the boat under a player while anyone was in another dimension).
         if let Some(h) = self.lan.as_mut() {
             std::mem::swap(&mut h.states, &mut p.lan_states);
-            std::mem::swap(&mut h.border_sent, &mut p.border_sent);
         }
         p.idle = 0;
         std::mem::replace(&mut self.dim, target)

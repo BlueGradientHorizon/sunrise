@@ -78,8 +78,6 @@ pub(super) struct LanHost {
     /// whose respawn replaces their waypoint.
     pub waypoints: std::collections::HashMap<String, lan::waypoints::Waypoints>,
     pub waypoint_dead: std::collections::HashSet<u128>,
-    /// The world border as the guests were last told of it (lan/border.rs).
-    pub border_sent: Option<lan::border::Sent>,
     /// Guests' commands waiting for the hub to be back in `self.lan`, where
     /// a command can reach every player (game/network/lan_actions/commands.rs).
     pub commands: Vec<super::lan_actions::GuestCommand>,
@@ -1298,7 +1296,6 @@ impl Game<'_> {
             owner: None,
             waypoints: Default::default(),
             waypoint_dead: Default::default(),
-            border_sent: None,
             commands: Vec::new(),
             quiet: std::collections::VecDeque::new(),
             far,
@@ -2928,7 +2925,6 @@ impl Game<'_> {
         self.lan_guest_poses();
         self.lan_update_waypoints();
         self.lan_sync_scoreboard();
-        self.lan_sync_border();
         drop(holding);
         self.flush_attachment_sync();
         self.flush_far_terrain();
@@ -3656,7 +3652,6 @@ mod tests {
                 owner: None,
                 waypoints: Default::default(),
                 waypoint_dead: Default::default(),
-                border_sent: None,
                 commands: Default::default(),
                 quiet: Default::default(),
                 far: None,
@@ -5730,7 +5725,6 @@ mod merchant_packet_tests {
                 owner: None,
                 waypoints: Default::default(),
                 waypoint_dead: Default::default(),
-                border_sent: None,
                 commands: Default::default(),
                 quiet: Default::default(),
                 far: None,
