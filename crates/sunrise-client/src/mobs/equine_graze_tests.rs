@@ -11,7 +11,7 @@ fn a_grazing_horse_clears_eating_haystack_after_51_ticks_while_a_llama_keeps_it(
     assert!(
         with_test_world(&[], |w, types| {
             for (kind, after_51) in [("minecraft:horse", 0), ("minecraft:llama", 1)] {
-                let raw = Tag::compound([
+                let identity = [
                     ("id", Tag::String(kind.into())),
                     (
                         "Pos",
@@ -21,8 +21,15 @@ fn a_grazing_horse_clears_eating_haystack_after_51_ticks_while_a_llama_keeps_it(
                                 .into(),
                         ),
                     ),
-                    ("EatingHaystack", Tag::Byte(1)),
-                ]);
+                ];
+                let raw = Tag::compound(
+                    identity
+                        .clone()
+                        .into_iter()
+                        .chain([("EatingHaystack", Tag::Byte(1))]),
+                );
+                // No old field to copy through: saving must write the live grazing state.
+                let retained = Tag::compound(identity);
                 let scoped_types = [(kind.into(), Arc::new(types.types[kind].clone()))].into();
                 let mut m = mob_from_nbt(&raw, &scoped_types, 1, Some(w.registry)).unwrap();
                 m.ground.on_ground = true;
@@ -38,7 +45,7 @@ fn a_grazing_horse_clears_eating_haystack_after_51_ticks_while_a_llama_keeps_it(
                     let saved = mob_to_nbt(
                         &m,
                         [0; 4],
-                        Some(&raw),
+                        Some(&retained),
                         Some(w.registry),
                         |_| None,
                         w.items.unwrap(),
