@@ -1959,7 +1959,8 @@ mod own_block_entity_tests {
         ]
         .into();
         let (a, b, c) = ((1, 64, 1), (3, 64, 1), (5, 64, 1));
-        let placed = [(a, A), (b, B), (c, A), ((7, 64, 1), "minecraft:hopper")];
+        // Use a vanilla ticker that stays active on both passes; an empty hopper would sleep.
+        let placed = [(a, A), (b, B), (c, A), ((7, 64, 1), DETECTOR)];
         with_machines(mods, &placed, |game| {
             // Both registered keys take the native save and NBT paths, independent of namespace.
             for (pos, kind) in [(a, A), (b, B)] {
