@@ -59,8 +59,7 @@ impl<H> Default for Dispatcher<H> {
     fn default() -> Self {
         Self {
             maps: vanilla(),
-            custom: HashMap::new(),
-            tagged: HashMap::new(),
+            ..Self::empty()
         }
     }
 }
@@ -81,6 +80,62 @@ impl Dispatcher<()> {
     }
 }
 impl<H> Dispatcher<H> {
+    /// An unseeded batch of pending registrations, not a vanilla snapshot.
+    pub fn empty() -> Self {
+        Self {
+            maps: std::array::from_fn(|_| HashMap::new()),
+            custom: HashMap::new(),
+            tagged: HashMap::new(),
+        }
+    }
+
+    /// Read an exact registration without considering the dye branch or tags.
+    pub fn exact_entry(&self, block: &str, item: &str) -> Option<&Entry<H>> {
+        match index(block) {
+            Some(i) => self.maps[i].get(item),
+            None => self.custom.get(block)?.get(item),
+        }
+    }
+
+    /// Read the registration for this exact tag, without testing tag membership.
+    pub fn tag_entry(&self, block: &str, tag: &str) -> Option<&H> {
+        self.tagged
+            .get(block)?
+            .iter()
+            .find_map(|(key, handler)| (key == tag).then_some(handler))
+    }
+
+    /// Publish a batch whose keys were already checked against this table when registered.
+    pub fn append_registrations(&mut self, pending: Self) {
+        for (map, entries) in self.maps.iter_mut().zip(pending.maps) {
+            map.extend(entries);
+        }
+        for (block, entries) in pending.custom {
+            self.custom.entry(block).or_default().extend(entries);
+        }
+        for (block, entries) in pending.tagged {
+            self.tagged.entry(block).or_default().extend(entries);
+        }
+    }
+
+    /// Take the callbacks out of a discarded batch so each can be dropped in isolation.
+    pub fn into_mod_handlers(self) -> impl Iterator<Item = H> {
+        self.maps
+            .into_iter()
+            .chain(self.custom.into_values())
+            .flat_map(HashMap::into_values)
+            .filter_map(|entry| match entry {
+                Entry::Mod(handler) => Some(handler),
+                _ => None,
+            })
+            .chain(
+                self.tagged
+                    .into_values()
+                    .flatten()
+                    .map(|(_, handler)| handler),
+            )
+    }
+
     /// The dye tag wins terminally, including when its handler passes; then the exact
     /// item entry, then the first item-tag entry whose tag `in_tag` says holds the item,
     /// read against the tags loaded now.
@@ -94,11 +149,7 @@ impl<H> Dispatcher<H> {
         if block == "minecraft:water_cauldron" && removes_dye {
             return Some(Entry::Dye);
         }
-        let exact = match index(block) {
-            Some(i) => self.maps[i].get(item),
-            None => self.custom.get(block).and_then(|map| map.get(item)),
-        };
-        if let Some(entry) = exact {
+        if let Some(entry) = self.exact_entry(block, item) {
             return Some(match entry {
                 Entry::Vanilla(action) => Entry::Vanilla(*action),
                 Entry::Mod(handler) => Entry::Mod(handler),

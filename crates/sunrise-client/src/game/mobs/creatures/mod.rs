@@ -560,7 +560,7 @@ impl Game<'_> {
                 || p.health.invulnerable_time > 0,
             // EntitySelector.NO_CREATIVE_OR_SPECTATOR.
             creative: self.creative || self.spectator(),
-            sneaking: self.keys.held(Action::Sneak),
+            sneaking: self.held_mapping(Action::Sneak),
             swimming: p.swimming,
             look: view_vector(self.yaw, self.pitch),
             main_hand: self.held().map(|s| s.item.clone()),
@@ -1110,7 +1110,7 @@ impl Game<'_> {
                     "profession": m.extra.profession.index(),
                     "targets": m.ai.targets.running_names(),
                     "path": m.ai.nav.path.as_ref().map(|p| p.nodes.len() - p.next.min(p.nodes.len())),
-                    "on_ground": m.on_ground,
+                    "on_ground": m.ground.on_ground,
                     "variant": m.extra.variant,
                     "color": m.extra.color,
                     "sheared": m.extra.sheared,
@@ -1247,18 +1247,9 @@ impl Game<'_> {
                         hook: "spawn_cluster_size",
                         part: Some(attached.type_name()),
                     });
-                // Called outside the world (a reload or setup) a refused Host call is no answer.
-                match mod_api::__private::contain_outside_world(|| {
-                    attached
-                        .part()
-                        .spawn_cluster_size(self, lent, reason, spawner, vanilla)
-                }) {
-                    Ok(answer) => answer,
-                    Err(refusal) => {
-                        refusal.report();
-                        None
-                    }
-                }
+                attached
+                    .part()
+                    .spawn_cluster_size(self, lent, reason, spawner, vanilla)
             })
         })
     }
@@ -2213,12 +2204,16 @@ impl Game<'_> {
     }
 
     fn finish_creaking_hurt(&mut self, index: usize) {
-        let id = self.mobs[index].id;
+        let mob = &mut self.mobs[index];
+        let (id, join) = (mob.id, mob.join);
         let mut events = Vec::new();
-        let reaction =
-            sunrise_client::mobs::creaking::take_hurt(&mut self.mobs[index], &mut events);
+        let reaction = sunrise_client::mobs::creaking::take_hurt(mob, &mut events);
         let _ = self.handle_mob_events(events);
-        if let Some((home, by_player)) = reaction {
+        if let Some((home, by_player)) = reaction
+            && self
+                .mob_object(id)
+                .is_some_and(|mob| mob.join == join && !mob.removed)
+        {
             self.creaking_hurt(home, id, by_player);
         }
     }
@@ -2714,6 +2709,16 @@ impl Game<'_> {
                         }
                     }
                 }
+                MobEvent::PushJoined { id, join, velocity } => {
+                    if let Some(mob) = self.mob_object_mut(id).filter(|mob| mob.join == join) {
+                        mob.velocity = mob.velocity.add_vector(Vec3::new(
+                            velocity[0],
+                            velocity[1],
+                            velocity[2],
+                        ));
+                        mob.needs_sync = true;
+                    }
+                }
                 MobEvent::Knockback {
                     target,
                     power,
@@ -2749,8 +2754,7 @@ impl Game<'_> {
                         Lid::Shulker(shulker),
                         Vec3::new(delta[0], delta[1], delta[2]),
                     );
-                    // A client of a server pushes only its own player, as
-                    // the shulker box's lid does.
+                    // Use the same client push as a shulker box's lid.
                     if self.remote.is_some() {
                         self.lid_push_local(lid, area, delta);
                     } else {
@@ -3698,11 +3702,6 @@ impl Game<'_> {
                     self.level_event_at(2001, pos, state.0 as i32);
                 }
                 MobEvent::Darkness { at, radius } => self.apply_darkness(at, radius),
-                MobEvent::CreakingHurt {
-                    home,
-                    by_player,
-                    id,
-                } => self.creaking_hurt(home, id, by_player),
                 MobEvent::CreakingTearDown { center, spread } => {
                     self.creaking_tear_down(center, spread)
                 }
@@ -4551,7 +4550,7 @@ impl Game<'_> {
     fn give_mob_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32, ambient: bool) {
         let immune = self.creative || self.spectator();
         if let Some(instance) = mob_effect_instance(effect, ticks, amplifier, ambient, immune) {
-            self.potions.effects.add(instance);
+            self.apply_player_effect(instance);
         }
     }
     /// `WitherRoseBlock.entityInside` for the player: on a server level that
@@ -5592,9 +5591,13 @@ impl Game<'_> {
             return;
         };
         let dimension = self.dim;
+        let failures = mod_api::runtime::isolated_failures();
         let _: std::result::Result<(), ()> = mod_api::run_transaction(self, |game, _| {
             let (mut target, _, cancel) =
                 game.native_pearl_teleport(owner, pearl.id, from, pearl.previous, 0.0, hit);
+            if mod_api::runtime::isolated_failures() != failures {
+                return Err(());
+            }
             // Listener writes stay in the transaction; never overwrite a changed,
             // dead, sleeping or removed owner using the old decision.
             if cancel
@@ -7031,8 +7034,8 @@ impl Game<'_> {
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         let acting = self.acting_player_uuid();
         let (acting_id, acting_entity_id) = (self.native_acting_id(), self.own_entity_id());
-        let sneaking =
-            self.keys.held(Action::Sneak) || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
+        let sneaking = self.held_mapping(Action::Sneak)
+            || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
         let held_damage = held.as_ref().map_or(0, |h| h.damage as i32);
         let held_extra = held.as_ref().and_then(|h| h.extra.clone());
         let feeder = sunrise_client::health::Attack {
@@ -7348,7 +7351,7 @@ impl Game<'_> {
             Species::Parrot
                 if m.extra.tame
                     && m.extra.owner == Some(acting)
-                    && m.on_ground
+                    && m.ground.on_ground
                     && !parrot_poisonous =>
             {
                 m.extra.sitting = !m.extra.sitting;

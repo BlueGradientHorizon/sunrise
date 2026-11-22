@@ -793,7 +793,7 @@ def break_glass_notes(notes: Path) -> None:
 
 # The build-data header shared with sunrise_mod_surface::build_data.
 BUILD_DATA_SCHEMA = 1
-MixinFingerprints = dict[str, tuple[str, str]]
+MixinFingerprints = dict[str, tuple[str, str, tuple[str, str] | None]]
 
 
 def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, MixinFingerprints]:
@@ -834,7 +834,13 @@ def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, MixinFingerp
             signature, source = record["signature_hash"], record["sha256"]
             if not isinstance(signature, str) or not isinstance(source, str):
                 raise ValueError(f"functions.json: {name} has invalid fingerprints")
-            functions[name] = signature, source
+            # Builds from before the split digests carry none.
+            digests = record.get("digests")
+            if digests is not None:
+                digests = digests["declaration"], digests["body"]
+                if not all(isinstance(digest, str) for digest in digests):
+                    raise ValueError(f"functions.json: {name} has invalid digests")
+            functions[name] = signature, source, digests
     except (KeyError, TypeError, ValueError, tarfile.TarError) as error:
         raise SystemExit(f"sdk-{sha}: cannot read stable comparison inputs: {error}")
     if surface is not None:
@@ -843,14 +849,19 @@ def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, MixinFingerp
 
 
 def append_mixin_notes(notes: Path, tag: str, previous: str, old: MixinFingerprints, new: MixinFingerprints) -> None:
-    """Compare the signature and source hashes the native fit reader uses, not lookup metadata."""
+    """Compare the hashes the native fit reader uses, not lookup metadata: the signature and source
+    hashes, and the declaration and body digests where both builds carry them."""
+    def changed(old: tuple, new: tuple) -> bool:
+        split = old[2] is not None and new[2] is not None and old[2] != new[2]
+        return old[:2] != new[:2] or split
+
     changes = []
     for name in sorted(old.keys() | new.keys()):
         if name not in old:
             changes.append(f"- Added: `{name}`\n")
         elif name not in new:
             changes.append(f"- Removed: `{name}`\n")
-        elif old[name] != new[name]:
+        elif changed(old[name], new[name]):
             changes.append(f"- Changed: `{name}`\n")
     intro = f"\n### Changed mixin targets\n\nCompared with `{previous}`:\n\n"
     section = "".join(changes) or "No mixin targets changed.\n"

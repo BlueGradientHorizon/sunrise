@@ -194,8 +194,11 @@ try {
     $d = Join-Path $W "tag"; New-Release $d "26.3-0.1.0"; $script:OnlyTag[$d] = "26.3-0.1.0"
     $r = Invoke-Case $d @{ Version = "26.3-0.1.0" }; Test-Case "good release installs (stable release tag)" $true "" $r
     Test-That "not installed as 26.3-0.1.0" (Test-Path (Join-Path $d "inst\releases\26.3-0.1.0\sunrise-server.exe"))
-    $Current = (Get-Item (Join-Path $d "inst\current") -ErrorAction SilentlyContinue).Target
-    Test-That "current isn't 26.3-0.1.0" ("$Current" -like "*\releases\26.3-0.1.0")
+    # The junction's stored target may spell the temp folder differently (8.3 names), so compare by content: a file
+    # written into the release must show through current.
+    Set-Content -LiteralPath (Join-Path $d "inst\releases\26.3-0.1.0\marker") "26.3-0.1.0" -ErrorAction SilentlyContinue
+    Test-That "current isn't 26.3-0.1.0" (Test-Path (Join-Path $d "inst\current\marker"))
+    Test-That "no sunrise-server.exe through current" (Test-Path (Join-Path $d "inst\current\sunrise-server.exe"))
 
     # 3. -InsecureChecksumOnly: installs on GitHub's SHA-256 with a loud warning, and needs no verifier at all.
     $d = Join-Path $W "insecure"; New-Release $d "v1.2.3"

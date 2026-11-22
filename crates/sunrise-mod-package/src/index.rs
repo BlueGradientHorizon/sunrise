@@ -328,12 +328,13 @@ pub struct BuildVerdict {
 pub enum FitVerdict {
     MadeFor,
     Fits,
+    /// Does not fit: the only changes are to function bodies. The author must update the mod.
     Rebuild {
-        /// Functions whose bodies changed but whose signatures did not.
+        /// Paths of the functions to review.
         review: Vec<String>,
     },
     Breaks {
-        /// Up to five changed item IDs.
+        /// Up to five changed item IDs or named function changes.
         changed: Vec<String>,
     },
     Exact {

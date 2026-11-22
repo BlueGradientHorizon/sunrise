@@ -696,7 +696,7 @@ impl Game<'_> {
             on_fire: p.is_on_fire(),
             sneaking: p.pose == sunrise_client::pose::Pose::Crouching,
             // Input.shift: the held key, as `BlockItem.place`'s sneaking reads it.
-            input_sneak: self.keys.held(Action::Sneak),
+            input_sneak: self.held_mapping(Action::Sneak),
             sprinting: p.sprinting,
             swimming: p.pose == sunrise_client::pose::Pose::Swimming,
             flying: p.flying,
@@ -835,7 +835,7 @@ impl Game<'_> {
             position: [m.position.x, m.position.y, m.position.z],
             on_fire: m.fire_ticks > 0 && !m.mod_fire_immune,
             baby: m.is_baby(),
-            on_ground: m.on_ground,
+            on_ground: m.ground.on_ground,
             equipment,
             // LivingEntity.getActiveEffectsMap supplies the active predicate instances.
             effects: m

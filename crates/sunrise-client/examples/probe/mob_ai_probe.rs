@@ -694,8 +694,8 @@ fn print(out: &mut String, t: i32, i: usize, m: &Mob, player_down: bool, now: i6
     let _ = write!(
         out,
         "\tg {}{}\thp {}",
-        u8::from(m.on_ground),
-        u8::from(m.horizontal_collision),
+        u8::from(m.ground.on_ground),
+        u8::from(m.ground.horizontal_collision),
         f(m.health)
     );
     let _ = write!(
@@ -1440,6 +1440,7 @@ pub fn main() -> sunrise_client::Result<()> {
                     &mut test_level.level(),
                     &mut events,
                     from,
+                    &w.teams,
                 );
                 villager_events(
                     &mut mobs,

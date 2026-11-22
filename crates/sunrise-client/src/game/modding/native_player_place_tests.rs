@@ -97,7 +97,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
             "bed-veto",
             "bed-stale",
             "bed-against",
-            "bed-unwind",
+            "bed-listener-panic",
             "bed-death",
         ],
     ) {
@@ -175,7 +175,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                 let write = match self.case.as_str() {
                     "bed-stale" => Some(HEAD),
                     "bed-against" => Some(AGAINST),
-                    "bed-veto" | "bed-unwind" => Some(WRITE),
+                    "bed-veto" | "bed-listener-panic" => Some(WRITE),
                     _ => None,
                 };
                 if let Some(write) = write {
@@ -189,7 +189,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                         Ok(true)
                     );
                 }
-                if self.case == "bed-unwind" {
+                if self.case == "bed-listener-panic" {
                     panic!("placement listener unwound");
                 }
             }
@@ -200,19 +200,46 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
             }
         }
     }
+    struct AfterPanic {
+        earlier: Arc<Mutex<Vec<PlacementSeen>>>,
+        read: Arc<Mutex<Option<BlockState>>>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for AfterPanic {
+        fn entity_place(&self, host: &mut dyn ServerHost, _: &mut EntityPlaceEvent) -> Flow {
+            assert_eq!(
+                self.earlier.lock().unwrap().len(),
+                1,
+                "runs after the failed listener"
+            );
+            let level = host.level("minecraft:overworld").unwrap();
+            *self.read.lock().unwrap() = level.block_state(host, WRITE);
+            Flow::Continue
+        }
+    }
     let case = std::env::var(FLAG).unwrap();
     let seen = Arc::new(Mutex::new(Vec::new()));
     let entity = Arc::new(Mutex::new(None));
+    let later_read = Arc::new(Mutex::new(None));
     let skip_removal = case == "chest-skip-removal";
-    let mods: Mods = vec![ModEntry::new(
+    let mut entries = vec![ModEntry::new(
         "placement_probe",
         Box::new(Probe {
             case: case.clone(),
             seen: seen.clone(),
             entity: entity.clone(),
         }),
-    )]
-    .into();
+    )];
+    if case == "bed-listener-panic" {
+        entries.push(ModEntry::new(
+            "placement_probe_tail",
+            Box::new(AfterPanic {
+                earlier: seen.clone(),
+                read: later_read.clone(),
+            }),
+        ));
+    }
+    let mods: Mods = entries.into();
     with_mods(mods.clone(), || {
         let base = fixture_root();
         let prepared = skip_removal.then(|| {
@@ -376,18 +403,16 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                         Ok(())
                     })
                 }
-                "bed-unwind" => run_transaction(game, |game, outer| {
+                "bed-listener-panic" => run_transaction(game, |game, outer| {
                     assert_eq!(
                         level.set_block(game, OUTER, stone, BlockUpdateFlags::NONE),
                         Ok(true)
                     );
-                    assert!(
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| place(game)))
-                            .is_err()
-                    );
+                    place(game)?;
                     assert_eq!(game.transaction_current().as_ref(), Some(outer));
                     assert_eq!(level.block_state(game, OUTER), Some(stone));
-                    assert_eq!(level.block_state(game, AT), Some(before));
+                    assert_eq!(*later_read.lock().unwrap(), Some(air));
+                    assert_eq!(level.block_state(game, AT), Some(foot));
                     assert_eq!(level.block_state(game, WRITE), Some(air));
                     Ok(())
                 }),
@@ -436,7 +461,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                     .unwrap();
             }
             match case.as_str() {
-                "bed-death" | "bed-against" | "bed-head" => {
+                "bed-death" | "bed-against" | "bed-head" | "bed-listener-panic" => {
                     assert_eq!(result, Ok(()));
                     assert_eq!(level.block_state(game, AT), Some(foot));
                     assert_eq!(level.block_state(game, HEAD), Some(head));
@@ -444,6 +469,11 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                         level.block_state(game, AGAINST),
                         Some(if case == "bed-against" { air } else { stone })
                     );
+                    if case == "bed-listener-panic" {
+                        assert_eq!(level.block_state(game, OUTER), Some(stone));
+                        assert_eq!(level.block_state(game, WRITE), Some(air));
+                        assert!(game.transaction_current().is_none());
+                    }
                 }
                 "chest-transfer" => {
                     assert_eq!(result, Ok(()));
@@ -503,13 +533,13 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                         Some(&Tag::String(NAME.into()))
                     );
                 }
-                "chest-veto" | "bed-veto" | "bed-stale" | "bed-unwind" => {
+                "chest-veto" | "bed-veto" | "bed-stale" => {
                     assert_eq!(
                         result,
-                        match case.as_str() {
-                            "bed-unwind" => Ok(()),
-                            "bed-stale" => Err(Refusal::PlacementChanged),
-                            _ => Err(Refusal::Canceled),
+                        if case == "bed-stale" {
+                            Err(Refusal::PlacementChanged)
+                        } else {
+                            Err(Refusal::Canceled)
                         }
                     );
                     assert_eq!(level.block_state(game, AT), Some(before));
@@ -522,12 +552,7 @@ fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
                     }
                     assert_eq!(level.block_state(game, WRITE), Some(air));
                     assert_eq!(level.block_state(game, HEAD), Some(air));
-                    if case == "bed-unwind" {
-                        assert_eq!(level.block_state(game, OUTER), Some(stone));
-                        assert!(game.transaction_current().is_none());
-                    } else {
-                        assert!(game.world.block_log.as_ref().unwrap().is_empty());
-                    }
+                    assert!(game.world.block_log.as_ref().unwrap().is_empty());
                 }
                 _ => unreachable!(),
             }

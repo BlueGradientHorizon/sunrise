@@ -36,7 +36,7 @@ impl Game<'_> {
         // with a stack in either hand never reaches the block's `useItemOn`,
         // so the food stays in the hand and the item's own use (eating)
         // runs instead.
-        if self.keys.held(Action::Sneak) {
+        if self.held_mapping(Action::Sneak) {
             return Ok(None);
         }
         let state = self.world.block(pos[0], pos[1], pos[2]);

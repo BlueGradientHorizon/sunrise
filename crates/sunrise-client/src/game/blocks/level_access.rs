@@ -40,14 +40,6 @@ impl LevelAccess for GameLevel<'_> {
         self.world.block_entities.stateful_entity(state.0)
     }
     fn ensure_block_entity(&mut self, pos: BlockPos, state: BlockStateId) {
-        if self
-            .placement_entity
-            .as_ref()
-            .is_some_and(|entity| entity.belongs_to(pos, state, self.behaviours))
-        {
-            self.placement_entity.take().unwrap().install(self.world);
-            return;
-        }
         let key = (pos.x, pos.y, pos.z);
         if !self.world.block_entities.stateful_entity(state.0)
             || self.world.block_entities.get(&key).is_some()
@@ -1266,16 +1258,6 @@ impl LevelAccess for GameLevel<'_> {
             // Returning 0 skips remove_entity's side effects once; command blocks have no contents or drops.
             return 0;
         }
-        let key = (pos.x, pos.y, pos.z);
-        let side_effects = if let Some(removal) = self.placement_removal
-            && removal.pos == key
-            && removal.generation == self.world.block_entities.generation(&key)
-        {
-            self.placement_removal = None;
-            removal.side_effects
-        } else {
-            side_effects
-        };
         self.remove_entity(pos, old, side_effects)
     }
     fn load_block_entity(&mut self, pos: BlockPos, mut nbt: sunrise_core::nbt::Compound) {

@@ -911,7 +911,7 @@ impl Game<'_> {
                     p.yaw = yaw;
                     p.pitch = pitch;
                     p.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-                    p.on_ground = entity_nbt::flag(&tag, "OnGround");
+                    p.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                 });
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
             }
@@ -2057,6 +2057,7 @@ mod tests {
                     range: (0, 23),
                 }],
                 command: None,
+                executor: None,
                 range: (0, 23),
                 child: None,
                 literals: vec![],
