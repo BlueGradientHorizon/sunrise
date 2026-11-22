@@ -810,8 +810,16 @@ mod tests {
         assert_eq!(shown.blend(&from, 1.0).shadow_strength, 0.25);
     }
 
-    const DISPLAY_PARITY_WITNESS_26_3: &str =
-        include_str!("../../../tools/witness/26.3/display_parity/witness.json");
+    fn display_parity_witness() -> serde_json::Value {
+        let path = std::env::var("SUNRISE_DISPLAY_PARITY_WITNESS").expect(
+            "SUNRISE_DISPLAY_PARITY_WITNESS must be set (run via tools/test_displays_parity.py)",
+        );
+        let text =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
+        let witness: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(witness["meta"]["game_version"], "26.3");
+        witness
+    }
 
     fn hex_u32(v: &serde_json::Value) -> u32 {
         u32::from_str_radix(v.as_str().unwrap(), 16).unwrap()
@@ -830,9 +838,9 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "run by tools/test_displays_parity.py"]
     fn non_unit_quaternion_blend_and_matrix_match_vanilla_26_3_bits() {
-        let witness: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
-        assert_eq!(witness["meta"]["game_version"], "26.3");
+        let witness = display_parity_witness();
         let case = &witness["non_unit_quat_and_blend"];
         let from = TextDisplayData {
             left_rotation: [0.0, 2.0, 0.0, 0.0],
@@ -881,9 +889,9 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "run by tools/test_displays_parity.py"]
     fn negative_width_or_height_culling_box_matches_vanilla_26_3_bits() {
-        let witness: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
-        assert_eq!(witness["meta"]["game_version"], "26.3");
+        let witness = display_parity_witness();
         let case = &witness["live_culling_and_no_culling"];
         let origin = glam::DVec3::new(0.5, 301.62, 0.5);
         assert_eq!(
@@ -921,9 +929,9 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "run by tools/test_displays_parity.py"]
     fn billboard_matrix_matches_vanilla_26_3_bits() {
-        let witness: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
-        assert_eq!(witness["meta"]["game_version"], "26.3");
+        let witness = display_parity_witness();
         let cases = witness["billboard_camera_angles"]["cases"]
             .as_array()
             .unwrap();

@@ -1932,11 +1932,14 @@ fn a_builtin_sprite_source_override_supplies_the_particle_atlas_consumer() {
 }
 
 #[test]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn packed_sprites_have_clamp_to_edge_padding_matching_vanilla_26_3() {
-    let w: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../tools/witness/26.3/display_parity/witness.json"
-    ))
-    .unwrap();
+    let witness_path = std::env::var("SUNRISE_DISPLAY_PARITY_WITNESS").expect(
+        "SUNRISE_DISPLAY_PARITY_WITNESS must be set (run via tools/test_displays_parity.py)",
+    );
+    let witness_text = std::fs::read_to_string(&witness_path)
+        .unwrap_or_else(|e| panic!("failed to read {witness_path}: {e}"));
+    let w: serde_json::Value = serde_json::from_str(&witness_text).unwrap();
     let pad = w["block_display_83224"]["stitcher_padding"]["mip0_aniso0"]
         .as_u64()
         .unwrap();

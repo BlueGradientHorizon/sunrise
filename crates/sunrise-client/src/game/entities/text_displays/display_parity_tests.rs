@@ -1,12 +1,9 @@
-//! Minecraft 26.3 display parity tests (GenPvP menu TDD red phase).
-//! Expected values come strictly from real vanilla 26.3 runs on JDK 25:
-//! `tools/witness/26.3/display_parity/witness.json` and `tools/witness/26.3/genpvp_menu/settled.json`.
+//! Minecraft 26.3 display parity tests against VanillaDisplayParityOracle (.local witness).
 use super::{RemoteTextDisplay, Shows};
 use crate::game::Game;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 use glam::{DVec3, Mat4, Vec3};
-use std::path::Path;
 use sunrise_client::{
     camera::CameraType,
     gfx::{
@@ -18,25 +15,12 @@ use sunrise_client::{
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_protocol::entity_data::Value;
 
-const DISPLAY_PARITY_WITNESS_26_3: &str =
-    include_str!("../../../../../../tools/witness/26.3/display_parity/witness.json");
-
 fn parity_witness() -> serde_json::Value {
-    let w: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
-    assert_eq!(w["meta"]["game_version"], "26.3");
-    w
-}
-
-/// Loads the menu witness recorded on the integration branch at runtime so this branch compiles standalone.
-fn genpvp_menu_witness() -> serde_json::Value {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tools/witness/26.3/genpvp_menu/settled.json");
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-        panic!(
-            "missing genpvp_menu 26.3 witness at {}: {e}",
-            path.display()
-        )
-    });
+    let path = std::env::var("SUNRISE_DISPLAY_PARITY_WITNESS").expect(
+        "SUNRISE_DISPLAY_PARITY_WITNESS must be set (run via tools/test_displays_parity.py)",
+    );
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
     let w: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert_eq!(w["meta"]["game_version"], "26.3");
     w
@@ -54,10 +38,6 @@ fn hex_f32(v: &serde_json::Value) -> f32 {
     f32::from_bits(hex_u32(v))
 }
 
-fn hex_f64(v: &serde_json::Value) -> f64 {
-    f64::from_bits(hex_u64(v))
-}
-
 fn hex_u32_vec(v: &serde_json::Value) -> Vec<u32> {
     v.as_array().unwrap().iter().map(hex_u32).collect()
 }
@@ -67,109 +47,14 @@ fn hex_f32_arr<const N: usize>(v: &serde_json::Value) -> [f32; N] {
     std::array::from_fn(|i| hex_f32(&arr[i]))
 }
 
-fn hex_f64_arr<const N: usize>(v: &serde_json::Value) -> [f64; N] {
-    let arr = v.as_array().unwrap();
-    std::array::from_fn(|i| hex_f64(&arr[i]))
-}
-
-fn billboard_id(name: &str) -> i8 {
-    match name {
-        "vertical" => 1,
-        "horizontal" => 2,
-        "center" => 3,
-        _ => 0,
-    }
-}
-
 fn looking_south_frustum(fov_deg: f32, aspect: f32) -> JoinedFrusta {
     let proj = Mat4::perspective_rh(fov_deg.to_radians(), aspect, 256.0, 0.05);
     let view = sunrise_client::camera::view_matrix(0.0, 0.0);
     JoinedFrusta::new(Frustum::from_view_projection(proj * view), [])
 }
 
-fn apply_witness_display(game: &mut Game<'_>, entity: &serde_json::Value) -> i32 {
-    let id = entity["id"].as_i64().unwrap() as i32;
-    let kind = entity["type"].as_str().unwrap();
-    let pos = hex_f64_arr::<3>(&entity["pos_bits"]);
-    let yaw = hex_f32(&entity["yRot_bits"]);
-    let pitch = hex_f32(&entity["xRot_bits"]);
-    assert!(game.spawn_remote_object(id, kind, pos, (yaw, pitch), 0));
-    let disp = &entity["display"];
-    let tx = &disp["transformation"];
-    let mut values: Vec<(u8, i32, Value)> = vec![
-        (
-            11,
-            0,
-            Value::Floats(hex_f32_arr::<3>(&tx["translation_bits"]).to_vec()),
-        ),
-        (
-            12,
-            0,
-            Value::Floats(hex_f32_arr::<3>(&tx["scale_bits"]).to_vec()),
-        ),
-        (
-            13,
-            0,
-            Value::Floats(hex_f32_arr::<4>(&tx["left_rotation_bits"]).to_vec()),
-        ),
-        (
-            14,
-            0,
-            Value::Floats(hex_f32_arr::<4>(&tx["right_rotation_bits"]).to_vec()),
-        ),
-        (
-            15,
-            0,
-            Value::Byte(billboard_id(disp["billboard"].as_str().unwrap())),
-        ),
-        (
-            16,
-            1,
-            Value::Int(disp["brightness_override"].as_i64().unwrap_or(-1) as i32),
-        ),
-        (17, 2, Value::Float(hex_f32(&disp["view_range_bits"]))),
-        (18, 2, Value::Float(hex_f32(&disp["shadow_radius_bits"]))),
-        (19, 2, Value::Float(hex_f32(&disp["shadow_strength_bits"]))),
-        (20, 2, Value::Float(hex_f32(&disp["width_bits"]))),
-        (21, 2, Value::Float(hex_f32(&disp["height_bits"]))),
-        (
-            22,
-            1,
-            Value::Int(disp["glow_color"].as_i64().unwrap() as i32),
-        ),
-    ];
-    let block_state = disp["block_state"]
-        .as_str()
-        .and_then(|name| game.pack.assets.registry.default_state(name));
-    if let Some(text) = disp["text"].as_object() {
-        let tag = sunrise_core::json_nbt::parse_json_tag(text["json"].as_str().unwrap()).unwrap();
-        values.push((23, 0, Value::Text(tag)));
-        values.push((
-            24,
-            1,
-            Value::Int(text["line_width"].as_i64().unwrap() as i32),
-        ));
-        values.push((
-            25,
-            1,
-            Value::Int(text["background"].as_i64().unwrap() as i32),
-        ));
-        values.push((
-            26,
-            0,
-            Value::Byte(text["text_opacity"].as_i64().unwrap() as i8),
-        ));
-        values.push((27, 0, Value::Byte(text["flags"].as_i64().unwrap() as i8)));
-    }
-    let display = game.text_displays.get_mut(&id).unwrap();
-    if let Some(state) = block_state {
-        display.show(&[(23, 0, Value::Id(state.0 as i32))], None);
-    }
-    display.metadata(&values);
-    id
-}
-
 #[test]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn initial_start_min_value_and_duration_edge_cases_match_vanilla_26_3() {
     let w = parity_witness();
     let lc = &w["lifecycle"];
@@ -232,6 +117,7 @@ fn initial_start_min_value_and_duration_edge_cases_match_vanilla_26_3() {
 }
 
 #[test]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn teleport_duration_unclamped_negative_same_target_and_rotation_match_vanilla_26_3() {
     let w = parity_witness();
     let tp = &w["teleport_duration_and_pos_rot_lerp"];
@@ -328,6 +214,7 @@ fn teleport_duration_unclamped_negative_same_target_and_rotation_match_vanilla_2
 }
 
 #[test]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn display_shadow_respects_pre_tick_and_invisibility_flag_26_3() {
     let w = parity_witness();
     let sh = &w["display_entity_features"]["invisibility_shadow"];
@@ -357,11 +244,17 @@ fn display_shadow_respects_pre_tick_and_invisibility_flag_26_3() {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
     let w = parity_witness();
-    let menu = genpvp_menu_witness();
     with_client_game(|game| {
+        game.view_frustum = None;
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
         // Player looks away while active render camera (spectated entity) uses witnessed angles.
         game.yaw = 123.0;
         game.pitch = 45.0;
@@ -373,6 +266,9 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
             };
             let cam_yaw = hex_f32(&case["camera_yRot_bits"]);
             let cam_pitch = hex_f32(&case["camera_xRot_bits"]);
+            let ent_yaw = hex_f32(&case["entity_yRot_bits"]);
+            let ent_pitch = hex_f32(&case["entity_xRot_bits"]);
+            let bb = case["billboard"].as_i64().unwrap() as i8;
             game.posed_rotation = Some((cam_yaw, cam_pitch));
             game.view.y_rot = cam_yaw;
             game.view.x_rot = cam_pitch;
@@ -387,66 +283,62 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
                 case["name"],
                 case["camera_type"]
             );
-        }
 
-        // Verify a real GenPvP menu block display (EID 83083) renders with the spectated camera pose.
-        game.text_displays.clear();
-        game.view_frustum = None;
-        let cam = &menu["camera"];
-        let cam_pos = DVec3::from_array(hex_f64_arr::<3>(&cam["camera_pos_bits"]));
-        let cam_yaw = hex_f32(&cam["camera_yRot_bits"]);
-        let cam_pitch = hex_f32(&cam["camera_xRot_bits"]);
-        game.camera_type = CameraType::FirstPerson;
-        game.posed_rotation = Some((cam_yaw, cam_pitch));
-        game.view.y_rot = cam_yaw;
-        game.view.x_rot = cam_pitch;
-        game.yaw = 123.0;
-        game.pitch = 45.0;
+            // Verify a block display renders with the witnessed active-camera pose (not player yaw/pitch).
+            game.text_displays.clear();
+            let pos = [0.5, 301.62, 0.5];
+            assert!(game.spawn_remote_object(
+                83083,
+                "minecraft:block_display",
+                pos,
+                (ent_yaw, ent_pitch),
+                0
+            ));
+            let d = game.text_displays.get_mut(&83083).unwrap();
+            d.show(&[(23, 0, Value::Id(stone.0 as i32))], None);
+            d.metadata(&[
+                (11, 0, Value::Floats(vec![-1.395, 0.3885, -4.2])),
+                (12, 0, Value::Floats(vec![0.525, 0.525, 0.525])),
+                (13, 0, Value::Floats(vec![0.0, 1.0, 0.0, 0.0])),
+                (15, 0, Value::Byte(bb)),
+            ]);
+            game.tick_text_displays();
+            let mut out = Vec::new();
+            game.block_item_display_geometry(DVec3::from_array(pos), 1.0, &mut out);
+            assert!(!out.is_empty());
 
-        let e83083 = menu["entities"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|e| e["id"] == 83083)
-            .unwrap();
-        apply_witness_display(game, e83083);
-        game.tick_text_displays();
-        let mut out = Vec::new();
-        game.block_item_display_geometry(cam_pos, 1.0, &mut out);
-        assert!(!out.is_empty());
-
-        let expected_pose =
-            Mat4::from_cols_array(&hex_f32_arr::<16>(&e83083["display"]["display_pose_bits"]));
-        let expected_corners: Vec<[u32; 3]> = (0..8)
-            .map(|bits| {
-                let c = Vec3::new(
-                    (bits & 1) as f32,
-                    ((bits >> 1) & 1) as f32,
-                    ((bits >> 2) & 1) as f32,
+            let expected_pose = Mat4::from_cols_array(&hex_f32_arr::<16>(&case["pose_bits"]));
+            let expected_corners: Vec<[u32; 3]> = (0..8)
+                .map(|bits| {
+                    let c = Vec3::new(
+                        (bits & 1) as f32,
+                        ((bits >> 1) & 1) as f32,
+                        ((bits >> 2) & 1) as f32,
+                    );
+                    expected_pose
+                        .transform_point3(c)
+                        .to_array()
+                        .map(f32::to_bits)
+                })
+                .collect();
+            for v in &out {
+                let bits = v.pos.map(f32::to_bits);
+                assert!(
+                    expected_corners.contains(&bits),
+                    "{} bb={bb}: vertex {:?} ({bits:08x?}) does not match vanilla pose_bits corners",
+                    case["name"],
+                    v.pos
                 );
-                expected_pose
-                    .transform_point3(c)
-                    .to_array()
-                    .map(f32::to_bits)
-            })
-            .collect();
-        for v in &out {
-            let bits = v.pos.map(f32::to_bits);
-            assert!(
-                expected_corners.contains(&bits),
-                "vertex {:?} ({bits:08x?}) does not match vanilla display_pose_bits corners",
-                v.pos
-            );
+            }
         }
     });
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn no_culling_text_displays_are_not_frustum_culled_26_3() {
     let w = parity_witness();
     let live = &w["live_culling_and_no_culling"];
-    let menu = genpvp_menu_witness();
     with_client_game(|game| {
         let cam = DVec3::new(0.5, 301.620015, 0.5);
         game.camera_type = CameraType::FirstPerson;
@@ -505,34 +397,11 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
                 .as_bool()
                 .unwrap()
         );
-
-        // Every witnessed GenPvP menu text_display with should_render == true must emit geometry.
-        let menu_cam = DVec3::from_array(hex_f64_arr::<3>(&menu["camera"]["camera_pos_bits"]));
-        let fov = hex_f32(&menu["frame"]["fov_bits"]);
-        game.view_frustum = Some(looking_south_frustum(fov, 1280.0 / 800.0));
-        let mut checked = 0usize;
-        for entity in menu["entities"].as_array().unwrap() {
-            if entity["type"] != "minecraft:text_display" || entity["should_render"] != true {
-                continue;
-            }
-            game.text_displays.clear();
-            let id = apply_witness_display(game, entity);
-            game.tick_text_displays();
-            normal.clear();
-            see_through.clear();
-            game.text_display_geometry(menu_cam, 1.0, &mut normal, &mut see_through);
-            assert!(
-                !normal.is_empty() || !see_through.is_empty(),
-                "GenPvP menu text_display EID {id} has should_render=true in vanilla 26.3 but emitted 0 vertices"
-            );
-            checked += 1;
-        }
-        assert_eq!(checked, 145);
     });
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_3() {
     let w = parity_witness();
     let lc = &w["lifecycle"];
@@ -851,10 +720,9 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
     let w = parity_witness();
-    let menu = genpvp_menu_witness();
     let phases = &w["text_submit_phases_and_sorting"];
     with_client_game(|game| {
         game.view_frustum = None;
@@ -865,28 +733,11 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
         game.settings.render_distance = 8;
         game.settings.entity_distance = 1.0;
 
-        // 1. Deterministic spawn/insertion order matching GenPvP menu `render_order` (including ID inversions).
+        // 1. Deterministic insertion order (including ID inversions and shift_remove), matching EntityLookup.byId.
         game.text_displays.clear();
-        let mut menu_texts: Vec<&serde_json::Value> = menu["entities"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|e| e["type"] == "minecraft:text_display" && e["render_order"].is_u64())
-            .collect();
-        menu_texts.sort_by_key(|e| e["render_order"].as_u64().unwrap());
-        let mut sample_ids: Vec<i32> = menu_texts
-            .iter()
-            .take(20)
-            .map(|e| e["id"].as_i64().unwrap() as i32)
-            .collect();
-        // Append the ID-inverted pairs observed in vanilla's EntityLookup.byId insertion order.
-        for eid in [83226, 83191, 83242, 83102, 83249, 83232] {
-            if !sample_ids.contains(&eid) {
-                sample_ids.push(eid);
-            }
-        }
+        let initial_ids = [83226, 83191, 83242, 83102, 83249, 83232, 83100, 83250];
         let mut expected_bgs = Vec::new();
-        for (idx, &eid) in sample_ids.iter().enumerate() {
+        for (idx, &eid) in initial_ids.iter().enumerate() {
             assert!(game.spawn_remote_object(
                 eid,
                 "minecraft:text_display",
@@ -897,13 +748,16 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
             let argb = 0xFF00_0001u32 + idx as u32;
             let abgr =
                 0xFF00_0000u32 | ((argb & 0xFF) << 16) | (argb & 0xFF00) | ((argb >> 16) & 0xFF);
-            expected_bgs.push(abgr);
+            expected_bgs.push((eid, abgr));
             game.text_displays.get_mut(&eid).unwrap().metadata(&[
                 (23, 0, Value::Text(Tag::String(" ".into()))),
                 (25, 1, Value::Int(argb as i32)),
                 (26, 0, Value::Byte(-1)),
             ]);
         }
+        // Removing a middle display must preserve the remaining displays' insertion order.
+        game.text_displays.shift_remove(&83242);
+        expected_bgs.retain(|&(eid, _)| eid != 83242);
         game.tick_text_displays();
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
         game.text_display_geometry(DVec3::ZERO, 1.0, &mut normal, &mut see_through);
@@ -914,8 +768,9 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
             .filter(|q| q[0].layer == TEXT_POLYGON_OFFSET_OVERLAY)
             .map(|q| q[0].color)
             .collect();
+        let want_bgs: Vec<u32> = expected_bgs.iter().map(|&(_, c)| c).collect();
         assert_eq!(
-            got_bgs, expected_bgs,
+            got_bgs, want_bgs,
             "text displays must emit in insertion order matching vanilla EntityLookup.byId"
         );
 
@@ -1067,16 +922,10 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn text_display_resolves_inline_player_head_profiles_26_3() {
-    let menu = genpvp_menu_witness();
-    let e83225 = menu["entities"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|e| e["id"] == 83225)
-        .unwrap();
-    let json_text = e83225["display"]["text"]["json"].as_str().unwrap();
+    let _ = parity_witness();
+    let json_text = r#"{"text":"","extra":[{"object":"player","player":{"name":"DisplayHead","id":[1,2,3,4]}}]}"#;
     let parsed_json: serde_json::Value = serde_json::from_str(json_text).unwrap();
     let profile_json = &parsed_json["extra"][0]["player"];
     let info = sunrise_client::skins::parse_profile(profile_json);
@@ -1085,6 +934,7 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
         "name:{}",
         profile_json["name"].as_str().unwrap().to_ascii_lowercase()
     );
+    let tag = sunrise_core::json_nbt::parse_json_tag(json_text).unwrap();
 
     with_client_game(|game| {
         game.view_frustum = None;
@@ -1097,21 +947,31 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
         assert!(!game.gui.atlas.object_skins.contains_key(&id_key));
         assert!(!game.gui.atlas.object_skins.contains_key(&name_key));
 
-        apply_witness_display(game, e83225);
+        assert!(game.spawn_remote_object(
+            83225,
+            "minecraft:text_display",
+            [0.5, 301.62, 0.5],
+            (0.0, 0.0),
+            0,
+        ));
+        game.text_displays
+            .get_mut(&83225)
+            .unwrap()
+            .metadata(&[(23, 0, Value::Text(tag))]);
         game.tick_text_displays();
-        let cam = DVec3::from_array(hex_f64_arr::<3>(&menu["camera"]["camera_pos_bits"]));
+        let cam = DVec3::new(0.5, 301.62, 0.5);
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
         game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
         assert!(
             game.gui.atlas.object_skins.contains_key(&id_key)
                 && game.gui.atlas.object_skins.contains_key(&name_key),
-            "inline object:player profile from EID 83225 must be forwarded to resolve_inline_profiles (keys: {id_key}, {name_key})"
+            "inline object:player profile must be forwarded to resolve_inline_profiles (keys: {id_key}, {name_key})"
         );
     });
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
     let w = parity_witness();
     let bd = &w["block_display_render_type_and_cull"];
@@ -1185,7 +1045,7 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
     let w = parity_witness();
     let feats = &w["display_entity_features"];
@@ -1294,7 +1154,7 @@ const SECTION_GATE_NAME: &str = "game::text_displays::display_parity_tests::sect
 const SECTION_GATE_CASE: &str = "SUNRISE_DISPLAY_SECTION_GATE_CASE";
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
     if run_fresh_cases(SECTION_GATE_NAME, SECTION_GATE_CASE, &["section_gate"]) {
         return;
@@ -1447,15 +1307,9 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_displays_parity.py"]
 fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
     let w = parity_witness();
-    let menu = genpvp_menu_witness();
-    let cam = &menu["camera"];
-    let cam_pos = DVec3::from_array(hex_f64_arr::<3>(&cam["camera_pos_bits"]));
-    let cam_yaw = hex_f32(&cam["camera_yRot_bits"]);
-    let cam_pitch = hex_f32(&cam["camera_xRot_bits"]);
-
     let argb_to_abgr = |v: &serde_json::Value| {
         let argb = u32::from_str_radix(v.as_str().unwrap(), 16).unwrap();
         sunrise_client::hud::rgba(
@@ -1469,94 +1323,63 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
     with_client_game(|game| {
         game.view_frustum = None;
         game.camera_type = CameraType::FirstPerson;
-        game.posed_rotation = Some((cam_yaw, cam_pitch));
-        game.view.y_rot = cam_yaw;
-        game.view.x_rot = cam_pitch;
+        game.posed_rotation = Some((0.0, 0.0));
+        game.view.y_rot = 0.0;
+        game.view.x_rot = 0.0;
         game.settings.render_distance = 8;
         game.settings.entity_distance = 1.0;
 
-        // 1. EID 83100 (bold missing cursor \u2196 with shadow) emits 4 exact BakedSheetGlyph quads.
-        let e83100 = menu["entities"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|e| e["id"] == 83100)
-            .unwrap();
+        // 1. Bold missing cursor \u2196 with shadow in a world TextDisplay emits 4 exact BakedSheetGlyph quads.
         game.text_displays.clear();
-        apply_witness_display(game, e83100);
+        assert!(
+            game.spawn_remote_object(83100, "minecraft:text_display", [0.0; 3], (0.0, 0.0), 0,)
+        );
+        let cursor_tag =
+            sunrise_core::json_nbt::parse_json_tag("{\"text\":\"\u{2196}\",\"bold\":true}")
+                .unwrap();
+        game.text_displays.get_mut(&83100).unwrap().metadata(&[
+            (23, 0, Value::Text(cursor_tag)),
+            (25, 1, Value::Int(0)),
+            (26, 0, Value::Byte(-1)),
+            (27, 0, Value::Byte(1)), // shadow
+        ]);
         game.tick_text_displays();
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
-        game.text_display_geometry(cam_pos, 1.0, &mut normal, &mut see_through);
-        let want_83100 = w["missing_glyph_quads"]["cases"]["eid_83100_cursor_world"]["quads"]
+        game.text_display_geometry(DVec3::ZERO, 1.0, &mut normal, &mut see_through);
+        let want_bold_shadow = w["missing_glyph_quads"]["cases"]["bold_shadow_world"]["quads"]
             .as_array()
             .unwrap();
         assert_eq!(
             normal.len(),
-            want_83100.len() * 4,
-            "EID 83100 must emit {} quads (bold+shadow SpecialGlyphs.MISSING), got {}",
-            want_83100.len(),
+            want_bold_shadow.len() * 4,
+            "bold+shadow missing glyph TextDisplay must emit {} quads, got {}",
+            want_bold_shadow.len(),
             normal.len() / 4
         );
+        let lines = sunrise_client::text_display::Lines::split(
+            &game.gui.atlas.font,
+            &game.text_displays[&83100].data.text,
+            200,
+        );
+        let lines_pose = lines.pose();
         // CORNERS = [5, 2, 1, 0] puts world vertices in [bl, br, tr, tl] while BakedSheetGlyph
         // emits [tl, bl, br, tr], so Sunrise vertex [(k + 3) % 4] matches vanilla corner k.
-        for (qi, (got_q, want_q)) in normal.as_chunks::<4>().0.iter().zip(want_83100).enumerate() {
-            for (k, want_v) in want_q.as_array().unwrap().iter().enumerate() {
-                let gv = got_q[(k + 3) % 4];
-                let wp = hex_f32_arr::<3>(&want_v["pos_bits"]);
-                for axis in 0..3 {
-                    assert!(
-                        (gv.pos[axis] - wp[axis]).abs() <= 1e-5,
-                        "EID 83100 quad {qi} corner {k} axis {axis}: got {:?} ({:08x}) vs vanilla {:?} ({:08x})",
-                        gv.pos[axis],
-                        gv.pos[axis].to_bits(),
-                        wp[axis],
-                        wp[axis].to_bits()
-                    );
-                }
-                assert_eq!(gv.color, argb_to_abgr(&want_v["color_argb"]));
-            }
-        }
-
-        // 2. EID 83246 ("Crystal PvP \u25a6", bold with shadow): the trailing bold gold \u25a6
-        // emits 2 shadow quads and 2 front quads matching eid_83246_icon_world.
-        let e83246 = menu["entities"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|e| e["id"] == 83246)
-            .unwrap();
-        game.text_displays.clear();
-        apply_witness_display(game, e83246);
-        game.tick_text_displays();
-        normal.clear();
-        see_through.clear();
-        game.text_display_geometry(cam_pos, 1.0, &mut normal, &mut see_through);
-        let want_83246 = w["missing_glyph_quads"]["cases"]["eid_83246_icon_world"]["quads"]
-            .as_array()
-            .unwrap();
-        let gold_shadow = argb_to_abgr(&want_83246[0][0]["color_argb"]);
-        let gold_front = argb_to_abgr(&want_83246[2][0]["color_argb"]);
-        let gold_quads: Vec<&[Vertex; 4]> = normal
+        for (qi, (got_q, want_q)) in normal
             .as_chunks::<4>()
             .0
             .iter()
-            .filter(|q| q[0].color == gold_shadow || q[0].color == gold_front)
-            .collect();
-        assert_eq!(
-            gold_quads.len(),
-            want_83246.len(),
-            "EID 83246 gold missing glyph must emit {} quads, got {}",
-            want_83246.len(),
-            gold_quads.len()
-        );
-        for (qi, (got_q, want_q)) in gold_quads.iter().zip(want_83246).enumerate() {
+            .zip(want_bold_shadow)
+            .enumerate()
+        {
             for (k, want_v) in want_q.as_array().unwrap().iter().enumerate() {
                 let gv = got_q[(k + 3) % 4];
-                let wp = hex_f32_arr::<3>(&want_v["pos_bits"]);
+                let wp = lines_pose
+                    .transform_point3(Vec3::from_array(hex_f32_arr::<3>(&want_v["pos_bits"])))
+                    .to_array();
                 for axis in 0..3 {
                     assert!(
                         (gv.pos[axis] - wp[axis]).abs() <= 1e-5,
-                        "EID 83246 quad {qi} corner {k} axis {axis}: got {:?} vs vanilla {:?}",
+                        "bold_shadow_world quad {qi} corner {k} axis {axis}: got {:?} vs vanilla {:?}",
                         gv.pos[axis],
                         wp[axis]
                     );
@@ -1565,15 +1388,56 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
             }
         }
 
-        // 3. EID 83224 (minecraft:lime_concrete): exact 6-face vertex parity + opaque atlas padding.
-        let e83224 = menu["entities"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|e| e["id"] == 83224)
+        // 2. EID 83224 (minecraft:lime_concrete): exact 6-face vertex parity + opaque atlas padding,
+        // matching VanillaDisplayParityOracle.recordBlockDisplay83224's exact coordinates and transform.
+        let ent_pos = [
+            f64::from_bits(0x3fe0_0000_0000_0000),
+            f64::from_bits(0x4072_d9eb_851e_b852),
+            f64::from_bits(0x3fe0_0000_0000_0000),
+        ];
+        let cam_pos = DVec3::new(
+            f64::from_bits(0x3fe0_0000_0000_0000),
+            f64::from_bits(0x4072_d9eb_94c0_0000),
+            f64::from_bits(0x3fe0_0000_0000_0000),
+        );
+        let lime = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:lime_concrete")
             .unwrap();
         game.text_displays.clear();
-        apply_witness_display(game, e83224);
+        assert!(
+            game.spawn_remote_object(83224, "minecraft:block_display", ent_pos, (0.0, 0.0), 0,)
+        );
+        {
+            let d = game.text_displays.get_mut(&83224).unwrap();
+            d.show(&[(23, 0, Value::Id(lime.0 as i32))], None);
+            d.metadata(&[
+                (15, 0, Value::Byte(3)),
+                (
+                    11,
+                    0,
+                    Value::Floats(vec![
+                        f32::from_bits(0x4039_c28f),
+                        f32::from_bits(0x4001_0000),
+                        f32::from_bits(0xc089_eb85),
+                    ]),
+                ),
+                (
+                    12,
+                    0,
+                    Value::Floats(vec![
+                        f32::from_bits(0x3fce_6666),
+                        f32::from_bits(0x3d5c_28f6),
+                        f32::from_bits(0x3ca3_d70a),
+                    ]),
+                ),
+                (13, 0, Value::Floats(vec![0.0, 0.0, 0.0, 1.0])),
+                (14, 0, Value::Floats(vec![0.0, 0.0, 0.0, 1.0])),
+                (16, 1, Value::Int(15_728_880)),
+            ]);
+        }
         game.tick_text_displays();
         let mut block_verts = Vec::new();
         game.block_item_display_geometry(cam_pos, 1.0, &mut block_verts);

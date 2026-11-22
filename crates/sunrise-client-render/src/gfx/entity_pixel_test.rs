@@ -1281,15 +1281,18 @@ mod scrgb {
     }
 
     #[test]
+    #[ignore = "run by tools/test_displays_parity.py"]
     fn block_display_83224_has_no_seam_at_x1026() {
         use super::super::*;
         use bytemuck::Zeroable;
         let _gpu = crate::gfx::test_gpu::lock();
 
-        let w: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../tools/witness/26.3/display_parity/witness.json"
-        ))
-        .unwrap();
+        let witness_path = std::env::var("SUNRISE_DISPLAY_PARITY_WITNESS").expect(
+            "SUNRISE_DISPLAY_PARITY_WITNESS must be set (run via tools/test_displays_parity.py)",
+        );
+        let witness_text = std::fs::read_to_string(&witness_path)
+            .unwrap_or_else(|e| panic!("failed to read {witness_path}: {e}"));
+        let w: serde_json::Value = serde_json::from_str(&witness_text).unwrap();
         let hex_f32 = |v: &serde_json::Value| {
             f32::from_bits(u32::from_str_radix(v.as_str().unwrap(), 16).unwrap())
         };

@@ -280,12 +280,15 @@ impl Features {
 mod tests {
     use super::*;
 
-    const DISPLAY_PARITY_WITNESS_26_3: &str =
-        include_str!("../../../../tools/witness/26.3/display_parity/witness.json");
-
     #[test]
+    #[ignore = "run by tools/test_displays_parity.py"]
     fn oit_text_polygon_offset_depth_bias_matches_vanilla_26_3() {
-        let witness: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
+        let path = std::env::var("SUNRISE_DISPLAY_PARITY_WITNESS").expect(
+            "SUNRISE_DISPLAY_PARITY_WITNESS must be set (run via tools/test_displays_parity.py)",
+        );
+        let text =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
+        let witness: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(witness["meta"]["game_version"], "26.3");
         let p = &witness["text_submit_phases_and_sorting"]["pipelines"];
         let scale_bits = u32::from_str_radix(

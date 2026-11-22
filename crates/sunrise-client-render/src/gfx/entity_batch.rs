@@ -799,8 +799,16 @@ mod tests {
         assert_eq!(batch.combined[8].layer, 2);
     }
 
-    const DISPLAY_PARITY_WITNESS_26_3: &str =
-        include_str!("../../../../tools/witness/26.3/display_parity/witness.json");
+    fn display_parity_witness() -> serde_json::Value {
+        let path = std::env::var("SUNRISE_DISPLAY_PARITY_WITNESS").expect(
+            "SUNRISE_DISPLAY_PARITY_WITNESS must be set (run via tools/test_displays_parity.py)",
+        );
+        let text =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
+        let witness: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(witness["meta"]["game_version"], "26.3");
+        witness
+    }
 
     fn witness_sort_quads(layer: u32) -> Vec<Vertex> {
         let centroids: [[f32; 3]; 5] = [
@@ -825,9 +833,9 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "run by tools/test_displays_parity.py"]
     fn classic_polygon_offset_text_quads_sort_far_to_near_like_vanilla_26_3() {
-        let witness: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
-        assert_eq!(witness["meta"]["game_version"], "26.3");
+        let witness = display_parity_witness();
         let section = &witness["text_submit_phases_and_sorting"];
         assert_eq!(
             section["pipelines"]["rt_text_polygon_offset_sort_on_upload"],
@@ -847,9 +855,9 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "run by tools/test_displays_parity.py"]
     fn classic_translucent_item_quads_sort_far_to_near_like_vanilla_26_3() {
-        let witness: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
-        assert_eq!(witness["meta"]["game_version"], "26.3");
+        let witness = display_parity_witness();
         assert_eq!(
             witness["block_display_render_type_and_cull"]["translucent_sort_on_upload"],
             true
