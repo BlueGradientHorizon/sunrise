@@ -833,6 +833,13 @@ fn mod_screen_open_replaces_vanilla_screens_overlays_and_mod_screens() {
             game.window = Some(window.clone());
             game.renderer = Some(game.new_renderer(window).unwrap());
             game.title = None;
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::ZERO,
+                )
+                .unwrap(),
+            );
             game.focused = true;
 
             // 2) Refused when acting on a guest's behalf (`lan_acting.is_some()`).

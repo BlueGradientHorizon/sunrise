@@ -70,6 +70,10 @@ fn attach_offscreen_window(game: &mut Game<'_>) -> (EventLoop<()>, winit::window
     game.window = Some(window.clone());
     game.renderer = Some(game.new_renderer(window).unwrap());
     game.title = None;
+    game.player = Some(
+        sunrise_client::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
+            .unwrap(),
+    );
     game.focused = true;
     (event_loop, id)
 }
@@ -1484,13 +1488,6 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
     with_mods(mods, || {
         with_client_game(|game| {
             let (_event_loop, win_id) = attach_offscreen_window(game);
-            game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
-                    game.motion,
-                    sunrise_core::geometry::Vec3::ZERO,
-                )
-                .unwrap(),
-            );
 
             // 1) Open Paused and click the button that transitions paused -> mod ("target_mod"):
             //    MouseButtonPressed.Post MUST still carry screen A's id ("paused"), not "mod".
@@ -1660,6 +1657,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
 
             // 7) Closing screen from button press still fires MouseButtonPressed.Post with "mod"
             //    even though the screen is now Playing.
+            game.screen_state.last_click = None;
             move_mouse(game, win_id, 40.0, 30.0);
             take_log(&log);
             send_mouse_button(game, win_id, MouseButton::Left, true);
@@ -2084,13 +2082,6 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
     with_mods(mods, || {
         with_client_game(|game| {
             let (_event_loop, win_id) = attach_offscreen_window(game);
-            game.player = Some(
-                sunrise_client::motion::PlayerMotion::new(
-                    game.motion,
-                    sunrise_core::geometry::Vec3::ZERO,
-                )
-                .unwrap(),
-            );
             game.settings.controller.keyboard = TextKeyboard::Sunrise;
             assert!(game.mod_screen_open("controller_mounts"));
             let targets = game.mounted_widget_targets();

@@ -1644,8 +1644,9 @@ fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
 
     let make_unconvertible_text = || {
         let text = sunrise_client::text::Text::from(serde_json::json!({
-            "text": "Visible",
-            "bad_meta": [1, "a"]
+            "object": "player",
+            "player": 7,
+            "fallback": "Visible"
         }));
         assert_eq!(text.plain(), "Visible");
         assert!(text.try_into_api().is_err());

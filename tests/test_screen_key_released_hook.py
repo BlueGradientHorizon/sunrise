@@ -25,7 +25,7 @@ class ScreenKeyReleasedHookTests(unittest.TestCase):
             "mapped_key_event", "remove_device_key", "sync_device_key",
         ))
         buttons = "\n".join(method(key_codes, name) for name in (
-            "keyboard_button", "gameplay_has_keyboard", "container_key_clones",
+            "keyboard_button", "gameplay_has_keyboard",
         ))
         dispatch = method(source, "dispatch_screen_key")
         fixture = r"""
