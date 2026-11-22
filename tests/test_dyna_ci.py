@@ -636,7 +636,7 @@ class DynaRoutingTests(unittest.TestCase):
             (tree / "tools" / "test_game_parity.py").write_text(
                 "run(['cargo', 'test', '-p', 'sunrise-client', '--lib', 'y'])\n")
             (tree / "tools" / "test_fast_parity.py").write_text(
-                'run(["cargo", "test", "--profile", "fast", "-p", "sunrise-client", "--lib", "z"])\n')
+                'run(["cargo", "test", "--profile", "fast", "-p", "sunrise-world", "--lib", "z"])\n')
             # A package beside the client's, as dragon_contacts runs sunrise-gameplay's lib tests.
             (tree / "tools" / "test_gameplay_parity.py").write_text(
                 "run(['cargo', 'test', '--locked', '-p', 'sunrise-gameplay', '--lib', 'w'])\n")
