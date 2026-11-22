@@ -232,17 +232,14 @@ mod tests {
             ) {
                 let mut seen = self.0.lock().unwrap();
                 let tags = context.tags();
-                let resolve = |path| {
-                    tags.key(&Identifier::from_parts("item_tag_listing", path).unwrap())
-                        .unwrap()
-                };
-                let (old, new, empty, always) = (
-                    resolve("old"),
-                    resolve("new"),
-                    resolve("empty"),
-                    resolve("always"),
+                let id = |path| Identifier::from_parts("item_tag_listing", path).unwrap();
+                let (old, new, empty) = (
+                    tags.key(&id("old")).unwrap(),
+                    tags.key(&id("new")).unwrap(),
+                    tags.key(&id("empty")).unwrap(),
                 );
-                resolve("never_bound");
+                tags.key(&id("always")).unwrap();
+                tags.key(&id("never_bound")).unwrap();
                 let stick = context
                     .item_key(&Identifier::parse("minecraft:stick").unwrap())
                     .unwrap();
@@ -256,11 +253,11 @@ mod tests {
                     names
                 };
                 let reloaded = seen.len() % 2 == 1;
-                let current = if reloaded { new } else { old };
-                assert_eq!(scoped(tags.item_tags(stick)), [always.id(), current.id()]);
+                let current = if reloaded { "new" } else { "old" };
+                assert_eq!(scoped(tags.item_tags(stick)), [id("always"), id(current)]);
                 assert_eq!(
                     scoped(tags.item_tag_names()),
-                    [always.id(), empty.id(), current.id()]
+                    [id("always"), id("empty"), id(current)]
                 );
                 assert_eq!(tags.is_in_tag(stick, old), Some(!reloaded));
                 assert_eq!(tags.is_in_tag(stick, new), Some(reloaded));
