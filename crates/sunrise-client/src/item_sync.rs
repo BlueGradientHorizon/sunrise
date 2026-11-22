@@ -3,7 +3,7 @@
 //! and command item NBT use fills every field. Both sides use it: a client for
 //! what its server sends, a server for a creative client's
 //! `SetCreativeModeSlot`. The other direction is `lan::guest::stack_to_network`.
-use crate::items::ItemStack;
+use crate::items::{ItemInfo, ItemStack};
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::buf::{Codec, Reader};
