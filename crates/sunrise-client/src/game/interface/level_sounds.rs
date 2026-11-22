@@ -234,7 +234,7 @@ impl Game<'_> {
             volume,
             pitch,
         };
-        if !listened() {
+        if !listened() || self.creatures.asking_level_sound {
             return Some(asked);
         }
         // The mods see a namespaced id (`minecraft:entity.pig.ambient`).
@@ -248,8 +248,28 @@ impl Game<'_> {
         if emitter.is_some() && entity.is_none() && !self.is_logical_server() {
             return None;
         }
+        struct AskGuard<'g, 'a> {
+            game: &'g mut Game<'a>,
+            queued_before: usize,
+        }
+        impl Drop for AskGuard<'_, '_> {
+            fn drop(&mut self) {
+                self.game.creatures.asking_level_sound = false;
+                if let Some(added) = self.game.creatures.lan_sounds.get_mut(self.queued_before..) {
+                    for sound in added {
+                        sound.skip_hooks = true;
+                    }
+                }
+            }
+        }
+        let queued_before = self.creatures.lan_sounds.len();
+        self.creatures.asking_level_sound = true;
+        let guard = AskGuard {
+            game: self,
+            queued_before,
+        };
         match entity {
-            Some(entity) => self.native_play_level_sound_at_entity(
+            Some(entity) => guard.game.native_play_level_sound_at_entity(
                 mod_api::__private::PlayLevelSoundAtEntityCall {
                     entity,
                     sound: &mut id,
@@ -262,8 +282,8 @@ impl Game<'_> {
                 },
             ),
             None => {
-                let level = self.level(dimension)?;
-                self.native_play_level_sound_at_position(
+                let level = guard.game.level(dimension)?;
+                guard.game.native_play_level_sound_at_position(
                     mod_api::__private::PlayLevelSoundAtPositionCall {
                         level,
                         position: at,
@@ -278,6 +298,7 @@ impl Game<'_> {
                 );
             }
         }
+        drop(guard);
         if cancel || !level_sound_playable(at, volume_now, pitch_now) {
             return None;
         }
