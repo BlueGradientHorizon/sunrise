@@ -6,7 +6,7 @@
 //! never while quads are being submitted, so a required pipeline the GPU refuses fails that
 //! load's renderer and the reload with it.
 
-use super::world_primitives::Upload;
+use super::world_primitives::{Upload, VertexPages};
 use crate::mod_pipelines::{Built, BuiltTexture, Pipelines};
 use glam::Mat4;
 use mod_api::{PipelineBlend, WorldDepth};
@@ -27,7 +27,7 @@ pub struct PipelineVertex {
 pub struct PipelineRun {
     /// The pipeline's slot in the frame's [`Pipelines`].
     pub slot: u32,
-    /// The stage it draws at (`RenderLevelStage::ALL`'s index).
+    /// The stage it draws at (`STAGE_AFTER_OPAQUE_BLOCKS..=STAGE_CUSTOM_GEOMETRY`).
     pub stage: u32,
     pub quads: u32,
 }
@@ -83,7 +83,7 @@ pub struct ModPipelines {
     group: wgpu::BindGroup,
     view: wgpu::Buffer,
     frame: wgpu::Buffer,
-    vertices: wgpu::Buffer,
+    vertices: VertexPages,
     /// The load `pipelines` was built from; 0 before any.
     generation: u64,
     /// By slot; `None` for a pipeline the load refused.
@@ -184,7 +184,7 @@ impl ModPipelines {
             group,
             view,
             frame,
-            vertices: buffer("Mod pipeline quads", 0, wgpu::BufferUsages::VERTEX),
+            vertices: VertexPages::default(),
             generation: 0,
             pipelines: Vec::new(),
             runs: Vec::new(),
@@ -392,9 +392,7 @@ impl ModPipelines {
         Ok(())
     }
 
-    /// Uploads the frame's quads, drawn with `view_proj` into a frame `viewport` pixels big. The
-    /// number of quads to draw: the caller's quad indices must reach that far. A set this
-    /// renderer was not built with draws nothing.
+    /// Upload the frame's quads and return the number of indices needed for its largest page.
     pub fn prepare(
         &mut self,
         device: &wgpu::Device,
@@ -431,16 +429,14 @@ impl ModPipelines {
             return 0;
         };
         let quads = last.quads.end;
-        let bytes: &[u8] = bytemuck::cast_slice(&batch.vertices[..quads as usize * 4]);
-        if self.vertices.size() < bytes.len() as u64 {
-            self.vertices = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Mod pipeline quads"),
-                size: (bytes.len() as u64).next_power_of_two(),
-                usage: self.vertices.usage(),
-                mapped_at_creation: false,
-            });
-        }
-        upload(&self.vertices, bytes);
+        self.vertices.upload(
+            device,
+            upload,
+            "Mod pipeline quads",
+            bytemuck::cast_slice(&batch.vertices[..quads as usize * 4]),
+            4 * std::mem::size_of::<PipelineVertex>() as u64,
+            0,
+        );
         upload(&self.view, bytemuck::cast_slice(&view_proj.to_cols_array()));
         upload(
             &self.frame,
@@ -450,7 +446,7 @@ impl ModPipelines {
                 _pad: 0.0,
             }),
         );
-        quads
+        self.vertices.index_quads(quads)
     }
 
     /// Draws the prepared runs of stages `first..=last` in the order queued, with `indices`
@@ -463,18 +459,54 @@ impl ModPipelines {
         first: usize,
         last: usize,
     ) {
+        self.draw_runs(
+            pass,
+            indices,
+            self.runs
+                .iter()
+                .filter(|run| first <= run.stage && run.stage <= last)
+                .map(|run| (run, run.quads.clone())),
+        );
+    }
+
+    pub(super) fn draw_range(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        indices: &wgpu::Buffer,
+        range: std::ops::Range<u32>,
+    ) {
+        let start = self
+            .runs
+            .partition_point(|run| run.quads.end <= range.start);
+        self.draw_runs(
+            pass,
+            indices,
+            self.runs[start..]
+                .iter()
+                .take_while(|run| run.quads.start < range.end)
+                .map(|run| {
+                    (
+                        run,
+                        run.quads.start.max(range.start)..run.quads.end.min(range.end),
+                    )
+                }),
+        );
+    }
+
+    fn draw_runs<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'_>,
+        indices: &wgpu::Buffer,
+        runs: impl Iterator<Item = (&'a Run, std::ops::Range<u32>)>,
+    ) {
         let mut bound = false;
-        for run in &self.runs {
-            if run.stage < first || run.stage > last {
-                continue;
-            }
+        for (run, range) in runs {
             let Some(Some((pipeline, texture))) = self.pipelines.get(run.slot) else {
                 continue;
             };
             if !bound {
                 bound = true;
                 pass.set_bind_group(0, &self.group, &[]);
-                pass.set_vertex_buffer(0, self.vertices.slice(..));
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
             }
             pass.set_pipeline(pipeline);
@@ -482,7 +514,10 @@ impl ModPipelines {
             if let Some(texture) = texture {
                 pass.set_bind_group(1, texture, &[]);
             }
-            pass.draw_indexed(run.quads.start * 6..run.quads.end * 6, 0, 0..1);
+            for (buffer, range) in self.vertices.ranges(0, range) {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw_indexed(range.start * 6..range.end * 6, 0, 0..1);
+            }
         }
     }
 }
@@ -509,6 +544,8 @@ impl super::Renderer {
             sprite,
         };
         self.world_primitives
+            .as_mut()
+            .expect("world primitives")
             .pipelines
             .build(&self.device, set, Some(textures))
     }

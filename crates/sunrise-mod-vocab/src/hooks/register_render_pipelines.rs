@@ -55,7 +55,10 @@ place in the file reads `<file>:<line>:<column>: <reason>`.
 
 Resolve the pipeline with `host.render_assets().render_pipeline(&id)` in `client_setup` and again
 in `client_resources_reloaded`, then draw with `WorldDrawContext::pipeline_quads` from
-`submit_custom_geometry` or `render_level_stage`. A resource reload builds every registered
+`submit_custom_geometry` (or a debug renderer). To draw at a particular standard stage, call
+`PrepareRenderBuffersContext::pipeline_quads` in `prepare_render_buffers`, then pass the returned
+batch to `WorldPassDrawContext::draw` in the matching `render_level_stage` callback. No-pass and
+OIT stages do not accept pipeline quads. A resource reload builds every registered
 pipeline again, so a resource pack can replace a shader; a handle from before the reload is
 `Stale`.
 
@@ -65,10 +68,9 @@ because its file is missing, refused or turned down by the GPU, the whole load f
 the game does not start, and a reload keeps the previous resources and handles, then drops the
 selected resource packs and tries again, as vanilla does with any failed reload. An optional
 pipeline that cannot be built is logged once with its id and resolves to `Invalid`, and the other
-pipelines draw. Pipeline quads share the view's 4,096 quads with `WorldDrawContext::quads`, and in each
-stage they draw after that stage's plain quads and lines, in the order submitted. Under a shader
-pack they follow the plain quads: a stage the pack draws itself is drawn with the next stage the
-game reaches."#]
+pipelines draw. In the deferred world pass, pipeline quads draw after the plain quads and lines, in submission
+order. Standard stage callbacks draw their prepared batches in draw call order. A stage skipped
+by a shader pack does not run or replay at a later stage."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

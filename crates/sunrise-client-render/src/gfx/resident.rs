@@ -2,11 +2,10 @@
 //! per-frame culling walk: a column whose box misses the frustum or lies past
 //! the render distance rejects all of its sections with one test, and the
 //! sections that remain are reached by index rather than by hashing keys.
-#[cfg(test)]
-use super::Frustum;
-use super::{Cull, SectionKey};
+use super::{Cull, Frustum, SectionKey};
 use crate::{
     fast_hash::{FxHashMap, FxHashSet},
+    section_mask::SectionMask,
     streaming::in_view_distance,
 };
 use glam::{DVec3, Vec3};
@@ -385,7 +384,7 @@ pub(super) fn camera_column(camera: DVec3) -> (i32, i32) {
 
 /// The world AABB (min, max) of a section from its origin and optional tight bounds.
 #[inline]
-fn section_box(min: Vec3, bounds: Option<[Vec3; 2]>) -> (Vec3, Vec3) {
+pub(super) fn section_box(min: Vec3, bounds: Option<[Vec3; 2]>) -> (Vec3, Vec3) {
     match bounds {
         Some([bmin, bmax]) => (min + bmin, min + bmax),
         None => (min, min + Vec3::splat(16.0)),
@@ -460,7 +459,7 @@ impl<T> Resident<T> {
         beyond: impl Fn(i32, i32) -> bool,
         out: &mut Vec<Visible>,
     ) {
-        self.walk(camera, radius, frustum, reachable, beyond, false, out);
+        self.walk(camera, radius, frustum, reachable, beyond, false, out, None);
     }
     /// `visible`, less the sections within the render distance that are not
     /// marked (`insert_marked`) when `marked_only_near`, in the same order: GPU
@@ -475,80 +474,119 @@ impl<T> Resident<T> {
         beyond: impl Fn(i32, i32) -> bool,
         marked_only_near: bool,
         out: &mut Vec<Visible>,
+        mut primary: Option<PrimarySelection<'_>>,
     ) {
         let from = camera_column(camera);
-        for column in &self.columns {
-            let near = in_view_distance(from, radius, column.x, column.z);
-            if !near && !beyond(column.x, column.z) {
-                continue;
+        let world_y = |y| f64::from(self.min_y + y * 16) - camera.y;
+        // The primary and draw lists share distance, reachability, column mesh bounds and
+        // per-section tests. Mirror-only sections and GPU-list marks affect only the draw list.
+        let detail = primary.as_ref().map(|p| p.detail_columns);
+        let mut column_walk = |x: i32, z: i32, column: Option<&Column>, mut air: SectionMask| {
+            let near = in_view_distance(from, radius, x, z);
+            if !near && !beyond(x, z) {
+                return;
             }
-            let list = if marked_only_near && near {
-                &column.marked
-            } else {
-                &column.sections
-            };
-            if list.is_empty() {
-                continue;
-            }
-            let ox = f64::from(column.x * 16) - camera.x;
-            let oz = f64::from(column.z * 16) - camera.z;
-            let min_x = ox as f32;
-            let min_z = oz as f32;
-            let low_oy = (f64::from(self.min_y + column.low * 16) - camera.y) as f32;
-            let high_oy = (f64::from(self.min_y + column.high * 16) - camera.y) as f32;
-            let min = Vec3::new(min_x, low_oy, min_z);
-            let max = Vec3::new(min_x + 16.0, high_oy + 16.0, min_z + 16.0);
-            let inside = frustum.contains(min, max);
-            if !inside && !frustum.intersects(min, max) {
-                continue;
-            }
-            let dx8 = ox + 8.0;
-            let dz8 = oz + 8.0;
-            let xz_sq = dx8 * dx8 + dz8 * dz8;
-
-            if inside {
-                for &(y, slot) in list {
-                    let key = (column.x, y, column.z);
-                    if near && !reachable(key) {
-                        continue;
+            let ox = f64::from(x * 16) - camera.x;
+            let oz = f64::from(z * 16) - camera.z;
+            let x0 = ox as f32;
+            let z0 = oz as f32;
+            let dx = ox + 8.0;
+            let dz = oz + 8.0;
+            let distance = |oy: f64| (dx * dx + dz * dz + (oy + 8.0) * (oy + 8.0)).to_bits();
+            if let Some(column) = column {
+                let list = if marked_only_near && near && primary.is_none() {
+                    &column.marked
+                } else {
+                    &column.sections
+                };
+                let cmin = Vec3::new(x0, world_y(column.low) as f32, z0);
+                let cmax = Vec3::new(x0 + 16.0, world_y(column.high) as f32 + 16.0, z0 + 16.0);
+                let draws_inside = frustum.contains(cmin, cmax);
+                let draws_column = draws_inside || frustum.intersects(cmin, cmax);
+                let primary_column = primary.as_ref().map(|p| {
+                    let inside = p.frustum.contains(cmin, cmax);
+                    (inside, inside || p.frustum.intersects(cmin, cmax))
+                });
+                if draws_column || primary_column.is_some_and(|(_, visible)| visible) {
+                    for &(y, slot) in list {
+                        let key = (x, y, z);
+                        if near && !reachable(key) {
+                            continue;
+                        }
+                        let oy = world_y(y);
+                        let pos = Vec3::new(x0, oy as f32, z0);
+                        let bounds = self.bounds[slot as usize];
+                        let passes = |f: &dyn Cull| {
+                            let (min, max) = section_box(pos, bounds.filter(|_| f.tight()));
+                            f.intersects(min, max)
+                        };
+                        if draws_column
+                            && (draws_inside || passes(frustum))
+                            && (!marked_only_near || !near || self.marked[slot as usize])
+                        {
+                            out.push(Visible {
+                                distance: distance(oy),
+                                key,
+                                slot,
+                                origin: pos.to_array(),
+                            });
+                        }
+                        if let Some(primary) = &mut primary
+                            && let Some((inside, true)) = primary_column
+                            && (inside || passes(primary.frustum))
+                        {
+                            primary.out.push((distance(oy), key, Some(slot)));
+                        }
                     }
-                    let oy = f64::from(self.min_y + y * 16) - camera.y;
-                    let min = Vec3::new(min_x, oy as f32, min_z);
-                    let dy8 = oy + 8.0;
-                    let distance = xz_sq + dy8 * dy8;
-                    out.push(Visible {
-                        distance: distance.to_bits(),
-                        key,
-                        slot,
-                        origin: min.to_array(),
-                    });
                 }
-            } else {
-                for &(y, slot) in list {
-                    let key = (column.x, y, column.z);
+                if !air.is_empty() {
+                    for &(y, _) in &column.sections {
+                        air.remove(y as usize);
+                    }
+                }
+            }
+            if let Some(primary) = &mut primary {
+                for y in air.iter().map(|y| y as i32) {
+                    let key = (x, y, z);
                     if near && !reachable(key) {
                         continue;
                     }
-                    let oy = f64::from(self.min_y + y * 16) - camera.y;
-                    let min = Vec3::new(min_x, oy as f32, min_z);
-                    let bounds = self.bounds[slot as usize].filter(|_| frustum.tight());
-                    let (bmin, bmax) = section_box(min, bounds);
-                    if !frustum.intersects(bmin, bmax) {
-                        continue;
+                    let oy = world_y(y);
+                    let (min, max) = section_box(Vec3::new(x0, oy as f32, z0), None);
+                    if primary.frustum.intersects(min, max) {
+                        primary.out.push((distance(oy), key, None));
                     }
-                    let dy8 = oy + 8.0;
-                    let distance = xz_sq + dy8 * dy8;
-                    out.push(Visible {
-                        distance: distance.to_bits(),
-                        key,
-                        slot,
-                        origin: min.to_array(),
-                    });
+                }
+            }
+        };
+        for column in &self.columns {
+            let air = detail
+                .and_then(|detail| detail.get(&(column.x, column.z)))
+                .copied()
+                .unwrap_or_default();
+            column_walk(column.x, column.z, Some(column), air);
+        }
+        if let Some(detail) = detail {
+            // Empty compiled columns have no resident GPU entry to visit.
+            for (&(x, z), &air) in detail {
+                if !self.column_index.contains_key(&(x, z)) {
+                    column_walk(x, z, None, air);
                 }
             }
         }
         out.sort_unstable_by_key(|v| (v.distance, v.key));
+        if let Some(primary) = primary {
+            primary
+                .out
+                .sort_unstable_by_key(|&(distance, key, _)| (distance, key));
+        }
     }
+}
+
+pub(super) struct PrimarySelection<'a> {
+    pub frustum: &'a Frustum,
+    pub detail_columns: &'a FxHashMap<(i32, i32), SectionMask>,
+    pub out: &'a mut Vec<(u64, SectionKey, Option<u32>)>,
 }
 
 #[cfg(test)]
@@ -918,7 +956,16 @@ mod tests {
             for radius in [3, 7, 12] {
                 let (mut all, mut marked) = (Vec::new(), Vec::new());
                 r.visible(camera, radius, &view, reachable, beyond, &mut all);
-                r.walk(camera, radius, &view, reachable, beyond, true, &mut marked);
+                r.walk(
+                    camera,
+                    radius,
+                    &view,
+                    reachable,
+                    beyond,
+                    true,
+                    &mut marked,
+                    None,
+                );
                 let from = camera_column(camera);
                 let near = |v: &Visible| in_view_distance(from, radius, v.key.0, v.key.2);
                 let expected: Vec<Visible> = all

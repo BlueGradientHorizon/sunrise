@@ -93,7 +93,7 @@ impl Receiver {
     pub fn accept_chunk(&mut self, packet: &[u8]) -> Result<(), String> {
         if let Some(bytes) = self.assembly.push(packet)? {
             let declarations = mod_api::__private::datapack_registry_declarations();
-            let received = receive(declarations, self.received.as_deref(), &bytes)?;
+            let received = receive(declarations, &bytes)?;
             self.received = Some(Arc::new(received));
         }
         Ok(())

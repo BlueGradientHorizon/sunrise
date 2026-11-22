@@ -173,8 +173,8 @@ pub struct Renderer {
     pub(crate) lightning_pipeline: wgpu::RenderPipeline,
     pub(crate) lightning: lightning::Renderer,
     pub(crate) see_through_pipeline: wgpu::RenderPipeline,
-    /// Native mods' world primitives (`Frame::world_primitives`).
-    pub(crate) world_primitives: world_primitives::WorldPrimitives,
+    /// Native mods' world primitives (`Frame::world_primitives`), taken briefly during OIT pass.
+    pub(crate) world_primitives: Option<world_primitives::WorldPrimitives>,
     pub(crate) text_polygon_offset_pipeline: wgpu::RenderPipeline,
     pub(crate) world_text_pipeline: wgpu::RenderPipeline,
     pub(crate) fluid_pipeline: wgpu::RenderPipeline,
@@ -336,6 +336,12 @@ pub struct Renderer {
     /// Per-frame scratch, kept to avoid allocating every frame.
     pub(crate) visible: Vec<resident::Visible>,
     pub(crate) visible_lods: Vec<lod::Visible>,
+    /// Canonical primary-camera visible sections exposed to `FrameHooks` (reused across frames).
+    pub(crate) visible_renderable_sections: Vec<mod_api::RenderableSection>,
+    pub(crate) visible_renderable_scratch: Vec<(u64, SectionKey, Option<u32>)>,
+    /// Reusable merge buffers when `FrameHooks` adds CPU entity / name-tag / see-through vertices.
+    pub(crate) hook_entities_scratch: Vec<Vertex>,
+    pub(crate) hook_see_through_scratch: Vec<Vertex>,
     /// The sections a shader pack's shadow camera sees (`external::ShadowView`).
     pub(crate) shadow_visible: Vec<resident::Visible>,
     /// The external shader pipeline world frames call (`external`); `None` draws vanilla's way.

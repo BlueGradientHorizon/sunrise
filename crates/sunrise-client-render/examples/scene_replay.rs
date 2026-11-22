@@ -365,7 +365,7 @@ fn replay(window: Arc<Window>) -> Result<(), Box<dyn std::error::Error>> {
                 renderer.start_occlusion(frame.camera, frame.distance);
             }
             let started = Instant::now();
-            renderer.render(&frame)?;
+            renderer.render(&frame, None)?;
             Ok(started.elapsed())
         };
         for _ in 0..o.warmup {

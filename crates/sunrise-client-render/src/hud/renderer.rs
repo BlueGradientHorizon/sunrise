@@ -348,6 +348,38 @@ impl HudRenderer {
     }
     /// Stage the batch's `patches` and `image_patches` (client mods' dynamic textures) into
     /// the shared atlas texture.
+    pub fn upload_glyph_patches(
+        &self,
+        uploads: &mut crate::gfx::upload::Uploads,
+        encoder: &mut wgpu::CommandEncoder,
+        patches: &[crate::font::Patch],
+    ) {
+        let Some(texture) = &self.atlas_texture else {
+            return;
+        };
+        for p in patches {
+            if p.x.saturating_add(p.width) <= texture.width()
+                && p.y.saturating_add(p.height) <= texture.height()
+            {
+                uploads.texture(
+                    encoder,
+                    wgpu::TexelCopyTextureInfo {
+                        texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d {
+                            x: p.x,
+                            y: p.y,
+                            z: 0,
+                        },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    p.width,
+                    p.height,
+                    &p.rgba,
+                );
+            }
+        }
+    }
     pub fn upload_patches(
         &self,
         uploads: &mut crate::gfx::upload::Uploads,

@@ -202,7 +202,7 @@ impl ActiveDebugRenderer {
     pub fn draw(
         &self,
         host: &dyn ClientHost,
-        view: &mod_api::WorldRenderView,
+        view: &mod_api::WorldRenderView<'_>,
         draw: &mut dyn mod_api::WorldDrawContext,
     ) {
         if self.owner.is_enabled() {

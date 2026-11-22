@@ -134,11 +134,8 @@ impl Game<'_> {
         let Some(id) = self.observed_overlay_now() else {
             return self.screen_view_now();
         };
-        let renderer = self.renderer.as_ref()?;
-        let batch = HudBatch::new(
-            [renderer.config.width, renderer.config.height],
-            self.settings.gui_scale_inputs(),
-        );
+        let framebuffer = self.renderer_framebuffer()?;
+        let batch = HudBatch::new(framebuffer, self.settings.gui_scale_inputs());
         Some(ScreenView::from(mod_api::__private::built::ScreenView {
             id,
             mod_screen: None,
@@ -1597,7 +1594,7 @@ impl Game<'_> {
     /// dialog or a prompt drawn over gameplay), and no connect or world load
     /// is in progress. The one gate they all ask before they fire.
     pub(super) fn screen_hooks_open(&self) -> bool {
-        self.renderer.is_some()
+        self.has_renderer()
             && !self.screen_over_playing()
             && !self.remote_loading()
             && (self.screen != Screen::Playing || self.title.is_some())
@@ -1612,11 +1609,8 @@ impl Game<'_> {
         if !self.screen_hooks_open() {
             return None;
         }
-        let renderer = self.renderer.as_ref()?;
-        let batch = HudBatch::new(
-            [renderer.config.width, renderer.config.height],
-            self.settings.gui_scale_inputs(),
-        );
+        let framebuffer = self.renderer_framebuffer()?;
+        let batch = HudBatch::new(framebuffer, self.settings.gui_scale_inputs());
         if self.screen != Screen::Playing {
             return Some(self.screen_view(&batch, self.screen));
         }

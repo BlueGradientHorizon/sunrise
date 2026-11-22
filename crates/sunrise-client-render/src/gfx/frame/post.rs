@@ -9,6 +9,7 @@ pub(in crate::gfx) struct PostPassArgs<'a> {
     pub(in crate::gfx) fg_frames: Option<&'a (wgpu::Texture, wgpu::Texture)>,
     pub(in crate::gfx) pack_post: bool,
     pub(in crate::gfx) native_post: bool,
+    pub(in crate::gfx) after_pack_sky: bool,
     pub(in crate::gfx) pack_draws_weather: bool,
     pub(in crate::gfx) pack_draws_terrain: bool,
     pub(in crate::gfx) pack_draws_shadow: bool,
@@ -55,6 +56,7 @@ impl Renderer {
         &mut self,
         mut encoder: wgpu::CommandEncoder,
         args: PostPassArgs<'_>,
+        mut hooks: Option<&mut dyn world_primitives::FrameHooks>,
     ) -> std::result::Result<(wgpu::CommandEncoder, PostPassResult), String> {
         let PostPassArgs {
             frame,
@@ -65,6 +67,7 @@ impl Renderer {
             fg_frames,
             pack_post,
             native_post,
+            after_pack_sky,
             pack_draws_weather,
             pack_draws_terrain,
             pack_draws_shadow,
@@ -224,6 +227,17 @@ impl Renderer {
                 [self.config.width, self.config.height],
                 pages,
                 &mut terrain,
+                after_pack_sky,
+                |boundary| {
+                    use pack_post::WorldBoundary;
+                    if let Some(hooks) = hooks.as_deref_mut() {
+                        let sections = &self.visible_renderable_sections;
+                        match boundary {
+                            WorldBoundary::AfterSky => hooks.on_after_sky(sections, false),
+                            WorldBoundary::AfterLevel => hooks.on_after_level(sections, false),
+                        }
+                    }
+                },
                 &self.device_lost,
                 super::super::in_flight::poll_live,
             );

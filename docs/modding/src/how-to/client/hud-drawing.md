@@ -150,8 +150,10 @@ should run until the next refresh. To gate a renderer on a debug options switch,
 `DebugEntry::renderer(id)` at startup in `Hooks::register_debug_entries` (or reference a
 built-in vanilla entry such as `"minecraft:chunk_borders"`) and check
 `event.is_debug_entry_enabled(id)` before pushing. Unconditional renderers require no switch
-entry. Use the callback's `ClientHost`, `WorldRenderView` and `WorldDrawContext` to draw, and
-capture any per-refresh state specific to this renderer.
+entry. Use the callback's `ClientHost`, `WorldRenderView<'_>` (lending the frame's `Camera`,
+world `partial_tick`, `game_time`, `improved_transparency` state, and visible
+`RenderableSection` slice), and `WorldDrawContext` to draw, and capture any per-refresh state
+specific to this renderer.
 
 ```rust,ignore
 use mod_api::{
@@ -180,8 +182,9 @@ The client collects a fresh list at startup, login, the first world view and the
 after a selection rebuild or respawn. Every submitted renderer from an enabled mod is kept in
 registration order, with no ID-based filtering or deduplication. Keep per-refresh state in the
 new callbacks. Only installed callbacks run in a world view, as their registering mods, after
-`submit_custom_geometry` and within its shared draw limits. A panic disables only that
-callback for the rest of the session, including after a selection refresh.
+`submit_custom_geometry`, sharing its deferred `WorldDrawContext` (which grows dynamically and
+draws at the end of the world pass). A panic disables only that callback for the rest of the
+session, including after a selection refresh.
 
 ## Block overlays
 

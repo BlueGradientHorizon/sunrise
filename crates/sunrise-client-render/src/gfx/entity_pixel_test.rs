@@ -1130,6 +1130,8 @@ pub fn render_pack(
         [SIZE; 2],
         &[],
         &mut |_, _, _, _| {},
+        false,
+        |_| {},
         &std::sync::atomic::AtomicBool::new(false),
         super::in_flight::poll_live,
     )
@@ -1189,6 +1191,7 @@ fn probe_frame(hud: &HudBatch) -> super::Frame<'_> {
         underwater: false,
         cave_culling: false,
         title: false,
+        sky_pass: false,
         sky_blocked: false,
         skybox: false,
         end_sky: false,

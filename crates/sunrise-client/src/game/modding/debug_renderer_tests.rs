@@ -109,6 +109,22 @@ fn with_debug_renderers(test: impl FnOnce(&mut Game<'_>, &Mutex<Fixture>)) {
     });
 }
 
+fn test_camera(position: [f64; 3]) -> mod_api::Camera {
+    mod_api::Camera {
+        position,
+        eye_height: 1.62,
+        partial_tick: 0.0,
+        yaw: 0.0,
+        pitch: 0.0,
+        fov_degrees: 70.0,
+        near: 0.05,
+        far: 128.0,
+        view: Mat4::IDENTITY.to_cols_array(),
+        projection: Mat4::IDENTITY.to_cols_array(),
+        dimension: "minecraft:overworld".into(),
+    }
+}
+
 /// One frame's camera-relative lines and the IDs of the callbacks that ran.
 fn frame(
     game: &mut Game<'_>,
@@ -116,7 +132,18 @@ fn frame(
     title: bool,
     draw: &mut WorldGeometry,
 ) -> (Vec<[f32; 6]>, Vec<&'static str>) {
-    game.fill_world_geometry(title, CAMERA, Mat4::IDENTITY, 0.0, draw, &mut Vec::new());
+    let frame_camera = (!title).then(|| test_camera(CAMERA));
+    game.fill_world_geometry(
+        title,
+        frame_camera.as_ref(),
+        CAMERA,
+        Mat4::IDENTITY,
+        0.0,
+        false,
+        &[],
+        draw,
+        &mut Vec::new(),
+    );
     let lines = draw
         .batch()
         .lines
@@ -276,9 +303,12 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
         assert_eq!(refreshes(fixture), 1);
         game.fill_world_geometry(
             false,
+            Some(&frame_camera),
             CAMERA,
             Mat4::IDENTITY,
             0.0,
+            false,
+            &[],
             &mut draw,
             &mut Vec::new(),
         );
@@ -338,6 +368,7 @@ fn invalidation_refreshes(
         game.handle_packet(login()).unwrap();
         game.debug_entries.set_status(SHOWN, Status::AlwaysOn);
         game.debug_entries.set_status(OTHER, Status::AlwaysOn);
+        let frame_camera = test_camera(CAMERA);
         let mut draw = WorldGeometry::default();
         push(fixture, &[SHOWN]);
         assert_eq!(frame(game, fixture, false, &mut draw).1, [SHOWN]);
@@ -378,6 +409,7 @@ fn same_value_event(event: i8, expected: &[&'static str]) {
         push(fixture, &[SHOWN]);
         game.handle_packet(C::EntityEvent(play::EntityEvent { id: 7, event }))
             .unwrap();
+        let frame_camera = test_camera(CAMERA);
         let mut draw = WorldGeometry::default();
         frame(game, fixture, false, &mut draw);
         assert_eq!(refreshes(fixture), 1);
