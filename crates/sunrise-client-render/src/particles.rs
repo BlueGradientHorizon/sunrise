@@ -1047,6 +1047,19 @@ impl<'a> ParticleLevel<'a> {
     }
 }
 
+/// Factory inputs borrowed only for synchronous construction, not kept in the queue.
+struct SpawnScope<'a, 'l> {
+    level: Option<&'a ParticleLevel<'l>>,
+    mod_options: Option<&'a mod_api::ParticleOptions>,
+}
+
+impl SpawnScope<'_, '_> {
+    const BARE: Self = Self {
+        level: None,
+        mod_options: None,
+    };
+}
+
 /// One `particlesToAdd` FIFO across render groups: admission shares the engine RNG.
 #[allow(
     clippy::large_enum_variant,
@@ -1805,7 +1818,7 @@ impl ParticleEngine {
         seed: i64,
         level: &ParticleLevel,
     ) -> Option<Particle> {
-        let mut particle = self.make(options, p, v, seed)?;
+        let mut particle = self.make(options, p, v, seed, SpawnScope::BARE)?;
         if particle.pre_tick {
             particle.pre_tick = false;
             self.tick_particle(&mut particle, level);
@@ -1881,6 +1894,7 @@ impl ParticleEngine {
         p: [f64; 3],
         v: [f64; 3],
         seed: i64,
+        scope: SpawnScope<'_, '_>,
     ) -> Option<Particle> {
         use ParticleType as T;
         let ty = o.ty;
@@ -1905,6 +1919,11 @@ impl ParticleEngine {
             return Some(particle);
         }
         if let Some(name) = &o.mod_particle {
+            // The batch provider only reads the level during its tick.
+            let SpawnScope {
+                level: _level,
+                mod_options: _mod_options,
+            } = scope;
             return self.make_named(name.as_ref(), p, v, seed);
         }
         let set = self.set_of(ty);
@@ -4843,6 +4862,7 @@ mod tests {
                 [0.0; 3],
                 [0.0; 3],
                 1,
+                SpawnScope::BARE,
             )
             .expect("an entity effect is made");
         assert_eq!(effect.rgba, [0.25, 0.5, 0.75, 0.4]);
@@ -4856,7 +4876,7 @@ mod tests {
                 ..ParticleOptions::simple(ParticleType::Trail)
             };
             let trail = engine
-                .make(&options, [0.0; 3], [0.0; 3], 1)
+                .make(&options, [0.0; 3], [0.0; 3], 1, SpawnScope::BARE)
                 .expect("a trail is made");
             assert_eq!(trail.lifetime, duration);
         }
@@ -5375,6 +5395,7 @@ mod tests {
                 [0.0; 3],
                 [0.0; 3],
                 7,
+                SpawnScope::BARE,
             )
             .expect("a mod particle is made");
         assert_eq!(made.set, Some(set));
@@ -5385,7 +5406,8 @@ mod tests {
                     &ParticleOptions::named("mymod:missing"),
                     [0.0; 3],
                     [0.0; 3],
-                    7
+                    7,
+                    SpawnScope::BARE,
                 )
                 .is_none()
         );
@@ -5408,6 +5430,7 @@ mod tests {
                 [0.0; 3],
                 [0.0; 3],
                 7,
+                SpawnScope::BARE,
             )
             .unwrap();
         assert_eq!(custom.velocity, [0.0, 0.5, 0.0]);
@@ -5433,6 +5456,7 @@ mod tests {
                     [0.0; 3],
                     [0.0; 3],
                     7,
+                    SpawnScope::BARE,
                 )
                 .unwrap();
             assert_eq!(fallback.velocity, made.velocity);
@@ -5593,6 +5617,7 @@ mod tests {
                             [0.0; 3],
                             [0.0; 3],
                             seed,
+                            SpawnScope::BARE,
                         )
                         .unwrap();
                     assert!(
@@ -6092,7 +6117,9 @@ mod tests {
         // Only `VibrationParticleOption` carries a listener; a bare type has none.
         let bare = ParticleOptions::simple(ParticleType::Vibration);
         assert!(
-            engine.make(&bare, [0.0; 3], [0.0; 3], 1).is_none(),
+            engine
+                .make(&bare, [0.0; 3], [0.0; 3], 1, SpawnScope::BARE)
+                .is_none(),
             "no destination, no signal"
         );
     }

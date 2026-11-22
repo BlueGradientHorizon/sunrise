@@ -249,6 +249,7 @@ fn provided(e: &mut ParticleEngine, provider: Arc<dyn ParticleProvider>) -> Part
         [1.0; 3],
         [0.0; 3],
         5,
+        SpawnScope::BARE,
     )
     .unwrap()
 }
@@ -710,6 +711,7 @@ fn a_type_resolves_to_its_provider_at_load_and_other_types_stay_declarative() {
             [0.0; 3],
             [0.0; 3],
             3,
+            SpawnScope::BARE,
         )
         .unwrap();
     // The declared spawn values seed it, and its sprite is drawn by frame from the set.
@@ -722,6 +724,7 @@ fn a_type_resolves_to_its_provider_at_load_and_other_types_stay_declarative() {
             [0.0; 3],
             [0.0; 3],
             3,
+            SpawnScope::BARE,
         )
         .unwrap();
     assert!(plain.provided.is_none());

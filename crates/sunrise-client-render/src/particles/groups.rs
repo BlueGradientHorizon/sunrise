@@ -263,7 +263,9 @@ mod tests {
     }
 
     fn spawn(e: &mut ParticleEngine, options: &ParticleOptions, x: f64) {
-        let mut p = e.make(options, [x, 0.0, 0.0], [0.0; 3], 1).unwrap();
+        let mut p = e
+            .make(options, [x, 0.0, 0.0], [0.0; 3], 1, SpawnScope::BARE)
+            .unwrap();
         p.lifetime = 2;
         p.size = 0.5;
         p.velocity = [0.0; 3];
@@ -366,7 +368,9 @@ mod tests {
         e.providers.insert("mymod:shade".into(), Arc::new(Stay));
         pack.reload(&mut e);
         let options = ParticleOptions::named("mymod:glow");
-        let mut full = e.make(&options, [0.0; 3], [0.0; 3], 1).unwrap();
+        let mut full = e
+            .make(&options, [0.0; 3], [0.0; 3], 1, SpawnScope::BARE)
+            .unwrap();
         full.lifetime = 100;
         e.groups[0].particles = vec![full; MAX_PARTICLES];
         for name in ["mymod:glow", "mymod:shade", "mymod:plain"] {

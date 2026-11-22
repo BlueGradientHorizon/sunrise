@@ -39,7 +39,7 @@ impl ParticleEngine {
             return;
         }
         let seed = self.seeds.next_long();
-        if let Some(mut particle) = self.make(options, p, v, seed) {
+        if let Some(mut particle) = self.make(options, p, v, seed, SpawnScope::BARE) {
             *self.made.entry(options.ty.name()).or_default() += 1;
             // Resource packs' Polytone particle modifiers (#11486), once as it spawns.
             if let Some(registry) = &self.polytone
