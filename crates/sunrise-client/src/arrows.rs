@@ -640,8 +640,9 @@ pub fn tick(p: &mut Projectile, scene: &ArrowScene, targets: &[(Who, Aabb)]) -> 
     tick_to_block_contact(p, scene, targets, false)
 }
 
-/// With block impact listeners, stop at the captured contact after the flight's
-/// block effects. The caller applies the response with `finish_block_contact`.
+/// With block impact listeners, stop after moving to the captured contact and
+/// applying the flight's block effects. The caller applies the hit response, if
+/// accepted, then runs the remainder of the tick.
 pub fn tick_to_block_contact(
     p: &mut Projectile,
     scene: &ArrowScene,
@@ -651,26 +652,36 @@ pub fn tick_to_block_contact(
     tick_with(p, scene, targets, true, false, defer_block_hit)
 }
 
-/// Finish the captured block contact, with no hit response if it was refused.
-/// Returns false if the arrow expired during the remainder of its tick.
-pub fn finish_block_contact(
-    p: &mut Projectile,
-    scene: &ArrowScene,
-    block: Option<BlockPos>,
-) -> bool {
+/// `AbstractArrow.onHitBlock` for an accepted block contact.
+pub fn apply_block_contact(p: &mut Projectile, scene: &ArrowScene, block: BlockPos) {
     let Some(mut st) = p.arrow.take() else {
-        return false;
+        return;
     };
-    let mut ticker = Ticker {
+    Ticker {
         p,
         st: &mut st,
         scene,
         client: false,
-    };
-    if let Some(pos) = block {
-        ticker.on_hit_block(pos, scene.block(pos));
     }
-    ticker.finish();
+    .on_hit_block(block, scene.block(block));
+    p.stuck = st.in_ground;
+    p.arrow = Some(st);
+}
+
+/// Run drag, gravity and the projectile base tick after a block contact. Returns
+/// false if the arrow expired. The caller publishes `PROJECTILE_LAND` first
+/// when the contact was accepted.
+pub fn finish_block_contact(p: &mut Projectile, scene: &ArrowScene) -> bool {
+    let Some(mut st) = p.arrow.take() else {
+        return false;
+    };
+    Ticker {
+        p,
+        st: &mut st,
+        scene,
+        client: false,
+    }
+    .finish();
     p.stuck = st.in_ground;
     let keep = !st.removed;
     p.arrow = Some(st);
@@ -939,11 +950,9 @@ impl Ticker<'_, '_, '_, '_> {
         );
         if physics && impact {
             hit = self.step_move_and_hit(original, end, targets, defer_block_hit);
-            if matches!(hit, Hit::Entity { .. }) {
-                return hit;
-            }
-            if defer_block_hit && matches!(hit, Hit::Block { .. }) {
-                self.mark_shot();
+            if matches!(hit, Hit::Entity { .. })
+                || defer_block_hit && matches!(hit, Hit::Block { .. })
+            {
                 return hit;
             }
         } else {
@@ -968,7 +977,12 @@ impl Ticker<'_, '_, '_, '_> {
             self.add_velocity(-self.p.get_gravity());
         }
         // Projectile.tick, then Entity.baseTick's fluid and fire phases.
-        self.mark_shot();
+        if !self.st.has_been_shot {
+            if !self.client {
+                self.st.events.push(ArrowEvent::ShootEvent);
+            }
+            self.st.has_been_shot = true;
+        }
         self.st.was_eye_in_water = self.st.fluids.is_eye_in_fluid(&Tags, WATER);
         let mut fluids = std::mem::take(&mut self.st.fluids);
         let _ = entity_fluid_tick::update(&mut fluids, self, WATER, LAVA, 1_000_000);
@@ -985,14 +999,6 @@ impl Ticker<'_, '_, '_, '_> {
             self.st.removed = true;
         }
         self.st.first_tick = false;
-    }
-    fn mark_shot(&mut self) {
-        if !self.st.has_been_shot {
-            if !self.client {
-                self.st.events.push(ArrowEvent::ShootEvent);
-            }
-            self.st.has_been_shot = true;
-        }
     }
     /// `getDeltaMovement().add(0, y, 0)`: the zeros added to x and z also
     /// turn a negative zero positive.

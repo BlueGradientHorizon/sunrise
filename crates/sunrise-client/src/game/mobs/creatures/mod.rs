@@ -42,7 +42,9 @@ use super::{
     Dim, Game, InteractTarget,
     entity_culling::EntityCullDecision,
     native_mob_draw::PlayerRender,
-    native_projectiles::{Impact, ImpactTransaction, PendingImpact, projectile_impact_event},
+    native_projectiles::{
+        Impact, ImpactTransaction, PendingImpact, ProjectileHit, projectile_impact_event,
+    },
     view_vector,
 };
 use mod_api::{EquipmentSlot, LootDrops, SoundSource};
@@ -4916,13 +4918,19 @@ impl Game<'_> {
                         );
                     }
                     let events_from = arrow_events.len();
+                    let mut shot_after_hit = false;
                     if let Some(a) = p.arrow.as_mut() {
-                        arrow_events.extend(a.events.drain(..).map(|e| {
-                            if e == sunrise_client::arrows::ArrowEvent::ShootEvent {
-                                shoot_events.push((p.owner, p.guest, p.position.components()));
+                        for event in a.events.drain(..) {
+                            if event == sunrise_client::arrows::ArrowEvent::ShootEvent {
+                                if matches!(hit, Hit::Block { .. }) {
+                                    shot_after_hit = true;
+                                } else {
+                                    shoot_events.push((p.owner, p.guest, p.position.components()));
+                                }
+                            } else {
+                                arrow_events.push((p.id, p.position, event));
                             }
-                            (p.id, p.position, e)
-                        }));
+                        }
                     }
                     let wind = matches!(
                         p.kind,
@@ -4956,14 +4964,15 @@ impl Game<'_> {
                     }
                     // AbstractWindCharge.tick: out of the world's top it bursts.
                     if wind && keep && super::wind::above_the_top(self.world.shape, p.position.y) {
-                        hits.push((
-                            p.clone(),
-                            Hit::Block {
+                        hits.push(ProjectileHit {
+                            projectile: p.clone(),
+                            hit: Hit::Block {
                                 pos: [0; 3],
                                 at: p.position,
                                 face: [0; 3],
                             },
-                        ));
+                            shot_after_hit: false,
+                        });
                         keep_flags[i] = false;
                         return;
                     }
@@ -4989,7 +4998,11 @@ impl Game<'_> {
                                 events: events_from..arrow_events.len(),
                             });
                         }
-                        hits.push((p.clone(), hit));
+                        hits.push(ProjectileHit {
+                            projectile: p.clone(),
+                            hit,
+                            shot_after_hit,
+                        });
                     }
                     keep_flags[i] = keep;
                     // Projectile.onHit: the redirectable projectile it hit (a ghast's
@@ -5040,7 +5053,10 @@ impl Game<'_> {
         // the level never takes it out (AbstractArrow.onHitEntity), so one
         // that flies on goes back where this tick had it.
         self.creatures.bounced_followers.clear();
-        for (p, hit) in &hits {
+        for ProjectileHit {
+            projectile: p, hit, ..
+        } in &hits
+        {
             if p.arrow.is_some()
                 && matches!(hit, Hit::Entity { .. })
                 && let Some(i) = projectiles.iter().position(|q| q.id == p.id)
@@ -5066,7 +5082,13 @@ impl Game<'_> {
         let scope = ImpactTransaction::new(self, hears_impact);
         let game = &mut *scope.game;
         let pending = if hears_impact {
-            game.native_settle_impacts(&mut projectiles, impacts, &mut hits, &mut arrow_events)
+            game.native_settle_impacts(
+                &mut projectiles,
+                impacts,
+                &mut hits,
+                &mut arrow_events,
+                &mut shoot_events,
+            )
         } else {
             FxHashMap::default()
         };
@@ -5134,47 +5156,69 @@ impl Game<'_> {
 
     fn apply_projectile_hits(
         &mut self,
-        hits: Vec<(Projectile, Hit)>,
+        hits: Vec<ProjectileHit>,
         vehicle_winds: &mut super::wind::VehicleWinds,
         mut pending: FxHashMap<JoinSeq, PendingImpact>,
         hears_impact: bool,
     ) -> Result<()> {
-        for (p, hit) in hits {
-            if hears_impact && self.projectile_removal_pending(p.id) {
+        for ProjectileHit {
+            projectile: p,
+            hit,
+            shot_after_hit,
+        } in hits
+        {
+            let (id, join) = (p.id, p.join);
+            if hears_impact && self.projectile_removal_pending(id) {
                 continue;
             }
-            let Some((p, hit)) = (if let Some(contact) = pending.remove(&p.join) {
-                self.finish_captured_impact(p, hit, contact)
-                    .map(|p| (p, hit))
-            } else {
-                self.broken_vehicle_retick(p, hit, vehicle_winds)
-            }) else {
-                continue;
+            let contact = pending.remove(&join);
+            let deferred_arrow =
+                contact.is_some() && p.arrow.is_some() && matches!(hit, Hit::Block { .. });
+            let reflight = self.take_broken_vehicle_flight(&p, hit, vehicle_winds);
+            let accepted = match contact {
+                Some(contact) => self.apply_captured_impact(p, hit, contact, reflight.is_some()),
+                None => Some(p),
             };
-            // A player's arrow on another player lands as the victim's hurt.
-            if let Some(victim) = self.projectile_pvp_victim(&p, hit) {
-                self.projectile_hits_player(&p, hit, victim)?;
-                continue;
-            }
-            // A guest's projectile lands as theirs: a pearl takes them, what
-            // it hurts answers to them. One hitting the host (`Who::Player`
-            // here) stays the host's hit.
-            match p.guest {
-                Some(conn)
-                    if !matches!(
-                        hit,
-                        Hit::Entity {
-                            who: Who::Player,
-                            ..
-                        }
-                    ) =>
-                {
-                    self.guest_projectile_hit(conn, &p, hit)?;
+            if let Some(p) = accepted {
+                let landed = match reflight {
+                    Some(flight) => self.broken_vehicle_retick(flight),
+                    None => Some((p, hit)),
+                };
+                if let Some((p, hit)) = landed {
+                    self.apply_projectile_hit(&p, hit)?;
+                    if shot_after_hit {
+                        self.projectile_shoot_event(p.owner, p.guest, p.position.components());
+                    }
                 }
-                _ => self.projectile_hit(&p, hit)?,
+            }
+            if deferred_arrow {
+                self.finish_deferred_arrow_tick(id, join);
             }
         }
         Ok(())
+    }
+
+    fn apply_projectile_hit(&mut self, p: &Projectile, hit: Hit) -> Result<()> {
+        // A player's arrow on another player lands as the victim's hurt.
+        if let Some(victim) = self.projectile_pvp_victim(p, hit) {
+            return self.projectile_hits_player(p, hit, victim);
+        }
+        // A guest's projectile lands as theirs: a pearl takes them, what it
+        // hurts answers to them. One hitting the host stays the host's hit.
+        match p.guest {
+            Some(conn)
+                if !matches!(
+                    hit,
+                    Hit::Entity {
+                        who: Who::Player,
+                        ..
+                    }
+                ) =>
+            {
+                self.guest_projectile_hit(conn, p, hit)
+            }
+            _ => self.projectile_hit(p, hit),
+        }
     }
     /// `LivingEntity.hurtServer`'s `setLastHurtByPlayer` for a projectile a
     /// player owns (a fireball they turned back): the kill is theirs, so a

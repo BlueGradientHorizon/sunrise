@@ -49,6 +49,16 @@ pub(super) struct Impact {
     pub events: Range<usize>,
 }
 
+pub(super) struct ProjectileHit {
+    pub projectile: Projectile,
+    pub hit: Hit,
+    /// An ordinary (not deferred) block arrow finished its first tick already;
+    /// dispatch that shot after the landing, just as for a deferred arrow.
+    pub shot_after_hit: bool,
+}
+
+pub(super) type ProjectileShot = (Option<Who>, Option<u32>, [f64; 3]);
+
 /// A notified hit still waiting to be applied after the intervening callbacks.
 pub(super) struct PendingImpact {
     keep: bool,
@@ -398,8 +408,9 @@ impl Game<'_> {
         &mut self,
         projectiles: &mut JoinList<Projectile, false>,
         impacts: Vec<Impact>,
-        hits: &mut Vec<(Projectile, Hit)>,
+        hits: &mut Vec<ProjectileHit>,
         arrow_events: &mut Vec<(u32, Vec3, ArrowEvent)>,
+        shoots: &mut Vec<ProjectileShot>,
     ) -> FxHashMap<JoinSeq, PendingImpact> {
         // Close the already-lifted pass, not a new one over the spawn buffer.
         self.creatures.projectiles.restore(
@@ -428,7 +439,7 @@ impl Game<'_> {
         let mut pending = FxHashMap::default();
         for (impact, canceled) in impacts.into_iter().zip(canceled) {
             let mut before = impact.before;
-            let snapshot = &hits[impact.hit_slot].0;
+            let snapshot = &hits[impact.hit_slot].projectile;
             if canceled
                 && !self.projectile_removal_pending(before.id)
                 && let Some(&index) = places.get(&before.join)
@@ -446,7 +457,13 @@ impl Game<'_> {
                     arrow.has_been_shot = snapshot.has_been_shot;
                 }
                 let (p, keep, events) = self.native_projectile_through(before);
-                flown.extend(events.into_iter().map(|(at, event)| (p.id, at, event)));
+                for (at, event) in events {
+                    if event == ArrowEvent::ShootEvent && matches!(impact.hit, Hit::Block { .. }) {
+                        shoots.push((p.owner, p.guest, at.components()));
+                    } else {
+                        flown.push((p.id, at, event));
+                    }
+                }
                 let join = p.join;
                 if keep {
                     projectiles.store_back(index, p);
@@ -488,13 +505,14 @@ impl Game<'_> {
         pending
     }
 
-    /// Apply the captured response against the live row and target. All earlier
-    /// hooks (including the first shot and preceding landings) have had their turn.
-    pub(super) fn finish_captured_impact(
+    /// Recheck and apply the captured response after the earlier callbacks.
+    /// A wind charge whose vehicle was already broken may resume its saved flight.
+    pub(super) fn apply_captured_impact(
         &mut self,
         snapshot: Projectile,
         hit: Hit,
         pending: PendingImpact,
+        vehicle_broken: bool,
     ) -> Option<Projectile> {
         let i = self.creatures.projectiles.locate(snapshot.join)?;
         let live = &self.creatures.projectiles[i];
@@ -510,44 +528,75 @@ impl Game<'_> {
         {
             return None;
         }
-        let accepted = !pending.canceled
-            && pending.target.is_some()
-            && pending.target == self.native_impact_target(hit);
-        if live.arrow.is_some()
-            && let Hit::Block { pos, .. } = hit
+        if pending.canceled
+            || pending.target.is_none()
+            || !vehicle_broken && pending.target != self.native_impact_target(hit)
         {
-            let mut p = live.clone();
-            let keep = {
+            return None;
+        }
+        let mut p = live.clone();
+        if let (Some(_), Hit::Block { pos, .. }) = (&p.arrow, hit) {
+            let from = p.position;
+            {
                 let rain = self.arrow_rain();
-                sunrise_client::arrows::finish_block_contact(
+                sunrise_client::arrows::apply_block_contact(
                     &mut p,
                     &self.arrow_scene(&rain),
-                    accepted.then(|| BlockPos::new(pos[0], pos[1], pos[2])),
-                )
-            };
+                    BlockPos::new(pos[0], pos[1], pos[2]),
+                );
+            }
             let events = p
                 .arrow
                 .as_mut()
                 .map(|a| std::mem::take(&mut a.events))
                 .unwrap_or_default();
-            if keep && (!accepted || pending.keep) {
+            if pending.keep {
                 self.creatures.projectiles.store_back(i, p.clone());
+                self.entity_section_step(p.id, from.components(), p.position.components());
             } else {
                 self.creatures.projectiles.remove(i);
             }
             for event in events {
                 self.arrow_event(p.position, event);
             }
-            return accepted.then_some(p);
-        }
-        if !accepted {
-            return None;
-        }
-        let p = live.clone();
-        if !pending.keep {
+        } else if !pending.keep {
             self.creatures.projectiles.remove(i);
         }
         Some(p)
+    }
+
+    /// `AbstractArrow.tick` resumes after a refused contact or after publishing
+    /// the accepted hit and `PROJECTILE_LAND`. A discarded arrow is already done.
+    pub(super) fn finish_deferred_arrow_tick(&mut self, id: u32, join: JoinSeq) {
+        if self.projectile_removal_pending(id) {
+            return;
+        }
+        let Some(i) = self.creatures.projectiles.locate(join) else {
+            return;
+        };
+        let mut p = self.creatures.projectiles[i].clone();
+        let keep = {
+            let rain = self.arrow_rain();
+            sunrise_client::arrows::finish_block_contact(&mut p, &self.arrow_scene(&rain))
+        };
+        let events = p
+            .arrow
+            .as_mut()
+            .map(|a| std::mem::take(&mut a.events))
+            .unwrap_or_default();
+        let (owner, guest, at) = (p.owner, p.guest, p.position);
+        if keep {
+            self.creatures.projectiles.store_back(i, p);
+        } else {
+            self.creatures.projectiles.remove(i);
+        }
+        for event in events {
+            if event == ArrowEvent::ShootEvent {
+                self.projectile_shoot_event(owner, guest, at.components());
+            } else {
+                self.arrow_event(at, event);
+            }
+        }
     }
 
     /// `p`, as it was before its tick, flown that tick through what it hit
@@ -636,7 +685,13 @@ mod nested_spawn_tests {
             child.join = sunrise_client::join_seq::JoinSeq::UNJOINED;
             game.creatures.projectiles.push(child);
             let child_join = game.creatures.projectiles[0].join;
-            game.native_settle_impacts(&mut pass, Vec::new(), &mut Vec::new(), &mut Vec::new());
+            game.native_settle_impacts(
+                &mut pass,
+                Vec::new(),
+                &mut Vec::new(),
+                &mut Vec::new(),
+                &mut Vec::new(),
+            );
             assert_eq!(pass.iter().map(|p| p.id).collect::<Vec<_>>(), [71, 72]);
             game.creatures
                 .projectiles
@@ -730,7 +785,13 @@ mod nested_spawn_tests {
             game.creatures.projectiles.push(shot(72));
             let join = game.creatures.projectiles[0].join;
             expected.push((72, join));
-            game.native_settle_impacts(&mut taken, Vec::new(), &mut Vec::new(), &mut Vec::new());
+            game.native_settle_impacts(
+                &mut taken,
+                Vec::new(),
+                &mut Vec::new(),
+                &mut Vec::new(),
+                &mut Vec::new(),
+            );
             assert_eq!(
                 taken.iter().map(|p| (p.id, p.join)).collect::<Vec<_>>(),
                 expected

@@ -559,9 +559,8 @@ impl Game<'_> {
             );
         }
     }
-    /// Let the hook address this trident in its real owning slot. On refusal the row remains
-    /// in the list: a committed discard is retired by the normal sweep; a changed row keeps
-    /// its written state. A valid hit carries the transaction through the apply branch.
+    /// Notify at the contact with the live trident in its owning slot. Return the live row
+    /// and whether to skip the hit (veto or invalidated contact). Only removal ends the tick.
     fn trident_impact(
         &mut self,
         index: &mut usize,
@@ -595,14 +594,16 @@ impl Game<'_> {
         let canceled = game.native_trident_impact(id, guest, hit);
         if game.entity(id).is_some()
             && let Some(at) = game.tridents.locate(join)
-            && motion(&game.tridents[at]) == before
-            && target.is_some()
-            && target == game.native_impact_target(hit)
-            && let Some(live) = game.tridents.extract(join)
         {
-            *index = at;
-            *transaction = scope.seal.take();
-            return Some((live, canceled));
+            let refused = canceled
+                || motion(&game.tridents[at]) != before
+                || target.is_none()
+                || target != game.native_impact_target(hit);
+            if let Some(live) = game.tridents.extract(join) {
+                *index = at;
+                *transaction = scope.seal.take();
+                return Some((live, refused));
+            }
         }
         scope.close(true);
         if let Some(at) = self.tridents.locate(join) {
@@ -622,13 +623,12 @@ impl Game<'_> {
         let mut i = 0;
         let mut through = None;
         while i < self.tridents.len() {
-            if through.is_some_and(|last| {
-                let t = &self.tridents[i];
-                let target = Target::Trident(t.id);
-                t.join > last
-                    || self.removal_pending(&target)
-                    || self.persist.removals.contains(&target)
-            }) {
+            let t = &self.tridents[i];
+            let target = Target::Trident(t.id);
+            if through.is_some_and(|last| t.join > last)
+                || self.removal_pending(&target)
+                || self.persist.removals.contains(&target)
+            {
                 i += 1;
                 continue;
             }
@@ -791,9 +791,9 @@ impl Game<'_> {
                         }
                     }
                 }
-                // Preserve the captured contact through ProjectileImpactEvent. Cancellation
-                // suppresses damage and deflection; a removed trident stops ticking entirely.
-                let canceled_mob = if let Some((id, d)) = hit_mob {
+                // Preserve the captured contact through ProjectileImpactEvent. Refusing it
+                // suppresses damage and deflection; removing the trident ends its tick.
+                let refused_mob = if let Some((id, d)) = hit_mob {
                     let from = t.position;
                     let at = from.add_vector(t.velocity.scale(d));
                     t.position = at;
@@ -802,17 +802,17 @@ impl Game<'_> {
                         who: Who::Mob(id),
                         at,
                     };
-                    let Some((live, canceled)) =
+                    let Some((live, refused)) =
                         self.trident_impact(&mut i, t, hit, &mut through, &mut transaction)
                     else {
                         continue;
                     };
                     t = live;
-                    canceled
+                    refused
                 } else {
                     false
                 };
-                if canceled_mob {
+                if refused_mob {
                     // No damage, sound or deflection: it flies on from the contact.
                 } else if let Some((id, _)) = hit_mob {
                     // `Breeze.deflection`: a trident is not a wind charge, so
@@ -1028,28 +1028,25 @@ impl Game<'_> {
                     let contact = clip.map_or(from.add_vector(flight), |(at, _, _)| at);
                     t.position = contact;
                     self.trident_block_effects(&mut t, from, contact);
-                    // A canceled block hit stops at the existing back-off without sticking.
-                    // Report the clipped point itself to the hook, before the back-off.
-                    let canceled_block = if let Some((at, block, face)) = clip {
+                    // Only onHitBlock backs away from the clipped point.
+                    let refused_block = if let Some((at, block, face)) = clip {
                         let hit = Hit::Block {
                             pos: [block.x, block.y, block.z],
                             face,
                             at,
                         };
-                        let Some((live, canceled)) =
+                        let Some((live, refused)) =
                             self.trident_impact(&mut i, t, hit, &mut through, &mut transaction)
                         else {
                             continue;
                         };
                         t = live;
-                        canceled
+                        refused
                     } else {
                         false
                     };
-                    let clip = clip.map(|(at, block, face)| (back_off(at, flight), block, face));
-                    if canceled_block && let Some((stop, _, _)) = clip {
-                        t.position = stop;
-                    } else if let Some((stop, block, _)) = clip {
+                    if !refused_block && let Some((at, block, _)) = clip {
+                        let stop = back_off(at, flight);
                         // Projectile.onHit on a block: PROJECTILE_LAND at the
                         // block's centre.
                         self.projectile_landed_event(

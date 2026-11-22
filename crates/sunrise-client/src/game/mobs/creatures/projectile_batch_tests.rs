@@ -475,27 +475,8 @@ fn an_arrow_does_not_stick_when_the_impact_listener_clears_its_block() {
         Action::Allow
     };
     with_probe(action, true, |game, observed| {
-        let stone = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:stone")
-            .unwrap();
-        game.world.set(2, 64, 0, stone).unwrap();
-        let mut p = Projectile::new(
-            ProjectileKind::Arrow {
-                base_damage: 2.0,
-                critical: false,
-                effect: None,
-            },
-            Vec3::new(0.5, 64.5, 0.5),
-            None,
-        );
-        p.id = 71;
-        p.velocity = Vec3::new(3.0, 0.0, 0.0);
-        game.creatures.projectiles.push(p);
         game.audio.capture = Some(Vec::new());
-        game.tick_projectiles().unwrap();
+        shoot_arrow_at_wall(game, 2, 0.5);
         let hits = observed.hits.lock().unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].at, [2.0, 64.5, 0.5]);
@@ -571,4 +552,152 @@ fn a_first_shot_listener_can_clear_the_eggs_captured_block_before_landing() {
             );
         },
     );
+}
+
+fn shoot_arrow_at_wall(game: &mut Game<'_>, wall_x: i32, start_x: f64) {
+    let stone = game
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:stone")
+        .unwrap();
+    game.world.set(wall_x, 64, 0, stone).unwrap();
+    let mut arrow = Projectile::new(
+        ProjectileKind::Arrow {
+            base_damage: 2.0,
+            critical: false,
+            effect: None,
+        },
+        Vec3::new(start_x, 64.5, 0.5),
+        None,
+    );
+    arrow.id = 71;
+    arrow.velocity = Vec3::new(3.0, 0.0, 0.0);
+    game.creatures.projectiles.push(arrow);
+    game.native_joins_skip();
+    game.tick_projectiles().unwrap();
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_arrow_lands_before_its_first_shot_event_at_the_backed_off_position() {
+    const CASE: &str = "SUNRISE_PROJECTILE_BATCH_CASE";
+    if run_fresh_cases(
+        "game::creatures::projectile_batch_tests::an_arrow_lands_before_its_first_shot_event_at_the_backed_off_position",
+        CASE,
+        &["allow", "no-impacts"],
+    ) {
+        return;
+    }
+    let hears = std::env::var(CASE).as_deref() == Ok("allow");
+    with_probe(Action::Allow, hears, |game, observed| {
+        shoot_arrow_at_wall(game, 2, 0.5);
+        assert_eq!(observed.hits.lock().unwrap().len(), usize::from(hears));
+        assert_eq!(
+            *observed.game_events.lock().unwrap(),
+            [
+                ("land", [2.0, 64.5, 0.5]),
+                ("shoot", [2.0 - f64::from(0.05_f32), 64.5, 0.5])
+            ],
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_arrow_files_both_section_crossings_at_a_section_edge_wall() {
+    if run_fresh_cases(
+        "game::creatures::projectile_batch_tests::an_arrow_files_both_section_crossings_at_a_section_edge_wall",
+        "SUNRISE_PROJECTILE_BATCH_CASE",
+        &["wall-at-section-edge"],
+    ) {
+        return;
+    }
+    with_probe(Action::Allow, true, |game, observed| {
+        game.world
+            .chunks
+            .insert((1, 0), Arc::new(Chunk::empty(1, 0)));
+        game.block_ticks
+            .add_empty_chunk(sunrise_core::position::ChunkPos::new(1, 0))
+            .unwrap();
+        shoot_arrow_at_wall(game, 16, 14.5);
+        assert_eq!(observed.hits.lock().unwrap()[0].at, [16.0, 64.5, 0.5]);
+        assert_eq!(
+            *observed.sections.lock().unwrap(),
+            [(71, [0, 4, 0], [1, 4, 0]), (71, [1, 4, 0], [0, 4, 0])],
+        );
+        assert_eq!(
+            game.creatures.projectiles[0].position.x,
+            16.0 - f64::from(0.05_f32)
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn wind_charges_retrace_only_after_gameplay_breaks_a_vehicle() {
+    const CASE: &str = "SUNRISE_PROJECTILE_BATCH_CASE";
+    if run_fresh_cases(
+        "game::creatures::projectile_batch_tests::wind_charges_retrace_only_after_gameplay_breaks_a_vehicle",
+        CASE,
+        &["allow", "no-impacts", "discard-target"],
+    ) {
+        return;
+    }
+    let case = std::env::var(CASE).unwrap();
+    let discard = case == "discard-target";
+    let action = if discard {
+        Action::DiscardTarget(71)
+    } else {
+        Action::Allow
+    };
+    let hears = case != "no-impacts";
+    with_probe(action, hears, |game, observed| {
+        // Same overlapping pair and five hits per boat as the vehicle parity harness.
+        for id in [71, 72] {
+            game.boats.push(crate::game::boats::Boat::new(
+                id,
+                Arc::from("oak"),
+                Vec3::new(8.5, 64.0, 0.5),
+                0.0,
+            ));
+        }
+        for i in 0..if discard { 1 } else { 10 } {
+            let mut p = Projectile::new(
+                ProjectileKind::BreezeWindCharge,
+                Vec3::new(8.5, 64.8, 0.5),
+                None,
+            );
+            p.id = 80 + i;
+            p.velocity = Vec3::new(0.0, -0.5, 0.0);
+            p.acceleration = 0.0;
+            game.creatures.projectiles.push(p);
+        }
+        game.native_joins_skip();
+        game.tick_projectiles().unwrap();
+        if discard {
+            game.native_removals_flush();
+            assert_eq!(game.boats.len(), 1);
+            assert_eq!(game.boats[0].id, 72);
+            assert_eq!(game.boats[0].damage, 0.0);
+            assert_eq!(game.creatures.projectiles.len(), 1);
+            assert_eq!(
+                game.creatures.projectiles[0].position.components(),
+                observed.hits.lock().unwrap()[0].at
+            );
+            assert!(game.dropped.is_empty());
+        } else {
+            assert!(game.boats.is_empty());
+            assert!(game.creatures.projectiles.is_empty());
+            assert_eq!(
+                game.dropped
+                    .iter()
+                    .filter(|drop| &*drop.stack.item == "minecraft:oak_boat")
+                    .map(|drop| drop.stack.count)
+                    .sum::<u32>(),
+                2,
+            );
+            assert_eq!(observed.hits.lock().unwrap().len(), 10 * usize::from(hears));
+        }
+    });
 }

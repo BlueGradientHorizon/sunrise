@@ -21,6 +21,7 @@ pub(in crate::game) enum Action {
     Discard,
     DiscardAndCancel,
     AbortDiscard,
+    DiscardTarget(u32),
     Remove,
 }
 
@@ -39,12 +40,16 @@ pub(in crate::game) struct Seen {
     pub projectile_pos: [f64; 3],
 }
 
+pub(in crate::game) type SectionCrossing = (u32, [i32; 3], [i32; 3]);
+
 /// Listener observations, including any incorrectly triggered catch.
 #[derive(Default)]
 pub(in crate::game) struct Observed {
     pub hits: Mutex<Vec<Seen>>,
     pub catches: AtomicUsize,
     pub lands: AtomicUsize,
+    pub game_events: Mutex<Vec<(&'static str, [f64; 3])>>,
+    pub sections: Mutex<Vec<SectionCrossing>>,
     pub deaths: AtomicUsize,
     pub leaves: Mutex<Vec<u32>>,
 }
@@ -93,6 +98,12 @@ impl Hooks for Probe {
                 Flow::Continue
             }
             Action::Cancel => Flow::Cancel,
+            Action::DiscardTarget(id) => {
+                if event.entity == Some(id) {
+                    assert!(host.entity(id).unwrap().discard(host));
+                }
+                Flow::Continue
+            }
             Action::Discard | Action::DiscardAndCancel | Action::AbortDiscard | Action::Remove => {
                 let remove = |host: &mut dyn ServerHost| {
                     let removed = match self.action {
@@ -129,11 +140,21 @@ impl Hooks for Probe {
         match event.event {
             "minecraft:projectile_land" => {
                 self.observed.lands.fetch_add(1, Ordering::Relaxed);
+                self.observed
+                    .game_events
+                    .lock()
+                    .unwrap()
+                    .push(("land", event.pos));
             }
             "minecraft:entity_die" => {
                 self.observed.deaths.fetch_add(1, Ordering::Relaxed);
             }
             "minecraft:projectile_shoot" => {
+                self.observed
+                    .game_events
+                    .lock()
+                    .unwrap()
+                    .push(("shoot", event.pos));
                 if let Action::ClearBlockOnShoot(block) = self.action {
                     assert!(!self.observed.hits.lock().unwrap().is_empty());
                     let level = host.level(event.dimension).unwrap();
@@ -143,6 +164,18 @@ impl Hooks for Probe {
             _ => {}
         }
         Flow::Continue
+    }
+
+    fn entity_entering_section(
+        &self,
+        _: mod_api::HostSide<'_>,
+        event: &mut mod_api::EntityEnteringSectionEvent,
+    ) {
+        self.observed.sections.lock().unwrap().push((
+            event.entity.id(),
+            event.old_section,
+            event.new_section,
+        ));
     }
 
     fn entity_leave_level(

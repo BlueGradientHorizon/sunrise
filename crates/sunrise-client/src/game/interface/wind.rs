@@ -307,32 +307,36 @@ impl Game<'_> {
             before: Vec::new(),
         }
     }
-    /// The hit to resolve for `p`. Vanilla ticks its entities one after the
-    /// other, so a wind charge never meets a boat or a minecart that an earlier
-    /// charge of the same tick broke (`Entity.canBeHitByProjectile`: alive):
-    /// it flies on to the next one in its way, or past. Here the tick's hits
-    /// were all found first, so such a charge (`winds` holds it as it was
-    /// before the tick) ticks again now, without the broken vehicle. None: it
-    /// met nothing this time and flies on.
-    pub(super) fn broken_vehicle_retick(
-        &mut self,
-        p: Projectile,
+    /// The saved flight for a wind charge whose vehicle was physically broken earlier in the
+    /// batch. A listener's transactional discard leaves the vehicle row in place until commit.
+    pub(super) fn take_broken_vehicle_flight(
+        &self,
+        p: &Projectile,
         hit: Hit,
         winds: &mut VehicleWinds,
-    ) -> Option<(Projectile, Hit)> {
+    ) -> Option<Projectile> {
         let Hit::Entity {
             who: Who::Mob(id), ..
         } = hit
         else {
-            return Some((p, hit));
+            return None;
         };
-        let Some(k) = winds.before.iter().position(|w| w.id == p.id) else {
-            return Some((p, hit));
-        };
-        let mut again = winds.before.swap_remove(k);
-        if self.boats.iter().any(|b| b.id == id) || self.carts.iter().any(|c| c.id == id) {
-            return Some((p, hit));
-        }
+        let i = winds.before.iter().position(|w| w.id == p.id)?;
+        let before = winds.before.swap_remove(i);
+        (!self.boats.iter().any(|b| b.id == id) && !self.carts.iter().any(|c| c.id == id))
+            .then_some(before)
+    }
+
+    /// The hit to resolve for `p`. Vanilla ticks its entities one after the
+    /// other, so a wind charge never meets a boat or a minecart that an earlier
+    /// charge of the same tick broke (`Entity.canBeHitByProjectile`: alive):
+    /// it flies on to the next one in its way, or past. Here the tick's hits
+    /// were all found first, so the saved charge ticks again now, without the
+    /// broken vehicle. None: it met nothing this time and flies on.
+    pub(super) fn broken_vehicle_retick(
+        &mut self,
+        mut again: Projectile,
+    ) -> Option<(Projectile, Hit)> {
         let mut targets = self.projectile_targets();
         if again.owner != Some(Who::Player) || super::lan_pvp::meets_players(&again.kind) {
             targets.extend(self.lan_projectile_targets());
