@@ -41,7 +41,7 @@ fn a_replay_draws_the_recorded_cloud_height() {
 
 #[test]
 fn a_capture_round_trips_distinct_draw_and_cull_fovs() {
-    let hud = crate::hud::HudBatch::default();
+    let hud = crate::hud::HudBatch::scratch([4, 4]);
     let mut frame = crate::gfx::frame_tests::frame(&hud);
     frame.fov_degrees = 10.0;
     frame.cull_fov_degrees = 70.0;

@@ -334,8 +334,8 @@ mod tests {
 
             let render_view = View::screen(yaw, pitch, fov, aspect, depth_far);
             let cull_view = View::screen(yaw, pitch, cull_fov(fov, opt_fov), aspect, depth_far);
-            let hud = crate::hud::HudBatch::default();
-            let mut frame = super::frame_tests::frame(&hud);
+            let hud = crate::hud::HudBatch::scratch([4, 4]);
+            let mut frame = crate::gfx::frame_tests::frame(&hud);
             frame.camera = DVec3::ZERO;
             frame.yaw = yaw;
             frame.pitch = pitch;
@@ -449,7 +449,7 @@ mod tests {
                 }
             }
             if name == "zoomed_fov_30_opt_70" {
-                let mut sections = super::resident::Resident::default();
+                let mut sections = crate::gfx::resident::Resident::default();
                 let edge_section = (2, 2, 1);
                 sections.insert(edge_section, ());
                 let mut visible_unposed = Vec::new();
