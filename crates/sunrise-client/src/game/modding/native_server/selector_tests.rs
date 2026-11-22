@@ -62,7 +62,10 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
                 let middle = game.entity(102).unwrap();
                 let far = game.entity(101).unwrap();
                 game.as_guest(12, |game| {
-                    assert!(game.perform_native_command(12, 4, "heal @a"));
+                    assert_eq!(
+                        game.perform_native_command(12, 4, "heal @a", false),
+                        Some(true)
+                    );
                     {
                         let calls = heard.lock().unwrap();
                         assert_eq!(
@@ -80,7 +83,11 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
                         "selectall @e[type=minecraft:cow,sort=furthest]",
                         "selectall @e[type=minecraft:cow,sort=nearest]",
                     ] {
-                        assert!(game.perform_native_command(12, 4, line), "{line}");
+                        assert_eq!(
+                            game.perform_native_command(12, 4, line, false),
+                            Some(true),
+                            "{line}"
+                        );
                     }
                     {
                         let calls = heard.lock().unwrap();
@@ -100,7 +107,11 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
                     let random = game.world.random.state();
                     for line in ["heal @a", "selectone @r", "selectall @e", "selectplayer @s"] {
                         game.chat_capture = Some(Vec::new());
-                        assert!(game.perform_native_command(12, 0, line), "{line}");
+                        assert_eq!(
+                            game.perform_native_command(12, 0, line, false),
+                            Some(false),
+                            "{line}"
+                        );
                         let output = game.chat_capture.take().unwrap();
                         assert_eq!(
                             output[0].plain(),
@@ -120,7 +131,11 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
                         "selectall guest13",
                         "selectplayer guest13",
                     ] {
-                        assert!(game.perform_native_command(12, 0, line), "{line}");
+                        assert_eq!(
+                            game.perform_native_command(12, 0, line, false),
+                            Some(true),
+                            "{line}"
+                        );
                     }
                     for line in [
                         "optionalplayers",
@@ -130,7 +145,11 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
                         "optionalentity @s",
                         "optionalentities @s",
                     ] {
-                        assert!(game.perform_native_command(12, 4, line), "{line}");
+                        assert_eq!(
+                            game.perform_native_command(12, 4, line, false),
+                            Some(true),
+                            "{line}"
+                        );
                     }
                 })
                 .unwrap();
@@ -223,11 +242,15 @@ fn native_selectors_deliver_ordered_handles_once_and_refuse_invalid_selections()
                 }
                 // Drop only the unavailable handle, preserving the remaining order.
                 game.as_guest(12, |game| {
-                    assert!(game.perform_native_command(
-                        12,
-                        4,
-                        "selectall @e[type=minecraft:cow,sort=nearest]"
-                    ));
+                    assert_eq!(
+                        game.perform_native_command(
+                            12,
+                            4,
+                            "selectall @e[type=minecraft:cow,sort=nearest]",
+                            false,
+                        ),
+                        Some(true)
+                    );
                 })
                 .unwrap();
                 game.held_out.pop();
@@ -347,11 +370,15 @@ fn entity_selection_has_no_additional_count_cap() {
                 }
                 let epoch = game.player(12).unwrap().entity().epoch();
                 game.as_guest(12, |game| {
-                    assert!(game.perform_native_command(
-                        12,
-                        4,
-                        "selectall @e[type=minecraft:cow,sort=nearest]"
-                    ));
+                    assert_eq!(
+                        game.perform_native_command(
+                            12,
+                            4,
+                            "selectall @e[type=minecraft:cow,sort=nearest]",
+                            false,
+                        ),
+                        Some(true)
+                    );
                 })
                 .unwrap();
                 let calls = heard.lock().unwrap();

@@ -2438,26 +2438,28 @@ impl Game<'_> {
         Ok(self.native_invocation(context.literals, arguments))
     }
 
-    /// A guest's command for the mods, inside their swap
-    /// (`run_guest_command`): true when one ran it.
-    pub(super) fn perform_native_command(&mut self, conn: u32, permission: u8, line: &str) -> bool {
-        let Some(host) = &self.lan else {
-            return false;
-        };
-        if self
-            .native_commands
-            .level(line)
-            .is_none_or(|level| level > permission)
-        {
-            return false;
+    /// A guest's command for the mods, inside their swap (`run_guest_command`).
+    /// `None` leaves dispatch to the caller; `Some(false)` is a handled failure.
+    pub(super) fn perform_native_command(
+        &mut self,
+        conn: u32,
+        permission: u8,
+        line: &str,
+        quiet: bool,
+    ) -> Option<bool> {
+        let host = self.lan.as_ref()?;
+        if self.native_commands.level(line)? > permission {
+            return None;
         }
-        if host.hub.guest(conn).is_none() {
-            return false;
-        }
+        host.hub.guest(conn)?;
         let previous = std::mem::replace(&mut self.ui.registries.permission, permission);
-        self.run_command(line);
+        let ok = if quiet {
+            self.run_command_quietly(line)
+        } else {
+            self.run_command(line)
+        };
         self.ui.registries.permission = previous;
-        true
+        Some(ok)
     }
 }
 
@@ -4104,10 +4106,10 @@ mod tests {
                             "typed data word 1 true does_not_exist ~ ~ ~",
                             "typed opt 1 extra",
                         ] {
-                            assert!(game.perform_native_command(12, 4, line), "{line}");
+                            assert_eq!(game.perform_native_command(12, 4, line, false), Some(false), "{line}");
                         }
                         let random = game.world.random.state();
-                        assert!(!game.perform_native_command(12, 0, "protected @r"));
+                        assert_eq!(game.perform_native_command(12, 0, "protected @r", false), None);
                         assert_eq!(game.world.random.state(), random, "denied selectors must not resolve");
                         assert!(heard.lock().unwrap().is_empty(), "failed input must not reach listeners");
                         for line in [
@@ -4118,7 +4120,7 @@ mod tests {
                             "typed data word -1.25 true stone[minecraft:custom_name='\"Rock\"'] ~1 ~2 ~-3",
                             "typed data word 2 false dirt ^0 ^0 ^0",
                         ] {
-                            assert!(game.perform_native_command(12, 4, line), "{line}");
+                            assert_eq!(game.perform_native_command(12, 4, line, false), Some(true), "{line}");
                         }
                     }).unwrap();
                     game.spawn = Some(sunrise_core::geometry::Vec3::new(10.5, 70.0, -2.5));
@@ -4404,17 +4406,23 @@ mod tests {
                 game.register_native_commands();
                 game.lan.as_mut().unwrap().hub.guests.push(player_guest());
                 for line in ["foo", "foo 7", "foo nope"] {
-                    assert!(game.perform_native_command(1, 0, line));
+                    assert_eq!(game.perform_native_command(1, 0, line, false), Some(false));
                 }
                 assert!(
                     heard.lock().unwrap().is_empty(),
                     "denied usages must not call a mod"
                 );
-                assert!(game.perform_native_command(1, 0, "foo bar"));
-                assert!(game.perform_native_command(1, 4, "foo"));
-                assert!(game.perform_native_command(1, 4, "foo 7"));
+                assert_eq!(
+                    game.perform_native_command(1, 0, "foo bar", false),
+                    Some(true)
+                );
+                assert_eq!(game.perform_native_command(1, 4, "foo", false), Some(true));
+                assert_eq!(
+                    game.perform_native_command(1, 4, "foo 7", false),
+                    Some(true)
+                );
                 for line in ["choice 7", "choice 7 bar", "choice text"] {
-                    assert!(game.perform_native_command(1, 0, line));
+                    assert_eq!(game.perform_native_command(1, 0, line, false), Some(true));
                 }
                 let heard = heard.lock().unwrap();
                 assert_eq!(heard.len(), 6);
