@@ -980,7 +980,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 // Slot 0 is visible; slot 1 was hidden above and receives no ghost.
                 assert_eq!(
                     game.ghost_slots(),
-                    vec![(300, "minecraft:stick".to_owned(), false)]
+                    vec![(MOD_MENU_SLOT_BASE, "minecraft:stick".to_owned(), false)]
                 );
                 assert!(kept(game));
                 game.request_mod_book_recipe("bound:recipe".to_owned(), 0);
@@ -994,7 +994,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 });
                 assert_eq!(
                     game.ghost_slots(),
-                    vec![(300, "minecraft:stick".to_owned(), false)]
+                    vec![(MOD_MENU_SLOT_BASE, "minecraft:stick".to_owned(), false)]
                 );
 
                 // The server replaces the menu in place, with no close packet.

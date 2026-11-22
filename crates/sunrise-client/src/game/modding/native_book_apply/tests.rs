@@ -50,10 +50,14 @@ fn open_mod_menu_named(
         .collect(),
     );
     game.world.modified.clear();
-    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-        g.menu_generation = 1;
+    let (window, instance) = game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        if let Some(open) = &g.menu {
+            assert!(g.close_menu_cursor(open.window).is_none());
+        }
+        // Use the real window lifecycle so a resend can find this window's cursor.
+        let window = g.next_menu_window();
         g.menu = Some(Open {
-            window: 1,
+            window,
             kind: 0,
             registry_id: menu_id.into(),
             pos: Some(pos),
@@ -74,13 +78,14 @@ fn open_mod_menu_named(
             opener_block: None,
             removed: false,
         });
+        (window, g.menu_generation)
     });
     let catalog = sync::CatalogIdentity {
         epoch: 1,
         number: 1,
-        window: 1,
+        window,
         nonce: 1,
-        instance: 1,
+        instance,
         generation: 1,
         menu: menu_id.to_owned().try_into().unwrap(),
         book: "review:book".to_owned().try_into().unwrap(),
@@ -931,7 +936,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
 
                     // A replaced window (new menu generation) refuses and leaves storage intact.
                     game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                        g.menu_generation = 2;
+                        g.menu_generation += 1;
                         g.inventory[9] = Some(sunrise_client::items::ItemStack::new(
                             "minecraft:iron_ore",
                             1,
@@ -961,11 +966,18 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
 }
 
 fn router_display(ingredient: &str, result: &str, experience: f32) -> mod_api::RecipeBookDisplay {
+    // The server resolves display examples before sending a Ghost. Use concrete stacks
+    // so this fixture can compare the exact frame without depending on the fuel registry.
+    let stack = |id| {
+        mod_api::RecipeSlotDisplay::ItemStack(
+            mod_api::ItemStack::new(mod_api::__private::item_key(id).unwrap(), 1).unwrap(),
+        )
+    };
     mod_api::RecipeBookDisplay::Furnace {
-        ingredient: mod_api::RecipeSlotDisplay::Item(ingredient.into()),
-        fuel: mod_api::RecipeSlotDisplay::AnyFuel,
-        result: mod_api::RecipeSlotDisplay::Item(result.into()),
-        station: mod_api::RecipeSlotDisplay::Item("minecraft:furnace".into()),
+        ingredient: stack(ingredient),
+        fuel: stack("minecraft:coal"),
+        result: stack(result),
+        station: stack("minecraft:furnace"),
         duration: 200,
         experience,
     }
@@ -1214,7 +1226,7 @@ fn mod_book_router_places_without_ack_and_ghosts_selected_variant() {
                         block.items[0] = None;
                     }
                     game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                        g.menu_generation = 2;
+                        g.menu_generation += 1;
                         g.inventory[9] = Some(sunrise_client::items::ItemStack::new(
                             "minecraft:iron_ore",
                             1,
