@@ -1676,8 +1676,9 @@ impl Menu {
         &*stack.item == "minecraft:bucket"
     }
 
+    /// `AbstractFurnaceMenu.isFuel`: presence, not the evaluated burn duration.
     fn is_fuel(env: &Env, stack: &ItemStack) -> bool {
-        env.items.get(&stack.item).is_some_and(|i| i.fuel.is_some())
+        crate::item_data::cooking_fuel::for_stack(env.items, stack).is_some()
     }
 
     // ---- Slot ----

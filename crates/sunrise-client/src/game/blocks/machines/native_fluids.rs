@@ -1038,19 +1038,20 @@ mod tests {
                     .block_entity_type("water_tank")
                     .blocks(&["fluid_filter_test:water_tank"])
                     .build();
-                r.block_entity_capability_before_game(&FLUIDS, &kind, |host, at| {
+                r.block_entity_capability_before_game(&FLUIDS, &kind, |_, at, _, entity, offer| {
                     // The same block entity type elsewhere keeps the game's default handler.
-                    (at.pos == [2, 64, 0]).then(|| {
-                        Box::new(WaterTank {
-                            entity: host.block_entity(at.level, at.pos).unwrap(),
-                            reached: if at.side == Some(Direction::Down) {
-                                vec![1, 0]
-                            } else {
-                                vec![0, 1]
-                            },
-                        })
-                            as Box<dyn mod_api::ResourceHandler<FluidResource>>
-                    })
+                    if at.pos == [2, 64, 0] {
+                        offer.offer(|| {
+                            Box::new(WaterTank {
+                                entity,
+                                reached: if at.side == Some(Direction::Down) {
+                                    vec![1, 0]
+                                } else {
+                                    vec![0, 1]
+                                },
+                            })
+                        });
+                    }
                 });
             }
             fn blocks(

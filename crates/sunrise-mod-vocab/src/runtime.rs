@@ -534,16 +534,16 @@ pub fn discard_registration<T>(
 
 /// A single listener's keyed edits, in order of first insertion. A repeat replaces only
 /// a pending value, so its destructor still runs inside that listener's invocation fence.
-pub(crate) struct RegistrationEdits<T>(std::collections::BTreeMap<String, (usize, T)>);
+pub(crate) struct RegistrationEdits<T, K = String>(std::collections::BTreeMap<K, (usize, T)>);
 
-impl<T> Default for RegistrationEdits<T> {
+impl<T, K> Default for RegistrationEdits<T, K> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<T> RegistrationEdits<T> {
-    pub(crate) fn insert(&mut self, key: String, value: T) {
+impl<T, K: Ord> RegistrationEdits<T, K> {
+    pub(crate) fn insert(&mut self, key: K, value: T) {
         use std::collections::btree_map::Entry;
         let index = self.0.len();
         match self.0.entry(key) {
@@ -554,7 +554,7 @@ impl<T> RegistrationEdits<T> {
         }
     }
 
-    pub(crate) fn ordered(self) -> impl Iterator<Item = (String, T)> {
+    pub(crate) fn ordered(self) -> impl Iterator<Item = (K, T)> {
         let mut rows: Vec<_> = self.0.into_iter().collect();
         rows.sort_unstable_by_key(|(_, (index, _))| *index);
         rows.into_iter().map(|(key, (_, value))| (key, value))
@@ -563,20 +563,22 @@ impl<T> RegistrationEdits<T> {
 
 /// Last registration wins. Keep the declaring owner until publication is complete so retiring
 /// an earlier value can run its destructor under the appropriate mod's scope.
-pub(crate) struct RegistrationMap<T>(std::collections::BTreeMap<String, (Option<&'static str>, T)>);
+pub(crate) struct RegistrationMap<T, K = String>(
+    std::collections::BTreeMap<K, (Option<&'static str>, T)>,
+);
 
-impl<T> Default for RegistrationMap<T> {
+impl<T, K> Default for RegistrationMap<T, K> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<T> RegistrationMap<T> {
+impl<T, K: Ord> RegistrationMap<T, K> {
     pub(crate) fn finish(
         &mut self,
         site: (generated::HookId, &'static str),
         publish: bool,
-        edits: impl IntoIterator<Item = (String, T)>,
+        edits: impl IntoIterator<Item = (K, T)>,
     ) {
         let owner = crate::content::crash::current_native_mod();
         if publish {
@@ -594,7 +596,7 @@ impl<T> RegistrationMap<T> {
         }
     }
 
-    pub(crate) fn into_values(self) -> std::collections::BTreeMap<String, T> {
+    pub(crate) fn into_values(self) -> std::collections::BTreeMap<K, T> {
         self.0
             .into_iter()
             .map(|(key, (_, value))| (key, value))

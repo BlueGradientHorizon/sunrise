@@ -4,16 +4,17 @@
 //! return to the owner, pickup) with `ThrownTridentRenderer`, and Channeling's
 //! lightning on a hit (`channeling.json`).
 use super::level_sounds::LevelSound;
-use super::{Game, commands::Target, minecarts::CartHit};
-use mod_api::SoundSource;
+use super::{Game, commands::Target, minecarts::CartHit, native_projectiles::ImpactTransaction};
+use mod_api::{SoundSource, TransactionSeal};
 use sunrise_client::{
     arrows::{Pickup, back_off, clip_block_hit},
     collisions::SceneCollisions,
     enchant::EffectContext,
     items::ItemStack,
+    join_seq::JoinSeq,
     mesher::Vertex,
     mobs::{Damage, DamageKind, Species, Who, anim::Poses},
-    projectiles::ProjectileWorld,
+    projectiles::{Hit, ProjectileWorld},
 };
 use sunrise_core::{
     geometry::{Aabb, Vec3, traverse_blocks},
@@ -539,6 +540,59 @@ impl Game<'_> {
             );
         }
     }
+    /// Notify at the contact with the live trident in its owning slot. Return the live row
+    /// and whether to skip the hit (veto or invalidated contact). Only removal ends the tick.
+    fn trident_impact(
+        &mut self,
+        index: &mut usize,
+        t: ThrownTrident,
+        hit: Hit,
+        through: &mut Option<JoinSeq>,
+        transaction: &mut Option<TransactionSeal>,
+    ) -> Option<(ThrownTrident, bool)> {
+        if !self.native_hears_impacts() {
+            return Some((t, false));
+        }
+        through.get_or_insert_with(JoinSeq::latest);
+        let (id, join, guest) = (t.id, t.join, t.guest);
+        let motion = |t: &ThrownTrident| {
+            (
+                t.position,
+                t.velocity,
+                t.in_ground,
+                t.dealt_damage,
+                t.no_physics,
+                t.owner,
+                t.owner_uuid,
+                t.guest,
+            )
+        };
+        let before = motion(&t);
+        let target = self.native_impact_target(hit);
+        self.tridents.put_back(*index, t);
+        let mut scope = ImpactTransaction::new(self, true);
+        let game = &mut *scope.game;
+        let canceled = game.native_trident_impact(id, guest, hit);
+        if game.entity(id).is_some()
+            && let Some(at) = game.tridents.locate(join)
+        {
+            let refused = canceled
+                || motion(&game.tridents[at]) != before
+                || target.is_none()
+                || target != game.native_impact_target(hit);
+            if let Some(live) = game.tridents.extract(join) {
+                *index = at;
+                *transaction = scope.seal.take();
+                return Some((live, refused));
+            }
+        }
+        scope.close(true);
+        if let Some(at) = self.tridents.locate(join) {
+            *index = at + 1;
+        }
+        None
+    }
+
     pub(super) fn tick_tridents(&mut self) {
         if self.tridents.is_empty() {
             return;
@@ -548,7 +602,18 @@ impl Game<'_> {
         let mut targets = self.projectile_targets();
         targets.extend(self.lan_projectile_targets());
         let mut i = 0;
+        let mut through = None;
         while i < self.tridents.len() {
+            let t = &self.tridents[i];
+            let target = Target::Trident(t.id);
+            if through.is_some_and(|last| t.join > last)
+                || self.removal_pending(&target)
+                || self.persist.removals.contains(&target)
+            {
+                i += 1;
+                continue;
+            }
+            let mut transaction = None;
             let at = self.tridents[i].position;
             if !ticking(at.x.floor() as i32, at.z.floor() as i32) {
                 self.tridents[i].previous = at;
@@ -707,29 +772,30 @@ impl Game<'_> {
                         }
                     }
                 }
-                // ProjectileImpactEvent for the mob hit: a canceled one does
-                // nothing, and the trident stays where it would have hit.
-                let canceled_mob = hit_mob.is_some_and(|(id, d)| {
-                    // `at` is where the movement enters the mob's box.
-                    let at = Vec3::new(
-                        t.position.x + t.velocity.x * d,
-                        t.position.y + t.velocity.y * d,
-                        t.position.z + t.velocity.z * d,
-                    );
+                // Preserve the captured contact through ProjectileImpactEvent. Refusing it
+                // suppresses damage and deflection; removing the trident ends its tick.
+                let refused_mob = if let Some((id, d)) = hit_mob {
                     let from = t.position;
-                    self.trident_block_effects(&mut t, from, at);
-                    self.native_trident_impact(t.id, t.guest, Some(id), [0; 3], [0; 3], at)
-                });
-                if canceled_mob {
-                    // No damage, sound or deflection: it flies on.
-                } else if let Some((id, d)) = hit_mob {
-                    // The trident stops where it met the box.
-                    let at = Vec3::new(
-                        t.position.x + t.velocity.x * d,
-                        t.position.y + t.velocity.y * d,
-                        t.position.z + t.velocity.z * d,
-                    );
+                    let at = from.add_vector(t.velocity.scale(d));
                     t.position = at;
+                    self.trident_block_effects(&mut t, from, at);
+                    let hit = Hit::Entity {
+                        who: Who::Mob(id),
+                        at,
+                    };
+                    let Some((live, refused)) =
+                        self.trident_impact(&mut i, t, hit, &mut through, &mut transaction)
+                    else {
+                        continue;
+                    };
+                    t = live;
+                    refused
+                } else {
+                    false
+                };
+                if refused_mob {
+                    // No damage, sound or deflection: it flies on from the contact.
+                } else if let Some((id, _)) = hit_mob {
                     // `Breeze.deflection`: a trident is not a wind charge, so
                     // `PROJECTILE_DEFLECTION` turns it around. `onHit` does not
                     // run, so the breeze takes no damage and Channeling never fires.
@@ -950,27 +1016,30 @@ impl Game<'_> {
                     let flight = t.velocity;
                     let clip =
                         clip_block_hit(&self.world, self.res.facts(), self.collision, from, flight);
-                    // Block effects reach the clip location before onHitBlock backs off.
-                    let fire_to = clip.map_or(from.add_vector(flight), |(at, _, _)| at);
-                    self.trident_block_effects(&mut t, from, fire_to);
-                    // ProjectileImpactEvent for the block hit: a canceled one
-                    // doesn't stick the trident, which stays where it would
-                    // have hit, still flying.
-                    // The hook's `at` is the clip's hit location, before the back-off.
-                    let canceled_block = clip.is_some_and(|(at, block, face)| {
-                        self.native_trident_impact(
-                            t.id,
-                            t.guest,
-                            None,
-                            [block.x, block.y, block.z],
+                    // AbstractArrow.stepMoveAndHit: move to the contact and apply the
+                    // flight's block effects before ProjectileImpactEvent or onHitBlock.
+                    let contact = clip.map_or(from.add_vector(flight), |(at, _, _)| at);
+                    t.position = contact;
+                    self.trident_block_effects(&mut t, from, contact);
+                    // Only onHitBlock backs away from the clipped point.
+                    let refused_block = if let Some((at, block, face)) = clip {
+                        let hit = Hit::Block {
+                            pos: [block.x, block.y, block.z],
                             face,
                             at,
-                        )
-                    });
-                    let clip = clip.map(|(at, block, face)| (back_off(at, flight), block, face));
-                    if canceled_block && let Some((stop, _, _)) = clip {
-                        t.position = stop;
-                    } else if let Some((stop, block, _)) = clip {
+                        };
+                        let Some((live, refused)) =
+                            self.trident_impact(&mut i, t, hit, &mut through, &mut transaction)
+                        else {
+                            continue;
+                        };
+                        t = live;
+                        refused
+                    } else {
+                        false
+                    };
+                    if !refused_block && let Some((at, block, _)) = clip {
+                        let stop = back_off(at, flight);
                         // Projectile.onHit on a block: PROJECTILE_LAND at the
                         // block's centre.
                         self.projectile_landed_event(
@@ -994,10 +1063,6 @@ impl Game<'_> {
                         let sound = t.hit_ground_sound();
                         self.audio
                             .play(&sound, Some([stop.x, stop.y, stop.z]), 1.0, 1.0);
-                    } else {
-                        // A MISS moves the whole segment.
-                        t.position =
-                            Vec3::new(from.x + flight.x, from.y + flight.y, from.z + flight.z);
                     }
                 }
                 if !t.in_ground {
@@ -1052,12 +1117,23 @@ impl Game<'_> {
                 if let Some(by) = catchers.iter().find(near)
                     && self.trident_taken(&t, by)
                 {
+                    if let Some(seal) = transaction {
+                        self.tridents.retire_extracted(t.id, t.join);
+                        self.transaction_close(&seal, true);
+                    }
                     continue;
                 }
             }
             let (id, from, to) = (t.id, t.previous, t.position);
-            self.tridents.insert(i, t);
+            if transaction.is_some() {
+                self.tridents.put_back(i, t);
+            } else {
+                self.tridents.insert(i, t);
+            }
             self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            if let Some(seal) = transaction {
+                self.transaction_close(&seal, true);
+            }
             i += 1;
         }
     }
@@ -1202,6 +1278,9 @@ impl Game<'_> {
         self.mark_motion(out.len(), 0);
     }
 }
+#[cfg(test)]
+#[path = "trident/impact_tests.rs"]
+mod impact_tests;
 #[cfg(test)]
 mod tests {
     use super::{ThrownTrident, remote_tick};

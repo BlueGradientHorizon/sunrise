@@ -574,7 +574,9 @@ pub mod tests {
                 r.block_entity_capability(
                     &crate::parts::capabilities::tests::CHEMICALS,
                     &press,
-                    |_, at| Some(Box::new(crate::parts::capabilities::tests::ChemTank(at))),
+                    |_, at, _, _, offer| {
+                        offer.offer(|| Box::new(crate::parts::capabilities::tests::ChemTank(at)))
+                    },
                 );
             }
         }

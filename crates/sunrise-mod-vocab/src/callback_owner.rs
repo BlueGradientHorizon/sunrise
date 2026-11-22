@@ -131,14 +131,18 @@ enum Invocation {
 }
 
 enum CallFailure {
-    Unavailable(String),
-    Panicked(String),
+    Disabled(&'static str),
+    Panicked(&'static str, Option<String>),
 }
 
 impl CallFailure {
     fn into_message(self) -> String {
         match self {
-            Self::Unavailable(message) | Self::Panicked(message) => message,
+            Self::Disabled(kind) => format!("{kind} owner is disabled"),
+            Self::Panicked(kind, None) => format!("{kind} callback panicked; it is disabled"),
+            Self::Panicked(kind, Some(message)) => {
+                format!("{kind} callback panicked; it is disabled: {message}")
+            }
         }
     }
 }
@@ -306,7 +310,7 @@ impl CallbackOwner {
             before = Some(state.clone());
             invoke(state)
         });
-        if matches!(&result, Err(CallFailure::Panicked(_)))
+        if matches!(&result, Err(CallFailure::Panicked(..)))
             && let Some(before) = before
         {
             *state = before;
@@ -437,6 +441,28 @@ pub(crate) fn call<T>(
     .map_err(CallFailure::into_message)
 }
 
+/// Ask an optional provider under its owner. Faults are reported at the callback boundary;
+/// the lookup only needs to know whether it answered.
+pub(crate) fn call_for_lookup<T>(
+    owner: &'static str,
+    index: usize,
+    poisoned: &AtomicBool,
+    kind: &'static str,
+    operation: &'static str,
+    invoke: impl FnOnce() -> T,
+) -> Option<T> {
+    call_opt(
+        owner,
+        OwnerBinding::current(Some(index)),
+        poisoned,
+        kind,
+        operation,
+        Invocation::Isolated,
+        invoke,
+    )
+    .ok()
+}
+
 /// Failure of a retained callback, distinct from the result returned by the mod itself.
 // no wire: an in-process dispatch outcome; never sent to the peer.
 // exhaustive: engine-only dispatch result.
@@ -480,8 +506,8 @@ pub(crate) fn call_typed<T>(
         invoke,
     )
     .map_err(|failure| match failure {
-        CallFailure::Unavailable(reason) => CallbackFailure::Refused(reason),
-        CallFailure::Panicked(_) => CallbackFailure::Panicked,
+        CallFailure::Disabled(_) => CallbackFailure::Refused(failure.into_message()),
+        CallFailure::Panicked(..) => CallbackFailure::Panicked,
     })
 }
 
@@ -529,14 +555,12 @@ fn call_opt<T>(
     if invocation != Invocation::Dispose && !binding.enabled(poisoned) {
         let _guard = crate::mark_mod(owner, operation);
         let _ = contain_unwind(|| drop(invoke));
-        return Err(CallFailure::Unavailable(format!(
-            "{kind} owner is disabled"
-        )));
+        return Err(CallFailure::Disabled(kind));
     }
     let _guard = crate::mark_mod(owner, operation);
     let contained = RetainedCallbackScope(RETAINED_CALLBACK.replace(true));
     let scope = PanicScope::enter();
-    let mut failure = None;
+    let mut diagnostic = None;
     let result = crate::runtime::contain_callback(invoke, |payload| {
         if engine_panic_pending() {
             return;
@@ -553,9 +577,7 @@ fn call_opt<T>(
                 None,
                 payload,
             );
-            failure = Some(format!("{kind} callback panicked; it is disabled: {msg}"));
-        } else {
-            failure = Some(format!("{kind} callback panicked; it is disabled"));
+            diagnostic = Some(msg);
         }
     });
     if engine_panic_pending() {
@@ -569,11 +591,7 @@ fn call_opt<T>(
         let payload = DELEGATED_ENGINE_PANIC.take().expect("pending engine panic");
         std::panic::resume_unwind(payload);
     }
-    result.ok_or_else(|| {
-        CallFailure::Panicked(
-            failure.unwrap_or_else(|| format!("{kind} callback panicked; it is disabled")),
-        )
-    })
+    result.ok_or(CallFailure::Panicked(kind, diagnostic))
 }
 
 #[cfg(test)]

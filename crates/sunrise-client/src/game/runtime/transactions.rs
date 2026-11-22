@@ -351,6 +351,8 @@ pub(super) struct Level {
     /// removal with the row as it was then; abort uses the first write in `block_entities`.
     /// A removal without a resident row still marks the position for abort.
     removed_block_entities: HashMap<Pos, Option<RemovedRow>>,
+    /// A decorated pot lives in its chunk's saved block-entity tags, not the slot table.
+    saved_pots: HashMap<Pos, Option<sunrise_core::nbt::Tag>>,
     /// Each item slot (block entity, slot) a slot-only write changed, as it was before this
     /// transaction first wrote it, for a block entity not kept whole in `block_entities`: a
     /// move through a container keeps the slot it touches, not the entity's whole saved data.
@@ -364,6 +366,8 @@ pub(super) struct Level {
     level_random: Option<LegacyRandom>,
     /// Other levels drawn from at this depth. Only those draws allocate a map entry.
     parked_level_randoms: HashMap<LevelRef, LegacyRandom>,
+    /// Named loot streams before tentative block loot.
+    loot_sequences: Option<sunrise_items::random_sequences::RandomSequences>,
     /// Composter-local random streams before this depth first evaluated their layers.
     composter_randoms: ComposterRandoms,
     /// Each quart cell before this transaction first wrote it.
@@ -774,6 +778,9 @@ impl Level {
         for (pos, kept) in std::mem::take(&mut child.block_entities) {
             self.block_entities.entry(pos).or_insert(kept);
         }
+        for (pos, tag) in std::mem::take(&mut child.saved_pots) {
+            self.saved_pots.entry(pos).or_insert(tag);
+        }
         for (pos, removed) in std::mem::take(&mut child.removed_block_entities) {
             let first = self.removed_block_entities.entry(pos).or_default();
             if first.is_none() {
@@ -1058,6 +1065,7 @@ impl Game<'_> {
             } else {
                 let mut local = Level {
                     block_entities: std::mem::take(&mut level.block_entities),
+                    saved_pots: std::mem::take(&mut level.saved_pots),
                     removed_block_entities: std::mem::take(&mut level.removed_block_entities),
                     slots: std::mem::take(&mut level.slots),
                     blocks: std::mem::take(&mut level.blocks),
@@ -1102,6 +1110,9 @@ impl Game<'_> {
                 }
                 for (owner, before) in level.parked_level_randoms {
                     outer.keep_level_random(Some(owner), || before);
+                }
+                if outer.loot_sequences.is_none() {
+                    outer.loot_sequences = level.loot_sequences;
                 }
                 for (chunk, randoms) in level.composter_randoms {
                     let kept = outer.composter_randoms.entry(chunk).or_default();
@@ -1295,6 +1306,30 @@ impl Game<'_> {
             level.composter_randoms.clear();
         }
     }
+    /// Keeps a pot's saved item and loot metadata until its level commits.
+    pub(super) fn journal_saved_pot(&mut self, pos: Pos) {
+        self.transactions.writes = self.transactions.writes.wrapping_add(1);
+        if let Some(level) = entities::open_in(&mut self.transactions, self.dim) {
+            level
+                .saved_pots
+                .entry(pos)
+                .or_insert_with(|| super::spill::saved_entity(&self.world, [pos.0, pos.1, pos.2]));
+            level
+                .save_gate
+                .get_or_insert_with(sunrise_client::join_seq::visibility::PassLease::enter);
+        }
+    }
+
+    /// An unseeded pot loot table may draw from either the level or a named stream.
+    pub(super) fn journal_block_loot_random(&mut self) {
+        self.journal_level_random();
+        if let Some(level) = self.transactions.last_mut() {
+            level
+                .loot_sequences
+                .get_or_insert_with(|| self.rand_sequences.clone());
+        }
+    }
+
     /// Keeps the block entity at `pos` as it is, with its attachments and a hopper's
     /// cooldown, if a transaction is open and hasn't yet.
     pub(super) fn journal_block_entity(&mut self, pos: Pos) {
@@ -2470,6 +2505,9 @@ impl Game<'_> {
             }
         }
 
+        for ((x, y, z), tag) in level.saved_pots {
+            super::spill::set_saved_entity(&mut self.world, [x, y, z], tag);
+        }
         // Block entities whose published shapes the abort changed back.
         let mut reshaped = Vec::new();
         for (pos, kept) in level.block_entities {
@@ -2579,6 +2617,9 @@ impl Game<'_> {
         }
         if let Some(random) = level.level_random {
             *self.world.random = random;
+        }
+        if let Some(sequences) = level.loot_sequences {
+            self.rand_sequences = sequences;
         }
         for (owner, before) in level.parked_level_randoms {
             if let Some(random) = self.level_random_mut(owner) {

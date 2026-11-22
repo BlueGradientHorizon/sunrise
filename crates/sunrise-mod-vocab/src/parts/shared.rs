@@ -108,6 +108,9 @@ pub struct Parts {
     pub(crate) command_arguments: Vec<CommandArgumentInfo>,
     /// Separately declared mod recipe types.
     pub(crate) recipe_types: HashMap<Box<str>, usize>,
+    /// Code-defined particle types, indexed by their reserved common registry slots.
+    pub(crate) particle_types:
+        HashMap<crate::ParticleKey, (bool, Arc<dyn crate::__private::ParticleCodec>)>,
     /// Serializer IDs, their produced recipe types and retained owners.
     pub(crate) recipe_serializers:
         HashMap<Box<str>, (usize, String, crate::__private::InstalledRecipeSerializer)>,

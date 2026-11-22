@@ -526,7 +526,8 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertIn("github.event_name == 'pull_request' || inputs.pr != ''", fields.get("if", ""))
         self.assertEqual(fields.get("EVENT"), "${{ github.event_name }}")
         self.assertEqual(fields.get("PR"), "${{ inputs.pr }}")
-        self.assertEqual(fields.get("GH_TOKEN"), "${{ github.token }}")
+        # The base is the checkout's own merge parent: the step reads no API.
+        self.assertNotIn("GH_TOKEN", fields)
         self.assertNotIn("continue-on-error", fields)
         # It needs the tool the stage build puts in SUNRISE_STAGE_TOOL.
         self.assertLess(verify.index("- name: Build the source stage generator (test profile)"), verify.index(name))
@@ -794,6 +795,46 @@ class ParityWorkflowTests(unittest.TestCase):
         self.assertEqual((target / "probe").read_text(), "binary")
         self.assertTrue((build / "vanilla/prepared/key/sunrise-client/x").exists())
         self.assertTrue((self.slot / "loot_b.log").exists())
+
+    def test_failed_datafix_seed_prepare_only_fails_datafix_and_runs_other_harnesses(self):
+        self.initialise()
+        keep = self.root / "keep"
+        datafix_root = self.root / "parity-out/datafix"
+        plan = self.root / "plan/bucket-0.json"
+        plan.parent.mkdir(parents=True, exist_ok=True)
+        plan.write_text('["loot_a", "datafix#1"]')
+        self.env.update({
+            "DYNA_CI_KEEP": str(keep),
+            "SUNRISE_DATAFIX_ROOT": str(datafix_root),
+            "BUCKET": "0",
+        })
+        (self.root / "tools/datafix_seeds.py").write_text(
+            "import sys\nprint('private seed generation error', file=sys.stderr)\nsys.exit(1)\n")
+        prepare_step = self.steps["Prepare datafix seed worlds from keep"]
+        run_step = self.steps["Run every automatic harness"]
+        self.assertEqual(prepare_step.get("id"), "datafix-seeds")
+        self.assertEqual(prepare_step.get("continue-on-error"), "true")
+        self.assertEqual(run_step["env"]["SUNRISE_DATAFIX_SEEDS_OUTCOME"], "${{ steps.datafix-seeds.outcome }}")
+        prep = self.step("Prepare datafix seed worlds from keep")
+        self.assertEqual(prep.returncode, 1)
+        self.assertEqual(prep.stdout, "")
+        self.assertEqual(prep.stderr, "")
+        self.assertIn("private seed generation error", (self.slot / "datafix-seeds.log").read_text())
+        # GitHub Actions records steps.datafix-seeds.outcome=failure and continues to the harness step.
+        self.env["SUNRISE_DATAFIX_SEEDS_OUTCOME"] = "failure"
+        (self.root / "tools/parity.py").write_text(
+            "import os, sys\nfrom pathlib import Path\n"
+            "assert os.environ['SUNRISE_DATAFIX_SEEDS_OUTCOME'] == 'failure'\n"
+            "Path(sys.argv[-1]).write_text('[\"loot_a\", \"datafix#1\"]')\n"
+            "print('PASS loot_a 3s')\n"
+            "print('FAIL datafix#1 0s  (private path)')\n"
+            "print('1 passed, 1 failed in 0.1 min.')\n"
+            "sys.exit(1)\n")
+        run = self.step("Run every automatic harness")
+        self.assertEqual(run.returncode, 1)
+        verdict = self.step("Write the harnesses' verdict")
+        self.assertEqual(verdict.returncode, 0, verdict.stderr)
+        self.assertEqual(verdict.stdout.splitlines(), ["PASS loot_a", "FAIL datafix"])
 
 
 class ScheduledDynaJobTests(unittest.TestCase):
