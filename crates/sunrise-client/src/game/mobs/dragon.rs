@@ -3042,7 +3042,7 @@ impl Game<'_> {
                         self.mob_post_attack(
                             id,
                             Some(sunrise_client::mobs::Who::Mob(frame.dragon_id)),
-                            Some("minecraft:ender_dragon"),
+                            None,
                             Some("minecraft:mob_attack"),
                         );
                     }
@@ -3345,30 +3345,6 @@ impl Game<'_> {
             self.thorns(id);
         }
     }
-    /// `DamageEntity.apply`: the dragon's own random, including when the
-    /// wearer's mob source cannot take health from it.
-    pub(super) fn dragon_effect_random(&mut self, id: u32) -> Option<f32> {
-        self.dragon
-            .as_mut()
-            .filter(|d| d.id == id)
-            .map(|d| d.random.next_float())
-    }
-    /// `EnderDragon.hurtServer`: Thorns hits the body part, so damage is
-    /// quartered plus at most one, with the player as its causing entity.
-    pub(super) fn dragon_thorns(&mut self, attacker: u32, min: f32, max: f32) {
-        let Some(d) = self.dragon.as_mut().filter(|d| d.id == attacker) else {
-            return;
-        };
-        let damage = d.random.next_float() * (max - min) + min;
-        self.hurt_dragon(
-            2,
-            damage,
-            true,
-            Some(self.acting_player()),
-            DamageKind::Thorns,
-        );
-    }
-    /// Damage from the dragon, which is its causing entity
     /// (`DamageSources.mobAttack(dragon)`, `indirectMagic(cloud, dragon)`): the
     /// death message names it, or the cloud once the dragon is gone.
     fn dragon_hurts_player(&mut self, damage_type: &str, amount: f32) {

@@ -4730,11 +4730,18 @@ impl Game<'_> {
             super::wither::killed(true, p.health.dead_or_dying(), p.health.totem_used)
         });
         if outcome.hurt
-            && let Some(a) = attacker.or(owner)
+            && attack.projectile.is_none()
+            && attacker.or(owner).is_some()
             && !(post_attack_if_alive && killed)
             && damage_type != "minecraft:thorns"
         {
-            self.thorns(a);
+            let source = attack.player_source(damage_type, causing);
+            self.post_attack_from_hand(
+                self.own_entity_id() as u32,
+                "minecraft:player",
+                &attack,
+                source,
+            );
         }
         outcome.hurt
     }
@@ -5500,18 +5507,31 @@ impl Game<'_> {
             None => self.projectile_hit(p, hit),
         }
     }
-    /// `EnchantmentHelper.doPostAttackEffects` after the player's shot `p`
-    /// (its `direct` entity, a hit of `damage_type`) hurt the mob `who`: the
-    /// victim's own post-attack enchantments answer the player (Thorns).
-    pub(super) fn shot_post_attack(
-        &mut self,
-        p: &Projectile,
-        who: Who,
-        direct: &str,
-        damage_type: &str,
-    ) {
-        if let Who::Mob(id) = who {
-            self.mob_post_attack(id, p.owner, Some(direct), Some(damage_type));
+    /// Continue a landed hit with the projectile's recorded weapon and entity roles.
+    pub(super) fn shot_post_attack(&mut self, p: &Projectile, who: Who, damage_type: &str) {
+        let attack = self.current_attack();
+        let source = attack.player_source(damage_type, attack.attacker);
+        let (victim, kind) = match who {
+            Who::Player => (self.own_entity_id() as u32, "minecraft:player".into()),
+            Who::Mob(id) => {
+                let Some(target) = self.level_entity(id as i32) else {
+                    return;
+                };
+                (id, self.target_type(target))
+            }
+        };
+        let trident = matches!(p.kind, ProjectileKind::Trident);
+        let weapon = p.arrow.as_ref().and_then(|arrow| {
+            if trident {
+                Some(&arrow.pickup_item)
+            } else {
+                arrow.fired_from_weapon.as_ref()
+            }
+        });
+        if p.arrow.is_some() {
+            self.post_attack(victim, &kind, &attack, source, weapon, trident);
+        } else {
+            self.post_attack_from_hand(victim, &kind, &attack, source);
         }
     }
     /// A projectile's hurt of `amount` on the boat or minecart `id`
@@ -6204,7 +6224,7 @@ impl Game<'_> {
                     Who::Mob(id) => self.damage_projectile_with_weapon(p, id, amount, source, aim),
                 };
                 let outcome = if hurt {
-                    self.shot_post_attack(p, who, "minecraft:trident", "minecraft:trident");
+                    self.shot_post_attack(p, who, "minecraft:trident");
                     EntityHit::Hurt
                 } else {
                     EntityHit::Refused
@@ -6396,16 +6416,7 @@ impl Game<'_> {
                     }])?;
                 }
                 if hurt && target_present {
-                    let spectral = p
-                        .arrow
-                        .as_ref()
-                        .is_some_and(|a| &*a.pickup_item.item == "minecraft:spectral_arrow");
-                    let direct = if spectral {
-                        "minecraft:spectral_arrow"
-                    } else {
-                        "minecraft:arrow"
-                    };
-                    self.shot_post_attack(p, who, direct, "minecraft:arrow");
+                    self.shot_post_attack(p, who, "minecraft:arrow");
                     self.arrow_post_hurt_effects(p, who);
                 }
                 match (hurt, who) {
@@ -6665,12 +6676,7 @@ impl Game<'_> {
                                 m.ignite_for_ticks(100);
                             }
                             if self.damage_projectile_with_weapon(p, id, 5.0, source, aim) {
-                                self.shot_post_attack(
-                                    p,
-                                    who,
-                                    "minecraft:small_fireball",
-                                    "minecraft:fireball",
-                                );
+                                self.shot_post_attack(p, who, "minecraft:fireball");
                             } else if let Some(i) = self.mob_index.find(&self.mobs, id)
                                 && self.mobs[i].join == join
                                 && !self.mobs[i].removed
@@ -6726,12 +6732,7 @@ impl Game<'_> {
                         }
                         Who::Mob(id) => {
                             self.damage_projectile_with_weapon(p, id, 6.0, source, aim);
-                            self.shot_post_attack(
-                                p,
-                                who,
-                                "minecraft:fireball",
-                                "minecraft:fireball",
-                            );
+                            self.shot_post_attack(p, who, "minecraft:fireball");
                         }
                     }
                 }
@@ -6826,7 +6827,7 @@ impl Game<'_> {
                 }
                 Who::Mob(id) => {
                     if self.damage_projectile_with_weapon(p, id, 1.0, source, aim) {
-                        self.shot_post_attack(p, who, "minecraft:llama_spit", "minecraft:spit");
+                        self.shot_post_attack(p, who, "minecraft:spit");
                     }
                 }
             },
@@ -6871,12 +6872,7 @@ impl Game<'_> {
                             // The hurt's teleport (`teleportSomewhere`,
                             // `hitByShulkerBullet`) comes before the levitation.
                             self.settle_hurt_teleports()?;
-                            self.shot_post_attack(
-                                p,
-                                who,
-                                "minecraft:shulker_bullet",
-                                "minecraft:mob_projectile",
-                            );
+                            self.shot_post_attack(p, who, "minecraft:mob_projectile");
                             if self.mob_object(id).is_some_and(same_target) {
                                 self.add_mob_effect(
                                     id,

@@ -388,11 +388,14 @@ impl Game<'_> {
     /// at `index`: the item's `hurtEnemy` (the "used" statistic of a weapon),
     /// the post-attack enchantments, then `postHurtEnemy` with the weapon's
     /// wear.
-    pub(super) fn weapon_hit(&mut self, index: usize) {
+    pub(super) fn weapon_hit(&mut self, index: usize, source: Damage) {
+        let victim = self.mobs[index].id;
+        let kind = self.mobs[index].kind.id.clone();
+        let damage_type = sunrise_client::health::source_damage_type(source);
         let Some(stack) = self.held().cloned() else {
             // An empty hand still meets the victim's own post-attack
             // enchantments (Thorns).
-            self.post_attack(index);
+            self.post_player_melee(victim, &kind, damage_type, None);
             return;
         };
         let items = self.res.items();
@@ -407,7 +410,7 @@ impl Game<'_> {
         if weapon.is_some() {
             self.award_stat("used", &stack.item, 1);
         }
-        self.post_attack(index);
+        self.post_player_melee(victim, &kind, damage_type, Some(&stack));
         // MaceItem.postHurtEnemy
         if smash && let Some(p) = self.player.as_mut() {
             p.fall_distance = 0.0;
@@ -477,12 +480,14 @@ impl Game<'_> {
     /// the hit stays.
     pub(in crate::game) fn pvp_hit_after(
         &mut self,
+        victim: u32,
         victim_on_ground: bool,
         stops_sprint: bool,
+        strike: &super::lan_pvp::Strike,
     ) -> Option<Vec3> {
         let p = self.player.as_mut()?;
         let marked = std::mem::take(&mut p.health.sync_velocity);
-        self.weapon_hit_player(victim_on_ground);
+        self.weapon_hit_player(victim, victim_on_ground, strike);
         let p = self.player.as_mut()?;
         let sent = std::mem::replace(&mut p.health.sync_velocity, marked).then_some(p.velocity);
         self.pvp_exhaustion();
@@ -495,23 +500,29 @@ impl Game<'_> {
     /// player: the weapon's side of it, as `weapon_hit` does for a mob. A
     /// smash stops the fall and its Wind Burst (a `post_attack` explosion on
     /// the attacker) launches the attacker.
-    pub(super) fn weapon_hit_player(&mut self, victim_on_ground: bool) {
-        let Some(stack) = self.held().cloned() else {
+    fn weapon_hit_player(
+        &mut self,
+        victim: u32,
+        victim_on_ground: bool,
+        strike: &super::lan_pvp::Strike,
+    ) {
+        let Some(stack) = strike.weapon.as_ref() else {
+            self.post_player_melee(victim, "minecraft:player", &strike.damage_type, None);
             return;
         };
         let smash = self.smash_attack();
         if smash {
             self.mace_smash_self(victim_on_ground);
         }
-        if self.res.items().weapon_damage(&stack).is_some() {
+        if self.res.items().weapon_damage(stack).is_some() {
             self.award_stat("used", &stack.item, 1);
         }
-        self.post_attack_bursts(&stack, "minecraft:player");
+        self.post_player_melee(victim, "minecraft:player", &strike.damage_type, Some(stack));
         // MaceItem.postHurtEnemy
         if smash && let Some(p) = self.player.as_mut() {
             p.fall_distance = 0.0;
         }
-        self.weapon_wear(&stack);
+        self.weapon_wear(stack);
     }
     /// `Player.itemAttackInteraction` after the player's hit hurt the armor
     /// stand `id` (a living target) at `center`: as `weapon_hit` does for a
@@ -530,7 +541,14 @@ impl Game<'_> {
         if self.res.items().weapon_damage(&stack).is_some() {
             self.award_stat("used", &stack.item, 1);
         }
-        self.post_attack_bursts(&stack, "minecraft:armor_stand");
+        let damage_type = self.stack_melee_damage_type(
+            Some(&stack),
+            self.player
+                .as_ref()
+                .map_or((0.0, false), |p| (p.fall_distance, p.fall_flying)),
+            true,
+        );
+        self.post_player_melee(id, "minecraft:armor_stand", &damage_type, Some(&stack));
         // MaceItem.postHurtEnemy
         if self.smash_attack()
             && let Some(p) = self.player.as_mut()
@@ -779,7 +797,13 @@ impl Game<'_> {
                 let level = crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
                 self.mobs[i].knockback(level, 0.4, xd, zd, &source, amount);
                 self.mobs[i].attacker_aim = None;
-                self.post_attack(i);
+                let held = self.held().cloned();
+                self.post_player_melee(
+                    id,
+                    &kind,
+                    sunrise_client::health::source_damage_type(source),
+                    held.as_ref(),
+                );
             }
         }
         // `getEntitiesOfClass(LivingEntity.class)` takes the other players too.

@@ -871,7 +871,7 @@ impl Game<'_> {
                     }
                 }
                 if hurt {
-                    self.weapon_hit(index);
+                    self.weapon_hit(index, sunrise_client::mobs::Damage::player([0.0; 3]));
                 }
                 (bonus, hurt)
             }

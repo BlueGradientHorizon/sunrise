@@ -625,7 +625,9 @@ impl Game<'_> {
                 let on_ground = self.pvp_victim_on_ground(victim);
                 let stops_sprint = strike.stops_sprint();
                 let sent = self
-                    .as_guest_at(gi, conn, |g| g.pvp_hit_after(on_ground, stops_sprint))
+                    .as_guest_at(gi, conn, |g| {
+                        g.pvp_hit_after(id as u32, on_ground, stops_sprint, &strike)
+                    })
                     .ok()
                     .flatten();
                 self.send_guest_motion(conn, sent);

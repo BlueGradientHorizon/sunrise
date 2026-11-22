@@ -285,7 +285,7 @@ impl Game<'_> {
                     self.mob_post_attack(
                         id,
                         live_owner,
-                        Some("minecraft:wither_skull"),
+                        Some((p.id, "minecraft:wither_skull")),
                         Some("minecraft:wither_skull"),
                     );
                 }

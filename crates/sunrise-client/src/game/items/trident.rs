@@ -429,15 +429,30 @@ impl Game<'_> {
         let refused = !self.player_may_harm(target.as_ref(), attacker.as_ref());
         let shooter = self.player_attacker(t.guest);
         let from = [t.previous.x, t.previous.y, t.previous.z];
-        self.guest_hit_by(conn, |g| {
-            g.with_attack(attack, |g| {
+        let victim = host.hub.guest(conn).map(|g| g.entity_id as u32);
+        let hurt = self.guest_hit_by(conn, |g| {
+            g.with_attack(attack.clone(), |g| {
                 g.combat.refuse_player_hit = refused;
                 g.combat.projectile_attacker = shooter;
-                g.mob_hits_player(damage, from, "minecraft:trident");
+                let hurt = g.mob_hits_player(damage, from, "minecraft:trident");
                 g.combat.refuse_player_hit = false;
                 g.combat.projectile_attacker = None;
+                hurt
             })
         });
+        if hurt == Some(true)
+            && let Some(victim) = victim
+        {
+            let source = attack.player_source("minecraft:trident", attack.attacker);
+            self.post_attack(
+                victim,
+                "minecraft:player",
+                &attack,
+                source,
+                Some(&t.stack),
+                true,
+            );
+        }
     }
     /// The players tridents fly back to or land at: this game's player and the
     /// guests in this level. A server has no player of its own, so its
@@ -966,7 +981,12 @@ impl Game<'_> {
                         }
                         // ThrownTrident.onHitEntity on another player.
                         if let Some(conn) = self.trident_guest_conn(id) {
-                            self.trident_hits_guest(&t, conn, damage, attack);
+                            self.trident_hits_guest(&t, conn, damage, attack.clone());
+                        }
+                        if hurt_mob.is_some()
+                            && let Some(kind) = victim.as_deref()
+                        {
+                            self.post_attack(id, kind, &attack, source, Some(&t.stack), true);
                         }
                         // `minecraft:post_attack` of Channeling, on the victim.
                         if let Some(join) = hurt_mob
