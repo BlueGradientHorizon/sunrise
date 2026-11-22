@@ -1700,8 +1700,7 @@ one, where vanilla gives the `by` one.
 `Hooks::component_types`, `blocks`, `items` and `standalone_models` take
 `&RegistrationContext` before their event; `Hooks::register` takes it after
 its `Registrar`. `context.mods()` returns a read-only `LoadedMods` view whose
-`ids()` lists the packages enabled and admitted at startup, in dispatch order; reloading
-resources or switching code live does not change it.
+`ids()` lists the packages enabled and admitted at startup in dispatch order; reloads keep it.
 `context.registry("minecraft:item")` borrows a built-in registry's names in ID order as
 `Option<&[String]>`, `context.setting(mod_id, key)` borrows a captured setting as `Option<&str>`,
 and `context.instance_dir()` borrows the startup instance directory as `Option<&InstanceDirectory>`,
