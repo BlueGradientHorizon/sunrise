@@ -1961,6 +1961,7 @@ fn depot_container(game: &mut crate::game::Game<'_>) {
             state.0,
             Arc::new(ModContainer {
                 slots: 9,
+                inputs: vec![0],
                 menu: Some(DEPOT_MENU.into()),
                 ..Default::default()
             }),
