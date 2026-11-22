@@ -90,8 +90,12 @@ impl RenderAssets for Game<'_> {
     fn baked_model(&self, key: BakedModelKey) -> Result<BakedModelView<'_>, ModelError> {
         self.pack.render.baked_model(key)
     }
-    fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
-        self.pack.render.render_pipeline(id)
+    fn render_pipeline(
+        &self,
+        id: &Identifier,
+        kind: PipelineKind,
+    ) -> Result<RenderPipelineRef, RenderPipelineError> {
+        self.pack.render.render_pipeline(id, kind)
     }
     fn animation(&self, id: &Identifier) -> Option<AnimationHolder> {
         self.pack.render.animation(id)

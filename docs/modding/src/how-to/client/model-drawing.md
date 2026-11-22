@@ -97,18 +97,21 @@ At client startup, implement `Hooks::register_layer_definitions` and call
 `event.register("mymod:golem#main", create_golem_layer)`, where `create_golem_layer`
 returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
 The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`: capture owned
-inputs, not the event or its registration context. Use a `<namespace>:<path>#<layer>`
-ID matching vanilla's `ModelLayerLocation`. Include both separators even when a
-component is empty. Namespace and path follow vanilla's `Identifier` rules, and the
-layer can be any string. An exact collision with a vanilla layer key in
-`entity-models.json` fails client startup.
+inputs, not the event or its registration context. Write the model `Identifier` as
+`namespace:path` (with `:` even if a half is empty), followed by `#` and the layer name.
+The suffix after the first `#` is preserved verbatim.
 
-When multiple registrations share an ID, the last registration wins and overwritten
-suppliers never run. The game calls each winning supplier once when it freezes the
-layer table, in registration order. The frozen table retains the definitions, not the
-suppliers. Call `ClientHost::bake_layer("mymod:golem#main")` during renderer setup,
-then keep the resulting `ModelPart` tree for posing and drawing. Baking again and
-reloading resources reuse the definition.
+Duplicate mod registrations for the same ID overwrite earlier suppliers (last-writer-wins)
+before freeze, so overwritten suppliers never run. Malformed IDs, collisions with existing
+vanilla layer definitions, or an unavailable/invalid vanilla `entity-models.json` fail
+startup freeze cleanly before invoking any supplier or publishing. The game calls each
+winning supplier once when it freezes the layer table. A panicking supplier leaves no
+layer and is reported in the error log and client error toast under its mod's name.
+Other suppliers, including that mod's other suppliers, still run. The frozen table
+retains the definitions, not the suppliers. Call
+`ClientHost::bake_layer("mymod:golem#main")` during renderer setup, then keep the
+resulting `ModelPart` tree for posing and drawing. Baking again and reloading
+resources reuse the definition.
 
 ## Worn humanoid equipment
 

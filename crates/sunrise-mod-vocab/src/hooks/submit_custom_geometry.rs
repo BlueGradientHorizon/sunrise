@@ -17,8 +17,11 @@ pub trait Hooks {
 `WorldRenderView` lends the frame's `Camera`, world partial tick, game time, whether vanilla's
 improved transparency (OIT) is active, and the visible `RenderableSection` slice;
 `WorldDrawContext::lines` and `quads` accept unlit world-space ARGB geometry with depth testing or
-through walls. Batches fail atomically for invalid inputs; backing storage grows dynamically and
-output clears every view. Submit extracted state, without world writes or resource loading.
+through walls. `lines` and `quads` fail atomically for invalid inputs; `pipeline_quads` checks
+`RenderPipelineRef` validity and staleness (`PipelineDrawError::Pipeline`) and skips any quad with
+non-finite coordinates or UVs individually without rejecting valid quads in the same slice.
+Backing storage grows dynamically and output clears every view. Submit extracted state, without
+world writes or resource loading.
 
 `WorldDrawContext::draw_model_instances` draws one batch of a resolved `ModelRef`. Each
 `ModelInstance` carries an f64 world origin, a row-major 3×4 local transform, an `0xAARRGGBB`

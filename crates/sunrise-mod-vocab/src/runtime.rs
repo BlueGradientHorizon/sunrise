@@ -5,8 +5,8 @@
 //! a panic. A panic disables that mod's callback for that hook for the session, reports the mod
 //! and hook in the error log, and queues a local client error toast. A headless dedicated server
 //! logs the error without presenting a toast. A phase refusal is reported each time and does not
-//! disable the callback. Startup [`invoke_registration`] uses the same panic boundary for the
-//! once-only `Hooks::register` call.
+//! disable the callback. Once-only callbacks such as startup `Hooks::register` and model layer
+//! suppliers use the same panic boundary; they have no future invocation to disable.
 //!
 //! Dispatch and the owning publication boundary discard unfinished work. Later eligible listeners
 //! still run from the last accepted outputs; only a completed proposal can cancel or replace.
@@ -347,6 +347,29 @@ pub(crate) fn log_and_queue_panic(
     log_and_queue_named_panic(installed(), hook, mod_id, None, payload);
 }
 
+fn log_and_queue_once_panic(
+    hook: &'static str,
+    mod_id: &'static str,
+    payload: &(dyn std::any::Any + Send),
+) {
+    let reason = payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("panic");
+    log::error!("mod {mod_id} panicked in {hook} (callback discarded): {reason}");
+    if let Some(installed) = installed() {
+        let mut queue = installed
+            .hook_panics
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        queue.push(HookPanicReport { mod_id, hook });
+        installed
+            .has_hook_panics
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+}
+
 pub(crate) fn log_and_queue_named_panic(
     installed: Option<&Installed>,
     hook: &'static str,
@@ -390,6 +413,17 @@ pub(crate) fn invoke<T>(
 ) -> Option<T> {
     contain_callback(call, |payload| {
         record_hook_panic(hook_id.into(), hook, mod_id, payload)
+    })
+}
+
+/// Run a callback called only once by its owner, without poisoning any other callback of the mod.
+pub(crate) fn invoke_once<T>(
+    hook: &'static str,
+    mod_id: &'static str,
+    call: impl FnOnce() -> T,
+) -> Option<T> {
+    contain_callback(call, |payload| {
+        log_and_queue_once_panic(hook, mod_id, payload);
     })
 }
 

@@ -8,259 +8,86 @@
 //! The shader's composition and checks live in `sunrise_shader_api::mod_pipeline`, shared with
 //! `cargo sunrise-mod check`.
 use mod_api::{
-    Identifier, PipelineBlend, PipelineTexture, PipelineTextureError, RenderPipeline,
+    Identifier, PipelineBlend, PipelineKind, PipelineTexture, PipelineTextureError, RenderPipeline,
     RenderPipelineError, RenderPipelineRef, WorldDepth,
 };
-use std::{collections::BTreeMap, sync::OnceLock};
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
+use std::sync::OnceLock;
 use sunrise_shader_api::mod_pipeline::{FOLDER, compose_with};
 
 static REGISTERED: OnceLock<Vec<RenderPipeline>> = OnceLock::new();
 
-/// Canonical vanilla 26.3 required render pipeline paths under the `minecraft` namespace
-/// (`RenderPipelines.PIPELINES_BY_LOCATION`, sorted for binary search).
-const BUILTIN_REQUIRED_PIPELINES: &[&str] = &[
-    "pipeline/animate_sprite_blit",
-    "pipeline/animate_sprite_interpolate",
-    "pipeline/armor_cutout_no_cull",
-    "pipeline/armor_cutout_no_cull_glint",
-    "pipeline/armor_decal_cutout_no_cull",
-    "pipeline/armor_translucent",
-    "pipeline/banner_pattern",
-    "pipeline/beacon_beam_opaque",
-    "pipeline/beacon_beam_translucent",
-    "pipeline/blit_depth",
-    "pipeline/blit_depth_bounds",
-    "pipeline/blit_depth_during_depth_bounds",
-    "pipeline/block_screen_effect",
-    "pipeline/breeze_wind",
-    "pipeline/celestial",
-    "pipeline/clouds",
-    "pipeline/crosshair",
-    "pipeline/crumbling",
-    "pipeline/cutout_block",
-    "pipeline/cutout_terrain",
-    "pipeline/cutout_terrain_multidraw",
-    "pipeline/debug_filled_box",
-    "pipeline/debug_points",
-    "pipeline/debug_quads",
-    "pipeline/debug_triangle_fan",
-    "pipeline/dragon_rays",
-    "pipeline/end_crystal_beam",
-    "pipeline/end_gateway",
-    "pipeline/end_portal",
-    "pipeline/end_sky",
-    "pipeline/energy_swirl",
-    "pipeline/entity_cutout",
-    "pipeline/entity_cutout_cull",
-    "pipeline/entity_cutout_dissolve",
-    "pipeline/entity_cutout_z_offset",
-    "pipeline/entity_outline_blit",
-    "pipeline/entity_shadow",
-    "pipeline/entity_solid",
-    "pipeline/entity_solid_glint",
-    "pipeline/entity_solid_offset_forward",
-    "pipeline/entity_translucent",
-    "pipeline/entity_translucent_cull",
-    "pipeline/entity_translucent_emissive",
-    "pipeline/eyes",
-    "pipeline/fire_screen_effect",
-    "pipeline/flat_clouds",
-    "pipeline/glint",
-    "pipeline/gui",
-    "pipeline/gui_invert",
-    "pipeline/gui_nausea_overlay",
-    "pipeline/gui_opaque_textured_background",
-    "pipeline/gui_text",
-    "pipeline/gui_text_grayscale",
-    "pipeline/gui_text_highlight",
-    "pipeline/gui_textured",
-    "pipeline/gui_textured_premultiplied_alpha",
-    "pipeline/integrate_depth",
-    "pipeline/item_cutout",
-    "pipeline/item_translucent",
-    "pipeline/item_translucent_glint",
-    "pipeline/leash",
-    "pipeline/lightmap",
-    "pipeline/lightning",
-    "pipeline/lines",
-    "pipeline/lines_depth_bias",
-    "pipeline/lines_translucent",
-    "pipeline/lines_translucent_no_depth_write",
-    "pipeline/mojang_logo",
-    "pipeline/oit_accumulate_beacon_beam",
-    "pipeline/oit_accumulate_breeze_wind",
-    "pipeline/oit_accumulate_clouds",
-    "pipeline/oit_accumulate_crumbling",
-    "pipeline/oit_accumulate_debug_filled_box",
-    "pipeline/oit_accumulate_debug_points",
-    "pipeline/oit_accumulate_debug_quads",
-    "pipeline/oit_accumulate_debug_triangle_fan",
-    "pipeline/oit_accumulate_dragon_rays",
-    "pipeline/oit_accumulate_energy_swirl",
-    "pipeline/oit_accumulate_entity",
-    "pipeline/oit_accumulate_entity_cull",
-    "pipeline/oit_accumulate_entity_emissive",
-    "pipeline/oit_accumulate_entity_shadow",
-    "pipeline/oit_accumulate_eyes",
-    "pipeline/oit_accumulate_flat_clouds",
-    "pipeline/oit_accumulate_item",
-    "pipeline/oit_accumulate_item_glint",
-    "pipeline/oit_accumulate_item_glint_special",
-    "pipeline/oit_accumulate_lightning",
-    "pipeline/oit_accumulate_lines_translucent",
-    "pipeline/oit_accumulate_particle",
-    "pipeline/oit_accumulate_terrain",
-    "pipeline/oit_accumulate_terrain_multidraw",
-    "pipeline/oit_accumulate_text",
-    "pipeline/oit_accumulate_text_grayscale",
-    "pipeline/oit_accumulate_text_grayscale_polygon_offset",
-    "pipeline/oit_accumulate_text_polygon_offset",
-    "pipeline/oit_accumulate_translucent_block",
-    "pipeline/oit_accumulate_weather",
-    "pipeline/oit_accumulate_world_border",
-    "pipeline/oit_composite",
-    "pipeline/oit_depth_bounds_beacon_beam",
-    "pipeline/oit_depth_bounds_breeze_wind",
-    "pipeline/oit_depth_bounds_clouds",
-    "pipeline/oit_depth_bounds_crumbling",
-    "pipeline/oit_depth_bounds_cull",
-    "pipeline/oit_depth_bounds_debug_filled_box",
-    "pipeline/oit_depth_bounds_debug_points",
-    "pipeline/oit_depth_bounds_debug_quads",
-    "pipeline/oit_depth_bounds_debug_triangle_fan",
-    "pipeline/oit_depth_bounds_dragon_rays",
-    "pipeline/oit_depth_bounds_energy_swirl",
-    "pipeline/oit_depth_bounds_entity",
-    "pipeline/oit_depth_bounds_entity_cull",
-    "pipeline/oit_depth_bounds_entity_emissive",
-    "pipeline/oit_depth_bounds_entity_shadow",
-    "pipeline/oit_depth_bounds_eyes",
-    "pipeline/oit_depth_bounds_flat_clouds",
-    "pipeline/oit_depth_bounds_item",
-    "pipeline/oit_depth_bounds_item_glint",
-    "pipeline/oit_depth_bounds_item_glint_special",
-    "pipeline/oit_depth_bounds_lightning",
-    "pipeline/oit_depth_bounds_lines_translucent",
-    "pipeline/oit_depth_bounds_particle",
-    "pipeline/oit_depth_bounds_terrain",
-    "pipeline/oit_depth_bounds_terrain_multidraw",
-    "pipeline/oit_depth_bounds_text",
-    "pipeline/oit_depth_bounds_text_grayscale",
-    "pipeline/oit_depth_bounds_text_grayscale_polygon_offset",
-    "pipeline/oit_depth_bounds_text_polygon_offset",
-    "pipeline/oit_depth_bounds_translucent_block",
-    "pipeline/oit_depth_bounds_weather",
-    "pipeline/oit_depth_bounds_world_border",
-    "pipeline/oit_transmittance_beacon_beam",
-    "pipeline/oit_transmittance_breeze_wind",
-    "pipeline/oit_transmittance_clouds",
-    "pipeline/oit_transmittance_crumbling",
-    "pipeline/oit_transmittance_debug_filled_box",
-    "pipeline/oit_transmittance_debug_points",
-    "pipeline/oit_transmittance_debug_quads",
-    "pipeline/oit_transmittance_debug_triangle_fan",
-    "pipeline/oit_transmittance_dragon_rays",
-    "pipeline/oit_transmittance_energy_swirl",
-    "pipeline/oit_transmittance_entity",
-    "pipeline/oit_transmittance_entity_cull",
-    "pipeline/oit_transmittance_entity_emissive",
-    "pipeline/oit_transmittance_entity_shadow",
-    "pipeline/oit_transmittance_eyes",
-    "pipeline/oit_transmittance_flat_clouds",
-    "pipeline/oit_transmittance_item",
-    "pipeline/oit_transmittance_item_glint",
-    "pipeline/oit_transmittance_item_glint_special",
-    "pipeline/oit_transmittance_lightning",
-    "pipeline/oit_transmittance_lines_translucent",
-    "pipeline/oit_transmittance_particle",
-    "pipeline/oit_transmittance_terrain",
-    "pipeline/oit_transmittance_terrain_multidraw",
-    "pipeline/oit_transmittance_text",
-    "pipeline/oit_transmittance_text_grayscale",
-    "pipeline/oit_transmittance_text_grayscale_polygon_offset",
-    "pipeline/oit_transmittance_text_polygon_offset",
-    "pipeline/oit_transmittance_translucent_block",
-    "pipeline/oit_transmittance_weather",
-    "pipeline/oit_transmittance_world_border",
-    "pipeline/oit_water_mask",
-    "pipeline/opaque_particle",
-    "pipeline/outline_cull",
-    "pipeline/outline_no_cull",
-    "pipeline/panorama",
-    "pipeline/secondary_block_outline",
-    "pipeline/sky",
-    "pipeline/solid_block",
-    "pipeline/solid_terrain",
-    "pipeline/solid_terrain_multidraw",
-    "pipeline/stars",
-    "pipeline/sunrise_sunset",
-    "pipeline/text",
-    "pipeline/text_grayscale",
-    "pipeline/text_grayscale_polygon_offset",
-    "pipeline/text_grayscale_see_through",
-    "pipeline/text_polygon_offset",
-    "pipeline/text_see_through",
-    "pipeline/tracy_blit",
-    "pipeline/translucent_block",
-    "pipeline/translucent_particle",
-    "pipeline/translucent_terrain",
-    "pipeline/translucent_terrain_multidraw",
-    "pipeline/vignette",
-    "pipeline/water_mask",
-    "pipeline/weather",
-    "pipeline/world_border",
-];
-
-/// Canonical vanilla 26.3 optional render pipeline paths under the `minecraft` namespace
-/// (`RenderPipelines.OPTIONAL_PIPELINES_BY_LOCATION`, sorted for binary search).
-const BUILTIN_OPTIONAL_PIPELINES: &[&str] = &["pipeline/wireframe", "pipeline/wireframe_multidraw"];
-
-/// Publish the mods' registrations once at startup, as `register_render_pipelines` left them.
-/// Mod pipeline IDs are unique across the table because lookup uses the ID alone. Check each
-/// mod ID against the corresponding vanilla required or optional registry, as NeoForge's
-/// `RenderPipelines.registerCustomPipelines` does. A collision fails startup without committing
-/// the table. A pipeline's place in the list is its slot.
-pub fn register(pipelines: Vec<RenderPipeline>) -> Result<(), String> {
-    register_into(&REGISTERED, pipelines)
+/// The built-in tables exported by `RenderPipelines.requiredPipelines` and `optionalPipelines`.
+#[derive(serde::Deserialize)]
+struct VanillaPipelines {
+    required: HashSet<String>,
+    optional: HashSet<String>,
 }
 
-fn register_into(
-    slot: &OnceLock<Vec<RenderPipeline>>,
-    pipelines: Vec<RenderPipeline>,
-) -> Result<(), String> {
-    let mut seen = BTreeMap::new();
+/// Validate and publish the mods' registrations once at startup, as `register_render_pipelines`
+/// left them: each `(id, kind)` at most once and never colliding with vanilla's same-kind table.
+/// A pipeline's place in the list is its slot.
+pub fn register(pipelines: Vec<RenderPipeline>, vanilla_root: &Path) -> Result<(), String> {
+    if pipelines.is_empty() {
+        return Ok(());
+    }
+    let path = vanilla_root.join("render-pipelines.json");
+    let bytes = std::fs::read(&path).map_err(|error| {
+        format!("register_render_pipelines: could not read {}: {error}; prepare the client resources again", path.display())
+    })?;
+    let vanilla: VanillaPipelines = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "register_render_pipelines: invalid {}: {error}; prepare the client resources again",
+            path.display()
+        )
+    })?;
+    if [&vanilla.required, &vanilla.optional]
+        .into_iter()
+        .any(|ids| {
+            ids.is_empty()
+                || ids
+                    .iter()
+                    .any(|id| Identifier::parse_namespaced(id).is_none())
+        })
+    {
+        return Err(format!(
+            "register_render_pipelines: invalid pipeline ID table in {}; prepare the client resources again",
+            path.display()
+        ));
+    }
+    let mut seen = HashMap::with_capacity(pipelines.len());
     for pipeline in &pipelines {
-        let (builtins, kind) = if pipeline.optional {
-            (BUILTIN_OPTIONAL_PIPELINES, "optional")
-        } else {
-            (BUILTIN_REQUIRED_PIPELINES, "required")
+        let kind = pipeline.kind();
+        let (table, label) = match kind {
+            PipelineKind::Required => (&vanilla.required, "required"),
+            PipelineKind::Optional => (&vanilla.optional, "optional"),
         };
-        if pipeline.id.namespace() == "minecraft"
-            && builtins.binary_search(&pipeline.id.path()).is_ok()
-        {
+        if table.contains(&pipeline.id.to_string()) {
             return Err(format!(
-                "Duplicate {kind} render pipeline registration: {} collides with a built-in vanilla pipeline (registered by {})",
-                pipeline.id,
-                pipeline.owner()
+                "register_render_pipelines: mod {}: {label} pipeline {} collides with vanilla {label} pipeline",
+                pipeline.owner(),
+                pipeline.id
             ));
         }
-        if let Some(first_owner) = seen.insert(&pipeline.id, pipeline.owner()) {
+        if let Some(earlier) = seen.insert(
+            (pipeline.id.namespace(), pipeline.id.path(), kind),
+            pipeline.owner(),
+        ) {
             return Err(format!(
-                "Duplicate render pipeline registration: {} (registered by {} and {})",
-                pipeline.id,
-                first_owner,
-                pipeline.owner()
+                "register_render_pipelines: mod {}: {label} pipeline {} collides with earlier {label} registration from mod {earlier}",
+                pipeline.owner(),
+                pipeline.id
             ));
         }
     }
-    if slot.set(pipelines).is_err() {
-        log::warn!("Render pipelines already registered; keeping the first list");
-    }
-    Ok(())
+    REGISTERED.set(pipelines).map_err(|_| {
+        "register_render_pipelines: pipeline registrations were already published".to_owned()
+    })
 }
 
 /// The registered pipelines; none until registration publishes them.
-fn registered() -> &'static [RenderPipeline] {
+pub fn registered() -> &'static [RenderPipeline] {
     REGISTERED.get().map_or(&[], Vec::as_slice)
 }
 
@@ -293,7 +120,7 @@ pub enum BuiltTexture {
 /// load refused has no shader here and resolves to [`RenderPipelineError::Invalid`].
 #[derive(Clone, Debug, Default)]
 pub struct Pipelines {
-    ids: Vec<Identifier>,
+    keys: Vec<(Identifier, PipelineKind)>,
     built: Vec<Option<Built>>,
     /// The render assets' generation this set was loaded for; 0 for none.
     generation: u64,
@@ -382,7 +209,10 @@ impl Pipelines {
             return Err(required.join("; "));
         }
         Ok(Self {
-            ids: registered.iter().map(|p| p.id.clone()).collect(),
+            keys: registered
+                .iter()
+                .map(|p| (p.id.clone(), p.kind()))
+                .collect(),
             built,
             generation,
             invalid: Default::default(),
@@ -417,12 +247,16 @@ impl Pipelines {
         &self.built
     }
 
-    /// The handle of the registered pipeline `id` in this load.
-    pub fn resolve(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
+    /// The handle of the registered pipeline `(id, kind)` in this load.
+    pub fn resolve(
+        &self,
+        id: &Identifier,
+        kind: PipelineKind,
+    ) -> Result<RenderPipelineRef, RenderPipelineError> {
         let slot = self
-            .ids
+            .keys
             .iter()
-            .position(|registered| registered == id)
+            .position(|(registered, registered_kind)| registered == id && *registered_kind == kind)
             .ok_or(RenderPipelineError::Unknown)?;
         if self.built[slot].is_none()
             || self
@@ -534,7 +368,9 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
         };
         let set = Pipelines::build(&registered, 7, read).unwrap();
 
-        let glow = set.resolve(&id("example:glow")).unwrap();
+        let glow = set
+            .resolve(&id("example:glow"), PipelineKind::Required)
+            .unwrap();
         assert_eq!(set.slot(glow), Ok(0));
         let built = set.built()[0].as_ref().unwrap();
         assert_eq!(
@@ -542,26 +378,32 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
             (PipelineBlend::Additive, WorldDepth::ThroughWalls)
         );
         assert_eq!(
-            set.resolve(&id("example:broken")),
+            set.resolve(&id("example:glow"), PipelineKind::Optional),
+            Err(RenderPipelineError::Unknown)
+        );
+        assert_eq!(
+            set.resolve(&id("example:broken"), PipelineKind::Optional),
             Err(RenderPipelineError::Invalid)
         );
         assert_eq!(
-            set.resolve(&id("example:missing")),
+            set.resolve(&id("example:missing"), PipelineKind::Optional),
             Err(RenderPipelineError::Invalid)
         );
         assert_eq!(
-            set.resolve(&id("example:never")),
+            set.resolve(&id("example:never"), PipelineKind::Required),
             Err(RenderPipelineError::Unknown)
         );
 
         // The GPU turns down a pipeline the load built: it is reported once, a handle taken
         // before is refused, and the rest still draw.
-        let driver = set.resolve(&id("example:driver")).unwrap();
+        let driver = set
+            .resolve(&id("example:driver"), PipelineKind::Optional)
+            .unwrap();
         assert!(set.invalidate(3));
         assert!(!set.invalidate(3));
         assert_eq!(set.slot(driver), Err(RenderPipelineError::Invalid));
         assert_eq!(
-            set.resolve(&id("example:driver")),
+            set.resolve(&id("example:driver"), PipelineKind::Optional),
             Err(RenderPipelineError::Invalid)
         );
         assert_eq!(set.slot(glow), Ok(0));
@@ -575,7 +417,9 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
             pipeline("example:extra", "example:extra").optional(),
         ];
         let before = Pipelines::build(&registered, 7, |_| Ok(GLOW.to_owned())).unwrap();
-        let handle = before.resolve(&id("example:beam")).unwrap();
+        let handle = before
+            .resolve(&id("example:beam"), PipelineKind::Required)
+            .unwrap();
 
         // A pack broke the required beam and the optional extra: the load fails naming the
         // required one only, so nothing of it is published and the previous load still draws.
@@ -609,20 +453,24 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
     fn a_reload_makes_old_handles_stale_and_can_fix_or_break_a_pipeline() {
         let registered = [pipeline("example:glow", "example:glow").optional()];
         let before = Pipelines::build(&registered, 7, |_| Ok(GLOW.to_owned())).unwrap();
-        let handle = before.resolve(&id("example:glow")).unwrap();
+        let handle = before
+            .resolve(&id("example:glow"), PipelineKind::Optional)
+            .unwrap();
 
         // A pack replaced the file with one that doesn't compile: the pipeline is invalid in
         // the new load, and the old handle is stale there, not silently redirected.
         let broken = Pipelines::build(&registered, 8, |_| Ok("garbage".to_owned())).unwrap();
         assert_eq!(broken.slot(handle), Err(RenderPipelineError::Stale));
         assert_eq!(
-            broken.resolve(&id("example:glow")),
+            broken.resolve(&id("example:glow"), PipelineKind::Optional),
             Err(RenderPipelineError::Invalid)
         );
 
         let fixed = Pipelines::build(&registered, 9, |_| Ok(GLOW.to_owned())).unwrap();
         assert_eq!(fixed.slot(handle), Err(RenderPipelineError::Stale));
-        let again = fixed.resolve(&id("example:glow")).unwrap();
+        let again = fixed
+            .resolve(&id("example:glow"), PipelineKind::Optional)
+            .unwrap();
         assert_eq!(fixed.slot(again), Ok(0));
     }
 
@@ -667,131 +515,33 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
     }
 
     #[test]
-    fn register_checks_builtin_required_and_optional_registries_and_duplicates() {
-        use mod_api::__private::game::RegistrationContextNew;
-        use mod_api::{Hooks, ModEntry, RegisterRenderPipelinesEvent, RegistrationContext};
+    fn resolve_distinguishes_required_and_optional_pipelines_in_either_order() {
+        let optional_first = [
+            pipeline("example:shared", "example:optional_glow").optional(),
+            pipeline("example:shared", "example:required_glow"),
+        ];
+        let set = Pipelines::build(&optional_first, 11, |_| Ok(GLOW.to_owned())).unwrap();
+        let optional = set
+            .resolve(&id("example:shared"), PipelineKind::Optional)
+            .unwrap();
+        let required = set
+            .resolve(&id("example:shared"), PipelineKind::Required)
+            .unwrap();
+        assert_eq!(set.slot(optional), Ok(0));
+        assert_eq!(set.slot(required), Ok(1));
 
-        assert!(BUILTIN_REQUIRED_PIPELINES.windows(2).all(|w| w[0] < w[1]));
-        assert!(BUILTIN_OPTIONAL_PIPELINES.windows(2).all(|w| w[0] < w[1]));
-
-        struct Register(&'static [(&'static str, bool)]);
-        #[mod_api::__subscriptions]
-        impl Hooks for Register {
-            fn register_render_pipelines(
-                &self,
-                _: &RegistrationContext,
-                event: &mut RegisterRenderPipelinesEvent<'_>,
-            ) {
-                for &(name, optional) in self.0 {
-                    let p = pipeline(name, name);
-                    event.register(if optional { p.optional() } else { p });
-                }
-            }
-        }
-
-        // Free `minecraft:` location plus cross-registry reuse (optional at a built-in
-        // required location, required at a built-in optional location) are all allowed.
-        mod_platform::testing::with_mods(
-            vec![
-                ModEntry::new(
-                    "first",
-                    Box::new(Register(&[
-                        ("minecraft:glow", false),
-                        ("minecraft:pipeline/solid_terrain", true),
-                        ("minecraft:pipeline/wireframe", false),
-                        ("other:beam", false),
-                    ])),
-                ),
-                ModEntry::new("second", Box::new(Register(&[("second:halo", false)]))),
-            ]
-            .into(),
-            || {
-                let mut staged = Vec::new();
-                mod_api::dispatch_register_render_pipelines(
-                    &RegistrationContext::new(),
-                    &mut staged,
-                );
-                let slot = OnceLock::new();
-                register_into(&slot, staged).unwrap();
-                let stored = slot.get().unwrap();
-                assert_eq!(stored.len(), 5);
-                assert_eq!(stored[0].id, id("minecraft:glow"));
-                assert_eq!(stored[0].owner(), "first");
-                assert_eq!(stored[1].id, id("minecraft:pipeline/solid_terrain"));
-                assert!(stored[1].optional);
-                assert_eq!(stored[2].id, id("minecraft:pipeline/wireframe"));
-                assert!(!stored[2].optional);
-                assert_eq!(stored[3].id, id("other:beam"));
-                assert_eq!(stored[4].id, id("second:halo"));
-                assert_eq!(stored[4].owner(), "second");
-            },
-        );
-
-        // Built-in required collision fails naming the ID and mod.
-        mod_platform::testing::with_mods(
-            vec![ModEntry::new(
-                "first",
-                Box::new(Register(&[("minecraft:pipeline/solid_terrain", false)])),
-            )]
-            .into(),
-            || {
-                let mut staged = Vec::new();
-                mod_api::dispatch_register_render_pipelines(
-                    &RegistrationContext::new(),
-                    &mut staged,
-                );
-                let slot = OnceLock::new();
-                let error = register_into(&slot, staged).unwrap_err();
-                assert!(
-                    error.contains("minecraft:pipeline/solid_terrain"),
-                    "{error}"
-                );
-                assert!(error.contains("first"), "{error}");
-                assert!(slot.get().is_none());
-            },
-        );
-
-        // Built-in optional collision fails naming the ID and mod.
-        mod_platform::testing::with_mods(
-            vec![ModEntry::new(
-                "first",
-                Box::new(Register(&[("minecraft:pipeline/wireframe", true)])),
-            )]
-            .into(),
-            || {
-                let mut staged = Vec::new();
-                mod_api::dispatch_register_render_pipelines(
-                    &RegistrationContext::new(),
-                    &mut staged,
-                );
-                let slot = OnceLock::new();
-                let error = register_into(&slot, staged).unwrap_err();
-                assert!(error.contains("minecraft:pipeline/wireframe"), "{error}");
-                assert!(error.contains("first"), "{error}");
-                assert!(slot.get().is_none());
-            },
-        );
-
-        // Mod IDs collide even across required and optional registrations: lookup uses only the ID.
-        mod_platform::testing::with_mods(
-            vec![
-                ModEntry::new("first", Box::new(Register(&[("shared:glow", false)]))),
-                ModEntry::new("second", Box::new(Register(&[("shared:glow", true)]))),
-            ]
-            .into(),
-            || {
-                let mut staged = Vec::new();
-                mod_api::dispatch_register_render_pipelines(
-                    &RegistrationContext::new(),
-                    &mut staged,
-                );
-                let slot = OnceLock::new();
-                let error = register_into(&slot, staged).unwrap_err();
-                assert!(error.contains("shared:glow"), "{error}");
-                assert!(error.contains("first"), "{error}");
-                assert!(error.contains("second"), "{error}");
-                assert!(slot.get().is_none());
-            },
-        );
+        let required_first = [
+            pipeline("example:shared", "example:required_glow"),
+            pipeline("example:shared", "example:optional_glow").optional(),
+        ];
+        let set = Pipelines::build(&required_first, 12, |_| Ok(GLOW.to_owned())).unwrap();
+        let required = set
+            .resolve(&id("example:shared"), PipelineKind::Required)
+            .unwrap();
+        let optional = set
+            .resolve(&id("example:shared"), PipelineKind::Optional)
+            .unwrap();
+        assert_eq!(set.slot(required), Ok(0));
+        assert_eq!(set.slot(optional), Ok(1));
     }
 }

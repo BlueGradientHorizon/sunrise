@@ -308,7 +308,8 @@ impl Game<'_> {
     /// faded text on the backdrop over everything, unlit. Otherwise once, depth tested and
     /// translucent: the faded text on the backdrop in the caller's light. The faded text's alpha
     /// (unless `faded_alpha`) and the backdrop's follow the player's text background opacity.
-    /// Refused whole, before layout, for a position that is not finite.
+    /// Refused whole, before layout, for a position that is not finite; any newly
+    /// rasterized glyphs are uploaded with the label.
     pub(super) fn native_world_name_tag(
         &self,
         draw: &mut WorldGeometry,
@@ -366,6 +367,7 @@ impl Game<'_> {
         draw.lines(lines)
     }
     /// Submit unlit, alpha-blended world quads atomically, using the white atlas texel.
+    /// Refuses non-finite coordinates; quad storage grows dynamically into the GPU buffers.
     pub(super) fn native_world_draw_quads(
         &self,
         draw: &mut WorldGeometry,
@@ -373,8 +375,9 @@ impl Game<'_> {
     ) -> Result<(), DrawError> {
         draw.quads(quads)
     }
-    /// Submit quads drawn by a mod pipeline atomically: the handle is checked against the
-    /// published pipelines once, then the batch is validated and queued or refused whole.
+    /// Submit quads drawn by a mod pipeline: the handle is checked against the published
+    /// pipelines once, non-finite quads are skipped individually without rejecting valid quads
+    /// in the same slice, and quad storage grows dynamically into the GPU buffers.
     pub(super) fn native_world_draw_pipeline_quads(
         &self,
         draw: &mut WorldGeometry,
@@ -387,7 +390,8 @@ impl Game<'_> {
             .mod_pipelines
             .slot(pipeline)
             .map_err(PipelineDrawError::Pipeline)?;
-        draw.pipeline_quads(slot, quads)
+        draw.pipeline_quads(slot, quads);
+        Ok(())
     }
     /// Resolve `model` once, cull copies against the frustum first, and skip any individual
     /// invalid visible copy without rolling back valid copies.

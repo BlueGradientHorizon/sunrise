@@ -9,8 +9,8 @@ use crate::gfx::world_primitives::{
 use crate::{gizmos, mesher::Vertex};
 use glam::{DVec3, Mat4, Vec3, Vec4};
 use mod_api::{
-    DrawError, InstanceError, ModelInstance, OitStage, PipelineDrawError, PipelineQuad,
-    PreparedWorldDraw, PreparedWorldDrawError, RenderLevelStage, WorldDepth, WorldLine, WorldQuad,
+    DrawError, InstanceError, ModelInstance, OitStage, PipelineQuad, PreparedWorldDraw,
+    PreparedWorldDrawError, RenderLevelStage, WorldDepth, WorldLine, WorldQuad,
 };
 
 /// Initial pre-reservation hint for model copies per view; storage grows dynamically.
@@ -503,7 +503,7 @@ impl WorldGeometry {
         }
         Ok(())
     }
-    /// Append an entire quad batch or leave the output unchanged.
+    /// Append an entire quad batch or leave the output unchanged on non-finite coordinates.
     pub fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
         self.validate_positions(quads.iter().flat_map(|q| q.corners))?;
         let (out_tested, out_through) = match self.active {
@@ -578,27 +578,11 @@ impl WorldGeometry {
     pub fn labels(&self) -> [&[Vertex]; 2] {
         [&self.labels[0], &self.labels[1]]
     }
-    /// Append an entire batch of quads drawn by the mod pipeline in `slot`, or leave the
-    /// output unchanged. The caller has resolved the handle; quads that follow the last ones
-    /// with the same pipeline and stage join their run.
-    pub fn pipeline_quads(
-        &mut self,
-        slot: u32,
-        quads: &[PipelineQuad],
-    ) -> Result<(), PipelineDrawError> {
-        self.validate_positions(quads.iter().flat_map(|q| q.corners))
-            .map_err(|_| PipelineDrawError::NonFinite)?;
-        if quads
-            .iter()
-            .flat_map(|q| q.uv)
-            .flatten()
-            .any(|c| !c.is_finite())
-        {
-            return Err(PipelineDrawError::NonFinite);
-        }
-        if quads.is_empty() {
-            return Ok(());
-        }
+    /// Append valid quads drawn by the mod pipeline in `slot`. The caller has resolved the
+    /// handle; quads with any non-finite corner, camera-relative `f32` coordinate, or UV are
+    /// skipped individually without rejecting valid quads in the same slice. Accepted quads
+    /// that follow the last ones with the same pipeline and stage join their run.
+    pub fn pipeline_quads(&mut self, slot: u32, quads: &[PipelineQuad]) {
         let (vertices, runs, stage) = match self.active {
             ActiveTarget::Primary => (
                 &mut self.pipeline_quads,
@@ -610,26 +594,38 @@ impl WorldGeometry {
                 &mut self.custom.pipeline_runs,
                 STAGE_CUSTOM_GEOMETRY as u32,
             ),
-            ActiveTarget::Oit => return Ok(()),
+            ActiveTarget::Oit => return,
         };
+        let mut pushed = 0u32;
         for q in quads {
+            let corners_finite = q.corners.iter().all(|corner| {
+                corner
+                    .iter()
+                    .zip(self.camera)
+                    .all(|(&p, cam)| p.is_finite() && ((p - cam) as f32).is_finite())
+            });
+            if !corners_finite || q.uv.iter().flatten().any(|c| !c.is_finite()) {
+                continue;
+            }
             let color = crate::world_primitives::vertex_color(q.color, 255);
             vertices.extend((0..4).map(|corner| PipelineVertex {
                 pos: std::array::from_fn(|i| (q.corners[corner][i] - self.camera[i]) as f32),
                 uv: q.uv[corner],
                 color,
             }));
+            pushed += 1;
         }
-        let count = quads.len() as u32;
+        if pushed == 0 {
+            return;
+        }
         match runs.last_mut() {
-            Some(run) if run.slot == slot && run.stage == stage => run.quads += count,
+            Some(run) if run.slot == slot && run.stage == stage => run.quads += pushed,
             _ => runs.push(PipelineRun {
                 slot,
                 stage,
-                quads: count,
+                quads: pushed,
             }),
         }
-        Ok(())
     }
     /// Borrow the existing renderer's batch, with no copying or frame allocation. The frame's
     /// builder names the pipeline set the queued slots belong to.
@@ -901,7 +897,7 @@ mod tests {
         draw.lines(&[line(91.0, WorldDepth::ThroughWalls)]).unwrap();
         draw.quads(&[quad(92.0, WorldDepth::Tested)]).unwrap();
         draw.quads(&[quad(93.0, WorldDepth::ThroughWalls)]).unwrap();
-        draw.pipeline_quads(7, &[pquad(94.0)]).unwrap();
+        draw.pipeline_quads(7, &[pquad(94.0)]);
 
         // Deferred custom geometry stays isolated until finalize.
         assert!(draw.batch().is_empty());
@@ -910,12 +906,12 @@ mod tests {
         draw.begin_pass_stage(AfterOpaqueBlocks);
         draw.lines(&[line(10.0, WorldDepth::Tested)]).unwrap();
         draw.quads(&[quad(11.0, WorldDepth::Tested)]).unwrap();
-        draw.pipeline_quads(2, &[pquad(12.0)]).unwrap();
+        draw.pipeline_quads(2, &[pquad(12.0)]);
 
         draw.begin_pass_stage(AfterWeather);
         draw.lines(&[line(20.0, WorldDepth::ThroughWalls)]).unwrap();
         draw.quads(&[quad(21.0, WorldDepth::ThroughWalls)]).unwrap();
-        draw.pipeline_quads(3, &[pquad(22.0)]).unwrap();
+        draw.pipeline_quads(3, &[pquad(22.0)]);
 
         draw.finalize();
         // Calling finalize again is a no-op.
@@ -986,7 +982,7 @@ mod tests {
         draw.begin_pass_stage(AfterOpaqueBlocks);
         draw.lines(&[line(5.0, WorldDepth::Tested)]).unwrap();
         draw.quads(&[quad(6.0, WorldDepth::Tested)]).unwrap();
-        draw.pipeline_quads(1, &[pquad(7.0)]).unwrap();
+        draw.pipeline_quads(1, &[pquad(7.0)]);
 
         draw.begin_pass_stage(OitTranslucent(OitStage::DepthBounds));
         draw.quads(&[quad(1.0, WorldDepth::Tested)]).unwrap();
@@ -1005,7 +1001,7 @@ mod tests {
             .unwrap();
         draw.lines(&[line(14.0, WorldDepth::ThroughWalls)]).unwrap();
         // Pipeline quads are unavailable in OIT sub-passes and leave standard pipeline runs alone.
-        draw.pipeline_quads(9, &[pquad(99.0)]).unwrap();
+        draw.pipeline_quads(9, &[pquad(99.0)]);
 
         draw.begin_pass_stage(AfterLevel);
         draw.finalize();
@@ -1109,6 +1105,7 @@ mod tests {
         );
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
         assert!(draw.batch().is_empty());
+        assert_eq!(draw.usage().quads, 0);
         assert_eq!(
             capacities,
             (
@@ -1119,7 +1116,7 @@ mod tests {
     }
 
     #[test]
-    fn pipeline_quads_are_atomic_grow_dynamically_and_run_by_pipeline_and_stage() {
+    fn pipeline_quads_skip_non_finite_grow_dynamically_and_run_by_pipeline_and_stage() {
         use RenderLevelStage::*;
         let mut draw = WorldGeometry::default();
         draw.reset([30_000_000.0, 20.0, 0.0], Mat4::IDENTITY, [0.5, 0.5]);
@@ -1135,15 +1132,15 @@ mod tests {
             0x80402010,
         );
         draw.begin_pass_stage(AfterOpaqueBlocks);
-        draw.pipeline_quads(4, &[quad, quad]).unwrap();
+        draw.pipeline_quads(4, &[quad, quad]);
         // The same pipeline at the same stage joins the run; another pipeline starts one, and
         // so does the first pipeline again after it, to keep the order submitted.
-        draw.pipeline_quads(4, &[quad]).unwrap();
-        draw.pipeline_quads(1, &[quad]).unwrap();
-        draw.pipeline_quads(4, &[quad]).unwrap();
+        draw.pipeline_quads(4, &[quad]);
+        draw.pipeline_quads(1, &[quad]);
+        draw.pipeline_quads(4, &[quad]);
         draw.begin_pass_stage(AfterWeather);
-        draw.pipeline_quads(4, &[quad]).unwrap();
-        draw.pipeline_quads(4, &[]).unwrap();
+        draw.pipeline_quads(4, &[quad]);
+        draw.pipeline_quads(4, &[]);
 
         let pipelines = draw.batch().pipelines;
         let run = |slot, stage, quads| PipelineRun { slot, stage, quads };
@@ -1162,27 +1159,29 @@ mod tests {
         assert_eq!(corner.color.to_le_bytes(), [0x40, 0x20, 0x10, 0x80]);
         assert!(!draw.batch().is_empty());
 
-        // A fault anywhere refuses the whole batch.
+        // Non-finite quads are skipped individually without rejecting valid quads in the slice.
         let mut bad_corner = quad;
         bad_corner.corners[3][1] = f64::NAN;
         let mut bad_uv = quad;
         bad_uv.uv[1][0] = f32::INFINITY;
-        for bad in [bad_corner, bad_uv] {
-            assert_eq!(
-                draw.pipeline_quads(4, &[quad, bad]),
-                Err(PipelineDrawError::NonFinite)
-            );
-        }
+        let mut overflow_corner = quad;
+        overflow_corner.corners[0][0] = f64::MAX;
+        draw.pipeline_quads(4, &[bad_corner, bad_uv, overflow_corner]);
         assert_eq!(draw.batch().pipelines.vertices.len(), 24);
+        draw.pipeline_quads(4, &[quad, bad_corner, bad_uv, quad]);
+        assert_eq!(draw.batch().pipelines.vertices.len(), 32);
+        assert_eq!(
+            draw.batch().pipelines.runs.last(),
+            Some(&run(4, STAGE_AFTER_WEATHER as u32, 3))
+        );
 
         // Plain and pipeline quads both grow past the initial hint.
         let plain = WorldQuad::new(quad.corners, !0, WorldDepth::Tested);
         draw.quads(&vec![plain; CAPACITY as usize]).unwrap();
-        draw.pipeline_quads(4, &vec![quad; CAPACITY as usize])
-            .unwrap();
+        draw.pipeline_quads(4, &vec![quad; CAPACITY as usize]);
         assert_eq!(
             draw.batch().pipelines.vertices.len(),
-            (6 + CAPACITY as usize) * 4
+            (8 + CAPACITY as usize) * 4
         );
         let capacity = (
             draw.pipeline_quads.capacity(),
@@ -1459,7 +1458,7 @@ mod tests {
         let capacities = draw.labels.each_ref().map(Vec::capacity);
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
         assert_eq!(draw.labels().map(<[Vertex]>::len), [0, 0]);
-        assert_eq!(draw.labels.each_ref().map(Vec::capacity), capacities);
+        assert_eq!(draw.usage().quads, 0);
     }
 
     #[test]

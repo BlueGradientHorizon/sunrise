@@ -517,13 +517,17 @@ pub trait WorldDrawContext {
         unimplemented!("WorldDrawContext::world_draw_lines")
     }
     /// Submit unlit, alpha-blended world quads atomically, using the white atlas texel.
+    /// Refuses non-finite coordinates ([`DrawError::NonFinite`]); quad storage grows
+    /// dynamically into the GPU buffers with no fixed per-view cap.
     fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
         unimplemented!("WorldDrawContext::world_draw_quads")
     }
-    /// Submit world quads drawn by the mod pipeline `pipeline`, atomically: its shader gets each
-    /// quad's texture coordinate and colour, and its blend and depth modes apply. Within a stage
-    /// they draw after its plain quads and lines, in the order submitted. On `Err`, nothing
-    /// from this call is drawn.
+    /// Submit world quads drawn by the mod pipeline `pipeline`: its shader gets each
+    /// quad's texture coordinate and colour, and its blend and depth modes apply. Checks
+    /// `RenderPipelineRef` validity and staleness ([`PipelineDrawError::Pipeline`]), skips
+    /// any quad with non-finite coordinates or UVs individually without rejecting valid quads
+    /// in the same slice, and lets quad storage grow dynamically into the GPU buffers. Within
+    /// a stage, pipeline quads draw after its plain quads and lines, in the order submitted.
     fn pipeline_quads(
         &mut self,
         pipeline: RenderPipelineRef,
