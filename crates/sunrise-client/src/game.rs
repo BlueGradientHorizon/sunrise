@@ -7241,6 +7241,7 @@ impl Game<'_> {
             );
             self.cursor = pointer.subpixel();
         }
+        self.pack.item_renderer.end_gui_frame();
         batch
     }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
@@ -10179,10 +10180,7 @@ impl Game<'_> {
             &self.settings.sunrise,
             shader_packs::picked_pack_shape(&self.settings),
             display,
-            (
-                self.settings.file.int("textureFiltering"),
-                self.settings.file.int("maxAnisotropyBit"),
-            ),
+            self.settings.texture_atlas_settings(),
         )?;
         clouds?;
         (renderer.screenshot, renderer.screenshot_result) = (screenshot, screenshot_result);

@@ -1385,6 +1385,8 @@ impl Renderer {
             native_cutout_quads,
             native_cutout_mipped_quads,
             native_translucent_quads,
+            banner_pattern_quads,
+            glint_only_quads,
         ] = self.entity_batch.update(
             entities,
             frame.additive,
@@ -1414,7 +1416,9 @@ impl Renderer {
             + native_solid_quads
             + native_cutout_quads
             + native_cutout_mipped_quads
-            + native_translucent_quads;
+            + native_translucent_quads
+            + banner_pattern_quads
+            + glint_only_quads;
         laps.lap("r_draw_lists");
         // Where the tail of materials the classic and the improved passes
         // both draw ends: the shadows, particles and items count back from it.
@@ -1426,7 +1430,9 @@ impl Renderer {
             - native_solid_quads
             - native_cutout_quads
             - native_cutout_mipped_quads
-            - native_translucent_quads;
+            - native_translucent_quads
+            - banner_pattern_quads
+            - glint_only_quads;
         let native_clouds = self.native.as_ref().is_none_or(|n| n.vanilla_clouds);
         // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
         // the native mesh in this same frame.
@@ -2840,6 +2846,30 @@ impl Renderer {
                 pass.set_bind_group(0, &self.group, &[]);
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             }
+            if banner_pattern_quads > 0 {
+                pass.stage(self.own_timing.as_mut(), "banner patterns");
+                pass.set_pipeline(&self.banner_pattern_pipeline);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..banner_pattern_quads * 6,
+                    ((world_quads - glint_only_quads - banner_pattern_quads) * 4) as i32,
+                    0..1,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if glint_only_quads > 0 {
+                pass.stage(self.own_timing.as_mut(), "glint overlay");
+                pass.set_pipeline(&self.glint_only_pipeline);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..glint_only_quads * 6,
+                    ((world_quads - glint_only_quads) * 4) as i32,
+                    0..1,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             if self.explicit_opaque_particles.any() {
                 pass.stage(self.own_timing.as_mut(), "opaque provider particles");
                 pass.set_pipeline(&self.particle_pipelines.opaque);
@@ -2902,6 +2932,8 @@ impl Renderer {
             // alpha/mipmap policies and ordinary opaque depth. Storage follows
             // the existing materials without moving their indices or frame tails.
             let mut first = world_quads
+                - glint_only_quads
+                - banner_pattern_quads
                 - native_solid_quads
                 - native_cutout_quads
                 - native_cutout_mipped_quads
@@ -2933,7 +2965,11 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..native_translucent_quads * 6,
-                    ((world_quads - native_translucent_quads) * 4) as i32,
+                    ((world_quads
+                        - glint_only_quads
+                        - banner_pattern_quads
+                        - native_translucent_quads)
+                        * 4) as i32,
                     0..1,
                 );
                 pass.set_bind_group(0, &self.group, &[]);
@@ -3537,7 +3573,12 @@ impl Renderer {
                 pass.set_pipeline(&self.depth_reset);
                 pass.set_bind_group(0, &self.group, &[]);
                 pass.draw(0..3, 0..1);
-                self.draw_hand(&mut pass, hand_quads, world_quads + additive_quads);
+                self.draw_hand(
+                    &mut pass,
+                    frame.hand,
+                    hand_quads,
+                    world_quads + additive_quads,
+                );
             }
         }
         let lifts_world = output::lifts_world(

@@ -38,7 +38,7 @@ pub(super) fn build_renderer(
     settings: &sunrise_client::graphics::Graphics,
     shader_pack: shader_packs::PickedPack,
     display: sunrise_client::gfx::DisplayReading,
-    filtering: (i32, i32),
+    filtering: (i32, i32, i32),
 ) -> Result<(Renderer, std::result::Result<(), String>)> {
     let assets = &pack.render;
     let atlas = &gui.atlas;
@@ -100,8 +100,11 @@ pub(super) fn build_renderer(
         let text = &atlas.text_shaders;
         (text.gui.as_deref()).map(|p| (p, &text.expressions.gui[..]))
     });
-    pack.item_renderer
-        .prepare_glint_atlas(renderer.device.limits().max_texture_dimension_2d, filtering)?;
+    pack.item_renderer.prepare_glint_atlas_with_mips(
+        renderer.device.limits().max_texture_dimension_2d,
+        (filtering.0, filtering.1),
+        filtering.2,
+    )?;
     renderer.set_lines_shader(
         (atlas.lines_shader.as_deref()).map(|p| (p, &atlas.lines_expressions[..])),
     );
