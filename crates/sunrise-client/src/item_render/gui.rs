@@ -338,6 +338,40 @@ impl DrawnKey {
     }
 }
 
+/// Vanilla's pre-placement GUI pose (`GuiItemAtlas.drawToSlot` or `OversizedItemRenderer`)
+/// and the screen-space origin `(rel_x0, rel_y0)` of that render target relative to `(x, y)`.
+fn gui_target_pose(state: &ItemRenderState, gui_scale: f32) -> (Mat4, f32, f32) {
+    if state.oversized_in_gui {
+        let (lo, hi) = state.bounding_box();
+        let actual_x_size = ((f64::from(hi.x) - f64::from(lo.x)) * 16.0).ceil() as i32;
+        let actual_y_size = ((f64::from(hi.y) - f64::from(lo.y)) * 16.0).ceil() as i32;
+        if actual_x_size > 16 || actual_y_size > 16 {
+            let floored_x_offset = ((f64::from(lo.x) * 16.0) as f32).floor() as i32;
+            let floored_y_offset = ((f64::from(hi.y) * 16.0) as f32).floor() as i32;
+            let rel_x0 = floored_x_offset + 8;
+            let rel_y0 = -floored_y_offset + 8;
+            let width = actual_x_size as f32 * gui_scale;
+            let height = actual_y_size as f32 * gui_scale;
+            let scale = gui_scale * 16.0;
+            let center_x = (rel_x0 + rel_x0 + actual_x_size) as f32 * 0.5;
+            let center_y = (rel_y0 + rel_y0 + actual_y_size) as f32 * 0.5;
+            let pose = Mat4::from_translation(Vec3::new(width * 0.5, height * 0.5, 0.0))
+                * Mat4::from_scale(Vec3::new(scale, scale, -scale))
+                * Mat4::from_scale(Vec3::new(1.0, -1.0, -1.0))
+                * Mat4::from_translation(Vec3::new(
+                    (8.0 - center_x) / 16.0,
+                    (center_y - 8.0) / 16.0,
+                    0.0,
+                ));
+            return (pose, rel_x0 as f32, rel_y0 as f32);
+        }
+    }
+    let slot_size = 16.0 * gui_scale;
+    let pose = Mat4::from_translation(Vec3::new(slot_size * 0.5, slot_size * 0.5, 0.0))
+        * Mat4::from_scale(Vec3::new(slot_size, -slot_size, slot_size));
+    (pose, 0.0, 0.0)
+}
+
 /// [`draw`] without the cache.
 #[allow(clippy::too_many_arguments)]
 fn draw_now(
@@ -351,10 +385,22 @@ fn draw_now(
     frame: GlintFrame,
     scissor: Option<[f32; 4]>,
 ) {
-    let pose = Mat4::from_translation(Vec3::new(x + 8.0, y + 8.0, 0.0))
-        * Mat4::from_scale(Vec3::new(16.0, -16.0, 16.0));
+    let gui_scale = batch.scale.max(1.0);
+    let (target_pose, rel_x0, rel_y0) = gui_target_pose(state, gui_scale);
     let mut quads: Vec<ItemQuad> = Vec::new();
-    state.submit(renderer, sprites, host, pose, &mut quads);
+    state.submit(renderer, sprites, host, target_pose, &mut quads);
+    // Place submitted target-space geometry onto the GUI screen after decal UV3 projection.
+    let origin_x = x + rel_x0;
+    let origin_y = y + rel_y0;
+    for q in &mut quads {
+        for p in &mut q.pos {
+            *p = Vec3::new(
+                origin_x + p.x / gui_scale,
+                origin_y + p.y / gui_scale,
+                p.z / gui_scale,
+            );
+        }
+    }
     let lights = if state.uses_block_light() {
         items_3d_lights()
     } else {

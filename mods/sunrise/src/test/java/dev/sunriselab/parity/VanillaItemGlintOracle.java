@@ -1130,16 +1130,18 @@ public final class VanillaItemGlintOracle {
             st.submit(new PoseStack(), col, 15728880, 0, 0);
             specialFoilJson.put(ctx.getSerializedName(), evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true));
         }
-        // Also check compass at GUI slot pose (translate(8,8,0) * scale(16,-16,16)) and a non-trivial world pose.
-        {
+        // Also check compass at GUI slot poses (scales 1, 2, 3) and a non-trivial world pose.
+        for (int guiScale : new int[] {1, 2, 3}) {
             ItemStackRenderState st = new ItemStackRenderState();
             resolver.updateForTopItem(st, glintCompass, ItemDisplayContext.GUI, null, null, 0);
             RecordingCollector col = new RecordingCollector();
             PoseStack ps = new PoseStack();
-            ps.translate(8.0F, 8.0F, 0.0F);
-            ps.scale(16.0F, -16.0F, 16.0F);
+            float slotSize = 16.0F * guiScale;
+            ps.translate(slotSize / 2.0F, slotSize / 2.0F, 0.0F);
+            ps.scale(slotSize, -slotSize, slotSize);
             st.submit(ps, col, 15728880, 0, 0);
-            specialFoilJson.put("gui_slot_pose", evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true));
+            String key = guiScale == 1 ? "gui_slot_pose" : ("gui_slot_scale_" + guiScale);
+            specialFoilJson.put(key, evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true));
         }
         {
             ItemStackRenderState st = new ItemStackRenderState();

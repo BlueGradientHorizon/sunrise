@@ -1301,6 +1301,91 @@ fn special_foil_preserves_degenerate_inverse_and_normal_overflow_direction() {
     fs::remove_dir_all(root).ok();
 }
 
+#[test]
+fn gui_special_foil_projects_in_slot_and_oversized_target_pose_before_screen_placement() {
+    let root = fixture("gui-slot-decal");
+    let data = crate::test_resources::item_data(
+        &root,
+        sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
+    )
+    .unwrap();
+    let renderer = ItemRenderer::load(
+        &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        &data,
+    )
+    .unwrap();
+    renderer.prepare_glint_atlas(16384, (0, 2)).unwrap();
+    let sprites = dummy_hud_sprites(&["item/enchanted_book"]);
+    let frame = GlintFrame {
+        millis: 123_456,
+        speed: 0.5,
+        alpha: 0.75,
+        sprite: true,
+    };
+
+    // Pack-model quad with a corner 2^-20 model units from slot center (0, 0, 0).
+    let eps = 2.0_f32.powi(-20);
+    let make_state = |offset: f32, oversized: bool| {
+        let mut st = state(
+            "minecraft:item/enchanted_book",
+            FoilType::Special,
+            DisplayContext::Gui,
+        );
+        let LayerGeometry::Quads(baked) = &mut st.layers[0].geometry else {
+            unreachable!();
+        };
+        let mut b = (**baked).clone();
+        b.quads[0].positions = [
+            [offset, 0.25, 0.0],
+            [offset, -0.25, 0.0],
+            [0.25, -0.25, 0.0],
+            [0.25, 0.25, 0.0],
+        ];
+        *baked = Arc::new(b);
+        if oversized {
+            st.oversized_in_gui = true;
+            st.layers[0].extents =
+                Arc::new(vec![Vec3::new(-1.0, -1.0, 0.0), Vec3::new(1.0, 1.0, 0.0)]);
+        }
+        st
+    };
+
+    let draw_glint_bits = |st: &ItemRenderState, scale: f32, x: f32, y: f32| -> Vec<[u32; 2]> {
+        let mut batch = crate::hud::HudBatch::scratch([1024, 1024]);
+        batch.scale = scale;
+        gui::draw_with_frame(st, &renderer, &sprites, &NoHost, &mut batch, x, y, frame);
+        batch
+            .vertices
+            .iter()
+            .filter(|v| v.uv[0] >= 2.0)
+            .map(|v| v.glint_uv.map(f32::to_bits))
+            .collect()
+    };
+
+    for oversized in [false, true] {
+        let shifted = make_state(eps, oversized);
+        let centered = make_state(0.0, oversized);
+        for scale in [1.0_f32, 2.0, 3.0] {
+            let at_origin = draw_glint_bits(&shifted, scale, 0.0, 0.0);
+            let at_centered = draw_glint_bits(&centered, scale, 0.0, 0.0);
+            assert!(!at_origin.is_empty());
+            assert_ne!(
+                at_origin, at_centered,
+                "oversized={oversized} scale={scale}: 2^-20 offset from slot center must survive"
+            );
+            for (x, y) in [(8.0, 8.0), (512.0, 256.0), (520.0, 300.0)] {
+                let at_pos = draw_glint_bits(&shifted, scale, x, y);
+                assert_eq!(
+                    at_pos, at_origin,
+                    "oversized={oversized} scale={scale} at ({x}, {y}) must keep identical decal UVs"
+                );
+            }
+        }
+    }
+
+    fs::remove_dir_all(root).ok();
+}
+
 fn glint_witness_26_3() -> Value {
     let path = std::env::var("SUNRISE_ITEM_GLINT_WITNESS")
         .expect("SUNRISE_ITEM_GLINT_WITNESS must be set (run via tools/test_glint_parity.py)");
@@ -1816,6 +1901,10 @@ fn compass_special_foil_uses_decal_uv_26_3() {
 
     let gui_slot_pose = Mat4::from_translation(Vec3::new(8.0, 8.0, 0.0))
         * Mat4::from_scale(Vec3::new(16.0, -16.0, 16.0));
+    let gui_slot_scale_2 = Mat4::from_translation(Vec3::new(16.0, 16.0, 0.0))
+        * Mat4::from_scale(Vec3::new(32.0, -32.0, 32.0));
+    let gui_slot_scale_3 = Mat4::from_translation(Vec3::new(24.0, 24.0, 0.0))
+        * Mat4::from_scale(Vec3::new(48.0, -48.0, 48.0));
     // Match `VanillaItemGlintOracle.java`'s JOML `PoseStack` (`Quaternionf().rotationY(0.7F)`).
     let mut gp = crate::camera::joml::Mat4::IDENTITY;
     gp.translate(1.5, 2.0, -3.5);
@@ -1823,7 +1912,7 @@ fn compass_special_foil_uses_decal_uv_26_3() {
     gp.scale(0.5, 0.5, 0.5);
     let ground_posed = gp.to_glam();
 
-    let cases: [(&str, DisplayContext, Mat4); 9] = [
+    let cases: [(&str, DisplayContext, Mat4); 11] = [
         ("gui", DisplayContext::Gui, Mat4::IDENTITY),
         (
             "firstperson_righthand",
@@ -1844,6 +1933,8 @@ fn compass_special_foil_uses_decal_uv_26_3() {
         ),
         ("head", DisplayContext::Head, Mat4::IDENTITY),
         ("gui_slot_pose", DisplayContext::Gui, gui_slot_pose),
+        ("gui_slot_scale_2", DisplayContext::Gui, gui_slot_scale_2),
+        ("gui_slot_scale_3", DisplayContext::Gui, gui_slot_scale_3),
         ("ground_posed", DisplayContext::Ground, ground_posed),
     ];
 
