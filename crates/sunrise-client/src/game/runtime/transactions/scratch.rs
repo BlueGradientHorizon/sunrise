@@ -9,7 +9,7 @@
 use super::{Game, HashMap};
 use mod_api::{ItemPlace, ScratchSlot, TransactionContext};
 use std::sync::Arc;
-use sunrise_client::items::ItemStack;
+use sunrise_client::items::{ItemStack, Items};
 
 /// One lent scratch item place: its fixed item (`Some` for a single slot, `None` for two
 /// sequential dispenser slots), what of it is held (`None` once emptied), and a two-slot loan's
@@ -92,9 +92,10 @@ impl Game<'_> {
         let max = self.containers().max_stack(offer);
         let mut stack = held.stack;
         let mut overflow = held.overflow;
-        let mut put = fill(&mut stack, offer, offer.count, max);
+        let items = self.res.items();
+        let mut put = fill(&mut stack, offer, offer.count, max, items);
         if held.item.is_none() {
-            put += fill(&mut overflow, offer, offer.count - put, max);
+            put += fill(&mut overflow, offer, offer.count - put, max, items);
         }
         if put == 0 {
             return 0;
@@ -154,18 +155,67 @@ impl Game<'_> {
 
 /// Puts up to `count` of `offer` into `slot`, empty or holding the same item and components,
 /// up to `max`: how many went.
-fn fill(slot: &mut Option<ItemStack>, offer: &ItemStack, count: u32, max: u32) -> u32 {
-    let have = match slot {
-        Some(held) if !held.same_item_same_components(offer) => return 0,
-        Some(held) => held.count,
-        None => 0,
-    };
-    let put = max.saturating_sub(have).min(count);
-    if put > 0 {
-        *slot = Some(ItemStack {
-            count: have + put,
-            ..offer.clone()
+fn fill(
+    slot: &mut Option<ItemStack>,
+    offer: &ItemStack,
+    count: u32,
+    max: u32,
+    items: &Items,
+) -> u32 {
+    match slot {
+        Some(held) if held.same_item_same_components_with_prototype(offer, items) => {
+            let put = max.saturating_sub(held.count).min(count);
+            held.count += put;
+            put
+        }
+        Some(_) => 0,
+        None => {
+            let put = max.min(count);
+            if put > 0 {
+                *slot = Some(ItemStack {
+                    count: put,
+                    ..offer.clone()
+                });
+            }
+            put
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+    use sunrise_core::nbt::Tag;
+
+    #[test]
+    #[ignore = "daily"]
+    fn scratch_merges_explicit_default_components_without_overflow() {
+        if run_fresh_cases(
+            "game::transactions::scratch::tests::scratch_merges_explicit_default_components_without_overflow",
+            "SUNRISE_SCRATCH_COMPONENT_CHILD",
+            &["run"],
+        ) {
+            return;
+        }
+        with_game(|game| {
+            let held = ItemStack::new("minecraft:stick", 1);
+            let mut offer = held.clone();
+            offer
+                .data_mut()
+                .set_other("minecraft:max_stack_size", Some(Tag::Int(64)));
+            assert!(!held.same_item_same_components(&offer));
+            let taken = game
+                .scratch_scope(None, held, |game, _, place| {
+                    let ItemPlace::Scratch(slot) = *place else {
+                        unreachable!()
+                    };
+                    assert_eq!(game.scratch_insert(slot, &offer), 1);
+                    true
+                })
+                .unwrap();
+            assert_eq!(taken.stack, Some(ItemStack::new("minecraft:stick", 2)));
+            assert_eq!(taken.overflow, None);
         });
     }
-    put
 }
