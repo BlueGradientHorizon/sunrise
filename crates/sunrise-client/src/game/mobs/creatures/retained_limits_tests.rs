@@ -92,7 +92,7 @@ fn same_mob_guest_attack_survives_movement_panic() {
                     .unwrap()
                     .clone();
                 let mut mob = Mob::new(71, kind, Vec3::new(1.0, 80.0, 0.5), 0.0);
-                mob.on_ground = true;
+                mob.ground.on_ground = true;
                 mob.ai.speed = 0.2;
                 mob.ai.target = Some(sunrise_client::mobs::Who::Player);
                 game.mobs.push(mob);
@@ -181,7 +181,7 @@ fn repeated_producer_panic_has_bounded_batches() {
                         ),
                         0.0,
                     );
-                    mob.on_ground = true;
+                    mob.ground.on_ground = true;
                     game.mobs.push(mob);
                 }
                 let zombie = game
@@ -191,7 +191,7 @@ fn repeated_producer_panic_has_bounded_batches() {
                     .unwrap()
                     .clone();
                 let mut mob = Mob::new(9000, zombie, Vec3::new(1.0, 80.0, 0.5), 0.0);
-                mob.on_ground = true;
+                mob.ground.on_ground = true;
                 mob.ai.speed = 0.2;
                 game.mobs.push(mob);
                 for _ in 0..MAX_PENDING_MOB_PASSES {
@@ -200,7 +200,7 @@ fn repeated_producer_panic_has_bounded_batches() {
                             mob.extra.egg_time = 1;
                         } else {
                             mob.position = Vec3::new(1.0, 80.0, 0.5);
-                            mob.on_ground = true;
+                            mob.ground.on_ground = true;
                             mob.velocity = Vec3::ZERO;
                         }
                     }
@@ -279,7 +279,7 @@ fn repeated_producer_panic_has_bounded_batches() {
                 // Earlier failed passes retain physical progress; put this one
                 // healthy producer back in the loaded farm, not outside its chunks.
                 fresh.position = Vec3::new(14.0, 80.0, 14.0);
-                fresh.on_ground = true;
+                fresh.ground.on_ground = true;
                 fresh.velocity = Vec3::ZERO;
                 fresh.no_ai = false;
                 fresh.extra.egg_time = 1;
@@ -346,7 +346,7 @@ fn interrupted_refusal_stays_latched_until_empty() {
                 for (id, name) in [(71, "minecraft:chicken"), (9000, "minecraft:zombie")] {
                     let kind = game.res.mob_types().get(name).unwrap().clone();
                     let mut mob = Mob::new(id, kind, Vec3::new(1.0, 80.0, 0.5), 0.0);
-                    mob.on_ground = true;
+                    mob.ground.on_ground = true;
                     mob.ai.speed = 0.2;
                     game.mobs.push(mob);
                 }
@@ -456,7 +456,7 @@ fn push_only_failed_passes_are_refused_and_delivered_without_loss() {
                 ] {
                     let kind = game.res.mob_types().get(name).unwrap().clone();
                     let mut mob = Mob::new(id, kind, Vec3::new(x, 80.0, 0.5), 0.0);
-                    mob.on_ground = true;
+                    mob.ground.on_ground = true;
                     mob.ai.speed = 0.2;
                     mob.no_ai = id != 9000;
                     game.mobs.push(mob);
@@ -469,7 +469,7 @@ fn push_only_failed_passes_are_refused_and_delivered_without_loss() {
                     for (mob, x) in game.mobs.iter_mut().zip([1.2, 10.0, 1.0]) {
                         mob.position = Vec3::new(x, 80.0, 0.5);
                         mob.velocity = Vec3::ZERO;
-                        mob.on_ground = true;
+                        mob.ground.on_ground = true;
                         mob.ambient_timer = -10000;
                     }
                     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -600,7 +600,7 @@ fn successful_mixed_producers_are_bounded_behind_a_repeatedly_failing_consumer()
                             Vec3::new(if index == 16 { 1.2 } else { 1.0 }, 80.0, 0.5)
                         };
                         mob.velocity = Vec3::ZERO;
-                        mob.on_ground = true;
+                        mob.ground.on_ground = true;
                         mob.ambient_timer = -10000;
                         if index < 16 {
                             mob.extra.egg_time = if attempt % 2 == 1 { 1 } else { 100000 };

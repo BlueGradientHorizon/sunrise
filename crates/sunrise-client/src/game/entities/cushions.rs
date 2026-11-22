@@ -683,7 +683,7 @@ impl Game<'_> {
                 sunrise_client::mobs::living::teleports::snap_to(m, at);
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 m.extra.passenger = true;
                 m.ai.nav.stop();
             }
