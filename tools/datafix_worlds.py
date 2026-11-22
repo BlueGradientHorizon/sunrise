@@ -230,6 +230,7 @@ class Server:
             self.process.wait(120)
         except Exception:
             self.process.kill()
+            self.process.wait()   # the world folder and port are reused only once the process is gone
 
 
 def failed(lines):
@@ -459,7 +460,10 @@ def build(name, force=False):
         # change, so the grid cannot be cleared. The world is wanted for its level.dat alone: its spawn moves far from
         # the grid, the chunks of this first start are dropped, and the world is made again from there, so its saved
         # chunks never hold the grid.
-        server.run('setworldspawn -4000 70 -4000')
+        out = server.run('setworldspawn -4000 70 -4000')
+        if not any('Set the world spawn point' in line for line in out):
+            server.stop()
+            raise RuntimeError(f'{name}: setworldspawn was refused, so the grid would be saved: {out}')
         server.stop()
         shutil.rmtree(work / 'world' / 'region')
         server = Server(work, jar, port, scene.experiments(data_version), java(version), props)
