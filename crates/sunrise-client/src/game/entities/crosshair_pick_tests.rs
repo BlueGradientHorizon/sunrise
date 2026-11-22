@@ -152,10 +152,11 @@ fn sync_interaction_size(game: &mut Game<'_>, id: i32, width: f32, height: f32) 
 }
 
 fn ensure_chunk(game: &mut Game<'_>, cx: i32, cz: i32) {
-    game.world
-        .chunks
-        .entry((cx, cz))
-        .or_insert_with(|| Arc::new(Chunk::empty(cx, cz)));
+    if !game.world.chunks.contains_key(&(cx, cz)) {
+        game.world
+            .chunks
+            .insert((cx, cz), Arc::new(Chunk::empty(cx, cz)));
+    }
 }
 
 fn pin_entity_pose(
