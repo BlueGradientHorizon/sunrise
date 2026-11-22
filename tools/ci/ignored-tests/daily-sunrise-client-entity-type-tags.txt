@@ -1,1 +1,2 @@
 sunrise-client game::functions::tests::mob_entity_membership_follows_world_pack_reload lib daily resources
+sunrise-client-lib mobs::animal_brain::axolotl_parity_tests::axolotl_senses_content_prey_tagged_by_registry_id lib daily resources
