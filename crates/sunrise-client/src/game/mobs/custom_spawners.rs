@@ -73,8 +73,6 @@ impl Game<'_> {
                 mod_api::__private::CustomSpawnerStep::Builtin(SpawnerKind::Phantom) => {
                     self.tick_phantom_spawner(spawn_enemies);
                 }
-                mod_api::__private::CustomSpawnerStep::Builtin(_)
-                | mod_api::__private::CustomSpawnerStep::Skip => {}
                 mod_api::__private::CustomSpawnerStep::Mod(mut spawner) => {
                     let _ = mod_api::run_transaction(self, |game, _| {
                         spawner.tick(game, level, spawn_enemies)
@@ -83,6 +81,7 @@ impl Game<'_> {
                         list.put_back(at, spawner);
                     }
                 }
+                _ => {}
             }
             at += 1;
         }
@@ -93,7 +92,7 @@ impl Game<'_> {
 mod tests {
     use super::super::native_entity_refs::tests::{with_client_game, with_game};
     use super::*;
-    use mod_api::{CustomSpawner, Host, LevelRef, ObjectiveRenderType, ServerHost, Text};
+    use mod_api::{CustomSpawner, LevelRef, ObjectiveRenderType, ServerHost, Text};
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
