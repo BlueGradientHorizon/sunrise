@@ -77,7 +77,7 @@ impl Game<'_> {
         self.pad_radial_shown()
     }
 
-    /// ToastManager.extractRenderState: F1 and overlays hide all toasts without pausing them.
+    /// ToastManager.extractRenderState: F1 and overlays hide ordinary toasts without pausing them.
     /// A mod's HUD veto hides ordinary toasts, not mandatory diagnostics.
     pub(super) fn draw_every_toast(
         &mut self,
@@ -86,7 +86,7 @@ impl Game<'_> {
         gui_canceled: bool,
     ) {
         let overlay_or_replay = replay_playing || self.overlay_holds_view();
-        let diagnostic_hidden = overlay_or_replay || self.ui.player_hides_gui;
+        let diagnostic_hidden = overlay_or_replay;
         let hidden = overlay_or_replay || self.ui.hide_gui || gui_canceled;
         self.draw_toasts(batch, hidden);
         self.draw_tutorial_toasts(batch, hidden);

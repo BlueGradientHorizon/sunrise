@@ -69,7 +69,8 @@ pub trait PlayerWorldBackendMut {
     /// yaw wraps to -180..180 (`RespawnData.of`) and the `player_set_spawn` hook may cancel the
     /// change, which refuses it. Kept with the player's record. False for a stale or unavailable
     /// player, a dead one, a dimension the game doesn't have, a yaw that is not finite and a
-    /// canceled change.
+    /// canceled change. During `player_respawn_position` only, the removed original may set
+    /// this point even after death, so it can be copied to the replacement for future respawns.
     fn player_set_respawn_config(
         &mut self,
         player: PlayerRef,
@@ -98,7 +99,10 @@ pub trait PlayerWorldBackendMut {
         areas: &[ChunkArea],
     ) -> Result<(), ChunkAreaRefusal>;
     /// Side: both.
-    /// Simulate one client movement tick for this server player without changing the player. Refuses stale, absent, dead, spectator or riding players and invalid input.
+    /// Simulate one client movement tick for this server player without changing the player.
+    /// The usual closest-space velocity nudge accounts for solid collider boxes when a
+    /// collision scene is in scope. Refuses stale, absent, dead, spectator or riding players
+    /// and invalid input.
     fn player_simulate_move(
         &mut self,
         player: PlayerRef,
@@ -108,13 +112,13 @@ pub trait PlayerWorldBackendMut {
     /// Respawns a dead player as their client's Respawn button does
     /// (`ServerGamePacketListenerImpl.handleClientCommand`'s `PERFORM_RESPAWN`, then
     /// `PlayerList.respawn`): at their respawn point, else the world spawn, with
-    /// `player_respawned` heard. It is a call for outside every player's hook, and it
-    /// returns once the player is alive again. Each refusal changes nothing and is named by
+    /// `player_respawned` heard. Call outside any player's hook. A request takes effect only on root transaction commit and may
+    /// wait for the destination chunks before the player is alive again. Each refusal is named by
     /// `RespawnRefusal`, checked in this order: `Client`, `InPlayerHook` (a player's state is
     /// swapped in; call it from `server_tick`), `Stale` (no player on this server behind the
     /// handle), `NoConnection` (a fake player, or the world's own player in a single-player
     /// world) and `Alive` (health above 0 and the game not won: the Respawn button
     /// ignores exactly that player; one who has won the game and is watching the End poem is
-    /// respawned even alive, on the server's next tick, as the button does).
+    /// respawned even alive, as the button does).
     fn player_respawn(&mut self, player: PlayerRef) -> Result<(), RespawnRefusal>;
 }

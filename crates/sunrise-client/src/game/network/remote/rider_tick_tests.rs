@@ -19,7 +19,7 @@ fn a_boat_clamps_the_riders_yaw_without_changing_the_previous_yaw() {
         game.yaw = 200.0;
         game.rope_rot_old.0 = 180.0;
 
-        assert!(game.remote_ride(Keys::default(), 0).unwrap());
+        assert!(game.remote_ride(Keys::default()));
         assert_eq!(game.yaw, 255.0);
         assert_eq!(game.rope_rot_old.0, 180.0);
         server.shutdown();

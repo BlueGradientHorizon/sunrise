@@ -141,8 +141,12 @@ fn a_special_type_draws_by_its_renderer_or_fails_by_name() {
                 _ => None,
             })
         };
+    let decoders = ItemModelDecoders {
+        special: Some(&load),
+        ..Default::default()
+    };
     let decode = |json| {
-        ClientItem::from_json_with_specials(json, &load)
+        ClientItem::from_json_with_decoders(json, &decoders)
             .unwrap()
             .model
     };
@@ -177,17 +181,21 @@ fn a_registered_vanilla_override_error_rejects_only_its_enclosing_item() {
             {"type":"special","base":"a:bell","model":{"type":"bell"}}
         }]}
     ]}}"#;
+    let decoders = ItemModelDecoders {
+        special: Some(&load),
+        ..Default::default()
+    };
     // The same tree decodes with no registrations, so a builtin fallback would hide the error.
     assert!(ClientItem::from_json(composite).is_ok());
     assert_eq!(
-        ClientItem::from_json_with_specials(composite, &load)
+        ClientItem::from_json_with_decoders(composite, &decoders)
             .unwrap_err()
             .to_string(),
         "the bell override rejected its model"
     );
-    let other = ClientItem::from_json_with_specials(
+    let other = ClientItem::from_json_with_decoders(
         r#"{"model":{"type":"special","base":"a:shield","model":{"type":"shield"}}}"#,
-        &load,
+        &decoders,
     )
     .unwrap();
     assert!(matches!(
@@ -233,4 +241,256 @@ fn special_model_builtin_ownership_uses_the_decoder_identity() {
     assert!(!SpecialModel::is_builtin_type("example:bell"));
     assert!(SpecialModel::decode(&serde_json::json!({"type": "minecraft:bell"})).is_ok());
     assert!(SpecialModel::decode(&serde_json::json!({"type": "minecraft:foo"})).is_err());
+}
+
+#[test]
+fn registered_tint_model_range_and_select_decoders_override_builtins() {
+    let custom_tint = RegisteredTintSource(Arc::new("tint"));
+    let custom_model = RegisteredItemModel(Arc::new("model"));
+    let custom_fluid = RegisteredItemModel(Arc::new("fluid"));
+    let custom_range = RegisteredRangeProperty(Arc::new("range"));
+    let custom_select = RegisteredSelectProperty::new(
+        Arc::new("select"),
+        |value| {
+            value
+                .as_str()
+                .map(|s| RegisteredSelectKey::new(s.to_owned()))
+                .ok_or_else(|| SelectCaseDecodeError::Mismatch("expected string".to_owned()))
+        },
+        |a, b| Ok(a.downcast_ref::<String>() == b.downcast_ref::<String>()),
+    );
+
+    let load_tint = |kind: &str, _: &Map<String, Value>| -> std::result::Result<_, String> {
+        Ok((kind == "minecraft:constant").then(|| custom_tint.clone()))
+    };
+    let load_model = |kind: &str,
+                      _: &Map<String, Value>,
+                      _: &dyn Fn(&Value) -> Result<ItemModelNode>|
+     -> std::result::Result<_, String> {
+        match kind {
+            "minecraft:model" => Ok(Some(DecodedItemModel {
+                transformation: None,
+                model: custom_model.clone(),
+                models: Vec::new(),
+            })),
+            "neoforge:fluid_container" => Ok(Some(DecodedItemModel {
+                transformation: None,
+                model: custom_fluid.clone(),
+                models: Vec::new(),
+            })),
+            _ => Ok(None),
+        }
+    };
+    let load_range = |kind: &str, _: &Map<String, Value>| -> std::result::Result<_, String> {
+        Ok((kind == "minecraft:damage").then(|| custom_range.clone()))
+    };
+    let load_select = |kind: &str, _: &Map<String, Value>| -> std::result::Result<_, String> {
+        Ok((kind == "minecraft:main_hand").then(|| custom_select.clone()))
+    };
+
+    // Tint override takes effect ahead of `minecraft:constant`, while `minecraft:dye` stays built-in.
+    let tint_decoders = ItemModelDecoders {
+        tint: Some(&load_tint),
+        ..Default::default()
+    };
+    let tinted = ClientItem::from_json_with_decoders(
+        r#"{"model":{"type":"model","model":"a:b","tints":[{"type":"constant"},{"type":"dye","default":1}]}}"#,
+        &tint_decoders,
+    )
+    .unwrap();
+    let ItemModelNode::Model(leaf) = tinted.model else {
+        panic!("expected model leaf");
+    };
+    assert_eq!(
+        leaf.tints,
+        vec![TintSource::Registered(custom_tint), TintSource::Dye(1)]
+    );
+
+    // Item model override takes effect ahead of both vanilla arms and `neoforge:fluid_container`.
+    let model_decoders = ItemModelDecoders {
+        item_model: Some(&load_model),
+        ..Default::default()
+    };
+    let overridden_model = ClientItem::from_json_with_decoders(
+        r#"{"model":{"type":"model","model":"a:b"}}"#,
+        &model_decoders,
+    )
+    .unwrap();
+    assert!(matches!(
+        overridden_model.model,
+        ItemModelNode::Registered { model, .. } if model == custom_model
+    ));
+    let overridden_fluid = ClientItem::from_json_with_decoders(
+        r#"{"model":{"type":"neoforge:fluid_container","fluid":"minecraft:water"}}"#,
+        &model_decoders,
+    )
+    .unwrap();
+    assert!(matches!(
+        overridden_fluid.model,
+        ItemModelNode::Registered { model, .. } if model == custom_fluid
+    ));
+    let plain_empty = ClientItem::from_json_with_decoders(
+        r#"{"model":{"type":"minecraft:empty"}}"#,
+        &model_decoders,
+    )
+    .unwrap();
+    assert!(matches!(plain_empty.model, ItemModelNode::Empty));
+
+    // Range property override takes effect ahead of `minecraft:damage`, while `minecraft:count` stays built-in.
+    let range_decoders = ItemModelDecoders {
+        range_property: Some(&load_range),
+        ..Default::default()
+    };
+    let overridden_range = ClientItem::from_json_with_decoders(
+        r#"{"model":{"type":"range_dispatch","property":"damage","entries":[{"threshold":0.5,"model":{"type":"empty"}}]}}"#,
+        &range_decoders,
+    )
+    .unwrap();
+    assert!(matches!(
+        overridden_range.model,
+        ItemModelNode::RangeDispatch {
+            property: NumericProperty::Registered(prop),
+            ..
+        } if prop == custom_range
+    ));
+    let builtin_range = ClientItem::from_json_with_decoders(
+        r#"{"model":{"type":"range_dispatch","property":"count","entries":[{"threshold":0.5,"model":{"type":"empty"}}]}}"#,
+        &range_decoders,
+    )
+    .unwrap();
+    assert!(matches!(
+        builtin_range.model,
+        ItemModelNode::RangeDispatch {
+            property: NumericProperty::Count { normalize: true },
+            ..
+        }
+    ));
+
+    // Select property override takes effect ahead of `minecraft:main_hand`, while `minecraft:charge_type` stays built-in.
+    let select_decoders = ItemModelDecoders {
+        select_property: Some(&load_select),
+        ..Default::default()
+    };
+    let overridden_select = ClientItem::from_json_with_decoders(
+        r#"{"model":{"type":"select","property":"main_hand","cases":[{"when":"custom_arm","model":{"type":"empty"}}]}}"#,
+        &select_decoders,
+    )
+    .unwrap();
+    assert!(matches!(
+        overridden_select.model,
+        ItemModelNode::Select {
+            property: SelectProperty::Registered(prop),
+            ..
+        } if prop == custom_select
+    ));
+    let builtin_select = ClientItem::from_json_with_decoders(
+        r#"{"model":{"type":"select","property":"charge_type","cases":[{"when":"arrow","model":{"type":"empty"}}]}}"#,
+        &select_decoders,
+    )
+    .unwrap();
+    assert!(matches!(
+        builtin_select.model,
+        ItemModelNode::Select {
+            property: SelectProperty::ChargeType,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn registered_override_errors_reject_enclosing_item_without_builtin_fallback() {
+    let fail_tint = |kind: &str, _: &Map<String, Value>| -> std::result::Result<_, String> {
+        match kind {
+            "minecraft:constant" => Err("tint override rejected".into()),
+            _ => Ok(None),
+        }
+    };
+    let tint_json =
+        r#"{"model":{"type":"model","model":"a:b","tints":[{"type":"constant","value":255}]}}"#;
+    assert!(ClientItem::from_json(tint_json).is_ok());
+    assert_eq!(
+        ClientItem::from_json_with_decoders(
+            tint_json,
+            &ItemModelDecoders {
+                tint: Some(&fail_tint),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .to_string(),
+        "tint override rejected"
+    );
+
+    let fail_model = |kind: &str,
+                      _: &Map<String, Value>,
+                      _: &dyn Fn(&Value) -> Result<ItemModelNode>|
+     -> std::result::Result<_, String> {
+        match kind {
+            "minecraft:model" => Err("model override rejected".into()),
+            "neoforge:fluid_container" => Err("fluid container override rejected".into()),
+            _ => Ok(None),
+        }
+    };
+    let model_decoders = ItemModelDecoders {
+        item_model: Some(&fail_model),
+        ..Default::default()
+    };
+    let model_json = r#"{"model":{"type":"model","model":"a:b"}}"#;
+    assert!(ClientItem::from_json(model_json).is_ok());
+    assert_eq!(
+        ClientItem::from_json_with_decoders(model_json, &model_decoders)
+            .unwrap_err()
+            .to_string(),
+        "model override rejected"
+    );
+    let fluid_json = r#"{"model":{"type":"neoforge:fluid_container","fluid":"minecraft:water","textures":{"base":"a:base"}}}"#;
+    assert!(ClientItem::from_json(fluid_json).is_ok());
+    assert_eq!(
+        ClientItem::from_json_with_decoders(fluid_json, &model_decoders)
+            .unwrap_err()
+            .to_string(),
+        "fluid container override rejected"
+    );
+
+    let fail_range = |kind: &str, _: &Map<String, Value>| -> std::result::Result<_, String> {
+        match kind {
+            "minecraft:damage" => Err("range override rejected".into()),
+            _ => Ok(None),
+        }
+    };
+    let range_json = r#"{"model":{"type":"range_dispatch","property":"damage","entries":[{"threshold":0.5,"model":{"type":"empty"}}]}}"#;
+    assert!(ClientItem::from_json(range_json).is_ok());
+    assert_eq!(
+        ClientItem::from_json_with_decoders(
+            range_json,
+            &ItemModelDecoders {
+                range_property: Some(&fail_range),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .to_string(),
+        "range override rejected"
+    );
+
+    let fail_select = |kind: &str, _: &Map<String, Value>| -> std::result::Result<_, String> {
+        match kind {
+            "minecraft:main_hand" => Err("select override rejected".into()),
+            _ => Ok(None),
+        }
+    };
+    let select_json = r#"{"model":{"type":"select","property":"main_hand","cases":[{"when":"left","model":{"type":"empty"}}]}}"#;
+    assert!(ClientItem::from_json(select_json).is_ok());
+    assert_eq!(
+        ClientItem::from_json_with_decoders(
+            select_json,
+            &ItemModelDecoders {
+                select_property: Some(&fail_select),
+                ..Default::default()
+            },
+        )
+        .unwrap_err()
+        .to_string(),
+        "select override rejected"
+    );
 }

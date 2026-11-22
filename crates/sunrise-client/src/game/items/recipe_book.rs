@@ -1061,8 +1061,8 @@ impl Game<'_> {
         }
     }
     /// A mouse button let go: a drag no longer selects in the search box.
-    pub(super) fn recipe_book_release(&mut self) {
-        self.recipe_ui.search_drag = false;
+    pub(super) fn recipe_book_release(&mut self) -> bool {
+        std::mem::take(&mut self.recipe_ui.search_drag)
     }
     /// `RecipeBookComponent.sendUpdateSettings`: the server owns the saved book.
     fn send_book_settings(&self, book_type: BookType) {

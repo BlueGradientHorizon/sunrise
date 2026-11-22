@@ -5,7 +5,7 @@
 //! `sunrise:behaviour` seed the particle's state; the provider creates it with typed options
 //! and moves it in batches. The game resolves the provider once per sprite reload.
 use super::particle_types::{ParticleCallback, TypedParticleOptions};
-use crate::{BlockState, LightLayer, ParticleKey, ParticleType, RandomSource};
+use crate::{BlockState, LightLayer, ParticleBlend, ParticleKey, ParticleType, RandomSource};
 use std::{collections::HashMap, sync::Arc};
 
 /// One particle of a provider's type, as its tick reads and writes it: the fields of vanilla's
@@ -127,6 +127,90 @@ pub trait ParticleLevelView {
     fn brightness(&self, layer: LightLayer, pos: [i32; 3]) -> u8;
 }
 
+/// The read-only camera and lighting for one call to [`ParticleProvider::extract`].
+// no wire: frame-local renderer inputs.
+#[non_exhaustive]
+pub struct ParticleExtractView {
+    /// World-space camera position in blocks. Subtract it in f64 before narrowing a center to f32.
+    pub camera: [f64; 3],
+    /// The camera's rotation in XYZW quaternion order.
+    pub rotation: [f32; 4],
+    /// Interpolation fraction between the previous and current tick.
+    pub partial_tick: f32,
+    /// The roll at the previous tick (`SingleQuadParticle.oRoll`).
+    pub previous_roll: f32,
+    /// The ordinary quad's vanilla packed light at the current particle position.
+    pub light_coords: u32,
+}
+
+impl ParticleExtractView {
+    // hidden: the renderer constructs the read-only view at its extraction boundary.
+    #[doc(hidden)]
+    pub fn new(
+        camera: [f64; 3],
+        rotation: [f32; 4],
+        partial_tick: f32,
+        previous_roll: f32,
+        light_coords: u32,
+    ) -> Self {
+        Self {
+            camera,
+            rotation,
+            partial_tick,
+            previous_roll,
+            light_coords,
+        }
+    }
+}
+
+/// One `SingleQuadParticle` quad submitted to the world's particle-atlas pass.
+/// Start from `ParticleQuad::default()` and set the fields the quad needs.
+// no wire: frame-local geometry.
+#[non_exhaustive]
+pub struct ParticleQuad {
+    /// The draw layer. This wins over the sprite alpha and the particle's group blend.
+    pub layer: ParticleBlend,
+    /// Camera-relative center in blocks.
+    pub center: [f32; 3],
+    /// XYZW quaternion applied to the XY corners, without normalization.
+    pub rotation: [f32; 4],
+    /// Half-width and half-height in blocks.
+    pub half_size: f32,
+    /// Index of an existing frame in the particle's sprite set.
+    pub frame: u32,
+    /// Sprite-local UV rectangle `[u0, v0, u1, v1]`.
+    pub uv: [f32; 4],
+    /// Packed `0xAARRGGBB` color.
+    pub color: u32,
+    /// Vanilla packed light (`LightCoordsUtil.pack` or `smoothPack`).
+    pub light_coords: u32,
+}
+
+impl Default for ParticleQuad {
+    /// A zero-area translucent quad at the camera-relative origin, with identity rotation,
+    /// the whole first sprite, opaque white tint and zero light.
+    fn default() -> Self {
+        Self {
+            layer: ParticleBlend::Translucent,
+            center: [0.0; 3],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            half_size: 0.0,
+            frame: 0,
+            uv: [0.0, 0.0, 1.0, 1.0],
+            color: 0xffffffff,
+            light_coords: 0,
+        }
+    }
+}
+
+/// The frame's quad output for this particle. Only the current extract call may write to it.
+pub trait QuadParticleRenderState {
+    /// Append a quad. An unresolved frame or non-finite geometry/UV omits only this record.
+    fn add(&mut self, quad: ParticleQuad);
+    /// Append the ordinary quad, with built-in interpolation, sprite, tint, light and culling.
+    fn add_default(&mut self);
+}
+
 /// A mod's particle provider: NeoForge's `ParticleProvider`, held by the game for every particle
 /// of its type. Particles of a type share one provider, so per-particle data lives in
 /// [`ModParticle::state`], not in the provider.
@@ -158,6 +242,19 @@ pub trait ParticleProvider<T = ()>: Send + Sync + 'static {
     /// Set `removed` to expire a particle. If a callback returns a different length, the engine
     /// expires the batch's particles. Not called when no particle of the type is alive.
     fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView);
+
+    /// `SingleQuadParticle.extract`: called once per visible particle per world frame, separate
+    /// from ticking. The default emits the ordinary quad. An override may submit zero or more
+    /// quads, and only emits the ordinary quad if it calls `output.add_default()`.
+    /// Live scenes only draw the ordinary quad; they do not call this method.
+    fn extract(
+        &self,
+        _particle: &ModParticle,
+        _view: &ParticleExtractView,
+        output: &mut dyn QuadParticleRenderState,
+    ) {
+        output.add_default();
+    }
 }
 
 /// The particle provider registry `register_particle_providers` hands out: NeoForge's
@@ -177,7 +274,7 @@ impl dyn ParticleProviders + '_ {
         ty: ParticleType<T>,
         provider: Arc<dyn ParticleProvider<T>>,
     ) {
-        self.add_sprite_set(ty.key(), bind_particle_provider(provider));
+        self.add_sprite_set(ty.key(), bind_particle_provider(ty.key(), provider));
     }
 }
 
@@ -194,8 +291,15 @@ pub trait BoundParticleProvider: Send + Sync {
         particle: &mut ModParticle,
     ) -> Result<Option<()>, String>;
     fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView);
+    fn extract(
+        &self,
+        particle: &ModParticle,
+        view: &ParticleExtractView,
+        output: &mut dyn QuadParticleRenderState,
+    ) -> Result<(), String>;
 }
 struct BoundProvider<T> {
+    key: ParticleKey,
     provider: Arc<dyn ParticleProvider<T>>,
     callback: ParticleCallback,
 }
@@ -219,15 +323,28 @@ impl<T: 'static> BoundParticleProvider for BoundProvider<T> {
     fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView) {
         self.provider.tick(particles, level);
     }
+    fn extract(
+        &self,
+        particle: &ModParticle,
+        view: &ParticleExtractView,
+        output: &mut dyn QuadParticleRenderState,
+    ) -> Result<(), String> {
+        self.callback.call(self.key, "extract particle", || {
+            self.provider.extract(particle, view, output);
+            Ok(())
+        })
+    }
 }
 
 // hidden: the renderer binds the typed provider to its erased dispatch.
 #[doc(hidden)]
 pub fn bind_particle_provider<T: 'static>(
+    key: ParticleKey,
     provider: Arc<dyn ParticleProvider<T>>,
 ) -> Arc<dyn BoundParticleProvider> {
     let owner = crate::content::crash::current_native_mod().unwrap_or("unowned provider");
     Arc::new(BoundProvider {
+        key,
         provider,
         callback: ParticleCallback::new(crate::callback_owner::CallbackOwner::for_mod(owner)),
     })

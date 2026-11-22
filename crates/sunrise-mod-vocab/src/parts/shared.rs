@@ -146,7 +146,8 @@ pub struct HookParts {
 // hidden: a lookup's view of the registrar's table, not part of the mod surface
 // exhaustive: the four kinds of thing a capability is asked of
 #[doc(hidden)]
-#[derive(Clone, Copy, Debug, sunrise_mod_api_macros::Wire)]
+// no wire: internal capability table lookup selector.
+#[derive(Clone, Copy, Debug)]
 pub enum ProvidedBy {
     BlockEntity,
     Block,
