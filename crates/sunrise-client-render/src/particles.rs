@@ -249,7 +249,7 @@ struct ModSet {
 }
 
 /// One live particle (`Particle` + `SingleQuadParticle` state).
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Particle {
     pub ty: ParticleType,
     pub position: [f64; 3],
@@ -5013,9 +5013,12 @@ mod tests {
                     &HashMap::new(),
                     &HashSet::new(),
                 );
-                let mut ordinary = Particle::blank(ParticleType::Flame, [0.0; 3]);
-                ordinary.lifetime = 100;
-                engine.particles = vec![ordinary.clone(); 12_288];
+                let ordinary = || {
+                    let mut ordinary = Particle::blank(ParticleType::Flame, [0.0; 3]);
+                    ordinary.lifetime = 100;
+                    ordinary
+                };
+                engine.particles = (0..12_288).map(|_| ordinary()).collect();
                 engine.elder_guardians = vec![30; 12_832];
                 // Dormant live starters consume no RNG or enqueue any children on this tick.
                 engine.starters = (0..12_832)
@@ -5031,7 +5034,7 @@ mod tests {
                     .collect();
                 for group in order {
                     match group {
-                        0 => engine.push(ordinary.clone()),
+                        0 => engine.push(ordinary()),
                         1 => engine.elder_guardian(),
                         2 => engine.fireworks(
                             [0.0; 3],
@@ -5064,11 +5067,14 @@ mod tests {
                 &HashMap::new(),
                 &HashSet::new(),
             );
-            let mut ordinary = Particle::blank(ParticleType::Flame, [0.0; 3]);
-            ordinary.lifetime = 100;
-            engine.particles = vec![ordinary.clone(); 12_288];
+            let ordinary = || {
+                let mut ordinary = Particle::blank(ParticleType::Flame, [0.0; 3]);
+                ordinary.lifetime = 100;
+                ordinary
+            };
+            engine.particles = (0..12_288).map(|_| ordinary()).collect();
             engine.elder_guardians = vec![30; 12_832];
-            engine.push(ordinary);
+            engine.push(ordinary());
             engine.elder_guardian();
             engine.random = LegacyRandom::new(0);
             engine.tick(level);
@@ -5560,19 +5566,25 @@ mod tests {
             [0.0; 3],
             [0.0; 3],
         );
-        let original = particle.clone();
+        let velocity = particle.velocity;
+        let lifetime = particle.lifetime;
+        let gravity = particle.gravity;
+        let friction = particle.friction;
+        let size = particle.size;
+        let rgba = particle.rgba;
+        let behaviour = particle.behaviour;
         ModBehaviour::parse(&json!({})).unwrap().apply(
             &mut particle,
             [0.0; 3],
             &mut LegacyRandom::new(1),
         );
-        assert_eq!(particle.velocity, original.velocity);
-        assert_eq!(particle.lifetime, original.lifetime);
-        assert_eq!(particle.gravity, original.gravity);
-        assert_eq!(particle.friction, original.friction);
-        assert_eq!(particle.size, original.size);
-        assert_eq!(particle.rgba, original.rgba);
-        assert_eq!(particle.behaviour, original.behaviour);
+        assert_eq!(particle.velocity, velocity);
+        assert_eq!(particle.lifetime, lifetime);
+        assert_eq!(particle.gravity, gravity);
+        assert_eq!(particle.friction, friction);
+        assert_eq!(particle.size, size);
+        assert_eq!(particle.rgba, rgba);
+        assert_eq!(particle.behaviour, behaviour);
     }
 
     #[test]

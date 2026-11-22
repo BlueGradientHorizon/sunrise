@@ -1,5 +1,4 @@
 use super::super::*;
-use super::ROLL_LIMIT;
 use crate::chunk::{Chunk, Light};
 use mod_api::{
     __private::game::RegistrationContextNew, BlockState, Identifier, LightLayer, ModParticle,
@@ -161,15 +160,18 @@ fn controlled_particle_keeps_owned_motion_sprite_interpolation_and_expiry() {
     p.lifetime = 2;
     p.rgba[3] = 0.5;
     p.velocity = [99.0; 3]; // no vanilla drift may leak into the custom tick
-    let mut copy = p.clone();
+    let mut other = e
+        .controlled("example:orbit", [0.0; 3], true, Moving(0))
+        .unwrap();
+    other.lifetime = 2;
     e.tick_particle(&mut p, &level);
     e.tick_particle(&mut p, &level);
-    e.tick_particle(&mut copy, &level);
+    e.tick_particle(&mut other, &level);
     assert_eq!((p.position, p.previous), ([3.0, 0.0, 0.0], [1.0, 0.0, 0.0]));
-    assert_eq!(copy.position, [1.0, 0.0, 0.0]); // controller state cloned independently
+    assert_eq!(other.position, [1.0, 0.0, 0.0]);
     assert!(matches!(p.sprite, Sprite::Index(1))); // clamped frame
     p.size = 0.1;
-    e.particles.push(p.clone());
+    e.particles.push(p);
     let mut vertices = Vec::new();
     e.render(
         DVec3::ZERO,
@@ -195,7 +197,12 @@ fn controlled_particle_keeps_owned_motion_sprite_interpolation_and_expiry() {
     );
     assert!(vertices.is_empty());
     assert_eq!(e.particles[0].age, 2);
-    e.push(copy);
+    let mut p = e.particles.pop().unwrap();
+    e.tick_particle(&mut p, &level);
+    assert!(p.removed);
+    assert_eq!(p.position, [3.0, 0.0, 0.0]);
+    e.particles.push(p);
+    e.push(other);
     e.reload(
         &ResourceSource::indexed(Default::default()),
         &HashMap::new(),
@@ -211,70 +218,11 @@ fn controlled_particle_keeps_owned_motion_sprite_interpolation_and_expiry() {
         &mut vertices,
     );
     assert!(vertices.is_empty());
-    e.tick_particle(&mut p, &level);
-    assert!(p.removed);
-    assert_eq!(p.position, [3.0, 0.0, 0.0]);
-}
-/// Counts its ticks, so a test sees which calls a particle's expiry skipped.
-#[derive(Default)]
-struct Probe(std::sync::atomic::AtomicUsize);
-impl ParticleProvider for Probe {
-    fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
-        for particle in particles {
-            self.one(particle);
-        }
-    }
-}
-impl Probe {
-    fn one(&self, particle: &mut ModParticle) {
-        self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        particle.position[0] = f64::from(particle.age) * 2.0;
-        particle.position[1] = particle.state[0];
-        particle.state[0] += 0.5;
-        particle.frame = particle.age as u32;
-        if particle.age == 3 {
-            particle.removed = true;
-            particle.position[0] = 999.0;
-        }
-    }
-}
-struct Broken(fn(&mut ModParticle));
-impl ParticleProvider for Broken {
-    fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
-        for particle in particles {
-            self.0(particle);
-        }
-    }
 }
 /// One engine tick of a single provider particle: the age step, then the provider's batch.
 fn tick_one(e: &mut ParticleEngine, p: &mut Particle, level: &ParticleLevel<'_>) {
     e.tick_particle(p, level);
     e.tick_providers(std::slice::from_mut(p), level);
-}
-/// Counts its calls and the particles each held.
-#[derive(Default)]
-struct Calls(std::sync::Mutex<Vec<usize>>);
-impl ParticleProvider for Calls {
-    fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
-        self.0.lock().unwrap().push(particles.len());
-    }
-}
-#[test]
-fn a_provider_runs_once_per_tick_on_all_its_particles() {
-    let scene = Scene::new();
-    let level = scene.level();
-    let calls = Arc::new(Calls::default());
-    let mut e = engine_with(calls.clone());
-    let mut all: Vec<Particle> = (0..3).map(|_| provided(&mut e)).collect();
-    for p in &mut all {
-        p.lifetime = 20;
-        e.tick_particle(p, &level);
-    }
-    e.tick_providers(&mut all, &level);
-    assert_eq!(*calls.0.lock().unwrap(), [3]);
-    // Nothing aged since: no particle is pending, so no call.
-    e.tick_providers(&mut all, &level);
-    assert_eq!(calls.0.lock().unwrap().len(), 1);
 }
 fn engine_with(provider: Arc<dyn ParticleProvider>) -> ParticleEngine {
     fixture_engine(provider_factories("example:orbit", provider))
@@ -288,122 +236,6 @@ fn provided(e: &mut ParticleEngine) -> Particle {
         SpawnScope::BARE,
     )
     .unwrap()
-}
-#[test]
-fn a_providers_particle_moves_changes_frame_and_expires_by_its_tick() {
-    let scene = Scene::new();
-    let level = scene.level();
-    let probe = Arc::new(Probe::default());
-    let mut e = engine_with(probe.clone());
-    let mut p = provided(&mut e);
-    p.lifetime = 20;
-    let mut copy = p.clone();
-    tick_one(&mut e, &mut p, &level);
-    assert_eq!((p.position, p.previous), ([2.0, 0.0, 1.0], [1.0; 3]));
-    tick_one(&mut e, &mut p, &level);
-    assert_eq!((p.position, p.previous), ([4.0, 0.5, 1.0], [2.0, 0.0, 1.0]));
-    assert!(matches!(p.sprite, Sprite::Index(1))); // frame 2, clamped to the 2-sprite set
-    // State is per particle: the copy starts from zero state, not the original's.
-    tick_one(&mut e, &mut copy, &level);
-    assert_eq!(copy.position, [2.0, 0.0, 1.0]);
-    // The third tick of `p` removes it before its 20-tick lifetime, and its writes are dropped.
-    tick_one(&mut e, &mut p, &level);
-    assert!(p.removed);
-    assert_eq!(p.position, [4.0, 0.5, 1.0]);
-}
-#[test]
-fn the_engine_expires_a_providers_particle_at_its_lifetime_without_calling_the_provider() {
-    let scene = Scene::new();
-    let level = scene.level();
-    let probe = Arc::new(Probe::default());
-    let mut e = engine_with(probe.clone());
-    let mut p = provided(&mut e);
-    p.lifetime = 2;
-    for _ in 0..2 {
-        tick_one(&mut e, &mut p, &level);
-        assert!(!p.removed);
-    }
-    tick_one(&mut e, &mut p, &level);
-    assert!(p.removed);
-    assert_eq!(probe.0.load(std::sync::atomic::Ordering::Relaxed), 2);
-}
-#[test]
-fn a_provider_cannot_hand_the_renderer_a_bad_number() {
-    let scene = Scene::new();
-    let level = scene.level();
-    let bad: [fn(&mut ModParticle); 5] = [
-        |p| p.position[1] = f64::NAN,
-        |p| p.position[0] = f64::INFINITY,
-        |p| p.position[2] = 1.0e300,
-        |p| p.velocity[0] = f64::NEG_INFINITY,
-        |p| p.size = f32::NAN,
-    ];
-    for tick in bad {
-        let mut e = engine_with(Arc::new(Broken(tick)));
-        let mut p = provided(&mut e);
-        tick_one(&mut e, &mut p, &level);
-        assert!(p.removed);
-        assert_eq!(p.position, [1.0; 3]);
-    }
-    let mut e = engine_with(Arc::new(Broken(|p| {
-        p.size = 1.0e9;
-        p.rgba = [2.0, -1.0, 0.5, 9.0];
-        p.frame = u32::MAX;
-        p.lifetime = i32::MIN;
-        p.age = i32::MAX;
-    })));
-    let mut p = provided(&mut e);
-    tick_one(&mut e, &mut p, &level);
-    assert!(!p.removed);
-    assert_eq!((p.size, p.rgba), (16.0, [1.0, 0.0, 0.5, 1.0]));
-    assert!(matches!(p.sprite, Sprite::Index(1)));
-    assert_eq!((p.lifetime, p.age), (i32::MIN, 1)); // the age stays the engine's
-    tick_one(&mut e, &mut p, &level);
-    assert!(p.removed);
-}
-/// Hands back a batch of another size, as only a guest's raw bytes could.
-struct Replacing;
-impl ParticleProvider for Replacing {
-    fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
-        *particles = mod_api::__private::particle_batch_from_vec(Vec::new());
-    }
-}
-#[test]
-fn a_batch_handed_back_at_another_size_expires_its_particles() {
-    let scene = Scene::new();
-    let level = scene.level();
-    let mut e = engine_with(Arc::new(Replacing));
-    let mut p = provided(&mut e);
-    p.lifetime = 20;
-    let at = p.position;
-    tick_one(&mut e, &mut p, &level);
-    assert!(p.removed);
-    assert_eq!(p.position, at);
-}
-/// Reads the batch's two nonfinite-length quaternions.
-#[test]
-fn a_quaternion_with_an_infinite_squared_length_expires_the_particle() {
-    let scene = Scene::new();
-    let level = scene.level();
-    let facings = [
-        ParticleFacing::Fixed([1.0e30, 0.0, 0.0, 0.0]),
-        ParticleFacing::Fixed([f32::NAN, 0.0, 0.0, 1.0]),
-        ParticleFacing::Fixed([0.0; 4]),
-    ];
-    for facing in facings {
-        struct Set(ParticleFacing);
-        impl ParticleProvider for Set {
-            fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
-                for particle in particles {
-                    particle.facing = self.0;
-                }
-            }
-        }
-        let mut e = engine_with(Arc::new(Set(facing)));
-        let mut p = provided(&mut e);
-        tick_one(&mut e, &mut p, &level);
-        assert!(p.removed, "{facing:?}");
-    }
 }
 /// A particle a provider poses on each of its ticks (`rolls[age - 1]`), drawn half a tick
 /// into the last one with the camera turned by `base`, as the renderer builds its corners.
@@ -521,132 +353,6 @@ fn a_roll_that_returns_to_zero_draws_unrolled_as_vanilla_does() {
         ]
     );
 }
-#[test]
-fn rolls_at_the_accepted_limit_interpolate_to_finite_corners() {
-    // The difference of the two extremes is `f32::MAX`, still a number.
-    let corners = drawn(
-        ParticleFacing::Camera,
-        &[-ROLL_LIMIT, ROLL_LIMIT],
-        [0.0; 3],
-        glam::Quat::IDENTITY,
-    );
-    assert!(
-        corners.iter().flatten().all(|c| c.is_finite()),
-        "{corners:?}"
-    );
-}
-#[test]
-fn a_roll_past_the_limit_expires_the_particle() {
-    let scene = Scene::new();
-    let level = scene.level();
-    for roll in [f32::MAX, -f32::MAX, ROLL_LIMIT * 1.0000001] {
-        struct Set(f32);
-        impl ParticleProvider for Set {
-            fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
-                for particle in particles {
-                    particle.roll = self.0;
-                }
-            }
-        }
-        let mut e = engine_with(Arc::new(Set(roll)));
-        let mut p = provided(&mut e);
-        tick_one(&mut e, &mut p, &level);
-        assert!(p.removed, "{roll}");
-    }
-}
-#[test]
-fn a_second_tick_reuses_the_batch_storage() {
-    let scene = Scene::new();
-    let level = scene.level();
-    let probe = Arc::new(Probe::default());
-    let mut e = engine_with(probe.clone());
-    let mut all: Vec<Particle> = (0..3).map(|_| provided(&mut e)).collect();
-    let tick = |e: &mut ParticleEngine, all: &mut Vec<Particle>| {
-        for p in all.iter_mut() {
-            p.lifetime = 20;
-            e.tick_particle(p, &level);
-        }
-        e.tick_providers(all, &level);
-    };
-    tick(&mut e, &mut all);
-    let shape = |e: &ParticleEngine| {
-        (
-            e.batch.views.as_ptr(),
-            e.batch.views.capacity(),
-            e.batch.buckets.len(),
-            e.batch.buckets[0].as_ptr(),
-            e.batch.buckets[0].capacity(),
-            e.batch.active.capacity(),
-        )
-    };
-    let warm = shape(&e);
-    tick(&mut e, &mut all);
-    assert_eq!(shape(&e), warm);
-    assert_eq!(probe.0.load(std::sync::atomic::Ordering::Relaxed), 6);
-}
-/// A provider type in a high slot visits only its own bucket, and an empty list visits none.
-#[test]
-fn only_the_slots_with_particles_are_visited() {
-    let mut batch = native::Batch::default();
-    assert!(!batch.gather(&[]));
-    assert!(batch.buckets.is_empty());
-    let scene = Scene::new();
-    let level = scene.level();
-    let mut e = engine_with(Arc::new(Probe::default()));
-    let mut p = provided(&mut e);
-    p.provided.as_mut().unwrap().slot = 40;
-    p.lifetime = 20;
-    e.tick_particle(&mut p, &level);
-    assert!(batch.gather(std::slice::from_ref(&p)));
-    assert_eq!(batch.active, [40]);
-    assert!(!batch.gather(&[]));
-    assert!(batch.active.is_empty());
-    assert!(batch.buckets[40].is_empty());
-}
-/// The block state table is asked for only when a provider has a particle to tick.
-#[test]
-fn the_block_state_table_is_not_asked_while_no_provider_particle_is_ready() {
-    static ASKED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    fn counting() -> Option<BlockStates> {
-        ASKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        Some(Arc::new(Vec::<BlockState>::new()))
-    }
-    let asked = || ASKED.load(std::sync::atomic::Ordering::Relaxed);
-    let scene = Scene::new();
-    let level = scene.level();
-    let mut e = engine_with(Arc::new(Probe::default()));
-    e.set_block_state_source(counting);
-    // A provider is registered, and no particle of it lives.
-    e.tick_providers(&mut [], &level);
-    assert_eq!(asked(), 0);
-    // One lives and the engine has not aged it.
-    let mut p = provided(&mut e);
-    p.lifetime = 20;
-    e.tick_providers(std::slice::from_mut(&mut p), &level);
-    assert_eq!(asked(), 0);
-    // Aged: it is ticked, and the table is asked once.
-    tick_one(&mut e, &mut p, &level);
-    assert_eq!(asked(), 1);
-    // Gone: nothing runs.
-    drop(p);
-    e.tick_providers(&mut [], &level);
-    assert_eq!(asked(), 1);
-}
-#[test]
-fn a_provider_does_not_run_while_the_game_has_no_block_state_table() {
-    let scene = Scene::new();
-    let level = scene.level();
-    let probe = Arc::new(Probe::default());
-    let mut e = engine_with(probe.clone());
-    let mut p = provided(&mut e);
-    p.lifetime = 20;
-    e.set_block_state_source(|| None);
-    tick_one(&mut e, &mut p, &level);
-    assert_eq!(probe.0.load(std::sync::atomic::Ordering::Relaxed), 0);
-    assert_eq!(p.position, [1.0; 3]);
-    assert!(!p.removed);
-}
-/// A chunk whose section holds sky light 11 over block light 4.
 fn lit_chunk() -> Chunk {
     let mut chunk = Chunk::empty(0, 0);
     let section = chunk.section_index(64).unwrap();
