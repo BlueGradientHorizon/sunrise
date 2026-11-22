@@ -550,6 +550,13 @@ impl Game<'_> {
                 &overlay,
             )
         };
+        // Loot preparation resolves references after the native edits. Include
+        // failures here even when a condition rejected the referenced entry.
+        let loot = loot.and_then(|loot| {
+            let context = lan::sync::server_data_load(root, &self.res.core.item_data)?;
+            let data = loot.prepare((!mod_api::__private::mods().is_empty()).then_some(&context))?;
+            Ok((data, context))
+        });
         // A rejected early registry must not hide independent late load errors.
         // No table is installed, even if another owning loader succeeded.
         let errors = [
@@ -569,7 +576,7 @@ impl Game<'_> {
         }
         let providers = providers?;
         let sources = sources?;
-        let loot = loot?;
+        let (mut loot, context) = loot?;
         let recipes = Recipes::from_resolved(root, &items, &overlay, &sources)?;
         let mut stations = sunrise_client::stations::StationData::from_sources(
             root,
@@ -652,9 +659,6 @@ impl Game<'_> {
         // The API's key order is live state as well: do not change it for a
         // candidate refused by the condition readers.
         api_values::resolve_enchantment_registry(&items)?;
-        let context = lan::sync::server_data_load(root, &self.res.core.item_data)?;
-        let mut loot =
-            loot.prepare((!mod_api::__private::mods().is_empty()).then_some(&context))?;
         let serializers = self
             .mods
             .loot_modifier_serializers
