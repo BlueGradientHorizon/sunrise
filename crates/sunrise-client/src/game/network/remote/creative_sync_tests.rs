@@ -59,9 +59,9 @@ mod give_stack {
     use crate::game::api_values::test_snapshot;
     use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::native_hotbar_slot::hotbar_slot_tests::{logged_in, sent};
-    use crate::game::remote::creative_sync_slot;
     use mod_api::CreativeGiveError;
     use sunrise_core::nbt::{Compound, JavaString, Tag};
+    use sunrise_protocol::item::{Component, Stack};
     use sunrise_protocol::packets::play::Serverbound as S;
 
     fn api(item: &str, count: u32, components: &[(&str, Tag)]) -> mod_api::ItemStack {
@@ -88,8 +88,12 @@ mod give_stack {
         )
     }
 
-    /// The `SetCreativeModeSlot` packets among `packets`: wire slot and stack.
-    fn creative_slots(packets: &[S]) -> Vec<(i16, Option<sunrise_protocol::item::Stack>)> {
+    fn engine(item: &str, count: u32) -> Option<sunrise_client::items::ItemStack> {
+        Some(sunrise_client::items::ItemStack::new(item, count))
+    }
+
+    /// The `SetCreativeModeSlot` packets among `packets`, as the server decodes them.
+    fn creative_slots(packets: &[S]) -> Vec<(i16, Option<Stack>)> {
         packets
             .iter()
             .filter_map(|packet| match packet {
@@ -99,186 +103,296 @@ mod give_stack {
             .collect()
     }
 
-    /// What the window sends for inventory slot `i` (36: the off hand).
-    fn wire(game: &Game<'_>, i: usize) -> Option<sunrise_protocol::item::Stack> {
-        let stack = if i == 36 {
-            game.offhand.clone()
-        } else {
-            game.inventory[i].clone()
+    /// `name`'s network id in `registry`, from the tables the server gave the client.
+    fn net_id(game: &Game<'_>, registry: &str, name: &str) -> i32 {
+        let r = game.remote.as_ref().unwrap();
+        r.builtin
+            .get(registry)
+            .and_then(|ids| ids.id(name))
+            .or_else(|| r.registries.id(registry, name))
+            .unwrap_or_else(|| panic!("{registry} has no {name}"))
+    }
+
+    /// The decoded slot packets as (wire slot, item, count), components left out.
+    fn slots_and_counts(packets: &[(i16, Option<Stack>)]) -> Vec<(i16, i32, i32)> {
+        let mut out: Vec<_> = packets
+            .iter()
+            .map(|(slot, stack)| {
+                let stack = stack.as_ref().expect("a filled slot");
+                (*slot, stack.item, stack.count)
+            })
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// The one slot packet in `packets`, filled and removing no component.
+    fn only_slot(packets: &[(i16, Option<Stack>)]) -> (i16, &Stack) {
+        let [(slot, Some(stack))] = packets else {
+            panic!("one filled slot packet: {packets:?}");
         };
-        game.to_network(&stack)
+        assert!(stack.removed.is_empty(), "{stack:?}");
+        (*slot, stack)
+    }
+
+    /// The tick's sync, with no menu open, sends no creative slot after a give.
+    fn tick_sends_nothing(
+        game: &mut Game<'_>,
+        reader: &mut sunrise_protocol::connection::ConnReader,
+    ) {
+        game.remote_send_state(0);
+        let again = creative_slots(&sent(reader));
+        assert!(again.is_empty(), "{again:?}");
+    }
+
+    fn component<'a>(game: &Game<'_>, stack: &'a Stack, name: &str) -> &'a Component {
+        let id = net_id(game, "minecraft:data_component_type", name);
+        stack
+            .added
+            .iter()
+            .find_map(|(c, value)| (*c == id).then_some(value))
+            .unwrap_or_else(|| panic!("no {name} in {stack:?}"))
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_refused_give_changes_and_sends_nothing() {
-        with_client_game(|game| {
-            let stone = api("minecraft:stone", 1, &[]);
-            assert_eq!(game.give_stack(&stone), Err(CreativeGiveError::Unavailable));
-            let mut reader = logged_in(game);
-            let inventory = game.inventory.clone();
-            assert_eq!(game.give_stack(&stone), Err(CreativeGiveError::NotCreative));
-            game.set_mode_id(1);
-            assert_eq!(
-                game.give_stack(&api("minecraft:stone", 65, &[])),
-                Err(CreativeGiveError::Stack(
-                    mod_api::StackWriteError::CountExceeded { maximum: 64 }
-                ))
-            );
-            assert_eq!(
-                game.give_stack(&api(
-                    "minecraft:iron_sword",
-                    1,
-                    &[("minecraft:max_stack_size", Tag::Int(16))]
-                )),
-                Err(CreativeGiveError::Stack(
-                    mod_api::StackWriteError::StackableDamageable
-                ))
-            );
-            game.options.execution_role =
-                crate::game::execution_role::ExecutionRole::IntegratedServer;
-            assert_eq!(game.give_stack(&stone), Err(CreativeGiveError::Unavailable));
-            game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-            assert_eq!(game.inventory, inventory);
-            assert!(creative_slots(&sent(&mut reader)).is_empty());
-        });
+        crate::game::in_own_process(
+            "game::remote::tests::creative_sync_tests::give_stack::a_refused_give_changes_and_sends_nothing",
+            || {
+                with_client_game(|game| {
+                    let stone = api("minecraft:stone", 1, &[]);
+                    assert_eq!(game.give_stack(&stone), Err(CreativeGiveError::Unavailable));
+                    let mut reader = logged_in(game);
+                    let inventory = game.inventory.clone();
+                    assert_eq!(game.give_stack(&stone), Err(CreativeGiveError::NotCreative));
+                    game.set_mode_id(1);
+                    assert_eq!(
+                        game.give_stack(&api("minecraft:stone", 65, &[])),
+                        Err(CreativeGiveError::Stack(
+                            mod_api::StackWriteError::CountExceeded { maximum: 64 }
+                        ))
+                    );
+                    assert_eq!(
+                        game.give_stack(&api(
+                            "minecraft:iron_sword",
+                            1,
+                            &[("minecraft:max_stack_size", Tag::Int(16))]
+                        )),
+                        Err(CreativeGiveError::Stack(
+                            mod_api::StackWriteError::StackableDamageable
+                        ))
+                    );
+                    game.options.execution_role =
+                        crate::game::execution_role::ExecutionRole::IntegratedServer;
+                    assert_eq!(game.give_stack(&stone), Err(CreativeGiveError::Unavailable));
+                    game.options.execution_role =
+                        crate::game::execution_role::ExecutionRole::Client;
+                    assert_eq!(game.inventory, inventory);
+                    assert!(creative_slots(&sent(&mut reader)).is_empty());
+                });
+            },
+        );
     }
 
     /// Components reach the slot and the server unchanged, and the slot goes out at once both
-    /// with nothing open and while a server menu is open (whose end-of-tick sync skips it).
+    /// with nothing open and while a server menu is open (whose end-of-tick sync skips it);
+    /// the next tick's sync, with no menu open, does not send it again.
     #[test]
     #[ignore = "daily"]
     fn a_give_keeps_components_and_sends_its_slots_at_once() {
-        with_client_game(|game| {
-            let mut reader = logged_in(game);
-            game.set_mode_id(1);
-            game.selected = 0;
-            let mut sword = api(
-                "minecraft:iron_sword",
-                1,
-                &[("minecraft:enchantments", {
-                    let mut levels = Compound::new();
-                    levels.insert("minecraft:sharpness".into(), Tag::Int(3));
-                    Tag::Compound(levels)
-                })],
-            );
-            sword.set_damage(11);
-            let potion = api(
-                "minecraft:potion",
-                1,
-                &[("minecraft:potion_contents", {
-                    let mut contents = Compound::new();
-                    contents.insert("potion".into(), Tag::String("minecraft:swiftness".into()));
-                    Tag::Compound(contents)
-                })],
-            );
-            let capped = api(
-                "minecraft:stone",
-                16,
-                &[("minecraft:max_stack_size", Tag::Int(16))],
-            );
-            for (slot, stack) in [&sword, &potion, &capped].into_iter().enumerate() {
-                assert_eq!(game.give_stack(stack), Ok(None));
-                assert_eq!(
-                    game.inventory[slot].as_ref().map(test_snapshot).as_ref(),
-                    Some(stack)
-                );
-                assert_eq!(
-                    creative_slots(&sent(&mut reader)),
-                    [(creative_sync_slot(slot), wire(game, slot))]
-                );
-            }
-            // A full capped stack takes no more: the next goes to an empty slot.
-            assert_eq!(
-                game.give_stack(&api(
-                    "minecraft:stone",
-                    4,
-                    &[("minecraft:max_stack_size", Tag::Int(16),)]
-                )),
-                Ok(None)
-            );
-            assert_eq!(game.inventory[2].as_ref().map(|s| s.count), Some(16));
-            assert_eq!(game.inventory[3].as_ref().map(|s| s.count), Some(4));
-            assert_eq!(
-                creative_slots(&sent(&mut reader)),
-                [(creative_sync_slot(3), wire(game, 3))]
-            );
+        crate::game::in_own_process(
+            "game::remote::tests::creative_sync_tests::give_stack::a_give_keeps_components_and_sends_its_slots_at_once",
+            || {
+                with_client_game(|game| {
+                    let mut reader = logged_in(game);
+                    // The enchantment registry a server sends in configuration.
+                    std::sync::Arc::make_mut(&mut game.remote.as_mut().unwrap().registries).add(
+                        sunrise_protocol::packets::configuration::RegistryData {
+                            registry: "minecraft:enchantment".into(),
+                            entries: vec![
+                                sunrise_protocol::packets::configuration::RegistryEntry {
+                                    id: "minecraft:sharpness".into(),
+                                    data: None,
+                                },
+                            ],
+                        },
+                    );
+                    game.set_mode_id(1);
+                    game.selected = 0;
 
-            game.remote
-                .as_mut()
-                .unwrap()
-                .menu
-                .set(Some((1, "minecraft:generic_9x3".into())));
-            let name = named("minecraft:paper", 2, "letter");
-            assert_eq!(game.give_stack(&name), Ok(None));
-            assert_eq!(game.inventory[4].as_ref().map(test_snapshot), Some(name));
-            assert_eq!(
-                creative_slots(&sent(&mut reader)),
-                [(creative_sync_slot(4), wire(game, 4))]
-            );
-            // The slot counts as synced: the tick's own sync sends it again neither way.
-            game.remote_send_state(0);
-            game.remote.as_mut().unwrap().menu.set(None);
-            game.remote_send_state(0);
-            assert!(creative_slots(&sent(&mut reader)).is_empty());
-        });
+                    let mut sword = api(
+                        "minecraft:iron_sword",
+                        1,
+                        &[("minecraft:enchantments", {
+                            let mut levels = Compound::new();
+                            levels.insert("minecraft:sharpness".into(), Tag::Int(3));
+                            Tag::Compound(levels)
+                        })],
+                    );
+                    sword.set_damage(11);
+                    assert_eq!(game.give_stack(&sword), Ok(None));
+                    assert_eq!(game.inventory[0].as_ref().map(test_snapshot), Some(sword));
+                    let packets = creative_slots(&sent(&mut reader));
+                    let (slot, stack) = only_slot(&packets);
+                    assert_eq!(
+                        (slot, stack.item, stack.count),
+                        (
+                            36,
+                            net_id(game, "minecraft:item", "minecraft:iron_sword"),
+                            1
+                        )
+                    );
+                    assert_eq!(stack.added.len(), 2, "{stack:?}");
+                    assert_eq!(
+                        component(game, stack, "minecraft:damage"),
+                        &Component::Int(11)
+                    );
+                    assert_eq!(
+                        component(game, stack, "minecraft:enchantments"),
+                        &Component::Enchantments(vec![(
+                            net_id(game, "minecraft:enchantment", "minecraft:sharpness"),
+                            3
+                        )])
+                    );
+                    tick_sends_nothing(game, &mut reader);
+
+                    let potion = api(
+                        "minecraft:potion",
+                        1,
+                        &[("minecraft:potion_contents", {
+                            let mut contents = Compound::new();
+                            contents
+                                .insert("potion".into(), Tag::String("minecraft:swiftness".into()));
+                            Tag::Compound(contents)
+                        })],
+                    );
+                    assert_eq!(game.give_stack(&potion), Ok(None));
+                    assert_eq!(game.inventory[1].as_ref().map(test_snapshot), Some(potion));
+                    let packets = creative_slots(&sent(&mut reader));
+                    let (slot, stack) = only_slot(&packets);
+                    assert_eq!(
+                        (slot, stack.item, stack.count),
+                        (37, net_id(game, "minecraft:item", "minecraft:potion"), 1)
+                    );
+                    assert_eq!(stack.added.len(), 1, "{stack:?}");
+                    let swiftness = net_id(game, "minecraft:potion", "minecraft:swiftness");
+                    assert!(
+                        matches!(
+                            component(game, stack, "minecraft:potion_contents"),
+                            Component::Potion { potion: Some(p), color: None, .. } if *p == swiftness
+                        ),
+                        "{stack:?}"
+                    );
+                    tick_sends_nothing(game, &mut reader);
+
+                    let capped = || {
+                        api(
+                            "minecraft:stone",
+                            16,
+                            &[("minecraft:max_stack_size", Tag::Int(16))],
+                        )
+                    };
+                    assert_eq!(game.give_stack(&capped()), Ok(None));
+                    let packets = creative_slots(&sent(&mut reader));
+                    let (slot, stack) = only_slot(&packets);
+                    let stone = net_id(game, "minecraft:item", "minecraft:stone");
+                    assert_eq!((slot, stack.item, stack.count), (38, stone, 16));
+                    assert_eq!(stack.added.len(), 1, "{stack:?}");
+                    assert_eq!(
+                        component(game, stack, "minecraft:max_stack_size"),
+                        &Component::Int(16)
+                    );
+                    // The capped stack is full at 16: the next one goes to an empty slot.
+                    assert_eq!(game.give_stack(&capped()), Ok(None));
+                    assert_eq!(game.inventory[2].as_ref().map(|s| s.count), Some(16));
+                    let packets = creative_slots(&sent(&mut reader));
+                    let (slot, stack) = only_slot(&packets);
+                    assert_eq!((slot, stack.item, stack.count), (39, stone, 16));
+                    tick_sends_nothing(game, &mut reader);
+
+                    game.remote
+                        .as_mut()
+                        .unwrap()
+                        .menu
+                        .set(Some((1, "minecraft:generic_9x3".into())));
+                    let letter = named("minecraft:paper", 2, "letter");
+                    assert_eq!(game.give_stack(&letter), Ok(None));
+                    assert_eq!(game.inventory[4].as_ref().map(test_snapshot), Some(letter));
+                    let packets = creative_slots(&sent(&mut reader));
+                    let (slot, stack) = only_slot(&packets);
+                    assert_eq!(
+                        (slot, stack.item, stack.count),
+                        (40, net_id(game, "minecraft:item", "minecraft:paper"), 2)
+                    );
+                    assert_eq!(stack.added.len(), 1, "{stack:?}");
+                    assert_eq!(
+                        component(game, stack, "minecraft:custom_name"),
+                        &Component::Text(Tag::String("letter".into()))
+                    );
+                    game.remote.as_mut().unwrap().menu.set(None);
+                    tick_sends_nothing(game, &mut reader);
+                });
+            },
+        );
     }
 
-    /// `Inventory.add`'s order: the selected slot, the off hand (wire slot 45), then the rest,
+    /// `Inventory.add`'s order, each give smaller than the room left: the selected slot, the
+    /// off hand (wire slot 45), the hotbar, the main inventory, then the first empty slot,
     /// never onto a stack with other components; what does not fit comes back.
     #[test]
     #[ignore = "daily"]
     fn a_give_stacks_in_inventory_order_and_returns_what_did_not_fit() {
-        with_client_game(|game| {
-            let mut reader = logged_in(game);
-            game.set_mode_id(1);
-            game.selected = 4;
-            let plain = |count| {
-                Some(sunrise_client::items::ItemStack::new(
-                    "minecraft:stone",
-                    count,
-                ))
-            };
-            game.inventory[4] = plain(60);
-            game.offhand = plain(60);
-            game.inventory[0] = plain(63);
-            game.inventory[9] = plain(10);
-            let mut renamed = sunrise_client::items::ItemStack::new("minecraft:stone", 1);
-            renamed.data_mut().custom_name = Some(Tag::String("other".into()));
-            game.inventory[1] = Some(renamed.clone());
-            game.remote_send_state(0);
-            sent(&mut reader);
+        crate::game::in_own_process(
+            "game::remote::tests::creative_sync_tests::give_stack::a_give_stacks_in_inventory_order_and_returns_what_did_not_fit",
+            || {
+                with_client_game(|game| {
+                    let mut reader = logged_in(game);
+                    game.set_mode_id(1);
+                    game.selected = 4;
+                    game.inventory[4] = engine("minecraft:stone", 60);
+                    game.offhand = engine("minecraft:stone", 60);
+                    game.inventory[0] = engine("minecraft:stone", 60);
+                    let mut renamed = sunrise_client::items::ItemStack::new("minecraft:stone", 1);
+                    renamed.data_mut().custom_name = Some(Tag::String("other".into()));
+                    game.inventory[1] = Some(renamed.clone());
+                    game.inventory[9] = engine("minecraft:stone", 60);
+                    game.remote_send_state(0);
+                    sent(&mut reader);
+                    let stone = net_id(game, "minecraft:item", "minecraft:stone");
+                    let mut give = |game: &mut Game<'_>, count| {
+                        assert_eq!(
+                            game.give_stack(&api("minecraft:stone", count, &[])),
+                            Ok(None)
+                        );
+                        let packets = creative_slots(&sent(&mut reader));
+                        slots_and_counts(&packets)
+                    };
 
-            assert_eq!(game.give_stack(&api("minecraft:stone", 64, &[])), Ok(None));
-            assert_eq!(game.inventory[4].as_ref().map(|s| s.count), Some(64));
-            assert_eq!(game.offhand.as_ref().map(|s| s.count), Some(64));
-            assert_eq!(game.inventory[0].as_ref().map(|s| s.count), Some(64));
-            assert_eq!(game.inventory[9].as_ref().map(|s| s.count), Some(64));
-            assert_eq!(game.inventory[1], Some(renamed));
-            assert_eq!(game.inventory[2].as_ref().map(|s| s.count), Some(1));
-            let mut slots = creative_slots(&sent(&mut reader));
-            slots.sort_by_key(|(slot, _)| *slot);
-            let mut expected: Vec<_> = [0, 2, 4, 9, 36]
-                .into_iter()
-                .map(|i| (creative_sync_slot(i), wire(game, i)))
-                .collect();
-            expected.sort_by_key(|(slot, _)| *slot);
-            assert_eq!(slots, expected);
-            assert!(slots.iter().any(|(slot, _)| *slot == 45));
+                    // Selected slot (hotbar 4 is wire slot 40) first, and only it.
+                    assert_eq!(give(game, 3), [(40, stone, 63)]);
+                    // Then the off hand.
+                    assert_eq!(give(game, 3), [(40, stone, 64), (45, stone, 62)]);
+                    // Then the hotbar (slot 0 is wire slot 36).
+                    assert_eq!(give(game, 5), [(36, stone, 63), (45, stone, 64)]);
+                    // Then the main inventory (slot 9), past the renamed stone in slot 1.
+                    assert_eq!(give(game, 5), [(9, stone, 64), (36, stone, 64)]);
+                    // No room on a matching stack: the first empty slot, hotbar 2.
+                    assert_eq!(give(game, 2), [(38, stone, 2)]);
+                    assert_eq!(game.inventory[1], Some(renamed));
 
-            let dirt = plain(64).map(|s| sunrise_client::items::ItemStack {
-                item: "minecraft:dirt".into(),
-                ..s
-            });
-            game.inventory[..36].fill(dirt.clone());
-            game.offhand = dirt;
-            game.remote_send_state(0);
-            sent(&mut reader);
-            let inventory = game.inventory.clone();
-            let gift = named("minecraft:stone", 5, "left over");
-            assert_eq!(game.give_stack(&gift), Ok(Some(gift)));
-            assert_eq!(game.inventory, inventory);
-            assert!(creative_slots(&sent(&mut reader)).is_empty());
-        });
+                    let dirt = engine("minecraft:dirt", 64);
+                    game.inventory[..36].fill(dirt.clone());
+                    game.offhand = dirt;
+                    game.remote_send_state(0);
+                    sent(&mut reader);
+                    let inventory = game.inventory.clone();
+                    let gift = named("minecraft:stone", 5, "left over");
+                    assert_eq!(game.give_stack(&gift), Ok(Some(gift)));
+                    assert_eq!(game.inventory, inventory);
+                    assert!(creative_slots(&sent(&mut reader)).is_empty());
+                });
+            },
+        );
     }
 }
