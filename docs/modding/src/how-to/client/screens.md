@@ -170,7 +170,7 @@ over the screen override.
 
 The [menu screen factory](../world/machine-menu-data.md#the-menus-screen) puts geometry in
 `MenuScreenLayout::slots` at the original backing indices. Only
-[permanent exclusions](../world/machine-menu-data.md#opening-a-stock-menu-from-a-mod-block)
+[permanent exclusions](../world/machine-menu-data.md#custom-menu-screens-and-initially-inactive-slots)
 may be `None` or omitted from the end of the list. A layout that changes while open (tabs,
 a collapsing panel or a scrolling slot grid) moves or hides slots afterwards with
 `ClientHost::set_screen_slot`, as a Java screen sets `Slot.x`/`Slot.y` or deactivates a slot:
