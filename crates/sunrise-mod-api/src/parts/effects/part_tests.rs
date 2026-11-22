@@ -379,21 +379,17 @@ fn on_effect_added_part_runs_owner_first_and_only_after_validation() {
     crate::impl_server_host_areas!(NoHost);
 
     #[derive(Clone)]
-    struct AddedRecorder {
-        package: &'static str,
-        seen: Arc<Mutex<Vec<(&'static str, i32)>>>,
-    }
+    // Each Part type can attach once to this effect, even across packages.
+    struct AddedRecorder<const OWNER: bool>(Arc<Mutex<Vec<(&'static str, i32)>>>);
     #[mod_api::sunrise_part]
-    impl MobEffectPart for AddedRecorder {
+    impl<const OWNER: bool> MobEffectPart for AddedRecorder<OWNER> {
         fn on_effect_added(&self, _: &mut dyn ServerHost, event: &mut OnEffectAddedEvent) {
-            self.seen
-                .lock()
-                .unwrap()
-                .push((self.package, event.amplifier));
+            let package = if OWNER { "owner" } else { "behaviour" };
+            self.0.lock().unwrap().push((package, event.amplifier));
         }
     }
     #[mod_api::__subscriptions]
-    impl Hooks for AddedRecorder {
+    impl<const OWNER: bool> Hooks for AddedRecorder<OWNER> {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
             let effect = r.effect_key("owner:comfort");
             r.mob_effect_part(&effect, self.clone()).unwrap();
@@ -402,20 +398,8 @@ fn on_effect_added_part_runs_owner_first_and_only_after_validation() {
 
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mods: Mods = vec![
-        ModEntry::new(
-            "behaviour",
-            Box::new(AddedRecorder {
-                package: "behaviour",
-                seen: seen.clone(),
-            }),
-        ),
-        ModEntry::new(
-            "owner",
-            Box::new(AddedRecorder {
-                package: "owner",
-                seen: seen.clone(),
-            }),
-        ),
+        ModEntry::new("behaviour", Box::new(AddedRecorder::<false>(seen.clone()))),
+        ModEntry::new("owner", Box::new(AddedRecorder::<true>(seen.clone()))),
     ]
     .into();
     let living = LivingRef::new(EntityRef::new(WorldEpoch::new(1), 7));
