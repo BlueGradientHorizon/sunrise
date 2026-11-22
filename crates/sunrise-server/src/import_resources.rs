@@ -5,12 +5,12 @@
 //! The folder is checked at the same boundary as engine startup, copied beside its destination, and
 //! moved in with a rename. The previous copy is put back if any step fails.
 
-use crate::engine;
 use std::{
-    io,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 use sunrise_server_launch::prepared_profile::{MANIFEST, Manifest, Profile};
+use sunrise_server_launch::resources::{self, Selection};
 use sunrise_server_launch::{self as launch, GAME_VERSION, Install, config};
 
 /// Use the first slot for this profile without replacing the other preparation.
@@ -44,43 +44,62 @@ fn destination_for(
 }
 
 /// `import-resources DIR`.
-pub fn command(dir: &Path, args: &[String]) -> Result<(), String> {
+pub fn command(dir: &Path, args: &[String], out: &mut impl Write) -> Result<(), String> {
     let [source] = args else {
         return Err(
             "import-resources needs the prepared folder to copy (one with sunrise-resources.json)"
                 .into(),
         );
     };
-    let config = config::Config::load(dir).unwrap_or_default();
-    let program = launch::program(&config, dir).ok();
+    let config = config::Config::load(dir);
+    let program = match &config {
+        Ok(config) => launch::program(config, dir),
+        Err(_) => launch::program(&config::Config::default(), dir),
+    };
     let install = program
         .as_deref()
+        .ok()
         .and_then(Install::around)
         .or_else(Install::find);
+    let configured = config
+        .as_ref()
+        .map_or("", |cfg| cfg.engine.resources.as_str());
     let target = import(
         Path::new(source),
         |profile| {
             destination_for(
                 dir,
-                &config.engine.resources,
+                configured,
                 install.as_ref().map(|i| i.root.as_path()),
                 profile,
             )
         },
         &mut || Ok(()),
     )?;
-    println!("Imported the game files into {}", target.display());
-    if launch::resources(&config, dir, program.as_deref()).is_ok_and(|path| path == target) {
-        println!(
-            "Next: `sunrise-server start` (or `sunrise-server restart` if it is running) to start on them."
-        );
+    writeln!(out, "Imported the game files into {}", target.display())
+        .map_err(|e| e.to_string())?;
+    let (config, program) = match (config, program) {
+        (Ok(config), Ok(program)) => (config, program),
+        (Err(error), _) | (_, Err(error)) => {
+            return writeln!(out, "Cannot start the server: {error}").map_err(|e| e.to_string());
+        }
+    };
+    let selected = resources::select(
+        &config,
+        dir,
+        Some(&program),
+        install.as_ref().map(|i| i.root.as_path()),
+        false,
+    );
+    if matches!(selected, Ok(Selection::Ready(path)) if path == target) {
+        writeln!(out, "Next: `sunrise-server start` (or `sunrise-server restart` if it is running) to start on them.")
     } else {
-        println!(
+        writeln!(out,
             "To use these files, set [engine] resources in server.toml to {}, then start or restart.",
             target.display()
-        );
+        )
     }
-    Ok(())
+    .map_err(|e| e.to_string())
 }
 
 /// Checks `source` once, copies it next to its profile's `target`, and swaps it in.
@@ -100,7 +119,7 @@ fn import(
         ));
     }
     let profile =
-        engine::check_prepared(source).map_err(|e| format!("{e}\nNothing was changed."))?;
+        resources::check_prepared(source).map_err(|e| format!("{e}\nNothing was changed."))?;
     let target = target(profile);
     if let Ok(manifest) = Manifest::read(&target)
         && manifest.profile() != profile
@@ -125,7 +144,7 @@ fn import(
         .map_err(|e| format!("copying {}: {e}", source.display()))
         .and_then(|()| {
             // Copied bytes must still pass the same check before they replace anything.
-            engine::check_prepared(&fresh)
+            resources::check_prepared(&fresh)
                 .map(|_| ())
                 .map_err(|e| format!("the copy is incomplete: {e}"))
         });
@@ -223,6 +242,27 @@ mod tests {
         dir
     }
 
+    fn prepared_server(root: &Path, tag: &str) -> PathBuf {
+        let dir = prepared(root, GAME_VERSION, tag);
+        std::fs::remove_dir_all(dir.join("assets")).unwrap();
+        put(
+            &dir.join(MANIFEST),
+            serde_json::json!({
+                "profile": "server", "schema": SCHEMA, "minecraft": GAME_VERSION,
+                "server_files": ["facts.json"],
+            })
+            .to_string()
+            .as_bytes(),
+        );
+        put(
+            &dir.join(STAMP),
+            serde_json::json!({ "output_version": Profile::Server.output_version() })
+                .to_string()
+                .as_bytes(),
+        );
+        dir
+    }
+
     fn tag(target: &Path) -> String {
         std::fs::read_to_string(target.join("assets/minecraft/textures/block/stone.png")).unwrap()
     }
@@ -275,25 +315,7 @@ mod tests {
         let existing = prepared(&root, GAME_VERSION, "full");
         std::fs::create_dir_all(&outputs).unwrap();
         std::fs::rename(existing, &full).unwrap();
-        let imported = prepared(&root, GAME_VERSION, "server");
-        std::fs::remove_dir_all(imported.join("assets")).unwrap();
-        put(
-            &imported.join(MANIFEST),
-            serde_json::json!({
-                "profile":"server", "schema":SCHEMA, "minecraft":GAME_VERSION,
-                "server_files":["facts.json"],
-            })
-            .to_string()
-            .as_bytes(),
-        );
-        put(
-            &imported.join(STAMP),
-            serde_json::json!({
-                "output_version":Profile::Server.output_version(),
-            })
-            .to_string()
-            .as_bytes(),
-        );
+        let imported = prepared_server(&root, "server");
         assert!(!server.exists());
         for tag in ["server first", "server second"] {
             put(&imported.join("facts.json"), tag.as_bytes());
@@ -314,6 +336,61 @@ mod tests {
     }
 
     #[test]
+    fn import_guidance_names_an_override_only_when_start_would_use_another_folder() {
+        let root = scratch("guidance");
+        let server = root.join("server");
+        std::fs::create_dir(&server).unwrap();
+        let full = server.join("resources");
+        std::fs::rename(prepared(&root, GAME_VERSION, "full"), &full).unwrap();
+        let source = prepared_server(&root, "server");
+        let install = root.join("install");
+        std::fs::create_dir_all(install.join("current")).unwrap();
+        let engine = install.join("releases/test-release/sunrise-engine");
+        put(&engine, b"not executable");
+        let mut config = config::Config::default();
+        config.engine.path = engine.to_str().unwrap().into();
+        put(
+            &server.join(config::FILE),
+            config::render(&config).as_bytes(),
+        );
+        let slot = install.join(format!("game-files/sunrise-client/{GAME_VERSION}-server"));
+        let guide = || {
+            let mut out = Vec::new();
+            command(&server, &[source.to_str().unwrap().into()], &mut out).unwrap();
+            String::from_utf8(out).unwrap()
+        };
+        let reply = guide();
+        assert!(reply.contains("set [engine] resources"), "{reply}");
+        assert!(reply.contains(&slot.display().to_string()), "{reply}");
+        put(&full.join(STAMP), br#"{"output_version":7}"#);
+        let reply = guide();
+        assert!(reply.contains("sunrise-server restart"), "{reply}");
+        assert!(!reply.contains("set [engine] resources"), "{reply}");
+        assert_eq!(tag(&full), "full");
+
+        config.engine.path = "missing-engine".into();
+        config.engine.resources = "files/server".into();
+        put(
+            &server.join(config::FILE),
+            config::render(&config).as_bytes(),
+        );
+        let reply = guide();
+        assert!(
+            reply.contains("engine.path missing-engine is not a file"),
+            "{reply}"
+        );
+        assert!(!reply.contains("sunrise-server start"), "{reply}");
+        assert!(!reply.contains("set [engine] resources"), "{reply}");
+        let copied = server.join("files/server");
+        assert_eq!(resources::check_prepared(&copied), Ok(Profile::Server));
+        assert_eq!(
+            std::fs::read(copied.join("facts.json")).unwrap(),
+            std::fs::read(source.join("facts.json")).unwrap()
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
     fn a_good_folder_is_copied_whole_and_replaces_the_old_one() {
         let root = scratch("good");
         let source = prepared(&root, GAME_VERSION, "new");
@@ -326,7 +403,7 @@ mod tests {
             !target.join("stale.txt").exists(),
             "the old copy is replaced, not merged"
         );
-        assert!(engine::check_prepared(&target).is_ok());
+        assert!(resources::check_prepared(&target).is_ok());
         assert!(leftovers(target.parent().unwrap()).is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -384,7 +461,7 @@ mod tests {
         assert!(e.contains("disk full") && e.contains("untouched"), "{e}");
         assert_eq!(copied, 3);
         assert_eq!(tag(&target), "old");
-        assert!(engine::check_prepared(&target).is_ok());
+        assert!(resources::check_prepared(&target).is_ok());
         assert!(leftovers(&root).is_empty(), "{:?}", leftovers(&root));
         let _ = std::fs::remove_dir_all(&root);
     }
