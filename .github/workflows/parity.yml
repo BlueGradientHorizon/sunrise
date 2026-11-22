@@ -169,13 +169,15 @@ jobs:
           if grep -Eq "[\"']sunrise-game[\"'], [\"']--bin[\"'], [\"']sunrise-client[\"']" "${scripts[@]}"; then
             cargo build --profile fast -p sunrise-game --bin sunrise-client
           fi
-          # The client lib tests harnesses run (`cargo test -p <package> --lib`, the dev profile as parity.py sets it),
-          # one at a time and before any oracle starts: one rustc of up to 12 GiB each, which a 16 GiB runner
-          # killed beside the harnesses (signal 9: mount_control and damage_catalog on main, 2026-11-16).
-          for package in sunrise-client-lib sunrise-client; do
-            if grep -Eq "[\"']test[\"'], ([\"']--locked[\"'], )?[\"']-p[\"'], [\"']$package[\"'], [\"']--lib[\"']" "${scripts[@]}"; then
-              cargo test --locked --no-run -p "$package" --lib
-            fi
+          # Every package's lib tests a harness runs (`cargo test -p <package> --lib`, the dev profile as parity.py
+          # sets it), one at a time and before any oracle starts: one rustc of up to 12 GiB each, which a 16 GiB runner
+          # killed beside the harnesses (signal 9: mount_control and damage_catalog on main, 2026-11-16). A package
+          # left to the harness compiles inside the harness's own time limit (dragon_contacts gives cargo 240 s, and
+          # its tests moved to sunrise-gameplay in 7127d19eae).
+          packages=$({ grep -ohE "[\"']test[\"'], ([\"']--locked[\"'], )?[\"']-p[\"'], [\"'][a-z0-9_-]+[\"'], [\"']--lib[\"']" "${scripts[@]}" || true; } |
+            sed -E "s/.*[\"']-p[\"'], [\"']([a-z0-9_-]+)[\"'].*/\1/" | sort -u)
+          for package in $packages; do
+            cargo test --locked --no-run -p "$package" --lib
           done
       - name: Build parity probes
         run: |
