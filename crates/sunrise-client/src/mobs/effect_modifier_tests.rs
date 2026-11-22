@@ -249,8 +249,8 @@ fn the_modifier_leaves_when_the_effect_runs_out() {
     assert_eq!(m.attrs.speed, 0.25);
 }
 
-/// A zombie whose type has its catalog, with armor and scale besides its
-/// own store's attributes, as a loaded type has.
+/// A zombie whose type took its catalog row, with armor and scale besides
+/// its own store's attributes, as a loaded type has.
 fn cataloged_zombie() -> (Mob, Arc<sunrise_world::attributes::entity::Catalog>) {
     let bits = |v: f64| format!("{:016x}", v.to_bits());
     let attribute = |id: &str, default: f64, min: f64, max: f64| serde_json::json!({"id": id, "default": bits(default), "min": bits(min), "max": bits(max), "syncable": true});
@@ -276,7 +276,10 @@ fn cataloged_zombie() -> (Mob, Arc<sunrise_world::attributes::entity::Catalog>) 
         .unwrap(),
     );
     let mut t = (*zombie_type()).clone();
-    t.attribute_bounds = finalize::AttrBounds::of(&catalog);
+    t.take_attribute_row(
+        Arc::new(catalog.entity_row("minecraft:zombie").unwrap()),
+        &catalog,
+    );
     let mut m = Mob::new(2, Arc::new(t), Vec3::ZERO, 0.0);
     m.health = 20.0;
     (m, catalog)
@@ -407,6 +410,63 @@ fn a_declared_effect_adds_and_removes_its_modifiers() {
     p.add_effect(stun, -1, 0);
     assert!(stored(&p, Attr::AttackDamage, damage).is_empty());
     assert_eq!(stored(&p, Attr::MovementSpeed, speed).len(), 1);
+}
+
+/// The modifiers on `name` of the mob's live map, which the save and the
+/// sync read, as (id, amount).
+fn live_modifiers(
+    m: &Mob,
+    catalog: &Arc<sunrise_world::attributes::entity::Catalog>,
+    name: &str,
+) -> Vec<(String, f64)> {
+    let seed = || {
+        crate::entity_nbt::attribute_entries(m)
+            .into_iter()
+            .map(|(_, e)| e)
+            .collect()
+    };
+    m.extra
+        .live
+        .modifiers(catalog, &m.kind.id, name, seed)
+        .unwrap()
+        .iter()
+        .map(|x| (x.id().to_owned(), x.amount()))
+        .collect()
+}
+
+/// #4473: a transaction that removed a declared effect and is rolled back
+/// (`mutate_mob_effects`' journal, then its abort) puts the modifiers outside
+/// the mob's own store back where they are kept: the attribute map, and the
+/// live map's saved entry, so a rebuilt map, a save and a load still have
+/// them while the effect is on.
+#[test]
+fn an_undone_removal_keeps_the_declared_modifiers_through_a_rebuild_and_a_save() {
+    let _scope = register_test_mod_effects();
+    let stun = crate::brewing::effect("testfx:stun").unwrap().id;
+    let (mut m, catalog) = cataloged_zombie();
+    m.add_effect(stun, -1, 1);
+    let armor = vec![("testfx:effect/stun_armor".to_owned(), 4.0)];
+    let scale = vec![("testfx:effect/stun_scale".to_owned(), 1.0)];
+    // What the journal keeps before the write, then the write: a clear.
+    let effects = m.extra.effects.clone();
+    let undo = m.effect_modifier_undo(std::iter::once(stun)).unwrap();
+    assert!(m.retain_effects(|_| false));
+    assert!(live_modifiers(&m, &catalog, "minecraft:armor").is_empty());
+    // The abort: the effect lists, then the journal.
+    m.extra.effects = effects;
+    undo.restore(&mut m);
+    let map = m.extra.generic_attributes.as_deref().unwrap();
+    let key = map.catalog().id("minecraft:armor").unwrap();
+    assert_eq!(map.instance(key).map(|i| i.value()), Some(6.0));
+    m.extra.live.invalidate();
+    assert_eq!(live_modifiers(&m, &catalog, "minecraft:armor"), armor);
+    assert_eq!(live_modifiers(&m, &catalog, "minecraft:scale"), scale);
+    let tag = mob_to_nbt(&m, [1, 2, 3, 4], None, None, |_| None, &Default::default());
+    let types = HashMap::from([("minecraft:zombie".to_owned(), m.kind.clone())]);
+    let back = mob_from_nbt(&tag, &types, 2, None).unwrap();
+    assert!(back.has_effect(stun));
+    assert_eq!(live_modifiers(&back, &catalog, "minecraft:armor"), armor);
+    assert_eq!(live_modifiers(&back, &catalog, "minecraft:scale"), scale);
 }
 
 /// #4473: refreshing an effect whose modifier lowers the maximum absorption

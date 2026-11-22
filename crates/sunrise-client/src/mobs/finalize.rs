@@ -688,9 +688,23 @@ fn own_effect_modifier_keys(
         .collect();
     vanilla.into_iter().chain(declared)
 }
+/// The amount and operation of the modifier `id` on the attribute `name` of
+/// the mob's live map, which saves and syncs it; none when it is not there.
+fn generic_modifier(m: &Mob, name: &str, id: &str) -> Option<(f64, Operation)> {
+    let catalog = m.kind.attribute_bounds.catalog()?;
+    let seed = || {
+        crate::entity_nbt::attribute_entries(m)
+            .into_iter()
+            .map(|(_, entry)| entry)
+            .collect()
+    };
+    let modifiers = m.extra.live.modifiers(catalog, &m.kind.id, name, seed)?;
+    let modifier = modifiers.iter().find(|modifier| modifier.id() == id)?;
+    Some((modifier.amount(), modifier.operation()))
+}
 /// The (attribute, id) of each modifier a content mod's effect `def` puts on
 /// the attribute maps of `m`, outside its own store.
-pub fn generic_effect_modifier_keys<'a>(
+fn generic_effect_modifier_keys<'a>(
     m: &'a Mob,
     def: &'static sunrise_client_core::potions::EffectDef,
 ) -> impl Iterator<Item = (&'static str, &'static str)> + 'a {
@@ -777,11 +791,15 @@ pub fn remove_baby_modifier(m: &mut Mob, a: Attr, id: &str) -> bool {
 }
 /// One effect mutation's before-order in the legacy and live modifier seed stores.
 /// A clear is one batch: restore all of its rows together, not at stale indices.
+/// A declared effect's modifiers outside the store are kept as they were,
+/// (attribute, id, amount and operation if it was on), and written back to
+/// the mob's attribute map and its live map's saved entry alike.
 pub struct EffectModifierUndo {
     keys: Vec<(Attr, String)>,
     permanent: Vec<Modifier>,
     transient: Vec<Modifier>,
     live: crate::living_attributes::TransientModifiers,
+    generic: Vec<(&'static str, &'static str, Option<(f64, Operation)>)>,
 }
 
 impl EffectModifierUndo {
@@ -792,18 +810,24 @@ impl EffectModifierUndo {
         self.permanent.retain(unaffected);
         self.transient.retain(unaffected);
         self.live.forget(attribute, id);
+        self.generic
+            .retain(|&(name, key, _)| name != attribute || key != id);
     }
 
     pub fn restore(self, mob: &mut Mob) {
-        if self.keys.is_empty() {
-            return;
-        }
         let Self {
             keys,
             permanent,
             transient,
             live,
+            generic,
         } = self;
+        for (attribute, id, modifier) in generic {
+            set_generic_effect_modifier(mob, attribute, id, modifier);
+        }
+        if keys.is_empty() {
+            return;
+        }
         let owns = |row: &Modifier| {
             keys.iter()
                 .any(|(attr, id)| *attr == row.attr && *id == row.id)
@@ -851,14 +875,21 @@ impl Mob {
         &self,
         effects: impl Iterator<Item = &'static str>,
     ) -> Option<EffectModifierUndo> {
+        let effects: Vec<_> = effects
+            .map(|effect| (effect, sunrise_client_core::potions::effect(effect)))
+            .collect();
         let keys: Vec<_> = effects
-            .flat_map(|effect| {
-                let def = sunrise_client_core::potions::effect(effect);
-                own_effect_modifier_keys(self, effect, def)
-            })
+            .iter()
+            .flat_map(|&(effect, def)| own_effect_modifier_keys(self, effect, def))
             .map(|(attr, id)| (attr, id.into_owned()))
             .collect();
-        if keys.is_empty() {
+        let generic: Vec<_> = effects
+            .iter()
+            .filter_map(|&(_, def)| def)
+            .flat_map(|def| generic_effect_modifier_keys(self, def))
+            .map(|(attribute, id)| (attribute, id, generic_modifier(self, attribute, id)))
+            .collect();
+        if keys.is_empty() && generic.is_empty() {
             return None;
         }
         let attrs = self.extra.attributes.as_deref();
@@ -871,6 +902,7 @@ impl Mob {
                 .map(|attrs| attrs.transient.clone())
                 .unwrap_or_default(),
             live: self.extra.live.transient_modifiers(),
+            generic,
         })
     }
 
