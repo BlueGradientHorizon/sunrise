@@ -1145,7 +1145,9 @@ impl Game<'_> {
                             // A command a native mod registered goes to the mods
                             // first, as the owner's own chat does (the console is
                             // level 4, so every registered usage is allowed).
-                            if !g.perform_native_command(conn, 4, command.trim()) {
+                            if g.perform_native_command(conn, 4, command.trim(), false)
+                                .is_none()
+                            {
                                 g.run_command(&command);
                             }
                             g.chat_capture.take().unwrap_or_default()

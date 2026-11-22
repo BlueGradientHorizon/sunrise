@@ -34,7 +34,7 @@ pub mod types;
 pub use fill::ContainerLootContext;
 #[path = "loot/tags.rs"]
 mod loot_tags;
-pub use loot_tags::LootTags;
+pub use loot_tags::{ItemTagNames, LootTags};
 
 /// Ordered tag bindings for a single registry, keyed by tag ID.
 pub type RegistryTags = HashMap<String, Vec<String>>;
@@ -301,6 +301,7 @@ pub struct LootData {
     support_answers: crate::enchantment_answers::AnswerTable,
     /// Bound tags by registry and tag ID.
     tags: loot_tags::BoundTags,
+    item_tag_names: Option<ItemTagNames>,
     /// Smelting recipes in recipe id order: (ingredient, result, result count).
     smelting: Vec<(Value, String, i32)>,
 }
@@ -962,6 +963,7 @@ impl LootData {
             enchantments,
             primary_answers: Default::default(),
             support_answers: Default::default(),
+            item_tag_names: tags.get("item").map(ItemTagNames::bind),
             tags,
             smelting: Vec::new(),
         };
