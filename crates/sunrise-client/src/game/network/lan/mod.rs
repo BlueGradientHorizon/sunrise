@@ -3329,6 +3329,7 @@ impl Game<'_> {
             ParticleOptions::simple(particle),
             TrackingTarget::Entity(id),
             body,
+            None,
         );
         if self.audio.capture.is_some() {
             self.lan_critical_hits.push((attacker, id, magic));
