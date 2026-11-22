@@ -103,7 +103,7 @@ pub fn single(from: &Mob, to: &mut Mob, params: Params) {
     to.hurt_time = from.hurt_time;
     to.body_yaw = from.body_yaw;
     to.previous_body_yaw = from.body_yaw;
-    to.on_ground = from.on_ground;
+    to.ground.on_ground = from.ground.on_ground;
     to.extra.leash = from.extra.leash;
     to.extra.leash_pending = from.extra.leash_pending;
     to.extra.leash_player = from.extra.leash_player;
