@@ -4128,6 +4128,9 @@ struct Game<'a> {
     level_shapes: sunrise_client::chunk::LevelShapes,
     /// This game is that server thread's (game/world/integrated.rs).
     serving: Option<integrated::Serving>,
+    /// `IntegratedServer`'s single-player profile, fixed when the server thread is created,
+    /// before its startup hooks (game/modding/native_singleplayer_owner.rs). None elsewhere.
+    singleplayer_profile: Option<native_singleplayer_owner::SingleplayerProfile>,
     /// The open world is shared behind an invite code (game/network/friends.rs).
     #[cfg(feature = "friends")]
     friends: Option<friends::Sharing>,
@@ -14091,6 +14094,7 @@ impl<'a> Game<'a> {
             integrated: None,
             level_shapes: Default::default(),
             serving: None,
+            singleplayer_profile: None,
             world_options: None,
             options_to_world_options: false,
             command_block_screen: None,

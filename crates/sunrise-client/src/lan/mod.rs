@@ -379,15 +379,33 @@ impl OwnerProfile {
         if let Some(properties) = self.properties.get() {
             return properties;
         }
-        let received = self.fetch.lock().ok().and_then(|r| match r.try_recv() {
-            Ok(properties) => Some(properties),
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(Vec::new()),
-            Err(std::sync::mpsc::TryRecvError::Empty) => None,
-        });
-        match received {
-            Some(properties) => self.properties.get_or_init(|| properties),
-            None => &[],
+        // Kept for the answer's whole store, so `wait` never sees the channel emptied first.
+        let Ok(fetch) = self.fetch.try_lock() else {
+            return &[];
+        };
+        match fetch.try_recv() {
+            Ok(properties) => self.properties.get_or_init(|| properties),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.properties.get_or_init(Vec::new)
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => &[],
         }
+    }
+    /// The owner's properties, waiting for the fetch if it is still out
+    /// (`Minecraft.getGameProfile`'s `profileFuture.join()`): empty when it
+    /// failed. Every later read, [`Self::properties`] too, sees the same list.
+    pub fn wait(&self) -> &[sunrise_core::profile::AccountProperty] {
+        if let Some(properties) = self.properties.get() {
+            return properties;
+        }
+        let fetch = self.fetch.lock();
+        if let Some(properties) = self.properties.get() {
+            return properties;
+        }
+        let received = fetch.as_ref().ok().and_then(|fetch| fetch.recv().ok());
+        let properties = self.properties.get_or_init(|| received.unwrap_or_default());
+        drop(fetch);
+        properties
     }
 }
 

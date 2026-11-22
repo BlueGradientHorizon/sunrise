@@ -56,9 +56,9 @@ An acting player without a known connection gets an empty snapshot; a stale or
 unavailable player returns `None`.
 
 On an integrated (single player) server, `host.players().singleplayer_profile()` is the profile the
-server launched with (`MinecraftServer.getSingleplayerProfile`): the owner's name, UUID and login
-properties, borrowed from the host, before the owner joins and after they leave. The properties stay
-empty until the server's own background fetch of the account's skin has answered.
+server was created with (`MinecraftServer.getSingleplayerProfile`): the owner's name, UUID and login
+properties, borrowed from the host. It is fixed when the server is created, so it reads the same from
+`server_about_to_start` and `server_starting` on, before the owner joins and after they leave.
 `player.is_singleplayer_owner(host)` says whether a player is that owner, compared as
 `IntegratedServer.isSingleplayerOwner` does: by name, ignoring case, not by UUID. Cheats, opening to
 LAN, join order and permission level don't change the answer. Use `player.permission_level(host)` to
