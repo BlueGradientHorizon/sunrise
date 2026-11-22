@@ -363,7 +363,10 @@ pub fn hover_name_text(names: &crate::creative::Names, stack: &ItemStack) -> cra
     } else {
         "item"
     };
-    Text::translate(&format!("{prefix}.{namespace}.{path}"), &[])
+    Text::translate(
+        &format!("{prefix}.{namespace}.{}", path.replace('/', ".")),
+        &[],
+    )
 }
 /// `ItemStack.getHoverName` as plain text in the current language: the component of
 /// [`hover_name_text`], rendered.

@@ -840,6 +840,7 @@ impl World {
     pub fn is_air(&self, state: BlockStateId) -> bool {
         state == self.air
     }
+    #[inline]
     pub fn loaded(&self, x: i32, z: i32) -> bool {
         self.chunks.contains_key(&(x >> 4, z >> 4))
     }
