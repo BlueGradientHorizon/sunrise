@@ -625,7 +625,7 @@ mod tests {
                         .collect::<Vec<_>>(),
                     expected
                         .iter()
-                        .map(|value| ("reader", value.as_str()))
+                        .map(|&value| ("reader", value))
                         .collect::<Vec<_>>(),
                     "a later step reads the same snapshot"
                 );
