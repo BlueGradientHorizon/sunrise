@@ -17,7 +17,6 @@ ids = [
     "handle:OriginalPlayer::existing_attachment",
     "handle:OriginalPlayer::with_decoded_attachment",
     "handle:OriginalPlayer::set_attachment",
-    "handle:AttachmentQuery::with_value",
     "handle:AttachmentQuery::get",
     "trait:BlockEntityPartState",
     "assoc:BlockEntityPartState::Data",
@@ -61,6 +60,7 @@ migrate = """
   Part implementations no longer need `Data: Clone` unless they edit it.
 - Replace `|host, draft|` in `edit_state` and `edit_part_state` with `|host, tx, draft|`.
   Pass `tx` to any storage call that takes a `TransactionContext`, or name it `_tx` if unused.
-- `query.get(scope, holder)` keeps returning an owned option for Clone values. To project from
-  the same snapshot instead, call `query.with_value(scope, holder, |value| value.map(project))`.
+- Replace `query.get(scope, holder)` with `query.get(scope, holder, |value| value.copied())`
+  for Copy values; for an owned Clone value use `|value| value.cloned()`. Project just the data
+  you need from the optional captured reference when no owned value is required.
 """

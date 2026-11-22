@@ -223,7 +223,7 @@ impl<H: Copy + Eq + Hash, T: Send + Sync + 'static> AttachmentQuery<'_, H, T> {
     /// An absent holder lends `None` without initializing a default or checking residency.
     /// Scoped reads borrow the original frame tracker throughout the loan; later changes
     /// to membership and bindings require a fresh snapshot.
-    pub fn with_value<R>(
+    pub fn get<R>(
         &self,
         host: Option<&AttachmentQueryScopes>,
         holder: H,
@@ -243,18 +243,6 @@ impl<H: Copy + Eq + Hash, T: Send + Sync + 'static> AttachmentQuery<'_, H, T> {
             .read_in_installation(self.key, self.epoch)
             .map_err(AttachmentRowError::Value)?;
         Ok(read(Some(value)))
-    }
-
-    /// Clone a captured value; see [`Self::with_value`] for scope and absence semantics.
-    pub fn get(
-        &self,
-        host: Option<&AttachmentQueryScopes>,
-        holder: H,
-    ) -> Result<Option<T>, AttachmentRowError>
-    where
-        T: Clone,
-    {
-        self.with_value(host, holder, |value| value.cloned())
     }
 }
 
@@ -666,13 +654,13 @@ mod existing_tests {
         let token = retained.iter().try_next().unwrap().unwrap().write_token();
         index.unload(7).into_result();
         let fresh = query(&index);
-        assert_eq!(fresh.get(None, 7), Ok(None)); // no longer live
-        assert_eq!(fresh.get(None, 11), Ok(None)); // never resident
+        assert_eq!(fresh.get(None, 7, |value| value.cloned()), Ok(None)); // no longer live
+        assert_eq!(fresh.get(None, 11, |value| value.cloned()), Ok(None)); // never resident
         assert_eq!(
             index.validate_owner(&token),
             Err(AttachmentRowError::StaleHolder)
         );
-        assert_eq!(retained.get(None, 7), Ok(Some(7))); // captured, not live
+        assert_eq!(retained.get(None, 7, |value| value.cloned()), Ok(Some(7))); // captured, not live
     }
 
     #[test]
@@ -681,21 +669,30 @@ mod existing_tests {
         let a = index.register(7, [(key(), entry(7u32))]).into_result();
         index.register(9, [(key(), entry(9u32))]).into_result();
         let old = query(&index);
-        assert_eq!(old.get(None, 7), Ok(Some(7)));
-        assert_eq!(old.get(None, 9), Ok(Some(9)));
-        assert_eq!(old.get(None, 11), Ok(None));
+        assert_eq!(old.get(None, 7, |value| value.cloned()), Ok(Some(7)));
+        assert_eq!(old.get(None, 9, |value| value.cloned()), Ok(Some(9)));
+        assert_eq!(old.get(None, 11, |value| value.cloned()), Ok(None));
         index.set(&a, &key(), entry(8u32)).into_result();
-        assert_eq!(query(&index).get(None, 7), Ok(Some(8)));
-        assert_eq!(old.get(None, 7), Ok(Some(7)));
+        assert_eq!(
+            query(&index).get(None, 7, |value| value.cloned()),
+            Ok(Some(8))
+        );
+        assert_eq!(old.get(None, 7, |value| value.cloned()), Ok(Some(7)));
         index.remove(&a, &key()).into_result();
-        assert_eq!(query(&index).get(None, 7), Ok(None));
+        assert_eq!(query(&index).get(None, 7, |value| value.cloned()), Ok(None));
         index.register(7, [(key(), entry(10u32))]).into_result();
         assert_eq!(
             index.validate_owner(&a),
             Err(AttachmentRowError::StaleHolder)
         );
         assert_eq!(index.snapshot(&key()).slot_of(&a), None);
-        assert_eq!(query(&index).get(None, 7), Ok(Some(10)));
-        assert_eq!(query(&AttachmentIndex::default()).get(None, 7), Ok(None));
+        assert_eq!(
+            query(&index).get(None, 7, |value| value.cloned()),
+            Ok(Some(10))
+        );
+        assert_eq!(
+            query(&AttachmentIndex::default()).get(None, 7, |value| value.cloned()),
+            Ok(None)
+        );
     }
 }

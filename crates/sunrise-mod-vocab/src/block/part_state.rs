@@ -133,7 +133,7 @@ fn read_block_state_in<T: Send + Sync + 'static, R>(
         .block_entity_part_snapshot(entity, checked.namespace(), checked.name())?
         .query_checked(checked, epoch)
         .map_err(|error| attachment(key, error))?
-        .with_value(
+        .get(
             level.attachment_read_scope(),
             AttachmentHolder::BlockEntity(entity),
             read,
@@ -457,7 +457,7 @@ pub fn read_state<H: PartStateHolder, T: Send + Sync + 'static, R>(
         .map_err(|error| attachment(key, error))?;
     let scope = host.attachment_read_scope();
     scope
-        .and_then(|scope| query.with_value(scope, entity.attachment_holder(), read))
+        .and_then(|scope| query.get(scope, entity.attachment_holder(), read))
         .map_err(|error| match error {
             AttachmentRowError::Value(error) => attachment(key, error),
             _ => PartStateError::Stale,
@@ -507,6 +507,10 @@ impl Drop for Editing {
 /// `edit` wrote and the old value stays, with its saved bytes. A panic in `edit` aborts it
 /// too. An undecodable saved value refuses before `edit` runs and is kept as it was.
 /// An edit of the same holder and key from inside `edit` is refused.
+///
+/// The closure's output is not a commit vote: if `R` is a `Result`, returning
+/// `Err` as that result does not abort the edit. For fallible edits, call from an
+/// enclosing [`HostTransaction::transaction`] and propagate the error there.
 pub fn edit_part_state<H: PartStateHolder, T: Clone + Send + Sync + 'static, R>(
     host: &mut dyn ServerHost,
     entity: H,

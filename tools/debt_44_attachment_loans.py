@@ -24,7 +24,11 @@ OPTION_METHODS = {
     "state_existing_in",
     "read_state",
 }
-DEFINITIONS = {
+QUERY_DEFINITIONS = {
+    ROOT / "crates/sunrise-mod-runtime/src/attachments/query.rs",
+    ROOT / "crates/sunrise-mod-vocab/src/entity/attachment_query.rs",
+}
+DEFINITIONS = QUERY_DEFINITIONS | {
     ROOT / path
     for path in (
         "crates/sunrise-mod-runtime/src/attachments.rs",
@@ -82,10 +86,12 @@ def collect(messages):
         if not match:
             continue
         name = match[1]
-        if name in VALUE_METHODS:
-            projection = "Clone::clone"
-        elif name in OPTION_METHODS:
+        if name in OPTION_METHODS or (
+            name == "get" and Path(definition["file_name"]).resolve() in QUERY_DEFINITIONS
+        ):
             projection = "|value| value.cloned()"
+        elif name in VALUE_METHODS:
+            projection = "Clone::clone"
         else:
             continue
         for child in diagnostic["children"]:

@@ -88,15 +88,19 @@ impl<R: StackedResource> AttachedStacks<R> {
         Self::new(attachment, holder, 1, capacity, valid)
             .expect("one index is within the codec limit")
     }
-    /// What index `index` holds; none past the handler's `size`, or where the holder has none
-    /// or is gone. One borrowed read of the stored list: only the entry is cloned.
-    fn at(&self, host: &mut dyn ServerHost, index: usize) -> Option<(R, u32)> {
+    /// Project from the occupied slot without cloning the resource for count-only reads.
+    fn with_entry<T>(
+        &self,
+        host: &mut dyn ServerHost,
+        index: usize,
+        read: impl FnOnce(&(R, u32)) -> T,
+    ) -> Option<T> {
         if index >= self.size {
             return None;
         }
         self.attachment
             .get_existing(host, self.holder, |list| {
-                list.and_then(|list| list.get(index)?.clone())
+                list?.get(index)?.as_ref().map(read)
             })
             .ok()
             .flatten()
@@ -130,10 +134,11 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
         self.size
     }
     fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<R> {
-        self.at(host, index).map(|(resource, _)| resource)
+        self.with_entry(host, index, |(resource, _)| resource.clone())
     }
     fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
-        self.at(host, index).map_or(0, |(_, amount)| amount)
+        self.with_entry(host, index, |(_, amount)| *amount)
+            .unwrap_or(0)
     }
     fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: Option<&R>) -> u32 {
         // The physical limit of an in-range index; capacity is not permission to insert
@@ -162,7 +167,7 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
             return 0;
         }
         let room = self.capacity(host, index, Some(resource));
-        let have = match self.at(host, index) {
+        let have = match self.with_entry(host, index, Clone::clone) {
             Some((held, _)) if held != *resource => return 0,
             Some((_, have)) => have,
             None => 0,
@@ -182,7 +187,10 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
         amount: u32,
     ) -> u32 {
         crate::item::transaction::assert_transaction_matches(host, Some(tx));
-        let Some((held, have)) = self.at(host, index).filter(|(held, _)| held == resource) else {
+        let Some((held, have)) = self
+            .with_entry(host, index, Clone::clone)
+            .filter(|(held, _)| held == resource)
+        else {
             return 0;
         };
         match amount.min(have) {

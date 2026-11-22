@@ -130,6 +130,8 @@ let done = self.edit_state(event.subject.host(), entity, |_, _tx, progress| {
   host, its `&TransactionContext`, and a mutable draft of the value. No store borrow is held
   while it runs. The draft is encoded and stored through that journal when the closure returns.
   `PartStateError::Unavailable` means the transaction could not open and the closure did not run.
+  If the edit closure returns a `Result`, that result is its output, not a commit vote. To make
+  a failed storage call abort the whole edit, propagate its error in an enclosing `host.transaction`.
 - Every call checks the key and handle first. A stale key from a prior installation gives
   `PartStateError::Attachment { error: AttachmentError::StaleKey, .. }`. A handle from another
   level gives `PartStateError::OtherLevel`. A removed, replaced or unloaded block entity gives

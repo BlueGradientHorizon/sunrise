@@ -643,6 +643,7 @@ fn indexed(game: &Game<'_>, entity: BlockEntityRef, progress: &AttachmentKey<i32
         .get(
             game.attachment_frame_borrow(),
             mod_api::AttachmentHolder::BlockEntity(entity),
+            |value| value.cloned(),
         )
         .ok()
         .flatten()

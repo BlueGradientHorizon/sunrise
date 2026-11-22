@@ -52,15 +52,15 @@ fn total(host: &dyn Host, key: &AttachmentKey<u32>) -> Result<u32, AttachmentRow
 | Interior mutability | A snapshot does not deep-freeze interior mutability inside `T`. |
 
 For an immutable keyed read, including in a render hook, call
-`query.with_value(scope, holder, |value| value.copied())?` with an `AttachmentHolder`
+`query.get(scope, holder, |value| value.copied())?` with an `AttachmentHolder`
 (for example, for a `u32` attachment). The expected O(1) lookup precedes decoding
 and does not scan rows. Decode and type errors use `AttachmentRowError::Value`
-without calling the closure. `query.get(scope, holder)?` uses the same lookup and
-returns an owned `Option<T>` when `T: Clone`.
+without calling the closure. Return only the data you need; use `|value| value.cloned()`
+if you need to keep an owned `Option<T>` for a Clone type.
 
 A `None` loan means the holder is absent from the snapshot, including when its data
 has not arrived through synchronization. It does not prove the holder is alive:
-neither method checks residency. While in scope, a retained query lends its
+the probe does not check residency. While in scope, a retained query lends its
 captured value even after a live replacement or removal.
 
 ## Write explicitly on the server

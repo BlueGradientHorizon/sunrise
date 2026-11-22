@@ -240,7 +240,9 @@ fn stale_key_is_refused_by_queries_and_retained_row_reads_and_writes() {
         Err(AttachmentRowError::Value(AttachmentError::StaleKey))
     );
     assert_eq!(
-        host.query(&second).unwrap().get(Default::default(), scoped),
+        host.query(&second)
+            .unwrap()
+            .get(Default::default(), scoped, |value| value.cloned()),
         Ok(Some(17))
     );
 }
@@ -277,7 +279,7 @@ fn retained_raw_query_uses_the_current_installations_decoder() {
         }),
     );
     assert_eq!(
-        stale.get(Default::default(), scoped),
+        stale.get(Default::default(), scoped, |value| value.cloned()),
         Err(AttachmentRowError::Value(AttachmentError::StaleKey))
     );
     assert_eq!(
@@ -285,7 +287,9 @@ fn retained_raw_query_uses_the_current_installations_decoder() {
         Some(AttachmentRowError::Value(AttachmentError::StaleKey))
     );
     assert_eq!(
-        host.query(&second).unwrap().get(Default::default(), scoped),
+        host.query(&second)
+            .unwrap()
+            .get(Default::default(), scoped, |value| value.cloned()),
         Ok(Some(38))
     );
     assert_eq!(
@@ -398,7 +402,7 @@ fn a_captured_bucket_refuses_another_live_key_of_the_same_type() {
     assert_eq!(
         host.query(&fuel_key)
             .unwrap()
-            .get(Default::default(), holder),
+            .get(Default::default(), holder, |value| value.cloned()),
         Ok(Some(17))
     );
 }
@@ -456,7 +460,7 @@ fn read_loans_project_nonclone_values_from_the_live_holder_and_its_snapshot() {
     key.set(&mut host, Holder::Level, Counter(13)).unwrap();
     assert_eq!(key.get(&mut host, Holder::Level, |n| n.0), Ok(13));
     assert_eq!(
-        capture.with_value(Default::default(), level, project),
+        capture.get(Default::default(), level, project),
         Ok(Some(11))
     );
 }

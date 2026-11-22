@@ -60,10 +60,10 @@ impl AttachmentBatch {
 }
 
 /// A typed snapshot whose rows lend values from their captured bindings.
-/// [`Self::with_value`] and [`Self::get`] have an expected O(1) probe before decode.
-/// Missing or not yet synced holders return `Ok(None)`; no default is created.
-/// `None` does not mean the holder is alive: absent and not-live holders alike
-/// return `Ok(None)` when absent from the snapshot, without a host liveness check.
+/// [`Self::get`] uses an expected O(1) holder probe before decode.
+/// Missing or not yet synced holders lend `None`; no default is created.
+/// `None` does not mean the holder is alive: the probe looks at captured membership
+/// without a host liveness check.
 /// Only scoped residency probes report `StaleHolder`. `get` and iteration report
 /// [`AttachmentRowError::OutsideTransaction`] if the capture's frame is not current, or
 /// [`AttachmentError::StaleKey`] as a value error after the installation changes.
@@ -113,26 +113,14 @@ impl<T: Send + Sync + 'static> AttachmentQuery<'_, T> {
     /// Lend a captured value or `None` without inserting a default. A capture made
     /// in a transaction requires the current frame and a read scope from its host.
     /// Stale installation, invalid scope and decode errors refuse before calling `read`.
-    pub fn with_value<R>(
+    pub fn get<R>(
         &self,
         scope: AttachmentReadScope<'_>,
         holder: AttachmentHolder,
         read: impl FnOnce(Option<&T>) -> R,
     ) -> Result<R, AttachmentRowError> {
         check_epoch(self.1)?;
-        self.0.with_value(scope.0, holder, read)
-    }
-
-    /// Clone a captured value; see [`Self::with_value`] for scope and absence semantics.
-    pub fn get(
-        &self,
-        scope: AttachmentReadScope<'_>,
-        holder: AttachmentHolder,
-    ) -> Result<Option<T>, AttachmentRowError>
-    where
-        T: Clone,
-    {
-        self.with_value(scope, holder, |value| value.cloned())
+        self.0.get(scope.0, holder, read)
     }
 }
 

@@ -201,9 +201,12 @@ fn rolled_back_attachment_queries_cannot_read_or_write_a_resident_holder() {
             let scope = host.attachment_read_scope().unwrap();
             assert_eq!(read_row.with_value(scope, |value| *value), Ok(11));
             assert_eq!(write_row.with_value(scope, |value| *value), Ok(11));
-            assert_eq!(reader.get(scope, scoped_holder), Ok(Some(11)));
             assert_eq!(
-                reader.with_value(
+                reader.get(scope, scoped_holder, |value| value.cloned()),
+                Ok(Some(11))
+            );
+            assert_eq!(
+                reader.get(
                     mod_api::__private::game::attachment_read_scope(&foreign),
                     scoped_holder,
                     |_| panic!("foreign read scope ran a keyed projection"),
@@ -228,7 +231,7 @@ fn rolled_back_attachment_queries_cannot_read_or_write_a_resident_holder() {
 
         assert_eq!(values(game, key), [10]);
         assert_eq!(
-            reader.with_value(game.attachment_frame_borrow(), scoped_holder, |_| {
+            reader.get(game.attachment_frame_borrow(), scoped_holder, |_| {
                 panic!("closed scope ran a keyed projection")
             }),
             Err(OutsideTransaction)

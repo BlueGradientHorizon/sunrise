@@ -130,7 +130,9 @@ fn window_value(game: &mut Game<'_>, key: &mod_api::AttachmentKey<i32>) -> Optio
     batch
         .query(key)
         .unwrap()
-        .get(game.attachment_frame_borrow(), holder)
+        .get(game.attachment_frame_borrow(), holder, |value| {
+            value.cloned()
+        })
         .unwrap()
 }
 
