@@ -639,7 +639,7 @@ mod tests {
             );
             register(&mut mob);
             mob.random.set_seed(42);
-            mob.on_ground = true;
+            mob.ground.on_ground = true;
             mob.fluids.in_water = false;
             mob.silent = true;
             let mut events = Vec::new();

@@ -17,7 +17,7 @@ fn loaded_eating(kind_id: &str, types: &super::MobTypes) -> Mob {
     );
     equine::register(&mut m);
     m.persistent = true;
-    m.on_ground = true;
+    m.ground.on_ground = true;
     m.extra.flag = true;
     m
 }
