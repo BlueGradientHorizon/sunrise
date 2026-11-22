@@ -9,7 +9,7 @@ use crate::{
     FluidIdentity, FluidResource, FluidStack, Holder, Identifier, ItemResource, ItemStack,
     ResourceHandler, ServerHost, Tag, Transaction,
 };
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, ops::Range};
 use sunrise_core::nbt::JavaString;
 
 /// The contents of an [`AttachedStacks`], keyed by slot or tank index. Missing indices are
@@ -86,27 +86,34 @@ impl<R: StackedResource> AttachedStacks<R> {
     ) -> Self {
         Self::new(attachment, holder, 1, capacity, valid)
     }
+    /// Read just the part of the map the operation needs. A saved map decodes on its first read.
+    fn read_stacks<T>(
+        &self,
+        host: &mut dyn ServerHost,
+        read: impl Fn(&StackList<R>) -> T,
+    ) -> Option<T> {
+        match self
+            .attachment
+            .with_decoded(host, self.holder, |list| list.map(&read))
+            .ok()?
+        {
+            Some(part) => Some(part),
+            None => self
+                .attachment
+                .get_existing(host, self.holder)
+                .ok()?
+                .as_ref()
+                .map(read),
+        }
+    }
     /// What index `index` holds; none past the handler's `size`, or where the holder has none
-    /// or is gone. One borrowed read of the stored list: only the entry is cloned.
+    /// or is gone. Only the entry is cloned when the map is decoded.
     fn at(&self, host: &mut dyn ServerHost, index: usize) -> Option<(R, u32)> {
         if index >= self.size {
             return None;
         }
-        let borrowed = self.attachment.with_decoded(host, self.holder, |list| {
-            list.map(|list| list.get(&index).cloned())
-        });
-        match borrowed {
-            // The holder keeps a decoded list: only the entry has to be cloned.
-            Ok(Some(held)) => held,
-            // Nothing decoded yet: `get_existing` decodes a saved value once, and the store
-            // keeps its decoded copy for the borrowed reads after it.
-            _ => self
-                .attachment
-                .get_existing(host, self.holder)
-                .ok()
-                .flatten()
-                .and_then(|mut list| list.remove(&index)),
-        }
+        self.read_stacks(host, |list| list.get(&index).cloned())
+            .flatten()
     }
     /// Index `index` set to `now`: whether the write went through. Indices past the handler's
     /// `size` that the holder keeps are preserved, so a write through a smaller view never
@@ -134,6 +141,25 @@ impl<R: StackedResource> AttachedStacks<R> {
 impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
     fn size(&self, _: &mut dyn ServerHost) -> usize {
         self.size
+    }
+    fn next_transfer_index(
+        &self,
+        host: &mut dyn ServerHost,
+        indices: Range<usize>,
+        inserting: Option<&R>,
+    ) -> Option<usize> {
+        let indices = indices.start..indices.end.min(self.size);
+        if indices.is_empty() {
+            return None;
+        }
+        if let Some(resource) = inserting {
+            return ((self.valid)(resource) && resource.limit(host, self.capacity) > 0)
+                .then_some(indices.start);
+        }
+        self.read_stacks(host, |list| {
+            list.range(indices.clone()).next().map(|(&index, _)| index)
+        })
+        .flatten()
     }
     fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<R> {
         self.at(host, index).map(|(resource, _)| resource)

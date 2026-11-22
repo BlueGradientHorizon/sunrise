@@ -5,7 +5,7 @@ use crate::{
     Capability, Host, HostTransaction, ItemStack, ItemStackView, ServerHost, Tag, Transaction,
     backend_of,
 };
-use std::fmt;
+use std::{fmt, ops::Range};
 use sunrise_core::nbt::JavaString;
 
 /// A data component's id, `namespace:path` (`minecraft:damage`, `mymod:charge`), checked once
@@ -512,6 +512,19 @@ pub trait ResourceHandler<R> {
 
     /// How many indices it has.
     fn size(&self, host: &mut dyn ServerHost) -> usize;
+    /// The first candidate index in the given in-bounds range, or `None` if none remain.
+    /// With `None` for `inserting`, skip only indices known to hold nothing. With
+    /// `Some(resource)`, skip only indices known not to accept an insertion of that resource.
+    /// The default tries every index. Sparse handlers can override this to skip gaps, and
+    /// handlers that wrap another one should forward the query with the indices remapped.
+    fn next_transfer_index(
+        &self,
+        _host: &mut dyn ServerHost,
+        indices: Range<usize>,
+        _inserting: Option<&R>,
+    ) -> Option<usize> {
+        (!indices.is_empty()).then_some(indices.start)
+    }
     /// What index `index` holds, if anything.
     fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<R>;
     /// How much of it.
@@ -553,7 +566,7 @@ pub trait ResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32;
-    /// Puts up to `amount` of `resource` in wherever it goes: by default index by index from 0.
+    /// Puts up to `amount` of `resource` wherever it goes: by default in candidate index order.
     /// Prefer this to `insert_at` unless targeting a specific index. The default runs in its
     /// own journal and rolls back with [`Overanswered`] if an index answers more than requested.
     fn insert(
@@ -563,14 +576,18 @@ pub trait ResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> Result<u32, Overanswered> {
-        let size = self.size(host);
-        in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
-            Ok(self.insert_at(host, tx, *index, resource, left))
-        })
+        let mut indices = 0..self.size(host);
+        in_turn(
+            host,
+            tx,
+            amount,
+            |host| advance_transfer_index(self, host, &mut indices, Some(resource)),
+            |host, tx, index, left| Ok(self.insert_at(host, tx, index, resource, left)),
+        )
     }
     /// Takes up to `amount` of `resource` out from wherever it is: by default index by index
-    /// from 0. Prefer this to `extract_at` unless targeting a specific index. Overanswers are
-    /// handled as in [`Self::insert`].
+    /// from 0, with empty gaps skipped by sparse handlers. Prefer this to `extract_at` unless
+    /// targeting a specific index. Overanswers are handled as in [`Self::insert`].
     fn extract(
         &self,
         host: &mut dyn ServerHost,
@@ -578,11 +595,35 @@ pub trait ResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> Result<u32, Overanswered> {
-        let size = self.size(host);
-        in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
-            Ok(self.extract_at(host, tx, *index, resource, left))
-        })
+        let mut indices = 0..self.size(host);
+        in_turn(
+            host,
+            tx,
+            amount,
+            |host| advance_transfer_index(self, host, &mut indices, None),
+            |host, tx, index, left| Ok(self.extract_at(host, tx, index, resource, left)),
+        )
     }
+}
+
+/// Ask the handler for a candidate in the remaining range and advance past it. A mod's
+/// out-of-range answer must not make the cursor loop or overflow, even in a wrapper.
+pub(crate) fn advance_transfer_index<R>(
+    handler: &(impl ResourceHandler<R> + ?Sized),
+    host: &mut dyn ServerHost,
+    indices: &mut Range<usize>,
+    inserting: Option<&R>,
+) -> Option<usize> {
+    if indices.is_empty() {
+        return None;
+    }
+    let index = handler.next_transfer_index(host, indices.clone(), inserting)?;
+    if !indices.contains(&index) {
+        log::warn!("Resource handler returned transfer index {index} outside {indices:?}");
+        return None;
+    }
+    indices.start = index + 1;
+    Some(index)
 }
 
 /// A slot-less transfer owns its journal, so an overanswer cannot leave part of it committed.
@@ -590,13 +631,13 @@ pub(crate) fn in_turn<P>(
     host: &mut dyn ServerHost,
     tx: &Transaction,
     amount: u32,
-    parts: impl IntoIterator<Item = P>,
-    ask: impl FnMut(&mut dyn ServerHost, &Transaction, &P, u32) -> Result<u32, Overanswered>,
+    next: impl FnMut(&mut dyn ServerHost) -> Option<P>,
+    ask: impl FnMut(&mut dyn ServerHost, &Transaction, P, u32) -> Result<u32, Overanswered>,
 ) -> Result<u32, Overanswered> {
     if amount == 0 || host.transaction_current().as_ref() != Some(tx) {
         return Ok(0);
     }
-    host.transaction(|host, tx| try_in_turn(host, tx, amount, parts, ask))
+    host.transaction(|host, tx| try_in_turn(host, tx, amount, next, ask))
 }
 
 /// Asks each part for the full remaining amount. The owning transaction aborts on `Err`.
@@ -604,16 +645,16 @@ pub(crate) fn try_in_turn<P>(
     host: &mut dyn ServerHost,
     tx: &Transaction,
     amount: u32,
-    parts: impl IntoIterator<Item = P>,
-    mut ask: impl FnMut(&mut dyn ServerHost, &Transaction, &P, u32) -> Result<u32, Overanswered>,
+    mut next: impl FnMut(&mut dyn ServerHost) -> Option<P>,
+    mut ask: impl FnMut(&mut dyn ServerHost, &Transaction, P, u32) -> Result<u32, Overanswered>,
 ) -> Result<u32, Overanswered> {
     let mut done = 0;
-    for part in parts {
-        let left = amount - done;
-        if left == 0 {
+    while done < amount {
+        let Some(part) = next(host) else {
             break;
-        }
-        done += checked_transfer(ask(host, tx, &part, left)?, left)?;
+        };
+        let left = amount - done;
+        done += checked_transfer(ask(host, tx, part, left)?, left)?;
     }
     Ok(done)
 }

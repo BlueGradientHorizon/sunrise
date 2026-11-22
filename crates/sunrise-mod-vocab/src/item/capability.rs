@@ -8,7 +8,11 @@ use crate::{
     Direction, Host, ItemResource, LevelRef, Overanswered, ResourceHandler, ServerHost,
     Transaction, backend_mut_of, backend_of,
 };
-use std::{fmt::Debug, marker::PhantomData, ops::Deref};
+use std::{
+    fmt::Debug,
+    marker::PhantomData,
+    ops::{Deref, Range},
+};
 
 // no wire: process-local capability declaration carries a provider function pointer and type identity.
 /// A capability: its name (`sunrise:items`, `mymod:chemicals`), the handler trait `T` it answers
@@ -76,6 +80,15 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
 
     fn size(&self, host: &mut dyn ServerHost) -> usize {
         self.handler.size(host)
+    }
+
+    fn next_transfer_index(
+        &self,
+        host: &mut dyn ServerHost,
+        indices: Range<usize>,
+        inserting: Option<&R>,
+    ) -> Option<usize> {
+        self.handler.next_transfer_index(host, indices, inserting)
     }
 
     fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<R> {

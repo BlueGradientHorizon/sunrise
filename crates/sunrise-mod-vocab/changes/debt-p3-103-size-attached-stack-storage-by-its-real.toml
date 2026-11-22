@@ -1,5 +1,33 @@
-ids = ["handle:AttachedStacks::new", "type:StackList"]
-why = "NeoForge's StacksResourceHandler constructors size the handler by its backing storage, as used by ItemStacksResourceHandler and FluidStacksResourceHandler. Vanilla's ContainerHelper.loadAllItems reads saved indices without sizing storage by the largest index. Sunrise keeps only occupied slots so the handler's declared size sets the index range without a fixed transfer cap. The stock codecs keep the existing Slot and amount fields as signed NBT Ints, and vanilla's ListTag.write uses a signed Int for the serialized list length. Attachment sync keeps its existing payload limits."
+ids = [
+    "handle:AttachedStacks::new",
+    "type:StackList",
+    "trait:ResourceHandler",
+    "method:ResourceHandler::next_transfer_index",
+    "method:ResourceHandler::extract",
+    "method:ResourceHandler::insert",
+    "fn:resource_util::move_resources",
+    "fn:resource_util::move_resources_stacking",
+    "fn:resource_util::move_first",
+    "fn:resource_util::move_first_stacking",
+    "fn:resource_util::insert_stacking",
+    "fn:resource_util::extract_first",
+    "fn:resource_util::find_extractable_resource",
+    "fn:resource_util::index_of",
+    "fn:resource_util::contains",
+    "fn:resource_util::is_empty",
+    "fn:resource_util::comparator_signal",
+]
+why = """
+NeoForge's StacksResourceHandler constructors size the handler by its backing storage, as used by
+ItemStacksResourceHandler and FluidStacksResourceHandler. NeoForge's ResourceHandler.extract and
+ResourceHandlerUtil.moveInternal and moveFirstInternal transfer in index order, and vanilla's
+HopperBlockEntity.ejectItems skips empty slots in that order. Sunrise stores occupied slots only, so
+bulk transfers follow the same order without scanning unallocated empty gaps; bulk insertion skips
+an attached range that cannot accept the resource. Vanilla's ContainerHelper.loadAllItems reads saved
+indices without sizing storage by the largest index. The stock codecs keep the existing Slot and
+amount fields as signed NBT Ints, and vanilla's ListTag.write uses a signed Int for the serialized
+list length. Attachment sync keeps its existing payload limits.
+"""
 migrate = """
 Replace `AttachedItems::new(&KEY, holder, size, capacity, valid)?` or `.unwrap()` on that
 constructor with `AttachedItems::new(&KEY, holder, size, capacity, valid)`; do the same for
@@ -11,4 +39,10 @@ amount))` with `list.insert(index, (resource, amount))`, and setting `None` with
 `list.remove(&index)`. Iterate `for (&index, (resource, amount)) in &list` for occupied slots;
 use the handler's `size(host)`, not `list.len()`, for the logical slot count. Keep using
 `ITEM_STACKS` and `FLUID_STACKS` with the new map; existing saved data needs no conversion.
+Calls to `insert`, `extract`, and the transfer and query helpers stay the same. Dense handler
+implementations need no changes. For a delegating handler, add `next_transfer_index(host, range,
+inserting)` and forward it to the wrapped handler (mapping bounds and the returned index if needed).
+For a custom sparse handler, implement it to return the earliest candidate in the supplied range:
+with `None`, skip slots that hold nothing; with `Some(&resource)`, skip slots that cannot insert
+that resource. Return `None` when no candidate remains.
 """

@@ -1,7 +1,7 @@
 //! The handlers and their codecs, against the fixture host: literal amounts on writes, the
 //! hostile saved shapes refused, and the journal's nested snapshots.
 use super::*;
-use crate::{HostTransaction, ItemKey, testing::FakeHost};
+use crate::{Capability, HostTransaction, ItemKey, resource_util, testing::FakeHost};
 use std::cell::RefCell;
 
 thread_local! {
@@ -302,13 +302,108 @@ fn a_large_item_handler_keeps_the_saved_slot_format() {
     });
 }
 
-impl StackedResource for () {}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Pebble {
+    Slate,
+    Quartz,
+}
+
+impl StackedResource for Pebble {}
+
+static MEMORY: AttachmentType<StackList<Pebble>> = AttachmentType {
+    namespace: "attached_storage_test",
+    name: "memory",
+    default: StackList::new,
+    codec: None,
+    copy_on_death: false,
+    sync: false,
+};
 
 #[test]
-fn an_unencoded_handler_uses_its_declared_size() {
-    static MEMORY: AttachmentType<StackList<()>> = AttachmentType {
+fn an_unencoded_handler_bulk_extracts_in_order_without_walking_gaps() {
+    in_world(|| {
+        let mut host = FakeHost::new();
+        let slots = AttachedStacks::new(&MEMORY, CHUNK, usize::MAX, 4, |_| true);
+        let last = usize::MAX - 1;
+        let slate = Pebble::Slate;
+        assert_eq!(slots.size(&mut host), usize::MAX);
+        assert_eq!(
+            host.transaction(|host, tx| slots.extract(host, tx, &slate, 1)),
+            Ok(0)
+        );
+        assert_eq!(
+            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, last, &slate, 3))),
+            Ok(3)
+        );
+        assert_eq!(
+            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 5, &slate, 1))),
+            Ok(1)
+        );
+        assert_eq!(
+            host.transaction(|host, tx| slots.extract(host, tx, &slate, 2)),
+            Ok(2)
+        );
+        assert_eq!(
+            MEMORY.get_existing(&mut host, CHUNK),
+            Ok(Some(StackList::from([(last, (slate, 2))])))
+        );
+        assert_eq!(
+            host.transaction(|host, tx| slots.extract(host, tx, &slate, 10)),
+            Ok(2)
+        );
+        assert_eq!(MEMORY.get_existing(&mut host, CHUNK), Ok(None));
+    });
+}
+
+#[test]
+fn bulk_insert_skips_a_sparse_range_that_rejects_the_resource() {
+    in_world(|| {
+        let mut host = FakeHost::new();
+        let slots = AttachedStacks::new(&MEMORY, CHUNK, usize::MAX, 4, |r| *r == Pebble::Slate);
+        assert_eq!(
+            host.transaction(|host, tx| slots.insert(host, tx, &Pebble::Quartz, 1)),
+            Ok(0)
+        );
+        assert_eq!(
+            resource_util::insert_stacking(&mut host, &slots, &Pebble::Quartz, 1, None),
+            Ok(0)
+        );
+        assert_eq!(MEMORY.get_existing(&mut host, CHUNK), Ok(None));
+        let last = usize::MAX - 1;
+        assert_eq!(
+            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(
+                host,
+                tx,
+                last,
+                &Pebble::Slate,
+                3
+            ))),
+            Ok(3)
+        );
+        assert_eq!(
+            resource_util::insert_stacking(&mut host, &slots, &Pebble::Slate, 2, None),
+            Ok(2)
+        );
+        assert_eq!(slots.amount(&mut host, last), 4);
+        assert_eq!(slots.amount(&mut host, 0), 1);
+        assert_eq!(
+            host.transaction(|host, tx| slots.insert(host, tx, &Pebble::Slate, 4)),
+            Ok(4)
+        );
+        assert_eq!(slots.amount(&mut host, 0), 4);
+        assert_eq!(slots.amount(&mut host, 1), 1);
+    });
+}
+
+#[test]
+fn bulk_moves_follow_sparse_source_order_through_wrappers() {
+    use resource_util::{
+        CombinedResourceHandler, RangedResourceHandler, move_first, move_resources,
+    };
+
+    static DESTINATION: AttachmentType<StackList<Pebble>> = AttachmentType {
         namespace: "attached_storage_test",
-        name: "memory",
+        name: "destination",
         default: StackList::new,
         codec: None,
         copy_on_death: false,
@@ -316,18 +411,56 @@ fn an_unencoded_handler_uses_its_declared_size() {
     };
     in_world(|| {
         let mut host = FakeHost::new();
-        let slots = AttachedStacks::new(&MEMORY, CHUNK, usize::MAX, 4, |_| true);
-        let last = usize::MAX - 1;
-        assert_eq!(slots.size(&mut host), usize::MAX);
+        let high = usize::MAX - 2;
+        let source = AttachedStacks::new(&MEMORY, CHUNK, usize::MAX, 4, |_| true);
+        let destination = AttachedStacks::new(&DESTINATION, CHUNK, 4, 4, |_| true);
+        for (index, resource, amount) in [
+            (9, Pebble::Quartz, 1),
+            (high, Pebble::Slate, 3),
+            (high + 1, Pebble::Slate, 4),
+        ] {
+            assert_eq!(
+                host.transaction(|host, tx| Ok::<_, ()>(
+                    source.insert_at(host, tx, index, &resource, amount)
+                )),
+                Ok(amount)
+            );
+        }
+        let combined = CombinedResourceHandler::new(
+            &mut host,
+            vec![
+                Box::new(resource_util::VoidingResourceHandler::default()),
+                Box::new(source),
+            ],
+        );
+        let from = Capability::<dyn ResourceHandler<Pebble>> {
+            handler: Box::new(
+                RangedResourceHandler::of(&mut host, Box::new(combined), 1..usize::MAX).unwrap(),
+            ),
+            owner: Some("attached_storage_test"),
+        };
+        let to = &destination as &dyn ResourceHandler<Pebble>;
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, last, &(), 3))),
+            move_first(&mut host, &from, to, |_| true, 4, None),
+            Ok(Some((Pebble::Quartz, 1)))
+        );
+        assert_eq!(
+            move_resources(&mut host, &from, to, |_| true, 4, None),
             Ok(3)
         );
-        assert_eq!(slots.amount(&mut host, last), 3);
-        assert_eq!(slots.amount(&mut host, 0), 0);
+        assert_eq!(
+            move_first(&mut host, &from, to, |_| true, 1, None),
+            Ok(None)
+        );
+        assert_eq!(
+            move_resources(&mut host, &from, to, |_| true, 1, None),
+            Ok(0)
+        );
+        assert_eq!(destination.resource(&mut host, 0), Some(Pebble::Quartz));
+        assert_eq!(destination.amount(&mut host, 1), 3);
         assert_eq!(
             MEMORY.get_existing(&mut host, CHUNK),
-            Ok(Some(StackList::from([(last, ((), 3))])))
+            Ok(Some(StackList::from([(high + 1, (Pebble::Slate, 4))])))
         );
     });
 }
