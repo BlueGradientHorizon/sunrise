@@ -5842,6 +5842,10 @@ impl Game<'_> {
         self.flush_arrow_events(&mut arrow);
         if keep {
             self.reinsert_bounced_arrow(arrow);
+        } else if self.creatures.projectiles.locate(arrow.join).is_none() {
+            self.creatures
+                .projectiles
+                .retire_extracted(arrow.id, arrow.join);
         }
     }
 
