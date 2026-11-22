@@ -208,6 +208,8 @@ pub(in crate::game) struct SyncCache {
     pub(super) data: Option<Synced>,
     pub(super) damage: Option<FrozenDamage>,
     pub(super) world_tags: Option<WorldTags>,
+    // The admitted biome table, and whether a vanilla preload differs from it.
+    pub(super) biomes: Option<(Arc<sunrise_client::biome::Biomes>, bool)>,
     pub(super) packed_registries: Option<Arc<PackRegistryDefinitions>>,
     pub(super) advancements: Option<Arc<Tree>>,
     pub(super) world_packs: bool,
@@ -217,6 +219,7 @@ static SYNC: Mutex<SyncCache> = Mutex::new(SyncCache {
     data: None,
     damage: None,
     world_tags: None,
+    biomes: None,
     packed_registries: None,
     advancements: None,
     world_packs: false,
@@ -257,6 +260,7 @@ pub(super) fn cached_sync_data(
                 root,
                 overlay,
                 damage,
+                sync.biomes.as_ref().map(|(table, _)| table.as_ref()),
                 packed,
                 item_data.defaults(),
                 &sources,
@@ -294,12 +298,14 @@ pub(in crate::game) fn prepare_world_sync_data(
     item_data: &ItemData,
     overlay: &sunrise_world::loot::PackOverlay,
     damage: &sunrise_world::damage_source::Catalog,
+    biomes: Option<(Arc<sunrise_client::biome::Biomes>, bool)>,
     items: Arc<Items>,
     packed_registries: Option<Arc<PackRegistryDefinitions>>,
     advancements: Arc<Tree>,
 ) -> std::result::Result<SyncCache, String> {
     let mut staged = SyncCache {
         data: SYNC.lock().unwrap_or_else(|e| e.into_inner()).data.clone(),
+        biomes,
         packed_registries,
         world_tags: Some(WorldTags::new(items.clone(), damage)),
         advancements: Some(advancements),
@@ -321,7 +327,8 @@ pub(super) fn initialize_world_sync_data(
     item_data: &ItemData,
     items: &Items,
 ) -> std::result::Result<(), String> {
-    sync.world_packs = !overlay.files.is_empty();
+    sync.world_packs =
+        !overlay.files.is_empty() || sync.biomes.as_ref().is_some_and(|(_, differs)| *differs);
     if sync.world_packs
         || sync.data.as_ref().is_some_and(|cached| {
             cached.generation != item_data.defaults().generation() || cached.root != root
@@ -406,7 +413,8 @@ pub(in crate::game) fn install_wire_reload(
     // Kept pack dialogs count as packs: a world opened without packs after
     // a `/reload` that dropped them must read its own registries again.
     let mut cache = SYNC.lock().unwrap_or_else(|e| e.into_inner());
-    cache.world_packs = !overlay.files.is_empty();
+    cache.world_packs =
+        !overlay.files.is_empty() || cache.biomes.as_ref().is_some_and(|(_, differs)| *differs);
     cache.advancements = Some(advancements);
     cache.world_tags = Some(world_tags);
     cache.data = sync.map(|sync| Synced {
