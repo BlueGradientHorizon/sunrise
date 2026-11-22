@@ -8069,7 +8069,7 @@ impl Game<'_> {
         self.mark_motion(out.len(), 0);
         laps.lap("eg_other_creatures");
         // These billboards stay in their later pass, outside the ordered body runs.
-        for m in self.drawn_mobs() {
+        for m in &self.mobs {
             // Blaze.isOnFire: a charged blaze burns.
             let blazing = m.species() == sunrise_client::mobs::Species::Blaze && m.extra.flag;
             if (m.is_on_fire() || blazing) && !m.removed {
@@ -8097,7 +8097,7 @@ impl Game<'_> {
         if self.own_body_in_view()
             && let Some(p) = &self.player
             && p.is_on_fire()
-            && !(p.spectator || self.own_render_canceled())
+            && !p.spectator
         {
             let feet = self
                 .previous_position
@@ -8160,7 +8160,7 @@ impl Game<'_> {
                 )
             };
             let mut casters: Vec<(glam::DVec3, f32, f32)> =
-                sunrise_client::shadows::mob_casters(self.drawn_mobs(), a).collect();
+                sunrise_client::shadows::mob_casters(&self.mobs, a).collect();
             let item = sunrise_client::shadows::shadow_params("minecraft:item");
             casters.extend(
                 self.dropped

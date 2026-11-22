@@ -1076,7 +1076,8 @@ steers a mob through the engine's own controls, each a momentary wish the mob's 
 
 `crates/sunrise-client/src/game/modding/native_mob_draw.rs`: `render_living_pre(entity, draw, model, canceled)` (client) is asked
 once a frame for every mob and player in view, before its model (NeoForge's `RenderLivingEvent.Pre`). Set `canceled` and nothing
-more of it draws this frame: model, layers, name tag, shadow, flames, leash, outline and `render_living_post`.
+more of its own drawing happens this frame: model, layers, name tag, leash, outline and `render_living_post`. Its flames and
+shadow, which the frame queues after the entity's drawing, still draw (#1285).
 
 - `event.model` borrows the selected body's hierarchy in bind pose. To leave out a part and
   its descendants after animation, hide its model-local index for this draw only:

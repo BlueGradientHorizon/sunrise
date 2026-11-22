@@ -444,19 +444,22 @@ queries for mobs, players and dropped items also follow this pass's join order; 
 queried in a later pass. The ender dragon and end crystals draw at their slots without adding
 these hooks or outline queries.
 
-The order today: the model and the layers are drawn before the post hooks; the entity's name tag, leash, flames
-and shadow are drawn in the frame's later passes, after them. The reference draws the leash and the name tag
-before the post (and queues the flames and the shadow after it): tracked in #3915. A type with a registered
-renderer has the same order, the renderer in the model's place, so it changes with #3915 too.
+The order today: the model and the layers are drawn before the post hooks; the entity's name tag and leash are
+drawn in the frame's later passes, after them, and the flames of a burning entity and its shadow after the
+entity's drawing. A post hook doesn't see or replace the flames and the shadow. The reference draws the leash
+and the name tag before the post: tracked in #1285. A type with a registered renderer has the same order, the
+renderer in the model's place, so it changes with #1285 too.
 
 `draw` starts at the entity's feet, turned with its body (+z the way it faces, +x its left, +y up,
 in blocks), and keeps what each hook draws. Setting `event.cancelled` in a Pre hook skips the
-entity's model (or its registered renderer), layers, name tag, shadow, flames, leash and outline.
-Canceling Player Pre skips all three remaining hooks. Canceling only Living Pre skips Living Post
-but still calls Player Post with `model: None`. A mod that replaces one entity's draw can submit
-its own model in Living Pre and cancel; to replace every entity of a type, register a renderer
-instead. A culled entity gets neither pair. The game checks once a frame whether any mod listens
-to the four hooks and builds nothing for them if no mod does.
+entity's model (or its registered renderer), layers, name tag, leash and outline.
+The flames of a burning entity and its shadow aren't part of its drawing: the frame queues them
+after it, and a cancel leaves them. Canceling Player Pre skips all three remaining hooks.
+Canceling only Living Pre skips Living Post but still calls Player Post with `model: None`.
+A mod that replaces one entity's draw can submit its own model in Living Pre and cancel; to
+replace every entity of a type, register a renderer instead. A culled entity gets neither pair.
+The game checks once a frame whether any mod listens to the four hooks and builds nothing for
+them if no mod does.
 
 ## Read the final body model
 
