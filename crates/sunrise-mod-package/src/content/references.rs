@@ -82,7 +82,7 @@ pub fn check_references(content: &Content, manifest: &Manifest) -> Result<Findin
     let mut check = References {
         content,
         manifest,
-        reader: content.reader()?,
+        reader: content.reader(),
         code: manifest.native.is_some() || manifest.served_by.is_some(),
         jar: !manifest.jar.is_empty() || !manifest.dependencies.is_empty(),
         atlas: content.files.iter().any(atlas),

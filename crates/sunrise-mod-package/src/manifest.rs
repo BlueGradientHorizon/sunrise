@@ -1158,7 +1158,7 @@ impl Package {
     ) -> Result<std::collections::BTreeMap<String, Vec<u8>>, String> {
         let content = crate::Content::read(root, &self.manifest)?;
         let mut files = std::collections::BTreeMap::new();
-        let mut reader = content.reader()?;
+        let reader = content.reader();
         for name in &content.files {
             files.insert(name.clone(), reader.read(name)?);
         }

@@ -6,7 +6,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, OnceLock},
 };
-use sunrise_mod_package::content::ContentSource;
+use sunrise_mod_package::content::{ContentSource, ReadError};
 
 /// One package's content files, listed the first time a mod asks, by content loading's own walk.
 struct PackageContent {
@@ -29,8 +29,16 @@ impl mod_api::PackageFileSource for PackageContent {
     fn names(&self) -> Result<Arc<[String]>, String> {
         self.listed().map(|(names, _)| names.clone())
     }
-    fn read(&self, name: &str) -> Result<Vec<u8>, String> {
-        self.listed()?.1.reader()?.read(name)
+    fn read(&self, name: &str) -> Result<Vec<u8>, mod_api::PackageReadError> {
+        self.listed()
+            .map_err(mod_api::PackageReadError::Read)?
+            .1
+            .reader()
+            .read(name)
+            .map_err(|error| match error {
+                ReadError::NotFound(_) => mod_api::PackageReadError::NotFound,
+                ReadError::Other(reason) => mod_api::PackageReadError::Read(reason),
+            })
     }
 }
 
@@ -90,6 +98,9 @@ mod tests {
 
         let missing = package(folder.path().join("missing.smod"));
         let reason = missing.names().unwrap_err();
-        assert_eq!(missing.read("data/demo/lumen/main.luau"), Err(reason));
+        assert_eq!(
+            missing.read("data/demo/lumen/main.luau"),
+            Err(mod_api::PackageReadError::Read(reason))
+        );
     }
 }

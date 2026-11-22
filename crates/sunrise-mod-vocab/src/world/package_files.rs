@@ -17,7 +17,7 @@ pub trait PackageFileSource: Send + Sync + 'static {
     fn names(&self) -> Result<Arc<[String]>, String>;
     /// The bytes of `name`, one of [`names`](Self::names), read and checked as content loading
     /// reads it.
-    fn read(&self, name: &str) -> Result<Vec<u8>, String>;
+    fn read(&self, name: &str) -> Result<Vec<u8>, PackageReadError>;
 }
 
 /// A package's content files were asked for and cannot be served.
@@ -93,7 +93,7 @@ impl PackageFiles {
         self.names
             .binary_search_by(|name| name.as_str().cmp(path))
             .map_err(|_| PackageReadError::NotFound)?;
-        self.source.read(path).map_err(PackageReadError::Read)
+        self.source.read(path)
     }
 }
 
@@ -134,9 +134,9 @@ mod tests {
             .map(String::from)
             .into())
         }
-        fn read(&self, name: &str) -> Result<Vec<u8>, String> {
+        fn read(&self, name: &str) -> Result<Vec<u8>, PackageReadError> {
             if name == "data/demo/lumen/b.luau" {
-                return Err(format!("{name}: gone"));
+                return Err(PackageReadError::Read(format!("{name}: gone")));
             }
             Ok(format!("read:{name}").into_bytes())
         }
@@ -147,7 +147,7 @@ mod tests {
         fn names(&self) -> Result<Arc<[String]>, String> {
             Err("more than 65536 content files".into())
         }
-        fn read(&self, _: &str) -> Result<Vec<u8>, String> {
+        fn read(&self, _: &str) -> Result<Vec<u8>, PackageReadError> {
             unreachable!("an unlisted package is never read")
         }
     }
