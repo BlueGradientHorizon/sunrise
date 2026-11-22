@@ -670,7 +670,9 @@ the item is in that hand (a used item's animation included): one of vanilla's `H
 or `brush`. A name that is no pose fails the mod's load, and an item without the key poses as before. It applies to
 player models, in the first person's own third-person view and in other players'; `spear` poses an arm only for an item
 with a kinetic weapon. A code mod that must decide by stack, hand or entity answers the `get_arm_pose` hook instead,
-which wins over the declared key.
+which wins over the declared key when it returns a pose. `event.humanoid.is_swinging` is true when the rendered holder
+is swinging either hand, even before animation progress advances from zero. Both hand queries read the same value.
+Return `None` to keep the ordinary pose selection, including the item's declaration.
 
 Code mods can also register a namespaced custom pose once in `Hooks::register` through
 `Registrar::register_arm_pose("mymod:flip", uses_both_arms, affects_offhand)`. Keep its
@@ -680,7 +682,7 @@ hand's pose gives way. The token carries both flags. Duplicate, malformed and fo
 
 In `arm_pose_transform`, match `event.pose` to that token and set `event.angles.right`
 or `event.angles.left` to absolute `[pitch, yaw, roll]` in radians. `event.right_arm`
-identifies the physical arm; `event.humanoid` supplies both stacks, the use state,
+identifies the physical arm; `event.humanoid` supplies both stacks, the swing and use state,
 and the poses selected after `get_arm_pose` answers. Transformers follow vanilla's
 physical-arm application order and do not run for a suppressed pose.
 Each non-finite angle leaves the base model component unchanged. The transform runs

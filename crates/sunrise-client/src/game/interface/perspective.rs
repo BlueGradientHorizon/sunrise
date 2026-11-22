@@ -639,6 +639,7 @@ impl Game<'_> {
         }
         m.anim.attack_anim_o = attack.0;
         m.anim.attack_anim = attack.1;
+        m.ai.swinging = swinging;
         m.extra.set_main_hand_stack(main);
         m.extra.set_slot_id(sunrise_items::equipment::OFFHAND, off);
         // The worn stacks, for the elytra's glint (`WingsLayer`).
@@ -1357,6 +1358,7 @@ impl Game<'_> {
             main_hand: api_stacks[0].as_ref(),
             off_hand: api_stacks[1].as_ref(),
             main_arm_left: m.main_arm_left(),
+            is_swinging: m.ai.swinging,
             is_using_item: m.extra.using_item > 0,
             use_hand: (m.extra.using_item > 0).then_some(if m.extra.using_off_hand {
                 Hand::Off

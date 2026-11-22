@@ -3,8 +3,9 @@
 pub trait Hooks {
     /// NeoForge's `IClientItemExtensions.getArmPose`: the pose of the arm that holds `stack` in
     /// `hand`, as a humanoid model draws it (local and remote players and humanoid mobs).
-    /// `humanoid` borrows both held stacks, the main arm, use state and selected poses
-    /// before listeners answer; item declarations are included in those poses.
+    /// `humanoid` borrows both held stacks, the main arm, swing and use state, and selected
+    /// poses before listeners answer; item declarations are included in those poses.
+    /// Both hands see the same `humanoid.is_swinging`, even at zero animation progress.
     /// Set `pose` to a vanilla or registered custom pose and it
     /// replaces what the item would give, whatever the use animation, a loaded crossbow or the
     /// item's own `arm_pose` declaration say; leave it unset to keep those. Asked once a

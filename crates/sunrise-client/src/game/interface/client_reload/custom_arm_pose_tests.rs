@@ -1,5 +1,5 @@
-use crate::game::native_entity_refs::tests::with_client_game;
-use mod_api::{ArmPose, ClientHost, CustomArmPose, Hooks, ModEntry};
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+use mod_api::{ArmPose, ClientHost, CustomArmPose, Hand, Hooks, ModEntry};
 use std::{collections::HashMap, sync::OnceLock};
 use sunrise_client::mobs::{
     Mob,
@@ -113,6 +113,126 @@ fn registered_angles_reach_local_remote_and_humanoid_before_species_animation() 
         );
         game.tick_remote_arm_poses();
         assert_eq!(game.mobs.iter().map(arms).collect::<Vec<_>>(), baseline);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn held_arm_pose_reads_the_rendered_humanoids_active_swing() {
+    use std::sync::{Arc, Mutex};
+    use sunrise_client::{first_person::SwingAnimation, mobs::ai::tick_swing};
+    use sunrise_core::arm_pose::ArmPose::CrossbowHold;
+    use sunrise_items::equipment::OFFHAND;
+
+    if run_fresh_cases(
+        "game::client_reload::tests::custom_arm_pose_tests::held_arm_pose_reads_the_rendered_humanoids_active_swing",
+        "SUNRISE_ARM_POSE_SWING_CASE",
+        &["humanoids"],
+    ) {
+        return;
+    }
+
+    type Sample = (u32, Hand, bool);
+    struct IdlePose {
+        item: mod_api::ItemKey,
+        calls: Arc<Mutex<Vec<Sample>>>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for IdlePose {
+        fn get_arm_pose(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut mod_api::GetArmPoseEvent<'_>,
+        ) -> Option<ArmPose> {
+            let swinging = event.humanoid.is_swinging;
+            self.calls
+                .lock()
+                .unwrap()
+                .push((event.entity_id, event.hand, swinging));
+            (event.stack.item() == self.item && !swinging).then_some(ArmPose::CrossbowHold)
+        }
+    }
+
+    with_client_game(|game| {
+        let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
+        player.entity_id = 7;
+        game.player = Some(player);
+        game.inventory[game.selected] = Some(ItemStack::new("minecraft:stick", 1));
+        game.offhand = Some(ItemStack::new("minecraft:brush", 1));
+
+        for (id, kind) in [
+            (60, game.res.player_type().clone().unwrap()),
+            (
+                61,
+                game.res
+                    .mob_types()
+                    .get("minecraft:skeleton")
+                    .unwrap()
+                    .clone(),
+            ),
+        ] {
+            let mut mob = Mob::new(id, kind, Vec3::ZERO, 0.0);
+            mob.extra.main_hand_left = true;
+            mob.extra
+                .set_slot_stack(MAINHAND, Some(ItemStack::new("minecraft:brush", 1)));
+            mob.extra
+                .set_slot_stack(OFFHAND, Some(ItemStack::new("minecraft:stick", 1)));
+            game.mobs.push(mob);
+        }
+
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let idle_pose = IdlePose {
+            item: mod_api::__private::item_key("minecraft:stick").unwrap(),
+            calls: calls.clone(),
+        };
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("idle-pose", Box::new(idle_pose))].into(),
+            || {
+                let sample = |game: &mut crate::game::Game<'_>, active: [bool; 3]| {
+                    game.tick_player_model();
+                    game.tick_remote_arm_poses();
+                    let expected = [7, 60, 61]
+                        .into_iter()
+                        .zip(active)
+                        .flat_map(|(id, active)| Hand::BOTH.map(|hand| (id, hand, active)))
+                        .collect::<Vec<_>>();
+                    assert_eq!(std::mem::take(&mut *calls.lock().unwrap()), expected);
+                    let hold = active.map(|swinging| (!swinging).then_some(CrossbowHold));
+                    assert_eq!(
+                        game.player_model.as_ref().unwrap().extra.held_arm_pose,
+                        [hold[0], None]
+                    );
+                    assert_eq!(game.mobs[0].extra.held_arm_pose, [None, hold[1]]);
+                    assert_eq!(game.mobs[1].extra.held_arm_pose, [None, hold[2]]);
+                };
+
+                let animation = SwingAnimation::DEFAULT;
+                sample(game, [false; 3]);
+                game.swing_hand(Hand::Off, animation);
+                assert_eq!(game.swing.animation, 0.0);
+                sample(game, [true, false, false]);
+                for _ in 0..animation.duration + 2 {
+                    game.swing.tick();
+                }
+                sample(game, [false; 3]);
+
+                assert!(game.mobs[0].swing_hand_modified(false, animation));
+                sample(game, [false, true, false]);
+                // Mob swing time starts at -1; the first tick samples zero.
+                for _ in 0..=animation.duration {
+                    tick_swing(&mut game.mobs[0]);
+                }
+                sample(game, [false; 3]);
+
+                game.mobs[1].swing();
+                assert_eq!(game.mobs[1].extra.swing_right_arm, None);
+                sample(game, [false, false, true]);
+                for _ in 0..=game.mobs[1].swing_duration() {
+                    tick_swing(&mut game.mobs[1]);
+                }
+                sample(game, [false; 3]);
+            },
+        );
     });
 }
 

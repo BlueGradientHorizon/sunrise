@@ -343,6 +343,9 @@ pub struct HumanoidRenderState<'a> {
     pub off_hand: Option<&'a ItemStack>,
     /// Whether the entity's main arm is its left arm.
     pub main_arm_left: bool,
+    /// Whether the entity has an active swing in either hand (`LivingEntity.isSwinging`).
+    /// A swing can be active before its animation progress advances from zero.
+    pub is_swinging: bool,
     /// Whether the entity is currently using an item.
     pub is_using_item: bool,
     /// Hand currently using an item, absent when no item is in use.

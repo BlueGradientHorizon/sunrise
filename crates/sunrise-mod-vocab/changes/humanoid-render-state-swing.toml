@@ -1,0 +1,3 @@
+ids = ["type:HumanoidRenderState.is_swinging"]
+why = "HumanoidRenderState exposes the rendered holder's active swing in either hand (LivingEntity.isSwinging), including before animation progress advances. Neither the arm-pose selection nor the setup callbacks change timing or meaning."
+migrate = "Existing listeners can read is_swinging to decide whether to return a pose. Exhaustive patterns must include the new field or use ..; hook versions are unchanged."

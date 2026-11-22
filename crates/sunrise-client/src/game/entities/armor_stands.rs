@@ -1771,6 +1771,7 @@ impl Game<'_> {
                 main_hand: stacks[0].as_ref(),
                 off_hand: stacks[1].as_ref(),
                 main_arm_left: false,
+                is_swinging: false,
                 is_using_item: false,
                 use_hand: None,
                 ticks_using_item: 0,

@@ -31,6 +31,7 @@ impl anim::HumanoidSetup for Game<'_> {
             main_hand: stacks[0].as_ref(),
             off_hand: stacks[1].as_ref(),
             main_arm_left: mob.main_arm_left(),
+            is_swinging: mob.ai.swinging,
             is_using_item: mob.extra.using_item > 0,
             use_hand: (mob.extra.using_item > 0).then_some(if mob.extra.using_off_hand {
                 Hand::Off
