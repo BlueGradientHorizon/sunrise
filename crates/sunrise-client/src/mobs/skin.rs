@@ -873,7 +873,6 @@ mod tests {
             heightmaps: Default::default(),
             animations: MobData::load_animations(&root),
             biome_tags: Default::default(),
-            entity_tags: Default::default(),
             villager_hats: Default::default(),
             frame_models: Default::default(),
             cem: Default::default(),
