@@ -21,3 +21,9 @@ sunrise-client-lib mobs::villager_brain::reputation_witness_tests::witnesses_use
 sunrise-client-render packs::cache::tests::benchmark_real_resource_root SUNRISE_OVERLAY_BENCH_VANILLA harness
 sunrise-client game::campfire::block_entity_items_tests::block_entity_items_match_the_vanilla_cases tools/test_block_entity_item_geometry_parity.py harness
 sunrise-client-lib mobs::finalize::load_tests::a_loaded_health_is_clamped_to_the_loaded_max_health tools/test_mob_attribute_nbt_parity.py harness
+sunrise-client-render gfx::culling_control::tests::occlusion_radius_matches_vanilla_26_3_view_distance tools/test_visibility_parity.py harness
+sunrise-client-render gfx::gpu_culling::visibility_tests::gpu_culling_tables_and_keeps_enforce_vanilla_26_3_vertical_clamp tools/test_visibility_parity.py harness
+sunrise-client-render gfx::occlusion::visibility_tests::occlusion_reaches_exact_vanilla_26_3_sections_across_heights_and_radii tools/test_visibility_parity.py harness
+sunrise-client-render gfx::occlusion::visibility_tests::occlusion_visible_for_camera_is_unknown_outside_vanilla_vertical_band tools/test_visibility_parity.py harness
+sunrise-client-render gfx::resident::visibility_tests::resident_walk_enforces_vanilla_26_3_vertical_clamp_without_cave_culling tools/test_visibility_parity.py harness
+sunrise-client-render gfx::view_sections::tests::a_view_respects_vanilla_26_3_vertical_render_distance tools/test_visibility_parity.py harness

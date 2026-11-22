@@ -1,10 +1,15 @@
 use super::*;
 use serde_json::Value;
 use std::collections::HashSet;
-use std::path::Path;
 
-const SECTION_WITNESS: &str =
-    include_str!("../../../../tools/witness/26.3/section_visibility/witness.json");
+fn section_witness() -> Value {
+    let path = std::env::var("SUNRISE_SECTION_VISIBILITY_WITNESS").expect(
+        "SUNRISE_SECTION_VISIBILITY_WITNESS must be set (run via tools/test_visibility_parity.py)",
+    );
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read section visibility witness {path}: {e}"));
+    serde_json::from_str(&text).expect("valid witness JSON")
+}
 
 fn parse_f64_bits(hex: &str) -> f64 {
     let stripped = hex
@@ -41,10 +46,11 @@ fn parse_sections(arr: &[Value]) -> Vec<[i32; 3]> {
     out
 }
 
-/// Vanilla 26.3 SectionOcclusionGraph witness (`tools/witness/26.3/section_visibility/witness.json`).
+/// Vanilla 26.3 SectionOcclusionGraph witness (SUNRISE_SECTION_VISIBILITY_WITNESS).
 #[test]
+#[ignore = "run by tools/test_visibility_parity.py"]
 fn occlusion_reaches_exact_vanilla_26_3_sections_across_heights_and_radii() {
-    let witness: Value = serde_json::from_str(SECTION_WITNESS).expect("valid witness JSON");
+    let witness = section_witness();
     assert_eq!(witness["meta"]["game_version"].as_str(), Some("26.3"));
     let cases = witness["cases"].as_array().expect("cases array");
     let mut checked = 0;
@@ -112,10 +118,11 @@ fn occlusion_reaches_exact_vanilla_26_3_sections_across_heights_and_radii() {
     );
 }
 
-/// Fail open (`None`) for entity occlusion outside vanilla's vertical clamp (`witness.json`, 26.3).
+/// Fail open (`None`) for entity occlusion outside vanilla's vertical clamp (SUNRISE_SECTION_VISIBILITY_WITNESS).
 #[test]
+#[ignore = "run by tools/test_visibility_parity.py"]
 fn occlusion_visible_for_camera_is_unknown_outside_vanilla_vertical_band() {
-    let witness: Value = serde_json::from_str(SECTION_WITNESS).expect("valid witness JSON");
+    let witness = section_witness();
     let cases = witness["cases"].as_array().expect("cases array");
     let find = |target: &str| {
         cases
@@ -182,59 +189,4 @@ fn occlusion_visible_for_camera_is_unknown_outside_vanilla_vertical_band() {
             );
         }
     }
-}
-
-/// Vanilla 26.3 genpvp menu witness (`tools/witness/26.3/genpvp_menu/settled.json`): zero lobby sections reached.
-#[test]
-fn occlusion_genpvp_menu_witness_reaches_zero_lobby_sections() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tools/witness/26.3/genpvp_menu/settled.json");
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("missing menu witness {}: {e}", path.display()));
-    let witness: Value = serde_json::from_str(&text).expect("valid settled.json");
-    assert_eq!(witness["meta"]["game_version"].as_str(), Some("26.3"));
-
-    let camera = parse_camera_bits(
-        witness["camera"]["camera_pos_bits"]
-            .as_array()
-            .expect("camera.camera_pos_bits"),
-    );
-    let visible_count = witness["frame"]["visible_terrain_sections"]
-        .as_u64()
-        .expect("frame.visible_terrain_sections");
-    let visible_sections = parse_sections(
-        witness["frame"]["visible_sections"]
-            .as_array()
-            .expect("frame.visible_sections"),
-    );
-    assert_eq!(visible_count as usize, visible_sections.len());
-
-    let client_rd = witness["meta"]["options"]["renderDistance"]
-        .as_i64()
-        .or_else(|| {
-            witness["meta"]["options"]["renderDistance"]
-                .as_str()
-                .and_then(|s| s.parse::<i64>().ok())
-        })
-        .unwrap_or(2) as i32;
-    let effective_rd = client_rd.min(2);
-
-    let mut o = Occlusion::new(-64, 24);
-    o.settle(camera, effective_rd);
-
-    let mut reached_lobby = Vec::new();
-    for cx in -3..=3 {
-        for cz in -3..=3 {
-            for sy in [0, 1, 2, 3, 8, 9, 10, 11] {
-                if o.contains((cx, sy + 4, cz)) {
-                    reached_lobby.push([cx, sy, cz]);
-                }
-            }
-        }
-    }
-    reached_lobby.sort_unstable();
-    assert_eq!(
-        reached_lobby, visible_sections,
-        "genpvp menu camera at {camera} (rd={effective_rd}) must not reach lobby sections below vertical clamp"
-    );
 }

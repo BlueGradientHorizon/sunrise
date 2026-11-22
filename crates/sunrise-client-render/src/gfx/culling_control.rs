@@ -263,29 +263,18 @@ impl Renderer {
 mod tests {
     use super::*;
     use serde_json::Value;
-    use std::path::Path;
 
-    const SECTION_WITNESS: &str =
-        include_str!("../../../../tools/witness/26.3/section_visibility/witness.json");
-
-    /// Vanilla 26.3 witnesses: `start_occlusion` uses exact `ViewArea.getViewDistance()` (no `+ 2`).
+    /// Vanilla 26.3 witness: `start_occlusion` uses exact `ViewArea.getViewDistance()` (no `+ 2`).
     #[test]
+    #[ignore = "run by tools/test_visibility_parity.py"]
     fn occlusion_radius_matches_vanilla_26_3_view_distance() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tools/witness/26.3/genpvp_menu/settled.json");
-        let settled: Value = serde_json::from_str(
-            &std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("missing menu witness {}: {e}", path.display())),
-        )
-        .expect("valid settled.json");
-        assert_eq!(settled["meta"]["game_version"].as_str(), Some("26.3"));
-        let effective_rd = settled["meta"]["options"]["effectiveRenderDistance"]
-            .as_i64()
-            .or_else(|| settled["meta"]["options"]["renderDistance"].as_i64())
-            .expect("effectiveRenderDistance") as i32;
-        assert_eq!(occlusion_radius((effective_rd * 16) as f32), effective_rd);
-
-        let witness: Value = serde_json::from_str(SECTION_WITNESS).expect("valid witness JSON");
+        let path = std::env::var("SUNRISE_SECTION_VISIBILITY_WITNESS").expect(
+            "SUNRISE_SECTION_VISIBILITY_WITNESS must be set (run via tools/test_visibility_parity.py)",
+        );
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read section visibility witness {path}: {e}"));
+        let witness: Value = serde_json::from_str(&text).expect("valid witness JSON");
+        assert_eq!(witness["meta"]["game_version"].as_str(), Some("26.3"));
         let cases = witness["cases"].as_array().expect("cases");
         let parse_f64 = |hex: &str| {
             let s = hex

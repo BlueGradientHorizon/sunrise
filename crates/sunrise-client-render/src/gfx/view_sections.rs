@@ -299,13 +299,16 @@ mod tests {
         assert_eq!(out[0].origin, [-8.0, -8.0, 132.0]);
     }
 
-    /// Vanilla 26.3 witness (`tools/witness/26.3/section_visibility/witness.json`): world views obey vertical clamp.
+    /// Vanilla 26.3 witness (SUNRISE_SECTION_VISIBILITY_WITNESS): world views obey vertical clamp.
     #[test]
+    #[ignore = "run by tools/test_visibility_parity.py"]
     fn a_view_respects_vanilla_26_3_vertical_render_distance() {
-        let witness: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../tools/witness/26.3/section_visibility/witness.json"
-        ))
-        .expect("valid witness JSON");
+        let path = std::env::var("SUNRISE_SECTION_VISIBILITY_WITNESS").expect(
+            "SUNRISE_SECTION_VISIBILITY_WITNESS must be set (run via tools/test_visibility_parity.py)",
+        );
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read section visibility witness {path}: {e}"));
+        let witness: serde_json::Value = serde_json::from_str(&text).expect("valid witness JSON");
         let case = witness["cases"]
             .as_array()
             .expect("cases")

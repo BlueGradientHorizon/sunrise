@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""Records tools/witness/26.3/section_visibility/witness.json from real Minecraft 26.3 SectionOcclusionGraph + ViewArea + Octree."""
+"""Compare terrain section vertical render-distance clamping against real Minecraft 26.3.
+
+Compiles and runs VanillaSectionVisibilityOracle against the pinned 26.3 client jar on JDK 25,
+writing the witness and meta.json into .local/witness/<version>/visibility/, then runs the
+6 Rust tests in sunrise-client-render against it via SUNRISE_SECTION_VISIBILITY_WITNESS."""
 import argparse
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 try:
     from . import lab, oracle_harness as harness, test_rust_parity as base, test_model_baking_parity as baking
@@ -10,9 +17,16 @@ except ImportError:
     import lab, oracle_harness as harness, test_rust_parity as base, test_model_baking_parity as baking
 
 ORACLE = 'VanillaSectionVisibilityOracle'
-WITNESS = lab.ROOT / 'tools/witness/26.3/section_visibility/witness.json'
-
 GENPVP_NON_EMPTY_SY = [0, 1, 2, 3, 8, 9, 10, 11]
+
+TESTS = [
+    'gfx::culling_control::tests::occlusion_radius_matches_vanilla_26_3_view_distance',
+    'gfx::gpu_culling::visibility_tests::gpu_culling_tables_and_keeps_enforce_vanilla_26_3_vertical_clamp',
+    'gfx::occlusion::visibility_tests::occlusion_reaches_exact_vanilla_26_3_sections_across_heights_and_radii',
+    'gfx::occlusion::visibility_tests::occlusion_visible_for_camera_is_unknown_outside_vanilla_vertical_band',
+    'gfx::resident::visibility_tests::resident_walk_enforces_vanilla_26_3_vertical_clamp_without_cave_culling',
+    'gfx::view_sections::tests::a_view_respects_vanilla_26_3_vertical_render_distance',
+]
 
 
 def build_cases():
@@ -190,18 +204,15 @@ def build_cases():
     return {'cases': cases}
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--build-dir', type=Path, default=lab.LOCAL / 'section-visibility-witness')
-    parser.add_argument('--out', type=Path, default=WITNESS)
-    args = parser.parse_args()
-    lock, jars, _ = base.verify_artifacts()
-    libraries = baking.client_libraries()
-    build = args.build_dir
-    build.mkdir(parents=True, exist_ok=True)
+def record(lock, jars, libraries, build):
+    version = lock['minecraft']['version']
+    witness_dir = lab.LOCAL / 'witness' / version / 'visibility'
+    witness_dir.mkdir(parents=True, exist_ok=True)
     cases_path = build / 'cases.json'
     cases_path.write_text(json.dumps(build_cases(), indent=2) + '\n', encoding='utf-8')
-    classes, dependencies, _ = harness.compile_oracle(build, ORACLE, jars, libraries, lock['minecraft']['java_major'])
+    classes, dependencies, oracle_path = harness.compile_oracle(
+        build, ORACLE, jars, libraries, lock['minecraft']['java_major']
+    )
     raw_out = build / 'witness.json'
     harness.java_run(build, classes, dependencies, ORACLE, [cases_path, raw_out], 'client')
     data = json.loads(raw_out.read_text(encoding='utf-8'))
@@ -214,9 +225,70 @@ def main():
         comma = ',' if i + 1 < len(data['cases']) else ''
         lines.append(f'    {json.dumps(case, separators=(",", ":"))}{comma}')
     lines.extend(['  ]', '}'])
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-    print(f'wrote {args.out}')
+    witness = witness_dir / 'witness.json'
+    witness.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    java_ver = subprocess.check_output(['java', '--version'], text=True).splitlines()[0].strip()
+    lab.write_json(witness_dir / 'meta.json', dict(
+        minecraft=version,
+        client_jar_sha256=lab.digest(jars['client'], 'sha256'),
+        java_version=java_ver,
+        command='python3 tools/test_visibility_parity.py',
+        oracle=f'mods/sunrise/src/test/java/dev/sunriselab/parity/{ORACLE}.java',
+        inputs_sha256={
+            'oracle': lab.digest(oracle_path, 'sha256'),
+            'cases': lab.digest(cases_path, 'sha256'),
+        },
+    ))
+    return witness
+
+
+def run_logged(command, build, name, cwd=lab.ROOT, env=None):
+    path = build / f'{name}.log'
+    with path.open('w', encoding='utf-8') as log:
+        result = subprocess.run([str(c) for c in command], cwd=cwd, env=env, timeout=3600,
+                                stdout=log, stderr=subprocess.STDOUT)
+    if result.returncode:
+        tail = path.read_text(encoding='utf-8', errors='replace').splitlines()[-40:]
+        print('\n'.join(tail), file=sys.stderr, flush=True)
+        sys.exit(f'{name} failed: see {path}')
+    return path
+
+
+def build_test_binary(build, package, target_name, env):
+    compiled = run_logged(
+        ['cargo', 'test', '--locked', '-p', package, '--lib', '--no-run', '--message-format=json'],
+        build, f'compile-{package}', env=env,
+    )
+    binaries = []
+    for line in compiled.read_text(encoding='utf-8').splitlines():
+        if not line.startswith('{'):
+            continue
+        row = json.loads(line)
+        if (row.get('reason') == 'compiler-artifact' and row.get('executable')
+                and row.get('target', {}).get('name') == target_name and row.get('profile', {}).get('test')):
+            binaries.append(Path(row['executable']))
+    assert len(binaries) == 1, f'expected one {target_name} test binary, found {binaries}'
+    return binaries[0]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--record-only', action='store_true')
+    args = parser.parse_args()
+    lock, jars, _ = base.verify_artifacts()
+    libraries = baking.client_libraries()
+    build = lab.LOCAL / 'visibility-parity'
+    build.mkdir(parents=True, exist_ok=True)
+    witness = record(lock, jars, libraries, build)
+    if args.record_only:
+        print(f'wrote {witness} ({witness.stat().st_size} bytes)')
+        return
+    env = dict(os.environ, SUNRISE_SECTION_VISIBILITY_WITNESS=str(witness.resolve()))
+    binary = build_test_binary(build, 'sunrise-client-render', 'sunrise_client_render', env)
+    log = run_logged([binary, '--ignored', '--exact', *TESTS], build, 'render-tests', env=env)
+    expected = f'{len(TESTS)} passed; 0 failed'
+    assert expected in log.read_text(encoding='utf-8'), f'expected "{expected}" in {log}'
+    print(f'Section visibility parity passed ({len(TESTS)} tests against {witness})')
 
 
 if __name__ == '__main__':
