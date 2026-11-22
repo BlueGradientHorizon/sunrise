@@ -233,6 +233,14 @@ fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
     #[mod_api::__subscriptions]
     impl Hooks for MountMod {
         fn screen_init_post(&self, host: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
+            if event.screen.id == "options" {
+                self.init_count.fetch_add(1, Ordering::SeqCst);
+                let field = event
+                    .widgets
+                    .add_text_field(TextField::new([10.0, 40.0, 120.0, 20.0], 32));
+                assert!(event.widgets.set_initial_focus(field));
+                return;
+            }
             if host.mod_screen() != Some("mount_mod") {
                 return;
             }
@@ -391,6 +399,27 @@ fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
             assert!(game.screen_state.widgets.is_empty());
             assert_eq!(game.screen_state.widgets.focused_index(), None);
             assert_eq!(game.screen_state.widgets.dragging(), None);
+
+            // Options arranges its existing children instead of rebuilding them.
+            game.open_options(false);
+            let field = game.screen_state.widgets.focused_id().unwrap();
+            assert_eq!(init_count.load(Ordering::SeqCst), 3);
+            let mut edit = game.mounted_focused_text_edit(None).unwrap();
+            edit.value = "note".to_owned();
+            edit.highlight = 1;
+            edit.cursor = 3;
+            game.mounted_focused_text_edit(Some(&edit)).unwrap();
+            game.handle_window_event(
+                &NoLoop,
+                win_id,
+                WindowEvent::Resized(PhysicalSize::new(900, 700)),
+                InputOrigin::User,
+            );
+            assert_eq!(init_count.load(Ordering::SeqCst), 3);
+            assert_eq!(game.screen_state.widgets.focused_id(), Some(field));
+            let preserved = game.mounted_focused_text_edit(None).unwrap();
+            assert_eq!(preserved.value, "note");
+            assert_eq!((preserved.highlight, preserved.cursor), (1, 3));
         });
     });
 }

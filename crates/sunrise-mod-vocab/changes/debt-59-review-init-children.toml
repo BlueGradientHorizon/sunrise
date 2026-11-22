@@ -1,0 +1,3 @@
+ids = ["hook:screen_init_post"]
+why = "ScreenEvent.Init.Post v3 runs when the screen initializes or rebuilds its children, not when it only repositions them. Opening a recipe book can move the panel without rebuilding its children, and Options keeps its mounted children and focus as it rearranges its layout."
+migrate = "Rebuild against the new SDK. Use Init.Post to edit the child list when it is created or rebuilt; do not rely on it for panel moves or reposition-only resizes."
