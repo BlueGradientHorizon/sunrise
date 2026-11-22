@@ -18,7 +18,6 @@ use frame_model::FrameBody;
 pub use frame_model::{BakedFrameModel, BakedFrameModels, BakedFrameNode, FrameModelPose};
 
 mod equipment;
-use super::skin::Paint;
 pub use equipment::{ArmorSlot, EquipmentModel, WornLayer, WornModel};
 
 // The invisible body a viewer still sees (`Entity.isInvisibleTo`), beside this file.
