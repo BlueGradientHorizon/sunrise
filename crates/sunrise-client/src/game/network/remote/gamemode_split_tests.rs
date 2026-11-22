@@ -242,9 +242,7 @@ fn assert_row_core(
         Some(want_creative),
         "{label}: player_is_creative"
     );
-    if want_spectator == want_no_physics {
-        assert_eq!(p.spectator, want_no_physics, "{label}: no_physics");
-    }
+    assert_eq!(p.spectator, want_no_physics, "{label}: no_physics");
     assert_eq!(
         p.ground.on_ground,
         row["on_ground"].as_bool().unwrap(),
@@ -766,6 +764,54 @@ fn resolved_player_info_retains_identity_across_remove_and_readd_26_3() {
                 run_local_tick(game);
                 let sent = drain_sent_abilities(game, &mut peer);
                 assert_row_core(game, &rows[4], true, Some(&sent));
+
+                assert_eq!(rows.len(), 7);
+                // #3: Respawn clears own_player_info and must leave it unresolved across Respawn
+                // and PlayerPosition until the replacement player first reads it.
+                game.handle_packet(C::Respawn(play::Respawn {
+                    spawn: spawn_info(0, None),
+                    keep: 0,
+                }))
+                .unwrap();
+                assert!(
+                    game.remote
+                        .as_ref()
+                        .unwrap()
+                        .own_player_info
+                        .get()
+                        .is_none(),
+                    "Respawn must leave the replacement player's PlayerInfo cache unresolved"
+                );
+                game.handle_packet(position_packet(3, [0.5, 64.0, 0.5]))
+                    .unwrap();
+                assert!(
+                    game.remote
+                        .as_ref()
+                        .unwrap()
+                        .own_player_info
+                        .get()
+                        .is_none(),
+                    "PlayerPosition must not eagerly resolve PlayerInfo before first read"
+                );
+                {
+                    let remote = game.remote.as_mut().unwrap();
+                    remote.loaded_sent = true;
+                    remote.level_load.finish();
+                }
+                game.screen = Screen::Playing;
+                game.handle_packet(C::PlayerInfoRemove(play::PlayerInfoRemove {
+                    uuids: vec![SELF_UUID],
+                }))
+                .unwrap();
+                run_local_tick(game);
+                let sent = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[5], true, Some(&sent));
+
+                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 1))
+                    .unwrap();
+                run_local_tick(game);
+                let sent = drain_sent_abilities(game, &mut peer);
+                assert_row_core(game, &rows[6], true, Some(&sent));
             });
         },
     );
@@ -936,9 +982,24 @@ fn split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
     crate::game::in_own_process(
         "game::remote::abilities::gamemode_split_tests::split_mode_hud_rendering_reach_miss_inventory_and_input_rules",
         || {
+            use sunrise_client::fog::FogType;
             use sunrise_client::items::ItemStack;
+            use sunrise_client::motion::WATER;
             use sunrise_core::nbt::Tag;
             use winit::event::MouseButton;
+
+            struct NoopLoop;
+            impl crate::game::event_loop::EventLoopCtl for NoopLoop {
+                fn exit(&self) {}
+                fn set_control_flow(&self, _: winit::event_loop::ControlFlow) {}
+            }
+
+            let witness = oracle_witness();
+            assert_eq!(witness["version"].as_str(), Some("26.3"));
+            let water_rows = witness["scenarios"]["water_vision_tick"]
+                .as_array()
+                .unwrap();
+            assert_eq!(water_rows.len(), 4);
 
             with_client_game(|game| {
                 let (_peer, _writer) = setup_client(game, 2, None, [0.5, 64.0, 0.5]);
@@ -998,6 +1059,92 @@ fn split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
                 assert!(game.camera_entity_is_spectator());
                 game.remote.as_mut().unwrap().camera = None;
 
+                // #10: underwater vision decides underwater from the local body's sampled eye fluid
+                // (`LocalPlayer.aiStep`), not camera fog (`camera_fog_type`).
+                let water = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:water")
+                    .unwrap();
+                let air = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:air")
+                    .unwrap();
+                game.fog.water_vision_time = 0;
+                game.handle_packet(abilities_packet(0x06, 0.05, 0.10))
+                    .unwrap();
+                for y in 64..=66 {
+                    game.world.set(0, y, 0, water).unwrap();
+                }
+                assert_eq!(
+                    game.camera_fog_type(game.eye_position().unwrap()),
+                    FogType::Water
+                );
+                assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
+                game.tick_particles();
+                assert_eq!(game.fog.water_vision_time, 0);
+
+                // Sample eye in water, then replace with air so camera fog is Atmospheric while
+                // the local body's sampled eye fluid is still water.
+                run_local_tick(game);
+                assert!(game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
+                for y in 64..=66 {
+                    game.world.set(0, y, 0, air).unwrap();
+                }
+                assert_eq!(
+                    game.camera_fog_type(game.eye_position().unwrap()),
+                    FogType::Atmospheric
+                );
+                game.handle_packet(change_mode_packet(3.0)).unwrap();
+                game.handle_packet(player_info_mode(SELF_UUID, 2)).unwrap();
+                game.tick_particles();
+                assert_eq!(
+                    game.fog.water_vision_time,
+                    water_rows[0]["water_vision_time"].as_i64().unwrap() as i32
+                );
+                game.handle_packet(change_mode_packet(2.0)).unwrap();
+                game.handle_packet(player_info_mode(SELF_UUID, 3)).unwrap();
+                game.tick_particles();
+                assert_eq!(
+                    game.fog.water_vision_time,
+                    water_rows[1]["water_vision_time"].as_i64().unwrap() as i32
+                );
+
+                // Sample eye in air, then restore water so camera fog is Water while the local
+                // body's sampled eye fluid is dry.
+                game.handle_packet(abilities_packet(0x06, 0.05, 0.10))
+                    .unwrap();
+                run_local_tick(game);
+                assert!(!game.player.as_ref().unwrap().is_eye_in_fluid(WATER));
+                for y in 64..=66 {
+                    game.world.set(0, y, 0, water).unwrap();
+                }
+                assert_eq!(
+                    game.camera_fog_type(game.eye_position().unwrap()),
+                    FogType::Water
+                );
+                game.tick_particles();
+                assert_eq!(
+                    game.fog.water_vision_time,
+                    water_rows[2]["water_vision_time"].as_i64().unwrap() as i32
+                );
+                game.handle_packet(change_mode_packet(3.0)).unwrap();
+                game.tick_particles();
+                assert_eq!(
+                    game.fog.water_vision_time,
+                    water_rows[3]["water_vision_time"].as_i64().unwrap() as i32
+                );
+                for y in 64..=66 {
+                    game.world.set(0, y, 0, air).unwrap();
+                }
+                if let Some(player) = game.player.as_mut() {
+                    player.position = Vec3::new(0.5, 64.0, 0.5);
+                    player.velocity = Vec3::ZERO;
+                }
+
                 // #12: attack_range uses entity isCreative; miss cooldown uses controller hasMissTime.
                 let mut spear = ItemStack::new("minecraft:stick", 1);
                 spear.data_mut().set_other(
@@ -1043,21 +1190,86 @@ fn split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
                 game.remote_start_attack();
                 assert_eq!(game.clicks.miss_time, 0);
 
-                // #13: open Inventory reconciles on tick against live instabuild in both directions.
+                // #13: server-opened container menus stay open even with instabuild=true, while
+                // the two player-inventory screens reconcile on tick and preserve the carried stack.
+                game.handle_packet(change_mode_packet(1.0)).unwrap();
+                game.handle_packet(abilities_packet(0x08, 0.05, 0.10))
+                    .unwrap();
+                let chest_menu = game
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .builtin
+                    .get("minecraft:menu")
+                    .unwrap()
+                    .id("minecraft:generic_9x3")
+                    .unwrap();
+                game.handle_packet(C::OpenScreen(play::OpenScreen {
+                    container: 7,
+                    menu: chest_menu,
+                    title: Tag::String("Chest".into()),
+                }))
+                .unwrap();
+                assert_eq!(game.screen, Screen::Inventory);
+                assert_eq!(game.remote_menu_type(), Some("minecraft:generic_9x3"));
+                assert!(!game.is_player_inventory_screen());
+                game.tick_remote_level().unwrap();
+                assert_eq!(game.screen, Screen::Inventory);
+                assert_eq!(game.remote_menu_type(), Some("minecraft:generic_9x3"));
+                assert!(game.container.is_some());
+
+                let crafting_menu = game
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .builtin
+                    .get("minecraft:menu")
+                    .unwrap()
+                    .id("minecraft:crafting")
+                    .unwrap();
+                game.handle_packet(C::OpenScreen(play::OpenScreen {
+                    container: 8,
+                    menu: crafting_menu,
+                    title: Tag::String("Crafting".into()),
+                }))
+                .unwrap();
+                assert_eq!(game.screen, Screen::Inventory);
+                assert!(!game.is_player_inventory_screen());
+                game.tick_remote_level().unwrap();
+                assert_eq!(game.screen, Screen::Inventory);
+                assert_eq!(game.remote_menu_type(), Some("minecraft:crafting"));
+                assert_eq!(game.craft_size, 3);
+
+                game.remote_close_local();
                 game.set_screen(Screen::Inventory);
+                assert!(game.is_player_inventory_screen());
+                game.carried = Some(ItemStack::new("minecraft:diamond", 5));
                 game.handle_packet(change_mode_packet(1.0)).unwrap();
                 game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
                     .unwrap();
-                game.tick_inventory_screen();
+                game.tick_remote_level().unwrap();
                 assert_eq!(game.screen, Screen::Inventory);
+                assert_eq!(
+                    game.carried.as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 5))
+                );
                 game.handle_packet(abilities_packet(0x08, 0.05, 0.10))
                     .unwrap();
-                game.tick_inventory_screen();
+                game.tick_remote_level().unwrap();
                 assert_eq!(game.screen, Screen::Creative);
+                assert_eq!(
+                    game.carried.as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 5))
+                );
                 game.handle_packet(abilities_packet(0x00, 0.05, 0.10))
                     .unwrap();
-                game.tick_inventory_screen();
+                game.tick_remote_level().unwrap();
                 assert_eq!(game.screen, Screen::Inventory);
+                assert_eq!(
+                    game.carried.as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 5))
+                );
+                game.carried = None;
 
                 // #16: external set_local_mode refreshes open WorldOptions personal mode + baseline
                 // without discarding unrelated edits.
@@ -1068,8 +1280,9 @@ fn split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
                 assert_eq!(game.world_options_personal_state(), Some((1, 1, 3)));
                 game.close_world_options();
 
-                // #18: synthetic middle click queues both key.pickItem and key.spectatorHotbar
-                // even when PlayerInfo is Spectator.
+                // #18: synthetic button and key edges route through per-binding dispatch once per
+                // binding, even when movement, toggle, and plain actions share a rebound input.
+                let (reply, _rx) = std::sync::mpsc::channel();
                 game.set_screen(Screen::Playing);
                 game.handle_packet(player_info_mode(SELF_UUID, 3)).unwrap();
                 assert!(game.own_player_is_spectator());
@@ -1082,13 +1295,105 @@ fn split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
                     game.pending_mapping_clicks("key.spectatorHotbar"),
                     spec_before + 1
                 );
-                game.play_middle_bindings(Some("key.mouse.middle"), true);
-                game.play_middle_bindings(Some("key.mouse.middle"), false);
+                game.control_command("mouse middle click", &reply, &NoopLoop)
+                    .unwrap();
                 assert_eq!(game.pending_mapping_clicks("key.pickItem"), pick_before + 2);
                 assert_eq!(
                     game.pending_mapping_clicks("key.spectatorHotbar"),
                     spec_before + 2
                 );
+
+                // Rebind movement (key.forward), keyboard toggle (key.sneak), mouse toggle
+                // (key.attack), and plain action (key.drop) onto key.mouse.middle alongside the
+                // default middle pair: every binding triggers exactly once.
+                game.settings.toggle_crouch = true;
+                game.settings.keys.set("key.forward", "key.mouse.middle");
+                game.settings.keys.set("key.sneak", "key.mouse.middle");
+                game.settings.keys.set("key.attack", "key.mouse.middle");
+                game.settings.keys.set("key.drop", "key.mouse.middle");
+                let before = [
+                    game.pending_mapping_clicks("key.forward"),
+                    game.pending_mapping_clicks("key.sneak"),
+                    game.pending_mapping_clicks("key.attack"),
+                    game.pending_mapping_clicks("key.drop"),
+                    game.pending_mapping_clicks("key.pickItem"),
+                    game.pending_mapping_clicks("key.spectatorHotbar"),
+                ];
+                game.control_command("mouse middle down", &reply, &NoopLoop)
+                    .unwrap();
+                assert!(game.mapped_key_down("key.forward"));
+                assert!(game.mapped_key_down("key.sneak"));
+                assert!(game.mapped_key_down("key.attack"));
+                assert!(game.mapped_key_down("key.drop"));
+                for (name, prev) in [
+                    ("key.forward", before[0]),
+                    ("key.sneak", before[1]),
+                    ("key.attack", before[2]),
+                    ("key.drop", before[3]),
+                    ("key.pickItem", before[4]),
+                    ("key.spectatorHotbar", before[5]),
+                ] {
+                    assert_eq!(
+                        game.pending_mapping_clicks(name),
+                        prev + 1,
+                        "{name} after mouse middle down"
+                    );
+                }
+                game.control_command("mouse middle up", &reply, &NoopLoop)
+                    .unwrap();
+                assert!(!game.mapped_key_down("key.forward"));
+                assert!(game.mapped_key_down("key.sneak"));
+                assert!(!game.mapped_key_down("key.attack"));
+                assert!(!game.mapped_key_down("key.drop"));
+                game.control_command("mouse middle click", &reply, &NoopLoop)
+                    .unwrap();
+                assert!(!game.mapped_key_down("key.sneak"));
+
+                // Rebinding key.mouse.left away from key.attack to key.forward dispatches only
+                // key.forward and not key.attack.
+                game.settings.keys.reset_all();
+                game.settings.toggle_crouch = false;
+                game.settings.keys.set("key.attack", "key.keyboard.r");
+                game.settings.keys.set("key.forward", "key.mouse.left");
+                let fwd_before = game.pending_mapping_clicks("key.forward");
+                let atk_before = game.pending_mapping_clicks("key.attack");
+                game.control_command("mouse left click", &reply, &NoopLoop)
+                    .unwrap();
+                assert_eq!(game.pending_mapping_clicks("key.forward"), fwd_before + 1);
+                assert_eq!(game.pending_mapping_clicks("key.attack"), atk_before);
+
+                // Rebinding key.pickItem, key.drop, key.forward, key.sneak, and key.attack onto
+                // one keyboard key dispatches each binding exactly once (never double-queueing
+                // key.drop or skipping movement/toggle actions).
+                game.settings.keys.reset_all();
+                game.settings.keys.set("key.pickItem", "key.keyboard.g");
+                game.settings.keys.set("key.drop", "key.keyboard.g");
+                game.settings.keys.set("key.forward", "key.keyboard.g");
+                game.settings.keys.set("key.sneak", "key.keyboard.g");
+                game.settings.keys.set("key.attack", "key.keyboard.g");
+                let key_before = [
+                    game.pending_mapping_clicks("key.pickItem"),
+                    game.pending_mapping_clicks("key.drop"),
+                    game.pending_mapping_clicks("key.forward"),
+                    game.pending_mapping_clicks("key.sneak"),
+                    game.pending_mapping_clicks("key.attack"),
+                ];
+                game.control_command("key g tap", &reply, &NoopLoop)
+                    .unwrap();
+                for (name, prev) in [
+                    ("key.pickItem", key_before[0]),
+                    ("key.drop", key_before[1]),
+                    ("key.forward", key_before[2]),
+                    ("key.sneak", key_before[3]),
+                    ("key.attack", key_before[4]),
+                ] {
+                    assert_eq!(
+                        game.pending_mapping_clicks(name),
+                        prev + 1,
+                        "{name} after key g tap"
+                    );
+                }
+                game.settings.keys.reset_all();
             });
         },
     );
