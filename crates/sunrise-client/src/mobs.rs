@@ -1977,14 +1977,6 @@ pub enum MobEvent {
         mob: u32,
         slot: sunrise_core::equipment_slot::EquipmentSlot,
     },
-    /// `Villager.setLastHurtByMob`, its gossip already added at the hit: the angry
-    /// event (13), a player's open offers refreshed, and the UUID the gossip made up
-    /// for an attacker that had none.
-    VillagerHurt {
-        mob: u32,
-        angry: bool,
-        player: Option<[i32; 4]>,
-    },
     /// `OfferFlowerGoal.stop`: the item goes to the target's antenna (saddle)
     /// slot if it is empty, as a guaranteed drop.
     Gift {
@@ -2768,7 +2760,9 @@ include!("mobs/seen.rs");
 
 impl Mob {
     pub(crate) fn hurt_needs_owner(&self) -> bool {
-        self.damage_completion.is_some() || creaking::has_pending_hurt(self)
+        self.damage_completion.is_some()
+            || creaking::has_pending_hurt(self)
+            || villager::ext(self).is_some_and(|ext| ext.pending_hurt_player.is_some())
     }
 
     /// The name used by command replies: CustomName takes precedence over the type.

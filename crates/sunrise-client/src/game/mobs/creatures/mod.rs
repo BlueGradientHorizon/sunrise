@@ -1734,6 +1734,7 @@ impl Game<'_> {
     }
     /// Settle a hit while its damage owner still has the level in place.
     pub(in crate::game) fn finish_mob_damage_at(&mut self, index: usize) {
+        self.settle_villager_hurt(index);
         let Some(mob) = self.mobs.get_mut(index) else {
             return;
         };
@@ -2086,7 +2087,6 @@ impl Game<'_> {
         let mut hurt = false;
         let mut infested = Vec::new();
         let mut sounds = Vec::new();
-        let mut villager_hurts = Vec::new();
         let mut center = [0.0; 3];
         let catch_up = self.catch_up_countdowns(source.attacker, target);
         let aim = self.attacker_aim(source.attacker);
@@ -2142,10 +2142,6 @@ impl Game<'_> {
                     match event {
                         MobEvent::Sound(s, _, volume, pitch) => sounds.push((s, volume, pitch)),
                         MobEvent::Infested { at, velocities } => infested.push((at, velocities)),
-                        // Raised inside the hit: before its hurt sound.
-                        MobEvent::VillagerHurt { mob, angry, player } => {
-                            villager_hurts.push((mob, angry, player))
-                        }
                         other => {
                             // Left for the end of the tick.
                             t.outbox.push(other);
@@ -2154,8 +2150,8 @@ impl Game<'_> {
                 }
             }
         }
-        for (mob, angry, player) in villager_hurts {
-            self.villager_hurt_event(mob, angry, player);
+        if let Some(index) = target_index {
+            self.settle_villager_hurt(index);
         }
         for (s, volume, pitch) in sounds {
             self.audio.play(&full_id(s), Some(center), volume, pitch);
@@ -2520,9 +2516,6 @@ impl Game<'_> {
                     source,
                 } => self.hurt_mob_armor(mob, amount, &source),
                 MobEvent::GliderWear { mob, slot } => self.wear_mob_glider(mob, slot),
-                MobEvent::VillagerHurt { mob, angry, player } => {
-                    self.villager_hurt_event(mob, angry, player)
-                }
                 MobEvent::EntityEvent { mob, event, at } => {
                     // Ravager.roar (event 69 ends it): with the raw mob_griefing rule (not
                     // canEntityGrief), ROAR_TARGET_WITH_GRIEFING also takes the armor stands.

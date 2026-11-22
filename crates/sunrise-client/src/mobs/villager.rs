@@ -349,6 +349,8 @@ pub struct Ext {
     pub raid_wave: bool,
     /// What the villager remembers of players (`gossips`).
     pub gossips: crate::gossip::Gossips,
+    /// Player UUID and whether to broadcast anger, handed to the owner of this hit.
+    pub pending_hurt_player: Option<([i32; 4], bool)>,
     /// `Villager.lastTradedPlayer`: the most recent trader, consumed by the
     /// next customServerAiStep. This is runtime state, not saved gossip.
     pub last_traded_player: Option<[i32; 4]>,
@@ -388,17 +390,16 @@ pub fn hurt_by(m: &mut Mob, source: &super::Damage, uuid: [i32; 4]) {
     if m.species() != Species::Villager || source.kind.no_anger() {
         return;
     }
-    ext_mut(m).gossips.add(
+    let alive = m.alive();
+    let ext = ext_mut(m);
+    ext.gossips.add(
         uuid,
         crate::gossip::GossipType::MinorNegative,
         crate::gossip::REPUTATION_CHANGE_PER_EVENT,
     );
-    let player = (who == super::Who::Player).then_some(uuid);
-    m.outbox.push(MobEvent::VillagerHurt {
-        mob: m.id,
-        angry: m.alive() && player.is_some(),
-        player,
-    });
+    if who == super::Who::Player {
+        ext.pending_hurt_player = Some((uuid, alive));
+    }
 }
 pub fn ext_mut(m: &mut Mob) -> &mut Ext {
     m.extra.villager.get_or_insert_with(Box::default)

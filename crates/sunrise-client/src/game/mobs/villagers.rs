@@ -486,16 +486,24 @@ impl Game<'_> {
         };
         Some(sunrise_client::lan::playerdata::uuid_ints(uuid))
     }
-    /// `Villager.setLastHurtByMob` after its gossip landed with the hit
-    /// (`hurt_by` in the credit loan): entity event 13 for a living villager hit by a
-    /// player, and `onReputationEventFrom` refreshing that player's open offers.
-    pub(super) fn villager_hurt_event(&mut self, mob: u32, angry: bool, player: Option<[i32; 4]>) {
+    /// Complete `Villager.setLastHurtByMob` in the owner of the accepted hit.
+    /// `onReputationEventFrom` refreshes the hitting player's offers before event 13.
+    pub(super) fn settle_villager_hurt(&mut self, index: usize) {
+        let Some(mob) = self.mobs.get_mut(index) else {
+            return;
+        };
+        let Some((player, angry)) = mob
+            .extra
+            .villager
+            .as_mut()
+            .and_then(|ext| ext.pending_hurt_player.take())
+        else {
+            return;
+        };
+        let id = mob.id;
+        self.villager_prices_changed(id, Some(player));
         if angry {
-            self.mob_event_particles(mob, 13);
-        }
-        // onReputationEventFrom: only the player whose hit it was.
-        if let Some(uuid) = player {
-            self.villager_prices_changed(mob, Some(uuid));
+            self.mob_event_particles(id, 13);
         }
     }
     /// `Villager.tellWitnessesThatIWasMurdered`: the villagers that saw a
