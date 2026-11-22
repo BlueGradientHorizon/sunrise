@@ -987,21 +987,17 @@ fn per_level_close_failure_skips_only_that_levels_unload() {
                 game.native_lifecycle_open_started();
                 game.open_configured_levels(&[Dim::Overworld, Dim::Nether, Dim::End])
                     .unwrap();
-                // Point the parked Nether's SaveDir at a directory whose `region`
-                // path is a regular file and queue an async chunk write so its
-                // close (`save.flush()`) fails with an IO error.
-                let broken = root.path().join("broken_nether");
-                std::fs::create_dir_all(&broken).unwrap();
-                std::fs::write(broken.join("region"), b"not a directory").unwrap();
+                // Inject a storage sync error on the parked Nether's SaveDir so its
+                // close (`save.flush()`) fails with an IO error while individual record
+                // failures continue to be reported non-fatally.
                 let bad_save = Arc::new(sunrise_client::save::SaveDir::new(
-                    broken,
+                    root.path().join("broken_nether"),
                     sunrise_client::save::LevelShape::NETHER,
                     Some(Default::default()),
                 ));
-                let chunk = Arc::new(sunrise_client::chunk::Chunk::empty(0, 0));
-                bad_save
-                    .save_later(&[chunk], game.pack.assets.registry, world_biomes!(game))
-                    .unwrap();
+                bad_save.inject_sync_error_for_test(std::io::Error::other(
+                    "simulated storage sync failure",
+                ));
                 game.levels.parked.get_mut(&Dim::Nether).unwrap().save = bad_save;
 
                 game.close_loaded_levels_for_stop();

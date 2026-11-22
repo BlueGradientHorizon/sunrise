@@ -521,7 +521,9 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
 
                     game.close_parked_level(dim).unwrap();
                     assert!(!game.levels.parked.contains_key(&dim));
-                    assert_eq!(*open_frames.lock().unwrap(), [false, false]);
+                    // `chunk_unload` runs after the abandoned frame is aborted (`false`);
+                    // `level_unload` runs inside its own per-listener transaction frame (`true`).
+                    assert_eq!(*open_frames.lock().unwrap(), [false, true]);
                     assert!(game.transaction_matches(None));
                     assert_eq!(home.connection_group(game, POS), Ok(Some(10)));
                     game.abort_abandoned_transactions(0);

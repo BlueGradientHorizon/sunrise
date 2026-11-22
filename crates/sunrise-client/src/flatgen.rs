@@ -83,6 +83,15 @@ impl FlatTerrain {
             .get("dimensions")?
             .get("minecraft:overworld")?
             .get("generator")?;
+        Self::from_generator(generator, registry, biomes, shape)
+    }
+    /// A superflat generator from a single dimension stem's `generator` compound.
+    pub fn from_generator(
+        generator: &Tag,
+        registry: &BlockRegistry,
+        biomes: &crate::biome::Biomes,
+        shape: LevelShape,
+    ) -> Option<Self> {
         if crate::save::text(generator.get("type"))?.trim_start_matches("minecraft:") != "flat" {
             return None;
         }

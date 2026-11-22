@@ -2457,6 +2457,9 @@ mod tests {
                     LevelShape::OVERWORLD,
                     Some(Default::default()),
                 ));
+                game.session_lock =
+                    Some(sunrise_client::save::SessionLock::acquire(dir.path()).unwrap());
+                game.world_adopted = true;
                 assert_eq!(
                     game.save_dedicated_checkpoint("startup fixture").unwrap(),
                     0
@@ -2502,6 +2505,9 @@ mod tests {
                 );
                 game.native_lifecycle.begin_open(Authority::DedicatedServer);
                 game.native_lifecycle.world_open_ready().unwrap();
+                game.session_lock =
+                    Some(sunrise_client::save::SessionLock::acquire(dir.path()).unwrap());
+                game.world_adopted = true;
                 let error = game
                     .run_server_lifecycle(true, |_| panic!("{cause}"))
                     .unwrap_err();

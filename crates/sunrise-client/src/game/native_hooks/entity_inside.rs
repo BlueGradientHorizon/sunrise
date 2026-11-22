@@ -1552,7 +1552,7 @@ mod sweep_tests {
                     toast.message.as_ref().unwrap().component(),
                     serde_json::json!({
                         "translate": "sunrise.mods.hook_panic.description",
-                        "with": ["mod_panics", "entity_inside"],
+                        "with": [{"text": "mod_panics"}, {"text": "entity_inside"}],
                     })
                 );
             });

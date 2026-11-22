@@ -2487,14 +2487,25 @@ mod tests {
             let game = open_game(&mut resources, &root, home.path(), &world);
             assert_eq!(game.dim, Dim::Nether);
         });
-        assert_eq!(
-            *seen.lock().unwrap(),
-            [
-                (BUILT_INS[0].into(), [true, false, false]),
-                (BUILT_INS[1].into(), [true, true, false]),
-                (BUILT_INS[2].into(), [true, true, true]),
-            ]
-        );
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), BUILT_INS.len());
+        assert_eq!(seen[0], (BUILT_INS[0].into(), [true, false, false]));
+        let mut loaded = [true, false, false];
+        let mut names: Vec<&str> = vec![seen[0].0.as_str()];
+        for (dim, available) in &seen[1..] {
+            let idx = BUILT_INS
+                .iter()
+                .position(|&id| id == dim)
+                .expect("built-in dimension");
+            assert!(!loaded[idx], "duplicate level_load for {dim}");
+            loaded[idx] = true;
+            assert_eq!(*available, loaded);
+            names.push(dim.as_str());
+        }
+        names.sort_unstable();
+        let mut expected = BUILT_INS;
+        expected.sort_unstable();
+        assert_eq!(names, expected);
     }
 
     /// Vanilla 26.3 (`MinecraftServer.createLevels` / `MinecraftServer.levels` /
@@ -2553,7 +2564,16 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             let mut resources = None;
             let mut game = open_game(&mut resources, &root, home.path(), &world);
-            assert_eq!(*loads.lock().unwrap(), BUILT_INS);
+            let initial_loads = loads.lock().unwrap().clone();
+            assert_eq!(
+                initial_loads.first().map(String::as_str),
+                Some("minecraft:overworld")
+            );
+            let mut sorted_loads: Vec<&str> = initial_loads.iter().map(String::as_str).collect();
+            sorted_loads.sort_unstable();
+            let mut sorted_builtins = BUILT_INS;
+            sorted_builtins.sort_unstable();
+            assert_eq!(sorted_loads, sorted_builtins);
             assert!(unloads.lock().unwrap().is_empty());
 
             // Configure as a dedicated server with real commands (`/save-off`,
@@ -2749,15 +2769,16 @@ mod tests {
                 }
                 assert!(arrived, "the guest never arrived in {dim:?}");
             }
-            assert_eq!(*loads.lock().unwrap(), BUILT_INS);
+            assert_eq!(*loads.lock().unwrap(), initial_loads);
             assert!(unloads.lock().unwrap().is_empty());
 
-            // Normal server shutdown saves worlds and fires `level_unload` once each.
+            // Normal server shutdown saves worlds and fires `level_unload` once each,
+            // in the same creation order as `level_load`.
             game.run_server_lifecycle(true, |_| {
                 Ok(crate::game::server_lifecycle::ServerRunOutcome::Orderly)
             })
             .unwrap();
-            assert_eq!(*unloads.lock().unwrap(), BUILT_INS);
+            assert_eq!(*unloads.lock().unwrap(), initial_loads);
         });
     }
 

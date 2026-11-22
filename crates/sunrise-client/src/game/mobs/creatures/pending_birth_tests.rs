@@ -12,14 +12,13 @@ use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::pending_births::escaping_fault::{self, At};
 use mod_api::{
-    AttachmentDescriptor, BabyEntitySpawnEvent, EntityConstructingEvent, EntityJoinLevelEvent,
-    Flow, Holder, Hooks, HostSide, MobSplitEvent, PendingMobSpec, ServerHost, UnspawnedMob,
-    UnspawnedMobError,
+    AttachmentDescriptor, AttachmentKey, BabyEntitySpawnEvent, EntityConstructingEvent,
+    EntityJoinLevelEvent, Flow, Holder, Hooks, HostSide, MobSplitEvent, PendingMobSpec, ServerHost,
+    UnspawnedMob, UnspawnedMobError,
 };
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use sunrise_client::mobs::goals::{Cx, Goal};
 use sunrise_core::random::LegacyRandom;
-use sunrise_mod_runtime::attachments::AttachmentType;
 
 const IGNORE: &str = "needs prepared resources in SUNRISE_TEST_RESOURCES";
 
@@ -712,7 +711,11 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
             assert_eq!(child.position, live_parent.position);
             assert_eq!(child.yaw, 0.0);
             assert_eq!(child.head_pitch, 0.0);
-            assert!(child.extra.spawn_tags.iter().any(|t| t == "replaced_pig"));
+            assert!(
+                game.tags_of(crate::game::commands::Target::Mob(child.id))
+                    .iter()
+                    .any(|t| t == "replaced_pig")
+            );
             assert_eq!(
                 game.mobs
                     .iter()
@@ -901,7 +904,11 @@ fn breeding_dispatches_when_proposed_child_is_none_and_accepts_replacement() {
             assert_eq!(baby.kind.id, "minecraft:pig");
             assert_eq!(baby.position, Vec3::new(3.0, 64.0, 4.0));
             assert_eq!(baby.yaw, 0.0);
-            assert!(baby.extra.spawn_tags.iter().any(|t| t == "from_empty_slot"));
+            assert!(
+                game.tags_of(crate::game::commands::Target::Mob(baby.id))
+                    .iter()
+                    .any(|t| t == "from_empty_slot")
+            );
             for id in [parent, partner] {
                 let p = find(game, id);
                 assert_eq!(p.extra.age, 6000);
@@ -1014,7 +1021,11 @@ fn fox_breeding_rejects_non_fox_and_trusts_breeders_on_replaced_fox() {
             let kit = find(game, child.expect("replaced fox kit should join"));
             assert_eq!(kit.kind.id, "minecraft:fox");
             assert!(kit.extra.age < 0);
-            assert!(kit.extra.spawn_tags.iter().any(|t| t == "custom_kit"));
+            assert!(
+                game.tags_of(crate::game::commands::Target::Mob(kit.id))
+                    .iter()
+                    .any(|t| t == "custom_kit")
+            );
             assert!(sunrise_client::mobs::fox::trusts(&kit, feeder));
             assert_eq!(kit.position, live_parent.position);
             assert_eq!(kit.yaw, 0.0);
@@ -1215,31 +1226,29 @@ fn baby_slot_replacement_does_not_publish_on_engine_unwind() {
 fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    const MARKER: AttachmentType<i32> = AttachmentType {
-        namespace: "pending_birth_constructor",
-        name: "marker",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync_codec: None,
-    };
-    struct Constructor(Arc<AtomicBool>);
+    struct Constructor {
+        baby_hook_ran: Arc<AtomicBool>,
+        marker: Arc<OnceLock<AttachmentKey<i32>>>,
+    }
     #[mod_api::__subscriptions]
     impl Hooks for Constructor {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.register_attachment_type(AttachmentDescriptor::new(
-                "pending_birth_constructor:marker",
-                || 0i32,
-            ))
-            .unwrap();
+            let key = r
+                .register_attachment_type(AttachmentDescriptor::new(
+                    "pending_birth_constructor:marker",
+                    || 0i32,
+                ))
+                .unwrap();
+            let _ = self.marker.set(key);
         }
 
         fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
             if event.kind == "minecraft:cow"
                 && let HostSide::Server(host) = host
             {
-                MARKER.set(host, event.holder, 7).unwrap();
-                MARKER.set(host, Holder::Level, 41).unwrap();
+                let marker = self.marker.get().unwrap();
+                marker.set(host, event.holder, 7).unwrap();
+                marker.set(host, Holder::Level, 41).unwrap();
             }
         }
 
@@ -1248,18 +1257,23 @@ fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
             _: &mut dyn ServerHost,
             _: &mut BabyEntitySpawnEvent<'_>,
         ) -> Flow {
-            self.0.store(true, Ordering::Relaxed);
+            self.baby_hook_ran.store(true, Ordering::Relaxed);
             Flow::Continue
         }
     }
     let baby_hook_ran = Arc::new(AtomicBool::new(false));
+    let marker = Arc::new(OnceLock::new());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "pending_birth_constructor",
-        Box::new(Constructor(baby_hook_ran.clone())),
+        Box::new(Constructor {
+            baby_hook_ran: baby_hook_ran.clone(),
+            marker: marker.clone(),
+        }),
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
+            let marker = marker.get().unwrap();
             let proposed_id = game.next_entity + 3;
             escaping_fault::expect(At::Constructed, proposed_id, || {
                 breed_pair(game, "minecraft:cow");
@@ -1275,7 +1289,7 @@ fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
                     .contains(&Holder::Entity(proposed_id))
             );
             assert!(game.entity_initialization.active.is_none());
-            assert_eq!(MARKER.get(game, Holder::Level), Ok(41));
+            assert_eq!(marker.get(game, Holder::Level, |&v| v), Ok(41));
         });
     });
 }
@@ -1340,14 +1354,6 @@ fn breeding_spawns_after_parent_host_edit_and_cancel_resets_both_parents() {
 #[ignore = "daily"]
 fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_without_collision()
 {
-    const PENDING_MARKER: AttachmentType<i32> = AttachmentType {
-        namespace: "pending_birth",
-        name: "marker",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync_codec: None,
-    };
     thread_local! {
         static STASH: std::cell::RefCell<Option<UnspawnedMob>> =
             const { std::cell::RefCell::new(None) };
@@ -1355,24 +1361,31 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
     struct CrossWorldMod {
         construct_calls: Arc<Mutex<Vec<(Holder, String)>>>,
         attach_on_split: Arc<Mutex<bool>>,
+        marker: Arc<OnceLock<AttachmentKey<i32>>>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for CrossWorldMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.register_attachment_type(AttachmentDescriptor::new("pending_birth:marker", || 0i32))
+            let key = r
+                .register_attachment_type(AttachmentDescriptor::new(
+                    "pending_birth_cross_world:marker",
+                    || 0i32,
+                ))
                 .unwrap();
+            let _ = self.marker.set(key);
         }
         fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
             self.construct_calls
                 .lock()
                 .unwrap()
                 .push((event.holder, event.kind.to_owned()));
+            let marker = self.marker.get().unwrap();
             match host {
                 HostSide::Server(host) => {
-                    PENDING_MARKER.set(host, event.holder, 41).unwrap();
+                    marker.set(host, event.holder, 41).unwrap();
                 }
                 HostSide::Client(host) => {
-                    PENDING_MARKER.set(host, event.holder, 41).unwrap();
+                    marker.set(host, event.holder, 41).unwrap();
                 }
             }
         }
@@ -1398,11 +1411,13 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
     STASH.with(|slot| *slot.borrow_mut() = None);
     let construct_calls = Arc::new(Mutex::new(Vec::new()));
     let attach_on_split = Arc::new(Mutex::new(false));
+    let marker = Arc::new(OnceLock::new());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "pending_birth_cross_world",
         Box::new(CrossWorldMod {
             construct_calls: construct_calls.clone(),
             attach_on_split: attach_on_split.clone(),
+            marker: marker.clone(),
         }),
     )]
     .into();
@@ -1481,7 +1496,13 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
                 .clone();
             assert_ne!(cow.id, old_reserved_id);
             assert!(game.persist.uuids.contains_key(&cow.id));
-            assert_eq!(PENDING_MARKER.get(game, Holder::Entity(cow.id)), Ok(41));
+            assert_eq!(
+                marker
+                    .get()
+                    .unwrap()
+                    .get(game, Holder::Entity(cow.id), |&v| v),
+                Ok(41)
+            );
         });
         assert_eq!(
             construct_calls
@@ -1500,14 +1521,6 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
 #[test]
 #[ignore = "daily"]
 fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
-    const SPLIT_MARKER: AttachmentType<i32> = AttachmentType {
-        namespace: "pending_split",
-        name: "marker",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync_codec: None,
-    };
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum Mode {
         RemoveSecond,
@@ -1517,12 +1530,18 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
     struct OrderMod {
         trace: Arc<Mutex<Vec<(&'static str, u32)>>>,
         mode: Arc<Mutex<Mode>>,
+        marker: Arc<OnceLock<AttachmentKey<i32>>>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for OrderMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.register_attachment_type(AttachmentDescriptor::new("pending_split:marker", || 0i32))
+            let key = r
+                .register_attachment_type(AttachmentDescriptor::new(
+                    "pending_split_order:marker",
+                    || 0i32,
+                ))
                 .unwrap();
+            let _ = self.marker.set(key);
         }
         fn mob_split(&self, _: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow {
             let mode = *self.mode.lock().unwrap();
@@ -1547,8 +1566,9 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
             if let Holder::Entity(id) = event.holder {
                 self.trace.lock().unwrap().push(("construct", id));
                 if let HostSide::Server(host) = host {
-                    SPLIT_MARKER.set(host, event.holder, 7).unwrap();
-                    SPLIT_MARKER.set(host, Holder::Level, 23).unwrap();
+                    let marker = self.marker.get().unwrap();
+                    marker.set(host, event.holder, 7).unwrap();
+                    marker.set(host, Holder::Level, 23).unwrap();
                 }
             }
         }
@@ -1564,16 +1584,19 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
 
     let trace = Arc::new(Mutex::new(Vec::new()));
     let mode = Arc::new(Mutex::new(Mode::RemoveSecond));
+    let marker = Arc::new(OnceLock::new());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "pending_split_order",
         Box::new(OrderMod {
             trace: trace.clone(),
             mode: mode.clone(),
+            marker: marker.clone(),
         }),
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
+            let marker = marker.get().unwrap();
             // Even the removed proposal constructs before the split event. Only the first
             // and last proposal join, keeping their existing constructor attachment.
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
@@ -1591,13 +1614,13 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
                     ("join", first + 2),
                 ]
             );
-            assert_eq!(SPLIT_MARKER.get(game, Holder::Entity(first)), Ok(7));
+            assert_eq!(marker.get(game, Holder::Entity(first), |&v| v), Ok(7));
             assert!(!game.entity_attachments.contains_key(&(first + 1)));
 
             game.mobs.clear();
             trace.lock().unwrap().clear();
             *mode.lock().unwrap() = Mode::Cancel;
-            SPLIT_MARKER.set(game, Holder::Level, 0).unwrap();
+            marker.set(game, Holder::Level, 0).unwrap();
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let first = game.next_entity + 1;
             game.split_cube_children(&mut dying);
@@ -1614,12 +1637,12 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
             for id in first..=first + 2 {
                 assert!(!game.entity_attachments.contains_key(&id));
             }
-            assert_eq!(SPLIT_MARKER.get(game, Holder::Level), Ok(23));
+            assert_eq!(marker.get(game, Holder::Level, |&v| v), Ok(23));
 
             // An engine fault after the second constructor leaves neither proposal's state.
             trace.lock().unwrap().clear();
             *mode.lock().unwrap() = Mode::Keep;
-            SPLIT_MARKER.set(game, Holder::Level, 0).unwrap();
+            marker.set(game, Holder::Level, 0).unwrap();
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let first = game.next_entity + 1;
             escaping_fault::expect(At::Constructed, first + 1, || {
@@ -1629,7 +1652,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
                 *trace.lock().unwrap(),
                 [("construct", first), ("construct", first + 1)]
             );
-            assert_eq!(SPLIT_MARKER.get(game, Holder::Level), Ok(23));
+            assert_eq!(marker.get(game, Holder::Level, |&v| v), Ok(23));
             assert!(game.mobs.is_empty());
             assert!(game.entity_initialization.active.is_none());
             for id in [first, first + 1] {
@@ -1664,7 +1687,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
             game.native_joins_flush(false, 0);
             assert!(game.entity_initialization.active.is_none());
             assert!(game.mobs.iter().any(|m| m.id == first));
-            assert_eq!(SPLIT_MARKER.get(game, Holder::Entity(first)), Ok(7));
+            assert_eq!(marker.get(game, Holder::Entity(first), |&v| v), Ok(7));
             for id in [first + 1, first + 2] {
                 assert!(!game.mobs.iter().any(|m| m.id == id));
                 assert!(!game.entity_attachments.contains_key(&id));
@@ -1783,7 +1806,14 @@ fn a_later_birth_unwind_does_not_lose_or_replay_a_cube_removal() {
             dying.health = 0.0;
             dying.death_time = 19;
             dying.persistent = true;
-            dying.add_effect("minecraft:oozing", 200, 0);
+            dying
+                .extra
+                .effects
+                .push(sunrise_client::mobs::StoredEffect::new(
+                    "minecraft:oozing",
+                    200,
+                    0,
+                ));
             game.mobs.push(dying);
             let parent = add_ready_pair(game);
             escaping_fault::expect(At::BabyDispatched, parent, || {

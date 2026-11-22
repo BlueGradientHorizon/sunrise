@@ -1296,54 +1296,84 @@ pub(super) fn make_streaming(
             &pack.additional_data,
         );
         let saved_stem = saved_stem.map(sunrise_client::scoreboard::tag_to_json);
-        let regions = sunrise_client::save::biome_regions::layout(world_root, dim.id())
-            .map_err(|e| format!("Failed to read the world's biome regions: {e}"))?;
-        let mut inner = VanillaTerrain::for_world_with_settings(terrain_resources, &overrides, seed, preset, dim.id(), structures, saved_stem.as_ref(), regions).map_err(|e| {
-                if overrides.is_empty() {
-                    format!("{e}\nPrepare the worldgen bundle with the launcher, or: sunrise-prepare --prepare")
-                } else {
-                    format!("{e}\nThe world's data packs change its world generation: one of them may not be made for this version")
-                }
-            })?;
-        inner.add_mod_signs(res.facts());
-        register_sea_level(inner.sea_level());
-        let inner = Arc::new(inner);
-        // The first mob a fresh chunk generates needs the mob data: read it now,
-        // off the server's tick (#13857). The End's chunks generate none.
-        if dim != Dim::End {
-            inner.load_structure_mobs_behind();
+        let flat_stem = overrides
+            .entries(sunrise_world::worldgen::overrides::DIMENSIONS)
+            .find(|(id, _)| *id == dim.id())
+            .and_then(|(_, json)| serde_json::from_str::<serde_json::Value>(json).ok())
+            .or_else(|| saved_stem.clone());
+        let flat_generator = flat_stem
+            .as_ref()
+            .filter(|stem| stem["generator"]["type"].as_str() == Some("minecraft:flat"))
+            .map(|stem| sunrise_client::scoreboard::json_to_tag(&stem["generator"]));
+        if let Some(flat_gen) = flat_generator.as_ref()
+            && let Some(inner) = sunrise_client::flatgen::FlatTerrain::from_generator(
+                flat_gen,
+                pack.assets.registry,
+                res.biomes(),
+                shape,
+            )
+        {
+            register_sea_level(-63);
+            Streaming::new(
+                Arc::new(Persistent {
+                    inner: Arc::new(inner),
+                    save: save.clone(),
+                    registry: pack.assets.clone(),
+                    biomes: biomes.clone(),
+                }),
+                pack.context_with(biomes.clone()),
+                res.threads(),
+            )
+        } else {
+            let regions = sunrise_client::save::biome_regions::layout(world_root, dim.id())
+                .map_err(|e| format!("Failed to read the world's biome regions: {e}"))?;
+            let mut inner = VanillaTerrain::for_world_with_settings(terrain_resources, &overrides, seed, preset, dim.id(), structures, saved_stem.as_ref(), regions).map_err(|e| {
+                    if overrides.is_empty() {
+                        format!("{e}\nPrepare the worldgen bundle with the launcher, or: sunrise-prepare --prepare")
+                    } else {
+                        format!("{e}\nThe world's data packs change its world generation: one of them may not be made for this version")
+                    }
+                })?;
+            inner.add_mod_signs(res.facts());
+            register_sea_level(inner.sea_level());
+            let inner = Arc::new(inner);
+            // The first mob a fresh chunk generates needs the mob data: read it now,
+            // off the server's tick (#13857). The End's chunks generate none.
+            if dim != Dim::End {
+                inner.load_structure_mobs_behind();
+            }
+            if dim == Dim::Overworld && structures {
+                inner.search_rings_behind();
+            }
+            // Chunks an older version saved: the new chunks around them blend in.
+            if dim == Dim::Overworld {
+                let old = Arc::new(sunrise_client::old_world::SavedOldWorld::new(
+                    save.clone(),
+                    pack.assets.clone(),
+                    res.biomes().clone(),
+                    inner.generator_data().clone(),
+                ));
+                // Saves of this folder take the old chunks' calculated blending data when
+                // they are requested; a weak link, as the old world holds the folder.
+                let weak = Arc::downgrade(&old);
+                save.set_blending_lookup(Box::new(move |x, z| {
+                    weak.upgrade().and_then(|old| old.calculated(x, z))
+                }));
+                inner.set_old_world(old);
+            }
+            keep_structure_references(&inner, world_root, dim, &save);
+            locator = Some(inner.clone());
+            Streaming::new(
+                Arc::new(Persistent {
+                    inner,
+                    save: save.clone(),
+                    registry: pack.assets.clone(),
+                    biomes: biomes.clone(),
+                }),
+                pack.context_with(biomes.clone()),
+                res.threads(),
+            )
         }
-        if dim == Dim::Overworld && structures {
-            inner.search_rings_behind();
-        }
-        // Chunks an older version saved: the new chunks around them blend in.
-        if dim == Dim::Overworld {
-            let old = Arc::new(sunrise_client::old_world::SavedOldWorld::new(
-                save.clone(),
-                pack.assets.clone(),
-                res.biomes().clone(),
-                inner.generator_data().clone(),
-            ));
-            // Saves of this folder take the old chunks' calculated blending data when
-            // they are requested; a weak link, as the old world holds the folder.
-            let weak = Arc::downgrade(&old);
-            save.set_blending_lookup(Box::new(move |x, z| {
-                weak.upgrade().and_then(|old| old.calculated(x, z))
-            }));
-            inner.set_old_world(old);
-        }
-        keep_structure_references(&inner, world_root, dim, &save);
-        locator = Some(inner.clone());
-        Streaming::new(
-            Arc::new(Persistent {
-                inner,
-                save: save.clone(),
-                registry: pack.assets.clone(),
-                biomes: biomes.clone(),
-            }),
-            pack.context_with(biomes.clone()),
-            res.threads(),
-        )
     };
     if options.execution_role.is_client() {
         streaming.load_forced(

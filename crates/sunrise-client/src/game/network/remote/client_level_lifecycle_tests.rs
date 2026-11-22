@@ -16,7 +16,7 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
     use crate::game::{
         native_client_session::tests::logged_client,
         native_entity_refs::tests::with_client_game,
-        remote::{Received, RemoteDimensionEntry},
+        remote::{Received, RemoteDimensionEntry, tests::connect_play_test},
     };
     use mod_api::__private::{HookPanicReport, take_hook_panics};
     use mod_api::{
@@ -140,7 +140,7 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                     portal_cooldown: 0,
                     sea_level: 63,
                 };
-                let _server = logged_client(game);
+                let _server = connect_play_test(game, |_, _| {});
                 let declarations = mod_api::__private::datapack_registry_declarations();
                 let candidate = |power| {
                     DatapackCandidate::build(

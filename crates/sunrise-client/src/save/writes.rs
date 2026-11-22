@@ -406,6 +406,15 @@ impl SaveDir {
         self.flush_with(RegionFile::sync_all)
     }
 
+    #[doc(hidden)]
+    pub fn inject_sync_error_for_test(&self, error: std::io::Error) {
+        self.outstanding
+            .sync_error
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_or_insert(error);
+    }
+
     fn flush_with(&self, mut force: impl FnMut(&RegionFile) -> std::io::Result<()>) -> Result<()> {
         let mut count = self
             .outstanding
