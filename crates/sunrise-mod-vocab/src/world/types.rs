@@ -1766,7 +1766,7 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     fn remove_block(&mut self, _pos: [i32; 3], _moved: bool) -> bool {
         unimplemented!("LevelWriteHost::remove_block")
     }
-    /// Change a block property through `native_set_block_property`.
+    /// Change a block property through `Level.setBlock` with vanilla update flags, preserving its block entity.
     fn set_block_property(
         &mut self,
         _pos: [i32; 3],
@@ -1884,4 +1884,125 @@ pub struct ObjectiveRef {
 pub struct TeamRef {
     pub(crate) epoch: WorldEpoch,
     pub(crate) id: u64,
+}
+
+/// Why a bulk block edit through [`LevelRef::edit_blocks`] was refused before changing any block.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+#[non_exhaustive]
+pub enum BlockEditError {
+    /// The level is gone or its handle belongs to an earlier lifetime.
+    Stale,
+    /// The operation is unavailable on this side, phase or host.
+    Unavailable,
+    /// A parked level cannot be edited while a Host transaction is open.
+    InTransaction,
+    /// A palette entry is not a valid block state in the owning registry.
+    InvalidState(BlockStateError),
+    /// A filter predicate failed typed validation or its block or tag is unavailable.
+    InvalidPredicate,
+    /// A run names a palette entry past the end of `BlockEdit::palette`.
+    PaletteOutOfRange,
+    /// A run names a filter past the end of `BlockEdit::filters`.
+    FilterOutOfRange,
+    /// `BlockEdit::filters` has more than 65,536 entries.
+    TooManyFilters,
+}
+
+impl crate::AccessRefusal for BlockEditError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl crate::NoBackend for BlockEditError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl From<BlockStateError> for BlockEditError {
+    fn from(error: BlockStateError) -> Self {
+        match error {
+            BlockStateError::Unavailable => Self::Unavailable,
+            error => Self::InvalidState(error),
+        }
+    }
+}
+
+/// Why a column block read through [`LevelRef::visit_columns`] was refused before visiting any column.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+#[non_exhaustive]
+pub enum ColumnReadError {
+    /// The level is gone or its handle belongs to an earlier lifetime.
+    Stale,
+    /// The operation is unavailable on this side, phase or host.
+    Unavailable,
+    /// `below + above` is zero, overflows `u32`, or exceeds the level's height.
+    InvalidRange,
+    /// A block state in a loaded column cannot be mapped to the API block state table.
+    InvalidState(BlockStateError),
+}
+
+impl crate::AccessRefusal for ColumnReadError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl crate::NoBackend for ColumnReadError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl From<LevelReadError> for ColumnReadError {
+    fn from(error: LevelReadError) -> Self {
+        match error {
+            LevelReadError::Stale => Self::Stale,
+            LevelReadError::Unavailable => Self::Unavailable,
+        }
+    }
+}
+
+impl From<BlockStateError> for ColumnReadError {
+    fn from(error: BlockStateError) -> Self {
+        match error {
+            BlockStateError::Unavailable => Self::Unavailable,
+            error => Self::InvalidState(error),
+        }
+    }
+}
+
+// no wire: borrowed call-scoped observation view; never crosses the mod wire.
+/// The generator's undecorated surface for one `(x, z)` column, borrowed for one
+/// [`LevelRef::visit_terrain_surface`] callback.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct TerrainColumnView<'a> {
+    /// One above the highest solid block, skipping fluids (OceanFloor).
+    pub height: i32,
+    /// The block at `height - 1`.
+    pub block: BlockKey,
+    /// One above the highest fluid over the surface, absent on dry land.
+    pub water: Option<i32>,
+    /// Identifier from the world's biome table, including data pack biomes.
+    pub biome: &'a str,
+}
+
+// no wire: borrowed call-scoped observation view; never crosses the mod wire.
+/// One column's blocks and server-side biome water colour, borrowed for one
+/// [`LevelRef::visit_columns`] callback.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ColumnBlockSlice<'a> {
+    /// Column coordinates `(x, z)`.
+    pub pos: (i32, i32),
+    /// Column height on the requested [`Heightmap`], or `None` if the column's chunk is not loaded.
+    pub base: Option<i32>,
+    /// Server-side biome JSON water colour (`BiomeSpecialEffects.waterColor`, `0xRRGGBB`) at
+    /// `base - 1`, or `0` where the column is not loaded.
+    pub water_color: u32,
+    /// `below + above` complete [`BlockState`] values from `base - below` to `base + above - 1`,
+    /// bottom first; air outside the column's height range or when the column is not loaded.
+    pub blocks: &'a [BlockState],
 }
