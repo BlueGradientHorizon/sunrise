@@ -1368,6 +1368,39 @@ impl crate::__private::WorldgenReader for TestReader {
     }
 }
 
+/// Build a `(RegisteredAttachment, AttachmentKey<T>)` pair for tests without running full
+/// mod registration.
+// hidden: API-owned test setup uses this vocabulary fixture, not mod authoring code.
+#[doc(hidden)]
+pub fn registered_attachment_fixture<T: Send + Sync + 'static>(
+    owner: &'static str,
+    descriptor: crate::AttachmentDescriptor<T>,
+) -> (crate::RegisteredAttachment, crate::AttachmentKey<T>) {
+    crate::parts::registered_attachment_fixture(owner, descriptor)
+}
+
+/// Install a single attachment descriptor in the test thread's Parts table and return its live
+/// [`AttachmentKey<T>`](crate::AttachmentKey).
+// hidden: API-owned test setup uses this vocabulary fixture, not mod authoring code.
+#[doc(hidden)]
+pub fn install_attachment_fixture<T: Send + Sync + 'static>(
+    owner: &'static str,
+    descriptor: crate::AttachmentDescriptor<T>,
+) -> crate::AttachmentKey<T> {
+    crate::parts::install_attachment_fixture(owner, descriptor)
+}
+
+/// Retrieve the key issued by this test thread's registration fixture.
+#[doc(hidden)]
+pub fn attachment_key<T: Send + Sync + 'static>(
+    namespace: &str,
+    name: &str,
+) -> crate::AttachmentKey<T> {
+    crate::parts::installed().unwrap().attachment_types[namespace][name]
+        .downcast_key()
+        .unwrap()
+}
+
 #[cfg(test)]
 #[path = "testing/handle_level_tests.rs"]
 mod handle_level_tests;

@@ -9,18 +9,24 @@ mod writer_stack;
 struct Listener {
     saves: Arc<AtomicUsize>,
     loads: Arc<AtomicUsize>,
+    value: Mutex<Option<mod_api::AttachmentKey<i32>>>,
 }
 #[mod_api::sunrise_mod]
 impl Hooks for Listener {
+    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        *self.value.lock().unwrap() = Some(fixture::register(r));
+    }
     fn chunk_data_save(&self, host: &dyn ChunkDiskHost, event: &mut ChunkDataSaveEvent<'_>) {
         self.saves.fetch_add(1, Ordering::Relaxed);
         let names: &[String] = host.registry("minecraft:block").unwrap();
         assert_eq!(names, ["minecraft:stone", "minecraft:dirt"]);
-        fixture::save(event.data);
+        let key = self.value.lock().unwrap().clone().unwrap();
+        fixture::save(&key, event.data);
     }
     fn chunk_data_load(&self, host: &dyn ChunkDiskHost, event: &mut ChunkDataLoadEvent<'_>) {
         self.loads.fetch_add(1, Ordering::Relaxed);
-        fixture::load(host, event.data);
+        let key = self.value.lock().unwrap().clone().unwrap();
+        fixture::load(&key, host, event.data);
     }
 }
 pub(super) fn context(save: &SaveDir) {
@@ -45,17 +51,18 @@ pub(super) fn context(save: &SaveDir) {
 fn chunk(value: i32) -> Chunk {
     let mut chunk = Chunk::empty(2, -3);
     let mut extras = ChunkExtras::default();
-    fixture::VALUE
+    fixture::raw_value()
         .set(&mut extras.attachments, mod_api::Holder::Level, value)
         .unwrap();
     chunk.saved = Some(Arc::new(extras));
     chunk
 }
 fn value(chunk: &mut Chunk) -> i32 {
-    fixture::VALUE
+    fixture::raw_value()
         .get(
             &mut Arc::make_mut(chunk.saved.as_mut().unwrap()).attachments,
             mod_api::Holder::Level,
+            Clone::clone,
         )
         .unwrap()
 }
@@ -70,15 +77,19 @@ fn root() -> PathBuf {
 pub(super) fn with_listener(run: impl FnOnce(Arc<AtomicUsize>, Arc<AtomicUsize>)) {
     let saves = Arc::new(AtomicUsize::new(0));
     let loads = Arc::new(AtomicUsize::new(0));
-    let mods = vec![mod_api::ModEntry::new(
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "chunk_disk_fixture",
         Box::new(Listener {
             saves: saves.clone(),
             loads: loads.clone(),
+            value: Mutex::new(None),
         }),
     )]
     .into();
-    mod_platform::testing::with_mods(mods, || run(saves, loads));
+    mod_platform::testing::with_mods(mods.clone(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+        run(saves, loads);
+    });
 }
 
 #[test]
@@ -99,9 +110,8 @@ fn a_disk_encoder_panic_leaves_the_original_readable_and_siblings_durable() {
         let save = open();
         context(&save);
         let key = (2, -3);
-        let mut wrapped = save
-            .capture_disk_record(Record::Chunk(Arc::new(chunk(0)), encoding, None))
-            .unwrap();
+        let mut wrapped =
+            save.capture_disk_record(Record::Chunk(Arc::new(chunk(0)), encoding, None));
         let Record::Disk(disk) = &mut wrapped else {
             panic!("save callback must be captured")
         };
@@ -159,7 +169,7 @@ fn capture_7_callback_8_live_9_round_trips_through_region_writer() {
         let mut live = chunk(7);
         save.save_later(&[Arc::new(live.clone())], registry, &biomes)
             .unwrap();
-        fixture::VALUE
+        fixture::raw_value()
             .set(
                 &mut Arc::make_mut(live.saved.as_mut().unwrap()).attachments,
                 mod_api::Holder::Level,
@@ -253,13 +263,18 @@ mod echo {
     #[derive(Default)]
     pub struct Echo {
         pub seen: Arc<Mutex<Vec<(mod_api::ChunkDiskKind, i32)>>>,
+        pub value: Mutex<Option<mod_api::AttachmentKey<i32>>>,
     }
     #[mod_api::sunrise_mod]
     impl Hooks for Echo {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            *self.value.lock().unwrap() = Some(fixture::register(r));
+        }
         fn chunk_data_save(&self, host: &dyn ChunkDiskHost, event: &mut ChunkDataSaveEvent<'_>) {
             // A worker callback has no live world: the old handle's path refuses.
             assert!(host.backend().is_none());
-            let value = event.data.get(&fixture::VALUE).unwrap();
+            let key = self.value.lock().unwrap().clone().unwrap();
+            let value = event.data.get(&key).unwrap();
             self.seen.lock().unwrap().push((host.job().kind, value));
         }
     }
@@ -267,12 +282,18 @@ mod echo {
 use echo::Echo;
 fn with_echo(run: impl FnOnce(Arc<Mutex<Vec<(mod_api::ChunkDiskKind, i32)>>>)) {
     let seen = Arc::new(Mutex::new(Vec::new()));
-    let mods = vec![mod_api::ModEntry::new(
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "chunk_disk_fixture",
-        Box::new(Echo { seen: seen.clone() }),
+        Box::new(Echo {
+            seen: seen.clone(),
+            value: Mutex::new(None),
+        }),
     )]
     .into();
-    mod_platform::testing::with_mods(mods, || run(seen));
+    mod_platform::testing::with_mods(mods.clone(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+        run(seen);
+    });
 }
 fn disk_value(path: &Path, registry: &BlockRegistry, biomes: &Biomes) -> Option<i32> {
     SaveDir::new(
@@ -355,56 +376,34 @@ fn every_save_kind_runs_exactly_one_callback_per_captured_record() {
 }
 
 #[test]
-#[ignore = "daily"]
-fn save_refused_during_open_action_savepoint_runs_no_callback_and_keeps_disk_7() {
-    // The savepoint signal is process-wide: hold it only in an isolated child.
-    const CHILD: &str = "SUNRISE_CHUNK_DISK_SAVEPOINT_CHILD";
-    if std::env::var_os(CHILD).is_none() {
-        let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--include-ignored",
-                "--exact",
-                "save::chunk_disk_tests::save_refused_during_open_action_savepoint_runs_no_callback_and_keeps_disk_7",
-            ])
-            .env(CHILD, "1")
-            .status()
-            .unwrap();
-        assert!(status.success());
-        return;
-    }
+fn no_worker_context_keeps_the_ordinary_record_writer_available() {
     let (registry, biomes) = super::loot_tests::fixture();
     let registry = Box::leak(Box::new(registry));
     let biomes = Arc::new(biomes);
-    let path = root();
-    mod_platform::testing::with_mods(Vec::new().into(), || {
+    let path = tempfile::tempdir().unwrap();
+    let open = || {
         SaveDir::new(
-            path.clone(),
+            path.path().to_path_buf(),
             LevelShape::OVERWORLD,
             Some(Default::default()),
         )
-        .save(&[Arc::new(chunk(7))], registry, &biomes)
-        .unwrap();
-    });
+    };
     with_echo(|seen| {
-        let save = SaveDir::new(
-            path.clone(),
-            LevelShape::OVERWORLD,
-            Some(Default::default()),
+        let save = open();
+        save.save_later(&[Arc::new(chunk(7))], registry, &biomes)
+            .unwrap();
+        save.flush().unwrap();
+        assert_eq!(
+            value(&mut open().load(2, -3, registry, &biomes).unwrap()),
+            7
         );
-        context(&save);
-        let savepoint = crate::join_seq::visibility::PassLease::enter();
-        // Tentative 9 is open: asynchronous and synchronous saves both refuse.
-        assert!(
-            save.save_later(&[Arc::new(chunk(9))], registry, &biomes)
-                .is_err()
+        save.save(&[Arc::new(chunk(9))], registry, &biomes).unwrap();
+        assert_eq!(
+            value(&mut open().load(2, -3, registry, &biomes).unwrap()),
+            9
         );
-        assert_eq!(save.record_save_failures(), 0);
-        assert!(save.save(&[Arc::new(chunk(9))], registry, &biomes).is_err());
-        drop(savepoint);
         assert!(seen.lock().unwrap().is_empty());
     });
-    assert_eq!(disk_value(&path, registry, &biomes), Some(7));
-    fs::remove_dir_all(path).unwrap();
 }
 
 #[test]
@@ -432,7 +431,7 @@ fn unload_then_reload_reads_saved_8_in_a_fresh_holder() {
 }
 
 #[test]
-fn a_refused_save_keeps_its_disk_record_without_skipping_its_neighbour() {
+fn invalid_attachment_nbt_keeps_its_disk_record_without_skipping_its_neighbour() {
     let (registry, biomes) = super::loot_tests::fixture();
     let registry = Box::leak(Box::new(registry));
     let biomes = Arc::new(biomes);
@@ -456,12 +455,13 @@ fn a_refused_save_keeps_its_disk_record_without_skipping_its_neighbour() {
             .unwrap()
     };
     let before = read_disk();
-    let mods = vec![mod_api::ModEntry::new(
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "chunk_disk_fixture",
-        Box::new(refuses_9::Refuses9::default()),
+        Box::new(invalid_nbt::InvalidNbt::default()),
     )]
     .into();
-    mod_platform::testing::with_mods(mods, || {
+    mod_platform::testing::with_mods(mods.clone(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
         for synchronous in [false, true] {
             let save = open();
             context(&save);
@@ -488,35 +488,52 @@ fn a_refused_save_keeps_its_disk_record_without_skipping_its_neighbour() {
     });
 }
 
-mod refuses_9 {
+mod invalid_nbt {
     use super::*;
 
     #[derive(Default)]
-    pub struct Refuses9 {
+    pub struct InvalidNbt {
         pub seen: Arc<Mutex<Vec<i32>>>,
+        value: Mutex<Option<mod_api::AttachmentKey<i32>>>,
+        invalid: Mutex<Option<mod_api::AttachmentKey<()>>>,
+    }
+
+    impl InvalidNbt {
+        pub(super) fn with_seen(seen: Arc<Mutex<Vec<i32>>>) -> Self {
+            Self {
+                seen,
+                ..Default::default()
+            }
+        }
     }
 
     #[mod_api::sunrise_mod]
-    impl Hooks for Refuses9 {
+    impl Hooks for InvalidNbt {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            *self.value.lock().unwrap() = Some(fixture::register(r));
+            let descriptor =
+                mod_api::AttachmentDescriptor::new("chunk_disk_fixture:invalid", || ()).serialize(
+                    mod_api::AttachmentCodec {
+                        encode: |_| Ok(Compound::from([("bad".into(), Tag::End)])),
+                        decode: |_| Ok(()),
+                    },
+                );
+            *self.invalid.lock().unwrap() = Some(r.register_attachment_type(descriptor).unwrap());
+        }
         fn chunk_data_save(&self, _: &dyn ChunkDiskHost, event: &mut ChunkDataSaveEvent<'_>) {
-            let value = event.data.get(&fixture::VALUE).unwrap();
+            let key = self.value.lock().unwrap().clone().unwrap();
+            let value = event.data.get(&key).unwrap();
             self.seen.lock().unwrap().push(value);
             if value == 9 {
-                let broken = mod_api::AttachmentType {
-                    codec: Some(mod_api::AttachmentCodec {
-                        encode: |_| Err(mod_api::AttachmentError::Encode),
-                        decode: |_| Ok(9),
-                    }),
-                    ..fixture::VALUE
-                };
-                let _ = event.data.set(&broken, 9);
+                let key = self.invalid.lock().unwrap().clone().unwrap();
+                event.data.set(&key, ()).unwrap();
             }
         }
     }
 }
 
 #[test]
-fn a_coalesced_refusal_runs_its_callback_without_poisoning_the_newer_record() {
+fn a_coalesced_record_runs_its_callback_without_writing_its_invalid_nbt() {
     use std::time::Duration;
 
     let (registry, biomes) = super::loot_tests::fixture();
@@ -524,12 +541,13 @@ fn a_coalesced_refusal_runs_its_callback_without_poisoning_the_newer_record() {
     let biomes = Arc::new(biomes);
     let dir = tempfile::tempdir().unwrap();
     let seen = Arc::new(Mutex::new(Vec::new()));
-    let mods = vec![mod_api::ModEntry::new(
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "chunk_disk_fixture",
-        Box::new(refuses_9::Refuses9 { seen: seen.clone() }),
+        Box::new(invalid_nbt::InvalidNbt::with_seen(seen.clone())),
     )]
     .into();
-    mod_platform::testing::with_mods(mods, || {
+    mod_platform::testing::with_mods(mods.clone(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
         let save = SaveDir::new(
             dir.path().to_path_buf(),
             LevelShape::OVERWORLD,
@@ -560,7 +578,7 @@ fn a_coalesced_refusal_runs_its_callback_without_poisoning_the_newer_record() {
             .unwrap();
         release.send(()).unwrap();
         save.flush().unwrap();
-        assert_eq!(save.record_save_failures(), 1);
+        assert_eq!(save.record_save_failures(), 0);
         assert_eq!(*seen.lock().unwrap(), [9, 11]);
         assert_eq!(disk_value(dir.path(), registry, &biomes), Some(11));
     });
@@ -711,10 +729,9 @@ fn region_io_failure_is_reported_without_stopping_healthy_regions() {
     }
 }
 
-/// A chunk whose load listener failed loads with its stored attachments and is saved by every
-/// path with no save listener, so the stored value 8 is written back unchanged.
+/// A panicking load listener does not suppress a separate save listener on any save path.
 #[test]
-fn failed_load_keeps_stored_8_and_runs_no_save_listener_for_every_save_path() {
+fn panicking_load_listener_keeps_saved_value_and_does_not_disable_save_hook() {
     let (registry, biomes) = super::loot_tests::fixture();
     let registry = Box::leak(Box::new(registry));
     let biomes = Arc::new(biomes);
@@ -737,7 +754,8 @@ fn failed_load_keeps_stored_8_and_runs_no_save_listener_for_every_save_path() {
                 saves: saves.clone(),
             })
         };
-        let mods = vec![mod_api::ModEntry::new("chunk_disk_fixture", listener)].into();
+        let mods: mod_api::Mods =
+            vec![mod_api::ModEntry::new("chunk_disk_fixture", listener)].into();
         mod_platform::testing::with_mods(mods, || {
             let save = SaveDir::new(
                 path.clone(),
@@ -748,9 +766,7 @@ fn failed_load_keeps_stored_8_and_runs_no_save_listener_for_every_save_path() {
             let mut loaded = save
                 .load(2, -3, registry, &biomes)
                 .expect("the chunk loads");
-            assert!(save.chunk_save_suppressed(2, -3));
-            assert!(!save.chunk_save_suppressed(0, 0));
-            // The failed job's edits were dropped: the stored value is still there.
+            // The stored value is still there.
             assert_eq!(value(&mut loaded), 8);
             let chunks = [Arc::new(loaded)];
             if sync {
@@ -761,7 +777,7 @@ fn failed_load_keeps_stored_8_and_runs_no_save_listener_for_every_save_path() {
             }
             assert_eq!(save.record_save_failures(), 0);
         });
-        assert_eq!(saves.load(Ordering::Relaxed), 0);
+        assert_eq!(saves.load(Ordering::Relaxed), usize::from(!load_only));
         mod_platform::testing::with_mods(Vec::new().into(), || {
             assert_eq!(disk_value(&path, registry, &biomes), Some(8));
         });

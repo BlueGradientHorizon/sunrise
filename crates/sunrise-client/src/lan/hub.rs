@@ -8268,6 +8268,10 @@ mod tests {
     }
 
     fn assert_player_initial_sync(held: bool) {
+        crate::lan::entity::with_synced_tags(&["test:badge"], || player_initial_sync(held));
+    }
+
+    fn player_initial_sync(held: bool) {
         use sunrise_core::nbt::Tag;
         use sunrise_mod_runtime::attachments::{AttachmentSync, Holder};
         use sunrise_protocol::{
@@ -8459,7 +8463,7 @@ mod tests {
                 "placement keeps the existing pair"
             );
             assert!(
-                replica.synced().is_empty(),
+                replica.entry("test", "badge").unwrap().is_none(),
                 "no stale badge after placement"
             );
         }

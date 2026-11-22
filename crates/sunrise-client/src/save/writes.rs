@@ -177,15 +177,11 @@ impl SaveDir {
     ) -> Result<()> {
         if !records.is_empty() {
             let mut writer = self.writer.lock().map_err(|_| "writer poisoned")?;
-            let records = if self.disk.get().is_some()
-                || mod_api::__private::listened(mod_api::HookId::ChunkDataSave)
-            {
+            let records = if self.disk.get().is_some() {
                 records
                     .into_iter()
-                    .map(|(key, record)| {
-                        self.capture_disk_record(record).map(|record| (key, record))
-                    })
-                    .collect::<Result<Vec<_>>>()?
+                    .map(|(key, record)| (key, self.capture_disk_record(record)))
+                    .collect()
             } else {
                 records
             };

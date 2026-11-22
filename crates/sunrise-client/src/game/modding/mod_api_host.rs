@@ -758,6 +758,20 @@ impl mod_api::AttachmentHost for Game<'_> {
     ) -> Result<(), mod_api::AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, sync)
     }
+    fn validate_attachment_write(
+        &self,
+        write: &mod_api::AttachmentStoreWrite<'_>,
+    ) -> Result<(), mod_api::AttachmentError> {
+        mod_api::__private::validate_attachment_write(write)
+    }
+    fn removal_sync(
+        &self,
+        namespace: &str,
+        name: &str,
+        runtime_sync: bool,
+    ) -> Result<bool, mod_api::AttachmentError> {
+        mod_api::__private::attachment_removal_sync(namespace, name, runtime_sync)
+    }
     fn attachments(
         &mut self,
         holder: mod_api::Holder,
@@ -775,6 +789,20 @@ impl mod_api::AttachmentHost for super::GameLevel<'_> {
         sync: bool,
     ) -> Result<(), mod_api::AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, sync)
+    }
+    fn validate_attachment_write(
+        &self,
+        write: &mod_api::AttachmentStoreWrite<'_>,
+    ) -> Result<(), mod_api::AttachmentError> {
+        mod_api::__private::validate_attachment_write(write)
+    }
+    fn removal_sync(
+        &self,
+        namespace: &str,
+        name: &str,
+        runtime_sync: bool,
+    ) -> Result<bool, mod_api::AttachmentError> {
+        mod_api::__private::attachment_removal_sync(namespace, name, runtime_sync)
     }
     fn attachments(
         &mut self,
@@ -883,6 +911,20 @@ impl mod_api::AttachmentHost for super::native_hooks::HitLevel<'_> {
         sync: bool,
     ) -> Result<(), mod_api::AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, sync)
+    }
+    fn validate_attachment_write(
+        &self,
+        write: &mod_api::AttachmentStoreWrite<'_>,
+    ) -> Result<(), mod_api::AttachmentError> {
+        mod_api::__private::validate_attachment_write(write)
+    }
+    fn removal_sync(
+        &self,
+        namespace: &str,
+        name: &str,
+        runtime_sync: bool,
+    ) -> Result<bool, mod_api::AttachmentError> {
+        mod_api::__private::attachment_removal_sync(namespace, name, runtime_sync)
     }
     fn attachments(
         &mut self,

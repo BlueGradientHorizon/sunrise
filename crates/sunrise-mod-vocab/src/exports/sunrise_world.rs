@@ -16,7 +16,7 @@ pub use {
     },
     sunrise_mod_runtime::attachments::{
         AttachmentCodec, AttachmentError, AttachmentForm, AttachmentPolicy, AttachmentStore,
-        AttachmentType, AttachmentValue, AttachmentWrite, Holder,
+        AttachmentStoreWrite, AttachmentValue, AttachmentWrite, Holder, RawAttachment,
     },
 };
 // hidden: the game's maps behind the store, not part of the mod surface

@@ -413,6 +413,18 @@ pub(crate) fn invoke_registered_codec<T>(
     if poisoned.load(Ordering::Acquire) {
         return Err(format!("mod {mod_id}: {operation} disabled after a panic"));
     }
+    finish_registered_codec(mod_id, operation, poisoned, call)
+}
+
+/// The same diagnostic fence without a precheck: a value already acquired by a codec
+/// still needs to be released after the codec panics and disables itself.
+pub(crate) fn finish_registered_codec<T>(
+    mod_id: &'static str,
+    operation: &'static str,
+    poisoned: &std::sync::atomic::AtomicBool,
+    call: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    use std::sync::atomic::Ordering;
     let _owner = mark_mod(mod_id, operation);
     contain_callback(call, |payload| {
         if !poisoned.swap(true, Ordering::AcqRel) {

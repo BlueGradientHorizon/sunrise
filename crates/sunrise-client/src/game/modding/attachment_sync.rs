@@ -7,6 +7,7 @@
 //! and who sees the holder. It is prepared against the current epoch and published at
 //! the root commit, in order with the player's other packets.
 use super::Game;
+use crate::lan::entity::{project_attachment_sync, report_attachment_sync_refusal};
 use crate::lan::{conn::PlayerSender, hub::AttachmentSnapshot};
 use mod_api::{PayloadBytes, PayloadId, PayloadSendError};
 use sunrise_client::raw_payloads::Endpoint;
@@ -25,13 +26,16 @@ impl Game<'_> {
                 .chunks
                 .get(&(x, z))
                 .and_then(|chunk| chunk.saved.as_ref())
-                .map(|extras| extras.attachments.synced()),
+                .map(|extras| extras.attachments.synced(project_attachment_sync(holder))),
             // Read in place: lending the map would give the entity one.
-            Holder::Entity(id) => self.entity_attachments.get(&id).map(|map| map.synced()),
+            Holder::Entity(id) => self
+                .entity_attachments
+                .get(&id)
+                .map(|map| map.synced(project_attachment_sync(holder))),
             _ => self
                 .attachment_map_quiet(holder, mod_api::AttachmentAccess::Existing)
                 .ok()
-                .map(|map| map.synced()),
+                .map(|map| map.synced(project_attachment_sync(holder))),
         }
         .unwrap_or_default();
         let mut holders = vec![(holder, changes)];
@@ -41,7 +45,10 @@ impl Game<'_> {
                     .block_entities
                     .chunk_attachments(x, z)
                     .into_iter()
-                    .map(|((x, y, z), map)| (Holder::BlockEntity([x, y, z]), map.synced())),
+                    .map(|((x, y, z), map)| {
+                        let holder = Holder::BlockEntity([x, y, z]);
+                        (holder, map.synced(project_attachment_sync(holder)))
+                    }),
             );
         }
         holders
@@ -127,21 +134,31 @@ impl Game<'_> {
         // A landed block entity is a new holder: what its clients held of it
         // went with their moving piston's copy.
         for holder in landings {
-            let messages = self.attachment_snapshot(holder);
             let senders = self
                 .lan
                 .as_ref()
                 .map_or_else(Vec::new, |host| host.hub.attachment_recipients(holder));
-            for message in &messages {
-                self.send_attachment_sync(&senders, message);
+            if senders.is_empty() {
+                continue;
+            }
+            for message in self.attachment_snapshot(holder) {
+                self.send_attachment_sync(&senders, &message);
             }
         }
         for holder in std::mem::take(&mut self.world.attachment_syncs) {
+            let senders = self
+                .lan
+                .as_ref()
+                .map_or_else(Vec::new, |host| host.hub.attachment_recipients(holder));
             let Ok(map) = self.attachment_map_quiet(holder, mod_api::AttachmentAccess::Existing)
             else {
                 continue;
             };
-            let changes = map.take_sync_changes();
+            if senders.is_empty() {
+                map.discard_sync_changes();
+                continue;
+            }
+            let changes = map.take_sync_changes(project_attachment_sync(holder));
             if changes.is_empty() {
                 continue;
             }
@@ -150,10 +167,6 @@ impl Game<'_> {
                 replace: false,
                 changes,
             };
-            let senders = self
-                .lan
-                .as_ref()
-                .map_or_else(Vec::new, |host| host.hub.attachment_recipients(holder));
             self.send_attachment_sync(&senders, &message);
         }
     }
@@ -168,7 +181,20 @@ impl Game<'_> {
         if senders.is_empty() {
             return;
         }
-        let body = attachment_sync::encode(message).map_err(|e| e.to_string());
+        let body = match attachment_sync::encode_retaining(message, |change, error| {
+            report_attachment_sync_refusal(
+                message.holder,
+                format_args!(
+                    "{}:{}: {error}",
+                    change.namespace.to_string_lossy(),
+                    change.name.to_string_lossy()
+                ),
+            );
+        }) {
+            Ok(Some(body)) => Ok(body),
+            Ok(None) => return,
+            Err(error) => Err(error.to_string()),
+        };
         for sender in senders {
             let Err(error) = self.queue_attachment_sync(sender, &body) else {
                 continue;
