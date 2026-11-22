@@ -833,17 +833,17 @@ impl Game<'_> {
     }
     /// Done button (`this.width / 2 - 100, this.height / 4 + 144`, 200x20),
     /// or a click on a line (`EditBox.onClick`).
-    pub(super) fn sign_edit_click(&mut self, size: [u32; 2]) {
+    pub(super) fn sign_edit_click(&mut self, size: [u32; 2]) -> bool {
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (x, y) = done_button(b.width, b.height);
         let (mx, my) = self.cursor;
         if mx >= x && mx < x + 200.0 && my >= y && my < y + 20.0 {
             self.audio.play_button_click();
             self.close_sign_editor();
-            return;
+            return true;
         }
         let Some((cx, top, line_height, max_width, lines)) = self.sign_lines(b.width) else {
-            return;
+            return false;
         };
         let shift = self.has_shift_down();
         for i in 0..lines.len() {
@@ -870,8 +870,9 @@ impl Game<'_> {
                 edit.edit.click(&self.gui.atlas, mx, shift, false);
             }
             self.sign_write();
-            return;
+            return true;
         }
+        false
     }
     /// Centre x, the first line's y, the line height, the width limit and the four lines.
     fn sign_lines(&self, width: f32) -> Option<(f32, f32, f32, f32, Vec<String>)> {

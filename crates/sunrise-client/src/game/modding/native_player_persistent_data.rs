@@ -59,6 +59,14 @@ fn check_saved_value(tag: &Tag, depth: usize) -> Result<(), PlayerPersistentData
     }
 }
 
+/// Borrow the `NeoForgeData` persistent-data compound from a saved player root tag, if present.
+pub(super) fn persistent_data_compound(saved: Option<&Tag>) -> Option<&Compound> {
+    match saved?.get(PERSISTENT_DATA)? {
+        Tag::Compound(data) => Some(data),
+        _ => None,
+    }
+}
+
 impl Game<'_> {
     /// The mods' compound on a player: the acting player's saved data is the level's for their
     /// turn, another's is their record's.
@@ -70,10 +78,7 @@ impl Game<'_> {
             PlayerRead::Acting { .. } => self.level.player_extra.as_ref(),
             PlayerRead::Guest(g) => g.saved.as_ref(),
         };
-        match saved?.get(PERSISTENT_DATA)? {
-            Tag::Compound(data) => Some(data),
-            _ => None,
-        }
+        persistent_data_compound(saved)
     }
 
     /// Edits one checked key directly on the acting player's or guest's saved compound, so

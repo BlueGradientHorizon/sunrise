@@ -101,7 +101,12 @@ pub struct TerrainColumn {
 }
 
 /// What `read_columns` read: the blocks round each column's height (`bases`, none where it isn't loaded),
-/// as indexes into `palette`, a column after another, and three biome tints a column (grass, foliage, water).
+/// as indexes into `palette`, a column after another, and each column's biome JSON water colour
+/// (`water_colors`, `0xRRGGBB`, `0` where unloaded).
+///
+/// Colormap-derived grass and foliage tints are client-side only: read blended tints with
+/// [`BlockAndTintGetter::block_tint`] inside block tint callbacks or `ClientHost::biome_tint`
+/// in other client hooks.
 #[derive(Clone, Debug, PartialEq, Default)]
 // exhaustive: the game builds it with a literal; mods only read it
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -110,7 +115,9 @@ pub struct ColumnBlocks {
     pub palette: Vec<BlockState>,
     pub bases: Vec<Option<i32>>,
     pub blocks: Vec<u16>,
-    pub tints: Vec<u32>,
+    /// One `0xRRGGBB` biome water colour (`BiomeSpecialEffects.waterColor`) per column, at the
+    /// column's top block (`base - 1`); `0` where the column is not loaded.
+    pub water_colors: Vec<u32>,
 }
 /// Why `upgrade_block_entity_nbt` or `upgrade_entity_nbt` gave no upgraded value. Depth is counted as the data is
 /// encoded (the root compound at 0): the compound the NBT writer puts around an element of a mixed list is a level

@@ -29,6 +29,7 @@ use mod_api::{
     BlockFace, BlockShapeKind, BlockUpdateFlags, ClipBlock, ClipFluid, ClipHit, DimensionKey,
     EntityRayHit, EntityRef, LevelReadError, LevelRef, NeighbourUpdate,
 };
+use sunrise_client::join_seq::residency::table::{EntityLookup, Location};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
@@ -90,22 +91,43 @@ impl Game<'_> {
 
     /// What a handle names now, or None for a stale or foreign one.
     pub(super) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
+        self.native_entity_target_with_location(entity)
+            .map(|(target, _)| target)
+    }
+
+    /// Resolve the handle and return its resident location, if admitted to the level.
+    pub(super) fn native_entity_target_with_location(
+        &self,
+        entity: EntityRef,
+    ) -> Option<(Target, Option<Location>)> {
         if self.held_out.contains(&entity.id())
             || !self.is_logical_server()
             || self.native_lifecycle.epoch() != Some(entity.epoch())
         {
             return None;
         }
-        let sunrise_client::join_seq::residency::table::EntityLookup::Found { location, value } =
-            self.server_resident_entity(entity.id())
+        let EntityLookup::Found { location, value } = self.server_resident_entity(entity.id())
         else {
-            return None;
+            // A lifecycle event lends the body without admitting it to the level.
+            let &(_, conn, _) = self
+                .player_state
+                .cloning_players
+                .iter()
+                .rev()
+                .find(|&&(_, _, id)| id == entity.id())?;
+            return if self.lan_acting == Some(conn) {
+                Some((Target::Player, None))
+            } else if self.lan_guest_swaps.contains(&conn) {
+                None
+            } else {
+                Some((Target::Guest(conn), None))
+            };
         };
         // Players are server-wide records. Ordinary body operations retain
         // their existing current-level domain; source membership is global.
         (matches!(value, Target::Player | Target::Guest(_))
             || location.owner.dimension == self.dim.key())
-        .then_some(value)
+        .then_some((value, Some(location)))
     }
     /// What a handle names on a client: the local player, or an entity the
     /// server told this client of (`ClientLevel.getEntity`, whose entities are

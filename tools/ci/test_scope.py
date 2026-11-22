@@ -62,7 +62,7 @@ READERS = {
     ],
     # The daily Character comparator reads the original public-JDK API helper.
     "sunrise-core": ["tools/JavaCharacterTables.java"],
-    "sunrise-game": ["packaging/windows/exe.rs"],
+    "sunrise-game": ["packaging/windows/exe.rs", "packaging/macos/exe.rs"],
     # The ignored-test inventory reads the game's modules and the vocabulary's export fragments.
     "sunrise-game-discovery": ["crates/sunrise-client/src", "crates/sunrise-mod-vocab/src"],
     "sunrise-mod-api": MOD_API_GEN,
@@ -79,7 +79,7 @@ READERS = {
         "tools/mixins/narrow-reference-rule.patch",
     ],
     "sunrise-mod-render": MOD_API_GEN,
-    "sunrise-official": ["packaging/windows/exe.rs"],
+    "sunrise-official": ["packaging/windows/exe.rs", "packaging/macos/exe.rs"],
     "sunrise-perf": ["crates/sunrise-perf-format/tests/fixtures", "tests/fixtures/pacing_slow_frames.hzperf"],
     "sunrise-port-pack": ["docs/modpacks/atm10-mods.csv"],
     "sunrise-prepare": [
