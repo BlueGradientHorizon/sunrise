@@ -742,6 +742,9 @@ mod item_interact_mob_tests;
 mod item_menu_parts_tests;
 #[path = "game/modding/item_model_context.rs"]
 mod item_model_context;
+#[cfg(test)]
+#[path = "game/items/item_name_tests.rs"]
+mod item_name_tests;
 #[path = "game/modding/item_particle_send.rs"]
 mod item_particle_send;
 #[cfg(test)]
