@@ -239,7 +239,7 @@ impl Game<'_> {
                 .boss_overlay
                 .darken_amount(self.clock.fraction() as f32),
             boss_world_fog: self.boss_overlay.should_create_world_fog(),
-            spectator: self.spectator(),
+            spectator: self.camera_entity_is_spectator(),
             fire_resistance: self.potions.effects.get("fire_resistance").is_some()
                 || self.pvp_clear_fluids().0,
             full_water_vision: self.pvp_clear_fluids().1,
@@ -484,15 +484,13 @@ impl Game<'_> {
         size: [u32; 2],
         scale: f32,
     ) -> BlockScreenEffects {
-        // `LevelExtractor.getViewBlockingState`: 8 points around the eye, each
-        // tested with `BlockState.isViewBlocking` against the near plane.
-        // ScreenEffectRenderer: none of it for a spectator (noPhysics).
-        let spectator = self.spectator();
+        // `LevelExtractor.getViewBlockingState` checks `player.noPhysics` (`p.spectator`);
+        // `ScreenEffectRenderer.submit` checks `!avatarRenderState.isSpectator`.
         let modded = mod_api::__private::listened(mod_api::HookId::ExtractBlockScreenEffect);
         let player_partial_tick = self.clock.camera_fraction() as f32;
         let mut block = None;
         let mut custom = [None, None, None];
-        if !spectator {
+        if !p.spectator {
             // Frustum.getNearPlaneBounds, moved to the eye.
             let (near_min, near_max) = sunrise_client::camera::near_plane_bounds(
                 self.fov_degrees(partial, eye),
@@ -557,7 +555,7 @@ impl Game<'_> {
                 }
             }
         }
-        let first_person = self.camera_type.is_first_person() && !spectator;
+        let first_person = self.camera_type.is_first_person() && !self.own_player_is_spectator();
         let water = first_person && {
             // LevelExtractor uses the player's tick-sampled eye state, not camera fog geometry.
             // Keep the existing mod override explicit, applied to that answer at the eye.
@@ -706,7 +704,15 @@ impl Game<'_> {
         }
     }
 
+    /// The client level's particle sources and the engine's tick, in one go.
     pub(super) fn tick_particles(&mut self) {
+        self.tick_particle_sources();
+        self.tick_particle_engine();
+    }
+
+    /// What adds particles in `Minecraft.tick` and the level's ambient: `animateTick`, the rain,
+    /// the vignette and fog, before the block entities tick.
+    pub(in crate::game) fn tick_particle_sources(&mut self) {
         // A client mod's `clear_particles`, before this tick adds any.
         self.apply_mod_particle_clear();
         self.update_animation_inputs();
@@ -727,9 +733,12 @@ impl Game<'_> {
             }
             let nausea = self.potions.effects.get("nausea").map(nausea_has_effect);
             self.screen_fx.tick_spinning(nausea);
-            // LocalPlayer water vision and AtmosphericFogEnvironment rain fog.
-            let in_water = self.camera_fog_type(e) == FogType::Water;
-            self.fog.tick(in_water, self.spectator());
+            // LocalPlayer.aiStep: water vision checks `this.isEyeInFluid(FluidTags.WATER)` and `this.isSpectator()`.
+            let in_water = self
+                .player
+                .as_ref()
+                .is_some_and(|p| p.is_eye_in_fluid(WATER));
+            self.fog.tick(in_water, self.own_player_is_spectator());
             let (rain, sky_light, rains) = self.rain_fog_inputs(e);
             update_rain_fog(&mut self.fog, rain, sky_light, rains, 1.0);
         }
@@ -906,7 +915,8 @@ impl Game<'_> {
                     }
                 }
             }
-            if let Some(r) = &self.renderer {
+            // A client of a server ticks its campfires with the other block entities.
+            if let Some(r) = self.renderer.as_ref().filter(|_| self.remote.is_none()) {
                 campfire_particles(
                     self.res.animate(),
                     &mut self.particles,
@@ -921,6 +931,12 @@ impl Game<'_> {
             laps.lap("tp_rain_campfire");
             break;
         }
+    }
+
+    /// `ParticleEngine.tick` (and the pickups and sounds it raises): in `Minecraft.tick` after
+    /// `Level.tickBlockEntities`, so a particle a block entity just added ages with the rest.
+    pub(in crate::game) fn tick_particle_engine(&mut self) {
+        let mut laps = sunrise_client::spans::laps();
         let world = &self.world;
         let facts = self.res.facts();
         // SpellParticle.isCloseToScopingPlayer: the eye of a local player looking

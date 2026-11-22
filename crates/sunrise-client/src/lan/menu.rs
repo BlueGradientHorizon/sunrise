@@ -60,6 +60,7 @@ pub trait Rules {
 }
 
 /// A guest's open container menu.
+#[derive(Clone)]
 pub struct Menu {
     pub window: i32,
     /// The `minecraft:menu` registry id.

@@ -36,6 +36,7 @@ impl GameLevel<'_> {
                 seed,
                 except: None,
                 entity: None,
+                skip_hooks: false,
             });
         true
     }

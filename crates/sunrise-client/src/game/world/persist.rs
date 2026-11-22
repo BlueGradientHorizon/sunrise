@@ -8,6 +8,9 @@ pub(super) use sunrise_gameplay::entity_uuids::EntityUuids;
 mod loaded_pass;
 #[path = "persist/object_memory.rs"]
 mod object_memory;
+#[path = "persist/spawn_tree.rs"]
+mod spawn_tree;
+pub(super) use spawn_tree::SpawnTree;
 #[path = "persist/unload_sweep.rs"]
 mod unload_sweep;
 
@@ -399,15 +402,23 @@ fn anon_key(kind: &str, p: Vec3) -> (String, [u64; 3]) {
 }
 /// The loaded compound underneath the fields Sunrise models: what the entity was
 /// loaded with, with every key of `modelled` replacing its loaded value.
-pub(super) fn with_raw(mut modelled: Tag, raw: Option<&Tag>) -> Tag {
+pub(super) fn with_raw(modelled: Tag, raw: Option<&Tag>) -> Tag {
+    with_raw_over(modelled, raw, &[])
+}
+/// The orb saves ticked Fire and stored (not ticked) Air over the loaded compound.
+pub(in crate::game) const ORB_LIVE: &[&str] = &["Fire", "Air"];
+/// [`with_raw`] for a writer that simulates some of the fields Sunrise
+/// otherwise invents: the keys in `live` keep the writer's value.
+pub(in crate::game) fn with_raw_over(mut modelled: Tag, raw: Option<&Tag>, live: &[&str]) -> Tag {
     if let (Some(Tag::Compound(raw)), Tag::Compound(fields)) = (raw, &modelled) {
         let mut out = raw.clone();
         for (key, value) in fields {
             // Defaults Sunrise invents for fields it does not simulate give way to the save.
+            let key_text = key.to_string_lossy();
             let invented = matches!(
-                key.to_string_lossy().as_str(),
+                key_text.as_ref(),
                 "Fire" | "Air" | "Invulnerable" | "PortalCooldown" | "HasBeenShot"
-            );
+            ) && !live.contains(&key_text.as_ref());
             if !(invented && out.contains_key(key)) {
                 out.insert(key.clone(), value.clone());
             }
@@ -1177,6 +1188,7 @@ impl Game<'_> {
                 pos,
                 facing,
                 variant: v.id,
+                asset: None,
                 width: v.width,
                 height: v.height,
                 check_interval: 0,
@@ -2418,10 +2430,13 @@ impl Game<'_> {
         keys.contains(&chunk_of(o.position)).then(|| {
             let raw = anon_raw(&self.persist, "minecraft:experience_orb", o.position);
             let uuid = saved_uuid(&self.persist, o.id);
-            let tag = with_raw(
-                with_raw(entity_nbt::orb_to_nbt(o, uuid), raw.as_ref()),
+            // Entity.saveWithoutId: the live fire, air and portal cooldown.
+            let mut tag = with_raw_over(
+                with_raw_over(entity_nbt::orb_to_nbt(o, uuid), raw.as_ref(), ORB_LIVE),
                 self.persist.raw.get(&o.id),
+                ORB_LIVE,
             );
+            self.save_portal_cooldown(o.id, &mut tag);
             (chunk_of(o.position), tag)
         })
     }

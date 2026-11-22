@@ -43,15 +43,13 @@ impl TakeReads {
         };
         let mob = self.identity.target.id();
         game.guest_actor(self.conn) == Some(self.identity.actor)
-            && host
-                .menus
-                .get(&self.conn)
-                .is_some_and(|m| m.merchant.stamp() == self.stamp)
-            && host
-                .play
-                .get(&self.conn)
-                .and_then(|p| p.merchant.as_ref())
-                .is_some_and(|gm| gm.window == self.window && gm.merchant.mob == Some(mob))
+            && host.menus.get(&self.conn).is_some_and(|menus| {
+                menus.merchant.stamp() == self.stamp
+                    && menus
+                        .merchant
+                        .as_ref()
+                        .is_some_and(|gm| gm.window == self.window && gm.merchant.mob == Some(mob))
+            })
             && game
                 .mobs
                 .iter()
@@ -74,6 +72,7 @@ type Restore = Box<dyn FnOnce(&mut Game<'_>)>;
 #[derive(Default)]
 pub(in crate::game) struct Journal {
     guests: HashMap<u32, Restore>,
+    windows: HashMap<u32, Restore>,
     mobs: HashMap<u32, Restore>,
     sequences: Option<sunrise_client::random_sequences::RandomSequences>,
     active: Option<u32>,
@@ -85,6 +84,9 @@ impl Journal {
         for (conn, kept) in child.guests {
             self.guests.entry(conn).or_insert(kept);
         }
+        for (conn, kept) in child.windows {
+            self.windows.entry(conn).or_insert(kept);
+        }
         for (id, kept) in child.mobs {
             self.mobs.entry(id).or_insert(kept);
         }
@@ -95,6 +97,9 @@ impl Journal {
     }
     pub(in crate::game) fn rollback(self, game: &mut Game<'_>) {
         for restore in self.guests.into_values() {
+            restore(game);
+        }
+        for restore in self.windows.into_values() {
             restore(game);
         }
         for restore in self.mobs.into_values() {
@@ -129,7 +134,7 @@ impl Game<'_> {
             return self.lan_merchant_click_plain(conn, p);
         }
         let Some(mob) = self.lan.as_ref().and_then(|host| {
-            let gm = host.play.get(&conn)?.merchant.as_ref()?;
+            let gm = host.menus.get(&conn)?.merchant.as_ref()?;
             // A non-quick-craft click while a drag is active only resets the drag (`doClick`).
             (gm.window == p.container && !gm.drag.active())
                 .then_some(gm.merchant.mob)
@@ -232,7 +237,7 @@ impl Game<'_> {
                     |game| {
                         let host = game.lan.as_ref()?;
                         let guest = host.hub.guest(conn)?;
-                        let gm = host.play.get(&conn)?.merchant.as_ref()?;
+                        let gm = host.menus.get(&conn)?.merchant.as_ref()?;
                         (game.guest_actor(conn) == Some(identity.actor)
                             && host.menus.get(&conn)?.merchant.stamp() == stamp
                             && gm.window == p.container
@@ -281,17 +286,17 @@ impl Game<'_> {
             let Some(guest) = host.hub.guest(conn) else {
                 return false;
             };
-            let Some(gm) = host.play.get(&conn).and_then(|p| p.merchant.as_ref()) else {
+            let Some(owner) = host.menus.get(&conn).map(|menus| &menus.merchant) else {
                 return false;
             };
-            let Some(owner) = host.menus.get(&conn) else {
+            let Some(gm) = owner.as_ref() else {
                 return false;
             };
             let mut reads = TakeReads {
                 conn,
                 window: p.container,
                 identity,
-                stamp: owner.merchant.stamp(),
+                stamp: owner.stamp(),
                 hub_generation: guest.menu_generation,
                 creative: guest.creative(),
                 map_id: None,
@@ -440,6 +445,7 @@ impl Game<'_> {
         let (session, _) = self.merchant_apply(
             plan.menu.merchant.take().expect("planned merchant"),
             Some(mob),
+            sunrise_client::merchant::TradeFeedback::Current,
         );
         let host = self.lan.as_mut().expect("validated merchant host");
         let gi = host
@@ -456,9 +462,8 @@ impl Game<'_> {
             }
             guest.carried = plan.menu.carried.take();
         });
-        host.menus.get_mut(&conn).unwrap().merchant.restore(());
         let gm = host
-            .play
+            .menus
             .get_mut(&conn)
             .and_then(|p| p.merchant.as_mut())
             .expect("validated merchant window");
@@ -483,13 +488,15 @@ impl Game<'_> {
         let Some(g) = host.hub.guest(conn) else {
             return;
         };
-        let Some(play) = host.play.get(&conn) else {
+        let Some(merchant) = host
+            .menus
+            .get(&conn)
+            .and_then(|menus| menus.merchant.clone())
+        else {
             return;
         };
-        let Some(merchant) = play.merchant.clone() else {
-            return;
-        };
-        let stats = play.stats.clone();
+        // A refresh can run during the buyer's loan; it never mutates their stats.
+        let stats = host.play.get(&conn).map(|play| play.stats.clone());
         let progress = g.advancements.clone();
         let changed = g.advancements_changed.clone();
         let unlocked = g.recipes_unlocked.clone();
@@ -500,10 +507,14 @@ impl Game<'_> {
             conn,
             Box::new(move |game| {
                 if let Some(host) = game.lan.as_mut() {
-                    host.menus.entry(conn).or_default().merchant.restore(());
-                    let play = host.play.entry(conn).or_default();
-                    play.merchant = Some(merchant);
-                    play.stats = stats;
+                    host.menus
+                        .entry(conn)
+                        .or_default()
+                        .merchant
+                        .restore(Some(merchant));
+                    if let Some(stats) = stats {
+                        host.play.entry(conn).or_default().stats = stats;
+                    }
                     if let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) {
                         host.hub.guests.update(gi, |g| {
                             g.advancements = progress;
@@ -515,6 +526,40 @@ impl Game<'_> {
                 }
             }),
         );
+    }
+
+    /// A replacement can close a funded window from a listener's transaction.
+    /// Keep the player's wire window with the trade and hold any open/close
+    /// packets until the frame commits.
+    pub(super) fn journal_merchant_replacement(&mut self, conn: u32) {
+        let Some(level) = self.transactions.last_mut() else {
+            return;
+        };
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let Some(menus) = host.menus.get(&conn).filter(|m| m.merchant.is_some()) else {
+            return;
+        };
+        let Some(guest) = host.hub.guest(conn) else {
+            return;
+        };
+        level.trades.windows.entry(conn).or_insert_with(|| {
+            let window = guest.menu_before_replacement();
+            let heard = menus.menu_heard.clone();
+            let owned = menus.owned_menu.clone();
+            Box::new(move |game| {
+                if let Some(host) = game.lan.as_mut() {
+                    host.hub.guests.update_connection(conn, window);
+                    let menus = host.menus.entry(conn).or_default();
+                    menus.menu_heard = heard;
+                    menus.owned_menu = owned;
+                }
+            })
+        });
+        level
+            .packets
+            .get_or_insert_with(sunrise_client::lan::conn::transaction_packets::Scope::begin);
     }
 
     /// Keep the fields merchant operations own, not the mob's health, equipment or effects,
@@ -532,6 +577,7 @@ impl Game<'_> {
         let random = m.random.clone();
         let timer = m.ambient_timer;
         let trade = m.extra.trade.clone();
+        let trading = m.extra.flag2;
         let profession = m.extra.profession.clone();
         let level = m.extra.villager_level;
         let variant = m.extra.variant;
@@ -541,6 +587,7 @@ impl Game<'_> {
                 m.random = random;
                 m.ambient_timer = timer;
                 m.extra.trade = trade;
+                m.extra.flag2 = trading;
                 m.extra.profession = profession;
                 m.extra.villager_level = level;
                 m.extra.variant = variant;
@@ -567,20 +614,23 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        let Some(open) = host.play.get_mut(&conn).map(|p| &mut p.merchant) else {
+        let Some(open) = host.menus.get_mut(&conn).map(|p| &mut p.merchant) else {
             return;
         };
         if open.as_ref().is_none_or(|gm| gm.window != window) {
             return;
         }
         let mut gm = open.take().expect("matching window");
-        host.menus.entry(conn).or_default().merchant.restore(());
         if offers {
-            self.lan_send_offers(conn, &mut gm, true);
+            self.lan_send_offers(conn, &mut gm);
         }
         self.lan_send_merchant_content(conn, &mut gm);
         if let Some(host) = self.lan.as_mut() {
-            host.play.entry(conn).or_default().merchant = Some(gm);
+            host.menus
+                .entry(conn)
+                .or_default()
+                .merchant
+                .restore(Some(gm));
         }
     }
 

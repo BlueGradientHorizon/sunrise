@@ -44,7 +44,7 @@ impl Game<'_> {
         self.tick_remote_guardian_eyes(running);
         self.tick_hand();
         if running {
-            self.tick_particles();
+            self.tick_particle_sources();
         } else if self.clock.still() {
             self.settle_rain_fog();
         }
@@ -75,6 +75,8 @@ impl Game<'_> {
         let sent = self.tick_remote_own_player();
         if running {
             self.tick_remote_block_entities();
+            // Minecraft.tick: the particle engine ticks after Level.tickBlockEntities.
+            self.tick_particle_engine();
         }
         let input = sent?;
         // Like the block-entity push above, collider displacement belongs in this tick's
@@ -278,7 +280,7 @@ impl Game<'_> {
             let own = self
                 .player
                 .as_ref()
-                .filter(|p| !p.health.dead_or_dying() && !self.spectator())
+                .filter(|p| !p.health.dead_or_dying() && !p.spectator)
                 .map(|p| {
                     let feet = [p.position.x, p.position.y, p.position.z];
                     let eye = f64::from(p.dimensions.eye_height);
@@ -288,12 +290,7 @@ impl Game<'_> {
                 self.mobs
                     .iter()
                     .filter(move |m| m.alive() && r.level_players.contains_key(&(m.id as i32)))
-                    .filter(move |m| {
-                        let listed = r.level_players.get(&(m.id as i32));
-                        !listed
-                            .and_then(|uuid| r.tab_players.get(uuid))
-                            .is_some_and(|t| t.game_mode == SPECTATOR)
-                    })
+                    .filter(move |m| r.remote_player_info_game_mode(m.id as i32) != Some(SPECTATOR))
                     .map(|m| {
                         let feet = [m.position.x, m.position.y, m.position.z];
                         (
@@ -416,18 +413,18 @@ impl Game<'_> {
                     })
                 })
                 .flatten();
+            let spectator_player = player
+                && self
+                    .remote
+                    .as_ref()
+                    .is_some_and(|r| r.remote_player_info_game_mode(id as i32) == Some(SPECTATOR));
             let r = self.remote.as_mut().unwrap();
             let stepped = &mut r.stepped;
-            let players = &r.level_players;
-            let tab_players = &r.tab_players;
             let m = &mut self.mobs[i];
             let section_from = m.position;
             if player {
                 // AvatarRenderer.extractRenderState: isSpectator, from the player list.
-                m.extra.spectator = players
-                    .get(&(m.id as i32))
-                    .and_then(|uuid| tab_players.get(uuid))
-                    .is_some_and(|t| t.game_mode == SPECTATOR);
+                m.extra.spectator = spectator_player;
             }
             m.previous = m.position;
             // `Entity.deltaMovementOnPreviousTick`: the elytra's flight yaw
@@ -944,6 +941,7 @@ impl Game<'_> {
         );
         let was_flying = player.flying;
         self.sync_player_body();
+        self.sync_remote_player_game_mode();
         let sleeping = self.sleeping;
         if let Some(at) = sleeping.and_then(|head| self.sleeping_position(head))
             && let Some(player) = self.player.as_mut()
@@ -1205,6 +1203,9 @@ impl Game<'_> {
             self.remote_tick_using();
         }
         if flying != was_flying {
+            if let Some(r) = self.remote.as_mut() {
+                r.abilities.flying = flying;
+            }
             self.send(S::PlayerAbilities(play::PlayerAbilitiesRequest {
                 flags: if flying { 2 } else { 0 },
             }));
@@ -1326,13 +1327,8 @@ impl Game<'_> {
 impl Game<'_> {
     /// `Level.tickBlockEntities` on a client: the block entities' animations
     /// and client ticks, and the moving pistons' pushes.
-    pub(super) fn tick_remote_block_entities(&mut self) {
-        // The ticker list's spawners, trial spawners, vaults and mod block entities; the
-        // animated ones, beacons and potent sulfur still tick on their own passes after them.
+    pub(in crate::game) fn tick_remote_block_entities(&mut self) {
         self.tick_client_block_entities();
-        self.tick_block_entity_anims();
-        self.client_tick_beacons();
-        self.tick_remote_potent_sulfur();
         self.with_level(|b, level, ticks| {
             b.client_tick_block_entities(level, ticks);
         });

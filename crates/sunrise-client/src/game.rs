@@ -2856,24 +2856,39 @@ impl GameLevel<'_> {
                     .as_ref()
                     .unwrap_or(&self.guest_boxes),
             )
-            .chain(&self.cart_boxes)
             .map(boxed)
             .chain(b.mobs.iter().filter(|m| !m.removed).map(Mob::bounds))
             .chain(
-                b.armor_stands
+                b.non_mob_building_blocker_boxes(self.cart_boxes.iter().map(boxed), self.crystals),
+            )
+            .collect()
+    }
+}
+
+impl<'w> entity::EntityLists<'w> {
+    /// Non-player, non-mob boxes with `Entity.blocksBuilding`. The block level
+    /// supplies its minecart snapshot; the mob level reads the live cart boxes.
+    fn non_mob_building_blocker_boxes(
+        self,
+        carts: impl Iterator<Item = Aabb> + 'w,
+        crystals: &'w [dragon::Crystal],
+    ) -> impl Iterator<Item = Aabb> + 'w {
+        carts
+            .chain(
+                self.armor_stands
                     .iter()
                     .filter(|s| !s.marker)
                     .map(|s| s.bounds()),
             )
-            .chain(b.boats.iter().map(boats::Boat::bounds))
-            .chain(self.crystals.iter().map(dragon::Crystal::bounds))
-            .chain(b.tnts.iter().map(tnt::PrimedTnt::bounds))
+            .chain(self.boats.iter().map(boats::Boat::bounds))
+            .chain(crystals.iter().map(dragon::Crystal::bounds))
+            .chain(self.tnts.iter().map(tnt::PrimedTnt::bounds))
             .chain(
-                b.falling
+                self.falling
                     .iter()
+                    .filter(|f| f.blocks_building)
                     .map(|f| sunrise_client::falling_block::bounds(f.position)),
             )
-            .collect()
     }
 }
 /// A landing's block game event, emitted after its world write is applied.
@@ -2895,6 +2910,9 @@ struct FallingBlock {
     /// Its entity id: from the entity counter on the server, the server's on a client.
     id: u32,
     state: BlockStateId,
+    /// `FallingBlockEntity.fall` and `recreateFromPacket` set `blocksBuilding`;
+    /// constructing an entity from NBT leaves the default false.
+    blocks_building: bool,
     /// `DATA_START_POS`: spawn position used to select weighted block models.
     start_pos: BlockPos,
     position: Vec3,
@@ -3836,6 +3854,8 @@ struct Game<'a> {
     /// `LocalPlayer.postEffects`: the chains the server has the screen run
     /// (`ClientboundPostEffectsPacket`), in order.
     post_effects: Vec<String>,
+    /// Reused per-frame `requestedPostEffects` storage.
+    requested_post_effects_buf: Vec<String>,
     /// The game time (ticks and partial) of the last frame, for `PolyDeltaTime`.
     polytone_post_ticks: f64,
     /// The last expression context built (what the packs' expressions read), kept across frames
@@ -3843,6 +3863,8 @@ struct Game<'a> {
     expression_frame: sunrise_client::environment::Frame,
     /// `GameRenderer.spectatedEntityPostEffect` (`checkEntityPostEffect`).
     spectated_post_effect: Option<&'static str>,
+    /// `GameRenderer.spectatedEntityEffectActive` (`toggleSpectatorPostEffect`).
+    spectated_post_effect_active: bool,
     /// `LocalPlayer.experienceDisplayStartTick`: (last progress, seen a change, tick).
     experience_display: (f32, bool, u64),
     boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
@@ -4254,6 +4276,8 @@ struct Game<'a> {
     save_after_guest_turn: bool,
     /// Guests whose records are displaced by nested player swaps, outer first.
     lan_guest_swaps: Vec<u32>,
+    /// Bodies and their statistics displaced by guest turns, outer first.
+    lan_displaced_players: Vec<lan_actions::DisplacedPlayer>,
     /// Connections whose turn a panic interrupted this tick: the turn helpers record the
     /// player before re-raising, the end-of-turn path records it before its callbacks run and
     /// clears it after a clean put-back. Cleared at the start of every server tick; the crash
@@ -6212,6 +6236,7 @@ impl Game<'_> {
                         join: Default::default(),
                         id: self.next_entity,
                         state,
+                        blocks_building: true,
                         start_pos: pos,
                         position: p,
                         previous: p,
@@ -7223,6 +7248,7 @@ impl Game<'_> {
             );
             self.cursor = pointer.subpixel();
         }
+        self.pack.item_renderer.end_gui_frame();
         batch
     }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
@@ -7476,19 +7502,13 @@ impl Game<'_> {
             // The installed vanilla bodies share the column heights and a scratch draw list.
             let mut status_heights = hud_layout::StatusBarHeights::default();
             let mut status_rows = Vec::new();
-            let mount = if !show_hud || spectator {
+            let mount = if !show_hud {
                 None
             } else {
-                self.mount_index().map(|i| {
-                    let mob = &self.mobs[i];
-                    (
-                        hud_layout::vehicle_max_hearts(mob.attrs.max_health),
-                        mob.health,
-                    )
-                })
+                self.camera_player_vehicle_health()
             };
             // NeoForge applies hudVisible and survivalVisible to the vanilla bodies only.
-            let show_survival_status = show_hud && !self.creative && !spectator;
+            let show_survival_status = show_hud && self.can_hurt_player();
             self.gui_layer(
                 VanillaGuiLayer::PlayerHealth,
                 &mut batch,
@@ -7606,7 +7626,6 @@ impl Game<'_> {
                     g.audio.capture = capture;
                 }
             });
-
             use sunrise_client::locator_bar::ContextualBar;
             // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
             self.gui_layer(
@@ -7616,14 +7635,8 @@ impl Game<'_> {
                     if !show_hud {
                         return;
                     }
-                    let has_experience = !g.creative && !spectator;
-                    let contextual = ContextualBar::next(
-                        g.waypoints.has_waypoints(),
-                        !spectator && g.jumpable_mount(),
-                        g.mount_jumping(),
-                        has_experience,
-                        g.experience_recent(),
-                    );
+                    let has_experience = g.can_hurt_player();
+                    let contextual = g.contextual_bar();
                     if contextual == ContextualBar::JumpableVehicle {
                         g.draw_jump_bar(batch, wi, hi);
                     }
@@ -7666,7 +7679,7 @@ impl Game<'_> {
                 &mut batch,
                 &mut |g, batch| {
                     if show_hud && !spectator {
-                        g.draw_selected_name(batch, !g.creative);
+                        g.draw_selected_name(batch, g.can_hurt_player());
                     }
                 },
             );
@@ -8325,9 +8338,14 @@ impl Game<'_> {
             // A shader pack keeps the cache off (`render_with_cache_options_and_callbacks`),
             // so nothing warms it.
             let warm_cache = self.pack_ids.is_none();
-            for entity in
-                r.block_entities_in_range(self.settings.chunk_fade as f32, camera, view, long_range)
-            {
+            for entity in r.block_entities_in_range(
+                self.settings.chunk_fade as f32,
+                camera,
+                view,
+                self.effective_render_distance(),
+                long_range,
+                off_screen,
+            ) {
                 let (pos, state) = *entity.block;
                 if !self.live_block_entity_render(pos, state) {
                     continue;
@@ -8476,21 +8494,29 @@ impl Game<'_> {
                     );
             }
             // Mod block entities: their mods draw them (`native_block_entity_submit`),
-            // culled by the bounds they give. A world without any (`has_mods`) has none
-            // to find among its other unrendered block entities (furnaces, hoppers...).
+            // culled by the eye-visible section filter (ordinary renderers) and the bounds
+            // they give. A world without any (`has_mods`) has none to find among its other
+            // unrendered block entities (furnaces, hoppers...).
+            let radius = self.effective_render_distance();
+            let untemplated = self.untemplated_mod_block_entities(camera);
             let mods = self
                 .world
                 .block_entities
                 .has_mods()
                 .then(|| {
-                    r.visible_block_entities(self.settings.chunk_fade as f32)
-                        .filter(|(_, state)| !self.res.block_entity_render().renders(*state))
+                    r.visible_block_entities(self.settings.chunk_fade as f32, camera, view, radius)
+                        .filter(|((_, state), _)| !self.res.block_entity_render().renders(*state))
                 })
                 .into_iter()
                 .flatten();
-            let untemplated = self.untemplated_mod_block_entities(camera);
+            let untemplated_eye = untemplated.iter().map(|block| {
+                (
+                    block,
+                    r.block_entity_section_in_eye_view(block.0, camera, view.as_ref(), radius),
+                )
+            });
             self.mod_block_entity_geometry(
-                mods.chain(untemplated.iter()),
+                mods.chain(untemplated_eye),
                 camera,
                 alpha as f32,
                 &mut out,
@@ -10148,10 +10174,7 @@ impl Game<'_> {
             &self.settings.sunrise,
             shader_packs::picked_pack_shape(&self.settings),
             display,
-            (
-                self.settings.file.int("textureFiltering"),
-                self.settings.file.int("maxAnisotropyBit"),
-            ),
+            self.settings.texture_atlas_settings(),
         )?;
         clouds?;
         (renderer.screenshot, renderer.screenshot_result) = (screenshot, screenshot_result);
@@ -10944,24 +10967,27 @@ impl Game<'_> {
         self.follow_audio_stream_entities();
         pr.lap("pr_listener");
         let block = [
-            camera.x.floor() as i32,
-            camera.y.floor() as i32,
-            camera.z.floor() as i32,
+            sunrise_core::mth::floor(camera.x),
+            sunrise_core::mth::floor(camera.y),
+            sunrise_core::mth::floor(camera.z),
         ];
-        // The camera inside an opaque block sees nothing through it: disable.
+        // Camera.extractRenderState: only spectator inside a solidRender block disables smartCull.
         let cave_culling = self.settings.sunrise.cave_culling
-            && !self
-                .res
-                .facts()
-                .get(self.world.block(block[0], block[1], block[2]))
-                .solid_render;
-        // The cave culling search runs on its worker while the frame is prepared.
-        if cave_culling
-            && self.title.is_none()
+            && !(self.spectator()
+                && self
+                    .res
+                    .facts()
+                    .get(self.world.block(block[0], block[1], block[2]))
+                    .solid_render);
+        // The bounded section graph runs on its worker while the frame is prepared, even when
+        // smart culling is off (`SectionOcclusionGraph.runUpdates`).
+        let effective_detail_distance = (self.effective_render_distance() * 16) as f32;
+        if self.title.is_none()
             && let Some(renderer) = self.renderer.as_mut()
         {
+            renderer.sync_loaded_columns(&self.world.chunks);
             sunrise_client::spans::time("occlusion", || {
-                renderer.start_occlusion(camera, (self.streaming.radius * 16) as f32)
+                renderer.start_occlusion(camera, effective_detail_distance, cave_culling)
             });
         }
         pr.lap("pr_occlusion");
@@ -11272,20 +11298,23 @@ impl Game<'_> {
         pr.lap("pr_hud");
         self.locator_camera =
             (!title).then_some((camera.to_array(), view_yaw, view_pitch, fov_degrees));
-        let mut requested_post_effects = self.requested_post_effects();
         // The packs' Polytone post chains, after vanilla's (#11486).
         let game_ticks = self.world.game_time as f64 + alpha;
         let delta_ticks = (game_ticks - self.polytone_post_ticks).clamp(0.0, 20.0) as f32;
         self.polytone_post_ticks = game_ticks;
         self.evaluate_pack_expressions(polytone_frame);
-        let polytone_extras = match (&self.pack.polytone_post, polytone_frame) {
+        let (polytone_effects, polytone_extras) = match (&self.pack.polytone_post, polytone_frame) {
             (Some(post), Some(frame)) => {
                 let (effects, extras) = post.frame(frame);
-                requested_post_effects.extend(effects);
-                Some(extras)
+                (effects, Some(extras))
             }
-            _ => None,
+            _ => (Vec::new(), None),
         };
+        let mut requested_post_effects = std::mem::take(&mut self.requested_post_effects_buf);
+        self.sync_requested_post_effects(
+            &mut requested_post_effects,
+            polytone_effects.iter().map(String::as_str),
+        );
         // Polytone's globals (wiki "Extra Shader Uniforms"), built only when something reads
         // them: here when an installed pack core shader does, and by the post effects when a
         // pass of theirs does (`Request::poly_globals`, called at most once a frame). The
@@ -11519,7 +11548,8 @@ impl Game<'_> {
             shadow_scene_revision: (self.world.revision, self.world.chunks.membership_revision()),
             shadow_cache: self.settings.sunrise.shadow_cache,
             distance,
-            detail_distance: (self.streaming.radius * 16) as f32,
+            detail_distance: (self.effective_render_distance() * 16) as f32,
+            shadow_distance: Some((self.streaming.radius * 16) as f32),
             depth_far,
             underwater,
             water_plane: if title
@@ -11686,6 +11716,8 @@ impl Game<'_> {
             }
             None => Err("renderer".into()),
         };
+        drop(frame);
+        self.requested_post_effects_buf = requested_post_effects;
         prepared_draws.clear();
         *self.prepared_model_draws.borrow_mut() = prepared_draws;
         let _cleanup = spans::guard("pr_cleanup");
@@ -12044,16 +12076,18 @@ impl Game<'_> {
         {
             return true;
         }
-        if let Some(saving) = &mut self.pending_save {
+        if self.pending_save.is_some() {
             match event {
                 WindowEvent::CloseRequested => {
-                    if self.settings.quit_shortcuts
+                    if (self.settings.quit_shortcuts
                         || !sunrise_client::input::is_quit_shortcut_down(
                             self.modifiers,
                             &self.physical_keys,
-                        )
+                        ))
+                        && let Err(error) = self.begin_closing_save(true)
                     {
-                        saving.quit = true;
+                        self.error = Some(error);
+                        event_loop.exit();
                     }
                 }
                 WindowEvent::Focused(focused) => {
@@ -12483,6 +12517,10 @@ impl Game<'_> {
                             self.keys.clear();
                             let options = self.toggle_options();
                             self.vanilla_mappings.set_keys_up_on_focus_loss(options);
+                            // GLFW releases every held key and button when
+                            // the window loses focus, so a mod's mappings go
+                            // up as vanilla's do; their pending clicks stay.
+                            self.mod_keys.set_all_up();
                             self.capture(false);
                         }
                         self.regrab_on_refocus = held;
@@ -13861,9 +13899,11 @@ impl<'a> Game<'a> {
             native_camera_frame: None,
             posed_rotation: None,
             post_effects: Vec::new(),
+            requested_post_effects_buf: Vec::new(),
             polytone_post_ticks: 0.0,
             expression_frame: Default::default(),
             spectated_post_effect: None,
+            spectated_post_effect_active: false,
             experience_display: Default::default(),
             boats: Default::default(),
             leash_boats: Vec::new(),
@@ -14082,6 +14122,7 @@ impl<'a> Game<'a> {
             lan_building_boxes: Default::default(),
             save_after_guest_turn: false,
             lan_guest_swaps: Vec::new(),
+            lan_displaced_players: Vec::new(),
             interrupted_turns: Vec::new(),
             crash_save: Default::default(),
             lan_ender_menus: Vec::new(),
@@ -14411,7 +14452,7 @@ pub(crate) fn run_with(
 }
 
 /// The right and left arms of a player model layer (`PlayerModel.rightArm`
-/// and `leftArm`, with their sleeves).
+/// and `leftArm`, with their sleeves), each keeping the layer.
 fn player_arms(
     root: &std::path::Path,
     key: &str,
@@ -14421,11 +14462,7 @@ fn player_arms(
         Some(document) => document.model(key),
         None => sunrise_client::mobs::load_model(root, key),
     };
-    ["right_arm", "left_arm"].map(|name| {
-        model
-            .as_ref()
-            .and_then(|m| m.children.iter().find(|c| c.name == name).cloned())
-    })
+    ["right_arm", "left_arm"].map(|name| model.as_ref().and_then(|m| m.detached_child(name)))
 }
 
 /// The most `Player.sleepCounter` reaches: 100 asleep, then up to here over the

@@ -411,6 +411,92 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes() {
+    crate::game::in_own_process(
+        "game::runtime_levels_tests::an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes",
+        || {
+            const ID: &str = "abandon:a";
+            const POS: [i32; 3] = [1, -50, 1];
+
+            struct Abandon(Seen<bool>);
+
+            #[mod_api::__subscriptions]
+            impl Hooks for Abandon {
+                fn level_tick_post(&self, host: HostSide, _: &mut LevelTickPostEvent) {
+                    if let HostSide::Server(host) = host {
+                        host.runtime_levels().open(ID, flat()).unwrap();
+                    }
+                }
+
+                fn chunk_unload(
+                    &self,
+                    host: &mut dyn ServerHost,
+                    event: &mut ChunkUnloadEvent<'_>,
+                ) {
+                    if event.dimension == ID && event.chunk == [0, 0] {
+                        let level = host.level(ID).unwrap();
+                        let _seal = host.transaction_open();
+                        assert_eq!(level.set_connection_group(host, POS, Some(30)), Ok(true));
+                        self.0
+                            .lock()
+                            .unwrap()
+                            .push(host.transaction_current().is_some());
+                    }
+                }
+
+                fn level_unload(
+                    &self,
+                    host: &mut dyn ServerHost,
+                    event: &mut LevelUnloadEvent<'_>,
+                ) {
+                    if event.dimension == ID {
+                        self.0
+                            .lock()
+                            .unwrap()
+                            .push(host.transaction_current().is_some());
+                    }
+                }
+            }
+
+            let open_frames = Seen::default();
+            let mods = vec![ModEntry::new(
+                "abandon",
+                Box::new(Abandon(Arc::clone(&open_frames))),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                with_game(|game| {
+                    let root = TempRoot::new("abandon");
+                    game.world_root = root.0.clone();
+                    tick_post(game);
+                    game.apply_runtime_levels();
+                    place_block(game, ID, "minecraft:stone");
+                    let dim = super::Dim::extra(ID).unwrap();
+                    let custom = game.level(ID).unwrap();
+                    let home = game.level("minecraft:overworld").unwrap();
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    assert_eq!(home.set_connection_group(game, POS, Some(10)), Ok(true));
+                    game.enter_level(dim).unwrap();
+                    assert_eq!(custom.set_connection_group(game, POS, Some(20)), Ok(true));
+                    game.enter_level(super::Dim::Overworld).unwrap();
+
+                    game.close_parked_level(dim).unwrap();
+                    assert!(!game.levels.parked.contains_key(&dim));
+                    assert_eq!(*open_frames.lock().unwrap(), [true, false]);
+                    assert!(game.transaction_current().is_none());
+                    assert_eq!(home.connection_group(game, POS), Ok(Some(10)));
+                    game.abort_abandoned_transactions(0);
+                    assert_eq!(home.connection_group(game, POS), Ok(Some(10)));
+                });
+            });
+        },
+    );
+}
+
 /// A chunk-unload listener that forces a chunk in an idle custom level while a
 /// built-in level drains, in the same server tick that would have closed it,
 /// keeps that level open with its new ticket: the close plan is made after the

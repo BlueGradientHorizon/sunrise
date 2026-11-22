@@ -80,6 +80,17 @@ fn columns(files: &[(&str, &str)]) -> Option<Vec<[[u8; 4]; 2]>> {
     columns_with(files, "")
 }
 
+/// Without R32Float render attachments the pack gets a fallback format, which cannot bind as r32f.
+fn r32f_fixture() -> Option<Fixture> {
+    let gpu = Fixture::new()?;
+    crate::gfx::test_gpu::supports_texture_usage(
+        &gpu.adapter,
+        wgpu::TextureFormat::R32Float,
+        wgpu::TextureUsages::RENDER_ATTACHMENT,
+    )
+    .then_some(gpu)
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_compute_program_stores_into_the_shadowcolor_buffers() {
@@ -106,7 +117,7 @@ fn a_compute_program_stores_into_the_shadowcolor_buffers() {
 #[ignore = "daily"]
 fn a_compute_stage_attached_to_a_pass_is_enough_to_make_its_shadowcolor_buffer() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(gpu) = Fixture::new() else { return };
+    let Some(gpu) = r32f_fixture() else { return };
     // composite.csh runs before composite.fsh, in its pass, and is the only program that uses
     // shadowcolor1 (R32F): it loads shadowcolorimg1 (cleared to 0.2), stores twice that back and
     // into colorimg0. composite.fsh draws colortex1 only. final samples only shadowcolor0, which
@@ -172,11 +183,12 @@ fn a_fragment_program_stores_into_a_shadowcolor_buffer() {
 #[ignore = "daily"]
 fn loads_and_samples_of_a_stored_shadowcolor_buffer_read_it_as_it_was() {
     let _gpu = crate::gfx::test_gpu::lock();
+    let Some(gpu) = r32f_fixture() else { return };
     // composite1 loads shadowcolorimg0 before storing it (its loads read a copy taken first), and
     // samples shadowcolor1 while storing into it (sampled from a copy, as wgpu binds a texture
     // one way per dispatch). Formats are read from fragment shaders: `final` makes shadowcolor0
     // R32F.
-    let Some(frames) = columns_with(
+    let mut post = gpu.build(pack_with(
         &[
             (
                 "composite.csh",
@@ -202,11 +214,9 @@ fn loads_and_samples_of_a_stored_shadowcolor_buffer_read_it_as_it_was() {
             ),
         ],
         "/* const int shadowcolor0Format = R32F; */\n",
-    ) else {
-        return;
-    };
+    ));
     // An R32F buffer reads (r, 0, 0, 1).
-    for f in frames {
+    for f in frames(&gpu, &mut post) {
         assert_eq!(f, [[102, 0, 0, 255], [153, 153, 153, 255]]);
     }
 }
@@ -249,7 +259,7 @@ const COMPUTE: &str = "#version 430\nlayout(local_size_x = 1, local_size_y = 1) 
 #[ignore = "daily"]
 fn the_shadow_cache_redraws_buffers_a_later_program_stores_into() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(gpu) = Fixture::new() else { return };
+    let Some(gpu) = r32f_fixture() else { return };
     // composite doubles shadowcolor0 in place: from its clear colour, 0.2, to 0.4 each frame.
     let composite = format!(
         "{COMPUTE}layout(r32f) uniform image2D shadowcolorimg0;\n\
@@ -642,7 +652,7 @@ fn a_gbuffers_program_stores_into_a_shadowcolor_buffer_while_drawing_its_own() {
 #[ignore = "daily"]
 fn a_shadowcomp_program_binds_the_buffer_it_draws_into_from_the_other_side() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(gpu) = Fixture::new() else { return };
+    let Some(gpu) = r32f_fixture() else { return };
     // shadowcomp draws into shadowcolor0's "alt" side and binds "main" as the image: two
     // textures, so it runs. It loads "main" (its clear colour, 0.2) and draws twice that, which
     // becomes "main" when it flips.
@@ -933,13 +943,13 @@ fn the_shadow_cache_counts_every_kind_of_shadow_program_write() {
 /// Two frames of the pack of `files` and `final` with `directives`, with the Shadow Cache off
 /// and then on (a new [`PackPost`] each): pixels (0, 0) and (1, 0) of each frame.
 fn cache_off_and_on(files: &[(&str, &str)], directives: &str) -> Option<[Vec<[[u8; 4]; 2]>; 2]> {
-    cache_off_and_on_of(|| pack_with(files, directives))
+    let gpu = Fixture::new()?;
+    Some(cache_off_and_on_of(&gpu, || pack_with(files, directives)))
 }
 
 /// [`cache_off_and_on`] of the pack `post` makes.
-fn cache_off_and_on_of(post: impl Fn() -> Post) -> Option<[Vec<[[u8; 4]; 2]>; 2]> {
-    let gpu = Fixture::new()?;
-    Some([false, true].map(|cached| {
+fn cache_off_and_on_of(gpu: &Fixture, post: impl Fn() -> Post) -> [Vec<[[u8; 4]; 2]>; 2] {
+    [false, true].map(|cached| {
         let mut post = gpu.build(post());
         (0..2)
             .map(|_| {
@@ -951,13 +961,14 @@ fn cache_off_and_on_of(post: impl Fn() -> Post) -> Option<[Vec<[[u8; 4]; 2]>; 2]
                 [pixels[0], pixels[1]]
             })
             .collect()
-    }))
+    })
 }
 
 #[test]
 #[ignore = "daily"]
 fn the_shadow_cache_reruns_a_shadowcomp_dispatch_into_a_buffer_kept_between_frames() {
     let _gpu = crate::gfx::test_gpu::lock();
+    let Some(gpu) = r32f_fixture() else { return };
     // shadowcomp adds 0.2 to shadowcolor0, which isn't cleared: 0.2 on the first frame, 0.4
     // on the second. Nothing in the cache key changes, but a kept map would read 0.2 twice.
     let shadowcomp = format!(
@@ -965,12 +976,12 @@ fn the_shadow_cache_reruns_a_shadowcomp_dispatch_into_a_buffer_kept_between_fram
          void main() {{\n    ivec2 p = ivec2(gl_GlobalInvocationID.xy);\n\
              imageStore(shadowcolorimg0, p, imageLoad(shadowcolorimg0, p) + 0.2);\n}}\n"
     );
-    let Some([off, on]) = cache_off_and_on(
-        &[("shadowcomp.csh", &shadowcomp)],
-        "/* const int shadowcolor0Format = R32F; */\nconst bool shadowcolor0Clear = false;\n",
-    ) else {
-        return;
-    };
+    let [off, on] = cache_off_and_on_of(&gpu, || {
+        pack_with(
+            &[("shadowcomp.csh", &shadowcomp)],
+            "/* const int shadowcolor0Format = R32F; */\nconst bool shadowcolor0Clear = false;\n",
+        )
+    });
     assert_eq!(
         off,
         [[[51, 0, 0, 255], [255; 4]], [[102, 0, 0, 255], [255; 4]]]
@@ -1068,7 +1079,8 @@ fn the_shadow_cache_reruns_a_shadow_dispatch_that_binds_the_storage_buffers() {
         ),
     ];
     for extra in [&[][..], &attached[..]] {
-        let Some([off, on]) = cache_off_and_on_of(|| {
+        let Some(gpu) = Fixture::new() else { return };
+        let [off, on] = cache_off_and_on_of(&gpu, || {
             let files = [
                 ("shaders.properties", "bufferObject.0 = 4\n"),
                 ("shadowcomp.csh", &shadowcomp),
@@ -1077,9 +1089,7 @@ fn the_shadow_cache_reruns_a_shadow_dispatch_that_binds_the_storage_buffers() {
             ];
             let all: Vec<_> = files.iter().chain(extra).copied().collect();
             pack_of(&all, &Default::default())
-        }) else {
-            return;
-        };
+        });
         assert_eq!(
             off,
             [[[51, 0, 0, 255], [255; 4]], [[102, 0, 0, 255], [255; 4]]],

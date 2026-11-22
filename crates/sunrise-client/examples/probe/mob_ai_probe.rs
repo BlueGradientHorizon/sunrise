@@ -1265,6 +1265,7 @@ pub fn main() -> sunrise_client::Result<()> {
                     asks_baby_spawn: false,
                     border: None,
                     section_writer: None,
+                    trading_players: None,
                 }
             };
         }
