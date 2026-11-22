@@ -588,7 +588,7 @@ pub(in crate::game) mod tests {
                         for ((shared_rain, rain, thunder), expected) in ticks {
                             server.world.weather.raining = shared_rain;
                             server.world.weather.set_levels(rain, thunder);
-                            let _ = hub.tick_level(&mut server.server_ctx());
+                            let _ = hub.tick_level(&mut server.server_ctx(), None);
                             deliver_viewer_packets(game);
                             let view = &viewed(game, 0).unwrap().weather;
                             assert_eq!((view.rain_level.1, view.thunder_level.1), (rain, thunder));
