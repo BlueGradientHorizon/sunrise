@@ -2217,15 +2217,24 @@ fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
         )],
         || {
             with_mod(|| {
-                with_guests(|game| {
-                    let window = open_depot(game);
-                    depot_container(game);
+                with_depot_guests(|game| {
+                    register_test_menu(game, DEPOT_MENU);
+                    place_depot(game, Some(DEPOT_MENU));
                     second_block(game);
                     game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                        let open = g.menu.as_mut().unwrap();
-                        open.registry_id = DEPOT_MENU.into();
-                        open.mod_type = sunrise_client::containers::mod_menu_type(DEPOT_MENU);
+                        g.brand = "sunrise".into();
+                        g.sender.menu_extra_rev = sunrise_protocol::menu_extra::LIVE_DATA_REVISION;
                     });
+                    assert_eq!(
+                        game.open_block_menu(12, POS),
+                        super::lan_actions::MenuOpen::Opened
+                    );
+                    let menu = game.lan.as_ref().unwrap().hub.guests[0]
+                        .menu
+                        .as_ref()
+                        .unwrap();
+                    assert_eq!(menu.mod_type.unwrap().id, DEPOT_MENU);
+                    let window = menu.window;
                     let content = |game: &crate::game::Game<'_>, pos, slot: usize| {
                         let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos)
                         else {
@@ -2250,7 +2259,9 @@ fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
                     let offhand = Some(ItemStack::new("minecraft:iron_ingot", 1));
                     let hub = &mut game.lan.as_mut().unwrap().hub;
                     hub.guests.update(0, |g| {
+                        let revision = g.sender.menu_extra_rev;
                         g.sender = PlayerSender::new(tx, Arc::default());
+                        g.sender.menu_extra_rev = revision;
                         g.offhand = offhand.clone();
                     });
                     let menu = hub.guests[0].menu.as_ref().unwrap();
@@ -2316,11 +2327,15 @@ fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
                         ..Script::default()
                     });
                     game.lan_guest_packet(12, container_click(window, 0, 1));
-                    assert_eq!(
-                        decided(),
-                        2,
-                        "the rejected quick move ran under the click decision"
-                    );
+                    assert_eq!(decided(), 1);
+                    assert_eq!(DISPATCHES.get(), 1, "the quick-move listener was reached");
+                    IN_ACTION.with(|seen| {
+                        assert_eq!(
+                            *seen.borrow(),
+                            [true],
+                            "the quick move ran inside the click action"
+                        );
+                    });
                     assert_eq!(content(game, POS, 0), 10);
                     assert_eq!(
                         content(game, SECOND, 0),
