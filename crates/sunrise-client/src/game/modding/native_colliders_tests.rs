@@ -926,7 +926,7 @@ fn a_carried_vehicle_takes_its_passengers_and_theirs_with_it() {
             let at = game.mobs.iter().position(|m| m.id == id).expect("a pig");
             game.mobs.update(at, |m| f(m));
         };
-        update(game, vehicle, &|m| m.on_ground = true);
+        update(game, vehicle, &|m| m.ground.on_ground = true);
         update(game, middle, &|m| m.extra.mount = Some(vehicle));
         update(game, top, &|m| m.extra.mount = Some(middle));
         game.position_riders();
