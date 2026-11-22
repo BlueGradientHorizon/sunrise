@@ -229,7 +229,10 @@ impl Game<'_> {
             return true;
         }
         if self.hold_announcement(super::transactions::Announcement::FreshJoin { handle, id }) {
-            let kind = self.slot_kind_and_position(Slot::Walk(handle)).0;
+            let kind = self
+                .slot_kind_and_position(Slot::Walk(handle))
+                .0
+                .into_owned();
             self.construct_joining(id, &kind);
             return true;
         }
