@@ -111,52 +111,6 @@ pub trait DrawContext {
     fn text_width(&self, text: &str) -> f32 {
         unimplemented!("DrawContext::text_width")
     }
-    /// Lays `text` out as the lines a label shows, wrapped to `max_width` GUI pixels at `scale` and
-    /// placed by `align`: measurement and layout only, nothing is drawn, and no widget, theme or
-    /// state is involved. Draw each line where it says, and the label is the mod's own.
-    ///
-    /// The layout is measured unscaled and answered scaled: the text wraps at `max_width / scale`
-    /// GUI pixels, and every dimension and position it answers — each line's `at` and `width`, the
-    /// block's `width` and `height` — is in scaled GUI pixels. `scale` of one is the text as it
-    /// draws at its own size; `scale` of two is the label at twice the size, in a box of the same
-    /// `max_width`. Inside [`Self::draw_gui`], draw each line with [`GuiCanvas::text`] in a scope
-    /// using [`PoseOp::Scale`](crate::client::hud_layout::PoseOp::Scale). Divide each line's
-    /// `at` by `scale` before drawing; the pose scales those coordinates back to the measured box.
-    ///
-    /// Wrapping is vanilla's (`Font.split`, as [`crate::ClientTextClientHost::text_split`] wraps):
-    /// a line breaks at a space that fits, a single word wider than the box is broken at a
-    /// character rather than dropped, and an explicit `\n` starts a new line, so a trailing `\n`
-    /// leaves an empty last line. A width below one pixel — `max_width` itself, or `max_width /
-    /// scale` — still wraps, at one pixel, as `Font.split` does: too narrow a box gives one
-    /// character a line rather than none, and a line is still wider than `max_width` when one
-    /// character alone is.
-    ///
-    /// Every style and colour inside the component is kept in each line's `Text`, and each line's
-    /// `width` is what `Font.width` answers for it, styles included. The lines carry no `§` codes:
-    /// the split keeps them, and each line's codes are then applied to the characters that follow
-    /// them and dropped, so a line drawn alone draws exactly what it measured. A `§r` goes back to
-    /// the style its run carried, so right after a break it restores the style the tail run
-    /// carried out of the break (a bold run stays bold), not no style.
-    ///
-    /// One line is `Font.lineHeight` times `scale` high, and the last line's `at[1]` plus one line
-    /// height is exactly [`TextLines::height`]: a scroll container sizes its content from it. A
-    /// centred line sits at `wrapWidth / 2 - floor(lineWidth / 2)`, scaled afterwards, both widths
-    /// unscaled, as vanilla's `TextAlignment.CENTER.calculateLeft` floors the half line width.
-    /// Empty text has no line at all, and then `width` and `height` are zero.
-    ///
-    /// Refuses, answering no line at all (a [`TextLinesRefusal`], never a partial layout):
-    /// a `max_width` that is not finite or that dividing by `scale` overflows, a `scale` that is
-    /// not finite or is zero or less, text that wraps into more than 512 lines, and lines holding
-    /// more than 8192 characters together. Component depth is not a layout limit.
-    fn text_lines(
-        &self,
-        text: &Text,
-        max_width: f32,
-        align: TextAlign,
-        scale: f32,
-    ) -> Result<TextLines, TextLinesRefusal> {
-        unimplemented!("DrawContext::text_lines")
-    }
     /// Fluid `fluid` (`minecraft:water`, `mymod:oil`) drawn as a square with its top left at `at`, `size`
     /// GUI pixels wide (16 in a slot): the sprite its look names (`data/<mod>/sunrise/fluid/<name>.json`)
     /// tinted with its colour, else a flat square of the colour, which vanilla water and lava have. What a

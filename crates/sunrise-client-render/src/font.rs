@@ -1218,18 +1218,17 @@ impl Font {
     /// not glyphs. Right-to-left text is measured as it is drawn, shaped.
     pub fn width_text(&self, t: &Text) -> f32 {
         let t = t.resolved();
-        crate::bidi::visual(&t)
-            .chars()
-            .map(|(c, s)| self.advance(c, s))
-            .sum::<f32>()
-            .ceil()
+        self.width_visual(&crate::bidi::visual(&t))
     }
     /// `Font.width(FormattedCharSequence)` of a sequence a component built
     /// with `FormattedCharSequence.forward`: every character is a glyph, a
     /// `§` included (`StringDecomposer.iterate`, not `iterateFormatted`).
     pub fn width_drawn(&self, t: &Text) -> f32 {
-        crate::bidi::visual(t)
-            .chars()
+        self.width_visual(&crate::bidi::visual(t))
+    }
+    /// Measure a sequence already resolved and put in visual order.
+    pub fn width_visual(&self, text: &Text) -> f32 {
+        text.chars()
             .map(|(c, s)| self.advance(c, s))
             .sum::<f32>()
             .ceil()

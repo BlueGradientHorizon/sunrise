@@ -31,6 +31,10 @@ parent still discards them. If you handle a child's error, only that child is di
 independent host calls are not part of the transaction; use the ordinary `DrawContext` for those
 draws, with [`with_scissor`](screen-clipping.md) if you need to clip them.
 
+For a wrapped component, call `canvas.text_with_word_wrap`. It wraps and paints in the current
+scope and returns the [label dimensions](screens.md#labels-wrapped-text-without-a-widget); there
+is no list of line draws to replay.
+
 ## Items
 
 Call `canvas.item(&stack, at, seed)` to draw a stack's model in a 16-pixel slot, passing the seed to

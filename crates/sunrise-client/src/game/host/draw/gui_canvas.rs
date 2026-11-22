@@ -1,10 +1,14 @@
 //! Direct mod GUI drawing on the hook's HUD batch.
 
+use super::text_layout::LabelLayout;
 use crate::game::{
     Game,
     api_values::{TryIntoEngine, stack_value},
 };
-use mod_api::{GuiBlitRegion, GuiCanvas, GuiDrawError, GuiSpriteRegion, ItemStack, Text};
+use mod_api::{
+    GuiBlitRegion, GuiCanvas, GuiDrawError, GuiSpriteRegion, ItemStack, Text, TextLayoutSize,
+    TextLayoutSpec,
+};
 use sunrise_client::{
     hud::{GuiSprite, HudAtlas, HudBatch},
     hud_layout::{
@@ -88,10 +92,18 @@ impl GameGuiCanvas<'_, '_> {
 
     /// An individual call can be refused even when the caller chooses to commit its group.
     fn paint(&mut self, emit: impl FnOnce(&mut HudBatch, &HudAtlas)) -> Result<(), GuiDrawError> {
-        let (atlas, pose, scissor) = (self.atlas, self.pose, self.scissor);
+        self.paint_in_pose(self.pose, emit)
+    }
+
+    fn paint_in_pose<T>(
+        &mut self,
+        pose: Pose,
+        emit: impl FnOnce(&mut HudBatch, &HudAtlas) -> T,
+    ) -> Result<T, GuiDrawError> {
+        let (atlas, scissor) = (self.atlas, self.scissor);
         self.batch.draw_scope(&atlas.font, |batch| {
             let start = batch.vertices.len();
-            emit(batch, atlas);
+            let output = emit(batch, atlas);
             let mut needs_clip =
                 scissor.is_some_and(|[left, top, right, bottom]| left == right || top == bottom);
             for vertex in &mut batch.vertices[start..] {
@@ -118,7 +130,7 @@ impl GameGuiCanvas<'_, '_> {
                     return Err(GuiDrawError::NotFinite);
                 }
             }
-            Ok(())
+            Ok(output)
         })
     }
 }
@@ -238,6 +250,34 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         }
         self.paint(|batch, atlas| {
             batch.text_styled(atlas, &text, x, y, abgr(argb), shadow);
+        })
+    }
+
+    fn text_with_word_wrap(
+        &mut self,
+        text: &Text,
+        at: [f32; 2],
+        spec: TextLayoutSpec,
+        argb: u32,
+        shadow: bool,
+    ) -> Result<TextLayoutSize, GuiDrawError> {
+        let layout = LabelLayout::try_from(spec).map_err(GuiDrawError::TextLayout)?;
+        if !at.into_iter().all(f32::is_finite) {
+            return Err(GuiDrawError::NotFinite);
+        }
+        let mut pose = self.pose;
+        pose_apply(&mut pose, PoseOp::Translate(at[0], at[1]));
+        pose_apply(&mut pose, PoseOp::Scale(spec.scale, spec.scale));
+        if !pose.into_iter().all(f32::is_finite) {
+            return Err(GuiDrawError::NotFinite);
+        }
+        let text = text.try_into_engine(&()).map_err(GuiDrawError::Text)?;
+        self.paint_in_pose(pose, |batch, atlas| {
+            layout.visit(&atlas.font, &text, |_, line, [x, y], _| {
+                if argb >> 24 != 0 {
+                    batch.text_visual(atlas, line, x, y, abgr(argb), shadow);
+                }
+            })
         })
     }
 

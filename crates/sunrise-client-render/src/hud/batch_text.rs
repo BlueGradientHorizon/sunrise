@@ -34,6 +34,18 @@ impl HudBatch {
     ) -> f32 {
         self.styled_text(atlas, text, x, y, color, shadow, false, None)
     }
+    /// Draw a GUI line already resolved and put in visual order.
+    pub fn text_visual(
+        &mut self,
+        atlas: &HudAtlas,
+        text: &crate::text::Text,
+        x: f32,
+        y: f32,
+        color: u32,
+        shadow: bool,
+    ) -> f32 {
+        self.paint_visual_text(atlas, text, x, y, color, shadow, false, None)
+    }
     /// `text_styled` for text drawn in the world (`TextRenderable.render`
     /// with `flat` false): each quad's `depth` is its z in text units, the
     /// glyphs `Font.SHADOW_DEPTH` in front of their shadow, a bold copy 0.001
@@ -102,6 +114,21 @@ impl HudBatch {
         let text = text.resolved();
         // Language.getVisualOrder: shaped and reordered for right-to-left text.
         let text = crate::bidi::visual(&text);
+        self.paint_visual_text(atlas, &text, x, y, color, shadow, world, outline)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn paint_visual_text(
+        &mut self,
+        atlas: &HudAtlas,
+        text: &crate::text::Text,
+        x: f32,
+        y: f32,
+        color: u32,
+        shadow: bool,
+        world: bool,
+        outline: Option<(u32, [f32; 2])>,
+    ) -> f32 {
         let font = &atlas.font;
         let alpha = (color >> 24) as u8;
         let mut glyphs = Vec::new();

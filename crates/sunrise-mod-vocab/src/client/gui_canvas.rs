@@ -1,6 +1,9 @@
 //! Lexical, transactional GUI drawing.
 
-use crate::{ItemStack, StackWriteError, Text, text::TextFormError};
+use crate::{
+    ItemStack, StackWriteError, Text, TextLayoutError, TextLayoutSize, TextLayoutSpec,
+    text::TextFormError,
+};
 
 use super::hud_layout::{Blend, PoseOp};
 
@@ -40,6 +43,8 @@ pub enum GuiDrawError {
     NotFinite,
     /// Text could not be represented by the game (for example, it contains non-finite metadata).
     Text(TextFormError),
+    /// The wrapping width or scale cannot place the label.
+    TextLayout(TextLayoutError),
     /// The stack could not be read for rendering. Storage count and damage limits do not apply.
     Stack(StackWriteError),
     /// No sprite is present at the requested GUI or packed-atlas id.
@@ -61,6 +66,7 @@ impl std::fmt::Display for GuiDrawError {
             Self::Abort => "GUI drawing was aborted by the caller",
             Self::NotFinite => "GUI draw geometry is not finite",
             Self::Text(error) => return write!(f, "GUI draw text: {error}"),
+            Self::TextLayout(error) => return write!(f, "GUI draw: {error}"),
             Self::Stack(error) => return write!(f, "GUI draw stack: {error:?}"),
             Self::UnknownSprite => "unknown GUI draw sprite",
             Self::UnsupportedSpriteBlend => "this blend is not supported for GUI sprites",
@@ -75,6 +81,7 @@ impl std::error::Error for GuiDrawError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Text(error) => Some(error),
+            Self::TextLayout(error) => Some(error),
             _ => None,
         }
     }
@@ -121,6 +128,20 @@ pub trait GuiCanvas {
         argb: u32,
         shadow: bool,
     ) -> Result<(), GuiDrawError>;
+
+    /// Wrap and draw a styled label directly in this canvas's pose and scissor, as
+    /// vanilla's `GuiGraphicsExtractor.textWithWordWrap`. `at` is the label's top left
+    /// in local GUI pixels. Returns its dimensions before the enclosing pose. Both
+    /// text measurement and paint use the same layout; no replay list is produced.
+    /// For an off-draw layout, use `ClientHost::visit_text_lines`.
+    fn text_with_word_wrap(
+        &mut self,
+        text: &Text,
+        at: [f32; 2],
+        spec: TextLayoutSpec,
+        argb: u32,
+        shadow: bool,
+    ) -> Result<TextLayoutSize, GuiDrawError>;
 
     /// Draw the stack's 16-pixel GUI item model with its top-left at `at`, passing `seed` to
     /// its model resolver. This does not draw decorations. An empty stack draws nothing;

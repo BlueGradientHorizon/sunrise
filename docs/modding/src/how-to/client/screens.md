@@ -340,58 +340,34 @@ vanilla art).
 
 ## Labels: wrapped text without a widget
 
-A label is text laid out in a box: measured, wrapped and placed, and nothing else. Call
-`DrawContext::text_lines` with the component, the box's width, an alignment and a scale. Draw the
-returned lines in a [canvas group](gui-paint.md#drawing-directly-with-a-canvas), so a refused
-line cannot leave a partial label:
+A label wraps and places a styled component without registering a widget. Call
+[`GuiCanvas::text_with_word_wrap`](gui-paint.md#drawing-directly-with-a-canvas) to lay it out and
+paint it in one operation, inside the current pose and scissor:
 
-```rust
-// From a menu screen draw callback, render_gui_post or another drawing hook.
-use mod_api::client::hud_layout::PoseOp;
-let scale = 2.0;
-let lines = draw.text_lines(&label, 120.0, TextAlign::Centre, scale)?;
+```rust,ignore
+use mod_api::{TextAlign, TextLayoutSize, TextLayoutSpec};
+
+let spec = TextLayoutSpec { max_width: 120.0, align: TextAlign::Centre, scale: 2.0 };
+let mut size = TextLayoutSize::default();
 draw.draw_gui(&mut |canvas| {
-    canvas.scope(
-        &[PoseOp::Translate(x, y), PoseOp::Scale(scale, scale)],
-        None,
-        &mut |label| {
-            for line in &lines.lines {
-                let at = line.at.map(|value| value / scale);
-                label.text(&line.text, at, 0xFFFF_FFFF, false)?;
-            }
-            Ok(())
-        },
-    )
+    size = canvas.text_with_word_wrap(&label, [x, y], spec, 0xFFFF_FFFF, false)?;
+    Ok(())
 })?;
-// lines.width and lines.height size the box you reserved for it.
+// size.width and size.height are in scaled GUI pixels, before the enclosing pose.
 ```
 
-The layout is measured unscaled and answered scaled: the text wraps at `120 / scale` GUI pixels, and
-every dimension and position `text_lines` answers — each line's `at` and `width`, the block's `width`
-and `height` — is in scaled GUI pixels, which is why the lines are drawn inside the same
-`PoseOp::Scale`. The positions are already post-scale coordinates, whereas coordinates inside the
-scale pose are unscaled, so the example divides each line's `at` by `scale` before drawing. A `scale` of one is the text at its own size.
+The width is in label-local GUI pixels after scaling, so the text wraps at `max_width / scale`.
+Wrapping follows `Font.split`: fitting spaces break lines, overlong words break at a character,
+and newline starts another line, including an empty line after a trailing `\n`. A width below
+one unscaled pixel still wraps at one pixel. Styles, legacy formatting, inline sprites and player
+heads are preserved. A centred line sits at `wrap_width / 2 - floor(line_width / 2)` before
+scaling, as in vanilla's `TextAlignment.CENTER.calculateLeft`.
 
-Wrapping is vanilla's: a line breaks at a space that fits, a single word wider than the box is broken at
-a character rather than dropped, and an explicit `\n` starts a new line, so a trailing `\n` leaves an
-empty last line. A width below one pixel still wraps, at one pixel, as `Font.split` does: too narrow a
-box gives one character a line rather than none, and one character alone can still make a line wider
-than the box. Leading spaces are characters like any other and stay in the line.
-
-Each line keeps its styles, and its legacy `§` codes are applied to those styles and dropped, so a line
-drawn alone draws exactly what it measured: a `§r` goes back to the style its run carried, so right
-after a break it restores the tail run's carried style (a bold run stays bold). Draw the line through
-`GuiCanvas::text`; `DrawContext::text` draws plain characters only. A centred line sits at
-`wrapping width / 2 - floor(line width / 2)`, as vanilla's
-`TextAlignment.CENTER.calculateLeft` floors the half line width. `height` is the last line's `at[1]`
-plus one line height, so a scroll container sizes its content from it, and an empty component has no
-line at all.
-
-It refuses, answering no line at all, a `TextLinesRefusal` naming why: a width that is not finite (or
-that dividing by `scale` overflows), a `scale` that is not finite or is zero or less, text that wraps
-into more than 512 lines, or lines holding more than 8192 characters together. This is in-process
-layout, so the serialization depth limit does not apply. Inline sprites and player heads remain
-objects in the returned lines, with their fallbacks.
+Use [`ClientHost::visit_text_lines`](styled-text-measurements.md) to measure or inspect lines
+outside drawing. Both calls return the widest line and the last line's offset plus one line height
+(or zero for empty text). A non-finite width, an overflowing `max_width / scale`, or a non-positive
+or non-finite scale refuses the layout. There is no separate limit on the number of lines or
+characters.
 
 ## An item or a model turned in 3D
 
