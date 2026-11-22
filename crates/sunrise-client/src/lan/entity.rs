@@ -2878,7 +2878,6 @@ mod tests {
                 attachment_sender: None,
                 tracker: &mut tracker,
                 out: &mut out,
-                attachment_sender: None,
             }];
             let mut level = Entities {
                 send_apart_always: Some(threaded),
