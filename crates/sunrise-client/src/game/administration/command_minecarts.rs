@@ -96,13 +96,13 @@ impl Game<'_> {
     /// `CloseableCommandBlockSource.sendSystemMessage` for the cart: its last
     /// output stamped with the time, then `onUpdated`. Nothing when it does
     /// not track output (`CommandSource.NULL`).
-    pub(super) fn cart_command_output(&mut self, id: u32, message: Text) {
+    pub(super) fn cart_command_output(&mut self, id: u32, format: impl FnOnce(Text) -> Text) {
         let updated = self.edit_command_cart(id, |c| {
             if !c.command.track_output {
                 return false;
             }
             let time = chrono::Local::now().format("[%H:%M:%S] ").to_string();
-            c.command.last_output = Some(Text::literal(time).append(message));
+            c.command.last_output = Some(format(Text::literal(time)));
             true
         });
         if updated == Some(true) {
@@ -126,7 +126,7 @@ impl Game<'_> {
             .rules
             .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         if feedback {
-            self.cart_command_output(id, message.clone());
+            self.cart_command_output(id, |timestamp| timestamp.append(message.clone()));
         }
         if broadcast
             && feedback

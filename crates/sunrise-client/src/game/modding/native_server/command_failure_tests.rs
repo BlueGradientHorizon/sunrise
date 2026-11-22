@@ -5,7 +5,14 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client::{gamerules, text};
+use sunrise_client::{
+    gamerules,
+    lan::{Out, PlayerSender},
+    text,
+};
+use sunrise_protocol::{
+    buf::Reader, ids::play::clientbound::SYSTEM_CHAT, packets::play::Clientbound,
+};
 
 struct FailingCommand(Arc<AtomicUsize>);
 
@@ -23,16 +30,20 @@ impl mod_api::Hooks for FailingCommand {
                 Err(mod_api::Text::literal("No room for another item").into())
             }),
         );
-        event
-            .commands
-            .push(mod_api::Command::new("rejectinvalid").executes(|_, _, _| {
-                let mut message = mod_api::Text::literal("unserializable failure");
-                // NbtAccounter.unlimitedHeap still limits nesting to 512.
-                for _ in 0..512 {
-                    message = mod_api::Text::literal("").append(message);
-                }
-                Err(message.into())
-            }));
+        for (usage, depth) in [
+            ("rejectinvalid", mod_api::text::MAX_TEXT_DEPTH + 1),
+            ("rejectformatted", mod_api::text::MAX_TEXT_DEPTH - 1),
+        ] {
+            event
+                .commands
+                .push(mod_api::Command::new(usage).executes(move |_, _, _| {
+                    let mut message = mod_api::Text::literal("unserializable failure");
+                    for _ in 1..depth {
+                        message = mod_api::Text::literal("").append(message);
+                    }
+                    Err(message.into())
+                }));
+        }
     }
 }
 
@@ -94,6 +105,38 @@ fn executor_failure_respects_source_silence_and_stores_zero() {
                             chat[0].plain(),
                             text::Text::tr("command.failed", &[]).plain()
                         );
+
+                        // The raw API component at this depth passes validation, but
+                        // its encoded `extra` lists and the red parent exceed wire depth.
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        game.lan.as_mut().unwrap().hub.update_guest(12, |guest| {
+                            guest.sender = PlayerSender::new(tx, Arc::default());
+                        });
+                        let (ok, outcome) = game.recording_command_outcome(|game| {
+                            game.run_guest_command(command("rejectformatted", false))
+                        });
+                        assert!(!ok);
+                        assert_eq!(outcome, Some((false, 0)));
+                        let received: Vec<_> = rx
+                            .try_iter()
+                            .flat_map(|out| match out {
+                                Out::Packet(body) => vec![body],
+                                Out::Packets(bodies) => bodies,
+                                Out::Disconnect(_) => Vec::new(),
+                            })
+                            .filter_map(|body| {
+                                let mut reader = Reader::new(&body);
+                                (reader.varint().unwrap() == SYSTEM_CHAT).then(|| {
+                                    let Clientbound::SystemChat(chat) =
+                                        Clientbound::decode(SYSTEM_CHAT, reader.rest()).unwrap()
+                                    else {
+                                        unreachable!()
+                                    };
+                                    crate::game::remote::remote_text(&chat.content).plain()
+                                })
+                            })
+                            .collect();
+                        assert_eq!(received, [text::Text::tr("command.failed", &[]).plain()]);
 
                         assert!(game.run_guest_command(command(
                             "data merge storage test:out {success:42,result:42}",
