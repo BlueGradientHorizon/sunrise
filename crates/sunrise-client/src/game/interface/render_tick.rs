@@ -733,12 +733,15 @@ impl Game<'_> {
             }
             let nausea = self.potions.effects.get("nausea").map(nausea_has_effect);
             self.screen_fx.tick_spinning(nausea);
-            // LocalPlayer.aiStep: water vision checks `this.isEyeInFluid(FluidTags.WATER)` and `this.isSpectator()`.
-            let in_water = self
-                .player
-                .as_ref()
-                .is_some_and(|p| p.is_eye_in_fluid(WATER));
-            self.fog.tick(in_water, self.own_player_is_spectator());
+            // A client of a server advances `LocalPlayer.waterVisionTime` in `tick_local_player`
+            // (after `Entity.baseTick`'s fluid sample, matching `LocalPlayer.aiStep`).
+            if self.remote.is_none() {
+                let in_water = self
+                    .player
+                    .as_ref()
+                    .is_some_and(|p| p.is_eye_in_fluid(WATER));
+                self.fog.tick(in_water, self.own_player_is_spectator());
+            }
             let (rain, sky_light, rains) = self.rain_fog_inputs(e);
             update_rain_fog(&mut self.fog, rain, sky_light, rains, 1.0);
         }
