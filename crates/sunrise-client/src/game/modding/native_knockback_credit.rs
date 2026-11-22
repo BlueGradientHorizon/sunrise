@@ -24,14 +24,13 @@ pub(super) struct CreditPlan {
     responsibility: Option<Option<(PlayerCredit, CreditEntity)>>,
     responsibility_live: bool,
     fixed: CreditEntity,
-    /// A villager victim's hurt gossip: the player acting and the mob (or other entity)
-    /// attacking, with that attacker's UUID and whether it was made up for this hit.
+    /// Canonical UUIDs of the causing entity for a villager's hurt gossip.
     hurt_by: Option<HurtBy>,
 }
 
 struct HurtBy {
     player: Option<[i32; 4]>,
-    attacker: Option<(u32, [i32; 4], bool)>,
+    attacker: Option<(u32, [i32; 4])>,
 }
 
 pub(super) struct CreditLoan<'a> {
@@ -65,14 +64,14 @@ impl KnockbackCredit for CreditLoan<'_> {
         }
     }
 
-    fn hurt_by_uuid(&self, source: &Damage) -> Option<([i32; 4], bool)> {
+    fn hurt_by_uuid(&self, source: &Damage) -> Option<[i32; 4]> {
         let hurt_by = self.plan.hurt_by.as_ref()?;
         match source.attacker? {
-            Who::Player => hurt_by.player.map(|uuid| (uuid, false)),
+            Who::Player => hurt_by.player,
             Who::Mob(id) => hurt_by
                 .attacker
-                .filter(|(attacker, ..)| *attacker == id)
-                .map(|(_, uuid, minted)| (uuid, minted)),
+                .filter(|&(attacker, _)| attacker == id)
+                .map(|(_, uuid)| uuid),
         }
     }
 
@@ -113,22 +112,7 @@ impl KnockbackCredit for CreditLoan<'_> {
 }
 
 impl Game<'_> {
-    /// An attacking entity's UUID, and whether it had none yet and got one made up for this hit
-    /// (`uuid_for` makes it for good when the hit's mob event is handled).
-    pub(super) fn attacker_uuid_of(&self, id: u32) -> ([i32; 4], bool) {
-        match self.known_attacker_uuid(id) {
-            Some(uuid) => (uuid, false),
-            None => (
-                *self
-                    .minted_attackers
-                    .borrow_mut()
-                    .entry(id)
-                    .or_insert_with(sunrise_client::save::random_uuid),
-                true,
-            ),
-        }
-    }
-    /// An attacking entity's UUID if it has one (nothing is made up).
+    /// The attacking entity's canonical UUID, already assigned on creation or admission.
     pub(super) fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
         self.known_resident_entity_uuid_at(self.dim.key(), id)
             .or_else(|| self.persist.uuids.get(&id).copied())
@@ -228,10 +212,7 @@ impl Game<'_> {
                 // The hit's own player (a guest's cloud's owner), not whoever acts now.
                 player: attack.player_uuid,
                 attacker: match attacker {
-                    Some(Who::Mob(id)) => {
-                        let (uuid, minted) = self.attacker_uuid_of(id);
-                        Some((id, uuid, minted))
-                    }
+                    Some(Who::Mob(id)) => self.known_attacker_uuid(id).map(|uuid| (id, uuid)),
                     _ => None,
                 },
             });

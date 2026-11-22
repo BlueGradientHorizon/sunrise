@@ -3634,9 +3634,6 @@ struct Game<'a> {
     attack_item: Option<Arc<str>>,
     /// Mobs a player hurt (`LivingEntity.lastHurtByPlayer`), by player UUID.
     last_hurt_by_player: HashMap<u32, combat::PlayerCredit>,
-    /// UUIDs made up for attackers that had none, until their hit's mob event is handled and
-    /// they join `persist.uuids`: a second hit in between finds the same one.
-    minted_attackers: std::cell::RefCell<HashMap<u32, [i32; 4]>>,
     /// Leashed mobs a player killed, with the killer's UUID: the lead drops
     /// on the corpse's next tick (`Leashable.tickLeash`), for the mods. With
     /// the corpse's dimension: each level's tick prunes only its own.
@@ -13753,7 +13750,6 @@ impl<'a> Game<'a> {
             attack_ticks: 100,
             attack_item: None,
             last_hurt_by_player: HashMap::new(),
-            minted_attackers: Default::default(),
             lead_killers: HashMap::new(),
             love_cause: HashMap::new(),
             died: Default::default(),

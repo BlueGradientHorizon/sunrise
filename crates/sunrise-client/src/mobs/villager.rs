@@ -381,10 +381,9 @@ pub struct Ext {
 pub fn ext(m: &Mob) -> Option<&Ext> {
     m.extra.villager.as_deref()
 }
-/// `Villager.setLastHurtByMob` of an accepted hit by `source`'s attacker (`uuid`, made up for
-/// this hit if `minted`): its gossip lands now, and the angry event, the hitting player's offers
-/// and a made-up UUID follow as a mob event.
-pub fn hurt_by(m: &mut Mob, source: &super::Damage, uuid: [i32; 4], minted: bool) {
+/// `Villager.setLastHurtByMob`: gossip names the accepted hit's causing entity.
+/// The anger and the hitting player's offers are delivered by the owning game.
+pub fn hurt_by(m: &mut Mob, source: &super::Damage, uuid: [i32; 4]) {
     let Some(who) = source.attacker else { return };
     if m.species() != Species::Villager || source.kind.no_anger() {
         return;
@@ -399,10 +398,6 @@ pub fn hurt_by(m: &mut Mob, source: &super::Damage, uuid: [i32; 4], minted: bool
         mob: m.id,
         angry: m.alive() && player.is_some(),
         player,
-        attacker_uuid: match who {
-            super::Who::Mob(id) if minted => Some((id, uuid)),
-            _ => None,
-        },
     });
 }
 pub fn ext_mut(m: &mut Mob) -> &mut Ext {

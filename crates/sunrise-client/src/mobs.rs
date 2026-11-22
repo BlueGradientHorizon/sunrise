@@ -1984,7 +1984,6 @@ pub enum MobEvent {
         mob: u32,
         angry: bool,
         player: Option<[i32; 4]>,
-        attacker_uuid: Option<(u32, [i32; 4])>,
     },
     /// `OfferFlowerGoal.stop`: the item goes to the target's antenna (saddle)
     /// slot if it is empty, as a guaranteed drop.
@@ -3284,6 +3283,7 @@ pub fn apply_brain_events_until_hurt(
                 };
                 let attack = crate::health::Attack {
                     attacker: mob as i32,
+                    attacker_uuid: level.mob_uuid(mob),
                     held: [held, None],
                     ..Default::default()
                 };

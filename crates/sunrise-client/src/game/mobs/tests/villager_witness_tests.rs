@@ -63,6 +63,8 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
                 .push(Mob::new(id, kind.clone(), Vec3::new(x, 100.0, 1.0), 0.0));
         }
         game.persist.uuids.insert(92, [0, 0, 0, 4]);
+        game.native_mobs_joined(0, false);
+        let mob_uuid = game.persist.uuids[&90];
         // A player's hit names its player through the player entity.
         game.player = Some(
             sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(1.0, 100.0, 1.0))
@@ -91,7 +93,7 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
         };
         assert!(hit(game, Who::Mob(90), 1.0));
         // The attacker is gone before anything ticks; the gossip is in already.
-        let zombie = game.mobs.remove(0);
+        game.mobs.remove(0);
         assert_eq!(game.mobs[0].id, 91);
         assert!(hit(game, Who::Player, 1.0));
         assert!(guest_hit(game, guest, 1.0));
@@ -100,11 +102,6 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
             "the cooldown refuses a hit this weak"
         );
         assert!(guest_hit(game, 0x5, 1000.0));
-        let mob_uuid = *game
-            .persist
-            .uuids
-            .get(&zombie.id)
-            .expect("the zombie's made-up UUID is kept at the hit");
         let got = [
             mob_uuid,
             host,
@@ -165,12 +162,16 @@ fn two_hits_of_a_mob_without_uuid_share_one() {
             .unwrap()
             .clone();
         game.mobs
-            .push(Mob::new(91, kind, Vec3::new(1.0, 100.0, 1.0), 0.0));
-        let first = game.attacker_uuid_of(90).0;
-        let second = game.attacker_uuid_of(90).0;
-        assert_eq!(first, second, "two hits before the drain mint one UUID");
-        game.persist.uuids.insert(90, first);
-        assert_eq!(game.attacker_uuid_of(90), (first, false));
+            .push(Mob::new(91, kind.clone(), Vec3::new(1.0, 100.0, 1.0), 0.0));
+        game.mobs
+            .push(Mob::new(90, kind, Vec3::new(2.0, 100.0, 1.0), 0.0));
+        game.native_mobs_joined(0, false);
+        let uuid = game.persist.uuids[&90];
+        let attack = Damage::mob(90, [2.0, 100.0, 1.0]);
+        assert!(game.mob_hits_mob(91, 1.0, attack));
+        assert!(game.mob_hits_mob(91, 2.0, attack));
+        assert_eq!(game.persist.uuids[&90], uuid);
+        assert_eq!(game.villager_reputation_of(91, uuid), -50);
     });
 }
 
@@ -202,7 +203,7 @@ fn hurt_gossip_belongs_to_the_hits_own_player() {
                 &credit,
                 &Damage::player([1.0; 3])
             ),
-            Some((guest, false))
+            Some(guest)
         );
     });
 }

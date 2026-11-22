@@ -489,17 +489,7 @@ impl Game<'_> {
     /// `Villager.setLastHurtByMob` after its gossip landed with the hit
     /// (`hurt_by` in the credit loan): entity event 13 for a living villager hit by a
     /// player, and `onReputationEventFrom` refreshing that player's open offers.
-    pub(super) fn villager_hurt_event(
-        &mut self,
-        mob: u32,
-        angry: bool,
-        player: Option<[i32; 4]>,
-        attacker_uuid: Option<(u32, [i32; 4])>,
-    ) {
-        if let Some((id, uuid)) = attacker_uuid {
-            self.persist.uuids.get_or_insert_with(id, || uuid);
-            self.minted_attackers.borrow_mut().remove(&id);
-        }
+    pub(super) fn villager_hurt_event(&mut self, mob: u32, angry: bool, player: Option<[i32; 4]>) {
         if angry {
             self.mob_event_particles(mob, 13);
         }
