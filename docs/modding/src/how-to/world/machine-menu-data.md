@@ -241,7 +241,7 @@ chunk unloads is not told again from that tick on, so a looping sound it started
 stops it: the example stops a hum once its machine's handle no longer reads (removal, replacement and unload
 all end a handle), and a type with states that don't tick would also stop it when the state changes. Leaving
 or changing levels stops every sound. Add particles from the same tick with `host.add_particle`
-([hook notes](../../reference/hook-notes.md#client-ticks-hums-smoke-and-moving-parts)).
+(hook notes).
 
 `player.open_menu(host, entity)` also returns `Result<bool, BlockEntityError>`:
 `Ok(true)` means opened, `Ok(false)` means a non-provider, cancelled open or
