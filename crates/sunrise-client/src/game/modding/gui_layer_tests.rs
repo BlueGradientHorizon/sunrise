@@ -1003,7 +1003,7 @@ fn options_controller_notice_paints_after_screen_post_despite_hud_cancel() {
                 game.open_options(false);
                 game.controller_notice
                     .raise(Notice::new("Controller disconnected", "Use the keyboard"));
-                let frame = game.hud_layers([640, 480]);
+                let frame = game.hud([640, 480]);
                 let post = frame
                     .vertices
                     .iter()
