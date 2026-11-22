@@ -200,6 +200,13 @@ groups already built; it does not call factories again. Provider registration is
 a group chooses the draw layer and quota for the listed particle types, not how those
 particles move.
 
+## Block hit and destroy debris
+
+Use the [`BlockPart` hit/destroy callbacks](../../concepts/parts/block-parts.md#hit-and-destroy-particles)
+to replace or omit a block's ordinary crumbs. The raw client level helpers queue a hit crumb
+or an individual terrain particle without dispatching the callback again. They are separate from
+`host.add_particle`, which follows the ordinary camera and Particles setting checks.
+
 ## Client fireworks
 
 `ClientHost::create_fireworks` draws a firework's explosions from a `FireworksRequest`: the
@@ -232,5 +239,5 @@ outline or collision boxes with an empty context at a position in that level.
 The supplied state can differ from the world's block, without changing it;
 level-dependent shape inputs come from the actual level. To query the
 stored block, first read `level.block_state(host, pos)` and pass that state.
-This server read returns block-local boxes, or `None` for a
-stale handle, closed level or client. Parked levels are supported.
+Returns block-local boxes for the current client level and for open server levels,
+including parked levels, or `None` for an unknown state, stale handle or unavailable level.
