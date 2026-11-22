@@ -240,6 +240,7 @@ pub(crate) fn install() {
             can_fit_inside_container_items: |context, stack, fits| {
                 item_part(context, "can_fit_inside_container_items", stack, fits);
             },
+            item_name: |_, _, _| {},
         });
         assert!(
             installed,

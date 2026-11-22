@@ -375,6 +375,7 @@ pub(crate) fn install_client_hooks() {
         is_combine_repairable: crate::game::native_item_menu_parts::is_combine_repairable,
         can_fit_inside_container_items:
             crate::game::native_item_menu_parts::can_fit_inside_container_items,
+        item_name: crate::game::native_item_menu_parts::item_name,
     }) {
         log::warn!("Native client hooks already installed; keeping the first callbacks");
     }
