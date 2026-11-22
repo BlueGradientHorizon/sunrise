@@ -5271,7 +5271,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .hub
-                .sync
+                .sync_data()
                 .builtin
                 .get("minecraft:item")
                 .unwrap()
