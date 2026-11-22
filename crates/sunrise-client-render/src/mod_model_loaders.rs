@@ -60,9 +60,6 @@ fn freeze(loaders: Vec<Answered<ModelLoaderRegistration>>) -> (ModelLoaderTable,
                   config: &str,
                   textures: &BTreeMap<String, String>|
                   -> Result<Vec<LoaderQuad>, String> {
-                let _phase = mod_api::__private::PhaseOwner::scope(
-                    mod_api::__private::ModPhase::Registration,
-                );
                 let input = ModelLoaderInput::new(model, config, textures);
                 let owner = callback.owner();
                 let quads = owner

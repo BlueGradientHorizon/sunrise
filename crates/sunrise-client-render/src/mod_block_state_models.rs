@@ -92,7 +92,7 @@ pub(crate) fn instantiate(
     let block = Identifier::parse(block).map_err(|e| format!("block {block}: {e}"))?;
     let config = sunrise_core::json_nbt::json_to_tag(config)
         .map_err(|e| format!("definition type {kind}: its JSON doesn't convert to NBT: {e}"))?;
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+
     let input = BlockStateDefinitionInput::new(&block, &config, states);
     let owner = entry.instantiate.owner();
     let picks = match owner.call(

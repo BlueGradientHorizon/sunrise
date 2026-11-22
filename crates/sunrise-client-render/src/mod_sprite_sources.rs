@@ -129,8 +129,7 @@ impl ModSources for SourceReader<'_> {
         let Some(entry) = self.read(|table| table.get(kind).cloned()) else {
             return Vec::new();
         };
-        let _phase =
-            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+
         let input = SpriteSourceInput::new(atlas, config, resources.as_ref());
         let owner = entry.list.owner();
         match owner.call("sprite source", "sprite_source", || {

@@ -71,7 +71,6 @@ pub trait PlayerWorldBackendMut {
     /// player, a dead one, a dimension the game doesn't have, a yaw that is not finite and a
     /// canceled change. During `player_respawn_position` only, the removed original may set
     /// this point even after death, so it can be copied to the replacement for future respawns.
-    #[access(WorldOnly)]
     fn player_set_respawn_config(
         &mut self,
         player: PlayerRef,
@@ -118,6 +117,5 @@ pub trait PlayerWorldBackendMut {
     /// world) and `Alive` (health above 0 and the game not won: the Respawn button
     /// ignores exactly that player; one who has won the game and is watching the End poem is
     /// respawned even alive, as the button does).
-    #[access(WorldOnly)]
     fn player_respawn(&mut self, player: PlayerRef) -> Result<(), RespawnRefusal>;
 }

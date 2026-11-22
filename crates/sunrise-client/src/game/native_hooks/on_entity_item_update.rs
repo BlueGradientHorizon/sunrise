@@ -494,8 +494,6 @@ mod on_entity_item_update_tests {
             || {
                 with_game(|game| {
                     floor(game);
-                    let _world =
-                        mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                     let item = rest(game, "minecraft:iron_ingot", 2.5, 2.5);
                     let peer = rest(game, "minecraft:stick", 6.5, 2.5);
                     let subject = game.item_entity(game.entity(item).unwrap()).unwrap();
@@ -573,8 +571,6 @@ mod on_entity_item_update_tests {
             || {
                 with_game(|game| {
                     floor(game);
-                    let _world =
-                        mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                     let ahead = rest(game, "minecraft:stick", 1.5, 2.5);
                     let subject = rest(game, "minecraft:iron_ingot", 2.5, 2.5);
                     let behind = rest(game, "minecraft:gold_ingot", 3.5, 2.5);

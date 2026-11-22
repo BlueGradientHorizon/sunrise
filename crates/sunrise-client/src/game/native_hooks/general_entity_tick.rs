@@ -152,8 +152,6 @@ mod tests {
             || {
                 with_game(|game| {
                     game.options.dedicated = Some(Vec::new());
-                    let _world =
-                        mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                     game.spawn_item(ItemStack::new("minecraft:stick", 1), [0.0; 3], [0.0; 3], 0);
                     let peer = game
                         .item_entity(game.entity(game.dropped[0].id).unwrap())

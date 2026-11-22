@@ -116,7 +116,6 @@ pub trait ClientRenderClientHost {
     /// a model. For a specific block or fluid face, use [`Self::block_tint_color`].
     /// Returns [`LevelReadError::Unavailable`] outside the World phase or when the host has
     /// no client level to read.
-    #[access(WorldOnly)]
     fn biome_tint(&self, pos: [i32; 3], resolver: ColorResolver) -> Result<u32, LevelReadError>;
     /// Side: client.
     /// For a client mod drawing a block's faces itself (a copycat drawing its material's, from
@@ -127,7 +126,6 @@ pub trait ClientRenderClientHost {
     /// colormap can give it a different colour. Returns `None` for an untinted face (-1, or an
     /// index past the state's tints). For a biome colour independent of the face's tint source,
     /// use [`Self::biome_tint`].
-    #[access(WorldOnly)]
     fn block_tint_color(&self, state: BlockState, tint_index: i32, pos: [i32; 3]) -> Option<u32>;
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.

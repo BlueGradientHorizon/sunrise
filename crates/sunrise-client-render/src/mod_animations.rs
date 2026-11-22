@@ -251,11 +251,7 @@ fn convert_vector(target: &AnimationTarget, v: [f64; 3]) -> Result<[f32; 3], Str
         AnimationTarget::Rotation => Ok(v.map(|d| d as f32 * 0.017_453_292)),
         // KeyframeAnimations.scaleVec
         AnimationTarget::Scale => Ok(v.map(|d| (d - 1.0) as f32)),
-        AnimationTarget::Custom(bound) => {
-            let _phase =
-                mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-            convert_animation_target(bound, v.map(|d| d as f32))
-        }
+        AnimationTarget::Custom(bound) => convert_animation_target(bound, v.map(|d| d as f32)),
     }
 }
 

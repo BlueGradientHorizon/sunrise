@@ -332,9 +332,8 @@ where
         .map_err(|error| {
             format!("{callback_kind} {kind}: its JSON doesn't convert to NBT: {error}")
         })?;
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+
     let owner = entry.decode.owner();
-    // The owner boundary may drop even a successful decode if a phase refusal latched.
     match owner.call(callback_kind, "decode", || {
         (entry.decode.value())(&config)
             .map(|eval| CallbackValue::new(owner.clone(), callback_kind, "drop_evaluator", eval))
@@ -459,7 +458,7 @@ pub fn decode_item_model(
         return Ok(None);
     };
     let config = new_item_model_config(fields);
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+
     let mut children = ChildrenBuilder {
         fields,
         decode_child,
@@ -519,7 +518,7 @@ pub fn decode_select_property(
         .map_err(|error| {
             format!("{CALLBACK_KIND} {kind}: its JSON doesn't convert to NBT: {error}")
         })?;
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+
     let owner = entry.decode.owner();
     let (decode_case, eval) = match owner.call(CALLBACK_KIND, "decode", || {
         (entry.decode.value())(&config).map(|(decode_case, eval)| {
@@ -558,8 +557,7 @@ pub fn decode_select_property(
                     "{CALLBACK_KIND} {case_kind}: case value doesn't convert to NBT: {error}"
                 ))
             })?;
-            let _phase =
-                mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+
             let owner = decode_case.owner();
             match owner.call(CALLBACK_KIND, "decode_case", || {
                 (decode_case.value())(&tag).map(|key| {
@@ -577,8 +575,6 @@ pub fn decode_select_property(
             }
         },
         move |left, right| {
-            let _phase =
-                mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
             compare_owner.call(CALLBACK_KIND, "compare_case", || {
                 left.downcast_ref::<CallbackValue<SelectCaseKey>>()
                     .map(CallbackValue::value)

@@ -77,7 +77,6 @@ pub trait WorldEditServerHost {
     /// client hooks. `Err` says why nothing was read: another dimension or a
     /// client of a server, `below + above` of 0 or more than the level's height, or a read of more than 1,048,576
     /// blocks (`MAX_READ`; it runs on the server tick, so read big areas in pieces).
-    #[access(WorldOnly)]
     fn read_columns(
         &self,
         dimension: &str,

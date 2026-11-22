@@ -565,7 +565,6 @@ mod biome_tint_tests {
     use super::Game;
     use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::{
-        __private::{ModPhase, PhaseOwner},
         Authority, BiomeColorsEvent, ClientHost, ColorResolver, Hooks, ModEntry,
         prelude::BlockStatesHost,
     };
@@ -596,7 +595,7 @@ mod biome_tint_tests {
                 // The replay fixture opens a client level without connecting to a server.
                 game.init_remote_for_replay().unwrap();
                 game.native_lifecycle.begin_open(Authority::RemoteClient);
-                let _phase = PhaseOwner::scope(ModPhase::World);
+
                 let plains_id = game.res.biomes().id("minecraft:plains");
                 let mut chunk = Chunk::empty(0, 0);
                 for qy in 0..chunk.sections.len() as i32 * 4 {

@@ -178,12 +178,6 @@ impl std::fmt::Display for MicRefusal {
 
 impl std::error::Error for MicRefusal {}
 
-impl crate::AccessRefusal for MicRefusal {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
-}
-
 /// The engine's side of one open microphone capture stream. A mod reaches it through [`MicRef`],
 /// not directly. Reads work from any thread without blocking on a tick or OS callback.
 // no wire: engine-side capture source reached in-process through MicRef
@@ -284,7 +278,6 @@ impl Drop for MicRef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AccessRefusal;
     use std::sync::{
         Mutex,
         atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
@@ -373,8 +366,7 @@ mod tests {
     }
 
     #[test]
-    fn mic_refusal_access_and_display() {
-        assert_eq!(MicRefusal::unavailable(), MicRefusal::Unavailable);
+    fn mic_refusal_display() {
         assert_eq!(MicSpecFault::Channels.to_string(), "channels is not 1 or 2");
         assert_eq!(
             MicSpecFault::Rate.to_string(),

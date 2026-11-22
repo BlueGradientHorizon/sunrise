@@ -69,17 +69,6 @@ impl ClientReloadListenerContext for StartupReloadContext<'_> {
     fn published(&self) -> Option<&dyn ClientReloadHost> {
         None
     }
-
-    fn microphone_devices(&self) -> Result<Vec<mod_api::MicDevice>, mod_api::MicRefusal> {
-        Err(mod_api::MicRefusal::Unavailable)
-    }
-
-    fn open_microphone(
-        &self,
-        _: &mod_api::MicSpec,
-    ) -> Result<mod_api::MicRef, mod_api::MicRefusal> {
-        Err(mod_api::MicRefusal::Unavailable)
-    }
 }
 
 impl Game<'_> {

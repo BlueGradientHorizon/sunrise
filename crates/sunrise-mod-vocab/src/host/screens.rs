@@ -7,13 +7,11 @@ pub trait ScreensClientHost {
     /// A copy of the open `world_preset_editor` screen's working dimension stems.
     /// Stays available to screen hooks while `world_preset_editor` is open alongside the bound
     /// [`PresetEditor`].
-    #[access(ClientSetup)]
     fn preset_editor_dimensions(&self) -> Option<Compound>;
     /// Replace the open `world_preset_editor` screen's working dimension stems. Requires an
     /// overworld, valid dimension ids and type/generator declarations. Returns false outside
     /// `world_preset_editor` or for malformed data; Done commits, Cancel and Escape discard the
     /// copy. Stays available to screen hooks alongside [`PresetEditorDraft::set_dimensions`].
-    #[access(ClientSetup)]
     fn set_preset_editor_dimensions(&self, dimensions: Compound) -> bool;
     /// Side: client.
     /// The position of the currently shown mod menu opening. Use
