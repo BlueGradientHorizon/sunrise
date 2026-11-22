@@ -87,6 +87,7 @@ mod tests {
             "game::native_level_weather::tests::weather_parameters_are_shared_and_strengths_are_local",
             || {
                 with_game(|game| {
+                    game.world_root = game.options.game_dir.clone().unwrap();
                     let level = game.level(game.dim.id()).unwrap();
                     let stale =
                         LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
@@ -131,8 +132,6 @@ mod tests {
                         "refusals change neither interpolant",
                     );
 
-                    let root = tempfile::tempdir().unwrap();
-                    game.world_root = root.path().to_path_buf();
                     let wet_id = "weather_test:wet";
                     let wet = {
                         let _caller = mod_api::content::crash::enter_native_mod(

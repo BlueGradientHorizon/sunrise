@@ -178,6 +178,7 @@ mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             with_guests(|game| {
+                game.world_root = game.options.game_dir.clone().unwrap();
                 game.enter_level(Dim::Nether).unwrap();
                 game.enter_level(Dim::Overworld).unwrap();
                 let overworld = game.level(Dim::Overworld.id()).unwrap();

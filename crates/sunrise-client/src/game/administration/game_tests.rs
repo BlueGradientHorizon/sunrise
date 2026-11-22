@@ -1813,6 +1813,7 @@ pub(in crate::game) mod tests {
                 )];
                 mod_platform::testing::with_mods(mods.into(), || {
                     crate::game::native_entity_refs::tests::with_game(|game| {
+                        game.world_root = game.options.game_dir.clone().unwrap();
                         game.enter_level(Dim::Nether).unwrap();
                         game.enter_level(Dim::Overworld).unwrap();
                         let root = tempfile::tempdir().unwrap();
