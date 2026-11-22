@@ -13,9 +13,10 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.ProblemReporter;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -40,6 +41,9 @@ import net.minecraft.world.level.block.entity.vault.VaultBlockEntity;
 import net.minecraft.world.level.block.entity.vault.VaultSharedData;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.entity.EntityInLevelCallback;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.AbstractClientPlayer;
@@ -89,6 +93,8 @@ public final class VanillaBlockEntityClientTickOracle {
         @Override public HumanoidArm getMainArm() { return HumanoidArm.RIGHT; }
         @Override public boolean isSpectator() { return spectator; }
         @Override public boolean isAlive() { return !dead; }
+        // There are no obstacles along the lid's push: use its displacement directly.
+        @Override public void move(MoverType type, Vec3 delta) { setPos(position().add(delta)); }
     }
 
     /** The client level as these ticks see it. */
@@ -127,8 +133,14 @@ public final class VanillaBlockEntityClientTickOracle {
         @Override public int getMinY() { return -64; }
         @Override public boolean isClientSide() { return true; }
         @Override public <T extends net.minecraft.world.entity.Entity> List<T> getEntitiesOfClass(Class<T> type, net.minecraft.world.phys.AABB box, java.util.function.Predicate<? super T> selector) { return List.of(); }
-        // No entities but the player: a shulker's lid and a bell's search find nobody.
-        @Override public List<net.minecraft.world.entity.Entity> getEntities(net.minecraft.world.entity.Entity except, net.minecraft.world.phys.AABB box, java.util.function.Predicate<? super net.minecraft.world.entity.Entity> selector) { return List.of(); }
+        // The shulker's lid queries the entities in its swept box.
+        @Override public List<Entity> getEntities(Entity except, AABB box, java.util.function.Predicate<? super Entity> selector) {
+            List<Entity> found = new ArrayList<>();
+            for (var player : casePlayers) {
+                if (player != except && box.intersects(player.getBoundingBox()) && selector.test(player)) found.add(player);
+            }
+            return found;
+        }
         // A client plays no sound for `except == null` (ClientLevel.playSeededSound: only the local player's).
         @Override public void playSound(net.minecraft.world.entity.Entity except, double x, double y, double z, SoundEvent sound, SoundSource source, float volume, float pitch) { }
         @Override public void playSound(net.minecraft.world.entity.Entity except, double x, double y, double z, net.minecraft.core.Holder<SoundEvent> sound, SoundSource source, float volume, float pitch) { }
@@ -387,7 +399,10 @@ public final class VanillaBlockEntityClientTickOracle {
                 var entity = net.minecraft.world.entity.Entity.class;
                 set(entity, player, "position", position);
                 set(entity, player, "blockPosition", BlockPos.containing(position));
-                set(entity, player, "dimensions", EntityDimensions.scalable(0.6F, 1.8F));
+                var dimensions = EntityDimensions.scalable(0.6F, 1.8F);
+                set(entity, player, "dimensions", dimensions);
+                set(entity, player, "levelCallback", EntityInLevelCallback.NULL);
+                player.setBoundingBox(dimensions.makeBoundingBox(position));
                 set(entity, player, "uuid", new UUID(0x5355_4e52_4953_45L, 1L));
                 player.dead = pc.get("dead").getAsBoolean();
                 player.spectator = pc.get("spectator").getAsBoolean();

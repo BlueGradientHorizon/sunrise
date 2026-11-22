@@ -1,10 +1,8 @@
-//! `ClientLevel.tickBlockEntities` for spawners, trial spawners and vaults on a server's client,
-//! case by case against vanilla 26.3 (tools/test_block_entity_client_tick_parity.py): each case's
-//! columns arrive in chunk packets (`remote_chunk`), are forgotten and sent again as the server's
-//! packets do, take level events 3011 to 3021 (`level_event_at`) and tick
-//! (`tick_client_block_entities`). Each tick logs one ordered stream of the particles and local
-//! sounds (with the seed each sound's instance takes), each block entity's spin and the level
-//! random's state.
+//! `ClientLevel.tickBlockEntities` for spawners, trial spawners, vaults, campfires, beacons,
+//! potent sulfur and animated block entities on a server's client. Against vanilla 26.3
+//! (`tools/test_block_entity_client_tick_parity.py`), the fixture compares particles, sounds,
+//! spins, beacon beams, animation state and the level random after each tick. Separate cases
+//! exercise ticker enabling, animation lifetimes and when particles join the engine.
 use super::*;
 use std::sync::Arc;
 use sunrise_client::block_entity_anim::Ticker;
@@ -891,26 +889,17 @@ fn a_book_after_a_shulker_lid_reads_the_pushed_player() {
         let table = serde_json::json!({ "kind": "enchanting_table", "pos": [9, 64, 10] });
         let case = case_of(
             1000,
-            [9.3, 64.0, 8.5],
+            [9.3, 64.0, 9.15],
             serde_json::json!([shulker, table]),
             serde_json::json!([]),
         );
         start_case(game, &case, &mut false);
         game.block_entity_event([8, 64, 8], 1, 1);
-        let before = game.player.as_ref().unwrap().position.x;
         tick_phase(game);
-        let player = game.player.as_ref().unwrap().position;
-        assert!(
-            player.x > before,
-            "the lid did not push the player: {before} {}",
-            player.x
-        );
-        let book = &game.be_anims.books[&[9, 64, 10]];
-        let expected = (player.z - 10.5).atan2(player.x - 9.5) as f32;
-        assert!(
-            (book.t_rot - expected).abs() < 1e-5,
-            "{} {expected}",
-            book.t_rot
+        // VanillaBlockEntityClientTickOracle, "shulker pushes before spawner ticks".
+        assert_eq!(
+            game.block_anim([9, 64, 10], 0.5).book.t_rot.to_bits(),
+            0xbfd1_9528
         );
     });
 }
