@@ -138,26 +138,34 @@ fn decode(literal: &str) -> Option<String> {
     Some(out)
 }
 
+/// The token at `at`. Every read of the token list in [`in_attributes`] and [`references`] goes
+/// through here, so a test can count them: the scan reads each token a bounded number of times.
+fn token<'a>(list: &'a [Token<'a>], at: usize) -> Option<&'a Token<'a>> {
+    #[cfg(test)]
+    tests::READS.with(|reads| reads.set(reads.get() + 1));
+    list.get(at)
+}
+
 /// For each token, whether it sits inside an attribute's brackets, `#[…]` or `#![…]`, at any
 /// depth. One pass.
 fn in_attributes(list: &[Token<'_>]) -> Vec<bool> {
     let mut inside = Vec::with_capacity(list.len());
     // Each open bracket, and whether it is or lies inside an attribute's.
     let mut open: Vec<bool> = Vec::new();
-    for (at, token) in list.iter().enumerate() {
+    for at in 0..list.len() {
         let outer = open.last().copied().unwrap_or(false);
-        match token {
-            Token::Punct(b'(' | b'[' | b'{') => {
-                let attribute = *token == Token::Punct(b'[')
+        match token(list, at) {
+            Some(Token::Punct(bracket @ (b'(' | b'[' | b'{'))) => {
+                let attribute = *bracket == b'['
                     && at >= 1
-                    && (list[at - 1] == Token::Punct(b'#')
+                    && (token(list, at - 1) == Some(&Token::Punct(b'#'))
                         || (at >= 2
-                            && list[at - 1] == Token::Punct(b'!')
-                            && list[at - 2] == Token::Punct(b'#')));
+                            && token(list, at - 1) == Some(&Token::Punct(b'!'))
+                            && token(list, at - 2) == Some(&Token::Punct(b'#'))));
                 inside.push(outer);
                 open.push(outer || attribute);
             }
-            Token::Punct(b')' | b']' | b'}') => {
+            Some(Token::Punct(b')' | b']' | b'}')) => {
                 open.pop();
                 inside.push(outer);
             }
@@ -177,7 +185,7 @@ fn references(text: &str, folder: &[String]) -> Result<Vec<String>, String> {
     let in_attribute = in_attributes(&list);
     let mut found = Vec::new();
     let mut depth = 0usize;
-    let resolve = |at: usize, found: &mut Vec<String>| match list.get(at) {
+    let resolve = |at: usize, found: &mut Vec<String>| match token(&list, at) {
         Some(Token::Literal(literal)) => match decode(literal) {
             Some(target) => match inside(folder, &target) {
                 Some(path) => {
@@ -191,13 +199,13 @@ fn references(text: &str, folder: &[String]) -> Result<Vec<String>, String> {
         _ => Err("a path the scan cannot read".to_owned()),
     };
     for at in 0..list.len() {
-        match list[at] {
-            Token::Punct(b'{') => depth += 1,
-            Token::Punct(b'}') => depth = depth.saturating_sub(1),
+        match token(&list, at) {
+            Some(Token::Punct(b'{')) => depth += 1,
+            Some(Token::Punct(b'}')) => depth = depth.saturating_sub(1),
             // `path = "…"` anywhere inside an attribute, `cfg_attr(…, path = …)` included.
-            Token::Ident("path")
-                if list.get(at + 1) == Some(&Token::Punct(b'='))
-                    && list.get(at + 2) != Some(&Token::Punct(b'='))
+            Some(Token::Ident("path"))
+                if token(&list, at + 1) == Some(&Token::Punct(b'='))
+                    && token(&list, at + 2) != Some(&Token::Punct(b'='))
                     && in_attribute[at] =>
             {
                 if depth > 0 {
@@ -206,17 +214,17 @@ fn references(text: &str, folder: &[String]) -> Result<Vec<String>, String> {
                 resolve(at + 2, &mut found)?;
             }
             // `use std::include as inc;`: an `include!` the scan would not see by its name.
-            Token::Ident("include") if list.get(at + 1) == Some(&Token::Ident("as")) => {
+            Some(Token::Ident("include")) if token(&list, at + 1) == Some(&Token::Ident("as")) => {
                 return Err("`include!` under another name".to_owned());
             }
-            Token::Ident("include") if list.get(at + 1) == Some(&Token::Punct(b'!')) => {
-                let close = match list.get(at + 2) {
+            Some(Token::Ident("include")) if token(&list, at + 1) == Some(&Token::Punct(b'!')) => {
+                let close = match token(&list, at + 2) {
                     Some(Token::Punct(b'(')) => b')',
                     Some(Token::Punct(b'[')) => b']',
                     Some(Token::Punct(b'{')) => b'}',
                     _ => continue,
                 };
-                if list.get(at + 4) != Some(&Token::Punct(close)) {
+                if token(&list, at + 4) != Some(&Token::Punct(close)) {
                     return Err("a computed path".to_owned());
                 }
                 resolve(at + 3, &mut found)?;
@@ -375,6 +383,11 @@ pub fn read_sources(dir: &Path, skip: &[&str]) -> Result<Vec<(String, String)>, 
 mod tests {
     use super::*;
 
+    std::thread_local! {
+        /// Token reads by [`token`] on this thread.
+        pub(super) static READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
     fn write(root: &Path, path: &str, text: &str) {
         let path = root.join(path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -515,12 +528,15 @@ mod tests {
         ] {
             assert!(matches!(escapes(text), ReadError::Escapes { .. }), "{text}");
         }
-        // Many `path = …` statements outside attributes are read in one pass.
-        let many = format!("fn f() {{ {} }}", "path = x; ".repeat(400_000));
-        let started = std::time::Instant::now();
+        // Many `path = …` statements outside attributes are read in one pass: each token is read
+        // a bounded number of times, not once per earlier token.
+        let many = format!("fn f() {{ {} }}", "path = x; ".repeat(10_000));
+        let count = tokens(&many).count();
         write(root, "src/lib.rs", &many);
+        READS.with(|reads| reads.set(0));
         assert!(read_sources(root, &[]).is_ok());
-        assert!(started.elapsed() < std::time::Duration::from_millis(1500));
+        let reads = READS.with(std::cell::Cell::get);
+        assert!(reads <= 3 * count, "{reads} token reads for {count} tokens");
         // A `#[path]` inside an inline module nests by its name: not judged.
         assert!(matches!(
             escapes("mod outer { #[path = \"y.rs\"] mod inner; }"),
