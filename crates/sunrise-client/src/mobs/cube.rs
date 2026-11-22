@@ -155,7 +155,7 @@ pub fn move_control(m: &mut Mob, events: &mut Vec<MobEvent>) {
     }
     m.ai.mov.operation = Operation::Wait;
     let speed = (m.ai.mov.speed_modifier * m.movement_speed()) as f32;
-    if m.on_ground {
+    if m.ground.on_ground {
         m.set_speed(speed);
         let delay = m.extra.counter;
         m.extra.counter -= 1;
@@ -240,13 +240,13 @@ pub fn client_tick(m: &mut Mob, events: &mut Vec<MobEvent>) {
     m.anim.vo[SQUISH] = m.anim.v[SQUISH];
     m.anim.v[SQUISH] += (m.anim.v[TARGET_SQUISH] - m.anim.v[SQUISH]) * 0.5;
     let was = m.extra.flag2;
-    if m.on_ground && !was {
+    if m.ground.on_ground && !was {
         landing_splash(m, events);
         m.anim.v[TARGET_SQUISH] = -0.5;
-    } else if !m.on_ground && was {
+    } else if !m.ground.on_ground && was {
         m.anim.v[TARGET_SQUISH] = 1.0;
     }
-    m.extra.flag2 = m.on_ground;
+    m.extra.flag2 = m.ground.on_ground;
     // `AbstractCubeMob.decreaseSquish`; `MagmaCube` multiplies by 0.9.
     m.anim.v[TARGET_SQUISH] *= if m.species() == Species::MagmaCube {
         0.9
@@ -259,7 +259,7 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     let v = &mut m.anim.v;
     v[SQUISH] += (v[TARGET_SQUISH] - v[SQUISH]) * 0.5;
     let was = m.extra.flag2;
-    if m.on_ground && !was {
+    if m.ground.on_ground && !was {
         landing_splash(m, events);
         let squish = match (m.species(), tiny(m)) {
             (Species::SulfurCube, _) => super::sulfur_cube::squish_sound(m),
@@ -272,10 +272,10 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         let vol = super::ai::sound_volume(m);
         events.push(MobEvent::Sound(squish, m.center(), vol, pitch));
         m.anim.v[TARGET_SQUISH] = -0.5;
-    } else if !m.on_ground && was {
+    } else if !m.ground.on_ground && was {
         m.anim.v[TARGET_SQUISH] = 1.0;
     }
-    m.extra.flag2 = m.on_ground;
+    m.extra.flag2 = m.ground.on_ground;
     m.anim.v[TARGET_SQUISH] *= if m.species() == Species::MagmaCube {
         0.9
     } else {
@@ -463,7 +463,7 @@ impl Goal for CubeRandomDirection {
     }
     fn can_use(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
         m.ai.target.is_none()
-            && (m.on_ground || m.is_in_liquid() || m.has_effect("minecraft:levitation"))
+            && (m.ground.on_ground || m.is_in_liquid() || m.has_effect("minecraft:levitation"))
     }
     fn tick(&mut self, m: &mut Mob, _: &mut Cx) {
         self.next -= 1;
@@ -679,7 +679,7 @@ mod golem_touch_tests {
                 0.0,
             );
             set_size(&mut slime, 2);
-            slime.on_ground = true;
+            slime.ground.on_ground = true;
             slime.extra.flag2 = true;
             ai_step(&mut slime, &w, &mut events);
         });
@@ -767,7 +767,7 @@ mod keep_jumping_tests {
                     0.0,
                 );
                 m.no_ai = true;
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 m.extra.flag2 = false;
                 let mut lr = crate::health::TestLevel::new(0);
                 let mut events = Vec::new();

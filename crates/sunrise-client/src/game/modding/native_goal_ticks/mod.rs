@@ -310,8 +310,8 @@ impl GoalCx<'_, '_> {
 
     fn r_entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
         match self.resolve(entity)? {
-            Resolved::Own => Some(self.m.on_ground),
-            Resolved::Live(mob) => Some(mob.on_ground),
+            Resolved::Own => Some(self.m.ground.on_ground),
+            Resolved::Live(mob) => Some(mob.ground.on_ground),
             // Not carried by the snapshot or a player's view.
             _ => None,
         }
@@ -758,11 +758,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
     }
 
     fn mob_on_block(&self, mob: &Mob) -> [i32; 3] {
-        let support = mob
-            .on_ground
-            .then(|| self.supporting_block(mob.position, mob.bounds()))
-            .flatten();
-        super::native_entity_motion::on_block_position(support, mob.position)
+        super::native_entity_motion::on_block_position(mob.ground.supporting_block, mob.position)
     }
 
     fn entities_team_damage_allowed(

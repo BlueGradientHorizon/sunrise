@@ -340,10 +340,10 @@ pub fn client_sounds(m: &mut Mob, events: &mut Vec<MobEvent>) {
 /// `Breeze.playAmbientSound` (a local sound at volume and pitch 1) and its
 /// sound selection.
 pub fn ambient(m: &Mob) -> Option<&'static str> {
-    if m.ai.target.is_some() && m.on_ground {
+    if m.ai.target.is_some() && m.ground.on_ground {
         return None;
     }
-    Some(if m.on_ground {
+    Some(if m.ground.on_ground {
         "entity.breeze.idle_ground"
     } else {
         "entity.breeze.idle_air"
