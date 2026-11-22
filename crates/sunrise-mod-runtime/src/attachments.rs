@@ -669,9 +669,9 @@ impl<T: Clone + Send + Sync + 'static> AttachmentOps<'_, T> {
         if let Some(value) = self.get_existing(store, holder)? {
             return Ok(value);
         }
-        let value = (self.raw().default)();
-        self.keep(store, holder, value.clone(), AttachmentWrite::Default)?;
-        Ok(value)
+        let value = Arc::new((self.raw().default)());
+        self.keep(store, holder, Arc::clone(&value), AttachmentWrite::Default)?;
+        Ok((*value).clone())
     }
     fn has<S: AttachmentStore + ?Sized>(
         &self,
@@ -715,18 +715,20 @@ impl<T: Clone + Send + Sync + 'static> AttachmentOps<'_, T> {
             policy: raw.policy(),
             write: AttachmentWrite::Decoded,
         };
+        // Do not create a second T until the fallible store has accepted the write.
+        let value = Arc::new(value);
         store.store(
             holder,
             AttachmentStoreWrite {
                 id: (raw.namespace, raw.name),
                 descriptor: raw,
                 engine_owned: matches!(self, Self::Raw(_)),
-                value: Arc::new(value.clone()),
+                value: value.clone(),
                 form,
                 promotion: Some(binding),
             },
         )?;
-        Ok(Some(value))
+        Ok(Some((*value).clone()))
     }
     fn with_decoded<S: AttachmentStore + ?Sized, R>(
         &self,
@@ -752,7 +754,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentOps<'_, T> {
         {
             return Err(AttachmentError::TypeMismatch);
         }
-        self.keep(store, holder, value, AttachmentWrite::Set)
+        self.keep(store, holder, Arc::new(value), AttachmentWrite::Set)
     }
     fn remove<S: AttachmentStore + ?Sized>(
         &self,
@@ -783,7 +785,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentOps<'_, T> {
         &self,
         store: &mut S,
         holder: Holder,
-        value: T,
+        value: Arc<T>,
         write: AttachmentWrite,
     ) -> Result<(), AttachmentError> {
         let raw = self.raw();
@@ -792,7 +794,6 @@ impl<T: Clone + Send + Sync + 'static> AttachmentOps<'_, T> {
             .as_ref()
             .map(|codec| (codec.encode)(&value))
             .transpose()?;
-        let value: AttachmentValue = Arc::new(value);
         let form = AttachmentForm {
             encoded,
             synced: None,

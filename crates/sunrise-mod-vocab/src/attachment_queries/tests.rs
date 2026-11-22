@@ -400,24 +400,15 @@ fn a_captured_bucket_refuses_another_live_key_of_the_same_type() {
     );
 }
 
+fn counter_on_disk(n: i32) -> Attachments {
+    let payload = [("value".into(), Tag::Int(n))].into();
+    let envelope = [("value".into(), Tag::Compound(payload))].into();
+    let names = [("counter".into(), Tag::Compound(envelope))].into();
+    Attachments::from_nbt([("mapping".into(), Tag::Compound(names))].into())
+}
+
 #[test]
 fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_namespace() {
-    let payload = |n| [("value".into(), Tag::Int(n))].into();
-    let disk = |n| {
-        Attachments::from_nbt(
-            [(
-                "mapping".into(),
-                Tag::Compound(
-                    [(
-                        "counter".into(),
-                        Tag::Compound([("value".into(), Tag::Compound(payload(n)))].into()),
-                    )]
-                    .into(),
-                ),
-            )]
-            .into(),
-        )
-    };
     let key = crate::parts::install_attachment_fixture(
         "mapping",
         AttachmentDescriptor::new("mapping:counter", || 0i32).serialize(AttachmentCodec {
@@ -430,7 +421,7 @@ fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_names
     );
     let (from, to) = (Holder::Entity(1), Holder::Entity(2));
     let mut host = Store {
-        maps: HashMap::from([(from, disk(99)), (to, disk(1))]),
+        maps: HashMap::from([(from, counter_on_disk(99)), (to, counter_on_disk(1))]),
         read_from: Some(from),
         ..Default::default()
     };
@@ -438,7 +429,7 @@ fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_names
         key.get_existing(&mut host, to),
         Err(AttachmentError::Decode)
     );
-    assert_eq!(host.maps[&to].to_nbt(), disk(1).to_nbt());
+    assert_eq!(host.maps[&to].to_nbt(), counter_on_disk(1).to_nbt());
     host.read_from = None;
     assert_eq!(key.get_existing(&mut host, to), Ok(Some(1)));
 
@@ -450,5 +441,91 @@ fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_names
         key.set(&mut host, to, 42),
         Err(AttachmentError::InvalidNamespace)
     );
+    assert_eq!(host.maps[&to].to_nbt(), malformed);
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_refused_promotion_or_default_drops_only_one_value() {
+    use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+    const CHILD: &str = "SUNRISE_ATTACHMENT_PROMOTION_DROP_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--ignored",
+                "--exact",
+                "attachment_queries::tests::a_refused_promotion_or_default_drops_only_one_value",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("test result: ok. 1 passed;"),
+            "the isolated refusal test did not pass:\n{stdout}{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+
+    static CLONES: AtomicUsize = AtomicUsize::new(0);
+    static DROPS: AtomicUsize = AtomicUsize::new(0);
+    struct PanickingValue;
+    impl Clone for PanickingValue {
+        fn clone(&self) -> Self {
+            CLONES.fetch_add(1, Relaxed);
+            Self
+        }
+    }
+    impl Drop for PanickingValue {
+        fn drop(&mut self) {
+            DROPS.fetch_add(1, Relaxed);
+            panic!("refused attachment value destructor");
+        }
+    }
+    let key = crate::parts::install_attachment_fixture(
+        "mapping",
+        AttachmentDescriptor::new("mapping:counter", || PanickingValue).serialize(
+            AttachmentCodec {
+                encode: |_| Ok(Compound::new()),
+                decode: |_| Ok(PanickingValue),
+            },
+        ),
+    );
+    let (from, to) = (Holder::Entity(1), Holder::Entity(2));
+    let mut host = Store {
+        maps: HashMap::from([(from, counter_on_disk(99)), (to, counter_on_disk(1))]),
+        read_from: Some(from),
+        ..Default::default()
+    };
+    let run = |host: &mut Store, default| {
+        let result = crate::runtime::contain_callback(
+            || {
+                if default {
+                    key.get(host, to).err()
+                } else {
+                    key.get_existing(host, to).err()
+                }
+            },
+            |_| {},
+        );
+        assert!(
+            result.is_none(),
+            "the single destructor panic should reach the callback fence"
+        );
+    };
+    run(&mut host, false);
+    assert_eq!(DROPS.load(Relaxed), 1);
+    assert_eq!(host.maps[&to].to_nbt(), counter_on_disk(1).to_nbt());
+
+    // No entry is visible to the read adapter, but the real store must refuse the
+    // default because its destination preserves a malformed namespace.
+    let malformed: Compound = [("mapping".into(), Tag::Int(3))].into();
+    host.maps.insert(from, Attachments::default());
+    host.maps
+        .insert(to, Attachments::from_nbt(malformed.clone()));
+    run(&mut host, true);
+    assert_eq!(DROPS.load(Relaxed), 2);
+    assert_eq!(CLONES.load(Relaxed), 0);
     assert_eq!(host.maps[&to].to_nbt(), malformed);
 }
