@@ -13281,11 +13281,7 @@ impl<'a> Game<'a> {
             &gui.atlas.sprites,
             &gui.atlas.translucent,
         );
-        particles.set_block_state_source(|| {
-            api_values::block_state::current()
-                .ok()
-                .map(|states| -> sunrise_client::particles::BlockStates { states })
-        });
+        particles.set_block_state_source(Game::particle_block_states);
         let resource_source = pack.source.clone();
         let (pack, gui) = if let Some(initial) = initial {
             let mut unpublished = pack.clone();
