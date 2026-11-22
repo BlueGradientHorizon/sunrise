@@ -17,7 +17,7 @@ use sunrise_client::actions::Action;
 use sunrise_client::entity_rules::EntityRules;
 use sunrise_client::{
     blocks::Fluid,
-    collisions::{EntityCollisions, SceneCollisions},
+    collisions::{EntityCollisions, SceneCollisions, no_collision_with_context},
     items::ItemStack,
     mesher::Vertex,
     mobs::{
@@ -215,6 +215,17 @@ pub(super) fn put_ticks_frozen(map: &mut sunrise_core::nbt::Compound, ticks: i32
 pub(super) const WIDTH: f64 = 1.375;
 pub(super) const HEIGHT: f64 = 0.5625;
 impl Boat {
+    fn apply_step_writes(&mut self, velocity: Vec3, writes: Vec<mod_api::EntityWrite>) {
+        self.velocity = velocity;
+        super::entity::apply_contact_writes(
+            writes,
+            &mut self.velocity,
+            Some(&mut self.fall_distance),
+            Some(&mut self.stuck),
+            Some(&mut self.fire_ticks),
+        );
+    }
+
     /// `AbstractBoat.tick`: the hurt wobble and the damage wear off, before
     /// `Entity.baseTick` can burn the boat.
     fn wear_off_hurt(&mut self) {
@@ -864,12 +875,7 @@ impl Game<'_> {
         let moved = b.position.subtract(l.last.0);
         if moved.length_squared() > f64::from(1.0e-5_f32) {
             let to = l.target.add_vector(moved);
-            let mut scene = SceneCollisions {
-                world: &self.world,
-                binding: self.collision,
-                subject: None,
-            };
-            if scene.unobstructed(Boat::bounds_at(to)).unwrap_or(false) {
+            if self.boat_lerp_target_fits(b, to) {
                 l.target = to;
             }
         }
@@ -888,6 +894,65 @@ impl Game<'_> {
             b.lerp = Some(l);
         }
     }
+    /// `AbstractInterpolationHandler.adjustInterpolationPosition`: check the
+    /// shifted target against blocks, entities and the border at the boat's live pose.
+    fn boat_lerp_target_fits(&self, boat: &Boat, target: Vec3) -> bool {
+        let bounds = Boat::bounds_at(target);
+        let scene = SceneCollisions {
+            world: &self.world,
+            binding: self.collision,
+            subject: None,
+        };
+        let mut collisions = EntityCollisions::with_border(
+            scene,
+            self.border.geometry(),
+            [boat.position.x, boat.position.z],
+        );
+        let e = sunrise_core::geometry::COLLISION_EPSILON;
+        let boxes = self.entity_collisions(super::collision_source::Mover::Boat {
+            id: boat.id,
+            area: bounds.inflate(Vec3::new(e, e, e)),
+        });
+        collisions.entities = &boxes;
+        no_collision_with_context(
+            &mut collisions,
+            bounds,
+            CollisionContext::position(boat.position.y),
+        )
+    }
+
+    /// `Entity.recordMovement` for a both-side lid push: move an active
+    /// interpolation target by the displacement, if the boat fits there.
+    pub(super) fn record_boat_lid_movement(&mut self, i: usize, delta: Vec3) {
+        let boat = &self.boats[i];
+        if let Some(mut lerp) = boat.lerp {
+            let to = lerp.target.add_vector(delta);
+            if self.boat_lerp_target_fits(boat, to) {
+                lerp.target = to;
+            }
+            // The next step measures any *other* move since the last pose.
+            lerp.last.0 = lerp.last.0.add_vector(delta);
+            self.boats.update(i, |boat| boat.lerp = Some(lerp));
+        } else if let Some(lerp) = self
+            .remote
+            .as_ref()
+            .and_then(|r| r.lerps.get(&(boat.id as i32)))
+            && lerp.steps > 0
+        {
+            let [x, y, z] = lerp.target;
+            let to = Vec3::new(x, y, z).add_vector(delta);
+            if self.boat_lerp_target_fits(boat, to) {
+                self.remote
+                    .as_mut()
+                    .unwrap()
+                    .lerps
+                    .get_mut(&(boat.id as i32))
+                    .unwrap()
+                    .target = to.components();
+            }
+        }
+    }
+
     pub(super) fn tick_boat(&mut self, mut b: Boat, controlled: bool) -> Boat {
         b.previous = b.position;
         b.previous_yaw = b.yaw;
@@ -1104,18 +1169,10 @@ impl Game<'_> {
             );
             b.velocity = self.finish_body_restitution(entity, b.position, response);
         }
-        // AbstractBoat.tick's applyEffectsFromBlocks: powder snow or a cobweb makes the
-        // boat stuck, which slows its next move, and resets its fall.
+        self.body_motion(&game_side!(self))
+            .apply_block_speed(b.position, &mut b.velocity);
+        self.boat_step_on(&mut b);
         self.boat_stuck_in_blocks(&mut b);
-        // Entity.move's last step: soul sand and honey slow the boat too.
-        let factor = crate::motion::block_speed_factor_at(
-            &self.world,
-            &self.motion.blocks,
-            &self.loop_context,
-            b.position,
-            None,
-        );
-        b.velocity = sunrise_world::entity_move::scale_by_block_speed(b.velocity, factor);
         Self::tick_boat_paddles(&mut b, &mut self.audio);
         b
     }
@@ -1287,10 +1344,13 @@ impl Game<'_> {
         // resets the fall of the boat the guest drives.
         if driven.contains(&id) {
             let mut b = self.boats[i].clone();
+            self.boat_step_on(&mut b);
             self.boat_stuck_in_blocks(&mut b);
             self.boats.update(i, |boat| {
                 boat.stuck = b.stuck;
                 boat.fall_distance = b.fall_distance;
+                boat.velocity = b.velocity;
+                boat.fire_ticks = b.fire_ticks;
             });
             self.refresh_boat_status(i);
         }
@@ -1480,7 +1540,10 @@ impl Game<'_> {
         }
         let touches = self.boat_bubble_columns(i);
         // AbstractBoat.tick calls applyEffectsFromBlocks twice.
-        for _ in 0..2 {
+        for pass in 0..2 {
+            if pass == 1 {
+                self.boat_second_step(i);
+            }
             for &column in &touches {
                 if column.surface {
                     self.boat_above_bubble_column(i, column.drag);
@@ -1492,6 +1555,32 @@ impl Game<'_> {
         self.tick_boat_bubble_column(i);
         if self.options.execution_role.is_client() {
             self.boats.update(i, Boat::tick_bubble_wobble);
+        }
+    }
+    fn boat_step_on(&mut self, boat: &mut Boat) {
+        let mut velocity = boat.velocity;
+        let writes = self.body_step_on(
+            (boat.id, boat.entity_type_name()),
+            (boat.position, boat.bounds()),
+            &boat.ground,
+            &mut velocity,
+        );
+        boat.apply_step_writes(velocity, writes);
+    }
+    /// The second `applyEffectsFromBlocks` of `AbstractBoat.tick` uses the movement left by the first.
+    pub(super) fn boat_second_step(&mut self, i: usize) {
+        let b = &self.boats[i];
+        if b.ground.on_ground {
+            let mut velocity = b.velocity;
+            let (id, kind, footprint, ground) = (
+                b.id,
+                b.shared_type_name(),
+                (b.position, b.bounds()),
+                b.ground,
+            );
+            let writes = self.body_step_on((id, &kind), footprint, &ground, &mut velocity);
+            self.boats
+                .update(i, |b| b.apply_step_writes(velocity, writes));
         }
     }
     /// `PowderSnowBlock.entityInside` for a boat: the powder snow cells its box, and the box it
@@ -1938,7 +2027,7 @@ impl Game<'_> {
         }) else {
             return false;
         };
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.held_mapping(Action::Sneak);
         // Only a client's own pick is stopped by a block: the range check passed.
         if target.is_none() && !self.before_block(d) {
             return false;
@@ -1990,7 +2079,7 @@ impl Game<'_> {
         self.container = Some(key);
         self.set_screen(super::Screen::Inventory);
         self.capture(false);
-        self.right = false;
+        self.set_mapping_held("key.use", false);
         let ctx = self.player_context(None);
         self.post_game_event("minecraft:container_open", at, ctx);
         self.anger_piglins(true);

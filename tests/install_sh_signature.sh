@@ -138,6 +138,7 @@ d=$W/tag; make_release "$d" 26.3-0.1.0; echo 26.3-0.1.0 > "$d/only-tag"
 run "$d" --version 26.3-0.1.0; verdict "good release installs (stable release tag)" 0 "" "$d"
 [ "$(readlink "$d/inst/current")" = "$d/inst/releases/26.3-0.1.0" ] \
   || { echo "FAIL current isn't 26.3-0.1.0"; fails=$((fails+1)); }
+[ -x "$d/inst/current/sunrise-server" ] || { echo "FAIL no sunrise-server through current"; fails=$((fails+1)); }
 
 # 3. --insecure-checksum-only: installs on GitHub's SHA-256, with a loud warning, and needs no verifier at all.
 d=$W/insecure; make_release "$d" v1.2.3; rm "$d/files/sunrise-verify-linux-x86_64" "$d/files/SHA256SUMS.sig"; json "$d" v1.2.3 no

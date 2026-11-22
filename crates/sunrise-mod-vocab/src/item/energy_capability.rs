@@ -26,11 +26,11 @@ pub trait EnergyHandler: Send + Sync {
 /// a fill comes through and a drain leaves by.
 pub const ENERGY: CapabilityKey<dyn EnergyHandler> = CapabilityKey {
     name: "sunrise:energy",
-    default: Some(|host, at| {
+    default: Some(crate::BlockCapabilityDefault::Server(|host, at| {
         crate::backend_of(host)
             .and_then(|backend| backend.energy_amount(at))
             .map(|_| Box::new(GameEnergy(at)) as Box<dyn EnergyHandler>)
-    }),
+    })),
     handler: PhantomData,
 };
 

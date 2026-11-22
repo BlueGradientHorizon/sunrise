@@ -15,6 +15,34 @@ Implement the `render_needs` callback to set `RenderNeeds` requests for world de
 and entity geometry; these requests feed the engine's frame requirements so it
 retains the resources your drawing callbacks borrow.
 
+## Reading a hand or equipment slot
+
+Resolve an entity with `host.living(entity)`, then use `living.with_equipment(host, slot, read)`
+for one equipment slot or `living.with_hand_item(host, hand, read)` for the selected main-hand
+stack or off hand. Both return the callback's result in `Some`; an empty or unavailable slot
+returns `None` without running the callback. On the client only the local player's slots are
+available.
+
+```rust,ignore
+let count = living.with_hand_item(host, Hand::Main, |stack| stack.count());
+let helmet = living
+    .with_equipment(host, EquipmentSlot::Head, |stack| stack.project())
+    .flatten();
+```
+
+Use `project()` when you need components or an owned stack after the callback. For the
+server-side attacker's live weapon, use `with_weapon_item`; for the weapon recorded by a
+projectile, see [Death sources and weapons](../items/death-loot-context.md).
+
+## Checking an entity's tags
+
+In a server hook that gives you an entity and a host, use
+`entity.tags(host).is_some_and(|tags| tags.contains("mymod:marked"))` to match a
+scoreboard tag without allocating. To read all tags, the
+[borrowed view](../../concepts/parts/entity-parts-and-mob-goals.md#entity-tags)
+yields UTF-16 slices in saved order. Choose checked or lossy conversion explicitly
+when you need UTF-8.
+
 ## Opening a container
 
 `player_container_open` runs synchronously after a successful open. Failed opens and opening the player's
@@ -53,18 +81,20 @@ distinguishes self movement, player packets, pistons, shulker boxes, shulkers an
 moving collider carrying a body (`Carried`, version 2 of the hook);
 boats and minecarts use self movement.
 
-A replacement must have finite components, each within ±64 blocks. Invalid
-output is refused whole, retaining the requested delta rather than clamping it.
-Cancellation skips the invocation: no position, velocity, collision-flag or fall
+A replacement must have finite components; the hook imposes no per-axis magnitude
+limit. Each invalid proposal is reported with its mod and discarded whole, including
+its cancellation, without disabling the listener. Later listeners see the preceding
+accepted delta. An unchanged game delta is not revalidated. Cancellation
+skips the invocation: no position, velocity, collision-flag or fall
 change, and no displacement notice. An overridden player or vehicle packet move
 sends a correction even below the normal distance threshold, for creative players
 and from obstructed starts too. A replacement equal to the request retains the
 normal vanilla distance rules.
 
-A listener panic restores the originally requested
-delta, not an earlier listener's replacement. Later listeners do not run on that
-invocation, and the failed listener is disabled for this hook for the session;
-its other hooks remain enabled.
+If a listener panics or incurs a phase refusal, its proposed delta and any
+change to the cancel flag are discarded. Later eligible listeners see the last
+accepted result; a failed callback neither vetoes movement nor clears an earlier
+veto. Only a panic disables that mod's callback for this hook for the session.
 
 A mod moves an entity through the same moment with `EntityRef::move_by(host, delta, cause)`
 (`Entity.move(cause, delta)`, server only): the collision scan stops it at blocks, the world border and
@@ -74,9 +104,10 @@ removes the body, no restitution query runs. The `entity_move` hook fires once w
 cancelled move returns `[0.0; 3]`. See the generated reference for which bodies the handle can move
 and for the relative-teleport semantics of player moves.
 
-`EntityRef::on_block(host)` uses the supporting block retained by the last move for players and the
-nonliving bodies that keep ground support, including items, boats and minecarts. It does not rerun
-collision detection. If there is no retained support, it reads the block at vanilla's feet offset.
+`EntityRef::on_block(host)` uses the block retained by the last support check for players, mobs,
+armor stands and nonliving bodies that keep ground support, including items, boats and minecarts.
+It does not rerun collision detection. If there is no retained support, it reads the block at
+vanilla's feet offset.
 
 `living_travel` runs on the server, after the player's swim steering or at a
 mob's travel entry. It receives the loop context, not a `Host`, and lets a
@@ -90,12 +121,12 @@ Replacement input components must be finite and within [-1, 1]; replacement
 velocity components within ±64 blocks per tick. Untouched vectors are exempt.
 One malformed vector drops that listener's entire result, including its cancel
 flag. The preceding accepted result stands, and the log names the mod and field
-once per tick. An accepted cancellation cannot be cleared. It skips the branch,
+on every refusal. An accepted cancellation cannot be cleared. It skips the branch,
 its nested moves and flying vertical damping, without undoing earlier work such
 as swim steering. If the branch runs and calls `entity_move`, that move can
-still be vetoed. A listener panic restores the originally resolved values, ends
-the dispatch and disables the failed listener for this hook for the session;
-its other hooks remain enabled.
+still be vetoed. A listener panic or phase refusal also leaves earlier proposals
+standing and later eligible listeners running. Only a panic disables the failed
+callback for this hook for the session.
 
 For a player, a veto holds the position accepted at the server's travel boundary;
 it does not rewind reports already accepted before that tick. While the veto
@@ -106,6 +137,25 @@ acknowledgement. A separate teleport in the same tick takes priority. The
 correction carries the live server position and velocity. The server compares
 the vectors bit for bit, except that inputs within vanilla's movement dead zone
 are equivalent. The client never calls this hook.
+
+## Swimming eligibility
+
+`Hooks::can_start_swimming` asks for a Boolean from the local player and the
+server's acting player. Return `Some(false)` to refuse or `Some(true)` to allow;
+the first answer wins. Return `None` to leave vanilla's answer in place. The
+player and `LogicalSide` are in the event, and the shared `Host` is read-only.
+Declare `side = "both"` and install the mod on both sides. Base the answer on facts
+available to both sides that tick; the server remains authoritative for position.
+For example, read the feet slot with `host.living(event.player.entity())` and
+return `Some(false)` on `SwimmingCheck::Entry` while a certain pair of boots is
+worn. Return `None` for callers your rule does not affect.
+
+`Entry` runs after fluid sampling for a sprinting player who isn't swimming or
+flying. The query runs before the passenger check: allowing it still cannot
+start swimming while riding. `ShallowWater` runs in local sprint eligibility
+when vanilla would not treat the water as shallow but the body is still in a
+swimmable fluid. In that case denying the predicate counts as shallow and can
+prevent or stop sprinting. An existing swim does not ask the entry question.
 
 ## Teleport hooks
 

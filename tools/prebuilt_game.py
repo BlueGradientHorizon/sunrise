@@ -82,8 +82,6 @@ SDK_BASE = "sunrise-core"
 # Source files the folder carries besides compiler outputs.
 CARRIED = {"Cargo.toml": None, IDENTITY: None, LOCK: ROOT / LOCK, TEMPLATE: ROOT / "crates/sunrise-client/src" / TEMPLATE,
            NATIVE_MODS_TEMPLATE: ROOT / "crates/sunrise-client/src" / NATIVE_MODS_TEMPLATE}
-# What the game's build script asks the `sunrise-client` executable's link for (Windows' 8 MB main stack).
-LINK_ARG = "cargo:sunrise-executable-link-arg="
 # Native libraries the build scripts point the final link at (the `windows` crates' MinGW import libraries):
 # cargo passes their folders to rustc, a plain rustc gets them from here (`-L native=OUT/native`).
 NATIVE = "native"
@@ -241,7 +239,7 @@ def stage(target_dir: Path, stage_tool: Path | None = None, *, sdk_dylibs: bool 
             # Build the tool from a stable copy of the unmodified commit, not the disposable rewrite tree.
             source = target_dir / "stage-in"
             sync_stage(scratch, source)
-            command = ["cargo", "run", "--locked", "--release", "-q", "-p", "sunrise-mod-api-gen",
+            command = ["cargo", "run", "--locked", "--release", "-q", "-p", "sunrise-stage",
                        "--bin", "sunrise-stage", "--"]
             env = {**os.environ, "CARGO_TARGET_DIR": str(target_dir / "tools")}
             label = "Stage release build and execution"
@@ -451,16 +449,19 @@ def official_externs(deps: Path) -> list[str]:
     return ["--cfg", 'feature="official"', "--extern", f"sunrise_official={library}"] if library else []
 
 
-def api_route(out: Path, link_args: list[str]) -> list[str]:
+def api_route(out: Path, host: str) -> list[str]:
     """Build the fixed executable shared by both native routes, once for this SDK."""
     deps = out / "deps"
     folder = out / RUNTIME
     folder.mkdir()
     common = ["--edition", "2024", "-C", "prefer-dynamic", "-C", "opt-level=3", "-L", f"dependency={deps}",
               "-L", f"dependency={out / 'host'}", "-L", f"native={out / NATIVE}"]
-    origin = {"linux": ["-Wl,-rpath,$ORIGIN"], "darwin": ["-Wl,-rpath,@executable_path"]}.get(sys.platform, [])
+    link_args = {"linux": ["-Wl,-rpath,$ORIGIN"], "darwin": ["-Wl,-rpath,@executable_path"]}.get(sys.platform, [])
+    if sys.platform == "win32":
+        # Match packaging/windows/exe.rs at this executable's link, not in SDK metadata.
+        link_args = ["/STACK:8388608" if host.endswith("-msvc") else "-Wl,--stack,8388608"]
     run(["rustc", *common, "--crate-type", "bin", "--crate-name", "sunrise_native_game",
-         *(flag for arg in origin + link_args for flag in ("-C", f"link-arg={arg}")),
+         *(flag for arg in link_args for flag in ("-C", f"link-arg={arg}")),
          *extern_args(deps, "sunrise_client"), *extern_args(deps, "mod_api"), *extern_args(deps, "sunrise_mod_package"),
          *extern_args(deps, "sunrise_mod_host"), *official_externs(deps),
          "-o", str(folder / EXECUTABLE), str(API_MAIN)])
@@ -607,10 +608,10 @@ def _build_locked(out: Path, server: bool, target_dir: Path) -> None:
     packages = ["-p", GAME, "-p", OFFICIAL] if official else ["-p", GAME]
     # Encoded flags take precedence over RUSTFLAGS in Cargo.
     environment = {key: value for key, value in os.environ.items() if key != "CARGO_ENCODED_RUSTFLAGS"}
-    # The SDK game builds with 16 codegen units, not the release profile's 1: on Linux its final step took 270 s
-    # instead of 422 s with no measurable change in the dedicated server's tick (1.670 against 1.677 ms). The
-    # player release keeps the profile's single unit and ThinLTO.
-    environment["CARGO_PROFILE_RELEASE_CODEGEN_UNITS"] = "16"
+    # The SDK game is the game players run with native mods: it keeps the release profile's single codegen unit,
+    # whatever the environment says. Against 16 units, the bare dedicated server ran 8.6% fewer instructions per
+    # tick and its mean tick fell measurably; the cost is the build's final step (422 s against 270 s on Linux).
+    environment["CARGO_PROFILE_RELEASE_CODEGEN_UNITS"] = "1"
     messages = run(
         ["cargo", "build", "--locked", *packages, "--lib",
          "--target", host, "--profile", PROFILE, "--message-format", "json-render-diagnostics", *features],
@@ -657,14 +658,11 @@ def _build_locked(out: Path, server: bool, target_dir: Path) -> None:
     for name, path in carried.items():
         (out / name).write_bytes(blobs[path])
     patches = carry_patches(staged, out)
-    game = next(script for script in scripts if script["package_id"].split("#")[0].endswith("/sunrise-client"))
     for manifest in BUILD_DATA:
         shutil.copy2(staged / manifest, out / manifest)
-    output = Path(game["out_dir"]).parent / "output"
-    link_args = executable_link_args(output)
     if official and dylib(deps, "sunrise_official") is None:
         sys.exit("prebuilt client is missing the sunrise-official dylib")
-    sliced = slices(metadata, copied, api_route(out, link_args))
+    sliced = slices(metadata, copied, api_route(out, host))
     files = {str(path.relative_to(out).as_posix()): sha256(path) for path in sorted(out.rglob("*")) if path.is_file()}
     identity = {
         "package_format": layout,
@@ -674,7 +672,6 @@ def _build_locked(out: Path, server: bool, target_dir: Path) -> None:
         "profile": PROFILE,
         "side": "server" if server else "client",
         "rustflags": rustflags,
-        "link_args": link_args,
         "facade_crates": eligible,
         # The game crate's features: a `[[native.mixin]]` build compiles functions copied out of its source
         # under the same cfgs (function replacement).
@@ -722,11 +719,6 @@ def carry_patches(staged: Path, out: Path) -> dict:
             lines.append(f"{json.dumps(name)} = {{ path = {json.dumps(spec['path'])} }}")
     (out / "Cargo.toml").write_text("\n".join(lines) + "\n")
     return patches
-
-
-def executable_link_args(output: Path) -> list[str]:
-    """Executable policy emitted by the engine library's build script into the SDK identity."""
-    return [line[len(LINK_ARG):] for line in output.read_text().splitlines() if line.startswith(LINK_ARG)]
 
 
 def dylib(deps: Path, crate: str) -> Path | None:
@@ -1041,7 +1033,7 @@ def pack(out: Path, dist: Path, stage_tool: Path | None = None, with_tool: bool 
     if failures:
         sys.exit("SDK archive compression failed: " + "; ".join(failures))
     command = ([str(stage_tool.resolve())] if stage_tool is not None else
-               ["cargo", "run", "--locked", "--release", "-q", "-p", "sunrise-mod-api-gen", "--bin", "sunrise-stage", "--"])
+               ["cargo", "run", "--locked", "--release", "-q", "-p", "sunrise-stage", "--bin", "sunrise-stage", "--"])
     run(command + ["surface", str(ROOT), str(dist / SURFACE)], cwd=ROOT)
     for asset in sorted(dist.iterdir()):
         print(f"{asset.name}: {asset.stat().st_size} bytes")

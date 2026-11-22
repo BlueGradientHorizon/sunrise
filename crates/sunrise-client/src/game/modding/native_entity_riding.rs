@@ -268,9 +268,9 @@ impl Game<'_> {
                 }
                 let rider = self.mobs.iter().find(|m| m.id == first.id())?;
                 let tagged = self
-                    .res
-                    .mob_data()
-                    .entity_has("minecraft:non_controlling_rider", &rider.kind.id);
+                    .items()
+                    .entity_type_tags
+                    .contains("minecraft:non_controlling_rider", &rider.kind.id);
                 (!mob.no_ai && !tagged).then(|| LivingRef::new(first))
             }
             _ => None,
@@ -635,7 +635,7 @@ impl Game<'_> {
         }
         if !force {
             match rider {
-                Target::Player if self.keys.held(sunrise_client::actions::Action::Sneak) => {
+                Target::Player if self.held_mapping(sunrise_client::actions::Action::Sneak) => {
                     return Err(R::CannotRide);
                 }
                 Target::Mob(id)

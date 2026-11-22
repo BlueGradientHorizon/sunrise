@@ -508,9 +508,9 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn command_prompt_click(&mut self) {
+    pub(super) fn command_prompt_click(&mut self) -> bool {
         let Some(prompt) = &self.command_prompt else {
-            return;
+            return false;
         };
         let pressed = self
             .command_prompt_layout(prompt, self.gui_size())
@@ -519,6 +519,7 @@ impl Game<'_> {
             self.audio.play_button_click();
             self.answer_command_prompt(button == 0);
         }
+        pressed.is_some()
     }
 
     /// markMessageAsProcessed, when the chat takes a signed message (past

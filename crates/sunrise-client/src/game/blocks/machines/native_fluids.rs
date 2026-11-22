@@ -178,8 +178,7 @@ fn write_tanks(nbt: &mut Compound, tanks: &[Tank]) {
 
 // Native mods use these; nothing in Sunrise does.
 impl Game<'_> {
-    /// What holds fluids at `pos` in the level in place: a mod block's tanks (its block
-    /// entity's, and not the placeholder standing in while it ticks), or a cauldron.
+    /// What holds fluids at `pos` in the level in place: a mod block's tanks, or a cauldron.
     fn native_fluid_at(&self, pos: [i32; 3]) -> Option<FluidAt> {
         if !self.native_simulates() {
             return None;
@@ -187,10 +186,9 @@ impl Game<'_> {
         let key = (pos[0], pos[1], pos[2]);
         let state = self.world.block(pos[0], pos[1], pos[2]);
         if let Some(tanks) = self.world.block_entities.mod_fluids(state.0) {
-            // The block entity is out of the world while it ticks.
             return matches!(
                 self.world.block_entities.get(&key),
-                Some(sunrise_client::containers::BlockEntity::Mod(m)) if !m.id().is_empty()
+                Some(sunrise_client::containers::BlockEntity::Mod(_))
             )
             .then(|| FluidAt::Mod(Arc::clone(tanks)));
         }
@@ -1040,19 +1038,20 @@ mod tests {
                     .block_entity_type("water_tank")
                     .blocks(&["fluid_filter_test:water_tank"])
                     .build();
-                r.block_entity_capability_before_game(&FLUIDS, &kind, |host, at| {
+                r.block_entity_capability_before_game(&FLUIDS, &kind, |_, at, _, entity, offer| {
                     // The same block entity type elsewhere keeps the game's default handler.
-                    (at.pos == [2, 64, 0]).then(|| {
-                        Box::new(WaterTank {
-                            entity: host.block_entity(at.level, at.pos).unwrap(),
-                            reached: if at.side == Some(Direction::Down) {
-                                vec![1, 0]
-                            } else {
-                                vec![0, 1]
-                            },
-                        })
-                            as Box<dyn mod_api::ResourceHandler<FluidResource>>
-                    })
+                    if at.pos == [2, 64, 0] {
+                        offer.offer(|| {
+                            Box::new(WaterTank {
+                                entity,
+                                reached: if at.side == Some(Direction::Down) {
+                                    vec![1, 0]
+                                } else {
+                                    vec![0, 1]
+                                },
+                            })
+                        });
+                    }
                 });
             }
             fn blocks(

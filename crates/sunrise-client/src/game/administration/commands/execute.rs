@@ -165,7 +165,12 @@ impl Game<'_> {
                 .general
                 .row(id)
                 .map(|row| row.rotation)
-                .or_else(|| self.shown_remote_general(id as i32).map(|row| row.rotation))
+                .or_else(|| {
+                    self.remote
+                        .as_ref()
+                        .and_then(|r| r.general.rows.get(&(id as i32)))
+                        .map(|row| row.rotation)
+                })
                 .unwrap_or([0.0; 2]),
             _ => [0.0; 2],
         }

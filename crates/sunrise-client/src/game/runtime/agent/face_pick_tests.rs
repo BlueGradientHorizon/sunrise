@@ -417,27 +417,15 @@ fn attack_by_id_checks_its_own_click_behind_a_tick_of_player_clicks() {
     with_pig_and_server(|game, listener, server| {
         add_second_pig(game);
         let (_, replies) = command(game, "attack 31");
-        // A tick takes 64 attack clicks: the player's fill it, the command's waits.
+        // All 64 player clicks and the command's own click drain in the same tick;
+        // only the command's click checks its target and drops when pig 32 is picked.
         tick_with_player_clicks(game, 64);
         pick_second_pig(game, listener);
         tick(game);
         let sent = clicks_sent(game, server);
         assert_eq!(attacks_on(&sent, 32), 64, "every player click acts");
         assert_eq!(attacks_on(&sent, 31), 0);
-        assert!(
-            replies.try_recv().is_err(),
-            "the command's click is still queued"
-        );
-        // The next tick picks pig 31 again: the command's click acts on it.
-        listener.lock().unwrap().result = None;
-        tick(game);
-        assert_eq!(attacks_on(&clicks_sent(game, server), 31), 1);
-        for _ in 0..3 {
-            tick(game);
-        }
-        let reply = reply(&replies);
-        assert_eq!(reply["hit"], json!(true), "{reply}");
-        assert_eq!(reply["target"], json!(31), "{reply}");
+        assert_eq!(reply(&replies)["picked"], json!(32));
     });
 }
 
@@ -467,16 +455,18 @@ fn attack_by_id_click_drained_by_an_item_in_use_is_not_a_later_click() {
 
 #[test]
 #[ignore = "daily"]
-fn attack_by_id_reports_a_full_click_queue() {
+fn attack_by_id_drains_behind_a_large_player_burst() {
     with_pig_and_server(|game, _, server| {
         let (_, replies) = command(game, "attack 31");
         tick_with_player_clicks(game, 1024);
-        assert_eq!(
-            reply(&replies)["error"],
-            json!("the attack click queue is full")
-        );
         tick(game);
-        assert_eq!(attacks_on(&clicks_sent(game, server), 31), 64);
+        assert_eq!(attacks_on(&clicks_sent(game, server), 31), 1025);
+        for _ in 0..3 {
+            tick(game);
+        }
+        let reply = reply(&replies);
+        assert_eq!(reply["hit"], json!(true), "{reply}");
+        assert_eq!(reply["target"], json!(31), "{reply}");
     });
 }
 
