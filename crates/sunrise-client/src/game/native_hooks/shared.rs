@@ -159,24 +159,6 @@ impl Game<'_> {
         })
     }
 
-    /// Opens `screen` (`Gui.setScreen`; `Screen::Playing` is vanilla's null):
-    /// the one place the game's screen changes. A different screen runs
-    /// `screen_opening` first (`ScreenEvent.Opening`: a mod may keep the
-    /// current screen or open its own), then `screen_closing` for the screen
-    /// it replaces. A game with no mod listening to either, and a server's
-    /// or a guest's `Game`, assign the screen directly. A new native menu or
-    /// same-type vanilla container can take over the already shown `Inventory`
-    /// screen in place.
-    pub(super) fn set_screen(&mut self, screen: Screen) {
-        self.set_screen_with(screen, |_| {});
-    }
-    /// `set_screen`, with `before` run once the hooks let the change go ahead and
-    /// before it applies: what a screen's own `onClose` does only when it really
-    /// closes (a container screen's close packet).
-    pub(super) fn set_screen_with(&mut self, screen: Screen, before: impl FnOnce(&mut Self)) {
-        self.replace_screen_with(screen, before);
-    }
-
     /// `LocalPlayer.clientSideCloseContainer`: restore the logical inventory
     /// menu, then `Gui.setScreen(null)`. Keep the old screen and its view for
     /// `ScreenEvent.Closing` before running its removal, not its user close.
@@ -225,7 +207,7 @@ impl Game<'_> {
             Screen::Playing
         };
         let decision = if heard {
-            let none = self.screen_change_view(Screen::Playing);
+            let none = self.screen_overlay_view(Screen::Playing.id());
             let old = outgoing.as_ref().map(ObservedScreen::view);
             let new = self
                 .screen_overlay_view(title.as_ref().map_or(screen.id(), |title| title.mode.id()));
@@ -288,7 +270,21 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn replace_screen_with(&mut self, screen: Screen, before: impl FnOnce(&mut Self)) {
+    /// Opens `screen` (`Gui.setScreen`; `Screen::Playing` is vanilla's null):
+    /// the one place the game's screen changes. A different screen runs
+    /// `screen_opening` first (`ScreenEvent.Opening`: a mod may keep the
+    /// current screen or open its own), then `screen_closing` for the screen
+    /// it replaces. A game with no mod listening to either, and a server's
+    /// or a guest's `Game`, assign the screen directly. A new native menu or
+    /// same-type vanilla container can take over the already shown `Inventory`
+    /// screen in place.
+    pub(super) fn set_screen(&mut self, screen: Screen) {
+        self.set_screen_with(screen, |_| {});
+    }
+    /// `set_screen`, with `before` run once the hooks let the change go ahead and
+    /// before it applies: what a screen's own `onClose` does only when it really
+    /// closes (a container screen's close packet).
+    pub(super) fn set_screen_with(&mut self, screen: Screen, before: impl FnOnce(&mut Self)) {
         let opening_native =
             screen == Screen::Inventory && self.active_native_screen().is_some_and(|s| !s.shown);
         let new_menu_gen = (screen == Screen::Inventory)
