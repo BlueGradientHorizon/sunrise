@@ -26,7 +26,7 @@ fn attributed_append_only_applies_to_global_non_answered_collectors() {
 }
 
 #[test]
-fn an_output_validator_is_a_path_on_a_global_listen_or_cancel_hook() {
+fn an_output_validator_is_a_path_on_a_global_cancel_hook_only() {
     let parse = |api| {
         Hook::parse(json!({
             "name": "checked", "doc": "Doc.", "side": "server", "target": "crate::native_checked",
@@ -41,7 +41,7 @@ fn an_output_validator_is_a_path_on_a_global_listen_or_cancel_hook() {
         Some("crate::check")
     );
     for api in [
-        json!({"contract":"replace", "out":"answer", "output_validator":"crate::check"}),
+        json!({"contract":"listen", "output_validator":"crate::check"}),
         json!({"contract":"cancel", "out":"canceled", "scope":"item", "key":"stack", "output_validator":"crate::check"}),
         json!({"contract":"cancel", "out":"canceled", "output_validator":"not a path"}),
     ] {

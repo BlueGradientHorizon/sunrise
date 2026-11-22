@@ -3,25 +3,6 @@ mod api {
     pub struct RenderPipeline(pub &'static str);
 }
 
-mod crate_root {
-    // Dispatch fixtures isolate ordering; API tests cover pipeline validation.
-    mod client {
-        pub(crate) mod camera {
-            pub(crate) fn refused_angles_output(
-                _: &f32,
-                _: &f32,
-                _: &f32,
-            ) -> Result<(), &'static str> {
-                Ok(())
-            }
-
-            pub(crate) fn refused_position_output(_: &[f64; 3]) -> Result<(), &'static str> {
-                Ok(())
-            }
-        }
-    }
-}
-
 #[test]
 fn register_render_pipelines_dispatch_attributes_and_discards_failed_listener_tail() {
     struct Listener(bool);
