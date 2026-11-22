@@ -85,8 +85,9 @@ def main(argv=None):
                              env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8')
         (build / (group.replace('::', '-') + '.log')).write_text(ran.stdout, encoding='utf-8')
         print(ran.stdout)
-        summary = re.search(r'test result: ok\. (\d+) passed; 0 failed;', ran.stdout)
-        if ran.returncode or not summary or int(summary[1]) != count:
+        # Fresh-process fixtures print their own summaries before the outer suite does.
+        summaries = re.findall(r'^test result: ok\. (\d+) passed; 0 failed;', ran.stdout, re.MULTILINE)
+        if ran.returncode or not summaries or int(summaries[-1]) != count:
             raise AssertionError(f'{group}: execution did not pass all {count} tests')
         executed[group] = count
     base.ensure_sources_unchanged(sources, hashes)
