@@ -371,6 +371,7 @@ impl HudAtlas {
             }
         }
         images.push(("sunrise/white".into(), 4, 4, vec![255; 64]));
+        images.push((MISSING_GLYPH_SPRITE.into(), 5, 8, missing_glyph_rgba()));
         // The controller's art, unless a pack brought its own (walked above, as a mod's GUI
         // textures are).
         for image in crate::pad_glyph::images().chain(crate::mark_sprite::image()) {
@@ -394,8 +395,6 @@ impl HudAtlas {
                 })
                 .collect();
             images.push((MISSING_SPRITE.into(), 16, 16, missing));
-        }
-        if full {
             let (width, height, rgba) =
                 decode_bytes(include_bytes!("../jei_recipes/config_button.png"))?;
             images.push(("sunrise/recipes/settings".to_owned(), width, height, rgba));
@@ -409,25 +408,18 @@ impl HudAtlas {
                 base_images.push(image);
             }
         }
-        // Blurred sprites are sampled linearly in the atlas (screen.wgsl): a
-        // border wrapped from their own edges keeps the filter off their
-        // neighbours, as repeat addressing of their own texture would.
-        let mut bordered = std::collections::HashSet::new();
-        for image in &mut base_images {
-            if flags.get(&image.0).is_some_and(|f: &TextureFlags| f.blur) {
-                *image = wrap_border(image)?;
-                bordered.insert(image.0.clone());
-            }
-        }
+        let (blur_bordered, clamp_bordered, sprite_borders) =
+            pad_sprite_borders(&mut base_images, &flags)?;
         base_images.sort_by(|a, b| b.2.cmp(&a.2).then(b.1.cmp(&a.1)));
         let (width, placements, glyph_region) =
             Self::layout_leaving_out(&mut base_images, &mut animated, &cit_names, max_atlas_size)
                 .or_else(|error| -> Result<_> {
-                let models = reducible_model_sprites(root, &base_images, &bordered);
-                let layout = Self::layout_reducing_models(
+                let models = reducible_model_sprites(root, &base_images, &blur_bordered);
+                let layout = Self::layout_reducing_models_with_borders(
                     &mut base_images,
                     &mut gui_sizes,
                     &models,
+                    &clamp_bordered,
                     max_atlas_size,
                 )?;
                 log::warn!(
@@ -443,14 +435,16 @@ impl HudAtlas {
         let Stitched {
             mut pixels,
             mut sprites,
+            placed_sprites,
             translucent,
-        } = stitch_pixels(base_images, placements, size, &gui_sizes, &bordered)?;
+        } = stitch_pixels(base_images, placements, size, &gui_sizes, &sprite_borders)?;
         let mut loaded = crate::sprites::Sprites::new(root.clone());
         animated.sort();
-        let sprite_animations = initialize_animations(
+        let (sprite_animations, sprite_animation_placements) = initialize_animations(
             &mut loaded,
             &animated,
             &sprites,
+            &placed_sprites,
             &gui_files,
             &mut pixels,
             size,
@@ -549,6 +543,7 @@ impl HudAtlas {
             translucent,
             flags,
             sprite_animations,
+            sprite_animation_placements,
             glint,
             glint_armor,
             text_shaders: Default::default(),
@@ -630,9 +625,55 @@ fn blit_rgba(
     Ok(())
 }
 
+// Blurred sprites wrap their opposite edges so linear filtering repeats cleanly;
+// every other non-font packed sprite gets a 1-texel clamp-to-edge border matching
+// vanilla 26.3's `Stitcher` padding + `ANIMATE_SPRITE_BLIT` `CLAMP_TO_EDGE` so
+// boundary samples never land on the transparent atlas gutter and discard.
+fn should_clamp_pad(name: &str) -> bool {
+    if name == "sunrise/white" || name == MISSING_GLYPH_SPRITE {
+        return false;
+    }
+    let bare = name
+        .strip_prefix(GUI_KEY)
+        .or_else(|| name.strip_prefix(REGISTERED_KEY))
+        .unwrap_or(name);
+    let path = bare.split_once(':').map_or(bare, |(_, p)| p);
+    !path.starts_with("font/")
+}
+
+fn pad_sprite_borders(
+    images: &mut [PackedImage],
+    flags: &HashMap<String, TextureFlags>,
+) -> Result<(
+    HashSet<String>,
+    HashSet<String>,
+    HashMap<String, AtlasBorder>,
+)> {
+    let mut blur_bordered = HashSet::new();
+    let mut clamp_bordered = HashSet::new();
+    let mut sprite_borders = HashMap::new();
+    for image in images {
+        if image.3.is_empty() || image.1 == 0 || image.2 == 0 {
+            continue;
+        }
+        let f = flags.get(&image.0).copied();
+        if f.is_some_and(|f| f.blur && !f.clamp) {
+            *image = wrap_border(image)?;
+            blur_bordered.insert(image.0.clone());
+            sprite_borders.insert(image.0.clone(), AtlasBorder::Wrap);
+        } else if f.is_some_and(|f| f.blur) || should_clamp_pad(&image.0) {
+            *image = clamp_border(image)?;
+            clamp_bordered.insert(image.0.clone());
+            sprite_borders.insert(image.0.clone(), AtlasBorder::Clamp);
+        }
+    }
+    Ok((blur_bordered, clamp_bordered, sprite_borders))
+}
+
 struct Stitched {
     pixels: Vec<u8>,
     sprites: HashMap<String, Rect>,
+    placed_sprites: HashMap<String, AnimatedPlacement>,
     translucent: HashSet<String>,
 }
 
@@ -641,7 +682,7 @@ fn stitch_pixels(
     placements: Vec<(u32, u32)>,
     size: [u32; 2],
     gui_sizes: &HashMap<String, (u32, u32)>,
-    bordered: &HashSet<String>,
+    sprite_borders: &HashMap<String, AtlasBorder>,
 ) -> Result<Stitched> {
     let [width, height] = size;
     let count = rgba_len(size).ok_or("RGBA8 atlas size exceeds the address space")?;
@@ -649,6 +690,7 @@ fn stitch_pixels(
     pixels.try_reserve_exact(count)?;
     pixels.resize(count, 0);
     let mut sprites = HashMap::new();
+    let mut placed_sprites = HashMap::new();
     let mut translucent = HashSet::new();
     for ((name, w, h, data), (px, py)) in images.into_iter().zip(placements) {
         if data
@@ -662,8 +704,22 @@ fn stitch_pixels(
         if !data.is_empty() {
             blit_rgba(&mut pixels, size, [px, py], [w, h], &data)?;
         }
-        let b = u32::from(bordered.contains(&name));
+        let border = sprite_borders
+            .get(&name)
+            .copied()
+            .unwrap_or(AtlasBorder::None);
+        let b = u32::from(border != AtlasBorder::None);
         let (px, py, w, h) = (px + b, py + b, w - 2 * b, h - 2 * b);
+        placed_sprites.insert(
+            name.clone(),
+            AnimatedPlacement {
+                x: px,
+                y: py,
+                w,
+                h,
+                border,
+            },
+        );
         let (gw, gh) = gui_sizes.get(&name).copied().unwrap_or((w, h));
         sprites.insert(
             name,
@@ -680,6 +736,7 @@ fn stitch_pixels(
     Ok(Stitched {
         pixels,
         sprites,
+        placed_sprites,
         translucent,
     })
 }
@@ -689,13 +746,21 @@ fn initialize_animations(
     loaded: &mut crate::sprites::Sprites,
     names: &[String],
     sprites: &HashMap<String, Rect>,
+    placed_sprites: &HashMap<String, AnimatedPlacement>,
     files: &HashMap<String, String>,
     pixels: &mut [u8],
     [width, height]: [u32; 2],
-) -> Result<Vec<(Rect, crate::sprites::SpriteAnimation)>> {
+) -> Result<(
+    Vec<(Rect, crate::sprites::SpriteAnimation)>,
+    Vec<AnimatedPlacement>,
+)> {
     let mut animations = Vec::new();
+    let mut placements = Vec::new();
     for name in names {
         let Some(&rect) = sprites.get(name) else {
+            continue;
+        };
+        let Some(&placement) = placed_sprites.get(name) else {
             continue;
         };
         let registered = name.strip_prefix(REGISTERED_KEY);
@@ -718,14 +783,28 @@ fn initialize_animations(
         let Some(animation) = loaded.animations.iter().find(|a| a.layer == layer).cloned() else {
             continue;
         };
-        let (w, h) = rect.texels((width, height));
+        let (w, h) = (placement.w, placement.h);
         let image = animation.resized_pixels(animation.frame(0), w, h)?;
-        let x = (rect.u0 * width as f32).round() as u32;
-        let y = (rect.v0 * height as f32).round() as u32;
-        blit_rgba(pixels, [width, height], [x, y], [w, h], &image)?;
+        blit_rgba(
+            pixels,
+            [width, height],
+            [placement.x, placement.y],
+            [w, h],
+            &image,
+        )?;
+        match placement.border {
+            AtlasBorder::None => {}
+            AtlasBorder::Clamp => {
+                write_atlas_border(pixels, width, placement.x, placement.y, w, h, false);
+            }
+            AtlasBorder::Wrap => {
+                write_atlas_border(pixels, width, placement.x, placement.y, w, h, true);
+            }
+        }
         animations.push((rect, animation));
+        placements.push(placement);
     }
-    Ok(animations)
+    Ok((animations, placements))
 }
 
 // Like SpriteLoader.stitch, one registered atlas gets its own layout and the entire
@@ -794,32 +873,28 @@ fn stitch_registered(
     let mut pages = Vec::new();
     for ((atlas, mod_id), mut images) in groups {
         let build = || -> Result<_> {
-            let mut bordered = HashSet::new();
-            for image in &mut images {
-                if flags.get(&image.0).is_some_and(|f| f.blur) {
-                    *image = wrap_border(image)?;
-                    bordered.insert(image.0.clone());
-                }
-            }
+            let (_, _, sprite_borders) = pad_sprite_borders(&mut images, flags)?;
             images.sort_by(|a, b| b.2.cmp(&a.2).then(b.1.cmp(&a.1)));
             let (size, placements) = registered_layout(&images, max)?;
             let Stitched {
                 mut pixels,
                 sprites,
+                placed_sprites,
                 ..
-            } = stitch_pixels(images, placements, size, gui_sizes, &bordered)?;
-            let animations = initialize_animations(
+            } = stitch_pixels(images, placements, size, gui_sizes, &sprite_borders)?;
+            let (animations, animation_placements) = initialize_animations(
                 loaded,
                 animated,
                 &sprites,
+                &placed_sprites,
                 &HashMap::new(),
                 &mut pixels,
                 size,
             )?;
-            Ok((size, pixels, sprites, animations))
+            Ok((size, pixels, sprites, animations, animation_placements))
         };
         match build() {
-            Ok((size, pixels, sprites, animations)) => {
+            Ok((size, pixels, sprites, animations, animation_placements)) => {
                 let page = pages.len();
                 for (key, rect) in sprites {
                     let name = key.strip_prefix(REGISTERED_KEY).expect("registered image");
@@ -832,6 +907,7 @@ fn stitch_registered(
                     size,
                     pixels,
                     animations,
+                    animation_placements,
                 });
             }
             Err(error) => log::error!(

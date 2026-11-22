@@ -135,8 +135,8 @@ impl Game<'_> {
     pub(in crate::game) fn tick_remote_entities(&mut self, running: bool) {
         use crate::game::native_ticks::{PLAYER, TickKind};
 
+        self.tick_text_displays(running);
         if running {
-            self.tick_text_displays();
             self.tick_remote_ominous_item_spawners();
         }
         // EntityTickEvent.Pre for the mobs and players this client ticks, once for the family
@@ -852,6 +852,16 @@ impl Game<'_> {
             }
         }
     }
+    /// `LocalPlayer.aiStep` (877-883): water vision reads the local body's `Entity.baseTick`
+    /// `isEyeInFluid(FluidTags.WATER)` sample and `this.isSpectator()`.
+    fn tick_local_water_vision(&mut self) {
+        let in_water = self
+            .player
+            .as_ref()
+            .is_some_and(|p| p.is_eye_in_fluid(sunrise_client::motion::WATER));
+        self.fog.tick(in_water, self.own_player_is_spectator());
+    }
+
     /// `LocalPlayer.tick`'s `Player.tick` work: input, riding, motion and
     /// sleep, and the input `sendChanges` sends for it (`None`: nothing ticked).
     pub(super) fn tick_local_player(
@@ -988,8 +998,17 @@ impl Game<'_> {
         // LivingEntity.isImmobile: a sleeper lies still, even if its bed's
         // shape is unavailable here; only the server decides when to wake.
         if sleeping.is_some() {
-            player.velocity = Vec3::ZERO;
-            player.pitch = 0.0;
+            // Entity.baseTick still samples fluids while sleeping, before LocalPlayer.aiStep.
+            let side = game_side!(self);
+            player.client_side = true;
+            motion_world!(side, player).fluid_base_tick()?;
+            if let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) {
+                player.velocity = Vec3::ZERO;
+                player.pitch = 0.0;
+            }
+            if !dead {
+                self.tick_local_water_vision();
+            }
         } else if walks {
             let side = game_side!(self);
             player.client_side = true;
@@ -1020,6 +1039,12 @@ impl Game<'_> {
             motion.finish_fluid_tick(answer)?;
             let keys = motion.prepare_local_sprint(keys)?;
             self.player_sprint_tick(keys, sprint_window, None)?;
+            if !self.player.as_ref().is_some_and(|p| p.entity_id == body) {
+                return Ok(None);
+            }
+            // LocalPlayer.aiStep: water vision reads this tick's `Entity.baseTick`
+            // `isEyeInFluid(FluidTags.WATER)` sample and `this.isSpectator()`, before `super.aiStep()`.
+            self.tick_local_water_vision();
             let side = game_side!(self);
             let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                 return Ok(None);
@@ -1056,6 +1081,10 @@ impl Game<'_> {
                 };
                 motion_world!(side, player).finish_rider_base_tick(answer);
                 self.remote_rider_sprint(keys, sprint_window)?;
+                if !self.player.as_ref().is_some_and(|p| p.entity_id == body) {
+                    return Ok(None);
+                }
+                self.tick_local_water_vision();
                 let side = game_side!(self);
                 let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                     return Ok(None);
@@ -1076,6 +1105,10 @@ impl Game<'_> {
         // The last sample is therefore the one taken on death tick 20.
         if dead {
             self.ui.death_time = self.ui.death_time.saturating_add(1);
+            // LivingEntity.tick runs LocalPlayer.aiStep only while `!this.isRemoved()`.
+            if !self.local_player_removed_by_death() {
+                self.tick_local_water_vision();
+            }
         }
         let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
             return Ok(None);

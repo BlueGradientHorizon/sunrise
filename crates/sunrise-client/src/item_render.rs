@@ -423,6 +423,42 @@ impl ItemRenderState {
             }
         }
     }
+    /// [`Self::submit`] preserving JOML `Matrix4f.mulAffine` and `Vector3f.mulPosition`
+    /// rounding through baked quad submission (`DisplayRenderer.ItemDisplayRenderer.submitInner`).
+    pub fn submit_joml(
+        &self,
+        renderer: &ItemRenderer,
+        sprites: &HashMap<String, Rect>,
+        host: &dyn SpecialHost,
+        pose: crate::camera::joml::Mat4,
+        sink: &mut dyn ItemSink,
+    ) {
+        let mut tinted;
+        let sink: &mut dyn ItemSink = if let Some(tint) = self.held_tint {
+            tinted = TintedItemSink { sink, tint };
+            &mut tinted
+        } else {
+            sink
+        };
+        for layer in &self.layers {
+            let m_joml = pose.mul_affine(&crate::camera::joml::Mat4::affine(layer.matrix));
+            match &layer.geometry {
+                LayerGeometry::Quads(baked) => {
+                    submit_quads_joml(renderer, baked, layer, m_joml, sprites, sink);
+                }
+                LayerGeometry::Special { model, argument } => special::submit(
+                    renderer,
+                    model,
+                    argument,
+                    layer.foil != FoilType::None,
+                    m_joml.to_glam(),
+                    sprites,
+                    host,
+                    sink,
+                ),
+            }
+        }
+    }
     /// [`Self::submit`] into a [`WorldSink`] of `light`, `lights` and `tier`,
     /// posed on the GPU (`gfx::entity_skin`): the same vertices in the same
     /// order. False, with nothing drawn, when a layer cannot take that path: a
@@ -884,6 +920,50 @@ fn submit_quads(
     sprites: &HashMap<String, Rect>,
     sink: &mut dyn ItemSink,
 ) {
+    // Non-foil quads keep glam `transform_point3` to match `entity_skin::expand` on the GPU.
+    let foil_cols = (layer.foil != FoilType::None).then(|| m.to_cols_array());
+    submit_quads_with(
+        renderer,
+        baked,
+        layer,
+        m,
+        |p| match &foil_cols {
+            Some(cols) => Vec3::from_array(joml_transform_pos(cols, p)),
+            None => m.transform_point3(Vec3::from(p)),
+        },
+        sprites,
+        sink,
+    );
+}
+
+fn submit_quads_joml(
+    renderer: &ItemRenderer,
+    baked: &BakedItemModel,
+    layer: &LayerRender,
+    m: crate::camera::joml::Mat4,
+    sprites: &HashMap<String, Rect>,
+    sink: &mut dyn ItemSink,
+) {
+    submit_quads_with(
+        renderer,
+        baked,
+        layer,
+        m.to_glam(),
+        |p| Vec3::from_array(m.transform_position(p)),
+        sprites,
+        sink,
+    );
+}
+
+fn submit_quads_with(
+    renderer: &ItemRenderer,
+    baked: &BakedItemModel,
+    layer: &LayerRender,
+    m: Mat4,
+    transform_pos: impl Fn([f32; 3]) -> Vec3,
+    sprites: &HashMap<String, Rect>,
+    sink: &mut dyn ItemSink,
+) {
     let foil = match layer.foil {
         FoilType::None => Foil::None,
         FoilType::Standard => Foil::Standard,
@@ -938,13 +1018,7 @@ fn submit_quads(
             continue;
         };
         let color = layer.tints.at(q.tint_index);
-        // Non-foil quads keep glam `transform_point3` to match `entity_skin::expand` on the GPU.
-        let pos = match &m_cols {
-            Some(cols) => q
-                .positions
-                .map(|p| Vec3::from_array(joml_transform_pos(cols, p))),
-            None => q.positions.map(|p| m.transform_point3(Vec3::from(p))),
-        };
+        let pos = q.positions.map(&transform_pos);
         let uv =
             q.uv.map(|[u, v]| [r.u0 + (r.u1 - r.u0) * u, r.v0 + (r.v1 - r.v0) * v]);
         let translucent = match last {

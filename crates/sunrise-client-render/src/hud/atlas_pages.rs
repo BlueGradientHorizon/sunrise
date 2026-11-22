@@ -1,11 +1,11 @@
 //! GPU ownership of the textures stitched by registered atlas ID.
-use super::{HudRenderer, Rect, RegisteredAtlasPage};
+use super::{AnimatedPlacement, HudRenderer, RegisteredAtlasPage};
 use crate::sprites::SpriteAnimation;
 
 pub(crate) struct UploadedAtlasPage {
     pub(super) texture: wgpu::Texture,
     pub(super) view: wgpu::TextureView,
-    pub(super) animations: Vec<(Rect, SpriteAnimation, (usize, usize, u32))>,
+    pub(super) animations: Vec<(AnimatedPlacement, SpriteAnimation, (usize, usize, u32))>,
 }
 
 pub(super) struct AtlasPageGpu {
@@ -64,9 +64,10 @@ pub(crate) fn upload_atlas_page(
             texture,
             view,
             animations: page
-                .animations
+                .animation_placements
                 .iter()
-                .map(|(r, a)| (*r, a.clone(), (usize::MAX, 0, 0)))
+                .zip(&page.animations)
+                .map(|(&placement, (_, a))| (placement, a.clone(), (usize::MAX, 0, 0)))
                 .collect(),
         })
     };

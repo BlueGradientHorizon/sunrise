@@ -289,6 +289,17 @@ fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_tr
                 keep: 0,
             }))
             .unwrap();
+            game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+                actions: 0x01 | 0x04 | 0x08,
+                entries: vec![play::PlayerInfo {
+                    uuid: 0xDEAD_BEEF,
+                    name: Some("LoggedIn".into()),
+                    game_mode: Some(GameMode::Creative.id()),
+                    listed: Some(true),
+                    ..play::PlayerInfo::default()
+                }],
+            }))
+            .unwrap();
             assert_eq!(
                 take(),
                 vec![Observed::LevelUnload("minecraft:overworld".to_owned())],
@@ -330,6 +341,17 @@ fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_tr
                 remote.entity_id = 77;
                 remote.profile = 0xCAFE_BABE;
             }
+            game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+                actions: 0x01 | 0x04 | 0x08,
+                entries: vec![play::PlayerInfo {
+                    uuid: 0xCAFE_BABE,
+                    name: Some("Deduplicated".into()),
+                    game_mode: Some(GameMode::Adventure.id()),
+                    listed: Some(true),
+                    ..play::PlayerInfo::default()
+                }],
+            }))
+            .unwrap();
             take();
 
             let second_player = game.local_player().expect("second local player");

@@ -192,6 +192,7 @@ pub(super) enum SpectatedEntity<'a> {
     Boat(&'a super::boats::Boat),
     Frame(&'a ItemFrame),
     Tnt(&'a super::tnt::PrimedTnt),
+    Display(&'a super::text_displays::RemoteTextDisplay),
     Interaction(&'a super::interactions::RemoteInteraction),
     Tracked(&'a super::remote::Tracked),
 }
@@ -204,6 +205,7 @@ impl SpectatedEntity<'_> {
             Self::Boat(b) => boat_camera_entity(b),
             Self::Frame(f) => frame_camera_entity(f),
             Self::Tnt(t) => tnt_camera_entity(t),
+            Self::Display(d) => d.camera_entity(),
             Self::Interaction(i) => interaction_camera_entity(i),
             Self::Tracked(t) => tracked_camera_entity(t),
         }
@@ -218,6 +220,7 @@ pub(super) struct CameraEntities<'a> {
     pub boats: &'a [super::boats::Boat],
     pub frames: &'a [ItemFrame],
     pub tnts: &'a [super::tnt::PrimedTnt],
+    pub displays: &'a indexmap::IndexMap<i32, super::text_displays::RemoteTextDisplay>,
     pub interactions: &'a std::collections::HashMap<i32, super::interactions::RemoteInteraction>,
     pub tracked: Option<&'a std::collections::HashMap<i32, super::remote::Tracked>>,
 }
@@ -239,6 +242,9 @@ impl<'a> CameraEntities<'a> {
         }
         if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
             return Some(SpectatedEntity::Tnt(t));
+        }
+        if let Some(d) = self.displays.get(&(id as i32)) {
+            return Some(SpectatedEntity::Display(d));
         }
         if let Some(i) = self.interactions.get(&(id as i32)) {
             return Some(SpectatedEntity::Interaction(i));
@@ -354,6 +360,7 @@ impl Game<'_> {
             boats: &self.boats,
             frames: &self.item_frames,
             tnts: &self.tnts,
+            displays: &self.text_displays,
             interactions: &self.interactions,
             tracked: self.remote.as_ref().map(|r| &r.entities),
         }
