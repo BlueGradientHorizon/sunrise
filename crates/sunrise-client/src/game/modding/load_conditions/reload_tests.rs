@@ -192,7 +192,11 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                         );
                         assert_eq!(
                             ids,
-                            admitted.then(|| vec![entry.clone()]).unwrap_or_default()
+                            if admitted {
+                                vec![entry.clone()]
+                            } else {
+                                Vec::new()
+                            }
                         );
                         let mut value = None;
                         let read = level.datapack_read(game, &registry, &entry, &mut |decoded| {
