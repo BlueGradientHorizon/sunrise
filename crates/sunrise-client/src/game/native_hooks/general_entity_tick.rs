@@ -107,6 +107,21 @@ impl EntityServerAccess for GeneralTickAccess<'_, '_, '_> {
         self.game
     }
 
+    fn with_current_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn mod_api::EntityServerAccess,
+            &'loan mod_api::TransactionContext,
+        ),
+    ) -> Result<(), mod_api::TransactionUnavailable> {
+        let frame = self
+            .game
+            .current_storage_frame()
+            .ok_or(mod_api::TransactionUnavailable)?;
+        frame.lend(|tx| callback(self, tx));
+        Ok(())
+    }
+
     fn with_transaction_scope(
         &mut self,
         callback: &mut dyn for<'loan> FnMut(

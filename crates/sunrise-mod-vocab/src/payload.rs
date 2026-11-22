@@ -16,7 +16,7 @@ pub use typed::{PayloadToken, ToClient, ToServer};
 
 use crate::{
     ClientHost, ConfigurationTaskError, PlayerRef, ServerHost, Text, TransactionContext,
-    TransactionError, TransactionScopeError,
+    TransactionError, TransactionScopeError, TransactionUnavailable,
 };
 use std::sync::Arc;
 
@@ -354,6 +354,17 @@ pub trait IPayloadContext {
         &mut self,
         work: Arc<dyn PayloadWork>,
     ) -> Result<PayloadWorkStatus, PayloadContextError>;
+    /// Lends the current scope without opening or settling a transaction.
+    fn with_current_transaction_scope(
+        &mut self,
+        _callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn IPayloadContext,
+            &'loan TransactionContext,
+        ),
+    ) -> Result<(), TransactionUnavailable> {
+        Err(TransactionUnavailable)
+    }
+
     /// Runs `callback` inside one scoped transaction on this payload context (server main
     /// thread only), committing on `true` and aborting on `false` or unwind. Returns
     /// `Ok(true)` on commit, `Ok(false)` on callback abort, or a [`TransactionScopeError`]
@@ -371,6 +382,23 @@ pub trait IPayloadContext {
 }
 
 impl dyn IPayloadContext + '_ {
+    /// Borrows an already-open innermost transaction without opening or closing a frame.
+    /// Returns `None` without calling `f` if there is no current transaction to borrow.
+    pub fn current_transaction<T>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut dyn IPayloadContext, &'loan TransactionContext) -> T,
+    ) -> Option<T> {
+        let mut f = Some(f);
+        let mut value = None;
+        self.with_current_transaction_scope(&mut |access, tx| {
+            if let Some(f) = f.take() {
+                value = Some(f(access, tx));
+            }
+        })
+        .ok()?;
+        value
+    }
+
     /// Runs `f` in a scoped transaction on this payload context (server main thread only).
     /// `Ok` commits into the surrounding transaction (or for good at the root). A closure error
     /// becomes [`TransactionError::Aborted`] and, like an unwind, rolls back writes made inside

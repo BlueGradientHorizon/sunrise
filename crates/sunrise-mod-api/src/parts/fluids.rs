@@ -449,6 +449,16 @@ pub mod tests {
                 self,
             ))
         }
+        fn with_current_transaction_scope(
+            &mut self,
+            callback: &mut dyn for<'loan> FnMut(
+                &'loan mut dyn ServerHost,
+                &'loan TransactionContext,
+            ),
+        ) -> Result<(), mod_vocab::TransactionUnavailable> {
+            FakeJournal::with_current_scope(self, |host| &host.journal, callback)
+        }
+
         fn with_transaction_scope(
             &mut self,
             callback: &mut dyn for<'loan> FnMut(

@@ -4,7 +4,7 @@ use mod_api::{
     __private::game::CallbackFailure, ConfigurationTaskError, HandlerThread, IPayloadContext,
     Identifier, PayloadAccepted, PayloadBytes, PayloadContextError, PayloadDirection, PayloadId,
     PayloadProtocol, PayloadSendError, PayloadWork, PayloadWorkStatus, PlayerRef, Text,
-    TransactionContext, TransactionScopeError,
+    TransactionContext, TransactionScopeError, TransactionUnavailable,
 };
 use std::sync::Arc;
 use sunrise_client::raw_payloads::{Body, Endpoint, Incoming, Prepared, Side, connection::Epoch};
@@ -283,6 +283,25 @@ impl IPayloadContext for MainContext<'_, '_> {
         }
         Ok(PayloadWorkStatus::Complete)
     }
+    fn with_current_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn IPayloadContext,
+            &'loan TransactionContext,
+        ),
+    ) -> Result<(), TransactionUnavailable> {
+        if !self.epoch.active() || self.disconnect.is_some() || self.endpoint.side() != Side::Server
+        {
+            return Err(TransactionUnavailable);
+        }
+        let frame = self
+            .game
+            .current_storage_frame()
+            .ok_or(TransactionUnavailable)?;
+        frame.lend(|tx| callback(self, tx));
+        Ok(())
+    }
+
     fn with_transaction_scope(
         &mut self,
         callback: &mut dyn for<'loan> FnMut(

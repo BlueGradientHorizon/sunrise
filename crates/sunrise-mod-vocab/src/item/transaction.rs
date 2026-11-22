@@ -92,6 +92,19 @@ pub enum TransactionLifecycle {
     RootClosing,
 }
 
+// no wire: local admission refusal, not a mod boundary payload.
+/// There is no open transaction this caller can borrow.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TransactionUnavailable;
+
+impl fmt::Display for TransactionUnavailable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("no current transaction is available")
+    }
+}
+
+impl std::error::Error for TransactionUnavailable {}
+
 // no wire: local scope settlement, not a mod boundary payload.
 /// A host could not open a transaction, or refused it during commit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -291,6 +304,37 @@ pub(crate) fn finish_scope<T, E>(
 /// }
 /// ```
 pub trait HostTransaction: ServerHost {
+    /// Borrows the current transaction without opening or closing a scope. Returns `None`
+    /// without calling `f` when no transaction is open. Writes settle with the existing frame,
+    /// even if `f` unwinds and the enclosing action catches it.
+    ///
+    /// ```compile_fail
+    /// use mod_api::{HostTransaction, ServerHost, TransactionContext};
+    /// fn escape(host: &mut dyn ServerHost) {
+    ///     let _: Option<&TransactionContext> = host.current_transaction(|_, tx| tx);
+    /// }
+    /// ```
+    /// ```compile_fail
+    /// use mod_api::{HostTransaction, ServerHost};
+    /// fn close(host: &mut dyn ServerHost) {
+    ///     host.current_transaction(|host, tx| host.transaction_close(tx, true));
+    /// }
+    /// ```
+    fn current_transaction<T>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut dyn ServerHost, &'loan TransactionContext) -> T,
+    ) -> Option<T> {
+        let mut f = Some(f);
+        let mut value = None;
+        self.with_current_transaction_scope(&mut |host, tx| {
+            if let Some(f) = f.take() {
+                value = Some(f(host, tx));
+            }
+        })
+        .ok()?;
+        value
+    }
+
     /// Runs `f` in a transaction, nested in the open one if any (`Transaction.openRoot` and
     /// `open`). `Ok` commits into the transaction around it or, at the outermost, for good,
     /// with the world told of each change once. `Err` aborts, restoring every storage it wrote.
@@ -444,6 +488,48 @@ mod tests {
             .unwrap()
             .slots[0] = Some(stone);
         (fake, resource)
+    }
+
+    #[test]
+    fn borrowing_the_current_transaction_leaves_settlement_to_its_opener() {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let (mut fake, resource) = fake_with_stone();
+        let level = fake.level.level();
+        let items = level.capability(&mut fake, &ITEMS, AT, None).unwrap();
+        assert_eq!(
+            fake.current_transaction::<()>(|_, _| panic!("no frame")),
+            None
+        );
+        for commit in [false, true] {
+            let result = fake.transaction(|host, outer| {
+                let panicked = catch_unwind(AssertUnwindSafe(|| {
+                    host.current_transaction::<()>(|_, _| panic!("borrow unwound"));
+                }));
+                assert!(panicked.is_err());
+                assert!(host.transaction_matches(Some(outer)));
+                let moved = host.current_transaction(|host, joined| {
+                    assert_eq!(joined.depth(), outer.depth());
+                    assert!(host.transaction_matches(Some(joined)));
+                    assert!(host.transaction_matches(Some(outer)));
+                    items.extract_at(host, joined, 0, &resource, 1)
+                });
+                assert_eq!(moved, Some(1));
+                assert!(host.transaction_matches(Some(outer)));
+                assert_eq!(items.amount(host, 0), 0);
+                commit.then_some(()).ok_or(())
+            });
+            assert_eq!(
+                result,
+                if commit {
+                    Ok(())
+                } else {
+                    Err(TransactionError::Aborted(()))
+                }
+            );
+            assert!(fake.transaction_matches(None));
+            assert_eq!(items.amount(&fake, 0), if commit { 0 } else { 1 });
+        }
     }
 
     struct NoTx;

@@ -25,6 +25,15 @@ impl ServerHost for Game<'_> {
         Some(BackendMutRef::of(self))
     }
 
+    fn with_current_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(&'loan mut dyn ServerHost, &'loan TransactionContext),
+    ) -> Result<(), TransactionUnavailable> {
+        let frame = self.current_storage_frame().ok_or(TransactionUnavailable)?;
+        frame.lend(|tx| callback(self, tx));
+        Ok(())
+    }
+
     fn with_transaction_scope(
         &mut self,
         callback: &mut dyn for<'loan> FnMut(

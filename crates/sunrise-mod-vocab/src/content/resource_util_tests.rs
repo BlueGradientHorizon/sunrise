@@ -983,6 +983,16 @@ fn transfers_and_probes_report_a_refused_scope_on_every_attempt() {
     crate::impl_host_areas!(Refuses);
     crate::impl_server_host_areas!(Refuses);
     impl ServerHost for Refuses {
+        fn with_current_transaction_scope(
+            &mut self,
+            callback: &mut dyn for<'loan> FnMut(
+                &'loan mut dyn ServerHost,
+                &'loan TransactionContext,
+            ),
+        ) -> Result<(), crate::TransactionUnavailable> {
+            FakeJournal::with_current_scope(self, |host| &host.journal, callback)
+        }
+
         fn with_transaction_scope(
             &mut self,
             callback: &mut dyn for<'loan> FnMut(

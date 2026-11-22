@@ -1,7 +1,8 @@
 //! Scoped views and sequential host loans for entity-scoped and item-entity-scoped hooks.
 use crate::{
     ClientHost, EntityRef, EntityTypeKey, ItemEntityRef, ItemStack, ItemStackView, ServerHost,
-    StackWriteError, TransactionContext, TransactionError, TransactionScopeError, WorldEpoch,
+    StackWriteError, TransactionContext, TransactionError, TransactionScopeError,
+    TransactionUnavailable, WorldEpoch,
 };
 
 /// Live resident view of a server general entity row during `general_entity_tick`.
@@ -94,6 +95,24 @@ impl<'a> EntityServerScope<'a> {
     #[doc(hidden)]
     pub fn new(access: &'a mut dyn EntityServerAccess) -> Self {
         Self(access)
+    }
+
+    /// Borrows an already-open innermost transaction without opening or closing a frame.
+    /// Returns `None` without calling `f` if there is no current transaction to borrow.
+    pub fn current_transaction<T>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut EntityServerScope<'_>, &'loan TransactionContext) -> T,
+    ) -> Option<T> {
+        let mut f = Some(f);
+        let mut value = None;
+        self.0
+            .with_current_transaction_scope(&mut |access, tx| {
+                if let Some(f) = f.take() {
+                    value = Some(f(&mut EntityServerScope::new(access), tx));
+                }
+            })
+            .ok()?;
+        value
     }
 
     /// Lend the live general entity row for `f`. Once `f` returns, you can use the Host
@@ -365,6 +384,25 @@ impl<'a> ItemEntityServerScope<'a> {
         self.item_id
     }
 
+    /// Borrows an already-open innermost transaction without opening or closing a frame.
+    /// Returns `None` without calling `f` if there is no current transaction to borrow.
+    pub fn current_transaction<T>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut ItemEntityServerScope<'_>, &'loan TransactionContext) -> T,
+    ) -> Option<T> {
+        let item_id = self.item_id;
+        let mut f = Some(f);
+        let mut value = None;
+        self.access
+            .with_current_transaction_scope(&mut |access, tx| {
+                if let Some(f) = f.take() {
+                    value = Some(f(&mut ItemEntityServerScope::new(access, item_id), tx));
+                }
+            })
+            .ok()?;
+        value
+    }
+
     /// Lend the live dropped-item entity for `f`. Once `f` returns, you can use the Host
     /// and ask for another loan afterwards; each loan re-checks residency and returns
     /// `None` without running `f` if the item was removed.
@@ -429,6 +467,17 @@ pub trait ResidentGeneralEntity {
 pub trait EntityServerAccess {
     fn with_view(&mut self, f: &mut dyn FnMut(EntitySubjectView<'_>));
     fn host(&mut self) -> &mut dyn ServerHost;
+    /// Lends the current scope without opening or settling a transaction.
+    fn with_current_transaction_scope(
+        &mut self,
+        _callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn EntityServerAccess,
+            &'loan TransactionContext,
+        ),
+    ) -> Result<(), TransactionUnavailable> {
+        Err(TransactionUnavailable)
+    }
+
     fn with_transaction_scope(
         &mut self,
         _callback: &mut dyn for<'loan> FnMut(
@@ -482,6 +531,17 @@ pub trait ResidentItemEntity {
 pub trait ItemEntityServerAccess {
     fn with_view(&mut self, f: &mut dyn FnMut(ItemEntitySubjectView<'_>));
     fn host(&mut self) -> &mut dyn ServerHost;
+    /// Lends the current scope without opening or settling a transaction.
+    fn with_current_transaction_scope(
+        &mut self,
+        _callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn ItemEntityServerAccess,
+            &'loan TransactionContext,
+        ),
+    ) -> Result<(), TransactionUnavailable> {
+        Err(TransactionUnavailable)
+    }
+
     fn with_transaction_scope(
         &mut self,
         _callback: &mut dyn for<'loan> FnMut(

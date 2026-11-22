@@ -1,6 +1,6 @@
 //! The transaction journal fake: what a host keeps on each transaction it opens.
 use crate::item::transaction::TransactionFrame;
-use crate::{ServerHost, TransactionContext, TransactionScopeError};
+use crate::{ServerHost, TransactionContext, TransactionScopeError, TransactionUnavailable};
 
 // no wire: in-process testing harness state, not a mod boundary payload.
 /// A test host's transaction journal, as the game's keeps its storages: the state each open
@@ -131,6 +131,17 @@ impl<S> FakeJournal<S> {
         scope.commit = commit;
         drop(scope);
         Ok(commit)
+    }
+
+    /// Lends the current frame without opening or closing a transaction.
+    pub fn with_current_scope<H: ServerHost>(
+        host: &mut H,
+        journal: fn(&H) -> &Self,
+        callback: &mut dyn for<'loan> FnMut(&'loan mut dyn ServerHost, &'loan TransactionContext),
+    ) -> Result<(), TransactionUnavailable> {
+        let &(frame, _) = journal(host).kept.last().ok_or(TransactionUnavailable)?;
+        frame.lend(|tx| callback(host, tx));
+        Ok(())
     }
 
     /// Whether `tx` names the innermost open transaction (`None` matching when none is open).

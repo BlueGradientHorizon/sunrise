@@ -7,6 +7,7 @@ use crate::game::{
 use mod_api::{
     BlockEntityAccess, BlockEntityItemError, BlockEntityRef, BlockEntityScope, BlockEntityView,
     ResidentBlockEntity, ServerHost, TransactionContext, TransactionScopeError,
+    TransactionUnavailable,
 };
 use std::collections::HashMap;
 use sunrise_client::{
@@ -192,6 +193,21 @@ impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
 
     fn host(&mut self) -> &mut dyn ServerHost {
         self.game
+    }
+
+    fn with_current_transaction_scope(
+        &mut self,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn BlockEntityAccess,
+            &'loan TransactionContext,
+        ),
+    ) -> Result<(), TransactionUnavailable> {
+        let frame = self
+            .game
+            .current_storage_frame()
+            .ok_or(TransactionUnavailable)?;
+        frame.lend(|tx| callback(self, tx));
+        Ok(())
     }
 
     fn with_transaction_scope(

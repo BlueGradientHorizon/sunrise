@@ -204,6 +204,18 @@ Resource helpers that accept `Option<&TransactionContext>` require `Some(tx)` fo
 that same innermost frame or `None` when opening a root transaction. A mismatch,
 including `None` while one is open, returns `TransactionError::InvalidContext`.
 
+## Joining an open transaction
+
+Use `host.current_transaction(|host, tx| …)` to borrow the innermost open frame without
+creating a child. This follows NeoForge's `Transaction.getCurrentOpenedTransaction`, but
+lends the context only for the closure. The resident block-entity, entity and item-entity
+server scopes and the server payload context also offer `current_transaction`.
+
+It returns `None` without running the closure when no frame is available. Otherwise,
+`tx.depth()` is unchanged and writes commit or roll back with the enclosing frame.
+Returning or unwinding from the borrowed closure does not close that frame. Use
+`transaction` instead when the action needs its own commit or rollback.
+
 ## Inspecting a transaction
 
 These methods are server-only:
