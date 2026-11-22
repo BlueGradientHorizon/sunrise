@@ -3,7 +3,7 @@
 //! game's published tables and borrow their property definitions.
 use crate::{
     BlockKey, BlockMetadata, BlockSoundType, BlockState, BlockStateError, BlockStateRange, Host,
-    LevelReadError, host::block_states::BlockStatesBackend,
+    LevelReadError, PushReaction, host::block_states::BlockStatesBackend,
 };
 
 // no wire: borrows a name and values from the host's state definition.
@@ -261,6 +261,12 @@ impl BlockStatesBackend for NoBlockTables {
     ) -> Result<Option<bool>, LevelReadError> {
         Err(LevelReadError::Unavailable)
     }
+    fn block_state_piston_push_reaction(
+        &self,
+        _: BlockState,
+    ) -> Result<Option<PushReaction>, LevelReadError> {
+        Err(LevelReadError::Unavailable)
+    }
     fn block_states_of(&self, _: BlockKey) -> Option<BlockStateRange> {
         None
     }
@@ -440,6 +446,17 @@ impl BlockStates<'_> {
     ) -> Result<Option<bool>, LevelReadError> {
         self.backend.block_state_class(state, class)
     }
+    /// `BlockState.getPistonPushReaction()`: the resolved reaction used for piston simulation
+    /// and client replay. Includes the active [`crate::BlockPart::piston_push_reaction`] answer
+    /// resolved at load or reload. This read does not call Parts or test movement eligibility.
+    /// `Ok(None)` for an unknown block or local ordinal; `Err(LevelReadError::Unavailable)`
+    /// when the tables or phase cannot serve the read.
+    pub fn piston_push_reaction(
+        &self,
+        state: BlockState,
+    ) -> Result<Option<PushReaction>, LevelReadError> {
+        self.backend.block_state_piston_push_reaction(state)
+    }
     /// `BlockState.isRedstoneConductor` when vanilla decides from `state` alone. None for an
     /// unknown state, no game backend, or a context-dependent predicate (such as shulker boxes).
     /// For a placed block see [`LevelRef::is_redstone_conductor`](crate::LevelRef::is_redstone_conductor).
@@ -500,6 +517,10 @@ mod tests {
         assert_eq!(facts.map_color(state), None);
         assert_eq!(facts.map_color_rgba(6), None);
         assert_eq!(facts.states_of(crate::BlockKey(0)), None);
+        assert_eq!(
+            facts.piston_push_reaction(state),
+            Err(LevelReadError::Unavailable)
+        );
         assert_eq!(facts.definition(crate::BlockKey(0)), None);
     }
 }
