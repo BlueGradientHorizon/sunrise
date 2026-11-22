@@ -1,12 +1,14 @@
 //! HUD slots in a real client: placement, scoped wrapping and replacement, and layer cancellation.
 use super::{
+    Game, Screen,
     execution_role::ExecutionRole,
     mods,
     native_entity_refs::tests::{run_fresh_cases, with_client_game},
 };
 use mod_api::{
     ClientHost, Flow, GuiLayerPlacement, GuiLayerPostEvent, GuiLayerPreEvent, Hooks, ModEntry,
-    PlayerHeartTypeEvent, RegisterGuiLayersEvent, RegistrationContext, RenderGuiPreEvent,
+    PlayerHeartTypeEvent, RegisterGuiLayersEvent, RegistrationContext, RenderGuiPostEvent,
+    RenderGuiPreEvent, ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ScreenRenderPreEvent,
     client::hud_layout::GuiDraw, content::crash::current_native_mod,
 };
 use std::sync::{Arc, Mutex};
@@ -644,6 +646,602 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
                 log("vanilla paint");
             });
             assert_eq!(take(), ["outer", "inner", "vanilla paint"]);
+        });
+    });
+}
+
+fn enter_test_world(game: &mut Game<'_>) {
+    game.title = None;
+    game.set_screen(Screen::Playing);
+    game.player = Some(
+        sunrise_client::motion::PlayerMotion::new(
+            game.motion,
+            sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
+        )
+        .unwrap(),
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use sunrise_client::{
+        chat::ChatSource,
+        hud::rgba,
+        text::{Style, Text},
+    };
+
+    let test = "game::gui_layer_tests::f1_hides_vanilla_paint_without_skipping_the_hud_walk";
+    crate::game::in_own_process(test, || {
+        const MOD_PAINT: u32 = 0xFF13_579B;
+        static CANCEL_HUD: AtomicBool = AtomicBool::new(false);
+
+        struct Observer;
+        #[mod_api::__subscriptions]
+        impl Hooks for Observer {
+            fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
+                log("hud pre");
+                if CANCEL_HUD.load(Ordering::Relaxed) {
+                    Flow::Cancel
+                } else {
+                    Flow::Continue
+                }
+            }
+
+            fn register_gui_layers(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterGuiLayersEvent<'_>,
+            ) {
+                assert!(event.layers.register(
+                    "hud_test:indicator".into(),
+                    GuiLayerPlacement::AboveAll,
+                    Box::new(|_, draw| {
+                        log("indicator paint");
+                        draw.fill([14.0, 18.0, 4.0, 4.0], MOD_PAINT);
+                    }),
+                ));
+                assert!(event.layers.wrap_layer(
+                    "minecraft:chat",
+                    Box::new(|ctx| {
+                        log("chat wrapper");
+                        ctx.draw_previous();
+                    }),
+                ));
+            }
+
+            fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
+                log(format!("pre {}", event.layer));
+                Flow::Continue
+            }
+
+            fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
+                log(format!("post {}", event.layer));
+            }
+
+            fn render_gui_post(&self, _: &dyn ClientHost, _: &mut RenderGuiPostEvent<'_>) {
+                log("hud post");
+            }
+
+            fn screen_render_pre(
+                &self,
+                _: &dyn ClientHost,
+                _: &mut ScreenRenderPreEvent<'_>,
+            ) -> Flow {
+                log("screen pre");
+                Flow::Continue
+            }
+
+            fn screen_render_background(
+                &self,
+                _: &dyn ClientHost,
+                _: &mut ScreenRenderBackgroundEvent<'_>,
+            ) {
+                log("screen background");
+            }
+
+            fn screen_render_post(&self, _: &dyn ClientHost, _: &mut ScreenRenderPostEvent<'_>) {
+                log("screen post");
+            }
+        }
+
+        with_client_game(|game| {
+            mod_platform::__private::install(
+                vec![ModEntry::new("observer", Box::new(Observer))].into(),
+            );
+            mods::register_gui_layers(ExecutionRole::Client);
+            let size = [640, 480];
+            let screen_events = ["screen pre", "screen background", "screen post"];
+            game.title = Some(game.new_title(game.save.root.clone()));
+            game.open_options(true);
+            game.hud_layers(size);
+            assert_eq!(take(), screen_events, "title Options has no HUD walk");
+
+            enter_test_world(game);
+            let rect = game.gui.atlas.gui_rect("hud/hotbar").unwrap();
+            let hotbar_uv = [rect.u0, rect.v0];
+            let has_hotbar = |frame: &HudBatch| {
+                frame
+                    .vertices
+                    .iter()
+                    .any(|v| v.uv == hotbar_uv && v.pos[1] == frame.height - 22.0)
+            };
+            let has_indicator = |frame: &HudBatch| {
+                frame
+                    .vertices
+                    .iter()
+                    .any(|v| v.color == sunrise_client::hud_layout::abgr(MOD_PAINT))
+            };
+            let mut expected = vec!["hud pre".to_owned()];
+            // NeoForge visits hidden and visible slots the same way. The literal IDs also
+            // cover normally absent vanilla bodies, e.g. vehicle health with no mount.
+            for id in [
+                "crosshair",
+                "hotbar",
+                "effects",
+                "boss_overlay",
+                "player_health",
+                "armor_level",
+                "food_level",
+                "vehicle_health",
+                "air_level",
+                "contextual_info_bar",
+                "selected_item_name",
+                "sleep_overlay",
+                "overlay_message",
+                "title",
+                "scoreboard_sidebar",
+                "subtitle_overlay",
+                "chat",
+                "tab_list",
+            ] {
+                expected.push(format!("pre minecraft:{id}"));
+                if id == "chat" {
+                    expected.push("chat wrapper".to_owned());
+                }
+                expected.push(format!("post minecraft:{id}"));
+            }
+            expected.extend(
+                [
+                    "pre hud_test:indicator",
+                    "indicator paint",
+                    "post hud_test:indicator",
+                    "hud post",
+                ]
+                .map(str::to_owned),
+            );
+
+            let chat_paint = |frame: &HudBatch| {
+                frame
+                    .vertices
+                    .iter()
+                    .position(|v| v.color & 0x00FF_FFFF == rgba(0x27, 0xB4, 0xD9, 0))
+                    .map(|first_paint| first_paint >= frame.blur_at as usize)
+            };
+            for screen in [Screen::Playing, Screen::Options, Screen::Chat] {
+                let after_hud: &[&str] = match screen {
+                    Screen::Options => {
+                        game.set_screen(Screen::Paused);
+                        game.open_options(false);
+                        &screen_events
+                    }
+                    Screen::Chat => {
+                        game.set_screen(Screen::Playing);
+                        game.begin_chat_screen("", false);
+                        assert!(game.add_chat_line(
+                            Text::styled("Focused chat", Style::color(0x27_B4_D9)),
+                            ChatSource::Client
+                        ));
+                        &screen_events
+                    }
+                    _ => &[],
+                };
+                let expected: Vec<_> = expected
+                    .iter()
+                    .map(String::as_str)
+                    .chain(after_hud.iter().copied())
+                    .collect();
+                for hidden in [false, true] {
+                    game.ui.hide_gui = hidden;
+                    let frame = game.hud_layers(size);
+                    assert_eq!(take(), expected, "{screen:?}, F1 hidden: {hidden}");
+                    assert_eq!(has_hotbar(&frame), !hidden);
+                    assert!(has_indicator(&frame));
+                    assert_eq!(chat_paint(&frame), (screen == Screen::Chat).then_some(true));
+                }
+            }
+            CANCEL_HUD.store(true, Ordering::Relaxed);
+            let frame = game.hud_layers(size);
+            assert_eq!(
+                take(),
+                ["hud pre", "screen pre", "screen background", "screen post"]
+            );
+            assert!(!has_hotbar(&frame));
+            assert!(!has_indicator(&frame));
+            assert_eq!(
+                chat_paint(&frame),
+                Some(true),
+                "HUD cancellation leaves focused chat on the screen"
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn f1_subtitles_paint_in_the_container_background_without_redispatch() {
+    use sunrise_client::{hud::rgba, options_file::V, sound_engine::Notification};
+
+    crate::game::in_own_process(
+        "game::gui_layer_tests::f1_subtitles_paint_in_the_container_background_without_redispatch",
+        || {
+            const MARKER: u32 = 0xFFAE_2818;
+            struct Observer;
+            #[mod_api::__subscriptions]
+            impl Hooks for Observer {
+                fn gui_layer_pre(
+                    &self,
+                    _: &dyn ClientHost,
+                    event: &mut GuiLayerPreEvent<'_>,
+                ) -> Flow {
+                    if event.layer == "minecraft:subtitle_overlay" {
+                        log("subtitle pre");
+                    }
+                    Flow::Continue
+                }
+                fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
+                    if event.layer == "minecraft:subtitle_overlay" {
+                        log("subtitle post");
+                    }
+                }
+                fn screen_render_background(
+                    &self,
+                    _: &dyn ClientHost,
+                    event: &mut ScreenRenderBackgroundEvent<'_>,
+                ) {
+                    event.draw.fill([0.0, 0.0, 1.0, 1.0], MARKER);
+                }
+            }
+
+            with_client_game(|game| {
+                mod_platform::__private::install(
+                    vec![ModEntry::new("observer", Box::new(Observer))].into(),
+                );
+                enter_test_world(game);
+                game.settings.show_subtitles = true;
+                game.settings
+                    .file
+                    .set("backgroundForChatOnly", V::Bool(false));
+                game.settings.text_background_opacity = 0.4;
+                let size = [640, 480];
+                game.hud(size); // Start listening before the sound plays.
+                assert_eq!(take(), ["subtitle pre", "subtitle post"]);
+                game.audio.engine.notifications.push(Notification {
+                    identifier: "minecraft:entity.player.levelup".into(),
+                    subtitle: Some("subtitles.entity.player.levelup".into()),
+                    position: game.view.position,
+                    relative: false,
+                    looping: false,
+                    range: 16.0,
+                });
+                game.tick_subtitles();
+                game.toggle_hide_gui();
+                let is_subtitle =
+                    |v: &sunrise_client::hud::HudVertex| v.color == rgba(0, 0, 0, 102);
+
+                let frame = game.hud(size);
+                assert!(
+                    !frame.vertices.iter().any(is_subtitle),
+                    "F1 without a screen"
+                );
+                assert_eq!(take(), ["subtitle pre", "subtitle post"]);
+
+                game.set_screen(Screen::Inventory);
+                let frame = game.hud(size);
+                let mut subtitle = frame
+                    .vertices
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, v)| is_subtitle(v));
+                let (first, v) = subtitle
+                    .next()
+                    .expect("F1 keeps subtitles in the inventory");
+                assert_eq!(v.pos[1], frame.height - 40.0);
+                assert_eq!(subtitle.count(), 5, "one subtitle backdrop quad");
+                let dim = frame
+                    .vertices
+                    .iter()
+                    .position(|v| v.color == rgba(16, 16, 16, 160))
+                    .unwrap();
+                let screen = frame
+                    .vertices
+                    .iter()
+                    .position(|v| v.color == sunrise_client::hud_layout::abgr(MARKER))
+                    .unwrap();
+                assert!(
+                    dim < first && first < screen,
+                    "subtitles draw over the dimming before screen widgets"
+                );
+                assert_eq!(take(), ["subtitle pre", "subtitle post"]);
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn options_controller_notice_paints_after_screen_post_despite_hud_cancel() {
+    use sunrise_client::{controller_notice::Notice, hud::rgba, hud_layout::abgr};
+
+    crate::game::in_own_process(
+        "game::gui_layer_tests::options_controller_notice_paints_after_screen_post_despite_hud_cancel",
+        || {
+            const MARKER: u32 = 0xFFAE_2818;
+            struct CancelHud;
+            #[mod_api::__subscriptions]
+            impl Hooks for CancelHud {
+                fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
+                    Flow::Cancel
+                }
+                fn screen_render_post(
+                    &self,
+                    _: &dyn ClientHost,
+                    event: &mut ScreenRenderPostEvent<'_>,
+                ) {
+                    event.draw.fill([0.0, 0.0, 1.0, 1.0], MARKER);
+                }
+            }
+
+            with_client_game(|game| {
+                mod_platform::__private::install(
+                    vec![ModEntry::new("cancel_hud", Box::new(CancelHud))].into(),
+                );
+                enter_test_world(game);
+                game.toggle_hide_gui();
+                game.set_screen(Screen::Paused);
+                game.open_options(false);
+                game.controller_notice
+                    .raise(Notice::new("Controller disconnected", "Use the keyboard"));
+                let frame = game.hud_layers([640, 480]);
+                let post = frame
+                    .vertices
+                    .iter()
+                    .position(|v| v.color == abgr(MARKER))
+                    .unwrap();
+                // The notice plate's 1px border is emitted even at the start of the slide.
+                let notice = frame
+                    .vertices
+                    .iter()
+                    .position(|v| v.color == rgba(255, 255, 255, 0x5A))
+                    .unwrap();
+                assert!(notice > post);
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_owner() {
+    use std::time::{Duration, Instant};
+    use sunrise_client::hud::Rect;
+
+    crate::game::in_own_process(
+        "game::gui_layer_tests::panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_owner",
+        || {
+            const OWNER: &str = "broken_hud_listener";
+            struct Broken;
+            #[mod_api::__subscriptions]
+            impl Hooks for Broken {
+                fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
+                    log("broken hud pre");
+                    panic!("HUD pre failed");
+                }
+                fn gui_layer_pre(
+                    &self,
+                    _: &dyn ClientHost,
+                    event: &mut GuiLayerPreEvent<'_>,
+                ) -> Flow {
+                    if event.layer == "minecraft:crosshair" {
+                        log("broken crosshair pre");
+                        panic!("HUD layer pre failed");
+                    }
+                    Flow::Continue
+                }
+                fn render_gui_post(&self, _: &dyn ClientHost, _: &mut RenderGuiPostEvent<'_>) {
+                    log("same mod hud post");
+                }
+            }
+            struct Observer;
+            #[mod_api::__subscriptions]
+            impl Hooks for Observer {
+                fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
+                    log("observer hud pre");
+                    Flow::Continue
+                }
+                fn gui_layer_pre(
+                    &self,
+                    _: &dyn ClientHost,
+                    event: &mut GuiLayerPreEvent<'_>,
+                ) -> Flow {
+                    if event.layer == "minecraft:crosshair" {
+                        log("observer crosshair pre");
+                    }
+                    Flow::Continue
+                }
+            }
+
+            with_client_game(|game| {
+                mod_platform::__private::install(
+                    vec![
+                        ModEntry::new(OWNER, Box::new(Broken)),
+                        ModEntry::new("observing_hud_listener", Box::new(Observer)),
+                    ]
+                    .into(),
+                );
+                enter_test_world(game);
+                game.toggle_hide_gui();
+                assert!(game.ui.player_hides_gui && game.ui.hide_gui);
+                let size = [640, 480];
+                let _ = game.hud(size);
+                assert_eq!(
+                    take(),
+                    [
+                        "broken hud pre",
+                        "observer hud pre",
+                        "broken crosshair pre",
+                        "observer crosshair pre",
+                        "same mod hud post"
+                    ]
+                );
+                let [(Some(whole), _), (Some(layer), _)] =
+                    game.server_packs.hook_panics.as_mut_slice()
+                else {
+                    panic!("one shared error toast per panicking listener");
+                };
+                let rect = *game
+                    .gui
+                    .atlas
+                    .sprites
+                    .entry("toast/system".into())
+                    .or_insert(Rect {
+                        u0: 0.25,
+                        v0: 0.25,
+                        u1: 0.5,
+                        v1: 0.5,
+                        w: 160,
+                        h: 32,
+                    });
+                let y =
+                    [(whole, "render_gui_pre"), (layer, "gui_layer_pre")].map(|(toast, hook)| {
+                        let message = toast.message.as_ref().unwrap().component();
+                        assert_eq!(
+                            message,
+                            serde_json::json!({
+                                "translate": "sunrise.mods.hook_panic.description",
+                                "with": [{"text": OWNER}, {"text": hook}],
+                            })
+                        );
+                        toast.slide.origin = Some(Instant::now() - Duration::from_secs(1));
+                        32.0 * toast.slot.unwrap() as f32
+                    });
+                let frame = game.hud(size);
+                for y in y {
+                    assert!(
+                        frame.vertices.iter().any(|v| v.uv == [rect.u0, rect.v0]
+                            && v.pos[1] == y
+                            && v.pos[0] < frame.width),
+                        "F1 must not hide the shared callback error toast"
+                    );
+                }
+                assert_eq!(
+                    take(),
+                    [
+                        "observer hud pre",
+                        "observer crosshair pre",
+                        "same mod hud post"
+                    ]
+                );
+                assert_eq!(game.server_packs.hook_panics.len(), 2);
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
+    use std::time::{Duration, Instant};
+    use sunrise_client::{text::Text, toasts::SystemToast};
+
+    const OWNER: &str = "broken_hud";
+    let test = "game::gui_layer_tests::a_panicking_hud_painter_shows_its_error_toast_under_f1";
+    crate::game::in_own_process(test, || {
+        struct BrokenHud;
+        #[mod_api::__subscriptions]
+        impl Hooks for BrokenHud {
+            fn register_gui_layers(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterGuiLayersEvent<'_>,
+            ) {
+                assert!(event.layers.register(
+                    "hud_test:broken".into(),
+                    GuiLayerPlacement::AboveAll,
+                    Box::new(|_, _| {
+                        log("broken painter called");
+                        panic!("broken HUD painter");
+                    }),
+                ));
+            }
+        }
+
+        with_client_game(|game| {
+            mod_platform::__private::install(
+                vec![ModEntry::new(OWNER, Box::new(BrokenHud))].into(),
+            );
+            mods::register_gui_layers(ExecutionRole::Client);
+            enter_test_world(game);
+            game.toggle_hide_gui();
+            assert!(game.ui.player_hides_gui && game.ui.hide_gui);
+            game.server_packs.load_fail = Some(SystemToast::new(
+                Text::tr("resourcePack.load_fail", &[]),
+                None,
+            ));
+            let size = [640, 480];
+            let _ = game.hud(size);
+
+            // Backdate the slide to test fully visible toasts without waiting for animation.
+            let slide_started = Instant::now() - Duration::from_millis(700);
+            let [(Some(error), _)] = game.server_packs.hook_panics.as_mut_slice() else {
+                panic!("the shared callback owner must report one panic");
+            };
+            assert_eq!(
+                error.title.translation_key(),
+                Some("sunrise.mods.hook_panic.title")
+            );
+            assert_eq!(
+                error.message.as_ref().unwrap().component()["with"][0]["text"],
+                OWNER
+            );
+            let error_y = 32.0 * error.slot.unwrap() as f32;
+            error.slide.origin = Some(slide_started);
+            let ordinary = game.server_packs.load_fail.as_mut().unwrap();
+            let ordinary_y = 32.0 * ordinary.slot.unwrap() as f32;
+            assert_ne!(ordinary_y, error_y);
+            ordinary.slide.origin = Some(slide_started);
+            let rect = *game
+                .gui
+                .atlas
+                .sprites
+                .entry("toast/system".into())
+                .or_insert(sunrise_client::hud::Rect {
+                    u0: 0.25,
+                    v0: 0.25,
+                    u1: 0.5,
+                    v1: 0.5,
+                    w: 160,
+                    h: 32,
+                });
+
+            let frame = game.hud(size);
+            let has_toast = |y| {
+                frame
+                    .vertices
+                    .iter()
+                    .any(|v| v.uv == [rect.u0, rect.v0] && v.pos[1] == y && v.pos[0] < frame.width)
+            };
+            assert!(
+                has_toast(error_y),
+                "F1 must not hide the callback error toast"
+            );
+            assert!(!has_toast(ordinary_y), "F1 still hides ordinary toasts");
+            assert_eq!(
+                take(),
+                ["broken painter called"],
+                "a panic disables that painter"
+            );
         });
     });
 }

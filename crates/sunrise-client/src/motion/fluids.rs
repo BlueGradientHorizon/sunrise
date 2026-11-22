@@ -340,14 +340,31 @@ impl MotionWorld<'_, '_, '_> {
                 };
         }
     }
+    /// Finish the fluid phase where no owning server hit needs to settle in between.
     pub fn finish_fluid_tick(&mut self, answer: Option<(SwimEntry, bool)>) -> Result<()> {
+        self.swim_and_burn_tick(answer)?;
+        self.finish_fluid_base_tick();
+        Ok(())
+    }
+
+    /// Apply the swim-entry answer, then run the burning hit before decrementing fire.
+    pub fn swim_and_burn_tick(&mut self, answer: Option<(SwimEntry, bool)>) -> Result<()> {
         self.apply_swim_entry(answer);
-        self.tick_remaining_fire()?;
+        self.hurt_from_remaining_fire()
+    }
+
+    /// Entity.baseTick after the burning hit returned to its owner.
+    pub fn finish_fluid_base_tick(&mut self) {
+        if self.player.fire_ticks > 0 {
+            self.player.fire_ticks -= 1;
+        }
+        if self.player.fluids.was_touching_water {
+            self.player.fire_ticks = self.player.fire_ticks.min(0);
+        }
         if self.player.is_in_lava() {
             self.player.fall_distance *= 0.5;
         }
         self.player.fluids.first_tick = false;
-        Ok(())
     }
     /// `Entity.updateFluidInteraction`: immersion heights, then touching water
     /// resets the fall and splashes on entry, then the currents push.

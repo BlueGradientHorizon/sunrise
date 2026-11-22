@@ -8,8 +8,9 @@ entities of that type share the part, not their attachments.
 `can_rider_interact` mirrors NeoForge's `IEntityExtension.canRiderInteract`. Attach an
 `EntityPart` to the candidate's entity type and set `event.allowed = true` to let a
 rider pick it like an unrelated entity. The output starts false; parts run in
-dependency order and the last write wins. The hook has version 1 and exposes
-`event.entity: EntityRef` and a writable `event.allowed: bool` with a `ClientHost`.
+dependency order and the last write wins. The hook exposes `event.subject: EntityClientScope<'_>`
+(borrow the candidate's read-only `EntityClientView` with `with_view`, or `&mut dyn ClientHost`
+sequentially with `host()`) and a writable `event.allowed: bool`.
 
 The ordinary client pick excludes entities sharing the camera's root vehicle,
 including other passengers, not just the directly ridden entity. The shared

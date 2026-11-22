@@ -1133,10 +1133,15 @@ impl Chunk {
     /// the quart y clamped to the column).
     #[inline]
     pub fn biome(&self, x: i32, y: i32, z: i32) -> u16 {
-        let qy = ((y - self.min_y) >> 2).clamp(0, self.sections.len() as i32 * 4 - 1);
+        self.biome_quart([x >> 2, y >> 2, z >> 2])
+    }
+    /// A biome at quart coordinates, with Y clamped before converting to a section index.
+    #[inline]
+    pub(crate) fn biome_quart(&self, [qx, qy, qz]: [i32; 3]) -> u16 {
+        let qy = (qy - (self.min_y >> 2)).clamp(0, self.sections.len() as i32 * 4 - 1);
         self.sections[(qy >> 2) as usize]
             .biomes
-            .get(((qy & 3) << 4 | ((z & 15) >> 2) << 2 | (x & 15) >> 2) as usize) as u16
+            .get(((qy & 3) << 4 | (qz & 3) << 2 | (qx & 3)) as usize) as u16
     }
     /// Sets the biome of one quart cell (`qy` counts from the column's bottom).
     pub fn set_biome_cell(&mut self, qx: i32, qy: i32, qz: i32, biome: u16) {
