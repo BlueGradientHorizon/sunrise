@@ -176,19 +176,31 @@ impl Wire for crate::LevelKey {
         Self::parse(input.take_str()?).map_err(|_| WireError::Invalid("invalid level key"))
     }
 }
-impl Wire for crate::ConfigPath {
-    layout_fields!("text" => String);
+impl Wire for crate::SpawnerKey {
+    layout_fields!(ordinary_only "validated-spawner-key:v1"; "text" => String);
     const MIN: usize = 4;
     fn put(&self, out: &mut Writer) {
-        out.put_str(self.as_str());
+        if out.ordinary_only() {
+            out.put_str(self.as_str());
+        }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        let text = input.take::<String>()?;
-        if text.is_empty() {
-            Ok(Self::root())
-        } else {
-            Self::try_from(text).map_err(|_| WireError::Invalid("invalid config path"))
+        input.ordinary_only()?;
+        Self::new(input.take_str()?).ok_or(WireError::Invalid("invalid spawner key"))
+    }
+}
+impl Wire for crate::CustomSpawners {
+    layout_fields!(ordinary_only "unique-spawner-entries:v1"; "entries" => Vec<crate::SpawnerEntry>);
+    const MIN: usize = 4;
+    fn put(&self, out: &mut Writer) {
+        if out.ordinary_only() {
+            crate::SpawnerEntry::put_list(self.entries(), out);
         }
+    }
+    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
+        input.ordinary_only()?;
+        Self::try_from(input.take::<Vec<crate::SpawnerEntry>>()?)
+            .map_err(|_| WireError::Invalid("duplicate spawner"))
     }
 }
 
@@ -343,12 +355,18 @@ mod tests {
 
     #[test]
     fn wire_checked_values_and_garbage() {
-        round(crate::ConfigPath::new("example/options.toml").unwrap());
-        round(crate::ConfigPath::root());
+        round(crate::SpawnerKey::new("example:spawner").unwrap());
+        round(crate::CustomSpawners::vanilla());
         round(crate::Identifier::parse("example:thing").unwrap());
         let mut out = Writer::new();
-        out.put_str("../escape");
-        assert!(Reader::decode::<crate::ConfigPath>(out.bytes()).is_err());
+        out.put_str("not namespaced");
+        assert!(Reader::decode::<crate::SpawnerKey>(out.bytes()).is_err());
+        out.clear();
+        out.put(&vec![
+            crate::SpawnerEntry::Builtin(crate::SpawnerKind::Cat),
+            crate::SpawnerEntry::Builtin(crate::SpawnerKind::Cat),
+        ]);
+        assert!(Reader::decode::<crate::CustomSpawners>(out.bytes()).is_err());
         for len in 0..64 {
             let bytes: Vec<u8> = (0..len).map(|i| (i * 37 + len * 11) as u8).collect();
             let _ = Reader::decode::<crate::ItemStack>(&bytes);
