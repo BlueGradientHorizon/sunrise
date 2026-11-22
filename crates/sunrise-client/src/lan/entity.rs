@@ -109,10 +109,9 @@ pub struct EntityState {
     /// player has at least this permission level track it.
     pub hidden: Option<u8>,
     /// A native mod's live general row (`lan_general_states`): introduced on
-    /// `sunrise:general_entity` at its declaration's range and interval. Set by
-    /// that producer alone, never from the key: a quarantined record keeps its
-    /// type's key and is no row.
-    pub general: bool,
+    /// `sunrise:general_entity` using the settings of its resolved type slot.
+    /// A quarantined record keeps its type's key but is not a general row.
+    pub general: Option<tracking::General>,
 }
 
 impl EntityState {
@@ -148,7 +147,7 @@ impl EntityState {
         self.spectator = false;
         self.watching = false;
         self.hidden = None;
-        self.general = false;
+        self.general = None;
     }
 }
 
@@ -406,8 +405,8 @@ impl ServerEntity {
     ) -> Option<Self> {
         // A live general row takes its declaration's settings, which may reach past a
         // vanilla type's byte; any other entity its type's, whatever its key.
-        let (range, interval, track_deltas) = if e.general {
-            tracking::general(&e.kind).unwrap_or((5, 3, true))
+        let (range, interval, track_deltas) = if let Some(general) = e.general {
+            (general.range, general.interval, true)
         } else {
             let (range, interval, deltas) = tracking::settings(&e.kind);
             (i32::from(range), interval, deltas)
@@ -415,7 +414,7 @@ impl ServerEntity {
         if range == 0 {
             return None;
         }
-        let kind = if e.general {
+        let kind = if e.general.is_some() {
             Some(Kind::General)
         } else {
             kind(&e.kind).map(Kind::Type)
@@ -1253,7 +1252,7 @@ impl Entities {
                 spectator: e.spectator,
                 watching: e.watching,
                 hidden: e.hidden,
-                general: e.general,
+                general: e.general.is_some(),
             };
             let chunks = [(
                 (e.position[0].floor() as i32) >> 4,
@@ -1455,7 +1454,7 @@ impl Entities {
                 spectator: e.spectator,
                 watching: e.watching,
                 hidden: e.hidden,
-                general: e.general,
+                general: e.general.is_some(),
             });
         }
         self.states.end();
@@ -1923,7 +1922,7 @@ mod tests {
             spectator: false,
             watching: false,
             hidden: None,
-            general: false,
+            general: None,
         }
     }
 
@@ -2677,6 +2676,17 @@ mod tests {
             kind: "minecraft:marker".into(),
             ..state(0.0)
         };
+        let declared = mod_api::__private::GeneralEntityTypeDeclaration {
+            id: "test:zero_range".into(),
+            tracking_chunks: 0,
+            ..Default::default()
+        };
+        let general = EntityState {
+            id: 9,
+            general: Some((&declared).into()),
+            kind: declared.id,
+            ..state(0.0)
+        };
         let next = EntityState {
             id: 8,
             ..state(0.0)
@@ -2690,8 +2700,8 @@ mod tests {
                 entity_id: 1,
                 spectator: false,
                 permission: 0,
-                sunrise: false,
-                general_entity: false,
+                sunrise: true,
+                general_entity: true,
                 moved: false,
                 position: marker.position,
                 view_distance: 10,
@@ -2706,26 +2716,49 @@ mod tests {
             };
             if late {
                 level.pair_after_tick(
-                    &[marker.clone(), next.clone()],
+                    &[marker.clone(), general.clone(), next.clone()],
                     &riding,
                     &mut viewer,
                     |_| Some(100),
                 );
                 assert!(!level.tracks(marker.id));
+                assert!(!level.tracks(general.id));
                 assert!(level.tracks(next.id));
             }
-            level.tick(&[&marker, &next], &riding, &mut viewer, |_| Some(100));
+            let states = [&marker, &general, &next];
+            level.tick(&states, &riding, &mut viewer, |_| Some(100));
             assert!(!level.tracks(marker.id));
+            assert!(!level.tracks(general.id));
             assert!(level.tracks(next.id));
             let tracker = &mut viewer[0].tracker;
             assert!(!tracker.is_tracking(marker.id));
+            assert!(!tracker.is_tracking(general.id));
             assert!(tracker.is_tracking(next.id));
             let events = tracker.take_events();
             assert_eq!(events.len(), 1);
             assert!(events[0].start);
             assert_eq!(events[0].entity, next.id);
-            level.tick(&[&marker, &next], &riding, &mut viewer, |_| Some(100));
+            level.tick(&states, &riding, &mut viewer, |_| Some(100));
             assert!(viewer[0].tracker.take_events().is_empty());
+            let added: Vec<_> = viewer[0]
+                .out
+                .iter()
+                .filter_map(|body| {
+                    let mut reader = sunrise_protocol::buf::Reader::new(body);
+                    match play::Clientbound::decode(reader.varint().unwrap(), reader.rest())
+                        .unwrap()
+                    {
+                        play::Clientbound::AddEntity(packet) => Some(packet.id),
+                        play::Clientbound::CustomPayload(packet)
+                            if packet.channel == general_entity::CHANNEL =>
+                        {
+                            panic!("zero-range general row was sent to a client")
+                        }
+                        _ => None,
+                    }
+                })
+                .collect();
+            assert_eq!(added, [next.id]);
         }
     }
 
