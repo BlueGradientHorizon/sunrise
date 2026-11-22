@@ -2206,13 +2206,12 @@ mod tests {
                         // Built-in levels unload chunks without closing; exercise the save
                         // on close of a custom level instead.
                         let id = "test_idle:record_failure";
-                        let custom = Dim::Extra(mod_api::__private::dimension_key(id));
                         let flat =
                             RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, 1);
-                        game.levels
-                            .runtime
-                            .queue_open("test_idle", id, flat)
-                            .unwrap();
+                        game.runtime_level_open(id, flat).unwrap();
+                        game.apply_runtime_levels();
+                        assert!(game.runtime_level_is_open(id));
+                        let custom = Dim::extra(id).unwrap();
                         game.enter_level(custom).unwrap();
                         dirty_test_chunk(game);
                         queue_unencodable_entity_record(&game.save);
