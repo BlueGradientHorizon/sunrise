@@ -351,7 +351,7 @@ fn hash_enchantments<H: std::hash::Hasher>(levels: &Levels, state: &mut H) {
 /// ItemEnchantments is a map, but keeps its written order for display. Compare
 /// without allocating or reordering either component. The usual same-order
 /// case uses slice equality; only reordered entries need the quadratic scan.
-fn enchantments_equal(first: &Levels, second: &Levels) -> bool {
+fn enchantments_equal(first: &[(Arc<str>, u32)], second: &[(Arc<str>, u32)]) -> bool {
     first == second
         || (first.len() == second.len()
             && first.iter().all(|entry| {
