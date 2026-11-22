@@ -179,6 +179,36 @@ impl Game<'_> {
         }
         mod_id
     }
+    /// `Item.getName(ItemStack)` of a mod item: what its `item_name` Part
+    /// answers, or `None` for the default. One table lookup for an item no
+    /// Part names.
+    pub(in crate::game) fn mod_item_name(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<sunrise_client::text::Text> {
+        sunrise_client::stations::item_name_part(&self.loop_context, stack)
+    }
+    /// `ItemStack.getStyledHoverName`, without the rarity colour applied by the tooltip.
+    pub(in crate::game) fn styled_stack_name(
+        &self,
+        stack: &ItemStack,
+    ) -> sunrise_client::text::Text {
+        let name = self.stack_hover_name_text(stack);
+        if stack.data().is_some_and(|data| data.custom_name.is_some()) {
+            sunrise_client::text::Text::empty().append(name).italic()
+        } else {
+            name
+        }
+    }
+    /// `ItemStack.getHoverName` as a component: the custom name or a written
+    /// book's title, else the name a mod item's Part gives the stack, else
+    /// vanilla's. The Part is asked at most once.
+    pub(in crate::game) fn stack_hover_name_text(
+        &self,
+        stack: &ItemStack,
+    ) -> sunrise_client::text::Text {
+        sunrise_client::stations::hover_name_in(&self.loop_context, &self.pack.names, stack)
+    }
     /// `ItemStack.isBarVisible`, `getBarWidth`, `getBarColor`, before client-only hooks.
     pub(in crate::game) fn item_resource_bar(&self, stack: &ItemStack) -> Option<mod_api::ItemBar> {
         use super::api_values::TryIntoApi;

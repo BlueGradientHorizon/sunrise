@@ -88,7 +88,7 @@ pub(super) fn mob_render<'a>(m: &'a Mob, id: u32, partial: f32) -> MobRender<'a>
         walk_speed: pose.speed,
         hurt_time: m.hurt_time,
         death_time: m.death_time,
-        on_ground: m.on_ground,
+        on_ground: m.ground.on_ground,
     }
 }
 
