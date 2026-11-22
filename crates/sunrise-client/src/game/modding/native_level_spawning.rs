@@ -151,10 +151,7 @@ impl Game<'_> {
             None => shot.update_rotation(),
         }
         shot.item = Some(carried);
-        let id = self.spawn_owned_projectile(owner.map(|(_, target)| target), shot, stack)?;
-        // The join as any fresh spawn's: told now, so a mod's veto refuses
-        // the call, or at the root commit inside a transaction.
-        self.native_joins_flush(false, id).then_some(id)
+        self.spawn_owned_projectile(owner.map(|(_, target)| target), shot, stack)
     }
     /// A new row of the general type `kind` at `pos`: a fresh UUID, the type's
     /// declared payload version and no payload bytes, through the insertion

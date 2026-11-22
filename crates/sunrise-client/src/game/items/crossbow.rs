@@ -410,12 +410,6 @@ impl Game<'_> {
                 // for the weapon the arrow was fired from.
                 arrow.shoot_own(dir.to_array(), power, 1.0);
                 self.spawn_projectile(arrow, ammo);
-                let (player, name, projectile) = (
-                    sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
-                    self.acting_player_name().to_owned(),
-                    self.next_entity,
-                );
-                self.native_entity_shoot_bow(player, &name, projectile, power as f32);
             }
             // Ordinary arrows post from ArrowState on their first tick.
             let pitch = if index == 0 {

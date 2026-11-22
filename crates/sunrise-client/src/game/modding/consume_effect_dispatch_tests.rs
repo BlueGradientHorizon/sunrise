@@ -665,28 +665,29 @@ fn a_foreign_heal_listener_is_quarantined_without_disabling_the_consume_callback
     });
 }
 
-struct PanickingProjectileLaunchListener(std::sync::atomic::AtomicBool);
+struct PanickingProjectileJoinListener(std::sync::atomic::AtomicBool);
 #[mod_api::__subscriptions]
-impl Hooks for PanickingProjectileLaunchListener {
-    fn player_launch_projectile(
+impl Hooks for PanickingProjectileJoinListener {
+    fn entity_join_level(
         &self,
         _: &mut dyn ServerHost,
-        event: &mut mod_api::PlayerLaunchProjectileEvent<'_>,
-    ) {
-        if event.item == "minecraft:snowball"
+        event: &mut mod_api::EntityJoinLevelEvent<'_>,
+    ) -> mod_api::Flow {
+        if event.kind == "minecraft:snowball"
             && self.0.swap(false, std::sync::atomic::Ordering::Relaxed)
         {
-            panic!("turn exit projectile listener");
+            panic!("projectile join listener");
         }
+        mod_api::Flow::Continue
     }
 }
 
 #[test]
 #[ignore = "daily"]
-fn a_panicking_guest_turn_restores_cross_level_state_and_quarantines_its_exit_listener() {
+fn a_panicking_guest_turn_restores_cross_level_state_and_quarantines_its_join_listener() {
     let mods = vec![ModEntry::new(
         "launch_listener",
-        Box::new(PanickingProjectileLaunchListener(true.into())),
+        Box::new(PanickingProjectileJoinListener(true.into())),
     )];
     mod_platform::testing::with_mods(mods.into(), || {
         with_guests(|game| {
@@ -712,7 +713,7 @@ fn a_panicking_guest_turn_restores_cross_level_state_and_quarantines_its_exit_li
                             .as_mut()
                             .unwrap()
                             .push(Text::literal("inner guest"));
-                        game.creatures.projectiles.push(Projectile::new(
+                        game.add_fresh_projectile(Projectile::new(
                             ProjectileKind::Snowball,
                             Vec3::ZERO,
                             Some(Who::Player),
@@ -729,7 +730,7 @@ fn a_panicking_guest_turn_restores_cross_level_state_and_quarantines_its_exit_li
                     take_hook_panics(),
                     [HookPanicReport {
                         mod_id: "launch_listener",
-                        hook: "player_launch_projectile",
+                        hook: "entity_join_level",
                     }]
                 );
                 assert_eq!(game.lan_acting, Some(12));

@@ -885,7 +885,7 @@ impl Game<'_> {
         }
         let id = mob.id;
         self.mobs.push(mob);
-        self.native_mobs_joined(self.mobs.len() - 1, false);
+        self.admit_new_mobs(self.mobs.len() - 1);
         Some(id)
     }
 

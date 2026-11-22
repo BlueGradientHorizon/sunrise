@@ -1120,7 +1120,7 @@ impl Game<'_> {
             | "minecraft:lingering_potion" => {
                 let mut shot = super::potions::thrown_projectile(one, at, false);
                 shot.shoot_own(dir, power, uncertainty);
-                self.add_projectile(shot);
+                self.add_fresh_projectile(shot);
             }
             _ => {
                 let kind = match item.as_str() {

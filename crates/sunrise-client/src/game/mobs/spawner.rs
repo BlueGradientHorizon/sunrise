@@ -186,12 +186,12 @@ impl Game<'_> {
         for mob in finalized {
             let i = self.mobs.len();
             self.mobs.push(mob);
-            self.native_mobs_joined(i, false);
+            self.admit_new_mobs(i);
         }
         for mob in created {
             let i = self.mobs.len();
             self.mobs.push(mob);
-            self.native_mobs_joined(i, false);
+            self.admit_new_mobs(i);
         }
         for (tree, key) in loads {
             ids.insert(key, tree.install(self));

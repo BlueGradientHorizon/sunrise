@@ -890,12 +890,6 @@ impl Game<'_> {
                 on_ground,
             );
             self.spawn_projectile(arrow, &ammo);
-            let (player, name, projectile) = (
-                sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
-                self.acting_player_name().to_owned(),
-                self.next_entity,
-            );
-            self.native_entity_shoot_bow(player, &name, projectile, power * 3.0);
             // ProjectileWeaponItem.shoot: one point of wear per arrow, and a
             // bow that breaks mid-volley shoots no more.
             let held = self.held().is_some();

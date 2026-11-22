@@ -566,7 +566,6 @@ impl Game<'_> {
         let block_sounds = std::mem::take(&mut self.guest_block_sounds);
         let equipment_breaks = std::mem::take(&mut self.guest_equipment_breaks);
         let swings = self.swings_started;
-        let projectiles = self.creatures.projectiles.len();
         let modifiers = std::mem::replace(
             &mut self.applied_modifiers,
             std::mem::take(&mut play.modifiers),
@@ -597,15 +596,7 @@ impl Game<'_> {
             .as_mut()
             .map(|p| std::mem::take(&mut p.events))
             .unwrap_or_default();
-        // What the guest shot is theirs before launch listeners run, even if an exit callback panics.
-        for i in projectiles..self.creatures.projectiles.len() {
-            self.creatures.projectiles.update(i, |p| {
-                if p.owner == Some(sunrise_client::mobs::Who::Player) && p.guest.is_none() {
-                    p.guest = Some(conn);
-                }
-            });
-        }
-        // The callbacks a turn ends with (combat, armor, food, projectile launch and sound) can reach a
+        // The callbacks a turn ends with (combat, armor, food and sound) can reach a
         // mod and panic. The swap is still restored below and the guest's progress written
         // back; the panic resumes at the end (#2240). `as_guest_at` catches a panic of the
         // turn itself, so a panic here then goes on in place of that one.
@@ -639,38 +630,6 @@ impl Game<'_> {
                         p.health.food.saturation =
                             p.health.food.saturation.min(p.health.food.food as f32);
                     }
-                }
-            }
-            let listening = mod_api::__private::listened(mod_api::HookId::PlayerLaunchProjectile);
-            for projectile in projectiles..self.creatures.projectiles.len() {
-                if !listening {
-                    break;
-                }
-                let item = match &self.creatures.projectiles[projectile].kind {
-                    sunrise_client::projectiles::ProjectileKind::Snowball => {
-                        Some("minecraft:snowball".to_owned())
-                    }
-                    sunrise_client::projectiles::ProjectileKind::Egg => {
-                        Some("minecraft:egg".to_owned())
-                    }
-                    sunrise_client::projectiles::ProjectileKind::EnderPearl => {
-                        Some("minecraft:ender_pearl".to_owned())
-                    }
-                    sunrise_client::projectiles::ProjectileKind::Trident => {
-                        Some("minecraft:trident".to_owned())
-                    }
-                    sunrise_client::projectiles::ProjectileKind::Potion(stack, _) => {
-                        Some(stack.item.to_string())
-                    }
-                    _ => None,
-                };
-                if let Some(item) = item {
-                    let Some(host) = self.lan.as_ref() else {
-                        unreachable!("LanHost dropped inside a guest turn; closes are deferred");
-                    };
-                    let guest = &host.hub.guests[i];
-                    let (uuid, name) = (guest.uuid, guest.name.clone());
-                    self.native_player_launch_projectile(uuid, &name, &item);
                 }
             }
             // Player.playSound: everyone near but the guest, in the players' source,

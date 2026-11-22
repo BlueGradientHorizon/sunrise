@@ -2729,7 +2729,7 @@ impl Game<'_> {
         }
     }
     /// The mobs from index `from` on are new in the world.
-    pub(super) fn native_mobs_joined(&mut self, from: usize, natural: bool) {
+    pub(super) fn admit_new_mobs(&mut self, from: usize) {
         // Preserve saved/constructed UUIDs. Natural spawns built with provisional
         // IDs get their persistent identity when admitted, not on their first hit.
         for mob in self.mobs.iter().skip(from) {
@@ -2738,19 +2738,7 @@ impl Game<'_> {
                 .get_or_insert_with(mob.id, sunrise_client::save::random_uuid);
         }
         self.join_spawn_tags(from);
-        // A mod can keep a mob out; it is then taken out and not told of.
         self.native_joins_flush(false, 0);
-        for i in from..self.mobs.len() {
-            let m = &self.mobs[i];
-            let (kind, pos) = (mob_kind(m), [m.position.x, m.position.y, m.position.z]);
-            self.native_mob_spawned(self.dim.id(), &kind, pos, natural);
-        }
-    }
-    /// The acting player's blow killed mob `index`.
-    pub(super) fn native_kill_event(&mut self, index: usize) {
-        let (entity, kind) = (self.mobs[index].id, mob_kind(&self.mobs[index]));
-        let player = self.native_acting_id();
-        self.native_mob_killed(player, entity, &kind);
     }
     /// The acting player's hit landed on mob `index`, holding `stack`.
     pub(super) fn native_hurt_enemy_event(&mut self, stack: &ItemStack, index: usize) {

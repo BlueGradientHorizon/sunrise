@@ -41,10 +41,6 @@ impl Game<'_> {
             mod_api::Hand::Off => super::shield::OFFHAND_SLOT,
         };
         let protector = protection.stack;
-        // The mods hear a server player's totem before it is used up.
-        if let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
-            self.native_player_totem(uuid, &name);
-        }
         self.player.as_ref().filter(|p| p.entity_id == entity)?;
         self.consume_player_slot(slot, 1);
         self.award_stat("used", &protector.item, 1);

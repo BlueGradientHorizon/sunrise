@@ -721,15 +721,7 @@ impl Game<'_> {
                 from: Some([p.position.x, p.position.y, p.position.z]),
                 attacker_species: None,
             };
-            let join = g.mobs[index].join;
-            let (_, killed) = g.hurt_by_player(index, damage, source);
-            if killed
-                && let Some(i) = g.mob_index.find(&g.mobs, attacker)
-                && g.mobs[i].join == join
-                && !g.mobs[i].removed
-            {
-                g.native_kill_event(i);
-            }
+            g.hurt_by_player(index, damage, source);
         });
     }
     /// The victim's side of thorns when another player hit this one: the

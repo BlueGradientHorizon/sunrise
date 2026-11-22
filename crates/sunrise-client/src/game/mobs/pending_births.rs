@@ -240,7 +240,7 @@ impl Game<'_> {
                 let mut child = Mob::new(self.next_entity, dying.kind.clone(), dying.position, 0.0);
                 sunrise_client::mobs::cube::split_child(dying, &mut child, i);
                 self.mobs.push(child);
-                self.native_mobs_joined(self.mobs.len() - 1, false);
+                self.admit_new_mobs(self.mobs.len() - 1);
             }
             return;
         }
@@ -280,7 +280,7 @@ impl Game<'_> {
             |game, kept| {
                 for child in kept {
                     game.mobs.push(child);
-                    game.native_mobs_joined(game.mobs.len() - 1, false);
+                    game.admit_new_mobs(game.mobs.len() - 1);
                 }
             },
         );

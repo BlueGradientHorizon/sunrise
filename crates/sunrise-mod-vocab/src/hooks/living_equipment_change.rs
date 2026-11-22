@@ -28,9 +28,8 @@ pub trait Hooks {
     /// slot, so a hotbar selection, a pickup into the selected slot or a
     /// finished item use is a `MainHand` change. Version 3 subscribes to this
     /// event directly; enabling a subscriber does not replay changes already
-    /// detected. The world host's own
-    /// player, in single player or hosting a LAN world, isn't told here:
-    /// `on_equip` hears it. Server-side.
+    /// detected. The integrated server's host player is a connected player and
+    /// uses the same check as a LAN or dedicated-server player. Server-side.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_living_equipment_change",
         dispatch = "api_carrier",

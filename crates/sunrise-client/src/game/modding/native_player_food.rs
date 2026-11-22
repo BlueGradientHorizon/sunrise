@@ -136,7 +136,7 @@ impl Game<'_> {
     /// `ServerPlayer.setExperienceLevels`: sets the level, keeping the
     /// progress and the total.
     pub(super) fn player_set_experience_levels(&mut self, player: PlayerRef, levels: i32) -> bool {
-        self.native_player_write(player, |game| game.experience.level = levels)
+        self.native_player_write(player, |game| game.set_experience_levels(levels))
     }
     /// Writes the signed `Player.totalExperience` field, keeping the level and progress.
     pub(super) fn player_set_total_experience(&mut self, player: PlayerRef, total: i32) -> bool {
@@ -257,6 +257,78 @@ mod tests {
                 game.player_score = i32::MIN;
                 assert!(player.give_experience_points(game, 1));
                 assert_eq!(game.player_score, i32::MAX);
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn enchantment_debits_ask_but_absolute_level_writes_only_report() {
+        use std::sync::{Arc, Mutex};
+        struct Observe(Arc<Mutex<Vec<(&'static str, i32, i32)>>>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Observe {
+            fn player_xp_level_change(
+                &self,
+                host: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::PlayerXpLevelChangeEvent<'_>,
+            ) -> mod_api::Flow {
+                let level = host
+                    .players()
+                    .acting_player()
+                    .unwrap()
+                    .experience(host)
+                    .unwrap()
+                    .level;
+                self.0.lock().unwrap().push(("before", level, event.levels));
+                if event.levels == -4 {
+                    mod_api::Flow::Cancel
+                } else {
+                    mod_api::Flow::Continue
+                }
+            }
+
+            fn player_level_change(
+                &self,
+                host: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::PlayerLevelChangeEvent<'_>,
+            ) {
+                let level = host
+                    .players()
+                    .acting_player()
+                    .unwrap()
+                    .experience(host)
+                    .unwrap()
+                    .level;
+                assert_eq!(event.to, level);
+                self.0.lock().unwrap().push(("after", event.from, level));
+            }
+        }
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![mod_api::ModEntry::new(
+            "xp",
+            Box::new(Observe(heard.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let player = acting_player(game);
+                game.lan_acting_name = Some("LevelProbe".into());
+                assert!(player.set_experience_levels(game, 5));
+                assert!(player.set_experience_levels(game, 5));
+                game.enchantment_performed(4);
+                assert_eq!(game.experience.level, 5);
+                game.enchantment_performed(2);
+                assert_eq!(game.experience.level, 3);
+                assert_eq!(
+                    *heard.lock().unwrap(),
+                    [
+                        ("after", 0, 5),
+                        ("before", 5, -4),
+                        ("before", 5, -2),
+                        ("after", 5, 3),
+                    ]
+                );
             });
         });
     }

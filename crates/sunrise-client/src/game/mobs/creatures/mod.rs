@@ -786,7 +786,7 @@ impl Game<'_> {
     fn insert_spawned_mob(&mut self, mob: Mob) -> Option<u32> {
         let id = mob.id;
         self.mobs.push(mob);
-        self.native_mobs_joined(self.mobs.len() - 1, false);
+        self.admit_new_mobs(self.mobs.len() - 1);
         if !self.mobs.iter().any(|m| m.id == id) {
             return None;
         }
@@ -1041,7 +1041,7 @@ impl Game<'_> {
         // ConversionType.SINGLE: `to.startRiding(vehicle, false, false)`.
         self.seat_mob(id);
         self.copy_conversion_attachments(from.id, id, kind);
-        self.native_mobs_joined(self.mobs.len() - 1, false);
+        self.admit_new_mobs(self.mobs.len() - 1);
         let transformed = self.mobs.iter().find(|m| m.id == id)?;
         let transformed_kind = from_kind.as_ref().map(|_| transformed.kind.id.clone());
         // Only move passengers once the new mob's join has succeeded.
@@ -1917,7 +1917,7 @@ impl Game<'_> {
             pos,
             source,
         );
-        self.finish_mob_death(m, &mut dying, source);
+        self.finish_mob_death(m, &mut dying, source, player);
     }
     /// `AbstractCubeMob.remove`: split only as the dead body is removed.
     fn split_dead_cube(&mut self, mut dying: Mob) {
@@ -2446,14 +2446,7 @@ impl Game<'_> {
                 None => None,
             };
         }
-        let player = (p.owner == Some(Who::Player))
-            .then(|| sunrise_client::lan::playerdata::ints_uuid(self.acting_player_uuid()));
-        let name = if player.is_some() {
-            self.acting_player_name().to_owned()
-        } else {
-            String::new()
-        };
-        let (id, kind) = (p.id, p.entity_type());
+        let id = p.id;
         if let Some(a) = p.arrow.as_mut()
             && !p.stuck
         {
@@ -2462,8 +2455,17 @@ impl Game<'_> {
             a.spawn_rot = Some((p.pitch, p.yaw));
         }
         self.creatures.projectiles.push(p);
-        self.native_projectile_launch(player, &name, id, kind);
         id
+    }
+    /// `ServerLevel.addFreshEntity` at a projectile's actual spawn, as opposed to
+    /// restoring a saved or temporarily borrowed projectile row.
+    pub(super) fn add_fresh_projectile(&mut self, mut projectile: Projectile) -> Option<u32> {
+        if projectile.owner == Some(Who::Player) && projectile.guest.is_none() {
+            projectile.guest = self.lan_acting;
+        }
+        let id = self.add_projectile(projectile);
+        let row = super::entity::EntityHandle::Projectile(self.creatures.projectiles.len() - 1);
+        self.announce_fresh_join(row, id).then_some(id)
     }
     /// `MushroomCow.shear`'s `sendParticles(EXPLOSION, x, getY(0.5), z, 1, 0, 0, 0, 0)`:
     /// one puff over a sheared mooshroom, half its `height` up, shown here and to
@@ -3320,7 +3322,7 @@ impl Game<'_> {
                     self.next_entity += 1;
                     m.id = self.next_entity;
                     self.mobs.push(*m);
-                    self.native_mobs_joined(self.mobs.len() - 1, false);
+                    self.admit_new_mobs(self.mobs.len() - 1);
                 }
                 MobEvent::SpawnKind { kind, at, setup } => {
                     if let Some(id) = self.spawn_mob(

@@ -57,13 +57,13 @@ impl Game<'_> {
                 game.native_farmland_trample(living, pos, state, distance, &mut cancel);
                 let valid =
                     |game: &Self| game.entity(entity) == Some(living.entity()) && still(game);
-                (!cancel && game.apply_farmland_trample(player, trample, valid, true))
+                (!cancel && game.apply_farmland_trample(trample, valid, true))
                     .then_some(())
                     .ok_or(())
             })
             .is_ok()
         } else {
-            self.apply_farmland_trample(player, trample, still, false)
+            self.apply_farmland_trample(trample, still, false)
         };
         if applied {
             let who = if player {
@@ -82,7 +82,6 @@ impl Game<'_> {
 
     fn apply_farmland_trample(
         &mut self,
-        player: bool,
         trample: FarmlandTrample,
         still: impl Fn(&Self) -> bool,
         journalled: bool,
@@ -93,16 +92,6 @@ impl Game<'_> {
             base,
             ..
         } = trample;
-        if !still(self) {
-            return false;
-        }
-        // The player's write asks `entity_change_block_pre` first; a mob's never did.
-        if player {
-            let acting = self.native_acting_id();
-            if self.landing_change_cancelled(Some(acting), pos, state, base) {
-                return false;
-            }
-        }
         if !still(self) {
             return false;
         }
