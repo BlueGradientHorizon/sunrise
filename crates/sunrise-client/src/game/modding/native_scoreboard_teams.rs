@@ -411,7 +411,7 @@ mod tests {
                 assert!(ScoreboardServerHost::add_team(game, odd).is_ok());
             }
             assert_eq!(game.team("red"), Some(red));
-            assert_eq!(red.name(game).as_deref(), Some("red"));
+            assert_eq!(red.name(game), Some("red"));
             let mut unexpected_visits = 0;
             let mut count = |_: &str| {
                 unexpected_visits += 1;

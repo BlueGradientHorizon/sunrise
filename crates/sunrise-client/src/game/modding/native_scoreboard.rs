@@ -222,7 +222,7 @@ impl Game<'_> {
         if self.remote.is_some() {
             return None;
         }
-        self.objective_handle(self.score.board.display_objective(&slot.name())?)
+        self.objective_handle(self.score.board.display_objective(slot.name())?)
     }
 
     /// `Scoreboard.setDisplayObjective`.
@@ -247,7 +247,7 @@ impl Game<'_> {
         };
         self.score
             .board
-            .set_display_objective(&slot.name(), name.as_deref());
+            .set_display_objective(slot.name(), name.as_deref());
         true
     }
 
@@ -306,7 +306,7 @@ impl Game<'_> {
         let name = &self.objective_state(objective)?.name;
         Some(
             DisplaySlot::all()
-                .filter(|slot| self.score.board.display.get(&slot.name()) == Some(name))
+                .filter(|slot| self.score.board.display.get(slot.name()) == Some(name))
                 .collect(),
         )
     }
@@ -497,7 +497,7 @@ impl Game<'_> {
         let mut objectives = Vec::new();
         for o in &board.objectives {
             let slots = DisplaySlot::all()
-                .filter(|slot| board.display.get(&slot.name()) == Some(&o.name))
+                .filter(|slot| board.display.get(slot.name()) == Some(&o.name))
                 .collect();
             let mut scores = Vec::new();
             for entry in board.list_scores(&o.name) {
@@ -555,7 +555,7 @@ pub(in crate::game) mod tests {
         let colors: Vec<_> = TeamColor::ALL.iter().map(|c| c.name()).collect();
         assert_eq!(colors, sb::team_colors().collect::<Vec<_>>());
         for slot in DisplaySlot::all() {
-            assert_eq!(DisplaySlot::from_name(&slot.name()), Some(slot));
+            assert_eq!(DisplaySlot::from_name(slot.name()), Some(slot));
         }
         assert_eq!(DisplaySlot::from_name("sidebar.team.pink"), None);
     }
@@ -706,7 +706,7 @@ pub(in crate::game) mod tests {
                 );
             }
             assert_eq!(game.objective("kills"), Some(kills));
-            assert_eq!(kills.name(game).as_deref(), Some("kills"));
+            assert_eq!(kills.name(game), Some("kills"));
             assert_eq!(kills.display_name(game), Ok(text("Kills")));
 
             // A player and that player's entity are one holder, keyed by the name.
@@ -829,7 +829,7 @@ pub(in crate::game) mod tests {
             assert!(aborted.is_err());
             assert_eq!(game.score.board, before);
             assert!(game.objective("temp").is_none());
-            assert_eq!(renamed.name(game).as_deref(), Some("kills"));
+            assert_eq!(renamed.name(game), Some("kills"));
             let kept: Result<(), ()> = game.transaction(|host, _| {
                 ScoreboardServerHost::add_objective(
                     host,
