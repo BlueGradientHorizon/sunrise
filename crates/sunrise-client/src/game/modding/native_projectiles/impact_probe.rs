@@ -3,7 +3,7 @@ use crate::game::{
     Game,
     native_entity_refs::tests::{bind_local_player, with_game},
 };
-use mod_api::{Flow, Hooks, HostTransaction, ServerHost};
+use mod_api::{Flow, Hooks, HostTransaction, ServerHost, TransactionError};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -119,11 +119,11 @@ impl Hooks for Probe {
                     assert!(!projectile.discard(host));
                 };
                 if matches!(self.action, Action::AbortDiscard) {
-                    let aborted: Result<(), ()> = host.transaction(|host, _| {
+                    let aborted = host.transaction::<(), ()>(|host, _| {
                         remove(host);
                         Err(())
                     });
-                    assert!(aborted.is_err());
+                    assert_eq!(aborted, Err(TransactionError::Aborted(())));
                     assert_eq!(host.entity(event.projectile), Some(projectile));
                 } else {
                     remove(host);
