@@ -67,7 +67,7 @@ impl Game<'_> {
         &self,
         registry: &str,
     ) -> Option<&std::collections::HashMap<String, serde_json::Value>> {
-        self.res.providers().registry(registry)
+        self.active_providers().registry(registry)
     }
     fn local_registry(&self, registry: &str) -> Option<LocalRegistry<'_>> {
         Some(match registry {
@@ -115,6 +115,7 @@ impl Game<'_> {
                 super::lan::sync::sync_data(
                     &self.options.resources,
                     &self.res.core.item_data,
+                    self.items(),
                     &self.pack_files(),
                 )
                 .ok()

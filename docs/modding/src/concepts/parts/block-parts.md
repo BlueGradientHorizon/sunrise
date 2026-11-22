@@ -1,8 +1,10 @@
 # Block parts
 
 `BlockPart::clone_item_stack` answers on the server when a player picks the block. It receives the
-level, position, block state and `include_data`, true when a creative player picks with Ctrl. Return
-`None` to keep the game's item.
+level, position, block state, and `include_data`, true when a creative player picks with Ctrl.
+`event.player` is the player who sent the pick request. Use it with the read-only host for
+player reads such as `event.player.food(host).map(|food| food.level)`. The request does not include
+a client hit face. Return `None` to keep the game's item.
 
 ## Breaking-crack display
 
@@ -43,19 +45,33 @@ hook never runs on a server. See [Random display ticks for blocks](../../how-to/
 
 `BlockPart::light_emission` supplies positional light for blocks that declare
 `dynamic_light: true`. It runs on both sides with a read-only host. Return `Some(level)`
-to replace the state's emission or `None` to keep it.
+to replace the state's emission or `None` to keep it. Use `event.state` as the emitter;
+a [contextual query](../../how-to/world/block-state-facts.md#contextual-light-emission) can name
+an unplaced state at that position.
 
 | Rule | Behavior |
 | --- | --- |
 | Eligibility | Every state of a block declaring `dynamic_light` is queried; other blocks are not. |
-| Calls | Chunk arrival, block edits and `LevelRef::check_light(host, pos)` query emission. |
+| Calls | Explicit `LevelRef::get_light_emission` reads, chunk arrival, block edits and `LevelRef::check_light` query emission. |
 | Caching | Light workers read the stored answer; they do not call your Part. Call `check_light` when data your answer depends on changes. |
 | Thread | The callback runs on the thread that owns the level. |
-| Range | Values above 15 are clamped to 15 before entering the light queue. |
+| Range | Explicit reads return the Part's raw answer. Values above 15 are clamped only before entering the light queue. |
 | Client updates | A server light update queries each affected section's cells at most once per cell per update. |
 | Exclusions | The block's own rendered light, ambient occlusion and mob-spawn rules use the state's light instead. |
 
 Keep the callback a pure function of the level, position and state, without side effects.
+
+## Enchanting power
+
+`BlockPart::enchant_power_bonus` receives the queried `state`, provider `pos`, `table_pos`,
+and a read-only host. `event.power` starts at 1.0 for `#minecraft:enchantment_power_provider`
+and 0.0 otherwise. Explicit reads receive the answer unchanged; offers and particles keep the
+default if the Part answers with NaN or infinity.
+
+For live offers and `LevelRef::get_enchant_power_bonus`, `event.level` names the level to use
+for contextual reads, even if it is not the level in play. An explicit query may supply a state
+that isn't at `pos` or positions outside a table's bookshelf scan. For the client particle
+snapshot, `event.level` is `None` and both positions are the origin; answer from the state alone.
 
 ## Path classification
 
@@ -66,8 +82,8 @@ the server only, and no mob is supplied. The same state may answer differently b
 Queries on the supplied level (such as `level.block_state(pos)` or looking up a block entity via
 `level.block_entity(pos)` and `level.block_entity_data(entity)`) are strictly read-only: they never
 perform writes, random draws, chunk loads or lazy loot generation. `level.block_entity(pos)`
-returns `None` when no block entity is present, the chunk is unloaded, `pos` is outside the build
-height, or the block entity is temporarily out of the world for its own tick.
+returns `None` when no block entity is present, the chunk is unloaded, or `pos` is outside the build
+height.
 `level.block_entity_data(entity)` returns validated saved data without identity metadata, or
 `None` for stale generations and handles from another level or world.
 
@@ -149,6 +165,29 @@ template block writes still call the rotation Part at their placed world positio
 | Mirroring | Stays the game's: vanilla's table, or the template's for a mod block. |
 | Panics | A panicking part is contained with a warning, and the game's state is placed. |
 
+## Step effects
+
+`BlockPart::step_on` is the block's `Block.stepOn` callback. It runs on the `getOnPosLegacy`
+state of a grounded entity affected by blocks, after the move's restitution and block speed factor
+but before the entity's inside-block effects. An idle grounded item still steps even when it does
+not move. Each effects pass has its own callback; this is not a landing notification.
+
+Register the Part on the block. `StepOnEvent` carries the contacted `state` and `pos`, the entity id
+and kind, whether it is `stepping_carefully`, its world-space `bounds` as `[min, max]` XYZ corners,
+and its current `movement` (velocity). Edit `movement` to change what the rest of this tick sees.
+Non-finite edits are ignored; there is no veto. Keep movement answers consistent on both sides and
+on replay.
+
+`LevelRandomSide::Client` lends a read-only level. Only the server arm accepts writes, and it
+lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { amount })` applies damage to the stepping body through its own damage path, before the inside scan.
+Use `bounds` to test overlap with a surface that is smaller than the block. `event.request(LandingWrite::…)`
+queues a write at `pos`. The `fall_on` drain applies the ordered block writes after the entity batch,
+only if the block still holds the contacted state. An invalid state or non-finite movement or damage
+refuses that Part's outputs. Other Parts' accepted writes and movement edits remain. This replaces `Hooks::block_step_on`, the former server-only notice.
+
+Boats and minecarts do not take damage from `EntityWrite::Hurt` in `step_on` or `entity_inside` yet
+([#4177](https://github.com/sunrise-org/sunrise/issues/4177)).
+
 ## Landing writes
 
 `BlockPart::bounce_restitution` answers the block's coefficient for a qualifying downward collision,
@@ -185,6 +224,13 @@ its original landed state. That guard runs once, so a first write can change the
 without suppressing the next write. SetBlock notifies neighbors and clients; DestroyBlock
 preserves the requested resource-drop flag.
 
+## Inside-block effects
+
+`BlockPart::entity_inside` runs on the server as the entity's sweep reaches the block.
+Use `event.run_before` or `event.run_after` to schedule an `EntityWrite` around an
+`InsideEffect`. `EntityWrite::Hurt { amount }` requests `minecraft:generic` damage without a causing or direct entity.
+The write applies to players, mobs, and dropped items; projectiles ignore it.
+
 ## Storage changes
 
 `BlockPart::contents_changed(host, event)` observes a world block's storage at `setChanged`,
@@ -209,12 +255,20 @@ state, never saved. Unloading the source does not cancel watches of its position
 
 The backing contents are already written, before dirty/comparator updates. The default `ITEMS`
 and item `STORAGE` handlers coalesce their implicit notice per backing block at root commit,
-for vanilla containers and engine-managed mod slots. Explicit `BlockEntityRef::set_changed`
-notifies immediately, even inside a transaction and for unchanged contents; abort does not retract
-it. Direct writes such as `BlockEntityRef::set_item_slot` and writes to storage a mod provides
-itself do not synthesize notifications; neither do rollback restores. A double container notifies
-each component, not again for the other half's comparator refresh. A listener's writes still apply,
-but its backing block does not re-enter; another block notifies normally.
+for vanilla containers and engine-managed mod slots. In contract version 5, notices committed
+inside `menu_quick_move` wait until that hook's accepted source remainder is in place (or until
+it finishes without one). If the original backing container was removed or replaced, neither
+its replacement nor watchers receive that notice. Explicit `BlockEntityRef::set_changed`
+notifies immediately, even inside a transaction and for unchanged contents; abort does not
+retract it. Each Part runs in its own transaction. Keep using `host.transaction` for additional writes:
+a successful nested transaction merges into the Part's frame, but a panic in that Part discards
+its writes without undoing the backing change that raised the notice. The next Part can still
+run, and only the panicking callback is disabled for the session.
+Direct writes such as `BlockEntityRef::set_item_slot` and writes to storage a mod provides itself
+do not synthesize notifications; neither do rollback restores. A double container notifies
+each component, not again for the other half's comparator refresh. A listener's same-block writes
+still apply and mark storage dirty and refresh comparators, but do not re-enter or queue a second
+notice, even during a quick move. Another block notifies normally.
 Entity/menu placeholder coordinates are not block notices. Explicit notices may read tentative items:
 
 ```rust,ignore

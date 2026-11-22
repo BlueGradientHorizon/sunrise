@@ -1,4 +1,30 @@
+use sunrise_world::{
+    collision_context::{CollisionContext, CollisionEntity, EntityContextKind},
+    entity_obstruction::EntityIdentity,
+};
+
 impl super::Mob {
+    /// The live mob context for `Level.findSupportingBlock`.
+    pub fn support_collision(
+        &self,
+    ) -> (
+        CollisionContext<'_>,
+        crate::collisions::PowderSnowSubject<'_>,
+    ) {
+        let subject = self.collision_subject();
+        let context = CollisionContext::for_entity(
+            CollisionEntity {
+                identity: EntityIdentity(u64::from(self.id)),
+                kind: EntityContextKind::Living,
+                y: self.position.y,
+                descending: false,
+                main_hand: subject.main_hand,
+            },
+            false,
+        );
+        (context, subject)
+    }
+
     pub(super) fn collision_subject(&self) -> crate::collisions::PowderSnowSubject<'_> {
         use sunrise_world::collision_context::CollisionItem;
         crate::collisions::PowderSnowSubject {

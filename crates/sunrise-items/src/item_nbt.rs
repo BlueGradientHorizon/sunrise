@@ -101,13 +101,15 @@ pub fn item_from_persistent_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
     if let Some(components) = components {
         sunrise_world::item_defaults::validate_component_map_tag(components).ok()?;
     }
-    decode_stack(tag, count, components)
+    let stack = decode_stack(tag, count, components, None)?;
+    (!stack.has_refused_consume_effects()).then_some(stack)
 }
 /// A stack read from a save. Earlier Sunrise saves can hold transient components
 /// (`creative_slot_lock`, `additional_trade_cost`, `map_post_processing`), so only
 /// those entries are dropped and the stack stays; commands and data files use
 /// [`item_from_persistent_nbt`]. Cost: one pass over the component keys; the
-/// patch is cloned only when it holds a transient entry.
+/// patch is cloned only when it holds a transient entry. A refused registered
+/// effect remains in the saved patch but isn't installed in the live stack.
 ///
 /// ItemStack.CODEC's count range is independent of the item's stack limit;
 /// an out-of-range count uses the field's default of one. The id is read as an
@@ -115,6 +117,13 @@ pub fn item_from_persistent_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
 /// command's NBT often leaves the namespace out), and an id that is no valid
 /// identifier makes no stack.
 pub fn item_from_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
+    item_from_nbt_with_effects(tag, None)
+}
+
+pub(crate) fn item_from_nbt_with_effects(
+    tag: &Tag,
+    effects: Option<&Arc<[sunrise_world::component_value::consume_effects::Admitted]>>,
+) -> Option<crate::items::ItemStack> {
     let count = number(tag.get("count"))
         .or_else(|| number(tag.get("Count")))
         .filter(|count| (1..=99).contains(count))
@@ -130,20 +139,24 @@ pub fn item_from_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
         }
         components => components,
     };
-    decode_stack(tag, count, components)
+    decode_stack(tag, count, components, effects)
 }
 
 fn decode_stack(
     tag: &Tag,
     count: u32,
     components: Option<&Tag>,
+    effects: Option<&Arc<[sunrise_world::component_value::consume_effects::Admitted]>>,
 ) -> Option<crate::items::ItemStack> {
     let (namespace, path) = sunrise_world::datafix::identifier(&text(tag.get("id"))?)?;
     let id = format!("{namespace}:{path}");
     if id == "minecraft:air" {
         return None;
     }
-    let (damage, extra) = crate::item_data::decode_components(components);
+    let (damage, extra) = match effects {
+        Some(effects) => crate::item_data::decode_network_components(components, effects),
+        None => crate::item_data::decode_components(components),
+    };
     Some(crate::items::ItemStack {
         item: Arc::from(id.as_str()),
         count,

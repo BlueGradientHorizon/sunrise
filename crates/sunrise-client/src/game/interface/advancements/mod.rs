@@ -161,7 +161,7 @@ impl AdvState {
     }
 }
 /// The game's world for predicates.
-struct View<'a, 'g>(&'a Game<'g>);
+pub(in crate::game) struct View<'a, 'g>(pub(in crate::game) &'a Game<'g>);
 impl adv::World for View<'_, '_> {
     fn predicate(&self, id: &str) -> Option<&Value> {
         self.0.fns.store.predicates.get(id)
@@ -191,6 +191,13 @@ impl adv::World for View<'_, '_> {
     }
     fn structures(&self, p: [i32; 3]) -> Vec<String> {
         self.0.structures_at(p)
+    }
+    fn block_state(&self, p: [i32; 3]) -> Option<&sunrise_world::chunk::BlockState> {
+        self.0
+            .pack
+            .assets
+            .registry
+            .state(self.0.world.block(p[0], p[1], p[2]))
     }
     fn block(&self, p: [i32; 3]) -> (String, BTreeMap<String, String>) {
         let state = self.0.world.block(p[0], p[1], p[2]);
@@ -696,7 +703,7 @@ impl Game<'_> {
             on_fire: p.is_on_fire(),
             sneaking: p.pose == sunrise_client::pose::Pose::Crouching,
             // Input.shift: the held key, as `BlockItem.place`'s sneaking reads it.
-            input_sneak: self.keys.held(Action::Sneak),
+            input_sneak: self.held_mapping(Action::Sneak),
             sprinting: p.sprinting,
             swimming: p.pose == sunrise_client::pose::Pose::Swimming,
             flying: p.flying,
@@ -835,7 +842,7 @@ impl Game<'_> {
             position: [m.position.x, m.position.y, m.position.z],
             on_fire: m.fire_ticks > 0 && !m.mod_fire_immune,
             baby: m.is_baby(),
-            on_ground: m.on_ground,
+            on_ground: m.ground.on_ground,
             equipment,
             // LivingEntity.getActiveEffectsMap supplies the active predicate instances.
             effects: m
