@@ -30,7 +30,7 @@ pub(super) struct MenuSnapshot {
     pub(super) slots: Slots,
     pub(super) pos: Option<(i32, i32, i32)>,
     pub(super) size: usize,
-    pub(super) hidden: Vec<usize>,
+
     pub(super) links: Vec<(i32, i32, i32)>,
     pub(super) craft: Option<ModCraft>,
     pub(super) inventory: Vec<Option<ItemStack>>,
@@ -62,7 +62,6 @@ impl Game<'_> {
             slots,
             pos,
             size,
-            hidden,
             links,
             craft,
             inventory,
@@ -103,7 +102,6 @@ impl Game<'_> {
                 m.slots,
                 m.pos,
                 m.size,
-                m.hidden.clone(),
                 m.links.clone(),
                 m.craft.clone(),
                 g.inventory.clone(),
@@ -137,7 +135,7 @@ impl Game<'_> {
             }
             Slots::Native => (
                 None,
-                Some(self.mod_book_native_slots(conn, uuid, window, size, &hidden)?),
+                Some(self.mod_book_native_slots(conn, uuid, window, size)?),
             ),
             _ => return Err(Refusal::Unavailable),
         };
@@ -153,7 +151,7 @@ impl Game<'_> {
             slots,
             pos,
             size,
-            hidden,
+
             links,
             craft,
             inventory,
@@ -193,7 +191,6 @@ impl Game<'_> {
                 || m.slots != before.slots
                 || m.pos != before.pos
                 || m.size != before.size
-                || m.hidden != before.hidden
                 || m.links != before.links
                 || m.craft != before.craft
                 || g.inventory != before.inventory
@@ -228,9 +225,8 @@ impl Game<'_> {
                 before.block.is_none()
                     && before.native.as_ref().is_some_and(|native| {
                         native.iter().enumerate().all(|(slot, backing)| {
-                            before.hidden.contains(&slot)
-                                || self.native_menu_place(before.conn, before.window, slot)
-                                    == backing.as_ref().map(|backing| backing.place)
+                            self.native_menu_place(before.conn, before.window, slot)
+                                == backing.as_ref().map(|backing| backing.place)
                         })
                     })
             }
@@ -244,7 +240,6 @@ impl Game<'_> {
         uuid: u128,
         window: i32,
         size: usize,
-        hidden: &[usize],
     ) -> Result<Vec<Option<NativeMenuSlot>>, Refusal> {
         let menu = self.menu(uuid, window).ok_or(Refusal::Changed)?;
         let player = menu.fields().player;
@@ -254,16 +249,14 @@ impl Game<'_> {
         let mut slots = Vec::with_capacity(size);
         let host: &mut dyn ServerHost = self;
         for (slot, place) in places.into_iter().enumerate() {
-            if hidden.contains(&slot) {
-                slots.push(None);
-                continue;
-            }
             match place {
                 Some(place)
                     if menu.slot_backing(host, slot) == Some(MenuSlotBacking::Place(place))
                         && place.resolves(host, player) =>
                 {
-                    let stack = ItemPlace::MenuSlot { menu, slot }.stack(host);
+                    let stack = ItemPlace::MenuSlot { menu, slot }
+                        .with_stack(host, |stack| stack.project())
+                        .flatten();
                     slots.push(Some(NativeMenuSlot { place, stack }));
                 }
                 Some(_) => return Err(Refusal::Changed),
