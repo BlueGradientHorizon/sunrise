@@ -1648,16 +1648,18 @@ impl Game<'_> {
     /// the next tick starts one tick length after this one, or straight away
     /// while the sprint runs (`checkShouldSprintThisTick`). A server more
     /// than two seconds behind skips the ticks it missed: that returns how far
-    /// behind it was, for the overload warning.
+    /// behind it was, for the overload warning, and how long the thread slept
+    /// (`MinecraftServer.waitForTasks`'s idle time; the rest of the wait is task work).
     pub(super) fn wait_for_next_server_tick(
         &mut self,
         next: &mut Instant,
         paused: bool,
-    ) -> Option<Duration> {
+    ) -> (Option<Duration>, Duration) {
         let now = Instant::now();
+        let mut idle = Duration::ZERO;
         if !paused && self.clock.sprinting() {
             *next = now;
-            return None;
+            return (None, idle);
         }
         *next += self.clock.tick_duration();
         if *next > now {
@@ -1667,13 +1669,14 @@ impl Game<'_> {
             let now = Instant::now();
             if *next > now {
                 std::thread::sleep(*next - now);
+                idle = now.elapsed();
             }
         } else if now - *next > Duration::from_secs(2) {
             let behind = now - *next;
             *next = now;
-            return Some(behind);
+            return (Some(behind), idle);
         }
-        None
+        (None, idle)
     }
 
     /// The levels this server tick runs, in `MinecraftServer.levels` order
