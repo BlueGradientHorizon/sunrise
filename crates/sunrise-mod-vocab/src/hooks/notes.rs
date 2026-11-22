@@ -684,8 +684,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
   weather. A server can read any open level, including parked levels; a client reads only its current synchronized
   level after login. Stale handles and unavailable levels return `None`; the read never loads a level.
 - `level.seed(host)`, `difficulty` (`"normal"`, as `/difficulty` names it), `game_rule(host, "keep_inventory")` (a
-  `GameRuleValue`, `Bool` or `Int`; `Ok(None)` for an unknown rule), `visit_game_rules` (every available rule as a borrowed namespaced id and its
-  value), `is_raining` and `is_thundering` read its server settings.
+  `GameRuleValue`, `Bool` or `Int`; `Ok(None)` for an unknown rule), `visit_game_rules` (every available rule as
+  a borrowed namespaced id and its value), `is_raining` and `is_thundering` read its server settings.
   `level.is_raining_at(host, pos)` (`Level.isRainingAt`) asks about one position of any open level: it rains there, the
   position has full sky light with nothing motion-blocking or fluid above it, and its biome's precipitation at that
   height is rain (not snow or none). It is `None` where the block read is, an unloaded chunk or a `y` outside the
@@ -694,8 +694,7 @@ handle, an entity the client doesn't track and a level it doesn't show:
   omits its flag list, the world enables `minecraft:vanilla`.
 - `level.chunk_ref(host, [x, z])` makes a `ChunkRef` for any chunk of an open level (None past 30 million blocks).
   `chunk.forced(host)` and `level.visit_forced_chunks(host, &mut visit)` query `/forceload` tickets.
-  `chunk.set_forced(host, bool)` adds
-  or removes one and returns whether the saved set changed. A successful add waits for the chunk to load, even in a
+  `chunk.set_forced(host, bool)` adds or removes one and returns whether the saved set changed. A successful add waits for the chunk to load, even in a
   parked level. If streaming is paused, the add records the ticket to take effect when its level starts streaming.
   Adds after generation stops return false; repeated adds and removals do not load chunks.
 - Ticket controllers (NeoForge's `TicketController`, registered in `RegisterTicketControllersEvent`): a mod registers
@@ -719,7 +718,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
   `chunk_tickets.dat`, under the controller's id. When a world loads, the tickets of an id no loaded mod registers are
   dropped with a warning in the log, as NeoForge documents for a controller nobody registers; so are tickets from a
   file written before controllers, which are keyed by mod id. Outside a mod's hook, for another mod's controller, and for
-  a stale handle or a chunk past the world's bounds, the calls return `false` or `None`.
+  a stale handle or a chunk past the world's bounds, writes return `false`. The visit returns a
+  `LevelReadError` for a stale level or unavailable controller, side or phase.
 - `validate_tickets` (NeoForge's `LoadingValidationCallback.validateTickets`, server) fires for each level that opens,
   after `level_load` and before its first tick, once for each controller registered with `validates` that has saved
   tickets in the level, and only to mods that implement it. `event.controller` is the controller; its owning mod's

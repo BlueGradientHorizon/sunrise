@@ -26,13 +26,7 @@ impl Game<'_> {
         entity: EntityRef,
         visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, EntityReadError> {
-        let target = self.native_entity_target(entity).ok_or_else(|| {
-            if self.is_logical_server() {
-                EntityReadError::Stale
-            } else {
-                EntityReadError::Unavailable
-            }
-        })?;
+        let target = self.native_server_entity_target(entity)?;
         if self.target_level(target).key() != self.dim.key() {
             return Err(EntityReadError::Unavailable);
         }

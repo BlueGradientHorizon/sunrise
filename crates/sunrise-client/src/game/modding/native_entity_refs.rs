@@ -90,22 +90,35 @@ impl Game<'_> {
 
     /// What a handle names now, or None for a stale or foreign one.
     pub(super) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
-        if self.held_out.contains(&entity.id())
-            || !self.is_logical_server()
-            || self.native_lifecycle.epoch() != Some(entity.epoch())
+        self.native_server_entity_target(entity).ok()
+    }
+
+    /// The server entity read boundary, distinguishing absent handles from parked bodies.
+    pub(super) fn native_server_entity_target(
+        &self,
+        entity: EntityRef,
+    ) -> Result<Target, EntityReadError> {
+        if !self.is_logical_server() {
+            return Err(EntityReadError::Unavailable);
+        }
+        if self.native_lifecycle.epoch() != Some(entity.epoch())
+            || self.held_out.contains(&entity.id())
         {
-            return None;
+            return Err(EntityReadError::Stale);
         }
         let sunrise_client::join_seq::residency::table::EntityLookup::Found { location, value } =
             self.server_resident_entity(entity.id())
         else {
-            return None;
+            return Err(EntityReadError::Stale);
         };
         // Players are server-wide records. Ordinary body operations retain
         // their existing current-level domain; source membership is global.
-        (matches!(value, Target::Player | Target::Guest(_))
-            || location.owner.dimension == self.dim.key())
-        .then_some(value)
+        if !matches!(value, Target::Player | Target::Guest(_))
+            && location.owner.dimension != self.dim.key()
+        {
+            return Err(EntityReadError::Unavailable);
+        }
+        Ok(value)
     }
     /// What a handle names on a client: the local player, or an entity the
     /// server told this client of (`ClientLevel.getEntity`, whose entities are
