@@ -1063,6 +1063,9 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                     // Part C: Non-player `living_hurt_and_break` inside an aborted transaction mutates the
                     // mob's equipment immediately (unjournaled), so its break event (49 for Head) must
                     // also emit immediately rather than being discarded on rollback.
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
                     game.lan_entity_events.clear();
                     let zombie_id = game
                         .spawn_mob(
@@ -1395,6 +1398,9 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                     // 4. Non-transactional tick flush (`lan_sounds`): listener's committed transaction
                     // delivers `[sound_anvil, stop_anvil]` before the outer bell sound, but the
                     // raw hit sound appended by the callback belongs to the next flush.
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
                     let victim = game
                         .spawn_mob(
                             "minecraft:zombie",
