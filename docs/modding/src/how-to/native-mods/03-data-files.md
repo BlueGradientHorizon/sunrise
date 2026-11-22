@@ -80,5 +80,7 @@ listed loose file has been removed.
 
 `package_files` returns `PackageFilesError::NotEnabled` if the package isn't in `cx.mods()`, `Unreadable` when
 the package's files can't be listed, and `Unavailable` outside a mod's registration. A native mod switched off
-in settings still registers, so its package is listed. Admission checks the file namespaces against the
-manifest. Declaration checks that depend on registration results run later, during content loading.
+in settings still registers, so its package is listed. Admission checks file namespaces against the manifest.
+A content-only package that fails that check is not listed. A native package that fails it still registers,
+but its files are unreadable. Declaration checks that depend on registration results run later, during
+content loading.

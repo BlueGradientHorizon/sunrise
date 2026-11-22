@@ -15,6 +15,8 @@ use sunrise_mod_package::{
 pub(super) struct PackageContent {
     path: PathBuf,
     opened: Result<AdmittedContentSource, OpenError>,
+    /// Native code still registers even if its passive content is refused.
+    registration_visible: bool,
 }
 
 enum OpenError {
@@ -88,20 +90,23 @@ impl StartupAdmission {
             .native
             .packages()
             .iter()
-            .map(|p| (&p.manifest, &p.path));
-        let content = mods.selected.iter().map(|p| (&p.package.manifest, &p.path));
+            .map(|p| (&p.manifest, &p.path, true));
+        let content = mods
+            .selected
+            .iter()
+            .map(|p| (&p.package.manifest, &p.path, false));
         let packages: Vec<_> = native
             .chain(content)
-            .filter(|(m, _)| !refused.iter().any(|missing| missing.owners.contains(&m.id)))
+            .filter(|(m, _, _)| !refused.iter().any(|missing| missing.owners.contains(&m.id)))
             .collect();
-        let opened = super::read_package_inputs(&packages, |(manifest, path)| {
+        let opened = super::read_package_inputs(&packages, |(manifest, path, _)| {
             ContentSource::open(path)
                 .map_err(OpenError::Read)?
                 .admit(manifest)
                 .map_err(OpenError::Namespace)
         });
         let mut indexed = BTreeMap::new();
-        for ((manifest, path), opened) in packages.into_iter().zip(opened) {
+        for ((manifest, path, built_native), opened) in packages.into_iter().zip(opened) {
             if let Err(OpenError::Namespace(detail)) = &opened
                 && manifest.served_by.is_some()
             {
@@ -115,6 +120,8 @@ impl StartupAdmission {
                 manifest.id.clone(),
                 Arc::new(PackageContent {
                     path: path.clone(),
+                    registration_visible: built_native
+                        || !matches!(opened, Err(OpenError::Namespace(_))),
                     opened,
                 }),
             );
@@ -127,14 +134,17 @@ impl StartupAdmission {
         })
     }
 
-    fn is_admitted(&self, id: &str) -> bool {
+    fn registration_visible(&self, id: &str) -> bool {
         self.packages
             .get(id)
-            .is_some_and(|package| package.namespace_refusal().is_none())
+            .is_some_and(|package| package.registration_visible)
     }
 
     pub(super) fn namespace_refusal(&self, id: &str) -> Option<&str> {
-        self.packages.get(id)?.namespace_refusal()
+        self.packages
+            .get(id)
+            .filter(|p| !p.registration_visible)?
+            .namespace_refusal()
     }
 
     pub(in crate::game) fn native_packages(
@@ -143,13 +153,13 @@ impl StartupAdmission {
         self.native
             .packages()
             .iter()
-            .filter(|p| self.is_admitted(&p.manifest.id))
+            .filter(|p| self.registration_visible(&p.manifest.id))
     }
 
     pub(in crate::game) fn content_packages(&self) -> impl Iterator<Item = &SelectedPackage> {
         self.selected
             .iter()
-            .filter(|p| self.is_admitted(&p.package.manifest.id))
+            .filter(|p| self.registration_visible(&p.package.manifest.id))
     }
 
     pub(super) fn matches_selection(&self, selected: &Arc<[SelectedPackage]>) -> bool {
@@ -171,7 +181,7 @@ pub(in crate::game) fn sources(
     admission
         .packages
         .iter()
-        .filter(|(_, source)| source.namespace_refusal().is_none())
+        .filter(|(_, source)| source.registration_visible)
         .map(|(id, source)| {
             let source: Arc<dyn mod_api::PackageFileSource> = source.clone();
             (id.clone(), source)
@@ -187,14 +197,19 @@ mod tests {
         mods::{ContentRequest, read_contents, validate_startup_packages},
     };
     use mod_api::{
-        __private::game::RegistrationContextNew, PackageFilesError, PackageReadError,
-        RegistrationContext,
+        __private::{game::RegistrationContextNew, native::BuiltMod},
+        PackageFilesError, PackageReadError, RegistrationContext,
     };
     use std::fs;
     use sunrise_mod_package::{mod_list::NATIVE_DIR, runtime::Runtime};
 
     const SCRIPT: &str = "data/demo/lumen/main.luau";
     const NATIVE_MODEL: &str = "assets/native_demo/models/item/gem.json";
+    const BUILT: &[BuiltMod] = &[BuiltMod {
+        id: "native_demo",
+        version: "1.0.0",
+        side: mod_api::Side::Both,
+    }];
 
     fn folder(root: &Path, id: &str, extra: &str) -> PathBuf {
         let path = root.join(id);
@@ -211,6 +226,25 @@ mod tests {
         let file = path.join(name);
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(file, bytes).unwrap();
+    }
+
+    fn native_folder(root: &Path) -> PathBuf {
+        let native = folder(
+            &root.join(NATIVE_DIR),
+            "native_demo",
+            &format!(
+                "capabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
+                "a".repeat(40),
+                "b".repeat(40)
+            ),
+        );
+        write(
+            &native,
+            "Cargo.toml",
+            b"[package]\nname='native_demo'\nversion='1.0.0'\n",
+        );
+        write(&native, "src/lib.rs", b"");
+        native
     }
 
     fn with_registration(admission: &StartupAdmission, f: impl FnOnce(RegistrationContext)) {
@@ -245,12 +279,6 @@ mod tests {
 
     #[test]
     fn registration_files_and_metadata_follow_startup_admission() {
-        use mod_api::__private::native::BuiltMod;
-        const BUILT: &[BuiltMod] = &[BuiltMod {
-            id: "native_demo",
-            version: "1.0.0",
-            side: mod_api::Side::Both,
-        }];
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         let demo = folder(root, "demo", "");
@@ -264,21 +292,7 @@ mod tests {
             ),
         );
         write(&missing, "data/missing/lumen/main.luau", b"return 2");
-        let native = folder(
-            &root.join(NATIVE_DIR),
-            "native_demo",
-            &format!(
-                "capabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
-                "a".repeat(40),
-                "b".repeat(40)
-            ),
-        );
-        write(
-            &native,
-            "Cargo.toml",
-            b"[package]\nname='native_demo'\nversion='1.0.0'\n",
-        );
-        write(&native, "src/lib.rs", b"");
+        let native = native_folder(root);
         write(&native, NATIVE_MODEL, b"{}");
 
         let mut mods = ModsState {
@@ -308,13 +322,16 @@ mod tests {
     }
 
     #[test]
-    fn unowned_namespace_refuses_registration_metadata_and_files() {
+    fn unowned_namespace_refuses_content_but_keeps_built_native_metadata() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         let demo = folder(root, "demo", "");
         let foreign = "data/other/lumen/main.luau";
         write(&demo, foreign, b"return 1");
+        let native = native_folder(root);
+        write(&native, foreign, b"return 2");
         let mut mods = ModsState {
+            native: Arc::new(Runtime::load(&root.join("sunrise-client"), BUILT).unwrap()),
             dev: vec![demo.clone()],
             ..Default::default()
         };
@@ -327,6 +344,12 @@ mod tests {
                 cx.package_files("demo").err(),
                 Some(PackageFilesError::NotEnabled)
             );
+            assert!(cx.mods().get("native_demo").is_some());
+            assert!(matches!(
+                cx.package_files("native_demo"),
+                Err(PackageFilesError::Unreadable(detail))
+                    if detail.starts_with("data/other/lumen/main.luau: a mod adds files in its own namespaces (data/native_demo/")
+            ));
         });
         // Repairing the folder does not undo the original admission refusal.
         fs::remove_file(demo.join(foreign)).unwrap();

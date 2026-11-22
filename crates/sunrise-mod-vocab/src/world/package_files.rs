@@ -108,7 +108,9 @@ impl crate::RegistrationContext {
     /// The `assets/…` and `data/…` file list used to load package `id`.
     /// The caller can read its own package or any other package [`mods`](Self::mods) lists.
     /// A native mod switched off in settings still registers, so its package is listed.
-    /// Admission checks file namespaces against the manifest; checks that need registration results run later.
+    /// Admission checks file namespaces against the manifest. A refusal removes a content-only
+    /// package; a native still registers, but its files are unreadable. Checks that need
+    /// registration results run later.
     /// Keep the handle to read after registration.
     pub fn package_files(&self, id: &str) -> Result<PackageFiles, PackageFilesError> {
         crate::content::crash::current_native_mod().ok_or(PackageFilesError::Unavailable)?;
