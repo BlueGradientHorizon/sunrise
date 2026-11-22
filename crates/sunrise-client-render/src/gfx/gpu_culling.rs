@@ -2217,7 +2217,7 @@ mod tests {
             ("w", offset_of!(Params, w)),
             ("reach", offset_of!(Params, reach)),
             ("reach_height", offset_of!(Params, reach_height)),
-            ("_reach_pad", offset_of!(Params, _reach_pad)),
+            ("tree", offset_of!(Params, tree)),
             ("flags", offset_of!(Params, flags)),
             ("eyes", offset_of!(Params, eyes)),
             ("occl", offset_of!(Params, occl)),
