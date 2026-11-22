@@ -212,8 +212,8 @@ preserves the requested resource-drop flag.
 
 `BlockPart::entity_inside` runs on the server as the entity's sweep reaches the block.
 Use `event.run_before` or `event.run_after` to schedule an `EntityWrite` around an
-`InsideEffect`. `EntityWrite::Hurt { amount }` deals generic damage to the swept
-entity, without a causing or direct entity.
+`InsideEffect`. `EntityWrite::Hurt { amount }` requests `minecraft:generic` damage without a causing or direct entity.
+The write applies to players, mobs, and dropped items; projectiles ignore it.
 
 ## Storage changes
 

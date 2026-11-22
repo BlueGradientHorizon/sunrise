@@ -59,7 +59,8 @@ pub enum EntityWrite {
     /// `makeStuckInBlock`: scale the entity's movement by these factors until it leaves.
     /// Resets its fall distance, as every stuck block does.
     StuckIn([f64; 3]),
-    /// Hurt the contacted entity with generic damage, without a causing or direct entity.
+    /// Request `minecraft:generic` damage without a causing or direct entity.
+    /// The write applies to players, mobs, and dropped items; projectiles ignore it.
     Hurt {
         /// The damage dealt.
         amount: f32,
