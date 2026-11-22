@@ -372,14 +372,6 @@ sunrise-client game::creatures::armor_destroy_tests::a_break_effect_follows_only
 sunrise-client game::creatures::armor_destroy_tests::an_enderman_does_not_take_a_changed_block lib daily resources
 sunrise-client game::creatures::armor_destroy_tests::body_armor_guards_and_break_event_are_preserved lib daily resources
 sunrise-client game::creatures::armor_destroy_tests::sun_protection_uses_mob_draw_and_broadcasts_break lib daily resources
-sunrise-client game::creatures::borrowed_panic_tests::retained_conditional_context lib daily resources
-sunrise-client game::creatures::borrowed_panic_tests::retained_consumer_tail lib daily resources
-sunrise-client game::creatures::borrowed_panic_tests::retained_egg lib daily resources
-sunrise-client game::creatures::borrowed_panic_tests::retained_guest lib daily resources
-sunrise-client game::creatures::borrowed_panic_tests::retained_mixed_order lib daily resources
-sunrise-client game::creatures::borrowed_panic_tests::retained_nested_tail lib daily resources
-sunrise-client game::creatures::borrowed_panic_tests::retained_push lib daily resources
-sunrise-client game::creatures::borrowed_panic_tests::retained_reset lib daily resources
 sunrise-client game::creatures::borrowed_panic_tests::retained_stale_push_target lib daily resources
 sunrise-client game::creatures::borrowed_tick::off_level_tests::borrowed_tick_resolves_the_retained_controller lib daily resources
 sunrise-client game::creatures::borrowed_tick::off_level_tests::resident_descendant_does_not_tick_until_detached lib daily resources
