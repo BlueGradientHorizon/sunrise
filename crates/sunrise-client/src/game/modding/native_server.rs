@@ -10,6 +10,9 @@
 #[path = "native_server/argument_kinds.rs"]
 mod argument_kinds;
 #[cfg(test)]
+#[path = "native_server/command_failure_tests.rs"]
+mod command_failure_tests;
+#[cfg(test)]
 #[path = "native_server/provider_tests.rs"]
 mod provider_tests;
 #[path = "native_server/registered_commands.rs"]
@@ -2292,13 +2295,16 @@ impl Game<'_> {
         let result = callback.call(|| call(self, &origin, &command));
         if let Some(seal) = savepoint {
             self.transaction_close(&seal, result.is_ok());
-        } else if !matches!(result, Ok(Some(_))) && !self.transactions.is_empty() {
+        } else if !matches!(result, Ok(Ok(_))) && !self.transactions.is_empty() {
             // No caller-owned frame existed: every open frame belongs to this invocation.
             self.abort_open_transactions();
         }
         match result {
-            Ok(Some(value)) => Ok(value),
-            Ok(None) | Err(RetainedFailure::Disabled) => Err(err("command.unknown.command", &[])),
+            Ok(Ok(value)) => Ok(value),
+            Ok(Err(message)) => Err(sunrise_client::command::CommandError::new(
+                sunrise_client_lib::api_text::to_engine_inprocess(&message),
+            )),
+            Err(RetainedFailure::Disabled) => Err(err("command.unknown.command", &[])),
             Err(RetainedFailure::Panicked) => {
                 Err(sunrise_client::command::CommandError::unexpected())
             }
@@ -3726,11 +3732,11 @@ mod tests {
                             if level.set_block(host, pos, state, mod_api::BlockUpdateFlags::NONE)
                                 != Ok(true)
                             {
-                                return None;
+                                return Err(mod_api::Text::literal("block not placed"));
                             }
                             if usage == "ordinaryfailure" {
                                 refuses.fetch_add(1, Ordering::Relaxed);
-                                return None;
+                                return Err(mod_api::Text::literal("ordinary failure"));
                             }
                             panic!("executor regression panic");
                         },
@@ -3738,7 +3744,7 @@ mod tests {
                 }
                 event
                     .commands
-                    .push(mod_api::Command::new("worksagain").executes(|_, _, _| Some(7)));
+                    .push(mod_api::Command::new("worksagain").executes(|_, _, _| Ok(7)));
             }
         }
         let refuses = Arc::new(AtomicUsize::new(0));
@@ -3813,8 +3819,9 @@ mod tests {
                         assert_eq!(
                             game.execute_line("ordinaryfailure", game.server_source())
                                 .unwrap_err()
-                                .key,
-                            "command.unknown.command"
+                                .message
+                                .plain(),
+                            "ordinary failure"
                         );
                         assert!(game.transaction_current().is_none());
                         assert_eq!(game.world.block(REFUSED[0], REFUSED[1], REFUSED[2]), air);
@@ -3859,7 +3866,7 @@ mod tests {
                     };
                     event
                         .commands
-                        .push(mod_api::Command::new(usage).executes(|_, _, _| Some(1)));
+                        .push(mod_api::Command::new(usage).executes(|_, _, _| Ok(1)));
                 }
                 if changed == self.replacement {
                     let calls = self.calls.clone();
@@ -3871,7 +3878,7 @@ mod tests {
                                 .lock()
                                 .unwrap()
                                 .push(mod_api::content::crash::current_native_mod());
-                            Some(result)
+                            Ok(result)
                         }));
                 }
             }
@@ -4274,14 +4281,15 @@ mod tests {
                     host.commands()
                         .feedback(mod_api::Text::literal("source answer"))
                         .unwrap();
-                    Some(1)
+                    Ok(1)
                 };
                 event.commands.extend([
                     mod_api::Command::new("origin").executes(execute.clone()),
                     mod_api::Command::op("denied", 4).executes(execute),
                     // Replaced by the later accepted registration; failure must not fall back here.
-                    mod_api::Command::new("unhandled").executes(|_, _, _| Some(99)),
-                    mod_api::Command::new("unhandled").executes(|_, _, _| None),
+                    mod_api::Command::new("unhandled").executes(|_, _, _| Ok(99)),
+                    mod_api::Command::new("unhandled")
+                        .executes(|_, _, _| Err(mod_api::Text::literal("refused"))),
                 ]);
             }
         }

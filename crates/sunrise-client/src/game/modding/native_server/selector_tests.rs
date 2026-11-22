@@ -29,7 +29,7 @@ impl mod_api::Hooks for SelectorCommands {
                 let heard = self.0.clone();
                 mod_api::Command::new(usage).executes(move |_, _, command| {
                     heard.lock().unwrap().push(command.clone());
-                    Some(1)
+                    Ok(1)
                 })
             }),
         );

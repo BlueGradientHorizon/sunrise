@@ -208,7 +208,7 @@ mod tests {
                             .lock()
                             .unwrap()
                             .push((source.clone(), command.clone()));
-                        Some(1)
+                        Ok(1)
                     },
                 ));
             }

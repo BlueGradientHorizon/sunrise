@@ -319,7 +319,7 @@ fn reload_command_runs_listeners_on_both_sides_of_function_library() {
         fn register_commands(&self, _: &mut dyn ServerHost, event: &mut RegisterCommandsEvent<'_>) {
             event.commands.push(
                 Command::new("reload_probe <value:reload_probe:argument>")
-                    .executes(|_, _, _| Some(1)),
+                    .executes(|_, _, _| Ok(1)),
             );
         }
         fn add_server_reload_listeners(

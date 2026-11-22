@@ -1674,7 +1674,7 @@ mod tests {
                         .push(mod_api::Command::new("fnmod [n:integer]").executes(
                             move |_, _, _| {
                                 ran.fetch_add(1, Ordering::Relaxed);
-                                Some(1)
+                                Ok(1)
                             },
                         ));
                 }
