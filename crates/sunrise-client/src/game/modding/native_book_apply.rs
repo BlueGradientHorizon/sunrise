@@ -1,13 +1,18 @@
-//! Authoritative placement: detached calculation, journaled writes, then publication.
-use super::api_values::TryIntoApi;
-use super::{Game, native_book_backings::Backings, native_book_scope::MenuSnapshot};
+//! Authoritative mod recipe-book placement on the active `Menu` and live storage.
+use super::Game;
+use super::api_values::{TryIntoApi, TryIntoEngine};
+use super::lan_crafting::GuestMenuEffects;
+use mod_api::__private::game::Fields;
 use mod_api::{
-    HostTransaction, ItemPlace, ItemResource, MenuSlotBacking, RecipeBookPlacement, ServerHost,
+    ItemPlace, ItemResource, MenuSlotBacking, MenuSlotPlace, RecipeBookPlacement, ServerHost,
 };
+use std::collections::{BTreeMap, BTreeSet};
 use sunrise_client::{
-    lan::menu::ModCraft,
+    containers::{BlockEntity, ModMenuType},
+    items::ItemStack,
+    lan::menu::{SlotBacking, Slots},
     menu::{
-        Env, Kind, Menu,
+        Kind, Menu,
         place::{
             PostPlace,
             custom_plan::{MenuPlacement, PlacementRefusal},
@@ -23,10 +28,21 @@ fn refusal(reason: PlacementRefusal) -> sync::Refusal {
         PlacementRefusal::InvalidLayout => R::Invalid,
         PlacementRefusal::Unavailable => R::Unavailable,
         PlacementRefusal::Denied => R::Denied,
-        PlacementRefusal::NoRoom => R::NoRoom,
-        PlacementRefusal::Changed => R::Changed,
     }
 }
+
+struct LiveOpening {
+    gi: usize,
+    uuid: u128,
+    window: i32,
+    instance: u64,
+    kind: &'static ModMenuType,
+    slots: Slots,
+    creative: bool,
+    hidden: Vec<usize>,
+    owned_slots: bool,
+}
+
 impl Game<'_> {
     pub(super) fn server_mod_book_place(
         &mut self,
@@ -36,9 +52,6 @@ impl Game<'_> {
         use_max: bool,
     ) -> Result<PostPlace, sync::Refusal> {
         use sync::Refusal as R;
-        if !self.transactions.is_empty() {
-            return Err(R::Denied);
-        }
         let settings = self
             .native_net
             .book_connections
@@ -76,95 +89,117 @@ impl Game<'_> {
             .placement(display.recipe.as_str())
             .map_err(refusal)?
             .clone();
-        let before = self.mod_book_menu_snapshot(conn, catalog.window, catalog.menu.as_str())?;
-        if before.instance != catalog.instance {
-            return Err(R::Stale);
-        }
-        if !before.known.contains(display.recipe.as_str()) {
+        let opening = self.mod_book_live_opening(conn, catalog)?;
+        let known = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guests.get(opening.gi))
+            .is_some_and(|guest| guest.recipe_book.recipes.contains(display.recipe.as_str()));
+        if !known {
             return Err(R::Denied);
         }
-        let seal = self.transaction_open();
-        let result = self.stage_mod_book_place(&before, catalog, display, &plan, use_max);
-        self.transaction_close(&seal, result.is_ok());
-        result
+        self.apply_mod_book_plan(conn, catalog, display, &plan, use_max)
     }
-    fn mod_book_placement_context(
+
+    fn mod_book_live_opening(
         &self,
-        before: &MenuSnapshot,
+        conn: u32,
         catalog: &sync::CatalogIdentity,
-    ) -> bool {
-        self.transactions.len() == 1
-            && self.mod_book_menu_unchanged(before)
-            && self
-                .native_net
-                .placement
-                .servers
-                .get(&before.conn)
-                .is_some_and(|server| server.peer.owns(catalog))
-            && self
-                .native_net
-                .book_connections
-                .get(&before.conn)
-                .and_then(|connection| connection.authority.as_ref())
-                .is_some_and(|authority| {
-                    authority.epoch == catalog.epoch && authority.contains(catalog.book.as_str())
-                })
-    }
-    fn mod_book_same_opening(
-        &mut self,
-        before: &MenuSnapshot,
-        catalog: &sync::CatalogIdentity,
-    ) -> Result<MenuSnapshot, sync::Refusal> {
+    ) -> Result<LiveOpening, sync::Refusal> {
         use sync::Refusal as R;
-        if self.transactions.len() != 1
-            || !self
-                .native_net
-                .placement
-                .servers
-                .get(&before.conn)
-                .is_some_and(|server| server.peer.owns(catalog))
-            || !self
-                .native_net
-                .book_connections
-                .get(&before.conn)
-                .and_then(|connection| connection.authority.as_ref())
-                .is_some_and(|authority| {
-                    authority.epoch == catalog.epoch && authority.contains(catalog.book.as_str())
-                })
-        {
-            return Err(R::Changed);
+        let settings = self
+            .native_net
+            .book_connections
+            .get(&conn)
+            .and_then(|connection| connection.authority.as_ref())
+            .ok_or(R::Unsupported)?;
+        if settings.epoch != catalog.epoch || !settings.contains(catalog.book.as_str()) {
+            return Err(R::Stale);
         }
-        let current = self
-            .mod_book_menu_snapshot(before.conn, before.window, before.kind.id)
-            .map_err(|_| R::Changed)?;
-        if current.uuid != before.uuid
-            || current.entity_id != before.entity_id
-            || current.placed_at != before.placed_at
-            || current.dimension != before.dimension
-            || current.instance != before.instance
-            || current.kind != before.kind
+        if !self
+            .native_net
+            .placement
+            .servers
+            .get(&conn)
+            .is_some_and(|server| server.peer.owns(catalog))
         {
-            return Err(R::Changed);
+            return Err(R::Stale);
         }
-        Ok(current)
+        let host = self.lan.as_ref().ok_or(R::Unavailable)?;
+        let gi = host
+            .hub
+            .guests
+            .connection_index(conn)
+            .ok_or(R::Unavailable)?;
+        let guest = &host.hub.guests[gi];
+        if !host.hub.here(guest)
+            || guest.spectator()
+            || guest.dead
+            || !self.guest_menu_still_valid(conn)
+        {
+            return Err(R::Unavailable);
+        }
+        let open = guest.menu.as_ref().ok_or(R::Unavailable)?;
+        if guest.menu_generation != catalog.instance
+            || open.window != catalog.window
+            || open.registry_id != catalog.menu.as_str()
+        {
+            return Err(R::Stale);
+        }
+        let kind = open
+            .mod_type
+            .filter(|kind| kind.id == catalog.menu.as_str())
+            .ok_or(R::Unavailable)?;
+        if open.size != kind.slots {
+            return Err(R::Unavailable);
+        }
+        let mut hidden = open.hidden.clone();
+        for slot in open.unlinked_slots(&self.world) {
+            if !hidden.contains(&slot) {
+                hidden.push(slot);
+            }
+        }
+        hidden.sort_unstable();
+        Ok(LiveOpening {
+            gi,
+            uuid: guest.uuid,
+            window: open.window,
+            instance: guest.menu_generation,
+            kind,
+            slots: open.slots,
+            creative: guest.creative(),
+            hidden,
+            owned_slots: kind.owned_slots.is_some(),
+        })
     }
-    fn stage_mod_book_place(
+
+    fn apply_mod_book_plan(
         &mut self,
-        before: &MenuSnapshot,
+        conn: u32,
         catalog: &sync::CatalogIdentity,
         display: &sync::DisplayId,
         plan: &MenuPlacement,
         use_max: bool,
     ) -> Result<PostPlace, sync::Refusal> {
         use sync::Refusal as R;
+        let opening = self.mod_book_live_opening(conn, catalog)?;
         if plan.awaits_grid() {
-            if !self.mod_book_placement_context(before, catalog)
-                || !self.mod_book_native_unchanged(before)
+            let answer = self.ask_mod_book_place(
+                opening.uuid,
+                opening.kind.id,
+                display.recipe.as_str(),
+                use_max,
+                opening.creative,
+            )?;
+            let current = self
+                .mod_book_live_opening(conn, catalog)
+                .map_err(|_| R::Changed)?;
+            if current.uuid != opening.uuid
+                || current.kind != opening.kind
+                || current.slots != opening.slots
             {
                 return Err(R::Changed);
             }
-            let answer = self.ask_mod_book_place(before, display.recipe.as_str(), use_max)?;
-            let current = self.mod_book_same_opening(before, catalog)?;
             return match answer {
                 RecipeBookPlacement::Nothing => Ok(PostPlace::Nothing),
                 RecipeBookPlacement::Ghost => Ok(PostPlace::Ghost),
@@ -175,7 +210,9 @@ impl Game<'_> {
                     clear,
                 } => {
                     let grid_plan = self.resolve_mod_book_grid(
-                        &current,
+                        current.kind.id,
+                        current.kind.slots,
+                        &current.hidden,
                         display.recipe.as_str(),
                         plan,
                         width,
@@ -183,7 +220,7 @@ impl Game<'_> {
                         &slots,
                         &clear,
                     )?;
-                    self.stage_resolved_mod_book_place(&current, catalog, &grid_plan, use_max)
+                    self.apply_resolved_mod_book_place(conn, catalog, &current, &grid_plan, use_max)
                         .inspect_err(|reason| {
                             if matches!(reason, R::Invalid | R::Unavailable) {
                                 log::warn!(
@@ -196,206 +233,453 @@ impl Game<'_> {
                 }
             };
         }
-        self.stage_resolved_mod_book_place(before, catalog, plan, use_max)
+        self.apply_resolved_mod_book_place(conn, catalog, &opening, plan, use_max)
     }
-    fn stage_resolved_mod_book_place(
+
+    fn apply_resolved_mod_book_place(
         &mut self,
-        before: &MenuSnapshot,
+        conn: u32,
         catalog: &sync::CatalogIdentity,
+        opening: &LiveOpening,
+        plan: &MenuPlacement,
+        use_max: bool,
+    ) -> Result<PostPlace, sync::Refusal> {
+        match opening.slots {
+            Slots::Block(pos) => {
+                self.apply_block_mod_book_place(conn, catalog, opening, pos, plan, use_max)
+            }
+            Slots::Native if opening.owned_slots => {
+                self.apply_owned_mod_book_place(conn, opening, plan, use_max)
+            }
+            Slots::Native => self.apply_backed_mod_book_place(conn, opening, plan, use_max),
+            _ => Err(sync::Refusal::Unavailable),
+        }
+    }
+
+    fn apply_block_mod_book_place(
+        &mut self,
+        conn: u32,
+        catalog: &sync::CatalogIdentity,
+        opening: &LiveOpening,
+        pos: (i32, i32, i32),
         plan: &MenuPlacement,
         use_max: bool,
     ) -> Result<PostPlace, sync::Refusal> {
         use sync::Refusal as R;
-        let mut graph = Backings::capture(self, before, plan)?;
-        let gi = self
-            .lan
-            .as_ref()
-            .and_then(|host| {
-                host.hub
-                    .guests
-                    .iter()
-                    .position(|guest| guest.conn == before.conn)
-            })
-            .ok_or(R::Changed)?;
-        let block_pos = match before.slots {
-            sunrise_client::lan::menu::Slots::Block(pos) => Some(pos),
-            sunrise_client::lan::menu::Slots::Native => None,
-            _ => return Err(R::Unavailable),
-        };
-        let sources = block_pos.map_or_else(Vec::new, |pos| {
-            self.lan_recipe_sources(gi, before.kind, pos)
-        });
-        if !self.mod_book_placement_context(before, catalog) || !graph.unchanged(self) {
+        if !matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Mod(m)) if !m.id().is_empty())
+        {
+            return Err(R::Unavailable);
+        }
+        let raw_sources = self.lan_recipe_sources(opening.gi, opening.kind, pos);
+        let opening = self
+            .mod_book_live_opening(conn, catalog)
+            .map_err(|_| R::Changed)?;
+        if opening.slots != Slots::Block(pos)
+            || !matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Mod(m)) if !m.id().is_empty())
+        {
             return Err(R::Changed);
         }
-        let stocks = graph.add_sources(self, &sources)?;
-        let host = self.lan.as_ref().ok_or(R::Changed)?;
-        let guest = host.hub.guest(before.conn).ok_or(R::Changed)?;
-        let kind = Kind::Mod(before.kind);
-        let mut menu = host
-            .menus
-            .get(&before.conn)
-            .and_then(|play| play.crafting.machine.as_ref())
-            .filter(|(window, menu)| *window == before.window && menu.kind() == kind)
-            .map_or_else(|| Box::new(Menu::new(kind)), |(_, menu)| menu.clone());
-        menu.reset_mod_visibility(&before.hidden);
-        menu.set_registry_id(Some(before.kind.id));
-        super::lan_crafting::load_player(&mut menu, guest);
-        menu.set_container_limits(graph.limits());
-        menu.sources = stocks;
-        for (slot, stack) in graph.main.iter().enumerate() {
-            menu.load_slot(slot, stack.clone());
-        }
-        let known = guest.recipe_book.clone();
-        let limited = host.hub.limited_crafting;
-        let name = guest.name.clone();
-        let env = Env {
-            player: Some(before.uuid),
-            player_entity_id: Some(before.entity_id),
-            can_equip: None,
-            known_recipes: Some(&known),
-            slot_rules: None,
-            stacked: None,
-            limited_crafting: limited,
-            ..self.menu_env()
+        let (before_main, main_backings, limits) = {
+            let host = self.lan.as_ref().ok_or(R::Changed)?;
+            let guest = host.hub.guests.get(opening.gi).ok_or(R::Changed)?;
+            let before_main = opening
+                .slots
+                .read(&self.world, guest)
+                .filter(|items| items.len() == opening.kind.slots)
+                .ok_or(R::Unavailable)?;
+            let mut seen_main = BTreeSet::new();
+            let mut main_backings = Vec::with_capacity(opening.kind.slots);
+            let mut limits = Vec::with_capacity(opening.kind.slots);
+            for slot in 0..opening.kind.slots {
+                match opening.slots.logical_backing(&self.world, guest, slot) {
+                    Some(SlotBacking::Block(bpos, bslot)) => {
+                        if !seen_main.insert((bpos, bslot))
+                            || self.world.block_entities.get(&bpos).is_none()
+                        {
+                            return Err(R::Unavailable);
+                        }
+                        main_backings.push(Some((bpos, bslot)));
+                        limits.push(self.world.container_stack_limit(bpos));
+                    }
+                    None => {
+                        main_backings.push(None);
+                        limits.push(None);
+                    }
+                    _ => return Err(R::Unavailable),
+                }
+            }
+            (before_main, main_backings, limits)
         };
-        let post = menu
-            .place_custom_recipe(&env, plan, use_max, before.game_mode == 1, || {
-                self.mod_book_placement_context(before, catalog) && graph.unchanged_blocks(self)
-            })
-            .map_err(refusal)?;
-        if let Some(crafting) = menu.mod_crafting() {
-            let mut result = menu.slot(crafting.result).cloned();
-            self.native_prepare_item_craft(
-                before.uuid,
-                &name,
-                block_pos.map(|pos| [pos.0, pos.1, pos.2]),
-                &mut result,
-            );
-            if !self.mod_book_placement_context(before, catalog) || !graph.unchanged(self) {
+        let mut cleared_blocks = BTreeSet::new();
+        for &slot in plan.cleared_slots() {
+            if opening.hidden.contains(&slot) {
+                return Err(R::Unavailable);
+            }
+            let backing = main_backings
+                .get(slot)
+                .copied()
+                .flatten()
+                .ok_or(R::Unavailable)?;
+            cleared_blocks.insert(backing);
+        }
+        let mut seen_sources = cleared_blocks;
+        let mut source_keys = Vec::with_capacity(raw_sources.len());
+        let mut stocks = Vec::with_capacity(raw_sources.len());
+        for (spos, items) in &raw_sources {
+            if self.world.block_entities.get(spos).is_none() {
                 return Err(R::Changed);
             }
-            menu.load_slot(crafting.result, result);
+            let mut keys = Vec::with_capacity(items.len());
+            let mut values = Vec::with_capacity(items.len());
+            for (sslot, stack) in items.iter().enumerate() {
+                let key = (*spos, sslot);
+                let owned = seen_sources.insert(key);
+                keys.push(owned.then_some(key));
+                values.push(if owned { stack.clone() } else { None });
+            }
+            source_keys.push(keys);
+            stocks.push(values);
         }
-        if !self.native_as_player(before.uuid, |game| game.journal_player(before.uuid)) {
-            return Err(R::Changed);
-        }
-        // The guest's fields are back in the hub before comparing or storing them.
-        if !self.mod_book_placement_context(before, catalog) || !graph.unchanged(self) {
-            return Err(R::Changed);
-        }
-        let changes = graph.changes(&mut menu);
-        for key in changes.blocks.keys() {
-            self.journal_block_entity(key.pos);
-        }
-        let mut changed = std::collections::BTreeSet::new();
-        for (key, stack) in changes.blocks {
-            let entity = self
-                .world
-                .block_entities
-                .get_mut(&key.pos)
-                .ok_or(R::Changed)?;
-            let slot = entity.slot_mut(key.slot).ok_or(R::Changed)?;
-            *slot = stack;
-            changed.insert(key.pos);
-        }
-        for pos in changed {
-            self.after_commit(super::transactions::After::Changed(pos));
-        }
-        for stack in std::mem::take(&mut menu.dropped) {
-            self.drop_after_commit(before.uuid, stack);
-        }
-        let craft = menu.mod_crafting().map(|crafting| ModCraft {
-            grid: crafting
-                .grid_slots()
-                .map(|slot| menu.slot(slot).cloned())
-                .collect(),
-            result: menu.slot(crafting.result).cloned(),
-        });
-        {
-            let host = self.lan.as_mut().ok_or(R::Changed)?;
-            let gi = host
-                .hub
-                .guests
-                .iter()
-                .position(|guest| guest.conn == before.conn)
-                .ok_or(R::Changed)?;
-            // Publish the guest's detached inventory before writing a backing held in one of
-            // its item stacks, so this copy cannot overwrite the transactional place write.
-            menu.sources.clear();
-            host.hub.guests.update(gi, |guest| {
-                super::lan_crafting::store_player(&mut menu, guest);
-                if let Some(opened) = &mut guest.menu {
-                    opened.craft = craft;
+        let kind = Kind::Mod(opening.kind);
+        let mut menu = self
+            .lan
+            .as_mut()
+            .ok_or(R::Changed)?
+            .menus
+            .entry(conn)
+            .or_default()
+            .crafting
+            .machine
+            .take()
+            .filter(|(window, m)| *window == opening.window && m.kind() == kind)
+            .map_or_else(|| Box::new(Menu::new(kind)), |(_, m)| m);
+        menu.reset_mod_visibility(&opening.hidden);
+        menu.set_registry_id(Some(opening.kind.id));
+        menu.sources = stocks;
+        let placed = self
+            .guest_menu_edit(opening.gi, &mut menu, None, None, |menu, env| {
+                menu.set_container_limits(limits);
+                for (slot, stack) in before_main.iter().enumerate() {
+                    menu.load_slot(slot, stack.clone());
                 }
-            });
+                menu.place_custom_recipe(env, plan, use_max, opening.creative)
+            })
+            .ok_or(R::Changed)?;
+        let after_sources = std::mem::take(&mut menu.sources);
+        let post = match placed {
+            Ok(post) => post,
+            Err(reason) => {
+                let _ = GuestMenuEffects::take(&mut menu);
+                if let Some(host) = self.lan.as_mut() {
+                    *host.menus.entry(conn).or_default().crafting.machine =
+                        Some((opening.window, menu));
+                }
+                return Err(refusal(reason));
+            }
+        };
+        let mut updated_blocks = BTreeMap::new();
+        for &slot in plan.cleared_slots() {
+            let after = menu.slot(slot).cloned();
+            if before_main[slot] != after
+                && let Some(key) = main_backings[slot]
+            {
+                updated_blocks.insert(key, after);
+            }
         }
-        self.mod_book_write_native_changes(before, &changes.native)?;
-        let host = self.lan.as_mut().ok_or(R::Changed)?;
-        *host.menus.entry(before.conn).or_default().crafting.machine = Some((before.window, menu));
+        for ((keys, (_, before_items)), after_items) in
+            source_keys.iter().zip(&raw_sources).zip(after_sources)
+        {
+            for ((key, before_stack), after_stack) in keys.iter().zip(before_items).zip(after_items)
+            {
+                if let Some(key) = key
+                    && *before_stack != after_stack
+                {
+                    updated_blocks.insert(*key, after_stack);
+                }
+            }
+        }
+        for (slot, backing) in main_backings.iter().enumerate() {
+            if let Some(key) = backing
+                && let Some(stack) = updated_blocks.get(key)
+            {
+                menu.load_slot(slot, stack.clone());
+            }
+        }
+        let mut changed_blocks = BTreeSet::new();
+        for ((bpos, bslot), stack) in updated_blocks {
+            if let Some(entity) = self.world.block_entities.get_mut(&bpos) {
+                if let BlockEntity::Mod(m) = entity
+                    && bpos == pos
+                    && m.items.len() <= bslot
+                    && bslot < opening.kind.slots
+                {
+                    m.items.resize(opening.kind.slots, None);
+                }
+                if let Some(target) = entity.slot_mut(bslot) {
+                    *target = stack;
+                    changed_blocks.insert(bpos);
+                }
+            }
+        }
+        for bpos in changed_blocks {
+            self.container_changed(bpos);
+        }
+        let effects = GuestMenuEffects::take(&mut menu);
+        self.lan_mod_craft_settle_at(opening.gi, Some(pos), &mut menu);
+        if let Some(host) = self.lan.as_mut() {
+            *host.menus.entry(conn).or_default().crafting.machine = Some((opening.window, menu));
+        }
+        self.publish_guest_menu_effects(conn, effects);
         Ok(post)
     }
 
-    fn mod_book_write_native_changes(
+    fn apply_owned_mod_book_place(
         &mut self,
-        before: &MenuSnapshot,
-        changes: &[super::native_book_backings::NativeChange],
-    ) -> Result<(), sync::Refusal> {
+        conn: u32,
+        opening: &LiveOpening,
+        plan: &MenuPlacement,
+        use_max: bool,
+    ) -> Result<PostPlace, sync::Refusal> {
         use sync::Refusal as R;
-        if changes.is_empty() {
-            return Ok(());
+        let result_slot = opening.kind.crafting.map(|c| c.result);
+        for &slot in plan.cleared_slots() {
+            if slot >= opening.kind.slots
+                || opening.hidden.contains(&slot)
+                || result_slot == Some(slot)
+            {
+                return Err(R::Unavailable);
+            }
         }
-        let menu = self.menu(before.uuid, before.window).ok_or(R::Changed)?;
-        if changes.iter().any(|change| {
-            self.native_menu_place(before.conn, before.window, change.slot) != Some(change.place)
-        }) {
-            return Err(R::Changed);
+        let before_main = {
+            let host = self.lan.as_ref().ok_or(R::Changed)?;
+            let guest = host.hub.guests.get(opening.gi).ok_or(R::Changed)?;
+            opening
+                .slots
+                .read(&self.world, guest)
+                .filter(|items| items.len() == opening.kind.slots)
+                .ok_or(R::Unavailable)?
+        };
+        let kind = Kind::Mod(opening.kind);
+        let mut menu = self
+            .lan
+            .as_mut()
+            .ok_or(R::Changed)?
+            .menus
+            .entry(conn)
+            .or_default()
+            .owned_menu
+            .take()
+            .filter(|(generation, m)| *generation == opening.instance && m.kind() == kind)
+            .map_or_else(|| Box::new(Menu::new(kind)), |(_, m)| m);
+        menu.reset_mod_visibility(&opening.hidden);
+        menu.set_registry_id(Some(opening.kind.id));
+        let placed = self
+            .guest_menu_edit(opening.gi, &mut menu, None, None, |menu, env| {
+                for (slot, stack) in before_main.iter().enumerate() {
+                    menu.load_slot(slot, stack.clone());
+                }
+                menu.place_custom_recipe(env, plan, use_max, opening.creative)
+            })
+            .ok_or(R::Changed)?;
+        let post = match placed {
+            Ok(post) => post,
+            Err(reason) => {
+                let _ = GuestMenuEffects::take(&mut menu);
+                if let Some(host) = self.lan.as_mut() {
+                    host.menus.entry(conn).or_default().owned_menu = Some((opening.instance, menu));
+                }
+                return Err(refusal(reason));
+            }
+        };
+        if let Some(host) = self.lan.as_mut() {
+            host.hub.guests.update(opening.gi, |guest| {
+                for &slot in plan.cleared_slots() {
+                    if let Some(target) = guest.native_menu.get_mut(slot) {
+                        *target = menu.slot(slot).cloned();
+                    }
+                }
+            });
         }
-        let writes = changes
+        let effects = GuestMenuEffects::take(&mut menu);
+        self.lan_mod_craft_settle_at(opening.gi, None, &mut menu);
+        if let Some(host) = self.lan.as_mut() {
+            host.menus.entry(conn).or_default().owned_menu = Some((opening.instance, menu));
+        }
+        self.publish_guest_menu_effects(conn, effects);
+        Ok(post)
+    }
+
+    fn apply_backed_mod_book_place(
+        &mut self,
+        conn: u32,
+        opening: &LiveOpening,
+        plan: &MenuPlacement,
+        use_max: bool,
+    ) -> Result<PostPlace, sync::Refusal> {
+        use sync::Refusal as R;
+        let menu_ref = self
+            .menu(opening.uuid, opening.window)
+            .ok_or(R::Unavailable)?;
+        let player = menu_ref.fields().player;
+        if !self.held_places_bound(conn, player) {
+            self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(opening.window));
+            return Err(R::Stale);
+        }
+        let places: Vec<Option<MenuSlotPlace>> = (0..opening.kind.slots)
+            .map(|slot| self.native_menu_place(conn, opening.window, slot))
+            .collect();
+        let mut seen_places = Vec::<MenuSlotPlace>::new();
+        for place in places.iter().flatten().copied() {
+            if seen_places.contains(&place) {
+                return Err(R::Unavailable);
+            }
+            seen_places.push(place);
+        }
+        for &slot in plan.cleared_slots() {
+            if opening.hidden.contains(&slot) || places.get(slot).copied().flatten().is_none() {
+                return Err(R::Unavailable);
+            }
+        }
+        // Read live handler stacks directly rather than the guest's cached native_menu mirror.
+        let mut before_api = Vec::with_capacity(opening.kind.slots);
+        {
+            let host: &mut dyn ServerHost = self;
+            for (slot, place) in places.iter().copied().enumerate() {
+                if opening.hidden.contains(&slot) {
+                    before_api.push(None);
+                    continue;
+                }
+                match place {
+                    Some(place) => {
+                        if !place.resolves(host, player)
+                            || menu_ref.slot_backing(host, slot)
+                                != Some(MenuSlotBacking::Place(place))
+                        {
+                            return Err(R::Unavailable);
+                        }
+                        let stack = ItemPlace::MenuSlot {
+                            menu: menu_ref,
+                            slot,
+                        }
+                        .with_stack(host, |stack| stack.project())
+                        .flatten();
+                        before_api.push(stack);
+                    }
+                    None => {
+                        if !matches!(
+                            menu_ref.slot_backing(host, slot),
+                            Some(MenuSlotBacking::Native(_))
+                        ) {
+                            return Err(R::Unavailable);
+                        }
+                        before_api.push(None);
+                    }
+                }
+            }
+        }
+        let before_main: Vec<Option<ItemStack>> = before_api
             .iter()
-            .map(|change| {
-                let after = change
-                    .after
+            .map(|stack| {
+                stack
+                    .as_ref()
+                    .map(|stack| {
+                        stack
+                            .try_into_engine(self.items())
+                            .map_err(|_| R::Unavailable)
+                    })
+                    .transpose()
+            })
+            .collect::<Result<_, _>>()?;
+        let kind = Kind::Mod(opening.kind);
+        let mut menu = self
+            .lan
+            .as_mut()
+            .ok_or(R::Changed)?
+            .menus
+            .entry(conn)
+            .or_default()
+            .crafting
+            .machine
+            .take()
+            .filter(|(window, m)| *window == opening.window && m.kind() == kind)
+            .map_or_else(|| Box::new(Menu::new(kind)), |(_, m)| m);
+        menu.reset_mod_visibility(&opening.hidden);
+        menu.set_registry_id(Some(opening.kind.id));
+        let mut synced_places = false;
+        let placed = mod_api::run_transaction(self, |game, tx| {
+            game.journal_parked_player(opening.gi);
+            let post = game
+                .guest_menu_edit(opening.gi, &mut menu, None, None, |menu, env| {
+                    for (slot, stack) in before_main.iter().enumerate() {
+                        menu.load_slot(slot, stack.clone());
+                    }
+                    menu.place_custom_recipe(env, plan, use_max, opening.creative)
+                })
+                .ok_or(R::Changed)?
+                .map_err(refusal)?;
+            let mut writes = Vec::new();
+            for &slot in plan.cleared_slots() {
+                let after = menu.slot(slot).cloned();
+                if before_main[slot] == after {
+                    continue;
+                }
+                let backing = places[slot].ok_or(R::Changed)?;
+                let after_api = after
                     .as_ref()
                     .map(TryIntoApi::try_into_api)
                     .transpose()
                     .map_err(|_| R::Changed)?;
-                Ok((change.slot, change.place, change.before.clone(), after))
-            })
-            .collect::<Result<Vec<_>, R>>()?;
-        let host: &mut dyn ServerHost = self;
-        host.transaction(|host, tx| {
-            for (slot, backing, before, after) in &writes {
-                if menu.slot_backing(host, *slot) != Some(MenuSlotBacking::Place(*backing)) {
-                    return Err(());
+                writes.push((slot, backing, before_api[slot].clone(), after_api));
+            }
+            synced_places = !writes.is_empty();
+            let host: &mut dyn ServerHost = game;
+            for (slot, backing, before_stack, after_stack) in &writes {
+                if menu_ref.slot_backing(host, *slot) != Some(MenuSlotBacking::Place(*backing)) {
+                    return Err(R::Changed);
                 }
-                let place = ItemPlace::MenuSlot { menu, slot: *slot };
-                if place
-                    .with_stack(host, |stack| stack.project())
-                    .flatten()
-                    .as_ref()
-                    != before.as_ref()
-                {
-                    return Err(());
-                }
-                if let Some(stack) = before {
+                let place = ItemPlace::MenuSlot {
+                    menu: menu_ref,
+                    slot: *slot,
+                };
+                if let Some(stack) = before_stack {
                     let resource = ItemResource::of(stack);
                     if place.extract(host, tx, &resource, stack.count()) != stack.count() {
-                        return Err(());
+                        return Err(R::Changed);
                     }
                 }
-                if let Some(stack) = after {
+                if let Some(stack) = after_stack {
                     let resource = ItemResource::of(stack);
                     if place.insert(host, tx, &resource, stack.count()) != stack.count() {
-                        return Err(());
+                        return Err(R::Changed);
                     }
                 }
             }
-            Ok(())
-        })
-        .map_err(|_| R::Changed)
+            Ok(post)
+        });
+        let post = match placed {
+            Ok(post) => post,
+            Err(reason) => {
+                let _ = GuestMenuEffects::take(&mut menu);
+                if let Some(host) = self.lan.as_mut() {
+                    *host.menus.entry(conn).or_default().crafting.machine =
+                        Some((opening.window, menu));
+                }
+                return Err(reason);
+            }
+        };
+        let effects = GuestMenuEffects::take(&mut menu);
+        self.lan_mod_craft_settle_at(opening.gi, None, &mut menu);
+        if let Some(host) = self.lan.as_mut() {
+            *host.menus.entry(conn).or_default().crafting.machine = Some((opening.window, menu));
+        }
+        self.publish_guest_menu_effects(conn, effects);
+        if synced_places {
+            self.publish_backed_menu_click(conn, opening.uuid, menu_ref, opening.window);
+        }
+        Ok(post)
     }
 }
+
 #[cfg(test)]
 #[path = "native_book_apply/tests.rs"]
 mod tests;

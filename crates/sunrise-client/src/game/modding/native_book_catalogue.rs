@@ -109,6 +109,36 @@ impl Game<'_> {
         self.concretize_mod_book_display(&mut resolved)?;
         Ok(resolved)
     }
+    /// Whether `conn` still has the exact open, valid mod menu identified by `(window, instance, menu)`.
+    pub(super) fn mod_book_opening_matches(
+        &self,
+        conn: u32,
+        window: i32,
+        instance: u64,
+        menu: &str,
+    ) -> bool {
+        let Some(host) = self.lan.as_ref() else {
+            return false;
+        };
+        let Some(guest) = host.hub.guest(conn) else {
+            return false;
+        };
+        if !host.hub.here(guest)
+            || guest.spectator()
+            || guest.dead
+            || !self.guest_menu_still_valid(conn)
+        {
+            return false;
+        }
+        let Some(open) = guest.menu.as_ref() else {
+            return false;
+        };
+        guest.menu_generation == instance
+            && open.window == window
+            && open.registry_id == menu
+            && open.mod_type.is_some_and(|kind| kind.id == menu)
+    }
+
     pub(super) fn server_mod_book_catalogue(
         &mut self,
         conn: u32,
@@ -143,7 +173,25 @@ impl Game<'_> {
         if bound_book.as_str() != book.as_str() {
             return Err(Refusal::Unavailable);
         }
-        let before = self.mod_book_menu_snapshot(conn, window, menu.as_str())?;
+        let (instance, known) = {
+            let host = self.lan.as_ref().ok_or(Refusal::Unavailable)?;
+            let guest = host.hub.guest(conn).ok_or(Refusal::Unavailable)?;
+            if !host.hub.here(guest)
+                || guest.spectator()
+                || guest.dead
+                || !self.guest_menu_still_valid(conn)
+            {
+                return Err(Refusal::Unavailable);
+            }
+            let open = guest.menu.as_ref().ok_or(Refusal::Unavailable)?;
+            if open.window != window || open.registry_id != menu.as_str() {
+                return Err(Refusal::Stale);
+            }
+            if open.mod_type.is_none_or(|kind| kind.id != menu.as_str()) {
+                return Err(Refusal::Unavailable);
+            }
+            (guest.menu_generation, guest.recipe_book.recipes.clone())
+        };
         self.ensure_mod_book_displays();
         let index = self
             .recipe_tables
@@ -167,7 +215,7 @@ impl Game<'_> {
         for category in &mut declarations {
             category
                 .displays
-                .retain(|entry| before.known.contains(&entry.recipe));
+                .retain(|entry| known.contains(&entry.recipe));
             for entry in &mut category.displays {
                 for display in &mut entry.displays {
                     self.concretize_mod_book_display(display)?;
@@ -175,7 +223,14 @@ impl Game<'_> {
             }
         }
         let bytes = sync::encode_catalogue(&declarations)?;
-        if !self.mod_book_menu_unchanged(&before) {
+        let same_authority = self
+            .native_net
+            .book_connections
+            .get(&conn)
+            .and_then(|connection| connection.authority.as_ref())
+            .is_some_and(|authority| authority.epoch == epoch && authority.contains(book.as_str()));
+        if !same_authority || !self.mod_book_opening_matches(conn, window, instance, menu.as_str())
+        {
             return Err(Refusal::Changed);
         }
         let identity = sync::CatalogIdentity {
@@ -183,7 +238,7 @@ impl Game<'_> {
             number,
             window,
             nonce,
-            instance: before.instance,
+            instance,
             generation,
             menu,
             book,

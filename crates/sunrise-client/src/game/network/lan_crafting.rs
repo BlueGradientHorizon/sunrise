@@ -200,7 +200,7 @@ impl GuestMenuEffects {
         }
     }
 
-    fn take(menu: &mut Menu) -> Self {
+    pub(super) fn take(menu: &mut Menu) -> Self {
         // An anvil result waits for AnvilCraftEvent.Pre; lan_station_op throws or refuses its drops.
         let dropped = if menu.anvil_craft.is_some() {
             Vec::new()
@@ -286,7 +286,7 @@ impl Game<'_> {
 
     /// Run one edit with the guest's rules and storage, leaving effects in the menu until its
     /// caller accepts the action. No `Env` survives this call.
-    fn guest_menu_edit<R>(
+    pub(super) fn guest_menu_edit<R>(
         &mut self,
         gi: usize,
         menu: &mut Menu,
@@ -1172,11 +1172,13 @@ impl Game<'_> {
             } => match self.server_mod_book_place(conn, catalog, display, use_max) {
                 Ok(PostPlace::Nothing) => {}
                 Ok(PostPlace::Ghost) => {
-                    // A policy or root-commit callback may have closed or replaced the menu.
-                    if self
-                        .mod_book_menu_snapshot(conn, catalog.window, catalog.menu.as_str())
-                        .is_ok_and(|now| now.instance == catalog.instance)
-                    {
+                    // A policy or callback may have closed or replaced the menu.
+                    if self.mod_book_opening_matches(
+                        conn,
+                        catalog.window,
+                        catalog.instance,
+                        catalog.menu.as_str(),
+                    ) {
                         match self.server_mod_book_display(catalog, display) {
                             Ok(resolved) => self.send_guest_mod_book_placement(
                                 conn,
@@ -1896,12 +1898,21 @@ impl Game<'_> {
         pos: (i32, i32, i32),
         menu: &mut Menu,
     ) -> Option<usize> {
+        self.lan_mod_craft_settle_at(gi, Some(pos), menu)
+    }
+
+    pub(super) fn lan_mod_craft_settle_at(
+        &mut self,
+        gi: usize,
+        pos: Option<(i32, i32, i32)>,
+        menu: &mut Menu,
+    ) -> Option<usize> {
         let c = menu.mod_crafting()?;
         let guest = &self.lan.as_ref()?.hub.guests[gi];
         let (uuid, name) = (guest.uuid, guest.name.clone());
         let mut result = menu.slot(c.result).cloned();
         let vanilla = result.clone();
-        self.native_prepare_item_craft(uuid, &name, Some([pos.0, pos.1, pos.2]), &mut result);
+        self.native_prepare_item_craft(uuid, &name, pos.map(|(x, y, z)| [x, y, z]), &mut result);
         let grid = c.grid_slots().map(|k| menu.slot(k).cloned()).collect();
         let changed = result != vanilla;
         if changed {
