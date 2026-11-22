@@ -29,6 +29,10 @@ impl Game<'_> {
         // pairs a vehicle again with ClientboundSetPassengersPacket).
         self.selected = 0;
         self.potions.effects.clear();
+        // handleLogin creates a fresh LocalPlayer only when none exists yet.
+        if self.remote.as_ref().is_none_or(|r| !r.logged_in) {
+            self.post_effects.clear();
+        }
         self.riding = None;
         if let Some(player) = self.player.as_mut() {
             player.entity_id = p.player_id;
@@ -94,6 +98,7 @@ impl Game<'_> {
         // A new player, without effects (the server sends them
         // again) and with no item in use.
         self.potions.effects.clear();
+        self.post_effects.clear();
         // Every synced attachment but the player's is sent again; the viewed
         // levels go or stay with the level entered (`enter_respawn_level`).
         if let Some(r) = self.remote.as_mut() {

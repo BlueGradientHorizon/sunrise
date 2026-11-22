@@ -39,6 +39,15 @@ pub(super) enum InvalidBundle {
     TooManyPackets,
 }
 
+impl std::fmt::Display for InvalidBundle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Terminal => "Terminal message received in bundle",
+            Self::TooManyPackets => "Too many packets in a bundle",
+        })
+    }
+}
+
 impl PlayBundle {
     pub(super) fn assembling(&self) -> bool {
         self.0.is_some()

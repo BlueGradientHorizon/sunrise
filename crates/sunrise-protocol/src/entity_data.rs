@@ -1,10 +1,8 @@
 //! SynchedEntityData values (ClientboundSetEntityDataPacket): an entry index,
 //! the EntityDataSerializers id, and the serializer's value, ending with 0xFF.
-//! Serializers Sunrise cannot decode end the list early; the entries before
-//! them are kept.
 use crate::{
     Result,
-    buf::{Codec, Reader},
+    buf::{Codec, Ident, Pos, Reader},
     item::{Slot, Stack, Template},
     packets::login::PropertyCodec,
 };
@@ -37,6 +35,20 @@ pub enum Value {
     Particles(Vec<Particle>),
     /// A `ResolvableProfile` (a mannequin's DATA_PROFILE).
     Profile(Profile),
+    /// `OPTIONAL_GLOBAL_POS`: optional `(dimension, block_pos)`.
+    OptGlobalPos(Option<(String, [i32; 3])>),
+    /// Inline `PAINTING_VARIANT` (holder id 0); registry holders stay `Value::Id(holder)`.
+    PaintingVariant(PaintingVariant),
+}
+/// `PaintingVariant.DIRECT_STREAM_CODEC`: inline painting variant when
+/// `PAINTING_VARIANT`'s holder id is 0.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PaintingVariant {
+    pub width: i32,
+    pub height: i32,
+    pub asset_id: String,
+    pub title: Option<Tag>,
+    pub author: Option<Tag>,
 }
 /// `ResolvableProfile.STREAM_CODEC`: the GameProfile a mannequin or player
 /// head resolves — either a full profile (id, name and properties on the
@@ -329,9 +341,9 @@ pub mod serializer {
     pub const HUMANOID_ARM: i32 = 42;
     pub const DYE_COLOR: i32 = 43;
 }
-fn read_value(kind: i32, r: &mut Reader) -> Result<Option<Value>> {
+fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
     use serializer::*;
-    Ok(Some(match kind {
+    Ok(match kind {
         BYTE => Value::Byte(r.i8()?),
         INT => Value::Int(r.varint()?),
         LONG => Value::Long(r.varlong()?),
@@ -343,19 +355,30 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Option<Value>> {
         BOOLEAN => Value::Bool(r.bool()?),
         ROTATIONS | VECTOR3 => Value::Floats(vec![r.f32()?, r.f32()?, r.f32()?]),
         QUATERNION => Value::Floats(vec![r.f32()?, r.f32()?, r.f32()?, r.f32()?]),
-        BLOCK_POS => Value::Pos(crate::buf::Pos::read(r)?),
-        OPTIONAL_BLOCK_POS => Value::OptPos(if r.bool()? {
-            Some(crate::buf::Pos::read(r)?)
-        } else {
-            None
-        }),
+        BLOCK_POS => Value::Pos(Pos::read(r)?),
+        OPTIONAL_BLOCK_POS => Value::OptPos(if r.bool()? { Some(Pos::read(r)?) } else { None }),
         OPTIONAL_LIVING_ENTITY_REFERENCE => {
             Value::OptUuid(if r.bool()? { Some(r.uuid()?) } else { None })
         }
         // VillagerData: type, profession and level.
         VILLAGER_DATA => Value::Ids(vec![r.varint()?, r.varint()?, r.varint()?]),
+        OPTIONAL_GLOBAL_POS => Value::OptGlobalPos(if r.bool()? {
+            Some((Ident::read(r)?, Pos::read(r)?))
+        } else {
+            None
+        }),
+        PAINTING_VARIANT => match r.varint()? {
+            0 => Value::PaintingVariant(PaintingVariant {
+                width: r.varint()?,
+                height: r.varint()?,
+                asset_id: Ident::read(r)?,
+                title: if r.bool()? { Some(r.nbt()?) } else { None },
+                author: if r.bool()? { Some(r.nbt()?) } else { None },
+            }),
+            holder => Value::Id(holder),
+        },
         // VarInt-encoded: direction, block states, optional ints, pose, the
-        // holder-registry variants (cat to zombie nautilus, painting) and the
+        // holder-registry variants (cat to zombie nautilus) and the
         // enum states (sniffer to weathering copper), arm, dye.
         BLOCK_STATE
         | OPTIONAL_BLOCK_STATE
@@ -363,7 +386,7 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Option<Value>> {
         | OPTIONAL_UNSIGNED_INT
         | POSE
         | CAT_VARIANT..=ZOMBIE_NAUTILUS_VARIANT
-        | PAINTING_VARIANT..=WEATHERING_COPPER_STATE
+        | SNIFFER_STATE..=WEATHERING_COPPER_STATE
         | HUMANOID_ARM
         | DYE_COLOR => Value::Id(r.varint()?),
         PARTICLE => Value::Particle(Particle::read(r)?),
@@ -376,8 +399,12 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Option<Value>> {
             }
             Value::Particles(list)
         }
-        _ => return Ok(None),
-    }))
+        other => {
+            return Err(crate::Error::new(format!(
+                "Unknown serializer type {other}"
+            )));
+        }
+    })
 }
 fn write_value(kind: i32, v: &Value, w: &mut Writer) {
     match v {
@@ -416,6 +443,27 @@ fn write_value(kind: i32, v: &Value, w: &mut Writer) {
             list.iter().for_each(|p| p.write(w));
         }
         Value::Profile(p) => write_profile(p, w),
+        Value::OptGlobalPos(pos) => {
+            w.bool(pos.is_some());
+            if let Some((dim, block)) = pos {
+                Ident::write(dim, w);
+                Pos::write(block, w);
+            }
+        }
+        Value::PaintingVariant(v) => {
+            w.varint(0);
+            w.varint(v.width);
+            w.varint(v.height);
+            Ident::write(&v.asset_id, w);
+            w.bool(v.title.is_some());
+            if let Some(t) = &v.title {
+                w.nbt(t);
+            }
+            w.bool(v.author.is_some());
+            if let Some(a) = &v.author {
+                w.nbt(a);
+            }
+        }
     }
     let _ = kind;
 }
@@ -431,13 +479,7 @@ impl Codec<Vec<(u8, i32, Value)>> for EntityData {
                 return Ok(out);
             }
             let kind = r.varint()?;
-            match read_value(kind, r)? {
-                Some(v) => out.push((index, kind, v)),
-                None => {
-                    r.rest();
-                    return Ok(out);
-                }
-            }
+            out.push((index, kind, read_value(kind, r)?));
         }
     }
     fn write(v: &Vec<(u8, i32, Value)>, w: &mut Writer) {
@@ -511,7 +553,30 @@ impl crate::retained::OwnedHeap for Value {
             Self::Profile(field_0) => {
                 0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
             }
+            Self::OptGlobalPos(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+            Self::PaintingVariant(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
         }
+    }
+}
+impl crate::retained::OwnedHeap for PaintingVariant {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            width,
+            height,
+            asset_id,
+            title,
+            author,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(width))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(height))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(asset_id))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(title))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(author))
     }
 }
 impl crate::retained::OwnedHeap for Profile {
@@ -634,11 +699,10 @@ mod tests {
             EntityData::read(&mut Reader::new(&w.data)).unwrap(),
             entries
         );
-        // Serializer 200 is unknown: the list stops there, earlier entries kept.
+        // Serializer 200 is unknown: decode fails instead of silently truncating.
         let mut bytes = vec![0, 0, 7, 9, 200, 1, 2, 3];
         bytes.push(0xFF);
-        let read = EntityData::read(&mut Reader::new(&bytes)).unwrap();
-        assert_eq!(read, vec![(0, 0, Value::Byte(7))]);
+        assert!(EntityData::read(&mut Reader::new(&bytes)).is_err());
         // A block particle decodes fully and round-trips.
         let entries = vec![(
             10u8,
@@ -806,5 +870,86 @@ mod tests {
                 (18, serializer::BOOLEAN, Value::Bool(true)),
             ]
         );
+    }
+
+    fn entity_data_witness() -> serde_json::Value {
+        let dir = std::env::var("SUNRISE_NETWORK_WITNESS_DIR").expect(
+            "SUNRISE_NETWORK_WITNESS_DIR must be set (run via tools/test_network_parity.py)",
+        );
+        let path = std::path::Path::new(&dir).join("entity_data.json");
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+        serde_json::from_str(&text).unwrap()
+    }
+
+    fn entity_data_hex(hex: &str) -> Vec<u8> {
+        (0..hex.len() / 2)
+            .map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    #[ignore = "run by tools/test_network_parity.py"]
+    fn unknown_entity_data_serializers_fail_decode_like_26_3() {
+        let witness = entity_data_witness();
+        for row in witness["unknown_serializers"].as_array().unwrap() {
+            let name = row["name"].as_str().unwrap();
+            let serializer_id = row["serializer_id"].as_i64().unwrap() as i32;
+            let data = entity_data_hex(row["entity_data_hex"].as_str().unwrap());
+            let Err(err) = EntityData::read(&mut Reader::new(&data)) else {
+                panic!("{name}: serializer {serializer_id} must fail decode");
+            };
+            assert!(
+                err.to_string().contains(&serializer_id.to_string()),
+                "{name}: error {err:?} should report serializer {serializer_id}"
+            );
+            let body = entity_data_hex(row["packet_body_hex"].as_str().unwrap());
+            assert!(
+                crate::packets::play::Clientbound::decode(
+                    crate::ids::play::clientbound::SET_ENTITY_DATA,
+                    &body,
+                )
+                .is_err(),
+                "{name}: SET_ENTITY_DATA packet decode must fail"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "run by tools/test_network_parity.py"]
+    fn valid_26_3_optional_global_pos_and_painting_variant_decode_completely() {
+        let witness = entity_data_witness();
+        for row in witness["valid_serializers"].as_array().unwrap() {
+            let name = row["name"].as_str().unwrap();
+            let data = entity_data_hex(row["entity_data_hex"].as_str().unwrap());
+            let entries = EntityData::read(&mut Reader::new(&data))
+                .unwrap_or_else(|e| panic!("{name}: failed to decode valid 26.3 data: {e}"));
+            let expected_count = row["entry_count"].as_u64().unwrap() as usize;
+            assert_eq!(entries.len(), expected_count, "{name}: entry count");
+            let trailing_index = row["trailing_index"].as_u64().unwrap() as u8;
+            let trailing_byte = row["trailing_byte"].as_i64().unwrap() as i8;
+            assert_eq!(
+                entries.last(),
+                Some(&(trailing_index, serializer::BYTE, Value::Byte(trailing_byte))),
+                "{name}: trailing entry"
+            );
+            let mut w = Writer::new();
+            EntityData::write(&entries, &mut w);
+            assert_eq!(w.data, data, "{name}: exact wire round-trip");
+
+            let body = entity_data_hex(row["packet_body_hex"].as_str().unwrap());
+            let entity_id = row["entity_id"].as_i64().unwrap() as i32;
+            let crate::packets::play::Clientbound::SetEntityData(pkt) =
+                crate::packets::play::Clientbound::decode(
+                    crate::ids::play::clientbound::SET_ENTITY_DATA,
+                    &body,
+                )
+                .unwrap()
+            else {
+                panic!("{name}: expected SetEntityData");
+            };
+            assert_eq!(pkt.id, entity_id, "{name}: entity_id");
+            assert_eq!(pkt.values, entries, "{name}: packet entries");
+        }
     }
 }

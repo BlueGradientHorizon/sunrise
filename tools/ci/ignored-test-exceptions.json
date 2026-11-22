@@ -726,5 +726,101 @@
     "path": "crates/sunrise-client/src/mobs/finalize_load_tests.rs",
     "reason": "run by tools/test_mob_attribute_nbt_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_attribute_nbt_parity.py records the vanilla 26.3 loaded-health witness into .local and runs this test against it through SUNRISE_MOB_LOADED_HEALTH_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-protocol",
+    "target": "lib",
+    "test": "entity_data::tests::unknown_entity_data_serializers_fail_decode_like_26_3",
+    "path": "crates/sunrise-protocol/src/entity_data.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-protocol",
+    "target": "lib",
+    "test": "entity_data::tests::valid_26_3_optional_global_pos_and_painting_variant_decode_completely",
+    "path": "crates/sunrise-protocol/src/entity_data.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-protocol",
+    "target": "lib",
+    "test": "packets::configuration::tests::configuration_decodes_post_effects_packet_26_3",
+    "path": "crates/sunrise-protocol/src/packets/configuration.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "net::tests::bundle_holds_packets_until_closing_delimiter_and_emits_one_event_26_3",
+    "path": "crates/sunrise-client/src/net.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "net::tests::bundled_keepalive_waits_for_game_thread_in_bundle_order_26_3",
+    "path": "crates/sunrise-client/src/net.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "net::tests::bundle_rejects_terminal_packet_and_oversize_over_4096_26_3",
+    "path": "crates/sunrise-client/src/net.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "net::tests::configuration_post_effects_disconnects_with_packet_error_26_3",
+    "path": "crates/sunrise-client/src/net.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client-lib",
+    "target": "lib",
+    "test": "net::tests::unknown_entity_data_serializer_disconnects_play_session_like_26_3",
+    "path": "crates/sunrise-client/src/net.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::raw_ingress::bundle_parity_tests::dependent_entity_bundle_never_splits_across_poll_or_tick_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/bundle_parity_tests.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::raw_ingress::bundle_parity_tests::genpvp_ping_rotation_and_keepalive_bundle_apply_atomically_in_order_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/bundle_parity_tests.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::raw_ingress::post_effects_parity_tests::post_effects_before_login_disconnects_with_packet_error_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/post_effects_parity_tests.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::raw_ingress::post_effects_parity_tests::post_effects_cleared_on_login_respawn_and_reconfigure_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/post_effects_parity_tests.rs",
+    "reason": "run by tools/test_network_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_network_parity.py records the vanilla 26.3 network witnesses into .local and runs this test against them through SUNRISE_NETWORK_WITNESS_DIR, so no recorded vanilla data is committed."
   }
 ]

@@ -932,6 +932,20 @@ impl Reason {
             Err(_) => Self::plain(reason_json),
         }
     }
+    /// `Connection.exceptionCaught`: `disconnect.genericReason` with `"Internal Exception: ..."`.
+    fn generic_exception(detail: impl std::fmt::Display, lang: &Language) -> Self {
+        Self {
+            text: plain(
+                &translatable(
+                    "disconnect.genericReason",
+                    &[&format!("Internal Exception: {detail}")],
+                ),
+                lang,
+            ),
+            key: Some("disconnect.genericReason".to_owned()),
+            from_server: false,
+        }
+    }
     /// The play/configuration phases' disconnect: the reason arrives as
     /// an NBT component.
     fn tag(tag: &Tag, lang: &Language) -> Self {
@@ -1539,19 +1553,24 @@ fn receive_play(
         ) {
             Ok(p) => p,
             Err(err) => {
-                if bundle.assembling() {
-                    log::warn!("Sunrise: bundle packet refused: {err}");
-                    return Err(Reason::keyed("multiplayer.disconnect.invalid_packet", lang));
-                }
-                if id == sunrise_protocol::ids::play::clientbound::CUSTOM_PAYLOAD {
-                    return Err(Reason::plain(format!("custom play payload refused: {err}")));
-                }
                 let name = sunrise_protocol::ids::name(
                     sunrise_protocol::State::Play,
                     sunrise_protocol::Direction::Clientbound,
                     id,
                 )
                 .unwrap_or("?");
+                if id == sunrise_protocol::ids::play::clientbound::SET_ENTITY_DATA
+                    || bundle.assembling()
+                {
+                    log::warn!("Sunrise: play packet decode failed ({name}): {err}");
+                    return Err(Reason::generic_exception(
+                        format!("Failed to decode packet 'clientbound/minecraft:{name}': {err}"),
+                        lang,
+                    ));
+                }
+                if id == sunrise_protocol::ids::play::clientbound::CUSTOM_PAYLOAD {
+                    return Err(Reason::plain(format!("custom play payload refused: {err}")));
+                }
                 let _ = send.send_wait(Event::DecodeError(format!("{name}: {err}")));
                 continue;
             }
@@ -1578,8 +1597,8 @@ fn receive_play(
             packet => BundleMember::Packet(packet),
         };
         let turn = bundle.accept(member).map_err(|error| {
-            log::warn!("Sunrise: play bundle refused: {error:?}");
-            Reason::keyed("multiplayer.disconnect.invalid_packet", lang)
+            log::warn!("Sunrise: play bundle refused: {error}");
+            Reason::generic_exception(error, lang)
         })?;
         let packet = match turn {
             None => continue,
@@ -1901,6 +1920,10 @@ fn configure(
             }
             cfg::Clientbound::ResourcePackPop(p) => {
                 let _ = send.send_wait(Event::PackPop(p.id));
+            }
+            // ClientCommonPacketListenerImpl.handlePostEffects: player is null during configuration.
+            cfg::Clientbound::PostEffects(_) => {
+                return Err(Reason::keyed("disconnect.packetError", lang));
             }
             // The game shows it immediately, before Joined/Reconfigured installs
             // the play registries. Only the dialog entries and tags are dynamic
@@ -3761,7 +3784,7 @@ mod tests {
         let (end, end_credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
         assert!(
             matches!(end, Event::Disconnected { from_server: false, key: Some(key), .. }
-            if key == "multiplayer.disconnect.invalid_packet")
+            if key == "disconnect.genericReason")
         );
         assert!(events.try_recv_owned().is_err());
         drop(end_credit);
@@ -3790,7 +3813,7 @@ mod tests {
         assert!(matches!(
             event,
             Event::Disconnected { from_server: false, key: Some(key), .. }
-                if key == "multiplayer.disconnect.invalid_packet"
+                if key == "disconnect.genericReason"
         ));
         assert!(events.try_recv_owned().is_err());
         assert!(server.recv().is_err());
@@ -4676,5 +4699,455 @@ mod tests {
         assert!(reg.entries[2].data.is_none());
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    struct TempDirGuard(PathBuf);
+    impl Drop for TempDirGuard {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn network_witness(file: &str) -> serde_json::Value {
+        let dir = std::env::var("SUNRISE_NETWORK_WITNESS_DIR").expect(
+            "SUNRISE_NETWORK_WITNESS_DIR must be set (run via tools/test_network_parity.py)",
+        );
+        let path = std::path::Path::new(&dir).join(file);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+        serde_json::from_str(&text).unwrap()
+    }
+
+    fn network_hex(hex: &str) -> Vec<u8> {
+        (0..hex.len() / 2)
+            .map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap())
+            .collect()
+    }
+
+    fn spawn_play_harness(
+        name: &str,
+        lang: Language,
+    ) -> (
+        TempDirGuard,
+        Connection,
+        ingress::Consumer<Event>,
+        Arc<Mutex<Option<QueuedWriter>>>,
+        std::sync::mpsc::Receiver<Result<Reason, Reason>>,
+        JoinHandle<()>,
+    ) {
+        let (root, data) = empty_item_data(name);
+        let (client, server) = sunrise_protocol::connection::Pipe::pair();
+        let (mut reader, writer) = Connection::local(client).split();
+        reader
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let shared_writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+        let client_writer = shared_writer.clone();
+        let (send, events) = event_channel();
+        let (done_tx, done_rx) = channel();
+        let lang = Arc::new(lang);
+        let thread = std::thread::spawn(move || {
+            let result = receive_play(
+                &mut reader,
+                Arc::default(),
+                &client_writer,
+                &Arc::new(AtomicBool::new(false)),
+                &lang,
+                &send,
+                &Cookies::default(),
+                &Arc::default(),
+                &data,
+                &Arc::new(Mutex::new(None)),
+                &crate::raw_payloads::Transport::empty(),
+                &Arc::default(),
+                &Arc::default(),
+            );
+            let _ = done_tx.send(result);
+        });
+        let server = Connection::local(server);
+        (
+            TempDirGuard(root),
+            server,
+            events,
+            shared_writer,
+            done_rx,
+            thread,
+        )
+    }
+
+    #[test]
+    #[ignore = "run by tools/test_network_parity.py"]
+    fn bundle_holds_packets_until_closing_delimiter_and_emits_one_event_26_3() {
+        let witness = network_witness("bundle.json");
+        let (_dir, mut server, events, shared_writer, done_rx, thread) =
+            spawn_play_harness("bundle-wire", Language::new());
+
+        let steps = witness["ping_rotation_wire_steps"]["steps"]
+            .as_array()
+            .unwrap();
+        let packets = [
+            play::Clientbound::BundleDelimiter(Empty),
+            play::Clientbound::Ping(cfg::Ping { id: -26 }),
+            play::Clientbound::PlayerRotation(play::PlayerRotation {
+                yaw: 0.0,
+                relative_yaw: false,
+                pitch: 0.0,
+                relative_pitch: false,
+            }),
+            play::Clientbound::BundleDelimiter(Empty),
+        ];
+        assert_eq!(steps.len(), packets.len());
+        for (step, packet) in steps.iter().zip(packets) {
+            server.send(&packet.encode()).unwrap();
+            let expected_count = step["emitted_count"].as_u64().unwrap() as usize;
+            let mut got = 0usize;
+            if expected_count > 0 {
+                assert!(
+                    events.recv_timeout_owned(Duration::from_secs(2)).is_ok(),
+                    "step {}: expected {expected_count} emitted event(s)",
+                    step["sent"]
+                );
+                got += 1;
+            }
+            while events.recv_timeout_owned(Duration::from_millis(80)).is_ok() {
+                got += 1;
+            }
+            assert_eq!(got, expected_count, "step {}", step["sent"]);
+        }
+
+        // Empty bundle ([delimiter, delimiter]) emits one bundle event with 0 subpackets.
+        assert!(
+            witness["empty_bundle"]["emitted_is_bundle"]
+                .as_bool()
+                .unwrap()
+        );
+        server
+            .send(&play::Clientbound::BundleDelimiter(Empty).encode())
+            .unwrap();
+        assert!(
+            events
+                .recv_timeout_owned(Duration::from_millis(60))
+                .is_err(),
+            "opening delimiter of empty bundle emitted an event"
+        );
+        server
+            .send(&play::Clientbound::BundleDelimiter(Empty).encode())
+            .unwrap();
+        assert!(
+            events.recv_timeout_owned(Duration::from_secs(2)).is_ok(),
+            "closing delimiter of empty bundle did not emit an event"
+        );
+        assert!(
+            events
+                .recv_timeout_owned(Duration::from_millis(60))
+                .is_err(),
+            "empty bundle emitted more than one event"
+        );
+
+        // Back-to-back bundles followed by a single packet emit 3 events total.
+        let expected_seq = witness["back_to_back_and_single"].as_array().unwrap().len();
+        for packet in [
+            play::Clientbound::BundleDelimiter(Empty),
+            play::Clientbound::Ping(cfg::Ping { id: 1 }),
+            play::Clientbound::BundleDelimiter(Empty),
+            play::Clientbound::BundleDelimiter(Empty),
+            play::Clientbound::Ping(cfg::Ping { id: 2 }),
+            play::Clientbound::BundleDelimiter(Empty),
+            play::Clientbound::Ping(cfg::Ping { id: 3 }),
+            play::Clientbound::Disconnect(cfg::Disconnect {
+                reason: Tag::String("done".into()),
+            }),
+        ] {
+            server.send(&packet.encode()).unwrap();
+        }
+        let ended = done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(ended.is_ok(), "unexpected error ending receive_play");
+        let mut emitted = 0usize;
+        while events.try_recv_owned().is_ok() {
+            emitted += 1;
+        }
+        assert_eq!(emitted, expected_seq);
+
+        drop(server);
+        drop(events);
+        drop(shared_writer);
+        thread.join().unwrap();
+    }
+
+    #[test]
+    #[ignore = "run by tools/test_network_parity.py"]
+    fn bundled_keepalive_waits_for_game_thread_in_bundle_order_26_3() {
+        let witness = network_witness("bundle.json");
+        let (_dir, mut server, events, shared_writer, _done_rx, thread) =
+            spawn_play_harness("bundle-keepalive", Language::new());
+        server
+            .reader
+            .set_read_timeout(Some(Duration::from_millis(120)))
+            .unwrap();
+
+        // Unbundled control: KeepAlive answers immediately on the network thread.
+        assert_eq!(
+            witness["keepalive_ordering"]["unbundled"]["sent_before_process"],
+            serde_json::json!(["keep_alive:999"])
+        );
+        server
+            .send(&play::Clientbound::Ping(cfg::Ping { id: 7 }).encode())
+            .unwrap();
+        server
+            .send(&play::Clientbound::KeepAlive(cfg::KeepAlive { id: 999 }).encode())
+            .unwrap();
+        let (id, body) = server.recv().unwrap();
+        assert_eq!(
+            play::Serverbound::decode(id, &body).unwrap(),
+            play::Serverbound::KeepAlive(cfg::KeepAlive { id: 999 })
+        );
+        assert!(events.recv_timeout_owned(Duration::from_secs(2)).is_ok());
+
+        // Bundled: KeepAlive must not answer on the network thread before the game thread runs.
+        assert_eq!(
+            witness["keepalive_ordering"]["bundled"]["sent_before_process"],
+            serde_json::json!([])
+        );
+        for packet in [
+            play::Clientbound::BundleDelimiter(Empty),
+            play::Clientbound::Ping(cfg::Ping { id: 7 }),
+            play::Clientbound::KeepAlive(cfg::KeepAlive { id: 999 }),
+            play::Clientbound::PlayerRotation(play::PlayerRotation {
+                yaw: 90.0,
+                relative_yaw: false,
+                pitch: 12.5,
+                relative_pitch: false,
+            }),
+            play::Clientbound::BundleDelimiter(Empty),
+        ] {
+            server.send(&packet.encode()).unwrap();
+        }
+        let early_reply = server.recv();
+        assert!(
+            early_reply.is_err(),
+            "bundled KeepAlive replied on the network thread: {early_reply:?}"
+        );
+        let expected_tasks = witness["keepalive_ordering"]["bundled"]["queued_tasks_before_process"]
+            .as_u64()
+            .unwrap() as usize;
+        let mut emitted = 0usize;
+        assert!(events.recv_timeout_owned(Duration::from_secs(2)).is_ok());
+        emitted += 1;
+        while events.recv_timeout_owned(Duration::from_millis(80)).is_ok() {
+            emitted += 1;
+        }
+        assert_eq!(emitted, expected_tasks);
+
+        drop(server);
+        drop(events);
+        drop(shared_writer);
+        thread.join().unwrap();
+    }
+
+    #[test]
+    #[ignore = "run by tools/test_network_parity.py"]
+    fn bundle_rejects_terminal_packet_and_oversize_over_4096_26_3() {
+        let witness = network_witness("bundle.json");
+        let generic_lang = || -> Language {
+            [("disconnect.genericReason".to_owned(), "%s".to_owned())]
+                .into_iter()
+                .collect()
+        };
+
+        // Terminal packet (`start_configuration`) inside a bundle disconnects.
+        {
+            let (_dir, mut server, events, shared_writer, done_rx, thread) =
+                spawn_play_harness("bundle-terminal", generic_lang());
+            server
+                .send(&play::Clientbound::BundleDelimiter(Empty).encode())
+                .unwrap();
+            server
+                .send(&play::Clientbound::StartConfiguration(Empty).encode())
+                .unwrap();
+            let ended = done_rx.recv_timeout(Duration::from_millis(400));
+            drop(server);
+            drop(events);
+            drop(shared_writer);
+            let _ = thread.join();
+            let reason = match ended {
+                Ok(Err(reason)) => reason,
+                other => panic!(
+                    "expected disconnect on terminal packet in bundle, got {:?}",
+                    other.map(|r| r.map(|ok| ok.text).map_err(|e| e.text))
+                ),
+            };
+            assert_eq!(
+                reason.key.as_deref(),
+                witness["terminal_packet"]["inside_disconnect_key"].as_str()
+            );
+            assert!(
+                reason.text.contains("Terminal message received in bundle"),
+                "unexpected terminal bundle disconnect text: {}",
+                reason.text
+            );
+        }
+
+        let limit = witness["bundle_size_limit"].as_u64().unwrap() as usize;
+        assert_eq!(limit, 4096);
+
+        // Exact limit (4096 subpackets) succeeds and emits one bundle event.
+        {
+            let (_dir, mut server, events, shared_writer, done_rx, thread) =
+                spawn_play_harness("bundle-limit-4096", generic_lang());
+            server
+                .send(&play::Clientbound::BundleDelimiter(Empty).encode())
+                .unwrap();
+            for i in 0..limit {
+                server
+                    .send(&play::Clientbound::Ping(cfg::Ping { id: i as i32 }).encode())
+                    .unwrap();
+            }
+            server
+                .send(&play::Clientbound::BundleDelimiter(Empty).encode())
+                .unwrap();
+            let first = events.recv_timeout_owned(Duration::from_secs(5));
+            let second = events.recv_timeout_owned(Duration::from_millis(80));
+            let ended = done_rx.try_recv();
+            drop(server);
+            drop(events);
+            drop(shared_writer);
+            let _ = thread.join();
+            assert!(first.is_ok(), "4096-packet bundle did not emit an event");
+            assert!(
+                second.is_err(),
+                "4096-packet bundle emitted more than one event"
+            );
+            assert!(
+                ended.is_err(),
+                "4096-packet bundle unexpectedly disconnected"
+            );
+        }
+
+        // One past limit (4097th subpacket) disconnects with Too many packets in a bundle.
+        {
+            let (_dir, mut server, events, shared_writer, done_rx, thread) =
+                spawn_play_harness("bundle-limit-4097", generic_lang());
+            let _ = server.send(&play::Clientbound::BundleDelimiter(Empty).encode());
+            for i in 0..=limit {
+                if server
+                    .send(&play::Clientbound::Ping(cfg::Ping { id: i as i32 }).encode())
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            let ended = done_rx.recv_timeout(Duration::from_secs(2));
+            drop(server);
+            drop(events);
+            drop(shared_writer);
+            let _ = thread.join();
+            let reason = match ended {
+                Ok(Err(reason)) => reason,
+                other => panic!(
+                    "expected disconnect on 4097th packet in bundle, got {:?}",
+                    other.map(|r| r.map(|ok| ok.text).map_err(|e| e.text))
+                ),
+            };
+            assert_eq!(
+                reason.key.as_deref(),
+                witness["size_limit"]["limit_4097_disconnect_key"].as_str()
+            );
+            assert!(
+                reason.text.contains("Too many packets in a bundle"),
+                "unexpected oversize bundle disconnect text: {}",
+                reason.text
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "run by tools/test_network_parity.py"]
+    fn configuration_post_effects_disconnects_with_packet_error_26_3() {
+        let witness = network_witness("post_effects.json");
+        for (case_name, hex_key) in [
+            ("empty", "config_empty_hex"),
+            ("nonempty", "config_two_hex"),
+        ] {
+            let expected_key = witness["configuration_state"][case_name]["disconnect_key"]
+                .as_str()
+                .unwrap();
+            let raw_frame = network_hex(witness["wire"][hex_key].as_str().unwrap());
+            let (root, data) = empty_item_data(&format!("cfg-post-effects-{case_name}"));
+            let _dir = TempDirGuard(root);
+            let (client, server) = sunrise_protocol::connection::Pipe::pair();
+            let (mut reader, writer) = Connection::local(client).split();
+            reader
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let shared_writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+            let client_writer = shared_writer.clone();
+            let lang: Language = [(
+                "disconnect.packetError".to_owned(),
+                "Network Protocol Error".to_owned(),
+            )]
+            .into_iter()
+            .collect();
+            let thread = std::thread::spawn(move || {
+                let (send, _events) = event_channel();
+                configure(
+                    &mut reader,
+                    &client_writer,
+                    &Arc::new(AtomicBool::new(true)),
+                    &lang,
+                    &send,
+                    &Cookies::default(),
+                    &data,
+                    &crate::raw_payloads::Transport::empty(),
+                )
+            });
+            let mut server = Connection::local(server);
+            let _ = server.send(&raw_frame);
+            let _ = server.send(&cfg::Clientbound::FinishConfiguration(Empty).encode());
+            let ended = thread.join().unwrap();
+            drop(shared_writer);
+            let got = match ended {
+                Ok(_) => "none".to_owned(),
+                Err(reason) => reason.key.unwrap_or(reason.text),
+            };
+            assert_eq!(got, expected_key, "config post_effects ({case_name})");
+        }
+    }
+
+    #[test]
+    #[ignore = "run by tools/test_network_parity.py"]
+    fn unknown_entity_data_serializer_disconnects_play_session_like_26_3() {
+        let witness = network_witness("entity_data.json");
+        for row in witness["unknown_serializers"].as_array().unwrap() {
+            let name = row["name"].as_str().unwrap();
+            let body = network_hex(row["packet_body_hex"].as_str().unwrap());
+            let expected_key = row["connection_disconnect_key"].as_str().unwrap();
+            let lang: Language = [("disconnect.genericReason".to_owned(), "%s".to_owned())]
+                .into_iter()
+                .collect();
+            let (_dir, mut server, events, shared_writer, done_rx, thread) =
+                spawn_play_harness(&format!("entity-data-{name}"), lang);
+            let mut frame = ::sunrise_core::vanilla_bytes::Writer::new();
+            frame.varint(sunrise_protocol::ids::play::clientbound::SET_ENTITY_DATA);
+            frame.bytes(&body);
+            let _ = server.send(&frame.data);
+            let ended = done_rx.recv_timeout(Duration::from_millis(300));
+            drop(server);
+            drop(events);
+            drop(shared_writer);
+            let _ = thread.join();
+            let reason = match ended {
+                Ok(Err(reason)) => reason,
+                other => panic!(
+                    "{name}: expected play disconnect on unknown serializer, got {:?}",
+                    other.map(|r| r.map(|ok| ok.text).map_err(|e| e.text))
+                ),
+            };
+            assert_eq!(reason.key.as_deref(), Some(expected_key), "{name}");
+            assert!(
+                reason.text.starts_with("Internal Exception:"),
+                "{name}: unexpected disconnect text: {}",
+                reason.text
+            );
+        }
     }
 }

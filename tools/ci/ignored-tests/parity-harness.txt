@@ -21,3 +21,15 @@ sunrise-client-lib mobs::villager_brain::reputation_witness_tests::witnesses_use
 sunrise-client-render packs::cache::tests::benchmark_real_resource_root SUNRISE_OVERLAY_BENCH_VANILLA harness
 sunrise-client game::campfire::block_entity_items_tests::block_entity_items_match_the_vanilla_cases tools/test_block_entity_item_geometry_parity.py harness
 sunrise-client-lib mobs::finalize::load_tests::a_loaded_health_is_clamped_to_the_loaded_max_health tools/test_mob_attribute_nbt_parity.py harness
+sunrise-protocol entity_data::tests::unknown_entity_data_serializers_fail_decode_like_26_3 tools/test_network_parity.py harness
+sunrise-protocol entity_data::tests::valid_26_3_optional_global_pos_and_painting_variant_decode_completely tools/test_network_parity.py harness
+sunrise-protocol packets::configuration::tests::configuration_decodes_post_effects_packet_26_3 tools/test_network_parity.py harness
+sunrise-client-lib net::tests::bundle_holds_packets_until_closing_delimiter_and_emits_one_event_26_3 tools/test_network_parity.py harness
+sunrise-client-lib net::tests::bundled_keepalive_waits_for_game_thread_in_bundle_order_26_3 tools/test_network_parity.py harness
+sunrise-client-lib net::tests::bundle_rejects_terminal_packet_and_oversize_over_4096_26_3 tools/test_network_parity.py harness
+sunrise-client-lib net::tests::configuration_post_effects_disconnects_with_packet_error_26_3 tools/test_network_parity.py harness
+sunrise-client-lib net::tests::unknown_entity_data_serializer_disconnects_play_session_like_26_3 tools/test_network_parity.py harness
+sunrise-client game::remote::raw_ingress::bundle_parity_tests::dependent_entity_bundle_never_splits_across_poll_or_tick_26_3 tools/test_network_parity.py harness
+sunrise-client game::remote::raw_ingress::bundle_parity_tests::genpvp_ping_rotation_and_keepalive_bundle_apply_atomically_in_order_26_3 tools/test_network_parity.py harness
+sunrise-client game::remote::raw_ingress::post_effects_parity_tests::post_effects_before_login_disconnects_with_packet_error_26_3 tools/test_network_parity.py harness
+sunrise-client game::remote::raw_ingress::post_effects_parity_tests::post_effects_cleared_on_login_respawn_and_reconfigure_26_3 tools/test_network_parity.py harness

@@ -74,7 +74,7 @@ fn malformed_metadata_aborts_the_open_bundle_and_refunds_its_prefix() {
     .unwrap_err();
     assert_eq!(
         error.key.as_deref(),
-        Some("multiplayer.disconnect.invalid_packet"),
+        Some("disconnect.genericReason"),
         "{error:?}"
     );
     assert!(

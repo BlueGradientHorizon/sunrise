@@ -1136,7 +1136,7 @@ impl Game<'_> {
             C::PlayerRotation(p) => self.remote_rotation(&p),
             C::PlayerLookAt(p) => self.remote_look_at(&p),
             // ClientCommonPacketListenerImpl.handlePostEffects.
-            C::PostEffects(p) => self.post_effects = p.effects,
+            C::PostEffects(p) => self.apply_post_effects_packet(p)?,
             C::SetCamera(p) => self.remote_set_camera(p.camera_id),
             C::LevelChunkWithLight(p) => self.remote_chunk(&p, None),
             C::LightUpdate(p) => self.remote_light_update(&p),
