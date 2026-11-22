@@ -28,6 +28,7 @@ pub trait PlayerMenusBackendMut {
     /// non-provider, cancelled open, active speculative quick move or trade action, or an
     /// unconnected player such as a fake player. Inside a transaction, `Ok(true)` means queued;
     /// the provider runs at outermost commit and can still refuse. An abort does not open the menu.
+    /// A request during menu removal likewise waits until Close returns.
     fn player_open_menu(
         &mut self,
         player: PlayerRef,
@@ -42,10 +43,11 @@ pub trait PlayerMenusBackendMut {
     /// (`MenuProvider.shouldTriggerClientSideContainerClosingOnOpen`). `MenuReplace::InPlace`
     /// changes the title and rows without the client centring the mouse again. Packets for the
     /// old window are ignored. Update an open menu's contents through its slots or
-    /// [`MenuRef::set_items`], not by opening it again. In a transaction the returned handle
-    /// names only the staged open and cannot read or change any live menu. The live window id
-    /// is allocated at outermost commit; get the live handle with `PlayerRef::container_menu`.
-    /// An abort keeps the current menu without advancing the window counter. Errors:
+    /// [`MenuRef::set_items`], not by opening it again. In a transaction or during a close,
+    /// the returned handle names only a staged request and cannot read or change any live menu.
+    /// The wire id is allocated when the menu installs, at outermost commit or after the close.
+    /// Get the live handle in `player_container_open` or with
+    /// `PlayerRef::container_menu`. An abort keeps the current menu and window counter. Errors:
     /// `ClickInProgress` (an active speculative quick move or trade refuses the open),
     /// `PlayerUnavailable`, `Title`, `TitleNotEncodable`, or `Stack`.
     #[serialize_text]
@@ -87,6 +89,7 @@ pub trait PlayerMenusBackendMut {
     /// block changes have replayed, the veto runs in the player's level outside the transaction.
     /// The next vanilla window id (`1..=100`) is allocated when the open installs. Get the live
     /// handle with `PlayerRef::container_menu`; an abort keeps the old menu.
+    /// An open requested during menu removal also returns a staged handle and waits for Close.
     #[serialize_text]
     fn player_open_mod_menu(
         &mut self,
@@ -111,6 +114,7 @@ pub trait PlayerMenusBackendMut {
     /// active speculative quick move or trade action. Errors:
     /// `PlayerUnavailable` (stale, dead, fake, or on a client), or `Title` for a title that
     /// could not cross; nothing opens then.
+    /// A request during menu removal also waits until Close returns.
     #[serialize_text]
     fn player_open_ender_chest(
         &mut self,

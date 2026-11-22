@@ -193,8 +193,8 @@ pub trait MenusBackendMut {
     /// Close a player's open menu as `ServerPlayer.closeContainer` does. The server queues
     /// `ContainerClose`, then removes the menu, returns the carried stack to the inventory,
     /// and fires `player_container_close`. In the player's own turn, uses their active
-    /// inventory and cursor. Refuses stale menus, clients, a pending disconnect and the
-    /// player's own inventory menu. Outside a transaction the close is immediate. Inside
+    /// inventory and cursor. Refuses stale or already removed menus, clients, a pending
+    /// disconnect and the player's own inventory menu. Outside a transaction the close is immediate. Inside
     /// one, true accepts a request to close that same window at outermost commit;
     /// an abort leaves it open. A client closes its own screen with `close`.
     fn menu_close_container(&mut self, menu: MenuRef) -> bool;
