@@ -19,7 +19,7 @@ sunrise-client game::agent::face_pick_tests::attack_by_id_drops_its_own_click_no
 sunrise-client game::agent::face_pick_tests::attack_by_id_ends_without_a_click_on_death_or_without_ticks lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_follows_the_listener_decision lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_hits_the_entity_it_turned_to lib daily resources
-sunrise-client game::agent::face_pick_tests::attack_by_id_reports_a_click_no_tick_took lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_reports_a_click_no_tick_took lib daily child-process
 sunrise-client game::agent::face_pick_tests::attack_by_id_reports_the_pick_the_click_was_taken_with lib daily resources
 sunrise-client game::agent::face_pick_tests::look_at_entity_replies_after_a_tick_pick_with_no_frame lib daily resources
 sunrise-client game::agent::face_pick_tests::look_at_entity_replies_with_the_entity_it_turned_to lib daily resources

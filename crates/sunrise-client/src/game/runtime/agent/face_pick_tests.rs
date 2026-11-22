@@ -4,7 +4,7 @@
 //! reports what the pick its click was taken with held.
 use super::*;
 use crate::game::native_client_session::tests::logged_client;
-use crate::game::native_entity_refs::tests::with_client_game;
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use mod_api::{ClientHost, ClientPickEvent, CrosshairTarget, Hooks};
 use std::sync::{Arc, Mutex, mpsc};
 use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
@@ -348,15 +348,23 @@ fn attack_by_id_reports_the_pick_the_click_was_taken_with() {
 #[test]
 #[ignore = "daily"]
 fn attack_by_id_reports_a_click_no_tick_took() {
+    if run_fresh_cases(
+        "game::agent::face_pick_tests::attack_by_id_reports_a_click_no_tick_took",
+        "SUNRISE_AGENT_ATTACK_CLICK_NOT_TAKEN_CHILD",
+        &["switcher"],
+    ) {
+        return;
+    }
+
     with_pig_and_server(|game, _, server| {
         let (_, replies) = command(game, "attack 31");
         tick(game);
-        // A screen over the world: the tick's keybinds don't run, and its queued clicks go.
-        game.screen = Screen::GameModeSwitcher;
+        // Opening a screen releases queued clicks, and the tick's keybinds don't run.
+        game.set_screen(Screen::GameModeSwitcher);
         tick(game);
         assert_eq!(clicks_sent(game, server), Vec::<String>::new());
         // The screen closes; the player's next click on pig 31 is not the command's.
-        game.screen = Screen::Playing;
+        game.set_screen(Screen::Playing);
         player_click(game);
         tick(game);
         assert_eq!(attacks_on(&clicks_sent(game, server), 31), 1);
