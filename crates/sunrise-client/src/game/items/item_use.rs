@@ -272,9 +272,7 @@ impl Game<'_> {
         if left.count > 0 {
             return Some(left);
         }
-        info.use_remainder
-            .as_deref()
-            .map(|remainder| ItemStack::new(remainder, 1))
+        sunrise_client::item_sync::use_remainder(stack, Some(info))
     }
     /// `LivingEntityUseItemEvent.Tick` for `stack` in use `ticks` so far, as
     /// `updatingUsingItem` starts: a mod may change the ticks left, which
@@ -515,11 +513,7 @@ impl Game<'_> {
                     .player_uuid
                     .map(sunrise_client::lan::playerdata::ints_uuid)
             })?;
-            let entity = self.player_lookup_entity(uuid)?;
-            Some(mod_api::__private::game::player_ref(
-                mod_api::EntityRef::new(self.native_lifecycle.epoch()?, entity),
-                uuid,
-            ))
+            self.player(uuid)
         });
         let Some(player) = player else { return vanilla };
         let mut answer = None;
@@ -1608,7 +1602,7 @@ pub(super) mod interact_vibration_tests {
                 let call = self.0.fetch_add(1, Ordering::Relaxed);
                 if event
                     .stack
-                    .is_some_and(|stack| stack.item().id(host) == "minecraft:rotten_flesh")
+                    .is_some_and(|stack| stack.item().id(host) == Some("minecraft:rotten_flesh"))
                 {
                     return Some(false);
                 }
@@ -1718,6 +1712,74 @@ pub(super) mod interact_vibration_tests {
                     7,
                     "client dry-level path asks the hook"
                 );
+            })
+            .expect("SUNRISE_TEST_RESOURCES must name prepared resources");
+        });
+        can_eat_player_on_client_and_without_eater();
+    }
+
+    /// The listener sees the logged-in remote player on a client, and a food
+    /// stack with no resolvable eater keeps vanilla's answer without asking it.
+    fn can_eat_player_on_client_and_without_eater() {
+        use mod_api::{CanEatEvent, Hooks};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        use sunrise_client::motion::PlayerMotion;
+        use sunrise_core::geometry::Vec3;
+
+        const REMOTE: u128 = 0xC0FF_EE00_0000_0000_0000_0000_0000_002A;
+        struct Allow(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Allow {
+            fn can_eat(
+                &self,
+                host: &dyn mod_api::Host,
+                event: &mut CanEatEvent<'_>,
+            ) -> Option<bool> {
+                assert_eq!(event.player.entity().id(), 55);
+                assert_eq!(event.player.uuid(), REMOTE);
+                let food = event.player.food(host).expect("the client's own food data");
+                assert_eq!((food.level, food.saturation), (20, 2.5));
+                assert!(!event.vanilla_can_eat, "a full survival player cannot eat");
+                self.0.fetch_add(1, Ordering::Relaxed);
+                Some(true)
+            }
+        }
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "allow-eating",
+            Box::new(Allow(calls.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game("minecraft:rotten_flesh", |game| {
+                let food = ItemStack::new("minecraft:rotten_flesh", 1);
+                game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(client, "Eater").unwrap();
+                // Replace the server fixture's identity and the body removed on join.
+                game.lan_acting_uuid = None;
+                game.level.player_uuid = None;
+                let remote = game.remote.as_mut().unwrap();
+                remote.logged_in = true;
+                remote.profile = REMOTE;
+                remote.entity_id = 55;
+                let mut player = PlayerMotion::new(game.motion, Vec3::new(0.5, 65.0, 0.5)).unwrap();
+                player.entity_id = 55;
+                player.health.food.food = 20;
+                player.health.food.saturation = 2.5;
+                game.player = Some(player);
+                assert!(
+                    game.can_eat(Some(&food), false),
+                    "the listener lets a full player eat"
+                );
+                assert_eq!(calls.load(Ordering::Relaxed), 1);
+                // Keep the body and food state, but no logged-in identity resolves.
+                game.remote.as_mut().unwrap().logged_in = false;
+                assert!(!game.can_eat(Some(&food), false));
+                assert_eq!(calls.load(Ordering::Relaxed), 1, "no eater, no question");
             })
             .expect("SUNRISE_TEST_RESOURCES must name prepared resources");
         });

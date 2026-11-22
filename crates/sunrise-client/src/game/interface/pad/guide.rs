@@ -67,9 +67,11 @@ impl Game<'_> {
             && !self.screen_over_playing()
             && self.sleeping.is_none()
             && self.player.is_some()
-            && !self
-                .debug_entries
-                .any_enabled(self.debug, self.reduced_debug_info())
+            && !self.debug_entries.any_enabled(
+                &self.registered_debug_entries,
+                self.debug,
+                self.reduced_debug_info(),
+            )
     }
 
     /// Draw the guide (F1's hidden HUD never gets here). `from` is the batch's first vertex of
@@ -295,7 +297,7 @@ impl Game<'_> {
 
     fn pad_guide_facts(&mut self) -> Facts {
         let spectator = self.spectator();
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.held_mapping(Action::Sneak);
         let glider = self.glider_worn();
         let hands_busy = self.hands_busy();
         let riding = self.riding.is_some();
@@ -481,7 +483,7 @@ impl Game<'_> {
     /// What a boat, minecart or frame takes (`remote_use_entity`): a cart whose interact passes
     /// leaves the click to the item, and so does a painting.
     fn pad_guide_object(&self, id: i32, distance: f64) -> Option<Verb> {
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.held_mapping(Action::Sneak);
         if let Some(cart) = self.carts.iter().find(|c| c.id as i32 == id) {
             use super::super::minecarts::CartKind;
             let ridden = self.riding == Some(cart.id)

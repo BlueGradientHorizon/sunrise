@@ -694,8 +694,8 @@ fn print(out: &mut String, t: i32, i: usize, m: &Mob, player_down: bool, now: i6
     let _ = write!(
         out,
         "\tg {}{}\thp {}",
-        u8::from(m.on_ground),
-        u8::from(m.horizontal_collision),
+        u8::from(m.ground.on_ground),
+        u8::from(m.ground.horizontal_collision),
         f(m.health)
     );
     let _ = write!(
@@ -907,8 +907,9 @@ pub fn main() -> sunrise_client::Result<()> {
     let motion = sunrise_client::motion::MotionResources::load(root, &assets)?;
     let data = MobData::load(
         &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
-        &facts,
-    );
+        facts.states.len(),
+        false,
+    )?;
     let types = MobTypes::load(root)?;
     // The types a bee leaving its hive is loaded with (EntityType.loadEntityRecursive).
     let arc_types: HashMap<String, Arc<MobType>> = types
@@ -1265,6 +1266,7 @@ pub fn main() -> sunrise_client::Result<()> {
                     asks_baby_spawn: false,
                     border: None,
                     section_writer: None,
+                    trading_players: None,
                 }
             };
         }

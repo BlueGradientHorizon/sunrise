@@ -76,7 +76,7 @@ fn text_programs(
     Vec<crate::polytone_post::ExpressionUniform>,
 )>; 3] {
     let mut atlas = super::super::HudAtlas::boot();
-    load_shaders(&mut atlas, root, defaults);
+    load_shaders(&mut atlas, root, defaults).unwrap();
     let shaders = atlas.text_shaders;
     let expressions = shaders.expressions;
     [

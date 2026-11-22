@@ -251,7 +251,14 @@ impl Game<'_> {
             Target::Orb(id) => {
                 let uuid = self.uuid_for(id);
                 let tag = entity_nbt::orb_to_nbt(self.orbs.iter().find(|o| o.id == id)?, uuid);
-                crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
+                // Entity.saveWithoutId: the live fire, air and portal cooldown.
+                let mut tag = crate::game::persist::with_raw_over(
+                    tag,
+                    self.persist.raw.get(&id),
+                    crate::game::persist::ORB_LIVE,
+                );
+                self.save_portal_cooldown(id, &mut tag);
+                tag
             }
             Target::Projectile(id) => {
                 let uuid = self.uuid_for(id);
@@ -821,6 +828,8 @@ impl Game<'_> {
                 orb.health = new.health;
                 orb.no_gravity = new.no_gravity;
                 orb.fall_distance = new.fall_distance;
+                orb.fire_ticks = new.fire_ticks;
+                orb.air = new.air;
                 // Entity.load reads portalCooldown and leaves the portal
                 // process as it is.
                 if let Some(portal) = self.portals.entities.get_mut(&id) {
@@ -911,7 +920,7 @@ impl Game<'_> {
                     p.yaw = yaw;
                     p.pitch = pitch;
                     p.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-                    p.on_ground = entity_nbt::flag(&tag, "OnGround");
+                    p.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                 });
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
             }
@@ -1590,12 +1599,12 @@ impl Game<'_> {
             let (_, provider) = self.provider_arg(ctx, registry)?;
             if integer {
                 // ContextIntProvider.getInt: an ArithmeticException reads as 0.
-                let value = self.provider_int(&provider, &compute, 0).unwrap_or(0);
+                let value = self.provider_int(&provider, &compute).unwrap_or(0);
                 vec![Tag::Int(value)]
             } else {
                 // ContextFloatProvider.getFloat: a failure or a non-finite
                 // value reads as 0.
-                let value = self.provider_float(&provider, &compute, 0).unwrap_or(0.0);
+                let value = self.provider_float(&provider, &compute).unwrap_or(0.0);
                 let value = if value.is_finite() { value } else { 0.0 };
                 vec![Tag::Float(value.to_bits())]
             }
@@ -2054,6 +2063,7 @@ mod tests {
                     range: (0, 23),
                 }],
                 command: None,
+                executor: None,
                 range: (0, 23),
                 child: None,
                 literals: vec![],

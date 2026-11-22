@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
 use crate::game::{Game, GuestUse, Hit};
 use mod_api::{
@@ -250,7 +248,7 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
             game.sync_tick_chunks();
-            game.set_mode_id(0);
+            game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
             let stone = registry.default_state("minecraft:stone").unwrap();
             game.world.set(4, 64, 4, stone).unwrap();
             game.world.set(4, 65, 4, stone).unwrap();
@@ -406,7 +404,7 @@ fn substituted_placement_uses_the_held_item_preclear_and_selected_placed_by() {
                     inside: false,
                 };
                 *game.held_mut() = Some(ItemStack::new(item, 2));
-                game.guest_use = Some(GuestUse::OnBlock(mod_api::Hand::Main));
+                game.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
                 assert!(game.use_hand(Some(&hit)).unwrap());
                 assert_eq!(game.held().unwrap().count, remaining);
                 assert_eq!(game.world.block(4, 64, z), primary);
@@ -560,7 +558,7 @@ fn player_and_dispenser_apply_only_the_context_seen_by_the_veto() {
                 trace.lock().unwrap().occupy_target = occupy_target;
                 game.world.set(4, 64, z, stone).unwrap();
                 *game.held_mut() = Some(ItemStack::new("minecraft:stone", 2));
-                game.guest_use = Some(GuestUse::OnBlock(mod_api::Hand::Main));
+                game.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
                 let hit = Hit {
                     pos: [4, 63, z],
                     face: [0, 1, 0],
@@ -577,6 +575,8 @@ fn player_and_dispenser_apply_only_the_context_seen_by_the_veto() {
                         Direction::East,
                         ItemStack::new("minecraft:shulker_box", 2),
                     )
+                    .unwrap()
+                    .continue_value()
                     .unwrap()
                     .unwrap();
                 let count = if occupy_target { 2 } else { 1 };
@@ -612,6 +612,8 @@ fn player_and_dispenser_apply_only_the_context_seen_by_the_veto() {
                     Direction::East,
                     ItemStack::new("minecraft:shulker_box", 2),
                 )
+                .unwrap()
+                .continue_value()
                 .unwrap()
                 .unwrap();
             assert_eq!(

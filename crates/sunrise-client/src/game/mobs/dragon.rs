@@ -116,6 +116,17 @@ fn fireball_cloud_origin(feet: [f64; 3], targets: &[(Aabb, Vec3)]) -> [f64; 3] {
 /// (`SPECIAL + 16 + crystal`), so projectiles can target them.
 pub(super) const SPECIAL: u32 = u32::MAX - 4096;
 pub(super) const CRYSTAL_IDS: u32 = SPECIAL + 16;
+
+/// `EnderDragon.recreateFromPacket`: signed wrapping `i32` id of part `part` (`i + dragonId + 1`).
+pub(in crate::game) fn dragon_part_wire_id(dragon_id: u32, part: usize) -> i32 {
+    (dragon_id as i32).wrapping_add(1).wrapping_add(part as i32)
+}
+
+/// Inverse of [`dragon_part_wire_id`] for the 8 `EnderDragonPart` sub-entities.
+pub(in crate::game) fn dragon_part_index(dragon_id: u32, wire_id: i32) -> Option<usize> {
+    let offset = wire_id.wrapping_sub(dragon_id as i32).wrapping_sub(1);
+    (0..8).contains(&offset).then_some(offset as usize)
+}
 const FIGHT_FILE: &str = "data/minecraft/ender_dragon_fight.dat";
 pub(super) const MAX_HEALTH: f32 = 200.0;
 /// `Mob.getAmbientSoundInterval`.
@@ -708,6 +719,15 @@ impl Dragon {
     fn down(&self) -> bool {
         matches!(self.phase, Phase::Dying { .. }) || !self.alive()
     }
+    /// The entity's own box, not any of the separate `EnderDragonPart` boxes.
+    pub(super) fn body_bounds(&self) -> Aabb {
+        // EntityTypes.ENDER_DRAGON dimensions: 16 wide, 8 high.
+        let p = self.position;
+        Aabb::new(
+            Vec3::new(p.x - 8.0, p.y, p.z - 8.0),
+            Vec3::new(p.x + 8.0, p.y + 8.0, p.z + 8.0),
+        )
+    }
     /// Where part `i` stands and its box.
     pub(super) fn part_geometry(&self, i: usize) -> (Vec3, Aabb) {
         (self.parts[i].0, self.part_box(i))
@@ -854,15 +874,17 @@ impl Dragon {
         if damage > 0.0 {
             let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
             let block = sunrise_client::health::no_block(damage);
-            let blocked = level
-                .shield_block(hurting, damage, block)
-                .map_or(0.0, |b| b.blocked_damage);
+            let blocked = level.shield_block(hurting, damage, block).map_or(0.0, |b| {
+                container.record_shield_damage(b.shield_damage.max(0) as f32);
+                b.blocked_damage
+            });
             damage -= blocked;
             container.record_block(blocked);
         }
         if !damage.is_finite() {
             damage = f32::MAX;
         }
+        container.record_new_damage(damage);
         // LivingEntity.hurtServer: within the cooldown only what exceeds the last hit.
         let window = self.invulnerable > 10;
         container.record_should_cause_side_effects(!window);
@@ -870,28 +892,31 @@ impl Dragon {
             if damage <= self.last_hurt {
                 return Hurt::Landed { full: false };
             }
+            container.record_post_attack_invulnerability_ticks(self.invulnerable);
             container.reduce(
                 Reduction::Invulnerability,
                 damage,
                 self.last_hurt,
                 damage - self.last_hurt,
-                true,
             )
         } else {
             damage
         };
-        if window {
-            container.set_post_attack_invulnerability_ticks(self.invulnerable);
-        }
-        // LivingEntity.actuallyHurt: the dragon wears no armor and takes no effects, so
-        // nothing reduces the hit before Pre.
+        // LivingEntity.actuallyHurt: the dragon wears no armor and takes no effects.
+        // NeoForge still subtracts the armor-stage answer from the live container amount before Pre.
+        let before_armor = container.new_damage();
+        dealt = container.reduce(Reduction::Armor, before_armor, before_armor - dealt, dealt);
         let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
-        container.enter_pre(dealt);
+        container.record_new_damage(dealt);
         level.damage_pre(hurting, &mut container);
         dealt = container.capture_inflicted();
-        self.health -= dealt;
-        container.record_health_damage(dealt);
-        self.last_hurt = damage + container.pre_change();
+        // LivingEntity.actuallyHurt: absorption runs after Pre even with 0.0 absorption hearts.
+        let (remaining, _, _) = container.absorb(dealt, 0.0);
+        if remaining != 0.0 {
+            self.health -= remaining;
+            container.record_health_damage(remaining);
+        }
+        self.last_hurt = damage;
         self.invulnerable = container.post_attack_invulnerability_ticks();
         if !window {
             self.hurt_time = 10;
@@ -2072,18 +2097,28 @@ impl Game<'_> {
         &self,
         pick: &mut crate::game::pick_accumulator::PickAccumulator,
     ) -> Option<(u32, f64)> {
+        use crate::game::pick_accumulator::PickTarget;
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
+            let id = entity.id();
+            if let Some(d) = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)
+                && let Some(part) = dragon_part_index(d.id, id as i32)
+            {
+                return Some((SPECIAL + part as u32, distance));
+            }
+            if let Some(i) = self.crystals.iter().position(|c| c.id != 0 && c.id == id) {
+                return Some((CRYSTAL_IDS + i as u32, distance));
+            }
             return self
                 .special_targets()
                 .into_iter()
-                .any(|(id, _)| id == entity.id())
-                .then_some((entity.id(), distance));
+                .any(|(special, _)| special == id)
+                .then_some((id, distance));
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
         let mut best: Option<(u32, f64)> = None;
-        for (id, b) in self.special_targets() {
+        let mut consider = |target: PickTarget, special: u32, b: Aabb| {
             let (lo, hi) = (b.min_position(), b.max_position());
             let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
             let (mut t0, mut t1) = (0.0f64, reach);
@@ -2100,9 +2135,22 @@ impl Game<'_> {
                 t0 = t0.max(ta);
                 t1 = t1.min(tb);
             }
-            if hit && t0 <= t1 && pick.consider(self, id, t0) {
-                best = Some((id, t0));
+            if hit && t0 <= t1 && pick.consider_target(self, target, t0) {
+                best = Some((special, t0));
             }
+        };
+        if let Some(boxes) = self.dragon_part_boxes() {
+            for (i, part) in boxes.into_iter().enumerate() {
+                consider(PickTarget::DragonPart(i), SPECIAL + i as u32, part);
+            }
+        }
+        for (i, c) in self.crystals.iter().enumerate() {
+            let p = c.position;
+            let b = Aabb::new(
+                Vec3::new(p.x - 1.0, p.y, p.z - 1.0),
+                Vec3::new(p.x + 1.0, p.y + 2.0, p.z + 1.0),
+            );
+            consider(PickTarget::Crystal(i), CRYSTAL_IDS + i as u32, b);
         }
         best
     }
@@ -3005,8 +3053,9 @@ impl Game<'_> {
             // part's list in turn, so Thorns' level and dragon draws follow it.
             for part in 0..4 {
                 for (index, &allowed) in allowed.iter().enumerate() {
+                    let id = self.mobs[index].id;
                     let plan = self.prepare_knockback_credit(
-                        self.mobs[index].id as i32,
+                        id as i32,
                         Some(Who::Mob(frame.dragon_id)),
                         self.combat.attack(),
                     );
@@ -3023,7 +3072,7 @@ impl Game<'_> {
                         allowed,
                         part,
                     ) {
-                        let id = self.mobs[index].id;
+                        self.finish_mob_damage_at(index);
                         self.mob_post_attack(
                             id,
                             Some(sunrise_client::mobs::Who::Mob(frame.dragon_id)),
@@ -3321,6 +3370,7 @@ impl Game<'_> {
             }
             p.health.sync_velocity |= marked;
         }
+        self.finish_guest_damage();
         if !sitting
             && !hurt_lately
             && let Some(id) = self.dragon.as_ref().map(|d| d.id)
@@ -3834,12 +3884,10 @@ impl Game<'_> {
         };
         // DragonFireballRenderer.submit: turned by the camera's orientation.
         let [right, up] = super::billboard_axes(self.camera_orientation());
-        for b in self
-            .creatures
-            .projectiles
-            .iter()
-            .filter(|p| p.kind == sunrise_client::projectiles::ProjectileKind::DragonFireball)
-        {
+        for b in self.creatures.projectiles.iter().filter(|p| {
+            p.kind == sunrise_client::projectiles::ProjectileKind::DragonFireball
+                && !self.hides_as_camera(p.id)
+        }) {
             let p = glam::DVec3::new(
                 b.previous.x + (b.position.x - b.previous.x) * alpha,
                 b.previous.y + (b.position.y - b.previous.y) * alpha,
@@ -4834,6 +4882,8 @@ impl Game<'_> {
         // Finalization listeners can install another dragon after the initial
         // refusal check. Keep the constructor's existing replacement order.
         self.replace_resident_dragon(dragon);
+        // Entity's constructor assigns the identity before any join callbacks or hits.
+        self.uuid_for(id);
         self.place_dragon_parts();
         self.native_joins_flush(false, id).then_some(id)
     }
@@ -5118,11 +5168,18 @@ impl Game<'_> {
         let d = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)?;
         (0..8)
             .filter_map(|i| {
+                let part_id = dragon_part_wire_id(d.id, i);
                 let b = d.part_box(i);
                 let p = d.parts[i].0;
                 super::ray_box(eye, dir, reach, b)
-                    .filter(|&t| pick.consider(self, d.id + 1 + i as u32, t))
-                    .map(|t| ((d.id + 1 + i as u32) as i32, t, [p.x, p.y, p.z]))
+                    .filter(|&t| {
+                        pick.consider_target(
+                            self,
+                            crate::game::pick_accumulator::PickTarget::DragonPart(i),
+                            t,
+                        )
+                    })
+                    .map(|t| (part_id, t, [p.x, p.y, p.z]))
             })
             .last()
     }
@@ -5134,6 +5191,24 @@ mod crystal;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dragon_part_wire_ids_wrap_like_vanilla_i32() {
+        let neg_one = (-1i32) as u32;
+        for part in 0..8 {
+            let wire = dragon_part_wire_id(neg_one, part);
+            assert_eq!(wire, part as i32);
+            assert_eq!(dragon_part_index(neg_one, wire), Some(part));
+        }
+        assert_eq!(dragon_part_index(neg_one, -1), None);
+        assert_eq!(dragon_part_index(neg_one, 8), None);
+
+        let max = i32::MAX as u32;
+        assert_eq!(dragon_part_wire_id(max, 0), i32::MIN);
+        assert_eq!(dragon_part_index(max, i32::MIN), Some(0));
+        assert_eq!(dragon_part_wire_id(max, 7), i32::MIN + 7);
+        assert_eq!(dragon_part_index(max, i32::MIN + 7), Some(7));
+    }
 
     #[test]
     fn dragon_search_preserves_equal_cost_heap_order() {
@@ -6058,8 +6133,7 @@ mod tests {
             .collect()
     }
     /// Sets the native damage hook of these tests: it records the dragon
-    /// hits of entities 9001 to 9005, cancels 9001's, doubles 9002's, makes
-    /// 9003's -5 and 9004's NaN. The other tests' dragons are entity 0.
+    /// hits of entities 9001 to 9005, cancels 9001's and doubles 9002's.
     fn hooks() -> sunrise_client::health::DamageHooks {
         use sunrise_client::health::{DamageContainer, DamageHooks, DamageLevel, Hurting, Victim};
         fn hook(
@@ -6074,11 +6148,8 @@ mod tests {
             let amount = container.new_damage();
             let hit = (s.damage_type.to_owned(), s.causing, s.direct, amount);
             SEEN.lock().unwrap().push((entity, hit));
-            match entity {
-                9002 => container.set_new_damage(amount * 2.0),
-                9003 => container.set_new_damage(-5.0),
-                9004 => container.set_new_damage(f32::NAN),
-                _ => {}
+            if entity == 9002 {
+                container.record_new_damage(amount * 2.0);
             }
             entity == 9001
         }
@@ -6260,21 +6331,112 @@ mod tests {
         );
         assert_eq!(d.hurt(level, 3, 0.001, HIT, false), Hurt::Refused);
         assert!(seen(9005).is_empty());
-        // LivingEntity.hurtServer: a negative amount hurts by 0, a NaN by
-        // Float.MAX_VALUE (the killing blow: the dying flight).
-        let mut d = dragon_as(9003);
+    }
+
+    #[test]
+    fn dragon_records_shield_damage_and_runs_armor_and_absorption_modifiers() {
+        use std::sync::Mutex;
+        use sunrise_client::health::{
+            DamageContainer, DamageHooks, DamageLevel, Hurting, Reduction, ShieldBlock, Victim,
+        };
+        static ARMOR_SEEN: Mutex<Vec<f32>> = Mutex::new(Vec::new());
+        static ABSORPTION_SEEN: Mutex<Vec<f32>> = Mutex::new(Vec::new());
+        static POST_SEEN: Mutex<Vec<(f32, f32, f32, f32, f32, f32)>> = Mutex::new(Vec::new());
+        fn on_shield(
+            _: DamageLevel<'_>,
+            hurting: Hurting<'_>,
+            _: f32,
+            _: bool,
+            block: &mut ShieldBlock,
+        ) {
+            if matches!(hurting, Hurting::Dragon(9201 | 9202, _)) {
+                block.blocked = true;
+                block.blocked_damage = 2.0;
+                block.shield_damage = 5;
+            }
+        }
+        fn on_incoming(
+            _: DamageLevel<'_>,
+            hurting: Hurting<'_>,
+            _: Victim,
+            container: &mut DamageContainer,
+        ) -> bool {
+            if matches!(hurting, Hurting::Dragon(9201 | 9202, _)) {
+                container.add_reduction_modifier(
+                    Reduction::Armor,
+                    Box::new(|_, taken| {
+                        ARMOR_SEEN.lock().unwrap().push(taken);
+                        1.0
+                    }),
+                );
+            }
+            false
+        }
+        fn on_pre(_: DamageLevel<'_>, hurting: Hurting<'_>, container: &mut DamageContainer) {
+            let absorb_to = match hurting {
+                Hurting::Dragon(9201, _) => 3.0,
+                Hurting::Dragon(9202, _) => 10.0,
+                _ => return,
+            };
+            container.add_reduction_modifier(
+                Reduction::Absorption,
+                Box::new(move |_, taken| {
+                    ABSORPTION_SEEN.lock().unwrap().push(taken);
+                    absorb_to
+                }),
+            );
+        }
+        fn on_post(_: DamageLevel<'_>, hurting: Hurting<'_>, container: &DamageContainer) {
+            if matches!(hurting, Hurting::Dragon(9201 | 9202, _)) {
+                POST_SEEN.lock().unwrap().push((
+                    container.blocked(),
+                    container.shield_damage(),
+                    container.reduction(Reduction::Armor),
+                    container.reduction(Reduction::Absorption),
+                    container.inflicted(),
+                    container.health_damage(),
+                ));
+            }
+        }
+        ARMOR_SEEN.lock().unwrap().clear();
+        ABSORPTION_SEEN.lock().unwrap().clear();
+        POST_SEEN.lock().unwrap().clear();
+        let hooks = DamageHooks {
+            incoming: Some(on_incoming),
+            pre: Some(on_pre),
+            post: Some(on_post),
+            shield: Some(on_shield),
+            ..DamageHooks::NONE
+        };
+        let mut test_level = sunrise_client::health::TestLevel::with_hooks(0, hooks);
+        let level = &mut test_level.level();
+
+        // Hit 1: 10.0 - 2.0 shield = 8.0, Armor modifier takes 1.0 -> 7.0 inflicted,
+        // Pre Absorption modifier receives 0.0 and takes 3.0 -> 4.0 health damage.
+        let mut d1 = dragon_as(9201);
         assert_eq!(
-            d.hurt(level, 0, 9.0, HIT, false),
+            d1.hurt(level, 0, 10.0, HIT, false),
             Hurt::Landed { full: true }
         );
-        assert_eq!(d.health, MAX_HEALTH);
-        let mut d = dragon_as(9004);
+        assert_eq!(d1.health, MAX_HEALTH - 4.0);
+
+        // Hit 2: Pre Absorption modifier absorbs all 7.0 -> 0.0 health damage.
+        let mut d2 = dragon_as(9202);
         assert_eq!(
-            d.hurt(level, 0, 9.0, HIT, false),
+            d2.hurt(level, 0, 10.0, HIT, false),
             Hurt::Landed { full: true }
         );
-        assert_eq!(d.health, 1.0);
-        assert!(matches!(d.phase, Phase::Dying { .. }));
+        assert_eq!(d2.health, MAX_HEALTH);
+
+        assert_eq!(*ARMOR_SEEN.lock().unwrap(), [0.0, 0.0]);
+        assert_eq!(*ABSORPTION_SEEN.lock().unwrap(), [0.0, 0.0]);
+        assert_eq!(
+            *POST_SEEN.lock().unwrap(),
+            [
+                (2.0, 5.0, 1.0, 3.0, 7.0, 4.0),
+                (2.0, 5.0, 1.0, 10.0, 7.0, 0.0),
+            ]
+        );
     }
 
     #[test]

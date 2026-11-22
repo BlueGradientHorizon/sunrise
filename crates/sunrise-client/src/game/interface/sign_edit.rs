@@ -13,10 +13,7 @@ use sunrise_client::{
     ui::EditBox,
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
-use winit::{
-    event::{ElementState, KeyEvent},
-    keyboard::{KeyCode, PhysicalKey},
-};
+use winit::keyboard::KeyCode;
 
 pub(super) struct SignEditor {
     pub pos: (i32, i32, i32),
@@ -503,8 +500,8 @@ impl Game<'_> {
                 lines,
             });
             game.sign_load();
-            game.keys.clear();
-            game.right = false;
+            game.clear_device_keys();
+            game.set_mapping_held("key.use", false);
             game.capture(false);
         });
         if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
@@ -548,6 +545,7 @@ impl Game<'_> {
             // `SignBlockEntity.updateSignText`'s `setAllowedPlayerEditor(null)`:
             // the editor that closes gives the sign up.
             self.world.block_entities.set_sign_editor(edit.pos, None);
+            self.refresh_screen_widgets();
         }
         self.capture(true);
     }
@@ -664,19 +662,33 @@ impl Game<'_> {
             );
         }
     }
-    pub(super) fn sign_edit_key(&mut self, event: &KeyEvent) {
-        if event.state != ElementState::Pressed {
-            return;
-        }
-        if let Some(shortcut) = self.edit_shortcut(event) {
+    pub(super) fn sign_edit_key(
+        &mut self,
+        key: KeyCode,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+    ) -> bool {
+        if let Some(shortcut) = shortcut {
             self.sign_shortcut(shortcut);
-            return;
+            true
+        } else if matches!(
+            key,
+            KeyCode::Escape
+                | KeyCode::Enter
+                | KeyCode::NumpadEnter
+                | KeyCode::ArrowUp
+                | KeyCode::ArrowDown
+                | KeyCode::ArrowLeft
+                | KeyCode::ArrowRight
+                | KeyCode::Home
+                | KeyCode::End
+                | KeyCode::Backspace
+                | KeyCode::Delete
+        ) {
+            self.sign_input(Some(key), None);
+            true
+        } else {
+            false
         }
-        let key = match event.physical_key {
-            PhysicalKey::Code(k) => Some(k),
-            _ => None,
-        };
-        self.sign_input(key, event.text.as_deref());
     }
     /// A key and the text it typed on the sign being edited (the keyboard,
     /// or a controller's on-screen keyboard).
@@ -833,17 +845,17 @@ impl Game<'_> {
     }
     /// Done button (`this.width / 2 - 100, this.height / 4 + 144`, 200x20),
     /// or a click on a line (`EditBox.onClick`).
-    pub(super) fn sign_edit_click(&mut self, size: [u32; 2]) {
+    pub(super) fn sign_edit_click(&mut self, size: [u32; 2]) -> bool {
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (x, y) = done_button(b.width, b.height);
         let (mx, my) = self.cursor;
         if mx >= x && mx < x + 200.0 && my >= y && my < y + 20.0 {
             self.audio.play_button_click();
             self.close_sign_editor();
-            return;
+            return true;
         }
         let Some((cx, top, line_height, max_width, lines)) = self.sign_lines(b.width) else {
-            return;
+            return false;
         };
         let shift = self.has_shift_down();
         for i in 0..lines.len() {
@@ -870,8 +882,9 @@ impl Game<'_> {
                 edit.edit.click(&self.gui.atlas, mx, shift, false);
             }
             self.sign_write();
-            return;
+            return true;
         }
+        false
     }
     /// Centre x, the first line's y, the line height, the width limit and the four lines.
     fn sign_lines(&self, width: f32) -> Option<(f32, f32, f32, f32, Vec<String>)> {
@@ -1014,6 +1027,7 @@ impl Game<'_> {
             u32::MAX,
             true,
         );
+        self.draw_overlay_mounted_widgets(batch, "sign_editor");
     }
 }
 

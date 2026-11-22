@@ -1,5 +1,4 @@
 //! Prepared-resource regressions through real projectile collision, mob AI and server death.
-#![cfg(test)]
 use crate::game::Game;
 use crate::game::api_values::TryIntoApi;
 use crate::game::native_entity_refs::tests::{bind_local_player, with_game};
@@ -81,7 +80,13 @@ impl Hooks for Probe {
             event.weapon,
         ));
         let entity = host.entity(event.entity).expect("dying mob still resolves");
-        let kind = entity.kind(host).expect("dying entity has a type").id(host);
+        let kind = entity
+            .kind(host)
+            .expect("dying entity has a type")
+            .id(host)
+            .expect("dying entity type is registered")
+            .as_str()
+            .to_owned();
         self.seen
             .lock()
             .unwrap()
@@ -157,7 +162,7 @@ fn mob(game: &mut Game<'_>, id: u32, name: &str, position: Vec3) {
     let mut mob = Mob::new(id, kind, position, 0.0);
     mob.persistent = true;
     mob.no_ai = true;
-    mob.on_ground = true;
+    mob.ground.on_ground = true;
     game.mobs.push(mob);
 }
 
@@ -590,10 +595,11 @@ fn later_cancelled_mob_revival_is_transactional_and_a_second_kill_drops_loot() {
                     let host: &mut dyn ServerHost = game;
                     host.living(host.entity(44).unwrap()).unwrap()
                 };
-                let abort = game.transaction_open();
-                assert!(living.set_health(game, 5.0));
-                assert_eq!(game.mob_object(44).unwrap().death_time, 0);
-                game.transaction_close(&abort, false);
+                game.storage_scope(|game, _| {
+                    assert!(living.set_health(game, 5.0));
+                    assert_eq!(game.mob_object(44).unwrap().death_time, 0);
+                    ((), false)
+                });
                 let body = game.mob_object(44).unwrap();
                 assert_eq!(
                     (body.health, body.death_time, body.death_canceled),
@@ -695,14 +701,15 @@ fn later_cancelled_player_revival_is_transactional_and_a_second_kill_drops_inven
                     let host: &mut dyn ServerHost = game;
                     host.living(host.entity(id).unwrap()).unwrap()
                 };
-                let abort = game.transaction_open();
-                assert!(living.set_health(game, 5.0));
-                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
-                assert_eq!(
-                    (guest.health, guest.death_time, guest.death_canceled),
-                    (5.0, 0, false)
-                );
-                game.transaction_close(&abort, false);
+                game.storage_scope(|game, _| {
+                    assert!(living.set_health(game, 5.0));
+                    let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                    assert_eq!(
+                        (guest.health, guest.death_time, guest.death_canceled),
+                        (5.0, 0, false)
+                    );
+                    ((), false)
+                });
                 let guest = &game.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(
                     (guest.health, guest.death_time, guest.death_canceled),
@@ -773,8 +780,11 @@ fn mob_death_and_handle_preserve_namespaced_types() {
                         .name
                         .clone()
                 }));
-                mod_api::__private::resolve_entity_types(["vulture:vulture", "minecraft:sheep"])
-                    .unwrap();
+                mod_api::__private::resolve_entity_types(
+                    ["vulture:vulture", "minecraft:sheep"],
+                    |_| Some(true),
+                )
+                .unwrap();
                 let sheep = game.res.mob_types().get("minecraft:sheep").unwrap().clone();
                 for (index, id) in ["vulture:vulture", "sheep", "minecraft:sheep"]
                     .into_iter()

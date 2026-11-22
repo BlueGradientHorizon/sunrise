@@ -17,20 +17,53 @@ depends on. When a mod cancels an event, the mods after it are skipped, unless t
 What a hook's return value means depends on its kind:
 
 - **Listen** hooks are notices: every subscribed mod is called.
-- **Cancellable** hooks return `Flow`: `Flow::Cancel` stops the game's action and skips later mods.
+- **Cancellable** hooks return `Flow`: `Flow::Cancel` stops the game's action and skips later listeners unless they receive cancelled events.
 - **Replacement** hooks return an `Option`: the first mod to answer `Some` wins.
 - **Collection** hooks call every mod, each adding to a list in the event.
 
 A hook with no receiver gets no `Host`.
 
+To group journaled writes from a hook with a `ServerHost`, import `HostTransaction`
+and call `host.transaction(|host, tx| …)`. Use the host and `TransactionContext`
+lent to that closure, even if an engine action already has a transaction open.
+See [Transactions](transactions.md) for nesting and failure handling.
+
+## Failures and panics
+
+The dispatcher catches panics in hook callbacks, including chunk-disk callbacks and startup
+`Hooks::register`. A panic disables only that mod's callback for that hook for the session. The game
+names the mod and hook in the error log and in a [client diagnostic toast](../how-to/client/toast-notifications.md#admission-rules)
+that mods cannot cancel or rewrite. A dedicated server logs the error without showing a toast.
+Ordinary refusals, such as an unavailable phase operation or a rejected output, are reported every
+time they occur and do not disable the callback.
+
+A failed proposal is not a cancel or replacement. Its changes to the event, including the cancel
+flag, do not publish. Later eligible listeners start from the last accepted result, not from the
+original request. An accepted cancellation still skips listeners that don't receive cancelled
+events; a successful replacement still ends a first-answer-wins hook.
+
+[Staged registration](load-phases.md#registration-and-setup) discards the failed callback's pending
+entries and replacements. For a journaled action such as `farmland_trample`, a failed callback's
+writes do not join the action. A successful veto or stale landing state still aborts the whole
+trample action, and fall damage still runs. For [chunk-disk jobs](../how-to/chunk-data-load.md), later
+listeners can run after a panic or codec failure, but the failed job's changes cannot publish.
+
 ## Player tick hooks
 
 `player_tick_pre` and `player_tick_post` bracket the player's body tick on both
-logical sides. On the server, neither hook fires for a spectator whose bounds
-touch an unloaded chunk: that player's body tick is skipped. Connection and
+logical sides. On the client, both fire through death tick 20, but neither fires
+for the removed local player while the death screen remains open. On the server,
+neither hook fires for a spectator whose bounds touch an unloaded chunk: that
+player's body tick is skipped. Connection and
 level upkeep and outgoing state updates still run. The server resolves whether
 the body runs before the pre hook; a listener changing the player's position
 does not change that decision for the current tick.
+
+## Player logout
+
+`player_logged_out` fires while the player is still listed, before any logout save.
+A listener's edits persist only on leaves this server saves. A completed proxy hand-over
+and a crash write no logout save. A kicked fake player is already off the list and is not saved.
 
 ## Entity tick hooks
 
@@ -44,6 +77,21 @@ Removing a general entity during its own Pre skips its tick and Post. A passenge
 removal can still tick as a root if it is eligible, has not ticked, and its join-order slot is still ahead.
 The pass does not revisit an earlier slot. Canceling an entity's Pre does not by itself skip its passengers'
 ticks, though a listener can separately change the riding graph.
+
+`general_entity_tick` and `on_entity_item_update` lend the live server subject
+through `event.subject.with_view`. Use `event.subject.host()` between view
+borrows for other objects; a later view borrow returns `None` if the subject is
+no longer resident. Use `event.subject.transaction(|scope, tx| ...)` to commit
+subject writes together with other journaled Host writes. Returning `Err`
+restores those writes. This covers velocity, rotation and fall distance on a
+general entity, and the stack, pickup delay, pickup target and velocity on a
+dropped item. Client scopes have no `transaction` method.
+
+`on_entity_item_update` dispatches to the parts for the item ID held when
+that hook starts. Read the current stack with
+`event.subject.with_view(|item| item.with_stack(|stack| stack.count())).flatten()`.
+Call `stack.project()` inside that loan only when you need components or an
+owned copy.
 
 ## Explosion membership
 
@@ -132,6 +180,16 @@ fixed once, when the mods are installed. Every cancellable hook's event has a `c
 cancelled reaches only mods that receive cancelled events. `receive_cancelled` on a hook without a cancel does not
 compile, and `#[listener]` is for a mod's hooks only: a part is called for its own thing, in no order.
 
+### Canceling or consuming a projectile
+
+In `projectile_impact`, use `host.entity(event.projectile)` to resolve the live projectile,
+even if the captured hit would normally consume it. Canceling alone suppresses the hit and
+lets the projectile continue according to its type. Call `EntityRef::discard(host)` to consume
+it without applying the hit. A discard makes the handle stale immediately; another listener
+clearing cancellation cannot bring that projectile back. If a listener changes the projectile
+or its target so the captured hit no longer applies, the game skips that hit instead of tracing
+it again.
+
 ## Events and shared state
 
 Each hook method takes its host, where it has one, and one event:
@@ -144,11 +202,33 @@ fn living_incoming_damage(
 ) -> Flow {
     if event.kind == "minecraft:pig" {
         let halved = event.container.new_damage() * 0.5;
-        event.container.set_new_damage(halved);
+        let _ = event.container.set_new_damage(halved); // refused writes leave the hit unchanged
     }
     Flow::Continue
 }
 ```
+
+Each accepted hit has its own `living_damage_post` after its hurt sounds and any death or
+protection that hit caused, before the hurt caller resumes. This is not a next-tick or turn-exit
+notification. The next hazard, poison application or rider's hit observes the preceding hit
+completed; a later hit never shares the first hit's `DamageContainerView`. A mob's queued effect
+hurt finishes before the next action, and a dolphin's dry-out hurt finishes before its hop on land.
+A bee finishes drowning damage before checking stinger expiry. The bee uses the stung state
+it read before drowning, but the expiry hit uses its current health. The expiry hit finishes
+before the bee updates nectar and anger and runs its movement controls.
+A server player's landing hurt settles death or protection and Post on the landing body before
+`HIT_GROUND`, the fall-distance reset, and the next accepted move. In a mob's own tick, landing
+hurt settles before the fall-distance reset, the rest of movement, a gliding collision hurt or
+another goal. This includes `GoalSpec::BreathAir` installed with either `MobRef::add_goal` or
+`MobRef::add_target_goal`, and a dolphin's move to follow a rider. The target selector finishes
+before the action selector ticks. Trampling farmland is still decided before the landing hurt.
+A pufferfish's sting on a mob finishes the hurt, including any death and `living_damage_post`,
+before applying that sting's poison or starting the next sting. The fish's own `entity_tick_post`
+follows all of its stings.
+Direct projectile hits finish before the on-hit follow-up: for example, shulker bullet levitation,
+trident Channeling, or the damage from a large fireball's explosion. A mounted fall settles each
+rider's hurt before continuing to the next hit. A horse's own hurt finishes before the fall is
+passed to its passengers.
 
 For incoming damage, `event.weapon` is the direct entity's weapon, including a projectile's
 saved firing weapon. `event.causing_weapon` is instead the causing living entity's current
@@ -189,12 +269,13 @@ Part methods run elsewhere, and each one's own documentation says where:
   worker threads, several chunks at once. Feature placement also runs on the server thread when the game places a
   feature there: a sapling growing, a command, `LevelRef::place_feature`. A query asked once at start, such as
   `BiomeSource::possible_biomes`, is not a worker call. They get a `WorldgenHost` or no host at all, never a `Host`.
-- **Meshing workers.** `add_section_geometry` itself runs once at client start, to register renderers; each
-  renderer's `SectionGeometry::add` then runs on the renderer's meshing workers every time a section is meshed. A
+- **Meshing workers.** `add_section_geometry` itself runs once at client start, to register renderers. A panic or
+  phase refusal in registration discards only that callback's renderers. Each renderer's `SectionGeometry::add` then runs on the renderer's meshing workers every time a section is meshed. A
   block tint source is asked there too, and also outside meshing, for example for terrain particles and blocks a
   piston moves. Both get no host.
 - **Chunk workers.** `chunk_data_load` and `chunk_data_save` run where a chunk's record is decoded or encoded, with a
-  restricted host.
+  restricted host. `host.job()` borrows the captured `ChunkDiskContext`; the callback edits only its job-local
+  [attachment store](../how-to/chunk-data-save.md), never the live chunk.
 - **Loading threads.** Data-load hooks run on whichever thread loads the data.
 
 What follows for a mod's state:
@@ -269,7 +350,22 @@ Both reads return `None` in callbacks without the corresponding view. A `LevelRe
 name an open server level or the current client level. Neither read loads chunks or opens loot
 containers. Both require the owning game thread, not a worker-thread hook body.
 
-`block_entity(pos)` reads this level's block entity without loading a chunk; it returns `None` when absent, unloaded or out for its tick. On a client it returns only the local block entity handle. `container_size(at)` and `container_stack(at, slot)` are the same side-local capability snapshots as `ItemsHost` supplies; neither generates unopened loot, and both refuse clients and unloaded positions. `BlockEntityPartState::state_in(level, entity)` and `state_existing_in` read the same attachment snapshots as their `Host` equivalents, without inserting a default, generating loot or loading chunks. Unloaded or stale holders fail; clients have no server Part state. All are owning-game-thread reads, never available in worker hook bodies.
+`block_entity(pos)` reads this level's block entity without loading a chunk; it returns `None`
+when absent, unloaded or out for its tick. On a client it returns only the local block entity
+handle. `container_size(at)` and `container_stack(at, slot)` are the same side-local capability
+snapshots as `ItemsHost` supplies; neither generates unopened loot, and both refuse clients and
+unloaded positions.
+
+`BlockEntityPartState::state_in(level, entity)` and `state_existing_in` read the same attachment
+snapshots as their `Host` equivalents, without inserting a default, generating loot or loading
+chunks. A level view in an open transaction sees tentative Part-state writes in that frame.
+Unloaded or stale holders fail; clients have no server Part state. All of these reads require the
+owning game thread and are never available in worker hook bodies.
+
+A placement part can ask its `LevelHost` whether a resident neighbour offers `ITEMS`, using
+`has_item_capability(pos, None)` for an unsided answer. It sees the same state and block entities as
+other reads on that view, including staged changes. A client asks its own providers about its
+local data; placement still follows the server's result. See [Capabilities](capabilities.md).
 
 `LevelRandomHost::container_signal(pos)` is the engine comparator container read. Unlike the immutable slot snapshot, it generates unopened loot once, as vanilla's `getItem` does, then calculates 0 to 15 using each stack's maximum size. It returns `None` on clients and unloaded positions, never loads a chunk, and runs only on the owning game thread. `analog_output` version 2 receives this mutable host so the loot generation and random draws happen in vanilla order; it permits no other world edit.
 
@@ -342,10 +438,16 @@ both the saved point and the block above. This includes a bed or anchor at which
 set. `Some(true)` accepts that state, `Some(false)` rejects it, and `None` keeps vanilla's predicate.
 It does not select a bed or anchor's stand-up position; `respawn_position` handles those.
 
-`LevelHost` has no random access: a draw from a read-only hook inside a level write would shift the level's random sequence away from vanilla's order. A hook that may draw is given a `LevelRandomHost`.
-`LevelRandomHost` provides vanilla's `Level.random` so
-mod draws come in vanilla's order. `LevelTicksHost` adds scheduling through
-`schedule_block_tick` and `schedule_fluid_tick`, while
+`LevelHost` has no random access: a draw from a read-only hook inside a level write would shift
+the level's random sequence away from vanilla's order. A hook that may draw is given a
+`LevelRandomHost`. Use `host.with_random(|rng| rng.next_int_bound(bound))` to borrow its level's
+live stream for that closure only. With a mutable `ServerHost`, use
+`level.with_random(host, |rng| rng.next_int_bound(bound))` to select a resident server level,
+even a parked one. If the stream can't be lent, the call returns `None` without running the closure.
+Draws advance the live stream directly and are not rolled back on panic/unwind or transaction
+abort, matching vanilla `Level.getRandom()` ([Randomness](randomness.md#borrow-the-live-level-stream)).
+
+`LevelTicksHost` adds scheduling through `schedule_block_tick` and `schedule_fluid_tick`, while
 `LevelWriteHost` adds random access, `set_block`, `set_block_property`, `play_sound` and
 `send_particles` and `level_event` (`levelEvent`, queued in order with the write's own events).
 A damage hit's listeners (`living_incoming_damage`, `living_damage_pre`, `living_damage_post`,

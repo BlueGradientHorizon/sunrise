@@ -19,6 +19,8 @@ pub trait Hooks {
     /// No random draws, persistent writes or counters should change an answer. Only Parts on the
     /// selected state are asked; a client interpolating packets does not query a block.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "both",
         version = 2,
         contract = "collect",
@@ -29,5 +31,11 @@ pub trait Hooks {
         target = "sunrise_client::game::native_hooks::bounce_restitution::FrictionView<'_>::native_bounce_restitution",
         neoforge = "IBlockExtension.getBounceRestitution"
     )]
-    fn bounce_restitution();
+    fn bounce_restitution(
+        entity: i32,
+        kind: &str,
+        state: BlockState,
+        pos: BlockPos,
+        factor: &mut f32,
+    );
 }

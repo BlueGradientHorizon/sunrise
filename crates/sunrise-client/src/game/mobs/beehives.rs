@@ -58,9 +58,9 @@ impl HiveHost for GameHive<'_, '_> {
         let kind = sunrise_client::entity_nbt::kind(tag)?;
         if !self
             .game
-            .res
-            .mob_data()
-            .entity_has("minecraft:beehive_inhabitors", &kind)
+            .items()
+            .entity_type_tags
+            .contains("minecraft:beehive_inhabitors", &kind)
         {
             return None;
         }

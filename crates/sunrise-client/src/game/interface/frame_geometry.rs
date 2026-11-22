@@ -182,7 +182,7 @@ impl Game<'_> {
             self.studio.flying(),
             self.ui.hands_drawn(
                 self.spectator(),
-                self.sleeping.is_some(),
+                self.camera_subject().is_some_and(|c| c.is_sleeping),
                 self.camera_type.is_first_person(),
                 self.player
                     .as_ref()
@@ -228,7 +228,7 @@ impl Game<'_> {
         // Combat feel Legacy: a sword is held up while use is held, as 1.8.9's block looked.
         // Only the picture changes: the clicks and what they send stay 26.3's.
         let legacy_block = self.pvp_legacy_look()
-            && self.right
+            && self.mapped_key_down("key.use")
             && self.screen == Screen::Playing
             && items[0]
                 .as_ref()

@@ -9,6 +9,12 @@ Native code runs with the player's rights, outside any sandbox. The first instal
 launcher builds native mods only on an install that allows native code (`--trust-native-code`, revocable in
 **Settings > Storage**).
 
+If your mod calls another mod's Rust library, put the requirement in `sunrise-mod.toml`. In the add-on's folder,
+use `cargo sunrise-mod check --with ../library` for a local copy, then use the same flag with `build` or `run`.
+Without `--with`, the tool looks for required libraries in the Sunrise mod registry. Use `--with` to
+include optional libraries. The built `.smod` contains only your add-on; see
+[dependencies between mods](../concepts/dependencies.md) for the wiring and version rules.
+
 The pages in this section follow a mod from its source to a player's game and a server:
 
 <!-- section-pages -->
@@ -38,6 +44,12 @@ the accepted killing source and its captured weapon stack. Cancellation keeps th
 health a listener leaves, suppresses loot, experience and death messages, and does
 not heal the body. An unhealed cancelled body is removed at tick 20 without loot
 or another death dispatch.
+
+`LivingRef::kill_credit` can still resolve a mob's remembered player after the
+lethal hit while the mob remains in the level. As in `LivingEntity.baseTick`,
+the player reference survives the tick that decrements its timer to zero and
+expires on the next tick. Death loot and experience still use the positive timer
+to determine whether a player hit the mob recently.
 
 ### Custom statistics
 
@@ -100,6 +112,10 @@ index, and the rotation alone for `set_collider_transform`. **A vanilla client d
 it sees the entity and walks through it. A mod that needs players to stand on one requires the Sunrise
 client at join.
 
+A shape edit does not immediately move a body it overlaps. On its movement tick, the Sunrise local
+player's ordinary wall-escape nudge also checks solid collider boxes, except those in the same
+vehicle stack. It checks the sampled pose, not the space a rotating box swept between poses.
+
 ### Carrying
 
 A collider that moves carries what stands on it. Once a tick, after the level's entities ticked
@@ -112,10 +128,16 @@ under its feet with the highest top (a tie goes to the lower entity id). A colli
 collider is carried first, and the bodies on it take its whole displacement. A body that rides something is not carried itself; it
 follows its vehicle. The server carries the entities it simulates, and each Sunrise client its own player.
 
-Carrying never pushes through a wall and the collider is never stopped by what is in its way: a
-body caught between a collider and a wall stays where the collision leaves it, overlapping the collider, and
-a living body takes `in_wall` damage while a box covers its eyes, as it does in a block. (A vanilla armor stand takes no
-`in_wall` damage and so none here.) A vanilla client does not carry its player: only the Sunrise client does.
+After carrying, a collider that translated without turning shoves bodies in the path of its boxes,
+in its direction of travel. This also uses `MoveCause::Carried`. Changing a box's bounds does not
+sweep that box between the old and new shape. Turning colliders still carry, but do not shove yet.
+A shove does not cancel velocity into the collider; the ordinary entity move handles velocity when
+the body hits an obstacle. The client predicts a shove for its own player, and ordinary server movement
+checks still apply.
+
+Neither carrying nor shoving pushes through a wall, and the collider is never stopped by a body in
+its way. A squeezed body stays where the collision leaves it. A living body still takes `in_wall`
+damage while a box covers its eyes, as in a block. The shove itself does not deal impact damage.
 
 ### Players on a moving collider
 
@@ -155,10 +177,14 @@ Past a second of round trip the window stops growing: a player whose copy is
 older than it reaches is judged as a walker in the frame the cap allows, not carried. A vanilla client, which sends no age, gets the
 window around the expected age.
 
-## Host calls a load phase refuses
+## What a callback can access
 
-Each Host method says in which load phases it may be called (`#[access(...)]`).
-World reads and writes require the World phase. The other Host phases admit only the following classes:
+Registration, setup, initial config loading and data/asset reloads lend only the
+context in the hook signature, not a full game host. An operation that is not on
+the context cannot be called there. Config reload and unload lend the polling
+or stopping game's host; world and session lookups on a live host return
+`None` when no world or session is open. See [load callbacks](../concepts/load-phases.md)
+for the callback order and types.
 
 | Phase | Open |
 |---|---|
@@ -171,18 +197,24 @@ even if the hook is refused afterwards. A native mod that calls a method in a ph
 **refused, not crashed**:
 
 - The call ends the mod's hook call (it unwinds out of the listener; the game makes no panic report). The game logs
-  `native refusal: <mod> hook <hook>: mod API <method> is unavailable during <phase>` once for each mod and method.
+  `native refusal: <mod> hook <hook>: mod API <method> is unavailable during <phase>` on each refused callback.
 - The latch: after one refusal, every later Host call that hook call makes is refused too, whatever it asks, and the
   refusal counts even if the mod caught the unwind itself and returned normally.
 - The listener is dropped, and the hook goes on with the next one. The event outputs the listener touched are put
   back to what they were before its call, and the answers of earlier listeners stand. What its earlier allowed calls
   did (a sound, a narrator line, a HUD mode) stands too.
 - The hook uses its default return value: `Flow::Continue` for a cancel hook, `None` for a replace
-  hook that answers an `Option`, and the type's default (`false`, an empty list, `()`) for any other. A hook that
-  isolates its listeners (`entity_move`) disables the refused listener for the session, and a retained callback
-  (loot types, payload handlers, selectors, command argument types) is refused for that call only.
-- A method that returns `Result<_, LevelReadError>` or `Result<_, LevelWriteError>` does not unwind: it returns
-  `Err(Unavailable)` and the mod goes on.
+  hook that answers an `Option`, and the type's default (`false`, an empty list, `()`) for any other. A
+  refused listener is not disabled for the session; a panicking listener is.
+- A method with a typed phase refusal (for example, one returning `Result<_, LevelReadError>`,
+  `Result<_, LevelWriteError>`, or `Result<_, TeamMembersReadError>`) returns its `Err(Unavailable)`
+  instead of unwinding, and the mod goes on.
+  `LevelRef::with_random` returns `None` without calling your closure when world access is unavailable.
+
+A panic is logged and shown in a client error toast naming the mod and hook. Only that callback is
+disabled for the session. Its staged outputs are discarded, and writes covered by an existing
+transaction are undone. Effects outside a transaction, such as a dynamic texture already created
+by `client_tick_pre`, are not undone.
 
 **The limit:** if the thread is already unwinding when the call is refused (a mod's `Drop` that calls the Host while
 another panic unwinds), the game logs the same line and panics, and a panic during an unwind aborts the process.

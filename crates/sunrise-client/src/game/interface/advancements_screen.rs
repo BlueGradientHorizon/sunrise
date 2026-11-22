@@ -775,12 +775,14 @@ impl Game<'_> {
         lines(batch, &desc, desc_left, desc_y, 0xFF00_FF00);
         self.draw_item(batch, &d.icon, ix + f(x + 8), iy + f(y + 5));
     }
-    /// A left button press or release.
-    pub(super) fn advancements_mouse(&mut self, pressed: bool, size: [u32; 2]) {
+    /// A left button press or release. Returns whether the screen itself
+    /// handled the click (`AdvancementsScreen.mouseClicked` / `mouseReleased`:
+    /// tabs and Done return `true`, blank space and releases return `false`).
+    pub(super) fn advancements_mouse(&mut self, pressed: bool, size: [u32; 2]) -> bool {
         if !pressed {
             self.adv_ui.drag = None;
             self.adv_ui.scrolling = false;
-            return;
+            return false;
         }
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (w, h) = (b.width, b.height);
@@ -794,7 +796,7 @@ impl Game<'_> {
             self.audio
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.close_advancements();
-            return;
+            return true;
         }
         let view = self.adv_view();
         let (left, top) = window(w, h);
@@ -815,36 +817,46 @@ impl Game<'_> {
                     self.adv_ui.tab = Some(t);
                     self.adv_ui.scroll = None;
                 }
-                return;
+                return true;
             }
         }
         self.adv_ui.drag = Some(self.cursor);
+        false
     }
     /// `mouseDragged` with the left button: the first step starts
     /// scrolling, later ones move the tree.
-    pub(super) fn advancements_drag(&mut self) {
+    pub(super) fn advancements_drag(&mut self) -> bool {
         let Some(last) = self.adv_ui.drag else {
-            return;
+            return false;
         };
         let (dx, dy) = (self.cursor.0 - last.0, self.cursor.1 - last.1);
         self.adv_ui.drag = Some(self.cursor);
         if !self.adv_ui.scrolling {
             self.adv_ui.scrolling = true;
-            return;
+            return true;
         }
         let view = self.adv_view();
         self.adv_scroll_by(&view, f64::from(dx), f64::from(dy));
+        true
     }
-    pub(super) fn advancements_scroll(&mut self, x: f32, y: f32) {
+    /// `AdvancementsScreen.mouseScrolled`: returns `true` only when a tab is
+    /// selected; with no selected tab vanilla returns `false` so NeoForge
+    /// fires `MouseScrolled.Post`.
+    pub(super) fn advancements_scroll(&mut self, x: f32, y: f32) -> bool {
         let view = self.adv_view();
+        if self.adv_ui.tab.is_none() {
+            return false;
+        }
         self.adv_scroll_by(&view, f64::from(x) * 16.0, f64::from(y) * 16.0);
+        true
     }
 }
 
 #[cfg(test)]
 mod seen_advancement_tests {
     use super::*;
-    use sunrise_protocol::buf::{Codec, Reader, Writer};
+    use sunrise_core::vanilla_bytes::Writer;
+    use sunrise_protocol::buf::{Codec, Reader};
     use sunrise_protocol::packets::play::SeenAdvancements;
 
     /// `ServerboundSeenAdvancementsPacket.openedTab` and `closedScreen`: an

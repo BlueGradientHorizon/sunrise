@@ -526,7 +526,8 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertIn("github.event_name == 'pull_request' || inputs.pr != ''", fields.get("if", ""))
         self.assertEqual(fields.get("EVENT"), "${{ github.event_name }}")
         self.assertEqual(fields.get("PR"), "${{ inputs.pr }}")
-        self.assertEqual(fields.get("GH_TOKEN"), "${{ github.token }}")
+        # The base is the checkout's own merge parent: the step reads no API.
+        self.assertNotIn("GH_TOKEN", fields)
         self.assertNotIn("continue-on-error", fields)
         # It needs the tool the stage build puts in SUNRISE_STAGE_TOOL.
         self.assertLess(verify.index("- name: Build the source stage generator (test profile)"), verify.index(name))
@@ -636,12 +637,32 @@ class DynaRoutingTests(unittest.TestCase):
             (tree / "tools" / "test_game_parity.py").write_text(
                 "run(['cargo', 'test', '-p', 'sunrise-client', '--lib', 'y'])\n")
             (tree / "tools" / "test_fast_parity.py").write_text(
-                'run(["cargo", "test", "--profile", "fast", "-p", "sunrise-client", "--lib", "z"])\n')
+                'run(["cargo", "test", "--profile", "fast", "-p", "sunrise-world", "--lib", "z"])\n')
+            # A package beside the client's, as dragon_contacts runs sunrise-gameplay's lib tests.
+            (tree / "tools" / "test_gameplay_parity.py").write_text(
+                "run(['cargo', 'test', '--locked', '-p', 'sunrise-gameplay', '--lib', 'w'])\n")
             env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
-                   "PARITY_LOG_DIR": temporary}
+                   "PARITY_LOG_DIR": temporary, "RUNNER_TEMP": temporary, "BUCKET": "1"}
             subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
-            self.assertEqual(calls.read_text().splitlines(), ["test --locked --no-run -p sunrise-client-lib --lib",
-                                                             "test --locked --no-run -p sunrise-client --lib"])
+            self.assertEqual(calls.read_text().splitlines(), ["test --locked --no-run -p sunrise-client --lib",
+                                                             "test --locked --no-run -p sunrise-client-lib --lib",
+                                                             "test --locked --no-run -p sunrise-gameplay --lib"])
+            # A share builds only for the harnesses its plan gives it (a shard named NAME#N), and nothing for none.
+            calls.unlink()
+            (Path(temporary, "plan")).mkdir()
+            Path(temporary, "plan", "bucket-1.json").write_text('["gameplay#2", "fast"]\n')
+            subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
+            self.assertEqual(calls.read_text().splitlines(), ["test --locked --no-run -p sunrise-gameplay --lib"])
+            calls.unlink()
+            Path(temporary, "plan", "bucket-1.json").write_text("[]\n")
+            subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
+            self.assertFalse(calls.exists())
+            # A plan it cannot read fails the step with a fixed annotation, not a silent empty build.
+            Path(temporary, "plan", "bucket-1.json").write_text("not json\n")
+            failed = subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertEqual(failed.stdout, "::error::Could not read the game-probe plan for this parity share.\n")
+            self.assertFalse(calls.exists())
 
 class PersistentTargetTests(unittest.TestCase):
     def test_every_job_that_can_build_on_a_self_hosted_runner_keeps_the_source_snapshot_first(self):
@@ -693,6 +714,60 @@ class ParityWorkflowTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.env.update([line.split("=", 1) for line in (self.root / "env").read_text().splitlines()])
         self.assertEqual(Path(self.env["PARITY_LOG_DIR"]), self.slot)
+
+    def test_a_failed_probe_build_shows_its_error_headings_not_its_text(self):
+        step = self.steps["Show a failed probe build's compiler errors"]
+        self.assertEqual(self.steps["Build the daily harnesses' game probes"]["id"], "game-probes")
+        self.assertEqual(self.steps["Build parity probes"]["id"], "probes")
+        self.assertIn("steps.game-probes.outcome == 'failure'", step["if"])
+        self.initialise()
+        (self.slot / "game-probes.log").write_text(
+            "   Compiling sunrise-client-lib\nerror[E0425]: cannot find value `PRIVATE` in this scope\n"
+            "  --> crates/sunrise-client/src/lib.rs:1:1\nprivate source excerpt\n"
+            "error[E0609]: no field `PRIVATE`\n  --> crates/sunrise-client/src/untracked_generated_probe.rs:3:9\n"
+            "error: could not compile\n")
+        result = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, capture_output=True, text=True,
+                                env=dict(self.env, FAILED="game-probes"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("game-probes failed:", result.stdout)
+        self.assertIn("compiler: error[E0425]: custom diagnostic payload withheld", result.stdout)
+        self.assertIn("compiler:   --> crates/sunrise-client/src/lib.rs:1:1", result.stdout)
+        self.assertIn("compiler:   --> location withheld (not a tracked Rust source)", result.stdout)
+        for private in ("PRIVATE", "private source excerpt", "Compiling", "untracked_generated_probe"):
+            self.assertNotIn(private, result.stdout)
+
+    def test_a_failed_shares_logs_are_kept_beyond_the_slot(self):
+        step = self.steps["Keep a failed share's logs beyond this slot"]
+        self.assertEqual(step["if"], "failure()")
+        self.initialise()
+        (self.slot / "parity.log").write_text("private mismatch")
+        keep = self.root / "keep"
+        self.env["DYNA_CI_KEEP"] = str(keep)
+        result = self.step("Keep a failed share's logs beyond this slot")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((keep / "parity-failed-logs/77-2-bucket-0/parity.log").read_text(), "private mismatch")
+        self.assertEqual([path.name for path in (keep / "parity-failed-logs").iterdir()], ["77-2-bucket-0"])
+        self.assertNotIn("private", result.stdout)
+
+    def test_every_share_prunes_expired_kept_logs_and_keeps_fresh_ones(self):
+        cleanup = self.steps["Delete this job's vanilla-derived scratch"]
+        self.assertEqual(cleanup["if"], "always()")
+        keep = self.root / "keep"
+        stale, fresh = keep / "parity-failed-logs/70-1-bucket-0", keep / "parity-failed-logs/77-2-bucket-0"
+        for path in (stale, fresh):
+            path.mkdir(parents=True)
+        os.utime(stale, (0, 0))
+        # A green share: nothing captured, the expired copy still goes.
+        result = subprocess.run(["bash", "-e", "-c", cleanup["run"]], cwd=self.root, capture_output=True, text=True,
+                                env=dict(self.env, DYNA_CI_KEEP=str(keep)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(stale.exists())
+        self.assertTrue(fresh.exists())
+        # A host whose keep holds no captured logs is left as it is.
+        result = subprocess.run(["bash", "-e", "-c", cleanup["run"]], cwd=self.root, capture_output=True, text=True,
+                                env=dict(self.env, DYNA_CI_KEEP=str(self.root / "empty-keep")))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / "empty-keep").exists())
 
     def test_an_early_failure_cannot_report_a_previous_slots_result(self):
         # Both an older attempt and stale state in the current directory survive until the first workflow step.
@@ -790,6 +865,46 @@ class ParityWorkflowTests(unittest.TestCase):
         self.assertEqual((target / "probe").read_text(), "binary")
         self.assertTrue((build / "vanilla/prepared/key/sunrise-client/x").exists())
         self.assertTrue((self.slot / "loot_b.log").exists())
+
+    def test_failed_datafix_seed_prepare_only_fails_datafix_and_runs_other_harnesses(self):
+        self.initialise()
+        keep = self.root / "keep"
+        datafix_root = self.root / "parity-out/datafix"
+        plan = self.root / "plan/bucket-0.json"
+        plan.parent.mkdir(parents=True, exist_ok=True)
+        plan.write_text('["loot_a", "datafix#1"]')
+        self.env.update({
+            "DYNA_CI_KEEP": str(keep),
+            "SUNRISE_DATAFIX_ROOT": str(datafix_root),
+            "BUCKET": "0",
+        })
+        (self.root / "tools/datafix_seeds.py").write_text(
+            "import sys\nprint('private seed generation error', file=sys.stderr)\nsys.exit(1)\n")
+        prepare_step = self.steps["Prepare datafix seed worlds from keep"]
+        run_step = self.steps["Run every automatic harness"]
+        self.assertEqual(prepare_step.get("id"), "datafix-seeds")
+        self.assertEqual(prepare_step.get("continue-on-error"), "true")
+        self.assertEqual(run_step["env"]["SUNRISE_DATAFIX_SEEDS_OUTCOME"], "${{ steps.datafix-seeds.outcome }}")
+        prep = self.step("Prepare datafix seed worlds from keep")
+        self.assertEqual(prep.returncode, 1)
+        self.assertEqual(prep.stdout, "")
+        self.assertEqual(prep.stderr, "")
+        self.assertIn("private seed generation error", (self.slot / "datafix-seeds.log").read_text())
+        # GitHub Actions records steps.datafix-seeds.outcome=failure and continues to the harness step.
+        self.env["SUNRISE_DATAFIX_SEEDS_OUTCOME"] = "failure"
+        (self.root / "tools/parity.py").write_text(
+            "import os, sys\nfrom pathlib import Path\n"
+            "assert os.environ['SUNRISE_DATAFIX_SEEDS_OUTCOME'] == 'failure'\n"
+            "Path(sys.argv[-1]).write_text('[\"loot_a\", \"datafix#1\"]')\n"
+            "print('PASS loot_a 3s')\n"
+            "print('FAIL datafix#1 0s  (private path)')\n"
+            "print('1 passed, 1 failed in 0.1 min.')\n"
+            "sys.exit(1)\n")
+        run = self.step("Run every automatic harness")
+        self.assertEqual(run.returncode, 1)
+        verdict = self.step("Write the harnesses' verdict")
+        self.assertEqual(verdict.returncode, 0, verdict.stderr)
+        self.assertEqual(verdict.stdout.splitlines(), ["PASS loot_a", "FAIL datafix"])
 
 
 class ScheduledDynaJobTests(unittest.TestCase):

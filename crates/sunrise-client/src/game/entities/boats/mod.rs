@@ -215,6 +215,17 @@ pub(super) fn put_ticks_frozen(map: &mut sunrise_core::nbt::Compound, ticks: i32
 pub(super) const WIDTH: f64 = 1.375;
 pub(super) const HEIGHT: f64 = 0.5625;
 impl Boat {
+    fn apply_step_writes(&mut self, velocity: Vec3, writes: Vec<mod_api::EntityWrite>) {
+        self.velocity = velocity;
+        super::entity::apply_contact_writes(
+            writes,
+            &mut self.velocity,
+            Some(&mut self.fall_distance),
+            Some(&mut self.stuck),
+            Some(&mut self.fire_ticks),
+        );
+    }
+
     /// `AbstractBoat.tick`: the hurt wobble and the damage wear off, before
     /// `Entity.baseTick` can burn the boat.
     fn wear_off_hurt(&mut self) {
@@ -526,6 +537,29 @@ pub(super) fn boat_wood(item: &str) -> Option<&str> {
         .or_else(|| name.strip_suffix("_raft"))
         .filter(|w| !w.ends_with("_chest"))
 }
+/// `EntityType.by`: a boat-shaped id still needs a registered entity type.
+pub(super) fn registered_boat<'a>(
+    kind: &'a str,
+    registry: &sunrise_client_core::registries::Registries,
+) -> Option<(&'a str, bool)> {
+    let boat = any_boat_wood(kind)?;
+    registry
+        .ids("minecraft:entity_type")
+        .binary_search_by(|id| id.as_str().cmp(kind))
+        .ok()?;
+    Some(boat)
+}
+
+/// The boat item and its matching vanilla entity type are both registered.
+pub(super) fn registered_boat_item<'a>(
+    id: &'a str,
+    items: &sunrise_client::items::Items,
+) -> Option<(&'a str, bool)> {
+    let boat = registered_boat(id, &items.component_registry)?;
+    items.get(id)?;
+    Some(boat)
+}
+
 pub(super) struct BoatModels {
     pub models: HashMap<String, Part>,
     pub chest_models: HashMap<String, Part>,
@@ -533,7 +567,7 @@ pub(super) struct BoatModels {
     pub water_patch: Option<Part>,
 }
 impl BoatModels {
-    /// Whether a boat of this wood (with or without a chest) can be drawn.
+    /// Whether this remote boat has a layer to draw.
     pub fn has(&self, wood: &str, chest: bool) -> bool {
         if chest {
             self.chest_models.contains_key(wood)
@@ -1158,18 +1192,10 @@ impl Game<'_> {
             );
             b.velocity = self.finish_body_restitution(entity, b.position, response);
         }
-        // AbstractBoat.tick's applyEffectsFromBlocks: powder snow or a cobweb makes the
-        // boat stuck, which slows its next move, and resets its fall.
+        self.body_motion(&game_side!(self))
+            .apply_block_speed(b.position, &mut b.velocity);
+        self.boat_step_on(&mut b);
         self.boat_stuck_in_blocks(&mut b);
-        // Entity.move's last step: soul sand and honey slow the boat too.
-        let factor = crate::motion::block_speed_factor_at(
-            &self.world,
-            &self.motion.blocks,
-            &self.loop_context,
-            b.position,
-            None,
-        );
-        b.velocity = sunrise_world::entity_move::scale_by_block_speed(b.velocity, factor);
         Self::tick_boat_paddles(&mut b, &mut self.audio);
         b
     }
@@ -1341,10 +1367,13 @@ impl Game<'_> {
         // resets the fall of the boat the guest drives.
         if driven.contains(&id) {
             let mut b = self.boats[i].clone();
+            self.boat_step_on(&mut b);
             self.boat_stuck_in_blocks(&mut b);
             self.boats.update(i, |boat| {
                 boat.stuck = b.stuck;
                 boat.fall_distance = b.fall_distance;
+                boat.velocity = b.velocity;
+                boat.fire_ticks = b.fire_ticks;
             });
             self.refresh_boat_status(i);
         }
@@ -1534,7 +1563,10 @@ impl Game<'_> {
         }
         let touches = self.boat_bubble_columns(i);
         // AbstractBoat.tick calls applyEffectsFromBlocks twice.
-        for _ in 0..2 {
+        for pass in 0..2 {
+            if pass == 1 {
+                self.boat_second_step(i);
+            }
             for &column in &touches {
                 if column.surface {
                     self.boat_above_bubble_column(i, column.drag);
@@ -1546,6 +1578,32 @@ impl Game<'_> {
         self.tick_boat_bubble_column(i);
         if self.options.execution_role.is_client() {
             self.boats.update(i, Boat::tick_bubble_wobble);
+        }
+    }
+    fn boat_step_on(&mut self, boat: &mut Boat) {
+        let mut velocity = boat.velocity;
+        let writes = self.body_step_on(
+            (boat.id, boat.entity_type_name()),
+            (boat.position, boat.bounds()),
+            &boat.ground,
+            &mut velocity,
+        );
+        boat.apply_step_writes(velocity, writes);
+    }
+    /// The second `applyEffectsFromBlocks` of `AbstractBoat.tick` uses the movement left by the first.
+    pub(super) fn boat_second_step(&mut self, i: usize) {
+        let b = &self.boats[i];
+        if b.ground.on_ground {
+            let mut velocity = b.velocity;
+            let (id, kind, footprint, ground) = (
+                b.id,
+                b.shared_type_name(),
+                (b.position, b.bounds()),
+                b.ground,
+            );
+            let writes = self.body_step_on((id, &kind), footprint, &ground, &mut velocity);
+            self.boats
+                .update(i, |b| b.apply_step_writes(velocity, writes));
         }
     }
     /// `PowderSnowBlock.entityInside` for a boat: the powder snow cells its box, and the box it
@@ -1912,10 +1970,8 @@ impl Game<'_> {
     /// The boat `BoatItem.use` would place for `stack` (its SUCCESS), or
     /// None when it aims at nothing (PASS) or the spot is taken (FAIL).
     pub(super) fn boat_to_place(&self, stack: &ItemStack) -> Option<Boat> {
-        let (wood, chest) = any_boat_wood(&stack.item)?;
-        if !self.boat_models.has(wood, chest) {
-            return None;
-        }
+        // BoatItem holds a registered item and its entity type, not a model.
+        let (wood, chest) = registered_boat_item(&stack.item, self.res.items())?;
         let hit = self.boat_item_hit()?;
         let mut boat = Boat::new(
             self.next_entity + 1,
@@ -1992,7 +2048,7 @@ impl Game<'_> {
         }) else {
             return false;
         };
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.held_mapping(Action::Sneak);
         // Only a client's own pick is stopped by a block: the range check passed.
         if target.is_none() && !self.before_block(d) {
             return false;
@@ -2044,7 +2100,7 @@ impl Game<'_> {
         self.container = Some(key);
         self.set_screen(super::Screen::Inventory);
         self.capture(false);
-        self.right = false;
+        self.set_mapping_held("key.use", false);
         let ctx = self.player_context(None);
         self.post_game_event("minecraft:container_open", at, ctx);
         self.anger_piglins(true);
@@ -2400,6 +2456,28 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn boat_admission_uses_registered_entity_ids() {
+        let registry = sunrise_client_core::registries::Registries {
+            entity_types: vec![
+                "minecraft:bamboo_chest_raft".into(),
+                "minecraft:oak_boat".into(),
+                "minecraft:pig".into(),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(
+            registered_boat("minecraft:oak_boat", &registry),
+            Some(("oak", false))
+        );
+        assert_eq!(
+            registered_boat("minecraft:bamboo_chest_raft", &registry),
+            Some(("bamboo", true))
+        );
+        assert_eq!(registered_boat("minecraft:bamboo_boat", &registry), None);
+        assert_eq!(registered_boat("minecraft:pig", &registry), None);
+    }
 
     fn boat() -> Boat {
         Boat::new(1, Arc::from("oak"), Vec3::ZERO, 0.0)

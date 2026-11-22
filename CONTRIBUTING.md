@@ -18,12 +18,28 @@ events for mods, native mods, content mods (`.smod`), mixins, `cargo sunrise-mod
 builds and the registry, and their docs ([mods](docs/mods.md), [native mods](docs/native-mods.md)). A change to the mod
 API follows its clean-break rules ([AGENTS.md](AGENTS.md#mod-api-the-clean-break)).
 
+When adding a native hook, keep its declaration under `crates/sunrise-mod-vocab/src/hooks/` and wire the engine
+function named by its target. Vocabulary generation does not read engine bodies, so it cannot tell whether
+those targets fire the hooks. `verify-static` runs `bash tools/ci/check_hook_wiring.sh` separately, without
+changing any sources.
+The check follows the declared Rust module to the target body, including conditional files and inline modules.
+It checks non-test `cfg` branches using supported build targets' Rust cfgs, including `cfg!` conditions, and
+does not count calls in closures that are never invoked. When a hook uses a client-library or world bridge,
+the bridge must invoke the slot and every reachable installer call must bind a callback that reaches the
+dispatcher. For slots upstream of a catalog target, the gameplay entry point must also call the bridge.
+A native render replacement slot is intentionally empty, so the check starts at the installed renderer callback.
+`cargo run -p xtask -- mod-api` fills a new game hook's placeholder during authoring; a placeholder left in the
+checkout fails the wiring check.
+
 ## Build it
 
 - **Prerequisites:** Rust (stable), Python 3.11+, JDK 25, git 2.38 or newer, and on Linux the ALSA and udev headers
   (`libasound2-dev libudev-dev`).
-- **Resources:** Sunrise never downloads the game; it prepares its resources from your own copy of Minecraft 26.3, as
-  described in [Build from source](README.md#build-from-source).
+- **Resources:** Client preparation reads your own copy of Minecraft 26.3, as in [Build from source](README.md#build-from-source).
+  Only the launcher downloads client files, for a signed-in account that owns the game. For a dedicated server,
+  `sunrise-prepare --server` and `sunrise-server init` may download Mojang's free `server.jar` and Java runtime from
+  Mojang's URLs, with SHA-1 checks, on the server owner's machine or in CI. Never commit, publish or ship Mojang's
+  files or data derived from them.
 - **Commands:**
 
   ```sh
@@ -194,10 +210,10 @@ claimed whole: claim one of the issues a tracker lists, or open one for the part
 A claim with no open pull request linking the issue (`Fixes #123` in the description, or a draft) is released after
 5 days, with a comment: open a draft early. Agents claim the same way.
 
-You can hold at most 5 claimed issues that no open pull request of yours links. A sixth `/claim` is refused with a
+You can hold at most 10 claimed issues that no open pull request of yours links. An eleventh `/claim` is refused with a
 comment that gives the count; opening a pull request for one of them, or `/unclaim` on one, frees a slot. The
-repository's collaborators, and the trusted contributors listed in the repository variable `CLAIM_LIMIT_EXEMPT`, are
-not limited.
+repository's owners, members and collaborators, the council and the trusted reviewers, and the trusted contributors
+listed in the repository variable `CLAIM_LIMIT_EXEMPT`, are not limited.
 
 When your pull request changes the same functions as another open one, or closes the same issue, a bot comment names
 it (edited on every push, never repeated): talk to its author in the thread before you both finish the same work.

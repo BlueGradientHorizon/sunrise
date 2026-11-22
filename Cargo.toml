@@ -1,7 +1,6 @@
 [workspace]
 exclude = ["crates/sunrise-telemetry-server", "crates/sunrise-mod-registry", "third_party/wgpu-hal", "third_party/naga", "third_party/libmimalloc-sys", "tools/fixtures/paper-trace-mod"]
 members = [
-    "crates/sunrise-guest-stack",
     "crates/sunrise-mod-vocab",
     "crates/sunrise-game-discovery",
     "crates/sunrise-telemetry",
@@ -19,6 +18,7 @@ members = [
     "docs/modding/examples",
     "crates/sunrise-dualsense",
     "crates/sunrise-narrator",
+    "crates/sunrise-audio-input",
     "crates/sunrise-threads",
     "crates/sunrise-hdr",
     "crates/sunrise-world",
@@ -57,6 +57,7 @@ members = [
     "crates/sunrise-relay",
     "crates/sunrise-mod-package",
     "crates/sunrise-mod-api-gen",
+    "crates/sunrise-stage",
     "crates/sunrise-mod-api",
     "crates/sunrise-mod-dimension-game",
     "crates/sunrise-hot-paths-game",
@@ -124,6 +125,8 @@ opt-level = 3
 
 [profile.dev.package.sunrise-mod-api-gen]
 opt-level = 3
+[profile.dev.package.sunrise-stage]
+opt-level = 3
 [profile.dev.package.syn]
 opt-level = 3
 # The perf-format tests gzip over 512 MiB; unoptimized deflate took most of their time.
@@ -142,6 +145,8 @@ opt-level = 0
 [profile.test.package.sunrise-client-lib]
 opt-level = 0
 [profile.release.package.sunrise-mod-api-gen]
+opt-level = 3
+[profile.release.package.sunrise-stage]
 opt-level = 3
 [profile.release.package.syn]
 opt-level = 3

@@ -145,12 +145,18 @@ sprites.
 
 ## Sprites made at load instead
 
-An image that does not change while the game runs belongs in a sprite source, not in a live texture: register a type
-with `register_sprite_sources`, list an entry of it in the GUI atlas's definition
-(`assets/minecraft/atlases/gui.json`) and answer it in `sprite_source` with `SpriteSourceOutput::Pixels` for the id you
-want (`mymod:panel`, or `minecraft:container/slot` to replace a vanilla sprite). The GUI atlas publishes it by that id:
-`gui_sprite`, `DrawContext::sprite` and the GUI's own draws find it there, with the animation and nine-slice metadata
-of the file it names when an entry is an alias (a generated sprite has none), and it is made again each time the
-resources load. A GUI id its list has a sprite for is the list's: `create_dynamic_texture` refuses it as taken, and a
-sprite the list removed draws the missing sprite, never a model's sprite of the same id. After each load, ask
-`gui_sprite` again (`texture_atlas_stitched` for the GUI atlas): a region from before a reload may have moved.
+An image that does not change while the game runs belongs in a sprite source, not in a live texture: bind a provider
+directly in `Hooks::register_sprite_sources` via `event.register(id, provider)`, list an entry of its type in the GUI
+atlas's definition (`assets/minecraft/atlases/gui.json`), and return `Ok(vec![SpriteSourceOutput::Pixels { ... }])`
+from the provider for the id you want (`mymod:panel`, or `minecraft:container/slot` to replace a vanilla sprite). Any
+valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted, later registrations replace earlier ones
+(last-writer-wins), and registering a built-in vanilla source type overrides it when decoding atlas definitions. The
+GUI atlas is one of the engine atlases that run bound providers; others (for example `particles`)
+run their own listed sources. A mod-registered atlas runs its definition under the atlas's registered ID,
+even when another atlas uses the same definition. An unused definition does not run any sources.
+The GUI atlas publishes each sprite by its id: `gui_sprite`, `DrawContext::sprite` and the GUI's own draws find it there,
+with the animation and nine-slice metadata of the file it names when an entry is an alias (a generated sprite has
+none), and the bound provider runs again each time resources load. A GUI id its list has a sprite for is the list's:
+`create_dynamic_texture` refuses it as taken, and a sprite the list removed draws the missing sprite, never a model's
+sprite of the same id. After each load, ask `gui_sprite` again (`texture_atlas_stitched` for the GUI atlas): a region
+from before a reload may have moved.

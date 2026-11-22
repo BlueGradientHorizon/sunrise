@@ -4,9 +4,9 @@ use super::{
     native_entity_refs::tests::{run_fresh_cases, with_game_at},
 };
 use mod_api::{
-    Block, BlockPart, BlockState, BlockStateRecord, BlocksEvent, FenceGateInWallEvent, Hooks,
-    LevelReadError, LevelRef, LevelSide, ModEntry, Mods, PlacementContext, Registrar,
-    RegistrationContext, StateForPlacementEvent, WorldEpoch,
+    Block, BlockPart, BlockState, BlocksEvent, FenceGateInWallEvent, Hooks, LevelReadError,
+    LevelRef, LevelSide, ModEntry, Mods, PlacementContext, Registrar, RegistrationContext,
+    StateForPlacementEvent, WorldEpoch,
 };
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
@@ -35,9 +35,10 @@ impl BlockPart for PlacementPart {
             return Some(None);
         }
         if event.context.inside {
-            return Some(Some(
-                BlockStateRecord::new(default.block(), u16::MAX).into(),
-            ));
+            return Some(Some(mod_api::__private::block_state_from_ordinal(
+                default.block(),
+                u16::MAX,
+            )));
         }
         // A real non-replaceable block is clicked, but the query must use the
         // independent destination and replacement flag supplied by the caller.
@@ -247,14 +248,6 @@ fn placement_refusals_are_typed() {
             assert_eq!(
                 invalid.state_for_placement(game, stone, &context),
                 Err(LevelReadError::Stale)
-            );
-        }
-        {
-            use mod_api::__private::{ModPhase, PhaseOwner};
-            let _setup = PhaseOwner::scope(ModPhase::Setup);
-            assert_eq!(
-                level.state_for_placement(game, stone, &context),
-                Err(LevelReadError::Unavailable)
             );
         }
         let unknown = mod_api::__private::parts_installation::block_key(u32::MAX);

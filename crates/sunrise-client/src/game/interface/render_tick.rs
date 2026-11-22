@@ -1,7 +1,10 @@
 //! Per-tick client visuals: the particle engine, `ClientLevel.animateTick`,
 //! campfire smoke and rain splashes (`ClientLevel.tickWeatherEffects`).
-use super::{Dim, Game, host::draw::GameCameraDrawContext};
-use mod_api::BlockScreenEffect;
+use super::{Dim, Game, api_values::TryIntoApi, host::draw::GameCameraDrawContext};
+use mod_api::{
+    __private::{SelectedBlockScreenEffectRenderer, block_screen_effect_render},
+    BlockScreenEffect,
+};
 use sunrise_client::assets::Properties;
 use sunrise_client::camera::NearPlane;
 use sunrise_client::fog::{FogData, FogInputs, FogType, settle_rain_fog, update_rain_fog};
@@ -11,7 +14,7 @@ use sunrise_client::{
     blocks::{BlockFacts, Fluid},
     containers::BlockEntity,
     mobs::Mob,
-    motion::PlayerMotion,
+    motion::{PlayerMotion, WATER},
     particles::{ParticleLevel, ParticleOptions, ParticleType, TrackingBody, TrackingTarget},
     world::World,
 };
@@ -38,17 +41,23 @@ const BLOCK_OVERLAYS: [BlockScreenEffect; 3] = [
     BlockScreenEffect::Fire,
 ];
 /// The block overlays of `ScreenEffectRenderer` a frame shows.
-#[derive(Clone, Copy, Debug, PartialEq)]
 struct BlockScreenEffects {
     /// The view-blocking block the camera is inside, drawn with its particle texture.
     block: Option<BlockStateId>,
-    /// The eye is under water.
+    /// Draw the vanilla underwater overlay.
     water: bool,
-    /// The player burns, seen in first person.
+    /// The player burns, seen in first person. Extraction cancellation does not change this.
     on_fire: bool,
-    /// The state and position of each overlay in [`BLOCK_OVERLAYS`] a mod draws itself
-    /// (`custom_draw`), shown or canceled.
-    custom: [Option<(BlockStateId, BlockPos)>; 3],
+    /// Whether a no-op or a custom renderer replaces the fire overlay.
+    fire_suppressed: bool,
+    /// The renderer for each overlay in [`BLOCK_OVERLAYS`], shown or canceled.
+    custom: [Option<ExtractedBlockScreenEffect>; 3],
+}
+
+struct ExtractedBlockScreenEffect {
+    state: mod_api::BlockState,
+    pos: BlockPos,
+    renderer: SelectedBlockScreenEffectRenderer,
 }
 pub(super) fn player_tracking_body(player: &PlayerMotion) -> TrackingBody {
     TrackingBody {
@@ -80,12 +89,23 @@ pub(super) fn motion_blocking_height(
         HeightmapType::MotionBlocking.is_opaque(properties.heightmap_state(s))
     })
 }
+/// `GameRenderer.nightVisionScale` for an optional night-vision duration (`-1` is infinite).
+fn night_vision_scale(duration: Option<i32>, partial: f32) -> f32 {
+    match duration {
+        Some(d) if !(0..=200).contains(&d) => 1.0,
+        Some(d) => 0.7 + ((d as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3,
+        None => 0.0,
+    }
+}
+
 /// `ClientLevel.tickWeatherEffects`: the MOTION_BLOCKING height of the column
 /// `x`, `z` when a rain splash may land on it for a camera in block row `y`,
 /// that is above the world's bottom and within 10 blocks of the camera.
 fn splash_height(world: &World, properties: &Properties, x: i32, y: i32, z: i32) -> Option<i32> {
     let top = motion_blocking_height(world, properties, x, z);
-    (top > world.bottom_y() && (y - 10..=y + 10).contains(&top)).then_some(top)
+    let hi = y.wrapping_add(10);
+    let lo = y.wrapping_sub(10);
+    (top > world.bottom_y() && top <= hi && top >= lo).then_some(top)
 }
 /// The first block at or below `from` that blocks motion (leaves only when
 /// `leaves`, as MOTION_BLOCKING_NO_LEAVES skips them) or holds a fluid, plus one.
@@ -195,7 +215,13 @@ impl Game<'_> {
         biome: u16,
         water_fog_color: [f32; 3],
     ) -> FogData {
-        let forward = self.forward();
+        let cam = self.camera_subject();
+        let is_local = cam.as_ref().is_none_or(|c| c.is_local_player);
+        let forward = if self.view.forwards == [0.0; 3] {
+            self.forward().map(|c| c as f32)
+        } else {
+            self.view.forwards
+        };
         let at = [camera.x, camera.y, camera.z];
         let fog_type = self.camera_fog_type(at);
         let (rain, thunder) = self.view_weather(self.clock.fraction() as f32);
@@ -205,6 +231,33 @@ impl Game<'_> {
         } else {
             self.res.fog()
         };
+        let partial = self.clock.fraction() as f32;
+        let fog_effects = cam.as_ref().map(|c| c.fog_effects);
+        let blindness = fog_effects.map(|e| e.blindness).unwrap_or_else(|| {
+            self.potions
+                .effects
+                .get("blindness")
+                .map(|effect| (effect.duration, effect.duration == -1))
+        });
+        let darkness = fog_effects
+            .map(|e| {
+                e.darkness_blend
+                    .map(|(previous, current)| previous + (current - previous) * partial)
+            })
+            .unwrap_or_else(|| self.darkness_fog());
+        let fire_resistance = fog_effects.map_or_else(
+            || self.potions.effects.get("fire_resistance").is_some(),
+            |e| e.fire_resistance,
+        ) || (is_local && self.pvp_clear_fluids().0);
+        let night_vision = fog_effects
+            .map(|e| {
+                if e.darkness_blend.is_some() {
+                    0.0
+                } else {
+                    night_vision_scale(e.night_vision, partial)
+                }
+            })
+            .unwrap_or_else(|| self.fog_night_vision());
         let input = FogInputs {
             fog_type,
             sky,
@@ -216,25 +269,20 @@ impl Game<'_> {
             camera_y: camera.y,
             min_y: self.level_min_y(),
             flat: self.level_flat(),
-            forward: forward.map(|c| c as f32),
+            forward,
             rain,
             thunder,
             skybox: self.overworld_skybox(),
-            blindness: self
-                .potions
-                .effects
-                .get("blindness")
-                .map(|effect| (effect.duration, effect.duration == -1)),
-            darkness: self.darkness_fog(),
-            darken_world: self
-                .boss_overlay
-                .darken_amount(self.clock.fraction() as f32),
+            blindness,
+            darkness,
+            darken_world: self.boss_overlay.darken_amount(partial),
             boss_world_fog: self.boss_overlay.should_create_world_fog(),
-            spectator: self.spectator(),
-            fire_resistance: self.potions.effects.get("fire_resistance").is_some()
-                || self.pvp_clear_fluids().0,
-            full_water_vision: self.pvp_clear_fluids().1,
-            night_vision: self.fog_night_vision(),
+            spectator: cam
+                .as_ref()
+                .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator),
+            fire_resistance,
+            full_water_vision: !is_local || self.pvp_clear_fluids().1,
+            night_vision,
             environment: self.pack.polytone_colors.env,
             fluid_fog: self.pack.polytone_colors.fluid_fog,
         };
@@ -300,17 +348,13 @@ impl Game<'_> {
     /// `GameRenderer.nightVisionScale`, but not while Darkness is on.
     fn fog_night_vision(&self) -> f32 {
         let partial = self.clock.fraction() as f32;
-        match self.potions.effects.get("night_vision") {
-            Some(e) if self.potions.effects.get("darkness").is_none() => {
-                // MobEffectInstance.endsWithin(200); -1 is infinite.
-                if e.duration < 0 || e.duration > 200 {
-                    1.0
-                } else {
-                    0.7 + ((e.duration as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3
-                }
-            }
-            _ => 0.0,
+        if self.potions.effects.get("darkness").is_some() {
+            return 0.0;
         }
+        night_vision_scale(
+            self.potions.effects.get("night_vision").map(|e| e.duration),
+            partial,
+        )
     }
     /// `ClientLevelData.isFlat`: on the server thread, the world-wide flag.
     fn level_flat(&self) -> bool {
@@ -326,18 +370,18 @@ impl Game<'_> {
             None => self.world.shape.min_y,
         }
     }
-    /// `SkyRenderer.shouldRenderDarkDisc`: eye below the horizon and not under
-    /// water. `ClientLevelData.getHorizonHeight`: the bottom of a flat world,
-    /// otherwise y 63.
-    pub(super) fn dark_disc(&self, camera: glam::DVec3) -> bool {
+    /// `SkyRenderer.shouldRenderDarkDisc`: uses `minecraft.player` eye and water state, not camera.
+    pub(super) fn dark_disc(&self, _camera: glam::DVec3) -> bool {
+        let Some(p) = self.player.as_ref() else {
+            return false;
+        };
         let sunrise = if self.level_flat() {
             f64::from(self.level_min_y())
         } else {
             f64::from(self.pack.polytone_colors.env.horizon_height)
         };
-        self.overworld_skybox()
-            && camera.y < sunrise
-            && self.camera_fog_type([camera.x, camera.y, camera.z]) != FogType::Water
+        let eye_y = p.position.y + f64::from(p.dimensions.eye_height);
+        self.overworld_skybox() && eye_y < sunrise && !p.is_under_water()
     }
     /// `ScreenEffectRenderer` + `Hud` camera overlays for this frame.
     /// `scale` is the player's `LivingEntity.getScale`.
@@ -369,10 +413,13 @@ impl Game<'_> {
         // Hud.extractCameraOverlays; the spyglass scope (and its easing) is
         // drawn on the HUD by draw_spyglass.
         let fx = &self.screen_fx;
+        let border_pos =
+            self.camera_entity_position()
+                .unwrap_or([p.position.x, p.position.y, p.position.z]);
         let overlays = hud_overlays::CameraOverlays {
             vignette: self.vignette_shown().then_some((
                 fx.vignette_brightness,
-                self.border.warning_strength(p.position.x, p.position.z),
+                self.border.warning_strength(border_pos[0], border_pos[2]),
             )),
             first_person: self.camera_type.is_first_person(),
             scoping: self.scoping(),
@@ -407,8 +454,11 @@ impl Game<'_> {
             screen_effect_scale: self.screen_effect_scale(),
         };
         let mut scope = self.scope_scale;
-        let gui_overlays =
-            hud_overlays::camera_overlays(size[0] as i32, size[1] as i32, &overlays, &mut scope);
+        let gui_overlays = if self.ui.hide_gui {
+            Vec::new()
+        } else {
+            hud_overlays::camera_overlays(size[0] as i32, size[1] as i32, &overlays, &mut scope)
+        };
         self.screen_fx.build(&ScreenInputs {
             sprites: &self.gui.atlas.sprites,
             flags: &self.gui.atlas.flags,
@@ -416,14 +466,14 @@ impl Game<'_> {
             partial,
             block_overlay,
             water,
-            on_fire: effects.on_fire,
+            on_fire: effects.on_fire && !effects.fire_suppressed,
             fire_lower: self.pvp_fire_lower(),
             gui_overlays: &gui_overlays,
             custom: [&custom[0], &custom[1], &custom[2]],
         })
     }
-    /// `block_screen_effect_draw` for each overlay in `effects` a mod draws itself: what it drew,
-    /// by [`BLOCK_OVERLAYS`]. An overlay replaced there leaves `effects`.
+    /// Submit the selected renderers in vanilla order. Keep their quads separate so each
+    /// goes immediately before its own vanilla overlay, if that overlay is still shown.
     fn custom_screen_effects(
         &self,
         effects: &mut BlockScreenEffects,
@@ -431,40 +481,42 @@ impl Game<'_> {
         hand_projection: [f32; 16],
     ) -> [Vec<ScreenQuad>; 3] {
         let mut drawn = <[Vec<ScreenQuad>; 3]>::default();
-        if effects.custom == [None; 3] {
-            return drawn;
-        }
-        let mut quads = CameraQuads::new(hand_projection);
-        for (i, effect) in BLOCK_OVERLAYS.into_iter().enumerate() {
-            let Some((state, pos)) = effects.custom[i] else {
+        for ((effect, custom), drawn) in BLOCK_OVERLAYS
+            .into_iter()
+            .zip(&effects.custom)
+            .zip(&mut drawn)
+        {
+            let Some(custom) = custom else {
                 continue;
             };
-            let mut replace_vanilla = false;
-            self.native_block_screen_effect_draw(
-                crate::game::native_hooks::BlockScreenEffectDrawCall {
+            let mut quads = CameraQuads::new(hand_projection);
+            let Some(replace) = custom.renderer.submit(
+                self,
+                block_screen_effect_render(
                     effect,
-                    state,
-                    pos,
-                    partial_tick: partial,
-                    hide_gui: self.ui.hide_gui,
-                    draw: &mut GameCameraDrawContext::new(self, &mut quads),
-                    replace_vanilla: &mut replace_vanilla,
-                },
-            );
-            drawn[i] = quads.take();
-            if replace_vanilla {
+                    custom.state,
+                    custom.pos,
+                    partial,
+                    self.ui.hide_gui,
+                    &mut GameCameraDrawContext::new(self, &mut quads),
+                ),
+            ) else {
+                // Only a finished submission can affect the frame.
+                continue;
+            };
+            if replace {
                 match effect {
                     BlockScreenEffect::Block => effects.block = None,
                     BlockScreenEffect::Water => effects.water = false,
-                    BlockScreenEffect::Fire => effects.on_fire = false,
+                    BlockScreenEffect::Fire => effects.fire_suppressed = true,
                 }
             }
+            *drawn = quads.take();
         }
         drawn
     }
-    /// The block overlays `ScreenEffectRenderer` draws this frame for player `p` with its eye
-    /// at `eye`, less those a mod canceled in `extract_block_screen_effect`, with those a mod
-    /// said it draws itself.
+    /// `LevelExtractor.extractPlayerState`: extract the player's block overlays and any
+    /// renderers selected for them. Fire eligibility is separate from renderer selection.
     fn block_screen_effects(
         &self,
         p: &PlayerMotion,
@@ -473,21 +525,23 @@ impl Game<'_> {
         size: [u32; 2],
         scale: f32,
     ) -> BlockScreenEffects {
-        // `LevelExtractor.getViewBlockingState`: 8 points around the eye, each
-        // tested with `BlockState.isViewBlocking` against the near plane.
-        // ScreenEffectRenderer: none of it for a spectator (noPhysics).
-        let spectator = self.spectator();
+        // LevelExtractor.getViewBlockingState checks player.noPhysics (p.spectator); submit checks isSpectator.
         let modded = mod_api::__private::listened(mod_api::HookId::ExtractBlockScreenEffect);
+        let player_partial_tick = self.clock.camera_fraction() as f32;
         let mut block = None;
-        let mut custom = [None; 3];
-        if !spectator {
-            // Frustum.getNearPlaneBounds, moved to the eye.
+        let mut custom = [None, None, None];
+        if !p.spectator {
+            // Frustum.getNearPlaneBounds from culling projection (max(fov, option_fov), camera rot).
+            let cull_fov = self
+                .fov_degrees(partial, eye)
+                .max((self.settings.fov as i32) as f32);
+            let (near_yaw, near_pitch) = self.posed_rotation.unwrap_or((self.yaw, self.pitch));
             let (near_min, near_max) = sunrise_client::camera::near_plane_bounds(
-                self.fov_degrees(partial, eye),
+                cull_fov,
                 size[0] as f32,
                 size[1] as f32,
-                self.yaw,
-                self.pitch,
+                near_yaw,
+                near_pitch,
                 sunrise_client::camera::depth_far(
                     self.terrain_distance(),
                     self.settings.cloud_range,
@@ -527,79 +581,101 @@ impl Game<'_> {
                     != sunrise_client::blocks::RenderShape::Invisible
                     && self.state_view_blocking(state, pos, near_plane)
                 {
-                    if !modded
-                        || self.screen_effect_kept(
+                    block = Some(state);
+                    if modded
+                        && let Ok(state) = state.try_into_api()
+                        && !self.screen_effect_kept(
                             BlockScreenEffect::Block,
                             state,
                             pos,
                             partial,
+                            player_partial_tick,
                             &mut custom[0],
                         )
                     {
-                        block = Some(state);
+                        block = None;
                     }
                     break;
                 }
             }
         }
-        let in_water = self.camera_fog_type(eye) == FogType::Water;
-        let eye_block = eye.map(|c| c.floor() as i32);
-        let water = in_water
-            && !spectator
-            && (!modded
-                || self.screen_effect_kept(
-                    BlockScreenEffect::Water,
-                    self.world.block(eye_block[0], eye_block[1], eye_block[2]),
-                    eye_block,
-                    partial,
-                    &mut custom[1],
-                ));
-        // ModelBakery.FIRE_1, told to mods as the fire block at the player's block.
-        let feet = [p.position.x, p.position.y, p.position.z].map(|c| c.floor() as i32);
-        let fire = || self.pack.assets.registry.default_state("minecraft:fire");
-        let on_fire = self.camera_type.is_first_person()
-            && !spectator
-            && p.is_on_fire()
-            && (!modded
-                || fire().is_none_or(|fire| {
-                    self.screen_effect_kept(
+        let first_person = self.camera_type.is_first_person() && !self.own_player_is_spectator();
+        let water = first_person && {
+            // LevelExtractor uses the player's tick-sampled eye state, not camera fog geometry.
+            // Keep the existing mod override explicit, applied to that answer at the eye.
+            let mut submersion = if p.is_eye_in_fluid(WATER) {
+                FogType::Water
+            } else {
+                FogType::Atmospheric
+            };
+            self.native_camera_submersion(eye, &mut submersion);
+            submersion == FogType::Water
+                && (!modded
+                    || self.screen_effect_kept(
+                        BlockScreenEffect::Water,
+                        self.pack.water_overlay_state,
+                        eye.map(|c| c.floor() as i32),
+                        partial,
+                        player_partial_tick,
+                        &mut custom[1],
+                    ))
+        };
+        // Canceling fire acts as a no-op renderer only if no listener selected one.
+        // A selected renderer can still prepend to the eligible vanilla overlay.
+        let on_fire = first_person && p.is_on_fire();
+        let fire_suppressed = on_fire
+            && modded
+            && self
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:fire")
+                .and_then(|fire| fire.try_into_api().ok())
+                .is_some_and(|fire| {
+                    let feet = [p.position.x, p.position.y, p.position.z].map(|c| c.floor() as i32);
+                    !self.screen_effect_kept(
                         BlockScreenEffect::Fire,
                         fire,
                         feet,
                         partial,
+                        player_partial_tick,
                         &mut custom[2],
-                    )
-                }));
+                    ) && custom[2].is_none()
+                });
         BlockScreenEffects {
             block,
             water,
             on_fire,
+            fire_suppressed,
             custom,
         }
     }
-    /// `extract_block_screen_effect` for one overlay: false when a mod canceled it. `custom`
-    /// takes the overlay's state and position when a mod set `custom_draw`, canceled or not.
+    /// Extract one overlay's renderer independently of whether vanilla's quads are kept.
     fn screen_effect_kept(
         &self,
         effect: BlockScreenEffect,
-        state: BlockStateId,
+        state: mod_api::BlockState,
         pos: [i32; 3],
         partial_tick: f32,
-        custom: &mut Option<(BlockStateId, BlockPos)>,
+        player_partial_tick: f32,
+        custom: &mut Option<ExtractedBlockScreenEffect>,
     ) -> bool {
         let pos = BlockPos::new(pos[0], pos[1], pos[2]);
-        let (mut canceled, mut custom_draw) = (false, false);
+        let (mut canceled, mut renderer) = (false, None);
         self.native_extract_block_screen_effect(
             effect,
             state,
             pos,
             partial_tick,
+            player_partial_tick,
             &mut canceled,
-            &mut custom_draw,
+            &mut renderer,
         );
-        if custom_draw {
-            *custom = Some((state, pos));
-        }
+        *custom = renderer.map(|renderer| ExtractedBlockScreenEffect {
+            state,
+            pos,
+            renderer,
+        });
         !canceled
     }
     /// `Lightmap.getBrightness(getMaxLocalRawBrightness(eye))`.
@@ -646,7 +722,7 @@ impl Game<'_> {
     /// Under `SUNRISE_STILL` a frozen client's rain fog sits at its level, as the rain does: it
     /// eases only in `tick_particles`, which waits for the world.
     pub(super) fn settle_rain_fog(&mut self) {
-        if let Some(e) = self.eye_position() {
+        if let Some(e) = self.camera_eye_position() {
             let (rain, sky_light, rains) = self.rain_fog_inputs(e);
             settle_rain_fog(&mut self.fog, rain, sky_light, rains);
         }
@@ -663,25 +739,35 @@ impl Game<'_> {
         Some((TrackingTarget::Entity(id), mob_tracking_body(mob)))
     }
 
-    /// `Hud.updateVignetteBrightness`, from the local player's eye: `Gui.tick` runs it on every tick
-    /// the game isn't paused, frozen level or not.
+    /// `Hud.updateVignetteBrightness` from the camera entity's eye, running even while frozen.
     pub(in crate::game) fn tick_vignette(&mut self) {
-        if let Some(e) = self.eye_position() {
+        if let Some(e) = self.camera_eye_position() {
             let brightness = self.eye_brightness(e);
             self.screen_fx.tick_vignette(brightness);
         }
     }
 
+    /// The client level's particle sources and the engine's tick, in one go.
     pub(super) fn tick_particles(&mut self) {
+        self.tick_particle_sources();
+        self.tick_particle_engine();
+    }
+
+    /// What adds particles in `Minecraft.tick` and the level's ambient: `animateTick`, the rain,
+    /// the vignette and fog, before the block entities tick.
+    pub(in crate::game) fn tick_particle_sources(&mut self) {
         // A client mod's `clear_particles`, before this tick adds any.
         self.apply_mod_particle_clear();
         self.update_animation_inputs();
         let mut laps = sunrise_client::spans::laps();
         let eye = self.eye_position();
+        // Vanilla particle culling, weather splashes, and rain fog read `mainCamera().position()` directly.
+        let cam_pos = self.view.position;
         if let Some(e) = eye {
             // A client of a server eases the vignette in `tick_hud`, frozen level or not.
             if self.remote.is_none() {
-                let brightness = self.eye_brightness(e);
+                let ve = self.camera_eye_position().unwrap_or(e);
+                let brightness = self.eye_brightness(ve);
                 self.screen_fx.tick_vignette(brightness);
             }
             let inside_portal = self.client_portal_effect();
@@ -693,17 +779,21 @@ impl Game<'_> {
             }
             let nausea = self.potions.effects.get("nausea").map(nausea_has_effect);
             self.screen_fx.tick_spinning(nausea);
-            // LocalPlayer water vision and AtmosphericFogEnvironment rain fog.
-            let in_water = self.camera_fog_type(e) == FogType::Water;
-            self.fog.tick(in_water, self.spectator());
-            let (rain, sky_light, rains) = self.rain_fog_inputs(e);
+            // A client of a server advances `LocalPlayer.waterVisionTime` in `tick_local_player`
+            // (after `Entity.baseTick`'s fluid sample, matching `LocalPlayer.aiStep`).
+            if self.remote.is_none() {
+                let in_water = self
+                    .player
+                    .as_ref()
+                    .is_some_and(|p| p.is_eye_in_fluid(WATER));
+                self.fog.tick(in_water, self.own_player_is_spectator());
+            }
+            let (rain, sky_light, rains) = self.rain_fog_inputs(cam_pos);
             update_rain_fog(&mut self.fog, rain, sky_light, rains, 1.0);
         }
         laps.lap("tp_fx");
         self.particles.particle_level = self.settings.particles;
-        if let Some(e) = eye {
-            self.particles.camera = e;
-        }
+        self.particles.camera = cam_pos;
         let (rain, _) = self.weather_levels(1.0);
         let marker = marker_particle_target(self.mode, self.stack_in(self.selected));
         // The day timeline: firefly bush sounds from 12600 to 23400.
@@ -773,7 +863,7 @@ impl Game<'_> {
                 block_parts: parts
                     .then_some(&Self::animate_part_listens as &dyn Fn(BlockStateId) -> bool),
             };
-            if let (Some(block), Some(sampling)) = (block, sampling.as_mut()) {
+            if let Some(sampling) = sampling.as_mut() {
                 if !sampling.started() {
                     laps.lap("tp_ctx");
                     self.particles
@@ -793,8 +883,8 @@ impl Game<'_> {
                 laps.lap("tp_animate");
                 // The Sunrise Weather option off means no rain visuals or sounds at all.
                 if rain > 0.0 && self.settings.sunrise.weather {
-                    // ClientLevel.tickWeatherEffects: rain splashes within the weather
-                    // radius, and the rain sound.
+                    let weather_block = cam_pos.map(|v| v.floor() as i32);
+                    // ClientLevel.tickWeatherEffects: rain splashes around the camera, and the rain sound.
                     let mut random =
                         LegacyRandom::new(self.world.game_time.wrapping_mul(312_987_231));
                     let radius = self.settings.weather_radius;
@@ -803,15 +893,20 @@ impl Game<'_> {
                         / if self.settings.particles == 1 { 2 } else { 1 };
                     let mut rain_position = None;
                     for _ in 0..count {
-                        let x = block[0] + random.next_int_bound(diameter).unwrap_or(0) - radius;
-                        let z = block[2] + random.next_int_bound(diameter).unwrap_or(0) - radius;
-                        let Some(top) = splash_height(world, properties, x, block[1], z) else {
+                        let x = weather_block[0]
+                            .wrapping_add(random.next_int_bound(diameter).unwrap_or(0))
+                            .wrapping_sub(radius);
+                        let z = weather_block[2]
+                            .wrapping_add(random.next_int_bound(diameter).unwrap_or(0))
+                            .wrapping_sub(radius);
+                        let Some(top) = splash_height(world, properties, x, weather_block[1], z)
+                        else {
                             continue;
                         };
                         if !rains_at(world, biomes, x, top, z) {
                             continue;
                         }
-                        let below = top - 1;
+                        let below = top.wrapping_sub(1);
                         rain_position = Some([x, below, z]);
                         // The Minimal option stops at the first spot that rains (the
                         // rain sound still plays there).
@@ -857,9 +952,15 @@ impl Game<'_> {
                         self.rain_sound_time += 1;
                         if random.next_int_bound(3).unwrap_or(0) < waited {
                             self.rain_sound_time = 0;
-                            let roof =
-                                motion_blocking_height(world, properties, block[0], block[2]);
-                            let (name, volume, pitch) = if at[1] > block[1] + 1 && roof > block[1] {
+                            let roof = motion_blocking_height(
+                                world,
+                                properties,
+                                weather_block[0],
+                                weather_block[2],
+                            );
+                            let (name, volume, pitch) = if at[1] > weather_block[1].wrapping_add(1)
+                                && roof > weather_block[1]
+                            {
                                 ("minecraft:weather.rain.above", 0.1, 0.5)
                             } else {
                                 ("minecraft:weather.rain", 0.2, 1.0)
@@ -872,7 +973,8 @@ impl Game<'_> {
                     }
                 }
             }
-            if let Some(r) = &self.renderer {
+            // A client of a server ticks its campfires with the other block entities.
+            if let Some(r) = self.renderer.as_ref().filter(|_| self.remote.is_none()) {
                 campfire_particles(
                     self.res.animate(),
                     &mut self.particles,
@@ -887,6 +989,12 @@ impl Game<'_> {
             laps.lap("tp_rain_campfire");
             break;
         }
+    }
+
+    /// `ParticleEngine.tick` (and the pickups and sounds it raises): in `Minecraft.tick` after
+    /// `Level.tickBlockEntities`, so a particle a block entity just added ages with the rest.
+    pub(in crate::game) fn tick_particle_engine(&mut self) {
+        let mut laps = sunrise_client::spans::laps();
         let world = &self.world;
         let facts = self.res.facts();
         // SpellParticle.isCloseToScopingPlayer: the eye of a local player looking
@@ -1073,7 +1181,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{BlockScreenEffects, Properties, World, splash_height};
+    use super::{Properties, World, splash_height};
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
     use sunrise_world::registry::BlockStateId;
@@ -1130,7 +1238,7 @@ mod tests {
             fn extract_block_screen_effect(
                 &self,
                 _: &dyn ClientHost,
-                event: &mut ExtractBlockScreenEffectEvent,
+                event: &mut ExtractBlockScreenEffectEvent<'_>,
             ) -> Flow {
                 SEEN.lock().unwrap().push((
                     event.effect,
@@ -1173,25 +1281,20 @@ mod tests {
                 game.world.set(0, 65, 0, block).unwrap();
                 let p = game.player.as_ref().unwrap();
                 let eye = [0.5, 64.0 + f64::from(p.dimensions.eye_height), 0.5];
-                game.block_screen_effects(p, eye, 0.0, [854, 480], 1.0)
+                let effects = game.block_screen_effects(p, eye, 0.0, [854, 480], 1.0);
+                assert!(effects.custom.iter().all(Option::is_none));
+                (effects.block, effects.water, effects.on_fire)
             };
             let open = effects(game, air);
             let in_dirt = effects(game, dirt);
-            assert_eq!(
-                effects(game, stone),
-                BlockScreenEffects {
-                    block: Some(stone),
-                    ..open
-                },
-                "stone shows its overlay"
-            );
+            assert_eq!(effects(game, stone), (Some(stone), false, true));
             let mods: Mods = vec![ModEntry::new("screen-effect", Box::new(Mod(stone)))].into();
             mod_platform::testing::with_mods(mods, || {
                 assert_eq!(effects(game, stone), open);
                 assert_eq!(effects(game, dirt), in_dirt);
             });
-            assert_eq!(in_dirt.block, Some(dirt));
-            assert!(open.on_fire && !open.water);
+            assert_eq!(in_dirt, (Some(dirt), false, true));
+            assert_eq!(open, (None, false, true));
             let seen = SEEN.lock().unwrap();
             let feet = BlockPos::new(0, 64, 0);
             assert_eq!(

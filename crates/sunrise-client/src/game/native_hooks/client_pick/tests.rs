@@ -819,16 +819,16 @@ fn pick_origin_is_the_eye_used_for_each_pick_and_isolated_per_listener() {
 struct RiderPart(Arc<Mutex<usize>>, bool);
 #[mod_api::sunrise_part]
 impl mod_api::EntityPart for RiderPart {
-    fn can_rider_interact(
-        &self,
-        host: &mut dyn ClientHost,
-        event: &mut mod_api::CanRiderInteractEvent,
-    ) {
-        assert_eq!(event.entity.id(), 31);
+    fn can_rider_interact(&self, event: &mut mod_api::CanRiderInteractEvent<'_>) {
+        let entity = event
+            .subject
+            .with_view(|view| view.handle())
+            .expect("live resident entity");
+        assert_eq!(entity.id(), 31);
         *self.0.lock().unwrap() += 1;
         event.allowed = true;
         if self.1 {
-            assert!(host.set_camera_entity(event.entity));
+            assert!(event.subject.host().set_camera_entity(entity));
         }
     }
 }

@@ -134,9 +134,6 @@ impl Game<'_> {
         holder: mod_api::Holder,
         access: AttachmentAccess,
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-        if matches!(holder, mod_api::Holder::OriginalPlayer(_)) {
-            return self.attachment_slot(holder, access);
-        }
         if self.client_attachment_entity_exists(holder) {
             self.initialize_entity_on_access(holder);
         }
@@ -160,9 +157,6 @@ impl Game<'_> {
         holder: mod_api::Holder,
         access: AttachmentAccess,
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-        if matches!(holder, mod_api::Holder::OriginalPlayer(_)) {
-            return self.attachment_slot(holder, access);
-        }
         if !self.native_authoritative() {
             return Err(mod_api::AttachmentError::MissingHolder);
         }
@@ -295,24 +289,10 @@ impl Game<'_> {
             }
             return Ok(self.entity_attachments.entry(id).or_default());
         }
-        if let mod_api::Holder::OriginalPlayer(token) = holder {
-            return self
-                .player_state
-                .originals
-                .iter_mut()
-                .rev()
-                .find(|snapshot| snapshot.token() == token)
-                .map(|snapshot| &mut snapshot.attachments)
-                .ok_or(AttachmentError::MissingHolder);
-        }
         if let mod_api::Holder::Player(uuid) = holder {
-            let cloning = self
-                .player_state
-                .originals
-                .iter()
-                .any(|snapshot| snapshot.uuid() == uuid);
+            let cloning = self.cloning_guest(uuid).map(|guest| guest.conn);
             if self.entity_initialization.active != Some(holder)
-                && !cloning
+                && cloning.is_none()
                 && self.lan_acting_uuid != Some(uuid)
                 && self
                     .lan
@@ -331,17 +311,16 @@ impl Game<'_> {
                 }
                 return Ok(&mut self.player_state.attachments);
             }
-            let conn = self
-                .lan
-                .as_ref()
-                .and_then(|host| {
-                    if self.entity_initialization.active == Some(holder) || cloning {
+            let conn = cloning
+                .or_else(|| {
+                    let host = self.lan.as_ref()?;
+                    let guest = if self.entity_initialization.active == Some(holder) {
                         host.hub.guests.iter().find(|guest| guest.uuid == uuid)
                     } else {
                         host.hub.holder_guest(uuid, self.dim.id())
-                    }
+                    }?;
+                    Some(guest.conn)
                 })
-                .map(|guest| guest.conn)
                 .ok_or(AttachmentError::MissingHolder)?;
             if self.lan_guest_swaps.contains(&conn) {
                 return Err(AttachmentError::MissingHolder);
@@ -461,11 +440,24 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
         fn enabled_features() -> mod_api::FeatureFlags;
     }
 
+    fn has_item_capability(&self, pos: [i32; 3], side: Option<mod_api::Direction>) -> Option<bool> {
+        let level = self.base.api_level?;
+        let at = mod_api::BlockSide { level, pos, side };
+        let site = self.base.containers().capability_site(
+            at,
+            self.block(pos),
+            self.block_entity_removed(pos),
+        )?;
+        Some(mod_api::__private::item_capability_present(self, site))
+    }
     fn block_entity(&self, pos: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
         if self.block_entity_removed(pos) {
             return None;
         }
         mod_api::LevelHost::block_entity(self.base, pos)
+    }
+    fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
+        mod_api::LevelHost::attachment_read_scope(self.base)
     }
     fn block_entity_part_snapshot(
         &self,
@@ -583,6 +575,15 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         }
         Some(super::native_world_read::can_see_sky(self.world, pos))
     }
+    fn has_item_capability(&self, pos: [i32; 3], side: Option<mod_api::Direction>) -> Option<bool> {
+        let level = self.api_level?;
+        let [x, y, z] = pos;
+        let at = mod_api::BlockSide { level, pos, side };
+        let site = self
+            .containers()
+            .capability_site(at, self.world.block(x, y, z), false)?;
+        Some(mod_api::__private::item_capability_present(self, site))
+    }
     fn block_entity(&self, pos: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
         super::native_block_entity_refs::world_block_entity(self.world, self.api_level?, pos)
     }
@@ -607,6 +608,9 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
             .try_into_api()
             .ok()
     }
+    fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
+        mod_api::__private::game::attachment_read_scope(self.attachment_query_scopes)
+    }
     fn block_entity_part_snapshot(
         &self,
         entity: mod_api::BlockEntityRef,
@@ -618,9 +622,9 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
             self.api_level,
             self.native_authoritative,
             self.part_state_index,
+            self.attachment_query_scopes,
             entity,
-            namespace,
-            name,
+            (namespace, name),
         )
     }
     fn block_entity_data(&self, entity: mod_api::BlockEntityRef) -> Option<mod_api::Compound> {
@@ -632,15 +636,7 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
         let [x, y, z] = fields.position;
         let key = (x, y, z);
         if self.world.block_entities.generation(&key) != Some(fields.generation) {
-            // The block entity of the break whose `block_drops` event is running: the removal
-            // took it out of the world, a read-only view of it is held until the event ends.
-            return Some(
-                self.world
-                    .block_entities
-                    .broken(&key, fields.generation)?
-                    .data
-                    .clone(),
-            );
+            return None;
         }
         let entity = self.world.block_entities.get(&key)?;
         let name = &self.facts.get(self.world.block(x, y, z)).name;
@@ -806,14 +802,10 @@ impl mod_api::LevelRandomHost for super::GameLevel<'_> {
     fn attachments(&mut self) -> &mut dyn mod_api::AttachmentStore {
         self
     }
-    fn random(&mut self) -> Option<mod_api::LegacyRandomSource> {
-        self.native_level_random()
-            .map(|r| super::api_values::random_to_api(r))
-    }
-    fn set_random(&mut self, random: mod_api::LegacyRandomSource) -> bool {
-        self.native_level_random()
-            .map(|r| *r = super::api_values::random_to_engine(&random))
-            .is_some()
+    fn lend_random(&mut self, draw: mod_api::RandomDraw<'_>) {
+        if self.native_authoritative {
+            super::api_values::with_live_level_random(&mut self.world.random, draw);
+        }
     }
 }
 
@@ -906,12 +898,8 @@ impl mod_api::LevelRandomHost for super::native_hooks::HitLevel<'_> {
     fn attachments(&mut self) -> &mut dyn mod_api::AttachmentStore {
         self
     }
-    fn random(&mut self) -> Option<mod_api::LegacyRandomSource> {
-        Some(super::api_values::random_to_api(self.0.random()))
-    }
-    fn set_random(&mut self, random: mod_api::LegacyRandomSource) -> bool {
-        *self.0.random() = super::api_values::random_to_engine(&random);
-        true
+    fn lend_random(&mut self, draw: mod_api::RandomDraw<'_>) {
+        super::api_values::with_live_level_random(self.0.random(), draw);
     }
 }
 
@@ -1035,6 +1023,18 @@ impl<
     fn can_see_sky(&self, pos: [i32; 3]) -> Option<bool> {
         mod_api::LevelHost::can_see_sky(&*self.level, pos)
     }
+    fn has_item_capability(&self, pos: [i32; 3], side: Option<Direction>) -> Option<bool> {
+        let level = self.level.api_level?;
+        let [x, y, z] = pos;
+        let preview = self.previewed(BlockPos::new(x, y, z));
+        let state = preview.unwrap_or_else(|| self.level.world.block(x, y, z));
+        let site = self.level.containers().capability_site(
+            mod_api::BlockSide { level, pos, side },
+            state,
+            preview.is_some(),
+        )?;
+        Some(mod_api::__private::item_capability_present(self, site))
+    }
     fn block_entity(&self, pos: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
         // A block the preview changed has no block entity left.
         if self
@@ -1062,6 +1062,9 @@ impl<
             return None;
         }
         mod_api::LevelHost::container_stack(&*self.level, at, slot)
+    }
+    fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
+        mod_api::LevelHost::attachment_read_scope(&*self.level)
     }
     fn block_entity_part_snapshot(
         &self,
@@ -1186,11 +1189,8 @@ impl<'a: 'b, 'b, T: std::ops::Deref<Target = Ticks>> mod_api::LevelRandomHost
     fn attachments(&mut self) -> &mut dyn mod_api::AttachmentStore {
         mod_api::LevelRandomHost::attachments(&mut *self.level)
     }
-    fn random(&mut self) -> Option<mod_api::LegacyRandomSource> {
-        mod_api::LevelRandomHost::random(&mut *self.level)
-    }
-    fn set_random(&mut self, random: mod_api::LegacyRandomSource) -> bool {
-        mod_api::LevelRandomHost::set_random(&mut *self.level, random)
+    fn lend_random(&mut self, draw: mod_api::RandomDraw<'_>) {
+        mod_api::LevelRandomHost::lend_random(&mut *self.level, draw);
     }
 }
 
@@ -1556,6 +1556,7 @@ mod attachment_membership_tests {
                 pos: [0, 64, 0],
                 facing: 2,
                 variant: "minecraft:kebab".into(),
+                asset: None,
                 width: 1,
                 height: 1,
                 check_interval: 0,

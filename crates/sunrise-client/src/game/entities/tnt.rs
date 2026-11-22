@@ -120,27 +120,12 @@ impl PrimedTnt {
     /// is at the top of, which send their surface particles.
     pub(super) fn apply_effects_from_blocks(
         &mut self,
-        world: &sunrise_client::world::World,
-        assets: &sunrise_client::assets::Assets,
-        facts: &sunrise_client::blocks::BlockFacts,
-        collision: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
+        motion: sunrise_client::motion::BodyMotion<'_>,
+        registry: &sunrise_world::registry::BlockRegistry,
         from: Vec3,
         original: Option<Vec3>,
     ) -> Vec<BlockPos> {
-        if self.ground.on_ground {
-            // SlimeBlock.stepOn, before the blocks it is inside.
-            let under = world.block(
-                self.position.x.floor() as i32,
-                (self.position.y - f64::from(0.2_f32)).floor() as i32,
-                self.position.z.floor() as i32,
-            );
-            if &*facts.get(under).name == "minecraft:slime_block"
-                && let Some(scale) = sunrise_client::entities::slime_step_on_scale(self.velocity.y)
-            {
-                self.velocity.x *= scale;
-                self.velocity.z *= scale;
-            }
-        }
+        let (world, facts, collision) = (motion.world, motion.facts, motion.collision);
         let mut tops = Vec::new();
         let stuck = sunrise_client::falling_block::apply_effects_from_blocks(
             from,
@@ -158,9 +143,8 @@ impl PrimedTnt {
         if let Some(multiplier) = stuck {
             self.stuck = multiplier;
         }
-        if self.push_by_bubble_column_over(world, assets.registry, facts, collision, |pos| {
-            tops.push(pos)
-        }) {
+        if self.push_by_bubble_column_over(world, registry, facts, collision, |pos| tops.push(pos))
+        {
             self.fall_distance = 0.0;
         }
         tops
@@ -218,6 +202,13 @@ impl PrimedTnt {
             self.check_fall_damage(movement.moved.y);
         }
         self.velocity = self.move_restitution(motion, movement).velocity;
+        motion.apply_block_speed(self.position, &mut self.velocity);
+        motion.step_on(
+            (self.id, "minecraft:tnt"),
+            (self.position, self.bounds()),
+            &self.ground,
+            &mut self.velocity,
+        );
         self.finish_tick(motion, assets, fluids, recorded.then_some(movement.wanted))
     }
 
@@ -329,34 +320,7 @@ impl PrimedTnt {
         fluids: &sunrise_client::motion::FluidResources,
         recorded: Option<Vec3>,
     ) -> Vec<BlockPos> {
-        let sunrise_client::motion::BodyMotion {
-            world,
-            collision,
-            facts,
-            context,
-            blocks,
-            ..
-        } = motion;
-        // Entity.move's last step: soul sand and honey slow the TNT's
-        // horizontal speed. `blocks` is None only for the isolated unit tests.
-        if let Some(blocks) = blocks {
-            let factor = sunrise_client::motion::block_speed_factor_at(
-                world,
-                blocks,
-                context,
-                self.position,
-                None,
-            );
-            self.velocity = sunrise_world::entity_move::scale_by_block_speed(self.velocity, factor);
-        }
-        let tops = self.apply_effects_from_blocks(
-            world,
-            assets,
-            facts,
-            collision,
-            self.previous,
-            recorded,
-        );
+        let tops = self.apply_effects_from_blocks(motion, assets.registry, self.previous, recorded);
         // Entity.scale(getAirDrag()): 0.98F, widened before it scales motion.
         self.velocity = sunrise_client::entity_rules::scale_air_drag(self.velocity);
         if self.ground.on_ground {
@@ -370,7 +334,7 @@ impl PrimedTnt {
         if self.fuse > 0 {
             // PrimedTnt updates immersion after moving and decrementing its
             // fuse; water forgets the fall.
-            let (water, _) = self.push_by_fluid(world, fluids, context);
+            let (water, _) = self.push_by_fluid(motion.world, fluids, motion.context);
             self.in_water = water > 0.0;
             if self.in_water {
                 self.fall_distance = 0.0;
@@ -507,13 +471,31 @@ impl Game<'_> {
     /// `moveEntityByPiston`'s `applyEffectsFromBlocks(previousPos, position)`
     /// for primed TNT `i`, also run when `limitPistonMovement` left no push.
     pub(super) fn tnt_piston_block_effects(&mut self, i: usize, from: Vec3) {
+        let t = &self.tnts[i];
+        let (id, footprint, ground, mut velocity) =
+            (t.id, (t.position, t.bounds()), t.ground, t.velocity);
+        let writes = self.body_step_on((id, "minecraft:tnt"), footprint, &ground, &mut velocity);
+        let side = game_side!(self);
         let t = &mut self.tnts[i];
         let known = t.velocity;
+        t.velocity = velocity;
+        super::entity::apply_contact_writes(
+            writes,
+            &mut t.velocity,
+            Some(&mut t.fall_distance),
+            Some(&mut t.stuck),
+            None,
+        );
         let tops = t.apply_effects_from_blocks(
-            &self.world,
-            &self.pack.assets,
-            self.res.facts(),
-            self.collision,
+            sunrise_client::motion::BodyMotion {
+                world: &self.world,
+                facts: self.res.facts(),
+                collision: self.collision,
+                context: &self.loop_context,
+                blocks: Some(&self.motion.blocks),
+                side: Some(&side),
+            },
+            self.pack.assets.registry,
             from,
             None,
         );
@@ -557,12 +539,29 @@ impl Game<'_> {
             return Ok(());
         };
         let response = self.tnts[i].move_restitution(self.body_motion(&game_side!(self)), movement);
-        let velocity = self.finish_body_restitution((id, "minecraft:tnt"), position, response);
+        let mut velocity = self.finish_body_restitution((id, "minecraft:tnt"), position, response);
         let Some(i) = super::native_ticks::place(&self.tnts, i, |t| t.id == id) else {
             return Ok(());
         };
+        self.body_motion(&game_side!(self))
+            .apply_block_speed(position, &mut velocity);
+        let ground = self.tnts[i].ground;
+        let writes = self.body_step_on(
+            (id, "minecraft:tnt"),
+            (position, bounds),
+            &ground,
+            &mut velocity,
+        );
+        let side = game_side!(self);
         let t = &mut self.tnts[i];
         t.velocity = velocity;
+        super::entity::apply_contact_writes(
+            writes,
+            &mut t.velocity,
+            Some(&mut t.fall_distance),
+            Some(&mut t.stuck),
+            None,
+        );
         let tops = t.finish_tick(
             sunrise_client::motion::BodyMotion {
                 world: &self.world,
@@ -570,7 +569,7 @@ impl Game<'_> {
                 facts: self.res.facts(),
                 blocks: Some(&self.res.motion().blocks),
                 context: &self.loop_context,
-                side: None,
+                side: Some(&side),
             },
             &self.pack.assets,
             &self.res.motion().fluids,
@@ -1016,7 +1015,7 @@ impl Game<'_> {
                 m.previous = tnt_seat(prev, offset);
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 m.extra.passenger = true;
                 m.ai.nav.stop();
             }

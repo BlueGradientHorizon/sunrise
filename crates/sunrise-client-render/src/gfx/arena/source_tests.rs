@@ -27,9 +27,7 @@ fn read(
 #[ignore = "daily"]
 fn terrain_source_arena_gpu_grow_move_recycle_and_refusal() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let instance = crate::gfx::test_gpu::instance();
-    let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
-        .expect("GPU control requires an adapter");
+    let adapter = crate::gfx::test_gpu::adapter().expect("GPU control requires an adapter");
     eprintln!("TERRAIN_SOURCE_ARENA_ADAPTER {:?}", adapter.get_info());
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
     let mut arena = Arena::new(&device, 24, GRAIN, true);

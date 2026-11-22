@@ -77,19 +77,31 @@ the storage-relative `Holder`, it carries the handle's world scope.
 
 Import `AttachmentQueries` to use `host.query(&TYPE)` on either host side. The
 returned batch is a **snapshot** of membership and stored value bindings in the
-host's current dimension. Its `iter()` borrows `&T` without cloning values and
-lazily decodes saved entries; malformed or incompatible values produce row errors,
-not defaults. Later sets, removals and unloads appear only in fresh queries. This
+host's current dimension. Create a cursor with `query.iter()` and step it with
+`rows.try_next()?` until it returns `Ok(None)`. Borrow each value with
+`row.with_value(scope, |value| ...)` without cloning it. Get `scope` from
+`host.attachment_read_scope()?`. Iteration decodes saved entries lazily; malformed
+or incompatible values produce row errors, not defaults. Later sets, removals and unloads appear only in fresh queries. This
 is a residency view: an entity queued for removal can appear until the removal sweep. Captured handles do not keep holders loaded, and stale writes fail.
 Interior mutability inside `T` is not deep-frozen by a snapshot.
 
+Batches, holder selectors and write tokens stay in the running game; they are
+not `Wire` values. Persist or sync the attachment value through its registered
+`AttachmentCodec`, not by encoding the query or a holder's residency.
+
 On a server, import `AttachmentQueriesMut` for `host.query_mut(&TYPE)` (`T: Clone`).
-Each borrowed row has `holder()`, `value()`, and explicit `set(host, replacement)` /
+Each borrowed row has `holder()`, `with_value(...)`, and explicit `set(host, replacement)` /
 `remove(host)` methods. These validate residency against the host's current
 dimension and then use the ordinary attachment journal. There is no `&mut T`,
 implicit transaction, or commit on drop: wrap a system in `host.transaction` for
 all-or-nothing writes. Unload or replacement produces `AttachmentRowError::StaleHolder`.
-Rows retain captured values even after successful write-through updates.
+Rows retain captured values even after successful write-through updates. A capture
+made during a transaction can only be used while its capturing frame is current.
+A value read borrows the capturing host for the whole call, so the frame cannot
+close or open a child during that read. After commit or rollback, create a fresh
+query; using the old one returns `AttachmentRowError::OutsideTransaction`. If a
+child frame temporarily makes the capture unavailable, that refusal does not
+advance the cursor. Continue with the same cursor when the parent is current again.
 
 Traversal follows dense index order: insertion appends, and removal fills its slot
 with the last row. The same ordered mutation history is deterministic, but the
@@ -130,10 +142,13 @@ default, on `set` and `remove`, and on demand with `AttachmentType::sync_data(ho
 holder)`; changes made in one tick are sent once, at its end. The recipients are the
 players who track the holder: guests who were sent a chunk for a chunk or block entity,
 who track an entity for an entity, the player and those tracking them for a player, and
-everyone in the level for the level. A client also gets all of a holder's synced values
-when it starts seeing it: a chunk sent (with its block entities), a level joined or
-re-entered, an entity tracked, and its own player. The wire form is the codec's compound, so `sync` requires
-a codec.
+everyone in the level for the level. A viewer held during a proxy handoff receives initial
+pairings, including entities that spawn between tracking passes. It can read updates and
+removals for tracked entities and other players through the same `Host::attachments` route
+before placement, without requesting a resync. A client also gets all
+of a holder's synced values when it starts seeing it: a chunk sent (with its block entities),
+a level joined or re-entered, an entity tracked, and its own player. The wire form is the
+codec's compound, so `sync` requires a codec.
 
 Values travel on `sunrise:attachment_sync`, an engine declaration in the negotiated
 payload table (play, to the client, version 1, optional): only a client whose connection
@@ -143,7 +158,7 @@ player's other packets; a rolled-back edit sends nothing, and a message prepared
 reconfiguration never reaches the new one. Its size is bounded by the connection's frame
 limits, not by a cap of its own. A message with a namespace or name over 256 UTF-16 code
 units, a value that cannot be written, or one past the frame limits is not sent, and the
-refusal is logged by name once per connection; the player stays joined. A full outgoing
+refusal is logged by name each time; the player stays joined. A full outgoing
 queue closes that player's connection.
 
 On a client, `Host::attachments` returns a copy of what the server synced, which `get`
@@ -153,29 +168,48 @@ they stay server-only there, though their changes on a server are synced.
 
 A general entity row (`declare_general_entity`) has no data of its own on a client: its
 synced attachments are what a Sunrise client knows of it beyond its type, position and
-rotation. They arrive with the row, when the client starts tracking it, and go with it.
+rotation. They arrive with the row, when the client starts tracking it, and go with it. Its
+[renderer](../how-to/client/entity-renderers.md#a-general-entitys-frame) reads the last
+published whole generation rather than consulting the client holder. A refusal to publish an
+over-budget render generation does not change the client's synced copy.
 
 ## Copying on respawn and conversion
 
-`copy_on_death` requires a codec. Player respawn copies opted-in entries via their
-encoded representation, including raw entries of an absent mod; other entries are
-removed. A mob's conversion (a villager struck into a witch, a zombie villager cured, a
-piglin zombified, a tadpole grown) copies every entry with a codec, raw entries of an absent
-mod included, to the new mob through its encoded form, over what its construction set; entries
-without a codec stay on the removed mob. A cancelled `living_conversion_pre` copies nothing,
-`living_conversion_post` sees the copy, and the copy is not synced on its own (the new mob's
-spawn carries its synced entries).
+`copy_on_death` requires a codec. On death respawn, only opted-in (`copy_on_death`)
+entries with a codec — including raw entries of an absent mod — are copied to the
+replacement via their encoded representation; other entries stay only on the retained old
+player. On return from the End after credits (`was_death = false`), every serializable
+entry (any entry with a codec, including raw entries of an absent mod) is copied to the
+replacement via its encoded representation, while entries without a codec stay only on
+the retained old player. In both cases the copy runs even when no mod subscribes to
+`player_clone`, and the replacement starts from fresh encoded entries rather than sharing
+decoded instances with the old player. A mob's conversion (a villager struck into a witch,
+a zombie villager cured, a piglin zombified, a tadpole grown) copies every entry with a
+codec, raw entries of an absent mod included, to the new mob through its encoded form,
+over what its construction set; entries without a codec stay on the removed mob. A
+cancelled `living_conversion_pre` copies nothing, `living_conversion_post` sees the copy,
+and the copy is not synced on its own (the new mob's spawn carries its synced entries).
 
 ## Reading the original player
 
-`player_clone` supplies `event.original: OriginalPlayerRef` alongside the replacement's
-`event.player` UUID. During that hook, `event.original.attachment(host, &COUNTER)` reads
-the old value even when `copy_on_death` is false or the type has no codec;
-`COUNTER.get(host, Holder::Player(event.player))` reads the replacement's retained value
-or fresh default. This works on death and on return from the End.
-The original's `position`, `dimension`, `level`, and `inventory_slot` methods read the
-same pre-copy player. Inventory slot numbers are 0–35 for the main inventory,
-100–103 for boots through helmet, and -106 for the off hand. Every original read expires
-when the hook returns; keeping the handle does not keep the old player alive.
-The snapshot retains shared attachment bindings, not a deep freeze of interior mutability.
-With no `player_clone` listener, no original snapshot is allocated.
+`player_clone` supplies `event.original: OriginalPlayer<'_>` alongside the replacement's
+`event.player` UUID. During that hook, `event.original.attachment(&COUNTER)` reads the old
+player's value even when `copy_on_death` is false or the type has no codec, returning its
+default without inserting it if absent; `COUNTER.get(host, Holder::Player(event.player))` reads
+the replacement's retained value or fresh default. This works on death and on return from
+the End. The original's `has_attachment`, `existing_attachment` (decoding and caching a
+saved entry once without inserting a default), `with_decoded_attachment`, `set_attachment`,
+and `remove_attachment` work on the retained old player without touching the replacement.
+Cache writes, explicit writes and removals on the original are journaled to `host.transaction`,
+so an aborted transaction restores both holders together. The replacement is already assigned its final respawn level, including
+any `player_respawn_position` redirect. It has not been placed or published in the bulk
+attachment index yet. Requery after placement: a bulk write token for the old player is
+stale even though the replacement reuses that player's UUID.
+
+The same `OriginalPlayer<'_>` view exposes `uuid`, `position`, `dimension`, `level`,
+`health`, `experience`, `effects`, `persistent_data`, and `with_inventory` for the pre-copy
+player. `with_inventory` borrows an `InventoryView` using vanilla `Inventory` slot numbering:
+0–35 for the main inventory (0–8 hotbar), 36–39 for boots through helmet, 40 for the off
+hand, 41 for body, and 42 for saddle. Rust's borrow checker binds `event.original` to the
+callback lifetime, preventing the view from outliving `player_clone`. With no `player_clone`
+listener, no original player state is retained.

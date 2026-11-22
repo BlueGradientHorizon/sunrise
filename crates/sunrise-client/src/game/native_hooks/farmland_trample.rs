@@ -52,15 +52,11 @@ impl Game<'_> {
             let Some(living) = self.entity(entity).and_then(|e| self.living(e)) else {
                 return;
             };
-            let failures = mod_api::runtime::isolated_failures();
-            mod_api::run_transaction(self, |game, _| {
+            self.storage_transaction(|game, _| {
                 let mut cancel = false;
                 game.native_farmland_trample(living, pos, state, distance, &mut cancel);
-                let valid = |game: &Self| {
-                    mod_api::runtime::isolated_failures() == failures
-                        && game.entity(entity) == Some(living.entity())
-                        && still(game)
-                };
+                let valid =
+                    |game: &Self| game.entity(entity) == Some(living.entity()) && still(game);
                 (!cancel && game.apply_farmland_trample(player, trample, valid, true))
                     .then_some(())
                     .ok_or(())
@@ -137,6 +133,7 @@ mod tests {
 
     const FIELD: [i32; 3] = [1, 63, 1];
     const LISTENER_WRITE: [i32; 3] = [3, 63, 3];
+    const HEALTHY_WRITE: [i32; 3] = [4, 63, 4];
     const LANDING_Y: f64 = 63.9375;
     const LANDING: u32 = 20;
     const OTHER: u32 = 72;
@@ -324,6 +321,29 @@ mod tests {
         }
     }
 
+    struct AfterTrap;
+    #[mod_api::__subscriptions]
+    impl Hooks for AfterTrap {
+        fn farmland_trample(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut FarmlandTrampleEvent,
+        ) -> Flow {
+            assert!(!event.cancelled);
+            let level = event.entity.entity().level(host).unwrap();
+            let air = host.block_key("minecraft:air").unwrap();
+            let air = mod_api::BlockState::of(&host.block_states(), air, &[]).unwrap();
+            assert_eq!(level.block_state(host, LISTENER_WRITE), Some(air));
+            let stone = host.block_key("minecraft:stone").unwrap();
+            let stone = mod_api::BlockState::of(&host.block_states(), stone, &[]).unwrap();
+            assert_eq!(
+                level.set_block(host, HEALTHY_WRITE, stone, BlockUpdateFlags::KNOWN_SHAPE),
+                Ok(true)
+            );
+            Flow::Continue
+        }
+    }
+
     fn land(body: Body, choice: Choice) -> Vec<Moment> {
         land_with_later_packet(body, choice, None)
     }
@@ -336,11 +356,8 @@ mod tests {
                     body,
                     Body::Guest { sneaking: true } | Body::Cat { crouching: true }
                 ));
-        let converted = !cancelled
-            && !matches!(
-                choice,
-                Choice::Replace | Choice::ReplaceDuringLift | Choice::Trap
-            );
+        let converted =
+            !cancelled && !matches!(choice, Choice::Replace | Choice::ReplaceDuringLift);
         let damage = if matches!(body, Body::Cat { .. }) {
             0.0
         } else {
@@ -357,6 +374,9 @@ mod tests {
                 "gardener",
                 Box::new(Gardener(choice, trace.clone())),
             ));
+        }
+        if choice == Choice::Trap {
+            mods.push(ModEntry::new("after_trap", Box::new(AfterTrap)));
         }
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
@@ -504,6 +524,14 @@ mod tests {
                     air,
                     "listener writes rolled back"
                 );
+                if choice == Choice::Trap {
+                    let [wx, wy, wz] = HEALTHY_WRITE;
+                    assert_eq!(
+                        game.world.block(wx, wy, wz),
+                        reg.default_state("minecraft:stone").unwrap(),
+                        "the later listener's successful write still commits"
+                    );
+                }
                 assert_eq!(landing_y, y_after);
                 assert_eq!(game.mob_object(OTHER).unwrap().position.y, y_after);
                 assert_eq!(game.mob_object(OUTSIDE).unwrap().position.y, LANDING_Y);
@@ -730,7 +758,7 @@ mod tests {
                                     );
                                     mob.ai.goals = Default::default();
                                     mob.ai.targets = Default::default();
-                                    mob.on_ground = walking;
+                                    mob.ground.on_ground = walking;
                                     mob.velocity = velocity;
                                     let mut trample = None;
                                     let progress = ai::tick_until_consumption(
@@ -745,7 +773,7 @@ mod tests {
                                         matches!(progress, ai::TickProgress::Complete(true)),
                                         "walking={walking}: {progress:?}"
                                     );
-                                    assert!(mob.on_ground);
+                                    assert!(mob.ground.on_ground);
                                     assert_eq!(mob.position.y, LANDING_Y);
                                     assert_eq!(mob.fall_distance, 0.0);
                                     assert_eq!(mob.position.x > 1.5, walking);

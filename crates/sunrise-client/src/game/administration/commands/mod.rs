@@ -8,6 +8,8 @@ mod difficulty;
 mod display_names;
 pub(super) use data::{place_summoned, strip_finalize_tree};
 mod effects;
+#[cfg(test)]
+mod enchant_tests;
 pub(super) mod execute;
 pub(super) mod extra;
 mod give;
@@ -158,6 +160,58 @@ sunrise_mod_runtime::impl_attachment_lifetime!(OtherEntity);
 pub(super) fn err(key: &str, args: &[&dyn std::fmt::Display]) -> CommandError {
     CommandError::tr(key, args)
 }
+
+/// Format and validate the failure as the sink sees it, including any timestamp.
+/// Both sinks use the 512-container depth from `NbtAccounter`, even for trusted
+/// SystemChat. The command result is recorded before output.
+fn formatted_command_failure(message: Text, timestamp: Option<Text>) -> Text {
+    use serde_json::Value;
+    use sunrise_core::nbt;
+
+    let format = |message| {
+        let failure = Text::empty().append(message).with_color(text::RED);
+        match &timestamp {
+            Some(prefix) => prefix.clone().append(failure),
+            None => failure,
+        }
+    };
+    let output = format(message);
+    let serializes = || {
+        let component = output.component_view();
+        let mut limits = nbt::Limits::default();
+        // Check before recursing into the component converters. The writer checks
+        // the full tag, including synthetic list wrappers not present in the JSON.
+        let mut pending = vec![(component.as_ref(), 0)];
+        while let Some((node, depth)) = pending.pop() {
+            match node {
+                Value::Object(_) | Value::Array(_) if depth >= limits.max_depth => return false,
+                Value::Object(fields) => pending.extend(fields.values().map(|v| (v, depth + 1))),
+                Value::Array(values) => pending.extend(values.iter().map(|v| (v, depth + 1))),
+                _ => {}
+            }
+        }
+        let tag = if timestamp.is_some() {
+            sunrise_client::scoreboard::component_tag(&component)
+        } else {
+            sunrise_client::lan::data::component_nbt(&component)
+        };
+        if timestamp.is_some() {
+            // The saved component sits under three containers: the chunk root,
+            // the block_entities or Entities list, and the block or cart entry.
+            // NbtAccounter counts those before it reads LastOutput.
+            limits.max_depth = nbt::Limits::saved().max_depth - 3;
+        }
+        // Use the strict writer so overlong strings are refused, not saved empty.
+        // It also counts wrappers introduced when encoding heterogeneous lists.
+        nbt::write_network(&tag, limits).is_ok()
+    };
+    if serializes() {
+        output
+    } else {
+        format(Text::tr("command.failed", &[]))
+    }
+}
+
 /// A natural fence knot is only read by commands here: one that would move
 /// or remove it fails as a whole instead of skipping it, so it never
 /// reports a change it did not make (#13036).
@@ -342,16 +396,19 @@ impl Game<'_> {
         if self.command_source.is_some_and(|s| s.silent) {
             return;
         }
-        let message = Text::empty().append(message).with_color(text::RED);
         if let Some(block) = self.command_source.and_then(|s| s.block) {
-            self.command_block_output(block, message);
+            self.command_block_output(block, |timestamp| {
+                formatted_command_failure(message, Some(timestamp))
+            });
             return;
         }
         if let Some(cart) = self.command_source.and_then(|s| s.cart) {
-            self.cart_command_output(cart, message);
+            self.cart_command_output(cart, |timestamp| {
+                formatted_command_failure(message, Some(timestamp))
+            });
             return;
         }
-        self.system_message(message);
+        self.system_message(formatted_command_failure(message, None));
     }
     /// `sendSuccess(message, false)`: the source is told (when it takes
     /// success feedback), the operators are not.
@@ -555,20 +612,16 @@ impl Game<'_> {
                 None => Text::empty(),
             },
             // ItemEntity.getName: its CustomName, else the stack's item name
-            // (`getItemName`: `minecraft:item_name`, else the item's own).
+            // (`getItemName`: a mod item's Part, else the item's own `getName`).
             Target::Item(id) => {
                 if let Some(c) = self.persist_raw(id).and_then(|r| r.get("CustomName")) {
                     return sunrise_client::scoreboard::comp_text(
                         &sunrise_client::scoreboard::tag_to_json(c),
                     );
                 }
-                let stack = self.dropped.iter().find(|i| i.id == id).map(|i| &i.stack);
-                match stack.and_then(|s| s.item_name()) {
-                    Some(name) => Text::literal(name),
-                    None => {
-                        let item = stack.map(|s| s.item.to_string()).unwrap_or_default();
-                        Text::literal(self.pack.names.display_item(&item))
-                    }
+                match self.dropped.iter().find(|i| i.id == id) {
+                    Some(item) => self.stack_item_name_text(&item.stack),
+                    None => Text::literal(self.pack.names.display_item("")),
                 }
             }
             // FallingBlockEntity.getTypeName: `entity.minecraft.falling_block_type`
@@ -841,8 +894,10 @@ impl Game<'_> {
             }
             // A client's own copy of a row its server shows it.
             _ => self
-                .shown_remote_general(id as i32)
-                .map(|_| Target::General(id)),
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.general.rows.contains_key(&(id as i32)))
+                .then_some(Target::General(id)),
         }
     }
     /// `ServerLevel.getEntityOrPart` for a part: the `EnderDragonPart` of the
@@ -887,17 +942,8 @@ impl Game<'_> {
         Some(result)
     }
     pub(in crate::game) fn entity_tag_matches(&self, tag: &str, ty: &str) -> bool {
-        let path = self.options.resources.join(format!(
-            "data/minecraft/tags/entity_type/{}.json",
-            tag.trim_start_matches("minecraft:")
-        ));
-        serde_json::from_slice::<serde_json::Value>(&std::fs::read(path).unwrap_or_default())
-            .ok()
-            .is_some_and(|v| {
-                v["values"]
-                    .as_array()
-                    .is_some_and(|a| a.iter().any(|e| e.as_str() == Some(ty)))
-            })
+        let tag = sunrise_client::command::args::normalized(tag);
+        self.items().entity_type_tags.contains(&tag, ty)
     }
     /// EntityArgument.getEntities / getPlayers / getEntity / getPlayer.
     pub(super) fn entities(&mut self, ctx: &Context, name: &str, players: bool) -> R<Vec<Target>> {
@@ -1168,15 +1214,6 @@ impl Game<'_> {
         }
         Ok(count)
     }
-    /// ItemStack.getDisplayName of one `item` with no components.
-    pub(super) fn item_display_name(&self, item: &str) -> Text {
-        self.stack_display_name(&ItemStack {
-            item: item.into(),
-            count: 1,
-            damage: 0,
-            extra: None,
-        })
-    }
     /// `ItemStack.getDisplayName`: the hover name (custom name in italics,
     /// a written book's title, a potion's effect name, a lodestone compass, else the item's
     /// translated name) in brackets, in the rarity colour and showing the
@@ -1185,7 +1222,7 @@ impl Game<'_> {
         let item = &*s.item;
         let empty = item == "minecraft:air" || s.count == 0;
         let custom = s.data().and_then(|data| data.custom_name.as_ref());
-        let hover = sunrise_client::stations::hover_name_text(&self.pack.names, s);
+        let hover = self.stack_hover_name_text(s);
         // Component.empty().append(getHoverName()), italic for a custom name.
         let mut name = Text::empty().append(hover);
         if custom.is_some() {
@@ -1195,27 +1232,20 @@ impl Game<'_> {
         if empty {
             return wrapped;
         }
-        let mut rarity = self.item_rarity(item);
-        if !s.enchantments().is_empty() {
-            rarity = match rarity.as_str() {
-                "rare" => "epic".into(),
-                "epic" => rarity,
-                _ => "rare".into(),
-            };
-        }
-        let color = match rarity.as_str() {
-            "uncommon" => text::YELLOW,
-            "rare" => text::AQUA,
-            "epic" => text::LIGHT_PURPLE,
-            _ => text::WHITE,
-        };
+
         // HoverEvent.ShowItem: the count only when it is not one.
         let mut shown = serde_json::json!({"action": "show_item", "id": item});
         if s.count != 1 {
             shown["count"] = s.count.into();
         }
+        // ItemStackTemplate.fromNonEmptyStack keeps the stack's component patch.
+        if let Some(patch) = sunrise_client::item_data::encode_components(s, self.items())
+            && let Ok(components) = sunrise_core::json_nbt::tag_to_json(&patch)
+        {
+            shown["components"] = components;
+        }
         wrapped
-            .with_color(color)
+            .with_color(self.stack_rarity_color(s))
             .with_component_fields(vec![("hover_event".into(), shown)])
     }
     fn cmd_give(&mut self, ctx: &Context) -> R<i32> {
@@ -1230,6 +1260,12 @@ impl Game<'_> {
             Some(Err(e)) => return Err(CommandError::new(Text::literal(e))),
             None => (0, None),
         };
+        let prototype = ItemStack {
+            item: id.as_str().into(),
+            count: 1,
+            damage,
+            extra,
+        };
         let count = Self::int(ctx, "count").unwrap_or(1);
         let targets = self.entities(ctx, "targets", true)?;
         let max_stack = self.items().get(&id).map_or(64, |i| i.max_stack) as i32;
@@ -1241,7 +1277,7 @@ impl Game<'_> {
                 "commands.give.failed.toomanyitems",
                 &[
                     Text::literal(limit.to_string()),
-                    self.item_display_name(&id),
+                    self.stack_display_name(&prototype),
                 ],
             )));
         }
@@ -1272,10 +1308,8 @@ impl Game<'_> {
                     remaining -= size;
                     let rest = g.give_acting_stack(
                         ItemStack {
-                            item: id.as_str().into(),
                             count: size as u32,
-                            damage,
-                            extra: extra.clone(),
+                            ..prototype.clone()
                         },
                         uuid,
                     );
@@ -1291,13 +1325,7 @@ impl Game<'_> {
                 }
             });
         }
-        // The prototype stack: one item.
-        let name = self.stack_display_name(&ItemStack {
-            item: id.as_str().into(),
-            count: 1,
-            damage,
-            extra: extra.clone(),
-        });
+        let name = self.stack_display_name(&prototype);
         let message = if targets.len() == 1 {
             Text::translate(
                 "commands.give.success.single",
@@ -1354,22 +1382,9 @@ impl Game<'_> {
                     return;
                 }
             }
-            let motion = sunrise_client::motion::BodyMotion {
-                world: &g.world,
-                collision: g.collision,
-                facts: g.res.facts(),
-                blocks: Some(&g.res.motion().blocks),
-                context: &g.loop_context,
-                side: None,
-            };
             target_entity_mut!(g, t, e => {
                 e.velocity_mut().y = 0.0;
-                let (feet, bounds) = (e.position(), e.bounds());
-                if let Some(ground) = e.ground_state_mut() {
-                    ground.on_ground = true;
-                    motion.update_support(ground, feet, bounds, None,
-                        sunrise_world::collision_context::CollisionContext::empty(false), None);
-                } else {
+                if matches!(e.update_retained_ground(&g.world, g.collision, &world_items!(g).entity_type_tags, true, None), Ok(false)) {
                     e.set_on_ground(true);
                 }
             });
@@ -1413,6 +1428,37 @@ impl Game<'_> {
         }
     }
 
+    /// `ServerPlayer.teleport` via `ServerGamePacketListenerImpl.teleport`: place the acting
+    /// player's body and send the teleport at the end of the guest turn. Returns its old feet
+    /// position, without adding command-only chunk holds or notifications.
+    pub(super) fn place_player_teleport_in_level(
+        &mut self,
+        at: Vec3,
+        rotation: Option<[f32; 2]>,
+        relative: [bool; 3],
+    ) -> Option<[f64; 3]> {
+        self.stop_riding();
+        let from = self.player.as_mut().map(|p| {
+            let from = [p.position.x, p.position.y, p.position.z];
+            p.position = at;
+            p.velocity = teleport_velocity(p.velocity, relative, p.fall_flying);
+            p.teleported = true;
+            p.teleported_delta = relative;
+            from
+        });
+        self.previous_position = at;
+        if let Some([yaw, pitch]) = rotation {
+            if yaw.is_finite() {
+                self.yaw = yaw;
+            }
+            if !pitch.is_nan() {
+                // PositionMoveRotation.calculateAbsolute clamps pitch before setXRot.
+                self.pitch = pitch.clamp(-90.0, 90.0);
+            }
+        }
+        from
+    }
+
     /// `Entity.teleportSameDimension`: shared entity/passenger placement.
     /// Returns its old position for the command caller's completion notification.
     pub(super) fn place_teleport_in_level(
@@ -1432,7 +1478,11 @@ impl Game<'_> {
         // Entity.teleportSameDimension teleports the riders before their vehicle.
         let riding = self.teleport_riders_first(t, v, relative, requested.filter(|_| turn_riders));
         // PositionMoveRotation.calculateAbsolute clamps pitch before setXRot.
-        let rotation = rotation.map(|[yaw, pitch]| [yaw, pitch.clamp(-90.0, 90.0)]);
+        let rotation = if matches!(t, Target::Player | Target::Guest(_)) {
+            requested // Player placement applies the clamp itself.
+        } else {
+            requested.map(|[yaw, pitch]| [yaw, pitch.clamp(-90.0, 90.0)])
+        };
         match t {
             Target::General(id) => {
                 if let Some(entity) = self.entity(id) {
@@ -1457,40 +1507,21 @@ impl Game<'_> {
                 });
             }
             Target::Player => {
-                // ServerPlayer.teleport: removeVehicle before placing the player.
-                self.stop_riding();
+                let from = self.place_player_teleport_in_level(v, rotation, relative);
                 // A server's player teleported within their level is placed
                 // there at once: the arrival they were waiting for elsewhere
                 // in it (whose chunks lose their tickets) is abandoned.
                 if let Some(conn) = self.lan_acting {
                     self.hold_for_chunks(conn, v);
                 }
-                let from = self
-                    .player
-                    .as_ref()
-                    .map(|p| [p.position.x, p.position.y, p.position.z]);
-                if let Some(p) = self.player.as_mut() {
-                    p.position = v;
-                    p.velocity = teleport_velocity(p.velocity, relative, p.fall_flying);
-                    if !p.fall_flying {
-                        p.ground.on_ground = true;
-                    }
-                    // The end of a guest's turn sends the position packet
-                    // with the command's relatives, even without a move.
-                    p.teleported = true;
-                    p.teleported_delta = relative;
-                }
-                self.previous_position = v;
-                if let Some([yaw, pitch]) = rotation {
-                    if yaw.is_finite() {
-                        self.yaw = yaw;
-                    }
-                    if !pitch.is_nan() {
-                        self.pitch = entity_pitch(pitch);
-                    }
+                // TeleportCommand.performTeleport grounds a player unless they're gliding.
+                if let Some(p) = self.player.as_mut()
+                    && !p.fall_flying
+                {
+                    p.ground.on_ground = true;
                 }
                 // A server player's teleport is told to the mods once their
-                // move is in the hub (`leave_guest`).
+                // move is in the hub (the put-back at the end of `guest_turn`).
                 if let (Some(conn), Some(uuid), Some(name), Some(from)) = (
                     self.lan_acting,
                     self.lan_acting_uuid,
@@ -1518,7 +1549,7 @@ impl Game<'_> {
                     m.ai.nav.stop();
                     m.velocity = teleport_velocity(m.velocity, relative, m.extra.fall_flying);
                     if !m.extra.fall_flying {
-                        m.on_ground = true;
+                        m.ground.on_ground = true;
                     }
                     sunrise_client::mobs::living::teleports::snap_to(m, v);
                     m.needs_sync = true;
@@ -2280,7 +2311,7 @@ impl Game<'_> {
                     && !m.removed
                     && self.died.insert(id)
                 {
-                    self.mob_died(&m);
+                    self.mob_die(&m);
                 }
             }
             Target::Item(id) => {
@@ -4424,6 +4455,7 @@ capabilities = ["registries"]
                     nodes: vec![],
                     args,
                     command: None,
+                    executor: None,
                     range: (0, 0),
                     child: None,
                     literals: vec![],
@@ -4693,6 +4725,7 @@ mod query_feedback_tests {
                     nodes: Vec::new(),
                     args: Vec::new(),
                     command: None,
+                    executor: None,
                     range: (0, 0),
                     child: None,
                     literals: vec!["gamerule".into(), input.into()],
@@ -4832,146 +4865,75 @@ mod forced_respawn_tests {
     #[test]
     #[ignore = "daily"]
     fn overworld_spawnpoint_is_validated_at_both_player_blocks() {
-        use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-        use std::sync::Arc;
+        use crate::game::{native_guest_turn_tests::with_guests, respawn_anchor::RespawnConfig};
         use sunrise_client::chunk::Chunk;
-        use sunrise_core::geometry::Vec3;
-        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
-            None,
-        )
-        .unwrap();
-        game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(5.5, 64.0, 5.5))
-                .unwrap(),
-        );
-        game.build_registries();
-        game.set_allow_commands(true);
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.level.world_spawn = Some([0, 80, 0]);
-        let registry = game.pack.assets.registry;
-        let air = registry.default_state("minecraft:air").unwrap();
-        // Liquid is a block property: aquatic plants such as kelp still permit
-        // a forced point, while a bubble column does not, at feet or head.
-        for (block, allowed) in [
-            ("air", true),
-            ("water", false),
-            ("lava", false),
-            ("bubble_column", false),
-            ("kelp", true),
-            ("stone", false),
-        ] {
-            let state = registry
-                .default_state(&format!("minecraft:{block}"))
-                .unwrap();
-            for height in [0, 1] {
-                game.world.set(5, 64, 5, air).unwrap();
-                game.world.set(5, 65, 5, air).unwrap();
-                game.world.set(5, 64 + height, 5, state).unwrap();
-                assert!(game.run_command("spawnpoint @s 5 64 5"));
-                let config = game
-                    .respawn_config
-                    .expect("Overworld commands must retain a forced configuration");
-                assert!(config.forced);
-                assert_eq!(config.pos, [5, 64, 5]);
-                let actual = game.resolve_server_respawn(config, true);
-                assert_eq!(actual.is_some(), allowed, "{block} at height {height}");
-                assert_eq!(game.respawn_config.is_some(), allowed);
-                assert_eq!(game.level.world_spawn, Some([0, 80, 0]));
-                if let Some((at, yaw, pitch)) = actual {
-                    assert_eq!(at, Vec3::new(5.5, 64.1, 5.5));
-                    assert_eq!(yaw, 0.0);
-                    assert_eq!(pitch, 0.0);
-                }
-            }
-        }
-    }
 
-    #[test]
-    #[ignore = "daily"]
-    fn a_forced_spawnpoint_on_a_respawn_anchor_still_depletes_with_its_sound() {
-        // PlayerList.respawn: the deplete sound has no `forced` test, so a point
-        // that `/spawnpoint` kept (a forced anchor config) whooshes on every
-        // respawn at it, while the anchor keeps its charges
-        // (ServerPlayer.findRespawnAndUseSpawnBlock only consumes one when the
-        // config is not forced).
-        use crate::game::{
-            Dim, native_entity_refs::tests::with_game, respawn_anchor::RespawnConfig,
-        };
-        use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
-        with_game(|game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let registry = game.pack.assets.registry;
-            let stone = registry.default_state("minecraft:stone").unwrap();
-            for x in 0..16 {
-                for z in 0..16 {
-                    game.world.set(x, 99, z, stone).unwrap();
+        mod_platform::testing::with_mods(Vec::new().into(), || {
+            with_guests(|game| {
+                game.build_registries();
+                for x in -2..=2 {
+                    for z in -2..=2 {
+                        game.streaming
+                            .insert_remote(&mut game.world, Chunk::empty(x, z));
+                    }
                 }
-            }
-            game.dim = Dim::Nether;
-            let mut anchor = registry
-                .state(registry.default_state("minecraft:respawn_anchor").unwrap())
-                .unwrap()
-                .clone();
-            anchor.properties.insert("charges".into(), "2".into());
-            let anchor = registry.resolve(&anchor).unwrap();
-            let pos = [5, 100, 5];
-            game.world.set(pos[0], pos[1], pos[2], anchor).unwrap();
-            game.audio.capture = Some(Vec::new());
-            let config = RespawnConfig::forced(Dim::Nether, pos, 0.0, 0.0);
-            game.respawn_config = Some(config);
-            game.resolve_server_respawn(config, true)
-                .expect("a forced anchor keeps the point");
-            // The whoosh is the anchor's own block position, at full volume and pitch.
-            let played = game.audio.capture.take().expect("capture");
-            let sound = played
-                .iter()
-                .find(|s| s.event == "minecraft:block.respawn_anchor.deplete")
-                .expect("the deplete sound plays for a forced anchor too");
-            assert_eq!(sound.position, [5.0, 100.0, 5.0]);
-            assert_eq!((sound.volume, sound.pitch), (1.0, 1.0));
-            assert_eq!(
-                game.audio
-                    .heard
-                    .get("minecraft:block.respawn_anchor.deplete"),
-                Some(&1)
-            );
-            assert_eq!(
-                game.world.block(pos[0], pos[1], pos[2]),
-                anchor,
-                "a forced config does not use a charge"
-            );
-            assert_eq!(game.respawn_config, Some(config));
+                game.level.world_spawn = Some([0, 80, 0]);
+                game.level.world_spawn_angle = [-30.0, -5.0];
+                let registry = game.pack.assets.registry;
+                let air = registry.default_state("minecraft:air").unwrap();
+                // Liquid is a block property: aquatic plants such as kelp still permit
+                // a forced point, while a bubble column does not, at feet or head.
+                for (block, allowed) in [
+                    ("air", true),
+                    ("water", false),
+                    ("lava", false),
+                    ("bubble_column", false),
+                    ("kelp", true),
+                    ("stone", false),
+                ] {
+                    let state = registry
+                        .default_state(&format!("minecraft:{block}"))
+                        .unwrap();
+                    for height in [0, 1] {
+                        game.world.set(5, 64, 5, air).unwrap();
+                        game.world.set(5, 65, 5, air).unwrap();
+                        game.world.set(5, 64 + height, 5, state).unwrap();
+                        assert!(
+                            game.as_console(|g| g.run_command("spawnpoint guest12 5 64 5 45 10"))
+                        );
+                        let config = game
+                            .command_guest(12)
+                            .unwrap()
+                            .respawn_elsewhere
+                            .as_ref()
+                            .and_then(RespawnConfig::from_saved)
+                            .unwrap();
+                        assert!(config.forced);
+                        assert_eq!(config.pos, [5, 64, 5]);
+                        game.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                            g.dead = true;
+                            g.health = 0.0;
+                        });
+                        game.guest_respawn(12);
+                        let guest = game.command_guest(12).unwrap();
+                        assert!(!guest.dead, "{block} at height {height}");
+                        assert_eq!(
+                            guest.respawn_elsewhere.is_some(),
+                            allowed,
+                            "{block} at height {height}"
+                        );
+                        assert_eq!(game.level.world_spawn, Some([0, 80, 0]));
+                        if allowed {
+                            assert_eq!(guest.position, [5.5, 64.1, 5.5]);
+                            assert_eq!([guest.yaw, guest.pitch], [45.0, 10.0]);
+                        } else {
+                            // The missing point must not supply the fallback's facing.
+                            assert_eq!([guest.yaw, guest.pitch], [-30.0, -5.0]);
+                            assert_eq!(game.level.world_spawn_angle, [-30.0, -5.0]);
+                        }
+                    }
+                }
+            });
         });
     }
 }

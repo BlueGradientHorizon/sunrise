@@ -295,6 +295,20 @@ impl MobWorld<'_> {
     pub fn has_tag(&self, tag: &str, block: &str) -> bool {
         self.block_tags.get(tag).is_some_and(|s| s.contains(block))
     }
+    /// `EntityType.is`: membership in the owning side's bound tags.
+    pub fn entity_has(&self, tag: &str, id: &str) -> bool {
+        self.items
+            .is_some_and(|items| items.entity_type_tags.contains(tag, id))
+    }
+    /// Membership in a prebound gameplay tag, indexed by the mob type's registry slot.
+    #[inline]
+    pub fn entity_tag_bit(&self, kind: &super::MobType, bit: u8) -> bool {
+        self.items.is_some_and(|items| {
+            items
+                .entity_type_tags
+                .has_bit(kind.flags.entity_tag_slot, bit)
+        })
+    }
     /// The state's [`crate::items::BlockTagFlags`]: 0 when this view carries
     /// no table.
     #[inline]
@@ -937,7 +951,7 @@ impl TestResources {
         let facts = BlockFacts::load(root, registry).unwrap();
         let motion = crate::motion::MotionResources::load(root, &assets).unwrap();
         let source = sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf());
-        let data = super::MobData::load(&source, &facts);
+        let data = super::MobData::load(&source, facts.states.len(), false).unwrap();
         let types = super::MobTypes::load(root).unwrap();
         let biomes = crate::biome::Biomes::load(&source).unwrap();
         let defaults = sunrise_world::item_defaults::read(root).unwrap();
@@ -982,6 +996,34 @@ impl TestResources {
             .as_ref()
     }
 }
+/// A built test world with the generic damage key installed for its mocked contact Part.
+#[cfg(test)]
+pub(crate) fn with_built_contact_test_world(
+    build: impl FnOnce(&mut crate::world::World, &sunrise_world::registry::BlockRegistry),
+    f: impl FnOnce(&MobWorld<'_>, &super::MobTypes, mod_api::DamageTypeKey),
+) -> bool {
+    struct Contact(std::sync::Arc<std::sync::OnceLock<mod_api::DamageTypeKey>>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Contact {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            let requested = r.damage_type_key("minecraft:generic");
+            assert_eq!(*self.0.get_or_init(|| requested), requested);
+        }
+    }
+    let key = std::sync::Arc::new(std::sync::OnceLock::new());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "contact",
+        Box::new(Contact(key.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+        with_built_test_world(&[], build, |world, types| {
+            f(world, types, *key.get().unwrap())
+        })
+    })
+}
+
 /// Runs `f` over a fresh `World` (`build` places its blocks) on `resources`.
 #[cfg(test)]
 fn run_test_world(
@@ -1009,7 +1051,7 @@ fn run_test_world(
     build(&mut world, registry);
     let lid_openers = std::collections::HashMap::new();
     let w = MobWorld {
-        side: sunrise_client::motion::dry_side(),
+        side: &crate::motion::surface::DrySide(&motion.health.damage),
         mob_maps: sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
         goal_host: None,
         teams: Default::default(),
@@ -1068,6 +1110,7 @@ fn run_test_world(
         asks_baby_spawn: false,
         border: None,
         section_writer: None,
+        trading_players: None,
     };
     f(&w, types);
     true

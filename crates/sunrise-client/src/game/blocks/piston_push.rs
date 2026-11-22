@@ -433,7 +433,6 @@ impl Game<'_> {
             }
             self.move_pushed_body(
                 lid.mover(),
-                lid.shulker(),
                 target,
                 body,
                 movement,
@@ -462,7 +461,7 @@ impl Game<'_> {
             .is_some_and(|p| !p.spectator && p.bounds().intersects(area))
             && !self.lid_spares(lid, root, MoveWho::Player, false)
         {
-            let _ = self.move_local_player(lid.mover(), movement);
+            let _ = self.move_local_player(lid.mover(), movement, false);
         }
         for boat in boats {
             let Some(target @ MoveWho::Entity(handle)) = self.resolve_push_target(boat) else {
@@ -474,15 +473,7 @@ impl Game<'_> {
             }
             let no_physics = self.pushed_no_physics(target);
             if !self.lid_spares(lid, root, target, no_physics) {
-                self.move_pushed_body(
-                    lid.mover(),
-                    lid.shulker(),
-                    target,
-                    body,
-                    movement,
-                    no_physics,
-                    &mut None,
-                );
+                self.move_pushed_body(lid.mover(), target, body, movement, no_physics, &mut None);
             }
         }
     }
@@ -585,13 +576,30 @@ impl Game<'_> {
         }
     }
 
-    /// `Entity.move(mover, movement)` for one body: a lid's push (`shulker` is the shulker whose
-    /// lid it is, if one) or a mod's `move_by`. The collision scan stops it at the blocks, the
-    /// world border and the entities it collides with, it steps up and its ground flag follows.
+    fn pushed_living_collision(
+        &self,
+        target: MoveWho,
+    ) -> Option<(
+        CollisionContext<'_>,
+        sunrise_client::collisions::PowderSnowSubject<'_>,
+    )> {
+        match target {
+            MoveWho::Entity(EntityHandle::Mob(i)) => {
+                Some(self.mobs[i].support_collision(Some(&self.items().entity_type_tags)))
+            }
+            MoveWho::Entity(EntityHandle::ArmorStand(i)) => {
+                Some(self.armor_stands[i].support_collision())
+            }
+            _ => None,
+        }
+    }
+
+    /// `Entity.move(mover, movement)` for a lid's push or a mod's `move_by`.
+    /// The collision scan stops the body at the blocks, border and other bodies;
+    /// it steps up and its ground flag follows.
     fn move_pushed_body(
         &mut self,
         mover: MoverType,
-        shulker: Option<u32>,
         target: MoveWho,
         body: Body,
         movement: Vec3,
@@ -599,12 +607,12 @@ impl Game<'_> {
         stand_grid: &mut Option<sunrise_client::entities::ObstacleGrid>,
     ) {
         if target == MoveWho::Player {
-            let _ = self.move_local_player(mover, movement);
+            let _ = self.move_local_player(mover, movement, false);
             return;
         }
         // Armor stands arm their gate in their own collided shove.
         if let MoveWho::Entity(EntityHandle::ArmorStand(i)) = target {
-            self.shoves_armor_stand(i, mover, shulker, movement, stand_grid);
+            self.shoves_armor_stand(i, mover, movement, stand_grid);
             return;
         }
         let Some(selected) = self.stable_push_target(target) else {
@@ -642,12 +650,13 @@ impl Game<'_> {
             }
             _ => self.pushed_entity_colliders(target),
         };
+        let collision = self.pushed_living_collision(target);
         let Ok(moved) = pushed_movement(
             &mut gate,
             SceneCollisions {
                 world: &self.world,
                 binding: self.collision,
-                subject: None,
+                subject: collision.map(|(_, subject)| subject),
             },
             self.border.geometry(),
             [body.position.x, body.position.z],
@@ -656,7 +665,7 @@ impl Game<'_> {
             // `Entity.move` steps and reads the ground flag.
             body.step_height,
             body.on_ground,
-            None,
+            collision.map(|(context, _)| context),
             &entities,
         ) else {
             return;
@@ -747,7 +756,7 @@ impl Game<'_> {
                 EntityHandle::ArmorStand(i) => Some(self.armor_stands[i].velocity),
                 _ => None,
             };
-            self.move_pushed_body(cause, None, target, body, movement, false, &mut None);
+            self.move_pushed_body(cause, target, body, movement, false, &mut None);
             if let Some(velocity) = stand
                 && let Some(MoveWho::Entity(EntityHandle::ArmorStand(i))) =
                     self.resolve_push_target(selected)
@@ -762,37 +771,87 @@ impl Game<'_> {
         }
     }
 
-    /// The local player's ordinary `Entity.move(mover, …)`: the collision scan stops
-    /// and steps it, and the end of the move updates its ground, fall and velocity state.
+    /// `Entity.move(mover, …)` for the player in place, with `LocalPlayer.move`'s
+    /// auto-jump tail where the caller uses it (riptide). An acting guest's landing
+    /// settles while the original turn and resolved collision are still in place.
     pub(in crate::game) fn move_local_player(
         &mut self,
         mover: MoverType,
         movement: Vec3,
+        auto_jump: bool,
     ) -> sunrise_client::Result<Option<Vec3>> {
-        let entities = self.entity_collisions(Mover::Player);
-        let section_scope = self.player_section_scope();
-        let Some(player) = self.player.as_mut() else {
+        use sunrise_client::landing::PlayerLandingPause;
+
+        let Some(player) = self.player.as_ref() else {
             return Ok(None);
         };
-        let side = game_side!(self);
-        let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
-        let before = player.position;
-        MotionWorld {
-            side: &side,
-            entities: &entities,
-            player,
-            scene: &mut self.world,
-            assets: &self.pack.assets,
-            collision_binding: self.collision,
-            resources: self.motion,
-            health: &self.health_resources,
-            loop_context: &self.loop_context,
-            damage_hooks: &self.damage_hooks,
-            tag_items: Some(world_items!(self)),
-            block_registries: Some(&self.pack.block_registries),
+        let (before, id, conn, dim) =
+            (player.position, player.entity_id, self.lan_acting, self.dim);
+        // A guest landing can call Game in between these borrows. Rebind the
+        // original body and its level, or abandon the rest of the old move.
+        macro_rules! motion_phase {
+            ($world:ident, $body:expr) => {{
+                if self.lan_acting != conn || self.dim != dim {
+                    return Ok(None);
+                }
+                let entities = self.entity_collisions(Mover::Player);
+                let section_scope = self.player_section_scope();
+                let Some(player) = self.player.as_mut().filter(|p| p.entity_id == id) else {
+                    return Ok(None);
+                };
+                let side = game_side!(self);
+                let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
+                let mut $world = MotionWorld {
+                    side: &side,
+                    entities: &entities,
+                    player,
+                    scene: &mut self.world,
+                    assets: &self.pack.assets,
+                    collision_binding: self.collision,
+                    resources: self.motion,
+                    health: &self.health_resources,
+                    loop_context: &self.loop_context,
+                    damage_hooks: &self.damage_hooks,
+                    tag_items: Some(world_items!(self)),
+                    block_registries: Some(&self.pack.block_registries),
+                };
+                $body
+            }};
         }
-        .move_with_cause(mover, movement)?;
-        Ok(Some(player.position.subtract(before)))
+        let pause = motion_phase!(
+            world,
+            world.move_ordinary(
+                &mut MoveGate::new(),
+                mover,
+                movement,
+                auto_jump,
+                conn.is_some(),
+            )
+        )?;
+        if let Some(pause) = pause {
+            let landing = match pause.landing {
+                PlayerLandingPause::Trample(trample) => {
+                    self.trample_farmland(id as u32, true, trample);
+                    motion_phase!(world, world.finish_trample_fall(trample))?
+                }
+                PlayerLandingPause::Damage(landing) => Some(landing),
+            };
+            if let Some(landing) = landing {
+                if self.finish_guest_damage_before_resume().is_err() {
+                    return Ok(None);
+                }
+                motion_phase!(world, {
+                    world.finish_guest_landing(landing)?;
+                    pause.movement.finish(&mut world)
+                })?;
+            } else {
+                motion_phase!(world, pause.movement.finish(&mut world))?;
+            }
+        }
+        Ok(self
+            .player
+            .as_ref()
+            .map(|player| player.position.subtract(before)))
     }
 
     fn push_for_piston(
@@ -1295,7 +1354,7 @@ impl Game<'_> {
         // check, restitution and block speed).
         if target == MoveWho::Player {
             with_piston_noclip(piston_direction, || {
-                let _ = self.move_local_player(cause, movement);
+                let _ = self.move_local_player(cause, movement, false);
             });
             let after = self.player.as_ref().map_or(before, |p| p.bounds());
             self.piston_block_triggers(before, after);
@@ -1369,12 +1428,15 @@ impl Game<'_> {
         };
         let entities = self.pushed_entity_colliders(target);
         with_piston_noclip(piston_direction, || {
+            let collision = tnt
+                .map(|(_, _, subject, context)| (context, subject))
+                .or_else(|| self.pushed_living_collision(target));
             let resolved = pushed_movement(
                 &mut gate,
                 SceneCollisions {
                     world: &self.world,
                     binding: self.collision,
-                    subject: tnt.as_ref().map(|t| t.2),
+                    subject: collision.map(|(_, subject)| subject),
                 },
                 self.border.geometry(),
                 at,
@@ -1382,7 +1444,7 @@ impl Game<'_> {
                 limited,
                 step_height,
                 on_ground,
-                tnt.as_ref().map(|t| t.3),
+                collision.map(|(context, _)| context),
                 &entities,
             )
             .unwrap_or(Vec3::ZERO);
@@ -1498,6 +1560,10 @@ impl Game<'_> {
             }
             return self.resolve_push_target(selected);
         }
+        // Stands retain support, but do not use nonliving restitution.
+        if matches!(handle, EntityHandle::ArmorStand(_)) {
+            return Some(target);
+        }
         let can_simulate = match handle {
             EntityHandle::Boat(i) => self.boat_can_simulate_movement(self.boats[i].id),
             EntityHandle::Item(_)
@@ -1599,13 +1665,36 @@ impl Game<'_> {
             sunrise_world::collision_context::CollisionContext<'static>,
         )>,
     ) {
+        use sunrise_world::entity_move::different;
         let MoveWho::Entity(handle) = target else {
             return;
         };
+        // The controlled-mob path owns the ground flag and supporting block.
+        // Horizontal collision does not depend on movement authority.
+        if let EntityHandle::Mob(i) = handle {
+            self.mobs[i].ground.horizontal_collision =
+                different(wanted.x, moved.x) || different(wanted.z, moved.z);
+            return;
+        }
         let authoritative = match handle {
             EntityHandle::Boat(i) => self.boat_can_simulate_movement(self.boats[i].id),
             _ => !self.options.execution_role.is_client() && self.remote.is_none(),
         };
+        if let EntityHandle::ArmorStand(i) = handle {
+            let stand = &mut self.armor_stands[i];
+            stand.ground.horizontal_collision =
+                different(wanted.x, moved.x) || different(wanted.z, moved.z);
+            if authoritative || wanted.y.abs() > 0.0 {
+                let _ = stand.update_retained_ground(
+                    &self.world,
+                    self.collision,
+                    &world_items!(self).entity_type_tags,
+                    wanted.y < 0.0 && wanted.y != moved.y,
+                    Some(moved),
+                );
+            }
+            return;
+        }
         let motion = sunrise_client::motion::BodyMotion {
             world: &self.world,
             collision: self.collision,
@@ -1615,34 +1704,42 @@ impl Game<'_> {
             side: None,
         };
         with_entity_mut!(self, handle, entity => {
-                let (at, bounds, id) = (entity.position(), entity.bounds(), entity.id());
-                let (subject, context) = tnt.map_or_else(
-                    || (None, if matches!(handle, EntityHandle::Item(_)) {
+            let (at, bounds, id) = (entity.position(), entity.bounds(), entity.id());
+            let (subject, context) = tnt.map_or_else(
+                || {
+                    let context = if matches!(handle, EntityHandle::Item(_)) {
                         sunrise_world::collision_context::CollisionContext::for_entity(
                             sunrise_world::collision_context::CollisionEntity {
                                 identity: sunrise_world::entity_obstruction::EntityIdentity(u64::from(id)),
                                 kind: sunrise_world::collision_context::EntityContextKind::Item,
-                                y: at.y, descending: false, main_hand: None,
-                            }, false,
+                                y: at.y,
+                                descending: false,
+                                main_hand: None,
+                            },
+                            false,
                         )
-                    } else { sunrise_client::motion::BodyMotion::entity_context(id, at) }),
-                    |(subject, context)| (Some(subject), context),
+                    } else {
+                        sunrise_client::motion::BodyMotion::entity_context(id, at)
+                    };
+                    (None, context)
+                },
+                |(subject, context)| (Some(subject), context),
+            );
+            if let Some(ground) = entity.ground_state_mut() {
+                motion.record_move(
+                    sunrise_client::motion::BodyCollision {
+                        footprint: (at, bounds),
+                        movement: (wanted, moved),
+                        authoritative,
+                        context,
+                        subject,
+                    },
+                    ground,
                 );
-                if let Some(ground) = entity.ground_state_mut() {
-                    motion.record_move(
-            sunrise_client::motion::BodyCollision {
-                footprint: (at, bounds),
-                movement: (wanted, moved),
-                authoritative,
-                context,
-                subject,
-            },
-            ground,
-        );
-                } else {
-                    entity.set_piston_on_ground(wanted.y < 0.0 && wanted.y != moved.y);
-                }
-            });
+            } else {
+                entity.set_piston_on_ground(wanted.y < 0.0 && wanted.y != moved.y);
+            }
+        });
     }
 
     /// `Entity.limitPistonMovement`: each axis may travel at most 0.51 blocks
@@ -1684,7 +1781,7 @@ impl Game<'_> {
             MoveWho::Guest(conn) => self.lan.as_mut().and_then(|host| {
                 host.hub.update_guest(conn, |g| {
                     // The body and the hub's copy of its position move together:
-                    // `leave_guest` writes the body back over the hub's.
+                    // the put-back at the end of `guest_turn` writes the body back over the hub's.
                     for (slot, delta) in g.position.iter_mut().zip(movement.components()) {
                         *slot += delta;
                     }
@@ -2493,9 +2590,9 @@ mod h255_mob_piston_ground_tests {
             let vertical = mob_index(game, 3);
             let id = game.mobs[main].id;
             let age = game.mobs[main].age;
-            assert!(game.mobs[main].on_ground);
-            assert!(game.mobs[idle].on_ground);
-            assert!(!game.mobs[vertical].on_ground);
+            assert!(game.mobs[main].ground.on_ground);
+            assert!(game.mobs[idle].ground.on_ground);
+            assert!(!game.mobs[vertical].ground.on_ground);
             assert_eq!(game.mobs[main].position, Vec3::new(4.5, 202.0, 4.5));
             assert_eq!(
                 game.res
@@ -2537,7 +2634,7 @@ mod h255_mob_piston_ground_tests {
                 assert!(game.mobs[main].no_ai);
                 assert_eq!(game.mobs[main].health, 10.0);
                 assert_eq!(game.mobs[main].velocity, Vec3::ZERO);
-                if game.mobs[main].on_ground {
+                if game.mobs[main].ground.on_ground {
                     failures.push(format!("tick{tick}: actual Mob still grounded"));
                 }
                 if game.mobs[main].position != Vec3::new(5.0, 202.0, 4.5) {
@@ -2551,12 +2648,12 @@ mod h255_mob_piston_ground_tests {
                     failures.push(format!("tick{tick}: saved ground is stale"));
                 }
                 assert_eq!(game.mobs[idle].position, Vec3::new(4.5, 202.0, 12.5));
-                assert!(game.mobs[idle].on_ground);
+                assert!(game.mobs[idle].ground.on_ground);
                 assert_eq!(
                     game.mobs[vertical].position,
                     Vec3::new(12.5, if tick == 1 { 202.51 } else { 203.01 }, 12.5)
                 );
-                assert!(!game.mobs[vertical].on_ground);
+                assert!(!game.mobs[vertical].ground.on_ground);
             }
             assert!(
                 failures.is_empty(),
@@ -2570,7 +2667,7 @@ mod h255_mob_piston_ground_tests {
         assert!(game.run_command(&format!("summon {kind} {x} 202 4.5 {{UUID:[I;255,1,0,{n}],Health:10f,NoAI:{}b,NoGravity:1b,OnGround:1b,Motion:[0d,0d,0d]{tame}}}",i32::from(no_ai))));
         let i = mob_index(game, n);
         assert_eq!(game.mobs[i].no_ai, no_ai);
-        assert!(game.mobs[i].on_ground);
+        assert!(game.mobs[i].ground.on_ground);
         assert_eq!(game.uuid_for(game.mobs[i].id), [255, 1, 0, n]);
         i
     }
@@ -2580,7 +2677,7 @@ mod h255_mob_piston_ground_tests {
             m.bounds(),
             [m.position.x, m.position.z],
             m.kind.step_height as f32,
-            m.on_ground,
+            m.ground.on_ground,
         );
         // Mob owns its actual piston budget; the map is for other entity kinds.
         game.move_pushed(
@@ -2689,7 +2786,7 @@ mod h255_mob_piston_ground_tests {
         with_game(|game| {
             let i = added_mob(game, 20, "horse", true, 8.5);
             added_push(game, i, Vec3::ZERO);
-            assert!(game.mobs[i].on_ground);
+            assert!(game.mobs[i].ground.on_ground);
             assert_eq!(game.mobs[i].position, Vec3::new(8.5, 202.0, 4.5));
             game.mobs[i].set_saddle(Some(sunrise_client::items::ItemStack::new(
                 "minecraft:saddle",
@@ -2698,7 +2795,10 @@ mod h255_mob_piston_ground_tests {
             assert!(game.run_command("ride @s mount 000000ff-0000-0001-0000-000000000014"));
             assert_eq!(game.riding, Some(game.mobs[i].id));
             added_push(game, i, Vec3::new(0.51, 0.0, 0.0));
-            assert!(game.mobs[i].on_ground, "occupied path remains excluded");
+            assert!(
+                game.mobs[i].ground.on_ground,
+                "occupied path remains excluded"
+            );
             assert_eq!(game.mobs[i].position, Vec3::new(9.01, 202.0, 4.5));
             assert!(game.run_command("setblock 9 201 4 slime_block"));
             game.mobs[i].position.y = 202.25;
@@ -2711,7 +2811,7 @@ mod h255_mob_piston_ground_tests {
             );
             assert_eq!(game.mobs[i].position.y, 202.0);
             assert!(
-                game.mobs[i].on_ground,
+                game.mobs[i].ground.on_ground,
                 "even the observer records vertical collision"
             );
             assert!(!game.mobs[i].sync_position);
@@ -2728,7 +2828,7 @@ mod h255_mob_piston_ground_tests {
                 "real same-tick piston budget is exhausted"
             );
             assert!(
-                game.mobs[i].on_ground,
+                game.mobs[i].ground.on_ground,
                 "limitedZERO precedes the ground update"
             );
         });
@@ -2750,7 +2850,7 @@ mod h255_mob_piston_ground_tests {
                 "actual loaded wall blocks the nonzero request"
             );
             assert!(
-                !game.mobs[i].on_ground,
+                !game.mobs[i].ground.on_ground,
                 "Entity.move ground ordering, source/unit-only coverage"
             );
         });
@@ -2779,7 +2879,10 @@ mod h255_mob_piston_ground_tests {
                 let before = game.mobs[i].position;
                 added_push(game, i, movement);
                 assert_eq!(game.mobs[i].position, before.add_vector(movement));
-                assert_eq!(game.mobs[i].on_ground, on_ground, "{role:?}, NoAI={no_ai}");
+                assert_eq!(
+                    game.mobs[i].ground.on_ground, on_ground,
+                    "{role:?}, NoAI={no_ai}"
+                );
             });
         }
     }
@@ -2803,8 +2906,8 @@ mod h255_mob_piston_ground_tests {
 
 #[cfg(test)]
 mod lid_push_tests {
-    use super::Lid;
     use super::h255_mob_piston_ground_tests::with_game;
+    use super::{EntityHandle, Lid};
     use crate::game::Game;
     use sunrise_client::mobs::{MobEvent, Species};
     use sunrise_core::geometry::{Aabb, Vec3};
@@ -2835,6 +2938,94 @@ mod lid_push_tests {
             .iter()
             .find(|p| p.arrow.is_some());
         arrow.expect("the arrow").position.y
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn forced_living_moves_land_booted_bodies_on_powder_snow() {
+        use sunrise_core::position::BlockPos;
+        use sunrise_world::entity_move::MoverType;
+
+        crate::game::in_own_process(
+            "game::piston_push::lid_push_tests::forced_living_moves_land_booted_bodies_on_powder_snow",
+            || {
+                with_game(|game| {
+                    assert!(game.run_command("fill 8 200 8 15 200 8 powder_snow"));
+                    for (i, cause) in [MoverType::Piston, MoverType::ShulkerBox]
+                        .into_iter()
+                        .enumerate()
+                    {
+                        let x = 8 + 4 * i as i32;
+                        for (kind, x) in [("armor_stand", x), ("zombie", x + 2)] {
+                            assert!(game.run_command(&format!(
+                                r#"summon {kind} {x}.5 201.25 8.5 {{NoAI:1b,equipment:{{feet:{{id:"minecraft:leather_boots",count:1}}}}}}"#,
+                            )));
+                        }
+                        for (handle, x) in [
+                            (EntityHandle::ArmorStand(i), x),
+                            (EntityHandle::Mob(i), x + 2),
+                        ] {
+                            let moved =
+                                game.move_listed_entity(handle, cause, Vec3::new(0.0, -0.5, 0.0));
+                            assert_eq!(moved.y, -0.25, "{cause:?}");
+                            let ground = match handle {
+                                EntityHandle::ArmorStand(i) => &game.armor_stands[i].ground,
+                                EntityHandle::Mob(i) => &game.mobs[i].ground,
+                                _ => unreachable!(),
+                            };
+                            assert!(ground.on_ground);
+                            assert_eq!(ground.supporting_block, Some(BlockPos::new(x, 200, 8)));
+                        }
+                    }
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn shulker_push_updates_stand_support_in_both_join_orders() {
+        use sunrise_core::position::BlockPos;
+
+        crate::game::in_own_process(
+            "game::piston_push::lid_push_tests::shulker_push_updates_stand_support_in_both_join_orders",
+            || {
+                with_game(|game| {
+                    assert!(game.run_command("summon armor_stand 10.5 200.25 10.5"));
+                    let shulker = shulker(game);
+                    assert!(game.run_command("summon armor_stand 13.5 200.25 10.5"));
+                    let shulker_join = game.mobs.iter().find(|m| m.id == shulker).unwrap().join;
+                    assert!(game.armor_stands[0].join < shulker_join);
+                    assert!(game.armor_stands[1].join > shulker_join);
+                    let swept = area(9.0, 9.0, 15.0, 12.0);
+                    game.handle_mob_events(vec![MobEvent::LidPush {
+                        shulker,
+                        area: swept,
+                        delta: [0.0, -0.5, 0.0],
+                    }])
+                    .unwrap();
+                    for (stand, x) in game.armor_stands.iter().zip([10, 13]) {
+                        assert_eq!(stand.position.y, 200.0);
+                        assert!(stand.ground.on_ground);
+                        assert_eq!(
+                            stand.ground.supporting_block,
+                            Some(BlockPos::new(x, 199, 10))
+                        );
+                    }
+                    game.handle_mob_events(vec![MobEvent::LidPush {
+                        shulker,
+                        area: swept,
+                        delta: [0.25, 0.0, 0.0],
+                    }])
+                    .unwrap();
+                    for (stand, x) in game.armor_stands.iter().zip([10.75, 13.75]) {
+                        assert_eq!(stand.position.x, x);
+                        assert!(!stand.ground.on_ground);
+                        assert_eq!(stand.ground.supporting_block, None);
+                    }
+                });
+            },
+        );
     }
 
     /// `Shulker.onPeekAmountChange` moves every entity it meets with

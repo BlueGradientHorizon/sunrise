@@ -198,17 +198,44 @@ struct PlayerMoveState {
 /// reads from the current write; other operations retain their typed refusal.
 struct LiveSectionHost(Option<SectionWriter>);
 
-mod_api::impl_host_areas!(LiveSectionHost);
+mod_api::impl_host_areas!(LiveSectionHost, except(datafix));
 mod_api::impl_server_host_areas!(LiveSectionHost);
-mod_api::impl_client_host_areas!(LiveSectionHost, except(menus));
+mod_api::impl_client_host_areas!(LiveSectionHost, except(client_render, menus, services));
 mod_api::impl_backend_areas!(
     LiveSectionHost,
     partial(entity_position, entity_on_ground, entity_velocity)
 );
 
+impl mod_api::prelude::DatafixHost for LiveSectionHost {
+    fn upgrade_nbt(
+        &self,
+        kind: mod_api::NbtDataType,
+        data_version: i32,
+        nbt: mod_api::Compound,
+    ) -> Result<mod_api::Compound, mod_api::NbtUpgradeError> {
+        super::Game::upgrade_nbt(kind, data_version, nbt)
+    }
+}
+
+impl mod_api::prelude::ClientRenderClientHost for LiveSectionHost {
+    fn biome_tint(
+        &self,
+        _: [i32; 3],
+        _: mod_api::ColorResolver,
+    ) -> Result<u32, mod_api::LevelReadError> {
+        Err(mod_api::LevelReadError::Unavailable)
+    }
+}
+
 impl mod_api::prelude::MenusClientHost for LiveSectionHost {
     fn local_player(&self) -> Option<mod_api::PlayerRef> {
         self.0?.player?.local_player
+    }
+}
+
+impl mod_api::prelude::ServicesClientHost for LiveSectionHost {
+    fn client_executor(&self) -> Option<mod_api::ClientExecutor> {
+        None
     }
 }
 

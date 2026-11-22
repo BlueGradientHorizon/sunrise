@@ -317,9 +317,18 @@ impl Title {
             Mode::CreateBuffet { buffet, .. } => {
                 buffet::draw(self, atlas, batch, cursor, buffet, phases)
             }
-            Mode::CreatePreset { .. } => {
+            Mode::CreatePreset { session, .. } => {
                 crate::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, false);
                 phases(crate::screen_draw::RenderPhase::Background, batch);
+                let fallback;
+                let title = match session.title() {
+                    Some(title) => title,
+                    None => {
+                        fallback = preset_editors::preset_label(&session.preset);
+                        &fallback
+                    }
+                };
+                centered(atlas, batch, title, 8.0, u32::MAX);
             }
             Mode::Edit { name, focused, .. } => {
                 self.draw_edit(atlas, batch, (w, h), name, *focused, phases)

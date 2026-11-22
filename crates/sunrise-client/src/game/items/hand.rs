@@ -3,27 +3,13 @@
 //! `continueAttack`, `MultiPlayerGameMode` block breaking), the arm swing
 //! (`LivingEntity.SwingState`) and the first-person equip heights
 //! (`FirstPersonHandsAndItems`) with the item swap ticker they read.
-use super::{Game, Mining, Screen, minecarts::CartKind};
+use super::{Game, Mining, minecarts::CartKind};
 use sunrise_client::{
     Result,
     attack_strength::HeldStack,
     first_person::{Hand, HandWorld, Hit, SwingAnimation, UseResult, swing_duration},
-    input_queue::{ClickQueue, QueueLimits},
-    interaction_input::{Button, click_queue},
     items::ItemStack,
 };
-
-/// The local player's empty attack and use click queues, bounded as a server's client's are
-/// (`CLICK_QUEUES`).
-pub(super) const ATTACK_CLICKS: ClickQueue = click_queue(Button::Attack);
-pub(super) const USE_CLICKS: ClickQueue = click_queue(Button::Use);
-/// The clicks of one number key (`KeyMapping.clickCount`): a tick takes one, as
-/// `consumeClick` does, and 1024 wait at most.
-pub(super) const HOTBAR_CLICKS: ClickQueue = ClickQueue::new(QueueLimits {
-    name: "number keys",
-    max_len: 1024,
-    per_tick: 1,
-});
 use sunrise_core::geometry::{Aabb, Vec3};
 
 /// The point a `ServerboundInteractPacket` carries: `EntityHitResult.getLocation()
@@ -256,8 +242,6 @@ impl Game<'_> {
             error: None,
         });
         self.clicks.destroying = destroying;
-        self.attack_clicks.clear();
-        self.use_clicks.clear();
         self.request_remote_mining_stop();
         self.mining = None;
     }
@@ -320,11 +304,9 @@ impl Game<'_> {
         self.attack_ticks = 0;
         self.hand_strength.reset();
     }
-    /// Window input preparation only selects queued hotbar keys: the enclosing
-    /// client tick already picked before key handling. Simulation keeps its own ray.
+    /// The window tick already picked before key handling. Simulation keeps its own ray.
     pub(super) fn pick_tick_targets(&mut self) {
         if self.native_window() {
-            self.select_queued_hotbar();
             return;
         }
         self.tick_hit.set(Some(self.pick()));
@@ -334,15 +316,29 @@ impl Game<'_> {
             None => None,
         };
         self.tick_mob = Some(mob.unwrap_or_else(|| self.mob_hit()));
-        self.select_queued_hotbar();
     }
     /// `handleKeybinds`' number keys: keys 1 to 9 in that order, one click of each
     /// (`keyHotbarSlots[i].consumeClick`), so the highest key clicked this tick wins and a
     /// key's further clicks wait for the next ticks. A creative player holding the load or
     /// save toolbar key loads or saves that toolbar instead (load first when both are held).
     pub(super) fn select_queued_hotbar(&mut self) {
-        for slot in 0..self.hotbar_presses.len() {
-            if self.hotbar_presses[slot].take_tick() == 0 {
+        const HOTBAR: [&str; 9] = [
+            "key.hotbar.1",
+            "key.hotbar.2",
+            "key.hotbar.3",
+            "key.hotbar.4",
+            "key.hotbar.5",
+            "key.hotbar.6",
+            "key.hotbar.7",
+            "key.hotbar.8",
+            "key.hotbar.9",
+        ];
+        for (slot, name) in HOTBAR.into_iter().enumerate() {
+            if !self.consume_mapping_click(name) {
+                continue;
+            }
+            if self.own_player_is_spectator() {
+                self.spectator_hotbar_key(slot as i32);
                 continue;
             }
             let load = self.creative && self.mapped_key_down("key.loadToolbarActivator");
@@ -364,7 +360,7 @@ impl Game<'_> {
         let range = self
             .held()
             .and_then(|stack| self.attack_range_component(stack));
-        range.is_none_or(|r| attack_range_contains(&r, distance, self.creative))
+        range.is_none_or(|r| attack_range_contains(&r, distance, self.own_player_is_creative()))
     }
     /// `LocalPlayer.raycastHitResult`'s item (`getActiveItem`: the one in
     /// use, else the main hand's) `attack_range` component.
@@ -398,7 +394,7 @@ impl Game<'_> {
     pub(super) fn client_pick_entity_reach(&self, direction: [f64; 3]) -> f64 {
         self.active_attack_range()
             .map_or(self.entity_reach, |range| {
-                (f64::from(attack_reach(&range, self.creative).1)
+                (f64::from(attack_reach(&range, self.own_player_is_creative()).1)
                     + self.known_player_movement().dot(v3(direction)).max(0.0))
                 .max(self.entity_reach)
             })
@@ -415,8 +411,8 @@ impl Game<'_> {
                 v3(super::view_vector(self.yaw, self.pitch)),
             ),
         };
-        let reach = attack_reach(range, self.creative);
-        let camera = self.remote_camera_id();
+        let reach = attack_reach(range, self.own_player_is_creative());
+        let camera = self.live_remote_camera_id();
         // AttackRange uses getManyEntityHitResult, which does not exclude
         // entities sharing the camera's root vehicle.
         let boxes = (self.mobs.iter().enumerate())
@@ -457,18 +453,18 @@ impl Game<'_> {
     /// The attack and use part of `Minecraft.tick` for the local player:
     /// attack clicks since the last tick and the held attack button.
     pub(super) fn tick_local_hand(&mut self) -> Result<()> {
-        if self.screen == Screen::Playing && self.title.is_none() && self.sleeping.is_none() {
-            // Up to each queue's bound; the rest act on the next ticks.
-            let attack_clicks = self.attack_clicks.take_tick();
-            let use_clicks = self.use_clicks.take_tick();
-            let mut clicks = std::mem::take(&mut self.clicks);
-            // keyAttack.isDown(); playing implies the grabbed mouse here
-            // (scripts under --control hold buttons without grabbing it).
-            let down = self.left;
-            let ticks = self.clicks.destroying.ticks;
-            // Every click and both hands share this tick's stored pick, even
-            // after a creative break changes the block at its position.
+        if !self.mod_mappings_screen_open() && self.sleeping.is_none() {
+            // Every click and both hands share this tick's stored pick.
             self.pick_tick_targets();
+            self.handle_play_keybinds();
+            let using = self.using.is_some();
+            let mut attack_clicks = 0;
+            while self.consume_mapping_click("key.attack") {
+                attack_clicks += u32::from(!using);
+            }
+            let mut clicks = std::mem::take(&mut self.clicks);
+            let down = self.mapped_key_down("key.attack") && !self.mod_mappings_screen_open();
+            let ticks = clicks.destroying.ticks;
             let mut world = GameHands {
                 game: self,
                 error: None,
@@ -483,15 +479,35 @@ impl Game<'_> {
             // Use clicks follow the attack clicks within the tick, against
             // the block the attack may just have broken.
             let mut used = Ok(());
-            for _ in 0..use_clicks {
-                if self.using.is_some() {
-                    break;
+            while self.consume_mapping_click("key.use") {
+                if using {
+                    continue;
                 }
                 used = self.use_with_hand();
                 self.use_delay = 4;
                 if used.is_err() {
                     break;
                 }
+            }
+            while self.consume_mapping_click("key.pickItem") {
+                if !using {
+                    if let Some(entity) = self.pick_entity_hit() {
+                        if let Some(stack) = entity.and_then(|id| self.entity_pick_result(id)) {
+                            self.pick_into_inventory(&stack, self.creative);
+                        }
+                    } else if let Some(hit) = self.pick() {
+                        let include_data = self.creative && self.has_control_down();
+                        if let Some(stack) = self.picked_stack(hit.pos, include_data) {
+                            self.pick_into_inventory(&stack, self.creative);
+                        }
+                    }
+                }
+            }
+            while !using
+                && self.own_player_is_spectator()
+                && self.consume_mapping_click("key.spectatorHotbar")
+            {
+                self.spectator_action_key();
             }
             self.release_tick_targets();
             used?;
@@ -501,21 +517,20 @@ impl Game<'_> {
             if d.active && d.ticks > ticks {
                 let (pos, first) = (d.pos, (d.ticks as u32 - 1).is_multiple_of(4));
                 let state = self.world.block(pos[0], pos[1], pos[2]);
-                if first {
-                    let face = sunrise_core::geometry::Direction::ALL[d.face as usize].normal();
-                    self.play_mining_hit_sound(state, pos, face, false);
-                }
-                if let Some(hit) = self.pick() {
-                    self.crack_particle(pos, hit.face, state);
+                if !self.res.facts().is_air(state) {
+                    if first {
+                        let face = sunrise_core::geometry::Direction::ALL[d.face as usize].normal();
+                        self.play_mining_hit_sound(state, pos, face, false);
+                    }
+                    if let Some(hit) = self.pick() {
+                        self.crack_particle(pos, hit.face, state);
+                    }
                 }
             }
         } else {
             // Minecraft.tick: a screen keeps the attack from starting, and
             // opening it released the keys (`KeyMapping.releaseAll`).
             self.clicks.miss_time = 10000;
-            self.attack_clicks.clear();
-            self.use_clicks.clear();
-            self.hotbar_presses.iter_mut().for_each(ClickQueue::clear);
         }
         let d = &self.clicks.destroying;
         self.set_client_mining(d.active.then_some(Mining {
@@ -846,10 +861,9 @@ impl Game<'_> {
             {
                 return None;
             }
-            if self
-                .active_attack_range()
-                .is_some_and(|range| !attack_range_contains(&range, distance, self.creative))
-            {
+            if self.active_attack_range().is_some_and(|range| {
+                !attack_range_contains(&range, distance, self.own_player_is_creative())
+            }) {
                 return None;
             }
             return Some(true);
@@ -870,7 +884,7 @@ impl Game<'_> {
         let spear = range.as_ref().and_then(|r| {
             let eye = self.eye_position()?;
             let look = super::view_vector(self.yaw, self.pitch);
-            let reach = attack_reach(r, self.creative);
+            let reach = attack_reach(r, self.own_player_is_creative());
             let boxes = self.hittable_mob_boxes();
             let clip = |from: Vec3, to: Vec3| {
                 let length = from.distance_squared(to).sqrt();
@@ -895,7 +909,7 @@ impl Game<'_> {
         }
         // Hud.extractCrosshair: with an attack range, the hit must be in it.
         if let Some(range) = &range
-            && !attack_range_contains(range, living, self.creative)
+            && !attack_range_contains(range, living, self.own_player_is_creative())
         {
             return None;
         }
@@ -918,6 +932,7 @@ impl Game<'_> {
             self.painting_hit().map(|h| h.1),
             self.frame_hit().map(|h| h.1),
             self.dragon_hit().map(|h| h.1),
+            self.interaction_hit().map(|h| h.1),
         ];
         let nearest = cart
             .into_iter()
@@ -933,7 +948,7 @@ impl Game<'_> {
             .is_some_and(|hit| self.block_interactable_for_spectator(&hit))
     }
     /// `BlockBehaviour.showAsInteractableInSpectatorMode`: a block with a menu, or a portal.
-    fn block_interactable_for_spectator(&self, hit: &super::Hit) -> bool {
+    pub(in crate::game) fn block_interactable_for_spectator(&self, hit: &super::Hit) -> bool {
         let block = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         matches!(
             &*self.res.facts().get(block).name,
@@ -1117,7 +1132,7 @@ impl HandWorld for GameHands<'_, '_> {
         self.game.res.facts().get(state).name.ends_with("air")
     }
     fn creative(&self) -> bool {
-        self.game.creative
+        !self.game.has_miss_time()
     }
     fn spectator(&self) -> bool {
         self.game.spectator()

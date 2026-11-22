@@ -351,6 +351,14 @@ impl Game<'_> {
     ) {
         for pkt in packets {
             match sunrise_protocol::packets::play::Clientbound::decode(pkt.id, &pkt.payload) {
+                Ok(sunrise_protocol::packets::play::Clientbound::CustomPayload(payload))
+                    if payload.channel == sunrise_protocol::attachment_sync::CHANNEL =>
+                {
+                    match sunrise_protocol::attachment_sync::decode_staged(payload) {
+                        Ok(staged) => self.apply_staged_attachment_sync(staged),
+                        Err(error) => log::debug!("Studio replay skipped attachment sync: {error}"),
+                    }
+                }
                 Ok(packet) => {
                     let _ = self.handle_packet(packet);
                 }
@@ -673,8 +681,8 @@ impl Game<'_> {
         self.camera_type = sunrise_client::camera::CameraType::FirstPerson;
         self.title = None;
         self.screen = Screen::Playing;
+        self.commit_screen_transition();
         self.capture(false);
-        self.dragging = false;
         // Apply timestamp-zero login, player pose, and chunk packets before the first rendered
         // frame so playback opens at the recorded player's viewpoint.
         let _ = self.advance_studio_replay();
@@ -710,11 +718,11 @@ impl Game<'_> {
         self.replay.virtual_tick_ms = 0.0;
         self.capture(false);
         if standalone {
+            self.reset_client_item_use();
             if let Some(mut remote) = self.remote.take() {
                 remote.session.disconnect();
             }
             self.using = None;
-            self.end_mod_use();
             if let Err(error) = self.finish_close_world() {
                 log::error!("Failed to close standalone Studio replay cleanly: {error}");
             }
@@ -723,12 +731,12 @@ impl Game<'_> {
             // restore. Start the next world in first person with visible hands.
             self.camera_type = sunrise_client::camera::CameraType::FirstPerson;
             if let Some(title) = self.title.as_mut() {
-                title.mode = sunrise_client::title::Mode::Main;
+                title.activate_mode(sunrise_client::title::Mode::Main);
             }
         } else if self.integrated.is_none() && self.lan.is_none() {
             let _ = self.close_world();
             if let Some(title) = self.title.as_mut() {
-                title.mode = sunrise_client::title::Mode::Main;
+                title.activate_mode(sunrise_client::title::Mode::Main);
             }
         }
         closed

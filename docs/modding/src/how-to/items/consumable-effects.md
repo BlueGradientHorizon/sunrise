@@ -10,7 +10,8 @@ from `Err`. The following outcomes are inside `Ok`: `Some(true)` or
 or the effect is unsupported. Mob random teleport, armor stands and dragons are not
 supported. Player random teleport uses the level random as normal.
 
-Mod-defined kinds dispatch through the ordinary `consume_effect` hook. For these
+Mod-defined kinds dispatch through the ordinary `consume_effect` hook. Register
+their [type and codecs](consume-effects.md) to send them in stacks to a client. For these
 kinds, `Some(true)` means dispatch was entered, not that a listener changed game
 state; an unclaimed kind does nothing. Reapplying the same kind from inside
 its own handler on the same call stack returns `Some(false)` without recursion.

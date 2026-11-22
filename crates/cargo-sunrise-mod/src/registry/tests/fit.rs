@@ -374,7 +374,8 @@ fn generated_function_digests_reach_native_check_and_the_published_verdict() {
             note: None,
         }],
     };
-    let mut table = crate::uses_table::table(&uses, &project, &pinned).unwrap();
+    let parsed = crate::read_manifest(&project).unwrap();
+    let mut table = crate::uses_table::table(&uses, &project, &parsed, &pinned).unwrap();
     assert_eq!(table.schema, USES_SCHEMA);
     let packed = table.to_json();
     fs::write(project.join(USES_FILE), &packed).unwrap();

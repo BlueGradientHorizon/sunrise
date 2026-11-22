@@ -11,13 +11,13 @@ use sunrise_client::{
     cit::{Hand, Kind, Rule},
     entities::ArmorStand,
     items::ItemStack,
+    join_seq::JoinSeq,
     mesher::Vertex,
-    mobs::{Mob, Part, Who, anim::Poses},
+    mobs::{Mob, Part, Species, Who, anim::Poses},
     trims::{TrimOverride, TrimRegistry, TrimTexture},
 };
 use sunrise_core::{
     geometry::{Aabb, Vec3},
-    position::BlockPos,
     random::RandomSource,
 };
 pub(super) const TYPE_ID: &str = "minecraft:armor_stand";
@@ -158,6 +158,7 @@ pub(super) fn layer_color(dyeable: bool, undyed: Option<u32>, stack: Option<&Ite
 }
 
 /// Armor stand models and the humanoid layers of every equipment asset.
+#[derive(Default)]
 pub(super) struct ArmorStandAssets {
     /// Shared (`Arc`) so the GPU path (`mobs::skin`) keeps one stored copy of each.
     pub main: Option<Arc<Part>>,
@@ -839,7 +840,7 @@ impl Game<'_> {
         let (area, id) = (self.armor_stands[i].bounds(), self.armor_stands[i].id);
         let (center, on_ground) = (
             self.armor_stands[i].position,
-            self.armor_stands[i].on_ground,
+            self.armor_stands[i].ground.on_ground,
         );
         let hurt = self.punch_armor_stand(i);
         if hurt {
@@ -997,7 +998,53 @@ impl Game<'_> {
     ) {
         self.entity_event_by(event, at, by);
     }
+    /// Run stand turns that precede the level's first shulker. The mob tick
+    /// interleaves the remaining turns with shulkers before applying each lid push.
+    pub(super) fn begin_armor_stand_ticks(&mut self) -> Result<()> {
+        self.ordered.armor_stands.extend(
+            self.armor_stands
+                .iter()
+                .filter(|stand| stand.join < self.ordered.born)
+                .map(|stand| stand.join),
+        );
+        if self.ordered.armor_stands.is_empty() {
+            return Ok(());
+        }
+        self.ordered.armor_stands.make_contiguous().sort_unstable();
+        let first_shulker = self
+            .mobs
+            .iter()
+            .filter(|mob| !mob.removed && mob.species() == Species::Shulker)
+            .map(|mob| mob.join)
+            .min();
+        self.tick_armor_stands_before(first_shulker.unwrap_or(JoinSeq::MAX))
+    }
+
+    pub(super) fn tick_armor_stands_before(&mut self, cut: JoinSeq) -> Result<()> {
+        if self
+            .ordered
+            .armor_stands
+            .front()
+            .is_none_or(|&join| join >= cut)
+        {
+            return Ok(());
+        }
+        let mut pending = std::mem::take(&mut self.ordered.armor_stands);
+        let count = pending
+            .make_contiguous()
+            .partition_point(|&join| join < cut);
+        let result = self.tick_armor_stand_turns(pending.drain(..count));
+        self.ordered.armor_stands = pending;
+        result
+    }
+
+    #[cfg(test)]
     pub(super) fn tick_armor_stands(&mut self) -> Result<()> {
+        let joins: Vec<_> = self.armor_stands.iter().map(|stand| stand.join).collect();
+        self.tick_armor_stand_turns(joins)
+    }
+
+    fn tick_armor_stand_turns(&mut self, joins: impl IntoIterator<Item = JoinSeq>) -> Result<()> {
         let mut dead = Vec::new();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
@@ -1008,7 +1055,10 @@ impl Game<'_> {
         // `isPassengerOfSameVehicle` leaves those riders out.
         let mut obstacles: Option<sunrise_client::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
-        for i in 0..self.armor_stands.len() {
+        for join in joins {
+            let Some(i) = self.armor_stands.locate(join) else {
+                continue;
+            };
             let at = self.armor_stands[i].position;
             if !ticking(at.x.floor() as i32, at.z.floor() as i32) {
                 self.armor_stands[i].previous = at;
@@ -1057,33 +1107,28 @@ impl Game<'_> {
                 self.res.facts(),
                 self.collision,
             );
-            let mut scene = sunrise_client::collisions::SceneCollisions {
+            let scene = sunrise_client::collisions::SceneCollisions {
                 world,
                 binding: collision,
                 subject: None,
             };
-            let mut tops: Vec<BlockPos> = Vec::new();
             let side = game_side!(self);
-            if let Some(step) = a.tick_move(
-                &mut scene,
+            let step = a.tick_move(
+                &scene,
                 facts,
+                Some(&self.res.motion().blocks),
                 &self.res.motion().climbing,
                 in_water,
                 Some(self.border.geometry()),
                 &nearby,
                 &self.loop_context,
                 &side,
-            ) {
-                // LivingEntity.aiStep: `travel` first, then the blocks' push.
+            );
+            if let Some(step) = step {
+                // LivingEntity.aiStep: `travel` settles before applyEffectsFromBlocks.
                 a.tick_settle(medium, step);
-                a.push_by_bubble_column_over(world, registry, facts, collision, |pos| {
-                    tops.push(pos)
-                });
             }
             let section_step = (a.id, a.previous, a.position);
-            for pos in tops {
-                self.bubble_column_particles(pos);
-            }
             let a = &mut self.armor_stands[i];
             if in_water {
                 a.enchantment_fall_distance = 0.0;
@@ -1092,8 +1137,8 @@ impl Game<'_> {
                 a.enchantment_fall_distance +=
                     f64::from((a.previous.y - a.position.y).max(0.0) as f32);
             }
-            let landed = a.on_ground && a.enchantment_fall_distance > 0.0;
-            if a.on_ground {
+            let landed = a.ground.on_ground && a.enchantment_fall_distance > 0.0;
+            if a.ground.on_ground {
                 a.enchantment_fall_distance = 0.0;
             }
             // LivingEntity.checkFallDamage: onChangedBlock before the block's
@@ -1107,6 +1152,39 @@ impl Game<'_> {
                 let stand = &self.armor_stands[i];
                 let (position, bounds) = (stand.position, stand.bounds());
                 self.post_landing_event(position, bounds, true);
+            }
+            if step.is_some() && !self.armor_stands[i].no_physics(None) {
+                let stand = &self.armor_stands[i];
+                let (id, footprint, ground, mut velocity) = (
+                    stand.id,
+                    (stand.position, stand.bounds()),
+                    stand.ground,
+                    stand.velocity,
+                );
+                let writes = self.body_step_on((id, TYPE_ID), footprint, &ground, &mut velocity);
+                let stand = &mut self.armor_stands[i];
+                // `ArmorStand.hurtServer` does not take generic damage; the stand
+                // has no stuck multiplier or active-effect list in its travel row.
+                super::entity::apply_contact_writes(
+                    writes,
+                    &mut velocity,
+                    Some(&mut stand.enchantment_fall_distance),
+                    None,
+                    Some(&mut stand.fire_ticks),
+                );
+                stand.velocity = velocity;
+                // BubbleColumnBlock.entityInside runs in the sweep after Block.stepOn.
+                let mut tops = Vec::new();
+                stand.push_by_bubble_column_over(
+                    &self.world,
+                    registry,
+                    self.res.facts(),
+                    collision,
+                    |pos| tops.push(pos),
+                );
+                for pos in tops {
+                    self.bubble_column_particles(pos);
+                }
             }
             self.armor_stands[i].apply_honey_slide(&self.world, self.res.facts());
             let a = &self.armor_stands[i];
@@ -1171,21 +1249,17 @@ impl Game<'_> {
         }
         Ok(())
     }
-    /// `Entity.move(mover, delta)` for armor stand `i` (a lid's push or a mod's move), one with physics (vanilla's
-    /// `!noPhysics`: not a marker, not `NoGravity`), the stand's own `shove` by `delta`. Stands tick
-    /// before mobs here, while vanilla ticks a stand that joined after the
-    /// pushing `shulker` (one placed on it) after the shulker: `shove` makes
-    /// up for the order. A shulker box's lid moves it after every entity's tick.
+    /// `Entity.move(mover, delta)` for a stand with physics (not a marker or
+    /// `NoGravity`). Mob lids act on the shulker's turn; block-entity lids act
+    /// after the entity ticks.
     /// `grid` holds the stands' obstacles, built once per lid at its first stand.
     pub(super) fn shoves_armor_stand(
         &mut self,
         i: usize,
         mover: sunrise_world::entity_move::MoverType,
-        shulker: Option<u32>,
         delta: Vec3,
         grid: &mut Option<sunrise_client::entities::ObstacleGrid>,
     ) {
-        let joined = shulker.and_then(|id| self.mobs.iter().find(|m| m.id == id).map(|m| m.join));
         let grid = grid.get_or_insert_with(|| self.stand_entity_collisions());
         let mut nearby = Vec::new();
         let a = &mut self.armor_stands[i];
@@ -1198,13 +1272,12 @@ impl Game<'_> {
             binding: self.collision,
             subject: None,
         };
-        let travels_after = joined.is_some_and(|joined| a.join > joined);
         a.shove(
             scene,
             delta,
             Some(self.border.geometry()),
             &nearby,
-            travels_after,
+            !self.options.execution_role.is_client() && self.remote.is_none(),
             mover,
             &self.loop_context,
         );
@@ -1286,7 +1359,10 @@ impl Game<'_> {
     /// still steps). `canDestroyEgg` wants mob griefing before the level's roll.
     fn armor_stand_turtle_eggs(&mut self, i: usize, landed: bool) -> Result<()> {
         let stand = &self.armor_stands[i];
-        if !stand.on_ground || self.remote.is_some() || self.options.execution_role.is_client() {
+        if !stand.ground.on_ground
+            || self.remote.is_some()
+            || self.options.execution_role.is_client()
+        {
             return Ok(());
         }
         let p = stand.on_pos_legacy(|p| {

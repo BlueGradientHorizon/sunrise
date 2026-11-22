@@ -73,7 +73,7 @@ impl Game<'_> {
     }
 
     /// Where a player's or a guest's effects are: the acting player's own
-    /// are the game's (swapped in by `enter_guest`; a player handle names
+    /// are the game's (swapped in by the entry of `guest_turn`; a player handle names
     /// the acting player, and a game without a hub keeps its single
     /// player's the same way), any other guest's are their hub record's.
     /// None for another kind.
@@ -397,7 +397,7 @@ mod tests {
                 listed[0].id,
                 mod_platform::__private::part_tests::effect_key("speed")
             );
-            assert_eq!(listed[0].id.id(game), "minecraft:speed");
+            assert_eq!(listed[0].id.id(game), Some("minecraft:speed"));
         });
     }
 

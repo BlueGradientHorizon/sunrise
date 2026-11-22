@@ -97,7 +97,7 @@ pub(super) struct Hook {
     needs_sync: bool,
     tick_count: i32,
     life: i32,
-    ground: sunrise_world::ground_support::GroundState,
+    pub(super) ground: sunrise_world::ground_support::GroundState,
     nibble: i32,
     time_until_lured: i32,
     time_until_hooked: i32,
@@ -1337,7 +1337,7 @@ impl Game<'_> {
                 h.position.y + moved.y,
                 h.position.z + moved.z,
             );
-            self.restitute_bobber(
+            self.move_bobber_response(
                 h.id,
                 h.position,
                 &mut h.ground,
@@ -1357,7 +1357,7 @@ impl Game<'_> {
         );
         Some(h)
     }
-    fn restitute_bobber(
+    fn move_bobber_response(
         &mut self,
         id: u32,
         position: Vec3,
@@ -1395,6 +1395,11 @@ impl Game<'_> {
             0.0,
         );
         *velocity = self.finish_body_restitution(entity, position, response);
+        let side = game_side!(self);
+        let motion = self.body_motion(&side);
+        motion.apply_block_speed(position, velocity);
+        let writes = self.body_step_on(entity, (position, bounds(position)), ground, velocity);
+        super::entity::apply_contact_writes(writes, velocity, None, None, None);
     }
     /// The players a hook can catch: everyone but spectators and the dead
     /// (`Projectile.canHitEntity`), the host and the guests in the level.
@@ -1676,6 +1681,48 @@ impl Game<'_> {
             EntityLookup::Taken | EntityLookup::Missing => None,
         }
     }
+    /// Update a cast bobber's support in the level that owns the hook.
+    pub(super) fn set_fishing_hook_ground(
+        &mut self,
+        id: u32,
+        on_ground: bool,
+    ) -> Result<bool, mod_api::LevelWriteError> {
+        let Some((hook, caster)) = self.fishing_hook_by_id(id) else {
+            return Ok(false);
+        };
+        let (at, bounds, mut ground) = (hook.position, hook.bounds(), hook.ground);
+        ground.on_ground = on_ground;
+        let mut scene = sunrise_client::collisions::SceneCollisions {
+            world: &self.world,
+            binding: self.collision,
+            subject: None,
+        };
+        let scan = scene.update_ground_support(
+            &mut ground,
+            at,
+            bounds,
+            None,
+            sunrise_client::motion::BodyMotion::entity_context(id, at),
+        );
+        let hook = match caster {
+            super::commands::Target::Guest(conn) if Some(conn) != self.lan_acting => self
+                .lan
+                .as_mut()
+                .and_then(|host| host.play.get_mut(&conn))
+                .and_then(|play| play.hook.as_mut()),
+            super::commands::Target::Player | super::commands::Target::Guest(_) => {
+                self.hook.as_mut()
+            }
+            _ => None,
+        };
+        let Some(hook) = hook else {
+            return Ok(false);
+        };
+        hook.ground = ground;
+        scan.map(|()| true)
+            .map_err(|_| mod_api::LevelWriteError::Unavailable)
+    }
+
     /// Takes a cast hook out of the level (`Entity.discard`).
     pub(in crate::game) fn remove_fishing_hook(&mut self, id: u32) {
         use sunrise_client::join_seq::residency::{Kind, Source, table::EntityLookup};
@@ -2284,7 +2331,7 @@ impl Game<'_> {
                 position.y + moved.y,
                 position.z + moved.z,
             );
-            self.restitute_bobber(id, position, &mut ground, wanted, moved, &mut velocity);
+            self.move_bobber_response(id, position, &mut ground, wanted, moved, &mut velocity);
             if state == State::Flying && (ground.on_ground || ground.horizontal_collision) {
                 velocity = Vec3::ZERO;
             }
@@ -2321,6 +2368,9 @@ impl Game<'_> {
         self.remote_hooks
             .iter()
             .filter_map(|h| {
+                if self.hides_as_camera(h.id) {
+                    return None;
+                }
                 let owner = self.mobs.iter().find(|m| m.id == h.owner)?;
                 let feet = lerp(owner.previous, owner.position);
                 let body = mod_api::client::camera::lerp(

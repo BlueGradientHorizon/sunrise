@@ -8,11 +8,12 @@ description = "Sunrise's mod files: content mods, modpacks and the registry inde
 
 [dependencies]
 sunrise-mod-vocab = { path = "../sunrise-mod-vocab" }
-sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros" }
 sunrise-core = { path = "../sunrise-core" }
 sunrise-assets = { path = "../sunrise-assets", optional = true }
 # The uses table's file name and limit (`USES`, `MAX_USES`).
 sunrise-mod-surface = { path = "../sunrise-mod-surface" }
+# Which files of a mod folder its package carries, shared with the uses scan.
+sunrise-mod-source = { path = "../sunrise-mod-source" }
 serde = { version = "1", features = ["derive"] }
 # float_roundtrip: a declaration's numbers read the same in every build. Without it here, the feature
 # came and went with the other packages of a build, and with it what a number rounds to and whether

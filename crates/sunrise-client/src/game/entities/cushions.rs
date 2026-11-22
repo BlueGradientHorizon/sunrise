@@ -1,4 +1,3 @@
-// game-module-visibility: pub(crate)
 //! Cushions: `CushionItem.useOn` placement on the top face of a block,
 //! `Cushion.canBePlacedAt`/`survives`, `Cushion.interact` (sit),
 //! `BlockAttachedEntity.hurtServer` (break, dropping the matching colour),
@@ -337,7 +336,7 @@ impl Game<'_> {
             return false;
         }
         // isSecondaryUseActive.
-        if self.keys.held(Action::Sneak) {
+        if self.held_mapping(Action::Sneak) {
             return false;
         }
         let id = self.cushions[i].id;
@@ -684,7 +683,7 @@ impl Game<'_> {
                 sunrise_client::mobs::living::teleports::snap_to(m, at);
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 m.extra.passenger = true;
                 m.ai.nav.stop();
             }
@@ -727,6 +726,9 @@ impl Game<'_> {
         };
         let sprites = &self.gui.atlas.sprites;
         for c in &self.cushions {
+            if self.hides_as_camera(c.id) {
+                continue;
+            }
             let a = aabb(c.bounds());
             let (lo, hi) = (a.min_position(), a.max_position());
             let (lo, hi) = (

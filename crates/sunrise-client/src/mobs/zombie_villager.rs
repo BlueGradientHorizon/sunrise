@@ -316,8 +316,10 @@ mod tests {
         let motion = crate::motion::MotionResources::load(&root, &assets).unwrap();
         let data = super::super::MobData::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
-            &facts,
-        );
+            facts.states.len(),
+            false,
+        )
+        .unwrap();
         let types = super::super::MobTypes::load(&root).unwrap();
         let biomes = crate::biome::Biomes::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -398,6 +400,7 @@ mod tests {
             asks_baby_spawn: false,
             border: None,
             section_writer: None,
+            trading_players: None,
         };
         for no_ai in [false, true] {
             let kind = std::sync::Arc::new(types.types["minecraft:zombie_villager"].clone());

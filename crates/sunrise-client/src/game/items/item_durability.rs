@@ -34,7 +34,8 @@ impl Game<'_> {
                     sunrise_client::health::HitLend::attacking_mob(
                         self.mobs.iter_mut(),
                         attack.attacker
-                    )
+                    ),
+                    acting_equipment!(self)
                 ),
                 &self.health_resources,
                 rules,

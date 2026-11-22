@@ -1,6 +1,6 @@
 //! Connection epochs and main-executor barriers, independent of gameplay ownership.
 mod payload_queue;
-pub(super) use payload_queue::PayloadTurn;
+pub(crate) use payload_queue::PayloadTurn;
 #[cfg(test)]
 mod tests;
 use super::{Local, Peer, Side};
@@ -17,8 +17,6 @@ pub struct Epoch {
     pub peer: Arc<Peer>,
     pub phase: Phase,
     active: AtomicBool,
-    /// Whether an engine send to this epoch was already refused and logged.
-    engine_refused: AtomicBool,
     publication: Mutex<()>,
     pending: Mutex<usize>,
     drained: Condvar,
@@ -29,7 +27,6 @@ impl Epoch {
             peer,
             phase,
             active: AtomicBool::new(true),
-            engine_refused: AtomicBool::new(false),
             publication: Mutex::new(()),
             pending: Mutex::new(0),
             drained: Condvar::new(),
@@ -37,11 +34,6 @@ impl Epoch {
     }
     pub fn active(&self) -> bool {
         self.active.load(Ordering::Acquire)
-    }
-    /// True the first time an engine send to this epoch is refused, so its refusal is
-    /// logged once per connection incarnation.
-    pub fn first_engine_refusal(&self) -> bool {
-        !self.engine_refused.swap(true, Ordering::AcqRel)
     }
     /// Atomically publish against invalidation. The closure may only perform nonblocking
     /// queue publication, never user callbacks, waits or connection-state operations.

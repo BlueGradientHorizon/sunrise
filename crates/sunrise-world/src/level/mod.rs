@@ -103,7 +103,7 @@ use sunrise_core::{
     connection_kind::ConnectionKind, dimension::Dimension, neighbour_update::NeighbourUpdate,
 };
 
-pub use block_maps::BlockMaps;
+pub use block_maps::{BlockMapValue, BlockMaps};
 pub mod classes;
 pub mod data;
 pub mod states;
@@ -141,6 +141,7 @@ mod survive;
 mod tick;
 mod timeline;
 mod update;
+pub use update::BlockWrite;
 mod weather;
 
 #[cfg(test)]
@@ -1627,6 +1628,31 @@ impl Behaviours {
         flags: i32,
     ) -> bool {
         self.sim(level, ticks).set_block(pos, state, flags)
+    }
+    /// Store a block and pause before removal. A server host uses this boundary to
+    /// run `preRemoveSideEffects` with the item-entity join API still available.
+    pub fn begin_block_write<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        ticks: &mut Ticks,
+        pos: BlockPos,
+        state: BlockStateId,
+        flags: i32,
+    ) -> Option<BlockWrite> {
+        self.sim(level, ticks).begin_block_write(pos, state, flags)
+    }
+
+    /// Finish the paused write. If the host ran block-entity removal, pass its number of
+    /// jukebox neighbor updates; otherwise the ordinary removal runs here.
+    pub fn finish_block_write<L: LevelAccess + ?Sized>(
+        &self,
+        level: &mut L,
+        ticks: &mut Ticks,
+        write: BlockWrite,
+        removal_updates: Option<u8>,
+    ) -> bool {
+        self.sim(level, ticks)
+            .finish_block_write(write, removal_updates, flags::UPDATE_LIMIT)
     }
     /// `CopperChestBlock.getFromCopperBlock(copperBlock, facing, level, pos)`.
     pub fn copper_chest_from_block<L: LevelAccess + ?Sized>(

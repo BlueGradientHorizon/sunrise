@@ -135,7 +135,8 @@ impl Renderer {
         self.update_lightmap(&mut encoder, frame);
         let views = self.views(frame);
         let pose = frame.bob * frame.spin;
-        let view_proj = views.primary().view_proj(pose);
+        let transforms = views.frame_transforms(pose);
+        let view_proj = transforms.draw_view_proj;
         laps.lap("r_acquire");
         // TAA runs where the world post pass does, not under a shader pack's own.
         let taa = !frame.title
@@ -373,8 +374,8 @@ impl Renderer {
             bytemuck::bytes_of(&crosshair_globals),
         );
         // Frustum culling and camera-relative origins.
-        let cull_proj = views.cull().view_proj(pose);
-        let view = Frustum::from_planes(frustum(cull_proj));
+        let cull_proj = transforms.cull_view_proj;
+        let view = transforms.cull_frustum;
         let camera = frame.camera;
         let camera_section = camera_section(camera, self.layout.min_y());
         // The water mirror draws the same lists: they take in what its camera sees too
@@ -389,17 +390,16 @@ impl Renderer {
             )))
         });
         // Solid quads facing away from the eye are left out: the bob moves
-        // the eye off `camera`, so it is found from the projection. With the mirror, those
-        // facing its eye are kept too: it sits straight below, at this camera-relative y.
-        let rendered_eye = view::projection_center(cull_proj);
+        // the eye off `camera`, so it is found from the composed draw projection.
+        let rendered_eye = transforms.rendered_eye;
         let eye = rendered_eye.filter(|_| self.sides_on);
         let mirror_low = mirror_plane
             .zip(eye)
             .map(|(plane, eye)| 2.0 * (plane - frame.camera.y as f32) - eye.y);
-        let culling = !frame.title && frame.cave_culling;
-        if culling {
+        let bounded = !frame.title;
+        if bounded {
             crate::spans::time("occlusion", || {
-                self.start_occlusion(camera, frame.detail_distance)
+                self.start_occlusion(camera, frame.detail_distance, frame.cave_culling)
             });
         }
         // A shader pack's shadow pass draws the sections in its camera's box, all of them (the
@@ -496,7 +496,7 @@ impl Renderer {
                 radius,
                 &view,
             )
-            .with_reach(self.occlusion.reach().filter(|_| culling))
+            .with_reach(self.occlusion.reach().filter(|_| bounded))
             .with_eye(eye)
             .with_view_proj(jittered)
             .with_occlude(self.cull_on);
@@ -540,7 +540,7 @@ impl Renderer {
                 camera,
                 radius,
                 &Frusta(view, mirror),
-                |k| !culling || reachable.contains(k),
+                |k| !bounded || reachable.contains(k),
                 |x, z| {
                     (!cutout.is_empty() && cutout.contains(&(x, z)))
                         || (!leaving.is_empty() && leaving.contains(&(x, z)))
@@ -592,33 +592,20 @@ impl Renderer {
         let mut shadow_visible = std::mem::take(&mut self.shadow_visible);
         shadow_visible.clear();
         if let Some(v) = &shadow_view {
-            let radius = (frame.detail_distance / 16.0) as i32;
-            let light = ShadowCull::new(shadow_box(v))
-                .with_casters(v.view_casters.then(|| shadow_casters(cull_proj, v.light)))
-                .with_reach(v.distance);
             let mut boxed = std::mem::take(&mut self.shadow_boxed_scratch);
             let mut seen = std::mem::take(&mut self.shadow_seen_scratch);
             crate::spans::time("shadow visibility", || {
-                // Within the unculled distance every section, then those in the light's box.
-                if let Some(d) = v.unculled {
-                    let all = ShadowCull::new(Frustum::from_planes([glam::Vec4::W; 6]))
-                        .with_reach(v.distance);
-                    let near = radius.min((d / 16.0).ceil() as i32);
-                    self.sections.visible(
-                        camera,
-                        near,
-                        &all,
-                        |_| true,
-                        |_, _| false,
-                        &mut shadow_visible,
-                    );
-                }
-                boxed.clear();
-                self.sections
-                    .visible(camera, radius, &light, |_| true, |_, _| false, &mut boxed);
-                seen.clear();
-                seen.extend(shadow_visible.iter().map(|s| s.key));
-                shadow_visible.extend(boxed.drain(..).filter(|s| !seen.contains(&s.key)));
+                collect_shadow_sections(
+                    &self.sections,
+                    camera,
+                    frame.shadow_distance,
+                    frame.detail_distance,
+                    v,
+                    cull_proj,
+                    &mut shadow_visible,
+                    &mut boxed,
+                    &mut seen,
+                );
             });
             self.shadow_boxed_scratch = boxed;
             self.shadow_seen_scratch = seen;
@@ -1398,6 +1385,9 @@ impl Renderer {
             native_cutout_quads,
             native_cutout_mipped_quads,
             native_translucent_quads,
+            banner_pattern_quads,
+            glint_only_quads,
+            text_solid_quads,
         ] = self.entity_batch.update(
             entities,
             frame.additive,
@@ -1406,12 +1396,9 @@ impl Renderer {
             oit_on,
         );
         self.entity_batch.append_shadow_only(frame.shadow_only);
-        // The posed models' vertices come first: the ordinary entities' draw takes them in.
-        let posed = if pack_skin {
-            0
-        } else {
-            skin.map_or(0, |s| s.vertices)
-        };
+        let ordinary_skin = skin.filter(|_| !pack_skin);
+        let posed = ordinary_skin.map_or(0, |s| s.vertices);
+        self.entity_order.prepare(entities, ordinary_skin, oit_on);
         let entity_quads = entity_quads + posed / 4;
         let weather_quads = frame.weather.len() as u32 / 4;
         let world_quads = entity_quads
@@ -1430,7 +1417,10 @@ impl Renderer {
             + native_solid_quads
             + native_cutout_quads
             + native_cutout_mipped_quads
-            + native_translucent_quads;
+            + native_translucent_quads
+            + banner_pattern_quads
+            + glint_only_quads
+            + text_solid_quads;
         laps.lap("r_draw_lists");
         // Where the tail of materials the classic and the improved passes
         // both draw ends: the shadows, particles and items count back from it.
@@ -1442,12 +1432,16 @@ impl Renderer {
             - native_solid_quads
             - native_cutout_quads
             - native_cutout_mipped_quads
-            - native_translucent_quads;
+            - native_translucent_quads
+            - banner_pattern_quads
+            - glint_only_quads
+            - text_solid_quads;
         let native_clouds = self.native.as_ref().is_none_or(|n| n.vanilla_clouds);
         // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
         // the native mesh in this same frame.
         let pack_clouds = core_clouds::CloudsFrame {
-            pack_shader: self.core_clouds.is_some(),
+            pack_shader: self.core_clouds.as_ref().is_some_and(|c| c.classic()),
+            pack_oit_shader: (self.core_clouds.as_ref()).is_some_and(|c| c.improved_transparency()),
             clouds: frame.clouds.is_some(),
             native_clouds,
             improved_transparency: oit_on,
@@ -1491,7 +1485,7 @@ impl Renderer {
         let native_input = frame
             .clouds
             .as_ref()
-            .filter(|_| native_clouds && pack_cloud_quads.is_none());
+            .filter(|_| core_clouds::native_mesh(native_clouds, pack_cloud_quads));
         let cloud_quads = if let Some(input) = native_input {
             let (rebuilt, uniform) =
                 crate::spans::time("clouds", || self.cloud_mesh.prepare(input));
@@ -1563,12 +1557,12 @@ impl Renderer {
                 mapped_at_creation: false,
             });
         }
-        if !all_entities.is_empty() {
+        for (dst, range) in self.entity_order.cpu_uploads(all_entities.len() as u32) {
             self.uploads.buffer(
                 &mut encoder,
                 &self.entity_buffer,
-                u64::from(posed) * std::mem::size_of::<Vertex>() as u64,
-                bytemuck::cast_slice(all_entities),
+                u64::from(dst) * std::mem::size_of::<Vertex>() as u64,
+                bytemuck::cast_slice(&all_entities[range.start as usize..range.end as usize]),
             );
         }
         if pack_entities {
@@ -1616,11 +1610,14 @@ impl Renderer {
                 oit_on,
                 &mut self.prepared_cuts,
             );
+            for cut in &mut self.prepared_cuts {
+                *cut = self.entity_order.prepared_cut(*cut);
+            }
             prepared_model::fill_instance_ranges(
                 entity_quads * 4,
                 &self.prepared_draws,
                 &self.prepared_cuts,
-                posed,
+                0,
                 &mut self.prepared_ranges,
             );
         }
@@ -1648,7 +1645,7 @@ impl Renderer {
                     &mut encoder,
                     skin,
                     &self.entity_buffer,
-                    0,
+                    self.entity_order.posed_jobs(skin),
                     outline_base,
                 );
             }
@@ -1808,6 +1805,26 @@ impl Renderer {
                 bytemuck::cast_slice(&frame.celestial[..celestial_vertices]),
             );
         }
+        let particle_limit = self.device.limits().max_buffer_size;
+        let (opaque, translucent) = frame
+            .explicit_particles
+            .map_or((&[][..], &[][..]), |quads| {
+                (quads.opaque.as_slice(), quads.translucent.as_slice())
+            });
+        let opaque_draw = self.explicit_opaque_particles.prepare(
+            &self.device,
+            &mut self.uploads,
+            &mut encoder,
+            opaque,
+            particle_limit,
+        );
+        let translucent_draw = self.explicit_translucent_particles.prepare(
+            &self.device,
+            &mut self.uploads,
+            &mut encoder,
+            translucent,
+            particle_limit,
+        );
         let max_quads =
             (world_quads + additive_quads + hand_quads + see_through_quads + shadow_only_quads)
                 .max(cloud_quads)
@@ -1819,7 +1836,9 @@ impl Renderer {
                 })
                 .max(weather_quads)
                 .max(frame.glowing.len() as u32 / 4)
-                .max(outlined / 4);
+                .max(outlined / 4)
+                .max(opaque_draw)
+                .max(translucent_draw);
         if max_quads > self.index_quads {
             self.index_quads = max_quads.next_power_of_two();
             self.indices = Self::quad_indices(&self.device, self.index_quads);
@@ -2146,8 +2165,20 @@ impl Renderer {
                     &self.queue,
                     size,
                     &views.primary().projection,
-                    [water_mask_quads > 0, cloud_quads > 0],
+                    [
+                        water_mask_quads > 0,
+                        cloud_quads > 0 || pack_cloud_quads.is_some_and(|q| q > 0),
+                    ],
                 );
+            // A pack's clouds sample the targets just made.
+            if let (Some(core), Some(samples)) = (
+                self.core_clouds
+                    .as_mut()
+                    .filter(|_| pack_cloud_quads.is_some()),
+                self.oit.as_ref().and_then(|o| o.cloud_samples()),
+            ) {
+                core.bind_oit(&self.device, &samples);
+            }
         }
         let pack_sky_clear = pack_draws_sky
             .then(|| self.pack_post.as_ref().and_then(|p| p.1.as_ref()))
@@ -2818,6 +2849,54 @@ impl Renderer {
                 pass.set_bind_group(0, &self.group, &[]);
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             }
+            if banner_pattern_quads > 0 {
+                pass.stage(self.own_timing.as_mut(), "banner patterns");
+                pass.set_pipeline(&self.banner_pattern_pipeline);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..banner_pattern_quads * 6,
+                    ((world_quads - text_solid_quads - glint_only_quads - banner_pattern_quads) * 4)
+                        as i32,
+                    0..1,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if glint_only_quads > 0 {
+                pass.stage(self.own_timing.as_mut(), "glint overlay");
+                pass.set_pipeline(&self.glint_only_pipeline);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..glint_only_quads * 6,
+                    ((world_quads - text_solid_quads - glint_only_quads) * 4) as i32,
+                    0..1,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if text_solid_quads > 0 {
+                pass.stage(self.own_timing.as_mut(), "entity text solid");
+                pass.set_pipeline(&self.text_polygon_offset_pipeline);
+                self.bind_world_text(&mut pass, true, false);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..text_solid_quads * 6,
+                    ((world_quads - text_solid_quads) * 4) as i32,
+                    0..1,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if self.explicit_opaque_particles.any() {
+                pass.stage(self.own_timing.as_mut(), "opaque provider particles");
+                pass.set_pipeline(&self.particle_pipelines.opaque);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                self.explicit_opaque_particles.draw(&mut pass);
+                if light_marks(self.output.frame.format, self.hdr.is_some()) {
+                    pass.set_pipeline(&self.particle_pipelines.mark);
+                    self.explicit_opaque_particles.draw(&mut pass);
+                }
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             if text_quads > 0 && !oit_on {
                 pass.stage(self.own_timing.as_mut(), "entity text");
                 pass.set_pipeline(&self.text_polygon_offset_pipeline);
@@ -2869,6 +2948,9 @@ impl Renderer {
             // alpha/mipmap policies and ordinary opaque depth. Storage follows
             // the existing materials without moving their indices or frame tails.
             let mut first = world_quads
+                - text_solid_quads
+                - glint_only_quads
+                - banner_pattern_quads
                 - native_solid_quads
                 - native_cutout_quads
                 - native_cutout_mipped_quads
@@ -2900,7 +2982,12 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..native_translucent_quads * 6,
-                    ((world_quads - native_translucent_quads) * 4) as i32,
+                    ((world_quads
+                        - text_solid_quads
+                        - glint_only_quads
+                        - banner_pattern_quads
+                        - native_translucent_quads)
+                        * 4) as i32,
                     0..1,
                 );
                 pass.set_bind_group(0, &self.group, &[]);
@@ -3076,18 +3163,14 @@ impl Renderer {
                             0..1,
                         );
                     };
-                    let clouds =
-                        |pass: &mut wgpu::RenderPass<'_>, pipeline: &wgpu::RenderPipeline| {
-                            pass.set_pipeline(pipeline);
-                            pass.set_bind_group(0, &self.entity_group, &[]);
-                            pass.set_bind_group(1, &self.cloud_group, &[]);
-                            pass.set_index_buffer(
-                                self.indices.slice(..),
-                                wgpu::IndexFormat::Uint32,
-                            );
-                            pass.set_vertex_buffer(0, self.cloud_buffer.slice(..));
-                            pass.draw_indexed(0..cloud_quads * 6, 0, 0..1);
-                        };
+                    let clouds = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
+                        pass.set_pipeline(oit.clouds(stage));
+                        pass.set_bind_group(0, &self.entity_group, &[]);
+                        pass.set_bind_group(1, &self.cloud_group, &[]);
+                        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_vertex_buffer(0, self.cloud_buffer.slice(..));
+                        pass.draw_indexed(0..cloud_quads * 6, 0, 0..1);
+                    };
                     // "Features, World Border, Weather": what follows the opaque
                     // world in the classic pass, one stage at a time.
                     let features = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
@@ -3146,6 +3229,11 @@ impl Renderer {
                             translucent_particle_quads,
                             base_quads - translucent_item_quads - translucent_particle_quads,
                         );
+                        if self.explicit_translucent_particles.any() {
+                            pass.set_pipeline(&f.entity[s]);
+                            self.explicit_translucent_particles.draw(pass);
+                            pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                        }
                         quads(
                             pass,
                             &f.entity[s],
@@ -3174,9 +3262,23 @@ impl Renderer {
                             }
                         }
                     };
+                    // A pack's `OIT_CLOUDS` in their place.
+                    let pack_clouds = (self.core_clouds.as_ref())
+                        .zip(frame.clouds.as_ref())
+                        .filter(|_| pack_cloud_quads.is_some_and(|q| q > 0));
+                    let indices = &self.indices;
+                    let pack_clouds = pack_clouds.map(|(core, input)| {
+                        move |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
+                            core.draw_oit(pass, stage, !input.fast, indices);
+                        }
+                    });
                     let extras = oit::Extras {
                         water_mask: (water_mask_quads > 0).then_some(&mask as _),
-                        clouds: (cloud_quads > 0).then_some(&clouds as _),
+                        clouds: core_clouds::oit_clouds::<
+                            dyn Fn(&mut wgpu::RenderPass<'_>, oit::Stage),
+                        >(
+                            pack_clouds.as_ref().map(|p| p as _), &clouds, cloud_quads
+                        ),
                         features: Some(&features),
                     };
                     // The draw closure below borrows all of `self`, so the timer is taken out.
@@ -3249,6 +3351,10 @@ impl Renderer {
                             if quads > 0 {
                                 pass.draw_indexed(0..quads * 6, (first * 4) as i32, 0..1);
                             }
+                        }
+                        if self.explicit_translucent_particles.any() {
+                            pass.set_pipeline(&self.particle_pipelines.mark);
+                            self.explicit_translucent_particles.draw(&mut pass);
                         }
                         if !frame.lightning.bolts.is_empty() {
                             pass.set_pipeline(&self.hdr_mark_lightning_pipeline);
@@ -3341,6 +3447,18 @@ impl Renderer {
                 }
                 pass.set_bind_group(0, &self.group, &[]);
             }
+            if self.explicit_translucent_particles.any() && !oit_on {
+                pass.stage(self.own_timing.as_mut(), "translucent provider particles");
+                pass.set_pipeline(&self.particle_pipelines.translucent);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                self.explicit_translucent_particles.draw(&mut pass);
+                if light_marks(self.output.frame.format, self.hdr.is_some()) {
+                    pass.set_pipeline(&self.particle_pipelines.mark);
+                    self.explicit_translucent_particles.draw(&mut pass);
+                }
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             // Native world text is an ordinary depth-tested overlay, after
             // particles (also after the OIT composite) and before the hand.
             // Its own geometry is independent of block-entity lifetime.
@@ -3382,15 +3500,17 @@ impl Renderer {
                     0..1,
                 );
             }
+            // Under Improved Transparency a pack's clouds drew in its stages.
             if let (Some(core), Some(input)) = (&self.core_clouds, frame.clouds.as_ref())
-                && pack_cloud_quads.is_some_and(|quads| quads > 0)
-                && !pack_draws_clouds
+                && pack_cloud_quads.is_some_and(|quads| {
+                    core_clouds::classic_pass_draws(quads, pack_draws_clouds, oit_on)
+                })
             {
                 pass.stage(self.own_timing.as_mut(), "clouds");
                 core.draw(&mut pass, !input.fast, &self.indices);
                 pass.set_bind_group(0, &self.group, &[]);
             }
-            if cloud_quads > 0 && !pack_draws_clouds && !oit_on {
+            if core_clouds::classic_pass_draws(cloud_quads, pack_draws_clouds, oit_on) {
                 pass.stage(self.own_timing.as_mut(), "clouds");
                 pass.set_pipeline(&self.cloud_pipeline);
                 pass.set_bind_group(0, &self.entity_group, &[]);
@@ -3471,7 +3591,12 @@ impl Renderer {
                 pass.set_pipeline(&self.depth_reset);
                 pass.set_bind_group(0, &self.group, &[]);
                 pass.draw(0..3, 0..1);
-                self.draw_hand(&mut pass, hand_quads, world_quads + additive_quads);
+                self.draw_hand(
+                    &mut pass,
+                    frame.hand,
+                    hand_quads,
+                    world_quads + additive_quads,
+                );
             }
         }
         let lifts_world = output::lifts_world(
@@ -3558,6 +3683,43 @@ impl Renderer {
             },
         )
     }
+}
+
+/// Shadow caster walk radius in chunks: uses `shadow_distance` (the loaded streaming radius)
+/// when supplied, staying separate from the effective eye distance (`detail_distance`).
+pub(super) fn shadow_walk_radius(shadow_distance: Option<f32>, detail_distance: f32) -> i32 {
+    (shadow_distance.unwrap_or(detail_distance) / 16.0) as i32
+}
+
+/// Collects shadow caster sections using the shadow walk radius (separate from eye distance)
+/// and the pack's light-volume, view-caster, and reach tests.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn collect_shadow_sections<T>(
+    sections: &resident::Resident<T>,
+    camera: DVec3,
+    shadow_distance: Option<f32>,
+    detail_distance: f32,
+    v: &external::ShadowView,
+    cull_proj: Mat4,
+    shadow_visible: &mut Vec<resident::Visible>,
+    boxed: &mut Vec<resident::Visible>,
+    seen: &mut crate::fast_hash::FxHashSet<SectionKey>,
+) {
+    let radius = shadow_walk_radius(shadow_distance, detail_distance);
+    let light = ShadowCull::new(shadow_box(v))
+        .with_casters(v.view_casters.then(|| shadow_casters(cull_proj, v.light)))
+        .with_reach(v.distance);
+    // Within the unculled distance every section, then those in the light's box.
+    if let Some(d) = v.unculled {
+        let all = ShadowCull::new(Frustum::from_planes([glam::Vec4::W; 6])).with_reach(v.distance);
+        let near = radius.min((d / 16.0).ceil() as i32);
+        sections.visible(camera, near, &all, |_| true, |_, _| false, shadow_visible);
+    }
+    boxed.clear();
+    sections.visible(camera, radius, &light, |_| true, |_, _| false, boxed);
+    seen.clear();
+    seen.extend(shadow_visible.iter().map(|s| s.key));
+    shadow_visible.extend(boxed.drain(..).filter(|s| !seen.contains(&s.key)));
 }
 
 /// Marks `layers` in `active`, a bit per animated sprite layer (`Renderer::animate`).

@@ -8,10 +8,14 @@ mod lifetime;
 pub mod observer;
 mod query;
 mod resident;
+#[doc(hidden)]
+pub mod snapshot;
 
 pub use query::{
     AttachmentBatch, AttachmentIter, AttachmentQuery, AttachmentRowError, AttachmentRowRef,
 };
+#[doc(hidden)]
+pub use query::{AttachmentQueryScope, AttachmentQueryScopes};
 
 #[doc(hidden)]
 pub use lifetime::{AttachmentLifetime, HasAttachmentLifetime};
@@ -23,7 +27,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
     hash::Hash,
-    sync::{Arc, Mutex, OnceLock, Weak},
+    sync::{Arc, LazyLock, Mutex, OnceLock, Weak},
 };
 
 use sunrise_core::nbt::{Compound, JavaString, Tag};
@@ -88,8 +92,7 @@ impl<'a> std::borrow::Borrow<dyn AttachmentKeyView + 'a> for (JavaString, JavaSt
     }
 }
 
-// no wire: owned by the lower runtime crate, which cannot depend on mod_api's derive;
-// mod_api supplies the explicit tagged Wire implementation, including bounded static text.
+// no wire: reports a local attachment operation's failure, not stored attachment data.
 /// An attachment operation could not be completed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -139,15 +142,13 @@ pub fn attachment_compound(tag: Option<&Tag>) -> Result<Option<&Compound>, Attac
 /// A server holder in the host's current dimension.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-// no wire: runtime-owned selector; mod_api supplies its explicit tagged Wire codec.
+// no wire: addresses storage relative to the current host.
 pub enum Holder {
     Entity(u32),
     Player(u128),
     BlockEntity([i32; 3]),
     Chunk([i32; 2]),
     Level,
-    /// A detached player's map, available only during its clone hook.
-    OriginalPlayer(u64),
 }
 
 /// Whether borrowing a map may create publication authority for a new value.
@@ -185,7 +186,7 @@ pub type AttachmentValue = Arc<dyn Any + Send + Sync>;
 
 /// How a policy-checked type declared its value: what saving, respawning and syncing do with it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// no wire: runtime-owned policy; mod_api supplies its explicit field-wise Wire codec.
+// no wire: local store metadata; disk and sync records carry their own flags.
 pub struct AttachmentPolicy {
     pub copy_on_death: bool,
     pub sync: bool,
@@ -194,7 +195,7 @@ pub struct AttachmentPolicy {
 /// What comes with a stored value: its saved form (`None` for a type with no codec), its type's
 /// policy, and why it is stored.
 #[derive(Clone, Debug, PartialEq)]
-// no wire: runtime-owned saved form; mod_api supplies its explicit NBT-aware Wire codec.
+// no wire: describes a local store operation; the encoded compound is the saved value.
 pub struct AttachmentForm {
     pub encoded: Option<Compound>,
     pub policy: AttachmentPolicy,
@@ -204,7 +205,7 @@ pub struct AttachmentForm {
 /// Why a value is stored, which decides what else changes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-// no wire: runtime-owned write intent; mod_api supplies its explicit tagged Wire codec.
+// no wire: tells the local store how the value arrived.
 pub enum AttachmentWrite {
     /// A saved value just decoded: nothing else changes.
     Decoded,
@@ -215,8 +216,9 @@ pub enum AttachmentWrite {
     Set,
 }
 
-/// The current server's holders' values, erased to what crosses any boundary: the typed
-/// [`AttachmentType`] methods are built on it, for mods.
+/// Local access to the current server's holders' erased values. The typed
+/// [`AttachmentType`] methods are built on this store; persistence and sync use
+/// the attachment's codec.
 pub trait AttachmentStore {
     /// Validate an attachment type against the loaded declarations.
     fn validate_attachment(
@@ -329,14 +331,14 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         form: AttachmentForm,
     ) -> Result<(), AttachmentError> {
         AttachmentHost::validate_attachment(self, namespace, name, form.policy.sync)?;
+        if form.policy.copy_on_death && form.encoded.is_none() {
+            return Err(AttachmentError::InvalidCopyPolicy);
+        }
         let AttachmentForm {
             encoded,
             policy,
             write,
         } = form;
-        if matches!(holder, Holder::OriginalPlayer(_)) {
-            return Err(AttachmentError::MissingHolder);
-        }
         Attachments::store(
             self.attachments(holder, AttachmentAccess::Store)?,
             namespace,
@@ -358,9 +360,6 @@ impl<H: AttachmentHost + ?Sized> AttachmentStore for H {
         sync: bool,
     ) -> Result<(), AttachmentError> {
         AttachmentHost::validate_attachment(self, namespace, name, sync)?;
-        if matches!(holder, Holder::OriginalPlayer(_)) {
-            return Err(AttachmentError::MissingHolder);
-        }
         Attachments::discard(
             self.attachments(holder, AttachmentAccess::Existing)?,
             namespace,
@@ -434,8 +433,7 @@ pub struct AttachmentSync {
 }
 
 impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
-    /// Read a value, inserting its default if absent except on an original-player snapshot;
-    /// see `get_existing`.
+    /// Read a value, inserting its default if absent; see `get_existing`.
     pub fn get<S: AttachmentStore + ?Sized>(
         &self,
         store: &mut S,
@@ -445,9 +443,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
             return Ok(value);
         }
         let value = (self.default)();
-        if !matches!(holder, Holder::OriginalPlayer(_)) {
-            self.keep(store, holder, value.clone(), AttachmentWrite::Default)?;
-        }
+        self.keep(store, holder, value.clone(), AttachmentWrite::Default)?;
         Ok(value)
     }
     /// Whether a holder carries a value, like NeoForge's `hasData`; never inserts the default.
@@ -478,9 +474,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
             return Ok(None);
         };
         let value = self.decode(&saved)?;
-        if !matches!(holder, Holder::OriginalPlayer(_)) {
-            self.keep(store, holder, value.clone(), AttachmentWrite::Decoded)?;
-        }
+        self.keep(store, holder, value.clone(), AttachmentWrite::Decoded)?;
         Ok(Some(value))
     }
     /// Read the decoded value through `read` without cloning it: what a read of one part of a
@@ -586,7 +580,8 @@ fn envelope(value: &Decoded) -> Option<Compound> {
     })
 }
 fn raw_value(raw: &Compound) -> Option<&Compound> {
-    match raw.get(&"value".into()) {
+    static VALUE: LazyLock<JavaString> = LazyLock::new(|| "value".into());
+    match raw.get(&VALUE) {
         Some(Tag::Compound(value)) => Some(value),
         _ => None,
     }
@@ -615,21 +610,6 @@ struct ReadCache {
 }
 
 impl AttachmentEntry {
-    /// Rebuild a transferred saved binding for lazy typed reads.
-    #[doc(hidden)]
-    pub fn from_saved(saved: Compound) -> Self {
-        Self::raw(saved)
-    }
-
-    /// Capture the saved envelope, if this binding has a codec.
-    #[doc(hidden)]
-    pub fn saved(&self) -> Option<Compound> {
-        match &self.state {
-            Entry::Raw { saved, .. } => Some(saved.clone()),
-            Entry::Decoded(value) => envelope(value),
-        }
-    }
-
     fn raw(saved: Compound) -> Self {
         Self {
             state: Entry::Raw {
@@ -688,7 +668,10 @@ impl AttachmentEntry {
     }
     fn is_synced(&self) -> bool {
         match &self.state {
-            Entry::Raw { saved, .. } => matches!(saved.get(&"sync".into()), Some(Tag::Byte(1))),
+            Entry::Raw { saved, .. } => {
+                static SYNC: LazyLock<JavaString> = LazyLock::new(|| "sync".into());
+                matches!(saved.get(&SYNC), Some(Tag::Byte(1)))
+            }
             Entry::Decoded(value) => value.policy.sync,
         }
     }
@@ -979,18 +962,25 @@ impl Attachments {
         }
         raw
     }
-    /// Copy opted-in values through their disk encoding for a player respawn.
-    pub fn copy_on_death(&self) -> Result<Self, AttachmentError> {
+    /// Copy serializable entries through their disk encoding for a player clone
+    /// (NeoForge's `AttachmentInternals.copyEntityAttachments`).
+    /// When `is_death` is true, only `copy_on_death` entries are copied; when false
+    /// (End credits return), every serializable entry is copied. Codec-less entries
+    /// are never copied, and copied entries start encoded rather than sharing decoded
+    /// `Arc` bindings with the source map.
+    pub fn copy_for_clone(&self, is_death: bool) -> Self {
         let mut copy = Self::default();
         for (key, entry) in &self.entries {
             let encoded = match &entry.state {
                 Entry::Raw { saved, .. }
-                    if matches!(saved.get(&"copy_on_death".into()), Some(Tag::Byte(1))) =>
+                    if !is_death
+                        || matches!(saved.get(&"copy_on_death".into()), Some(Tag::Byte(1))) =>
                 {
                     Some(saved.clone())
                 }
-                Entry::Decoded(value) if value.policy.copy_on_death => {
-                    Some(envelope(value).ok_or(AttachmentError::InvalidCopyPolicy)?)
+                Entry::Decoded(value) if !is_death || value.policy.copy_on_death => {
+                    // AttachmentStore requires an encoding for every copy-on-death value.
+                    envelope(value)
                 }
                 _ => None,
             };
@@ -999,7 +989,11 @@ impl Attachments {
                     .insert(key.clone(), Arc::new(AttachmentEntry::raw(encoded)));
             }
         }
-        Ok(copy)
+        copy
+    }
+    /// Copy opted-in values through their disk encoding for a player respawn.
+    pub fn copy_on_death(&self) -> Result<Self, AttachmentError> {
+        Ok(self.copy_for_clone(true))
     }
     /// The shared immutable binding, without decoding or inserting a value.
     #[doc(hidden)]
@@ -1877,55 +1871,82 @@ mod tests {
         assert_eq!(SYNCED.get(&mut map, Holder::Level), Ok(7));
     }
     #[test]
-    fn original_player_reads_never_store_defaults_or_decoded_values() {
-        struct One(Attachments);
-        impl AttachmentHost for One {
-            fn validate_attachment(
-                &self,
-                namespace: &str,
-                name: &str,
-                sync: bool,
-            ) -> Result<(), AttachmentError> {
-                let _ = (namespace, name, sync);
-                Ok(())
-            }
-            fn attachments(
-                &mut self,
-                _: Holder,
-                _: AttachmentAccess,
-            ) -> Result<&mut Attachments, AttachmentError> {
-                Ok(&mut self.0)
-            }
-        }
-        let mut host = One(Attachments::default());
-        let holder = Holder::OriginalPlayer(1);
-        assert_eq!(COUNTER.get(&mut host, holder), Ok(0));
-        assert_eq!(COUNTER.has(&mut host, holder), Ok(false));
-        assert_eq!(COUNTER.get_existing(&mut host, holder), Ok(None));
-        for write in [
-            AttachmentWrite::Set,
-            AttachmentWrite::Default,
-            AttachmentWrite::Decoded,
-        ] {
-            assert_eq!(
-                AttachmentStore::store(
-                    &mut host,
-                    holder,
-                    "test",
-                    "counter",
-                    Arc::new(9i32),
-                    AttachmentForm {
-                        encoded: None,
-                        policy: COUNTER.policy(),
-                        write,
-                    }
-                ),
-                Err(AttachmentError::MissingHolder),
-            );
-        }
-        host.0.apply_sync(change("counter", Some(42)));
-        assert_eq!(COUNTER.get_existing(&mut host, holder), Ok(Some(42)));
-        assert_eq!(COUNTER.get_existing(&mut host, holder), Ok(Some(42)));
+    fn copy_for_clone_copies_serializable_entries_by_policy_and_skips_unserialized() {
+        const UNSERIALIZED: AttachmentType<i32> = AttachmentType {
+            namespace: "test",
+            name: "unserialized",
+            default: || 0,
+            codec: None,
+            copy_on_death: false,
+            sync: false,
+        };
+        const KEEP_ON_DEATH: AttachmentType<i32> = AttachmentType {
+            namespace: "test",
+            name: "keep_on_death",
+            default: || 0,
+            codec: Some(AttachmentCodec { encode, decode }),
+            copy_on_death: true,
+            sync: false,
+        };
+        let mut source = Attachments::default();
+        COUNTER.set(&mut source, Holder::Level, 11).unwrap();
+        KEEP_ON_DEATH.set(&mut source, Holder::Level, 22).unwrap();
+        UNSERIALIZED.set(&mut source, Holder::Level, 33).unwrap();
+
+        let mut end_copy = source.copy_for_clone(false);
+        assert_eq!(UNSERIALIZED.has(&mut end_copy, Holder::Level), Ok(false));
+        assert!(end_copy.decoded("test", "counter").unwrap().is_none());
+        assert!(end_copy.decoded("test", "keep_on_death").unwrap().is_none());
+        assert_eq!(
+            COUNTER.get_existing(&mut end_copy, Holder::Level),
+            Ok(Some(11))
+        );
+        assert_eq!(
+            KEEP_ON_DEATH.get_existing(&mut end_copy, Holder::Level),
+            Ok(Some(22))
+        );
+        // Decoded Arcs are independent from the source map.
+        let src_arc = source.decoded("test", "counter").unwrap().unwrap();
+        let copy_arc = end_copy.decoded("test", "counter").unwrap().unwrap();
+        assert!(!Arc::ptr_eq(&src_arc, &copy_arc));
+
+        let mut death_copy = source.copy_for_clone(true);
+        assert_eq!(UNSERIALIZED.has(&mut death_copy, Holder::Level), Ok(false));
+        assert_eq!(COUNTER.has(&mut death_copy, Holder::Level), Ok(false));
+        assert!(
+            death_copy
+                .decoded("test", "keep_on_death")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            KEEP_ON_DEATH.get_existing(&mut death_copy, Holder::Level),
+            Ok(Some(22))
+        );
+    }
+    #[test]
+    fn store_refuses_copy_on_death_without_encoding() {
+        let mut map = Attachments::default();
+        let form = AttachmentForm {
+            encoded: None,
+            policy: AttachmentPolicy {
+                copy_on_death: true,
+                sync: false,
+            },
+            write: AttachmentWrite::Set,
+        };
+        assert_eq!(
+            AttachmentStore::store(
+                &mut map,
+                Holder::Level,
+                "test",
+                "invalid",
+                Arc::new(10_i32),
+                form
+            ),
+            Err(AttachmentError::InvalidCopyPolicy),
+        );
+        assert!(map.entry("test", "invalid").unwrap().is_none());
     }
 
     #[test]

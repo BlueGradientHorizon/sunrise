@@ -282,6 +282,10 @@ impl EndState {
     }
     /// A server's move: an eye has no interpolation handler, so
     /// `moveOrInterpolateTo` puts it there at once. False when `id` isn't one.
+    pub(in crate::game) fn remote_eye_pose(&self, id: u32) -> Option<([f64; 3], [f64; 3])> {
+        let e = self.eyes.iter().find(|e| e.id == id)?;
+        Some((e.position.to_array(), e.previous.to_array()))
+    }
     pub(super) fn move_remote_eye(&mut self, id: u32, at: [f64; 3]) -> bool {
         let Some(e) = self.eyes.iter_mut().find(|e| e.id == id) else {
             return false;
@@ -527,7 +531,7 @@ impl Game<'_> {
         });
         let Some((hit, state)) = target else {
             // EnderEyeItem.useOn passes off a frame: a guest's UseItem throws it.
-            if matches!(self.guest_use, Some(super::GuestUse::OnBlock(_))) {
+            if matches!(self.guest_use, Some(super::GuestUse::OnBlock { .. })) {
                 return Ok(false);
             }
             // EnderEyeItem.use: startUsingItem (getUseDuration 0, so the use
@@ -799,19 +803,29 @@ impl Game<'_> {
         } else {
             [Some(yaw), Some(pitch)]
         };
+        Ok(match self.end_exit_landing(target, finder) {
+            Ok(at) => Some((at, facing)),
+            Err(chunk) => {
+                self.spawn_wait.push(chunk);
+                None
+            }
+        })
+    }
+
+    /// `TeleportTransition.findAdjustedSharedSpawnPos` on the shared spawn column;
+    /// elsewhere, use the personal column's surface or its saved height if it has none.
+    /// Returns the next chunk to load if the shared spawn search is still pending.
+    pub(super) fn end_exit_landing(
+        &self,
+        target: Vec3,
+        finder: &mut Option<PlayerSpawnFinder>,
+    ) -> std::result::Result<Vec3, (i32, i32)> {
         let (x, z) = (target.x.floor() as i32, target.z.floor() as i32);
-        // findAdjustedSharedSpawnPos: PlayerSpawnFinder around the world spawn.
         if let Some(world) = self.level.world_spawn.filter(|w| w[0] == x && w[2] == z) {
-            return Ok(match self.search_spawn(world, finder) {
-                Ok(at) => Some((at, facing)),
-                Err(chunk) => {
-                    self.spawn_wait.push(chunk);
-                    None
-                }
-            });
+            return self.search_spawn(world, finder);
         }
         let y = self.land_column(x, z).map_or(target.y, f64::from);
-        Ok(Some((Vec3::new(target.x, y, target.z), facing)))
+        Ok(Vec3::new(target.x, y, target.z))
     }
 
     /// EnderDragonFight without a dragon: once the centre of the main island
@@ -1265,6 +1279,9 @@ impl Game<'_> {
         camera: glam::DVec3,
         out: &mut Vec<Vertex>,
     ) {
+        if self.hides_as_camera(crystal.id) {
+            return;
+        }
         let feet = glam::DVec3::new(crystal.position.x, crystal.position.y, crystal.position.z);
         let rel = feet - camera;
         if rel.length_squared() > 256.0 * 256.0 {
@@ -1511,6 +1528,9 @@ impl Game<'_> {
             yaw.cos() * pitch.sin(),
         ) * 0.25;
         for eye in &self.end.eyes {
+            if self.hides_as_camera(eye.id) {
+                continue;
+            }
             let p = eye.previous + (eye.position - eye.previous) * alpha - camera;
             out.extend(eye_quad(p.as_vec3(), right, up, r));
         }

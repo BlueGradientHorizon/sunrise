@@ -733,6 +733,11 @@ pub struct Chunk {
     /// synced to Sunrise clients over `sunrise:connection_groups`; dropped with the chunk and
     /// never saved to disk.
     pub connection_groups: crate::fast_hash::FxHashMap<u32, u64>,
+    /// The standalone models a client mod draws as part of a cell's block
+    /// (`ClientRenderClientHost::set_block_extra_models`), by [`Self::dynamic_cell`]: the mesher
+    /// draws them after the block's own models. A change of the cell's state drops its list;
+    /// dropped with the chunk, never saved or sent.
+    pub extra_models: crate::fast_hash::FxHashMap<u32, Arc<[mod_api::ModelRef]>>,
 }
 impl Chunk {
     /// An all-air chunk in the current `layout`.
@@ -770,6 +775,7 @@ impl Chunk {
             dynamic_emission: Default::default(),
             dynamic_pending: false,
             connection_groups: Default::default(),
+            extra_models: Default::default(),
         }
     }
     /// The [`Self::dynamic_emission`] / [`Self::connection_groups`] key of the cell at `y`
@@ -912,9 +918,13 @@ impl Chunk {
         // move it. Any other change rebuilds that map on the next read.
         if previous != v {
             // A part's answer was for the state the cell held.
+            let cell = (s as u32) << 12 | index(x, y, z) as u32;
             if !self.dynamic_emission.is_empty() {
-                self.dynamic_emission
-                    .remove(&((s as u32) << 12 | index(x, y, z) as u32));
+                self.dynamic_emission.remove(&cell);
+            }
+            // So are the models a mod drew with it.
+            if !self.extra_models.is_empty() {
+                self.extra_models.remove(&cell);
             }
             for map in [&mut self.surface, &mut self.motion_blocking] {
                 map.write(column(x, z), y);
@@ -925,12 +935,14 @@ impl Chunk {
     /// Section `s`'s block states replaced whole (a bulk edit): its storage
     /// compacted, and the heightmaps built again on their next read.
     pub fn replace_blocks(&mut self, s: usize, values: &[u32; 4096]) {
-        // The parts' answers of the cells whose state changes go with it.
+        // The parts' answers and the mods' models of the cells whose state changes go with it.
         let old = &self.sections[s];
-        self.dynamic_emission.retain(|&cell, _| {
+        let kept = |&cell: &u32| {
             let i = (cell & 4095) as usize;
             cell >> 12 != s as u32 || old.get(i) == values[i]
-        });
+        };
+        self.dynamic_emission.retain(|cell, _| kept(cell));
+        self.extra_models.retain(|cell, _| kept(cell));
         let section = Arc::make_mut(&mut self.sections[s]);
         section.blocks = Section::from_blocks(values);
         section.compact();
@@ -1121,10 +1133,15 @@ impl Chunk {
     /// the quart y clamped to the column).
     #[inline]
     pub fn biome(&self, x: i32, y: i32, z: i32) -> u16 {
-        let qy = ((y - self.min_y) >> 2).clamp(0, self.sections.len() as i32 * 4 - 1);
+        self.biome_quart([x >> 2, y >> 2, z >> 2])
+    }
+    /// A biome at quart coordinates, with Y clamped before converting to a section index.
+    #[inline]
+    pub(crate) fn biome_quart(&self, [qx, qy, qz]: [i32; 3]) -> u16 {
+        let qy = (qy - (self.min_y >> 2)).clamp(0, self.sections.len() as i32 * 4 - 1);
         self.sections[(qy >> 2) as usize]
             .biomes
-            .get(((qy & 3) << 4 | ((z & 15) >> 2) << 2 | (x & 15) >> 2) as usize) as u16
+            .get(((qy & 3) << 4 | (qz & 3) << 2 | (qx & 3)) as usize) as u16
     }
     /// Sets the biome of one quart cell (`qy` counts from the column's bottom).
     pub fn set_biome_cell(&mut self, qx: i32, qy: i32, qz: i32, biome: u16) {

@@ -41,6 +41,23 @@ class IgnoredTests(unittest.TestCase):
         self.assertTrue(stacks)
         self.assertEqual(set(stacks), {str(16 * 1024 * 1024)})
 
+    def test_daily_tests_require_a_gpu_adapter_in_cargo_and_prebuilt_binaries(self):
+        output = target(1, "test gpu_case ... ok\n", summary(passed=1))
+        result = subprocess.CompletedProcess([], 0, output)
+        with patch.dict(os.environ, {"SUNRISE_GPU_TESTS_REQUIRE_ADAPTER": "0"}), \
+                patch.object(ignored_tests.subprocess, "run", return_value=result) as run, \
+                patch.object(ignored_tests.ignored_shards, "workspace_members",
+                             return_value={"example": ("crates/example", ".")}), \
+                patch.object(ignored_tests, "workspace_features", return_value={}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            ignored_tests.run("example", [])
+            ignored_tests.run("example", [], only=(["lib"], ["gpu_case"]),
+                              binaries={"lib": "/fake/example-tests"})
+        commands = {tuple(call.args[0][LIMIT:])[:2]: call.kwargs["env"]
+                    for call in run.call_args_list if len(call.args[0]) > LIMIT}
+        self.assertEqual(commands[("cargo", "test")]["SUNRISE_GPU_TESTS_REQUIRE_ADAPTER"], "1")
+        self.assertEqual(commands[("/fake/example-tests", "--ignored")]["SUNRISE_GPU_TESTS_REQUIRE_ADAPTER"], "1")
+
     def test_success_and_multiple_targets(self):
         output = target(1, "test first ... ok\n", summary(passed=1))
         output += target(2, "test second ... ok\ntest third ... ok\n", summary(passed=2))
