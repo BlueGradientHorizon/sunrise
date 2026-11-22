@@ -1862,6 +1862,8 @@ impl Game<'_> {
                 self.start_task("wait", TaskKind::Wait { until_tick }, reply, timeout)
             }
             "stop" => {
+                // A cancelled `attack ID` must not leave its queued click to fire later.
+                self.finish_agent_attack_input(false);
                 let cancelled = self.agent.task.take().map(|t| {
                     let _ = t.reply.send(
                         json!({ "error": "cancelled by stop", "cancelled": true }).to_string(),
