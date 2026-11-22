@@ -80,14 +80,16 @@ pub struct ChunkDiskFailure {
 /// A disk callback's shared Host. It has no live backend and is never a
 /// `ServerHost`: live handle methods refuse, and world writes do not compile.
 /// Registry and settings reads use the frozen resource generation retained by
-/// the disk worker. Neither getter reads files. The inherited
-/// [`ConfigHost::setting`](prelude::ConfigHost::setting) still returns an owned `Option<String>`.
+/// the disk worker. Neither getter reads files.
 pub trait ChunkDiskHost: Host {
     /// Borrow the captured world, dimension, chunk, representation and phase.
     fn job(&self) -> &ChunkDiskContext;
     /// Borrows registry names in ID order for the lifetime of the host borrow,
     /// or returns `None` if the registry is unavailable in the captured generation.
     fn registry(&self, name: &str) -> Option<&[String]>;
+    /// Borrows a captured setting for the lifetime of the host borrow,
+    /// or returns `None` if it was not captured in this generation.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 }
 
 // no wire: a borrowed worker-only Host.
@@ -113,7 +115,7 @@ impl<'a> OwningChunkDisk<'a> {
 }
 
 impl Host for OwningChunkDisk<'_> {}
-crate::impl_host_areas!(OwningChunkDisk<'_>, except(levels, config));
+crate::impl_host_areas!(OwningChunkDisk<'_>, except(levels));
 impl prelude::LevelsHost for OwningChunkDisk<'_> {
     fn is_loaded(&self, id: &str) -> bool {
         // Installed membership, as `LevelsHost` promises, not the startup-enabled `mods()` view.
@@ -124,9 +126,6 @@ impl prelude::LevelsHost for OwningChunkDisk<'_> {
     }
 }
 impl prelude::ConfigHost for OwningChunkDisk<'_> {
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        self.resources.setting(mod_id, key).map(str::to_owned)
-    }
     fn config_dir(&self) -> &std::path::Path {
         &self.config_root
     }
@@ -137,6 +136,9 @@ impl ChunkDiskHost for OwningChunkDisk<'_> {
     }
     fn registry(&self, name: &str) -> Option<&[String]> {
         self.resources.registry(name)
+    }
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
+        self.resources.setting(mod_id, key)
     }
 }
 

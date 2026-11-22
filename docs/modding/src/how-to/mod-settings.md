@@ -6,8 +6,8 @@ A mod keeps its options and files in distinct places according to who edits them
 | --- | --- | --- | --- |
 | Lives in | The game's `config/` folder (on a server, `serverconfig/` per world) | `sunrise-mods/.sunrise-mod-data/<mod id>/`, one file per key | `runtime/` inside the `.smod` package, listed in `[runtime]` with SHA-512 |
 | Edited by | The player, in a text editor | The player, on the mod's page in **Options > Mods** | The mod author at packaging time (immutable verified assets) |
-| You declare it with | `Registrar::register_config` | `Registrar::register_setting` | `[runtime]` in `sunrise-mod.toml` |
-| You read it in | The config's `ConfigListener` (`ConfigEvent::Loading`, `Reloading`, `Unloading`) or `std::fs` under `Host::config_dir()` | `Host::setting` and the typed `setting_*` reads | `RegistrationContext::runtime_files()` |
+| You declare it with | `Registrar::register_config` | `Registrar::register_setting` (returns `SettingKey`) | `[runtime]` in `sunrise-mod.toml` |
+| You read it in | The config's `ConfigListener` (`ConfigEvent::Loading`, `Reloading`, `Unloading`) or `std::fs` under `Host::config_dir()` | `host.setting(key)` and the typed `setting_*` reads | `RegistrationContext::runtime_files()` |
 | NeoForge counterpart | `ModContainer.registerConfig`, `ModConfigEvent`, `FMLPaths.CONFIGDIR` | `ModConfigSpec` entries on the config screen | — |
 
 ## Config files
@@ -157,19 +157,27 @@ The game never scans `sunrise-mod-data/` as settings or config.
 
 ## Settings
 
-Register each setting from `Hooks::register` with `Registrar::register_setting(SettingSpec { … })`: a key
-(`a-z`, `0-9`, `_`, `-` and `.`, not starting with `.`), translation keys for its label and tooltip, and its kind
-with the default. A setting the spec check refuses, or a key you registered already, comes back as the error.
-Settings are client settings and appear on your mod's page in **Options > Mods**, opened from its **Config**
-button.
+Register each setting from `Hooks::register` with `Registrar::register_setting(SettingSpec::…)` to receive an
+owner-bound `SettingKey`: a key (`a-z`, `0-9`, `_`, `-` and `.`, not starting with `.`), translation keys for its
+label and tooltip, and its kind with the default. A setting the spec check refuses, or a key you registered
+already, comes back as the error. On the client the settings appear on your mod's page in
+**Options > Mods**, opened from its **Config** button.
 
-- Read a setting with `host.setting(mod_id, key)` or a typed read. Typed reads are cached per data folder and key.
-- `host.set_setting(mod_id, key, value)` keeps a value. A successful write updates the cache; a failed one leaves
-  it. This write does not fire `setting_changed`.
-- When the player edits a setting, the value is kept first, then `setting_changed` tells your mod alone.
+- Read a setting with `host.setting(key)` on `ClientHost` or `ServerHost`. The client also has
+  `setting_bool`, `setting_choice`, `setting_f64` and `setting_color`. These calls take the
+  `SettingKey` minted at registration and return `Result<_, SettingAccessError>`.
+- Update a setting on either host with `host.set_setting(key, value) -> Result<bool, SettingAccessError>`.
+  The game validates it, persists it atomically, updates that side's live store and any client Options > Mods
+  row, and synchronously tells its owner through `setting_changed`. The hook takes `HostSide<'_>` and can
+  read the new value. Writing the same value does not notify; range values compare by bits, so `-0.0` and
+  `+0.0` are distinct, matching vanilla's `OptionInstance.set`.
+- Options > Mods uses the same write path. Publishing a settings reload, or reopening a mod's settings page
+  after an external edit, also notifies the owner of changed values.
+- Settings writes made in a config listener’s `Reloading` or `Unloading` callback are live: the value and its notification
+  stand even if the writing listener later panics. Only that listener is disabled; later listeners still run.
 
-A mod reads and writes only its own settings: another mod's id, or a key its owner never registered, reads
-`None` and writes nothing.
+Keep the keys returned by your registration. There is no live raw mod-id read/write path. `ConfigContext`,
+`ReloadContext` and `ClientReloadListenerContext` allow typed reads without giving out a mutable host.
 
 The settings folder is settings only, not bulk storage: ordinary files there are read as setting keys and
 subfolders or unsafe entries still warn during snapshots. Keep bulk files under `Host::instance_dir()` or

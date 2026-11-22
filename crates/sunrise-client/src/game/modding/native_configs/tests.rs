@@ -39,7 +39,7 @@ pub(super) fn with_registered_configs(
 #[ignore = "daily"]
 fn panicking_config_hooks_keep_live_writes_and_do_not_stop_later_listeners() {
     use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
-    use mod_api::{__private::take_hook_panics, SettingSpec};
+    use mod_api::{__private::take_hook_panics, SettingSpec, SettingValue};
 
     if run_fresh_cases(
         "game::native_configs::tests::panicking_config_hooks_keep_live_writes_and_do_not_stop_later_listeners",
@@ -49,12 +49,13 @@ fn panicking_config_hooks_keep_live_writes_and_do_not_stop_later_listeners() {
         return;
     }
 
-    struct Broken;
+    struct Broken(Arc<Mutex<Vec<(String, SettingValue)>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Broken {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
             for key in ["reload", "unload"] {
-                r.register_setting(SettingSpec::toggle(key, format!("fault.{key}"), false))
+                let setting = r
+                    .register_setting(SettingSpec::toggle(key, format!("fault.{key}"), false))
                     .unwrap();
                 r.register_config(
                     ConfigSpec::new(Server, "enabled = true").file(format!("fault-{key}.toml")),
@@ -69,13 +70,31 @@ fn panicking_config_hooks_keep_live_writes_and_do_not_stop_later_listeners() {
                                 ConfigEvent::Unloading(host) if key == "unload" => host,
                                 _ => return Ok(()),
                             };
-                            host.set_setting("fault", key, "true");
+                            assert_eq!(
+                                host.set_setting(setting, SettingValue::Toggle(true)),
+                                Ok(true)
+                            );
                             panic!("broken {key} listener");
                         },
                     )),
                 )
                 .unwrap();
             }
+        }
+
+        fn setting_changed(
+            &self,
+            host: HostSide<'_>,
+            event: &mut mod_api::SettingChangedEvent<'_>,
+        ) {
+            let HostSide::Server(host) = host else {
+                panic!("expected server setting change")
+            };
+            let key = mod_api::__private::setting_key_by_name("fault", event.key).unwrap();
+            self.0
+                .lock()
+                .unwrap()
+                .push((event.key.to_owned(), host.setting(key).unwrap()));
         }
     }
 
@@ -103,8 +122,9 @@ fn panicking_config_hooks_keep_live_writes_and_do_not_stop_later_listeners() {
     }
 
     let observed = Arc::new(Mutex::new(Vec::new()));
+    let changed = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![
-        ModEntry::new("fault", Box::new(Broken)),
+        ModEntry::new("fault", Box::new(Broken(changed.clone()))),
         ModEntry::new("later", Box::new(Later(observed.clone()))),
     ]
     .into();
@@ -112,21 +132,44 @@ fn panicking_config_hooks_keep_live_writes_and_do_not_stop_later_listeners() {
         with_game(|game| {
             let _ = take_hook_panics();
             let config_dir = game.config_root.clone();
-            for (text, expected) in [("first", "true"), ("second", "false")] {
-                game.set_setting("fault", "reload", "false");
-                game.set_setting("fault", "unload", "false");
+            let reload = mod_api::__private::setting_key_by_name("fault", "reload").unwrap();
+            let unload = mod_api::__private::setting_key_by_name("fault", "unload").unwrap();
+            for (text, expected) in [("first", true), ("second", false)] {
+                assert_eq!(
+                    game.set_setting(reload, SettingValue::Toggle(false)),
+                    Ok(!expected)
+                );
+                assert_eq!(
+                    game.set_setting(unload, SettingValue::Toggle(false)),
+                    Ok(!expected)
+                );
                 game.native_configs_server_start(Path::new("test-world"), false);
                 fs::write(config_dir.join("fault-reload.toml"), text).unwrap();
                 fs::write(config_dir.join("later-server.toml"), text).unwrap();
                 game.native_configs.next_check = None;
                 game.native_configs_poll();
                 game.native_configs_server_stop();
-                assert_eq!(game.setting("fault", "reload").as_deref(), Some(expected));
-                assert_eq!(game.setting("fault", "unload").as_deref(), Some(expected));
+                for (name, key) in [("reload", reload), ("unload", unload)] {
+                    assert_eq!(game.setting(key), Ok(SettingValue::Toggle(expected)));
+                    assert_eq!(
+                        fs::read_to_string(game.native_settings_root().join("fault").join(name))
+                            .unwrap(),
+                        expected.to_string()
+                    );
+                }
             }
             assert_eq!(
                 *observed.lock().unwrap(),
                 ["reload", "unload", "reload", "unload"]
+            );
+            assert_eq!(
+                changed.lock().unwrap().as_slice(),
+                [
+                    ("reload".to_owned(), SettingValue::Toggle(true)),
+                    ("unload".to_owned(), SettingValue::Toggle(true)),
+                    ("reload".to_owned(), SettingValue::Toggle(false)),
+                    ("unload".to_owned(), SettingValue::Toggle(false)),
+                ]
             );
             let notices = take_hook_panics();
             assert_eq!(notices.len(), 2);
@@ -143,7 +186,7 @@ fn panicking_config_hooks_keep_live_writes_and_do_not_stop_later_listeners() {
 #[ignore = "daily"]
 fn config_permissions_and_once_per_side_survive_two_worlds() {
     use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game};
-    use mod_api::SettingSpec;
+    use mod_api::{SettingSpec, SettingValue};
 
     if run_fresh_cases(
         "game::native_configs::tests::config_permissions_and_once_per_side_survive_two_worlds",
@@ -157,12 +200,13 @@ fn config_permissions_and_once_per_side_survive_two_worlds() {
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-            r.register_setting(SettingSpec::toggle(
-                "unloaded",
-                "phase_probe.unloaded",
-                false,
-            ))
-            .unwrap();
+            let key = r
+                .register_setting(SettingSpec::toggle(
+                    "unloaded",
+                    "phase_probe.unloaded",
+                    false,
+                ))
+                .unwrap();
             for kind in [Client, Common, Server] {
                 let calls = self.0.clone();
                 let listener: Arc<ConfigListener> =
@@ -174,19 +218,21 @@ fn config_permissions_and_once_per_side_survive_two_worlds() {
                                     Some("phase_probe")
                                 );
                                 assert_eq!(context.config_dir(), Game::game_dir().join("config"));
-                                assert!(context.setting("other", "unloaded").is_none());
-                                if config.kind == Server {
-                                    assert!(context.setting("phase_probe", "unloaded").is_some());
-                                }
+                                assert!(matches!(
+                                    context.setting(key),
+                                    Ok(SettingValue::Toggle(_))
+                                ));
                                 calls.lock().unwrap().push((true, config.kind));
                             }
                             ConfigEvent::Unloading(host) => {
-                                let next = match host.setting("phase_probe", "unloaded").as_deref()
-                                {
-                                    Some("true") => "false",
-                                    _ => "true",
+                                let SettingValue::Toggle(current) = host.setting(key).unwrap()
+                                else {
+                                    panic!("expected a toggle")
                                 };
-                                host.set_setting("phase_probe", "unloaded", next);
+                                assert_eq!(
+                                    host.set_setting(key, SettingValue::Toggle(!current)),
+                                    Ok(true)
+                                );
                                 calls.lock().unwrap().push((false, config.kind));
                             }
                             _ => {}
@@ -206,14 +252,12 @@ fn config_permissions_and_once_per_side_survive_two_worlds() {
             game.native_configs_client_start();
         });
         with_game(|game| {
-            game.set_setting("phase_probe", "unloaded", "false");
-            for (world, expected) in [("phase-world-one", "true"), ("phase-world-two", "false")] {
+            let key = mod_api::__private::setting_key_by_name("phase_probe", "unloaded").unwrap();
+            assert_eq!(game.setting(key), Ok(SettingValue::Toggle(false)));
+            for (world, expected) in [("phase-world-one", true), ("phase-world-two", false)] {
                 game.native_configs_server_start(Path::new(world), false);
                 game.native_configs_server_stop();
-                assert_eq!(
-                    game.setting("phase_probe", "unloaded").as_deref(),
-                    Some(expected)
-                );
+                assert_eq!(game.setting(key), Ok(SettingValue::Toggle(expected)));
             }
         });
     });

@@ -4,10 +4,12 @@ use std::{collections::BTreeMap, sync::Arc};
 /// Owner-bound view for a registered config's initial loading.
 /// Reloading and unloading instead lend the live polling or stopping host.
 pub trait ConfigContext {
-    /// A mod's registered setting `key`. Returns `None` for another mod's id or an
-    /// unregistered key.
-    fn setting(&self, _mod_id: &str, _key: &str) -> Option<String> {
-        None
+    /// Read a registered setting through its owner-bound [`crate::SettingKey`].
+    fn setting(
+        &self,
+        _key: crate::SettingKey,
+    ) -> Result<crate::SettingValue, crate::SettingAccessError> {
+        Err(crate::SettingAccessError::Unavailable)
     }
     /// The game's shared `config/` directory. Lending the path performs no I/O.
     fn config_dir(&self) -> &std::path::Path;
@@ -55,9 +57,12 @@ pub trait ReloadContext:
     fn on(&self, _mod_id: &str) -> bool {
         false
     }
-    /// A mod's registered setting `key`.
-    fn setting(&self, _mod_id: &str, _key: &str) -> Option<String> {
-        None
+    /// Read a registered setting through its owner-bound [`crate::SettingKey`].
+    fn setting(
+        &self,
+        _key: crate::SettingKey,
+    ) -> Result<crate::SettingValue, crate::SettingAccessError> {
+        Err(crate::SettingAccessError::Unavailable)
     }
     /// Startup opt-in for test-only content.
     fn game_tests_enabled(&self) -> bool {
@@ -325,10 +330,12 @@ pub trait ClientReloadListenerContext {
     fn is_loaded(&self, _id: &str) -> bool {
         false
     }
-    /// A mod's registered setting `key`. Returns `None` for another mod's id or an
-    /// unregistered key.
-    fn setting(&self, _mod_id: &str, _key: &str) -> Option<String> {
-        None
+    /// Read a registered setting through its owner-bound [`crate::SettingKey`].
+    fn setting(
+        &self,
+        _key: crate::SettingKey,
+    ) -> Result<crate::SettingValue, crate::SettingAccessError> {
+        Err(crate::SettingAccessError::Unavailable)
     }
     /// Math backend profile active in this process.
     fn math_profile(&self) -> crate::MathProfile;
