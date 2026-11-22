@@ -61,17 +61,14 @@ pub trait ItemsHost {
     #[access(Metadata)]
     fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool;
     /// Side: both.
-    /// The stack an SNBT item compound stands for, read as `ItemStack.CODEC` reads a saved
-    /// item: `{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":5}}`
-    /// (`count` 1 when missing, unknown keys such as `Count` ignored, `stone` is
-    /// `minecraft:stone`). This API refuses with None:
-    /// text that is no SNBT compound or has anything but whitespace after it, a `count`
-    /// outside 1 to 99 (the codec's range; it is not clamped to 1), air, and an item this
-    /// world does not have. It also refuses text over 2 MiB and nesting past 512 levels. Those
-    /// two are this API's own safety bound, the one place it differs from vanilla: vanilla's
-    /// SNBT parser has no size or depth limit (very deep text ends in a stack overflow), and
-    /// 2 MiB and 512 are binary NBT's limits, taken here so text a mod supplies cannot
-    /// overflow the parser.
+    /// Decodes a saved-item compound from SNBT, for example
+    /// `{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":5}}`.
+    /// A missing `count` defaults to 1, unknown fields such as `Count` are ignored, and
+    /// `stone` means `minecraft:stone`. Returns `None` unless the input is one compound
+    /// with only whitespace around it. Air, unknown items and patches naming a transient
+    /// component are refused. A present `count` must be numeric and in 1 to 99 after
+    /// Java's `Number.intValue` conversion. The text parser also enforces binary NBT's
+    /// 2 MiB input and 512-level nesting bounds.
     #[access(WorldOnly)]
     fn item_from_snbt(&self, snbt: &str) -> Option<ItemStack>;
     /// Side: both. Read the creative catalog against this world's active holders and flags.

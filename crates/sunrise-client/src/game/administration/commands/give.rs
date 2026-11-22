@@ -1,5 +1,5 @@
 //! `/give`'s handing over of one stack.
-use super::{Dim, Game, Target};
+use super::{Game, Target};
 use crate::game::level_sounds::LevelSound;
 use mod_api::SoundSource;
 use sunrise_client::items::ItemStack;
@@ -21,10 +21,7 @@ impl Game<'_> {
         let left = self.add_stack_to_inventory(stack);
         // A borrowed player's body is in place but their world may be parked. The shared
         // give effects put that world in place only while replaying the sound or drop.
-        let dim = self
-            .lan_acting
-            .and_then(|conn| self.command_guest(conn))
-            .map_or(self.dim, |guest| Dim::from_id(&guest.dimension));
+        let dim = self.target_level(Target::Player);
         if dim != self.dim && self.levels.parked_world(dim).is_none() {
             return left;
         }
