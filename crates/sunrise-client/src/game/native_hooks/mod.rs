@@ -153,6 +153,8 @@ mod block_entity_type_add_blocks;
 mod block_entity_view_distance;
 mod block_grow_feature;
 mod block_landing;
+mod block_particle_effects;
+mod block_particle_effects_tests;
 mod block_path_type;
 mod block_render_visibility;
 mod block_sticky;
