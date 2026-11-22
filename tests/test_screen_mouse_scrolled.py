@@ -23,27 +23,43 @@ class ScreenMouseScrolledTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
     def test_pre_cancellation_and_post_scheduling(self):
         source = (ROOT / "crates/sunrise-client/src/game.rs").read_text(encoding="utf-8")
-        dispatch = block(source, "if !self.pad_synthetic_input()\n                        && let Some(screen)")
+        wheel = source.split("WindowEvent::MouseWheel { delta, .. } => {", 1)[1]
+        dispatch = block(wheel, "if !self.pad_synthetic_input() {")
         hooks = (ROOT / "crates/sunrise-client/src/game/native_hooks/base.rs").read_text(encoding="utf-8")
         pre = block(hooks, "    pub(in crate::game) fn native_screen_mouse_scrolled_pre(")
         pre = pre.replace("pub(in crate::game) ", "")
         fixture = r"""
 use std::cell::RefCell;
 fn glfw_modifiers(bits: u32) -> u32 { bits }
+#[derive(Clone, Debug, PartialEq)]
 struct ScreenView<'a> { id: &'a str, mouse: [f32; 2] }
+impl ScreenView<'static> { fn view(&self) -> Self { self.clone() } }
 mod native_hooks {
+    use super::ScreenView;
     #[derive(Debug, PartialEq)]
-    pub enum ScreenMousePost { Scroll([f64; 2]) }
+    pub enum ScreenMousePostKind { Scroll([f64; 2]) }
+    #[derive(Debug, PartialEq)]
+    pub struct ScreenMousePost { pub receiver: ScreenView<'static>, pub handled: bool, pub kind: ScreenMousePostKind }
+    impl ScreenMousePost {
+        pub fn new(receiver: ScreenView<'static>, modifiers: u32, kind: ScreenMousePostKind) -> Self {
+            assert_eq!(modifiers, 5);
+            Self { receiver, handled: false, kind }
+        }
+    }
 }
+struct ScreenState { screen_instance: u64 }
 struct Game { modifiers: u32, synthetic: bool, open: bool, cancel: bool,
-    calls: RefCell<Vec<&'static str>>, scrolled: usize }
+    calls: RefCell<Vec<&'static str>>, scrolled: usize, screen_state: ScreenState }
 impl Game {
     fn pad_synthetic_input(&self) -> bool { self.synthetic }
     // No container hook registered: it takes no wheel.
     fn container_wheel(&mut self, _: f32) -> bool { false }
-    fn screen_view_now(&self) -> Option<ScreenView<'_>> {
+    fn observed_input_screen(&self) -> Option<ScreenView<'static>> {
         self.open.then_some(ScreenView { id: "inventory", mouse: [7.0, 9.0] })
     }
+    fn observed_screen_view(&self) -> Option<ScreenView<'_>> { self.observed_input_screen() }
+    fn cursor(&self) -> [f32; 2] { [7.0, 9.0] }
+    fn mounted_widget_mouse_scrolled(&mut self, _: [f32; 2], _: [f64; 2], _: u32) -> bool { false }
     PRE
     fn fire_screen_mouse_scrolled_pre(&self, screen: &ScreenView<'_>, scroll: [f64; 2], modifiers: u32, canceled: &mut bool) {
         assert_eq!((screen.id, screen.mouse, scroll, modifiers),
@@ -55,6 +71,9 @@ impl Game {
     fn wheel(&mut self) -> Result<(), ()> {
         let (raw_x, raw_y) = (1.5, -1.0);
         let scaled = |v: f64| v * 2.0;
+        let d = scaled(raw_y) as f32;
+        let scroll = [scaled(raw_x), scaled(raw_y)];
+        let initial_instance = self.screen_state.screen_instance;
         let mut mouse_post = None;
         DISPATCH
         // Stand in for the screen's scroll handler. The extracted gate must
@@ -62,7 +81,11 @@ impl Game {
         self.calls.borrow_mut().push("screen");
         self.scrolled += 1;
         assert_eq!(mouse_post, if self.open && !self.synthetic {
-            Some(native_hooks::ScreenMousePost::Scroll([3.0, -2.0]))
+            Some(native_hooks::ScreenMousePost {
+                receiver: self.observed_input_screen().unwrap(),
+                handled: false,
+                kind: native_hooks::ScreenMousePostKind::Scroll([3.0, -2.0]),
+            })
         } else { None });
         Ok(())
     }
@@ -73,7 +96,7 @@ fn cancellation_and_input_gates() {
         for synthetic in [false, true] {
             for open in [false, true] {
                 let mut g = Game { modifiers: 5, synthetic, open, cancel,
-                    calls: RefCell::new(vec![]), scrolled: 0 };
+                    calls: RefCell::new(vec![]), scrolled: 0, screen_state: ScreenState { screen_instance: 1 } };
                 g.wheel().unwrap();
                 let expected = match (open && !synthetic, cancel) {
                     (true, true) => vec!["pre"],
