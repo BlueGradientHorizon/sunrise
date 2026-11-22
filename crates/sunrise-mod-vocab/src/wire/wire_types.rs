@@ -351,31 +351,6 @@ impl Wire for crate::Reduction {
         })
     }
 }
-impl Wire for crate::ReductionChange {
-    layout_fields!("tag" => u8, "0:Add" => f32, "1:Scale" => f32, "2:AtLeast" => f32, "3:AtMost" => f32);
-    const MIN: usize = 5;
-    fn put(&self, out: &mut Writer) {
-        let (kind, value) = match *self {
-            Self::Add(v) => (0u8, v),
-            Self::Scale(v) => (1, v),
-            Self::AtLeast(v) => (2, v),
-            Self::AtMost(v) => (3, v),
-        };
-        out.put(&kind);
-        out.put(&value);
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        let kind: u8 = input.take()?;
-        let value = input.take()?;
-        Ok(match kind {
-            0 => Self::Add(value),
-            1 => Self::Scale(value),
-            2 => Self::AtLeast(value),
-            3 => Self::AtMost(value),
-            _ => return Err(WireError::Invalid("invalid reduction change")),
-        })
-    }
-}
 
 #[cfg(test)]
 mod tests {
