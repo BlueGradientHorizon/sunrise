@@ -716,9 +716,11 @@ impl Game<'_> {
                                 &self.gui.atlas,
                                 state.rect,
                                 &label,
-                                state.active,
-                                hovered,
-                                focused,
+                                ui::ButtonVisualState {
+                                    active: state.active,
+                                    hovered,
+                                    focused,
+                                },
                                 state.sprites.as_ref(),
                                 |rect| Narratable::button(label.plain(), rect, state.active),
                             );

@@ -903,23 +903,7 @@ mod tests {
     /// so the public screen reads have a window to lay the screen out in. The event loop
     /// returned holds the window.
     fn offscreen_window(game: &mut Game<'_>) -> winit::event_loop::EventLoop<()> {
-        let mut builder = winit::event_loop::EventLoop::builder();
-        #[cfg(target_os = "linux")]
-        {
-            use winit::platform::x11::EventLoopBuilderExtX11;
-            builder.with_x11().with_any_thread(true);
-        }
-        let event_loop = builder.build().unwrap();
-        #[allow(deprecated)]
-        let window = Arc::new(
-            event_loop
-                .create_window(
-                    winit::window::Window::default_attributes()
-                        .with_visible(false)
-                        .with_inner_size(winit::dpi::PhysicalSize::new(320, 240)),
-                )
-                .unwrap(),
-        );
+        let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([320, 240]);
         game.options.offscreen = true;
         game.renderer = Some(game.new_renderer(window).unwrap());
         let remote = game.remote.as_mut().unwrap();

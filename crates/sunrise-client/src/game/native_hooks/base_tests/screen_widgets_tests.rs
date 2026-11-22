@@ -28,7 +28,6 @@ use winit::event::{
 };
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::KeyCode;
-use winit::window::Window;
 
 #[path = "screen_widgets_input_tests.rs"]
 mod input_routing;
@@ -50,23 +49,7 @@ impl Drop for DropCounter {
 /// and real `WindowEvent` input paths execute end to end. Returns the `EventLoop` (kept alive
 /// for the test's duration) and `WindowId`.
 fn attach_offscreen_window(game: &mut Game<'_>) -> (EventLoop<()>, winit::window::WindowId) {
-    let mut builder = EventLoop::builder();
-    #[cfg(target_os = "linux")]
-    {
-        use winit::platform::x11::EventLoopBuilderExtX11;
-        builder.with_x11().with_any_thread(true);
-    }
-    let event_loop = builder.build().unwrap();
-    #[allow(deprecated)]
-    let window = Arc::new(
-        event_loop
-            .create_window(
-                Window::default_attributes()
-                    .with_visible(false)
-                    .with_inner_size(PhysicalSize::new(640, 480)),
-            )
-            .unwrap(),
-    );
+    let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([640, 480]);
     let id = window.id();
     game.options.offscreen = true;
     game.settings.gui_scale = 1;
