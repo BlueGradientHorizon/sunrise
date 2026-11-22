@@ -821,9 +821,7 @@ fn roll_as_caller(
         |error| panic!("{error}"),
     ));
     let entity = this.map(sunrise_world::loot::LootEntity::new);
-    let matcher = |predicate: &Value, entity: &sunrise_world::loot::LootEntity| {
-        predicate["type"].as_str() == Some(&entity.kind)
-    };
+    let matcher: &EntityMatcher = &matches_entity_type;
     let held = tool.map(|item| ItemStack::new(item, 1));
     let place = LootPlace {
         origin,
@@ -834,7 +832,7 @@ fn roll_as_caller(
             .roll_loot_table(
                 "test:caller",
                 held.as_ref(),
-                entity.as_ref().map(|e| (e, &matcher as &EntityMatcher)),
+                entity.as_ref().map(|e| (e, matcher)),
                 &mut LegacyRandom::new(5),
             )
             .unwrap()
@@ -844,9 +842,14 @@ fn roll_as_caller(
 }
 type EntityMatcher = dyn Fn(&Value, &sunrise_world::loot::LootEntity) -> bool;
 
-fn table_for_this(kind: &str) -> Value {
+fn matches_entity_type(predicate: &Value, entity: &sunrise_world::loot::LootEntity) -> bool {
+    predicate["minecraft:entity_type"].as_str() == Some(entity.kind.as_str())
+}
+
+fn entity_guarded_table(target: &str, kind: &str) -> Value {
     json!({"pools":[{"rolls":1,
-        "conditions":[{"type":"minecraft:entity_properties","entity":"this","predicate":{"type":kind}}],
+        "condition":{"type":"minecraft:entity_properties","entity":target,
+                     "predicate":{"minecraft:entity_type":kind}},
         "entries":[{"type":"minecraft:item","name":"minecraft:gold_ingot"}]}]})
 }
 
@@ -855,7 +858,7 @@ fn table_for_this(kind: &str) -> Value {
 #[test]
 fn a_mod_roll_names_the_entity_it_was_given() {
     let (stacks, seen) = roll_as_caller(
-        table_for_this("minecraft:cow"),
+        entity_guarded_table("this", "minecraft:cow"),
         Some("minecraft:cow"),
         Some("minecraft:shears"),
         Some([1.5, 64.0, -2.5]),
@@ -869,7 +872,12 @@ fn a_mod_roll_names_the_entity_it_was_given() {
             Some([1.5, 64.0, -2.5])
         )
     );
-    let (stacks, seen) = roll_as_caller(table_for_this("minecraft:cow"), None, None, None);
+    let (stacks, seen) = roll_as_caller(
+        entity_guarded_table("this", "minecraft:cow"),
+        None,
+        None,
+        None,
+    );
     assert_eq!(stacks, 0);
     assert_eq!(seen, (None, None, None));
 }
@@ -879,7 +887,7 @@ fn a_mod_roll_names_the_entity_it_was_given() {
 #[test]
 fn a_barter_roll_names_the_piglin_and_nothing_else() {
     let (stacks, seen) = roll_as_caller(
-        table_for_this("minecraft:piglin"),
+        entity_guarded_table("this", "minecraft:piglin"),
         Some("minecraft:piglin"),
         None,
         None,
@@ -893,7 +901,7 @@ fn a_barter_roll_names_the_piglin_and_nothing_else() {
 #[test]
 fn an_advancement_reward_roll_names_the_player_and_their_position() {
     let (stacks, seen) = roll_as_caller(
-        table_for_this("minecraft:player"),
+        entity_guarded_table("this", "minecraft:player"),
         Some("minecraft:player"),
         None,
         Some([10.5, 70.0, -3.25]),
@@ -914,19 +922,20 @@ fn an_advancement_reward_roll_names_the_player_and_their_position() {
 /// `block_interact` parameter) stays unselected.
 #[test]
 fn an_interaction_drop_selects_the_interacting_entity() {
-    let named = |who: &str| {
-        json!({"pools":[{"rolls":1,
-            "conditions":[{"type":"minecraft:entity_properties","entity":who,"predicate":{"type":"minecraft:player"}}],
-            "entries":[{"type":"minecraft:item","name":"minecraft:gold_ingot"}]}]})
-    };
     let items = data(vec![
-        ("test:interacting", named("interacting_entity")),
-        ("test:this", named("this")),
+        (
+            "test:interacting",
+            entity_guarded_table("interacting_entity", "minecraft:player"),
+        ),
+        (
+            "test:this",
+            entity_guarded_table("this", "minecraft:player"),
+        ),
     ]);
     let registry = BlockRegistry::from_facts_json(&br#"{"defaults":{"minecraft:stone":0},"states":[["stone",false,false,"","minecraft:stone"]]}"#[..]).unwrap();
     let player = sunrise_world::loot::LootEntity::new("minecraft:player");
     let zombie = sunrise_world::loot::LootEntity::new("minecraft:zombie");
-    let matcher: &EntityMatcher = &|predicate, entity| predicate["type"] == entity.kind;
+    let matcher: &EntityMatcher = &matches_entity_type;
     let roll = |id: &str, actor: Option<&sunrise_world::loot::LootEntity>| {
         items
             .interact_loot(
