@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicPtr, AtomicU32, Ordering::*};
 #[cfg(target_os = "linux")]
 mod cx {
     pub use crate::sampler::{
-        set_block, set_chunk, set_dim, set_entity_type, set_span, set_tick, span, tick_end,
+        replace_span, set_block, set_chunk, set_dim, set_entity_type, set_span, set_tick, tick_end,
     };
 }
 
@@ -19,7 +19,7 @@ mod cx {
     pub fn set_entity_type(_: u16) {}
     pub fn set_span(_: u16) {}
     pub fn set_tick(_: u64) {}
-    pub fn span() -> u16 {
+    pub fn replace_span(_: u16) -> u16 {
         0
     }
     pub fn tick_end(_: u64) {}
@@ -112,9 +112,7 @@ pub fn name(space: Space, id: u16) -> Option<&'static str> {
 /// Makes `name` the innermost span, returning the one it replaces for [`leave_span`].
 #[inline]
 pub fn enter_span(name: &'static str) -> u16 {
-    let previous = cx::span();
-    cx::set_span(id_of(Space::Span, name, false));
-    previous
+    cx::replace_span(id_of(Space::Span, name, false))
 }
 
 #[inline]
