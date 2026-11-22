@@ -432,8 +432,8 @@ fn borrowed_no_physics_moves_with_a_passive_listener_keep_their_order() {
             assert_eq!(
                 positions.lock().unwrap().as_slice(),
                 &[
-                    (Some([4.5, 112.25, 8.5]), EntityResidency::Busy),
-                    (Some([12.5, 128.25, 8.5]), EntityResidency::Busy),
+                    (Some([4.5, 112.25, 8.5]), EntityResidency::InPlace),
+                    (Some([12.5, 128.25, 8.5]), EntityResidency::InPlace),
                 ]
             );
             for (id, at) in [
