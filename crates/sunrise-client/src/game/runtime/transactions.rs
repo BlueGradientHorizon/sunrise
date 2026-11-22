@@ -120,6 +120,15 @@ impl OpenTransactions {
     pub(super) fn pop_retained_original(&mut self) {
         self.retained_original_attachments.pop();
     }
+
+    fn close_retained_originals(&self, token: u64, commit: bool) {
+        for slot in &self.retained_original_attachments {
+            slot.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .close_frame(token, commit);
+        }
+    }
+
     pub(super) fn level_frame(&mut self, dim: super::Dim) -> Option<&mut Level> {
         entities::open_in(self, dim)
     }
@@ -398,7 +407,7 @@ pub(super) struct Level {
     board: Option<sunrise_client::scoreboard::Scoreboard>,
     /// Each entity's, player's, chunk's and the level's attachment map before this transaction
     /// first reached it (a block entity's is kept with it). Per-level holders are keyed by level;
-    /// player-owned attachment maps are keyed by player body or snapshot across dimensions.
+    /// player-owned attachment maps are keyed by player body across dimensions.
     attachments: HashMap<AttachmentKey, KeptAttachments>,
     /// Held once this transaction reaches an attachment map, until it closes: the save
     /// admission gate (`passes_settled`) refuses a save while a map may hold tentative
@@ -456,13 +465,12 @@ pub(super) enum PlayerBodyKey {
 }
 
 /// Key for `Level::attachments`: per-level holders (`Entity`, `Chunk`, `Level`) are isolated by
-/// dimension, whereas player-owned attachment maps (`Player`, `OriginalPlayer`) are keyed by the
-/// specific player body or death-clone snapshot regardless of which level is swapped in.
+/// dimension, whereas player-owned attachment maps are keyed by the specific player body
+/// regardless of which level is swapped in. Retained originals have their own journal.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum AttachmentKey {
     Level(Dim, Holder),
     Player(PlayerBodyKey),
-    OriginalPlayer(u64),
 }
 
 struct KeptAttachments {
@@ -1072,6 +1080,10 @@ impl Game<'_> {
         let mut merchant_corrections = std::mem::take(&mut level.trades.refused_clicks);
         merchant_corrections.append(&mut level.trades.correct_on_abort);
         let departed = std::mem::take(&mut level.departed);
+        guard
+            .game
+            .transactions
+            .close_retained_originals(level.token, false);
         // Only roll back journals that don't rely on the owning level being in place.
         level.blocks.clear();
         level.connection_groups.clear();
@@ -1132,11 +1144,8 @@ impl Game<'_> {
             None
         };
         let lifetimes = std::mem::take(&mut level.lifetimes);
-        for slot in &self.transactions.retained_original_attachments {
-            slot.lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .close_frame(level.token, commit);
-        }
+        self.transactions
+            .close_retained_originals(level.token, commit);
         let mut independent = None;
         if commit && let Some(outer) = self.transactions.last_mut() {
             if outer.dimension == level.dimension {
@@ -1526,7 +1535,6 @@ impl Game<'_> {
                 };
                 AttachmentKey::Player(body)
             }
-            Holder::OriginalPlayer(token) => AttachmentKey::OriginalPlayer(token),
             other => AttachmentKey::Level(dim, other),
         };
         let Some(level) = self.transactions.last() else {
@@ -2868,17 +2876,6 @@ impl Game<'_> {
                 AttachmentKey::Player(body) => {
                     self.restore_player_attachments(body, kept);
                 }
-                AttachmentKey::OriginalPlayer(token) => {
-                    if let Ok(map) = self.attachment_slot(
-                        Holder::OriginalPlayer(token),
-                        mod_api::AttachmentAccess::Existing,
-                    ) {
-                        map.replace_contents(kept.contents);
-                        if !kept.indexed {
-                            map.unbind_index();
-                        }
-                    }
-                }
             }
         }
         self.restore_travelled(std::mem::take(&mut level.travelled));
@@ -3002,20 +2999,14 @@ impl Game<'_> {
     /// the acting body when its UUID matches, else the exact guest `conn` resolved in `self.dim`
     /// (online real player across dimensions, or the per-level fake player in `self.dim`).
     fn attachment_player_body(&self, uuid: u128) -> Option<PlayerBodyKey> {
-        let holder = Holder::Player(uuid);
-        let cloning = self
-            .player_state
-            .originals
-            .iter()
-            .any(|snapshot| snapshot.uuid() == uuid);
         if self.lan_acting_uuid == Some(uuid) {
             return Some(self.acting_player_body());
         }
         let conn = self
-            .lan
-            .as_ref()
-            .and_then(|host| {
-                if self.entity_initialization.active == Some(holder) || cloning {
+            .cloning_guest(uuid)
+            .or_else(|| {
+                let host = self.lan.as_ref()?;
+                if self.entity_initialization.active == Some(Holder::Player(uuid)) {
                     host.hub.guests.iter().find(|guest| guest.uuid == uuid)
                 } else {
                     host.hub.holder_guest(uuid, self.dim.id())
