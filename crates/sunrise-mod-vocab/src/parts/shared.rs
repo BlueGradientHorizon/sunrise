@@ -83,8 +83,10 @@ pub struct Parts {
     /// Block capability providers by capability name, then by block, in registration order:
     /// those asked of a block whatever block entity it has, or none.
     pub(crate) block_capabilities: Capabilities<NativeCapabilityProvider>,
-    /// Canonical block capability metadata, retained independently of provider availability.
-    pub(crate) block_capability_metadata: HashMap<&'static str, (Arc<str>, Option<bool>)>,
+    /// Canonical bindings by domain, retained independently of provider availability.
+    pub(crate) block_capability_metadata: HashMap<&'static str, CapabilityMetadata>,
+    pub(crate) item_capability_metadata: HashMap<&'static str, CapabilityMetadata>,
+    pub(crate) entity_capability_metadata: HashMap<&'static str, CapabilityMetadata>,
     /// Built-in declaration order followed by the order mods first mention a capability.
     pub(crate) block_capability_order: Vec<&'static str>,
     /// Explicit domains and declarations of the game's default providers.

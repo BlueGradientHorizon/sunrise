@@ -1,4 +1,4 @@
-//! Concrete authoring extracted verbatim from the vocabulary layer.
+//! Registration of typed native capability providers.
 use super::*;
 use mod_vocab::__private::parts_installation::{
     block_entity_type_key_slot, block_key_slot, capability_provider_binding,
@@ -22,7 +22,7 @@ impl PartRegistrar {
     ) {
         let me = self.mod_id;
         let registry_keys = Rc::clone(&self.registry_keys);
-        let keys = registry_keys.borrow();
+        let mut keys = registry_keys.borrow_mut();
         let (by, id) = match target {
             ProviderTarget::Block(block) => (
                 ProvidedBy::Block,
@@ -38,31 +38,34 @@ impl PartRegistrar {
                 ),
             ),
             ProviderTarget::Item(id) | ProviderTarget::Entity(id) => {
-                let (by, kind) = if matches!(target, ProviderTarget::Item(_)) {
-                    (ProvidedBy::Item, "item")
+                let (by, kind, registry) = if matches!(target, ProviderTarget::Item(_)) {
+                    (ProvidedBy::Item, "item", &mut keys.items)
                 } else {
-                    (ProvidedBy::Entity, "entity type")
+                    (ProvidedBy::Entity, "entity type", &mut keys.entity_types)
                 };
-                if crate::Identifier::parse_namespaced(id).is_none() {
+                let Some(identifier) = crate::Identifier::parse_namespaced(id) else {
                     self.refused.push(format!(
                         "mod {me} answered capability {name} for invalid {kind} id {id:?}: expected a namespaced identifier"
                     ));
                     return;
-                }
-                (by, Some(id))
+                };
+                let slot = match registry.request_identifier(me, &identifier) {
+                    Ok(slot) => slot,
+                    Err(error) => {
+                        self.refused.push(error);
+                        return;
+                    }
+                };
+                (by, Some(registry.entries[slot as usize].id.as_str()))
             }
         };
         let Some(id) = id else {
             return;
         };
-        let binding = capability_provider_binding(&provider);
-        let block = matches!(by, ProvidedBy::Block | ProvidedBy::BlockEntity);
-        let valid = if block {
-            self.note_block_capability(name, binding.1, Some(binding.0))
-        } else {
-            self.validate_capability_name(name) && self.check_capability_binding(by, name, binding)
-        };
-        if !valid {
+        if self
+            .note_capability(by, name, capability_provider_binding(&provider))
+            .is_none()
+        {
             return;
         }
         let table = match by {
@@ -455,6 +458,8 @@ pub mod tests {
                     assert!(refusal.contains(detail), "{refusal}");
                 }
                 install_registrar(registrar, &rule_schema()).unwrap();
+                assert!(has_entity_providers(&UNSIDED));
+                assert!(!has_entity_providers(&SIDED));
                 let mut host = player_world(None);
                 let pig = EntityRef::new(WorldEpoch::new(1), 2);
                 let found = pig.capability(&mut host, &UNSIDED, ()).unwrap();
@@ -466,6 +471,90 @@ pub mod tests {
                 );
             },
         );
+    }
+
+    #[test]
+    fn builtin_keys_reject_incompatible_first_providers_and_coverage_queries() {
+        const WRONG_BLOCK: CapabilityKey<dyn EnergyHandler> = CapabilityKey::new(ITEMS.name);
+        const WRONG_ITEM: ItemCapabilityKey<dyn EnergyHandler> =
+            ItemCapabilityKey::new(ITEM_ITEMS.name);
+        const UNSIDED: EntityCapabilityKey<dyn ResourceHandler<ItemResource>> =
+            EntityCapabilityKey::new(ENTITY_AUTOMATION.name);
+
+        let mut registrar = PartRegistrar::new("wrong");
+        let registration = &mut registrar as &mut dyn Registrar;
+        let block = registration.block_key("test:container");
+        registration.block_capability(&WRONG_BLOCK, &block, |_, _, _, _| None);
+        registration.item_capability(&WRONG_ITEM, "test:backpack", |_, _| None);
+        registration.entity_capability(&UNSIDED, "minecraft:pig", |_, _, ()| None);
+        assert_eq!(registrar.refused.len(), 3);
+        assert!(
+            registrar
+                .refused
+                .iter()
+                .all(|error| error.contains("by the game"))
+        );
+        assert!(registrar.refused[2].contains("context types"));
+
+        registrar.mod_id = "right";
+        let registration = &mut registrar as &mut dyn Registrar;
+        registration.block_capability(&ITEMS, &block, |_, _, _, _| None);
+        registration.item_capability(&ITEM_ITEMS, "test:backpack", |_, _| None);
+        registration.entity_capability(&ENTITY_AUTOMATION, "minecraft:pig", |_, _, _| None);
+        let item = registration.item_key("test:backpack");
+        let pig = registration.entity_type_key("minecraft:pig");
+        assert!(registration.is_block_capability_registered(&ITEMS, &block));
+        assert!(registration.is_item_capability_registered(&ITEM_ITEMS, &item));
+        assert!(registration.is_entity_capability_registered(&ENTITY_AUTOMATION, &pig));
+        assert!(!registration.is_block_capability_registered(&WRONG_BLOCK, &block));
+        assert!(!registration.is_item_capability_registered(&WRONG_ITEM, &item));
+        assert!(!registration.is_entity_capability_registered(&UNSIDED, &pig));
+        assert_eq!(registrar.refused.len(), 6);
+    }
+
+    #[test]
+    fn a_different_block_binding_cannot_mark_or_inherit_proxyability() {
+        const WRONG: CapabilityKey<dyn EnergyHandler> = CapabilityKey::new(ITEMS.name);
+        let mut registrar = PartRegistrar::new("forwarder");
+        let registration = &mut registrar as &mut dyn Registrar;
+        registration.set_capability_proxyable(&WRONG, true);
+        assert!(!registration.block_capability_proxyable(ITEMS.name));
+        registration.set_capability_proxyable(&ITEMS, true);
+        assert_eq!(std::mem::take(&mut registrar.refused).len(), 1);
+        install_registrar(registrar, &rule_schema()).unwrap();
+
+        let host = FakeHost::new();
+        assert!(ITEMS.is_proxyable(&host));
+        assert!(!WRONG.is_proxyable(&host));
+        assert!(block_capability_proxyable(&host, ITEMS.name));
+    }
+
+    #[test]
+    fn item_and_entity_provider_ids_are_startup_registry_requests() {
+        let mut registrar = PartRegistrar::new("provider");
+        let registration = &mut registrar as &mut dyn Registrar;
+        registration.item_capability(&ITEM_ITEMS, "test:later_item", |_, _| None);
+        registration.item_capability_before_game(&ITEM_ITEMS, "test:typo_item", |_, _| None);
+        registration.entity_capability_before_game(
+            &ENTITY_ITEMS,
+            "test:later_entity",
+            |_, _, ()| None,
+        );
+        registration.entity_capability(&ENTITY_ITEMS, "minecraft:pigg", |_, _, ()| None);
+        install_registrar(registrar, &rule_schema()).unwrap();
+
+        let errors = mod_vocab::__private::resolve_items(["test:later_item"]).unwrap_err();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].mod_id, "provider");
+        assert_eq!(errors[0].id, "test:typo_item");
+        let errors = mod_vocab::__private::resolve_entity_types(["test:later_entity"]).unwrap_err();
+        assert_eq!(
+            errors,
+            ["mod provider requested unknown entity type minecraft:pigg"]
+        );
+        mod_vocab::__private::resolve_items(["test:later_item", "test:typo_item"]).unwrap();
+        mod_vocab::__private::resolve_entity_types(["test:later_entity", "minecraft:pigg"])
+            .unwrap();
     }
 
     /// A handler that only tells which provider made it, by its slot count.
@@ -978,6 +1067,81 @@ pub mod tests {
         );
         let host: &mut dyn ServerHost = &mut HeldItem(stack("test:ordered_item", 1, 0));
         assert_eq!(HAND.capability(host, &ITEM_ITEMS).unwrap().size(host), 1);
+    }
+
+    #[test]
+    fn removing_a_block_entity_during_lookup_skips_its_later_providers() {
+        use mod_api::prelude::{BlockEntitiesHost, LevelBlocksBackendMut};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Removable(FakeHost);
+        impl Host for Removable {
+            fn backend(&self) -> Option<BackendRef<'_>> {
+                self.0.backend()
+            }
+        }
+        impl BlockEntitiesHost for Removable {
+            fn block_entity(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef> {
+                self.0.block_entity(level, pos)
+            }
+        }
+        mod_api::impl_host_areas!(Removable, except(block_entities));
+        impl ServerHost for Removable {
+            fn backend_mut(&mut self) -> Option<BackendMutRef<'_>> {
+                Some(mod_vocab::__private::parts_installation::backend_mut_ref(
+                    self,
+                ))
+            }
+        }
+        mod_api::impl_server_host_areas!(Removable);
+        impl BackendMut for Removable {}
+        mod_api::impl_backend_mut_areas!(Removable, except(level_blocks));
+        impl LevelBlocksBackendMut for Removable {
+            fn level_remove_block(&mut self, level: LevelRef, pos: [i32; 3], _: bool) -> bool {
+                assert_eq!(level, self.0.level.level());
+                self.0.level.set_block(pos, "minecraft:air");
+                self.0.level.remove_block_entity(pos).is_some()
+            }
+        }
+
+        struct Providers(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Providers {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                let target = r.block_entity_type_key("test:removable");
+                r.block_entity_capability_before_game(&ITEMS, &target, |host, at| {
+                    assert!(at.level.remove_block(host, at.pos, false));
+                    None
+                });
+                let visits = Arc::clone(&self.0);
+                r.block_entity_capability_before_game(&ITEMS, &target, move |_, _| {
+                    visits.fetch_add(1, Ordering::Relaxed);
+                    None
+                });
+                let visits = Arc::clone(&self.0);
+                r.block_entity_capability(&ITEMS, &target, move |_, _| {
+                    visits.fetch_add(1, Ordering::Relaxed);
+                    Some(Box::new(Marked(99)))
+                });
+            }
+        }
+        let visits = Arc::new(AtomicUsize::new(0));
+        crate::testing::with_mods(
+            vec![ModEntry::new(
+                "provider",
+                Box::new(Providers(visits.clone())),
+            )]
+            .into(),
+            || {
+                install_parts(crate::__private::mods(), &rule_schema(), |_| false).unwrap();
+                let mut host = Removable(FakeHost::new());
+                let pos = [0, 64, 0];
+                host.0.level.block_entity(pos).of_type("test:removable");
+                assert!(here().capability(&mut host, &ITEMS, pos, None).is_none());
+                assert!(host.0.level.block_entity_at(pos).is_none());
+                assert_eq!(visits.load(Ordering::Relaxed), 0);
+            },
+        );
     }
 
     #[test]

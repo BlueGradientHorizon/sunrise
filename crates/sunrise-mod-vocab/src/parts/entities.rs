@@ -70,14 +70,19 @@ impl HookParts {
     }
 }
 
-/// Whether any mod registered a provider of entity capability `key`, for any entity type: one
-/// table lookup, no allocation, so the game's own lookups skip all their work where none did.
+/// Whether any mod registered a provider for this typed capability, for any entity type.
+/// The game's own lookups skip work when no mod registered one.
 pub fn has_entity_providers<T: ?Sized + 'static, C: 'static>(
     key: &EntityCapabilityKey<T, C>,
 ) -> bool {
-    installed()
-        .and_then(|installed| installed.keys.entity_capabilities.get(key.name))
-        .is_some_and(|by_kind| !by_kind.is_empty())
+    installed().is_some_and(|installed| {
+        let keys = &installed.keys;
+        keys.entity_capabilities.contains_key(key.name)
+            && keys
+                .entity_capability_metadata
+                .get(key.name)
+                .is_some_and(|known| known.binding.0 == key.binding().0)
+    })
 }
 
 /// The providers mods registered for `key` and the type of `entity`, for the game's own
@@ -179,8 +184,9 @@ impl dyn Registrar + '_ {
     /// `minecraft:player`) with `provider`, which gives a handler for one entity, or none:
     /// `r.entity_capability(&ENTITY_ITEMS, "mymod:robot", |_, robot, ()| Some(Box::new(Cargo(robot))))`.
     /// Asked as `block_entity_capability`'s are. The capability name and entity type id must be
-    /// fully qualified resource identifiers. Providers for one entity capability name must use
-    /// the same handler type `T` and context type `C`; a conflict refuses registration.
+    /// fully qualified resource identifiers. The entity type can be declared later in
+    /// registration; an unknown type refuses load. A key with a different handler type `T` or
+    /// context type `C` from the canonical binding refuses registration.
     pub fn entity_capability<T: ?Sized + 'static, C: 'static>(
         &mut self,
         key: &EntityCapabilityKey<T, C>,

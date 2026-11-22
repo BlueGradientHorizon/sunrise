@@ -181,7 +181,8 @@ impl dyn Registrar + '_ {
     /// gives a handler for the stack at one place, or none: `r.item_capability(&ITEM_ITEMS,
     /// "mymod:backpack", |_, _| Some(Box::new(Backpack)))`. Asked as
     /// `block_entity_capability`'s are. The capability name and item id must be fully qualified
-    /// resource identifiers. Item providers for one name must use the same handler type.
+    /// resource identifiers. The item can be declared later in registration; an unknown item
+    /// refuses load. The key must match the canonical handler type for the capability name.
     pub fn item_capability<T: ?Sized + 'static>(
         &mut self,
         key: &ItemCapabilityKey<T>,

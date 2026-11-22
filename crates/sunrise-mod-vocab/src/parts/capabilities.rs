@@ -46,6 +46,33 @@ impl NativeCapabilityProvider {
     }
 }
 
+impl<T: ?Sized + 'static> CapabilityKey<T> {
+    pub(crate) fn binding(&self) -> (TypeId, &'static str) {
+        (TypeId::of::<Arc<BlockProvider<T>>>(), type_name::<T>())
+    }
+}
+
+impl<T: ?Sized + 'static> ItemCapabilityKey<T> {
+    pub(crate) fn binding(&self) -> (TypeId, &'static str) {
+        (TypeId::of::<Arc<ItemProvider<T>>>(), type_name::<T>())
+    }
+}
+
+impl<T: ?Sized + 'static, C: 'static> EntityCapabilityKey<T, C> {
+    pub(crate) fn binding(&self) -> (TypeId, &'static str) {
+        (TypeId::of::<Arc<EntityProvider<T, C>>>(), type_name::<T>())
+    }
+}
+
+/// The canonical binding for a name, independent of whether it has any mod providers.
+// no wire: native type identities are process-local.
+#[derive(Clone)]
+pub(crate) struct CapabilityMetadata {
+    pub(crate) binding: (std::any::TypeId, &'static str),
+    pub(crate) owner: &'static str,
+    pub(crate) proxyable: Option<bool>,
+}
+
 /// The registrar's table, as the game reads it.
 pub(crate) struct InstalledProviders;
 
@@ -160,8 +187,9 @@ pub(crate) fn ask_providers<'a, T: ?Sized>(
 pub trait CapabilitiesCapabilityProviders {
     /// Known block capability names in declaration/discovery order.
     fn block_capability_names(&self) -> Vec<String>;
-    /// Whether this capability was explicitly marked safe to forward.
-    fn block_capability_proxyable(&self, name: &str) -> bool;
+    /// Whether this capability was explicitly marked safe to forward. Typed callers supply their
+    /// binding identity; name-only discovery passes `None`.
+    fn block_capability_proxyable(&self, name: &str, binding: Option<TypeId>) -> bool;
     /// Known block capability names explicitly marked safe to forward, in discovery order.
     fn block_capability_proxyable_names(&self) -> Vec<String>;
     /// How many times a mod was switched on or off, as the game counts it: a kept capability
@@ -178,16 +206,18 @@ impl CapabilitiesCapabilityProviders for InstalledProviders {
                 .iter()
                 .map(|name| (*name).to_owned())
                 .collect(),
-            None => builtin_block_capabilities()
-                .into_iter()
-                .map(|(name, _)| name.to_owned())
+            None => builtin_capabilities()
+                .filter(|(by, _, _)| matches!(by, ProvidedBy::Block))
+                .map(|(_, name, _)| name.to_owned())
                 .collect(),
         }
     }
-    fn block_capability_proxyable(&self, name: &str) -> bool {
+    fn block_capability_proxyable(&self, name: &str, binding: Option<TypeId>) -> bool {
         installed()
             .and_then(|installed| installed.keys.block_capability_metadata.get(name))
-            .is_some_and(|(_, proxyable)| *proxyable == Some(true))
+            .is_some_and(|known| {
+                known.proxyable == Some(true) && binding.is_none_or(|ty| ty == known.binding.0)
+            })
     }
     fn block_capability_proxyable_names(&self) -> Vec<String> {
         let Some(installed) = installed() else {
@@ -197,7 +227,7 @@ impl CapabilitiesCapabilityProviders for InstalledProviders {
             .keys
             .block_capability_order
             .iter()
-            .filter(|name| self.block_capability_proxyable(name))
+            .filter(|name| self.block_capability_proxyable(name, None))
             .map(|name| (*name).to_owned())
             .collect()
     }

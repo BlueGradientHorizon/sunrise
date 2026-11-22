@@ -18,6 +18,22 @@ where
 /// A block capability provider, as the registrar keeps it.
 pub type BlockProvider<T> = dyn BlockCapabilityProvider<T>;
 
+/// NeoForge's `RegisterCapabilitiesEvent.registerBlockEntity` type check, made against the
+/// live host because an earlier provider may have changed the block entity and declined.
+fn block_entity_provider<T: ?Sized + 'static>(
+    kind: crate::BlockEntityTypeKey,
+    provider: impl Fn(&mut dyn ServerHost, BlockSide) -> Option<Box<T>> + Send + Sync + 'static,
+) -> NativeCapabilityProvider {
+    let provider: Arc<BlockProvider<T>> =
+        Arc::new(move |host: &mut dyn ServerHost, at: BlockSide| {
+            if at.kind(host) != Some(kind) {
+                return None;
+            }
+            provider(host, at)
+        });
+    NativeCapabilityProvider::of::<T, _>(provider)
+}
+
 /// Snapshot the callbacks once at registry preparation for worldgen workers.
 pub fn block_entity_transforms()
 -> std::collections::HashMap<String, Arc<dyn crate::BlockEntityTransform>> {
@@ -201,7 +217,8 @@ impl dyn Registrar + '_ {
             .map_err(crate::BlockEntityStateError::Part)
     }
     /// Answer capability `key` for block entity type `kind` with `provider`, which gives
-    /// a handler for one block entity and side, or none:
+    /// a handler for one block entity and side, or none. Before invoking it, the lookup checks
+    /// that the block entity still exists and is of type `kind`:
     /// `r.block_entity_capability(&ITEMS, &press, |_, _| Some(Box::new(PressItems)))`.
     /// Like NeoForge's `RegisterCapabilitiesEvent`, providers add up: in the fork's chosen order
     /// (NeoForge's javadoc states none), the game's own is asked first, then the mods' in
@@ -213,12 +230,11 @@ impl dyn Registrar + '_ {
         kind: &crate::BlockEntityTypeKey,
         provider: impl Fn(&mut dyn ServerHost, BlockSide) -> Option<Box<T>> + Send + Sync + 'static,
     ) {
-        let provider: Arc<BlockProvider<T>> = Arc::new(provider);
         self.provide_block_entity_capability(
             key.name,
             kind,
             false,
-            NativeCapabilityProvider::of::<T, _>(provider),
+            block_entity_provider(*kind, provider),
         );
     }
     /// `block_entity_capability`, asked ahead of the game's own
@@ -230,12 +246,11 @@ impl dyn Registrar + '_ {
         kind: &crate::BlockEntityTypeKey,
         provider: impl Fn(&mut dyn ServerHost, BlockSide) -> Option<Box<T>> + Send + Sync + 'static,
     ) {
-        let provider: Arc<BlockProvider<T>> = Arc::new(provider);
         self.provide_block_entity_capability(
             key.name,
             kind,
             true,
-            NativeCapabilityProvider::of::<T, _>(provider),
+            block_entity_provider(*kind, provider),
         );
     }
 }
