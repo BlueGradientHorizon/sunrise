@@ -3558,8 +3558,8 @@ pub(crate) mod tests {
             fn max_stack(&self, item: &str) -> u32 {
                 if item == "minecraft:snowball" { 16 } else { 64 }
             }
-            fn may_pickup(&self, _slot: usize, _stack: &ItemStack) -> bool {
-                self.may_pickup
+            fn may_pickup(&self, _slot: usize, stack: &ItemStack) -> bool {
+                self.may_pickup && stack.item.as_ref() != "minecraft:dirt"
             }
             fn stacked(&self) -> Option<&StackedOutcome> {
                 Some(self.outcome)
@@ -3754,6 +3754,42 @@ pub(crate) mod tests {
         click(&mut view, &mut drag, 0, 0, input::PICKUP, &oversize_rules);
         assert!(oversize.refused.get());
         assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
+
+        // The existing stack can be replaced, but dirt in the slot refuses pickup.
+        // The same edit with a takeable replacement acts as the positive control.
+        view.guest.carried = Some(ItemStack::new("minecraft:stick", 7));
+        for (replacement, refused) in [("minecraft:dirt", true), ("minecraft:sand", false)] {
+            let outcome = StackedOutcome {
+                policy: StackedEditPolicy::Part,
+                resume: StackedResume::Done,
+                carried: Some(None),
+                clicked: Some(StackedClickedEdit::SetThenTake {
+                    set: ItemStack::new(replacement, 2),
+                    take: 2,
+                }),
+                ..Default::default()
+            };
+            let rules = OutcomeRules {
+                items: Items::for_tests(Default::default()),
+                may_pickup: true,
+                outcome: &outcome,
+            };
+            let (drops, changed) = click(&mut view, &mut drag, 0, 0, input::PICKUP, &rules);
+            assert!(drops.is_empty());
+            assert_eq!(outcome.refused.get(), refused);
+            if refused {
+                assert!(changed.is_empty());
+                assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
+                assert_eq!(
+                    view.guest.carried,
+                    Some(ItemStack::new("minecraft:stick", 7))
+                );
+            } else {
+                assert_eq!(changed, [0]);
+                assert_eq!(view.get(0), None);
+                assert_eq!(view.guest.carried, None);
+            }
+        }
     }
 
     #[test]

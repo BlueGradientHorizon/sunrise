@@ -224,19 +224,14 @@ pub fn apply_stacked_outcome(
                         }
                     }
                     StackedClickedEdit::SetThenTake { set, take } => {
-                        let set_opt = Some(set.clone());
-                        if *take == 0
-                            || *take > set.count
-                            || (*take < set.count && kind == StackedSlotKind::Result)
-                            || !part_set_allowed(target, kind, &old, &set_opt)
-                        {
-                            false
-                        } else {
-                            if set_opt != old {
-                                target.set_clicked(set_opt);
-                            }
-                            part_take(target, kind, *take)
-                        }
+                        let replacement = Some(set.clone());
+                        part_set_allowed(target, kind, &old, &replacement)
+                            && target.with_staged(|slot| {
+                                if replacement != old {
+                                    slot.set_clicked(replacement);
+                                }
+                                part_take(slot, kind, *take)
+                            })
                     }
                 };
                 if !applied {
