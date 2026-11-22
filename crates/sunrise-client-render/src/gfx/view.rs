@@ -79,7 +79,7 @@ impl ViewSet {
         }
     }
 
-    /// The draw and cull views `Renderer::views` builds for `frame`.
+    /// Build separate draw and cull views for the frame.
     pub(super) fn for_frame(frame: &Frame, width: u32, height: u32) -> Self {
         let aspect = width as f32 / height.max(1) as f32;
         let view = View::screen(
