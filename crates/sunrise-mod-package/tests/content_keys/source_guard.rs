@@ -8,6 +8,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[path = "manifest_reviewed.rs"]
+mod manifest_reviewed;
+
 // Workspace types used in declaration inputs, by the paths the reader names them with
 // (re-exports included). The guard follows each path to the file that defines its type.
 // Registry crates such as semver, serde_json and toml are out of scope.
@@ -32,6 +35,7 @@ const NOT_DECLARATIONS: &[(&str, &str)] = &[
     ("mod_vocab::__private::DeclarationKind", "labels validation errors"),
     ("mod_vocab::DeclarationError", "reports validation errors"),
     ("mod_vocab::wire", "typed payload codec, not Serde"),
+    ("mod_surface::uses::ManifestFacts", "typed scan input derived from a validated manifest"),
     ("mod_surface::uses::USES_FILE", "name of native fit metadata"),
     ("mod_surface::uses::MAX_USES_BYTES", "size limit for native fit metadata"),
     ("sunrise_mod_api_macros::Wire", "derive for the typed payload codec, not Serde"),
@@ -43,10 +47,13 @@ const NOT_DECLARATIONS: &[(&str, &str)] = &[
     ("sunrise_assets::model::TextureSlot", "asset reference check, not a declaration"),
 ];
 
-type Use<'a> = (&'a str, &'a str, &'a str);
+type Reviewed = (
+    (&'static str, &'static str, &'static str),
+    &'static [&'static str],
+);
 
 #[rustfmt::skip]
-const REVIEWED: &[(Use<'static>, &[&str])] = &[
+const REVIEWED: &[Reviewed] = &[
     (("content.rs", "push_reaction", "deserialize_with = \"deserialize_push_reaction\""), &["block_full", "refused_block_bad_push_reaction"]),
     (("content.rs", "offset", "deserialize_with = \"deserialize_offset\""), &["block_full", "refused_block_bad_offset"]),
     (("content.rs", "max_horizontal_offset", "deserialize_with = \"deserialize_horizontal_offset\""), &["block_full", "refused_block_horizontal_offset_range"]),
@@ -67,18 +74,6 @@ const REVIEWED: &[(Use<'static>, &[&str])] = &[
     (("content/entity_type.rs", "shadow_radius", "deserialize_with = \"deserialize_shadow\""), &["entity_type_full", "refused_entity_type_negative_shadow", "refused_entity_type_null_shadow_radius"]),
     (("content/entity_type.rs", "shadow_strength", "deserialize_with = \"deserialize_shadow\""), &["entity_type_full", "refused_entity_type_null_shadow_strength"]),
     (("content/entity_type.rs", "passenger_attachments", "deserialize_with = \"deserialize_passenger_attachments\""), &["entity_type_full", "refused_entity_type_bad_attachments", "refused_entity_type_attachment_length", "refused_entity_type_attachment_type"]),
-    (("manifest.rs", "version", "deserialize_with = \"version_from_str\""), &["manifest_full", "manifest_minimal", "refused_manifest_bad_version"]),
-    (("manifest.rs", "Property", "untagged"), &["manifest_full", "refused_manifest_bad_property_type"]),
-    (("manifest.rs", "Dependency", "untagged"), &["manifest_full", "refused_manifest_unknown_dependency_key"]),
-    (("manifest.rs", "Rule", "untagged"), &["manifest_full", "keys_manifest_forms", "refused_manifest_unknown_rule_key"]),
-    (("manifest/jar.rs", "JarRef", "try_from = \"Fields\""), &["manifest_full", "refused_manifest_bad_jar_id", "refused_manifest_bad_jar_hash", "refused_manifest_empty_jar_version"]),
-    (("manifest/runtime_files.rs", "RuntimeTable", "try_from = \"BTreeMap<String, String>\""), &["refused_manifest_runtime_on_content", "refused_manifest_empty_runtime", "refused_manifest_bad_runtime_hash", "refused_manifest_bad_runtime_path"]),
-    // Not content declarations. Name the reader's unit-test fixtures instead of
-    // admitting exact-build native mods or cached root metadata into this corpus.
-    (("manifest/jar.rs", "JarRequirement", "try_from = \"RequirementFields\""), &["src/manifest/jar.rs:decoded_root_requirements_validate_owners_at_the_read_boundary"]),
-    (("manifest/mixin.rs", "options", "flatten"), &["src/manifest/mixin.rs:the_tools_keys_pass_through_and_the_packages_are_checked"]),
-    (("manifest/mixin.rs", "fields", "flatten"), &["src/manifest/mixin.rs:mixins_bridges_states_modules_share_one_id_space"]),
-    (("manifest/mixin.rs", "Kind", "impl Deserialize"), &["src/manifest/mixin.rs:the_tools_keys_pass_through_and_the_packages_are_checked", "src/manifest/mixin.rs:hostile_shapes_are_refused_without_panicking"]),
 ];
 
 #[test]
@@ -86,11 +81,16 @@ pub(crate) fn serde_blind_spots_are_reviewed() {
     crate::at_crate_root();
     let mut reviewed: BTreeMap<_, _> = REVIEWED
         .iter()
+        .chain(manifest_reviewed::REVIEWED)
         .map(|&((file, item, feature), fixtures)| {
             ([file, item, feature].map(str::to_owned), fixtures)
         })
         .collect();
-    assert_eq!(reviewed.len(), REVIEWED.len(), "duplicate Serde exception");
+    assert_eq!(
+        reviewed.len(),
+        REVIEWED.len() + manifest_reviewed::REVIEWED.len(),
+        "duplicate Serde exception"
+    );
     let mut files = Vec::new();
     for stem in ["manifest", "content"] {
         files.push(format!("{stem}.rs"));
