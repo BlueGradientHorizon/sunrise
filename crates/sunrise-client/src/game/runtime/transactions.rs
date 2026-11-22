@@ -710,6 +710,9 @@ impl Level {
         for (pos, kept) in std::mem::take(&mut child.block_entities) {
             self.block_entities.entry(pos).or_insert(kept);
         }
+        for (pos, tag) in std::mem::take(&mut child.saved_pots) {
+            self.saved_pots.entry(pos).or_insert(tag);
+        }
         for (pos, removed) in std::mem::take(&mut child.removed_block_entities) {
             let first = self.removed_block_entities.entry(pos).or_default();
             if first.is_none() {
@@ -978,6 +981,7 @@ impl Game<'_> {
             } else {
                 let mut local = Level {
                     block_entities: std::mem::take(&mut level.block_entities),
+                    saved_pots: std::mem::take(&mut level.saved_pots),
                     removed_block_entities: std::mem::take(&mut level.removed_block_entities),
                     slots: std::mem::take(&mut level.slots),
                     blocks: std::mem::take(&mut level.blocks),
@@ -1009,9 +1013,6 @@ impl Game<'_> {
             (true, Some(outer)) => {
                 outer.actions.merge(level.actions);
                 outer.trades.merge(level.trades);
-                for (pos, tag) in level.saved_pots {
-                    outer.saved_pots.entry(pos).or_insert(tag);
-                }
                 for (pos, was) in level.connection_groups {
                     outer.connection_groups.entry(pos).or_insert(was);
                 }
@@ -1220,10 +1221,10 @@ impl Game<'_> {
             level.composter_randoms.clear();
         }
     }
-    /// Keeps a pot's saved item and loot metadata until root commit.
+    /// Keeps a pot's saved item and loot metadata until its level commits.
     pub(super) fn journal_saved_pot(&mut self, pos: Pos) {
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
-        if let Some(level) = self.transactions.last_mut() {
+        if let Some(level) = entities::open_in(&mut self.transactions, self.dim) {
             level
                 .saved_pots
                 .entry(pos)

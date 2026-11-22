@@ -549,6 +549,75 @@ fn item_capability_presence_does_not_open_loot_or_load_chunks() {
 
 #[test]
 #[ignore = "daily"]
+fn a_committed_pot_write_in_another_level_survives_the_parent_abort() {
+    use crate::game::{
+        Dim,
+        execution_role::ExecutionRole,
+        native_entity_refs::tests::{fixture_root, with_game_role},
+        spill,
+    };
+    use sunrise_core::nbt::Tag;
+
+    let pos = [4, 64, 0];
+    with_game_role(fixture_root(), ExecutionRole::IntegratedServer, |game| {
+        let mut setup = |dim, item| {
+            game.enter_level(dim).unwrap();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.sync_tick_chunks();
+            place(game, (pos[0], pos[1], pos[2]), "minecraft:decorated_pot");
+            let tag = Tag::compound([
+                ("id", Tag::String("minecraft:decorated_pot".into())),
+                ("x", Tag::Int(pos[0])),
+                ("y", Tag::Int(pos[1])),
+                ("z", Tag::Int(pos[2])),
+                (
+                    "item",
+                    sunrise_client::save::item_to_nbt(
+                        &ItemStack::new(item, 3),
+                        &Default::default(),
+                    ),
+                ),
+            ]);
+            spill::put_saved_entity(&mut game.world, pos, tag.clone());
+            tag
+        };
+        setup(Dim::Nether, "minecraft:stone");
+        let overworld_pot = setup(Dim::Overworld, "minecraft:stick");
+        let stone = ItemResource::of(
+            &mod_api::ItemStack::new(
+                game.item_key(&Identifier::parse("minecraft:stone").unwrap())
+                    .unwrap(),
+                1,
+            )
+            .unwrap(),
+        );
+
+        let aborted: Result<(), ()> = mod_api::run_transaction(game, |game, _| {
+            game.enter_level(Dim::Nether).unwrap();
+            let level = game.level(game.dim.id()).unwrap();
+            let pot = level.capability(game, &ITEMS, pos, None).unwrap();
+            mod_api::run_transaction(game, |game, tx| {
+                assert_eq!(pot.extract_at(game, tx, 0, &stone, 1), 1);
+                Ok(())
+            })?;
+            game.enter_level(Dim::Overworld).unwrap();
+            Err(())
+        });
+        assert_eq!(aborted, Err(()));
+        assert_eq!(spill::saved_entity(&game.world, pos), Some(overworld_pot));
+        game.enter_level(Dim::Nether).unwrap();
+        let tag = spill::saved_entity(&game.world, pos).unwrap();
+        assert_eq!(
+            sunrise_client::save::item_from_nbt(tag.get("item").unwrap()),
+            Some(ItemStack::new("minecraft:stone", 2))
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn block_capabilities_contain_panics_under_the_provider_owner() {
     use crate::game::{
         execution_role::ExecutionRole,
