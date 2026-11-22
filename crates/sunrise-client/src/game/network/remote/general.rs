@@ -182,6 +182,7 @@ impl Game<'_> {
         if let Some(r) = self.remote.as_mut() {
             r.lerps.remove(&id);
         }
+        self.pick_section_sync_id(id as u32);
     }
 
     /// `ClientLevel.tickPassenger` for the general rows in an applied passenger

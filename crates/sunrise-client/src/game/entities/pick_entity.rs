@@ -1,13 +1,11 @@
 //! Unified crosshair entity picking (`LocalPlayer.pick` and `ProjectileUtil.getEntityHitResult`).
+#[path = "pick_sections.rs"]
+pub(in crate::game) mod pick_sections;
+
 use super::Game;
-use super::entity::{Entity as _, entity_lists_of, for_each_entity};
 use super::pick_accumulator::{PickAccumulator, PickCandidate, pick_ray_segment};
 use mod_api::{BlockPos, CrosshairTarget, EntityRef};
-use sunrise_client::{
-    items::ItemStack,
-    join_seq::{JoinSeq, Joined as _},
-    save::uuid_text,
-};
+use sunrise_client::{items::ItemStack, save::uuid_text};
 use sunrise_core::geometry::{Aabb, Vec3};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -19,10 +17,20 @@ pub(super) struct CrosshairEntityHit {
     pub suggest_uuid: bool,
 }
 
-fn aabb_extents((lo, hi): ([f64; 3], [f64; 3])) -> Aabb {
+pub(super) fn aabb_extents((lo, hi): ([f64; 3], [f64; 3])) -> Aabb {
     Aabb::new(
         Vec3::new(lo[0], lo[1], lo[2]),
         Vec3::new(hi[0], hi[1], hi[2]),
+    )
+}
+
+pub(super) fn knot_bounds(block: [i32; 3]) -> Aabb {
+    let knot = sunrise_client::mobs::leash::knot_state(block);
+    let p = knot.position;
+    let half = knot.width / 2.0;
+    Aabb::new(
+        Vec3::new(p.x - half, p.y, p.z - half),
+        Vec3::new(p.x + half, p.y + knot.height, p.z + half),
     )
 }
 
@@ -38,7 +46,7 @@ impl Game<'_> {
                 suggest_uuid: self.client_pick.entity_metadata.1,
             });
         }
-        let hit = self.pick_entity_hit_unified(false)?;
+        let hit = self.pick_entity_hit_unified()?;
         let is_synthetic_dragon_part =
             (super::dragon::SPECIAL..super::dragon::CRYSTAL_IDS).contains(&hit.id);
         let id = hit.id as i32;
@@ -65,7 +73,7 @@ impl Game<'_> {
         if self.uses_stored_pick() {
             return self.stored_client_pick();
         }
-        let (hit, occluded_block) = self.pick_entity_pass_unified(false);
+        let (hit, occluded_block) = self.pick_entity_pass_unified();
         if let Some(hit) = hit {
             return Some(CrosshairTarget::Entity {
                 entity: EntityRef::new(self.native_lifecycle.epoch()?, hit.id),
@@ -101,7 +109,7 @@ impl Game<'_> {
         } else {
             PickAccumulator::new(max_distance_sq)
         };
-        self.collect_pick_candidates_within(max_distance, true, &mut pick);
+        self.collect_pick_candidates_within(max_distance, &mut pick);
         if subscribed {
             let seal = self.transaction_open();
             self.client_pick.rider_candidates = pick.dispatch(self);
@@ -115,11 +123,11 @@ impl Game<'_> {
     }
 
     /// Runs the unified `LocalPlayer.pick` entity pass for unstored consumers.
-    pub(super) fn pick_entity_hit_unified(&self, include_knots: bool) -> Option<PickCandidate> {
-        self.pick_entity_pass_unified(include_knots).0
+    pub(super) fn pick_entity_hit_unified(&self) -> Option<PickCandidate> {
+        self.pick_entity_pass_unified().0
     }
 
-    fn pick_entity_pass_unified(&self, include_knots: bool) -> (Option<PickCandidate>, bool) {
+    fn pick_entity_pass_unified(&self) -> (Option<PickCandidate>, bool) {
         let Some((eye, dir)) = self.aim() else {
             return (None, false);
         };
@@ -145,7 +153,7 @@ impl Game<'_> {
             )
         };
         let mut pick = PickAccumulator::new(block_distance_sq);
-        self.collect_pick_candidates_within(entity_max_distance, include_knots, &mut pick);
+        self.collect_pick_candidates_within(entity_max_distance, &mut pick);
         let Some(hit) = pick.hovered else {
             return (None, false);
         };
@@ -159,109 +167,35 @@ impl Game<'_> {
         }
     }
 
-    /// Single pickable-entity query (`Entity::is_pickable` plus attached/special families in join order).
+    /// Single pickable-entity query matching `LocalPlayer.pick` and `Level.getEntities`:
+    /// sweeps the camera entity's current bounding box, visits accessible sections in
+    /// `EntitySectionStorage` order (filtering by raw box), then appends dragon parts.
     pub(super) fn collect_pick_candidates_within(
         &self,
         max_distance: f64,
-        include_knots: bool,
         pick: &mut PickAccumulator,
     ) {
         let Some((eye, dir)) = self.aim() else {
             return;
         };
         let (from, to) = pick_ray_segment(eye, dir, max_distance);
-        let mut hits: Vec<(JoinSeq, PickCandidate)> = Vec::new();
-        let mut push_box = |seq: JoinSeq, id: u32, bb: Aabb| {
-            if let Some(candidate) = self.test_pick_box(id, from, to, bb) {
-                hits.push((seq, candidate));
-            }
-        };
-
-        let lists = entity_lists_of!(self);
-        for_each_entity!(lists, entity => {
-            if entity.is_pickable() {
-                let radius = entity.pick_radius();
-                let bb = if radius == 0.0 {
-                    entity.bounds()
-                } else {
-                    entity.bounds().inflate(Vec3::new(radius, radius, radius))
-                };
-                push_box(entity.join_seq(), entity.id(), bb);
-            }
-        });
-
-        for p in &self.paintings {
-            push_box(p.join, p.id, aabb_extents(p.bounds()));
-        }
-        for f in &self.item_frames {
-            push_box(f.join, f.id, aabb_extents(f.bounds()));
-        }
-        for c in &self.cushions {
-            push_box(c.join, c.id, aabb_extents(c.bounds()));
-        }
-        for (&id, i) in &self.interactions {
-            if let Ok(uid) = u32::try_from(id) {
-                push_box(i.join, uid, i.bounds());
-            }
-        }
-        if let Some(remote) = &self.remote {
-            let catalog = crate::game::general::general_type_catalog();
-            for (&id, row) in &remote.general.rows {
-                if catalog.pickable(row.type_slot)
-                    && let Ok(uid) = u32::try_from(id)
-                {
-                    push_box(row.join, uid, row.bounds());
-                }
-            }
-        }
-        if include_knots {
-            for (&id, &block) in &self.remote_knots {
-                let knot = sunrise_client::mobs::leash::knot_state(block);
-                let p = knot.position;
-                let half = knot.width / 2.0;
-                let bb = Aabb::new(
-                    Vec3::new(p.x - half, p.y, p.z - half),
-                    Vec3::new(p.x + half, p.y + knot.height, p.z + half),
-                );
-                push_box(JoinSeq::MAX, id, bb);
-            }
-        }
-        for (i, crystal) in self.crystals.iter().enumerate() {
-            let id = if crystal.id != 0 {
-                crystal.id
-            } else if self.remote.is_none() {
-                super::dragon::CRYSTAL_IDS + i as u32
+        let search_box = self
+            .pick_camera_bounds()
+            .unwrap_or_else(|| Aabb::new(from, from))
+            .expand_towards(Vec3::new(
+                dir[0] * max_distance,
+                dir[1] * max_distance,
+                dir[2] * max_distance,
+            ))
+            .inflate(Vec3::new(1.0, 1.0, 1.0));
+        self.for_each_pickable_in_bounds(search_box, |id, raw_bb, radius| {
+            let bb = if radius == 0.0 {
+                raw_bb
             } else {
-                continue;
+                raw_bb.inflate(Vec3::new(radius, radius, radius))
             };
-            push_box(crystal.join, id, crystal.bounds());
-        }
-        if let Some(d) = self.dragon.as_ref().filter(|d| !self.is_pick_camera(d.id)) {
-            if d.id != 0 || self.remote.is_some() {
-                for i in 0..8 {
-                    push_box(
-                        d.join,
-                        super::dragon::dragon_part_id(d.id, i),
-                        d.part_geometry(i).1,
-                    );
-                }
-            } else {
-                for i in 0..8 {
-                    push_box(
-                        d.join,
-                        super::dragon::SPECIAL + i as u32,
-                        d.part_geometry(i).1,
-                    );
-                }
-            }
-        }
-
-        if hits.len() > 1 {
-            hits.sort_by_key(|(seq, _)| *seq);
-        }
-        for (_, candidate) in hits {
-            pick.consider_candidate(self, candidate);
-        }
+            pick.consider_box(self, id, from, to, bb);
+        });
     }
 
     /// Entity under the crosshair before any block (`Some(None)` when `getPickResult` is empty).

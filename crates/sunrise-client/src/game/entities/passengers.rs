@@ -477,6 +477,7 @@ impl Game<'_> {
             stand.previous = before;
             stand.velocity = Vec3::ZERO;
         }
+        self.sync_seated_pick_sections();
     }
 
     /// Armor stands riding the local player, on the top of its box. Vanilla

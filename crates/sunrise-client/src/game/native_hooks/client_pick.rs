@@ -17,6 +17,7 @@ pub(in crate::game) struct ClientPick {
     result: Option<CrosshairTarget>,
     pub entity_metadata: (bool, bool),
     pub rider_candidates: Vec<crate::game::pick_accumulator::PickCandidate>,
+    pub sections: std::cell::RefCell<crate::game::pick_entity::pick_sections::PickSectionStorage>,
     dispatching: bool,
     /// How many picks have been taken.
     taken: u64,

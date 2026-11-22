@@ -91,47 +91,9 @@ pub(super) struct ObjectHit {
 }
 
 impl Game<'_> {
-    /// `BlockAttachedEntity.isPickable`: the nearest fence knot under the crosshair.
-    fn remote_knot_hit(&self) -> Option<(i32, f64, [f64; 3])> {
-        if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, _) = hit?;
-            let block = *self.remote_knots.get(&entity.id())?;
-            let p = sunrise_client::mobs::leash::knot_state(block).position;
-            return Some((entity.id() as i32, distance, [p.x, p.y, p.z]));
-        }
-        let (eye, dir) = self.aim()?;
-        let reach = self.entity_reach;
-        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
-        let mut best = None;
-        for (&id, &block) in &self.remote_knots {
-            let knot = sunrise_client::mobs::leash::knot_state(block);
-            let p = knot.position;
-            let half = knot.width / 2.0;
-            let bounds = Aabb::new(
-                Vec3::new(p.x - half, p.y, p.z - half),
-                Vec3::new(p.x + half, p.y + knot.height, p.z + half),
-            );
-            if pick.consider_box(self, id, from, to, bounds) {
-                best = Some((
-                    id as i32,
-                    pick.hovered.unwrap().distance_sq.sqrt(),
-                    [p.x, p.y, p.z],
-                ));
-            }
-        }
-        best
-    }
-
-    /// Whether a use starts on an entity: the crosshair's `EntityHitResult`, or a fence knot.
+    /// Whether a use starts on an entity (`Minecraft.hitResult` is an `EntityHitResult`).
     pub(super) fn remote_use_targets_entity(&self) -> bool {
-        if self.uses_stored_pick() {
-            return self.entity_targeted();
-        }
         self.entity_targeted()
-            || self
-                .remote_knot_hit()
-                .is_some_and(|(_, d, _)| self.before_block(d))
     }
 
     fn pick_object_origin(&self, id: u32) -> Option<[f64; 3]> {
@@ -147,6 +109,10 @@ impl Game<'_> {
         }
         if let Some(&block) = self.remote_knots.get(&id) {
             let p = sunrise_client::mobs::leash::knot_state(block).position;
+            return Some([p.x, p.y, p.z]);
+        }
+        if let Some(k) = self.resident_entities.knots.iter().find(|k| k.id == id) {
+            let p = sunrise_client::mobs::leash::knot_state(k.fence).position;
             return Some([p.x, p.y, p.z]);
         }
         if let Some(crystal) = self.crystals.iter().find(|c| c.id == id) {
@@ -165,8 +131,8 @@ impl Game<'_> {
         None
     }
 
-    /// The nearest pickable non-mob object the view hits within reach; also fence knots when using.
-    pub(super) fn remote_object_hit(&self, attacking: bool) -> Option<ObjectHit> {
+    /// The nearest pickable non-mob object the view hits within reach.
+    pub(super) fn remote_object_hit(&self) -> Option<ObjectHit> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, point) = hit?;
             if self.mobs.iter().any(|m| m.id == entity.id())
@@ -185,7 +151,7 @@ impl Game<'_> {
                 location: std::array::from_fn(|i| point[i] - origin[i]),
             });
         }
-        let hit = self.pick_entity_hit_unified(!attacking)?;
+        let hit = self.pick_entity_hit_unified()?;
         if self.mobs.iter().any(|m| m.id == hit.id)
             || self.creatures.projectiles.iter().any(|p| p.id == hit.id)
         {

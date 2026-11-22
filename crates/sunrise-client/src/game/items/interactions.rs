@@ -133,6 +133,7 @@ impl Game<'_> {
     pub(super) fn move_remote_interaction(&mut self, id: i32, position: [f64; 3]) {
         if let Some(i) = self.interactions.get_mut(&id) {
             i.position = Vec3::new(position[0], position[1], position[2]);
+            self.pick_section_move(id as u32, position);
         }
     }
     pub(super) fn remote_interaction_data(&mut self, id: i32, values: &[(u8, i32, Value)]) -> bool {
