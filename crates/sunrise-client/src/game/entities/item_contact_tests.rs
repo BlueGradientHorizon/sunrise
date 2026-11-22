@@ -907,7 +907,7 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
 type LivingStep = (i32, Option<bool>);
 
 #[derive(Clone, Default)]
-struct LivingFloor(Arc<Mutex<Vec<LivingStep>>>);
+struct LivingFloor(Arc<Mutex<Vec<LivingStep>>>, Option<mod_api::DamageTypeKey>);
 
 #[mod_api::sunrise_part]
 impl BlockPart for LivingFloor {
@@ -918,7 +918,11 @@ impl BlockPart for LivingFloor {
         let living = level.entity_type_is_living(event.kind);
         self.0.lock().unwrap().push((event.entity, living));
         if living == Some(true) && !event.stepping_carefully {
-            event.write_entity(mod_api::EntityWrite::Hurt { amount: 1.0 });
+            // MagmaBlock.stepOn hurts with the hot floor damage type.
+            event.write_entity(mod_api::EntityWrite::Hurt {
+                damage_type: self.1.unwrap(),
+                amount: 1.0,
+            });
         }
     }
 }
@@ -927,7 +931,8 @@ impl BlockPart for LivingFloor {
 impl Hooks for LivingFloor {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
         let stone = r.block_key("minecraft:stone");
-        r.block_part(stone, self.clone());
+        let hot_floor = r.damage_type_key("minecraft:hot_floor");
+        r.block_part(stone, Self(self.0.clone(), Some(hot_floor)));
     }
 }
 
