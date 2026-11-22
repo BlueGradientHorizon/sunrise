@@ -1929,7 +1929,7 @@ fn powder_snow_placement_uses_the_bucket_event_and_contextual_levels() {
                             .as_ref()
                             .unwrap()
                             .hub
-                            .sync
+                            .sync_data()
                             .id("minecraft:sound_event", EMPTY_POWDER_SNOW)
                             .unwrap();
                         let sounds: Vec<_> = packets(&rx)
