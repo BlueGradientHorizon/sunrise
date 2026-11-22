@@ -178,10 +178,11 @@ impl BiomeDefinition {
         if climate.modifier == TemperatureModifier::Frozen {
             nbt.insert("temperature_modifier".into(), Tag::String("frozen".into()));
         }
-        let attributes = attributes
-            .into_network_nbt()
-            .map_err(DecodeError::Registry)?;
+        // The optional field checks its default before the nested network codec filters it.
         if !attributes.is_empty() {
+            let attributes = attributes
+                .into_network_nbt()
+                .map_err(DecodeError::Registry)?;
             nbt.insert("attributes".into(), Tag::Compound(attributes));
         }
         Ok(Tag::Compound(nbt))
