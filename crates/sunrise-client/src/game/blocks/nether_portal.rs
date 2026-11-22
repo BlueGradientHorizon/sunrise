@@ -2514,10 +2514,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_arrivals_keep_the_live_opt_out_without_writing_a_waiting_entity() {
-        use mod_api::__private::{ModPhase, PhaseOwner};
         mod_platform::testing::with_mods(Default::default(), || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _world = PhaseOwner::scope(ModPhase::World);
                 let chunk = (0, 0);
                 let at = BlockPos::new(4, 64, 4);
                 let spawn = |game: &mut Game<'_>, nbt| {

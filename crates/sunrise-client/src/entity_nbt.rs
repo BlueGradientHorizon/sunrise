@@ -556,14 +556,14 @@ fn profile_from_nbt(tag: &Tag) -> Option<sunrise_protocol::entity_data::Profile>
         });
     }
     let property = |name: String, value: &Tag, signature: Option<String>| match value {
-        Tag::String(v) => Some(sunrise_protocol::packets::login::Property {
+        Tag::String(v) => Some(sunrise_core::profile::AccountProperty {
             name,
             value: v.to_string_lossy(),
             signature,
         }),
         _ => None,
     };
-    let properties: Vec<sunrise_protocol::packets::login::Property> = match tag.get("properties") {
+    let properties: Vec<sunrise_core::profile::AccountProperty> = match tag.get("properties") {
         // `ExtraCodecs.PROPERTY_MAP`: a list of properties ...
         Some(Tag::List(list)) => list
             .iter()
@@ -6836,11 +6836,11 @@ pub fn bucket_components(m: &Mob) -> crate::item_data::StackData {
     data.set_other("minecraft:bucket_entity_data", Some(bucket_data(m)));
     // SulfurCube.saveToBucketTag: the body block, when it has one.
     if m.species() == crate::mobs::Species::SulfurCube
-        && let Some(body) = m.extra.body_id()
+        && let Some(body) = m.extra.body_stack()
     {
         data.set_other(
             "minecraft:sulfur_cube_content",
-            Some(Tag::compound([("id", string(body))])),
+            Some(crate::item_data::raw_template_tag(body)),
         );
     }
     if m.species() == crate::mobs::Species::Axolotl {
@@ -6884,6 +6884,11 @@ pub fn apply_item_components(m: &mut Mob, stack: &crate::items::ItemStack) {
     };
     if let Some(name) = stack.custom_name() {
         m.custom_name = Some(name);
+    }
+    if m.species() == crate::mobs::Species::SulfurCube
+        && let Some(body) = components.template_stack("minecraft:sulfur_cube_content")
+    {
+        m.extra.set_body_stack(Some(body));
     }
     if let Some(data) = components.other("minecraft:bucket_entity_data") {
         if let Some(v) = number(data.get("Age")) {

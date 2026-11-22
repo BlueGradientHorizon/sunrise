@@ -12,9 +12,7 @@ pub use jar::{
     JarConflict, JarInputsError, JarRef, JarRequirement, MissingJar, collect_jar_requirements,
     missing_jars,
 };
-pub use runtime_files::{
-    MAX_RUNTIME_FILE, MAX_RUNTIME_FILES, MAX_RUNTIME_TOTAL, RUNTIME_DIR, RuntimeData, RuntimeTable,
-};
+pub use runtime_files::{RUNTIME_DIR, RuntimeData, RuntimeTable};
 
 use mod_surface::uses::USES_FILE;
 use serde::{Deserialize, Serialize};
@@ -1103,9 +1101,9 @@ impl Package {
         let Some(table) = &self.manifest.runtime else {
             return Ok(None);
         };
-        let mut files = std::collections::BTreeMap::new();
-        let folder = path.is_dir();
-        let mut zip = if folder {
+        let mut files = Vec::new();
+        let runtime_dir = path.is_dir().then(|| path.join(RUNTIME_DIR));
+        let mut zip = if runtime_dir.is_some() {
             None
         } else {
             let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
@@ -1114,29 +1112,29 @@ impl Package {
         for (name, _) in table.files() {
             let entry = format!("{RUNTIME_DIR}/{name}");
             let mut bytes = Vec::new();
-            // At most one byte past the cap, so an oversized file is refused unread.
-            let read = if folder {
-                std::fs::File::open(path.join(&entry))
+            let path = runtime_dir.as_ref().map(|dir| dir.join(name));
+            let read = if let Some(path) = &path {
+                std::fs::File::open(path)
                     .map_err(|e| format!("{entry}: {e}"))?
-                    .take(MAX_RUNTIME_FILE + 1)
                     .read_to_end(&mut bytes)
             } else {
                 zip.as_mut()
                     .expect("an archive")
                     .by_name(&entry)
                     .map_err(|e| format!("{entry}: {e}"))?
-                    .take(MAX_RUNTIME_FILE + 1)
                     .read_to_end(&mut bytes)
             };
             read.map_err(|e| format!("{entry}: {e}"))?;
             table.check(name, &bytes)?;
-            files.insert(name.to_owned(), std::sync::Arc::from(bytes));
+            files.push((
+                name.to_owned(),
+                runtime_files::RuntimeFile {
+                    bytes: bytes.into_boxed_slice(),
+                    path,
+                },
+            ));
         }
-        Ok(Some(RuntimeData::new(
-            files,
-            table.digest(),
-            folder.then(|| path.to_owned()),
-        )))
+        Ok(Some(RuntimeData::new(files, table.digest())))
     }
 
     fn from_parts(
@@ -1169,10 +1167,8 @@ impl Package {
         }
         if let Some(runtime) = self.read_runtime(root)? {
             for name in runtime.names() {
-                files.insert(
-                    format!("{RUNTIME_DIR}/{name}"),
-                    runtime.file(name).expect("a listed file").to_vec(),
-                );
+                let (bytes, _) = runtime.file(name).expect("a listed file");
+                files.insert(format!("{RUNTIME_DIR}/{name}"), bytes.to_vec());
             }
         }
         if self.is_native() {

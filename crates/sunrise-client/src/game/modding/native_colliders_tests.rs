@@ -279,7 +279,6 @@ fn a_call_into_another_level_reads_that_levels_colliders_and_restores_the_caller
 /// A game that simulates its overworld, with the chunk the tests build on loaded.
 fn with_world(test: impl FnOnce(&mut Game<'_>)) {
     super::native_entity_refs::tests::with_game(|game| {
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         game.world

@@ -7,13 +7,23 @@ pub trait Hooks {
     /// keep the game's item. Creative breaking, such as a beehive's
     /// `playerWillDestroy`, does not ask this query. Server-side.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "server",
         contract = "replace",
         out = "stack",
         scope = "block",
         key = "state",
         host = "read",
-        neoforge = "IBlockExtension.getCloneItemStack"
+        neoforge = "IBlockExtension.getCloneItemStack",
+        version = 2
     )]
-    fn clone_item_stack();
+    fn clone_item_stack(
+        dimension: LevelDimension,
+        pos: BlockPos,
+        block: &str,
+        state: BlockState,
+        include_data: bool,
+        stack: &mut Option<ItemStack>,
+    );
 }

@@ -187,54 +187,7 @@ impl Game<'_> {
     /// patch a Sunrise server sends its clients, with the registries' ids, so
     /// the server's echo doesn't hand back a bare item.
     pub(super) fn to_network(&self, s: &Option<ItemStack>) -> Option<Stack> {
-        let r = self.remote.as_ref()?;
-        let source = s.as_ref()?;
-        // A stack as the server sent it, only its count changed: its own
-        // components go back, as a vanilla client keeps them.
-        if let Some(patch) = source.wire_patch() {
-            let mut out = Stack::new(self.item_id(&source.item), source.count as i32);
-            let safe = r.registries.custom_components
-                || sunrise_protocol::item::custom::entries().next().is_none()
-                || sunrise_protocol::item::WirePatch::decode(&patch)
-                    .and_then(|(added, removed)| {
-                        let decoded = Stack {
-                            added,
-                            removed,
-                            ..Stack::new(out.item, out.count)
-                        };
-                        sunrise_protocol::item::custom::permitted(&decoded, false)
-                    })
-                    .unwrap_or(false);
-            if safe {
-                out.wire = sunrise_protocol::item::WirePatch(Some(patch));
-                return Some(out);
-            }
-            log::warn!("Cannot send cached custom components to this peer");
-        }
-        let mut wire = sunrise_client::lan::guest::stack_to_network(
-            |name| self.item_id(name),
-            // Built-in first, as a hub's `SyncData::id` does: potions are one.
-            |registry, name| {
-                r.builtin
-                    .get(registry)
-                    .and_then(|ids| ids.id(name))
-                    .or_else(|| r.registries.id(registry, name))
-                    .or_else(|| {
-                        (r.registries.custom_components
-                            && registry == "minecraft:data_component_type")
-                            .then(|| sunrise_protocol::item::custom::id(name))
-                            .flatten()
-                    })
-            },
-            s,
-        )?;
-        sunrise_client::lan::guest::canonicalize_stack_patch(
-            &mut wire,
-            source,
-            self.items(),
-            &r.builtin,
-        );
-        Some(wire)
+        self.to_network_projecting(s, &|_| ())
     }
     // handle_command_suggestions: remote/commands.rs
     pub(in crate::game) fn set_registries(&mut self, registries: Arc<Dynamic>) {

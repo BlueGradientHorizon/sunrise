@@ -1,6 +1,7 @@
 //! What a frame draws behind the screens: the title panorama, the level loading background, the
 //! menu blur and transparent background, the world border wall, and the screens' render events.
 use super::*;
+use crate::game::host::draw::GameDrawContext;
 
 impl Game<'_> {
     /// The frame shows the title's panorama, not a level: the title screen, or a
@@ -38,20 +39,28 @@ impl Game<'_> {
         tracker: &sunrise_client::level_loading::LevelLoadTracker,
         progress: Option<f32>,
     ) -> bool {
-        let Some(screen) = tracker
-            .transition_screen()
-            .and_then(sunrise_client_render::dimension_transition::screen)
-        else {
+        let Some(screen) = tracker.transition_screen() else {
             return false;
         };
-        use sunrise_client::level_loading::Reason;
-        let reason = match tracker.reason {
-            Reason::NetherPortal => mod_api::DimensionTransitionReason::NetherPortal,
-            Reason::EndPortal => mod_api::DimensionTransitionReason::EndPortal,
-            Reason::Other => mod_api::DimensionTransitionReason::Other,
-        };
-        self.native_dimension_transition_screen_draw(screen, reason, progress, batch);
-        true
+        let paint = batch.paint_checkpoint();
+        let sounds = self.mod_sounds.pending_checkpoint();
+        let blur_requested = self.screen_blur_requested.get();
+        let clear_particles = self.mod_clear_particles.get();
+        let camera_type = self.requested_camera_type.get();
+        if screen.draw(
+            self,
+            tracker.reason.into(),
+            progress,
+            &mut GameDrawContext::new(self, batch),
+        ) {
+            return true;
+        }
+        paint.discard(batch);
+        self.mod_sounds.discard_pending_since(sounds);
+        self.screen_blur_requested.set(blur_requested);
+        self.mod_clear_particles.set(clear_particles);
+        self.requested_camera_type.set(camera_type);
+        false
     }
     /// `LevelLoadingScreen.extractBackground`.
     pub(super) fn draw_level_loading_background(

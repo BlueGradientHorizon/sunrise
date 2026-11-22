@@ -18,6 +18,9 @@ pub trait Hooks {
     /// Not asked without a resident eater or an open lifecycle epoch; vanilla's
     /// answer stands during those world/login lifecycle gaps.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_can_eat",
+        receiver = "read",
+        dispatch = "flat",
         side = "both",
         version = 3,
         contract = "replace",
@@ -25,5 +28,10 @@ pub trait Hooks {
         host = "read",
         neoforge = "none (vanilla Player.canEat; NeoForge adds no event or extension for it)"
     )]
-    fn can_eat();
+    fn can_eat(
+        player: PlayerRef,
+        stack: Option<&ItemStack>,
+        vanilla_can_eat: bool,
+        can_eat: &mut Option<bool>,
+    );
 }

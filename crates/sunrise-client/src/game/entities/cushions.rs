@@ -1,4 +1,3 @@
-// game-module-visibility: pub(crate)
 //! Cushions: `CushionItem.useOn` placement on the top face of a block,
 //! `Cushion.canBePlacedAt`/`survives`, `Cushion.interact` (sit),
 //! `BlockAttachedEntity.hurtServer` (break, dropping the matching colour),
@@ -337,7 +336,7 @@ impl Game<'_> {
             return false;
         }
         // isSecondaryUseActive.
-        if self.keys.held(Action::Sneak) {
+        if self.held_mapping(Action::Sneak) {
             return false;
         }
         let id = self.cushions[i].id;

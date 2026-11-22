@@ -375,7 +375,7 @@ impl Consumption {
         &self,
         m: &mut Mob,
         expected: Vec3,
-        remainder: Option<std::sync::Arc<str>>,
+        info: Option<&crate::items::ItemInfo>,
     ) -> bool {
         if !self.same_item_use(m) || m.position != expected {
             return false;
@@ -387,7 +387,8 @@ impl Consumption {
             // LivingEntity.handleExtraItemsCreatedOnUse is empty for a fox:
             // an additional use remainder is discarded while food remains.
         } else {
-            m.extra.set_main_hand(remainder);
+            m.extra
+                .set_main_hand_stack(crate::item_sync::use_remainder(&self.stack, info));
         }
         m.extra.ints[TICKS_SINCE_EATEN] = 0;
         true
@@ -433,15 +434,9 @@ pub fn apply_consumption(
     if !consume(w, m, level, events, &decision.stack) {
         return false;
     }
-    let remainder = crate::item_sync::use_remainder(
-        &decision.stack,
-        w.items
-            .and_then(|items| items.items.get(&decision.stack.item))
-            .and_then(|info| info.use_remainder.clone()),
-    )
-    .map(Into::into);
+    let info = w.items.and_then(|items| items.get(&decision.stack.item));
     let position = m.position;
-    decision.finish(m, position, remainder)
+    decision.finish(m, position, info)
 }
 
 /// `Fox.tick` and `Fox.aiStep`: eating, and `SoundEvents.FOX_AGGRO`

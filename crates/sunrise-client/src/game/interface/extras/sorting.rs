@@ -48,7 +48,7 @@ impl Game<'_> {
         let container: Vec<usize> = self
             .slots()
             .into_iter()
-            .filter(|s| (300..500).contains(s))
+            .filter(|&s| crate::game::inventory_slots::container_slot_index(s).is_some())
             .collect();
         if chest_like && !container.is_empty() {
             buttons.push(((160.0, 5.0), container));
