@@ -12504,6 +12504,10 @@ impl Game<'_> {
                             self.keys.clear();
                             let options = self.toggle_options();
                             self.vanilla_mappings.set_keys_up_on_focus_loss(options);
+                            // GLFW releases every held key and button when
+                            // the window loses focus, so a mod's mappings go
+                            // up as vanilla's do; their pending clicks stay.
+                            self.mod_keys.set_all_up();
                             self.capture(false);
                         }
                         self.regrab_on_refocus = held;

@@ -84,11 +84,6 @@ impl Game<'_> {
     ) -> Result<R, TurnRefused> {
         let result = self.with_guest_swap_at(gi, conn, self.dim, |game| {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                crate::game::dedicated::crash_fixture("guest", || {
-                    game.lan
-                        .as_ref()
-                        .is_some_and(|host| host.hub.guest(conn).is_some_and(|g| g.placed))
-                });
                 let dimension = (game.serving.is_some() || game.options.dedicated.is_some())
                     .then_some(game.dim.id());
                 let result =
