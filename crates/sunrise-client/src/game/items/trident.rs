@@ -1085,7 +1085,7 @@ impl Game<'_> {
         let live = self.tridents[run]
             .iter()
             .filter(|t| {
-                !self.hides_as_camera(t.id as u32)
+                !self.hides_as_camera(t.id)
                     && self.standing_entity_in_view(
                         camera,
                         super::entity_culling::at(t.previous),

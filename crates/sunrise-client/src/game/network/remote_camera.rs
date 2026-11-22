@@ -435,12 +435,10 @@ impl Game<'_> {
             .attributes
             .id("minecraft:movement_speed")
             .and_then(|attr| self.remote_attribute(m.id as i32, attr))
-            .unwrap_or_else(|| {
-                if m.attrs.speed > 0.0 {
-                    m.attrs.speed
-                } else {
-                    0.1
-                }
+            .unwrap_or(if m.attrs.speed > 0.0 {
+                m.attrs.speed
+            } else {
+                0.1
             });
         let using = (m.extra.using_item > 0).then(|| {
             let slot = if m.extra.using_off_hand {
