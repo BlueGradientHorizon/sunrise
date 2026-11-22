@@ -4748,22 +4748,26 @@ impl Mob {
         let before = self.extra.effects.len();
         // Empty, so no allocation, on the ticks nothing is removed.
         let mut removed = Vec::new();
-        let mut absorption_removed = false;
         self.extra.effects.retain(|e| {
             let keep = keep(e);
             if !keep {
                 removed.push(e.id);
             }
-            absorption_removed |= !keep && e.id == "minecraft:absorption";
             keep
         });
         // `removeModifier` dirties `max_absorption` only when the modifier
         // is there, permanent or a mod's transient one with its id: a loaded
         // Absorption, which added none, clamps nothing.
-        let (cap, absorption_id) = (finalize::Attr::MaxAbsorption, "minecraft:effect.absorption");
-        let cap_removed = absorption_removed
-            && (finalize::modifier_amount(self, cap, absorption_id).is_some()
-                || finalize::has_transient_modifier(self, cap, absorption_id));
+        let cap = finalize::Attr::MaxAbsorption;
+        let cap_removed = removed.iter().any(|effect| {
+            finalize::effect_modifiers(self, effect, 0)
+                .iter()
+                .any(|(a, id, _, _)| {
+                    *a == cap
+                        && (finalize::modifier_amount(self, cap, id).is_some()
+                            || finalize::has_transient_modifier(self, cap, id))
+                })
+        });
         for effect in removed {
             self.set_effect_modifiers(effect, None);
         }

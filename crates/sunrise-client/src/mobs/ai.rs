@@ -450,7 +450,7 @@ mod inside_walk_tests {
 }
 #[cfg(test)]
 #[path = "effect_modifier_tests.rs"]
-mod effect_modifier_tests;
+pub(crate) mod effect_modifier_tests;
 #[cfg(test)]
 #[path = "fall_flying_tests.rs"]
 mod fall_flying_tests;

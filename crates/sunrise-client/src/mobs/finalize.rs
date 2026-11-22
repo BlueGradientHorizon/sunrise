@@ -480,6 +480,16 @@ impl From<Op> for sunrise_world::attributes::Operation {
         }
     }
 }
+impl From<sunrise_world::attributes::Operation> for Op {
+    fn from(operation: sunrise_world::attributes::Operation) -> Self {
+        use sunrise_world::attributes::Operation;
+        match operation {
+            Operation::AddValue => Self::AddValue,
+            Operation::AddMultipliedBase => Self::AddMultipliedBase,
+            Operation::AddMultipliedTotal => Self::AddMultipliedTotal,
+        }
+    }
+}
 /// A permanent attribute modifier (`AttributeModifier`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Modifier {
@@ -639,6 +649,34 @@ fn effect_modifier_id(name: &str) -> String {
         _ => format!("minecraft:effect.{name}"),
     }
 }
+/// Each modifier `effect` puts on the attributes `m` keeps in its store, at
+/// `amplifier`: (attribute, id, amount, operation). Vanilla's come from
+/// `effect_modifier`; a content mod's effect has those its declaration lists
+/// (`MobEffect.addAttributeModifier`), the amount times the amplifier plus one
+/// (`AttributeTemplate.create`). An attribute the mob has no instance of is
+/// left out (`AttributeMap.getInstance` is null), as is one outside the
+/// store: the attributes mob gameplay reads are all in it.
+pub(super) fn effect_modifiers(
+    m: &Mob,
+    effect: &str,
+    amplifier: i32,
+) -> Vec<(Attr, String, f64, Op)> {
+    let name = effect.trim_start_matches("minecraft:");
+    let vanilla = Attr::ALL.into_iter().filter_map(|a| {
+        let (amount, op) = effect_modifier(name, amplifier, a)?;
+        default_value(m, a)?;
+        Some((a, effect_modifier_id(name), amount, op))
+    });
+    let declared = sunrise_client_core::potions::declared_modifiers(effect)
+        .iter()
+        .filter_map(|&(attribute, id, amount, operation)| {
+            let a = command_attr(attribute.strip_prefix("minecraft:")?)?;
+            default_value(m, a)?;
+            let amount = amount * f64::from(amplifier.wrapping_add(1));
+            Some((a, id.to_owned(), amount, operation.into()))
+        });
+    vanilla.chain(declared).collect()
+}
 /// One effect mutation's before-order in the legacy and live modifier seed stores.
 /// A clear is one batch: restore all of its rows together, not at stale indices.
 pub struct EffectModifierUndo {
@@ -716,16 +754,8 @@ impl Mob {
         effects: impl Iterator<Item = &'static str>,
     ) -> Option<EffectModifierUndo> {
         let keys: Vec<_> = effects
-            .flat_map(|effect| {
-                let name = effect.trim_start_matches("minecraft:");
-                Attr::ALL
-                    .into_iter()
-                    .filter(move |&attr| {
-                        effect_modifier(name, 0, attr).is_some()
-                            && default_value(self, attr).is_some()
-                    })
-                    .map(move |attr| (attr, effect_modifier_id(name)))
-            })
+            .flat_map(|effect| effect_modifiers(self, effect, 0))
+            .map(|(attr, id, _, _)| (attr, id))
             .collect();
         if keys.is_empty() {
             return None;
@@ -752,8 +782,8 @@ impl Mob {
     /// `MobEffectInstance.update` changed the active instance, or a hidden
     /// instance taking over in `tickServer`): `MobEffect.addAttributeModifiers`
     /// removes each of the effect's modifiers (`minecraft:effect.<name>`, see
-    /// `effect_modifier_id`), then adds it again with
-    /// `amount * (amplifier + 1)`. `None` is `onEffectsRemoved`
+    /// `effect_modifier_id`, or the ids a content mod's effect declares), then
+    /// adds it again with `amount * (amplifier + 1)`. `None` is `onEffectsRemoved`
     /// (`removeEffect`, `removeAllEffects`, the effect running out):
     /// `removeAttributeModifiers` removes them. Both skip an attribute the
     /// mob has no instance of (`AttributeMap.getInstance` is null: a pig has
@@ -767,12 +797,7 @@ impl Mob {
     /// health above the new maximum as `onAttributeUpdated(MAX_HEALTH)` does
     /// and never heals.
     pub fn set_effect_modifiers(&mut self, effect: &str, amplifier: Option<i32>) {
-        let name = effect.trim_start_matches("minecraft:");
-        for a in Attr::ALL {
-            if effect_modifier(name, 0, a).is_none() || default_value(self, a).is_none() {
-                continue;
-            }
-            let id = effect_modifier_id(name);
+        for (a, id, amount, op) in effect_modifiers(self, effect, amplifier.unwrap_or(0)) {
             // `removeModifier` takes the id off whatever holds it: the store's
             // permanent and transient lists, and the transient one the live
             // map keeps for its next build (a mod's, added before the effect).
@@ -781,7 +806,7 @@ impl Mob {
                 s.transient.retain(|x| x.attr != a || x.id != id);
             }
             self.extra.live.keep_transient(a.id(), &id, None);
-            if let Some((amount, op)) = amplifier.and_then(|amp| effect_modifier(name, amp, a)) {
+            if amplifier.is_some() {
                 let s = self.extra.attributes.get_or_insert_with(Box::default);
                 s.modifiers.push(Modifier {
                     attr: a,

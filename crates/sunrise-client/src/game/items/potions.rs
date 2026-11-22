@@ -16,7 +16,7 @@ use sunrise_client::health::Attack;
 use sunrise_client::{
     block_entity_render::vertex_light,
     brewing,
-    effects::{EffectAction, EffectInstance, OmenTick, PlayerEffects, effect_modifier},
+    effects::{EffectAction, EffectInstance, OmenTick, PlayerEffects, effect_modifiers},
     hud::HudBatch,
     hud_layout, hud_overlays, inventory_effects,
     items::ItemStack,
@@ -1650,12 +1650,14 @@ impl Game<'_> {
     }
 
     /// `LivingEntity.onEffectAdded` and `onEffectUpdated`: only a server
-    /// writes the modifier. The client receives it with its attributes.
+    /// writes the modifiers, vanilla's or a content mod's declared ones; an
+    /// attribute the player has no instance of takes none. The client
+    /// receives them with its attributes.
     fn update_player_effect_attributes(&mut self, effect: &str, amplifier: i32, refresh: bool) {
         if self.remote.is_some() {
             return;
         }
-        if let Some((attribute, id, amount, operation)) = effect_modifier(effect) {
+        for (attribute, id, amount, operation) in effect_modifiers(effect) {
             let amount = amount * f64::from(amplifier.wrapping_add(1));
             // MobEffect.addAttributeModifiers replaces by id and stores permanently.
             if let Some(write) = AttributeWrite::add(id, amount, operation, true, true) {
@@ -1674,7 +1676,7 @@ impl Game<'_> {
             return;
         }
         for effect in effects {
-            if let Some((attribute, id, _, _)) = effect_modifier(effect) {
+            for (attribute, id, _, _) in effect_modifiers(effect) {
                 self.write_attribute(
                     Target::Player,
                     attribute,
@@ -3288,12 +3290,11 @@ pub(super) mod tests {
                         ("test:nourishment", "effect-owner"),
                         ("other-mod:foreign", "other-mod"),
                     ]
-                    .map(|(id, owner)| (
-                        id.into(),
+                    .map(|(id, owner)| brewing::ModEffect::new(
+                        id,
                         0,
                         brewing::Category::Beneficial,
-                        None,
-                        owner.into(),
+                        owner,
                     ))
                 ));
                 super::super::native_entity_refs::tests::with_game(|game| {
@@ -3518,12 +3519,11 @@ pub(super) mod tests {
                 .collect::<Vec<_>>()
                 .into(),
         );
-        assert!(brewing::register_mod_effects([(
-            "test:effect".into(),
+        assert!(brewing::register_mod_effects([brewing::ModEffect::new(
+            "test:effect",
             0,
             brewing::Category::Neutral,
-            None,
-            "test-potions".into(),
+            "test-potions",
         )]));
         applied
     }

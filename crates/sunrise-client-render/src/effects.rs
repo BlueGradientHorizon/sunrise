@@ -592,7 +592,7 @@ impl PlayerEffects {
     pub fn modifiers(&self) -> Vec<EffectModifier> {
         let mut out = Vec::new();
         for e in &self.list {
-            if let Some((a, id, amount, op)) = effect_modifier(e.id) {
+            for (a, id, amount, op) in effect_modifiers(e.id) {
                 out.push((a, id, amount * f64::from(e.amplifier.wrapping_add(1)), op));
             }
         }
@@ -638,14 +638,22 @@ impl StatusFlags {
     }
 }
 
-pub type EffectModifier = (&'static str, &'static str, f64, Operation);
+pub use potions::EffectModifier;
 
-/// The attribute modifier an effect adds at amplifier 0
-/// (`MobEffect.addAttributeModifier`): (attribute, id, amount, operation).
-/// Each level multiplies the amount (`amplifier + 1`). Vanilla's amounts are
-/// `float` literals widened to the modifier's `double`, so `f64::from` the
-/// `f32` to keep the low digits.
-pub fn effect_modifier(effect: &str) -> Option<EffectModifier> {
+/// The attribute modifiers an effect adds at amplifier 0
+/// (`MobEffect.addAttributeModifier`): (attribute, id, amount, operation),
+/// vanilla's or those a content mod declared for its effect. Each level
+/// multiplies the amount (`amplifier + 1`).
+pub fn effect_modifiers(effect: &str) -> impl Iterator<Item = EffectModifier> {
+    effect_modifier(effect)
+        .into_iter()
+        .chain(potions::declared_modifiers(effect).iter().copied())
+}
+
+/// The attribute modifier a vanilla effect adds at amplifier 0. Vanilla's
+/// amounts are `float` literals widened to the modifier's `double`, so
+/// `f64::from` the `f32` to keep the low digits.
+fn effect_modifier(effect: &str) -> Option<EffectModifier> {
     match effect {
         "speed" => Some((
             "minecraft:movement_speed",
@@ -850,16 +858,25 @@ mod tests {
         let poison = loaded.get("poison").expect("level I resumed");
         assert_eq!((poison.amplifier, poison.duration), (0, 480));
     }
-    /// The only test here that registers mod effects (once per process).
+    /// The mod effects these tests share: the registry is set once per
+    /// process, so every test registers the same list.
+    fn register_ruby_glow() {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            assert!(potions::register_mod_effects([potions::ModEffect {
+                modifiers: vec![(
+                    "minecraft:movement_speed".into(),
+                    "ruby:effect/glow".into(),
+                    -0.25,
+                    Operation::AddMultipliedTotal,
+                )],
+                ..potions::ModEffect::new("ruby:glow", 0xFF0000, potions::Category::Neutral, "ruby")
+            }]));
+        });
+    }
     #[test]
     fn a_mod_effect_saves_under_its_namespace() {
-        potions::register_mod_effects([(
-            "ruby:glow".to_owned(),
-            0xFF0000,
-            potions::Category::Neutral,
-            None,
-            "ruby".into(),
-        )]);
+        register_ruby_glow();
         let mut fx = PlayerEffects::default();
         fx.add(EffectInstance::new(
             potions::effect("ruby:glow").unwrap().id,
@@ -1010,6 +1027,33 @@ mod tests {
         fx.add(EffectInstance::new("haste", 100, 1));
         assert!((fx.mining_speed_factor() - 1.4).abs() < 1e-6);
         assert_eq!(fx.modifiers().len(), 1);
+    }
+
+    /// #4473: a content mod's effect adds the modifiers its declaration
+    /// lists, each amount times the amplifier plus one, as vanilla's do.
+    #[test]
+    fn a_mod_effects_declared_modifier_scales_with_amplifier() {
+        register_ruby_glow();
+        let mut fx = PlayerEffects::default();
+        fx.add(EffectInstance::new("ruby:glow", 2400, 0));
+        fx.add(EffectInstance::new("speed", 2400, 0));
+        let glow = |amount| {
+            (
+                "minecraft:movement_speed",
+                "ruby:effect/glow",
+                amount,
+                Operation::AddMultipliedTotal,
+            )
+        };
+        let speed = (
+            "minecraft:movement_speed",
+            "minecraft:effect.speed",
+            f64::from(0.2f32),
+            Operation::AddMultipliedTotal,
+        );
+        assert_eq!(fx.modifiers(), [glow(-0.25), speed]);
+        fx.add(EffectInstance::new("ruby:glow", 2400, 2));
+        assert_eq!(fx.modifiers(), [glow(-0.75), speed]);
     }
 
     #[test]

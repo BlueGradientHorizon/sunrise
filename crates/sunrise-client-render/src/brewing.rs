@@ -12,9 +12,9 @@ use std::{collections::HashSet, path::Path};
 use sunrise_world::loot::PackOverlay;
 
 pub use sunrise_client_core::potions::{
-    BASE_POTION_COLOR, Category, EFFECTS, EffectDef, POTIONS, PotionDef, all_effects,
-    description_id, effect, is_mod_effect, mod_effects, namespaced, potion, potion_color,
-    register_mod_effects, set_pack_colors,
+    BASE_POTION_COLOR, Category, EFFECTS, EffectDef, EffectModifier, ModEffect, POTIONS, PotionDef,
+    all_effects, declared_modifiers, description_id, effect, is_mod_effect, mod_effects,
+    namespaced, potion, potion_color, register_mod_effects, set_pack_colors,
 };
 /// `MobEffectUtil.formatDuration` at 20 TPS.
 pub fn format_duration(ticks: i32) -> String {

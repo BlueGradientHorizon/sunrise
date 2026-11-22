@@ -334,7 +334,21 @@ pub fn attribute_lines_filtered(
 }
 
 /// The attribute modifiers a mob effect adds per amplifier level
-/// (`MobEffects`): attribute, amount, operation id.
+/// (`MobEffect.createModifiers`): attribute, amount, operation id. Vanilla's
+/// (`MobEffects`), or those a content mod declared for its effect.
+fn effect_modifiers(effect: &str) -> impl Iterator<Item = (&'static str, f64, usize)> {
+    let declared = crate::brewing::declared_modifiers(effect).iter().map(
+        |&(attribute, _, amount, operation)| {
+            let path = attribute.strip_prefix("minecraft:").unwrap_or(attribute);
+            (path, amount, operation as usize)
+        },
+    );
+    effect_modifier(effect.trim_start_matches("minecraft:"))
+        .into_iter()
+        .chain(declared)
+}
+
+/// [`effect_modifiers`] of a vanilla effect.
 fn effect_modifier(effect: &str) -> Option<(&'static str, f64, usize)> {
     Some(match effect {
         "speed" => ("movement_speed", 0.2, 2),
@@ -975,9 +989,10 @@ fn effect_modifier_lines<'a>(
 ) -> Vec<(String, u32)> {
     let applied: Vec<(String, u32)> = effects
         .into_iter()
-        .filter_map(|(effect, amplifier)| {
-            let (attribute, amount, operation) =
-                effect_modifier(effect.trim_start_matches("minecraft:"))?;
+        .flat_map(|(effect, amplifier)| {
+            effect_modifiers(effect).map(move |modifier| (modifier, amplifier))
+        })
+        .filter_map(|((attribute, amount, operation), amplifier)| {
             let amount = amount * (amplifier + 1) as f64;
             let line = modifier_line(
                 translate,
@@ -1878,6 +1893,42 @@ mod tests {
             ]
         );
         assert!(lines(&ItemStack::new("minecraft:bowl", 1), true).is_empty());
+    }
+
+    /// #4473: "When Applied:" lists a content mod's effect's declared
+    /// modifiers as it lists vanilla's (`MobEffect.createModifiers`), each
+    /// amount times the amplifier plus one.
+    #[test]
+    fn a_declared_effects_modifiers_show_when_applied() {
+        crate::mobs::ai::effect_modifier_tests::register_test_mod_effects();
+        let translate = |key: &str| {
+            Some(
+                match key {
+                    "potion.whenDrank" => "When Applied:",
+                    "attribute.modifier.plus.0" => "+%s %s",
+                    "attribute.modifier.plus.2" => "+%s%% %s",
+                    "attribute.modifier.take.2" => "-%s%% %s",
+                    "attribute.name.attack_damage" => "Attack Damage",
+                    "attribute.name.luck" => "Luck",
+                    "attribute.name.movement_speed" => "Speed",
+                    _ => return None,
+                }
+                .to_owned(),
+            )
+        };
+        let (blue, red) = (rgba(85, 85, 255, 255), rgba(255, 85, 85, 255));
+        assert_eq!(
+            effect_modifier_lines([("testfx:stun", 1), ("minecraft:speed", 0)], &translate),
+            [
+                (String::new(), u32::MAX),
+                ("When Applied:".to_owned(), rgba(170, 0, 170, 255)),
+                ("-50% Speed".to_owned(), red),
+                ("+3 Attack Damage".to_owned(), blue),
+                ("+2 Luck".to_owned(), blue),
+                ("+20% Speed".to_owned(), blue),
+            ]
+        );
+        assert!(effect_modifier_lines([("testfx:glow", 0)], &translate).is_empty());
     }
 
     #[test]

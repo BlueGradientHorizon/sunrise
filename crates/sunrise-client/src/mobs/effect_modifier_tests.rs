@@ -91,6 +91,46 @@ fn tick(m: &mut Mob, times: usize) {
         );
     }
 }
+/// The content mods' effects the lib's tests share: the registry is set
+/// once per process, so each test that needs one registers this same list.
+/// `testfx:stun` declares modifiers on a mob's movement speed and attack
+/// damage, and on luck, which a mob has no instance of.
+pub(crate) fn register_test_mod_effects() {
+    use crate::brewing::{Category, ModEffect, register_mod_effects};
+    use sunrise_world::attributes::Operation;
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let stun = |attribute: &str, id: &str, amount, operation| {
+            (attribute.to_owned(), id.to_owned(), amount, operation)
+        };
+        assert!(register_mod_effects([
+            ModEffect::new("testfx:glow", 1, Category::Harmful, "testfx"),
+            ModEffect {
+                modifiers: vec![
+                    stun(
+                        "minecraft:movement_speed",
+                        "testfx:effect/stun_speed",
+                        -0.25,
+                        Operation::AddMultipliedTotal,
+                    ),
+                    stun(
+                        "minecraft:attack_damage",
+                        "testfx:effect/stun_damage",
+                        1.5,
+                        Operation::AddValue,
+                    ),
+                    stun(
+                        "minecraft:luck",
+                        "testfx:effect/stun_luck",
+                        1.0,
+                        Operation::AddValue,
+                    ),
+                ],
+                ..ModEffect::new("testfx:stun", 2, Category::Harmful, "testfx")
+            },
+        ]));
+    });
+}
 fn types() -> HashMap<String, Arc<MobType>> {
     HashMap::from([
         ("minecraft:pig".to_owned(), pig_type()),
@@ -160,6 +200,67 @@ fn the_modifier_leaves_when_the_effect_runs_out() {
     assert!(stored(&m, Attr::MovementSpeed, SPEED).is_empty());
     assert_eq!(finalize::value(&m, Attr::MovementSpeed), 0.25);
     assert_eq!(m.attrs.speed, 0.25);
+}
+
+/// #4473: a content mod's effect puts on the modifiers its declaration lists
+/// as vanilla's effects do theirs: each amount times the amplifier plus one,
+/// replaced when the amplifier changes, none for an attribute the mob has
+/// no instance of, and all taken off when the effect runs out or
+/// `/effect clear` (`removeAllEffects`) removes it.
+#[test]
+fn a_declared_effect_adds_and_removes_its_modifiers() {
+    register_test_mod_effects();
+    let stun = crate::brewing::effect("testfx:stun").unwrap().id;
+    let (speed, damage) = ("testfx:effect/stun_speed", "testfx:effect/stun_damage");
+    let mut m = zombie();
+    m.add_effect(stun, 100, 0);
+    assert_eq!(
+        stored(&m, Attr::MovementSpeed, speed),
+        [(-0.25, Op::AddMultipliedTotal)]
+    );
+    assert_eq!(
+        stored(&m, Attr::AttackDamage, damage),
+        [(1.5, Op::AddValue)]
+    );
+    assert_eq!(finalize::value(&m, Attr::MovementSpeed), 0.23 * 0.75);
+    assert_eq!(m.attrs.attack_damage, 4.5);
+    m.add_effect(stun, 100, 2);
+    assert_eq!(
+        stored(&m, Attr::MovementSpeed, speed),
+        [(-0.75, Op::AddMultipliedTotal)]
+    );
+    assert_eq!(
+        stored(&m, Attr::AttackDamage, damage),
+        [(4.5, Op::AddValue)]
+    );
+    assert_eq!(finalize::value(&m, Attr::MovementSpeed), 0.23 * 0.25);
+    assert_eq!(m.attrs.attack_damage, 7.5);
+    let untouched = |m: &Mob| {
+        assert!(
+            m.extra
+                .attributes
+                .as_ref()
+                .is_none_or(|s| s.modifiers.is_empty())
+        );
+        assert_eq!(finalize::value(m, Attr::MovementSpeed), 0.23);
+        assert_eq!(m.attrs.attack_damage, 3.0);
+    };
+    let mut expiring = zombie();
+    expiring.add_effect(stun, 3, 1);
+    assert_eq!(
+        stored(&expiring, Attr::AttackDamage, damage),
+        [(3.0, Op::AddValue)]
+    );
+    tick(&mut expiring, 4);
+    assert!(expiring.extra.effects.is_empty());
+    untouched(&expiring);
+    assert!(m.retain_effects(|_| false));
+    untouched(&m);
+    // A pig has no attack damage: only its speed takes the effect.
+    let mut p = pig();
+    p.add_effect(stun, -1, 0);
+    assert!(stored(&p, Attr::AttackDamage, damage).is_empty());
+    assert_eq!(stored(&p, Attr::MovementSpeed, speed).len(), 1);
 }
 
 /// `addEffect` -> `onEffectUpdated(true)`: removeAttributeModifiers, then

@@ -1717,7 +1717,8 @@ fn register_mob_effects(
     selected: &[sunrise_mod_package::selection::SelectedPackage],
 ) {
     use sunrise_client::brewing::{self, Category};
-    use sunrise_mod_package::content::EffectCategory;
+    use sunrise_mod_package::content::{EffectCategory, ModifierOperation};
+    use sunrise_world::attributes::Operation;
     let effects = mob_effect_entries(mods, selected);
     if effects.is_empty() {
         return;
@@ -1732,13 +1733,23 @@ fn register_mob_effects(
             EffectCategory::Harmful => Category::Harmful,
             EffectCategory::Neutral => Category::Neutral,
         };
-        (
-            e.id.clone(),
-            e.color,
-            category,
-            e.sort_order,
-            owner.to_owned(),
-        )
+        let modifiers = e
+            .attribute_modifiers
+            .iter()
+            .map(|m| {
+                let operation = match m.operation {
+                    ModifierOperation::AddValue => Operation::AddValue,
+                    ModifierOperation::AddMultipliedBase => Operation::AddMultipliedBase,
+                    ModifierOperation::AddMultipliedTotal => Operation::AddMultipliedTotal,
+                };
+                (m.attribute.clone(), m.id.clone(), m.amount, operation)
+            })
+            .collect();
+        brewing::ModEffect {
+            sort_order: e.sort_order,
+            modifiers,
+            ..brewing::ModEffect::new(&e.id, e.color, category, owner)
+        }
     }));
     if !set
         && brewing::mod_effects()
@@ -4923,6 +4934,44 @@ pub(in crate::game) mod tests {
         assert!(error.contains("ruby:ghoul"), "{error}");
     }
 
+    /// #4473: a content mod's effect may declare modifiers on the attributes
+    /// the complete catalog has, vanilla's or a mod's; another refuses the
+    /// load, naming the effect and the attribute.
+    #[test]
+    fn a_declared_effect_modifier_on_an_unknown_attribute_refuses_the_load() {
+        use sunrise_client::brewing::{self, EffectDef};
+        use sunrise_world::attributes::{Operation, entity::Catalog};
+
+        let catalog = Catalog::from_json(&serde_json::json!({
+            "data_version": sunrise_world::DATA_VERSION,
+            "attributes": [
+                {"id": "minecraft:luck", "default": "0000000000000000", "min": "c090000000000000", "max": "4090000000000000", "syncable": true},
+                {"id": "ruby:mana", "default": "0000000000000000", "min": "0000000000000000", "max": "4090000000000000", "syncable": true}
+            ],
+            "entities": {"minecraft:player": {}}
+        }))
+        .unwrap();
+        let effect = |modifiers| EffectDef {
+            id: "ruby:stun",
+            modifiers,
+            ..*brewing::effect("slowness").unwrap()
+        };
+        let check = |effects: &[EffectDef]| {
+            super::super::resource_load::check_effect_modifier_attributes(&catalog, effects)
+        };
+        const KNOWN: &[brewing::EffectModifier] = &[
+            ("minecraft:luck", "ruby:a", 1.0, Operation::AddValue),
+            ("ruby:mana", "ruby:b", 1.0, Operation::AddValue),
+        ];
+        const UNKNOWN: &[brewing::EffectModifier] =
+            &[("ruby:stamina", "ruby:c", 1.0, Operation::AddValue)];
+        assert_eq!(check(&[effect(KNOWN), effect(&[])]), Ok(()));
+        assert_eq!(
+            check(&[effect(KNOWN), effect(UNKNOWN)]),
+            Err("mob effect ruby:stun: attribute_modifiers: unknown attribute ruby:stamina".into())
+        );
+    }
+
     /// A content mod's type from the wandering trader, the neutral template
     /// whose behaviour is all goals: a trader under its own id, with a
     /// trader's goals, that saves what a trader saves and loads back.
@@ -5475,12 +5524,11 @@ pub(in crate::game) mod tests {
         };
         register_mob_effects(&[plain], &[]);
         // The list `potions::tests` registers, so it holds whichever test runs first.
-        assert!(brewing::register_mod_effects([(
-            "test:effect".to_owned(),
+        assert!(brewing::register_mod_effects([brewing::ModEffect::new(
+            "test:effect",
             0,
             brewing::Category::Neutral,
-            None,
-            "test-potions".into()
+            "test-potions",
         )]));
     }
 }

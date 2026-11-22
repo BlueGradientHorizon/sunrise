@@ -421,6 +421,12 @@ pub(super) fn gameplay_tables(
                     modifications,
                 )?);
             }
+            // #4473: then the attributes the content mods' effects declare
+            // modifiers on, which the complete catalog knows.
+            check_effect_modifier_attributes(
+                &motion.attributes,
+                sunrise_client::brewing::mod_effects(),
+            )?;
             Ok::<_, Box<dyn std::error::Error>>(motion)
         })
         .map_err(|e| e.to_string());
@@ -546,6 +552,26 @@ pub(super) fn with_mod_attribute_additions(
             })?;
     }
     Ok(catalog)
+}
+
+/// Refuses the load when a content mod's effect declares a modifier on an
+/// attribute the catalog does not have, vanilla's and the mods' declared ones
+/// included (#4473), naming the effect and the attribute.
+pub(super) fn check_effect_modifier_attributes(
+    catalog: &sunrise_world::attributes::entity::Catalog,
+    effects: &[sunrise_client::brewing::EffectDef],
+) -> std::result::Result<(), String> {
+    for effect in effects {
+        for &(attribute, ..) in effect.modifiers {
+            if catalog.id(attribute).is_none() {
+                return Err(format!(
+                    "mob effect {}: attribute_modifiers: unknown attribute {attribute}",
+                    effect.id
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Each mob type mods added attributes to takes its grown catalog row
