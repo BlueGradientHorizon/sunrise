@@ -1644,6 +1644,62 @@ mod tests {
         assert_eq!(client_ip(&HeaderMap::new()), "anonymous");
     }
 
+    #[tokio::test]
+    async fn native_build_endpoints_refuse_removed_targets() {
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let app = router(
+            App::new(Config {
+                public_url: "https://example.invalid".into(),
+                session_key: b"0123456789abcdef0123456789abcdef".to_vec(),
+                github: GitHub::new(
+                    // Invalid URLs cannot make a request even if validation regresses.
+                    github::Endpoints {
+                        web: String::new(),
+                        api: String::new(),
+                        uploads: String::new(),
+                    },
+                    "owner/repo".into(),
+                    "client".into(),
+                    "secret".into(),
+                    "token".into(),
+                ),
+                update_key: None,
+                scratch: PathBuf::new(),
+                database: ":memory:".into(),
+            })
+            .unwrap(),
+        );
+        const BASE: &str = "0123456789abcdef0123456789abcdef01234567";
+        const SHA: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        for target in ["x86_64-apple-darwin", "aarch64-pc-windows-msvc"] {
+            let payload = json!({
+                "target": target,
+                "base": BASE,
+                "mods": [{"id": "zoom", "version": "1.0.0", "sha256": SHA}],
+            });
+            let post = Request::post("/api/native-builds")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap();
+            let get = Request::get(format!(
+                "/api/native-builds?target={target}&base={BASE}&key={SHA}"
+            ))
+            .body(Body::empty())
+            .unwrap();
+            for request in [post, get] {
+                let method = request.method().clone();
+                let response = app.clone().oneshot(request).await.unwrap();
+                assert_eq!(
+                    response.status(),
+                    StatusCode::BAD_REQUEST,
+                    "{method} {target}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn native_build_query_validation() {
         assert!(is_hex_str("0123456789abcdef0123456789abcdef01234567", 40));
