@@ -157,7 +157,6 @@ fn saved_mob(
         restocks_today: 1,
         check_day: 0,
         unset: false,
-        paying: false,
         offers: vec![MerchantOffer {
             base_cost_a: ItemCost {
                 stack: ItemStack::new("minecraft:emerald", 3),

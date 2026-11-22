@@ -277,7 +277,7 @@ fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick {
         g.inventory[9] = Some(ItemStack::new("minecraft:wheat", payment));
     });
     game.lan_select_trade(12, 0);
-    let window = game.lan.as_ref().unwrap().play[&12]
+    let window = game.lan.as_ref().unwrap().menus[&12]
         .merchant
         .as_ref()
         .unwrap()
@@ -343,7 +343,7 @@ fn tick_work(game: &mut Game<'_>) {
 }
 
 fn work_screen<'a>(game: &'a Game<'_>) -> &'a super::lan_trading::GuestMerchant {
-    game.lan.as_ref().unwrap().play[&12]
+    game.lan.as_ref().unwrap().menus[&12]
         .merchant
         .as_ref()
         .unwrap()
@@ -353,7 +353,7 @@ fn work_screen_mut<'a>(game: &'a mut Game<'_>) -> &'a mut super::lan_trading::Gu
     game.lan
         .as_mut()
         .unwrap()
-        .play
+        .menus
         .get_mut(&12)
         .unwrap()
         .merchant
@@ -528,7 +528,6 @@ fn restock_after_hero_change(test: &str, before_work: bool) {
                     trader.offers[0].base_cost_a.stack.count,
                     trader.offers[0].uses,
                 ) = (5, 10);
-                trader.paying = true;
                 // The voice from opening the screen has finished its cooldown by work time.
                 game.mobs[0].ambient_timer = 0;
                 game.audio.capture = Some(Vec::new());
@@ -1090,7 +1089,7 @@ fn unchanged(game: &mut Game<'_>, payment: u32) {
     assert_eq!(session.xp, 0);
     assert!(game.orbs.is_empty());
     let host = game.lan.as_ref().unwrap();
-    let slots = &host.play[&12].merchant.as_ref().unwrap().slots;
+    let slots = &host.menus[&12].merchant.as_ref().unwrap().slots;
     assert_eq!(count(slots[0].as_ref()), payment);
     assert_eq!(slots[2], Some(ItemStack::new("minecraft:emerald", 1)));
 }
@@ -1388,7 +1387,7 @@ fn shift_click_reads_each_use_and_applies_the_second_price_before_the_next_trade
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!(USES.with(|uses| uses.borrow().clone()), [1, 2]);
             assert_eq!((result(game), stat(game)), (2, 2));
-            let gm = game.lan.as_ref().unwrap().play[&12]
+            let gm = game.lan.as_ref().unwrap().menus[&12]
                 .merchant
                 .as_ref()
                 .unwrap();

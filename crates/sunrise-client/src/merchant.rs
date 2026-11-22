@@ -46,9 +46,6 @@ pub struct Trader {
     /// The offers are not made yet (vanilla's `offers` is null): they are
     /// generated when first asked for, keeping the experience.
     pub unset: bool,
-    /// A trading screen is open on this merchant with a payment in it, so a
-    /// refresh of its prices makes the merchant say yes or no (`updateSellItem`).
-    pub paying: bool,
 }
 /// What a restock step does to the offers (`Villager.restock`, and the
 /// `catchUpDemand` of `shouldRestock` with the restocks it missed).
@@ -230,8 +227,6 @@ pub struct Session {
     pub selection_hint: usize,
     pub active: Option<usize>,
     pub future_xp: i32,
-    /// A payment is in the menu (`Trader::paying`).
-    pub paying: bool,
     /// `Mob.ambientSoundTime`.
     pub ambient_sound_time: i32,
     /// `Villager.lastTradedPlayer` is set: the TRADE reputation event is due.
@@ -258,7 +253,6 @@ impl Session {
             selection_hint: 0,
             active: None,
             future_xp: 0,
-            paying: false,
             ambient_sound_time: 0,
             last_traded: false,
             client_side: false,
@@ -355,22 +349,66 @@ impl Session {
         self.sequences.insert(sequence, random);
         out
     }
-    /// `AbstractVillager.notifyTradeUpdated`.
-    pub fn notify_trade_updated(&mut self, has_result: bool) {
+    /// `MerchantContainer.updateSellItem` with only its payment and result slots.
+    /// Returns the optional feedback so the owner can play it after publishing the menu.
+    pub fn update_sell_item(
+        &mut self,
+        items: &Items,
+        a: Option<&ItemStack>,
+        b: Option<&ItemStack>,
+        result: &mut Option<ItemStack>,
+        feedback: TradeFeedback,
+    ) -> Option<(bool, f32)> {
+        let (a, b) = if a.is_none() { (b, None) } else { (a, b) };
+        self.active = None;
+        if a.is_none() {
+            *result = None;
+            self.future_xp = 0;
+            return None;
+        }
+        if !self.offers.is_empty() {
+            (self.active, *result) =
+                sell_item(&self.offers, items, a, b, Some(self.selection_hint));
+            self.future_xp = if result.is_some() {
+                self.active.map_or(0, |i| self.offers[i].xp)
+            } else {
+                0
+            };
+        }
         // ClientSideMerchant.notifyTradeUpdated does nothing.
         if self.client_side {
-            return;
+            return None;
         }
-        if self.ambient_sound_time > -80 + 20 {
-            self.ambient_sound_time = -80;
-            let pitch = self.voice_pitch();
-            self.events.push(Event::TradeUpdated(has_result, pitch));
-        }
+        let pitch = match feedback {
+            TradeFeedback::Current => {
+                trade_update_pitch(&mut self.ambient_sound_time, &mut self.random)
+            }
+            TradeFeedback::AtHurt(pitch) | TradeFeedback::AtWork(pitch) => pitch,
+        };
+        pitch.map(|pitch| (result.is_some(), pitch))
     }
-    /// `LivingEntity.getVoicePitch` of an adult merchant.
-    pub fn voice_pitch(&mut self) -> f32 {
-        (self.random.next_float() - self.random.next_float()) * 0.2 + 1.0
+}
+
+/// Which tick owns `AbstractVillager.notifyTradeUpdated`'s voice draw.
+#[derive(Clone, Copy)]
+pub enum TradeFeedback {
+    Current,
+    /// An accepted player hit already settled the living villager's timer and RNG.
+    AtHurt(Option<f32>),
+    /// A work-step restock already settled the living villager's timer and RNG.
+    AtWork(Option<f32>),
+}
+
+/// `AbstractVillager.notifyTradeUpdated` uses `Mob.getAmbientSoundInterval` (80).
+pub fn trade_update_pitch(
+    ambient_time: &mut i32,
+    random: &mut sunrise_core::random::LegacyRandom,
+) -> Option<f32> {
+    if *ambient_time <= -80 + 20 {
+        return None;
     }
+    *ambient_time = -80;
+    Some((random.next_float() - random.next_float()) * 0.2 + 1.0)
 }
 
 /// The trade registries.

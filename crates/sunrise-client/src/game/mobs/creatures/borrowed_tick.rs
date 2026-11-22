@@ -240,6 +240,7 @@ impl Game<'_> {
                     Some(&self.pack.block_registries),
                     &self.damage_hooks,
                 )
+                .with_mob_uuids(&self.persist.uuids)
                 .with_player_resolver(
                     crate::game::entity::player_resolver!(self),
                     &mut player_credit,

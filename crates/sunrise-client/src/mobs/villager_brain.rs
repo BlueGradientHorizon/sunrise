@@ -3345,6 +3345,8 @@ fn play_work_sound(m: &mut Mob, cx: &mut Bx) {
 pub struct TradingPlayer {
     pub uuid: Option<[i32; 4]>,
     pub hero: Option<i32>,
+    /// `MerchantContainer.updateSellItem` plays feedback only with a payment.
+    pub paying: bool,
 }
 
 pub trait TradingPlayers {
@@ -3382,7 +3384,6 @@ fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if (catch_up.is_none() && restock.is_none()) || !m.extra.flag2 || t.offers.is_empty() {
         return;
     }
-    let paying = t.paying;
     let Some(player) = w
         .trading_players
         .and_then(|players| players.trading_player(m.id))
@@ -3394,7 +3395,7 @@ fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         .zip(super::villager::ext(m))
         .map_or(0, |(uuid, ext)| ext.gossips.reputation(uuid));
     for step in catch_up.into_iter().chain(restock) {
-        let pitch = (paying && m.ambient_timer > -60).then(|| {
+        let pitch = (player.paying && m.ambient_timer > -60).then(|| {
             m.ambient_timer = -80;
             m.voice_pitch()
         });
