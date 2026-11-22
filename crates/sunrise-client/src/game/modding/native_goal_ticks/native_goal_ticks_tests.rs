@@ -1086,3 +1086,176 @@ fn a_finalize_spawn_listener_keeps_the_mod_goals() {
         );
     });
 }
+
+/// The prey a [`Leap`] goal chose, as the mod that owns the goal knows it.
+static PREY: Mutex<Option<EntityRef>> = Mutex::new(None);
+/// What [`Leap`]'s refused writes answered, and whether they left the
+/// velocity as it was.
+static REFUSALS: Mutex<Vec<(bool, bool, bool)>> = Mutex::new(Vec::new());
+
+/// `LeapAtTargetGoal(mob, 0.4)` written against the goal context: it reads
+/// its own mob's velocity and replaces it (#3926). The mob's own target read
+/// stands aside for [`PREY`]: the goal knows the target it chose.
+#[derive(Default)]
+struct Leap {
+    target: Option<EntityRef>,
+}
+impl Goal for Leap {
+    fn flags(&self) -> GoalFlags {
+        GoalFlags::JUMP.union(GoalFlags::MOVE)
+    }
+    fn name(&self) -> &'static str {
+        "Leap"
+    }
+    fn can_use(&mut self, cx: &mut GoalContext<'_>) -> bool {
+        self.target = *PREY.lock().unwrap();
+        let Some(target) = self.target else {
+            return false;
+        };
+        let mob = cx.mob().entity();
+        let (Some(at), Some(own)) = (target.position(cx.host()), mob.position(cx.host())) else {
+            return false;
+        };
+        let (x, y, z) = (own[0] - at[0], own[1] - at[1], own[2] - at[2]);
+        let d = x * x + y * y + z * z;
+        if !(4.0..=16.0).contains(&d) || mob.on_ground(cx.host()) != Some(true) {
+            return false;
+        }
+        // `nextInt(reducedTickDelay(5))`.
+        cx.random().next_int_bound(3) == 0
+    }
+    fn can_continue(&mut self, cx: &mut GoalContext<'_>) -> bool {
+        cx.mob().entity().on_ground(cx.host()) == Some(false)
+    }
+    fn start(&mut self, cx: &mut GoalContext<'_>) {
+        // Refused writes first: the launch below reads the velocity they
+        // must leave alone.
+        let before = cx.delta_movement();
+        let set = cx.set_delta_movement([f64::NAN, 0.0, 0.0]);
+        let add = cx.add_delta_movement([0.0, f64::INFINITY, 0.0]);
+        REFUSALS
+            .lock()
+            .unwrap()
+            .push((set, add, cx.delta_movement() == before));
+        let movement = cx.delta_movement();
+        let at = self.target.and_then(|t| t.position(cx.host())).unwrap();
+        let own = cx.mob().entity().position(cx.host()).unwrap();
+        let mut delta = [at[0] - own[0], 0.0, at[2] - own[2]];
+        let length_sqr = delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2];
+        if length_sqr > 1.0e-7 {
+            // `delta.normalize().scale(0.4).add(movement.scale(0.2))`.
+            let length = length_sqr.sqrt();
+            delta = [
+                delta[0] / length * 0.4 + movement[0] * 0.2,
+                delta[1] / length * 0.4 + movement[1] * 0.2,
+                delta[2] / length * 0.4 + movement[2] * 0.2,
+            ];
+        }
+        cx.set_delta_movement([delta[0], f64::from(0.4_f32), delta[2]]);
+    }
+}
+
+struct Leaps;
+#[mod_api::sunrise_part]
+impl EntityPart for Leaps {
+    fn register_goals(&self, goals: &mut GoalRegistrar<'_>) {
+        goals.add_goal(4, Leap::default());
+    }
+}
+
+struct LeapMod;
+#[mod_api::__subscriptions]
+impl Hooks for LeapMod {
+    fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
+        r.entity_part("minecraft:wolf", Leaps);
+    }
+}
+
+/// A wolf about to leap at a pig 2.5 blocks east and 1.5 south, on a stone
+/// floor, with only its leap goal: the engine's `LeapAtTarget`, or the mod's
+/// [`Leap`]. Its position, velocity and ground flag after each of 40 mob
+/// ticks, as bits.
+fn leap_trace(mod_goal: bool) -> Vec<[u64; 7]> {
+    use sunrise_client::mobs::Who;
+    let mut trace = Vec::new();
+    with_game(|game| {
+        game.options.dedicated = Some(Vec::new());
+        for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
+            let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+            chunk.lit = true;
+            game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
+        }
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        for x in 0..16 {
+            for z in 0..16 {
+                game.world.set(x, 64, z, stone).unwrap();
+            }
+        }
+        mob_of(game, 70, "minecraft:wolf", [3.5, 65.0, 3.5]);
+        mob_of(game, 71, "minecraft:pig", [6.0, 65.0, 5.0]);
+        for m in game.mobs.iter_mut() {
+            m.ai.goals.clear();
+            m.ai.targets.clear();
+        }
+        let wolf = &mut game.mobs[0];
+        wolf.ai.target = Some(Who::Mob(71));
+        if mod_goal {
+            mobs::part_goals::attach(wolf);
+        } else {
+            wolf.ai.goals.add(4, mobs::goals::LeapAtTarget::new(0.4));
+        }
+        *PREY.lock().unwrap() = Some(game.entity(71).unwrap());
+        for _ in 0..40 {
+            game.world.game_time += 1;
+            game.tick_mobs().unwrap();
+            let wolf = game.mobs.iter().find(|m| m.id == 70).unwrap();
+            let (p, v) = (wolf.position, wolf.velocity);
+            trace.push([
+                p.x.to_bits(),
+                p.y.to_bits(),
+                p.z.to_bits(),
+                v.x.to_bits(),
+                v.y.to_bits(),
+                v.z.to_bits(),
+                u64::from(wolf.ground.on_ground),
+            ]);
+        }
+    });
+    trace
+}
+
+/// A mod goal that ports `LeapAtTargetGoal` through
+/// `GoalContext::set_delta_movement` launches its mob as the engine's port of
+/// vanilla's goal does, on the same seed: the same velocity and position bit
+/// for bit, tick after tick, through the flight to the landing. Its refused
+/// writes (a NaN set, an infinite add) answer false and change nothing.
+#[test]
+#[ignore = "daily"]
+fn a_mod_leap_goal_flies_and_lands_as_the_engine_leap_does() {
+    REFUSALS.lock().unwrap().clear();
+    mod_platform::__private::install(vec![ModEntry::new("leaps", Box::new(LeapMod))].into());
+    crate::game::api_values::install_parts(&[ModEntry::new("leaps", Box::new(LeapMod))]).unwrap();
+    let engine = leap_trace(false);
+    let ported = leap_trace(true);
+    let airborne = engine.iter().position(|t| t[6] == 0);
+    assert!(airborne.is_some(), "the engine's wolf leaps");
+    assert!(
+        engine[airborne.unwrap()..].iter().any(|t| t[6] == 1),
+        "and lands within the trace"
+    );
+    assert_eq!(
+        ported, engine,
+        "the mod's leap is the engine's, bit for bit"
+    );
+    let refusals = REFUSALS.lock().unwrap().clone();
+    assert!(!refusals.is_empty(), "the mod's goal started");
+    assert!(
+        refusals.iter().all(|&r| r == (false, false, true)),
+        "refused writes answer false and keep the velocity: {refusals:?}"
+    );
+}
