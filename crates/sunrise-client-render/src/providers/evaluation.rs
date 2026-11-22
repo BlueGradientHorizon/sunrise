@@ -166,7 +166,12 @@ impl<F: FnMut(&Value, &mut LevelRandom) -> bool> Evaluation<'_, F> {
                         if lo >= hi {
                             lo
                         } else {
-                            self.random.next_int_bound(hi - lo + 1).unwrap_or(0) + lo
+                            // Mth.nextInt computes the inclusive bound as a Java int.
+                            let bound = hi.wrapping_sub(lo).wrapping_add(1);
+                            self.random
+                                .next_int_bound(bound)
+                                .map_err(|err| err.to_string())?
+                                + lo
                         }
                     }
                     "binomial" => {
@@ -314,9 +319,14 @@ impl<F: FnMut(&Value, &mut LevelRandom) -> bool> Evaluation<'_, F> {
             _ => {
                 let list = o.get("distribution")?.as_array()?;
                 let weight =
-                    |entry: &Value| entry.get("weight").and_then(Value::as_i64).unwrap_or(1) as i32;
-                let total = list.iter().map(weight).sum();
-                let mut pick = self.random.next_int_bound(total).ok()?;
+                    |entry: &Value| entry.get("weight").and_then(Value::as_i64).unwrap_or(1);
+                // WeightedRandom.getTotalWeight sums into a long and requires an int total.
+                let total = list.iter().try_fold(0_i32, |total, entry| {
+                    let weight = i32::try_from(weight(entry)).ok()?;
+                    (weight >= 0).then_some(())?;
+                    total.checked_add(weight)
+                })?;
+                let mut pick = i64::from(self.random.next_int_bound(total).ok()?);
                 for entry in list {
                     pick -= weight(entry);
                     if pick < 0 {

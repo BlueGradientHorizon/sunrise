@@ -37,7 +37,8 @@ def fuel_stacks():
         'overridden': stack('minecraft:coal', components='{"minecraft:cooking_fuel":{burn_time:323,speed_multiplier:1.25f}}'),
         'zero_time': stack('minecraft:diamond', components='{"minecraft:cooking_fuel":{burn_time:0,speed_multiplier:2.5f}}'),
         'negative_time': stack('minecraft:diamond', components='{"minecraft:cooking_fuel":{burn_time:-5,speed_multiplier:1.25f}}'),
-        'set_and_remove': stack('minecraft:diamond', components='{"minecraft:cooking_fuel":{burn_time:31,speed_multiplier:1.25f},"!minecraft:cooking_fuel":{}}'),
+        'both_set_wins': stack('minecraft:diamond', components='{"minecraft:cooking_fuel":{burn_time:31,speed_multiplier:1.25f},"!minecraft:cooking_fuel":{}}'),
+        'both_removal_wins': stack('minecraft:coal', components='{":cooking_fuel":{burn_time:31,speed_multiplier:1.25f},"!:cooking_fuel":{}}'),
         'default_fuel': stack('minecraft:coal'),
         'default_nonfuel': stack('minecraft:diamond'),
     }
