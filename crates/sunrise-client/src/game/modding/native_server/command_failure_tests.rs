@@ -126,14 +126,15 @@ fn executor_failure_respects_source_silence_and_stores_zero() {
                             })
                             .filter_map(|body| {
                                 let mut reader = Reader::new(&body);
-                                (reader.varint().unwrap() == SYSTEM_CHAT).then(|| {
-                                    let Clientbound::SystemChat(chat) =
-                                        Clientbound::decode(SYSTEM_CHAT, reader.rest()).unwrap()
-                                    else {
-                                        unreachable!()
-                                    };
-                                    crate::game::remote::remote_text(&chat.content).plain()
-                                })
+                                if reader.varint().unwrap() != SYSTEM_CHAT {
+                                    return None;
+                                }
+                                let Clientbound::SystemChat(chat) =
+                                    Clientbound::decode(SYSTEM_CHAT, reader.rest()).unwrap()
+                                else {
+                                    unreachable!()
+                                };
+                                Some(crate::game::remote::remote_text(&chat.content).plain())
                             })
                             .collect();
                         assert_eq!(received, [text::Text::tr("command.failed", &[]).plain()]);
