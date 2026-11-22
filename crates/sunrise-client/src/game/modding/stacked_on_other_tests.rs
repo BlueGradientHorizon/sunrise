@@ -838,7 +838,7 @@ mod families {
                     },
                 );
                 window.set(
-                    game.lan.as_ref().unwrap().play[&12]
+                    game.lan.as_ref().unwrap().menus[&12]
                         .merchant
                         .as_ref()
                         .unwrap()

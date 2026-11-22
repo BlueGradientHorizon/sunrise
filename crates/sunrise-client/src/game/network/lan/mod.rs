@@ -5934,7 +5934,7 @@ mod merchant_packet_tests {
                 carried: None,
             };
             assert!(game.lan_merchant_click(1, &click));
-            let state = &game.lan.as_ref().unwrap().play[&1]
+            let state = &game.lan.as_ref().unwrap().menus[&1]
                 .merchant
                 .as_ref()
                 .unwrap()
@@ -5962,7 +5962,7 @@ mod merchant_packet_tests {
             assert!(content.items[0].is_none());
             assert!(content.items[2].is_none());
             assert_eq!(content.carried.as_ref().unwrap().count, 6);
-            let state = &game.lan.as_ref().unwrap().play[&1]
+            let state = &game.lan.as_ref().unwrap().menus[&1]
                 .merchant
                 .as_ref()
                 .unwrap()
@@ -6049,19 +6049,23 @@ mod merchant_packet_tests {
             // `setLastHurtByMob` refreshes the matching buyer before event 13 and the
             // damage packet. Another player gets anger but no offer; mobs and lethal
             // blows show no anger. Keep the victim's same-tick cooldown throughout.
-            game.lan
+            let gm = game
+                .lan
                 .as_mut()
                 .unwrap()
-                .play
+                .menus
                 .get_mut(&1)
                 .unwrap()
                 .merchant
                 .as_mut()
-                .unwrap()
-                .merchant
-                .session
-                .offers[0]
-                .price_multiplier = 0.2;
+                .unwrap();
+            assert!(
+                gm.slots[2].is_some(),
+                "the buyer could still afford the old price"
+            );
+            assert_eq!(gm.slots[0].as_ref().unwrap().count, 4);
+            gm.merchant.session.offers[0].price_multiplier = 0.2;
+            let merchant_window = gm.window;
             game.audio.capture = Some(Vec::new());
             let mut states = super::States::default();
             game.lan_entities(&mut states, false, 0, None);
@@ -6104,6 +6108,17 @@ mod merchant_packet_tests {
                         Clientbound::DamageEvent(packet) if packet.id == 77 => {
                             actual.push("damage".to_owned());
                         }
+                        Clientbound::ContainerSetSlot(packet)
+                            if packet.container == merchant_window =>
+                        {
+                            assert_eq!(packet.slot, 2, "only the result slot changed");
+                            assert!(packet.item.is_none());
+                        }
+                        Clientbound::ContainerSetContent(packet)
+                            if packet.container == merchant_window =>
+                        {
+                            panic!("a price refresh must not send another player's inventory");
+                        }
                         _ => {}
                     }
                 }
@@ -6113,6 +6128,21 @@ mod merchant_packet_tests {
                 Some((true, false))
             );
             record(game);
+            let hub = &game.lan.as_ref().unwrap().hub;
+            assert_eq!(hub.guests[0].carried.as_ref().unwrap().count, 3);
+            let gm = game.lan.as_ref().unwrap().menus[&1]
+                .merchant
+                .as_ref()
+                .unwrap();
+            assert!(
+                gm.slots[2].is_none(),
+                "the buyer cannot afford the refreshed offer"
+            );
+            assert_eq!(
+                gm.slots[0].as_ref().unwrap().count,
+                4,
+                "payment stayed in the menu"
+            );
             assert_eq!(
                 game.hurt_by_player(0, 3.0, Damage::player(at)),
                 (true, false)
