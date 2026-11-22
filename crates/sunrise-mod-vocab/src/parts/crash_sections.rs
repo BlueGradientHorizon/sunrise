@@ -5,9 +5,8 @@ use super::*;
 
 /// A crash report line a mod computes when the report is written: NeoForge's
 /// `ISystemReportExtender`, `ICrashReportHeader`, or a `registerCrashCallable` supplier with its
-/// active check. The report asks it once, on a worker, while the game may have stopped
-/// mid-tick. Other callbacks can run concurrently: read the mod's own state, and don't wait
-/// on anything the game holds.
+/// active check. The report asks it once, in registration order on a worker, while the game may
+/// have stopped mid-tick: read the mod's own state, and don't wait on anything the game holds.
 pub trait CrashSection: Send + Sync + 'static {
     /// The full text to include in the report, or `None` to omit this entry.
     fn value(&self) -> Option<String>;
@@ -16,13 +15,15 @@ pub trait CrashSection: Send + Sync + 'static {
 /// The registration side of [`CrashSection`]: what [`Registrar`] adds them with.
 pub trait CrashSectionsRegistrar {
     /// `registerCrashCallable(label, supplier)`: a system detail, `<mod id>: <label>: <value>`,
-    /// written after Sunrise's own lines in registration order, even if the crash is attributed
-    /// to the registering mod. A failed entry starts with `~~ERROR~~` without preventing
-    /// other entries from being collected. A panic logs the mod, queues an error toast, and
-    /// disables only this registration for the rest of the session.
+    /// run and written after Sunrise's own lines in registration order, even if the crash is
+    /// attributed to the registering mod. Continuation lines in multiline labels, values and
+    /// errors are prefixed with `\t\t<mod id> | ` so they stay attributed to the registering mod.
+    /// A failed or timed-out entry starts with `~~ERROR~~` without preventing later entries from
+    /// running. A panic logs the mod, queues an error toast, and disables only this registration
+    /// for the rest of the session.
     fn crash_section(&mut self, label: &str, section: Arc<dyn CrashSection>);
-    /// `registerHeader`: an entry under the report's title, `<mod id>: <value>`, asked as a
-    /// [`crash_section`](Self::crash_section) is.
+    /// `registerHeader`: an entry under the report's title, `<mod id>: <value>`, with continuation
+    /// lines prefixed `\t<mod id> | `, asked as a [`crash_section`](Self::crash_section) is.
     fn crash_header(&mut self, header: Arc<dyn CrashSection>);
 }
 
