@@ -558,6 +558,14 @@ fn a_committed_pot_write_in_another_level_survives_the_parent_abort() {
     };
     use sunrise_core::nbt::Tag;
 
+    if run_fresh_cases(
+        "game::machines::native_items::storage_attempt_tests::a_committed_pot_write_in_another_level_survives_the_parent_abort",
+        "SUNRISE_CROSS_LEVEL_SAVED_POT_CHILD",
+        &["server"],
+    ) {
+        return;
+    }
+
     let pos = [4, 64, 0];
     with_game_role(fixture_root(), ExecutionRole::IntegratedServer, |game| {
         let mut setup = |dim, item| {
