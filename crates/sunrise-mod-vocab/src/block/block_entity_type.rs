@@ -143,6 +143,7 @@ pub struct BlockEntityTypeBuilder<'a> {
     pub(crate) id: String,
     pub(crate) blocks: Vec<String>,
     pub(crate) transform: Option<Arc<dyn BlockEntityTransform>>,
+    pub(crate) ticker: Option<Arc<crate::parts::BlockEntityTickerSelector>>,
 }
 
 impl BlockEntityTypeBuilder<'_> {
@@ -159,6 +160,20 @@ impl BlockEntityTypeBuilder<'_> {
         self
     }
 
+    /// Select the states and logical sides of this type that may run their attached Parts' tick methods.
+    /// The game calls this at state registration for accepted blocks only, and only on a side with
+    /// a ticking Part. Without a selector, every accepted state on that side has the ticker.
+    pub fn ticker_when(
+        mut self,
+        select: impl Fn(&dyn crate::BlockMetadata, crate::BlockState, crate::LogicalSide) -> bool
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.ticker = Some(Arc::new(select));
+        self
+    }
+
     /// Register the type and return its typed key.
     pub fn build(self) -> BlockEntityTypeKey {
         let key = self
@@ -166,6 +181,9 @@ impl BlockEntityTypeBuilder<'_> {
             .declare_block_entity_type(&self.id, self.blocks);
         if let Some(step) = self.transform {
             self.registrar.set_block_entity_transform(key, step);
+        }
+        if let Some(select) = self.ticker {
+            self.registrar.set_block_entity_ticker_selector(key, select);
         }
         key
     }

@@ -249,7 +249,7 @@ fn block_entity_submit_dispatches_in_order_with_shared_draw() {
         [1, 2, 3],
         "example:machine",
         BlockState::new(BlockKey::Test, 0),
-        &ModBlockEntity::default(),
+        generated::mod_api::BlockEntityDataView(&ModBlockEntity::new("example:subject")),
         &mut draw,
     );
     assert_eq!(draw.0, [1, 2]);

@@ -88,6 +88,9 @@ pub enum Ticking {
     Idle,
 }
 
+/// A level side's baked native tick states, indexed by state and attached type's numeric id.
+pub type ModTickerStates = FxHashMap<(u32, u32), Ticking>;
+
 struct LiveTicker {
     slot: u32,
     /// `BoundTickingBlockEntity.loggedInvalidBlockState`, scoped to the current
@@ -136,6 +139,7 @@ pub struct BlockEntities {
     replaced: FxHashSet<Pos>,
     /// `Ticking` by block state id; empty until the game builds it.
     states: Vec<Ticking>,
+    mod_ticker_states: Option<Arc<ModTickerStates>>,
     /// The containers of mod blocks' block entities, by block state id;
     /// built with `states`.
     mod_containers: FxHashMap<u32, Arc<ModContainer>>,
@@ -446,6 +450,28 @@ impl BlockEntities {
     }
     pub fn ticking(&self, state: u32) -> Ticking {
         self.states.get(state as usize).copied().unwrap_or_default()
+    }
+    /// Install the typed state table prepared with the level's block registry.
+    pub fn set_mod_ticker_states(&mut self, states: Arc<ModTickerStates>) {
+        self.mod_ticker_states = Some(states);
+    }
+    /// The native ticker choice for this actual type (not the block's factory type).
+    pub fn mod_ticking(&self, state: u32, kind: u32) -> Ticking {
+        self.mod_ticker_states
+            .as_ref()
+            .and_then(|states| states.get(&(state, kind)))
+            .copied()
+            .unwrap_or_default()
+    }
+    fn ticker_at(&self, pos: &Pos, state: u32) -> Ticking {
+        if self.mod_ticker_states.is_some()
+            && let Some(BlockEntity::Mod(entity)) = self.map.get(pos)
+        {
+            return entity
+                .numeric_id()
+                .map_or(Ticking::No, |kind| self.mod_ticking(state, kind));
+        }
+        self.ticking(state)
     }
     pub fn set_mod_containers(&mut self, containers: FxHashMap<u32, Arc<ModContainer>>) {
         self.mod_containers = containers;
@@ -886,8 +912,13 @@ impl BlockEntities {
         if self.on_load_enabled && new_identity && new_is_mod {
             self.on_load.push_back((pos, self.generations[&pos]));
         }
-        if old.is_none() {
+        if old.is_none()
+            || new_identity && !self.live.contains_key(&pos) && !self.pending.contains_key(&pos)
+        {
             self.add(pos);
+        }
+        if new_identity && old.is_some() {
+            self.replaced.insert(pos);
         }
         if new_box {
             self.boxes.insert(pos);
@@ -1207,10 +1238,10 @@ impl BlockEntities {
         if self.states.is_empty() || !self.map.contains_key(&pos) {
             return;
         }
-        match self.ticking(new) {
+        match self.ticker_at(&pos, new) {
             // A new ticker, unless one was made or is pending (rebound).
             Ticking::Yes => {
-                if self.ticking(old) != Ticking::Yes && !self.live.contains_key(&pos) {
+                if self.ticker_at(&pos, old) != Ticking::Yes && !self.live.contains_key(&pos) {
                     self.add(pos);
                 }
             }
@@ -1231,7 +1262,7 @@ impl BlockEntities {
             self.pending.remove(&pos);
             if self.live.contains_key(&pos)
                 || !self.map.contains_key(&pos)
-                || self.ticking(state(pos)) != Ticking::Yes
+                || self.ticker_at(&pos, state(pos)) != Ticking::Yes
             {
                 continue;
             }
@@ -1246,7 +1277,7 @@ impl BlockEntities {
             Arc::make_mut(&mut self.tickers).push((pos, slot));
         }
         for pos in std::mem::take(&mut self.replaced) {
-            if self.live.contains_key(&pos) && self.ticking(state(pos)) != Ticking::Yes {
+            if self.live.contains_key(&pos) && self.ticker_at(&pos, state(pos)) != Ticking::Yes {
                 self.cancel(&pos);
             }
         }

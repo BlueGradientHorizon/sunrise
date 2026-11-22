@@ -1,5 +1,5 @@
 use super::*;
-use mod_api::ModBlockEntity;
+use mod_api::BlockEntityDataView;
 impl GameLevel<'_> {
     /// Initial saved data for a declared block entity (`EntityBlock.newBlockEntity`),
     /// fired inside the write that creates it (`LevelChunk.setBlockState`), on
@@ -875,13 +875,6 @@ impl Game<'_> {
     pub(in crate::game) fn native_panel_event(&mut self, mod_id: &str, event: &PanelEvent) {
         self.fire_panel_event(mod_id, event);
     }
-    /// Whether block `block`'s block entity ticks (`EntityBlock.getTicker`):
-    /// set `ticks` when it is yours. Asked for each of the block's states
-    /// when a world opens.
-    /// Set `ticks` to true to make it tick, and never clear a value an earlier mod or mixin set.
-    pub(in crate::game) fn native_block_entity_ticks(&self, block: &str, ticks: &mut bool) {
-        self.fire_block_entity_ticks(block, ticks);
-    }
     /// A `minecraft:post_attack` effect of a mod's own kind, on a mob a
     /// player's weapon hit: the entry says `enchanted` attacker and `affected`
     /// victim, its `requirements` passed, and its `effect` names a `type` in a
@@ -978,7 +971,7 @@ impl Game<'_> {
     /// `BlockEntityView::set_client_update_fields` over it, and sends them alone when it is unset.
     pub(in crate::game) fn native_block_entity_update_tag(
         pos: [i32; 3],
-        entity: &ModBlockEntity,
+        entity: BlockEntityDataView<'_>,
         tag: &mut Option<Compound>,
     ) {
         Self::fire_block_entity_update_tag(pos, entity, tag);
@@ -1001,7 +994,7 @@ impl Game<'_> {
         pos: [i32; 3],
         block: &str,
         state: BlockStateId,
-        entity: &ModBlockEntity,
+        entity: BlockEntityDataView<'_>,
         draw: &mut BlockEntityDraw,
     ) {
         self.fire_block_entity_submit(pos, block, state, entity, draw);
@@ -1018,7 +1011,7 @@ impl Game<'_> {
         pos: [i32; 3],
         block: &str,
         state: BlockStateId,
-        entity: &ModBlockEntity,
+        entity: BlockEntityDataView<'_>,
         bounds: &mut [f32; 6],
     ) {
         self.fire_block_entity_render_bounding_box(pos, block, state, entity, bounds);

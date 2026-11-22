@@ -8,6 +8,7 @@
 
 /// Generated dispatch entry points, not hand-written hook implementations.
 mod fire;
+pub(in crate::game) use block_entity_client_tick::ResidentReadBlockEntity;
 pub(in crate::game) use block_entity_tick::ResidentBlockEntityAccess;
 pub(in crate::game) use build_creative_mode_tab_contents::CreativeCache;
 pub(in crate::game) use client_pick::ClientPick;

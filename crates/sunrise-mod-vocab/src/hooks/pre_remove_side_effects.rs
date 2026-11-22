@@ -3,7 +3,7 @@
 pub trait Hooks {
     /// `BlockEntity.preRemoveSideEffects` of a mod's block entity: an
     /// authoritative server is removing `entity` from `pos`, where the block
-    /// `state` stood, and its updates may have side effects (not under flag
+    /// `state` stood. Read the lent outgoing row through `entity`. Its updates may have side effects (not under flag
     /// 256, `UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS`). Put in `drops` the stacks
     /// it held that the game doesn't: they scatter as `Containers.dropItemStack`
     /// scatters them, after the block entity's own container. The block entity
@@ -27,12 +27,12 @@ pub trait Hooks {
   reads its attachments with `TYPE.get(host, Holder::BlockEntity(pos))`, the level host being their store. A part that returns nothing draws nothing.
   A ticking or menu-hook (`menu_button`, `menu_quick_move`, `menu_slot_take`) block entity stays in the level:
   removing its block through the Host runs the usual removal, and the old scope can no longer lend a view.
-  Version 4 includes removal from a menu callback; do not drop the same contents manually there."#]
+  Borrow the actual outgoing row via `event.entity`; do not drop the same contents manually in a menu callback."#]
     #[hook(
         side = "server",
         contract = "collect",
         out = "drops",
-        version = 4,
+        version = 5,
         scope = "block_entity",
         key = "entity",
         target = "sunrise_client::game::native_hooks::pre_remove_side_effects::GameLevel<'_>::native_pre_remove_side_effects",
@@ -41,7 +41,7 @@ pub trait Hooks {
     fn pre_remove_side_effects(
         pos: BlockPos,
         state: BlockState,
-        entity: &ModBlockEntity,
+        entity: BlockEntityDataView<'_>,
         keep_contents: &mut bool,
         drops: &mut Vec<Option<ItemStack>>,
         spawns: &mut Vec<(ItemStack, [f64; 3])>,

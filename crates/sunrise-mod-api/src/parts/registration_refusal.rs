@@ -74,6 +74,7 @@ impl PartRegistrar {
             entity_tick_each,
             attachment_uses,
             block_entity_types,
+            block_entity_ticker_selectors,
             entity_attributes,
             general_entity_types,
             world_fluids,

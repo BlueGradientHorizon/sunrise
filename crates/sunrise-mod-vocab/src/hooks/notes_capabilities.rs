@@ -124,8 +124,9 @@ pub trait Notes {
   A bed, door or tall plant arrives as one `Placement::Multi`. Silverfish
   infesting, turtle eggs and falling blocks are not placements yet.
 
-- Block entities for a mod's blocks (`block_entity`, `block_entity_ticks`,
-  `block_entity_tick`): made when the block is placed, ticked on the server and saved with the chunk.
+- Block entities for a mod's blocks (`block_entity`, `block_entity_tick`): made when the block is
+  placed and saved with the chunk. Attaching a `BlockEntityPart` with a tick method binds the ticker
+  for its registered type on that side; `BlockEntityTypeBuilder::ticker_when` can restrict its states.
   `block_entity_tick` receives `&mut BlockEntityTickEvent<'_>` without a separate Host.
   `event.subject.with_view` lends the resident type ID, saved data, item slots, and transient
   data slots for the closure; it returns `None` if the subject is no longer available. To edit
@@ -353,7 +354,8 @@ pub trait Notes {
   blocks can share a type. Server and client use its declared identity; `block_entity` supplies only initial data.
   `block_entity_update_tag` gives what clients get of one (`BlockEntity.getUpdateTag`, read from the block entity
   alone): it is asked when a chunk holding it is sent and when its block changes, and the client merges it into the
-  copy's `nbt`. A saved chunk sent past the view distance asks it on its own thread, so read only `entity`. Keep it to what clients show (a machine running, its facing, a tank's level), not a menu's progress:
+  copy's `nbt`. A saved chunk sent past the view distance asks it on its own thread. Read its borrowed `entity.nbt()`
+  or project individual slots with `entity.copy_item_slot(slot)`; a refused stack does not suppress the tag callback. Keep it to what clients show (a machine running, its facing, a tank's level), not a menu's progress:
   menus have their own data slots. `block_entity_data_received` notices merged client data with a `Chunk` or `UpdatePacket` source; empty chunk tags and absent packet tags are silent, while empty packet compounds notify. Related `IBlockEntityExtension.onDataPacket` and `handleUpdateTag` perform loading, not this post-merge notice; they are not counterparts.
 
 - One-shot fields ride that tag. `view.set_client_update_fields(fields)` on a `BlockEntityView` queues them in

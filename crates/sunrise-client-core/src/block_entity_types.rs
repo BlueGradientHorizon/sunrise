@@ -1,4 +1,5 @@
 //! Accepted native block entity membership, frozen before resources or worlds load.
+use mod_vocab::BlockEntityTypeKey;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::{Arc, OnceLock},
@@ -17,8 +18,9 @@ struct BlockMembership {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RegisteredBlockEntityType {
     pub numeric_id: u32,
-    /// A Part is registered for this type's server tick.
-    pub has_tick_part: bool,
+    /// The typed binding for each side, present only when a Part ticks on that side.
+    pub server_ticker: Option<BlockEntityTypeKey>,
+    pub client_ticker: Option<BlockEntityTypeKey>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -49,7 +51,8 @@ impl BlockEntityTypes {
                     id.clone(),
                     RegisteredBlockEntityType {
                         numeric_id,
-                        has_tick_part: false,
+                        server_ticker: None,
+                        client_ticker: None,
                     },
                 )
             })
@@ -77,10 +80,13 @@ impl BlockEntityTypes {
         }
     }
 
-    /// Bind server tick subscriptions before this process's type table is installed.
-    pub fn bind_tick_parts(&mut self, mut listens: impl FnMut(&str) -> bool) {
+    /// Bind both tick sides before this process's type table is installed.
+    pub fn bind_tick_parts(
+        &mut self,
+        mut bind: impl FnMut(&str) -> (Option<BlockEntityTypeKey>, Option<BlockEntityTypeKey>),
+    ) {
         for (id, kind) in &mut self.registered {
-            kind.has_tick_part = listens(id);
+            (kind.server_ticker, kind.client_ticker) = bind(id);
         }
     }
 
@@ -190,7 +196,7 @@ impl BlockEntityTypes {
         self.registered(id).map(|kind| kind.numeric_id)
     }
 
-    fn registered(&self, id: &str) -> Option<RegisteredBlockEntityType> {
+    pub fn registered(&self, id: &str) -> Option<RegisteredBlockEntityType> {
         self.registered.get(id).copied()
     }
 

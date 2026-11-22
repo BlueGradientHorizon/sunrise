@@ -22,7 +22,6 @@ pub struct ModBlockEntity {
     /// Looked up once when the entity is made. `None` for an unknown type or before the
     /// process's type table is installed. Both the numeric id and keyed Parts are frozen.
     registered_type: Option<RegisteredBlockEntityType>,
-    tick_kind: Option<mod_api::BlockEntityTypeKey>,
     pub(crate) fields: ModBlockEntityFields,
     pub(crate) revision: ModRevision,
     /// What its block's collision and outline are while it holds some
@@ -106,21 +105,16 @@ impl ModBlockEntity {
     pub fn new(id: String, mut fields: ModBlockEntityFields) -> Self {
         fields.claim_modeled_item_rows();
         let registered_type = block_entity_types::registered(&id);
-        let tick_kind = registered_type
-            .filter(|kind| kind.has_tick_part)
-            .and_then(|_| mod_api::__private::block_entity_type_key(&id));
-        Self::with_type(id, registered_type, tick_kind, fields)
+        Self::with_type(id, registered_type, fields)
     }
     fn with_type(
         id: String,
         registered_type: Option<RegisteredBlockEntityType>,
-        tick_kind: Option<mod_api::BlockEntityTypeKey>,
         fields: ModBlockEntityFields,
     ) -> Self {
         Self {
             id,
             registered_type,
-            tick_kind,
             fields,
             revision: ModRevision {
                 born: sunrise_mod_runtime::block_entities::new_identity(),
@@ -188,7 +182,7 @@ impl ModBlockEntity {
 
     /// The resolved route for a resident server tick, only when its type subscribes.
     pub fn tick_kind(&self) -> Option<mod_api::BlockEntityTypeKey> {
-        self.tick_kind
+        self.registered_type?.server_ticker
     }
     pub fn revision(&self) -> ModRevision {
         self.revision
@@ -245,17 +239,12 @@ impl Drop for ModBlockEntity {
 /// An empty mod block entity with no type id, for tests and defaults.
 impl Default for ModBlockEntity {
     fn default() -> Self {
-        Self::with_type(String::new(), None, None, ModBlockEntityFields::default())
+        Self::with_type(String::new(), None, ModBlockEntityFields::default())
     }
 }
 impl Clone for ModBlockEntity {
     fn clone(&self) -> Self {
-        let mut copy = Self::with_type(
-            self.id.clone(),
-            self.registered_type,
-            self.tick_kind,
-            self.fields.clone(),
-        );
+        let mut copy = Self::with_type(self.id.clone(), self.registered_type, self.fields.clone());
         copy.shapes.clone_from(&self.shapes);
         copy.shapes_cleared = self.shapes_cleared;
         copy

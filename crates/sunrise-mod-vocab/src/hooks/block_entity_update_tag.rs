@@ -13,11 +13,16 @@ pub trait Hooks {
         receiver = "associated",
         dispatch = "flat",
         side = "server",
+        version = 2,
         contract = "replace",
         out = "tag",
         scope = "block_entity",
         key = "entity",
         neoforge = "none (vanilla BlockEntity.getUpdateTag; NeoForge adds no event or extension for it); IBlockEntityExtension.handleUpdateTag is the client half"
     )]
-    fn block_entity_update_tag(pos: [i32; 3], entity: &ModBlockEntity, tag: &mut Option<Compound>);
+    fn block_entity_update_tag(
+        pos: [i32; 3],
+        entity: BlockEntityDataView<'_>,
+        tag: &mut Option<Compound>,
+    );
 }
