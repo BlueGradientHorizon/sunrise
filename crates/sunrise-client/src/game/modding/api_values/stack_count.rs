@@ -82,6 +82,7 @@ pub(super) fn admit_stack_limits(
     if !sunrise_world::item_template::durability_allows_stack_size(carries_max_damage, maximum) {
         return Err(StackWriteError::StackableDamageable);
     }
+    let maximum = maximum as u32; // The range match above proves this fits.
     if stack.count > maximum {
         return Err(StackWriteError::CountExceeded { maximum });
     }

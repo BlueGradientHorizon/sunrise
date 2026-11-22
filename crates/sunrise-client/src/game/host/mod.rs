@@ -45,12 +45,6 @@ impl ServerHost for Game<'_> {
             &'loan ItemPlace,
         ) -> bool,
     ) -> Result<Option<Option<ItemStack>>, ScratchUnavailable> {
-        if !mod_api::__private::access_allowed(
-            "with_scratch_stack_scope",
-            mod_api::__private::LoadAccess::WorldOnly,
-        ) {
-            return Err(ScratchUnavailable::Transaction(TransactionUnavailable));
-        }
         let engine_stack = self
             .boundary_items()
             .ok_or(StackWriteError::Unavailable)
@@ -73,12 +67,6 @@ impl ServerHost for Game<'_> {
             &'loan ItemPlace,
         ) -> bool,
     ) -> Result<Option<(Option<ItemStack>, Option<ItemStack>)>, ScratchUnavailable> {
-        if !mod_api::__private::access_allowed(
-            "with_scratch_slots_scope",
-            mod_api::__private::LoadAccess::WorldOnly,
-        ) {
-            return Err(ScratchUnavailable::Transaction(TransactionUnavailable));
-        }
         let engine_stack = self
             .boundary_items()
             .ok_or(StackWriteError::Unavailable)

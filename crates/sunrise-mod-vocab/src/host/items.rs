@@ -98,6 +98,8 @@ pub trait ItemsServerHost {
     /// until one item is dropped; placement limits apply only to the final slot write.
     /// An enclosing transaction defers the drop in the dispenser's level until commit.
     /// A client, another dimension or an unloaded chunk keeps the input stack unchanged.
+    #[forward_api_inputs]
+    #[forward_api_output]
     fn dispense_default(
         &mut self,
         dimension: &str,

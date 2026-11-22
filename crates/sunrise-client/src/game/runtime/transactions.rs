@@ -613,6 +613,9 @@ pub(super) enum After {
         pos: Pos,
         facing: sunrise_core::geometry::Direction,
         stack: ItemStack,
+        at: [f64; 3],
+        velocity: [f64; 3],
+        random: Box<super::spill::ItemRandom>,
         play_events: bool,
     },
     /// `BlockEntity.setChanged`.
@@ -2065,9 +2068,12 @@ impl Game<'_> {
                 pos,
                 facing,
                 stack,
+                at,
+                velocity,
+                random,
                 play_events,
             } => {
-                self.spawn_dispensed(pos, facing, stack);
+                self.add_item_entity_prepared(stack, at, Some(velocity), 0, Some(*random));
                 if play_events {
                     self.dispenser_event(super::dispenser::CLICK, pos, 0);
                     self.dispenser_event(

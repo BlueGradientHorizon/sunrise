@@ -392,7 +392,7 @@ impl FakeHost {
 
         self.scratch.push_frame();
         let slot = loan.map(|(item, stack)| self.scratch.insert_loan(item, stack));
-        let mut guard = ScratchScopeGuard {
+        let guard = ScratchScopeGuard {
             host: self,
             owned_id: slot.map(ScratchSlot::id),
             closed: false,

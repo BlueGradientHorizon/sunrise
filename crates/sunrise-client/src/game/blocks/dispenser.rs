@@ -228,26 +228,31 @@ impl Game<'_> {
         )
     }
     /// `DefaultDispenseItemBehavior.spawnItem` at `getDispensePosition`.
-    pub(super) fn spawn_dispensed(
-        &mut self,
-        pos: Pos,
-        facing: Direction,
-        stack: ItemStack,
-        accuracy: i32,
-    ) {
+    fn spawn_dispensed(&mut self, pos: Pos, facing: Direction, stack: ItemStack, play_events: bool) {
         let s = step(facing);
         let p = Self::dispense_position(pos, facing, 0.7, [0.0; 3]);
         let mut at = [p.x, p.y, p.z];
         at[1] -= if s[1] != 0 { 0.125 } else { 0.156_25 };
+        // Vanilla constructs the entity and samples the source level's RNG before adding it.
+        // Keep those draws in order even when publication is deferred by the journal.
+        let random = super::spill::prepare_item_random(None);
         let r = &mut self.world.random;
         let pow = r.next_double() * 0.1 + 0.2;
-        let spread = 0.017_227_5 * f64::from(accuracy);
+        let spread = 0.017_227_5 * 6.0;
         let v = [
             r.triangle(f64::from(s[0]) * pow, spread),
             r.triangle(0.2, spread),
             r.triangle(f64::from(s[2]) * pow, spread),
         ];
-        self.spawn_item_thrown(stack, at, v);
+        self.after_commit(super::transactions::After::DispenserDrop {
+            pos,
+            facing,
+            stack,
+            at,
+            velocity: v,
+            random: Box::new(random),
+            play_events,
+        });
     }
     /// `DefaultDispenseItemBehavior.execute`: drop one item.
     fn default_execute(
@@ -261,12 +266,7 @@ impl Game<'_> {
             ..stack.clone()
         };
         stack.count -= 1;
-        self.after_commit(super::transactions::After::DispenserDrop {
-            pos,
-            facing,
-            stack: one,
-            play_events: false,
-        });
+        self.spawn_dispensed(pos, facing, one, false);
         (stack.count > 0).then_some(stack)
     }
     /// Drop one item as DefaultDispenseItemBehavior does. For a dispenser hook:
@@ -409,12 +409,7 @@ impl Game<'_> {
             self.after_commit(super::transactions::After::Changed(pos));
         }
         if rest.count > 0 {
-            self.after_commit(super::transactions::After::DispenserDrop {
-                pos,
-                facing,
-                stack: rest,
-                play_events: true,
-            });
+            self.spawn_dispensed(pos, facing, rest, true);
         }
     }
     /// `DefaultDispenseItemBehavior.consumeWithRemainder`: the remainder goes
