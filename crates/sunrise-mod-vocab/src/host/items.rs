@@ -166,11 +166,17 @@ pub trait ItemsServerHost {
 #[sunrise_mod_api_macros::host_area]
 pub trait ItemsClientHost {
     /// Side: client.
-    /// Creative mode only: gives the player `count` of `item`
-    /// (`minecraft:diamond`) as taking it from the creative inventory does
-    /// (`ServerboundSetCreativeModeSlot`): the selected slot first, then the
-    /// hotbar, then the inventory. The count is cut to one stack.
-    fn give(&mut self, item: ItemKey, count: u32) -> Result<(), String>;
+    /// Creative mode only: puts `stack`, components and all, into the local player's
+    /// inventory as `Inventory.add` does: onto matching stacks (the selected slot, the off
+    /// hand, the hotbar, then the main inventory), then into empty slots, up to the stack's
+    /// effective maximum (`minecraft:max_stack_size` included). Every slot it changed goes to
+    /// the server at once as `MultiPlayerGameMode.handleCreativeModeItemAdd` does
+    /// (`ServerboundSetCreativeModeSlotPacket`; the off hand is slot 45), even while a
+    /// container menu is open. `Ok(Some(remainder))` is what did not fit; nothing is dropped.
+    /// A [`CreativeGiveError`] gives nothing.
+    #[forward_api_inputs]
+    #[forward_api_output]
+    fn give_stack(&mut self, stack: &ItemStack) -> Result<Option<ItemStack>, CreativeGiveError>;
     /// Side: client.
     /// The creative search tab's final display order, for ranking stacks in inventory sorters.
     /// This requests the same catalog as the creative screen (using the player's permission and
