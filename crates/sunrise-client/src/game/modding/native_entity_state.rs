@@ -97,8 +97,7 @@ impl Game<'_> {
     /// player's `ClientInformation`; a client's own player draws with its Main Hand option, and
     /// another player is a mob that keeps what the server sent), `Mob`'s left-handed flag and
     /// `ArmorStand`'s right arm. The dragon's left-handed draw is not kept, so it reads right.
-    /// A mob is read from its resident row, never by scanning the mobs: a render hook may ask
-    /// for every mob it draws.
+    /// The mob read uses its resident row without a separate pass over the mob list.
     pub(super) fn entity_main_arm(&self, entity: EntityRef) -> Option<mod_api::MainHand> {
         let (target, location) = if self.is_logical_server() {
             self.native_entity_target_with_location(entity)?
