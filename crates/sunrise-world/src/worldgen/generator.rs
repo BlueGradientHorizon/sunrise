@@ -3274,10 +3274,11 @@ mod tests {
         .unwrap();
         let loaded = GeneratorData::load(&dir, Box::leak(Box::new(registry)));
         fs::remove_dir_all(dir).unwrap();
-        assert_eq!(
-            loaded.err().unwrap().to_string(),
-            "invalid generator resources: biome registry entry \"test:Bad_Biome\": invalid biome identifier"
-        );
+        assert!(matches!(
+            loaded,
+            Err(GeneratorError::Decode(DecodeError::InvalidIdentifier(id)))
+                if id == "test:Bad_Biome"
+        ));
     }
 
     /// A pack's level on a generator nobody registered: opening it is an
