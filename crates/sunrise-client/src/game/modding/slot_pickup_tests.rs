@@ -34,6 +34,7 @@ use sunrise_protocol::{
 /// The menu type the pot opens: a prepared registry slot (`minecraft:generic_9x3`) for a
 /// synthetic mod menu type, so the guest's click names it.
 const MENU: &str = "minecraft:generic_9x3";
+const POT_TYPE: &str = "pot:pot";
 /// The pot's slot that only shows its stack: it refuses pickup and placement. (The rule's slot
 /// is the backing index, so the tests leave the player's inventory index 1 alone.)
 const SHOWN: usize = 1;
@@ -183,6 +184,12 @@ fn with_pot_mod(
     crate::entry::install_client_hooks();
     mod_platform::testing::with_mods(mods, || {
         with_guests(|game| {
+            // The fixture bypasses production content loading. Resolve the pot's type in this
+            // scoped Parts table so quick moves reach its registered block-entity listener.
+            mod_api::__private::resolve_block_entity_types([POT_TYPE], |id| {
+                (id == POT_TYPE).then_some(())
+            })
+            .unwrap();
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -205,7 +212,7 @@ fn with_pot_mod(
                 items: vec![None; SLOTS],
                 ..Default::default()
             };
-            let entity = ModBlockEntity::new("pot:pot".into(), fields);
+            let entity = ModBlockEntity::new(POT_TYPE.into(), fields);
             game.world
                 .block_entities
                 .insert(POS, BlockEntity::Mod(Box::new(entity)));
@@ -540,7 +547,7 @@ fn link_pot(game: &mut crate::game::Game<'_>) {
     game.world.block_entities.insert(
         LINK,
         BlockEntity::Mod(Box::new(ModBlockEntity::new(
-            "pot:pot".into(),
+            POT_TYPE.into(),
             ModBlockEntityFields {
                 items: vec![stone(7)],
                 ..Default::default()
@@ -763,7 +770,8 @@ fn quick_move_projection_failures_report_every_time_and_refuse_the_move() {
         let unknown = Some(ItemStack::new("pot:unregistered", 7));
         link_pot(game);
         MOVED.with(|moved| moved.borrow_mut().clear());
-        // A linked source is not in the owner's snapshot. Its own projection fails.
+        // The clicked stack comes from the link, not the pot. If it cannot cross the
+        // API boundary, neither the listener nor ordinary quick-move routing runs.
         game.world
             .block_entities
             .get_mut(&LINK)
@@ -777,42 +785,43 @@ fn quick_move_projection_failures_report_every_time_and_refuse_the_move() {
                 Vec::new(),
                 None,
             );
+            assert_eq!(
+                game.world.block_entities.get(&LINK).unwrap().slots()[0],
+                unknown
+            );
         }
-        assert_eq!(
-            game.world.block_entities.get(&LINK).unwrap().slots()[0],
-            unknown
-        );
-        // This time the source is valid but the snapshot has another invalid stack.
-        serve(
-            game,
-            &prediction(&[(0, stone(5)), (SHOWN, unknown.clone())], None),
-        );
-        for _ in 0..2 {
-            click(game, rx, (0, 0, Input::QuickMove), Vec::new(), None);
-        }
-        assert_eq!(
-            game.world.block_entities.get(&POS).unwrap().slots()[0],
-            stone(5)
-        );
+        assert!(MOVED.with(|moved| moved.borrow().is_empty()));
         assert!(
             game.lan.as_ref().unwrap().hub.guests[0]
                 .inventory
                 .iter()
                 .all(Option::is_none)
         );
-        assert!(MOVED.with(|moved| moved.borrow().is_empty()));
+
+        // With a valid clicked stack, an unread row no longer vetoes a live subject loan.
+        game.world
+            .block_entities
+            .get_mut(&LINK)
+            .unwrap()
+            .slots_mut()[0] = stone(7);
+        serve(game, &prediction(&[(0, stone(5)), (KEEPS, stone(1))], None));
+        game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[SHOWN] = unknown.clone();
+        QUICK_MOVE_LEFT.set(Some(2));
+        QUICK_MOVE_CONSUME.set(Some(KEEPS));
+        click(game, rx, (0, 0, Input::QuickMove), Vec::new(), None);
+        assert_eq!(QUICK_MOVE_SOURCE.take(), Some(5));
+        let slots = game.world.block_entities.get(&POS).unwrap().slots();
+        assert_eq!(slots[0], stone(2));
+        assert_eq!(slots[SHOWN], unknown);
+        assert_eq!(slots[KEEPS], None);
+        assert_eq!(MOVED.with(|moved| moved.borrow().clone()), [0]);
+
         let records = LOG.0.lock().unwrap();
-        assert_eq!(records.len(), 4, "{records:?}");
+        assert_eq!(records.len(), 2, "{records:?}");
         assert!(
-            records[..2]
+            records
                 .iter()
                 .all(|s| s.contains("clicked stack") && s.contains("UnknownItem")),
-            "{records:?}"
-        );
-        assert!(
-            records[2..]
-                .iter()
-                .all(|s| s.contains("owning block entity") && s.contains("UnknownItem")),
             "{records:?}"
         );
     });

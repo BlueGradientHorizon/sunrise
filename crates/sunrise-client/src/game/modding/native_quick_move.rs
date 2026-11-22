@@ -210,9 +210,14 @@ impl Game<'_> {
         if !live(self) {
             return QuickMoveOutcome::Rejected;
         }
-        let Ok(mut held) = Some(clicked.clone()).try_into_api() else {
-            log::warn!("menu_quick_move: cannot project the clicked stack at {pos:?} slot {slot}");
-            return QuickMoveOutcome::Rejected;
+        let mut held = match Some(clicked.clone()).try_into_api() {
+            Ok(held) => held,
+            Err(reason) => {
+                log::warn!(
+                    "menu_quick_move: cannot project the clicked stack at {pos:?} slot {slot}: {reason:?}"
+                );
+                return QuickMoveOutcome::Rejected;
+            }
         };
         let original = held.clone();
         let mut handled = false;
