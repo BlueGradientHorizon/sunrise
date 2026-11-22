@@ -435,6 +435,7 @@ impl Game<'_> {
         let trade = m.extra.trade.get_or_insert_default();
         trade.xp = session.xp;
         trade.offers = session.offers.clone();
+        trade.paying = false;
     }
     /// Opens a merchant menu without a mob (sunrise-ctl `trade`).
     pub(super) fn open_merchant(&mut self, profession: &str, variant: &str, level: i32) {
@@ -548,6 +549,11 @@ impl Game<'_> {
             silent = m.silent;
             if villager {
                 m.extra.villager_level = session.level.max(1);
+            }
+            // The mob's offers are the live ones (the brain restocks them).
+            if let Some(t) = m.extra.trade.as_mut() {
+                t.offers.clone_from(&session.offers);
+                t.paying = session.paying;
             }
         }
         for e in events {

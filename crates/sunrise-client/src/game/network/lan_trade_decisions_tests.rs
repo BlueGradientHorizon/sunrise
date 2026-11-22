@@ -292,6 +292,232 @@ fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick {
         carried: None,
     }
 }
+/// A villager's work step restocks while a guest trades: the guest's screen, the packets, the
+/// autosave and the mob after close all hold the restock (it was lost on close before).
+#[test]
+#[ignore = "daily"]
+fn a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob() {
+    with_guests(|game| {
+        open(game, 2);
+        // The offer is used up; a new day passed (catch-up keeps the used offers, then restock: two updates).
+        let live = |game: &mut Game<'_>, f: &dyn Fn(&mut Session)| {
+            let gm = game.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
+            f(&mut gm.merchant.as_mut().unwrap().merchant.session);
+        };
+        live(game, &|s| s.offers[0].uses = 10);
+        let t = game.mobs[0].extra.trade.as_mut().unwrap();
+        t.offers[0].uses = 10;
+        t.last_restock = -13_000;
+        t.restocks_today = 2;
+        let rx = record_packets(game);
+        let mut mob = game.mobs[0].clone();
+        let mut events = Vec::new();
+        {
+            let w = game.mob_world_base(&[]);
+            sunrise_client::mobs::villager_brain::restock_if_due(&mut mob, &w, &mut events);
+        }
+        game.mobs[0] = mob;
+        assert_eq!(events.len(), 2, "catch-up, then restock");
+        game.villager_restock_steps(&mut events);
+        let sent = packets(&rx);
+        let offers: Vec<_> = sent
+            .iter()
+            .filter_map(|p| match p {
+                Clientbound::MerchantOffers(o) => Some(o),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offers.len(), 2, "one MerchantOffers per step");
+        assert_eq!(offers[0].offers[0].uses, 10, "the catch-up step");
+        assert_eq!(offers[1].offers[0].uses, 0, "the restock step");
+        assert!(
+            sent.iter()
+                .any(|p| matches!(p, Clientbound::ContainerSetContent(_)))
+        );
+        let screen = game.lan.as_ref().unwrap().play[&12]
+            .merchant
+            .as_ref()
+            .unwrap();
+        assert_eq!(screen.merchant.session.offers[0].uses, 0);
+        // An autosave with the screen open writes the live offers with the clock.
+        let saved = sunrise_client::entity_nbt::mob_to_nbt(
+            &game.mobs[0],
+            [1, 2, 3, 4],
+            None,
+            Some(game.pack.assets.registry),
+            |_| None,
+            game.items(),
+        );
+        let loaded = sunrise_client::entity_nbt::mob_from_nbt(
+            &saved,
+            game.res.mob_types(),
+            999,
+            Some(game.pack.assets.registry),
+        )
+        .unwrap();
+        let t = loaded.extra.trade.as_ref().unwrap();
+        assert_eq!(t.offers[0].uses, 0);
+        assert_eq!(t.offers[0].demand, offers[1].offers[0].demand);
+        assert_eq!(t.restocks_today, 1);
+        // Close and reopen: the restock is still there.
+        game.guest_close_all(12);
+        let t = game.mobs[0].extra.trade.as_ref().unwrap();
+        assert_eq!((t.offers[0].uses, t.restocks_today), (0, 1));
+    });
+}
+
+/// A guest trades at a villager whose single offer is used up and costs 5 wheat; 4 are in the
+/// payment slot. Runs the villager's work-step restock (the brain) and returns its events.
+fn used_up_offer_work_step(game: &mut Game<'_>) -> Vec<sunrise_client::mobs::MobEvent> {
+    open(game, 1);
+    let gm = game.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
+    let screen = gm.merchant.as_mut().unwrap();
+    screen.slots = [Some(ItemStack::new("minecraft:wheat", 4)), None, None];
+    let offer = &mut screen.merchant.session.offers[0];
+    (offer.base_cost_a.stack.count, offer.uses) = (5, 10);
+    let t = game.mobs[0].extra.trade.as_mut().unwrap();
+    (t.offers[0].base_cost_a.stack.count, t.offers[0].uses) = (5, 10);
+    t.paying = true;
+    game.villager_trading_prices();
+    let mut mob = game.mobs[0].clone();
+    let mut events = Vec::new();
+    {
+        let w = game.mob_world_base(&[]);
+        sunrise_client::mobs::villager_brain::restock_if_due(&mut mob, &w, &mut events);
+    }
+    game.mobs[0] = mob;
+    events
+}
+
+/// `Villager.restock` prices the screen and `updateSellItem` picks its result at the work step: a
+/// Hero of the Village the player loses afterwards (a callback after the tick) still counts.
+#[test]
+#[ignore = "daily"]
+fn a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them() {
+    use sunrise_client::effects::EffectInstance;
+    with_guests(|game| {
+        game.as_guest(12, |g| {
+            g.potions
+                .effects
+                .add(EffectInstance::new("hero_of_the_village", 1000, 0));
+        });
+        let mut events = used_up_offer_work_step(game);
+        assert_eq!(events.len(), 1);
+        game.villager_restock_steps(&mut events);
+        assert!(events.is_empty());
+        // A callback after the tick takes the effect away: the result stays.
+        game.as_guest(12, |g| g.potions.effects.clear());
+        let screen = game.lan.as_ref().unwrap().play[&12]
+            .merchant
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            screen.slots[2],
+            Some(ItemStack::new("minecraft:emerald", 1)),
+            "4 wheat pay the 5-wheat offer reduced by Hero of the Village"
+        );
+        assert_eq!(screen.merchant.session.hero, Some(0));
+    });
+}
+
+/// Writes a diamond result, uses 3 and demand 17 to a villager's first offer in its own
+/// `EntityTick.Post` (a type named to `entity_tick_each`).
+struct EditInPost;
+#[mod_api::__subscriptions]
+impl Hooks for EditInPost {
+    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        registrar.entity_tick_each("minecraft:villager");
+    }
+
+    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
+        event.listened = true;
+    }
+
+    fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
+        let HostSide::Server(host) = host else {
+            panic!("server fixture");
+        };
+        let villager = host.merchant(host.entity(40).unwrap()).unwrap();
+        let mut offer = villager.offers(host).unwrap().remove(0);
+        let key = mod_api::__private::item_key("minecraft:diamond").unwrap();
+        offer.result = mod_api::ItemStack::new(key, 1).unwrap();
+        (offer.uses, offer.demand) = (3, 17);
+        assert!(villager.set_offer(host, 0, offer).unwrap());
+        assert_eq!(event.entities, [40]);
+        EDITED.set(true);
+    }
+}
+thread_local! {
+    static EDITED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// A native hook's offer edit in the villager's own `EntityTick.Post` is the last write: the
+/// restock reached the offers the player sees before any callback ran, so it neither resets the
+/// edit's uses nor recomputes its demand.
+#[test]
+#[ignore = "daily"]
+fn an_offer_edit_after_the_work_step_survives_the_restock() {
+    let mods: Mods = vec![ModEntry::new("edit-in-post", Box::new(EditInPost))].into();
+    mod_platform::testing::with_mods(mods, || {
+        with_guests(|game| {
+            game.world_root = std::env::temp_dir().join(format!(
+                "sunrise-restock-post-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&game.world_root);
+            game.enter_level(super::Dim::Overworld).unwrap();
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            assert!(
+                game.entity_ticking_area()(0, 0),
+                "fixture chunk ticks entities"
+            );
+            open(game, 1);
+            game.mobs[0].position = sunrise_core::geometry::Vec3::new(1.0, 80.0, 0.5);
+            let gm = game.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
+            let offer = &mut gm.merchant.as_mut().unwrap().merchant.session.offers[0];
+            offer.uses = 10;
+            let t = game.mobs[0].extra.trade.as_mut().unwrap();
+            t.offers[0].uses = 10;
+            game.mobs[0].no_ai = true;
+            game.mobs[0].no_gravity = true;
+            super::creatures::borrowed_tick::WORK_STEP.set(Some(40));
+            EDITED.set(false);
+            game.tick_creature_entities().unwrap();
+            assert!(EDITED.get(), "the villager's own Post ran");
+            let screen = game.lan.as_ref().unwrap().play[&12]
+                .merchant
+                .as_ref()
+                .unwrap();
+            let live = &screen.merchant.session.offers[0];
+            let got =
+                |o: &sunrise_client::merchant::MerchantOffer| (o.result.clone(), o.uses, o.demand);
+            let want = (ItemStack::new("minecraft:diamond", 1), 3, 17);
+            assert_eq!(got(live), want, "the live menu");
+            let saved = sunrise_client::entity_nbt::mob_to_nbt(
+                &game.mobs[0],
+                [1, 2, 3, 4],
+                None,
+                Some(game.pack.assets.registry),
+                |_| None,
+                game.items(),
+            );
+            let loaded = sunrise_client::entity_nbt::mob_from_nbt(
+                &saved,
+                game.res.mob_types(),
+                999,
+                Some(game.pack.assets.registry),
+            )
+            .unwrap();
+            let t = loaded.extra.trade.as_ref().unwrap();
+            assert_eq!(got(&t.offers[0]), want, "the saved, reloaded mob");
+        });
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn refusal_restores_crafted_score_and_another_merchants_offers() {

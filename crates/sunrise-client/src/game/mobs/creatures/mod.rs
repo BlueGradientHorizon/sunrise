@@ -6,7 +6,7 @@
 pub(super) mod biome_facts;
 #[cfg(test)]
 mod borrowed_panic_tests;
-mod borrowed_tick;
+pub(in crate::game) mod borrowed_tick;
 mod breeding;
 mod combat_adaptations;
 mod conversion_identity;
@@ -1374,7 +1374,7 @@ impl Game<'_> {
     }
     /// The entity phase of `tick_creatures`: every mob's tick, deaths, and the
     /// projectiles and effects that follow from them.
-    pub(super) fn tick_creature_entities(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_creature_entities(&mut self) -> Result<()> {
         // Its steps as spans for `sunrise-report` (nothing is read while spans are off).
         let mut laps = sunrise_client::spans::laps();
         let blocked = self.mobs_below_off_level();
@@ -1473,6 +1473,7 @@ impl Game<'_> {
         let passenger_objects = self.retained_passenger_snapshot(uuid);
         let mut pending = self.creatures.pending.remove(level_id).unwrap_or_default();
         let primable = self.sulfur_cubes_adopted_explosive();
+        self.villager_trading_prices();
         let mut mobs = self.mobs.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
@@ -1577,6 +1578,9 @@ impl Game<'_> {
         snapshot.clear();
         self.creatures.seen_buf = snapshot;
         self.creatures.ticked = ticked;
+        // A work step's restock lands on the screen now, before any callback of
+        // this tick can edit the offers (those edits are then the last write).
+        self.villager_restock_steps(&mut events);
         // Completed brain actions are never fed back into the producer pass.
         if !events.is_empty() || !guest_events.is_empty() {
             pending.batches.push_back(MobOutputBatch {
@@ -3800,6 +3804,8 @@ impl Game<'_> {
                     child,
                 } => self.villager_birth(parent, partner, child),
                 MobEvent::WorkAtComposter { mob, pos } => self.villager_work_at_composter(mob, pos),
+                // Applied by `villager_restock_steps` right after the mob pass.
+                MobEvent::VillagerRestockStep { .. } => {}
                 MobEvent::GolemCheck { mob, needed } => self.villager_golem_check(mob, needed),
                 MobEvent::Firework { at, color, flight } => {
                     self.villager_firework(at, color, flight)

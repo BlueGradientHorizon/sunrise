@@ -1679,7 +1679,7 @@ impl B {
                         pos: site,
                     });
                 }
-                restock_if_due(m, cx.w);
+                restock_if_due(m, cx.w, cx.events);
                 true
             }
             B::HarvestFarmland {
@@ -3342,15 +3342,42 @@ fn play_work_sound(m: &mut Mob, cx: &mut Bx) {
     }
 }
 /// `WorkAtPoi.start`'s restock.
-fn restock_if_due(m: &mut Mob, w: &MobWorld) {
+pub fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if w.professions.state_index(&m.extra.profession).is_none() {
         return;
     }
     let day = w.day_time.div_euclid(24000);
-    if let Some(t) = m.extra.trade.as_mut()
-        && t.should_restock(w.game_time, day)
-    {
+    let Some(t) = m.extra.trade.as_mut() else {
+        return;
+    };
+    // Each step with a trading player runs `updateSpecialPrices`, which
+    // updates and resends its screen (a new day can send two); the trade
+    // sound's pitch is drawn here, in work-step order.
+    let mut steps = Vec::new();
+    let missed = 2 - t.restocks_today;
+    if t.catch_up(w.game_time, day) {
+        steps.push(crate::merchant::RestockStep::CatchUp(missed));
+    }
+    if t.restock_due(w.game_time) {
         t.restock(w.game_time);
+        steps.push(crate::merchant::RestockStep::Restock);
+    }
+    let (paying, reputation, hero, empty) = (t.paying, t.reputation, t.hero, t.offers.is_empty());
+    if !m.extra.flag2 || empty {
+        return;
+    }
+    for step in steps {
+        let pitch = (paying && m.ambient_timer > -60).then(|| {
+            m.ambient_timer = -80;
+            m.voice_pitch()
+        });
+        events.push(MobEvent::VillagerRestockStep {
+            mob: m.id,
+            step,
+            reputation,
+            hero,
+            pitch,
+        });
     }
 }
 #[cfg(test)]
