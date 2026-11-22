@@ -343,25 +343,23 @@ returns and is undone with the rest of the action when a listener fails. `menu_c
 and click type on a menu a mod opened (a single-slot drag once); menu-button clicks, recipe placement and creative
 set-slot never reach it, and it cannot know whether the click changes anything.
 
-`menu_quick_move` (contract version 5, with an optional remainder where `None` empties the clicked slot) lends the
-live resident block entity and the server `Host` sequentially through `event.subject: BlockEntityScope<'_>` instead of
-detaching a snapshot or wrapping untaken fallbacks in a rollback transaction. It runs after the live menu allows
-pickup, and `stack` copies what the clicked slot shows, including a linked container's stack or the current crafting
-result. Return `Flow::Cancel` to handle the move. The remainder goes back to the actual clicked source, not an own
-storage slot for a linked source or crafting result. If you handle a result, consume its crafting inputs yourself:
-the remainder stays available on later clicks against the inputs you leave until the grid changes. If you leave the
-move unhandled, the same menu routes the click without asking the pickup rule again. Writes through
-`event.subject.with_view(...)` validate at the boundary and apply in place, marking the chunk dirty. A handled move
-settles the clicked slot before publishing implicit container notices (`BlockEntity.setChanged`) for its resident
-slot edits and committed `ITEMS` writes, then calls `menu_slot_take` where applicable. Deferred notices are
-only delivered if the original backing container remains. Surviving slot edits on a refused or unhandled move
-still notify. An explicit `BlockEntityRef::set_changed` call is immediate; same-block writes made by that notice's
-callback still apply but do not queue another notice. Use `event.subject.transaction(...)` when an edit must span
-the subject and other world storage atomically.
-A panicking callback is contained and disabled for `menu_quick_move` for the rest of the session; only its `stack`
-and `handled` outputs are discarded. A later Part can still handle the move. If no Part handles it after a quick-move
-Part panics, the menu is resynced instead of running the game's routing. A panic contained in a nested hook does not
-by itself reject the move. An invalid `stack` remainder leaves the clicked slot's original stack untouched.
+`menu_quick_move` (contract version 6) lends the resident block entity and the server `Host` sequentially through
+`event.subject: BlockEntityScope<'_>`. It runs after the live menu allows pickup, and `stack` copies what the clicked
+slot shows, including a linked container's stack or the current crafting result. Return `Flow::Cancel` to handle the
+move. The remainder goes back to the actual clicked source (`None` empties it). If you handle a result, consume its
+crafting inputs yourself: the remainder stays available until the grid you leave changes.
+
+Journaled destination edits and the clicked-slot remainder commit together. If the move is left unhandled, the
+listener's writes roll back before the same menu routes the original click without asking pickup again. An invalid
+remainder, changed source stack, or stale menu rolls back the writes and refuses the move without falling back.
+Writes through `event.subject.with_view(...)` validate at the boundary and apply in place. A handled move settles the
+clicked slot before publishing implicit container notices (`BlockEntity.setChanged`) for its resident slot edits and
+`ITEMS` writes, then calls `menu_slot_take` where applicable. Deferred notices go only to still-resident holders.
+`BlockEntityRef::set_changed` is immediate; a same-block write made in that callback does not queue another notice.
+
+A panicking quick-move Part is disabled for this hook and loses its journaled writes and outputs. If no later Part
+handles the move, the menu resyncs instead of running ordinary routing. A panic contained in a nested hook does not
+by itself reject the move.
 
 Inside `menu_clicked`, `ItemPlace::MenuSlot` can take from and give to the clicking
 player's inventory and hotbar slots as well as the menu's own storage. Inserts fill

@@ -220,114 +220,109 @@ impl Game<'_> {
             }
         };
         let original = held.clone();
-        let mut handled = false;
-        let ((items_changed, panicked), notices) = self.collect_quick_move_notices(|game| {
-            let mut access = ResidentBlockEntityAccess::for_handle(game, subject, state);
-            let panicked = Self::native_menu_quick_move(
-                kind,
-                BlockEntityScope::new(&mut access),
-                size,
-                slot,
-                &mut held,
-                &mut handled,
-            );
-            (access.items_changed(), panicked)
-        });
-        let (mut outcome, settlement) = if handled {
-            // The dispatcher restores only the failed Part's outputs. Keep an untouched
-            // engine stack as-is, and validate an edited remainder once at the boundary.
-            let remainder = if held == original {
-                Ok(Some(clicked.clone()))
-            } else {
-                held.try_into_engine(self.items())
-            };
-            match remainder {
-                Ok(remainder) => (QuickMoveOutcome::Handled, Some(remainder)),
-                Err(error) => {
-                    log::warn!("mod menu_quick_move write refused: {error:?}");
-                    (QuickMoveOutcome::Rejected, None)
+        let (result, notices) = self.collect_quick_move_notices(|game| {
+            game.storage_transaction(|game, _| {
+                game.transactions.last_mut().unwrap().menu_click_active = Some(conn);
+                let mut handled = false;
+                let mut access = ResidentBlockEntityAccess::for_handle(game, subject, state);
+                let panicked = Self::native_menu_quick_move(
+                    kind,
+                    BlockEntityScope::new(&mut access),
+                    size,
+                    slot,
+                    &mut held,
+                    &mut handled,
+                );
+                let items_changed = access.items_changed();
+                // The destination edits are provisional until the original route and clicked
+                // stack still admit the move. Vanilla's moveItemStackTo shrinks the actual
+                // source while filling the destination; our hook proposes that shrink separately.
+                if !live(game) {
+                    return Err(QuickMoveOutcome::Rejected);
                 }
-            }
-        } else if panicked {
-            (QuickMoveOutcome::Rejected, None)
-        } else {
-            (QuickMoveOutcome::Untaken, None)
-        };
-        let mut changed = items_changed;
-        let mut linked_changed = None;
-        let mut take = None;
-        if !live(self)
-            || matches!(source, Source::Player(slot) if self.inventory[slot].as_ref() != Some(&clicked))
-        {
-            // Do not settle into a replaced menu or overwrite an explicit write to the source.
-            outcome = QuickMoveOutcome::Rejected;
-        } else if let Some(remainder) = settlement {
-            if let Some(menu) = take_menu.filter(|menu| menu.owns_slot(slot)) {
-                let count = clicked
-                    .count
-                    .saturating_sub(remainder.as_ref().map_or(0, |left| left.count));
-                if count > 0 {
-                    let mut moved = clicked;
-                    moved.count = count;
-                    take = Some((menu.id, (slot, moved, remainder.clone())));
+                let source_stack = match source {
+                    Source::Own(slot) => game
+                        .world
+                        .block_entities
+                        .get(&pos)
+                        .and_then(|entity| entity.slots().get(slot))
+                        .and_then(Option::as_ref),
+                    Source::Player(slot) => game.inventory[slot].as_ref(),
+                    Source::Linked { pos, slot, .. } => game
+                        .world
+                        .block_entities
+                        .get(&pos)
+                        .and_then(|entity| entity.slots().get(slot))
+                        .and_then(Option::as_ref),
+                    // A handler may consume crafting inputs; the result below belongs to the
+                    // grid it leaves, not to a fresh result computed from that grid.
+                    Source::CraftingResult(_) => Some(&clicked),
+                };
+                if source_stack != Some(&clicked) || (panicked && !handled) {
+                    return Err(QuickMoveOutcome::Rejected);
                 }
-            }
-            match source {
-                Source::Own(slot) => {
-                    self.journal_block_entity(pos);
-                    let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get_mut(&pos)
-                    else {
-                        unreachable!("the admitted resident subject was just checked");
-                    };
-                    if entity.items.len() <= slot {
-                        entity.items.resize(slot + 1, None);
-                    }
-                    if let Some(dest) = entity.item_slot_mut(slot) {
+                if !handled {
+                    return Err(QuickMoveOutcome::Untaken);
+                }
+                let remainder = game.project_quick_move_remainder(&clicked, &held, &original)?;
+                let take = take_menu
+                    .filter(|menu| menu.owns_slot(slot))
+                    .and_then(|menu| {
+                        let count = clicked
+                            .count
+                            .saturating_sub(remainder.as_ref().map_or(0, |left| left.count));
+                        (count > 0).then(|| {
+                            let mut moved = clicked;
+                            moved.count = count;
+                            (menu.id, (slot, moved, remainder.clone()))
+                        })
+                    });
+                let mut changed = items_changed;
+                match source {
+                    Source::Own(slot) => {
+                        game.journal_block_entity(pos);
+                        let dest = game
+                            .world
+                            .block_entities
+                            .get_mut(&pos)
+                            .and_then(|entity| entity.slot_mut(slot))
+                            .ok_or(QuickMoveOutcome::Rejected)?;
                         *dest = remainder;
                         changed = true;
                     }
-                }
-                Source::Player(slot) => {
-                    let player = self.native_acting_id();
-                    self.journal_player(player);
-                    self.inventory[slot] = remainder;
-                }
-                Source::Linked {
-                    pos,
-                    slot,
-                    generation,
-                } => {
-                    self.journal_block_entity_slot(pos, slot);
-                    let dest = self
-                        .world
-                        .block_entities
-                        .get_mut(&pos)
-                        .and_then(|entity| entity.slot_mut(slot));
-                    if let Some(dest) = dest {
+                    Source::Player(slot) => {
+                        let player = game.native_acting_id();
+                        game.journal_player(player);
+                        game.inventory[slot] = remainder;
+                    }
+                    Source::Linked { pos, slot, .. } => {
+                        game.journal_block_entity_slot(pos, slot);
+                        let dest = game
+                            .world
+                            .block_entities
+                            .get_mut(&pos)
+                            .and_then(|entity| entity.slot_mut(slot))
+                            .ok_or(QuickMoveOutcome::Rejected)?;
                         if *dest != remainder {
                             *dest = remainder;
-                            linked_changed = Some((pos, generation));
+                            game.after_commit(After::Changed(pos));
                         }
-                    } else {
-                        take = None;
-                        outcome = QuickMoveOutcome::Rejected;
                     }
-                }
-                Source::CraftingResult(layout) => {
-                    if let Some(gi) = self.guest_index(conn)
-                        && let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos)
-                    {
-                        // A handled result is the remainder for the input grid the handler left,
-                        // not a new recipe assembly. Bind it before contents observers run.
+                    Source::CraftingResult(layout) => {
+                        let gi = game.guest_index(conn).ok_or(QuickMoveOutcome::Rejected)?;
+                        let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos)
+                        else {
+                            return Err(QuickMoveOutcome::Rejected);
+                        };
                         let grid = layout
                             .grid_slots()
                             .map(|k| entity.items.get(k).cloned().flatten())
                             .collect();
-                        let player = self.native_acting_id();
-                        if let Some(player) = self.player(player) {
-                            self.journal_menus(player);
+                        let player = game.native_acting_id();
+                        if let Some(player) = game.player(player) {
+                            game.journal_menus(player);
                         }
-                        self.lan_mod_craft_store(
+                        game.lan_mod_craft_store(
                             gi,
                             window,
                             ModCraft {
@@ -337,19 +332,17 @@ impl Game<'_> {
                         );
                     }
                 }
-            }
-        }
-        // AbstractContainerMenu.moveItemStackTo settles the clicked slot before the destination
-        // notices. Surviving live writes still notify if the callback did not take the click.
+                if changed {
+                    game.after_commit(After::Changed(pos));
+                }
+                Ok(take)
+            })
+        });
+        let take = match result {
+            Ok(take) => take,
+            Err(outcome) => return outcome,
+        };
         self.publish_quick_move_notices(notices);
-        if let Some((pos, generation)) = linked_changed
-            && self.world.block_entities.generation(&pos) == generation
-        {
-            self.after_commit(After::Changed(pos));
-        }
-        if changed && self.native_block_entity_write_key(subject) == Some(pos) {
-            self.after_commit(After::Changed(pos));
-        }
         if let Some((menu, take)) = take
             && admitted.holds(self)
             && self.native_block_entity_write_key(subject) == Some(pos)
@@ -357,10 +350,23 @@ impl Game<'_> {
             let player = self.native_acting_id();
             let _ = self.mod_menu_slot_take(pos, player, menu, &take);
         }
-        if matches!(outcome, QuickMoveOutcome::Untaken) && !live(self) {
-            QuickMoveOutcome::Rejected
+        QuickMoveOutcome::Handled
+    }
+
+    /// Preserve untouched engine values and validate an edited remainder once.
+    fn project_quick_move_remainder(
+        &self,
+        clicked: &ItemStack,
+        held: &Option<mod_api::ItemStack>,
+        original: &Option<mod_api::ItemStack>,
+    ) -> Result<Option<ItemStack>, QuickMoveOutcome> {
+        if held == original {
+            Ok(Some(clicked.clone()))
         } else {
-            outcome
+            held.try_into_engine(self.items()).map_err(|error| {
+                log::warn!("mod menu_quick_move write refused: {error:?}");
+                QuickMoveOutcome::Rejected
+            })
         }
     }
 }

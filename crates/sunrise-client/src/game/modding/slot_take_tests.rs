@@ -304,6 +304,7 @@ fn with_pot(menu_type: &'static ModMenuType, test: impl FnOnce(&mut crate::game:
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
         with_guests(|game| {
+            mod_api::__private::resolve_block_entity_types(["take:pot"], |_| Some(())).unwrap();
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

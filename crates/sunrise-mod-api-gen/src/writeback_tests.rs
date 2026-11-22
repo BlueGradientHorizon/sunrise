@@ -35,7 +35,7 @@ fn untouched_writeback_runtime_and_mutants() {
         (
             "menu_quick_move",
             include_str!("../../sunrise-client/src/game/modding/native_quick_move.rs"),
-            "let (mut outcome, settlement) = if handled {",
+            "fn project_quick_move_remainder(",
         ),
     ] {
         let start = source.find(adapter).unwrap();
@@ -66,8 +66,8 @@ fn untouched_writeback_runtime_and_mutants() {
             format!(
                 "let original = stack.clone(); let mut held = original.clone();
                  if self.change {{ held = Some(Stack(252)); }} let clicked = original.clone().unwrap();
-                 let (outcome, settlement) = {{ {body} }};
-                 if let (QuickMoveOutcome::Handled, Some(remainder)) = (outcome, settlement) {{
+                 let project = |clicked: &Stack, held: &Option<Stack>, original: &Option<Stack>| {{ {body} }};
+                 if let Ok(remainder) = project(&clicked, &held, &original) {{
                      *stack = remainder; *handled = true; true
                  }} else {{ false }}"
             )
@@ -81,7 +81,7 @@ extern crate self as log;
 #[derive(Clone, Debug, PartialEq)] struct Stack(u32);
 type EngineStack = Stack;
 struct Game { change: bool }
-enum QuickMoveOutcome { Handled, Rejected }
+enum QuickMoveOutcome { Rejected }
 static VALIDATIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 mod mod_api {
     #[derive(Debug)] pub enum StackWriteError { Unavailable }
