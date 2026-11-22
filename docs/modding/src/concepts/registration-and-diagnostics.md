@@ -89,10 +89,8 @@ line with the registering mod's ID (`\t<mod id> | ` for headers, `\t\t<mod id> |
 details, including error text). That includes entries from the mod named in the crash itself.
 
 Callbacks run and appear in registration order on clients and dedicated servers, on a worker
-thread away from the crashing thread. Read your own diagnostic state and don't wait for locks
-the game thread may hold. The report bounds its wait; if one callback blocks or fails to answer,
-its worker is detached so later callbacks still run in order on a fresh worker and the report is
-still saved.
+thread away from the crashing thread. The report waits for each callback to finish, so read your
+own diagnostic state and don't wait for locks the game thread may hold.
 
 A failed callback's entry begins with `~~ERROR~~`. A panic logs the mod's ID, queues an error
 toast, and disables only that callback for the session. Other failures are reported on each

@@ -18,9 +18,9 @@ pub trait CrashSectionsRegistrar {
     /// run and written after Sunrise's own lines in registration order, even if the crash is
     /// attributed to the registering mod. Continuation lines in multiline labels, values and
     /// errors are prefixed with `\t\t<mod id> | ` so they stay attributed to the registering mod.
-    /// A failed or timed-out entry starts with `~~ERROR~~` without preventing later entries from
-    /// running. A panic logs the mod, queues an error toast, and disables only this registration
-    /// for the rest of the session.
+    /// The report waits for each callback to finish. A failed entry starts with `~~ERROR~~`
+    /// without preventing later entries from running. A panic logs the mod, queues an error toast,
+    /// and disables only this registration for the rest of the session.
     fn crash_section(&mut self, label: &str, section: Arc<dyn CrashSection>);
     /// `registerHeader`: an entry under the report's title, `<mod id>: <value>`, with continuation
     /// lines prefixed `\t<mod id> | `, asked as a [`crash_section`](Self::crash_section) is.
