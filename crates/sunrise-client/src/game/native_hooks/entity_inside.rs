@@ -365,14 +365,11 @@ mod sweep_tests {
         );
     }
 
-    /// A part that panics on its second contact: the panic is contained, the walk
-    /// and the player's tick go on, and the panicking callback's writes are refused
-    /// with it.
+    /// A part that panics on its first contact is disabled for this hook. The walk
+    /// and the player's tick go on without applying the failed callback's writes.
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_players_tick_restored() {
-        // The panic lands on every contact: each one is caught in the staged fire,
-        // and the mod keeps receiving the walk's contacts.
         let part = InsidePart {
             panic_after: Some(0),
             ..InsidePart::default()
@@ -385,8 +382,8 @@ mod sweep_tests {
                 assert!(!dead);
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
-                    2,
-                    "both contacts reached the part; each panic was contained"
+                    1,
+                    "the first panic disables the callback before the next contact"
                 );
                 assert!(
                     (after - before).abs() < 1e-9,
@@ -782,8 +779,8 @@ mod sweep_tests {
                 game.put_back_dropped(items);
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
-                    2,
-                    "both contacts reached the part; each panic was contained"
+                    1,
+                    "the first panic disables the callback before the next contact"
                 );
                 assert_eq!(game.dropped.len(), rows, "the lifted row returned");
                 let item = game.dropped.first().unwrap();
@@ -1060,8 +1057,8 @@ mod sweep_tests {
                 );
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
-                    2,
-                    "both contacts reached the part; each panic was contained"
+                    1,
+                    "the first panic disables the callback before the next contact"
                 );
                 assert_eq!(
                     game.creatures.projectiles.len(),
