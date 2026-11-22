@@ -1005,7 +1005,8 @@ impl Game<'_> {
                 .computed_value_of("minecraft:attack_speed")
             && (self.remote.is_some()
                 || !self.applied_modifiers.is_empty()
-                || !self.potions.applied.is_empty())
+                || self.potions.effects.get("haste").is_some()
+                || self.potions.effects.get("mining_fatigue").is_some())
         {
             // The computed value is already inside the attribute's bounds.
             return speed;

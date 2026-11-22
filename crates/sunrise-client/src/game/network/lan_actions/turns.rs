@@ -266,7 +266,12 @@ impl Game<'_> {
         motion
             .collision_exclusions
             .clone_from(&g.collision_exclusions);
-        let _ = motion.set_health(g.health, false);
+        // The guest mirrors the body's last health. Do not run a health
+        // setter just for taking the body on loan: a pending max-health
+        // change has not reached LivingEntity.onAttributeUpdated yet.
+        if motion.health.health().to_bits() != g.health.to_bits() {
+            let _ = motion.set_health(g.health, false);
+        }
         motion.health.food.food = g.food;
         motion.health.food.saturation = g.saturation;
         let mut player = Some(*motion);
@@ -455,13 +460,6 @@ impl Game<'_> {
             &mut self.applied_modifiers,
             std::mem::take(&mut play.modifiers),
         );
-        // Its equipment's modifiers on its attributes from its first turn. A later change
-        // waits for the guest's body tick (`equipment_changed`, tick.rs).
-        if play.equipped.is_none() {
-            let held = self.inventory.get(self.selected).and_then(Option::as_ref);
-            equipment_changed(&mut play.equipped, &self.armor, held, self.offhand.as_ref());
-            self.put_equipment_modifiers();
-        }
         // The player's effects are on the new body before anything it does
         // (the movement that brought it, a landing): vanilla keeps the same
         // entity through a level change, with its attributes and effects.

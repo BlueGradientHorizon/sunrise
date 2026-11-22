@@ -11,7 +11,7 @@ use super::{
     monster_brain,
     path::PathType,
 };
-use crate::{containers::BlockEntity, world::World};
+use crate::containers::BlockEntity;
 use std::collections::HashMap;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
@@ -181,36 +181,33 @@ pub fn entity_event(m: &mut Mob, event: u8) {
         _ => {}
     }
 }
-/// The heart this creaking is bound to protects it (`isProtector`); a link
-/// read from a save is trusted until the heart resolves it.
-fn protected(m: &Mob, world: &World) -> bool {
-    let Some(home) = m.extra.home else {
+/// `isProtector` compares the live Creaking, resolving the saved link by UUID.
+fn protected(m: &Mob, w: &MobWorld) -> bool {
+    let Some([x, y, z]) = m.extra.home else {
         return true;
     };
-    match world.block_entities.get(&(home[0], home[1], home[2])) {
+    if w.block_name(x, y, z) != "minecraft:creaking_heart" {
+        return false;
+    }
+    match w.world.block_entities.get(&(x, y, z)) {
         Some(BlockEntity::CreakingHeart(h)) => match h.creaking {
             Some((Some(id), _)) => id == m.id,
-            Some((None, _)) => true,
+            Some((None, uuid)) => w.who_lookup.and_then(|level| level.mob_uuid(m.id)) == Some(uuid),
             None => false,
         },
         _ => false,
     }
 }
-/// `Creaking.tick` and the start of `aiStep`: protection, timers, freezing.
-pub fn update(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    // Creaking.tick: without its heart's protection it dies.
-    if heart_bound(m) && m.alive() && !protected(m, w.world) {
+/// `Creaking.tick` checks its protection before invoking the living tick.
+pub(super) fn check_protection(m: &mut Mob, w: &MobWorld) {
+    if heart_bound(m) && m.alive() && !protected(m, w) {
         m.health = 0.0;
     }
-    // The borrowed tick still delivers its hurt effects through the event pass.
-    if let Some((home, by_player)) = take_hurt(m, events) {
-        events.push(MobEvent::CreakingHurt {
-            home,
-            by_player,
-            id: m.id,
-        });
-    }
-    animate(m);
+}
+
+/// `Creaking.aiStep`: countdown and the gaze's freeze/unfreeze transition.
+pub fn update(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
+    tick_animation_clocks(m);
     if !m.alive() {
         return;
     }
@@ -227,14 +224,18 @@ pub fn update(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         m.extra.flag2 = !now;
     }
 }
-/// The clocks and keyframe states `Creaking.aiStep`, `setupAnimationStates`
-/// and `checkEyeBlink` run (the server's and a client's).
-pub fn animate(m: &mut Mob) {
+// The countdown in Creaking.aiStep runs on both sides.
+fn tick_animation_clocks(m: &mut Mob) {
     for slot in [INVULNERABLE, ATTACKING] {
         if m.extra.ints[slot] > 0 {
             m.extra.ints[slot] -= 1;
         }
     }
+}
+
+/// The client's `aiStep` timers and `Creaking.tick` visuals.
+pub fn animate(m: &mut Mob) {
+    tick_animation_clocks(m);
     let age = m.age as f32;
     m.anim.states[0].animate_when(m.extra.ints[ATTACKING] > 0, age);
     m.anim.states[1].animate_when(m.extra.ints[INVULNERABLE] > 0, age);
@@ -481,6 +482,24 @@ mod tests {
         } else {
             crate::mobs::world::with_test_world(others, f)
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn server_ai_step_counts_down_without_drawing_for_eye_flicker() {
+        assert!(crate::mobs::world::with_test_world(&[], |w, _| {
+            let mut m = creaking();
+            set_transient(&mut m, [0, 0, 0]);
+            set_tearing_down(&mut m);
+            m.health = 0.0;
+            m.death_time = 8;
+            entity_event(&mut m, 66);
+            let mut before = m.random.clone();
+            update(&mut m, w, &mut Vec::new());
+            assert_eq!(m.extra.ints[INVULNERABLE], INVULNERABILITY_TICKS - 1);
+            assert!(!eyes_glowing(&m));
+            assert_eq!(m.random.next_int(), before.next_int());
+        }));
     }
 
     /// Creaking.activate and deactivate post ENTITY_ACTION, for the sculk sensors and
@@ -794,24 +813,24 @@ mod tests {
             source
         ));
 
-        // An entityless follow-up (suffocation, with no loan) reacts on remembered credit only
-        // while its timer runs and the remembered player still resolves: not for an absent
-        // player (a tame wolf's owner who is not in the level) or no record at all.
+        // An entityless follow-up (suffocation, with no per-hit loan) reacts only
+        // if its remembered player still resolves. LivingEntity.baseTick leaves
+        // the reference intact in the tick that counts the clock down to zero.
         let present = 0x11_u128;
         let absent = 0x22_u128;
         for (timer, remembered, reacts) in [
             (50, Some(present), true),
             (50, Some(absent), false),
             (50, None, false),
-            (0, Some(present), false),
+            (0, Some(present), true),
+            (0, None, false),
         ] {
             m.extra.ints[INVULNERABLE] = 0;
             m.extra.counter = 0;
             m.ai.last_hurt_by_player = timer;
-            let memory: std::collections::HashMap<u32, u128> =
+            let mut memory: std::collections::HashMap<u32, u128> =
                 remembered.map(|uuid| (m.id, uuid)).into_iter().collect();
             let players = crate::health::PlayerResolver {
-                memory: &memory,
                 in_place: Some(crate::lan::playerdata::uuid_ints(present)),
                 hub: None,
             };
@@ -820,7 +839,7 @@ mod tests {
                     &mut test_level
                         .level()
                         .attacked_by(&entityless_attack)
-                        .with_player_resolver(players),
+                        .with_player_resolver(players, &mut memory),
                     1.0,
                     Damage::of(DamageKind::InWall),
                 ),
