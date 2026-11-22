@@ -92,6 +92,35 @@ class Budgets(unittest.TestCase):
         self.assertIn('1 classified panic reasons; 0 identities withheld; 0 locations withheld; '
                       '1 payloads withheld', log)
 
+    def test_a_test_that_catches_its_own_panic_is_shown_by_the_panic_it_failed_on(self):
+        source = ['panic!("a listener fails");', '', 'assert_eq!(posts, 0, "aborted pass fired post callbacks");']
+        with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
+                patch.object(ci, 'source_lines', return_value=source), patch.dict(ci._panic_locations, clear=True):
+            log = self.render(
+                "thread 'guarded' panicked at crates/example.rs:1:1:\na listener fails\n"
+                "thread 'guarded' panicked at crates/example.rs:3:1:\n"
+                "assertion `left == right` failed: aborted pass fired post callbacks\n  left: 1\n right: 0\n"
+                "test guarded ... FAILED\n"
+            )
+        self.assertIn('panicked at crates/example.rs:3:1', log)
+        self.assertIn('message: aborted pass fired post callbacks', log)
+        self.assertNotIn('crates/example.rs:1:1', log)
+        self.assertNotIn('a listener fails', log)
+
+    def test_a_repeated_name_that_panics_twice_later_keeps_the_first_targets_context(self):
+        source = ['assert!(first);', 'panic!("a listener fails");', 'assert!(second);']
+        with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
+                patch.object(ci, 'source_lines', return_value=source), patch.dict(ci._panic_locations, clear=True):
+            log = self.render(
+                "---- same stdout ----\nthread 'same' panicked at crates/example.rs:1:1:\nassertion failed: first\n"
+                "test same ... FAILED\n"
+                "---- same stdout ----\nthread 'same' panicked at crates/example.rs:2:1:\na listener fails\n"
+                "thread 'same' panicked at crates/example.rs:3:1:\nassertion failed: second\n"
+                "test same ... FAILED\n"
+            )
+        self.assertEqual(log.count('panicked at crates/example.rs:1:1'), 2)
+        self.assertNotIn('crates/example.rs:3:1', log)
+
     def test_a_shown_panic_message_allows_bounded_rustc_codes_not_diagnostic_text(self):
         with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
                 patch.object(ci, 'source_lines', return_value=['assert!(ok, "fixture did not compile");']):
@@ -105,6 +134,21 @@ class Budgets(unittest.TestCase):
             )
         self.assertIn('compiler: rustc E0433, E0308, E0425 (diagnostic text withheld)', log)
         for withheld in ('PRIVATE', '/hidden/path.rs', 'mismatched types', 'E0599', 'E0307'):
+            self.assertNotIn(withheld, log)
+
+    def test_a_panic_that_is_rustc_output_shows_its_codes_not_its_text(self):
+        with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
+                patch.object(ci, 'source_lines', return_value=['assert!(output.status.success(), "{}", stderr);']), \
+                patch.dict(ci._panic_locations, clear=True):
+            log = self.render(
+                "thread 'generated' panicked at crates/example.rs:1:1:\n"
+                "error[E0425]: cannot find function `PRIVATE` in module `super::runtime`\n"
+                "  --> /hidden/path.rs:2:1\nerror[E0609]: no field `SECRET`\nerror[E0425]: duplicate\n"
+                "test generated ... FAILED\n"
+            )
+        self.assertIn('panic reason: rustc could not compile a test program; payload withheld', log)
+        self.assertIn('compiler: rustc E0425, E0609 (diagnostic text withheld)', log)
+        for withheld in ('PRIVATE', 'SECRET', '/hidden/path.rs', 'cannot find function'):
             self.assertNotIn(withheld, log)
 
     def test_payloads_cannot_become_locations_or_numeric_operands(self):
