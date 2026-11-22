@@ -358,19 +358,20 @@ fn attack_by_id_reports_a_click_no_tick_took() {
 
     with_pig_and_server(|game, _, server| {
         let (_, replies) = command(game, "attack 31");
-        tick(game);
-        // Opening a screen releases queued clicks, and the tick's keybinds don't run.
+        tick_with_player_clicks(game, 1);
+        // The switcher skips keybinds, but opening it doesn't clear attack's toggle mapping.
         game.set_screen(Screen::GameModeSwitcher);
         tick(game);
         assert_eq!(clicks_sent(game, server), Vec::<String>::new());
-        // The screen closes; the player's next click on pig 31 is not the command's.
+        // The ordinary click survives; the agent's pending aimed click does not.
         game.set_screen(Screen::Playing);
+        tick(game);
+        assert_eq!(clicks_sent(game, server), ["attack 31", "punch"]);
+        // A new player click isn't claimed by the command either.
         player_click(game);
         tick(game);
-        assert_eq!(attacks_on(&clicks_sent(game, server), 31), 1);
-        for _ in 0..2 {
-            tick(game);
-        }
+        assert_eq!(clicks_sent(game, server), ["attack 31", "punch"]);
+        tick(game);
         assert_eq!(
             reply(&replies)["error"],
             json!("the attack click was not taken")

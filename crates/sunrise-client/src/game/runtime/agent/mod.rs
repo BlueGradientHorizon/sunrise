@@ -279,7 +279,7 @@ enum AttackAim {
     /// Clicked: the command's click waits in the attack click queue behind `ahead` others,
     /// a player's queued before it.
     Clicked { ahead: u32 },
-    /// The queue was dropped with the click in it (a screen opened, an item in use).
+    /// The click was discarded: keybinds were skipped, or an item in use drained it.
     Dropped,
     /// The entity the pick held when the tick's input took the click (and dropped it unless
     /// that is the ID).
@@ -2035,17 +2035,24 @@ impl Game<'_> {
         picked != *id
     }
 
-    /// The tick's keybinds are done, `left` attack clicks still queued: a command's click still
-    /// waiting with none left was dropped with the queue.
-    pub(in crate::game) fn agent_attack_clicks_left(&mut self, left: u32) {
+    /// Resolve a queued `attack ID` click that the tick didn't take. If keybinds ran,
+    /// an empty mapping means the click was drained (while using an item).
+    pub(in crate::game) fn finish_agent_attack_input(&mut self, keybinds_ran: bool) {
+        if keybinds_ran && self.remote_attack_clicks_queued() != 0 {
+            return;
+        }
         if let Some(Task {
             kind: TaskKind::Attack { aimed, .. },
             ..
         }) = self.agent.task.as_mut()
             && matches!(aimed, Some(AttackAim::Clicked { .. }))
-            && left == 0
         {
             *aimed = Some(AttackAim::Dropped);
+            if !keybinds_ran {
+                // ToggleKeyMapping.release keeps pending clicks. Retire just the command's
+                // click, not the player's, before it can act without its target check.
+                self.consume_mapping_click("key.attack");
+            }
         }
     }
 
