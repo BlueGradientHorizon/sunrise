@@ -77,11 +77,11 @@ whether the event can reach gameplay mappings with no screen open. A cancelled m
 neither the editor nor Post, but a cancelled real press counts as handled. Key and character Post
 still run only for unhandled input.
 
-The control socket sends `screen_key_released_pre` to the currently open title screen, even if
-that screen did not receive the matching press. For example, when Escape closes the preset editor,
-its release goes to Create World, including when Escape is sent as a single tap. The released key
-is no longer held. If it was a modifier, its bit is already cleared in `event.modifiers` unless
-the other key for the same modifier is still held.
+The control socket sends `screen_key_released_pre` to the currently open screen, even if it did
+not receive the matching press. For example, when Escape closes the preset editor, its release
+goes to Create World, including when Escape is sent as a single tap. If the released key was a
+modifier, its bit is already cleared in `event.modifiers` unless the other key for the same
+modifier is still held.
 
 ## Drawing a dimension transition
 
@@ -464,10 +464,15 @@ contract on the **receiving screen**:
   box can decline a key; the container then handles its raw bindings, including rebound inventory
   close. A handled close or sort does not fire Post; an unhandled slot swap, pick or drop has
   already happened by Post. A mapping reached after Post cannot dispatch a second sort. Cancel Pre
-  to prevent a slot action. Window releases, `sunrise-ctl key … up`, and the release phase
-  of `key … tap` all deliver release Pre/Post. Do not cancel a release merely to bypass screen
-  handling after allowing its mapped press. A window release cancelled in Pre still clears its
-  physical binding; a release cancelled in Post does not reach the mappings.
+  to prevent a slot action. Window releases, `sunrise-ctl key … up`, and the release phase of
+  `key … tap` all deliver release Pre and, if unhandled, Post.
+  - Cancelling physical release **Pre** skips the screen and Post, but still clears the device
+    key and runs mapped keyboard release cleanup.
+  - Cancelling socket release **Pre** skips the screen, Post, and the socket's normal key-up
+    handling. A held mapping can stay down.
+  - Cancelling unhandled release **Post** skips normal mapped release on either route, after the
+    screen declined the event. It does not undo device tracking. Do not cancel a release merely
+    to bypass the screen after allowing the mapped press.
 - **Unhandled-only notices (non-cancellable)**:
   `screen_mouse_dragged_post`, `screen_mouse_scrolled_post`, `screen_char_typed_post`, and
   `screen_preedit_post` fire on the receiving screen only when neither mounted widgets nor the

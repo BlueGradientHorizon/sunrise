@@ -17,7 +17,7 @@ use sunrise_client::{
     multiline_edit::MultiLineEdit,
     text::{ClickEvent, Text},
     ui,
-    widgets::{self, ScreenInfo},
+    widgets::{self, Kind as WidgetKind, ScreenInfo, Target},
 };
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::registry::Dynamic;
@@ -154,6 +154,68 @@ impl Game<'_> {
         }
         self.dialog_layout().map(|layout| layout.warning)
     }
+    /// The focused dialog input, including the initial keyboard focus before any click.
+    pub(super) fn dialog_navigation_focus(&self) -> Option<[f32; 4]> {
+        if self.dialogs.warning || self.dialogs.waiting.is_some() {
+            return None;
+        }
+        let open = self.dialogs.open.as_ref()?;
+        let focus = open.focus?;
+        self.dialog_layout()?
+            .placed(open.scroll.amount)
+            .find_map(|(part, _)| match part {
+                Part::Field { input, rect } | Part::Slider { input, rect } if input == focus => {
+                    Some(rect)
+                }
+                _ => None,
+            })
+    }
+
+    /// Dialog body controls are added before the footer; the warning button
+    /// is added last, but has its own earlier tab group.
+    pub(super) fn dialog_navigation_order(&self) -> Option<Vec<[f32; 4]>> {
+        let warning = self.dialog_warning_icon()?;
+        let open = self.dialogs.open.as_ref()?;
+        let layout = self.dialog_layout()?;
+        let order = layout
+            .placed(open.scroll.amount)
+            .filter_map(|(part, _)| match part {
+                Part::Field { rect, .. }
+                | Part::Check { rect, .. }
+                | Part::Slider { rect, .. }
+                | Part::Cycle { rect, .. }
+                | Part::Button { rect, .. } => Some(rect),
+                _ => None,
+            });
+        Some(order.chain([warning]).collect())
+    }
+
+    /// Apply a focus path without clicking the dialog's editor or changing its caret.
+    pub(super) fn set_dialog_navigation_focus(&mut self, target: Target) {
+        let focus = if matches!(target.kind, WidgetKind::Field | WidgetKind::Slider { .. }) {
+            self.dialogs.open.as_ref().and_then(|open| {
+                self.dialog_layout()?
+                    .placed(open.scroll.amount)
+                    .find_map(|(part, _)| match part {
+                        Part::Field { input, rect } | Part::Slider { input, rect }
+                            if rect == target.rect =>
+                        {
+                            Some(input)
+                        }
+                        _ => None,
+                    })
+            })
+        } else {
+            None
+        };
+        if !self.dialogs.warning
+            && self.dialogs.waiting.is_none()
+            && let Some(open) = self.dialogs.open.as_mut()
+        {
+            open.focus = focus;
+        }
+    }
+
     /// The dialog itself shows, with a text input to start on.
     pub(super) fn dialog_starts_typing(&self) -> bool {
         !self.dialogs.warning && self.dialogs.waiting.is_none() && self.dialog_has_text_field()
@@ -1171,8 +1233,8 @@ impl Game<'_> {
         false
     }
 
-    /// A key pressed on a dialog screen: Escape closes what allows it, Tab
-    /// moves between the text inputs, the rest goes to the focused one
+    /// A key pressed on a dialog screen: Escape closes what allows it, the
+    /// rest goes to the focused input before the screen's shared navigation
     /// (`shortcut`: the press as an edit shortcut).
     pub(super) fn dialog_key(
         &mut self,
@@ -1210,22 +1272,6 @@ impl Game<'_> {
             let click = d.on_cancel().and_then(|a| a.click(&d.inputs, &open.values));
             self.run_dialog_action(click, AfterAction::Close)?;
             return Ok(true);
-        }
-        if key == KeyCode::Tab {
-            let texts: Vec<usize> = (0..open.fields.len())
-                .filter(|&i| open.fields[i].is_some())
-                .collect();
-            if !texts.is_empty() {
-                let at = open.focus.and_then(|f| texts.iter().position(|&i| i == f));
-                let next = match at {
-                    None if shift => texts.len() - 1,
-                    None => 0,
-                    Some(p) if shift => (p + texts.len() - 1) % texts.len(),
-                    Some(p) => (p + 1) % texts.len(),
-                };
-                open.focus = Some(texts[next]);
-            }
-            return Ok(false);
         }
         if let Some(focus) = open.focus
             && let Some(input) = open.dialog.inputs.get(focus)

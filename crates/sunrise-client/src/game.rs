@@ -12224,8 +12224,7 @@ impl Game<'_> {
             }
             Screen::Inventory => {
                 self.inventory_mouse_release(!left)
-                    | self.station_release()
-                    | self.recipe_book_release()
+                    || (self.station_release() | self.recipe_book_release())
             }
             Screen::Chat if left_press => self.chat_click(),
             Screen::Creative if pressed => {
@@ -12233,8 +12232,7 @@ impl Game<'_> {
                 true
             }
             Screen::Creative => {
-                let released = left && self.creative_screen.release();
-                self.inventory_mouse_release(!left) || released
+                self.inventory_mouse_release(!left) || (left && self.creative_screen.release())
             }
             Screen::Paused if left_press && self.pause_menu => self.pause_click()?,
             Screen::WorldOptions if left_press => self.world_options_click(),
@@ -12316,9 +12314,6 @@ impl Game<'_> {
         let mut mouse_post: Option<native_hooks::ScreenMousePost> = None;
         let mut title_settled = false;
         let result: Result<()> = (|| {
-            if !matches!(&event, WindowEvent::MouseInput { .. }) {
-                self.key_focus_mouse_press(&event);
-            }
             match event {
                 WindowEvent::CloseRequested => {
                     if !self.settings.quit_shortcuts
@@ -12600,7 +12595,7 @@ impl Game<'_> {
                         post.handled = screen_scrolled;
                     }
                 }
-                event @ WindowEvent::MouseInput { state, button, .. } => {
+                WindowEvent::MouseInput { state, button, .. } => {
                     let pressed = state == ElementState::Pressed;
                     let code = glfw_button(button);
                     let modifiers = glfw_modifiers(self.modifiers);
@@ -12662,30 +12657,58 @@ impl Game<'_> {
                     }
                     let mut handled = owned_release;
                     if self.screen_state.screen_instance == initial_instance {
-                        if !owned_release
+                        let inventory_release = !pressed
+                            && matches!(self.screen, Screen::Inventory | Screen::Creative)
+                            && self.observed_overlay_now().is_none()
+                            && !self.remote_loading();
+                        let native_child = pressed.then(|| self.native_pointer_child()).flatten();
+                        if let Some(child) = native_child {
+                            // A hit belongs to the first ordered child even if it declines.
+                            // Only the child's own answer can change focus.
+                            let accepted =
+                                self.route_screen_button(button, code, true, double_click)?;
+                            if accepted
+                                && button == MouseButton::Left
+                                && self.screen_state.screen_instance == initial_instance
+                            {
+                                self.focus_native_pointer_child(child);
+                            }
+                            handled = true;
+                        } else {
+                            if !owned_release
+                                && !inventory_release
+                                && !self.key_focus_driving()
+                                && self.observed_screen_view().is_some()
+                            {
+                                let mouse = self.cursor();
+                                handled = if pressed {
+                                    self.mounted_widget_mouse_clicked(
+                                        mouse,
+                                        code,
+                                        modifiers,
+                                        double_click,
+                                    )
+                                } else {
+                                    self.mounted_widget_mouse_released(mouse, code, modifiers)
+                                };
+                            }
+                            if !handled && self.screen_state.screen_instance == initial_instance {
+                                handled = receiver.is_some()
+                                    && self.container_mouse(button, pressed, false);
+                            }
+                            if !handled && self.screen_state.screen_instance == initial_instance {
+                                handled =
+                                    self.route_screen_button(button, code, pressed, double_click)?;
+                            }
+                        }
+                        if inventory_release
+                            && !handled
+                            && self.screen_state.screen_instance == initial_instance
                             && !self.key_focus_driving()
                             && self.observed_screen_view().is_some()
                         {
-                            let mouse = self.cursor();
-                            handled = if pressed {
-                                self.mounted_widget_mouse_clicked(
-                                    mouse,
-                                    code,
-                                    modifiers,
-                                    double_click,
-                                )
-                            } else {
-                                self.mounted_widget_mouse_released(mouse, code, modifiers)
-                            };
-                        }
-                        if !handled && self.screen_state.screen_instance == initial_instance {
                             handled =
-                                receiver.is_some() && self.container_mouse(button, pressed, false);
-                        }
-                        if !handled && self.screen_state.screen_instance == initial_instance {
-                            self.key_focus_mouse_press(&event);
-                            handled =
-                                self.route_screen_button(button, code, pressed, double_click)?;
+                                self.mounted_widget_mouse_released(self.cursor(), code, modifiers);
                         }
                     }
                     if had_screen {
@@ -13181,8 +13204,15 @@ impl Game<'_> {
         if self.screen_state.screen_instance != instance {
             return Ok(false);
         }
-        let container = matches!(self.screen, Screen::Inventory | Screen::Creative)
-            && self.observed_overlay_now().is_none();
+        let overlay = self.observed_overlay_now();
+        let container =
+            matches!(self.screen, Screen::Inventory | Screen::Creative) && overlay.is_none();
+        if overlay == Some("dialog")
+            && (!self.screen_state.widgets.has_focus() || key == KeyCode::Escape)
+            && self.dialog_key(key, shortcut)?
+        {
+            return Ok(true);
+        }
         if self.preset_editor_key(key) {
             return Ok(true);
         }
@@ -13216,8 +13246,7 @@ impl Game<'_> {
                 }
                 return Ok(false);
             }
-            Some("code_of_conduct") => return Ok(false),
-            Some("dialog") => return self.dialog_key(key, shortcut),
+            Some("code_of_conduct" | "dialog") => return Ok(false),
             _ => {}
         }
         if self.sign_edit.is_some() {

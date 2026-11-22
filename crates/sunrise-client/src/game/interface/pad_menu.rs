@@ -266,6 +266,11 @@ fn beside(rect: Rect, targets: &[Rect]) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
+/// The controller's initial focus uses layout, independently of keyboard Tab order.
+fn first_controller_target(targets: impl Iterator<Item = Target>) -> Option<Target> {
+    targets.min_by_key(|t| (t.rect[1].round() as i32, t.rect[0].round() as i32))
+}
+
 /// Where letting go of A clicks: the armed button, if the focus is still on it. A row scrolled
 /// into view under A (`pad_reveal`) is found again a fraction of a pixel off.
 fn armed_click(armed: Option<Target>, focus: Option<Target>) -> Option<Target> {
@@ -286,6 +291,7 @@ impl Game<'_> {
             || self.screen != Screen::Playing
             || self.sign_edit.is_some()
             || self.book.is_some()
+            || self.observed_overlay_now() == Some("dialog")
             || (self.prompt_open() && !self.screen_state.widgets.is_empty())
     }
 
@@ -339,12 +345,7 @@ impl Game<'_> {
             }
         }
         let warning = self.dialog_warning_icon();
-        let rest: Vec<Target> = targets
-            .iter()
-            .filter(|t| Some(t.rect) != warning)
-            .copied()
-            .collect();
-        key_focus::tab_step(&rest, None, true).map(|i| rest[i])
+        first_controller_target(targets.iter().copied().filter(|t| Some(t.rect) != warning))
     }
 
     pub(super) fn gui_batch(&self) -> Option<HudBatch> {
@@ -551,18 +552,7 @@ impl Game<'_> {
                 _ => {}
             }
         }
-        // Screen.setInitialFocus, as the keyboard's: the first control in tab
-        // order (Singleplayer on the title, the first option row), not
-        // whatever happened to register first.
-        key_focus::tab_step(targets, None, true)
-            .map(|i| targets[i])
-            .or_else(|| {
-                targets
-                    .iter()
-                    .find(|t| !matches!(t.kind, Kind::Tab(_)))
-                    .copied()
-            })
-            .or(targets.first().copied())
+        first_controller_target(targets.iter().copied()).or(targets.first().copied())
     }
 
     /// The pointer is over a slot or control.
@@ -2069,12 +2059,17 @@ impl Game<'_> {
 
     /// The screen keeps the navigation keys for itself: typing in chat (Tab
     /// completes a command), a sign, a book, the creative, recipe-book and
-    /// mods searches, the anvil's name, a command block, a dialog, a key or
+    /// mods searches, the anvil's name, a command block, a key or
     /// button being bound, the credits, the on-screen keyboard.
     fn key_focus_blocked(&self) -> bool {
+        if self.pad_keyboard_captures() {
+            return true;
+        }
+        if self.observed_overlay_now() == Some("dialog") {
+            return false;
+        }
         let playing_screen = |screen| self.title.is_none() && self.screen == screen;
-        self.pad_keyboard_captures()
-            || playing_screen(Screen::Chat)
+        playing_screen(Screen::Chat)
             || self.sign_edit.is_some()
             || matches!(self.book, Some(super::books::BookScreen::Edit { .. }))
             || (playing_screen(Screen::Creative) && self.creative_screen.tab().search)
@@ -2083,7 +2078,6 @@ impl Game<'_> {
             || self.station_typing()
             || self.screen == Screen::CommandBlock
             || self.screen == Screen::Win
-            || self.dialog_open()
             || (self.screen == Screen::Options
                 && (self.options_waiting_for_key()
                     || self.ui.options.selected_pad_action.is_some()))
@@ -2122,9 +2116,25 @@ impl Game<'_> {
         {
             return None;
         }
-        let targets = self.key_targets();
+        let dialog = self.observed_overlay_now() == Some("dialog");
+        let mut targets = self.key_targets();
         if targets.is_empty() {
             return None;
+        }
+        if dialog
+            && matches!(nav, Nav::Tab { .. })
+            && let Some(order) = self.dialog_navigation_order()
+        {
+            targets.sort_by_key(|target| {
+                if matches!(target.kind, Kind::Mounted { .. }) {
+                    order.len() + 1
+                } else {
+                    order
+                        .iter()
+                        .position(|rect| *rect == target.rect)
+                        .unwrap_or(order.len())
+                }
+            });
         }
         let mounted = self.screen_state.widgets.focused_id().map(|id| id.raw());
         // The focus: the keyboard's or the controller's, else what a click
@@ -2143,6 +2153,16 @@ impl Game<'_> {
                 .and_then(|focus| targets.iter().copied().find(|t| t.same_focus_target(focus)))
         };
         if focus.is_none()
+            && mounted.is_none()
+            && dialog
+            && let Some(rect) = self.dialog_navigation_focus()
+        {
+            focus = targets
+                .iter()
+                .copied()
+                .find(|target| !matches!(target.kind, Kind::Mounted { .. }) && target.rect == rect);
+        }
+        if focus.is_none()
             && let Some(origin) = self.pad.menu.origin
             && let Some(clicked) = targets.iter().copied().find(|t| {
                 !matches!(t.kind, Kind::Mounted { .. })
@@ -2158,7 +2178,18 @@ impl Game<'_> {
             rows_take_enter: self.title.as_ref().is_some_and(|t| t.list_focused()),
             gui: self.gui_size(),
         };
-        let act = key_focus::act(nav, focus, &targets, ctx);
+        let act = if dialog && matches!(nav, Nav::Tab { .. }) {
+            let warning = self.dialog_warning_icon();
+            key_focus::act_with_tab_groups(nav, focus, &targets, ctx, |target| {
+                if !matches!(target.kind, Kind::Mounted { .. }) && Some(target.rect) == warning {
+                    -10
+                } else {
+                    0
+                }
+            })
+        } else {
+            key_focus::act(nav, focus, &targets, ctx)
+        };
         if act == Act::Pass {
             return None;
         }
@@ -2275,6 +2306,10 @@ impl Game<'_> {
         if left.is_some_and(|l| l.same_focus_target(target)) {
             return;
         }
+        if self.observed_overlay_now() == Some("dialog") {
+            self.set_dialog_navigation_focus(target);
+            return;
+        }
         if left.is_some_and(|l| l.kind == Kind::Field)
             && target.kind != Kind::Field
             && let Some(title) = self.title.as_mut()
@@ -2337,28 +2372,27 @@ impl Game<'_> {
         }
     }
 
-    /// Only a press accepted by ScreenEvent.Pre may focus the widget under it.
-    pub(super) fn key_focus_mouse_press(&mut self, event: &WindowEvent) {
-        if !self.pad.menu.synthetic
-            && self.key_focus_screen()
-            && matches!(
-                event,
-                WindowEvent::MouseInput {
-                    state: ElementState::Pressed,
-                    button: MouseButton::Left,
-                    ..
-                }
-            )
-        {
-            let (cx, cy) = self.cursor;
-            self.pad.menu.origin = self
-                .key_targets()
-                .into_iter()
-                .find(|t| {
-                    let [x, y, w, h] = t.rect;
-                    cx >= x && cy >= y && cx < x + w && cy < y + h
-                })
-                .map(|t| t.rect);
+    /// The first built-in child under the pointer. A previous screen's frame
+    /// must not keep its bounds in the new screen's input order.
+    pub(super) fn native_pointer_child(&self) -> Option<Target> {
+        if !widgets::last_input_screen_is(self.key_screen()) {
+            return None;
+        }
+        let inventory = self.observed_overlay_now().is_none()
+            && matches!(self.screen, Screen::Inventory | Screen::Creative);
+        let (cx, cy) = self.cursor;
+        key_focus::keyboard_targets(key_focus::drawn_targets(), inventory)
+            .into_iter()
+            .find(|t| {
+                let [x, y, w, h] = t.rect;
+                cx >= x && cy >= y && cx < x + w && cy < y + h
+            })
+    }
+
+    pub(super) fn focus_native_pointer_child(&mut self, child: Target) {
+        if !self.pad.menu.synthetic && self.key_focus_screen() {
+            self.clear_mounted_widget_focus();
+            self.pad.menu.origin = Some(child.rect);
         }
     }
 

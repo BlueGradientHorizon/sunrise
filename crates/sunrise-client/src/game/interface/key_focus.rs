@@ -83,9 +83,19 @@ fn horizontal(button: Button) -> bool {
 /// What `nav` does, `focus` being the focused target (the one a click
 /// focused counts) among `targets`.
 pub(super) fn act(nav: Nav, focus: Option<Target>, targets: &[Target], ctx: Context) -> Act {
+    act_with_tab_groups(nav, focus, targets, ctx, |_| 0)
+}
+
+pub(super) fn act_with_tab_groups(
+    nav: Nav,
+    focus: Option<Target>,
+    targets: &[Target],
+    ctx: Context,
+    group: impl Fn(&Target) -> i32,
+) -> Act {
     match (nav, focus) {
         (Nav::Tab { forward }, _) => {
-            tab_step(targets, focus, forward).map_or(Act::Pass, Act::Focus)
+            grouped_tab_step(targets, focus, forward, group).map_or(Act::Pass, Act::Focus)
         }
         // EditBox.keyPressed takes left and right for its caret.
         (
@@ -147,26 +157,23 @@ pub(super) fn slider_edit_on_focus(nav: Nav) -> bool {
     matches!(nav, Nav::Tab { .. })
 }
 
-/// The tab order (`children()` sorted by `getTabOrderGroup`): the order
-/// vanilla added the widgets in, which its layouts do row by row. Sunrise
-/// has no widget tree (a screen registers buttons and other targets
-/// separately), so this is reading order: top to bottom, then left to right,
-/// ties in the order they were drawn.
-pub(super) fn tab_order(targets: &[Target]) -> Vec<usize> {
-    let mut order: Vec<usize> = (0..targets.len()).collect();
-    let key = |t: &Target| (t.rect[1].round() as i32, t.rect[0].round() as i32);
-    order.sort_by_key(|&i| key(&targets[i]));
-    order
+/// Tab or Shift+Tab through children of the default group, in insertion order.
+pub(super) fn tab_step(targets: &[Target], from: Option<Target>, forward: bool) -> Option<usize> {
+    grouped_tab_step(targets, from, forward, |_| 0)
 }
 
-/// Tab or Shift+Tab from `from` (none focused: from the start or the end),
-/// wrapping as `Screen.keyPressed` does (no next one: `clearFocus`, then
-/// again). A list's rows are one stop, as vanilla's list is one widget: Tab
-/// enters it on its first row (Shift+Tab on its last) and leaves it at once.
-pub(super) fn tab_step(targets: &[Target], from: Option<Target>, forward: bool) -> Option<usize> {
-    // The stops in tab order: a run of rows is one.
+/// Walk children sorted stably by tab group. Wrap as `Screen.keyPressed` does.
+/// A list's rows are one stop: Tab enters at its first row, Shift+Tab at its last.
+fn grouped_tab_step(
+    targets: &[Target],
+    from: Option<Target>,
+    forward: bool,
+    group: impl Fn(&Target) -> i32,
+) -> Option<usize> {
+    let mut order: Vec<_> = (0..targets.len()).collect();
+    order.sort_by_key(|&i| group(&targets[i]));
     let mut stops: Vec<Vec<usize>> = Vec::new();
-    for i in tab_order(targets) {
+    for i in order {
         let row = targets[i].kind == Kind::Row;
         match stops.last_mut() {
             Some(stop) if row && targets[stop[0]].kind == Kind::Row => stop.push(i),
@@ -356,20 +363,32 @@ mod tests {
         assert!(!moves_focus(Act::Nudge(1.0)));
     }
 
-    /// The title screen's rows (TitleScreen.init's add order).
     #[test]
-    fn tab_order_reads_rows_top_to_bottom_then_left_to_right() {
-        let targets = [
-            button(164.0, 108.0), // Options
-            button(266.0, 108.0), // Quit
-            button(164.0, 60.0),  // Singleplayer
-            Target {
-                rect: [140.0, 84.0, 20.0, 20.0],
-                kind: Kind::Button,
-            }, // Friends
-            button(164.0, 84.0),  // Realms
-        ];
-        assert_eq!(tab_order(&targets), vec![2, 3, 4, 0, 1]);
+    fn tab_walks_groups_in_order_and_mounted_children_in_insertion_order() {
+        let bottom = Target {
+            kind: Kind::Mounted {
+                id: 1,
+                field: false,
+            },
+            ..button(10.0, 100.0)
+        };
+        let top = Target {
+            kind: Kind::Mounted {
+                id: 2,
+                field: false,
+            },
+            ..button(10.0, 20.0)
+        };
+        let warning = button(240.0, 120.0);
+        let targets = [bottom, warning, top];
+        let group = |target: &Target| if *target == warning { -10 } else { 0 };
+        let next = |from, forward| grouped_tab_step(&targets, from, forward, group);
+        assert_eq!(next(None, true), Some(1));
+        assert_eq!(next(Some(warning), true), Some(0));
+        assert_eq!(next(Some(bottom), true), Some(2));
+        assert_eq!(next(None, false), Some(2));
+        assert_eq!(next(Some(top), false), Some(0));
+        assert_eq!(next(Some(bottom), false), Some(1));
     }
 
     #[test]

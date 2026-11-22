@@ -2,7 +2,7 @@
 //! field through the same sinks the keyboard and `sunrise-ctl type` use.
 //! The window only asks the OS for an input method while such a field has
 //! focus, so movement keys keep arriving as plain key events.
-use super::{Game, Screen, books::BookScreen, screen_build::ObservedScreen};
+use super::{Game, Screen, screen_build::ObservedScreen};
 use sunrise_client::{
     hud::HudBatch,
     preedit::{self, PreeditEvent},
@@ -41,8 +41,14 @@ impl HeldKeyText {
 impl Game<'_> {
     /// Whether a vanilla (non-mounted) text box has focus right now.
     pub(super) fn vanilla_text_field_focused(&mut self) -> bool {
-        if self.dialog_open() {
-            return self.dialog_has_text_field();
+        match self.observed_overlay_now() {
+            Some("dialog") => return self.dialog_typing(),
+            Some("sign_editor" | "book_edit" | "book_sign") => return true,
+            Some(_) => return false,
+            None => {}
+        }
+        if self.remote_loading() {
+            return false;
         }
         if self.screen == Screen::Playing
             && let Some(title) = self.title.as_mut()
@@ -51,9 +57,6 @@ impl Game<'_> {
             // rule's box (`has_caret_field` asks the rules screen itself, and
             // `title_edit` types into it).
             return title.has_caret_field() || title.focused_field().is_some();
-        }
-        if self.sign_edit.is_some() || matches!(self.book, Some(BookScreen::Edit { .. })) {
-            return true;
         }
         match self.screen {
             Screen::Chat | Screen::CommandBlock | Screen::Social => true,
