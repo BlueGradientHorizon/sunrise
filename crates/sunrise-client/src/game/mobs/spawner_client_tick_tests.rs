@@ -7,6 +7,7 @@
 //! random's state.
 use super::*;
 use std::sync::Arc;
+use sunrise_client::block_entity_anim::Ticker;
 use sunrise_client::chunk::block_entity::{Next, SpawnData, Spawner, TrialSpawner, Vault};
 use sunrise_core::nbt::Tag;
 
@@ -18,10 +19,18 @@ use sunrise_world::registry::BlockStateId;
 /// makes them).
 const COMMITTED: &str = include_str!("../../../../../docs/parity/block-entity-client-ticks.jsonl");
 /// The packets' block entity type ids: their index here.
-const TYPES: [&str; 3] = [
+const TYPES: [&str; 11] = [
     "minecraft:mob_spawner",
     "minecraft:trial_spawner",
     "minecraft:vault",
+    "minecraft:campfire",
+    "minecraft:conduit",
+    "minecraft:beacon",
+    "minecraft:potent_sulfur",
+    "minecraft:chest",
+    "minecraft:shulker_box",
+    "minecraft:bell",
+    "minecraft:enchanting_table",
 ];
 const PLAYER: [i32; 4] = [0x5355_4e52, 0x4953_4500, 0, 1];
 
@@ -46,16 +55,7 @@ fn client_ticks_match_the_vanilla_cases() {
             .collect(),
         None => committed.iter().map(|row| row["case"].clone()).collect(),
     };
-    crate::game::native_entity_refs::tests::with_client_game(|game| {
-        game.settings.render_distance = 32;
-        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-        game.connect_local(pipe, "ClientTick").unwrap();
-        let remote = game.remote.as_mut().unwrap();
-        remote.logged_in = true;
-        Arc::make_mut(&mut remote.builtin).registries.insert(
-            "minecraft:block_entity_type".into(),
-            sunrise_protocol::registry::Ids::from_names(TYPES.map(str::to_owned).to_vec()),
-        );
+    with_remote_game(|game| {
         let mut reordered = false;
         let logs: Vec<String> = cases
             .iter()
@@ -89,6 +89,24 @@ fn client_ticks_match_the_vanilla_cases() {
                 assert!(reordered, "no case sends a column out of its map's order");
             }
         }
+    });
+}
+
+/// A client of a server with the block entity types of `TYPES`, for `test`. Resource loading
+/// publishes the block namespaces process-wide: they are put back when it returns.
+fn with_remote_game(test: impl FnOnce(&mut Game<'_>)) {
+    let _published = crate::game::game_tests::tests::published();
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        game.settings.render_distance = 32;
+        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+        game.connect_local(pipe, "ClientTick").unwrap();
+        let remote = game.remote.as_mut().unwrap();
+        remote.logged_in = true;
+        Arc::make_mut(&mut remote.builtin).registries.insert(
+            "minecraft:block_entity_type".into(),
+            sunrise_protocol::registry::Ids::from_names(TYPES.map(str::to_owned).to_vec()),
+        );
+        test(game);
     });
 }
 
@@ -148,6 +166,70 @@ fn client_tick_entity(game: &Game<'_>, e: &serde_json::Value) -> (BlockStateId, 
                 ..Default::default()
             })),
         ),
+        "campfire" => (
+            "minecraft:campfire",
+            3,
+            vec![
+                ("facing", text("facing")),
+                ("lit", flag("lit")),
+                ("signal_fire", flag("signal")),
+            ],
+            BlockEntity::Campfire(Box::new(sunrise_client::chunk::block_entity::Campfire {
+                items: std::array::from_fn(|i| {
+                    e["items"][i]
+                        .as_bool()
+                        .unwrap()
+                        .then(|| sunrise_client::items::ItemStack::new("minecraft:porkchop", 1))
+                }),
+                ..Default::default()
+            })),
+        ),
+        "conduit" => (
+            "minecraft:conduit",
+            4,
+            vec![("waterlogged", "true".to_owned())],
+            BlockEntity::Conduit(None),
+        ),
+        "beacon" => (
+            "minecraft:beacon",
+            5,
+            vec![],
+            BlockEntity::Beacon(Default::default()),
+        ),
+        "potent_sulfur" => (
+            "minecraft:potent_sulfur",
+            6,
+            vec![("potent_sulfur_state", text("state"))],
+            BlockEntity::PotentSulfur(Default::default()),
+        ),
+        // The animated block entities (`block_entity_anims`): no data the tick reads.
+        "chest" => (
+            "minecraft:chest",
+            7,
+            vec![("facing", text("facing"))],
+            BlockEntity::Chest(vec![None; 27]),
+        ),
+        "shulker" => (
+            "minecraft:shulker_box",
+            8,
+            vec![("facing", text("facing"))],
+            BlockEntity::Chest(vec![None; 27]),
+        ),
+        "bell" => (
+            "minecraft:bell",
+            9,
+            vec![
+                ("facing", text("facing")),
+                ("attachment", "floor".to_owned()),
+            ],
+            BlockEntity::Bell,
+        ),
+        "enchanting_table" => (
+            "minecraft:enchanting_table",
+            10,
+            vec![],
+            BlockEntity::EnchantingTable,
+        ),
         _ => (
             "minecraft:vault",
             2,
@@ -191,8 +273,28 @@ fn send_column(
     entities: &[(Pos, BlockStateId, i32, BlockEntity)],
     at: (i32, i32),
     listed: &[usize],
+    fills: &serde_json::Value,
 ) -> bool {
     let mut chunk = sunrise_client::chunk::Chunk::empty(at.0, at.1);
+    // The case's fills over this column, then its block entities' own states.
+    for fill in fills.as_array().into_iter().flatten() {
+        let corner = |k: &str, i: usize| int(&fill[k][i]);
+        let block = game
+            .pack
+            .assets
+            .registry
+            .default_state(fill["block"].as_str().unwrap())
+            .unwrap();
+        for x in corner("from", 0)..=corner("to", 0) {
+            for y in corner("from", 1)..=corner("to", 1) {
+                for z in corner("from", 2)..=corner("to", 2) {
+                    if column((x, y, z)) == at {
+                        chunk.set(x & 15, y, z & 15, block.0);
+                    }
+                }
+            }
+        }
+    }
     let mut infos = Vec::new();
     for &i in listed {
         let (k, state, kind, entity) = &entities[i];
@@ -276,12 +378,16 @@ fn event_stream(game: &mut Game<'_>, particles_at_start: u64) -> Vec<serde_json:
     out
 }
 
-fn client_tick_case(
+/// A case's start: the level fresh, its player and time set, and its columns sent as chunk
+/// packets. Returns its block entities.
+fn start_case(
     game: &mut Game<'_>,
     case: &serde_json::Value,
     reordered: &mut bool,
-) -> serde_json::Value {
+) -> Vec<(Pos, BlockStateId, i32, BlockEntity)> {
     game.forget_all_remote_columns();
+    // The last case's animation state: a level starts with none.
+    game.be_anims.retain_present(&[]);
     let entities: Vec<_> = case["entities"]
         .as_array()
         .unwrap()
@@ -306,6 +412,9 @@ fn client_tick_case(
     game.level.player_uuid = Some(PLAYER);
     game.particles
         .seed_randoms(0, case["seed"].as_i64().unwrap(), 0);
+    // `EnchantingTableBlockEntity.RANDOM`, shared by every table: one stream per case.
+    game.be_anims.book_random =
+        sunrise_core::random::LegacyRandom::new(case["seed"].as_i64().unwrap());
     game.world.game_time = case["gameTime"].as_i64().unwrap();
     // The columns arrive in the order their first block entity is listed, each listing its
     // block entities in the case's order.
@@ -317,10 +426,114 @@ fn client_tick_case(
         }
     }
     for (at, listed) in &columns {
-        *reordered |= send_column(game, &entities, *at, listed);
+        *reordered |= send_column(game, &entities, *at, listed, &case["fills"]);
     }
     game.particles.requested = Some(Vec::new());
     game.audio.capture = Some(Vec::new());
+    entities
+}
+
+/// What the ticks left of each beacon and animated block entity, in the oracle's rows: ints as
+/// numbers, floats as raw bits, sorted as `Vec3i.compareTo` does.
+fn animation_states(game: &Game<'_>) -> Vec<serde_json::Value> {
+    use serde_json::json;
+    let mut rows: Vec<_> = (&game.world.block_entities)
+        .into_iter()
+        .filter_map(|(k, e)| {
+            let pos = [k.0, k.1, k.2];
+            let anims = &game.be_anims;
+            let colour = |sections: &[(u32, i32)]| -> Vec<_> {
+                sections
+                    .iter()
+                    .map(|(c, h)| json!([c & 0xFF_FFFF, h]))
+                    .collect()
+            };
+            let ticker = anims.ticker(game.world.block(k.0, k.1, k.2).0);
+            let [x, y, z] = pos;
+            let row = match (e, ticker) {
+                (BlockEntity::Beacon(b), _) => json!([
+                    x,
+                    y,
+                    z,
+                    "beacon",
+                    b.levels,
+                    b.last_check_y,
+                    colour(&b.sections),
+                    colour(&b.checking)
+                ]),
+                (_, Some(Ticker::Lid)) => {
+                    let lid = anims.chests.get(&pos).cloned().unwrap_or_default();
+                    json!([
+                        x,
+                        y,
+                        z,
+                        "chest",
+                        hex_f32(lid.get_openness(1.0)),
+                        hex_f32(lid.get_openness(0.0))
+                    ])
+                }
+                (_, Some(Ticker::Shulker { .. })) => {
+                    let s = anims.shulkers.get(&pos).cloned().unwrap_or_default();
+                    json!([
+                        x,
+                        y,
+                        z,
+                        "shulker",
+                        hex_f32(s.progress),
+                        hex_f32(s.progress_old)
+                    ])
+                }
+                (_, Some(Ticker::Bell)) => {
+                    let b = anims.bells.get(&pos).cloned().unwrap_or_default();
+                    json!([x, y, z, "bell", b.ticks, i32::from(b.shaking)])
+                }
+                (_, Some(Ticker::Book)) => {
+                    let b = anims.books.get(&pos).cloned().unwrap_or_default();
+                    json!([
+                        x,
+                        y,
+                        z,
+                        "book",
+                        b.time,
+                        hex_f32(b.flip),
+                        hex_f32(b.o_flip),
+                        hex_f32(b.flip_t),
+                        hex_f32(b.flip_a),
+                        hex_f32(b.open),
+                        hex_f32(b.o_open),
+                        hex_f32(b.rot),
+                        hex_f32(b.o_rot),
+                        hex_f32(b.t_rot)
+                    ])
+                }
+                (_, Some(Ticker::Conduit)) => {
+                    let c = anims.conduits.get(&pos).cloned().unwrap_or_default();
+                    json!([
+                        x,
+                        y,
+                        z,
+                        "conduit",
+                        c.tick_count,
+                        hex_f32(c.active_rotation),
+                        i32::from(c.is_active),
+                        i32::from(c.is_hunting)
+                    ])
+                }
+                _ => return None,
+            };
+            Some(((k.1, k.2, k.0), row))
+        })
+        .collect();
+    rows.sort_by_key(|(order, _)| *order);
+    rows.into_iter().map(|(_, row)| row).collect()
+}
+
+fn client_tick_case(
+    game: &mut Game<'_>,
+    case: &serde_json::Value,
+    reordered: &mut bool,
+) -> serde_json::Value {
+    let entities = start_case(game, case, reordered);
     let mut ticks = Vec::new();
     for t in 0..case["ticks"].as_i64().unwrap() {
         let particles_at_start = sunrise_client::particles::requested_count();
@@ -342,16 +555,34 @@ fn client_tick_case(
                         .iter()
                         .map(|i| i.as_u64().unwrap() as usize)
                         .collect();
-                    *reordered |= send_column(game, &entities, (int(&op[1]), int(&op[2])), &listed);
+                    *reordered |= send_column(
+                        game,
+                        &entities,
+                        (int(&op[1]), int(&op[2])),
+                        &listed,
+                        &case["fills"],
+                    );
                 }
                 "event" => {
                     let pos = [int(&op[2][0]), int(&op[2][1]), int(&op[2][2])];
                     game.level_event_at(int(&op[1]), pos, int(&op[3]));
                 }
+                // `ClientboundBlockEventPacket`: the block's `triggerEvent`.
+                "blockEvent" => {
+                    let pos = [int(&op[1][0]), int(&op[1][1]), int(&op[1][2])];
+                    game.block_entity_event(pos, int(&op[2]), int(&op[3]));
+                }
                 other => panic!("unknown case event {other}"),
             }
         }
-        game.tick_client_block_entities();
+        // `path: remote` runs the whole phase, so a pass outside the ticker list shows.
+        if case["path"] == "remote" {
+            game.tick_remote_block_entities();
+            // `Minecraft.tick`: the particle engine follows the block entities.
+            game.tick_particle_engine();
+        } else {
+            game.tick_client_block_entities();
+        }
         let events = event_stream(game, particles_at_start);
         // Vec3i.compareTo: y, then z, then x.
         let mut spins: Vec<_> = (&game.world.block_entities)
@@ -370,10 +601,12 @@ fn client_tick_case(
             })
             .collect();
         spins.sort_by_key(|(order, _)| *order);
+        let states = animation_states(game);
         // Keys in their sorted order, as the harness hashes vanilla's log.
         ticks.push(serde_json::json!({
             "events": events,
             "random": format!("{:x}", game.particles.level_random().state()),
+            "states": states,
             "spins": spins.into_iter().map(|(_, s)| s).collect::<Vec<_>>(),
         }));
         game.world.game_time += 1;
@@ -381,4 +614,241 @@ fn client_tick_case(
     game.particles.requested = None;
     game.audio.capture = None;
     serde_json::json!({ "ticks": ticks })
+}
+
+// The ticker list's order and the animated block entities' lifetimes, case by case (not vanilla
+// logs: each states the vanilla rule it follows).
+
+fn who(at: [f64; 3]) -> serde_json::Value {
+    serde_json::json!({ "pos": at, "dead": false, "spectator": false })
+}
+
+fn case_of(
+    time: i64,
+    at: [f64; 3],
+    entities: serde_json::Value,
+    fills: serde_json::Value,
+) -> serde_json::Value {
+    serde_json::json!({
+        "name": "own", "seed": 7, "gameTime": time, "ticks": 0, "player": who(at),
+        "entities": entities, "fills": fills,
+    })
+}
+
+fn campfire_json(pos: [i32; 3], lit: bool) -> serde_json::Value {
+    serde_json::json!({ "kind": "campfire", "pos": pos, "items": [true, true, true, true],
+        "lit": lit, "signal": false, "facing": "north" })
+}
+
+fn spawner_json(pos: [i32; 3]) -> serde_json::Value {
+    serde_json::json!({ "kind": "spawner", "pos": pos, "range": -1, "delay": 20 })
+}
+
+/// One tick of a client's whole block entity phase (`tick_remote_block_entities`), then the
+/// particle engine as `tick_remote_player` runs it: what it requested, and the game time moves on.
+fn tick_phase(game: &mut Game<'_>) -> Vec<serde_json::Value> {
+    let start = sunrise_client::particles::requested_count();
+    game.tick_remote_block_entities();
+    game.tick_particle_engine();
+    let events = event_stream(game, start);
+    game.world.game_time += 1;
+    events
+}
+
+fn x_of(event: &serde_json::Value) -> f64 {
+    f64::from_bits(u64::from_str_radix(event[2].as_str().unwrap(), 16).unwrap())
+}
+
+/// `LevelChunk.setBlockState` on an unlit campfire made before the first ticker pass: lit, its
+/// ticker (`CampfireBlock.getTicker`) is added at that moment, behind the spawner that arrived
+/// after it, and not ahead of it where the campfire arrived.
+#[test]
+#[ignore = "daily"]
+fn a_campfire_lit_before_the_first_ticker_pass_ticks_behind_the_spawner() {
+    with_remote_game(|game| {
+        let campfire = campfire_json([1, 64, 1], false);
+        let case = case_of(
+            1000,
+            [6.5, 64.0, 2.5],
+            serde_json::json!([campfire, spawner_json([5, 64, 1])]),
+            serde_json::json!([]),
+        );
+        start_case(game, &case, &mut false);
+        let lit = client_tick_entity(game, &campfire_json([1, 64, 1], true)).0;
+        game.world.set(1, 64, 1, lit).unwrap();
+        let (mut spawner_seen, mut campfire_seen) = (0, 0);
+        for _ in 0..60 {
+            let events = tick_phase(game);
+            let first_campfire = events.iter().position(|e| x_of(e) < 2.0);
+            let last_spawner = events.iter().rposition(|e| x_of(e) > 5.0);
+            campfire_seen += usize::from(first_campfire.is_some());
+            spawner_seen += usize::from(last_spawner.is_some());
+            if let (Some(c), Some(s)) = (first_campfire, last_spawner) {
+                assert!(
+                    s < c,
+                    "the lit campfire ticked ahead of the spawner: {events:?}"
+                );
+            }
+        }
+        assert!(
+            spawner_seen > 0 && campfire_seen > 0,
+            "{spawner_seen} {campfire_seen}"
+        );
+    });
+}
+
+/// `PotentSulfurBlockEntity.setLevel` stamps the eruption clock as the block entity joins the
+/// level, so a geyser received at 1000 whose first ticker pass is at 1005 plumes at 1020
+/// (`eruptionTime % 20`), not at 1005.
+#[test]
+#[ignore = "daily"]
+fn a_geyser_counts_its_eruption_from_the_tick_it_joined_the_level() {
+    with_remote_game(|game| {
+        let sulfur = serde_json::json!({ "kind": "potent_sulfur", "pos": [13, 64, 13],
+            "state": "erupting" });
+        let water = serde_json::json!([{ "from": [13, 65, 13], "to": [13, 67, 13],
+            "block": "minecraft:water" }]);
+        let case = case_of(1000, [6.5, 64.0, 2.5], serde_json::json!([sulfur]), water);
+        start_case(game, &case, &mut false);
+        game.world.game_time = 1005;
+        let mut plumes = Vec::new();
+        for time in 1005..1030 {
+            if tick_phase(game).iter().any(|e| e[1] == "minecraft:geyser") {
+                plumes.push(time);
+            }
+        }
+        assert_eq!(plumes, [1020]);
+    });
+}
+
+/// `DecoratedPotBlockEntity` has no ticker: the wobble a block event starts is kept for the
+/// pot's life, tick after tick, and drawn.
+#[test]
+#[ignore = "daily"]
+fn a_decorated_pots_wobble_survives_the_client_ticks() {
+    with_remote_game(|game| {
+        let pos = [8, 64, 8];
+        let case = case_of(
+            1000,
+            [6.5, 64.0, 2.5],
+            serde_json::json!([]),
+            serde_json::json!([]),
+        );
+        start_case(game, &case, &mut false);
+        game.streaming
+            .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+        let pot = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:decorated_pot")
+            .unwrap();
+        game.world.set(pos[0], pos[1], pos[2], pot).unwrap();
+        game.block_entity_event(pos, 1, 0);
+        for _ in 0..3 {
+            tick_phase(game);
+        }
+        let time = game.world.game_time;
+        let anim = game.be_anims.block_anim(pos, time, 0.5, Default::default());
+        assert!(
+            anim.wobble.is_some_and(|(_, progress)| progress > 0.0),
+            "{:?}",
+            anim.wobble
+        );
+        // Its block gone, so is the wobble.
+        game.world
+            .set(pos[0], pos[1], pos[2], game.world.air)
+            .unwrap();
+        tick_phase(game);
+        assert!(game.be_anims.pots.is_empty());
+    });
+}
+
+/// A conduit forgotten and sent again between two ticks is a new object (`ClientChunkCache.drop`,
+/// `replaceWithPacketData`): it starts its animation from nothing.
+#[test]
+#[ignore = "daily"]
+fn a_conduit_sent_again_between_ticks_starts_fresh() {
+    with_remote_game(|game| {
+        let conduit = serde_json::json!({ "kind": "conduit", "pos": [8, 64, 8] });
+        let case = case_of(
+            1000,
+            [6.5, 64.0, 2.5],
+            serde_json::json!([conduit]),
+            serde_json::json!([]),
+        );
+        let entities = start_case(game, &case, &mut false);
+        for _ in 0..3 {
+            tick_phase(game);
+        }
+        assert_eq!(game.be_anims.conduits[&[8, 64, 8]].tick_count, 3);
+        game.forget_remote_columns(&mut [(0, 0)].into_iter().collect(), true);
+        send_column(game, &entities, (0, 0), &[0], &case["fills"]);
+        tick_phase(game);
+        assert_eq!(game.be_anims.conduits[&[8, 64, 8]].tick_count, 1);
+    });
+}
+
+/// `ShulkerBoxBlockEntity.tick` pushes entities (`moveCollidedEntities`) in its own turn of
+/// `Level.tickBlockEntities`: a table after it reads the player where that push left it
+/// (`EnchantingTableBlockEntity.bookAnimationTick`, `getNearestPlayer`).
+#[test]
+#[ignore = "daily"]
+fn a_book_after_a_shulker_lid_reads_the_pushed_player() {
+    with_remote_game(|game| {
+        let shulker = serde_json::json!({ "kind": "shulker", "pos": [8, 64, 8], "facing": "east" });
+        let table = serde_json::json!({ "kind": "enchanting_table", "pos": [9, 64, 10] });
+        let case = case_of(
+            1000,
+            [9.3, 64.0, 8.5],
+            serde_json::json!([shulker, table]),
+            serde_json::json!([]),
+        );
+        start_case(game, &case, &mut false);
+        game.block_entity_event([8, 64, 8], 1, 1);
+        let before = game.player.as_ref().unwrap().position.x;
+        tick_phase(game);
+        let player = game.player.as_ref().unwrap().position;
+        assert!(
+            player.x > before,
+            "the lid did not push the player: {before} {}",
+            player.x
+        );
+        let book = &game.be_anims.books[&[9, 64, 10]];
+        let expected = (player.z - 10.5).atan2(player.x - 9.5) as f32;
+        assert!(
+            (book.t_rot - expected).abs() < 1e-5,
+            "{} {expected}",
+            book.t_rot
+        );
+    });
+}
+
+/// `Minecraft.tick` ticks the block entities, then the particle engine, whose tick ends by
+/// adding the particles requested so far: the smoke a campfire made is in the engine at the end
+/// of that same tick, not a tick later.
+#[test]
+#[ignore = "daily"]
+fn a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it() {
+    with_remote_game(|game| {
+        let case = case_of(
+            1000,
+            [6.5, 64.0, 8.5],
+            serde_json::json!([campfire_json([8, 64, 8], true)]),
+            serde_json::json!([]),
+        );
+        start_case(game, &case, &mut false);
+        // The engine makes the particles, not the harness's log.
+        game.particles.requested = None;
+        game.remote.as_mut().unwrap().loaded_sent = true;
+        for _ in 0..40 {
+            game.tick_remote().unwrap();
+            assert_eq!(
+                game.particles.pending_len(),
+                0,
+                "particles wait a tick to join the engine"
+            );
+        }
+        assert!(!game.particles.is_empty(), "the campfire made no smoke");
+    });
 }

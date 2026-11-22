@@ -1665,6 +1665,10 @@ pub(in crate::game) mod tests {
 
     /// Puts the process-wide block namespaces back as it found them.
     pub(in crate::game) struct Published(Option<Vec<String>>);
+    /// The block namespaces published now, put back when the guard drops.
+    pub(in crate::game) fn published() -> Published {
+        Published(sunrise_client::save::level_mods::block_namespaces())
+    }
     impl Drop for Published {
         fn drop(&mut self) {
             sunrise_client::save::level_mods::set_block_namespaces(self.0.take());

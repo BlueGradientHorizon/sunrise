@@ -92,6 +92,9 @@ impl Game<'_> {
         } else {
             self.streaming.insert_remote(&mut self.world, chunk);
         }
+        // Before any block entity joins: a state change before the first ticker pass (a campfire
+        // lit) must find which states tick, to join the list at that moment, not at its place.
+        self.ensure_client_ticking_states();
         sunrise_client::spans::time("unload_block_entities", || {
             self.world.block_entities.unload_column((x, z));
         });
