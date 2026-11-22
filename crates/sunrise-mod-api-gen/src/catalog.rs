@@ -61,6 +61,8 @@ pub enum PhaseContext {
     Worldgen,
     /// A chunk disk job, with no live world authority.
     ChunkDisk,
+    /// An item ability check from gameplay (`Host` + tags) or a loot predicate (tags + `LootParamsView`).
+    ItemAbility,
 }
 
 /// How a game hook borrows its receiver. Free dispatchers have no game receiver.

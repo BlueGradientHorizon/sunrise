@@ -13,24 +13,39 @@ impl LootToolAccess for ItemStack {
     }
 }
 
+impl sunrise_world::loot::LootAbilityTool for ItemStack {
+    fn item_id(&self) -> &str {
+        &self.item
+    }
+
+    fn is_empty(&self) -> bool {
+        self.count == 0 || &*self.item == "minecraft:air"
+    }
+
+    fn resident_scalars(&self) -> Option<(std::num::NonZeroU32, Option<u32>)> {
+        let count = std::num::NonZeroU32::new(self.count)?;
+        let damage = self
+            .carries_component(None, "minecraft:damage")
+            .then_some(self.damage);
+        Some((count, damage))
+    }
+
+    fn encode_components(&self) -> Option<sunrise_core::nbt::Tag> {
+        crate::item_data::encode_extra_components(self)
+    }
+}
+
 impl<R: RandomSource> LootContext<'_, R> {
     pub(super) fn stock_condition(&self, c: &Value) -> Option<bool> {
-        if !matches!(
-            c["type"].as_str(),
-            Some("neoforge:loot_table_id" | "neoforge:can_item_perform_ability")
-        ) {
-            return None;
-        }
-        let tool = (c["type"].as_str() == Some("neoforge:can_item_perform_ability"))
-            .then(|| {
-                self.held
-                    .filter(|s| s.count > 0 && &*s.item != "minecraft:air")
-                    .map(loot_of)
-            })
-            .flatten();
-        sunrise_world::loot::query::condition(c, &self.query, tool.as_ref(), |item, ability| {
-            self.items.vanilla_can_perform(item, ability)
-        })
+        sunrise_world::loot::query::condition(
+            c,
+            &self.query,
+            self.held
+                .map(|tool| tool as &dyn sunrise_world::loot::LootAbilityTool),
+            || self.roll_facts(),
+            self.items,
+            |item, ability| self.items.vanilla_can_perform(item, ability),
+        )
     }
     /// Non-raw completion splits after table functions, retaining the caller's
     /// context and random. Nested entries evaluate raw and never complete a query.

@@ -1,6 +1,6 @@
 //! One installer for the world library test binary; observations belong to each test thread.
 use super::*;
-use crate::loot::{self, LootContext, LootStack};
+use crate::loot::{self, LootContext, LootStack, LootToolAccess};
 struct QueryCodec;
 impl loot::types::Registry for QueryCodec {
     fn contains(&self, kind: &str, function: bool) -> bool {
@@ -80,13 +80,18 @@ pub(crate) fn install() {
                     }
                     _ => {}
                 },
-                loot_ability: |tool, ability, holds| {
-                    ABILITY
-                        .with(|v| *v.borrow_mut() = Some((tool.item.clone(), ability.to_owned())));
-                    if tool.item == "test:grant" && ability == "shears_dig" {
+                loot_ability: |tool, ability, facts, _tags, holds| {
+                    assert_eq!(
+                        facts.tool.map(LootToolAccess::item_id),
+                        Some(tool.item_id())
+                    );
+                    ABILITY.with(|v| {
+                        *v.borrow_mut() = Some((tool.item_id().to_owned(), ability.to_owned()))
+                    });
+                    if tool.item_id() == "test:grant" && ability == "shears_dig" {
                         *holds = true;
                     }
-                    if tool.item == "test:deny" {
+                    if tool.item_id() == "test:deny" {
                         *holds = false;
                     }
                 },

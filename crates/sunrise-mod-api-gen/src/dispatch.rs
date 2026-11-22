@@ -281,7 +281,7 @@ pub(super) fn emit<'a>(
                             "{table}(|| super::content::registry_keys::block_id({key}.block()))"
                         )
                     }
-                    "& ItemStack" => {
+                    "& ItemStack" | "ItemStackView < '_ >" => {
                         format!("{table}(|| super::content::registry_keys::item_id({key}.item()))")
                     }
                     "EffectKey" if table == "effect" => {
@@ -2866,6 +2866,64 @@ fn main() {{
             dispatch(&compact, "is_ladder")
                 .contains("=super::parts(HookId::IsLadder,\"is_ladder\");")
         );
+    }
+
+    #[test]
+    fn item_ability_context_with_api_carrier_borrows_stack_view() {
+        let hook = Hook {
+            name: "can_perform_action".into(),
+            contract: Contract::Listen,
+            receiver: Receiver::Associated,
+            dispatch: DispatchStyle::ApiCarrier,
+            context: Some(PhaseContext::ItemAbility),
+            scope: Some(crate::catalog::PartScope {
+                kind: crate::catalog::PartKind::Item,
+                key: "stack".into(),
+            }),
+            call: vec![
+                ("stack".into(), "ItemStackView<'_>".into()),
+                ("ability".into(), "&str".into()),
+                ("can_perform".into(), "&mut bool".into()),
+            ],
+            ..Hook::sample(
+                "sunrise_client::game::Game<'_>::native_can_perform_action",
+                Side::Both,
+            )
+        };
+        let emitted = emit(std::iter::once(&hook), &[], true).unwrap();
+        let part_traits: String = emitted
+            .part_traits
+            .get("ItemPart")
+            .unwrap()
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(part_traits.contains(
+            "fncan_perform_action(&self,context:&ItemAbilityContext<'_>,event:&mutCanPerformActionEvent<'_>)"
+        ));
+        let dispatch: String = emitted
+            .dispatch
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(dispatch.contains(
+            "pubfndispatch_can_perform_action(context:&ItemAbilityContext<'_>,call:calls::CanPerformActionCall<'_>)"
+        ));
+        assert!(dispatch.contains(
+            "pubstructCanPerformActionCall<'a>{pubstack:ItemStackView<'a>,pubability:&'astr,pubcan_perform:&'amutbool,}"
+        ));
+        assert!(dispatch.contains(
+            "pubstructCanPerformActionEvent<'a>{pubstack:ItemStackView<'a>,pubability:&'astr,pubcan_perform:bool,}"
+        ));
+        assert!(dispatch.contains("item_id(stack.item())"));
+        let fire: String = emitted
+            .fire
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(fire.contains(
+            "pub(super)fnfire_can_perform_action(context:&mod_api::ItemAbilityContext<'_>,call:mod_api::__private::CanPerformActionCall<'_>){mod_api::dispatch_can_perform_action(context,call);}"
+        ));
     }
 }
 fn contains_boundary(ty: &Type, names: &[&str]) -> bool {

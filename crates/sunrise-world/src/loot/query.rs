@@ -58,11 +58,47 @@ pub fn with_query<T>(query: Rc<LootQuery>, roll: impl FnOnce() -> T) -> T {
 pub fn current_query() -> Rc<LootQuery> {
     QUERY.with(|q| q.borrow().clone()).unwrap_or_default()
 }
+/// Borrowed tool stack for `neoforge:can_item_perform_ability` without eager conversion.
+pub trait LootAbilityTool {
+    /// Namespaced item identifier (for example `"minecraft:shears"`).
+    fn item_id(&self) -> &str;
+    /// Empty or air stacks never perform abilities and never dispatch listeners.
+    fn is_empty(&self) -> bool;
+    /// Present when the evaluator already holds a [`LootStack`].
+    fn as_loot_stack(&self) -> Option<&LootStack> {
+        None
+    }
+    /// Non-empty count and optional damage for a resident engine `ItemStack`.
+    fn resident_scalars(&self) -> Option<(std::num::NonZeroU32, Option<u32>)> {
+        None
+    }
+    /// Lazily encode extra components for a resident engine `ItemStack` only when projected.
+    fn encode_components(&self) -> Option<sunrise_core::nbt::Tag> {
+        None
+    }
+}
+
+impl LootAbilityTool for LootStack {
+    fn item_id(&self) -> &str {
+        &self.item
+    }
+
+    fn is_empty(&self) -> bool {
+        self.count <= 0 || self.item == "minecraft:air"
+    }
+
+    fn as_loot_stack(&self) -> Option<&LootStack> {
+        Some(self)
+    }
+}
+
 /// Recognise stock conditions before the mod-kind fallback, without drawing randomness.
-pub fn condition(
+pub fn condition<'a>(
     value: &serde_json::Value,
     query: &LootQuery,
-    tool: Option<&LootStack>,
+    tool: Option<&dyn LootAbilityTool>,
+    facts: impl FnOnce() -> super::LootContext<'a>,
+    tags: &dyn super::LootTags,
     default: impl Fn(&str, &str) -> bool,
 ) -> Option<bool> {
     match value["type"].as_str()? {
@@ -72,10 +108,11 @@ pub fn condition(
                 .is_some_and(|id| id == query.table_id()),
         ),
         "neoforge:can_item_perform_ability" => Some(
-            tool.zip(value["ability"].as_str())
+            tool.filter(|tool| !tool.is_empty())
+                .zip(value["ability"].as_str())
                 .is_some_and(|(tool, ability)| {
-                    let mut holds = default(&tool.item, ability);
-                    crate::native_load_hooks::loot_ability(tool, ability, &mut holds);
+                    let mut holds = default(tool.item_id(), ability);
+                    crate::native_load_hooks::loot_ability(tool, ability, facts, tags, &mut holds);
                     holds
                 }),
         ),

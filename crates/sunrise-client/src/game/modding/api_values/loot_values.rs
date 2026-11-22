@@ -193,27 +193,49 @@ fn project_queried_stack(
     super::project_stack(&materialized, metadata).ok()
 }
 
-struct LootAbilityHost;
-impl mod_api::Host for LootAbilityHost {}
-mod_api::impl_host_areas!(LootAbilityHost);
-
-pub(crate) fn dispatch_loot_ability(tool: &engine::LootStack, ability: &str, holds: &mut bool) {
-    if !mod_api::__private::item_listens(mod_api::HookId::CanPerformAction, &tool.item) {
+pub(crate) fn dispatch_loot_ability(
+    tool: &dyn engine::LootAbilityTool,
+    ability: &str,
+    facts: &engine::LootContext<'_>,
+    tags: &dyn engine::LootTags,
+    holds: &mut bool,
+) {
+    if tool.is_empty()
+        || !mod_api::__private::item_listens(mod_api::HookId::CanPerformAction, tool.item_id())
+    {
         return;
     }
-    let Ok(stack) = queried_stack(tool) else {
+    let tags = crate::game::loot_tags::LootTags(tags);
+    let context = mod_api::ItemAbilityContext::from_loot(&tags, loot_params(*facts));
+    if let Some(loot_stack) = tool.as_loot_stack() {
+        let Some(stack) = queried_inventory_view(loot_stack) else {
+            return;
+        };
+        mod_api::dispatch_can_perform_action(
+            &context,
+            mod_api::__private::CanPerformActionCall {
+                stack,
+                ability,
+                can_perform: holds,
+            },
+        );
+        return;
+    }
+    let Some((count, damage)) = tool.resident_scalars() else {
         return;
     };
-    mod_api::dispatch_can_perform_action(&LootAbilityHost, &stack, ability, holds);
-}
-
-fn queried_stack(stack: &engine::LootStack) -> Result<mod_api::ItemStack, LootValueError> {
-    if stack.count <= 0 || stack.damage < 0 {
-        return Err(LootValueError::InvalidPatch);
-    }
-    sunrise_items::items::ItemStack::from_loot(stack)
-        .try_into_api()
-        .map_err(|_| LootValueError::InvalidPatch)
+    let Some(key) = mod_api::__private::item_key(tool.item_id()) else {
+        return;
+    };
+    let project = |metadata| super::projected_stack(metadata, tool.encode_components()).ok();
+    mod_api::dispatch_can_perform_action(
+        &context,
+        mod_api::__private::CanPerformActionCall {
+            stack: mod_api::ItemStackView::resident((key, count, damage), &project),
+            ability,
+            can_perform: holds,
+        },
+    );
 }
 
 #[cfg(test)]

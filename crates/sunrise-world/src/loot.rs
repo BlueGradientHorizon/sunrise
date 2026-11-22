@@ -33,6 +33,7 @@ mod root;
 pub mod types;
 mod views;
 pub use fill::ContainerLootContext;
+pub use query::LootAbilityTool;
 #[path = "loot/tags.rs"]
 mod loot_tags;
 pub use loot_tags::LootTags;
@@ -1429,11 +1430,27 @@ impl<R: RandomSource> Context<'_, R> {
         }
     }
     fn condition(&mut self, c: &Value) -> bool {
-        if let Some(holds) =
-            query::condition(c, &self.query, self.query.tool.as_ref(), |item, ability| {
+        if let Some(holds) = query::condition(
+            c,
+            &self.query,
+            self.query
+                .tool
+                .as_ref()
+                .map(|tool| tool as &dyn query::LootAbilityTool),
+            || {
+                query_context::roll_facts(
+                    &self.query,
+                    self.place.as_deref(),
+                    self.entity,
+                    self.biome,
+                    self.luck,
+                )
+            },
+            self.data,
+            |item, ability| {
                 crate::native_load_hooks::item_ability_default(item, ability, self.data)
-            })
-        {
+            },
+        ) {
             return holds;
         }
         let data = self.data;

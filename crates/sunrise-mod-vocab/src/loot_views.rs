@@ -5,7 +5,7 @@ use serde_json::Value;
 
 // hidden: the engine lends its resident parameter rows; mods read LootParamsView.
 #[doc(hidden)]
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 pub struct LootParamsParts<'a> {
     pub queried_table_id: Option<&'a str>,
     pub queried_stack: Option<QueriedStack<'a>>,
@@ -38,6 +38,10 @@ impl<'a> LootParamsView<'a> {
     #[doc(hidden)]
     pub fn new(parts: LootParamsParts<'a>, project_name: NameProjection) -> Self {
         Self(parts, project_name)
+    }
+
+    pub(crate) fn reborrow(&self) -> LootParamsView<'_> {
+        Self(self.0, self.1)
     }
 
     /// The original queried table id. The first id wins, nested rolls never set it,

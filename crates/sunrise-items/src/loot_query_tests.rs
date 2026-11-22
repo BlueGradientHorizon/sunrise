@@ -292,13 +292,18 @@ fn queried_context_and_ability_reach_native_adapter() {
             },
             loot_table_load: |_, _, _| {},
             modify_default_components: |_, _, _| {},
-            loot_ability: |tool, ability, holds| {
-                OBSERVED_ABILITY
-                    .with(|v| *v.borrow_mut() = Some((tool.item.clone(), ability.to_owned())));
-                if tool.item == "test:grant" && ability == "shears_dig" {
+            loot_ability: |tool, ability, facts, _tags, holds| {
+                assert_eq!(
+                    facts.tool.map(LootToolAccess::item_id),
+                    Some(tool.item_id())
+                );
+                OBSERVED_ABILITY.with(|v| {
+                    *v.borrow_mut() = Some((tool.item_id().to_owned(), ability.to_owned()))
+                });
+                if tool.item_id() == "test:grant" && ability == "shears_dig" {
                     *holds = true;
                 }
-                if tool.item == "test:deny" {
+                if tool.item_id() == "test:deny" {
                     *holds = false;
                 }
             },

@@ -80,6 +80,7 @@ pub(super) fn context_param(hook: &Hook) -> Option<HostParam> {
             PhaseContext::Loop => "&dyn LoopContext",
             PhaseContext::Worldgen => "&dyn WorldgenHost",
             PhaseContext::ChunkDisk => "&dyn ChunkDiskHost",
+            PhaseContext::ItemAbility => "&ItemAbilityContext<'_>",
         }
         .into(),
         call: "context",
@@ -93,6 +94,7 @@ pub(super) fn phase_engine_type(phase: PhaseContext) -> &'static str {
         PhaseContext::Loop => "&sunrise_world::native_load_context::LoopContext",
         PhaseContext::Worldgen => "&mod_api::OwningWorldgen<'_>",
         PhaseContext::ChunkDisk => "&mod_api::OwningChunkDisk<'_>",
+        PhaseContext::ItemAbility => "&mod_api::ItemAbilityContext<'_>",
     }
 }
 
@@ -165,6 +167,7 @@ mod tests {
             (PhaseContext::Loop, "&dyn LoopContext"),
             (PhaseContext::Worldgen, "&dyn WorldgenHost"),
             (PhaseContext::ChunkDisk, "&dyn ChunkDiskHost"),
+            (PhaseContext::ItemAbility, "&ItemAbilityContext<'_>"),
         ] {
             let hook = Hook {
                 context: Some(kind),

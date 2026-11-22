@@ -1521,6 +1521,7 @@ fn hook_records(hooks: &[catalog::Hook], types: &[Type], notes: &mut Vec<String>
                         catalog::PhaseContext::Loop => "loop",
                         catalog::PhaseContext::Worldgen => "worldgen",
                         catalog::PhaseContext::ChunkDisk => "chunk_disk",
+                        catalog::PhaseContext::ItemAbility => "item_ability",
                     }
                     .to_owned()
                 }),
