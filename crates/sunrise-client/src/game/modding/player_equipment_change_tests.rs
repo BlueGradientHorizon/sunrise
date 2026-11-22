@@ -40,7 +40,8 @@ impl Hooks for Counter {
             .entity
             .entity()
             .kind(host)
-            .and_then(|kind| kind.id(host));
+            .and_then(|kind| kind.id(host))
+            .map(|id| id.as_str().to_owned());
         self.heard.lock().unwrap().push((
             event.entity.id(),
             kind,
