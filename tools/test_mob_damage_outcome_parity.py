@@ -10,23 +10,43 @@ import subprocess
 try:
     from . import lab, oracle_harness, test_rust_parity as base
     from .integration_env import run_game
+    from .test_command_exec_parity import install_datapack_fixtures
 except ImportError:
     import lab
     import oracle_harness
     import test_rust_parity as base
     from integration_env import run_game
+    from test_command_exec_parity import install_datapack_fixtures
 
 RECORDING = 'mob_damage_outcome'
 
 
+def install_pack(world, jar):
+    install_datapack_fixtures(world, {}, {'combat_probe:ready': 'return 1\n'}, jar)
+    enchantments = world / 'datapacks/command-selector-fixture/data/combat_probe/enchantment'
+    enchantments.mkdir(parents=True)
+    for key, requirements in [
+        ('source_guard', {'type': 'minecraft:entity_properties', 'entity': 'attacker',
+                          'predicate': {'minecraft:entity_type': 'minecraft:zombie'}}),
+        ('inner_guard', {'type': 'minecraft:random_chance', 'chance': 0.5}),
+    ]:
+        (enchantments / f'{key}.json').write_text(json.dumps({
+            'description': 'Combat fixture', 'supported_items': 'minecraft:leather_boots',
+            'weight': 1, 'max_level': 1, 'anvil_cost': 1, 'slots': ['feet'],
+            'min_cost': {'base': 1, 'per_level_above_first': 0},
+            'max_cost': {'base': 1, 'per_level_above_first': 0},
+            'effects': {'minecraft:damage_immunity': [{'effect': {}, 'requirements': requirements}]},
+        }), encoding='utf-8')
+
+
 def scene():
     ops = []
-    fields = {}
+    fields = []
 
     def command(cmd, field=None, result=None):
         ops.append({'op': 'cmd', 'cmd': '/' + cmd, 'record': field is not None})
         if field is not None:
-            fields[(len(fields), ops[-1]['cmd'])] = field, result
+            fields.append((ops[-1]['cmd'], field, result))
 
     command('tick freeze')
     command('gamerule spawn_mobs false')
@@ -50,8 +70,35 @@ def scene():
         command(f'damage {uuid} 2 minecraft:{damage} at {x + 1.5} 100 5.5', f'{name}/hit', accepts)
         for key in ['Health', 'HurtTime', 'Motion[0]', 'Motion[1]', 'Motion[2]']:
             command(f'data get entity {uuid} {key}', f'{name}/{key}', True)
+    command('function combat_probe:ready', 'source_guard/pack', True)
+    zombie = '000000cb-0000-0000-0000-000000000014'
+    command('summon zombie 13.5 100 3.5 {UUID:[I;203,0,0,20],NoAI:1b,NoGravity:1b}', 'source_guard/attacker', True)
+    guard_boot = boot.replace('minecraft:frost_walker', 'combat_probe:source_guard')
+    for n, (attacker, accepts) in enumerate([(zombie, False), ('@s', True)], 22):
+        uuid = f'000000cb-0000-0000-0000-{n:012x}'
+        case = f'source_guard/{n}'
+        command(f'summon pig 12.5 100 {n - 15}.5 {{UUID:[I;203,0,0,{n}],NoAI:1b,NoGravity:1b,'
+                f'Health:10f,equipment:{{feet:{guard_boot}}}}}', f'{case}/summon', True)
+        command(f'execute if data entity {uuid} equipment.feet.components."minecraft:enchantments".'
+                '"combat_probe:source_guard"', f'{case}/equipped', True)
+        command(f'damage {uuid} 2 minecraft:mob_attack by {attacker}', f'{case}/hit', accepts)
+        for key in ['Health', 'HurtTime']:
+            command(f'data get entity {uuid} {key}', f'{case}/{key}', True)
+
+    inner = '000000cb-0000-0000-0000-000000000018'
+    inner_boot = boot.replace('minecraft:frost_walker', 'combat_probe:inner_guard')
+    command('summon pig 4.5 100 8.5 {UUID:[I;203,0,0,24],NoAI:1b,NoGravity:1b,'
+            f'Health:10f,equipment:{{feet:{inner_boot}}}}}', 'inner_guard/summon', True)
+    command(f'execute if data entity {inner} equipment.feet.components."minecraft:enchantments".'
+            '"combat_probe:inner_guard"', 'inner_guard/equipped', True)
+    # This seed makes the first level-random chance fail and the second pass.
+    ops.append({'op': 'mob_damage_state', 'uuid': inner, 'level_seed': 1, 'label': 'inner_guard/before'})
+    fields.append(('inner_guard/before', 'inner_guard/before', None))
+    command(f'damage {inner} 2 minecraft:generic at 5.5 100 8.5', 'inner_guard/hit', True)
+    for key in ['Health', 'HurtTime', 'Motion[0]', 'Motion[1]', 'Motion[2]']:
+        command(f'data get entity {inner} {key}', f'inner_guard/{key}', True)
+
     command('scoreboard objectives add resisted minecraft.custom:minecraft.damage_dealt_resisted')
-    command('scoreboard players set @s resisted 0')
     arrow = '000000cb-0000-0000-0000-000000000010'
     command('summon arrow 14.5 100 5.5 {UUID:[I;203,0,0,16],NoGravity:1b}', 'projectile/summon', True)
     other = '000000cb-0000-0000-0000-000000000011'
@@ -68,11 +115,12 @@ def scene():
         command(f'summon pig {n - 28}.5 100 12.5 {{UUID:[I;203,0,0,{n}],NoAI:1b,NoGravity:1b}}',
                 f'{name}/victim', True)
         command(f'effect give {uuid} minecraft:resistance infinite 0 true', f'{name}/effect', True)
-        amount = '0.125' if name == 'rounded_zero' else '5.25'
+        rounded_zero = name == 'rounded_zero'
+        command('scoreboard players reset @s resisted' if rounded_zero else 'scoreboard players set @s resisted 0')
+        amount = '0.125' if rounded_zero else '5.25'
         command(f'damage {uuid} {amount} minecraft:{damage} {source}', f'{name}/hit', True)
         command(f'data get entity {uuid} Health', f'{name}/Health', True)
-        ops.append({'op': 'cmd', 'cmd': '/scoreboard players get @s resisted'})
-        fields[(len(fields), ops[-1]['cmd'])] = f'{name}/stat', True
+        command('scoreboard players get @s resisted', f'{name}/stat', True)
 
     villager = '000000cb-0000-0000-0000-000000000040'
     command('setblock 8 100 8 red_bed[part=head,facing=north,occupied=true] strict')
@@ -82,10 +130,10 @@ def scene():
     command(f'damage {villager} 4 minecraft:generic at 10.5 100 8.5', 'wake/seed_hit', True)
     command(f'data merge entity {villager} {{sleeping_pos:[I;8,100,8]}}', 'wake/sleep', True)
     ops.append({'op': 'mob_damage_state', 'uuid': villager, 'no_action_time': 611, 'label': 'wake/before'})
-    fields[(len(fields), 'wake/before')] = 'wake/before', None
+    fields.append(('wake/before', 'wake/before', None))
     command(f'damage {villager} 1 minecraft:generic at 10.5 100 8.5', 'wake/weak_hit', False)
     ops.append({'op': 'mob_damage_state', 'uuid': villager, 'label': 'wake/after'})
-    fields[(len(fields), 'wake/after')] = 'wake/after', None
+    fields.append(('wake/after', 'wake/after', None))
     command(f'execute unless data entity {villager} sleeping_pos', 'wake/cleared', True)
     command('execute if block 8 100 8 red_bed[part=head,facing=north,occupied=false]', 'wake/bed', True)
     command(f'data get entity {villager} Brain.memories."minecraft:last_woken".value', 'wake/last_woken', True)
@@ -94,11 +142,10 @@ def scene():
 
 def observed(path, fields):
     records = [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines()]
-    if [(i, row['cmd']) for i, row in enumerate(records)] != list(fields):
+    if [row['cmd'] for row in records] != [cmd for cmd, _, _ in fields]:
         raise ValueError('Incomplete or reordered mob damage recording')
     observations = {}
-    for i, row in enumerate(records):
-        field, expected_success = fields[(i, row['cmd'])]
+    for row, (_, field, expected_success) in zip(records, fields, strict=True):
         if 'state' in row:
             state = row['state']
             if field == 'wake/before':
@@ -141,6 +188,7 @@ def main():
     script.write_text(''.join(json.dumps(op) + '\n' for op in ops), encoding='utf-8')
     lock, jars, libraries = base.verify_artifacts()
     dependencies = os.pathsep.join(map(str, [jars['server'], *libraries]))
+    install_pack(work / 'universe/harness', jars['server'])
     classes = work / 'classes'
     oracle = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaCommandExecOracle.java'
     oracle_harness.run_logged(['javac', '--release', lock['minecraft']['java_major'], '-proc:none',
@@ -150,6 +198,9 @@ def main():
                             [work / 'universe', script, vanilla, '1'], 'java',
                             jvm=['-Dsunrise.parity.flat=true'])
     expected = observed(vanilla, fields)
+    if not (expected['inner_guard/Health'] == expected['inner_guard/before/health']
+            and expected['inner_guard/HurtTime'] > expected['inner_guard/before/hurt_time']):
+        raise ValueError('Vanilla second predicate fixture must keep health but take the outer hit')
     if not (expected['wake/before/sleeping'] and not expected['wake/after/sleeping']
             and expected['wake/before/cooldown'] == expected['wake/after/cooldown']
             and expected['wake/before/health'] == expected['wake/after/health']
@@ -165,7 +216,7 @@ def main():
                                    '-p', 'sunrise-game', '--bin', 'sunrise-client'], work, 'build')
         binary = lab.binary(lab.cargo_target() / 'fast', 'sunrise-client')
     scratch = work / 'native'
-    scratch.mkdir()
+    install_pack(scratch / 'saves/harness', jars['server'])
     native = work / 'native.jsonl'
     env = lab.game_env(SUNRISE_COMMAND_SCRIPT=script, SUNRISE_COMMAND_OUTPUT=native,
                        SUNRISE_PLAYER_NAME='Player', SUNRISE_API_DISCOVERY='http://127.0.0.1:9/')

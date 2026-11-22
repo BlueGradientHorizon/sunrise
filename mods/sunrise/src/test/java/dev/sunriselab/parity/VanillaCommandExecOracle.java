@@ -662,6 +662,7 @@ public final class VanillaCommandExecOracle {
                         }
                     }
                     case "mob_damage_state" -> {
+                        if (op.has("level_seed")) level.getRandom().setSeed(op.get("level_seed").getAsLong());
                         var mob = (net.minecraft.world.entity.Mob) level.getEntity(UUID.fromString(op.get("uuid").getAsString()));
                         if (op.has("no_action_time")) mob.setNoActionTime(op.get("no_action_time").getAsInt());
                         var state = new JsonObject();

@@ -322,6 +322,9 @@ impl Game<'_> {
                     }
                 }
                 "mob_damage_state" => {
+                    if let Some(seed) = op["level_seed"].as_i64() {
+                        self.world.random = sunrise_core::random::LegacyRandom::new(seed);
+                    }
                     let uuid = u128::from_str_radix(
                         &op["uuid"]
                             .as_str()
