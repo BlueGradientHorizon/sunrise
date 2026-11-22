@@ -5202,25 +5202,26 @@ mod tests {
         )
     }
 
-    fn in_own_process(name: &str, body: impl FnOnce()) {
-        const OWN_PROCESS: &str = "SUNRISE_NET_TEST_OWN_PROCESS";
-        if std::env::var_os(OWN_PROCESS).is_some_and(|v| v == name) {
-            return body();
+    fn run_fresh_cases(name: &str, flag: &str, cases: &[&str], body: impl FnOnce(&str)) {
+        if let Ok(case) = std::env::var(flag) {
+            return body(&case);
         }
-        let out = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([name, "--exact", "--include-ignored", "--test-threads=1"])
-            .env(OWN_PROCESS, name)
-            .output()
-            .unwrap();
-        let report = format!(
-            "{}{}",
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr)
-        );
-        assert!(
-            out.status.success() && report.contains("test result: ok. 1 passed;"),
-            "{name} failed in its own process:\n{report}"
-        );
+        for &case in cases {
+            let out = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([name, "--exact", "--include-ignored", "--test-threads=1"])
+                .env(flag, case)
+                .output()
+                .unwrap();
+            let report = format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            assert!(
+                out.status.success() && report.contains("test result: ok. 1 passed;"),
+                "{name} ({case}) failed in its own process:\n{report}"
+            );
+        }
     }
 
     #[test]
@@ -5640,19 +5641,16 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn configuration_post_effects_disconnects_with_packet_error_26_3() {
-        in_own_process(
+        run_fresh_cases(
             "net::tests::configuration_post_effects_disconnects_with_packet_error_26_3",
-            || {
-                let witness = network_witness("post_effects.json");
-                for (case_name, hex_key) in [
-                    ("empty", "config_empty_hex"),
-                    ("nonempty", "config_two_hex"),
-                ] {
-                    let expected_key = witness["configuration_state"][case_name]["disconnect_key"]
-                        .as_str()
-                        .unwrap();
-                    let raw_frame = network_hex(witness["wire"][hex_key].as_str().unwrap());
-                    let (root, data) = empty_item_data(&format!("cfg-post-effects-{case_name}"));
+            "SUNRISE_NET_CONFIG_CASE",
+            &["empty", "nonempty", "select_known_packs_extra"],
+            |case_name| {
+                if case_name == "select_known_packs_extra" {
+                    let bundle = network_witness("bundle.json");
+                    let known_packs_case = &bundle["malformed_before_bundling"]["config_select_known_packs_extra_bytes"];
+                    let raw_frame = network_hex(known_packs_case["frame_hex"].as_str().unwrap());
+                    let (root, data) = empty_item_data("cfg-select-known-packs-extra");
                     let _dir = TempDirGuard(root);
                     let (client, server) = sunrise_protocol::connection::Pipe::pair();
                     let (mut reader, writer) = Connection::local(client).split();
@@ -5662,12 +5660,9 @@ mod tests {
                     let shared_writer =
                         Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
                     let client_writer = shared_writer.clone();
-                    let lang: Language = [(
-                        "disconnect.packetError".to_owned(),
-                        "Network Protocol Error".to_owned(),
-                    )]
-                    .into_iter()
-                    .collect();
+                    let lang: Language = [("disconnect.genericReason".to_owned(), "%s".to_owned())]
+                        .into_iter()
+                        .collect();
                     let thread = std::thread::spawn(move || {
                         drive_configuration(
                             |send| {
@@ -5686,52 +5681,35 @@ mod tests {
                         )
                     });
                     let mut server = Connection::local(server);
-                    server
-                        .reader
-                        .set_read_timeout(Some(Duration::from_secs(2)))
-                        .unwrap();
-                    let _ = server.send(&cfg::Clientbound::Ping(cfg::Ping { id: 19 }).encode());
                     let _ = server.send(&raw_frame);
-                    let _ = server.send(&cfg::Clientbound::FinishConfiguration(Empty).encode());
-                    let mut replies = Vec::new();
-                    while let Ok((id, body)) = server.recv() {
-                        replies.push(cfg::Serverbound::decode(id, &body).unwrap());
-                    }
-                    let ended = thread.join().unwrap();
+                    drop(server);
+                    let reason = thread
+                        .join()
+                        .unwrap()
+                        .expect_err("select_known_packs extra bytes must disconnect");
                     drop(shared_writer);
-                    let expected_replies: Vec<String> =
-                        witness["configuration_state"][case_name]["sent_after_process"]
-                            .as_array()
-                            .unwrap()
-                            .iter()
-                            .map(|v| v.as_str().unwrap().to_owned())
-                            .collect();
-                    let got_replies: Vec<String> = replies
-                        .iter()
-                        .map(|packet| match packet {
-                            cfg::Serverbound::Pong(p) => format!("pong:{}", p.id),
-                            cfg::Serverbound::FinishConfiguration(_) => {
-                                "finish_configuration".to_owned()
-                            }
-                            other => format!("{other:?}"),
-                        })
-                        .collect();
                     assert_eq!(
-                        got_replies, expected_replies,
-                        "config post_effects ({case_name}): earlier Ping must drain as Pong and FinishConfiguration must not send"
+                        reason.key.as_deref(),
+                        known_packs_case["disconnect_key"].as_str()
                     );
-                    let got = match ended {
-                        Ok(_) => "none".to_owned(),
-                        Err(reason) => reason.key.unwrap_or(reason.text),
-                    };
-                    assert_eq!(got, expected_key, "config post_effects ({case_name})");
+                    assert_eq!(
+                        Some(reason.text.as_str()),
+                        known_packs_case["disconnect_text"].as_str(),
+                        "config select_known_packs full disconnect text"
+                    );
+                    return;
                 }
-                // Configuration select_known_packs with trailing bytes reports registered ClientboundSelectKnownPacks.
-                let bundle = network_witness("bundle.json");
-                let known_packs_case =
-                    &bundle["malformed_before_bundling"]["config_select_known_packs_extra_bytes"];
-                let raw_frame = network_hex(known_packs_case["frame_hex"].as_str().unwrap());
-                let (root, data) = empty_item_data("cfg-select-known-packs-extra");
+                let witness = network_witness("post_effects.json");
+                let hex_key = match case_name {
+                    "empty" => "config_empty_hex",
+                    "nonempty" => "config_two_hex",
+                    other => panic!("unknown configuration case {other}"),
+                };
+                let expected_key = witness["configuration_state"][case_name]["disconnect_key"]
+                    .as_str()
+                    .unwrap();
+                let raw_frame = network_hex(witness["wire"][hex_key].as_str().unwrap());
+                let (root, data) = empty_item_data(&format!("cfg-post-effects-{case_name}"));
                 let _dir = TempDirGuard(root);
                 let (client, server) = sunrise_protocol::connection::Pipe::pair();
                 let (mut reader, writer) = Connection::local(client).split();
@@ -5740,9 +5718,12 @@ mod tests {
                     .unwrap();
                 let shared_writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
                 let client_writer = shared_writer.clone();
-                let lang: Language = [("disconnect.genericReason".to_owned(), "%s".to_owned())]
-                    .into_iter()
-                    .collect();
+                let lang: Language = [(
+                    "disconnect.packetError".to_owned(),
+                    "Network Protocol Error".to_owned(),
+                )]
+                .into_iter()
+                .collect();
                 let thread = std::thread::spawn(move || {
                     drive_configuration(
                         |send| {
@@ -5761,22 +5742,45 @@ mod tests {
                     )
                 });
                 let mut server = Connection::local(server);
+                server
+                    .reader
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let _ = server.send(&cfg::Clientbound::Ping(cfg::Ping { id: 19 }).encode());
                 let _ = server.send(&raw_frame);
-                drop(server);
-                let reason = thread
-                    .join()
-                    .unwrap()
-                    .expect_err("select_known_packs extra bytes must disconnect");
+                let _ = server.send(&cfg::Clientbound::FinishConfiguration(Empty).encode());
+                let mut replies = Vec::new();
+                while let Ok((id, body)) = server.recv() {
+                    replies.push(cfg::Serverbound::decode(id, &body).unwrap());
+                }
+                let ended = thread.join().unwrap();
                 drop(shared_writer);
+                let expected_replies: Vec<String> =
+                    witness["configuration_state"][case_name]["sent_after_process"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|v| v.as_str().unwrap().to_owned())
+                        .collect();
+                let got_replies: Vec<String> = replies
+                    .iter()
+                    .map(|packet| match packet {
+                        cfg::Serverbound::Pong(p) => format!("pong:{}", p.id),
+                        cfg::Serverbound::FinishConfiguration(_) => {
+                            "finish_configuration".to_owned()
+                        }
+                        other => format!("{other:?}"),
+                    })
+                    .collect();
                 assert_eq!(
-                    reason.key.as_deref(),
-                    known_packs_case["disconnect_key"].as_str()
+                    got_replies, expected_replies,
+                    "config post_effects ({case_name}): earlier Ping must drain as Pong and FinishConfiguration must not send"
                 );
-                assert_eq!(
-                    Some(reason.text.as_str()),
-                    known_packs_case["disconnect_text"].as_str(),
-                    "config select_known_packs full disconnect text"
-                );
+                let got = match ended {
+                    Ok(_) => "none".to_owned(),
+                    Err(reason) => reason.key.unwrap_or(reason.text),
+                };
+                assert_eq!(got, expected_key, "config post_effects ({case_name})");
             },
         );
     }

@@ -35,6 +35,7 @@ LIB_TESTS = [
 ]
 
 CLIENT_TESTS = [
+    'game::remote::entity_data_schema::tests::entity_data_schema_matches_26_3',
     'game::remote::raw_ingress::bundle_parity_tests::genpvp_ping_rotation_and_keepalive_bundle_apply_atomically_in_order_26_3',
     'game::remote::raw_ingress::bundle_parity_tests::dependent_entity_bundle_never_splits_across_poll_or_tick_26_3',
     'game::remote::raw_ingress::bundle_parity_tests::entity_data_validation_inline_painting_and_pre_login_bundle_errors_26_3',

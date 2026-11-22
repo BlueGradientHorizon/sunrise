@@ -391,70 +391,73 @@ fn post_effects_cleared_on_login_respawn_and_reconfigure_body() {
 #[test]
 #[ignore = "daily"]
 fn post_effects_before_login_disconnects_with_packet_error_26_3() {
-    crate::game::in_own_process(
-        "game::remote::raw_ingress::post_effects_parity_tests::post_effects_before_login_disconnects_with_packet_error_26_3",
-        post_effects_before_login_disconnects_body,
-    );
+    const NAME: &str = "game::remote::raw_ingress::post_effects_parity_tests::post_effects_before_login_disconnects_with_packet_error_26_3";
+    const FLAG: &str = "SUNRISE_POST_EFFECTS_BEFORE_LOGIN_CASE";
+    if crate::game::native_entity_refs::tests::run_fresh_cases(NAME, FLAG, &["empty", "nonempty"]) {
+        return;
+    }
+    let case_name = std::env::var(FLAG).unwrap();
+    post_effects_before_login_disconnects_case(&case_name);
 }
 
-fn post_effects_before_login_disconnects_body() {
+fn post_effects_before_login_disconnects_case(case_name: &str) {
     let witness = post_effects_witness();
-    for (case_name, effects) in [
-        ("empty", Vec::<String>::new()),
-        ("nonempty", vec!["minecraft:invert".to_owned()]),
-    ] {
-        let expected_key = witness["play_before_login"][case_name]["disconnect_key"]
-            .as_str()
+    let effects = match case_name {
+        "empty" => Vec::new(),
+        "nonempty" => vec!["minecraft:invert".to_owned()],
+        other => panic!("unknown case {other}"),
+    };
+    let expected_key = witness["play_before_login"][case_name]["disconnect_key"]
+        .as_str()
+        .unwrap();
+    with_client_game(|game| {
+        game.title = None;
+        game.post_effects.clear();
+        let (client, _server) = Pipe::pair();
+        game.connect_local(client, "PostEffectsBeforeLogin")
             .unwrap();
-        with_client_game(|game| {
-            game.title = None;
-            game.post_effects.clear();
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "PostEffectsBeforeLogin")
-                .unwrap();
-            let (session, mut peer) = Session::play_loop_probe();
-            let remote = game.remote.as_mut().unwrap();
-            remote.session = session;
-            remote.joined = true;
-            remote.logged_in = false;
-            peer.reader
-                .set_read_timeout(Some(Duration::from_millis(20)))
-                .unwrap();
+        let (session, mut peer) = Session::play_loop_probe();
+        let remote = game.remote.as_mut().unwrap();
+        remote.session = session;
+        remote.joined = true;
+        remote.logged_in = false;
+        peer.reader
+            .set_read_timeout(Some(Duration::from_millis(20)))
+            .unwrap();
 
-            peer.send(&C::PostEffects(play::PostEffects { effects }).encode())
-                .unwrap();
-            peer.send(&C::Ping(cfg::Ping { id: 77 }).encode()).unwrap();
+        peer.send(&C::PostEffects(play::PostEffects { effects }).encode())
+            .unwrap();
+        peer.send(&C::Ping(cfg::Ping { id: 77 }).encode()).unwrap();
 
-            let deadline = Instant::now() + Duration::from_secs(5);
-            let mut saw_pong = false;
-            while game.remote.is_some() && !saw_pong && Instant::now() < deadline {
-                game.poll_remote().unwrap();
-                while let Ok((id, body)) = peer.recv() {
-                    if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 77) {
-                        saw_pong = true;
-                        break;
-                    }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut saw_pong = false;
+        while game.remote.is_some() && !saw_pong && Instant::now() < deadline {
+            game.poll_remote().unwrap();
+            while let Ok((id, body)) = peer.recv() {
+                if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 77) {
+                    saw_pong = true;
+                    break;
                 }
-                std::thread::yield_now();
             }
-            assert!(
-                game.remote.is_none(),
-                "play_before_login ({case_name}): post_effects before Login did not disconnect"
-            );
-            assert!(
-                game.post_effects.is_empty(),
-                "play_before_login ({case_name}): post_effects were applied before Login"
-            );
-            let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
-                game.title.as_ref().map(|t| &t.mode)
-            else {
-                panic!("play_before_login ({case_name}): missing Disconnected screen");
-            };
-            assert_eq!(
-                reason.translation_key(),
-                Some(expected_key),
-                "play_before_login ({case_name})"
-            );
-        });
-    }
+            std::thread::yield_now();
+        }
+        assert!(
+            game.remote.is_none(),
+            "play_before_login ({case_name}): post_effects before Login did not disconnect"
+        );
+        assert!(
+            game.post_effects.is_empty(),
+            "play_before_login ({case_name}): post_effects were applied before Login"
+        );
+        let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
+            game.title.as_ref().map(|t| &t.mode)
+        else {
+            panic!("play_before_login ({case_name}): missing Disconnected screen");
+        };
+        assert_eq!(
+            reason.translation_key(),
+            Some(expected_key),
+            "play_before_login ({case_name})"
+        );
+    });
 }
