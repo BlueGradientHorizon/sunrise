@@ -89,6 +89,11 @@ fn a_give_to_a_player_in_another_level_drops_overflow_there() {
                 .unwrap();
             assert_eq!(given, Ok(None), "{case}");
             assert_eq!(diamonds(game, conn), 2, "{case}");
+            assert_eq!(
+                dropped(game),
+                [before[0], before[1] + 2],
+                "{case}: fake pickups"
+            );
             game.lan
                 .as_mut()
                 .unwrap()
@@ -115,7 +120,7 @@ fn a_give_to_a_player_in_another_level_drops_overflow_there() {
                 .unwrap();
             assert_eq!(taken, 0, "{case}: a full slot takes nothing");
             assert_eq!(diamonds(game, conn), 0, "{case}");
-            assert_eq!(dropped(game), [before[0], before[1] + 1], "{case}: full");
+            assert_eq!(dropped(game), [before[0], before[1] + 3], "{case}: full");
             // One unit of room in the only matching stack, three offered: one is taken, two
             // drop, directly and in a transaction.
             let three = some_diamonds(game, 3);
@@ -137,7 +142,7 @@ fn a_give_to_a_player_in_another_level_drops_overflow_there() {
                     assert_eq!(diamonds(game, conn), 63, "{case}: inventory restored");
                     assert_eq!(
                         dropped(game),
-                        [before[0], before[1] + 2],
+                        [before[0], before[1] + 4],
                         "{case}: no abort drop"
                     );
                     let host: &mut dyn ServerHost = game;
@@ -151,9 +156,9 @@ fn a_give_to_a_player_in_another_level_drops_overflow_there() {
                 assert_eq!(diamonds(game, conn), 64, "{case}");
                 assert_eq!(game.dim, Dim::Overworld, "{case}: hook level restored");
             }
-            assert_eq!(dropped(game), [before[0], before[1] + 3], "{case}");
+            assert_eq!(dropped(game), [before[0], before[1] + 5], "{case}");
             game.enter_level(Dim::Nether).unwrap();
-            for (item, count) in game.dropped.iter().skip(before[1]).zip([1, 2, 2]) {
+            for (item, count) in game.dropped.iter().skip(before[1] + 2).zip([1, 2, 2]) {
                 assert_eq!(&*item.stack.item, "minecraft:diamond", "{case}");
                 assert_eq!(item.stack.count, count, "{case}");
                 assert_eq!([item.position.x, item.position.z], [3.0, 5.0], "{case}");
@@ -323,12 +328,21 @@ fn a_give_that_fits_plays_pickup_in_the_players_level() {
                 .collect::<Vec<_>>()
         };
         assert!(pickups(overworld).is_empty());
-        // Java Random(0x5eed), two nextFloat draws for GiveCommand's pitch.
-        assert_eq!(pickups(nether), [([24, 512, 40], 7, 0.2, 0x3fe2595d)]);
+        // Java Random(0x5eed): four nextFloat draws for the fake item, two for pitch.
+        assert_eq!(pickups(nether), [([24, 512, 40], 7, 0.2, 0x3fdcbf84)]);
         game.as_guest(13, |g| {
-            assert_eq!(g.player.as_mut().unwrap().random.next_int(), -1829641234);
+            assert_eq!(g.player.as_mut().unwrap().random.next_int(), -786623561);
         })
         .unwrap();
+        assert_eq!(dropped(game), [0, 1]);
+        game.enter_level(Dim::Nether).unwrap();
+        let fake = game.dropped.last().unwrap();
+        assert_eq!(
+            (&*fake.stack.item, fake.stack.count),
+            ("minecraft:diamond", 1)
+        );
+        assert_eq!((fake.pickup_delay, fake.age), (32767, 5999));
+        assert_eq!((fake.thrower, fake.target), (None, None));
     });
 }
 
@@ -476,6 +490,13 @@ fn a_give_to_a_player_in_another_level_keeps_their_open_menu() {
 #[test]
 #[ignore = "daily"]
 fn an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick() {
+    if run_fresh_cases(
+        "game::native_player_level_tests::an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick",
+        "SUNRISE_GIVE_OVERFLOW_CHILD",
+        &["advancement"],
+    ) {
+        return;
+    }
     const ID: &str = "snapshot:diamonds";
     let _publication = sunrise_client::datapack_net::isolate_server_publication();
     with_guests(|game| {
@@ -525,14 +546,15 @@ fn an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick() 
             assert_eq!(given, Ok(None), "{case}");
             assert_eq!(diamonds(game, conn), 1, "{case}");
             assert!(!done(game, conn), "{case}: not judged in the hook's level");
-            assert_eq!(dropped(game), before, "{case}: nothing dropped yet");
+            let fake_only = [before[0], before[1] + 1];
+            assert_eq!(dropped(game), fake_only, "{case}: only the fake pickup");
             // Another command run in the borrowed turn leaves the judgment to their tick too.
             game.as_guest(conn, |game| {
                 assert!(game.native_run_command("time query gametime"));
             })
             .unwrap();
             assert!(!done(game, conn), "{case}: not judged by another command");
-            assert_eq!(dropped(game), before, "{case}: nothing dropped by it");
+            assert_eq!(dropped(game), fake_only, "{case}: nothing dropped by it");
 
             game.enter_level(Dim::Nether).unwrap();
             game.as_guest(conn, |game| game.tick_advancements())
@@ -542,10 +564,12 @@ fn an_inventory_reward_for_a_player_in_another_level_waits_for_their_own_tick() 
             // Their inventory is full: the reward lies in the Nether, where they are.
             assert_eq!(
                 dropped(game),
-                [before[0], before[1] + 1],
+                [before[0], before[1] + 2],
                 "{case}: the reward drops in their level"
             );
             game.enter_level(Dim::Nether).unwrap();
+            let reward = game.dropped.last().unwrap();
+            assert_eq!(&*reward.stack.item, "minecraft:emerald");
             game.dropped.clear();
             game.enter_level(Dim::Overworld).unwrap();
         }

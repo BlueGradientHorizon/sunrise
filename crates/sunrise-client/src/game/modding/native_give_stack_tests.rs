@@ -51,7 +51,7 @@ fn an_snbt_item_goes_through_the_api_unchanged() {
 fn item_from_snbt_refuses_what_is_not_one_item_compound() {
     if run_fresh_cases(
         "game::native_give_stack_tests::item_from_snbt_refuses_what_is_not_one_item_compound",
-        "SUNRISE_ITEM_FROM_SNBT_CHILD",
+        "SUNRISE_NATIVE_GIVE_STACK_CHILD",
         &["snbt"],
     ) {
         return;
@@ -117,6 +117,13 @@ fn item_from_snbt_refuses_what_is_not_one_item_compound() {
 #[test]
 #[ignore = "daily"]
 fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
+    if run_fresh_cases(
+        "game::native_give_stack_tests::a_given_stack_fills_the_inventory_then_drops_for_its_player",
+        "SUNRISE_NATIVE_GIVE_STACK_CHILD",
+        &["give"],
+    ) {
+        return;
+    }
     with_guests(|game| {
         let b = game.players().server_players()[1];
         let rock = r#"{id:"minecraft:stone",count:10,components:{"minecraft:custom_name":"Rock"}}"#;
@@ -157,8 +164,14 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
             .unwrap();
         assert_eq!(b.give_stack(game, named), Ok(None));
         let g = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
-        assert_eq!(g.inventory[7], Some(engine));
-        assert_eq!(game.dropped.len(), before + 1);
+        assert_eq!(g.inventory[7].as_ref(), Some(&engine));
+        assert_eq!(game.dropped.len(), before + 2);
+        let fake = game.dropped.last().unwrap();
+        assert_eq!(
+            fake.stack,
+            sunrise_client::items::ItemStack { count: 1, ..engine }
+        );
+        assert_eq!((fake.pickup_delay, fake.age), (32767, 5999));
     });
 }
 
