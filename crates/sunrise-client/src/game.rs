@@ -56,6 +56,22 @@ macro_rules! world_biomes {
         }
     };
 }
+/// The acting player's stacks as field-level borrows, in vanilla `EquipmentSlot` order.
+macro_rules! acting_equipment {
+    ($s:expr) => {{
+        use sunrise_items::equipment::{BODY, SADDLE};
+        [
+            $s.inventory[$s.selected].as_ref(),
+            $s.offhand.as_ref(),
+            $s.armor[3].as_ref(),
+            $s.armor[2].as_ref(),
+            $s.armor[1].as_ref(),
+            $s.armor[0].as_ref(),
+            $s.equipment.get(BODY),
+            $s.equipment.get(SADDLE),
+        ]
+    }};
+}
 /// This side's level data for a tick as a field-level borrow, so it stands beside the tick's own
 /// borrows of the game. Build it before taking a field mutably.
 macro_rules! game_side {
@@ -81,6 +97,8 @@ macro_rules! game_side {
                     &remote.features
                 }),
             items: $s.res.items(),
+            damage_types: &$s.health_resources.damage,
+            player_equipment: acting_equipment!($s),
             tag_items: if $s.options.execution_role.is_client() {
                 $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
             } else {
@@ -5001,7 +5019,6 @@ impl Game<'_> {
             .map_or(0, |s| s.enchantment_level("minecraft:respiration") as i32);
         let leather_boots = worn_boots::leather_boots(&self.armor);
         let freeze_immune = self.wears_freeze_immune();
-        let burn_immune = self.wears_burn_from_stepping_immunity();
         let nudge = self.closest_space_nudge();
         let fast_lava = self.dimension_type().fast_lava;
         let blind = self.potions.effects.get("blindness").is_some();
@@ -5025,7 +5042,6 @@ impl Game<'_> {
         let _ = player.set_sleeping(sleeping);
         player.leather_boots = leather_boots;
         player.freeze_immune = freeze_immune;
-        player.burn_from_stepping_immune = burn_immune;
         player.fluids.fast_lava = fast_lava;
     }
     /// Joins an item only after drop hooks have seen its constructor's motion.

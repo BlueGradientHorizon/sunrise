@@ -179,14 +179,14 @@ Non-finite edits are ignored; there is no veto. Keep movement answers consistent
 on replay.
 
 `LevelRandomSide::Client` lends a read-only level. Only the server arm accepts writes, and it
-lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { amount })` applies damage to the stepping body through its own damage path, before the inside scan.
+lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { damage_type, amount })` applies damage to the stepping body through its own damage path, before the inside scan.
 Use `bounds` to test overlap with a surface that is smaller than the block. `event.request(LandingWrite::…)`
 queues a write at `pos`. The `fall_on` drain applies the ordered block writes after the entity batch,
 only if the block still holds the contacted state. An invalid state or non-finite movement or damage
 refuses that Part's outputs. Other Parts' accepted writes and movement edits remain. This replaces `Hooks::block_step_on`, the former server-only notice.
 
-Boats and minecarts do not take damage from `EntityWrite::Hurt` in `step_on` or `entity_inside` yet
-([#4177](https://github.com/sunrise-org/sunrise/issues/4177)).
+Boats and minecarts ([#4177](https://github.com/sunrise-org/sunrise/issues/4177)), armor stands and
+projectiles ignore `EntityWrite::Hurt` from both callbacks. Experience orbs accept it only from `step_on`.
 
 ## Landing writes
 
@@ -228,8 +228,14 @@ preserves the requested resource-drop flag.
 
 `BlockPart::entity_inside` runs on the server as the entity's sweep reaches the block.
 Use `event.run_before` or `event.run_after` to schedule an `EntityWrite` around an
-`InsideEffect`. `EntityWrite::Hurt { amount }` requests `minecraft:generic` damage without a causing or direct entity.
-The write applies to players, mobs, and dropped items; projectiles ignore it.
+`InsideEffect`. Both `entity_inside` and `step_on` accept
+`EntityWrite::Hurt { damage_type, amount }`. Request the key once in `register`,
+for example `r.damage_type_key("minecraft:hot_floor")`. The level supplies the
+registered damage type, including data-pack types and tags, without a causing
+or direct entity. If the type is absent in that world, the hurt does not apply.
+Players, mobs and dropped items accept hurt from both callbacks. Experience
+orbs accept hurt from `step_on` only. Neither callback adds a hurt path for
+armor stands, projectiles or vehicles.
 
 ## Storage changes
 

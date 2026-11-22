@@ -543,8 +543,6 @@ pub struct PlayerMotion {
     pub leather_boots: bool,
     /// An armor piece in `#freeze_immune_wearables` (`LivingEntity.canFreeze`).
     pub freeze_immune: bool,
-    /// A worn enchantment's `damage_immunity` to `#burn_from_stepping` (frost walker).
-    pub burn_from_stepping_immune: bool,
     /// `Entity.oldPosition`: where this tick started.
     pub old_position: Vec3,
     /// The server's copy of a player another client moves (a LAN guest), while
@@ -1310,7 +1308,8 @@ impl MotionWorld<'_, '_, '_> {
                 self.tag_items,
                 self.block_registries,
                 self.damage_hooks,
-            ),
+            )
+            .with_player_equipment(self.side.player_equipment()),
             self.health,
             rules,
         )
@@ -1536,7 +1535,8 @@ impl MotionWorld<'_, '_, '_> {
                 self.tag_items,
                 self.block_registries,
                 self.damage_hooks,
-            ),
+            )
+            .with_player_equipment(self.side.player_equipment()),
             self.health,
             rules,
             id,
@@ -1795,8 +1795,16 @@ impl MotionWorld<'_, '_, '_> {
             mod_api::EntityWrite::StuckIn(v) => {
                 self.make_stuck_in_block(triple(v));
             }
-            mod_api::EntityWrite::Hurt { amount } => {
-                self.environment_hurt("minecraft:generic", amount)?;
+            mod_api::EntityWrite::Hurt {
+                damage_type,
+                amount,
+            } => {
+                if let Some(kind) =
+                    mod_api::__private::parts_installation::damage_type_name(damage_type)
+                        .and_then(|name| self.health.damage.id(name))
+                {
+                    self.environment_hurt_type(kind, amount)?;
+                }
             }
             mod_api::EntityWrite::ResetFallDistance => self.player.fall_distance = 0.0,
             mod_api::EntityWrite::SetFireTicks(ticks) => self.player.fire_ticks = ticks,
@@ -1959,7 +1967,8 @@ impl MotionWorld<'_, '_, '_> {
                     self.tag_items,
                     self.block_registries,
                     self.damage_hooks,
-                ),
+                )
+                .with_player_equipment(self.side.player_equipment()),
                 self.health,
                 rules,
                 id,

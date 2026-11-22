@@ -298,7 +298,8 @@ impl Game<'_> {
                         game,
                         &sunrise_client::health::NO_ATTACK,
                         no_push,
-                        None
+                        None,
+                        acting_equipment!(game)
                     ),
                     &game.health_resources,
                     rules,
@@ -330,7 +331,6 @@ impl Game<'_> {
             let health = &motion.health;
             let leather_boots = super::super::worn_boots::leather_boots(&game.armor);
             let freeze_immune = game.wears_freeze_immune();
-            let burn_immune = game.wears_burn_from_stepping_immunity();
             let boat = game.riding_boat_fluid_box();
             let Some(player) = game.player.as_mut() else {
                 return (Vec::new(), None, ServerTravel::Continue);
@@ -395,7 +395,6 @@ impl Game<'_> {
             w.player.shift_key_down = sneaking;
             let _ = w.player.set_sleeping(sleeping);
             w.player.freeze_immune = freeze_immune;
-            w.player.burn_from_stepping_immune = burn_immune;
             let mut contact = None;
             loop {
                 let progress = w.server_block_damage_until_hit(start, &mut contact);
@@ -494,7 +493,8 @@ impl Game<'_> {
                     game,
                     &sunrise_client::health::NO_ATTACK,
                     no_push,
-                    None
+                    None,
+                    acting_equipment!(game)
                 ),
                 health,
                 rules,
