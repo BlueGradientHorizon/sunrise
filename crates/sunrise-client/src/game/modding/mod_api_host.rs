@@ -461,6 +461,16 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
         fn enabled_features() -> mod_api::FeatureFlags;
     }
 
+    fn has_item_capability(&self, pos: [i32; 3], side: Option<mod_api::Direction>) -> Option<bool> {
+        let level = self.base.api_level?;
+        let at = mod_api::BlockSide { level, pos, side };
+        let site = self.base.containers().capability_site(
+            at,
+            self.block(pos),
+            self.block_entity_removed(pos),
+        )?;
+        Some(mod_api::__private::item_capability_present(self, site))
+    }
     fn block_entity(&self, pos: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
         if self.block_entity_removed(pos) {
             return None;
@@ -585,6 +595,15 @@ impl mod_api::LevelHost for super::GameLevel<'_> {
             self.api_level?;
         }
         Some(super::native_world_read::can_see_sky(self.world, pos))
+    }
+    fn has_item_capability(&self, pos: [i32; 3], side: Option<mod_api::Direction>) -> Option<bool> {
+        let level = self.api_level?;
+        let [x, y, z] = pos;
+        let at = mod_api::BlockSide { level, pos, side };
+        let site = self
+            .containers()
+            .capability_site(at, self.world.block(x, y, z), false)?;
+        Some(mod_api::__private::item_capability_present(self, site))
     }
     fn block_entity(&self, pos: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
         super::native_block_entity_refs::world_block_entity(self.world, self.api_level?, pos)
@@ -1032,6 +1051,18 @@ impl<
     }
     fn can_see_sky(&self, pos: [i32; 3]) -> Option<bool> {
         mod_api::LevelHost::can_see_sky(&*self.level, pos)
+    }
+    fn has_item_capability(&self, pos: [i32; 3], side: Option<Direction>) -> Option<bool> {
+        let level = self.level.api_level?;
+        let [x, y, z] = pos;
+        let preview = self.previewed(BlockPos::new(x, y, z));
+        let state = preview.unwrap_or_else(|| self.level.world.block(x, y, z));
+        let site = self.level.containers().capability_site(
+            mod_api::BlockSide { level, pos, side },
+            state,
+            preview.is_some(),
+        )?;
+        Some(mod_api::__private::item_capability_present(self, site))
     }
     fn block_entity(&self, pos: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
         // A block the preview changed has no block entity left.
