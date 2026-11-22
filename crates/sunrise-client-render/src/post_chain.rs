@@ -3238,24 +3238,35 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    /// Vanilla's own chains run on the GPU without a validation error (skipped
-    /// without the prepared resources).
+    const VANILLA_CHAINS: [&str; 4] = ["blur", "creeper", "invert", "spider"];
+
+    fn vanilla_source(effects: impl IntoIterator<Item = &'static str>) -> ResourceSource {
+        let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.local/sunrise-client/26.3")
+            });
+        for name in effects {
+            let path = root.join(resource_path(name));
+            assert!(
+                path.is_file(),
+                "missing prepared post-effect file: {}",
+                path.display()
+            );
+        }
+        ResourceSource::directory(root)
+    }
+
+    /// Vanilla's own prepared chains run on the GPU without a validation error.
     #[test]
     #[ignore = "daily"]
     fn vanilla_chains_run() {
         let _gpu = crate::gfx::test_gpu::lock();
+        let source = vanilla_source(VANILLA_CHAINS);
         let Some((device, queue)) = device() else {
             return;
         };
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.local/sunrise-client/26.3");
-        let source = ResourceSource::directory(root.clone());
-        if !root
-            .join("assets/minecraft/post_effect/invert.json")
-            .exists()
-        {
-            return;
-        }
-        for name in ["blur", "creeper", "invert", "spider"] {
+        for name in VANILLA_CHAINS {
             let mut effects = PostEffects::new(&device);
             run_halves(
                 &device,
@@ -3280,18 +3291,11 @@ mod tests {
     #[ignore = "daily"]
     fn vanilla_chains_load() {
         let _gpu = crate::gfx::test_gpu::lock();
+        let source = vanilla_source(VANILLA_CHAINS.into_iter().chain(["entity_outline"]));
         let Some((device, queue)) = device() else {
             return;
         };
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.local/sunrise-client/26.3");
-        let source = ResourceSource::directory(root.clone());
-        if !root
-            .join("assets/minecraft/post_effect/invert.json")
-            .exists()
-        {
-            return;
-        }
-        for name in ["blur", "creeper", "invert", "spider"] {
+        for name in VANILLA_CHAINS {
             let id = format!("minecraft:{name}");
             assert!(
                 PostEffects::load(&source, &device, &queue, &id, &Extras::default())
