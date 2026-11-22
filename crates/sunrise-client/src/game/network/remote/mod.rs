@@ -1333,11 +1333,7 @@ impl Game<'_> {
                 }
             }
             C::TagQuery(p) => self.answer_tag_query(p.transaction, p.tag),
-            C::Unknown(id, data)
-                if id == sunrise_protocol::ids::play::clientbound::COMMAND_SUGGESTIONS =>
-            {
-                self.handle_command_suggestions(&data);
-            }
+            C::CommandSuggestions(p) => self.handle_command_suggestions(p),
             C::CustomChatCompletions(p) => {
                 // ClientPacketListener.handleCustomChatCompletions.
                 if let Some(r) = self.remote.as_mut() {
