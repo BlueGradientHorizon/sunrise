@@ -196,7 +196,7 @@ fn finish_trip(game: &mut Game<'_>, dim: Dim) {
                 trip.dim,
                 trip.target,
                 trip.respawn.is_some(),
-                trip.world_spawn
+                trip.world_spawn.is_some()
             ))
             .collect::<Vec<_>>()
     );
@@ -986,6 +986,238 @@ fn a_deferred_cross_level_death_respawn_keeps_the_replacements_cooldown() {
             [(NEW_COOLDOWN, 37)],
         );
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_pending_world_spawn_death_respawn_keeps_its_queued_level_and_facing() {
+    use crate::game::native_player_death::tests::respawn_packets;
+    use sunrise_protocol::packets::play::Clientbound as C;
+
+    type Seen = Arc<Mutex<Vec<(LevelDimension, [f64; 3], f32, f32)>>>;
+    struct RecordRespawnPosition(Seen);
+
+    #[mod_api::__subscriptions]
+    impl Hooks for RecordRespawnPosition {
+        fn player_respawn_position(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut PlayerRespawnPositionEvent,
+        ) {
+            self.0
+                .lock()
+                .unwrap()
+                .push((*event.level, *event.position, *event.yaw, *event.pitch));
+        }
+    }
+
+    let seen = Seen::default();
+    let mods = vec![ModEntry::new(
+        "record-world-spawn-respawn",
+        Box::new(RecordRespawnPosition(seen.clone())),
+    )];
+    let mut packets = Vec::new();
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_server(ExecutionRole::DedicatedServer, |game| {
+            // Queue a deferred world-spawn search in the Overworld before its chunks are lit.
+            game.level.world_spawn = Some([96, 80, 96]);
+            game.level.world_spawn_angle = [35.0, -10.0];
+            assert!(game.ui.rules.set_string("respawn_radius", "0"));
+            let (tx, rx) = std::sync::mpsc::channel();
+            game.lan.as_mut().unwrap().hub.update_guest(CONN, |guest| {
+                guest.sender = PlayerSender::new(tx, Arc::default());
+                guest.dead = true;
+                guest.health = 0.0;
+            });
+            game.guest_respawn(CONN);
+            game.tick_server_travel();
+            assert!(game.on_server_trip(CONN));
+
+            // Move the world spawn to another level while the death respawn search is pending.
+            game.set_world_spawn(Dim::Nether, [16, 70, 16], [140.0, 20.0]);
+
+            // Light the queued Overworld column and place a solid floor under it.
+            light(game, 96 >> 4, 96 >> 4);
+            assert!(
+                game.set_state_named([96, 79, 96], "minecraft:stone", &[])
+                    .unwrap()
+            );
+            game.tick_server_travel();
+            assert!(!game.on_server_trip(CONN));
+
+            let guest = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+            assert_eq!(guest.dimension, Dim::Overworld.id());
+            assert_eq!(guest.position, [96.5, 80.0, 96.5]);
+            assert_eq!((guest.yaw, guest.pitch), (35.0, -10.0));
+            assert_eq!(
+                *seen.lock().unwrap(),
+                [(LevelDimension::Overworld, [96.5, 80.0, 96.5], 35.0, -10.0)]
+            );
+            packets = respawn_packets(&rx);
+        });
+    });
+
+    let respawns: Vec<_> = packets
+        .iter()
+        .filter_map(|packet| match packet {
+            C::Respawn(packet) => Some((packet.spawn.dimension.as_str(), packet.keep)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(respawns, [(Dim::Overworld.id(), 0)]);
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_cross_level_anchor_respawn_sets_the_replacements_level_before_callbacks() {
+    use crate::game::{api_values::test_snapshot, native_player_death::tests::respawn_packets};
+    use mod_api::{BlockFace, Flow, PlayerCloneEvent, PlayerSetSpawnEvent};
+    use sunrise_client::{items::ItemStack, lan::chunk_watch::ChunkWatchKind};
+    use sunrise_protocol::packets::play::Clientbound as C;
+
+    type CloneSeen = Arc<Mutex<Vec<(Option<String>, Option<String>)>>>;
+    type SpawnSeen = Arc<Mutex<Vec<(String, Option<[i32; 3]>, Option<String>, Option<bool>)>>>;
+
+    struct ObserveReplacement {
+        clone_seen: CloneSeen,
+        spawn_seen: SpawnSeen,
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for ObserveReplacement {
+        fn player_clone(&self, host: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
+            let original = event
+                .original
+                .level(host)
+                .map(|level| level.dimension_id().to_owned());
+            let replacement = match host.player(event.player) {
+                Some(player) => player
+                    .level(host)
+                    .map(|level| level.dimension_id().to_owned()),
+                None => None,
+            };
+            self.clone_seen
+                .lock()
+                .unwrap()
+                .push((original, replacement));
+        }
+
+        fn player_set_spawn(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut PlayerSetSpawnEvent<'_>,
+        ) -> Flow {
+            let (level, may_use) = match host.player(event.player) {
+                Some(player) => {
+                    let level = player
+                        .level(host)
+                        .map(|level| level.dimension_id().to_owned());
+                    let stone = test_snapshot(&ItemStack::new("minecraft:stone", 1));
+                    let may_use = player.may_use_item_at(host, [8, 71, 8], BlockFace::Up, &stone);
+                    (level, may_use)
+                }
+                None => (None, None),
+            };
+            self.spawn_seen.lock().unwrap().push((
+                event.dimension.to_owned(),
+                event.pos,
+                level,
+                may_use,
+            ));
+            Flow::Continue
+        }
+    }
+
+    let clone_seen = CloneSeen::default();
+    let spawn_seen = SpawnSeen::default();
+    let mods = vec![ModEntry::new(
+        "observe-replacement-level",
+        Box::new(ObserveReplacement {
+            clone_seen: clone_seen.clone(),
+            spawn_seen: spawn_seen.clone(),
+        }),
+    )];
+    let mut packets = Vec::new();
+    let mut unwatched = Vec::new();
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_server(ExecutionRole::DedicatedServer, |game| {
+            game.enter_level(Dim::Nether).unwrap();
+            place_anchor(game, [8, 70, 8]);
+            game.enter_level(Dim::Overworld).unwrap();
+
+            let (tx, rx) = std::sync::mpsc::channel();
+            game.lan.as_mut().unwrap().hub.update_guest(CONN, |guest| {
+                guest.sender = PlayerSender::new(tx, Arc::default());
+                guest.watched.insert((0, 0));
+                guest.respawn_elsewhere =
+                    Some((Dim::Nether.id().to_owned(), [8, 70, 8], 0.0, 0.0, false));
+                guest.dead = true;
+                guest.health = 0.0;
+            });
+
+            game.guest_respawn(CONN);
+            assert!(game.on_server_trip(CONN));
+            game.enter_level(Dim::Nether).unwrap();
+            game.tick_server_travel();
+            assert!(!game.on_server_trip(CONN));
+
+            let guest = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+            assert_eq!(guest.dimension, Dim::Nether.id());
+            assert_eq!(
+                guest.respawn_elsewhere,
+                Some((Dim::Nether.id().to_owned(), [8, 70, 8], 0.0, 0.0, false))
+            );
+            unwatched = game
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .chunk_watches
+                .take()
+                .into_iter()
+                .flat_map(|run| {
+                    let dim = run.dimension;
+                    run.watches
+                        .into_iter()
+                        .map(move |watch| (dim.clone(), watch.kind, watch.chunk))
+                })
+                .collect();
+            packets = respawn_packets(&rx);
+        });
+    });
+
+    assert_eq!(
+        *clone_seen.lock().unwrap(),
+        [(
+            Some(Dim::Overworld.id().to_owned()),
+            Some(Dim::Nether.id().to_owned()),
+        )]
+    );
+    assert_eq!(
+        *spawn_seen.lock().unwrap(),
+        [(
+            Dim::Nether.id().to_owned(),
+            Some([8, 70, 8]),
+            Some(Dim::Nether.id().to_owned()),
+            Some(true),
+        )]
+    );
+    assert_eq!(
+        unwatched,
+        [(
+            Dim::Overworld.id().to_owned(),
+            ChunkWatchKind::Unwatch,
+            [0, 0],
+        )]
+    );
+    let respawns: Vec<_> = packets
+        .iter()
+        .filter_map(|packet| match packet {
+            C::Respawn(packet) => Some((packet.spawn.dimension.as_str(), packet.keep)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(respawns, [(Dim::Nether.id(), 0)]);
 }
 
 #[test]

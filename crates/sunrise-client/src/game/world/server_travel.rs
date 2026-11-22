@@ -84,8 +84,9 @@ pub(super) struct Trip {
     /// it consumes an anchor's charge, unlike the credits or an End portal.
     death_respawn: bool,
     /// A respawn at the world spawn, moved onto a free column within the
-    /// respawn radius once the chunks around it have loaded.
-    world_spawn: bool,
+    /// respawn radius once the chunks around it have loaded, carrying the
+    /// facing (`[yaw, pitch]`) queued with `dim` and `target`.
+    world_spawn: Option<[f32; 2]>,
     /// The respawn point whose bed or anchor was gone, for a world-spawn
     /// respawn that replaces it (`TeleportTransition.missingRespawnBlock`).
     missing: Option<RespawnConfig>,
@@ -250,7 +251,7 @@ impl Trip {
     /// Respawn searches, like command arrivals, must finish before the client can leave
     /// their loading area. `hold` alone names a command's already-placed body.
     fn holds_movement(&self) -> bool {
-        self.hold || self.respawn.is_some() || self.world_spawn
+        self.hold || self.respawn.is_some() || self.world_spawn.is_some()
     }
 }
 
@@ -292,7 +293,7 @@ impl Game<'_> {
             respawn: None,
             credits_respawn: false,
             death_respawn: false,
-            world_spawn: false,
+            world_spawn: None,
             finder: None,
             placed: false,
             hold: true,
@@ -1034,7 +1035,7 @@ impl Game<'_> {
             respawn: None,
             credits_respawn,
             death_respawn: false,
-            world_spawn: false,
+            world_spawn: None,
             missing: None,
             finder: None,
             placed: false,
@@ -1092,10 +1093,14 @@ impl Game<'_> {
         missing: Option<RespawnConfig>,
         death_respawn: bool,
     ) -> bool {
-        let (dim, [x, y, z]) = if let Some(c) = config {
-            (c.dim, c.pos)
+        let (dim, [x, y, z], world_spawn) = if let Some(c) = config {
+            (c.dim, c.pos, None)
         } else if let Some(pos) = self.level.world_spawn {
-            (self.world_spawn_level(), pos)
+            (
+                self.world_spawn_level(),
+                pos,
+                Some(self.level.world_spawn_angle),
+            )
         } else {
             return false;
         };
@@ -1128,7 +1133,7 @@ impl Game<'_> {
             respawn: config,
             credits_respawn: false,
             death_respawn,
-            world_spawn: config.is_none(),
+            world_spawn,
             missing,
             finder: None,
             placed: false,
@@ -1154,9 +1159,10 @@ impl Game<'_> {
         }
         let spawn = self.world_spawn_position();
         let _ = self.enter_level(source);
+        let angle = self.level.world_spawn_angle;
         if let Some(trip) = self.server_trips.iter_mut().find(|trip| trip.is(conn)) {
             trip.target = Vec3::new(spawn[0], spawn[1], spawn[2]);
-            trip.world_spawn = true;
+            trip.world_spawn = Some(angle);
         }
     }
 
@@ -1232,7 +1238,7 @@ impl Game<'_> {
             respawn: None,
             credits_respawn: false,
             death_respawn: false,
-            world_spawn: false,
+            world_spawn: None,
             missing: None,
             finder: None,
             placed: false,
@@ -1359,18 +1365,27 @@ impl Game<'_> {
                         continue;
                     }
                 }
-            } else if trip.world_spawn {
+            } else if let Some([spawn_yaw, spawn_pitch]) = trip.world_spawn {
                 // PlayerSpawnFinder.findSpawn around the world spawn.
                 let suggestion =
                     [trip.target.x, trip.target.y, trip.target.z].map(|v| v.floor() as i32);
                 match self.search_spawn(suggestion, &mut trip.finder) {
+                    Ok(at) if trip.death_respawn => {
+                        let found = Respawn {
+                            dim: trip.dim,
+                            at,
+                            yaw: spawn_yaw,
+                            pitch: spawn_pitch,
+                        };
+                        self.finish_guest_respawn(trip.conn, found, trip.missing);
+                        continue;
+                    }
                     // The respawn already put the player on this column:
                     // vanilla teleports once, so no second move.
                     Ok(at)
-                        if !trip.death_respawn
-                            && self.lan.as_ref().is_some_and(|host| {
-                                host.hub.guests[i].position == [at.x, at.y, at.z]
-                            }) =>
+                        if self.lan.as_ref().is_some_and(|host| {
+                            host.hub.guests[i].position == [at.x, at.y, at.z]
+                        }) =>
                     {
                         self.tell_mods_changed_dimension(trip.conn, trip.left, trip.dim);
                         // PlayerRespawnPositionEvent: the column is the point.
@@ -1468,17 +1483,9 @@ impl Game<'_> {
                     _ => (trip.target, yaw),
                 }
             };
-            if trip.death_respawn {
-                let found = Respawn {
-                    at: position,
-                    ..self.world_respawn()
-                };
-                self.finish_guest_respawn(trip.conn, found, trip.missing);
-                continue;
-            }
             // End exits and credits use the existing travel path.
             let mut pitch = None;
-            let (position, yaw) = if trip.respawn.is_some() || trip.world_spawn {
+            let (position, yaw) = if trip.respawn.is_some() || trip.world_spawn.is_some() {
                 let pitch_now = self.lan.as_ref().map_or(0.0, |h| h.hub.guests[i].pitch);
                 let found = Respawn {
                     dim: trip.dim,
@@ -1739,7 +1746,7 @@ impl Game<'_> {
                 respawn: None,
                 credits_respawn: false,
                 death_respawn: false,
-                world_spawn: false,
+                world_spawn: None,
                 missing: None,
                 finder: None,
                 placed: true,

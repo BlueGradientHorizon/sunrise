@@ -98,10 +98,16 @@ impl Game<'_> {
         let guest = &self.lan.as_ref().unwrap().hub.guests[i];
         let (uuid, entity_id) = (guest.uuid, guest.entity_id);
         let original = self.capture_original_player(conn);
-        // PlayerList.respawn removes the old player here. Menu retirement is in its level.
+        // PlayerList.respawn removes the old player here. Menu retirement and chunk
+        // unwatch stay in the source level before the replacement takes its new level.
         self.guest_drop_carried(i);
         self.guest_close_menus_and_tell(conn);
         self.entity_section_forget(entity_id as u32);
+        if let Some(host) = self.lan.as_mut()
+            && let Some(i) = host.hub.guests.connection_index(conn)
+        {
+            host.hub.unwatch_guest_chunks(i);
+        }
         if self.dim != to.dim {
             self.enter_level(to.dim)?;
         }
@@ -119,6 +125,9 @@ impl Game<'_> {
             return Ok(());
         };
         let (cloned, name, spawn, config) = host.hub.guests.update(i, |g| {
+            // PlayerList.respawn constructs the replacement in respawnInfo.newLevel()
+            // before restoreFrom, PlayerEvent.Clone and copyRespawnPosition run.
+            g.dimension = to.dim.id().to_owned();
             // restartClientLoadTimerAfterRespawn.
             g.dead = false;
             g.landing = false;

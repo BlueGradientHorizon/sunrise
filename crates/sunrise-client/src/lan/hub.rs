@@ -4841,6 +4841,14 @@ impl Hub {
         );
     }
 
+    /// `ChunkMap.removeEntity`: stop watching chunks in the guest's current level
+    /// before its record takes the respawn destination's level identity.
+    pub fn unwatch_guest_chunks(&mut self, i: usize) {
+        self.guests.update(i, |g| {
+            super::chunk_watch::unwatch_all(&mut self.chunk_watches, g);
+        });
+    }
+
     /// PlayerList.respawn: back to `at` with a fresh start. The vanilla client waits on its
     /// level loading screen from the Respawn packet until the level info's "level chunks load
     /// start" event and the chunk under the player, so the packets follow vanilla's order.
