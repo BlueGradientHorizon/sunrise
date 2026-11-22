@@ -3295,7 +3295,7 @@ fn ai_step(
         super::piglin::before_goals(m, w, level.random(), events);
     }
     if m.alive() && !immobile {
-        server_ai_until_pause(m, w, level, events, pause_movement)?;
+        server_ai_step(m, w, level, events, pause_movement)?;
     } else {
         m.ai.jumping = false;
         m.ai.xxa = 0.0;
@@ -3611,6 +3611,10 @@ fn burn_undead(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         }
     }
 }
+/// `Mob.isSunBurnTick`: whether a mob that burns in daylight catches fire this tick. A native
+/// mod answers here through `[[native.mixin]]`, where a Java mod's mixin on `isSunBurnTick`
+/// spares one mob from the sun (#4678).
+#[sunrise_mod_api_macros::replaceable]
 fn sun_burn_tick(m: &mut Mob, w: &MobWorld) -> bool {
     // Mob.isSunBurnTick: the monsters_burn attribute, not the sky darkness.
     if m.extra.client_side || !w.monsters_burn {
@@ -3772,13 +3776,25 @@ mod selector_restore_tests {
                             let mut level = crate::health::TestLevel::new(0);
                             let mut events = Vec::new();
                             // Start both live goals before testing either production branch.
-                            server_ai_step(&mut mob, world, &mut level.level(), &mut events);
+                            let _ = server_ai_step(
+                                &mut mob,
+                                world,
+                                &mut level.level(),
+                                &mut events,
+                                false,
+                            );
                             mob.age = age;
                             if let Some(i) = panic_at {
                                 panics[i].store(true, Ordering::SeqCst);
                             }
                             let result = catch_unwind(AssertUnwindSafe(|| {
-                                server_ai_step(&mut mob, world, &mut level.level(), &mut events);
+                                let _ = server_ai_step(
+                                    &mut mob,
+                                    world,
+                                    &mut level.level(),
+                                    &mut events,
+                                    false,
+                                );
                             }));
                             if panic_at.is_some() {
                                 assert_eq!(*result.unwrap_err().downcast::<u32>().unwrap(), 73);
@@ -3798,7 +3814,13 @@ mod selector_restore_tests {
                             for panic in &panics {
                                 panic.store(false, Ordering::SeqCst);
                             }
-                            server_ai_step(&mut mob, world, &mut level.level(), &mut events);
+                            let _ = server_ai_step(
+                                &mut mob,
+                                world,
+                                &mut level.level(),
+                                &mut events,
+                                false,
+                            );
                             for i in 0..2 {
                                 let expected_ticks =
                                     if panic_at == Some(0) && i == 1 { 2 } else { 3 };
@@ -3864,19 +3886,14 @@ mod selector_restore_tests {
     }
 }
 
-#[cfg(test)]
-/// Mob.serverAiStep
-pub(super) fn server_ai_step(
-    m: &mut Mob,
-    w: &MobWorld,
-    level: &mut DamageLevel<'_>,
-    events: &mut Vec<MobEvent>,
-) {
-    let _ = server_ai_until_pause(m, w, level, events, false);
-}
-
-/// `Mob.serverAiStep`, pausing on goal movement or a bee's own hurt.
-fn server_ai_until_pause(
+/// `Mob.serverAiStep`, which `ai_step` calls for a living mob that isn't immobile. With
+/// `pause_movement`, it pauses on goal movement or a bee's own hurt (`Break`), and the rest of
+/// the step resumes later without coming back through here. A native mod takes the step here
+/// through `[[native.mixin]]`, where a Java mod's mixin on `serverAiStep` skips it for a tick
+/// (#4678): a cancelling `HEAD` makes it return `Continue(())`, and `ai_step` goes on as after
+/// the step.
+#[sunrise_mod_api_macros::replaceable]
+fn server_ai_step(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
