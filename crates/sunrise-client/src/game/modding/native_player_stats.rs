@@ -4,7 +4,7 @@
 //! a book visit reports a typed refusal. Writes return false (or None) for
 //! those players, for a dead player, and for anyone but the acting player
 //! during a player turn.
-use super::{Game, native_server::PlayerRead, stats::Stats};
+use super::{Game, lan_actions::CombatPlayer, native_server::PlayerRead, stats::Stats};
 use core::ops::ControlFlow;
 use mod_api::{EntityReadError, PlayerRef, StatType};
 
@@ -22,19 +22,31 @@ impl Game<'_> {
         player: PlayerRef,
     ) -> Option<&sunrise_client::lan::guest::Guest> {
         match self.player_handle_read(player)? {
-            super::native_server::PlayerRead::Guest(guest) => Some(guest),
-            super::native_server::PlayerRead::Acting { .. } => None,
+            PlayerRead::Guest(guest) => Some(guest),
+            PlayerRead::Acting { .. } => None,
         }
     }
-    /// The player's statistics, where they are kept now.
+    /// The player's statistics, including the counter lent to a nested turn.
     fn native_player_stats(&self, player: PlayerRef) -> Option<Option<&Stats>> {
-        if !self.native_player_current(player) {
-            return None;
+        match self.player_handle_read(player) {
+            Some(PlayerRead::Guest(g)) => {
+                Some(self.lan.as_ref()?.play.get(&g.conn).map(|p| &p.stats))
+            }
+            Some(PlayerRead::Acting { .. }) => Some(Some(&self.stats)),
+            None => {
+                let entity = player.entity();
+                if self.lan_displaced_players.is_empty()
+                    || self.native_lifecycle.epoch()? != entity.epoch()
+                {
+                    return None;
+                }
+                let CombatPlayer::Displaced(depth, _) = self.combat_player(entity.id())? else {
+                    return None;
+                };
+                let frame = &self.lan_displaced_players[depth];
+                (frame.uuid == Some(player.uuid())).then_some(Some(&frame.stats))
+            }
         }
-        Some(match self.native_player_resting(player) {
-            Some(g) => self.lan.as_ref()?.play.get(&g.conn).map(|p| &p.stats),
-            None => Some(&self.stats),
-        })
     }
 
     /// The value of statistic `stat_type` for `key` (`minecraft:stone`,
