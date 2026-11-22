@@ -236,12 +236,14 @@ loaded; it loads nothing.
 
 `level.load_chunk(host, [x, z])` is vanilla's `Level.getChunk(x, z)` (`ServerChunkCache.getChunk(x, z, FULL, true)`):
 it loads the chunk from the save, or generates it, to FULL, in any open server level, and returns true once it is
-there, so the level's block reads and writes find it. **It blocks the server tick until the chunk is loaded or
-generated**, as vanilla does, with no timeout; a chunk already loaded answers at once. Generating a new chunk takes
+there with its initial light done, so the level's block and light reads find it. To light it, the 8 chunks around
+it are loaded too (vanilla only generates them part of the way); they hold no ticket and unload with the next sweep. **It blocks the server tick until the chunk is loaded or
+generated**, as vanilla does, with no timeout; a chunk already full answers at once. Generating a new chunk takes
 long enough to be felt, so load ahead of time rather than many chunks in one tick. Like vanilla, the call leaves an
 `UNKNOWN` ticket on the chunk that keeps it loaded (not ticking) through the next tick and expires at the one after;
 the chunk then unloads like any other. To keep a chunk, force it (`chunk.set_forced`) or hold a ticket controller's
-ticket. The chunk's `chunk_load` listeners run at its level's next chunk update, not during the call. `false` for a
+ticket. The `chunk_load` listeners of each chunk the call brings in run during the call, while that chunk is loaded
+and before the call returns, as NeoForge's `ChunkEvent.Load` does inside `getChunk`. `false` for a
 stale handle, a client, a level the server has not opened, a chunk past `ChunkPos.isValid`
 (`ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE`, where vanilla's block reads and writes stop), and while the level's
 generation is paused or stopped.

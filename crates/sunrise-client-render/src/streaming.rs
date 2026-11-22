@@ -716,9 +716,11 @@ pub struct Streaming {
     /// past that as around the player. They are generated and kept but not meshed.
     pub extra: Vec<((i32, i32), i32)>,
     /// `TicketType.UNKNOWN` tickets at FULL's level (`ServerChunkCache.getChunkFutureMainThread`),
-    /// each with its ticks left: `load_full_column` places them, `purge_unknown_tickets` expires
+    /// each with its ticks left: `begin_full_column` places them, `purge_unknown_tickets` expires
     /// them, and `hold_unknown_tickets` keeps their columns through an owner update.
     unknown: Vec<((i32, i32), i8)>,
+    /// `ServerChunkCache`'s four most recent FULL lookups, newest first (`lastChunkPos`).
+    recent_full: [Option<(i32, i32)>; 4],
     /// `extra`'s squares as a grid, made again when `extra` changes.
     cover: Option<ExtraCover>,
     /// Set while `update` runs, after it refreshed `cover`: nothing else can
@@ -1338,6 +1340,7 @@ impl Streaming {
             relight_resent: false,
             extra: Vec::new(),
             unknown: Vec::new(),
+            recent_full: [None; 4],
             cover: None,
             cover_current: false,
             forced_cover: None,
@@ -3059,51 +3062,89 @@ impl Streaming {
         true
     }
 
-    /// `Level.getChunk(x, z)`, that is `ServerChunkCache.getChunk(x, z, FULL, true)`: place an
-    /// `UNKNOWN` ticket at FULL's level on the column, then wait until it is loaded or
-    /// generated to FULL, blocking the caller as vanilla's `managedBlock` does. The wait has no
-    /// timeout, as vanilla's has none; it ends early, false, only when generation is aborted
-    /// (the level is closing). The ticket outlives the call: it keeps the column, and nothing
-    /// around it, until `purge_unknown_tickets` expires it. No forced chunk is left behind, and
-    /// the column is not made entity-ticking. False for a chunk past `ChunkPos.isValid`, and
-    /// for a missing column while streaming is paused or its generation stopped; a remote
-    /// streamer only answers for a column it holds, with no ticket.
-    pub fn load_full_column(&mut self, world: &mut World, chunk: (i32, i32)) -> bool {
+    /// The start of `Level.getChunk(x, z)`, that is `ServerChunkCache.getChunk(x, z, FULL, true)`,
+    /// for the caller's synchronous load (the game pumps it, tells the mods of the columns it
+    /// brings in, and calls [`Self::end_full_column`] once [`full_column_ready`] or the pump
+    /// gives up, which is vanilla's `managedBlock` with no timeout).
+    ///
+    /// A column among the level's recent FULL lookups answers at once with no ticket, as
+    /// `getChunk`'s four-entry cache does. Any other lookup places an `UNKNOWN` ticket at FULL's
+    /// level on the column, or resets its ticks left (`TicketStorage.addTicket`); the ticket
+    /// outlives the call and keeps only that column, not ticking, until
+    /// [`Self::purge_unknown_tickets`] expires it. A column that is not FULL yet (missing, or
+    /// resident but not lit) clears the recent lookups, as `runDistanceManagerUpdates` does, and
+    /// finishes with its 3x3 for the wait (`FULL_WAIT_RADIUS`). Refused for a chunk past
+    /// `ChunkPos.isValid`, and for a column that is not FULL while streaming is paused or its
+    /// generation stopped; a remote streamer answers only for a FULL column it holds, with no
+    /// ticket.
+    pub fn begin_full_column(&mut self, world: &World, chunk: (i32, i32)) -> FullColumn {
         if !chunk_pos_is_valid(chunk) {
-            return false;
+            return FullColumn::Refused;
         }
-        let loaded = world.chunks.contains_key(&chunk);
-        if self.remote {
-            return loaded;
+        let ready = full_column_ready(world, chunk);
+        if self.remote || (ready && self.recent_full.contains(&Some(chunk))) {
+            return if ready {
+                FullColumn::Ready
+            } else {
+                FullColumn::Refused
+            };
         }
-        if !loaded && (self.paused || self.shared.aborted.load(Ordering::Relaxed)) {
-            return false;
+        if !ready && (self.paused || self.shared.aborted.load(Ordering::Relaxed)) {
+            return FullColumn::Refused;
         }
-        // TicketStorage.addTicket: the same type and level again resets the ticks left.
         match self.unknown.iter_mut().find(|(c, _)| *c == chunk) {
             Some((_, left)) => *left = UNKNOWN_TICKET_TIMEOUT,
             None => self.unknown.push((chunk, UNKNOWN_TICKET_TIMEOUT)),
         }
-        if loaded {
-            return true;
+        if ready {
+            self.remember_full(chunk);
+            return FullColumn::Ready;
         }
-        // The ticket's square for the wait: the column alone finishes (FULL's level, 33).
-        self.extra.push((chunk, -1));
+        self.recent_full = [None; 4];
+        self.extra.push((chunk, FULL_WAIT_RADIUS));
         self.rank_full_task(chunk.0, chunk.1);
-        let loaded = self.wait_for_column(world, |world| world.chunks.contains_key(&chunk));
-        self.extra.pop();
-        loaded
+        FullColumn::Pending
+    }
+
+    /// The end of a [`FullColumn::Pending`] load: the wait's square goes, and a column that came
+    /// FULL joins the recent lookups (`ServerChunkCache.storeInCache`). Whether it is FULL.
+    pub fn end_full_column(&mut self, world: &World, chunk: (i32, i32)) -> bool {
+        let at = self
+            .extra
+            .iter()
+            .rposition(|area| *area == (chunk, FULL_WAIT_RADIUS));
+        if let Some(at) = at {
+            self.extra.remove(at);
+        }
+        let ready = full_column_ready(world, chunk);
+        if ready {
+            self.remember_full(chunk);
+        }
+        ready
+    }
+
+    /// `ServerChunkCache.storeInCache`: the newest of the four recent FULL lookups.
+    fn remember_full(&mut self, chunk: (i32, i32)) {
+        self.recent_full.rotate_right(1);
+        self.recent_full[0] = Some(chunk);
     }
 
     /// `TicketStorage.purgeStaleTickets` for the `UNKNOWN` tickets: each one's ticks left go
     /// down by one, and it is removed once they fall below zero. With `TicketType.UNKNOWN`'s
     /// timeout of 1, a ticket survives the first purge after it was placed and goes at the
-    /// second. Called once per server tick that runs normally, at the level's chunk tick.
+    /// second. Called once per server tick that runs normally, at the level's chunk tick, which
+    /// also forgets the recent FULL lookups (`ServerChunkCache.tick`'s `clearCache`).
     pub fn purge_unknown_tickets(&mut self) {
         self.unknown.retain_mut(|(_, left)| {
             *left -= 1;
             *left >= 0
         });
+        self.recent_full = [None; 4];
+    }
+
+    /// Whether a live `UNKNOWN` ticket holds a column of this level.
+    pub fn has_unknown_tickets(&self) -> bool {
+        !self.unknown.is_empty()
     }
 
     /// Add the `UNKNOWN` tickets to `extra` for one owner update, each as the square of its
@@ -3116,21 +3157,29 @@ impl Streaming {
 
     fn wait_for_column(&mut self, world: &mut World, ready: impl Fn(&World) -> bool) -> bool {
         while !ready(world) {
-            if self.shared.aborted.load(Ordering::Relaxed) {
+            if !self.pump_column(world) {
                 return false;
             }
-            // Pump the existing generation queue. Keep unloads for the
-            // normal owner update, which saves entities and notifies mods.
-            let mut plan = self.plan_update(world);
-            plan.sweep = false;
-            plan.far.clear();
-            let (meshes, unloaded) = self.finish_update(world, plan);
-            debug_assert!(unloaded.is_empty());
-            self.free(meshes);
             if !ready(world) {
                 self.wait(std::time::Duration::from_millis(5));
             }
         }
+        true
+    }
+
+    /// One turn of a synchronous wait: take the workers' results and give them more of the
+    /// existing generation and light queue. Unloads wait for the normal owner update, which
+    /// saves entities and notifies mods. False, doing nothing, once generation is aborted.
+    pub fn pump_column(&mut self, world: &mut World) -> bool {
+        if self.shared.aborted.load(Ordering::Relaxed) {
+            return false;
+        }
+        let mut plan = self.plan_update(world);
+        plan.sweep = false;
+        plan.far.clear();
+        let (meshes, unloaded) = self.finish_update(world, plan);
+        debug_assert!(unloaded.is_empty());
+        self.free(meshes);
         true
     }
 
@@ -3346,6 +3395,29 @@ impl ViewArrival {
             .is_some_and(|since| now.saturating_duration_since(since) < VIEW_WAIT)
     }
 }
+/// How [`Streaming::begin_full_column`] answers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FullColumn {
+    /// The column is FULL: nothing to wait for.
+    Ready,
+    /// Pump until [`full_column_ready`], then [`Streaming::end_full_column`].
+    Pending,
+    /// Not a column this level can bring to FULL now.
+    Refused,
+}
+
+/// Whether column `chunk` is FULL: resident and lit (vanilla's FULL follows the LIGHT step).
+pub fn full_column_ready(world: &World, chunk: (i32, i32)) -> bool {
+    world.chunks.get(&chunk).is_some_and(|c| c.lit)
+}
+
+/// The square a synchronous FULL load finishes while it waits: the column and its 3x3. Vanilla
+/// lights the column against neighbours at INITIALIZE_LIGHT (FULL's level 33 gives them 34), but
+/// streaming finalizes a column before it decorates the neighbours its own decoration read, so a
+/// column finished alone (radius -1) is never lit; its neighbours finished too light it. Only the
+/// column keeps a ticket afterwards: the neighbours go with the next unload sweep.
+const FULL_WAIT_RADIUS: i32 = 0;
+
 /// `TicketType.UNKNOWN`'s timeout, in ticks.
 const UNKNOWN_TICKET_TIMEOUT: i8 = 1;
 

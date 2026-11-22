@@ -232,11 +232,9 @@ impl Game<'_> {
                     Ok(()) => {
                         let [x, y, z] = config.pos;
                         let chunk = (x >> 4, z >> 4);
-                        if !self.world.shape.contains_y(y)
-                            || !sunrise_client::streaming::chunk_pos_is_valid(chunk)
-                        {
+                        if !self.world.shape.contains_y(y) {
                             false
-                        } else if self.streaming.load_full_column(&mut self.world, chunk) {
+                        } else if self.load_full_chunk(None, chunk) {
                             self.is_anchor(self.world.block(x, y, z))
                         } else {
                             log::error!(

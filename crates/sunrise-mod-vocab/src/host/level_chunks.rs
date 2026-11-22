@@ -68,7 +68,9 @@ pub trait LevelChunksBackendMut {
     /// Load chunk `pos` (`[x, z]`, in chunks) of the level from its save, or generate it, to
     /// FULL, as vanilla's `Level.getChunk(x, z)` does (`ServerChunkCache.getChunk(x, z,
     /// ChunkStatus.FULL, true)`), then read or write it with the level's other calls. True once
-    /// the chunk is full; a chunk already loaded answers true at once.
+    /// the chunk is full, its initial light done; a chunk already full answers true at once.
+    /// To light it, the 8 chunks around it are loaded too (vanilla only generates them part of
+    /// the way); they hold no ticket and unload with the next unload sweep.
     ///
     /// **The call blocks the server tick until the chunk is loaded or generated**, as
     /// vanilla's does: a chunk that has never been generated can take a long while, so load the
@@ -81,11 +83,12 @@ pub trait LevelChunksBackendMut {
     /// with no ticket. Nothing is forced or saved: to keep a chunk, use `ChunkRef::set_forced`
     /// or a `TicketController`'s ticket.
     ///
-    /// Works in any open level, not only the one in place. The chunk's `chunk_load` listeners
-    /// run at its level's next chunk update, not during this call. False for a stale handle,
-    /// on a client, for a level the server has not opened, for a chunk past `ChunkPos.isValid`
-    /// (beyond `ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE` on x or z, where vanilla's block
-    /// reads and writes stop, `Level.isInValidBounds`), and while the level's generation is
-    /// paused or stopped.
+    /// Works in any open level, not only the one in place. The `chunk_load` listeners of each
+    /// chunk the call brings in run during the call, while that chunk is loaded and before
+    /// the call returns, as NeoForge's `ChunkEvent.Load` does inside `getChunk`. False for a
+    /// stale handle, on a client, for a level the server has not opened, for a chunk past
+    /// `ChunkPos.isValid` (beyond `ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE` on x or z, where
+    /// vanilla's block reads and writes stop, `Level.isInValidBounds`), and while the level's
+    /// generation is paused or stopped.
     fn level_load_chunk(&mut self, level: LevelRef, pos: [i32; 2]) -> bool;
 }
