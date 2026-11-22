@@ -10,7 +10,7 @@
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 /// The file in the prepared resources.
 pub const FILE: &str = "datafix-tables.json";
@@ -208,19 +208,33 @@ fn load(path: &Path) -> std::io::Result<Tables> {
     })
 }
 
+/// Read the tables without panicking. Cache only success, and serialise the cold path because
+/// `load` allocates the tables for the lifetime of the process.
+pub(super) fn try_tables() -> std::io::Result<&'static Tables> {
+    static TABLES: OnceLock<Tables> = OnceLock::new();
+    static LOADING: Mutex<()> = Mutex::new(());
+    if let Some(tables) = TABLES.get() {
+        return Ok(tables);
+    }
+    let _loading = LOADING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(tables) = TABLES.get() {
+        return Ok(tables);
+    }
+    let tables = load(&path())?;
+    Ok(TABLES.get_or_init(|| tables))
+}
+
 /// The tables, read on first use. Upgrading data from before 1.13 without them would
 /// silently lose blocks and items, so a missing or damaged file stops here.
 pub fn tables() -> &'static Tables {
-    static TABLES: OnceLock<Tables> = OnceLock::new();
-    TABLES.get_or_init(|| {
-        let path = path();
-        load(&path).unwrap_or_else(|e| {
-            panic!(
-                "{e} ({}): upgrading data saved before Minecraft 1.13 needs the data fixers' \
-                 tables of the prepared resources; prepare them again (sunrise-prepare --prepare)",
-                path.display()
-            )
-        })
+    try_tables().unwrap_or_else(|e| {
+        panic!(
+            "{e} ({}): upgrading data saved before Minecraft 1.13 needs the data fixers' \
+             tables of the prepared resources; prepare them again (sunrise-prepare --prepare)",
+            path().display()
+        )
     })
 }
 

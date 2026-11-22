@@ -1,7 +1,5 @@
-//! One block entity's or entity's saved data upgraded on its own, for callers that hold it outside a chunk (a mod
-//! reading a schematic or an old structure): the fixes the chunk loaders run on it, between a depth check of the
-//! input and one of the result.
-use super::{CURRENT, Ty, key, schema, update};
+//! The world's datafix chain applied to one saved compound, without a chunk or level.
+use super::{CURRENT, Ty, dynamic, identifier, key, schema, tables, update};
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 
 /// The deepest nesting accepted: a list or compound at depth `MAX_DEPTH` (the root compound is at 0) is refused.
@@ -11,6 +9,25 @@ use sunrise_core::nbt::{Compound, JavaString, Tag};
 /// and never limits fixing or writing it.
 pub const MAX_DEPTH: usize = 512;
 
+/// `DataFixers.addFixers` starts with schema V99. World loaders can infer a missing version;
+/// a caller supplying a standalone compound needs to select an actual source schema.
+const FIRST_SCHEMA: i32 = 99;
+
+/// A vanilla reference type whose root is a compound.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompoundType {
+    /// `References.ITEM_STACK`.
+    ItemStack,
+    /// `References.BLOCK_STATE`.
+    BlockState,
+    /// `References.BLOCK_ENTITY`.
+    BlockEntity,
+    /// `References.ENTITY`.
+    Entity,
+    /// `References.ENTITY_TREE`.
+    EntityTree,
+}
+
 /// Why a value was not upgraded.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UpgradeError {
@@ -18,6 +35,12 @@ pub enum UpgradeError {
     NegativeVersion(i32),
     /// The data version is newer than the game's ([`CURRENT`]): the fixes only go forward.
     FutureVersion(i32),
+    /// No source schema for that version.
+    UnsupportedVersion(i32),
+    /// The compound has no readable discriminator for the selected type, or the chain could not read it.
+    MalformedCompound,
+    /// The prepared tables used by the legacy fixers could not be loaded.
+    LegacyTablesUnavailable,
     /// The input has a list or compound [`MAX_DEPTH`] levels deep or more, as encoded: refused before any fix.
     TooDeep,
     /// The fixes made the value deeper (1.9's `Riding` to `Passengers` doubles a chain's depth) and the result has a
@@ -33,6 +56,11 @@ impl std::fmt::Display for UpgradeError {
             Self::FutureVersion(v) => {
                 write!(f, "data version {v} is newer than the game's ({CURRENT})")
             }
+            Self::UnsupportedVersion(v) => write!(f, "no data fixer schema for version {v}"),
+            Self::MalformedCompound => f.write_str("malformed saved compound"),
+            Self::LegacyTablesUnavailable => {
+                f.write_str("could not load the legacy datafix tables")
+            }
             Self::TooDeep => write!(f, "the data nests {MAX_DEPTH} levels deep or more"),
             Self::UpgradedTooDeep => {
                 write!(f, "the upgraded data nests {MAX_DEPTH} levels deep or more")
@@ -42,6 +70,74 @@ impl std::fmt::Display for UpgradeError {
 }
 
 impl std::error::Error for UpgradeError {}
+
+/// `DataFixer.update` at one vanilla root reference. No world context is added or used.
+pub fn upgrade_compound(
+    kind: CompoundType,
+    data_version: i32,
+    tag: Compound,
+) -> Result<Compound, UpgradeError> {
+    if data_version < FIRST_SCHEMA {
+        dismantle(Tag::Compound(tag));
+        return Err(UpgradeError::UnsupportedVersion(data_version));
+    }
+    let tag = checked(data_version, tag)?;
+    let root = match kind {
+        CompoundType::ItemStack => Ty::ItemStack,
+        CompoundType::BlockState => Ty::BlockState,
+        CompoundType::BlockEntity => Ty::BlockEntity,
+        CompoundType::Entity => Ty::Entity,
+        CompoundType::EntityTree => Ty::EntityTree,
+    };
+    let discriminator = if root == Ty::BlockState { "Name" } else { "id" };
+    let field = tag.get(&JavaString::from(discriminator));
+    let name = match field {
+        Some(Tag::String(name)) if !name.0.is_empty() => Some(name),
+        // V99's item name is a number or a string. `ItemIdFix` removes the numeric form in V102.
+        Some(id)
+            if root == Ty::ItemStack && data_version < 102 && dynamic::as_number(id).is_some() =>
+        {
+            None
+        }
+        _ => return Err(UpgradeError::MalformedCompound),
+    };
+    let tagged_choice = matches!(root, Ty::Entity | Ty::EntityTree | Ty::BlockEntity);
+    // The entity choices do not read mod namespaces. Item names are not a tagged choice:
+    // the item fixers keep the id but still update shared stack fields.
+    if data_version == CURRENT
+        || tagged_choice
+            && name.is_some_and(|name| {
+                identifier(&name.to_string_lossy()).is_some_and(|(ns, _)| ns != "minecraft")
+            })
+    {
+        return Ok(tag);
+    }
+    let from = key(data_version as u32, 0);
+    if from < schema::flat::END {
+        tables::try_tables().map_err(|_| UpgradeError::LegacyTablesUnavailable)?;
+    }
+    let value = Tag::Compound(tag);
+    if root == Ty::BlockEntity && !schema::block_entity_known(&value, from)
+        || matches!(root, Ty::Entity | Ty::EntityTree)
+            && from < schema::flat::END
+            && !schema::flat::entity_tree_known(&value, from)
+    {
+        return into_compound(value);
+    }
+    if tagged_choice {
+        // `Type.readAndWrite` encodes into the source codec's decode remainder. The
+        // tagged-choice roots leave the original compound as that prefix; `NbtOps` lays
+        // the fixed keys over it. Nested records, item stacks and block states do not
+        // have this root prefix.
+        let mut prefix = into_compound(value.clone())?;
+        for (key, tag) in upgraded(root, value, data_version)? {
+            prefix.insert(key, tag);
+        }
+        Ok(prefix)
+    } else {
+        upgraded(root, value, data_version)
+    }
+}
 
 /// One block entity's NBT saved at `data_version`, upgraded as the chunk loader upgrades the block entities of a
 /// chunk of that version: each block entity type's fixes, up to [`CURRENT`]. Data of the current version comes back
@@ -62,7 +158,7 @@ pub fn upgrade_block_entity(data_version: i32, tag: Compound) -> Result<Compound
     let known =
         std::panic::catch_unwind(|| schema::block_entity_known(&id, key(data_version as u32, 0)));
     if known.unwrap_or(false) {
-        upgraded(Ty::BlockEntity, tag, data_version)
+        upgraded_or_original(Ty::BlockEntity, tag, data_version)
     } else {
         Ok(tag)
     }
@@ -74,7 +170,7 @@ pub fn upgrade_block_entity(data_version: i32, tag: Compound) -> Result<Compound
 /// [`upgrade_block_entity`] refuses.
 pub fn upgrade_entity(data_version: i32, tag: Compound) -> Result<Compound, UpgradeError> {
     let tag = checked(data_version, tag)?;
-    upgraded(Ty::EntityTree, tag, data_version)
+    upgraded_or_original(Ty::EntityTree, tag, data_version)
 }
 
 /// `tag` when its version can be upgraded from and it is within [`MAX_DEPTH`]. A refused value is taken apart
@@ -96,31 +192,46 @@ fn checked(data_version: i32, tag: Compound) -> Result<Compound, UpgradeError> {
     }
 }
 
-/// [`update`] of one value of type `root` up to [`CURRENT`]. A value the fixes fail on (a legacy fixer's panic on
-/// data it can't read) comes back as it was saved; the input check has already kept anything too deep away. A
-/// result past [`MAX_DEPTH`] is refused, and taken apart without recursion.
-fn upgraded(root: Ty, tag: Compound, data_version: i32) -> Result<Compound, UpgradeError> {
+/// The permissive standalone readers preserve unreadable data, as chunk reads do.
+fn upgraded_or_original(
+    root: Ty,
+    tag: Compound,
+    data_version: i32,
+) -> Result<Compound, UpgradeError> {
     if data_version == CURRENT {
         return Ok(tag);
     }
-    let mut value = Tag::Compound(tag.clone());
-    let done = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    match upgraded(root, Tag::Compound(tag.clone()), data_version) {
+        Err(UpgradeError::MalformedCompound) => Ok(tag),
+        result => result,
+    }
+}
+
+/// Run the shared chain. Legacy fixes can panic on malformed data; never return a partially fixed value.
+fn upgraded(root: Ty, mut value: Tag, data_version: i32) -> Result<Compound, UpgradeError> {
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         update(root, &mut value, data_version, CURRENT);
     }))
-    .is_ok();
+    .is_err()
+    {
+        dismantle(value);
+        return Err(UpgradeError::MalformedCompound);
+    }
+    let upgraded = into_compound(value)?;
+    if within_depth(&upgraded) {
+        Ok(upgraded)
+    } else {
+        dismantle(Tag::Compound(upgraded));
+        Err(UpgradeError::UpgradedTooDeep)
+    }
+}
+
+fn into_compound(value: Tag) -> Result<Compound, UpgradeError> {
     match value {
-        Tag::Compound(upgraded) if done => {
-            dismantle(Tag::Compound(tag));
-            if within_depth(&upgraded) {
-                Ok(upgraded)
-            } else {
-                dismantle(Tag::Compound(upgraded));
-                Err(UpgradeError::UpgradedTooDeep)
-            }
-        }
-        value => {
+        Tag::Compound(tag) => Ok(tag),
+        _ => {
             dismantle(value);
-            Ok(tag)
+            Err(UpgradeError::MalformedCompound)
         }
     }
 }

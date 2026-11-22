@@ -1,36 +1,30 @@
-//! Saved data from older versions upgraded for mods: one block entity's or entity's NBT through the datafixers the
-//! chunk loaders run (`upgrade_block_entity_nbt`, `upgrade_entity_nbt`).
+//! Bridge the shared host's standalone upgrade to the world's existing datafix chain.
 use super::Game;
-use mod_api::NbtUpgradeError;
-use sunrise_core::nbt::Compound;
-use sunrise_world::datafix::{self, UpgradeError};
+use mod_api::{Compound, NbtDataType, NbtUpgradeError};
+use sunrise_world::datafix::{self, CompoundType, UpgradeError};
 
 impl Game<'_> {
-    /// A block entity's NBT saved at `data_version`, upgraded as the chunk loader upgrades it, or the refusal.
-    pub(in crate::game) fn upgrade_block_entity_nbt(
-        &self,
+    pub(in crate::game) fn upgrade_nbt(
+        kind: NbtDataType,
         data_version: i32,
         nbt: Compound,
     ) -> Result<Compound, NbtUpgradeError> {
-        datafix::upgrade_block_entity(data_version, nbt).map_err(refusal)
-    }
-
-    /// An entity's NBT saved at `data_version`, upgraded as the entity chunk loader upgrades it, or the refusal.
-    pub(in crate::game) fn upgrade_entity_nbt(
-        &self,
-        data_version: i32,
-        nbt: Compound,
-    ) -> Result<Compound, NbtUpgradeError> {
-        datafix::upgrade_entity(data_version, nbt).map_err(refusal)
-    }
-}
-
-/// The API's name for the datafixer's refusal.
-fn refusal(error: UpgradeError) -> NbtUpgradeError {
-    match error {
-        UpgradeError::NegativeVersion(v) => NbtUpgradeError::NegativeVersion(v),
-        UpgradeError::FutureVersion(v) => NbtUpgradeError::FutureVersion(v),
-        UpgradeError::TooDeep => NbtUpgradeError::TooDeep,
-        UpgradeError::UpgradedTooDeep => NbtUpgradeError::UpgradedTooDeep,
+        let kind = match kind {
+            NbtDataType::ItemStack => CompoundType::ItemStack,
+            NbtDataType::BlockState => CompoundType::BlockState,
+            NbtDataType::BlockEntity => CompoundType::BlockEntity,
+            NbtDataType::Entity => CompoundType::Entity,
+            NbtDataType::EntityTree => CompoundType::EntityTree,
+        };
+        datafix::upgrade_compound(kind, data_version, nbt).map_err(|error| match error {
+            UpgradeError::NegativeVersion(v) | UpgradeError::UnsupportedVersion(v) => {
+                NbtUpgradeError::UnsupportedVersion(v)
+            }
+            UpgradeError::FutureVersion(v) => NbtUpgradeError::FutureVersion(v),
+            UpgradeError::MalformedCompound => NbtUpgradeError::MalformedCompound,
+            UpgradeError::LegacyTablesUnavailable => NbtUpgradeError::LegacyTablesUnavailable,
+            UpgradeError::TooDeep => NbtUpgradeError::TooDeep,
+            UpgradeError::UpgradedTooDeep => NbtUpgradeError::UpgradedTooDeep,
+        })
     }
 }

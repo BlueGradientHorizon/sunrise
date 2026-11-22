@@ -1,9 +1,7 @@
-//! `upgrade_block_entity_nbt` and `upgrade_entity_nbt` through a server host, as a mod calls them: an old villager
-//! takes its profession, and the refusals come back typed: a future version, data too deep to read, and a riding
-//! chain the fixes make too deep.
+//! Standalone upgrades and their refusals, as seen through the client and server host traits.
 use super::native_entity_refs::tests::with_game;
-use mod_api::NbtUpgradeError;
-use sunrise_core::nbt::{Compound, Tag, parse_snbt};
+use mod_api::{ClientHost, Compound, NbtDataType, NbtUpgradeError, ServerHost, Tag};
+use sunrise_core::nbt::parse_snbt;
 
 fn compound(text: &str) -> Compound {
     match parse_snbt(text).unwrap().0 {
@@ -32,18 +30,26 @@ fn chain(depth: usize, riding: bool) -> Compound {
 #[test]
 #[ignore = "daily"]
 fn a_mods_host_upgrades_old_data_and_refuses_by_name() {
-    // The pre-1.13 fixes (the riding chain's) read the data fixers' tables of the prepared resources.
-    sunrise_world::datafix::set_resources(std::path::Path::new(
-        &std::env::var_os("SUNRISE_TEST_RESOURCES").expect("resources"),
-    ));
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            let host: &dyn mod_api::ServerHost = game;
+            let client: &dyn ClientHost = game;
+            let wool = compound(
+                r#"{id:"minecraft:wool",Damage:14s,Count:3b,tag:{display:{Name:"Quest reward"}}}"#,
+            );
+            assert_eq!(
+                client.upgrade_nbt(NbtDataType::ItemStack, 1343, wool),
+                Ok(compound(
+                    r#"{id:"minecraft:red_wool",count:3,components:{"minecraft:custom_name":{text:"Quest reward"}}}"#
+                )),
+            );
+
+            let host: &dyn ServerHost = game;
             // DataVersion 1900: Profession 1 with Career 2 is a cartographer.
             let villager =
                 compound("{id: \"minecraft:villager\", Profession: 1, Career: 2, CareerLevel: 1}");
-            let upgraded = host.upgrade_entity_nbt(1900, villager).unwrap();
+            let upgraded = host
+                .upgrade_nbt(NbtDataType::Entity, 1900, villager)
+                .unwrap();
             let Some(Tag::Compound(data)) = upgraded.get(&"VillagerData".into()) else {
                 panic!("VillagerData: {upgraded:?}");
             };
@@ -54,12 +60,20 @@ fn a_mods_host_upgrades_old_data_and_refuses_by_name() {
             let sign = compound("{id: \"minecraft:sign\"}");
             let current = sunrise_world::datafix::CURRENT;
             assert_eq!(
-                host.upgrade_block_entity_nbt(current + 1, sign),
+                host.upgrade_nbt(NbtDataType::BlockEntity, current + 1, sign.clone()),
                 Err(NbtUpgradeError::FutureVersion(current + 1))
+            );
+            assert_eq!(
+                host.upgrade_nbt(NbtDataType::BlockEntity, 98, sign),
+                Err(NbtUpgradeError::UnsupportedVersion(98))
+            );
+            assert_eq!(
+                host.upgrade_nbt(NbtDataType::BlockState, current, compound("{Name:7}")),
+                Err(NbtUpgradeError::MalformedCompound)
             );
             // 512 passengers: the innermost compound at depth 1024, refused before any fix.
             assert_eq!(
-                host.upgrade_entity_nbt(1900, chain(512, false)),
+                host.upgrade_nbt(NbtDataType::EntityTree, 1900, chain(512, false)),
                 Err(NbtUpgradeError::TooDeep)
             );
             // One rider at DataVersion 100 with a payload 510 deep: moving it below its mount's `Passengers`
@@ -71,9 +85,12 @@ fn a_mods_host_upgrades_old_data_and_refuses_by_name() {
                 payload = Tag::compound([("x", payload)]);
             }
             rider.insert("payload".into(), payload);
-            assert!(host.upgrade_entity_nbt(current, rider.clone()).is_ok());
+            assert!(
+                host.upgrade_nbt(NbtDataType::EntityTree, current, rider.clone())
+                    .is_ok()
+            );
             assert_eq!(
-                host.upgrade_entity_nbt(100, rider),
+                host.upgrade_nbt(NbtDataType::EntityTree, 100, rider),
                 Err(NbtUpgradeError::UpgradedTooDeep)
             );
         });
