@@ -370,7 +370,6 @@ pub struct Ext {
     pub pending_hurt_player: Option<PlayerHurt>,
     /// `LivingEntity.hurtServer`'s damage broadcast for a full, unblocked hit.
     pub pending_hurt_damage: Option<(super::Damage, Option<i32>)>,
-    /// The bed vacated inside hurtServer; the world owner clears its occupied flag.
     pub pending_hurt_sounds: [Option<HurtSound>; 2],
     /// `Villager.lastTradedPlayer`: the most recent trader, consumed by the
     /// next customServerAiStep. This is runtime state, not saved gossip.

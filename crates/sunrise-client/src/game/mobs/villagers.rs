@@ -746,6 +746,7 @@ impl Game<'_> {
         else {
             return;
         };
+        let old = self.mobs[i].position;
         let level = sunrise_client::stand_up::StandUpLevel {
             world: &self.world,
             registry: self.pack.assets.registry,
@@ -754,7 +755,11 @@ impl Game<'_> {
             block_tags: &world_items!(self).block_tags,
             border: Some(self.border.geometry()),
         };
-        villager::wake(&mut self.mobs[i], self.world.game_time, Some(&level), None);
+        let woke = villager::wake(&mut self.mobs[i], self.world.game_time, Some(&level), None);
+        if woke.is_some() {
+            let new = self.mobs[i].position;
+            self.entity_section_moved(id, Some([old.x, old.y, old.z]), [new.x, new.y, new.z]);
+        }
     }
 }
 
