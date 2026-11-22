@@ -780,7 +780,6 @@ impl Game<'_> {
                 }
                 return Some(applied);
             }
-            // The listener can leave live edits even when it doesn't handle the click.
             // Refresh the already-admitted menu without asking the pickup rule again.
             if !refresh(self, &mut menu) {
                 self.reply_menu_click(conn, ClickReply::Resend(p.container));
