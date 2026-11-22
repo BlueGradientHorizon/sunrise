@@ -1,13 +1,12 @@
 //! The dedicated preparation's only downloads: Mojang's pinned server jar and its Java runtime.
 
 use crate::{
-    Log,
-    artifacts::{Lock, safe_relative},
+    artifacts::{safe_relative, Lock},
     digest,
     java::{self, Jdk},
     mkdir,
     pyjson::{self, Value},
-    read_json,
+    read_json, Log,
 };
 use std::{
     fs, io,
@@ -30,7 +29,6 @@ fn request(url: &str) -> Result<ureq::Request, String> {
             "piston-data.mojang.com"
                 | "piston-meta.mojang.com"
                 | "launchermeta.mojang.com"
-                | "launcher.mojang.com"
                 | "resources.download.minecraft.net"
         )
     ) {

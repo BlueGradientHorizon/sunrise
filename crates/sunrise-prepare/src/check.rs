@@ -5,7 +5,7 @@
 
 use crate::pyjson::Value;
 use crate::{
-    OUTPUT_VERSION, SCHEMA, SERVER_OUTPUT_VERSION, artifacts::Lock, read_json, write_json,
+    artifacts::Lock, read_json, write_json, OUTPUT_VERSION, SCHEMA, SERVER_OUTPUT_VERSION,
 };
 use std::path::Path;
 

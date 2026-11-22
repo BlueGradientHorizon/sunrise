@@ -87,7 +87,7 @@ fn check_server_resource(name: &str) -> io::Result<()> {
         io::ErrorKind::PermissionDenied,
         format!(
             "the server tried to read {name}, which a server's game files don't include.\n  \
-         This is a Sunrise bug: please report it with this line at https://github.com/sunrise-org/sunrise/issues"
+         This is a Sunrise bug: please include this line when reporting it."
         ),
     ))
 }
