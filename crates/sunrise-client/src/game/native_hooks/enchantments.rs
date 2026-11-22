@@ -27,7 +27,7 @@ impl Game<'_> {
     }
     /// `ItemStack.getHoverName()` as a component: each viewer renders it in their language.
     pub(in crate::game) fn hover_name(&self, stack: &ItemStack) -> sunrise_client::text::Text {
-        sunrise_client::stations::hover_name_text(&self.pack.names, stack)
+        self.stack_hover_name_text(stack)
     }
     /// Whether enchantment `id` can go on `item` (`Enchantment.isSupportedItem`).
     pub(in crate::game) fn enchantment_supports(&self, id: &str, item: mod_api::ItemKey) -> bool {

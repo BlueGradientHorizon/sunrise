@@ -636,12 +636,16 @@ class DynaRoutingTests(unittest.TestCase):
             (tree / "tools" / "test_game_parity.py").write_text(
                 "run(['cargo', 'test', '-p', 'sunrise-client', '--lib', 'y'])\n")
             (tree / "tools" / "test_fast_parity.py").write_text(
-                'run(["cargo", "test", "--profile", "fast", "-p", "sunrise-client", "--lib", "z"])\n')
+                'run(["cargo", "test", "--profile", "fast", "-p", "sunrise-world", "--lib", "z"])\n')
+            # A package beside the client's, as dragon_contacts runs sunrise-gameplay's lib tests.
+            (tree / "tools" / "test_gameplay_parity.py").write_text(
+                "run(['cargo', 'test', '--locked', '-p', 'sunrise-gameplay', '--lib', 'w'])\n")
             env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
                    "PARITY_LOG_DIR": temporary}
             subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
-            self.assertEqual(calls.read_text().splitlines(), ["test --locked --no-run -p sunrise-client-lib --lib",
-                                                             "test --locked --no-run -p sunrise-client --lib"])
+            self.assertEqual(calls.read_text().splitlines(), ["test --locked --no-run -p sunrise-client --lib",
+                                                             "test --locked --no-run -p sunrise-client-lib --lib",
+                                                             "test --locked --no-run -p sunrise-gameplay --lib"])
 
 class PersistentTargetTests(unittest.TestCase):
     def test_every_job_that_can_build_on_a_self_hosted_runner_keeps_the_source_snapshot_first(self):

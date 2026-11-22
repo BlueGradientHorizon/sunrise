@@ -43,12 +43,32 @@ mod inside_walk_tests {
     /// mod_api dispatch hop this stands for is the player's, the item's and the
     /// the projectile's tests' to prove; the mob tests here prove the walk, its
     /// arms, the flush and the containment.
-    /// The module's fire reads process-wide statics: one test at a time.
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
+    /// Each fixture installs the hook and resolves effects in its own process.
     static CONTACTS: Mutex<Vec<[i32; 3]>> = Mutex::new(Vec::new());
     static KILL_AFTER: AtomicUsize = AtomicUsize::new(usize::MAX);
     static PANIC_AFTER: AtomicUsize = AtomicUsize::new(usize::MAX);
     static ENABLED: AtomicBool = AtomicBool::new(false);
+
+    fn in_contact_test_process(test: &str) -> bool {
+        const CHILD: &str = "SUNRISE_TEST_MOB_CONTACT_CHILD";
+        let module = module_path!().split_once("::").unwrap().1;
+        let name = format!("{module}::{test}");
+        if std::env::var_os(CHILD).is_some_and(|value| value == name.as_str()) {
+            return true;
+        }
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([&name, "--exact", "--include-ignored", "--test-threads=1"])
+            .env(CHILD, &name)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success() && stdout.contains("test result: ok. 1 passed;"),
+            "{name} failed in its own process:\n{stdout}{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        false
+    }
 
     fn reset(kill: usize, panic: usize, enabled: bool) {
         mod_api::__private::resolve_effects(["minecraft:wither"], |_| Some(0)).unwrap();
@@ -70,10 +90,7 @@ mod inside_walk_tests {
         if seen > KILL_AFTER.load(Ordering::SeqCst) {
             staged.run_after(
                 mod_api::InsideEffect::Freeze,
-                mod_api::EntityWrite::Hurt {
-                    source: None,
-                    amount: 1000.0,
-                },
+                mod_api::EntityWrite::Hurt { amount: 1000.0 },
             );
         }
         staged.run_after(
@@ -112,10 +129,14 @@ mod inside_walk_tests {
                           _precise,
                           staged,
                           _writes| {
-                let fired = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    fire_like_a_part(at, staged);
-                }));
-                let _ = fired;
+                let mut callback = mod_api::InsideEffects::default();
+                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    fire_like_a_part(at, &mut callback);
+                }))
+                .is_ok()
+                {
+                    staged.absorb_step(callback);
+                }
             },
         });
     }
@@ -133,9 +154,9 @@ mod inside_walk_tests {
     #[test]
     #[ignore = "daily"]
     fn a_part_pushes_a_mob_once_a_block_in_walk_order() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !in_contact_test_process("a_part_pushes_a_mob_once_a_block_in_walk_order") {
+            return;
+        }
         reset(usize::MAX, usize::MAX, true);
         let ran = crate::mobs::world::with_built_test_world(
             &[],
@@ -189,9 +210,9 @@ mod inside_walk_tests {
     #[test]
     #[ignore = "daily"]
     fn a_killing_write_stops_the_mobs_flush() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !in_contact_test_process("a_killing_write_stops_the_mobs_flush") {
+            return;
+        }
         reset(0, usize::MAX, true);
         let ran = crate::mobs::world::with_built_test_world(
             &[],
@@ -220,10 +241,12 @@ mod inside_walk_tests {
                 );
                 assert_eq!(CONTACTS.lock().unwrap().len(), 2);
                 assert!(!mob.alive(), "the killing write applied");
-                assert!(
-                    (mob.velocity.x - before).abs() < 1e-9,
+                assert_eq!(
+                    mob.velocity.x.to_bits(),
+                    before.to_bits(),
                     "the writes after the death never apply"
                 );
+                assert!(!mob.has_effect("minecraft:wither"));
             },
         );
         assert!(ran, "the vanilla test resources must be available");
@@ -236,9 +259,9 @@ mod inside_walk_tests {
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_mobs_tick_restored() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !in_contact_test_process("a_panicking_part_leaves_the_mobs_tick_restored") {
+            return;
+        }
         reset(usize::MAX, 0, true);
         let ran = crate::mobs::world::with_built_test_world(
             &[],
@@ -290,9 +313,9 @@ mod inside_walk_tests {
     #[test]
     #[ignore = "daily"]
     fn a_mob_without_a_part_keeps_vanilla_behavior() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !in_contact_test_process("a_mob_without_a_part_keeps_vanilla_behavior") {
+            return;
+        }
         reset(usize::MAX, usize::MAX, false);
         let ran = crate::mobs::world::with_built_test_world(
             &[],
@@ -336,9 +359,9 @@ mod inside_walk_tests {
     #[test]
     #[ignore = "daily"]
     fn a_diagonal_move_walks_blocks_in_vanillas_order() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !in_contact_test_process("a_diagonal_move_walks_blocks_in_vanillas_order") {
+            return;
+        }
         reset(usize::MAX, usize::MAX, true);
         let ran = crate::mobs::world::with_built_test_world(
             &[],
@@ -389,16 +412,14 @@ mod inside_walk_tests {
 
     /// #478: a part's `AddEffect` write is `LivingEntity.addEffect` on a mob,
     /// so a second write updates the one instance instead of listing it
-    /// twice. It installs the same Wither-only registry as `reset`, so the
-    /// process-wide `OnceLock` holds the same keys whichever test runs first;
-    /// the stored modifier `addEffect` adds is covered by
+    /// twice. The stored modifier `addEffect` adds is covered by
     /// `effect_modifier_tests`, which read no registry.
     #[test]
     #[ignore = "daily"]
     fn a_parts_add_effect_write_merges_into_one_instance() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !in_contact_test_process("a_parts_add_effect_write_merges_into_one_instance") {
+            return;
+        }
         reset(usize::MAX, usize::MAX, false);
         let mut mob = Mob::new(1, crate::mobs::sensor_scan_tests::kind(), Vec3::ZERO, 0.0);
         let mut level = crate::health::TestLevel::new(0);
@@ -1740,7 +1761,7 @@ fn effects_from_blocks_until_hurt(
     let (tick_from, tick_to) = (m.previous, m.position);
     // Block.stepOn for the block under a mob on the ground (`getOnPosLegacy`):
     // MagmaBlock.stepOn's hot floor, 1 damage (a mob never sneaks).
-    if m.on_ground && m.alive() {
+    if m.ground.on_ground && m.alive() {
         // 0.2 below the feet, or the supporting block when the centre is over
         // its edge.
         let [x, y, z] = m.block_on_legacy(w);
@@ -1882,10 +1903,8 @@ fn apply_contact_writes(
 
 /// A typed entity write an `entity_inside` part queued for a mob, applied in
 /// its own tick. `Hurt` uses the generic damage kind: the block's own hurts
-/// keep their named kinds in the walk's arms above. Its `source` is not
-/// resolved to an attacker, so an enderman always draws its teleport chance,
-/// where `Enderman.hurtServer` skips it for a living attacker. The hurt's
-/// teleport is settled inside it.
+/// keep their named kinds in the walk's arms above. Generic contact damage
+/// has no attacker. The hurt's own teleport is settled before the write returns.
 fn apply_entity_write(
     m: &mut Mob,
     w: &MobWorld,
@@ -1903,7 +1922,7 @@ fn apply_entity_write(
             m.fall_distance = 0.0;
             m.stuck_multiplier = triple(v);
         }
-        mod_api::EntityWrite::Hurt { amount, .. } => {
+        mod_api::EntityWrite::Hurt { amount } => {
             m.damage(level, amount, Damage::of(DamageKind::Generic));
             // The hurt's own teleport, inside it (#1697).
             hurt_teleports(m, w, events);
@@ -2152,7 +2171,7 @@ fn honey_slide(m: &mut Mob, p: [i32; 3], level: &mut DamageLevel<'_>, events: &m
     let new_delta_y = |dy: f64| (dy - 0.08) * f64::from(0.98_f32);
     let [x, y, z] = p.map(f64::from);
     let pos = m.position;
-    if m.on_ground || pos.y > y + 0.9375 - 1.0e-7 || old_delta_y(m.velocity.y) >= -0.08 {
+    if m.ground.on_ground || pos.y > y + 0.9375 - 1.0e-7 || old_delta_y(m.velocity.y) >= -0.08 {
         return;
     }
     let dx = (x + 0.5 - pos.x).abs();
@@ -2795,7 +2814,7 @@ pub(super) fn play_ambient(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>
             super::fox::awake_ambient(m, w)
         }
         // Turtle.getAmbientSound: the land ambient only on land and grown up, else silent.
-        Species::Turtle if m.fluids.in_water || !m.on_ground || m.is_baby() => return,
+        Species::Turtle if m.fluids.in_water || !m.ground.on_ground || m.is_baby() => return,
         Species::PolarBear if m.is_baby() => "entity.polar_bear.ambient_baby",
         // Turtle.getAmbientSound: only an adult on land makes a sound.
         Species::Turtle if turtle_ambient_silent(m) => return,
@@ -2848,7 +2867,7 @@ pub(super) fn play_ambient(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>
 /// `Turtle.getAmbientSound`: `entity.turtle.ambient_land` only when the turtle
 /// is out of water, on the ground and not a baby; otherwise `null` (silent).
 fn turtle_ambient_silent(m: &Mob) -> bool {
-    m.fluids.in_water || !m.on_ground || m.is_baby()
+    m.fluids.in_water || !m.ground.on_ground || m.is_baby()
 }
 /// `Animal.aiStep`: age-based love clearing and countdown, following the age step.
 /// Both the normal and NoAI paths run it after the age step.
@@ -3141,7 +3160,7 @@ fn ai_step_after_push(
     hurt_by_water(m, w, level, events);
     // Spider.tick: climbing while pressed against a wall.
     if m.kind.flags.climber {
-        m.climbing = m.horizontal_collision;
+        m.climbing = m.ground.horizontal_collision;
     }
     ageable_step(m, w, level, events);
     animal_step(m, events);
@@ -6341,11 +6360,11 @@ mod turtle_ambient_tests {
     #[test]
     fn a_turtle_is_silent_in_water_in_the_air_and_as_a_baby() {
         let mut m = turtle();
-        m.on_ground = true;
+        m.ground.on_ground = true;
         assert!(!turtle_ambient_silent(&m));
-        m.on_ground = false;
+        m.ground.on_ground = false;
         assert!(turtle_ambient_silent(&m));
-        m.on_ground = true;
+        m.ground.on_ground = true;
         m.fluids.in_water = true;
         assert!(turtle_ambient_silent(&m));
     }
@@ -7643,7 +7662,7 @@ mod noai_species_step_tests {
                     let mut m = Mob::new(1, kind, Vec3::new(x, 64.0, 8.5), 0.0);
                     m.no_ai = true;
                     m.persistent = true;
-                    m.on_ground = true;
+                    m.ground.on_ground = true;
                     m
                 };
                 let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
@@ -7660,7 +7679,7 @@ mod noai_species_step_tests {
                 let mut guardian = mob("minecraft:guardian", 14.5);
                 assert!(tick(&mut guardian, w, &mut level.level(), &mut events));
                 assert_eq!(guardian.velocity.y, 0.5);
-                assert!(!guardian.on_ground);
+                assert!(!guardian.ground.on_ground);
 
                 let mut camel = mob("minecraft:camel", 24.5);
                 camel.extra.camel_sitting = true;
