@@ -8,8 +8,10 @@ pub trait Hooks {
     /// Server-only: a client receiving the rate or reporting a sprint does not fire it.
     ///
     /// Calling `host.set_tick_rate` from a listener still writes the rate; nested dispatch skips
-    /// callbacks already running on this thread. A panicking callback is logged, shown in an
-    /// error toast and disabled for the session. NeoForge has no counterpart.
+    /// callbacks for this hook already running on this thread. A panicking callback is logged
+    /// with the mod's ID, shown in an error toast and disabled for the session. Phase and
+    /// reentry refusals are logged each time without disabling the callback. A failure does
+    /// not undo other writes the listener made. NeoForge has no counterpart.
     #[hook(
         dispatch = "flat",
         side = "server",

@@ -15,7 +15,9 @@ impl Game<'_> {
         raining: bool,
         thundering: bool,
     ) -> bool {
-        if self.native_level_world(level).is_none() {
+        if let Err(error) = self.native_level_world_result(level) {
+            let mod_id = mod_api::content::crash::current_native_mod().unwrap_or("unknown");
+            log::warn!("mod {mod_id}: set_weather refused for {level:?}: {error:?}");
             return false;
         }
         self.set_weather_parameters(
@@ -42,6 +44,10 @@ impl Game<'_> {
             return false;
         }
         if !self.level_in_place(level) {
+            let mod_id = mod_api::content::crash::current_native_mod().unwrap_or("unknown");
+            log::warn!(
+                "mod {mod_id}: set_weather_levels refused for {level:?}: level not in place"
+            );
             return false;
         }
         self.world.weather.set_levels(rain, thunder);
@@ -69,7 +75,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn weather_writes_set_the_level_in_place_and_refuse_others() {
+    fn weather_parameters_are_shared_and_strengths_are_local() {
         with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
             let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());

@@ -12,10 +12,12 @@ pub trait Hooks {
     ///
     /// Return `Flow::Cancel` or set `event.cancelled` to skip the proposed write.
     /// A veto is accepted only on normal return and is logged with the mod's ID.
-    /// A panic is logged and shown in an error toast; it disables only this
-    /// mod's weather callback for the session. A phase refusal is logged each
-    /// time without disabling the callback. Nested dispatch skips callbacks
-    /// already running on this thread; other eligible listeners still run.
+    /// A final veto makes `LevelRef::set_weather` return `false`. A panic is
+    /// logged with the mod's ID and shown in an error toast; it disables only
+    /// that mod's weather callback for the session. Phase and reentry refusals
+    /// are logged each time without disabling the callback. A nested setter
+    /// skips callbacks for this hook already running on the thread; other
+    /// eligible listeners still run.
     /// A veto or failure does not undo Host writes.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_weather_change",

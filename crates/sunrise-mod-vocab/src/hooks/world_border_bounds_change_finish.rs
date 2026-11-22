@@ -3,9 +3,11 @@
 
 pub trait Hooks {
     /// After a moving border on the server reaches its target size on `level`.
-    /// Starting or replacing an extent does not finish it. A panicking mod
-    /// callback is logged, shown in an error toast and disabled for the session.
-    /// Nested dispatch skips callbacks already running on this thread.
+    /// Starting or replacing an extent does not finish it. Read the final bounds with
+    /// `event.level.world_border(host)`. A panic is logged with the mod's ID, shown in an
+    /// error toast and disables just that mod's callback for the session. Nested dispatch
+    /// skips callbacks for this hook already running on the thread. Other refusals are
+    /// logged each time.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_world_border_bounds_change_finish",
         dispatch = "flat",

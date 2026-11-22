@@ -1,6 +1,8 @@
 sunrise-client game::integrated::tests::owner_simulation_option_only_overrides_a_mod_write_when_it_changes lib daily child-process
 sunrise-client game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::a_listener_runs_before_the_autosave_wait_is_adjusted lib daily child-process
 sunrise-client game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::a_mod_hears_every_route_of_on_tick_rate_changed_once lib daily child-process
-sunrise-client game::native_level_border::tests::border_setters_notify_the_named_level lib daily resources
+sunrise-client game::native_level_border::tests::border_setters_notify_the_named_level lib daily child-process
 sunrise-client game::native_level_weather::tests::local_difficulty_reaches_the_game lib daily child-process
+sunrise-client game::native_level_weather::tests::weather_parameters_are_shared_and_strengths_are_local lib daily resources
 sunrise-client game::native_level_weather::tests::weather_veto_does_not_undo_listener_work lib daily resources
+sunrise-client game::native_server_distances::tests::a_mod_reads_and_sets_the_servers_distances lib daily child-process

@@ -4,9 +4,10 @@
 pub trait Hooks {
     /// After the server sets `level`'s border size. `lerp_ticks` is `None` for a fixed
     /// size and `Some(requested_ticks)` for a timed write, including a timed equal-size
-    /// write. Does not run for loads or client packets. A panicking mod callback is
-    /// logged, shown in an error toast and disabled for the session. Nested dispatch
-    /// skips callbacks already running on this thread.
+    /// write. A timed equal-size write doesn't start a moving extent. Loads and client packets
+    /// do not fire this hook. A panic is logged with the mod's ID, shown in an error toast and
+    /// disables just that mod's callback for the session. Nested dispatch skips callbacks for
+    /// this hook already running on the thread. Other refusals are logged each time.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_world_border_bounds_changed",
         dispatch = "flat",

@@ -23,7 +23,9 @@ pub trait LevelWorldBorderBackendMut {
     /// aren't subject to `/worldborder center`'s argument range: the extent itself clips
     /// its edges to the absolute bounds. Every successful write notifies the level's
     /// watchers and fires `world_border_center_changed`, including equal-value writes.
-    /// Returns `false` for invalid geometry, a stale handle, a closed level or a client.
+    /// A nested write skips callbacks for this hook already running on this thread.
+    /// Returns `false` and logs the refusal for invalid geometry, a stale handle,
+    /// a closed level or a client.
     #[access(WorldOnly)]
     fn level_set_world_border_center(&mut self, level: LevelRef, center: [f64; 2]) -> bool;
     /// Side: server.
@@ -32,15 +34,16 @@ pub trait LevelWorldBorderBackendMut {
     /// Accepts finite nonnegative sizes without `/worldborder set`'s size range.
     /// Every success notifies the level's watchers and fires `world_border_bounds_changed`,
     /// including equal-value writes. A timed write to the current size sends a lerp notice
-    /// but does not start a moving extent. Returns `false` for invalid geometry, a stale
-    /// handle, a closed level or a client.
+    /// but does not start a moving extent. A nested write skips callbacks for this hook
+    /// already running on this thread. Returns `false` and logs the refusal for invalid
+    /// geometry, a stale handle, a closed level or a client.
     #[access(WorldOnly)]
     fn level_set_world_border_size(&mut self, level: LevelRef, size: f64, ticks: i64) -> bool;
     /// Side: server.
     /// Sets the named level's border damage and safe zone (`WorldBorder.setDamagePerBlock`
     /// and `setSafeZone`). Accepts signed finite values. These settings aren't sent to
-    /// clients. Returns `false` for a non-finite value, a stale handle, a closed level or a
-    /// client.
+    /// clients. Returns `false` and logs the refusal for a non-finite value, a stale handle,
+    /// a closed level or a client.
     #[access(WorldOnly)]
     fn level_set_world_border_damage(
         &mut self,
@@ -51,8 +54,8 @@ pub trait LevelWorldBorderBackendMut {
     /// Side: server.
     /// Sets the named level's border warning distance (blocks) and time (ticks) through
     /// `WorldBorder.setWarningBlocks` and `setWarningTime`. Accepts signed values and sends
-    /// each setting to that level's watchers. Returns `false` for a stale handle, a closed
-    /// level or a client.
+    /// each setting to that level's watchers, even if the values are unchanged. Returns
+    /// `false` and logs the refusal for a stale handle, a closed level or a client.
     #[access(WorldOnly)]
     fn level_set_world_border_warning(
         &mut self,

@@ -3,9 +3,10 @@
 
 pub trait Hooks {
     /// After the server sets `level`'s border center, including an equal-value direct write.
-    /// Does not run for loads or client packets. A panicking mod callback is logged, shown in
-    /// an error toast and disabled for the session. Nested dispatch skips callbacks already
-    /// running on this thread.
+    /// Read the named border with `event.level.world_border(host)`. Loads and client packets
+    /// do not fire this hook. A panic is logged with the mod's ID, shown in an error toast and
+    /// disables just that mod's callback for the session. Nested dispatch skips callbacks for
+    /// this hook already running on the thread. Other refusals are logged each time.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_world_border_center_changed",
         dispatch = "flat",

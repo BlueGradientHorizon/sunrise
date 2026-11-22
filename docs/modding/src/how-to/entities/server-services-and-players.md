@@ -183,17 +183,40 @@ integrated world, the owner's render distance takes over again on the next
 running tick; their simulation distance only takes over when that option changes.
 
 `host.set_tick_rate(tps)` uses the integrated or dedicated server's clock setter, not
-`/tick rate`'s parser. Finite rates below 1 become 1; non-finite rates are refused and
-logged. Even an equal write fires `server_tick_rate_changed` before the server can
-shorten its autosave countdown and sends the final rate and freeze state to clients.
-A listener can retune the clock: the nested write notifies other listeners but skips
-callbacks already running on this thread. The hook also runs when a server sprint ends,
-not when a client receives the server's rate.
+`/tick rate`'s parser. Finite rates below 1 become 1; the command's upper limit does
+not apply. A non-finite rate or a call off the logical server returns `false` and logs
+the refusal. Even an equal write fires `server_tick_rate_changed` before the server
+adjusts the autosave countdown and sends the final rate and freeze state to clients.
+A listener can retune the clock through the same setter. The hook also runs when a
+server sprint ends, not when a client receives the server's rate.
 
 `host.tick_rate_is_frozen()` is `TickRateManager.isFrozen` (`/tick freeze`): `Some(true)` while the server's
 ticking is frozen, `None` on a client. A frozen server still runs the ticks `/tick step` asks for, so
 `server_tick_start`'s `world_running` can be true while it is frozen; read this to tell a frozen server from a
 paused level.
+
+## Weather
+
+Use the setter on any resident server level to request a storm for the server:
+
+```rust
+use mod_api::{LevelRef, ServerHost};
+
+fn request_storm(host: &mut dyn ServerHost, origin: LevelRef) -> bool {
+    origin.set_weather(host, 0, 600, true, true)
+}
+```
+
+The handle names the origin, even if that level is parked. The clear timer and the
+shared rain/thunder timer are signed tick values, not `/weather` command arguments.
+[`weather_change`](../../concepts/hooks-and-the-host.md#weather-parameters-and-strengths)
+can veto all the timers and flags together. The call returns `false` on a final veto
+or invalid level; a veto does not undo other writes a listener already made.
+
+To change the interpolated strengths immediately instead, call
+`level.set_weather_levels(host, 0.5, 0.25)` on the level in place. Both strengths
+clamp to 0–1, including infinities. NaN or a level that is not in place is refused.
+This setter does not call `weather_change` or change the timers or flags.
 
 ## World borders
 
@@ -211,16 +234,39 @@ same setters as `/worldborder`, without the command's range and no-change checks
   finite damage settings. `level.set_world_border_warning(host, blocks, ticks)`
   accepts signed warning settings.
 
-The setters return `false` on refusal, including invalid values or stale
-handles, and do not open or switch levels. Successful center, size and warning
-writes notify that level's watchers, even when a direct write repeats a value.
-The server's `world_border_center_changed` and `world_border_bounds_changed`
-listeners get `event.level`; the latter also gets `event.lerp_ticks`, either
-`None` for a fixed write or `Some(requested_ticks)` for a timed write. A timed
-write to the current size still fires that start notice but does not create a
-moving extent. `world_border_bounds_change_finish` gives `event.level` only
-after an actual moving extent reaches its target on a server tick. Loads and
-client packet application do not trigger these notifications.
+For example, request a border of 256 blocks over 200 ticks in the level a
+`LevelRef` names:
+
+```rust
+use mod_api::{LevelRef, ServerHost};
+
+fn resize_border(host: &mut dyn ServerHost, level: LevelRef) -> bool {
+    level.set_world_border_size(host, 256.0, 200)
+}
+```
+
+The setters return `false` and log refusals (for example, an invalid size or
+stale handle). They do not open or switch levels. Successful center, size and
+warning writes notify that level's watchers, even when a direct write repeats
+a value. Damage settings stay on the server.
+
+The `world_border_center_changed` and `world_border_bounds_changed` listeners
+can read the changed border with `event.level.world_border(host)`. The bounds
+listener also gets `event.lerp_ticks`: `None` for a fixed write, or
+`Some(requested_ticks)` for a timed write. A timed write to the current size
+still fires that start notice but creates no moving extent.
+`world_border_bounds_change_finish` names the level only after an actual
+moving extent reaches its target on a server tick. Loads and client packet
+application do not trigger these notifications.
+
+### Calling a setter from a listener
+
+For the weather, border and tick-rate hooks above, a nested setter can run.
+Its dispatch skips callbacks for that hook already running on the thread, not
+other eligible listeners. If a mod's callback panics, Sunrise logs the mod and
+hook, shows an error toast and disables just that callback for the rest of the
+session. Vetoes and hook refusals are logged each time and do not disable the
+callback. These hooks do not roll back writes a listener already made.
 
 ## Finding blocks in a chunk
 

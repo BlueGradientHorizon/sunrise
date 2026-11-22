@@ -133,9 +133,9 @@ pub trait ConfigServerHost {
     /// `TickRateManager.setTickRate` raises finite values below 1 to 1; `/tick rate`'s upper
     /// bound is only a command argument limit. Every accepted write, even an equal one, fires
     /// `server_tick_rate_changed`, shortens the autosave wait if needed, then sends the final
-    /// rate and freeze state to clients. A nested write succeeds but skips already running
-    /// callbacks. A non-finite rate or a call off the logical server returns false and is logged
-    /// without changing the clock.
+    /// rate and freeze state to clients. A nested write skips callbacks for this hook already
+    /// running on this thread. A non-finite rate or a call off the logical server returns
+    /// `false` and logs the refusal without changing the clock.
     #[access(WorldOnly)]
     fn set_tick_rate(&mut self, rate: f32) -> bool;
     /// Side: server.

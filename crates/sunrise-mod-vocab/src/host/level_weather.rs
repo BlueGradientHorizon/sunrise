@@ -40,8 +40,9 @@ pub trait LevelWeatherBackendMut {
     /// The clear timer takes `clear_ticks`, and both rain and thunder timers take
     /// `weather_ticks`, as signed values without command parsing. Rain and thunder fade
     /// toward the given states; `set_weather_levels` sets their strength immediately.
-    /// Returns false for an invalid level (including on a client) or when `weather_change`
-    /// vetoes the whole write. A veto does not undo a listener's other writes.
+    /// Returns `false` for an invalid level (including on a client) or when `weather_change`
+    /// vetoes the whole write. Refusals and vetoes are logged. A nested write skips callbacks
+    /// already running on this thread. A veto does not undo a listener's other writes.
     #[access(WorldOnly)]
     fn level_set_weather(
         &mut self,
@@ -55,7 +56,8 @@ pub trait LevelWeatherBackendMut {
     /// How strong the rain and thunder are now (`Level.setRainLevel`, `setThunderLevel`),
     /// each clamped to 0 to 1 (including infinities) and set without fading. They still drift
     /// toward the weather the level has (`set_weather`) by 0.01 a tick, as vanilla's do.
-    /// Returns false for NaN, a parked level, a stale handle or a client.
+    /// Does not fire `weather_change`. Returns `false` and logs the refusal for NaN, a parked
+    /// level, a stale handle or a client.
     #[access(WorldOnly)]
     fn level_set_weather_levels(&mut self, level: LevelRef, rain: f32, thunder: f32) -> bool;
     /// Side: server.
