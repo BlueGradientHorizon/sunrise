@@ -129,6 +129,11 @@ jobs:
         run: |
           reference=$(mktemp -d "$RUNNER_TEMP/fishing-reference.XXXXXX")
           python3 tools/test_fishing_rng_parity.py --prepare-reference "$reference" --env-file "$GITHUB_ENV"
+      - name: Generate the game-mode split tests' vanilla witness
+        if: steps.data.outputs.present != 'false' && (matrix.shard == 'sunrise-client' || startsWith(matrix.shard, 'sunrise-client#'))
+        run: |
+          witness=$(mktemp -d "$RUNNER_TEMP/gamemode-split-witness.XXXXXX")
+          python3 tools/test_gamemode_split_parity.py --prepare-witness "$witness" --env-file "$GITHUB_ENV"
       - name: Generate the network parity tests' vanilla witnesses
         if: steps.data.outputs.present != 'false' && (matrix.shard == 'sunrise-client' || startsWith(matrix.shard, 'sunrise-client#') || matrix.shard == 'sunrise-client-lib' || startsWith(matrix.shard, 'sunrise-client-lib#') || matrix.shard == 'daily-rows')
         run: |

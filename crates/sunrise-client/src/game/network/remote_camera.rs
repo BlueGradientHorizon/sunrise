@@ -243,6 +243,13 @@ pub(super) fn entity_post_effect(kind: &str) -> Option<&'static str> {
     sunrise_client_render::spectator_shaders::chain(kind)
 }
 
+/// `Hud.getCameraPlayer`: the local player or a spectated remote player.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::game) enum CameraPlayer {
+    Local,
+    Remote(u32),
+}
+
 impl Game<'_> {
     /// `ClientPacketListener.handleSetCamera`.
     pub(in crate::game) fn remote_set_camera(&mut self, camera_id: i32) {
@@ -285,6 +292,29 @@ impl Game<'_> {
     /// `LocalPlayer.isControlledCamera`: the view is the player's own.
     pub(super) fn controls_camera(&self) -> bool {
         self.remote_camera_id().is_none()
+    }
+    /// `Hud.getCameraPlayer`: the camera entity when it is a player, else `None`.
+    pub(in crate::game) fn camera_player(&self) -> Option<CameraPlayer> {
+        if let Some(id) = self.remote_camera_id() {
+            let r = self.remote.as_ref()?;
+            if id == r.entity_id as u32 {
+                return self.player.is_some().then_some(CameraPlayer::Local);
+            }
+            return (r.level_players.contains_key(&(id as i32))
+                && self.mobs.iter().any(|m| m.id == id))
+            .then_some(CameraPlayer::Remote(id));
+        }
+        self.player.is_some().then_some(CameraPlayer::Local)
+    }
+    /// `camera.entity().isSpectator()`: for lava and powdered-snow fog (`setupFog`).
+    pub(in crate::game) fn camera_entity_is_spectator(&self) -> bool {
+        if let Some(id) = self.remote_camera_id() {
+            return self.remote.as_ref().is_some_and(|r| {
+                r.remote_player_info_game_mode(id as i32)
+                    == Some(sunrise_client::tab_list::SPECTATOR)
+            });
+        }
+        self.own_player_is_spectator()
     }
     /// The mob the view follows, while the level still holds it.
     pub(super) fn camera_mob(&self) -> Option<&Mob> {
