@@ -52,7 +52,7 @@ pub fn record_here(on: bool) {
 /// Whether this thread records spans: all of them on, or [`record_here`].
 #[inline]
 pub fn recording_here() -> bool {
-    ENABLED.load(Ordering::Relaxed) || HERE.with(Cell::get) || timeline::on()
+    ENABLED.load(Ordering::Relaxed) || timeline::on() || HERE.with(Cell::get)
 }
 /// The thread's CPU time when spans are on for every thread (`SUNRISE_SPIKES`): spans recorded
 /// by `record_here` alone keep wall time only.
