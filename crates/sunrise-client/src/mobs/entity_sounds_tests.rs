@@ -383,7 +383,7 @@ fn in_own_process(test: &str) -> bool {
         return true;
     }
     let out = std::process::Command::new(std::env::current_exe().unwrap())
-        .args([&name, "--exact", "--include-ignored", "--test-threads=1"])
+        .args([&name, "--exact", "--ignored", "--test-threads=1"])
         .env(CHILD, &name)
         .output()
         .unwrap();
@@ -398,6 +398,7 @@ fn in_own_process(test: &str) -> bool {
 }
 
 #[test]
+#[ignore = "daily"]
 fn entity_sounds_declared_interval_replaces_the_templates_at_load() {
     if !in_own_process("entity_sounds_declared_interval_replaces_the_templates_at_load") {
         return;
