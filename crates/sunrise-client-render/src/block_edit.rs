@@ -342,7 +342,6 @@ mod tests {
         let mut asked = Vec::new();
         let out = w.edit_runs(
             &runs,
-            &FxHashSet::default(),
             |id, state| {
                 asked.push((id, state));
                 id == usize::MAX && state == 0
