@@ -56,8 +56,12 @@ Keep the contents in the stack and use these methods to access it:
 | `place.resource(host)` | Its resource without a count, or `None` |
 | `place.amount(host)` | Its count, or 0 |
 | `place.insert(host, tx, &resource, amount)` | How much was inserted |
-| `place.extract(host, tx, &resource, amount)` | How much was extracted |
+| `place.extract(host, tx, &resource, amount)` | How much was taken from a stack matching the resource's item and components |
 | `place.exchange(host, tx, &resource, amount)` | How much was exchanged, or 0 if the exchange fails |
+
+Where the game handles extraction directly, an override equal to the item's default does not
+change what matches. The resource need not be valid for insertion: for example, a damage
+component already on a stack can match even when that stack has no maximum damage.
 
 Each write runs in its own transaction nested in `tx`. Aborting restores changes at every
 level of nested items. If a handler answers more than requested, the move is undone and the

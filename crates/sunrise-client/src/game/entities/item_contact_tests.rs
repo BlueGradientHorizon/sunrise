@@ -516,3 +516,514 @@ fn item_support_survives_idle_then_clears_on_an_airborne_move() {
         },
     );
 }
+
+type StepCall = (bool, i32, [i32; 3], bool);
+
+#[derive(Clone, Default)]
+struct StepProbe {
+    calls: Arc<Mutex<Vec<StepCall>>>,
+}
+
+#[mod_api::sunrise_part]
+impl BlockPart for StepProbe {
+    fn step_on(&self, level: mod_api::LevelRandomSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
+        let (client, host): (bool, &dyn mod_api::LevelHost) = match level {
+            mod_api::LevelRandomSide::Client(host) => (true, host),
+            mod_api::LevelRandomSide::Server(host) => (false, host),
+        };
+        let pos = [event.pos.x, event.pos.y, event.pos.z];
+        assert_eq!(host.block_state(pos), Some(event.state));
+        let first = {
+            let mut calls = self.calls.lock().unwrap();
+            let first = !calls.iter().any(|call| call.1 == event.entity);
+            calls.push((client, event.entity, pos, event.stepping_carefully));
+            first
+        };
+        event.movement[0] = 0.25;
+        if !client {
+            let write = match event.kind {
+                "minecraft:armor_stand" => mod_api::EntityWrite::Push([0.25, 0.0, 0.0]),
+                "minecraft:item" => mod_api::EntityWrite::StuckIn([0.5, 0.25, 0.5]),
+                "minecraft:oak_boat" if first => mod_api::EntityWrite::SetFireTicks(40),
+                _ => return,
+            };
+            assert!(event.write_entity(write));
+        }
+    }
+
+    fn entity_inside(
+        &self,
+        _: &mut dyn mod_api::LevelRandomHost,
+        event: &mut mod_api::EntityInsideEvent<'_>,
+    ) {
+        // A later inside write wins over the step; settle then drags this movement.
+        event.run_after(
+            mod_api::InsideEffect::Freeze,
+            mod_api::EntityWrite::SetMovement([0.5, 0.0, 0.0]),
+        );
+    }
+
+    fn item_after_vertical_collision(
+        &self,
+        _: HostSide<'_>,
+        event: &mut ItemAfterVerticalCollisionEvent<'_>,
+    ) -> Flow {
+        if event.stack.as_ref().is_some_and(|stack| stack.count() == 1) {
+            Flow::Cancel
+        } else {
+            Flow::Continue
+        }
+    }
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for StepProbe {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let stone = r.block_key("minecraft:stone");
+        let cobweb = r.block_key("minecraft:cobweb");
+        r.block_part(stone, self.clone());
+        r.block_part(cobweb, self.clone());
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
+    crate::game::in_own_process(
+        "game::item_contact_tests::step_on_edits_grounded_bodies_before_inside_effects_and_settle",
+        || {
+            use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+            use sunrise_client::motion::{MotionWorld, PlayerMotion};
+
+            let part = StepProbe::default();
+            let mods: mod_api::Mods =
+                vec![mod_api::ModEntry::new("step", Box::new(part.clone()))].into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                crate::game::native_hooks::install_block_contact_hooks();
+                let run = |game: &mut Game<'_>, client: bool| {
+                    let registry = game.pack.assets.registry;
+                    let stone = registry.default_state("minecraft:stone").unwrap();
+                    let web = registry.default_state("minecraft:cobweb").unwrap();
+                    let air = game.res.facts().air;
+                    let floor = [4, 63, 4];
+                    game.world = World::new(air, 1);
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                    game.world.set(4, 63, 4, stone).unwrap();
+                    if !client {
+                        game.world.set(4, 64, 4, web).unwrap();
+                    }
+                    let spawn = |game: &mut Game<'_>, count, height| {
+                        game.dropped.clear();
+                        game.spawn_item(
+                            ItemStack::new("minecraft:iron_ingot", count),
+                            [4.5, height, 4.5],
+                            [0.0, -0.96, 0.0],
+                            20,
+                        );
+                        game.dropped[0].clone()
+                    };
+                    let tick = |game: &mut Game<'_>, item: &mut ItemEntity, escape| {
+                        sunrise_client::block_contact::in_level(
+                            sunrise_client::parallel::TickThread::mint(),
+                            Some("minecraft:overworld"),
+                            || {
+                                game.tick_item_with_block_contacts(
+                                    item,
+                                    escape,
+                                    &[],
+                                    client,
+                                    &mut |_| {},
+                                )
+                            },
+                        )
+                    };
+                    let clear_calls = || std::mem::take(&mut *part.calls.lock().unwrap());
+                    let mut item = spawn(game, 2, 64.25);
+                    assert_eq!(tick(game, &mut item, None), (true, false));
+                    assert_eq!(item.position.y, 64.0);
+                    let settled = if client { 0.25 } else { 0.5 } * f64::from(0.98_f32 * 0.6_f32);
+                    assert_eq!(item.velocity.x, settled);
+                    assert_eq!(clear_calls(), [(client, item.id as i32, floor, false)]);
+
+                    game.world.set(4, 64, 4, air).unwrap();
+                    item.velocity = Vec3::ZERO;
+                    item.ticks = item.id.wrapping_neg() & 3;
+                    assert_eq!(tick(game, &mut item, None), (true, false));
+                    assert_eq!(item.position, Vec3::new(4.5, 64.0, 4.5));
+                    assert_eq!(item.velocity.x, 0.25); // no movement drag on an idle tick
+                    assert_eq!(clear_calls(), [(client, item.id as i32, floor, false)]);
+                    assert_eq!(tick(game, &mut item, None), (true, false));
+                    let displacement = if client { 0.25 } else { 0.125 };
+                    assert_eq!(item.position.x, 4.5 + displacement);
+                    assert_eq!(clear_calls(), [(client, item.id as i32, floor, false)]);
+                    if !client {
+                        // The actual next move spent the preceding multiplier and
+                        // the stone Part installed a fresh one on its own step.
+                        assert_eq!(item.stuck, Vec3::new(0.5, 0.25, 0.5));
+                    }
+
+                    assert_eq!(tick(game, &mut item, Some(0.1)), (true, false));
+                    let mut airborne = spawn(game, 2, 69.0);
+                    assert_eq!(tick(game, &mut airborne, None), (true, false));
+                    let mut consumed = spawn(game, 1, 64.25);
+                    assert_eq!(tick(game, &mut consumed, None), (false, true));
+                    assert!(clear_calls().is_empty());
+
+                    let position = Vec3::new(4.5, 64.0, 4.5);
+                    let mut player = PlayerMotion::new(game.motion, position).unwrap();
+                    player.entity_id = 77;
+                    player.ground.on_ground = true;
+                    player.shift_key_down = true;
+                    let side = game_side!(game);
+                    let mut motion = MotionWorld {
+                        side: &side,
+                        entities: &[],
+                        player: &mut player,
+                        scene: &mut game.world,
+                        assets: &game.pack.assets,
+                        collision_binding: game.collision,
+                        resources: game.motion,
+                        health: &game.health_resources,
+                        loop_context: &game.loop_context,
+                        damage_hooks: &game.damage_hooks,
+                        tag_items: None,
+                        block_registries: Some(&game.pack.block_registries),
+                    };
+                    if client {
+                        motion.apply_effects_from_blocks().unwrap();
+                    } else {
+                        motion.server_stuck_in_blocks(position).unwrap();
+                        assert!(clear_calls().is_empty());
+                        motion.server_block_damage(position).unwrap();
+                    }
+                    assert_eq!(player.velocity.x, 0.25);
+                    assert_eq!(clear_calls(), [(client, 77, floor, true)]);
+
+                    if !client {
+                        game.tickets.update(Some(crate::ticket_levels::Sources {
+                            forced: vec![(0, 0)],
+                            ..Default::default()
+                        }));
+                        let mut stand = sunrise_client::entities::ArmorStand::new(
+                            78,
+                            Vec3::new(4.5, 64.25, 4.5),
+                            0.0,
+                        );
+                        stand.velocity.y = -0.5;
+                        game.armor_stands.push(stand);
+                        game.tick_armor_stands().unwrap();
+                        assert_eq!(game.armor_stands[0].position.y, 64.0);
+                        assert_eq!(game.armor_stands[0].velocity.x, 0.5);
+                        assert_eq!(clear_calls(), [(false, 78, floor, false)]);
+
+                        use crate::game::native_entity_refs::tests::{
+                            bind_acting_guest, bind_local_player,
+                        };
+                        let seat = Vec3::new(8.5, 64.0, 4.5);
+                        game.world.set(8, 63, 4, stone).unwrap();
+                        game.player = Some(PlayerMotion::new(game.motion, seat).unwrap());
+                        bind_local_player(game, 80, 1);
+                        game.lan_acting = Some(2);
+                        game.lan_acting_name = Some("boat_step".into());
+                        bind_acting_guest(game);
+                        game.lan_acting = None;
+                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                            guest.vehicle = Some(79);
+                        });
+                        let mut boat = crate::game::boats::Boat::new(79, "oak".into(), seat, 0.0);
+                        boat.ground.on_ground = true;
+                        game.boats.push(boat);
+                        game.tick_boats();
+                        assert_eq!(game.boats[0].fire_ticks, 40);
+                        assert_eq!(clear_calls(), [(false, 79, [8, 63, 4], false); 2]);
+                    }
+                };
+                with_game(|game| run(game, false));
+                with_client_game(|game| run(game, true));
+            });
+        },
+    );
+}
+
+#[derive(Clone, Default)]
+struct StepWrites(Arc<Mutex<Vec<[[f64; 3]; 2]>>>);
+
+#[mod_api::sunrise_part]
+impl BlockPart for StepWrites {
+    fn step_on(&self, level: mod_api::LevelRandomSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
+        self.0.lock().unwrap().push(event.bounds);
+        let hurt = mod_api::EntityWrite::Hurt { amount: 0.5 };
+        match level {
+            mod_api::LevelRandomSide::Server(level) => {
+                let state = level.block_state_id("minecraft:glass").unwrap();
+                assert!(event.write_entity(hurt));
+                assert!(event.request(mod_api::LandingWrite::SetBlock(state)));
+            }
+            mod_api::LevelRandomSide::Client(_) => {
+                assert!(!event.write_entity(hurt));
+                assert!(!event.request(mod_api::LandingWrite::DestroyBlock { drop: false }));
+            }
+        }
+    }
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for StepWrites {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let stone = r.block_key("minecraft:stone");
+        r.block_part(stone, self.clone());
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
+    crate::game::in_own_process(
+        "game::item_contact_tests::step_on_hurts_the_stepping_body_and_guards_its_block_writes",
+        || {
+            use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+            let part = StepWrites::default();
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+                "step_writes",
+                Box::new(part.clone()),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                crate::game::native_hooks::install_block_contact_hooks();
+                let run = |game: &mut Game<'_>, client, change_first| {
+                    let registry = game.pack.assets.registry;
+                    let stone = registry.default_state("minecraft:stone").unwrap();
+                    let glass = registry.default_state("minecraft:glass").unwrap();
+                    let dirt = registry.default_state("minecraft:dirt").unwrap();
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                    game.world.set(4, 63, 4, stone).unwrap();
+                    game.dropped.clear();
+                    game.spawn_item(
+                        ItemStack::new("minecraft:iron_ingot", 2),
+                        [4.5, 64.25, 4.5],
+                        [0.0, -0.96, 0.0],
+                        20,
+                    );
+                    let mut item = game.dropped[0].clone();
+                    let before = item.health;
+                    sunrise_client::block_contact::in_level(game.tick, Some(game.dim.id()), || {
+                        assert_eq!(
+                            game.tick_item_with_block_contacts(
+                                &mut item,
+                                None,
+                                &[],
+                                client,
+                                &mut |_| {}
+                            ),
+                            (true, false)
+                        );
+                    });
+                    assert_eq!(item.health, before - i32::from(!client));
+                    assert_eq!(
+                        game.world.block(4, 63, 4),
+                        stone,
+                        "block write stays queued"
+                    );
+                    if change_first {
+                        game.world.set(4, 63, 4, dirt).unwrap();
+                    }
+                    game.drain_entity_inside();
+                    let kept = if change_first {
+                        dirt
+                    } else if client {
+                        stone
+                    } else {
+                        glass
+                    };
+                    assert_eq!(game.world.block(4, 63, 4), kept);
+                    if !client && !change_first {
+                        game.world.set(4, 63, 4, stone).unwrap();
+                        let mut stack = ItemStack::new("minecraft:shulker_box", 1);
+                        let contents: Vec<_> = (0..27)
+                            .map(|slot| {
+                                (
+                                    slot,
+                                    ItemStack::new("minecraft:diamond", u32::from(slot) + 1),
+                                )
+                            })
+                            .collect();
+                        stack.data_mut().container = contents.clone();
+                        game.dropped.clear();
+                        game.spawn_item(stack, [4.5, 64.25, 4.5], [0.0, -0.96, 0.0], 20);
+                        game.dropped[0].health = 1;
+                        let mut item = game.dropped.remove(0);
+                        sunrise_client::block_contact::in_level(
+                            game.tick,
+                            Some(game.dim.id()),
+                            || {
+                                assert_eq!(
+                                    game.tick_item_with_block_contacts(
+                                        &mut item,
+                                        None,
+                                        &[],
+                                        false,
+                                        &mut |_| {}
+                                    ),
+                                    (false, true),
+                                );
+                            },
+                        );
+                        assert_eq!(game.dropped.len(), contents.len());
+                        for (drop, (_, stack)) in game.dropped.iter().zip(contents) {
+                            assert_eq!(drop.stack, stack);
+                            assert_eq!(drop.position, item.position);
+                        }
+                        game.drain_entity_inside();
+                    }
+                };
+                with_game(|game| {
+                    game.options.dedicated = Some(Vec::new());
+                    run(game, false, false);
+                    run(game, false, true);
+                });
+                with_client_game(|game| run(game, true, false));
+                assert_eq!(
+                    *part.0.lock().unwrap(),
+                    [[[4.375, 64.0, 4.375], [4.625, 64.25, 4.625]]; 4]
+                );
+            });
+        },
+    );
+}
+
+const ACCEPT_BEFORE: u8 = 0;
+const REJECT: u8 = 1;
+const ACCEPT_AFTER: u8 = 2;
+
+#[derive(Clone, Copy)]
+struct StepAnswer<const ORDER: u8>;
+
+#[mod_api::sunrise_part]
+impl<const ORDER: u8> BlockPart for StepAnswer<ORDER> {
+    fn step_on(&self, level: mod_api::LevelRandomSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
+        use mod_api::{EntityWrite, LandingWrite};
+        let mod_api::LevelRandomSide::Server(level) = level else {
+            return;
+        };
+        match ORDER {
+            ACCEPT_BEFORE => {
+                event.movement[0] = 0.25;
+                let push = if event.pos.x == 9 { f64::MAX } else { 0.5 };
+                event.write_entity(EntityWrite::Push([push, 0.0, 0.0]));
+                event.request(LandingWrite::SetBlock(
+                    level.block_state_id("minecraft:glass").unwrap(),
+                ));
+            }
+            REJECT => {
+                assert_eq!(event.movement[0], 0.25);
+                event.movement[0] = 3.0;
+                event.write_entity(EntityWrite::Hurt { amount: 10.0 });
+                event.request(LandingWrite::DestroyBlock { drop: false });
+                match event.pos.x {
+                    4 => {
+                        let unknown = mod_api::__private::block_state_from_ordinal(
+                            event.state.block(),
+                            u16::MAX,
+                        );
+                        event.request(LandingWrite::SetBlock(unknown));
+                    }
+                    5 => {
+                        event.write_entity(EntityWrite::SetMovement([f64::INFINITY, 0.0, 0.0]));
+                    }
+                    6 => {
+                        event.write_entity(EntityWrite::Push([f64::NAN, 0.0, 0.0]));
+                    }
+                    8 => {
+                        event.write_entity(EntityWrite::Push([f64::MAX, 0.0, 0.0]));
+                        event.write_entity(EntityWrite::Push([f64::MAX, 0.0, 0.0]));
+                    }
+                    9 => {
+                        event.write_entity(EntityWrite::Push([f64::MAX, 0.0, 0.0]));
+                    }
+                    _ => event.movement[0] = f64::NAN,
+                }
+            }
+            ACCEPT_AFTER => {
+                assert_eq!(event.movement[0], 0.25);
+                event.movement[0] += 0.75;
+                event.write_entity(EntityWrite::Push([0.5, 0.0, 0.0]));
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[mod_api::__subscriptions]
+impl<const ORDER: u8> Hooks for StepAnswer<ORDER> {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let stone = r.block_key("minecraft:stone");
+        r.block_part(stone, *self);
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn step_on_refuses_only_the_invalid_part_outputs() {
+    crate::game::in_own_process(
+        "game::item_contact_tests::step_on_refuses_only_the_invalid_part_outputs",
+        || {
+            let mods: mod_api::Mods = vec![
+                mod_api::ModEntry::new("a_before", Box::new(StepAnswer::<ACCEPT_BEFORE>)),
+                mod_api::ModEntry::new("b_invalid", Box::new(StepAnswer::<REJECT>)),
+                mod_api::ModEntry::new("c_after", Box::new(StepAnswer::<ACCEPT_AFTER>)),
+            ]
+            .into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                crate::game::native_hooks::install_block_contact_hooks();
+                crate::game::native_entity_refs::tests::with_game(|game| {
+                    game.options.dedicated = Some(Vec::new());
+                    let registry = game.pack.assets.registry;
+                    let stone = registry.default_state("minecraft:stone").unwrap();
+                    let glass = registry.default_state("minecraft:glass").unwrap();
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                    for x in 4..=9 {
+                        game.world.set(x, 63, 4, stone).unwrap();
+                        game.spawn_item(
+                            ItemStack::new("minecraft:iron_ingot", 1),
+                            [f64::from(x) + 0.5, 64.25, 4.5],
+                            [0.0, -0.96, 0.0],
+                            20,
+                        );
+                        let mut item = game.dropped.remove(0);
+                        sunrise_client::block_contact::in_level(
+                            game.tick,
+                            Some(game.dim.id()),
+                            || {
+                                assert_eq!(
+                                    game.tick_item_with_block_contacts(
+                                        &mut item,
+                                        None,
+                                        &[],
+                                        false,
+                                        &mut |_| {}
+                                    ),
+                                    (true, false),
+                                );
+                            },
+                        );
+                        assert_eq!(item.health, 5);
+                        let written = if x == 9 { f64::MAX } else { 2.0 };
+                        assert_eq!(item.velocity.x, written * f64::from(0.98_f32 * 0.6_f32));
+                        assert_eq!(game.world.block(x, 63, 4), stone);
+                        game.drain_entity_inside();
+                        assert_eq!(game.world.block(x, 63, 4), glass);
+                    }
+                });
+            });
+        },
+    );
+}
