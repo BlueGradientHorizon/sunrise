@@ -1583,7 +1583,6 @@ impl Game<'_> {
         self.sync_riders();
         self.tick_skeleton_traps();
         self.guardian_bubbles();
-        self.villager_reputation_tick();
         self.villager_item_sense();
         self.villager_pickups();
         laps.lap("creature_villagers");
@@ -1712,6 +1711,7 @@ impl Game<'_> {
     }
     /// Settle a hit while its damage owner still has the level in place.
     pub(in crate::game) fn finish_mob_damage_at(&mut self, index: usize) {
+        self.settle_villager_hurt(index);
         let Some(mob) = self.mobs.get_mut(index) else {
             return;
         };
@@ -2063,6 +2063,8 @@ impl Game<'_> {
         let mut settle = false;
         let mut hurt = false;
         let mut infested = Vec::new();
+        let mut sounds = Vec::new();
+        let mut center = [0.0; 3];
         let catch_up = self.catch_up_countdowns(source.attacker, target);
         let aim = self.attacker_aim(source.attacker);
         // So `living_knockback` sees who hit and what they hold.
@@ -2112,12 +2114,10 @@ impl Game<'_> {
             if hit {
                 killed = !t.alive();
                 // The hurt or death sound the mob raised.
-                let center = t.center();
+                center = t.center();
                 for event in std::mem::take(&mut t.outbox) {
                     match event {
-                        MobEvent::Sound(s, _, volume, pitch) => {
-                            self.audio.play(&full_id(s), Some(center), volume, pitch);
-                        }
+                        MobEvent::Sound(s, _, volume, pitch) => sounds.push((s, volume, pitch)),
                         MobEvent::Infested { at, velocities } => infested.push((at, velocities)),
                         other => {
                             // Left for the end of the tick.
@@ -2126,6 +2126,12 @@ impl Game<'_> {
                     }
                 }
             }
+        }
+        if let Some(index) = target_index {
+            self.settle_villager_hurt(index);
+        }
+        for (s, volume, pitch) in sounds {
+            self.audio.play(&full_id(s), Some(center), volume, pitch);
         }
         if settle && let Some(index) = target_index {
             self.finish_mob_damage_at(index);

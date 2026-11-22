@@ -329,22 +329,64 @@ impl Session {
         self.sequences.insert(sequence, random);
         out
     }
-    /// `AbstractVillager.notifyTradeUpdated`.
-    pub fn notify_trade_updated(&mut self, has_result: bool) {
+    /// `MerchantContainer.updateSellItem` with only its payment and result slots.
+    /// Returns the optional feedback so the owner can play it after publishing the menu.
+    pub fn update_sell_item(
+        &mut self,
+        items: &Items,
+        a: Option<&ItemStack>,
+        b: Option<&ItemStack>,
+        result: &mut Option<ItemStack>,
+        feedback: TradeFeedback,
+    ) -> Option<(bool, f32)> {
+        let (a, b) = if a.is_none() { (b, None) } else { (a, b) };
+        self.active = None;
+        if a.is_none() {
+            *result = None;
+            self.future_xp = 0;
+            return None;
+        }
+        if !self.offers.is_empty() {
+            (self.active, *result) =
+                sell_item(&self.offers, items, a, b, Some(self.selection_hint));
+            self.future_xp = if result.is_some() {
+                self.active.map_or(0, |i| self.offers[i].xp)
+            } else {
+                0
+            };
+        }
         // ClientSideMerchant.notifyTradeUpdated does nothing.
         if self.client_side {
-            return;
+            return None;
         }
-        if self.ambient_sound_time > -80 + 20 {
-            self.ambient_sound_time = -80;
-            let pitch = self.voice_pitch();
-            self.events.push(Event::TradeUpdated(has_result, pitch));
-        }
+        let pitch = match feedback {
+            TradeFeedback::Current => {
+                trade_update_pitch(&mut self.ambient_sound_time, &mut self.random)
+            }
+            TradeFeedback::AtHurt(pitch) => pitch,
+        };
+        pitch.map(|pitch| (result.is_some(), pitch))
     }
-    /// `LivingEntity.getVoicePitch` of an adult merchant.
-    pub fn voice_pitch(&mut self) -> f32 {
-        (self.random.next_float() - self.random.next_float()) * 0.2 + 1.0
+}
+
+/// Which tick owns `AbstractVillager.notifyTradeUpdated`'s voice draw.
+#[derive(Clone, Copy)]
+pub enum TradeFeedback {
+    Current,
+    /// An accepted player hit already settled the living villager's timer and RNG.
+    AtHurt(Option<f32>),
+}
+
+/// `AbstractVillager.notifyTradeUpdated` uses `Mob.getAmbientSoundInterval` (80).
+pub fn trade_update_pitch(
+    ambient_time: &mut i32,
+    random: &mut sunrise_core::random::LegacyRandom,
+) -> Option<f32> {
+    if *ambient_time <= -80 + 20 {
+        return None;
     }
+    *ambient_time = -80;
+    Some((random.next_float() - random.next_float()) * 0.2 + 1.0)
 }
 
 /// The trade registries.
