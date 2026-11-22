@@ -1032,6 +1032,7 @@ fn the_native_clouds_draw_in_the_frames_path_without_a_pack() {
 
 #[test]
 fn linear_light_links_the_required_programs_before_suppressing_the_draw() {
+    let _gpu = crate::gfx::test_gpu::lock();
     let Some((device, _queue)) = oit_device() else {
         return;
     };
