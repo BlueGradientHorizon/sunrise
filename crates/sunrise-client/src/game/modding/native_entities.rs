@@ -258,6 +258,11 @@ impl Game<'_> {
         let Some(handle) = self.refresh_entity_handle(id, handle) else {
             return false;
         };
+        use sunrise_client::join_seq::Joined as _;
+        let seq = super::entity::with_entity!(self, handle, e => e.join_seq());
+        if seq > self.persist.joined_seq {
+            self.persist.admitted_joins.push((seq, id));
+        }
         self.native_lifecycle.admitting_joins.push(id);
         let kept = self.admit_join(Slot::Walk(handle), id, false);
         self.native_lifecycle.admitting_joins.pop();
@@ -314,6 +319,9 @@ impl Game<'_> {
         if self.native_lifecycle.held_joins.is_empty() {
             self.persist.joined_seq = self.persist.joined_seq.max(observed);
         }
+        self.persist
+            .admitted_joins
+            .retain(|&(seq, _)| seq > self.persist.joined_seq);
         kept
     }
 
@@ -399,9 +407,14 @@ impl Game<'_> {
         use sunrise_client::join_seq::{JoinSeq, Joined};
         let mut best: Option<(Slot, u32, JoinSeq)> = None;
         let mut offer = |slot: Slot, id: u32, seq: JoinSeq| {
-            if skipped.contains(&id) || self.persist.removals.iter().chain(self.persist.destroying_vehicles.iter()).any(|target| {
-                matches!(*target, super::commands::Target::Boat(n) | super::commands::Target::Cart(n) if n == id)
-            }) {
+            if skipped.contains(&id)
+                || self
+                    .persist
+                    .removals
+                    .iter()
+                    .chain(self.persist.destroying_vehicles.iter())
+                    .any(|target| target_id(*target) == Some(id))
+            {
                 return;
             }
             if seq > mark
@@ -446,6 +459,11 @@ impl Game<'_> {
 
     fn join_was_announced(&self, id: u32) -> bool {
         self.persist.live.binary_search_by_key(&id, |l| l.0).is_ok()
+            || self
+                .persist
+                .admitted_joins
+                .iter()
+                .any(|&(_, admitted)| admitted == id)
     }
 
     fn remember_join(&mut self, id: u32, kind: String) {
@@ -531,6 +549,9 @@ impl Game<'_> {
             }
         }
         self.persist.joined_seq = self.persist.joined_seq.max(observed);
+        self.persist
+            .admitted_joins
+            .retain(|&(seq, _)| seq > self.persist.joined_seq);
     }
     /// An entity taken out of the level without leaving it (an item through
     /// an End gateway): forgotten, not told of.
