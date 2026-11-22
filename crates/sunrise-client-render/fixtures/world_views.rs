@@ -24,11 +24,11 @@ use client::{
     },
 };
 use glam::DVec3;
-use sunrise_client_render as client;
 use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
+use sunrise_client_render as client;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -938,6 +938,7 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         glint_ticks: 0.0,
         nether_lighting: false,
         entities: &[],
+        explicit_particles: None,
         static_block_entities: &[],
         visible_static_block_entity_sections: &[],
         static_block_entity_stats: Default::default(),

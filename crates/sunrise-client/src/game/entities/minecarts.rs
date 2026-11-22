@@ -1292,17 +1292,6 @@ impl Game<'_> {
         if !self.move_cart(c, v) {
             return false;
         }
-        // Entity.move's last step: soul sand and honey slow a derailed cart.
-        // The rail paths set the track's velocity again after their move, so
-        // the factor changes nothing there (measured on a rail over soul sand).
-        let factor = crate::motion::block_speed_factor_at(
-            &self.world,
-            &self.motion.blocks,
-            &self.loop_context,
-            c.position,
-            None,
-        );
-        c.velocity = sunrise_world::entity_move::scale_by_block_speed(c.velocity, factor);
         if !c.ground.on_ground {
             // scale(getAirDrag()): 0.95F, widened.
             let drag = f64::from(0.95_f32);
@@ -1316,7 +1305,20 @@ impl Game<'_> {
     }
     /// `applyEffectsFromBlocks` for a cart: a bubble column lifts or drags it
     /// and resets the fall distance.
-    pub(super) fn cart_block_effects(&self, c: &mut Minecart) {
+    pub(super) fn cart_block_effects(&mut self, c: &mut Minecart) {
+        let writes = self.body_step_on(
+            (c.id, c.kind.id()),
+            (c.position, c.bounds()),
+            &c.ground,
+            &mut c.velocity,
+        );
+        super::entity::apply_contact_writes(
+            writes,
+            &mut c.velocity,
+            Some(&mut c.fall_distance),
+            Some(&mut c.stuck),
+            None,
+        );
         if c.push_by_bubble_column(
             &self.world,
             self.pack.assets.registry,
@@ -1905,7 +1907,7 @@ impl Game<'_> {
                 m.previous = cart_seat(prev, offset);
                 m.velocity = Vec3::ZERO;
                 m.fall_distance = 0.0;
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 m.extra.passenger = true;
                 m.ai.nav.stop();
             }
@@ -2267,7 +2269,7 @@ impl Game<'_> {
         if target.is_none() && !self.before_block(d) {
             return false;
         }
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.held_mapping(Action::Sneak);
         let held = self.held().cloned();
         match self.carts[i].kind {
             CartKind::Rideable => {
@@ -2335,7 +2337,7 @@ impl Game<'_> {
         self.container = Some(key);
         self.set_screen(super::Screen::Inventory);
         self.capture(false);
-        self.right = false;
+        self.set_mapping_held("key.use", false);
         if c.kind == CartKind::Chest {
             // `MinecartChest.interact` (which overrides
             // `AbstractMinecartContainer.interact`): a successful open fires

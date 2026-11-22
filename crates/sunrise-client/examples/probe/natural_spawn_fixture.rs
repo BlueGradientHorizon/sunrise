@@ -46,7 +46,7 @@ use sunrise_client::{
         },
         spawner::{
             SpawnDataExt, Spawner, SpawnerAdded, SpawnerEvent, SpawnerExt, SpawnerLevel,
-            SpawnerSpawn,
+            SpawnerSpawn, SpawnerTypeFacts,
         },
         species::{self, Baby},
         trial_spawner::{
@@ -99,8 +99,8 @@ struct Shared<'a> {
     structures: &'a StructureSpawns,
     collision: &'a BlockCollisionRegistry<'a>,
     air: BlockStateId,
-    /// Every entity type id (`entity-types.json`).
-    entity_types: &'a HashSet<String>,
+    /// Every entity type's registry row (`entity-types.json`).
+    entity_types: &'a HashMap<String, SpawnerTypeFacts>,
 }
 struct World<'a> {
     border: sunrise_core::geometry::border::BorderGeometry,
@@ -371,8 +371,8 @@ impl SpawnerLevel for World<'_> {
     fn spawner_blocks_work(&self) -> bool {
         self.spawners_work
     }
-    fn entity_exists(&self, id: &str) -> bool {
-        self.s.types.types.contains_key(id) || self.s.entity_types.contains(id)
+    fn spawner_type(&self, id: &str) -> Option<SpawnerTypeFacts> {
+        self.s.entity_types.get(id).copied()
     }
     fn count_entities(&self, id: &str, bounds: Aabb) -> usize {
         self.entities
@@ -553,17 +553,15 @@ pub fn main() -> sunrise_client::Result<()> {
     ))?;
     let structures = StructureSpawns::load(root);
     let collision = collisions::load(root, registry)?;
-    let entity_types: HashSet<String> = fs::read(root.join("entity-types.json"))
-        .ok()
-        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-        .and_then(|v| {
-            v.as_object().map(|o| {
-                o.keys()
-                    .map(|k| sunrise_client::command::args::normalize(k))
-                    .collect()
-            })
-        })
-        .unwrap_or_default();
+    let builtin = sunrise_protocol::registry::Builtin::load(&root.join("registries.json"))?;
+    let ids = &builtin
+        .get("minecraft:entity_type")
+        .ok_or("missing entity type registry")?
+        .names;
+    let entity_types = SpawnerTypeFacts::load_registered(
+        root,
+        ids.iter().map(String::as_str).filter(|id| !id.is_empty()),
+    )?;
     let shared = Shared {
         facts: &facts,
         data: &data,

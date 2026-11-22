@@ -425,11 +425,23 @@ pub enum Heightmap {
     MotionBlockingNoLeaves,
 }
 impl Heightmap {
-    pub fn from_name(name: &str) -> Self {
-        match name {
+    pub(super) fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
             "WORLD_SURFACE" => Self::WorldSurface,
             "OCEAN_FLOOR" => Self::OceanFloor,
             "MOTION_BLOCKING" => Self::MotionBlocking,
+            "MOTION_BLOCKING_NO_LEAVES" => Self::MotionBlockingNoLeaves,
+            _ => return None,
+        })
+    }
+}
+
+impl From<mod_api::Heightmap> for Heightmap {
+    fn from(heightmap: mod_api::Heightmap) -> Self {
+        match heightmap {
+            mod_api::Heightmap::WorldSurface => Self::WorldSurface,
+            mod_api::Heightmap::OceanFloor => Self::OceanFloor,
+            mod_api::Heightmap::MotionBlocking => Self::MotionBlocking,
             _ => Self::MotionBlockingNoLeaves,
         }
     }
@@ -586,10 +598,13 @@ pub fn contains_any_liquid<L: SpawnLevel>(l: &L, b: Aabb) -> bool {
 }
 /// `EntityDimensions.makeBoundingBox`: the half width is a float.
 pub fn spawn_box(x: f64, y: f64, z: f64, width: f32, height: f32) -> Aabb {
-    let half = f64::from(width / 2.0);
+    spawn_box_at([x, y, z], f64::from(width / 2.0), f64::from(height))
+}
+
+pub(super) fn spawn_box_at([x, y, z]: [f64; 3], half_width: f64, height: f64) -> Aabb {
     Aabb::new(
-        Vec3::new(x - half, y, z - half),
-        Vec3::new(x + half, y + f64::from(height), z + half),
+        Vec3::new(x - half_width, y, z - half_width),
+        Vec3::new(x + half_width, y + height, z + half_width),
     )
 }
 /// `EntityType.spawnDimensionsScale`: cube mobs are checked for room at
@@ -601,14 +616,16 @@ fn spawn_dimensions_scale(s: Species) -> f32 {
         _ => 1.0,
     }
 }
+/// The half-width and height used by `EntityType.getSpawnAABB`.
+pub(super) fn spawn_extents(s: Option<Species>, width: f32, height: f32) -> (f64, f64) {
+    let scale = s.map_or(1.0, spawn_dimensions_scale);
+    (f64::from(scale * width / 2.0), f64::from(scale * height))
+}
+
 /// `EntityType.getSpawnAABB`.
 pub fn spawn_aabb(s: Species, x: f64, y: f64, z: f64, width: f32, height: f32) -> Aabb {
-    let scale = spawn_dimensions_scale(s);
-    let half = f64::from(scale * width / 2.0);
-    Aabb::new(
-        Vec3::new(x - half, y, z - half),
-        Vec3::new(x + half, y + f64::from(scale * height), z + half),
-    )
+    let (half, height) = spawn_extents(Some(s), width, height);
+    spawn_box_at([x, y, z], half, height)
 }
 /// The mob a position check is about, which the site has not created yet
 /// (vanilla creates it before the check).
@@ -1283,7 +1300,7 @@ pub struct Spawned {
 
 /// `NaturalSpawner.spawnForChunk` for the categories already filtered.
 #[allow(clippy::too_many_arguments)]
-pub fn spawn_for_chunk<L: NaturalLevel, R: RandomSource>(
+pub fn spawn_for_chunk<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     state: &mut SpawnState,
@@ -1302,7 +1319,7 @@ pub fn spawn_for_chunk<L: NaturalLevel, R: RandomSource>(
 }
 /// `NaturalSpawner.spawnCategoryForChunk`: `getRandomPosWithin` (a column of
 /// the chunk, a height up to one above the world surface).
-pub fn spawn_category_for_chunk<L: NaturalLevel, R: RandomSource>(
+pub fn spawn_category_for_chunk<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     state: &mut SpawnState,
@@ -1324,7 +1341,7 @@ pub fn spawn_category_for_chunk<L: NaturalLevel, R: RandomSource>(
 /// `NaturalSpawner.spawnCategoryForPosition` with the spawn state's
 /// `canSpawn` and `afterSpawn`.
 #[allow(clippy::too_many_arguments)]
-pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource>(
+pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     state: &mut SpawnState,
@@ -1582,7 +1599,7 @@ fn right_distance<L: NaturalLevel>(l: &L, chunk: (i32, i32), pos: [i32; 3], dist
 /// `isValidSpawnPostitionForType`, for the entry's type (`mob_type`).
 /// `listed`: the position is where the entry was picked from `mobsAt`.
 #[allow(clippy::too_many_arguments)]
-fn valid_position_for_type<L: NaturalLevel, R: RandomSource>(
+fn valid_position_for_type<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     category: Category,
@@ -1622,7 +1639,7 @@ fn valid_position_for_type<L: NaturalLevel, R: RandomSource>(
     if !hooked && !listed && !in_list() {
         return false;
     }
-    if !spawn_rules::check_spawn_rules(kind, l, Reason::Natural, random, pos) {
+    if !spawn_rules::check_spawn_rules(kind.into(), l, Reason::Natural, random, pos) {
         return false;
     }
     l.no_collision(spawn_aabb(
@@ -1646,7 +1663,11 @@ pub enum GenEvent {
 /// the chunk's surface. `rules` is the region's random, which the spawn
 /// predicates and `spawn` (finalizeSpawn) draw from.
 #[allow(clippy::too_many_arguments)]
-pub fn spawn_mobs_for_chunk_generation<L: NaturalLevel, R: RandomSource, Q: RandomSource>(
+pub fn spawn_mobs_for_chunk_generation<
+    L: NaturalLevel,
+    R: RandomSource,
+    Q: RandomSource + Clone,
+>(
     l: &L,
     source: [i32; 3],
     chunk: (i32, i32),
@@ -1711,7 +1732,7 @@ pub fn spawn_mobs_for_chunk_generation<L: NaturalLevel, R: RandomSource, Q: Rand
                     let (bx, bz) = (fx.floor() as i32, fz.floor() as i32);
                     if !l.no_collision(spawn_aabb(species, fx, fy, fz, width, height))
                         || !spawn_rules::check_spawn_rules(
-                            kind,
+                            kind.into(),
                             l,
                             Reason::ChunkGeneration,
                             rules,
@@ -1763,7 +1784,7 @@ pub fn spawn_mobs_for_chunk_generation<L: NaturalLevel, R: RandomSource, Q: Rand
 /// `getTopNonCollidingPos`: the type's heightmap, under the ceiling in
 /// dimensions that have one, then the placement type's adjustment.
 fn top_non_colliding<L: NaturalLevel>(l: &L, entity: &str, x: i32, z: i32) -> [i32; 3] {
-    let heightmap = Heightmap::from_name(l.mob_data().heightmap(entity));
+    let heightmap = l.mob_data().heightmap(entity);
     let mut y = l.heightmap(heightmap, x, z);
     if l.has_ceiling() {
         loop {

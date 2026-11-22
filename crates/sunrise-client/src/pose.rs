@@ -307,15 +307,28 @@ impl MotionWorld<'_, '_, '_> {
     /// `LivingEntity.aiStep` travels it from where it sat (`rider_travel_tick`), and that move's
     /// ground and collisions are what its look packet sends; `updatePlayerPose` sits it up.
     pub fn rider_tick(&mut self, direction: [f32; 2]) -> Result<()> {
-        self.passenger_base_tick()?;
+        self.begin_fluid_tick()?;
+        self.finish_rider_base_tick(None);
+        self.finish_rider_tick(direction)
+    }
+    /// Apply the rider's swimming decision before `LocalPlayer.aiStep`.
+    pub fn finish_rider_base_tick(&mut self, answer: Option<(crate::motion::SwimEntry, bool)>) {
+        self.apply_swim_entry(answer);
+        self.clear_passenger_flags();
+    }
+    /// `LivingEntity.aiStep` travels the rider after its sprint decision.
+    pub fn finish_rider_tick(&mut self, direction: [f32; 2]) -> Result<()> {
         self.rider_travel_tick(direction)?;
         self.passenger_sits_up()
     }
     /// A passenger's tick before it could move: the fluids in the box its vehicle allows, off the
     /// ground, and neither swimming nor gliding.
     fn passenger_base_tick(&mut self) -> Result<()> {
-        self.player.fluids.was_eye_in_water = self.player.is_eye_in_fluid(crate::motion::WATER);
-        self.update_fluids()?;
+        self.begin_fluid_tick()?;
+        self.clear_passenger_flags();
+        Ok(())
+    }
+    fn clear_passenger_flags(&mut self) {
         // Player.tick: a passenger is never on the ground (setOnGround(false)
         // clears the supporting block too) until its own move says otherwise.
         self.player.ground.on_ground = false;
@@ -324,7 +337,6 @@ impl MotionWorld<'_, '_, '_> {
         self.player.swimming = false;
         self.player.fall_flying = false;
         self.player.fall_fly_ticks = 0;
-        Ok(())
     }
     /// `Player.updatePlayerPose` for a passenger.
     fn passenger_sits_up(&mut self) -> Result<()> {

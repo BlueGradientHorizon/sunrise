@@ -1448,7 +1448,7 @@ fn section_title(text: Text, y: f32, w: f32) -> Widget {
 }
 
 /// A registered key's binding as Controls shows it: its modifiers' key names, then its key's.
-fn binding_text(key: &str, modifiers: u32) -> Text {
+pub fn binding_text(key: &str, modifiers: u32) -> Text {
     let mut text = Text::empty();
     for (bit, name) in [
         (crate::mod_list::SHIFT, "key.keyboard.left.shift"),
@@ -2296,6 +2296,15 @@ impl OptionsUi {
     pub fn open(&mut self, in_world: bool) {
         self.open_at(in_world, Page::Main);
     }
+    /// Rebuild the resource-pack editor from the committed selection. The shared
+    /// fields belong to Create World's editor while it is showing data packs.
+    pub fn set_resource_pack_selection(&mut self, selected: &[String]) {
+        if self.data_pack_dir.is_none() {
+            self.pack_selection.clear();
+            self.pack_selection.extend_from_slice(selected);
+            self.pack_screen = None;
+        }
+    }
     /// Create World's Data Packs (`openDataPackSelectionScreen`): the Packs
     /// page on the new world's pack folder `dir`, `selected` chosen;
     /// `resources` holds the built-in pack's icon.
@@ -3095,13 +3104,30 @@ impl OptionsUi {
         drag: bool,
         right: bool,
     ) -> Vec<Event> {
-        let events = self.click_unrevised(s, atlas, x, y, size, framebuffer, drag, right);
+        self.click_with_outcome(s, atlas, x, y, size, framebuffer, drag, right)
+            .0
+    }
+
+    /// The events and whether a widget accepted the pointer input (which can be silent).
+    pub fn click_with_outcome(
+        &mut self,
+        s: &mut Settings,
+        atlas: &HudAtlas,
+        x: f32,
+        y: f32,
+        size: (f32, f32),
+        framebuffer: [i32; 2],
+        drag: bool,
+        right: bool,
+    ) -> (Vec<Event>, bool) {
+        let (events, handled) =
+            self.click_unrevised(s, atlas, x, y, size, framebuffer, drag, right);
         // A click that changed nothing the layout reads (an empty spot, a
         // focus move) keeps the built layout.
         if !events.is_empty() {
             self.relayout();
         }
-        events
+        (events, handled)
     }
     /// `click` without the layout revision: the events it answered with say
     /// whether the layout's inputs moved.
@@ -3115,23 +3141,23 @@ impl OptionsUi {
         framebuffer: [i32; 2],
         drag: bool,
         right: bool,
-    ) -> Vec<Event> {
+    ) -> (Vec<Event>, bool) {
         if self.resource_error.is_some() {
             if !drag
                 && !right
                 && ui::hovered((x, y), size.0 / 2.0 - 100.0, size.1 - 28.0, 200.0, 20.0)
             {
                 self.resource_error = None;
-                return vec![Event::ButtonClick];
+                return (vec![Event::ButtonClick], true);
             }
-            return Vec::new();
+            return (Vec::new(), false);
         }
         if self.page() == Page::Studio {
             if right || drag {
-                return Vec::new();
+                return (Vec::new(), false);
             }
             use crate::studio_ui::StudioAction;
-            return match self.studio.click((x, y), size) {
+            let events = match self.studio.click((x, y), size) {
                 StudioAction::None => Vec::new(),
                 StudioAction::Refresh => vec![Event::ButtonClick],
                 StudioAction::OpenReplay(path) => {
@@ -3144,15 +3170,20 @@ impl OptionsUi {
                     events
                 }
             };
+            let handled = !events.is_empty();
+            return (events, handled);
         }
         if self.page() == Page::HdrCalibration
             && let Some(c) = &mut self.calibration
         {
             if right {
-                return Vec::new();
+                return (Vec::new(), false);
             }
             let outcome = c.click(&atlas.font, (x, y), size, drag);
-            return self.calibration_outcome(s, outcome);
+            return (
+                self.calibration_outcome(s, outcome),
+                outcome != crate::hdr_calibration::Outcome::Nothing,
+            );
         }
         if self.page() == Page::ControllerRadialName {
             return self.click_radial_name(s, atlas, (x, y), size, drag || right);
@@ -3160,7 +3191,7 @@ impl OptionsUi {
         if self.shell().is_some() {
             // Waiting on a controller button: a click cancels the wait.
             if !drag && self.selected_pad_action.take().is_some() {
-                return Vec::new();
+                return (Vec::new(), true);
             }
             // Waiting on a key: a mouse button binds, as on Key Binds.
             if self.selected_key.is_some() && !drag {
@@ -3169,29 +3200,29 @@ impl OptionsUi {
                 } else {
                     winit::event::MouseButton::Left
                 };
-                return self.bind_mouse(s, button);
+                return (self.bind_mouse(s, button), true);
             }
             let shift = self.shift;
             self.framebuffer = framebuffer;
             self.shell_framebuffers();
-            let outputs = self.shell_mut().map_or_else(Vec::new, |shell| {
-                shell.click(s, (x, y), size, drag, right, shift)
+            let (outputs, handled) = self.shell_mut().map_or((Vec::new(), false), |shell| {
+                shell.click_with_outcome(s, (x, y), size, drag, right, shift)
             });
-            return self.shell_events(s, outputs);
+            return (self.shell_events(s, outputs), handled);
         }
         if self.page() == Page::Mods {
             let mut events = Vec::new();
             if drag {
                 self.mods_page(s, size).drag(y as f64);
-                return events;
+                return (events, false);
             }
             if right {
-                return events;
+                return (events, false);
             }
             let m = crate::screen_draw::Measure(&atlas.font);
             let screen = self.mods_page(s, size);
             let before = screen.search_focused();
-            let (action, sound) = screen.click(&m, x as f64, y as f64);
+            let (action, sound, handled) = screen.click_with_outcome(&m, x as f64, y as f64);
             if !before && screen.search_focused() {
                 self.pack_focus = Instant::now();
             }
@@ -3210,16 +3241,16 @@ impl OptionsUi {
                 Do::Link(url) => events.push(Event::OpenLink(url)),
                 Do::Copy(text) => events.push(Event::CopyText(text)),
             }
-            return events;
+            return (events, handled);
         }
         if self.page() == Page::Packs {
             let mut events = Vec::new();
             if drag {
                 self.packs(atlas, size).drag(y as f64);
-                return events;
+                return (events, false);
             }
             if right {
-                return events;
+                return (events, false);
             }
             let m = crate::screen_draw::Measure(&atlas.font);
             let p = self.packs(atlas, size);
@@ -3227,7 +3258,7 @@ impl OptionsUi {
                 events.push(Event::ButtonClick);
             }
             let before = p.search_focused();
-            let action = p.click(&m, x as f64, y as f64);
+            let (action, handled) = p.click_with_outcome(&m, x as f64, y as f64);
             if !before && p.search_focused() {
                 self.pack_focus = Instant::now();
             }
@@ -3244,7 +3275,7 @@ impl OptionsUi {
                 crate::pack_screen::Action::Options(id) => self.open_pack_options(&id),
                 crate::pack_screen::Action::None => {}
             }
-            return events;
+            return (events, handled);
         }
         let layout = self.built_layout(s, size.0, size.1);
         let (widgets, top, bottom, content) = layout.parts();
@@ -3266,7 +3297,7 @@ impl OptionsUi {
                 search.click(atlas, x, false, false);
                 self.scroll = 0.0;
                 events.push(Event::ButtonClick);
-                return events;
+                return (events, true);
             }
         }
         if !drag && self.page() == Page::Language {
@@ -3278,7 +3309,7 @@ impl OptionsUi {
                 self.can_change_value = false;
                 search.click(atlas, x, false, false);
                 self.scroll = 0.0;
-                return events;
+                return (events, true);
             }
         }
         if drag {
@@ -3297,7 +3328,7 @@ impl OptionsUi {
                 } else {
                     self.scrollbar_drag_y = None;
                 }
-                return events;
+                return (events, false);
             }
             if let Some(opt) = self.dragging
                 && let Some(wd) = widgets
@@ -3308,7 +3339,7 @@ impl OptionsUi {
                 self.slider_value = Some((opt, v as f32, Instant::now()));
                 drag_slider(opt, s, v, &mut events);
             }
-            return events;
+            return (events, false);
         }
         // Key Binds: a mouse button pressed while waiting binds it.
         if self.selected_key.is_some() {
@@ -3317,18 +3348,18 @@ impl OptionsUi {
             } else {
                 winit::event::MouseButton::Left
             };
-            return self.bind_mouse(s, button);
+            return (self.bind_mouse(s, button), true);
         }
         // AbstractWidget accepts only the primary button. Rebinding above
         // accepts other mouse buttons, but is not a widget activation.
         if right {
-            return events;
+            return (events, false);
         }
         if ui::scrollbar_thumb(top, bottom, content, self.scroll).is_some()
             && ui::hovered((x, y), self.scrollbar_x(size.0), top, 6.0, bottom - top)
         {
             self.scrollbar_drag_y = Some(y);
-            return events;
+            return (events, true);
         }
         for (wd_idx, wd) in widgets.iter().enumerate() {
             if !ui::hovered((x, y), wd.x, wd.y, wd.w, wd.h) {
@@ -3340,7 +3371,7 @@ impl OptionsUi {
             // AbstractWidget.mouseClicked rejects inactive buttons before the
             // container can focus them.
             if matches!(&wd.kind, WKind::Button { active: false, .. }) {
-                return events;
+                return (events, false);
             }
             // A click focuses the widget for its highlight only: vanilla's wheel
             // steps a keyboard-focused widget from anywhere, not a clicked one.
@@ -3470,11 +3501,11 @@ impl OptionsUi {
                         self.relayout();
                     }
                 }
-                _ => {}
+                _ => return (events, false),
             }
-            break;
+            return (events, true);
         }
-        events
+        (events, false)
     }
     /// Where a slider's handle sits: its own position while held (or until
     /// a delayed one applies), else the option's stepped value.
@@ -3485,17 +3516,25 @@ impl OptionsUi {
         }
     }
     pub fn release(&mut self) -> Vec<Event> {
-        self.scrollbar_drag_y = None;
+        self.release_with_outcome().0
+    }
+
+    /// The release's events and whether an active slider/scrollbar accepted it.
+    pub fn release_with_outcome(&mut self) -> (Vec<Event>, bool) {
+        let mut handled = self.scrollbar_drag_y.take().is_some();
         if let Some(p) = &mut self.pack_screen {
-            p.release();
+            handled |= p.release();
         }
         if let Some(p) = &mut self.mods_screen {
-            p.release();
+            handled |= p.release();
         }
         // AbstractSliderButton suppresses the press sound and plays once on
         // release, even if the pointer has left the widget or its value stayed.
         let slider = self.dragging.take().is_some();
-        let shell_slider = self.shell_mut().and_then(|shell| shell.release());
+        let (shell_slider, shell_released) = self
+            .shell_mut()
+            .map_or((None, false), |shell| shell.release_with_outcome());
+        handled |= shell_released;
         let calibration_slider = self.calibration.as_mut().is_some_and(|c| c.release());
         if slider || shell_slider.is_some() || calibration_slider {
             let mut events = vec![Event::ButtonClick, Event::Changed];
@@ -3506,9 +3545,9 @@ impl OptionsUi {
                 shell::Output::Event(event) => Some(event),
                 _ => None,
             }));
-            events
+            (events, true)
         } else {
-            Vec::new()
+            (Vec::new(), handled)
         }
     }
     pub fn scroll(&mut self, s: &Settings, size: (f32, f32), amount: f32) {

@@ -323,7 +323,7 @@ pub fn main() -> sunrise_client::Result<()> {
         let s = kind.species;
         let ok = spawn_rules::is_spawn_position_ok(c["type"], s, &level, x0, y, z0);
         let rules = spawn_rules::check_spawn_rules(
-            kind,
+            kind.into(),
             &level,
             reason(&get("reason", "natural")),
             &mut random,

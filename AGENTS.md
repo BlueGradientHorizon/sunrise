@@ -130,6 +130,7 @@ Game workspace (root `Cargo.toml`); `crates/sunrise-telemetry-server` is a separ
 | `sunrise-client-core` | The client lib's bottom layer: `text.rs`, `lang.rs`, `snbt.rs`, `nbt_path.rs`, `component.rs`, `scoreboard.rs`, `bossbar.rs`, `gamerules.rs`, `block_entity_nbt.rs`, registry/particle/sound tables. Re-exported under the old paths (`sunrise_client::text`...) |
 | `sunrise-client-input` | Key bindings and key names, toggle keys, mouse options, controller settings and glyphs, the clipboard, window options (`keybinds.rs`, `gamepad.rs`, `mouse.rs`, `window.rs`...). Re-exported under the old paths |
 | `sunrise-client-render` | The client's world data, rendering and screens (chunks, meshing, light, streaming, `gfx`, HUD, menus, settings): its modules (`ls crates/sunrise-client-render/src`), which sunrise-client re-exports under the same paths. Nothing in it reaches gameplay |
+| `sunrise-stage` | Prebuilt game staging, SDK surface export and comparison, and standalone mod source scans (`surface`, `surface-diff`, `uses`, `fits`) |
 | `sunrise-mod-runtime` | Engine-independent mod attachment storage, query index and generic registry slot tables; depends only on `sunrise-core` |
 | `sunrise-world` | Vanilla world data with no gameplay loop: NBT, regions, chunks, `datafix/`, `worldgen/`, `level/` (server-side block behaviour, ticks, redstone), entity physics, items, effects, food, damage |
 | `sunrise-core` | Simulation primitives: Java `Random`s, `jmath` (HotSpot-exact `Math`), positions, noise, density, paletted storage, `version.rs` (the pinned version) |
@@ -233,8 +234,7 @@ python3 tools/lang_coverage.py --summary --show-keys   # the same, then the keys
   [.claude/skills/vanilla-parity/SKILL.md](.claude/skills/vanilla-parity/SKILL.md), [docs/port-ledger.md](docs/port-ledger.md).
 - Decompiled sources: `.local/minecraft/26.3/sources/{client,server}/` (`python3 tools/lab.py decompile`).
 - Bytecode queries (callers through lambdas, every overload):
-  `python3 tools/rea_vanilla.py method net.minecraft.world.level.block.DispenserBlock dispenseFrom`
-  ([docs/decompilation-status.md](docs/decompilation-status.md)).
+  `python3 tools/rea_vanilla.py method net.minecraft.world.level.block.DispenserBlock dispenseFrom`.
 - A harness runs the oracle against the real 26.3 jars and the Rust probe on the same inputs, then compares
   their JSON. Oracle runs are cached by `tools/parity_shim.py`; `--fresh` reruns them.
 - Match vanilla's `Math` results with `sunrise_core::jmath`, and vanilla's RNG with `sunrise_core::random`:
@@ -285,7 +285,7 @@ state stays separate from the library tests. This compiles gameplay twice for ex
   between the two side crates.
 - `struct Game` (game.rs) keeps the core loop and fields. Each `game/<area>/<feature>.rs` (or
   `<feature>/mod.rs`) adds an `impl Game<'_>` block and state types. Logical modules remain direct
-  children of `game`; an area's `.game-area` marker enables build-derived declarations.
+  children of `game`: `game.rs` declares each with a `#[path]`, so an area folder is not a module.
 - Find a feature's code: `grep -rn "fn tick_<thing>\|fn <verb>_<thing>" crates/sunrise-client/src/game*`;
   the file is under `game/<area>/`. Find its callers in game.rs's `fn tick` and `world/level_tick.rs`'s `fn tick_world`.
 - Fields that say which mode runs: `remote` (this window is a client of a server: multiplayer, LAN guest, or

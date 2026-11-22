@@ -15,7 +15,8 @@ use crate::mobs::{
     part_goals::{BehaviorOp, GoalOp},
 };
 use mod_api::{
-    BehaviorCxBackend, EntityRef, GoalCxBackend, Host, LivingRef, MobRef, PlayerRef, RandomSource,
+    BehaviorCxBackend, EntityRef, EntityTags, GoalCxBackend, Host, LivingRef, MobRef, PlayerRef,
+    RandomSource,
     content::crash::{ModCall, enter_native_mod},
 };
 use sunrise_core::geometry::Axis;
@@ -309,8 +310,8 @@ impl GoalCx<'_, '_> {
 
     fn r_entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
         match self.resolve(entity)? {
-            Resolved::Own => Some(self.m.on_ground),
-            Resolved::Live(mob) => Some(mob.on_ground),
+            Resolved::Own => Some(self.m.ground.on_ground),
+            Resolved::Live(mob) => Some(mob.ground.on_ground),
             // Not carried by the snapshot or a player's view.
             _ => None,
         }
@@ -641,11 +642,11 @@ impl mobs::part_goals::GoalHost for Game<'_> {
         ) && self.native_player_controls(mob, target)
     }
 
-    fn mob_tags(&self, mob: &Mob) -> Option<Vec<String>> {
+    fn mob_tags(&self, mob: &Mob) -> Option<EntityTags<'_>> {
         if self.remote.is_some() {
             return None;
         }
-        Some(self.tags_of(super::commands::Target::Mob(mob.id)))
+        Some(self.saved_entity_tags(super::commands::Target::Mob(mob.id)))
     }
 
     fn mob_name(&self, mob: &Mob, actor: &Mob, world: &MobWorld<'_>) -> String {
@@ -757,11 +758,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
     }
 
     fn mob_on_block(&self, mob: &Mob) -> [i32; 3] {
-        let support = mob
-            .on_ground
-            .then(|| self.supporting_block(mob.position, mob.bounds()))
-            .flatten();
-        super::native_entity_motion::on_block_position(support, mob.position)
+        super::native_entity_motion::on_block_position(mob.ground.supporting_block, mob.position)
     }
 
     fn entities_team_damage_allowed(
@@ -807,8 +804,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
             hook: call,
             part: Some(part),
         });
-        // Outside the world (a reload or setup) a refused Host call is no answer.
-        mod_api::__private::contain_outside_world(|| match op {
+        Some(match op {
             GoalOp::CanUse => goal.can_use(&mut context),
             GoalOp::CanContinue => goal.can_continue(&mut context),
             GoalOp::Start => {
@@ -824,8 +820,6 @@ impl mobs::part_goals::GoalHost for Game<'_> {
                 true
             }
         })
-        .map_err(|refusal| refusal.report())
-        .ok()
     }
 
     fn run_behavior(
@@ -853,8 +847,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
             hook: call,
             part: Some(part),
         });
-        // Outside the world (a reload or setup) a refused Host call is no answer.
-        mod_api::__private::contain_outside_world(|| match op {
+        Some(match op {
             BehaviorOp::CheckExtraStartConditions => {
                 behavior.check_extra_start_conditions(&mut context)
             }
@@ -872,8 +865,6 @@ impl mobs::part_goals::GoalHost for Game<'_> {
                 true
             }
         })
-        .map_err(|refusal| refusal.report())
-        .ok()
     }
 }
 

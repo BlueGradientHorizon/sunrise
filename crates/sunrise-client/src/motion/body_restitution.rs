@@ -16,11 +16,11 @@ use sunrise_world::{
     collision_context::{CollisionContext, CollisionEntity, EntityContextKind},
     entity_move::different,
     entity_obstruction::EntityIdentity,
-    ground_support::{GroundState, find_supporting_block},
+    ground_support::GroundState,
     movement_properties::BoundMovementProperties,
     movement_restitution::{RestitutionInput, RestitutionWorld, restitute_movement},
     movement_support::{LEGACY_SUPPORT_OFFSET, MOVEMENT_SUPPORT_OFFSET},
-    native_load_context::LoopContext,
+    native_load_context::{LoopContext, LoopSide},
     registry::BlockStateId,
 };
 
@@ -120,15 +120,7 @@ impl BodyMotion<'_> {
             binding: self.collision,
             subject,
         };
-        let _ = ground.check_support(ground.on_ground, bounds, movement, |bounds| {
-            find_supporting_block(
-                &mut scene,
-                context.at_entity_height(feet.y),
-                feet,
-                bounds,
-                usize::MAX,
-            )
-        });
+        let _ = scene.update_ground_support(ground, feet, bounds, movement, context);
     }
 
     /// Read the legacy effect pair from the retained support, with no new collision scan.
@@ -146,6 +138,72 @@ impl BodyMotion<'_> {
             state: self.world.block(position.x, position.y, position.z),
             feet,
             support,
+        }
+    }
+
+    /// Finish `Entity.move` with the block speed factor, before block effects.
+    pub fn apply_block_speed(self, feet: Vec3, velocity: &mut Vec3) {
+        if let Some(blocks) = self.blocks {
+            let factor = super::block_speed_factor_at(self.world, blocks, self.context, feet, None);
+            *velocity = sunrise_world::entity_move::scale_by_block_speed(*velocity, factor);
+        }
+    }
+
+    /// `Block.stepOn`'s vanilla motion; return the exact block for Parts.
+    pub fn step_contact<'b>(
+        self,
+        entity: (u32, &'b str),
+        (feet, bounds): (Vec3, Aabb),
+        ground: &GroundState,
+        velocity: &mut Vec3,
+    ) -> Option<block_contact::StepContact<'b>> {
+        if !ground.on_ground {
+            return None;
+        }
+        let contact = self.legacy_contact(feet, ground);
+        if self.facts.get(contact.state).name.as_ref() == "minecraft:slime_block"
+            && let Some(scale) = crate::entities::slime_step_on_scale(velocity.y)
+        {
+            velocity.x *= scale;
+            velocity.z *= scale;
+        }
+        Some(block_contact::StepContact {
+            contact: Contact {
+                entity: entity.0 as i32,
+                kind: entity.1,
+                state: contact.state,
+                position: contact.position,
+            },
+            carefully: false,
+            bounds,
+        })
+    }
+
+    /// A client body's read-only step before the inside sweep. An isolated
+    /// body without a side, including worker predictions, only runs vanilla.
+    pub fn step_on(
+        self,
+        entity: (u32, &str),
+        footprint: (Vec3, Aabb),
+        ground: &GroundState,
+        velocity: &mut Vec3,
+    ) {
+        let step = self.step_contact(entity, footprint, ground, velocity);
+        if self.context.side() == LoopSide::Client
+            && let (Some(step), Some(side)) = (step, self.side)
+            && block_contact::step_listens(step.contact.state)
+        {
+            let _ = block_contact::step_on(
+                block_contact::StepLevel::Client(FrictionLevel {
+                    world: self.world,
+                    registry: self.collision.registry(),
+                    context: self.context,
+                    side,
+                    coefficient: &|id| self.facts.states.get(id.0 as usize).map(|p| p.friction),
+                }),
+                step,
+                velocity,
+            );
         }
     }
 

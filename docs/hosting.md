@@ -784,7 +784,7 @@ effect from the environment variable `MIMALLOC_ALLOW_THP=0`. On macOS and Window
 **Fork limitation:** all opt-in parallel server phases are currently disabled, including when this
 setting is true or `SUNRISE_PARALLEL_TICK` is set. A request logs a warning and uses serial execution.
 The upstream behavior described below is retained for reference, not currently available on the fork.
-Typed hook-aware parallel execution is tracked in [#3491](https://github.com/arismoko/horizon/issues/3491).
+Typed hook-aware parallel execution is tracked in [#1532](https://github.com/sunrise-org/sunrise/issues/1532).
 
 Off by default. Under `[engine]`, `parallel_tick = true` starts the game with its parallel tick on: the
 phases of the server tick that give the same result in any order share their work among helper threads (at
@@ -798,12 +798,12 @@ environment still applies.
 A mod can declare a payload channel as droppable (voice chat, live data): under congestion the game drops
 those sends, instead of letting them queue behind chunks and arrive late ([the modding
 book](modding/src/how-to/client/networking.md)). Under `[engine]`, `droppable_clientbound` is the bytes a
-second of them the server sends to each player (default 262144, 256 KiB, about 45 simultaneous speakers
-of Opus voice) and `droppable_serverbound` the bytes a second it accepts from each player (default 16384,
-16 KiB, one microphone with room to spare). Raise them for a busy voice server; `0` turns droppable
-delivery off in that direction. A player over the limit loses those sends, which are counted, and is not
-kicked; nothing else on the connection is ever dropped. Vanilla's `rate-limit` (off by default) still
-counts droppable payloads as packets. It applies at the next start.
+second of them the server sends to each player (default 262144, 256 KiB) and `droppable_serverbound`
+the bytes a second it accepts from each player (default 16384, 16 KiB). For voice, tune these budgets
+for the traffic your mod's codec and relay produce; `0` turns droppable delivery off in that direction.
+A player over the limit loses those sends, which are counted, and is not kicked; nothing else on the
+connection is ever dropped. Vanilla's `rate-limit` (off by default) still counts droppable payloads as
+packets. Changes to the budgets apply at the next start.
 
 ## When something goes wrong
 

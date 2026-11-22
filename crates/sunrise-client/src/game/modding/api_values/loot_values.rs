@@ -77,8 +77,7 @@ impl<C: ?Sized> TryIntoEngine<C> for api::LootStack {
             .names
             .iter()
             .map(|(id, name)| {
-                let name: sunrise_client::text::Text = name
-                    .try_into_engine(&())
+                let name = sunrise_client_lib::api_text::to_serialized_engine(name)
                     .map_err(|_| LootValueError::InvalidName)?;
                 Ok((id.clone(), name.component()))
             })

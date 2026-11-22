@@ -596,7 +596,6 @@ impl Game<'_> {
     /// from goes (`EntityType.loadPassengersRecursive` mounts only a loaded
     /// one): not a compound, or no registered type (`EntityType.by`).
     pub(super) fn take_passengers(&mut self, tag: &mut Tag) -> Vec<Tag> {
-        self.load_entity_types();
         // Without the registry nothing can be told apart: keep every entry.
         let registry = self.entity_types_loaded();
         let mut riders = Vec::new();

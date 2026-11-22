@@ -642,7 +642,7 @@ impl Game<'_> {
                     let stack = ItemStack::new(item, 1);
                     // ItemRowWidget, an ItemDisplayWidget: "Item: <name>".
                     sunrise_client::widgets::narratable(|| {
-                        let name = sunrise_client::stations::hover_name(&self.pack.names, &stack);
+                        let name = self.stack_hover_name_text(&stack).plain();
                         sunrise_client::widgets::Narratable::text(
                             tr("narration.item", &[&name]),
                             [left + 1.0, y + 1.0, 18.0, 18.0],
@@ -750,10 +750,10 @@ impl Game<'_> {
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
         }
     }
-    pub(super) fn stats_click(&mut self, size: [u32; 2]) {
+    pub(super) fn stats_click(&mut self, size: [u32; 2]) -> bool {
         // A press on the scrollbar holds it and clicks nothing else.
         if self.stats_press_scrollbar(size) {
-            return;
+            return true;
         }
         let b = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (w, h) = (b.width, b.height);
@@ -767,7 +767,7 @@ impl Game<'_> {
                 self.stats_ui.scroll.amount = 0.0;
                 self.audio
                     .play("minecraft:ui.button.click", None, 0.25, 1.0);
-                return;
+                return true;
             }
         }
         if ui::hovered(
@@ -780,14 +780,16 @@ impl Game<'_> {
             self.audio
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             self.set_screen(Screen::Paused);
-            return;
+            return true;
         }
+        let mut handled = false;
         if self.stats_ui.tab == 1 {
             let left = ((w - 280.0) / 2.0).floor();
             let y = TAB_H + 4.0 - self.stats_ui.scroll.amount;
             for c in 0..COLUMNS.len() {
                 let x = left + 75.0 + 40.0 * c as f32 - 18.0;
                 if ui::hovered(self.cursor, x, y + 1.0, 18.0, 18.0) {
+                    handled = true;
                     // sortByColumn: descending, ascending, off.
                     self.stats_ui.sort = match self.stats_ui.sort {
                         Some((sc, -1)) if sc == c => Some((c, 1)),
@@ -799,6 +801,7 @@ impl Game<'_> {
                 }
             }
         }
+        handled
     }
     pub(super) fn stats_scroll(&mut self, amount: f32) {
         let (row_h, _) = self.stats_rows();
@@ -830,8 +833,10 @@ impl Game<'_> {
             .drag(self.cursor.1, TAB_H, h - FOOTER, content);
     }
     /// The button came up: the scrollbar lets go.
-    pub(super) fn stats_release(&mut self) {
+    pub(super) fn stats_release(&mut self) -> bool {
+        let handled = self.stats_ui.scroll.held();
         self.stats_ui.scroll.release();
+        handled
     }
 }
 
