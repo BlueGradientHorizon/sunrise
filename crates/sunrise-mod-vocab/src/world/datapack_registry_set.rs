@@ -870,8 +870,10 @@ mod tests {
     }
 
     fn chapter_pages(set: &DatapackRegistrySet, entry: &str, chapter: usize) -> Option<i64> {
-        let handle = set.handle("example:book", entry).unwrap();
-        set.get(&handle).unwrap().get("chapters")?.as_list()?[chapter]
+        set.get("example:book", entry)
+            .unwrap()
+            .get("chapters")?
+            .as_list()?[chapter]
             .get("pages")?
             .as_int()
     }
@@ -891,9 +893,8 @@ mod tests {
                 ],
             ),
         ];
-        let set = DatapackRegistrySet::first(
+        let set = DatapackRegistrySet::from_candidate(
             DatapackCandidate::build(&[spell(), book()], &good).unwrap(),
-            1,
         );
         assert_eq!(chapter_pages(&set, "example:tome", 1), Some(5));
         let refused = |text: &str| {
@@ -927,7 +928,7 @@ mod tests {
             &[r#"{"chapters": [{"pages": 3}]}"#],
         )];
         let first =
-            DatapackRegistrySet::first(DatapackCandidate::build(&[book()], &one).unwrap(), 1);
+            DatapackRegistrySet::from_candidate(DatapackCandidate::build(&[book()], &one).unwrap());
         assert_eq!(chapter_pages(&first, "example:tome", 0), Some(3));
         let two = [file(
             "data/example/example/book/tome.json",
@@ -936,9 +937,9 @@ mod tests {
                 r#"{"chapters": [{"pages": 8}, {"pages": 9}]}"#,
             ],
         )];
-        let second = first
-            .reload(DatapackCandidate::build(&[book()], &two).unwrap())
-            .unwrap();
+        // A reload publishes a set built from the new candidate.
+        let second =
+            DatapackRegistrySet::from_candidate(DatapackCandidate::build(&[book()], &two).unwrap());
         assert_eq!(chapter_pages(&second, "example:tome", 0), Some(8));
         assert_eq!(chapter_pages(&second, "example:tome", 1), Some(9));
     }

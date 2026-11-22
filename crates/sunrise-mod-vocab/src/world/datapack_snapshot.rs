@@ -779,7 +779,7 @@ mod tests {
     #[test]
     fn a_synced_registry_delivers_the_nested_tree() {
         let declaration = crate::world::datapack_registry::tests::model();
-        let server = DatapackRegistrySet::first(
+        let server = DatapackRegistrySet::from_candidate(
             DatapackCandidate::build(
                 std::slice::from_ref(&declaration),
                 &[(
@@ -794,7 +794,6 @@ mod tests {
                 )],
             )
             .unwrap(),
-            1,
         );
         let snapshot = server.snapshot(std::slice::from_ref(&declaration), |_| true);
         let received = DatapackSnapshot::decode(&snapshot.encode().unwrap()).unwrap();
@@ -802,14 +801,12 @@ mod tests {
         let candidate = received
             .candidate(std::slice::from_ref(&declaration))
             .unwrap();
-        let client = DatapackRegistrySet::received(&received, candidate, 9);
-        let handle = client.handle("example:model", "addon:zombie").unwrap();
-        let server_handle = server.handle("example:model", "addon:zombie").unwrap();
+        let client = DatapackRegistrySet::received(candidate);
         assert_eq!(
-            client.get(&handle).unwrap(),
-            server.get(&server_handle).unwrap()
+            client.get("example:model", "addon:zombie").unwrap(),
+            server.get("example:model", "addon:zombie").unwrap()
         );
-        let entry = client.get(&handle).unwrap();
+        let entry = client.get("example:model", "addon:zombie").unwrap();
         let drops = entry.get("drops").and_then(DatapackValue::as_list).unwrap();
         assert_eq!(
             drops[0].get("count").and_then(DatapackValue::as_int),
