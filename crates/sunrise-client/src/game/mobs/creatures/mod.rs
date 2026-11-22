@@ -4928,7 +4928,7 @@ impl Game<'_> {
                             &mut scratch,
                         )
                     } else {
-                        p.tick(&live)
+                        p.tick_before_hit(&live)
                     };
                     if (p.is_thrown() && !matches!(p.kind, ProjectileKind::LlamaSpit))
                         || p.is_arrow() && p.arrow.as_ref().is_none_or(|a| !a.no_physics)
@@ -5234,7 +5234,7 @@ impl Game<'_> {
                         &mut scratch,
                     )
                 } else {
-                    p.tick(&live)
+                    p.tick_before_hit(&live)
                 };
                 let mut snow = Vec::new();
                 if (p.is_thrown() && !matches!(p.kind, ProjectileKind::LlamaSpit))
@@ -5429,7 +5429,12 @@ impl Game<'_> {
                 (None, _) => Some((p, hit)),
             };
             if let Some((p, hit)) = landed {
-                self.apply_projectile_hit(&p, hit)?;
+                if let Err(error) = self.apply_projectile_hit(&p, hit) {
+                    if self.creatures.projectiles.locate(join).is_none() {
+                        self.creatures.projectiles.retire_extracted(id, join);
+                    }
+                    return Err(error);
+                }
                 if shot_after_hit {
                     self.projectile_shoot_event(p.owner, p.guest, p.position.components());
                 }
@@ -5463,10 +5468,25 @@ impl Game<'_> {
                     }
                 ) =>
             {
-                self.guest_projectile_hit(conn, p, hit)
+                self.guest_projectile_hit(conn, p, hit)?;
             }
-            _ => self.projectile_hit(p, hit),
+            _ => self.projectile_hit(p, hit)?,
         }
+        // LlamaSpit.tick lands the hit before replacing the live velocity with
+        // its pre-hit movement, scaled by drag and affected by gravity.
+        if p.kind == ProjectileKind::LlamaSpit
+            && matches!(hit, Hit::Entity { .. })
+            && !self.projectile_removal_pending(p.id)
+            && let Some(i) = self.creatures.projectiles.locate(p.join)
+        {
+            let (from, to) = self.creatures.projectiles.update(i, |spit| {
+                let from = spit.position;
+                spit.finish_spit_motion(p.velocity);
+                (from, spit.position)
+            });
+            self.entity_section_step(p.id, from.components(), to.components());
+        }
+        Ok(())
     }
     /// `LivingEntity.hurtServer` for a snowball, egg or pearl (`kind`) that hurt the mob `id`,
     /// 0 damage included: the accepted hit already credited its owner; for a player,
@@ -5908,26 +5928,54 @@ impl Game<'_> {
             let owner = self.resolved_projectile_owner(arrow.owner, arrow.guest);
             let kind = self.projectile_damage_kind(arrow);
             let damage_type = self.projectile_damage_type(arrow);
-            return Ok(
-                match self.hit_special_full(
-                    id,
-                    amount,
-                    owner,
-                    arrow.guest,
-                    kind,
-                    Some(damage_type),
-                    Some(super::dragon::DirectHit::from_projectile(arrow)),
-                ) {
-                    super::dragon::Hurt::Landed { .. } => EntityHit::Hurt,
-                    super::dragon::Hurt::Refused => EntityHit::Refused,
-                    super::dragon::Hurt::Shrugged => {
-                        if let Some(a) = arrow.arrow.as_mut() {
-                            a.ignite_for_seconds(1.0);
-                        }
-                        EntityHit::Refused
-                    }
-                },
+            // EndCrystal.hurtServer can push this arrow before its next hit or deflection.
+            // Lend the contact state to the level walk, as for an impact callback.
+            let crystal = self.is_crystal_id(id);
+            let join = arrow.join;
+            if crystal {
+                let mut contact = arrow.clone();
+                std::mem::swap(
+                    &mut contact.attachment_lifetime,
+                    &mut arrow.attachment_lifetime,
+                );
+                let followers = self
+                    .creatures
+                    .bounced_followers
+                    .iter()
+                    .find(|(id, _)| *id == arrow.id)
+                    .map_or(&[][..], |(_, followers)| followers.as_slice());
+                let projectiles = &mut self.creatures.projectiles;
+                let index = bounced_place(projectiles, followers);
+                projectiles.put_back(index, contact);
+            }
+            let hurt = self.hit_special_full(
+                id,
+                amount,
+                owner,
+                arrow.guest,
+                kind,
+                Some(damage_type),
+                Some(super::dragon::DirectHit::from_projectile(arrow)),
             );
+            if crystal {
+                if !self.projectile_removal_pending(arrow.id)
+                    && let Some(live) = self.creatures.projectiles.extract(join)
+                {
+                    *arrow = live;
+                } else if let Some(a) = arrow.arrow.as_mut() {
+                    a.removed = true;
+                }
+            }
+            return Ok(match hurt {
+                super::dragon::Hurt::Landed { .. } => EntityHit::Hurt,
+                super::dragon::Hurt::Refused => EntityHit::Refused,
+                super::dragon::Hurt::Shrugged => {
+                    if let Some(a) = arrow.arrow.as_mut() {
+                        a.ignite_for_seconds(1.0);
+                    }
+                    EntityHit::Refused
+                }
+            });
         }
         if let Who::Mob(id) = who {
             let was_stand = self.armor_stands.iter().any(|a| a.id == id);
@@ -6165,6 +6213,7 @@ impl Game<'_> {
             .chain(remaining)
             .collect();
         let hears = self.native_hears_impacts();
+        let mut save_lease = None;
         loop {
             let mut breeze_deflected = false;
             for (hit_who, hit_at) in batch {
@@ -6190,6 +6239,9 @@ impl Game<'_> {
                     break;
                 }
                 if let Who::Mob(id) = hit_who {
+                    if save_lease.is_none() && self.is_crystal_id(id) {
+                        save_lease = self.creatures.projectiles.visibility_lease();
+                    }
                     self.redirect_projectile(id, arrow.owner, arrow.owner_uuid, arrow.guest, None);
                 }
                 // AbstractArrow.onHitEntity: modifyDamage + ceil before pierce cap, crit RNG after.
@@ -6345,6 +6397,10 @@ impl Game<'_> {
             let (aid, from, to) = (arrow.id, arrow.previous, arrow.position);
             self.reinsert_bounced_arrow(arrow);
             self.entity_section_step(aid, from.components(), to.components());
+        } else if save_lease.is_some() && self.creatures.projectiles.locate(arrow.join).is_none() {
+            self.creatures
+                .projectiles
+                .retire_extracted(arrow.id, arrow.join);
         }
         Ok(())
     }
@@ -6957,6 +7013,7 @@ impl Game<'_> {
                         }
                     },
                     Hit::Block { pos, face, .. } => {
+                        // SmallFireball.onHitBlock: ignite the empty adjacent block.
                         let fire = [pos[0] + face[0], pos[1] + face[1], pos[2] + face[2]];
                         let may = match p.owner {
                             Some(Who::Mob(owner)) => self.can_entity_grief(Some(owner)),

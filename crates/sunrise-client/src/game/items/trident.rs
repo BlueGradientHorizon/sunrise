@@ -863,21 +863,50 @@ impl Game<'_> {
                                 });
                             }
                             Who::Mob(id) if self.is_special_target(id) => {
-                                self.hit_special_full(
-                                    id,
-                                    damage,
-                                    owner_who,
-                                    t.guest,
-                                    trident_source,
-                                    Some("minecraft:trident"),
-                                    Some(super::dragon::DirectHit {
-                                        id: t.id,
-                                        position: t.position,
-                                        kind: Some(
-                                            &sunrise_client::projectiles::ProjectileKind::Trident,
-                                        ),
-                                    }),
-                                );
+                                let guest = t.guest;
+                                let direct = super::dragon::DirectHit {
+                                    id: t.id,
+                                    position: t.position,
+                                    kind: Some(
+                                        &sunrise_client::projectiles::ProjectileKind::Trident,
+                                    ),
+                                };
+                                let hurt = |game: &mut Self| {
+                                    game.hit_special_full(
+                                        id,
+                                        damage,
+                                        owner_who,
+                                        guest,
+                                        trident_source,
+                                        Some("minecraft:trident"),
+                                        Some(direct),
+                                    );
+                                };
+                                if self.is_crystal_id(id) {
+                                    // EndCrystal.hurtServer explodes before ThrownTrident.onHitEntity
+                                    // deflects. Keep the in-flight owner in the explosion's level walk.
+                                    let join = t.join;
+                                    self.tridents.put_back(i, t);
+                                    hurt(self);
+                                    let Some(index) = self
+                                        .tridents
+                                        .locate(join)
+                                        .filter(|_| !self.removal_pending(&target))
+                                    else {
+                                        if let Some(frame) = transaction.take() {
+                                            self.close_storage_frame(frame, true);
+                                        }
+                                        continue;
+                                    };
+                                    i = index;
+                                    t = if transaction.is_some() {
+                                        self.tridents.extract(join).unwrap()
+                                    } else {
+                                        self.tridents.remove(i)
+                                    };
+                                } else {
+                                    hurt(self);
+                                }
                             }
                             Who::Mob(id) => {
                                 if let Some(mob_idx) = self.mob_index.find(&self.mobs, id) {

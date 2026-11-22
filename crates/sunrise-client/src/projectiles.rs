@@ -1662,14 +1662,19 @@ impl Projectile {
     /// One tick: returns whether to keep the projectile and what it hit.
     pub fn tick(&mut self, w: &impl ProjectileWorld) -> (bool, Hit) {
         sunrise_threads::work::set_entity(sunrise_threads::work::entity_id(self.kind.id()));
-        self.tick_with(w, true, false)
+        self.tick_with(w, true, false, false)
+    }
+    /// Server step that lets `LlamaSpit.tick` land an entity hit before resuming its motion.
+    pub fn tick_before_hit(&mut self, w: &impl ProjectileWorld) -> (bool, Hit) {
+        sunrise_threads::work::set_entity(sunrise_threads::work::entity_id(self.kind.id()));
+        self.tick_with(w, true, false, true)
     }
     /// One tick of a server's projectile on its client: [`tick`](Self::tick),
     /// whose bubble columns push it on the client too, so a pearl held in a
     /// stasis chamber hovers between the server's updates instead of sinking
     /// and snapping back.
     pub fn tick_remote(&mut self, w: &impl ProjectileWorld) -> (bool, Hit) {
-        self.tick_with(w, true, true)
+        self.tick_with(w, true, true, false)
     }
     /// The projectiles whose tick applies the effects of the blocks they moved
     /// through (`applyEffectsFromBlocks`), bubble columns among them:
@@ -1799,13 +1804,14 @@ impl Projectile {
     /// canceled (`ProjectileImpactEvent`). The projectile goes the whole way of its
     /// motion and flies on, with no hit to act on.
     pub fn tick_through(&mut self, w: &impl ProjectileWorld) -> (bool, Hit) {
-        self.tick_with(w, false, false)
+        self.tick_with(w, false, false, false)
     }
     fn tick_with(
         &mut self,
         w: &impl ProjectileWorld,
         impact: bool,
         client_side: bool,
+        defer_spit_motion: bool,
     ) -> (bool, Hit) {
         // LlamaSpit and ShulkerBullet call Projectile.tick before moving;
         // ThrowableProjectile and AbstractHurtingProjectile call it afterwards.
@@ -1824,7 +1830,7 @@ impl Projectile {
             self.first_tick_bubble_column(w);
         }
         let from = self.position;
-        let mut result = self.tick_inner(w, impact);
+        let mut result = self.tick_inner(w, impact, defer_spit_motion);
         if self.applies_block_effects() {
             self.bubble_columns_along(w, from);
         }
@@ -1897,7 +1903,22 @@ impl Projectile {
     fn hit_margin(&self) -> f64 {
         compute_margin(self.age as i32)
     }
-    fn tick_inner(&mut self, w: &impl ProjectileWorld, impact: bool) -> (bool, Hit) {
+    /// `LlamaSpit.tick` resumes with the motion saved before `hitTargetOrDeflectSelf`.
+    pub fn finish_spit_motion(&mut self, movement: Vec3) {
+        self.turn_towards_movement();
+        self.velocity = movement.scale(f64::from(0.99_f32));
+        let gravity = self.get_gravity();
+        if gravity != 0.0 {
+            self.velocity = self.velocity.add_vector(Vec3::new(0.0, -gravity, 0.0));
+        }
+        self.position = self.position.add_vector(movement);
+    }
+    fn tick_inner(
+        &mut self,
+        w: &impl ProjectileWorld,
+        impact: bool,
+        defer_spit_motion: bool,
+    ) -> (bool, Hit) {
         // `Entity.setOldPosAndRot` (the previous position and rotation the
         // renderer interpolates from), kept across the `impact` flag's arrival
         // from #6279.
@@ -1947,9 +1968,9 @@ impl Projectile {
                 );
             }
         }
-        // ThrowableProjectile.tick and LlamaSpit.tick turn with this move's
-        // motion, hit or not (a spit's drag and gravity come after).
-        if self.turns_with_update_rotation() {
+        // ThrowableProjectile.tick turns before it moves. LlamaSpit.tick
+        // turns after its hit, when it resumes its motion.
+        if self.turns_with_update_rotation() && self.kind != ProjectileKind::LlamaSpit {
             self.turn_towards_movement();
         }
         // LlamaSpit.tick runs super.tick() (checkLeftOwner) before getHitResultOnMoveVector.
@@ -2059,18 +2080,10 @@ impl Projectile {
             if touches {
                 return (false, Hit::None);
             }
-            self.position = to;
-            // LlamaSpit.getAirDrag is 0.99F, widened before it scales motion.
-            let drag = f64::from(0.99_f32);
-            self.velocity = Vec3::new(
-                self.velocity.x * drag,
-                self.velocity.y * drag - self.get_gravity(),
-                self.velocity.z * drag,
-            );
-            return (
-                self.position.y >= w.below_world_y() && self.age < 6000,
-                spit_hit,
-            );
+            if !defer_spit_motion || spit_hit == Hit::None {
+                self.finish_spit_motion(self.velocity);
+            }
+            return (to.y >= w.below_world_y() && self.age < 6000, spit_hit);
         }
         self.position = to;
         // ThrowableProjectile.tick and AbstractHurtingProjectile.tick call super.tick()
