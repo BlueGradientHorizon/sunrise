@@ -1658,10 +1658,16 @@ impl Game<'_> {
         let ids: Vec<_> = if self.is_logical_server() {
             inventory.server_ids().collect()
         } else {
-            super::native_hooks::mod_settings::client_setting_owners(inventory.client_ids())
+            inventory.client_ids().collect()
         };
         let item_data = self.res.core.item_data.context();
-        Ok(self.loop_context_readers(item_data.loop_context(side, ids.iter().copied())))
+        let context = if self.options.execution_role.is_client() {
+            let registered = super::native_hooks::mod_settings::registered_setting_keys();
+            item_data.loop_context_with_registered(side, ids.iter().copied(), registered)
+        } else {
+            item_data.loop_context(side, ids.iter().copied())
+        };
+        Ok(self.loop_context_readers(context))
     }
 
     fn loop_context_readers(

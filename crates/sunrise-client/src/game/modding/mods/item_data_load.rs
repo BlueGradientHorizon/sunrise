@@ -41,19 +41,26 @@ impl OwningLoad {
         origin: DataLoadOrigin,
         inputs: Arc<LoadInputs>,
         ids: &[&str],
+        registered: &[(&str, &str)],
         registration: Option<SettingsSnapshot>,
     ) -> LoadContext {
         if let Self::Startup = self
             && let Some(settings) = registration
         {
-            return LoadContext::from_settings_snapshot(
+            return LoadContext::from_settings_snapshot_with_registered(
                 origin,
                 inputs,
                 ids.iter().copied(),
                 settings,
+                registered.iter().copied(),
             );
         }
-        LoadContext::new(origin, inputs, ids.iter().copied())
+        LoadContext::new_with_registered(
+            origin,
+            inputs,
+            ids.iter().copied(),
+            registered.iter().copied(),
+        )
     }
 }
 
@@ -74,12 +81,18 @@ pub(in super::super) fn load_item_data(
     let ids: Vec<_> = if role.is_logical_server() {
         inventory.server_ids().collect()
     } else {
-        crate::game::native_hooks::mod_settings::client_setting_owners(inventory.client_ids())
+        inventory.client_ids().collect()
+    };
+    let registered: Vec<_> = if role.is_client() {
+        crate::game::native_hooks::mod_settings::registered_setting_keys()
+    } else {
+        Vec::new()
     };
     let context = owning_load.context(
         role.data_load_origin(),
         Arc::new(inputs),
         &ids,
+        &registered,
         mod_api::__private::RegistrationData::initial_settings_snapshot(),
     );
 
@@ -107,6 +120,7 @@ mod tests {
                 DataLoadOrigin::ServerDataLoad,
                 inputs.clone(),
                 &["reader"],
+                &[],
                 Some(settings.clone()),
             )
         };
@@ -130,13 +144,19 @@ mod tests {
                 DataLoadOrigin::ClientPreload,
                 inputs.clone(),
                 &["silent"],
+                &[],
                 Some(settings.clone()),
             );
             assert_eq!(context.setting("silent", "count"), None);
             assert_eq!(context.registry("minecraft:item"), None);
         }
-        let fallback =
-            OwningLoad::Startup.context(DataLoadOrigin::ClientPreload, inputs, &["reader"], None);
+        let fallback = OwningLoad::Startup.context(
+            DataLoadOrigin::ClientPreload,
+            inputs,
+            &["reader"],
+            &[],
+            None,
+        );
         assert_eq!(fallback.setting("reader", "count"), Some("7"));
     }
 }

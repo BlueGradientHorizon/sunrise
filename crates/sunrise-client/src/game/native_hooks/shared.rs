@@ -3086,8 +3086,9 @@ impl Game<'_> {
         else {
             return;
         };
+        let root = self.native_settings_root();
         if self
-            .apply_native_setting_write(&Self::mod_data_root(), owner, spec, value)
+            .apply_native_setting_write(&root, owner, spec, value)
             .is_err()
         {
             // Keep the Options > Mods widget aligned with the live store if persistence fails.
@@ -3111,7 +3112,8 @@ impl Game<'_> {
         let Some(id) = self.settings.mods.installed.get(i).map(|m| m.id.clone()) else {
             return;
         };
-        self.refresh_native_settings_owner(&Self::mod_data_root(), &id);
+        let root = self.native_settings_root();
+        self.refresh_native_settings_owner(&root, &id);
         let settings = self.native_page_settings(&id);
         let row = self.settings.mods.installed.get_mut(i);
         if let Some(page) = row.and_then(|m| m.native.as_mut()) {
