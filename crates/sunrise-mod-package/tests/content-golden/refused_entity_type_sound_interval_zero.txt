@@ -1,0 +1,39 @@
+manifest:
+Manifest {
+    id: "refused_entity_type_sound_interval_zero",
+    name: "Refused entity type sound interval zero",
+    version: Version {
+        major: 1,
+        minor: 2,
+        patch: 3,
+    },
+    description: "",
+    authors: [],
+    license: "",
+    license_url: None,
+    credits: "",
+    homepage: None,
+    issues: None,
+    api: "0.2",
+    side: Client,
+    capabilities: [
+        Registries,
+    ],
+    namespaces: [],
+    served_by: None,
+    dependencies: {},
+    incompatible: {},
+    discouraged: {},
+    load_before: [],
+    jar: [],
+    native: None,
+    runtime: None,
+    internals: [],
+    properties: {},
+}
+
+icon:
+None
+
+content:
+refused: refused_entity_type_sound_interval_zero:sample: sounds.ambient_interval: 0 is below 1

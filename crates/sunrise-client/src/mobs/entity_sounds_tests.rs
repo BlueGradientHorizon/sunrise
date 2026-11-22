@@ -270,3 +270,97 @@ fn entity_sounds_malformed_row_reports_entity_id() {
     }
     assert!(Sounds::load("bird:vulture", &serde_json::json!({})).is_ok());
 }
+
+/// The played sounds with their volume and pitch, as the server sends them.
+fn played(events: &[MobEvent]) -> Vec<(String, f32, f32)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            MobEvent::Sound(id, _, volume, pitch) => {
+                Some((full_id(id).into_owned(), *volume, *pitch))
+            }
+            MobEvent::SoundId(id, _, volume, pitch) => Some((id.clone(), *volume, *pitch)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn entity_sounds_declared_step_plays_at_its_volume_and_pitch() {
+    // An override of `playStepSound` calling `playSound(step, volume, pitch)`.
+    fixture(
+        "minecraft:villager",
+        serde_json::json!({"step":{"sound":"bird:step","volume":1.0,"pitch":0.8}}),
+        |w, types| {
+            let mut events = vec![];
+            let mut m = mob(types, "bird:vulture");
+            m.movement_emission(w, Vec3::new(2.0, 0.0, 0.0), &mut events);
+            assert_eq!(played(&events), [("bird:step".to_owned(), 1.0, 0.8)]);
+        },
+    );
+    // The plain id keeps the block step's `soundType.getVolume() * 0.15F` and pitch.
+    fixture(
+        "minecraft:villager",
+        serde_json::json!({"step":"bird:step"}),
+        |w, types| {
+            let mut events = vec![];
+            let mut m = mob(types, "bird:vulture");
+            m.movement_emission(w, Vec3::new(2.0, 0.0, 0.0), &mut events);
+            assert_eq!(played(&events), [("bird:step".to_owned(), 0.15, 1.0)]);
+        },
+    );
+}
+
+/// A row of `entity-types.json` for a content villager, loaded with no vanilla data.
+fn vulture(sounds: serde_json::Value) -> Mob {
+    let dir = tempfile::tempdir().unwrap();
+    let row = serde_json::json!({"template":"minecraft:villager","sounds":sounds});
+    std::fs::write(
+        dir.path().join("entity-types.json"),
+        serde_json::to_vec(&serde_json::json!({"bird:vulture":row})).unwrap(),
+    )
+    .unwrap();
+    let attributes = sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+        "data_version": sunrise_world::DATA_VERSION,
+        "attributes": [],
+        "entities": {},
+    }))
+    .unwrap();
+    // Loading types seeds the process-wide sulfur cube lookup, which its tests need filled.
+    crate::mobs::sulfur_cube::test_archetype_items();
+    let types = MobTypes::load_for_server(dir.path(), &attributes).unwrap();
+    Mob::new(
+        1,
+        Arc::new(types.types["bird:vulture"].clone()),
+        Vec3::ZERO,
+        0.0,
+    )
+}
+
+#[test]
+fn entity_sounds_declared_volume_voice_pitch_and_interval_replace_the_templates() {
+    let mut declared =
+        vulture(serde_json::json!({"volume":0.25,"voice_pitch":0.5,"ambient_interval":200}));
+    assert_eq!(crate::mobs::ai::sound_volume(&declared), 0.25);
+    assert_eq!(declared.ambient_interval(), 200);
+    let adult: Vec<f32> = (0..64).map(|_| declared.voice_pitch()).collect();
+    assert!(adult.iter().all(|p| (0.3..=0.7).contains(p)), "{adult:?}");
+    // The baby's higher pitch applies on top: 1.5 times the base, spread as before.
+    declared.extra.age = -24000;
+    let baby: Vec<f32> = (0..64).map(|_| declared.voice_pitch()).collect();
+    assert!(baby.iter().all(|p| (0.55..=0.95).contains(p)), "{baby:?}");
+
+    // Omitted keys keep a villager's: `getSoundVolume` 1.0, the 80-tick interval,
+    // and the same pitch draws as the template's.
+    let mut omitted = vulture(serde_json::json!({}));
+    assert_eq!(crate::mobs::ai::sound_volume(&omitted), 1.0);
+    assert_eq!(omitted.ambient_interval(), 80);
+    use sunrise_core::random::RandomSource;
+    let mut random = sunrise_core::random::LegacyRandom::new(7);
+    omitted.random = random.clone();
+    let pitches: Vec<f32> = (0..64).map(|_| omitted.voice_pitch()).collect();
+    let vanilla: Vec<f32> = (0..64)
+        .map(|_| (random.next_float() - random.next_float()) * 0.2 + 1.0)
+        .collect();
+    assert_eq!(pitches, vanilla);
+}

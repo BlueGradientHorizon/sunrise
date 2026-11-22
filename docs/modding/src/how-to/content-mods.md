@@ -954,6 +954,32 @@ with the entity and sound slot in the error. These four slots cover ordinary amb
 hurt, death and footstep playback; additional events such as trading interactions or
 projectile attacks keep their existing sounds.
 
+`sounds.step` also takes an object, `{"sound": "<id>", "volume": v, "pitch": p}`: the mob plays its own step at that
+volume and pitch, as a Java mob overriding `playStepSound` with `playSound(step, v, p)` does. A plain step id plays at
+the block step's volume 0.15 and pitch 1.0. Three numbers take the place of what vanilla's sound methods return for the
+template:
+
+```json
+{
+  "template": "minecraft:zombie",
+  "sounds": {
+    "step": { "sound": "bird:step", "volume": 1.0, "pitch": 0.9 },
+    "volume": 0.6,
+    "voice_pitch": 0.8,
+    "ambient_interval": 160
+  }
+}
+```
+
+- `volume` is `LivingEntity.getSoundVolume()`, the volume of the ambient, hurt and death sounds.
+- `voice_pitch` is the base of `LivingEntity.getVoicePitch()` in place of 1.0: the random spread of ±0.2 still applies,
+  and a baby's pitch is still raised by the template's factor (1.5 for most mobs), now times the base.
+- `ambient_interval` is `Mob.getAmbientSoundInterval()`, in ticks: after each ambient or hurt sound the ambient sound's
+  timer starts again from minus this value.
+
+Each omitted key keeps the template's value. The numbers must be finite and `ambient_interval` at least 1; anything
+else stops content admission, with the entity and key in the error.
+
 A code mod can also register an attribute type of its own with `Registrar::declare_attribute(path, default,
 min, max, syncable, sentiment, tooltip)` (vanilla's `RangedAttribute` in the attribute registry). Only both-side
 packages may declare attributes; client-only packages refuse with `WrongSide` so extra

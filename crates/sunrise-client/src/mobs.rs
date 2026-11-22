@@ -513,6 +513,7 @@ impl MobTypes {
             flags.entity_tag_slot = entity_ids.binary_search(&id).ok();
             let passenger_attachments =
                 riders::parse_passenger_attachments(&t["passenger_attachments"]);
+            let sound_overrides = entity_sounds::Sounds::load(&id, t)?;
             out.insert(
                 id.clone(),
                 MobType {
@@ -545,7 +546,9 @@ impl MobTypes {
                     head_rot_speed: def.head_rot_speed(),
                     max_head_x_rot: def.max_head_x_rot(),
                     max_head_y_rot: def.max_head_y_rot(),
-                    ambient_interval: def.ambient_interval(),
+                    ambient_interval: sound_overrides
+                        .ambient_interval
+                        .unwrap_or_else(|| def.ambient_interval()),
                     flags,
                     model: model.map_or_else(
                         || empty_model.clone(),
@@ -564,7 +567,7 @@ impl MobTypes {
                     brain: def.brain(),
                     anim: def.anim,
                     sounds: def.sounds,
-                    sound_overrides: entity_sounds::Sounds::load(&id, t)?,
+                    sound_overrides,
                     food: def.food_tag().map_or_else(|| Arc::from(Vec::new()), tag),
                     tempt: def
                         .tempt_tag()
@@ -5111,11 +5114,13 @@ impl Mob {
             self.kind.ambient_interval
         }
     }
-    /// LivingEntity.getVoicePitch.
+    /// LivingEntity.getVoicePitch. A content type's `sounds.voice_pitch` takes
+    /// the place of 1.0, and a baby's raised pitch is that base times the usual factor.
     pub fn voice_pitch(&mut self) -> f32 {
+        let base = self.kind.sound_overrides.voice_pitch();
         // HappyGhast.getVoicePitch: always 1.0, babies and all.
         if self.species() == Species::HappyGhast {
-            return 1.0;
+            return base;
         }
         // Parrot.getVoicePitch is `getPitch(random)`, the plain 1.0 ± 0.2 an
         // adult gets below: a parrot is never a baby (`Parrot.canBeABaby`), so
@@ -5128,7 +5133,7 @@ impl Mob {
             1.5
         };
         let pitch = (self.random.next_float() - self.random.next_float()) * 0.2
-            + if self.is_baby() { baby } else { 1.0 };
+            + if self.is_baby() { baby * base } else { base };
         // Bat.getVoicePitch: a little lower.
         if self.species() == Species::Bat {
             pitch * 0.95

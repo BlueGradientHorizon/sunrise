@@ -70,6 +70,7 @@ const REVIEWED: &[Reviewed] = &[
     (("content.rs", "duration", "deserialize_with = \"deserialize_stew_duration\""), &["block_full"]),
     (("content.rs", "GateSound", "untagged"), &["block_full", "keys_block_forms", "refused_block_gate_sound_site"]),
     (("content/entity_sounds.rs", "SoundOverride", "untagged"), &["entity_type_full", "keys_entity_sounds"]),
+    (("content/entity_sounds.rs", "StepOverride", "untagged"), &["entity_type_full", "keys_entity_sounds", "refused_entity_type_nonfinite_sound"]),
     (("content/entity_type.rs", "allowed_in_peaceful", "deserialize_with = \"deserialize_peaceful_setting\""), &["entity_type_full", "refused_entity_type_thrown_peaceful", "refused_entity_type_null_allowed_in_peaceful"]),
     (("content/entity_type.rs", "shadow_radius", "deserialize_with = \"deserialize_shadow\""), &["entity_type_full", "refused_entity_type_negative_shadow", "refused_entity_type_null_shadow_radius"]),
     (("content/entity_type.rs", "shadow_strength", "deserialize_with = \"deserialize_shadow\""), &["entity_type_full", "refused_entity_type_null_shadow_strength"]),

@@ -4494,7 +4494,11 @@ pub fn eating_sound(
 pub fn eating_sound_is_bound(species: Species) -> bool {
     matches!(species, Species::Frog | Species::Goat | Species::Sniffer)
 }
+/// `LivingEntity.getSoundVolume`: a content type's declared `sounds.volume`, else its template's.
 pub fn sound_volume(m: &Mob) -> f32 {
+    if let Some(volume) = m.kind.sound_overrides.volume {
+        return volume;
+    }
     match m.species() {
         Species::Ghast => 5.0,
         Species::HappyGhast => super::happy_ghast::volume(m),
