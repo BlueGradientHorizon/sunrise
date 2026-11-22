@@ -579,7 +579,7 @@ impl Game<'_> {
         }
         let mut gm = open.take().expect("matching window");
         if offers {
-            self.lan_send_offers(conn, &mut gm, true);
+            self.lan_send_offers(conn, &mut gm);
         }
         self.lan_send_merchant_content(conn, &mut gm);
         if let Some(host) = self.lan.as_mut() {

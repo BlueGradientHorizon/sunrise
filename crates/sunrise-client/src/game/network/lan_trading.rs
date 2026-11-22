@@ -138,7 +138,7 @@ impl Game<'_> {
             sent_xp: 0,
             sent_result: None,
         };
-        self.lan_send_offers(conn, &mut gm, true);
+        self.lan_send_offers(conn, &mut gm);
         self.lan_send_merchant_content(conn, &mut gm);
         if let Some(host) = self.lan.as_mut() {
             host.menus
@@ -202,54 +202,58 @@ impl Game<'_> {
         out.insert("insertion".into(), Tag::String(text.as_str().into()));
         Tag::Compound(out)
     }
-    /// The screen title: the custom name, else the profession (the client
-    /// adds the level itself).
-    /// `ServerPlayer.sendMerchantOffers`, when the offers changed.
-    pub(super) fn lan_send_offers(&mut self, conn: u32, gm: &mut GuestMerchant, force: bool) {
-        let s = &gm.merchant.session;
-        if !force && s.offers == gm.sent && s.level == gm.sent_level && s.xp == gm.sent_xp {
-            return;
-        }
+    pub(super) fn lan_send_offers(&mut self, conn: u32, gm: &mut GuestMerchant) {
         if let Some(host) = self.lan.as_mut() {
-            let offers: Vec<play::NetOffer> = s
-                .offers
-                .iter()
-                .filter_map(|o| {
-                    let cost = |st: &ItemStack, hub: &mut sunrise_client::lan::hub::Hub| {
-                        hub.stack(&Some(st.clone())).map(play::NetCost::from)
-                    };
-                    Some(play::NetOffer {
-                        cost_a: cost(&o.base_cost_a.stack, &mut host.hub)?,
-                        result: host.hub.stack(&Some(o.result.clone()))?,
-                        cost_b: match &o.cost_b {
-                            Some(b) => Some(cost(&b.stack, &mut host.hub)?),
-                            None => None,
-                        },
-                        out_of_stock: o.out_of_stock(),
-                        uses: o.uses,
-                        max_uses: o.max_uses,
-                        xp: o.xp,
-                        special_price: o.special_price_diff,
-                        price_multiplier: o.price_multiplier,
-                        demand: o.demand,
-                    })
-                })
-                .collect();
-            host.hub.send_to(
-                conn,
-                &C::MerchantOffers(play::MerchantOffers {
-                    container: gm.window,
-                    offers,
-                    level: s.level,
-                    xp: s.xp,
-                    show_progress: s.villager,
-                    can_restock: s.villager,
-                }),
-            );
-            gm.sent = s.offers.clone();
-            gm.sent_level = s.level;
-            gm.sent_xp = s.xp;
+            Self::send_merchant_offers(&mut host.hub, conn, gm);
         }
+    }
+
+    /// `ServerPlayer.sendMerchantOffers`: send the live offers, and keep the
+    /// packet's snapshot for clicks on this particular window.
+    fn send_merchant_offers(
+        hub: &mut sunrise_client::lan::hub::Hub,
+        conn: u32,
+        gm: &mut GuestMerchant,
+    ) {
+        let s = &gm.merchant.session;
+        let offers: Vec<play::NetOffer> = s
+            .offers
+            .iter()
+            .filter_map(|o| {
+                let cost = |st: &ItemStack, hub: &mut sunrise_client::lan::hub::Hub| {
+                    hub.stack(&Some(st.clone())).map(play::NetCost::from)
+                };
+                Some(play::NetOffer {
+                    cost_a: cost(&o.base_cost_a.stack, hub)?,
+                    result: hub.stack(&Some(o.result.clone()))?,
+                    cost_b: match &o.cost_b {
+                        Some(b) => Some(cost(&b.stack, hub)?),
+                        None => None,
+                    },
+                    out_of_stock: o.out_of_stock(),
+                    uses: o.uses,
+                    max_uses: o.max_uses,
+                    xp: o.xp,
+                    special_price: o.special_price_diff,
+                    price_multiplier: o.price_multiplier,
+                    demand: o.demand,
+                })
+            })
+            .collect();
+        hub.send_to(
+            conn,
+            &C::MerchantOffers(play::MerchantOffers {
+                container: gm.window,
+                offers,
+                level: s.level,
+                xp: s.xp,
+                show_progress: s.villager,
+                can_restock: s.villager,
+            }),
+        );
+        gm.sent = s.offers.clone();
+        gm.sent_level = s.level;
+        gm.sent_xp = s.xp;
     }
     pub(super) fn lan_send_merchant_content(&mut self, conn: u32, gm: &mut GuestMerchant) {
         if let Some(host) = self.lan.as_mut() {
@@ -381,7 +385,7 @@ impl Game<'_> {
         gm.merchant.session = session;
         self.merchant_drops(conn, dropped);
         if refresh_offers || offers_refreshed {
-            self.lan_send_offers(conn, &mut gm, true);
+            self.lan_send_offers(conn, &mut gm);
         }
         self.lan_send_merchant_content(conn, &mut gm);
         if let Some(host) = self.lan.as_mut() {
@@ -402,7 +406,10 @@ impl Game<'_> {
         op: impl FnOnce(&mut Menu, &Env),
     ) -> Option<(Menu, super::trading::MadeMaps)> {
         let mut session = gm.merchant.session.clone();
-        self.merchant_sync_in(&mut session, gm.merchant.mob);
+        Self::merchant_sync_in(
+            &mut session,
+            self.mobs.iter().find(|m| Some(m.id) == gm.merchant.mob),
+        );
         let next_map = self.peek_map_id();
         let tag = |t: &str| self.structure_tag(t);
         let maps = super::trading::GameMaps {
@@ -630,23 +637,43 @@ impl Game<'_> {
         window: Option<i32>,
         removal: super::lan_crafting::MenuRemoval,
     ) -> bool {
-        if !self.lan_merchant_op(conn, window, false, |menu, env| {
-            menu.merchant_removed(env, removal != super::lan_crafting::MenuRemoval::Live);
-        }) {
-            return false;
-        }
-        let Some(host) = self.lan.as_mut() else {
+        let Some(gi) = self.guest_index(conn) else {
             return false;
         };
-        let Some(mut gm) = host.menus.get_mut(&conn).and_then(|p| p.merchant.take()) else {
+        self.journal_guest_merchant(conn);
+        let Some(mut gm) = self
+            .lan
+            .as_mut()
+            .and_then(|host| host.menus.get_mut(&conn))
+            .and_then(|menu| {
+                menu.merchant
+                    .take_if(|gm| window.is_none_or(|window| gm.window == window))
+            })
+        else {
             return false;
         };
-        if let Some(gi) = host.hub.guests.connection_index(conn)
-            && let Some(carried) = self.close_guest_menu_cursor(gi, gm.window)
-        {
-            self.lan_place_back(gi, vec![carried]);
-        }
+        // `MerchantMenu.removed` takes only the cursor and payment slots.
+        // Return them to the buyer's own inventory even inside their turn.
+        let carried = self.close_guest_menu_cursor(gi, gm.window);
+        let [a, b, _] = gm.slots;
+        let mob = gm
+            .merchant
+            .mob
+            .and_then(|id| self.mobs.iter().find(|m| m.id == id));
+        Self::merchant_sync_in(&mut gm.merchant.session, mob);
         self.merchant_closed(&mut gm.merchant);
+        if removal == super::lan_crafting::MenuRemoval::Live {
+            self.lan_place_back(
+                gi,
+                carried
+                    .into_iter()
+                    .chain([a, b].into_iter().flatten())
+                    .collect(),
+            );
+        } else {
+            self.lan_place_back(gi, carried.into_iter().collect());
+            self.merchant_drops(conn, [a, b].into_iter().flatten().collect());
+        }
         if window.is_some() {
             self.player_menu_closing(conn);
         }
@@ -803,32 +830,47 @@ impl Game<'_> {
             }
             let reputation = self.villager_reputation_of(id, uuid);
             self.journal_guest_merchant(conn);
+            self.journal_merchant_mob(id);
+            let items = world_items!(self);
             let host = self.lan.as_mut().expect("the buyer's host");
-            let mut gm = host
+            let Some(gm) = host
                 .menus
                 .get_mut(&conn)
-                .unwrap()
-                .merchant
-                .take()
-                .expect("open merchant");
-            let mut session = gm.merchant.session;
-            self.merchant_sync_in(&mut session, Some(id));
+                .and_then(|menu| menu.merchant.as_mut())
+            else {
+                continue;
+            };
+            let mob = self.mobs.iter_mut().find(|m| m.id == id);
+            let session = &mut gm.merchant.session;
+            Self::merchant_sync_in(session, mob.as_deref());
             session.reputation = reputation;
             session.update_special_prices();
             let [a, b, result] = &mut gm.slots;
-            session.update_sell_item(self.items(), a.as_ref(), b.as_ref(), result, feedback);
-            (gm.merchant.session, _) = self.merchant_apply(session, Some(id), feedback);
-            // broadcastChanges sends the result slot on the player's tick; only
-            // MerchantOffers is sent by the reputation event.
-            self.lan_send_offers(conn, &mut gm, true);
-            self.lan
-                .as_mut()
-                .expect("the buyer's host")
-                .menus
-                .get_mut(&conn)
-                .unwrap()
-                .merchant
-                .restore(Some(gm));
+            let voice = session.update_sell_item(items, a.as_ref(), b.as_ref(), result, feedback);
+            let silent = if let Some(mob) = mob {
+                mob.random.clone_from(&session.random);
+                mob.ambient_timer = session.ambient_sound_time;
+                mob.silent
+            } else {
+                false
+            };
+            let (window, origin) = (gm.window, session.origin);
+            if let Some((yes, pitch)) = voice {
+                // The window is live while the sound hook runs, so a replacement
+                // can close it and return the actual payment slots.
+                self.merchant_trade_feedback(true, yes, origin, pitch, feedback, silent);
+            }
+            // A replacement can have opened a different menu in the hook. Do
+            // not send the old offers or touch the replacement's result slot.
+            if let Some(host) = self.lan.as_mut()
+                && let Some(gm) = host
+                    .menus
+                    .get_mut(&conn)
+                    .and_then(|menu| menu.merchant.as_mut())
+                && gm.window == window
+            {
+                Self::send_merchant_offers(&mut host.hub, conn, gm);
+            }
         }
     }
     /// Takes a station a guest's action opened: a trading screen or a

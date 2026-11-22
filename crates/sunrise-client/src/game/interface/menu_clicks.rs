@@ -482,7 +482,7 @@ impl Game<'_> {
             .and_then(|s| s.merchant.as_ref())
             .map(|m| (m.session.clone(), m.mob));
         if let Some((s, mob)) = session.as_mut() {
-            self.merchant_sync_in(s, *mob);
+            Self::merchant_sync_in(s, mob.and_then(|id| self.mobs.iter().find(|m| m.id == id)));
         }
         // Crafting and cartography read and derive the level's maps; a
         // server's (the client menu's ContainerLevelAccess.NULL) doesn't.

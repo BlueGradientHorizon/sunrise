@@ -6,7 +6,7 @@ use super::{
     Game,
     stations::{INPUT, Kind, RESULT, Station},
 };
-use sunrise_client::mobs::{Species, render::VILLAGER_TYPES, villager};
+use sunrise_client::mobs::{Mob, Species, render::VILLAGER_TYPES, villager};
 use sunrise_client::{
     hud::HudBatch,
     items::ItemStack,
@@ -489,8 +489,8 @@ impl Game<'_> {
         self.set_mapping_held("key.use", false);
     }
     /// The trading mob's random before a menu click (it ticks meanwhile).
-    pub(super) fn merchant_sync_in(&self, session: &mut merchant::Session, mob: Option<u32>) {
-        if let Some(m) = mob.and_then(|id| self.mobs.iter().find(|m| m.id == id)) {
+    pub(super) fn merchant_sync_in(session: &mut merchant::Session, mob: Option<&Mob>) {
+        if let Some(m) = mob {
             session.random.clone_from(&m.random);
             session.ambient_sound_time = m.ambient_timer;
             session.origin = [m.position.x, m.position.y, m.position.z];
@@ -565,24 +565,7 @@ impl Game<'_> {
                     }
                 }
                 merchant::Event::TradeUpdated(yes, pitch) => {
-                    let sound = match (villager, yes) {
-                        (true, true) => "minecraft:entity.villager.yes",
-                        (true, false) => "minecraft:entity.villager.no",
-                        (false, true) => "minecraft:entity.wandering_trader.yes",
-                        (false, false) => "minecraft:entity.wandering_trader.no",
-                    };
-                    if matches!(feedback, TradeFeedback::AtHurt(_)) && !self.merchant_take_active()
-                    {
-                        if !silent {
-                            self.audio.play_unshared(sound, Some(origin), 1.0, pitch);
-                            self.send_level_sound(
-                                super::level_sounds::LevelSound::new(sound, origin, 1.0, pitch),
-                                None,
-                            );
-                        }
-                    } else {
-                        self.merchant_sound(sound, origin, pitch);
-                    }
+                    self.merchant_trade_feedback(villager, yes, origin, pitch, feedback, silent);
                 }
                 merchant::Event::Traded(index, _offer) => {
                     traded.push(index);
@@ -598,6 +581,34 @@ impl Game<'_> {
             }
         }
         (session, traded)
+    }
+
+    /// `AbstractVillager.notifyTradeUpdated`: a hurt-triggered voice must be
+    /// broadcast before the hit continues to its offers and damage.
+    pub(super) fn merchant_trade_feedback(
+        &mut self,
+        villager: bool,
+        yes: bool,
+        at: [f64; 3],
+        pitch: f32,
+        feedback: TradeFeedback,
+        silent: bool,
+    ) {
+        let sound = match (villager, yes) {
+            (true, true) => "minecraft:entity.villager.yes",
+            (true, false) => "minecraft:entity.villager.no",
+            (false, true) => "minecraft:entity.wandering_trader.yes",
+            (false, false) => "minecraft:entity.wandering_trader.no",
+        };
+        if matches!(feedback, TradeFeedback::AtHurt(_)) && !self.merchant_take_active() {
+            if !silent {
+                self.play_immediate_level_sound(super::level_sounds::LevelSound::new(
+                    sound, at, 1.0, pitch,
+                ));
+            }
+        } else {
+            self.merchant_sound(sound, at, pitch);
+        }
     }
     /// `MerchantResultSlot.onTake` for each trade made (`traded` indices into
     /// the session's live `offers`): the statistic, `AbstractVillager.notifyTrade`'s

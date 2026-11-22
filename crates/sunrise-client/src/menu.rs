@@ -2993,13 +2993,17 @@ impl Menu {
                 .containers
                 .get_disjoint_mut([MAIN, RESULT])
                 .expect("separate merchant inputs and result");
-            merchant.update_sell_item(
+            if let Some((yes, pitch)) = merchant.update_sell_item(
                 items,
                 payment[0].as_ref(),
                 payment[1].as_ref(),
                 &mut result[0],
                 feedback,
-            );
+            ) {
+                merchant
+                    .events
+                    .push(crate::merchant::Event::TradeUpdated(yes, pitch));
+            }
         }
     }
     /// `MerchantResultSlot.checkTakeAchievements`: award the tallied count, then reset it.

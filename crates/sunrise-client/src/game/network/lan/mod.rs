@@ -5696,6 +5696,35 @@ mod merchant_packet_tests {
     //! Vanilla notifyTrade changes the live offer while its frozen owner retains
     //! the last outbound offer packet. No sockets, server loop or world generation.
 
+    struct ReplaceOnTradeVoice;
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for ReplaceOnTradeVoice {
+        fn play_level_sound_at_position(
+            &self,
+            host: mod_api::HostSide<'_>,
+            event: &mut mod_api::PlayLevelSoundAtPositionEvent,
+        ) -> mod_api::Flow {
+            if event.sound.to_string() == "minecraft:entity.villager.no" {
+                let mod_api::HostSide::Server(host) = host else {
+                    panic!("the trade voice is a server level sound");
+                };
+                assert!(
+                    host.open_menu(
+                        2,
+                        1,
+                        mod_api::Text::literal("Replacement"),
+                        Vec::new(),
+                        mod_api::MenuReplace::InPlace
+                    )
+                    .unwrap()
+                    .is_some()
+                );
+            }
+            mod_api::Flow::Continue
+        }
+    }
+
     #[test]
     #[ignore = "daily"]
     fn merchant_take_keeps_packet_snapshot_until_price_refresh() {
@@ -5717,11 +5746,12 @@ mod merchant_packet_tests {
         if run_fresh_cases(
             "game::lan::merchant_packet_tests::merchant_take_keeps_packet_snapshot_until_price_refresh",
             CHILD,
-            &["nonbuyer-first", "buyer-first"],
+            &["nonbuyer-first", "buyer-first", "sound-replaces-menu"],
         ) {
             return;
         }
-        let buyer_first = std::env::var(CHILD).unwrap() == "buyer-first";
+        let case = std::env::var(CHILD).unwrap();
+        let buyer_first = case == "buyer-first";
         use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest};
 
         with_game(|game| {
@@ -5730,7 +5760,13 @@ mod merchant_packet_tests {
 
             let mut sync = sunrise_client::lan::data::SyncData::empty();
             for (registry, names) in [
-                ("minecraft:menu", vec!["minecraft:merchant".to_owned()]),
+                (
+                    "minecraft:menu",
+                    vec![
+                        "minecraft:merchant".to_owned(),
+                        "minecraft:generic_9x1".to_owned(),
+                    ],
+                ),
                 (
                     "minecraft:entity_type",
                     vec!["minecraft:villager".to_owned()],
@@ -6170,6 +6206,53 @@ mod merchant_packet_tests {
                     Some((true, false))
                 );
             };
+            if case == "sound-replaces-menu" {
+                let mods = vec![mod_api::ModEntry::new(
+                    "replace_on_trade_voice",
+                    Box::new(ReplaceOnTradeVoice),
+                )]
+                .into();
+                mod_platform::testing::with_mods(mods, || buyer_hit(game, 1.0));
+                let host = game.lan.as_ref().unwrap();
+                let buyer = host.hub.guest(1).unwrap();
+                let replacement = buyer.menu.as_ref().expect("sound hook opened a new window");
+                assert_ne!(replacement.window, merchant_window);
+                assert!(
+                    host.menus[&1].merchant.is_none(),
+                    "the old merchant window was retired"
+                );
+                assert_eq!(
+                    buyer
+                        .inventory
+                        .iter()
+                        .flatten()
+                        .filter(|item| item.item.as_ref() == "minecraft:emerald")
+                        .map(|item| item.count)
+                        .sum::<u32>(),
+                    4,
+                    "the payment went back to the buyer during their own turn",
+                );
+                let (offers, contents) = packets(&rx);
+                assert!(offers.is_empty(), "no offer packet for the retired window");
+                let content = contents
+                    .iter()
+                    .find(|packet| packet.container == replacement.window)
+                    .expect("replacement inventory snapshot");
+                let emerald = host
+                    .hub
+                    .registry_id("minecraft:item", "minecraft:emerald")
+                    .unwrap();
+                assert_eq!(
+                    content.items[9..]
+                        .iter()
+                        .flatten()
+                        .filter(|item| item.item == emerald)
+                        .map(|item| item.count)
+                        .sum::<i32>(),
+                    4
+                );
+                return;
+            }
             // Use two accepted hits in one turn with no flush or tick between them.
             if buyer_first {
                 buyer_hit(game, 1.0);

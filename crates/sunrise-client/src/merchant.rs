@@ -330,6 +330,7 @@ impl Session {
         out
     }
     /// `MerchantContainer.updateSellItem` with only its payment and result slots.
+    /// Returns the optional feedback so the owner can play it after publishing the menu.
     pub fn update_sell_item(
         &mut self,
         items: &Items,
@@ -337,13 +338,13 @@ impl Session {
         b: Option<&ItemStack>,
         result: &mut Option<ItemStack>,
         feedback: TradeFeedback,
-    ) {
+    ) -> Option<(bool, f32)> {
         let (a, b) = if a.is_none() { (b, None) } else { (a, b) };
         self.active = None;
         if a.is_none() {
             *result = None;
             self.future_xp = 0;
-            return;
+            return None;
         }
         if !self.offers.is_empty() {
             (self.active, *result) =
@@ -355,18 +356,16 @@ impl Session {
             };
         }
         // ClientSideMerchant.notifyTradeUpdated does nothing.
-        if !self.client_side {
-            let pitch = match feedback {
-                TradeFeedback::Current => {
-                    trade_update_pitch(&mut self.ambient_sound_time, &mut self.random)
-                }
-                TradeFeedback::AtHurt(pitch) => pitch,
-            };
-            if let Some(pitch) = pitch {
-                self.events
-                    .push(Event::TradeUpdated(result.is_some(), pitch));
-            }
+        if self.client_side {
+            return None;
         }
+        let pitch = match feedback {
+            TradeFeedback::Current => {
+                trade_update_pitch(&mut self.ambient_sound_time, &mut self.random)
+            }
+            TradeFeedback::AtHurt(pitch) => pitch,
+        };
+        pitch.map(|pitch| (result.is_some(), pitch))
     }
 }
 
