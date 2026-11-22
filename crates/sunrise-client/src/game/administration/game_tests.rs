@@ -1826,12 +1826,12 @@ pub(in crate::game) mod tests {
                             ).unwrap();
                         }
                         // Exercise the real runner's environment lifecycle without spawning a structure.
-                        let run_batch = |game: &mut Game<'_>, name: &str| {
+                        let run_batch = |game: &mut Game<'_>, dimension, name: &str| {
                             game.track_and_start_batches(
                                 vec![Batch {
                                     index: 0,
                                     environment: format!("example:{name}"),
-                                    dimension: Dim::Nether,
+                                    dimension,
                                     infos: Vec::new(),
                                 }],
                                 RunnerOptions::new(false, None, false),
@@ -1849,7 +1849,22 @@ pub(in crate::game) mod tests {
                         };
                         game.world.weather.raining = true;
                         game.world.weather.thundering = true;
-                        run_batch(game, "rain");
+                        game.world.weather.set_levels(1.0, 1.0);
+                        game.levels
+                            .parked_mut(Dim::Nether)
+                            .unwrap()
+                            .world
+                            .weather
+                            .set_levels(1.0, 1.0);
+                        run_batch(game, Dim::Nether, "rain");
+                        assert_eq!(parameters(game), (0, 100_000, 100_000, true, false));
+                        game.clear_game_tests();
+                        // Neither the shared flags nor the Nether's raw strengths make it wet.
+                        assert_eq!(parameters(game), (100_000, 0, 0, false, false));
+
+                        game.enter_level(Dim::Nether).unwrap();
+                        // The Overworld is still locally thundering despite the now-clear flags.
+                        run_batch(game, Dim::Overworld, "rain");
                         assert_eq!(parameters(game), (0, 100_000, 100_000, true, false));
                         game.world.weather.clear_time = 73;
                         game.clear_game_tests();
@@ -1857,21 +1872,24 @@ pub(in crate::game) mod tests {
                         assert_eq!(parameters(game), (73, 0, 0, false, false));
 
                         game.world.weather.rain_time = 9;
-                        run_batch(game, "thunder");
+                        run_batch(game, Dim::Nether, "thunder");
                         assert_eq!(parameters(game), (73, 9, 0, false, false));
                         game.clear_game_tests();
                         // The vetoed setup must not arrange a teardown that changes the weather.
                         assert_eq!(parameters(game), (73, 9, 0, false, false));
                         let nether = || String::from("minecraft:the_nether");
+                        let overworld = || String::from("minecraft:overworld");
                         assert_eq!(
                             *seen.lock().unwrap(),
                             [
                                 (nether(), 0, 100_000, true, false),
-                                (nether(), 0, 100_000, true, true),
+                                (nether(), 100_000, 0, false, false),
+                                (overworld(), 0, 100_000, true, false),
+                                (overworld(), 0, 100_000, true, true),
                                 (nether(), 0, 100_000, true, true),
                             ]
                         );
-                        assert_eq!(game.dim, Dim::Overworld);
+                        assert_eq!(game.dim, Dim::Nether);
                     });
                 });
             },

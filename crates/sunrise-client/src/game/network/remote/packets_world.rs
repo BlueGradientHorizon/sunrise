@@ -77,22 +77,27 @@ impl Game<'_> {
         }
     }
 
-    /// `ClientPacketListener.handleInitializeBorder`: apply the level's incoming settings
-    /// in packet order, without running server listeners.
+    /// `ClientPacketListener.handleInitializeBorder`: install the level's incoming geometry
+    /// and warnings, without running server listeners.
     pub(super) fn apply_initialize_border_packet(
         &mut self,
         p: play::InitializeBorder,
     ) -> std::result::Result<(), BorderError> {
-        let b = &mut self.border;
-        b.set_center([p.center_x, p.center_z])?;
+        let mut border = sunrise_client::worldborder::WorldBorder::default();
+        // Validate the incoming extent against the incoming center and clip limit,
+        // not against any part of the extent this packet replaces.
+        border.set_absolute_max_size(p.absolute_max_size)?;
+        border.set_center([p.center_x, p.center_z])?;
         if p.lerp_time > 0 {
-            b.lerp_between(p.old_size, p.new_size, p.lerp_time)?;
+            border.lerp_between(p.old_size, p.new_size, p.lerp_time)?;
         } else {
-            b.set_size(p.new_size)?;
+            border.set_size(p.new_size)?;
         }
-        b.set_absolute_max_size(p.absolute_max_size)?;
-        b.warning_distance = p.warning_blocks;
-        b.warning_time = p.warning_time;
+        border.warning_distance = p.warning_blocks;
+        border.warning_time = p.warning_time;
+        border.damage_per_block = self.border.damage_per_block;
+        border.safe_zone = self.border.safe_zone;
+        self.border = border;
         Ok(())
     }
 

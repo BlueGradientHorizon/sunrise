@@ -2282,19 +2282,24 @@ impl Hub {
         g.send(&C::InitializeBorder(super::border::initialize(ctx.border)));
         g.send(&self.time_packet(ctx.world, ctx.clock_rate));
         g.send(&self.default_spawn(spawn, ctx.spawn_angle, ctx.spawn_dimension));
-        let w = &ctx.world.weather;
-        if w.raining {
+        let (rain, thunder) = ctx.world.weather.levels(1.0);
+        if ctx
+            .world
+            .shape
+            .can_have_weather(g.dimension == "minecraft:the_end")
+            && crate::world::weather_flags((rain, thunder)).0
+        {
             g.send(&C::GameEvent(play::GameEvent {
                 event: game_event::START_RAINING,
                 param: 0.0,
             }));
             g.send(&C::GameEvent(play::GameEvent {
                 event: game_event::RAIN_LEVEL,
-                param: w.rain_level.1,
+                param: rain,
             }));
             g.send(&C::GameEvent(play::GameEvent {
                 event: game_event::THUNDER_LEVEL,
-                param: w.thunder_level.1,
+                param: thunder,
             }));
         }
         if load_start {

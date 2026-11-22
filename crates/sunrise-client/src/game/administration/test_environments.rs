@@ -2,8 +2,9 @@
 //! while it runs (game rules, weather, the day time, difficulty, functions,
 //! all of them), set up when the batch starts and torn down after it. The
 //! definitions are the data pack's `test_environment` entries, or inline.
-use super::{Dim, Game};
+use super::{Dim, Game, native_level_world::weather_for_world};
 use serde_json::Value as Json;
+use sunrise_client::world::weather_flags;
 use sunrise_client_core::gamerules::Value;
 pub(super) use sunrise_gameplay::test_environments::{
     Activation, Environment, Saved, WeatherType, parse,
@@ -91,13 +92,21 @@ impl Game<'_> {
             }
             Environment::Timelines => Saved::Unit,
             Environment::Weather(kind) => {
-                let w = &self.world.weather;
-                let previous = if w.thundering {
-                    WeatherType::Thunder
-                } else if w.raining {
-                    WeatherType::Rain
+                let world = if dim == self.dim {
+                    &self.world
+                } else if let Some(world) = self.levels.parked_world(dim) {
+                    world
                 } else {
-                    WeatherType::Clear
+                    log::warn!(
+                        "cannot set up GameTest weather in {}: level is not resident",
+                        dim.id()
+                    );
+                    return Saved::Unit;
+                };
+                let previous = match weather_flags(weather_for_world(world, dim == Dim::End)) {
+                    (_, true) => WeatherType::Thunder,
+                    (true, false) => WeatherType::Rain,
+                    (false, false) => WeatherType::Clear,
                 };
                 if self.set_weather_type(dim, *kind) {
                     Saved::Weather(previous)

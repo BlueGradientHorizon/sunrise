@@ -183,9 +183,10 @@ hooks can run on any loading thread; item default changes must be identical on e
 `LevelRef::set_weather(host, clear_ticks, weather_ticks, raining, thundering)` takes signed
 timers. Any resident server level can name the origin, even when parked, but the write applies
 to the whole server. `Hooks::weather_change` hears it once, just as it hears an explicit
-`/weather` write or a GameTest weather parameter write. Version 2 of `WeatherChangeEvent`
-includes the origin dimension, both
-requested tick values and both flags. Each mod gets its own copy of those inputs.
+`/weather` write or a GameTest weather parameter write. GameTest saves the batch level's
+actual weather type before setup and proposes that type again on teardown. Version 2 of
+`WeatherChangeEvent` includes the origin dimension, both requested tick values and both
+flags. Each mod gets its own copy of those inputs.
 
 Return `Flow::Cancel` or set `event.cancelled` to veto the whole proposal. The setter returns
 `false` on a veto or an invalid handle; `/weather` reports failure on a veto. Other Host writes

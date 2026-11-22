@@ -219,6 +219,9 @@ To change the interpolated strengths immediately instead, call
 including a parked level. Both strengths clamp to 0–1, including infinities. NaN
 or an unavailable level is refused. This setter changes neither other levels'
 strengths nor the shared parameters, and does not call `weather_change`.
+`level.is_raining(host)` follows the level's visible strength, not the shared rain
+flag. It compares against the double threshold `0.2`, so `0.2_f32` counts as rain
+in a level that can have weather.
 
 ## World borders
 
@@ -260,8 +263,8 @@ listener also gets `event.lerp_ticks`: `None` for a fixed write, or
 still fires that start notice but creates no moving extent.
 `world_border_bounds_change_finish` names the level only after an actual
 moving extent reaches its target at the start of the level's normal tick, even
-if it is idle and parked. Loads and client packet application do not trigger
-these notifications.
+if it is idle and parked. The server's tick functions run before the level's
+border advances. Loads and client packet application do not trigger these notifications.
 
 ### Calling a setter from a listener
 

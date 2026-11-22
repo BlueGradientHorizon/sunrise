@@ -14,7 +14,8 @@ pub trait LevelWeatherBackend {
     #[access(WorldOnly)]
     fn level_weather(&self, level: LevelRef) -> Option<(f32, f32)>;
     /// Side: server.
-    /// Whether it rains (`Level.isRaining`: a rain level above 0.2).
+    /// Whether it rains (`Level.isRaining`: a rain level above the double value `0.2`,
+    /// in a dimension that can have weather). This includes a strength of `0.2_f32`.
     #[access(WorldOnly)]
     fn level_is_raining(&self, level: LevelRef) -> Option<bool>;
     /// Side: server.

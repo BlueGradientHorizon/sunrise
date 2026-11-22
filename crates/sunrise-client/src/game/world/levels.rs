@@ -769,12 +769,7 @@ impl Game<'_> {
         world.weather.copy_parameters_from(self.world.weather);
         // ServerLevel.prepareWeather seeds a new level's current strengths from
         // WeatherData, never from another level's interpolants.
-        if super::level_can_have_weather(
-            world.shape.sky_light,
-            world.shape.has_ceiling,
-            dim == Dim::End,
-        ) && world.weather.raining
-        {
+        if world.shape.can_have_weather(dim == Dim::End) && world.weather.raining {
             world.weather.rain_level.1 = 1.0;
             if world.weather.thundering {
                 world.weather.thunder_level.1 = 1.0;
@@ -1265,10 +1260,10 @@ impl Game<'_> {
 
     /// One server tick (`MinecraftServer.tickServer`): each level with
     /// players or forced chunks in turn (`tickChildren`), its chunks streamed
-    /// and loaded and its world ticked. The first pass reads the network and runs the
-    /// tick's shared parts (the clock, the weather, functions, the autosave);
-    /// the next ones only their level. Connection player ticks follow all
-    /// levels. While `paused`, the network runs but player bodies do not.
+    /// and loaded and its world ticked. Shared command functions run before any level;
+    /// the first active level also advances shared time and handles autosaves.
+    /// Connection player ticks follow all levels. While `paused`, the network runs
+    /// but player bodies do not.
     /// `ServerTickStart` and `ServerTickEnd` bracket the whole tick.
     pub(super) fn tick_server(&mut self, paused: bool) -> Result<()> {
         self.with_residency_tick(|game| game.tick_server_body(paused))
@@ -1315,6 +1310,10 @@ impl Game<'_> {
             let _span = sunrise_client::spans::guard("mods_server_tick_start");
             self.native_lifecycle_server_tick_start(running);
         }
+        // `MinecraftServer.tickChildren`: command functions precede even the first idle level.
+        if running == Some(true) {
+            span("tick_functions", || self.tick_functions());
+        }
         let observe_level =
             running.is_some() && (self.serving.is_some() || self.options.dedicated.is_some());
         let dimensions = Dim::all();
@@ -1346,8 +1345,7 @@ impl Game<'_> {
                 }
                 break;
             };
-            // Each level's share of the tick (the first one also reads the network and runs the
-            // tick's shared parts): `sunrise-report`'s `level_*` spans.
+            // Each active level's share of the tick: `sunrise-report`'s `level_*` spans.
             sunrise_threads::work::set_dim(match dim {
                 Dim::Overworld => 1,
                 Dim::Nether => 2,
@@ -1398,7 +1396,7 @@ impl Game<'_> {
                             self.tick_lan(true);
                             Ok(())
                         } else if k == 0 {
-                            self.tick_server_first()
+                            self.tick_server_first(running.unwrap_or(false))
                         } else {
                             let running = running.unwrap_or_else(|| self.clock.world_runs());
                             if running {
@@ -2614,14 +2612,14 @@ mod request_save_tests {
 
 impl Game<'_> {
     /// `Game::tick` as a server runs it for its first level: no window lead, which only the window's `Game` has.
-    pub(super) fn tick_server_first(&mut self) -> Result<()> {
+    fn tick_server_first(&mut self, running: bool) -> Result<()> {
         self.expire_client_cracks();
         if self.agent.hold_server {
             return Ok(());
         }
         self.abort_open_transactions();
         self.update_interaction_ranges();
-        self.tick_first_level()
+        self.tick_first_level(running)
     }
 
     /// `ServerLevel.tick`: advance the world border, then the natural weather cycle.
@@ -2630,28 +2628,16 @@ impl Game<'_> {
         self.tick_level_weather(dim);
     }
 
-    /// A server's tick of its first active level, with the shared functions, clock and autosave.
-    pub(super) fn tick_first_level(&mut self) -> Result<()> {
+    /// A server's tick of its first active level, with the shared clock and autosave.
+    pub(super) fn tick_first_level(&mut self, running: bool) -> Result<()> {
         // Only a server ticks its own world from here: its players are guests, swapped in for
         // their turns (`as_guest`), and the window's player is a client of it.
         self.ticks += 1;
         self.repro_tick();
-        // `/tick freeze` stops the world but not the player.
-        let running = match self.level_pass.running {
-            Some(running) => running,
-            None => self.clock.world_runs(),
-        };
         span("mods_inventory_ticks", || self.native_inventory_ticks());
         if running {
-            // `MinecraftServer.tickChildren`: `commandFunctions` runs before
-            // any level ticks, so a tick function reads the game time and the
-            // day clock from before this tick. Vanilla's SavedData is loaded
-            // long before this point; the lazy scoreboard/storage read has to
-            // be done by then too, or a load tag writes over what it restores.
-            self.load_scoreboard();
-            span("tick_functions", || self.tick_functions());
-            self.world.game_time += 1;
             self.tick_level_environment(self.dim);
+            self.world.game_time += 1;
         } else if self.clock.still() {
             // Under `SUNRISE_STILL` a frozen world's rain and thunder sit at their levels, as a
             // shader pack's smoothed values do, so `/weather rain` shows full rain without

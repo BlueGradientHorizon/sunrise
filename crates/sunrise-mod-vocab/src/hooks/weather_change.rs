@@ -3,7 +3,8 @@
 
 pub trait Hooks {
     /// Before an explicit server-wide weather parameter write by `/weather`, a
-    /// mod or a GameTest weather environment.
+    /// mod or a GameTest weather environment. GameTest saves its level's actual
+    /// weather type and proposes it again on teardown.
     /// `dimension` is the origin of the write, not its scope. `clear_ticks`
     /// is the requested clear timer and `weather_ticks` sets both the rain
     /// and thunder timers. These timers and the `raining` and `thundering`

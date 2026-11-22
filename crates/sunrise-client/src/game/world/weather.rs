@@ -47,11 +47,7 @@ impl Game<'_> {
         } else {
             return;
         };
-        if !level_can_have_weather(
-            world.shape.sky_light,
-            world.shape.has_ceiling,
-            dim == Dim::End,
-        ) {
+        if !world.shape.can_have_weather(dim == Dim::End) {
             return;
         }
         if dim != self.dim {
@@ -77,11 +73,7 @@ impl Game<'_> {
     }
 
     pub(super) fn can_have_weather(&self) -> bool {
-        level_can_have_weather(
-            self.world.shape.sky_light,
-            self.world.shape.has_ceiling,
-            self.dim == Dim::End,
-        )
+        self.world.shape.can_have_weather(self.dim == Dim::End)
     }
 
     /// The rain and thunder levels (`Level.getRainLevel`, `getThunderLevel`):
