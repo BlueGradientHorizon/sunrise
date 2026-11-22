@@ -185,6 +185,15 @@ pub(super) mod hotbar_slot_tests {
     #[test]
     #[ignore = "daily"]
     fn the_debug_requests_follow_the_carried_slot_in_the_ping_then_subscription_order() {
+        // The game fixture replaces process-wide registries: a child of its own.
+        const MODE: &str = "SUNRISE_HOTBAR_SLOT_THE_DEBUG_REQUESTS_FOLLOW_THE_CARRIED_SLOT_IN_THE_PING_THEN_SUBSCRIPTION_ORDER";
+        if std::env::var_os(MODE).is_none() {
+            crate::game::mods::tests::run_in_child(
+                "game::native_hotbar_slot::hotbar_slot_tests::the_debug_requests_follow_the_carried_slot_in_the_ping_then_subscription_order",
+                MODE,
+            );
+            return;
+        }
         with_client_game(|game| {
             let mut reader = logged_in(game);
             game.debug = true;
@@ -211,15 +220,26 @@ pub(super) mod hotbar_slot_tests {
             );
             game.handle_packet(C::Login(login_packet())).unwrap();
             game.tick_remote_level().unwrap();
-            assert!(sent(&mut reader).iter().any(
-                |p| matches!(p, S::DebugSubscriptionRequest(r) if r.subscriptions == [0])
-            ));
+            assert!(
+                sent(&mut reader)
+                    .iter()
+                    .any(|p| matches!(p, S::DebugSubscriptionRequest(r) if r.subscriptions == [0]))
+            );
         });
     }
 
     #[test]
     #[ignore = "daily"]
     fn no_debug_request_goes_out_before_the_login() {
+        // The game fixture replaces process-wide registries: a child of its own.
+        const MODE: &str = "SUNRISE_HOTBAR_SLOT_NO_DEBUG_REQUEST_GOES_OUT_BEFORE_THE_LOGIN";
+        if std::env::var_os(MODE).is_none() {
+            crate::game::mods::tests::run_in_child(
+                "game::native_hotbar_slot::hotbar_slot_tests::no_debug_request_goes_out_before_the_login",
+                MODE,
+            );
+            return;
+        }
         with_client_game(|game| {
             let (mut reader, _writer) = connect_menu_test(game);
             game.debug = true;

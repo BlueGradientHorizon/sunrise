@@ -12,9 +12,7 @@ pub use jar::{
     JarConflict, JarInputsError, JarRef, JarRequirement, MissingJar, collect_jar_requirements,
     missing_jars,
 };
-pub use runtime_files::{
-    MAX_RUNTIME_FILE, MAX_RUNTIME_FILES, MAX_RUNTIME_TOTAL, RUNTIME_DIR, RuntimeData, RuntimeTable,
-};
+pub use runtime_files::{RUNTIME_DIR, RuntimeData, RuntimeTable};
 
 use mod_surface::uses::USES_FILE;
 use serde::{Deserialize, Serialize};
@@ -840,24 +838,7 @@ impl std::fmt::Display for ServerOnlyDeclaration {
 
 impl std::error::Error for ServerOnlyDeclaration {}
 
-/// Folders of a mod's project that are never part of its package: Git's, Cargo's build output
-/// and the pinned SDK the mod tool fetches into `.sunrise/`.
-pub const NOT_PACKAGED: [&str; 3] = [".git", "target", ".sunrise"];
-
-/// A source file that belongs to the flat Cargo project, not its resource packs.
-pub fn source_file(name: &str) -> bool {
-    if name.split('/').any(|part| NOT_PACKAGED.contains(&part)) {
-        return false;
-    }
-    name == "Cargo.toml"
-        || name == "Cargo.lock"
-        || name == "build.rs"
-        || (name.starts_with("src/") && (name.ends_with(".rs") || name.ends_with(".toml")))
-        || (!name.contains('/')
-            && ["README", "LICENSE", "LICENCE", "COPYING", "NOTICE"]
-                .iter()
-                .any(|prefix| name.starts_with(prefix)))
-}
+pub use mod_source::package::{NOT_PACKAGED, source_file};
 
 pub(crate) fn plain_path(name: &str) -> bool {
     !name.starts_with('/')
@@ -1103,9 +1084,9 @@ impl Package {
         let Some(table) = &self.manifest.runtime else {
             return Ok(None);
         };
-        let mut files = std::collections::BTreeMap::new();
-        let folder = path.is_dir();
-        let mut zip = if folder {
+        let mut files = Vec::new();
+        let runtime_dir = path.is_dir().then(|| path.join(RUNTIME_DIR));
+        let mut zip = if runtime_dir.is_some() {
             None
         } else {
             let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
@@ -1114,29 +1095,29 @@ impl Package {
         for (name, _) in table.files() {
             let entry = format!("{RUNTIME_DIR}/{name}");
             let mut bytes = Vec::new();
-            // At most one byte past the cap, so an oversized file is refused unread.
-            let read = if folder {
-                std::fs::File::open(path.join(&entry))
+            let path = runtime_dir.as_ref().map(|dir| dir.join(name));
+            let read = if let Some(path) = &path {
+                std::fs::File::open(path)
                     .map_err(|e| format!("{entry}: {e}"))?
-                    .take(MAX_RUNTIME_FILE + 1)
                     .read_to_end(&mut bytes)
             } else {
                 zip.as_mut()
                     .expect("an archive")
                     .by_name(&entry)
                     .map_err(|e| format!("{entry}: {e}"))?
-                    .take(MAX_RUNTIME_FILE + 1)
                     .read_to_end(&mut bytes)
             };
             read.map_err(|e| format!("{entry}: {e}"))?;
             table.check(name, &bytes)?;
-            files.insert(name.to_owned(), std::sync::Arc::from(bytes));
+            files.push((
+                name.to_owned(),
+                runtime_files::RuntimeFile {
+                    bytes: bytes.into_boxed_slice(),
+                    path,
+                },
+            ));
         }
-        Ok(Some(RuntimeData::new(
-            files,
-            table.digest(),
-            folder.then(|| path.to_owned()),
-        )))
+        Ok(Some(RuntimeData::new(files, table.digest())))
     }
 
     fn from_parts(
@@ -1151,15 +1132,17 @@ impl Package {
         }
         Ok(Package { manifest, icon })
     }
-    /// Select and validate a flat project's source and resource files deterministically.
+    /// Select and validate a flat project's source and resource files deterministically. Any
+    /// other file in the folder (a `module.toml`, `tools/generate.rs`, `.cargo/config.toml`,
+    /// `rust-toolchain.toml`) is left out, and no folder but `src/` is read for source.
     pub fn directory_files(
         &self,
         root: &Path,
     ) -> Result<std::collections::BTreeMap<String, Vec<u8>>, String> {
         let content = crate::Content::read(root, &self.manifest)?;
         let mut files = std::collections::BTreeMap::new();
-        let mut reader = content.reader()?;
-        for name in &content.files {
+        let reader = content.reader();
+        for name in content.files.iter() {
             files.insert(name.clone(), reader.read(name)?);
         }
         if let Some(icon) = &self.icon {
@@ -1167,59 +1150,25 @@ impl Package {
         }
         if let Some(runtime) = self.read_runtime(root)? {
             for name in runtime.names() {
-                files.insert(
-                    format!("{RUNTIME_DIR}/{name}"),
-                    runtime.file(name).expect("a listed file").to_vec(),
-                );
+                let (bytes, _) = runtime.file(name).expect("a listed file");
+                files.insert(format!("{RUNTIME_DIR}/{name}"), bytes.to_vec());
             }
         }
         if self.is_native() {
-            fn walk(
-                root: &Path,
-                dir: &Path,
-                files: &mut std::collections::BTreeMap<String, Vec<u8>>,
-                source_bytes: &mut u64,
-                source_count: &mut usize,
-            ) -> Result<(), String> {
-                for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-                    let entry = entry.map_err(|e| e.to_string())?;
-                    let path = entry.path();
-                    let relative = path.strip_prefix(root).map_err(|e| e.to_string())?;
-                    let name = relative
-                        .to_str()
-                        .ok_or("non-UTF-8 package path")?
-                        .replace('\\', "/");
-                    let kind = entry.file_type().map_err(|e| e.to_string())?;
-                    if kind.is_dir() {
-                        if entry
-                            .file_name()
-                            .to_str()
-                            .is_some_and(|name| NOT_PACKAGED.contains(&name))
-                            || matches!(name.as_str(), "assets" | "data" | RUNTIME_DIR)
-                        {
-                            continue;
-                        }
-                        walk(root, &path, files, source_bytes, source_count)?;
-                    } else if source_file(&name) {
-                        check_folder_file(root, &name)?;
-                        let size = entry.metadata().map_err(|e| e.to_string())?.len();
-                        *source_bytes = source_bytes
-                            .checked_add(size)
-                            .ok_or("native package too large")?;
-                        *source_count += 1;
-                        if *source_bytes > MAX_SOURCE_BYTES || *source_count > MAX_SOURCE_FILES {
-                            return Err("native package exceeds its entry or size limit".into());
-                        }
-                        files.insert(name, std::fs::read(path).map_err(|e| e.to_string())?);
-                    } else if name.ends_with(".rs") || (name.ends_with(".toml") && name != MANIFEST)
-                    {
-                        return Err(format!("unexpected package path: {name}"));
-                    }
+            let (mut source_bytes, mut source_count) = (0u64, 0usize);
+            for name in mod_source::package::source_files(root).map_err(|e| e.to_string())? {
+                check_folder_file(root, &name)?;
+                let path = root.join(&name);
+                let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+                source_bytes = source_bytes
+                    .checked_add(size)
+                    .ok_or("native package too large")?;
+                source_count += 1;
+                if source_bytes > MAX_SOURCE_BYTES || source_count > MAX_SOURCE_FILES {
+                    return Err("native package exceeds its entry or size limit".into());
                 }
-                Ok(())
+                files.insert(name, std::fs::read(path).map_err(|e| e.to_string())?);
             }
-            let (mut source_bytes, mut source_count) = (0, 0);
-            walk(root, root, &mut files, &mut source_bytes, &mut source_count)?
         }
         files.insert(
             MANIFEST.to_owned(),
@@ -1485,6 +1434,77 @@ mod runtime_files_tests;
 
 #[cfg(test)]
 mod tests {
+    /// A project folder packs its source set and leaves every other file out, so the archive
+    /// reads back as a valid package.
+    #[test]
+    fn a_native_project_folder_packs_its_source_set_and_leaves_other_files_out() {
+        let folder = tempfile::tempdir().unwrap();
+        let write = |name: &str, text: &str| {
+            let path = folder.path().join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            MANIFEST,
+            &format!(
+                "id='butterflies'\nname='Butterflies'\nversion='0.1.0'\napi='0.2'\n\
+                 capabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
+                "a".repeat(40),
+                "b".repeat(40)
+            ),
+        );
+        write(
+            "Cargo.toml",
+            "[package]\nname='butterflies'\nversion='0.1.0'\n",
+        );
+        write("src/lib.rs", "pub fn hooks() {}");
+        write("module.toml", "[module]\nname='butterflies'\n");
+        write("sources/wings.toml", "colour='blue'\n");
+        write("tools/generate.rs", "fn main() {}");
+        write(
+            ".cargo/config.toml",
+            "[source.crates-io]\nreplace-with='local'\n",
+        );
+        write("rust-toolchain.toml", "[toolchain]\nchannel='nightly'\n");
+        // A folder beside the crate is never read, so a name packing could not encode is no bar.
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let junk = folder.path().join("node_modules");
+            std::fs::create_dir_all(&junk).unwrap();
+            std::fs::write(junk.join(std::ffi::OsStr::from_bytes(b"\xff.rs")), "").unwrap();
+            std::fs::write(
+                folder
+                    .path()
+                    .join(std::ffi::OsStr::from_bytes(b"\xff.toml")),
+                "",
+            )
+            .unwrap();
+            // On Unix a `\` is part of a file name, never a separator.
+            std::fs::write(folder.path().join("src").join("a\\b.rs"), "").unwrap();
+            std::fs::write(
+                folder
+                    .path()
+                    .join("src")
+                    .join(std::ffi::OsStr::from_bytes(b"\xff.rs")),
+                "",
+            )
+            .unwrap();
+        }
+
+        let bytes = Package::pack_directory(folder.path()).unwrap();
+        let archive = folder.path().join("butterflies.smod");
+        std::fs::write(&archive, &bytes).unwrap();
+        let mut names: Vec<_> = zip::ZipArchive::new(std::io::Cursor::new(&bytes))
+            .unwrap()
+            .file_names()
+            .map(|name| name.unwrap().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["Cargo.toml", "src/lib.rs", MANIFEST]);
+        assert!(Package::read(&archive).unwrap().is_native());
+    }
+
     /// A short version with a pre-release or build part is padded before it, not after it.
     #[test]
     fn a_short_version_with_a_pre_release_is_padded_in_its_core() {

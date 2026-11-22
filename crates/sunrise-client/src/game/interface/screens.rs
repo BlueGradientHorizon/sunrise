@@ -545,7 +545,7 @@ impl Game<'_> {
             })
             .map(|(i, page)| (page.title(), ADDED_PAGES + i as u8))
     }
-    pub(super) fn pause_click(&mut self) -> Result<()> {
+    pub(super) fn pause_click(&mut self) -> Result<bool> {
         let (w, h) = {
             let size = self
                 .renderer
@@ -592,7 +592,7 @@ impl Game<'_> {
             self.audio.play_button_click();
             self.execute_pause_action(id)?;
         }
-        Ok(())
+        Ok(hit.is_some())
     }
     pub(super) fn pause_key(&mut self, key: KeyCode) -> Result<()> {
         let (w, h) = {
@@ -850,22 +850,23 @@ impl Game<'_> {
         self.death_focus = None;
         self.ui.death_text = None;
         // LocalPlayer.respawn: KeyMapping.resetToggleKeys.
-        self.toggles.respawn();
+        self.reset_toggle_keys();
+        self.vanilla_mappings.reset_toggle_keys();
         self.remote_respawn();
         Ok(())
     }
-    pub(super) fn death_click(&mut self) -> Result<()> {
+    pub(super) fn death_click(&mut self) -> Result<bool> {
         if self
             .ui
             .died_at
             .is_some_and(|t| t.elapsed().as_millis() < 1000)
         {
-            return Ok(());
+            return Ok(false);
         }
         if let Some(opened) = self.ui.death_confirm {
             // ConfirmScreen.setDelay: both buttons wait 20 ticks.
             if opened.elapsed().as_millis() < 1000 {
-                return Ok(());
+                return Ok(false);
             }
             let (title, _) = death_confirm_texts();
             let confirm = Confirm::new(
@@ -877,8 +878,9 @@ impl Game<'_> {
             if let Some(yes) = confirm.answer_at(self.cursor) {
                 self.death_focus = Some(if yes { 0 } else { 1 });
                 self.death_confirm_answer(yes)?;
+                return Ok(true);
             }
-            return Ok(());
+            return Ok(false);
         }
         // DeathScreen.mouseClicked first looks for a click event on the
         // cause line: an open_url link goes through the chat link flow.
@@ -895,7 +897,7 @@ impl Game<'_> {
                 self.cursor,
             ) {
                 self.click_url(url);
-                return Ok(());
+                return Ok(true);
             }
         }
         let size = self
@@ -914,9 +916,10 @@ impl Game<'_> {
         if hit == Some(1) && !self.level.hardcore {
             self.ui.death_confirm = Some(std::time::Instant::now());
             self.audio.play_button_click();
-            return Ok(());
+            return Ok(true);
         }
-        self.death_action(hit)
+        self.death_action(hit)?;
+        Ok(hit.is_some())
     }
     pub(super) fn death_key(&mut self, key: KeyCode) -> Result<()> {
         if self

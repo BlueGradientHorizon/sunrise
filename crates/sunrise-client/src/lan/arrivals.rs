@@ -1224,7 +1224,7 @@ mod hub_tests {
         let (mut held_chunks, mut watcher_chunks) = (0, 0);
         let (mut held_adds, mut watcher_adds) = (Vec::new(), Vec::new());
         for _ in 0..30 {
-            hub.tick_level(&mut ctx);
+            hub.tick_level(&mut ctx, None);
             hub.end_tick();
             let mine_now = packets(&mine);
             let seen_now = packets(&seen);

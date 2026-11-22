@@ -6,7 +6,7 @@ use crate::options::Options;
 use crate::sdk_fetch::{PinnedSdk, ensure_sdk, fetch_build};
 use crate::uses_table::{self, Scanned, surface_of};
 use mod_surface::child::ChildEntry;
-use mod_surface::uses::{Change, Fit, FitReport, USES_FILE, USES_SCHEMA, UsesTable};
+use mod_surface::uses::{Change, Fit, FitReport, PLAIN_SCHEMA, USES_FILE, UsesTable};
 use mod_surface::{Surface, leaf};
 use std::path::Path;
 use std::process::{Command, ExitCode};
@@ -529,7 +529,7 @@ pub(crate) fn compare_fit<B: AsRef<[u8]>>(
     };
     let mut report = api(table);
     let mut unfetched = None;
-    if matches!(report.verdict, Fit::Unversioned(_)) && table.schema != USES_SCHEMA {
+    if matches!(report.verdict, Fit::Unversioned(_)) && table.schema < PLAIN_SCHEMA {
         let fetched = baseline.get_or_insert_with(|| {
             let versions = baseline_surface(&table.made_for)?;
             table
@@ -927,7 +927,7 @@ mod tests {
             cargo.push_str(&format!("[package.metadata.sunrise]\nsdk='{sdk}'\n"));
         }
         let uses = UsesTable {
-            schema: USES_SCHEMA,
+            schema: mod_surface::uses::USES_SCHEMA,
             made_for: made_for.into(),
             entries: vec![],
         }

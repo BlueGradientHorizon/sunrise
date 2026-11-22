@@ -409,7 +409,7 @@ impl Game<'_> {
                 if body {
                     g.attack_ticks = g.attack_ticks.saturating_add(1);
                 }
-                g.right = g.using.is_some();
+                g.set_mapping_held("key.use", g.using.is_some());
                 g.tick_using();
                 g.stab_players = outer;
                 if g.use_delay > 0 {

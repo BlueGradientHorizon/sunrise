@@ -18,10 +18,9 @@ impl Fixture {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir_all(root.join("saves")).unwrap();
-        Self {
-            title: Title::new(root.join("saves"), &root, ""),
-            root,
-        }
+        let mut title = Title::new(root.join("saves"), &root, "");
+        title.set_preset_editor_factories(PresetEditorFactories::default());
+        Self { title, root }
     }
     pub(super) fn world(&self, folder: &str, name: &str) {
         let generated = self.root.join("generated").join(folder);
@@ -813,7 +812,10 @@ fn only_the_vertical_wheel_cycles_a_create_world_button() {
             size.1,
             *creative,
             options,
-            f.title.preset_data.is_some(),
+            f.title
+                .preset_data
+                .is_some()
+                .then_some(f.title.preset_editors.as_ref()),
         )
     };
     let button = labels(&f)
@@ -2438,8 +2440,9 @@ fn a_button_label_wider_than_its_button_stays_inside_it() {
         .iter()
         .map(|v| v.pos[0])
         .fold(f32::INFINITY, f32::min);
-    assert!(
-        (lo - (b.x + 2.0 + (b.w - 4.0) / 2.0 - (width / 2.0).floor())).abs() < 0.001,
+    assert_eq!(
+        lo,
+        b.x + 2.0 + (b.w - 4.0) / 2.0 - (width / 2.0).floor(),
         "a fitting label starts at {lo}"
     );
 }
@@ -2689,6 +2692,30 @@ mod text_and_icon {
         }
         let plain = button(&text, None);
         assert!(draw(&plain, 0) == drawn_from(center - half), "plain {text}");
+    }
+
+    /// Negative, odd-width rectangle: x = -31, w = 21 gives left -29, right
+    /// -12, and vanilla's `(left + right) / 2` truncates to -20, not -21. The
+    /// plain button takes that midpoint; the icon button keeps `x + w / 2` =
+    /// -21, which the clamp keeps (a 1 px icon: right -15, bounds -23..=-21).
+    #[test]
+    fn a_label_on_a_negative_odd_width_button_uses_vanilla_centres() {
+        let atlas = atlas();
+        let first_x = |icon: Option<(&'static str, f32)>| {
+            let mut b = button("Hi", icon);
+            b.x = -31.0;
+            b.w = 21.0;
+            let mut batch = HudBatch::scratch([640, 480]);
+            b.draw_label_at(&mut batch, &atlas, u32::MAX, 0);
+            xs(&batch).into_iter().fold(f32::INFINITY, f32::min)
+        };
+        let glyph_x = |from: f32| {
+            let mut batch = HudBatch::scratch([640, 480]);
+            batch.text(&atlas, "Hi", from, 46.0, u32::MAX, true);
+            xs(&batch).into_iter().fold(f32::INFINITY, f32::min)
+        };
+        assert_eq!(first_x(None), glyph_x(-26.0));
+        assert_eq!(first_x(Some(("icon/music_notes", 1.0))), glyph_x(-27.0));
     }
 
     /// A label wider than the room beside the icon scrolls inside
