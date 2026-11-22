@@ -5184,9 +5184,15 @@ impl Game<'_> {
                 self.creatures.projectiles.update(pos, |p| p.previous = at);
                 continue;
             }
+            let _save_lease = self
+                .creatures
+                .projectiles
+                .visibility_lease()
+                .ok_or_else(sunrise_client::join_seq::visibility::PassLease::enter);
             let Some(mut p) = self.creatures.projectiles.extract(join) else {
                 continue;
             };
+            let pid = p.id;
             if vanish
                 && matches!(p.kind, ProjectileKind::EnderPearl)
                 && p.owner == Some(Who::Player)
@@ -5199,6 +5205,7 @@ impl Game<'_> {
                     None => self.player_view().is_some_and(|pv| !pv.alive),
                 }
             {
+                self.creatures.projectiles.retire_extracted(pid, join);
                 continue;
             }
             let section_from = p.position;
@@ -5310,6 +5317,8 @@ impl Game<'_> {
                 && keep
                 && let Some(ceiling) = self.wind_ceiling_contact(&p)
             {
+                self.creatures.projectiles.retire_extracted(pid, join);
+                drop(_save_lease);
                 self.apply_projectile_hit(&p, ceiling)?;
                 continue;
             }
@@ -5321,28 +5330,55 @@ impl Game<'_> {
                     .skip(pos.min(self.creatures.projectiles.len()))
                     .map(|q| q.id)
                     .collect();
-                self.creatures.bounced_followers.push((p.id, followers));
+                self.creatures.bounced_followers.push((pid, followers));
             }
             if keep {
                 self.sweep_projectile_inside(&mut p);
                 self.lava_mark_hurt(&mut p);
-                let (pid, to) = (p.id, p.position);
+                let to = p.position;
                 let place = pos.min(self.creatures.projectiles.len());
                 if hit == Hit::None {
                     self.creatures.projectiles.put_back(place, p);
+                    drop(_save_lease);
                     self.entity_section_step(pid, section_from.components(), to.components());
                     continue;
                 }
-                self.creatures.projectiles.put_back(place, p.clone());
+                let hit_snapshot = p.clone();
+                self.creatures.projectiles.put_back(place, p);
+                drop(_save_lease);
                 self.entity_section_step(pid, section_from.components(), to.components());
-            } else if hit == Hit::None {
+                let result = self.apply_projectile_hit(&hit_snapshot, hit);
+                if result.is_ok() && shot_after_hit {
+                    self.projectile_shoot_event(
+                        hit_snapshot.owner,
+                        hit_snapshot.guest,
+                        hit_snapshot.position.components(),
+                    );
+                }
+                self.creatures.bounced_followers.clear();
+                result?;
                 continue;
             }
-            self.apply_projectile_hit(&p, hit)?;
-            if shot_after_hit {
+            if hit == Hit::None {
+                self.creatures.projectiles.retire_extracted(pid, join);
+                continue;
+            }
+            let result = self.apply_projectile_hit(&p, hit);
+            if let Some(re_idx) = self.creatures.projectiles.locate(join) {
+                self.creatures.projectiles.update(re_idx, |live| {
+                    if !live.attachment_lifetime.is_bound() {
+                        std::mem::swap(&mut live.attachment_lifetime, &mut p.attachment_lifetime);
+                    }
+                });
+            } else {
+                self.creatures.projectiles.retire_extracted(pid, join);
+            }
+            drop(_save_lease);
+            if result.is_ok() && shot_after_hit {
                 self.projectile_shoot_event(p.owner, p.guest, p.position.components());
             }
             self.creatures.bounced_followers.clear();
+            result?;
         }
         self.dragon_breath_trails();
         self.flush_lan_explosions();
@@ -5770,6 +5806,10 @@ impl Game<'_> {
             .map(|k| self.creatures.bounced_followers.swap_remove(k).1)
             .unwrap_or_default();
         let projectiles = &mut self.creatures.projectiles;
+        if let Some(existing) = projectiles.locate(arrow.join) {
+            projectiles.store_back(existing, arrow);
+            return;
+        }
         let index = bounced_place(projectiles, &followers);
         projectiles.insert(index, arrow);
     }
