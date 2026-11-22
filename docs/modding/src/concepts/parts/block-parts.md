@@ -163,7 +163,12 @@ Non-finite edits are ignored; there is no veto. Keep movement answers consistent
 on replay.
 
 `LevelRandomSide::Client` lends a read-only level. Only the server arm accepts writes, and it
-lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { amount })` applies damage to the stepping body through its own damage path, before the inside scan.
+lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { amount })`
+applies damage to the stepping body through its own damage path, before the inside scan.
+For a magma-like Part, check `level.entity_type_is_living(event.kind) == Some(true)` and
+`!event.stepping_carefully` before requesting damage. The entity-type read is available on both
+sides and includes living mod types. Damage itself is not limited to living bodies: other Parts
+can still hurt dropped items.
 Use `bounds` to test overlap with a surface that is smaller than the block. `event.request(LandingWrite::…)`
 queues a write at `pos`. The `fall_on` drain applies the ordered block writes after the entity batch,
 only if the block still holds the contacted state. An invalid state or non-finite movement or damage

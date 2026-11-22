@@ -1376,6 +1376,18 @@ impl TriState {
 /// }
 /// ```
 pub trait LevelHost {
+    /// Whether the exact, namespaced `id` is a living entity type (`LivingEntity`).
+    /// Includes living content types, players and armor stands, whether alive or not in a level.
+    /// Returns `None` before the registry is complete or when no classification exists for `id`.
+    /// This is a load-owned registry read, not an entity lookup. It allocates nothing and gives
+    /// the same answer on either side; no entity need be loaded.
+    #[sunrise_mod_api_macros::computed_in_mod]
+    fn entity_type_is_living(&self, id: &str) -> Option<bool> {
+        crate::content::registry_keys::resolved_entity_types()
+            .get()?
+            .is_living(id)
+    }
+
     /// The block-state facts service, as `host.block_states()` gives it on a game host: the
     /// same tables and the same answers, so a part can ask a neighbour's `weathering_age`
     /// inside `random_tick`. Read-only and allocation-free per read. A level view with no

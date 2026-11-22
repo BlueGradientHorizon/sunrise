@@ -272,10 +272,10 @@ pub fn item_key_by_identifier(id: &crate::Identifier) -> Option<ItemKey> {
     Some(ItemKey(*resolved_items().get()?.identifiers.get(id)?))
 }
 
-/// Entity types use the same requested-slot and immutable resolved-table lifecycle as items.
+/// Entity names and classification are published together, using the same keys.
 pub(crate) fn resolved_entity_types()
--> &'static std::sync::OnceLock<sunrise_mod_runtime::registry_keys::Names> {
-    static EMPTY: std::sync::OnceLock<sunrise_mod_runtime::registry_keys::Names> =
+-> &'static std::sync::OnceLock<sunrise_mod_runtime::registry_keys::EntityTypes> {
+    static EMPTY: std::sync::OnceLock<sunrise_mod_runtime::registry_keys::EntityTypes> =
         std::sync::OnceLock::new();
     crate::parts::installed().map_or(&EMPTY, |installed| &installed.resolved_entity_types)
 }
@@ -341,14 +341,21 @@ fn ordered_slot_is_live(
         .unwrap_or(false)
 }
 
-/// Complete the entity-type registry in the order supplied by the game.
-pub fn resolve_entity_types<'a>(ids: impl IntoIterator<Item = &'a str>) -> Result<(), Vec<String>> {
+/// Complete the entity-type registry in the order supplied by the game, with the registered
+/// living classification of each type (None if the resource table did not describe it).
+pub fn resolve_entity_types<'a>(
+    ids: impl IntoIterator<Item = &'a str>,
+    is_living: impl FnMut(&str) -> Option<bool>,
+) -> Result<(), Vec<String>> {
     let names = crate::parts::requested_keys()
         .entity_types
         .complete(ids, |mod_id, id| {
             format!("mod {mod_id} requested unknown entity type {id}")
         })?;
-    let _ = resolved_entity_types().set(share_names(names));
+    let _ = resolved_entity_types().set(sunrise_mod_runtime::registry_keys::EntityTypes::new(
+        share_names(names),
+        is_living,
+    ));
     Ok(())
 }
 
@@ -385,14 +392,14 @@ pub fn resolved_entity_type_key(id: &str) -> Option<EntityTypeKey> {
     if !id.contains(':') {
         return resolved_entity_type_key_parts(&["minecraft:", id]);
     }
-    let names = resolved_entity_types().get()?;
-    Some(EntityTypeKey(*names.slots.get(id)?))
+    let types = resolved_entity_types().get()?;
+    Some(EntityTypeKey(*types.names().slots.get(id)?))
 }
 
 /// Resolve a composed engine name (notably boat/raft types) without heap formatting.
 pub fn resolved_entity_type_key_parts(parts: &[&str]) -> Option<EntityTypeKey> {
-    let names = resolved_entity_types().get()?;
-    names.slots.iter().find_map(|(name, slot)| {
+    let types = resolved_entity_types().get()?;
+    types.names().slots.iter().find_map(|(name, slot)| {
         name.bytes()
             .eq(parts.iter().flat_map(|part| part.bytes()))
             .then_some(EntityTypeKey(*slot))
@@ -403,8 +410,9 @@ pub fn resolved_entity_type_key_parts(parts: &[&str]) -> Option<EntityTypeKey> {
 pub fn entity_type_keys() -> Vec<EntityTypeKey> {
     resolved_entity_types()
         .get()
-        .map_or_else(Vec::new, |names| {
-            names
+        .map_or_else(Vec::new, |types| {
+            types
+                .names()
                 .order
                 .iter()
                 .map(|slot| EntityTypeKey(*slot))
@@ -429,7 +437,7 @@ impl EntityTypeKey {
             .unwrap_or_else(|| {
                 resolved_entity_types()
                     .get()
-                    .is_some_and(|names| names.id(slot).is_some())
+                    .is_some_and(|types| types.names().id(slot).is_some())
             })
             .then_some(Self(slot))
             .ok_or("unknown EntityTypeKey slot")
@@ -456,13 +464,13 @@ impl EnchantmentKey {
 
 /// The canonical load-owned name of a resolved entity type, without allocating.
 pub fn entity_type_name(key: EntityTypeKey) -> Option<&'static str> {
-    resolved_entity_types().get()?.id(key.0)
+    resolved_entity_types().get()?.names().id(key.0)
 }
 
 /// The canonical name of a built-in entity-type key, for diagnostics.
 pub fn entity_type_key_id(key: EntityTypeKey) -> Option<String> {
     crate::parts::registration_name(crate::parts::RegistrationKeyKind::EntityType, key.0)
-        .or_else(|| resolved_entity_types().get()?.id(key.0).map(str::to_owned))
+        .or_else(|| entity_type_name(key).map(str::to_owned))
 }
 
 /// The canonical name of a built-in menu key, for diagnostics.

@@ -170,6 +170,34 @@ impl Names {
     }
 }
 
+/// A resolved entity registry with classification indexed by the same load-owned slots.
+pub struct EntityTypes {
+    names: Names,
+    living: Box<[Option<bool>]>,
+}
+
+impl EntityTypes {
+    /// Attach the living classification to the slots of the completed name table.
+    pub fn new(names: Names, mut is_living: impl FnMut(&str) -> Option<bool>) -> Self {
+        let living = names
+            .entries
+            .iter()
+            .map(|entry| is_living(&entry.id))
+            .collect();
+        Self { names, living }
+    }
+
+    /// The completed entity type names and registration order.
+    pub fn names(&self) -> &Names {
+        &self.names
+    }
+
+    /// Living classification of an exact registered type id, or None if unknown.
+    pub fn is_living(&self, id: &str) -> Option<bool> {
+        self.living[*self.names.slots.get(id)? as usize]
+    }
+}
+
 /// A particle's resolved engine-independent provider identity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // no wire: local resolved provider metadata, not a cross-target particle payload.

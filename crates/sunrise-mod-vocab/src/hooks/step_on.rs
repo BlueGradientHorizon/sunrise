@@ -15,6 +15,8 @@ pub trait Hooks {
     /// Only Parts on the contacted state run, after that block's vanilla step behavior.
     /// The server lends the level random host as `fall_on` does, and accepts
     /// `event.write_entity(EntityWrite::…)` for the stepping entity before the inside scan.
+    /// Use `LevelHost::entity_type_is_living(event.kind)` when the block only affects living
+    /// bodies, as magma does. Other Parts may still hurt nonliving bodies such as dropped items.
     /// Contact Parts cannot hurt boats or minecarts yet (#4177).
     /// `event.request(LandingWrite::…)` queues a change at `pos` through the `fall_on`
     /// drain: requests apply at the batch end if `pos` still holds `state`.

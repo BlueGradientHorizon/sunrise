@@ -1405,11 +1405,15 @@ pub(in crate::game) fn register_iterated_registries(
     let path = Builtin::find(root).ok_or("registries.json not found")?;
     let builtin = Builtin::load(&path)?;
     if let Some(ids) = builtin.get("minecraft:entity_type") {
+        let rows = super::entity_type_rows::entity_type_rows(root);
+        let general = super::general::general_type_catalog();
         mod_api::__private::resolve_entity_types(
-            ids.names
-                .iter()
-                .map(String::as_str)
-                .chain(super::general::general_type_catalog().keys()),
+            ids.names.iter().map(String::as_str).chain(general.keys()),
+            |id| {
+                rows.contains(id)
+                    .then(|| rows.is_living(id))
+                    .or_else(|| general.slot(id).map(|_| false))
+            },
         )
         .map_err(|errors| errors.join("\n"))?;
     }
