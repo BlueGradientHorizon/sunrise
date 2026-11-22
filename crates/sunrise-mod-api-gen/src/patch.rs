@@ -99,6 +99,9 @@ pub struct Extras {
     /// The crates the patch crates link (`--extern`) besides std: an import from one of them
     /// resolves in a mirror as it did in the game.
     pub linked: BTreeSet<String>,
+    /// The pinned cfg atoms of each lower library, by package folder with underscores. `None`
+    /// is for source-only inspection, which leaves inferred conditions in the generated Rust.
+    pub lower_crate_cfg: Option<BTreeMap<String, Vec<String>>>,
 }
 
 /// Why a target can't be copied out: a named refusal, never a game rebuild.
@@ -133,13 +136,21 @@ pub(crate) struct Module {
     pub(crate) items: Vec<Item>,
 }
 
+/// A source file and the conditions of the module declarations that reach it.
+#[derive(Clone)]
+pub(crate) struct SourceFile {
+    pub(crate) path: PathBuf,
+    pub(crate) cfg: Vec<String>,
+}
+
 /// The game crate's modules by path, parsed lazily from the pinned source.
 pub(crate) struct Source {
     root: PathBuf,
     /// The crates whose modules are in `files`.
     loaded: BTreeSet<String>,
-    pub(crate) files: BTreeMap<String, Vec<PathBuf>>,
+    pub(crate) files: BTreeMap<String, Vec<SourceFile>>,
     parsed: BTreeMap<String, Module>,
+    lower_crate_cfg: BTreeMap<String, BTreeSet<String>>,
     /// `macro_rules!` names the crate defines without `#[macro_export]`: a body using one can't
     /// leave the crate.
     local_macros: BTreeSet<String>,
@@ -170,27 +181,69 @@ struct Cache {
 impl Source {
     /// The modules the function index lists, with nothing walked: each file is read when a
     /// target's module is.
-    fn indexed(root: &Path, index: &crate::functions::FunctionIndex) -> Result<Self, String> {
+    fn indexed(
+        root: &Path,
+        index: &crate::functions::FunctionIndex,
+        cfgs: Option<&BTreeMap<String, Vec<String>>>,
+    ) -> Result<Self, String> {
         let mut files = BTreeMap::new();
         let mut libraries = BTreeMap::new();
         let mut hashes = BTreeMap::new();
+        let mut lower_crate_cfg = BTreeMap::new();
         for (krate, facts) in &index.crates {
+            let cfg = cfgs
+                .and_then(|cfgs| cfgs.get(krate))
+                .map(|cfg| {
+                    cfg.iter()
+                        .map(|atom| {
+                            mod_source::modules::cfg_atom(atom).map_err(|error| {
+                                format!("invalid SDK cfg for {krate} ({atom}): {error}")
+                            })
+                        })
+                        .collect::<Result<BTreeSet<_>, _>>()
+                })
+                .transpose()?;
             for (module, listed) in &facts.modules {
                 let mut joined = Vec::new();
-                for file in listed {
+                'file: for file in listed {
                     let path = crate::functions::source_path(root, &file.path)?;
                     hashes.insert(path.clone(), file.sha256.clone());
-                    joined.push(path);
+                    if let Some(cfg) = &cfg {
+                        for condition in &file.cfg {
+                            match mod_source::modules::evaluate_cfg(condition, |atom| {
+                                Some(cfg.contains(atom))
+                            }) {
+                                Some(true) => {}
+                                Some(false) => continue 'file,
+                                None => {
+                                    return Err(format!(
+                                        "invalid module cfg for {}: {condition}",
+                                        file.path
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    joined.push(SourceFile {
+                        path,
+                        cfg: file.cfg.clone(),
+                    });
                 }
-                files.insert(module.clone(), joined);
+                if !joined.is_empty() {
+                    files.insert(module.clone(), joined);
+                }
             }
             libraries.insert(krate.clone(), facts.library.clone());
+            if let Some(cfg) = cfg {
+                lower_crate_cfg.insert(krate.clone(), cfg);
+            }
         }
         Ok(Self {
             root: root.to_owned(),
             loaded: index.crates.keys().cloned().collect(),
             files,
             parsed: BTreeMap::new(),
+            lower_crate_cfg,
             local_macros: BTreeSet::new(),
             libraries,
             owners: BTreeMap::new(),
@@ -225,12 +278,21 @@ impl Source {
     pub(crate) fn new(root: &Path) -> Result<Self, String> {
         let src = root.join("crates/sunrise-client/src");
         let mut files = BTreeMap::new();
-        files.insert("sunrise_client".to_owned(), vec![src.join("lib.rs")]);
+        files.insert(
+            "sunrise_client".to_owned(),
+            vec![SourceFile {
+                path: src.join("lib.rs"),
+                cfg: Vec::new(),
+            }],
+        );
         for file in crate::source::game_files(&src, false)? {
             files
                 .entry(file.module)
                 .or_insert_with(Vec::new)
-                .push(file.path);
+                .push(SourceFile {
+                    path: file.path,
+                    cfg: file.cfg,
+                });
         }
         let mut local_macros = BTreeSet::new();
         let mut exported = BTreeSet::new();
@@ -245,6 +307,7 @@ impl Source {
             loaded: BTreeSet::from(["sunrise_client".to_owned()]),
             files,
             parsed: BTreeMap::new(),
+            lower_crate_cfg: BTreeMap::new(),
             local_macros,
             libraries: BTreeMap::new(),
             owners: BTreeMap::new(),
@@ -275,7 +338,10 @@ impl Source {
         for file in files {
             let text = std::fs::read_to_string(&file.path).unwrap_or_default();
             macro_names(&text, &mut local, &mut exported);
-            self.files.entry(file.module).or_default().push(file.path);
+            self.files.entry(file.module).or_default().push(SourceFile {
+                path: file.path,
+                cfg: file.cfg,
+            });
         }
         self.local_macros
             .extend(local.into_iter().filter(|name| !exported.contains(name)));
@@ -306,16 +372,20 @@ impl Source {
         Ok(&self.owners[krate])
     }
 
+    fn cfg(&self, module: &str) -> Option<&BTreeSet<String>> {
+        self.lower_crate_cfg.get(module.split("::").next()?)
+    }
+
     /// Module `path`'s items: its file's, or an inline module's inside its parent's.
     pub(crate) fn module(&mut self, path: &str) -> Result<&Module, String> {
         if !self.parsed.contains_key(path) {
-            let items = if let Some(files) = self.files.get(path).cloned() {
+            let mut items = if let Some(files) = self.files.get(path).cloned() {
                 let mut items = Vec::new();
                 for file in &files {
-                    let text = self.read(file)?;
+                    let text = self.read(&file.path)?;
                     items.extend(
                         syn::parse_file(&text)
-                            .map_err(|e| format!("{}: {e}", file.display()))?
+                            .map_err(|e| format!("{}: {e}", file.path.display()))?
                             .items,
                     );
                 }
@@ -334,6 +404,35 @@ impl Source {
                 }
                 items.to_vec()
             };
+            if let Some(cfg) = self.cfg(path) {
+                // Configure the original scope before mirroring it. Copying the attributes as
+                // written would let the game crate's features change its lower crates' imports.
+                items.retain_mut(|item| {
+                    let attrs = match item {
+                        Item::Const(item) => &mut item.attrs,
+                        Item::Enum(item) => &mut item.attrs,
+                        Item::ExternCrate(item) => &mut item.attrs,
+                        Item::Fn(item) => &mut item.attrs,
+                        Item::Impl(item) => &mut item.attrs,
+                        Item::Macro(item) => &mut item.attrs,
+                        Item::Mod(item) => &mut item.attrs,
+                        Item::Static(item) => &mut item.attrs,
+                        Item::Struct(item) => &mut item.attrs,
+                        Item::Trait(item) => &mut item.attrs,
+                        Item::Type(item) => &mut item.attrs,
+                        Item::Union(item) => &mut item.attrs,
+                        Item::Use(item) => &mut item.attrs,
+                        _ => return true,
+                    };
+                    let Some(active) =
+                        mod_source::modules::configured_attrs(attrs, |atom| cfg.contains(atom))
+                    else {
+                        return false;
+                    };
+                    *attrs = active;
+                    true
+                });
+            }
             self.parsed.insert(path.to_owned(), Module { items });
         }
         Ok(&self.parsed[path])
@@ -694,43 +793,6 @@ fn definition(item: &Item) -> Option<(&syn::Ident, &[syn::Attribute])> {
     Some((ident, attrs))
 }
 
-/// The condition an attribute puts on an item's existence. `cfg_attr(P, ...)` imposes
-/// its nested conditions only when P holds; other nested attributes need not apply to a use.
-fn cfg_predicate(meta: &syn::Meta) -> Option<proc_macro2::TokenStream> {
-    let syn::Meta::List(list) = meta else {
-        return None;
-    };
-    let cfg = list.path.is_ident("cfg");
-    if !cfg && !list.path.is_ident("cfg_attr") {
-        return None;
-    }
-    let (when, conditions) = list
-        .parse_args_with(|input: syn::parse::ParseStream| {
-            // Keep Rust's cfg predicate tokens verbatim (including `true` and `false`,
-            // which aren't attribute metadata), but leave out the separating comma.
-            let mut when = proc_macro2::TokenStream::new();
-            while !input.is_empty() && !input.peek(syn::Token![,]) {
-                when.extend([input.parse::<proc_macro2::TokenTree>()?]);
-            }
-            input.parse::<Option<syn::Token![,]>>()?;
-            let attrs =
-                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated(input)?;
-            Ok((
-                when,
-                attrs.iter().filter_map(cfg_predicate).collect::<Vec<_>>(),
-            ))
-        })
-        .ok()?;
-    if cfg {
-        return Some(when);
-    }
-    (!conditions.is_empty()).then(|| quote!(any(not(#when), all(#(#conditions),*))))
-}
-
-fn cfg_predicates(attrs: &[syn::Attribute]) -> impl Iterator<Item = proc_macro2::TokenStream> {
-    attrs.iter().filter_map(|attr| cfg_predicate(&attr.meta))
-}
-
 /// A module's own `macro_rules!` items that it does not export.
 fn module_macros(items: &[Item]) -> Vec<syn::ItemMacro> {
     items
@@ -799,7 +861,7 @@ pub fn generate(
         code,
         why,
     };
-    let mut source = match Source::indexed(root, index) {
+    let mut source = match Source::indexed(root, index, extras.lower_crate_cfg.as_ref()) {
         Ok(source) => source,
         Err(why) => {
             return Err(targets
@@ -837,6 +899,17 @@ pub fn generate(
         };
         let name = found.function.sig.ident.clone();
         let source_crate = found.module.split("::").next().expect("a crate").to_owned();
+        if source_crate != "sunrise_client"
+            && extras.lower_crate_cfg.is_some()
+            && source.cfg(&source_crate).is_none()
+        {
+            refusals.push(refuse(
+                target,
+                "E_MIXIN_SOURCE",
+                format!("the SDK has no build cfg for {source_crate}"),
+            ));
+            continue;
+        }
         let patch_name = patch_crate(krate, &source_crate);
         let mut node = trees.entry(source_crate).or_default();
         for segment in found.module.split("::").skip(1) {
@@ -1480,6 +1553,8 @@ fn mirror(
     bridges: &[syn::Ident],
     narrowing: Option<&Narrowing<'_>>,
 ) -> Result<proc_macro2::TokenStream, String> {
+    use mod_source::modules::{Cfg, cfg_predicates};
+
     let items = source.module(path)?.items.clone();
     let original: syn::Path =
         syn::parse_str(&original_path(&source.libraries, path)).expect("a module path");
@@ -1548,25 +1623,36 @@ fn mirror(
             matches!(item, Item::ExternCrate(krate)
                 if krate.rename.as_ref().is_some_and(|(_, name)| unraw(name) == "std"))
         });
+    let build_cfg = source.cfg(path);
     let mut glob = false;
     let mut thread_locals = Vec::new();
     for item in &items {
         if let Item::Macro(mac) = item
             && mac.ident.is_none()
         {
+            let invocation_cfg = cfg_predicates(&mac.attrs);
+            if invocation_cfg.iter().any(Cfg::disabled_without_tests) {
+                continue;
+            }
             match thread_local_statics(mac, bare_is_std, std_is_std) {
                 // Each static exists under the invocation's conditions and its own.
-                Some(statics) => thread_locals.extend(
-                    statics
-                        .into_iter()
-                        .filter(|item| matches!(item.vis, syn::Visibility::Public(_)))
-                        .map(|item| {
-                            let cfg: Vec<_> = cfg_predicates(&mac.attrs)
-                                .chain(cfg_predicates(&item.attrs))
-                                .collect();
-                            (item.ident, cfg)
-                        }),
-                ),
+                Some(statics) => thread_locals.extend(statics.into_iter().filter_map(|item| {
+                    if !matches!(item.vis, syn::Visibility::Public(_)) {
+                        return None;
+                    }
+                    let mut cfg = invocation_cfg.clone();
+                    let predicates = cfg_predicates(&item.attrs);
+                    if let Some(build_cfg) = build_cfg {
+                        if predicates.iter().any(|predicate| {
+                            predicate.evaluate(|atom| Some(build_cfg.contains(atom))) == Some(false)
+                        }) {
+                            return None;
+                        }
+                    } else {
+                        cfg.extend(predicates);
+                    }
+                    Some((item.ident, cfg))
+                })),
                 None => glob = true,
             }
         }
@@ -1574,23 +1660,17 @@ fn mirror(
     public.extend(thread_locals.iter().map(|(ident, _)| ident.to_string()));
     // One `pub use` brings every namespace a name has: `pub mod render;` beside
     // `pub fn render` is one re-export, under the cfg either item is compiled under.
-    let mut names: Vec<(syn::Ident, Vec<Vec<proc_macro2::TokenStream>>)> = Vec::new();
-    // Keep the prebuilt game's test-item filter on re-exports, not on binding detection.
-    let re_exported = defined
-        .filter(|(ident, attrs)| *ident != "tests" && !mod_source::modules::test_only(attrs))
-        .map(|(ident, attrs)| (ident.clone(), cfg_predicates(attrs).collect()));
-    // A lower crate is compiled with its own features, but the patch crate with the game's, so a
-    // condition on a feature can't be decided here: the glob brings such an item where it exists.
-    let lower = path.split("::").next() != Some("sunrise_client");
+    let mut names: Vec<(syn::Ident, Vec<Vec<Cfg>>)> = Vec::new();
+    let re_exported = defined.filter_map(|(ident, attrs)| {
+        let cfg = cfg_predicates(attrs);
+        (ident != "tests" && !cfg.iter().any(Cfg::disabled_without_tests))
+            .then(|| (ident.clone(), cfg))
+    });
     for (ident, cfg) in re_exported
         .chain(thread_locals)
         .filter(|(ident, _)| !reserved.contains(&ident.to_string()))
         .filter(|(ident, _)| !only_public || public.contains(&ident.to_string()))
     {
-        if lower && cfg.iter().any(names_feature) {
-            glob = true;
-            continue;
-        }
         match names.iter_mut().find(|(name, _)| *name == ident) {
             Some((_, cfgs)) => cfgs.push(cfg),
             None => names.push((ident, vec![cfg])),
@@ -1646,9 +1726,8 @@ fn mirror(
         )
     });
     // The explicit re-exports name every item the module defines; the glob is there for items a
-    // macro invocation defines, which syn can't see, and for a lower crate's items gated on a
-    // Cargo feature, whose presence depends on that crate's features. A glob would also make
-    // horizon-mixins take `format!`/`vec!`/`matches!` as possibly shadowed.
+    // macro invocation defines, which syn can't see. Known definitions must stay named:
+    // a glob would change their precedence over the module's own glob imports.
     let glob = glob.then(|| quote!(pub use #original::*;));
     Ok(quote! {
         #glob
@@ -1669,7 +1748,7 @@ fn support_module(
     let path = source
         .files
         .iter()
-        .find(|(_, paths)| paths.iter().any(|path| path.ends_with(&module.file)))
+        .find(|(_, paths)| paths.iter().any(|file| file.path.ends_with(&module.file)))
         .map(|(name, _)| name.clone())
         .ok_or((
             "E_MIXIN_MODULE_DESTINATION",
@@ -1851,15 +1930,6 @@ fn macro_may_be_in_scope(source: &mut Source, path: &str, name: &str) -> bool {
     (1..=segments.len()).any(|end| within(source, &segments[..end].join("::"), name))
 }
 
-/// Whether a cfg predicate reads a Cargo feature.
-fn names_feature(predicate: &proc_macro2::TokenStream) -> bool {
-    predicate.clone().into_iter().any(|tree| match tree {
-        proc_macro2::TokenTree::Ident(ident) => ident == "feature",
-        proc_macro2::TokenTree::Group(group) => names_feature(&group.stream()),
-        _ => false,
-    })
-}
-
 /// The binding of an unaliased import: `use x::name::{self}` binds `name`.
 fn use_binding<'a>(ident: &'a syn::Ident, prefix: Option<&'a syn::Ident>) -> &'a syn::Ident {
     if ident == "self" {
@@ -1944,6 +2014,7 @@ mod tests {
             loaded: BTreeSet::new(),
             files: BTreeMap::new(),
             parsed: BTreeMap::new(),
+            lower_crate_cfg: BTreeMap::new(),
             local_macros: BTreeSet::new(),
             libraries: BTreeMap::new(),
             owners: BTreeMap::new(),
@@ -2066,6 +2137,7 @@ mod tests {
             root: PathBuf::new(),
             loaded: BTreeSet::new(),
             files: BTreeMap::new(),
+            lower_crate_cfg: BTreeMap::new(),
             parsed: BTreeMap::from([(
                 "lower::ancestor".to_owned(),
                 Module {
@@ -2129,8 +2201,15 @@ mod tests {
         let mut source = Source {
             root: dir.path().to_owned(),
             loaded: BTreeSet::new(),
-            files: BTreeMap::from([("fixture".to_owned(), vec![file])]),
+            files: BTreeMap::from([(
+                "fixture".to_owned(),
+                vec![SourceFile {
+                    path: file,
+                    cfg: Vec::new(),
+                }],
+            )]),
             parsed: BTreeMap::new(),
+            lower_crate_cfg: BTreeMap::new(),
             local_macros: BTreeSet::new(),
             libraries: BTreeMap::new(),
             owners: BTreeMap::new(),
@@ -2175,8 +2254,18 @@ mod tests {
         let mut source = Source {
             root: dir.clone(),
             loaded: BTreeSet::new(),
-            files: BTreeMap::from([("fixture".to_owned(), vec![outer, included])]),
+            files: BTreeMap::from([(
+                "fixture".to_owned(),
+                [outer, included]
+                    .into_iter()
+                    .map(|path| SourceFile {
+                        path,
+                        cfg: Vec::new(),
+                    })
+                    .collect(),
+            )]),
             parsed: BTreeMap::new(),
+            lower_crate_cfg: BTreeMap::new(),
             local_macros: BTreeSet::new(),
             libraries: BTreeMap::new(),
             owners: BTreeMap::new(),
@@ -2203,8 +2292,15 @@ mod tests {
         let mut source = Source {
             root: dir.clone(),
             loaded: BTreeSet::new(),
-            files: BTreeMap::from([("fixture".to_owned(), vec![file])]),
+            files: BTreeMap::from([(
+                "fixture".to_owned(),
+                vec![SourceFile {
+                    path: file,
+                    cfg: Vec::new(),
+                }],
+            )]),
             parsed: BTreeMap::new(),
+            lower_crate_cfg: BTreeMap::new(),
             local_macros: BTreeSet::new(),
             libraries: BTreeMap::new(),
             owners: BTreeMap::new(),
@@ -2234,6 +2330,7 @@ mod tests {
             root: PathBuf::new(),
             loaded: BTreeSet::new(),
             files: BTreeMap::new(),
+            lower_crate_cfg: BTreeMap::new(),
             parsed: BTreeMap::from([(
                 path.to_owned(),
                 Module {
@@ -2333,25 +2430,40 @@ mod tests {
             pub mod ordinary {}
             "#,
         );
-        let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
-            .unwrap()
-            .to_string()
-            .replace(' ', "");
-        assert!(!out.contains("pubuse::lower::anim::*;"), "{out}");
-        assert!(
-            out.contains(concat!(
-                r#"#[cfg(any(not(true),all(unix,target_pointer_width="64")))]"#,
-                r#"#[cfg(any(not(windows),all(any(not(target_env="msvc"),all(target_arch="x86_64")))))]"#,
-                "pubuse::lower::anim::SHARED;",
-            )),
-            "{out}"
+        let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None).unwrap();
+        let parsed: syn::File = syn::parse2(out).unwrap();
+        let imports = uses(&parsed.items);
+        let names: Vec<_> = imports
+            .iter()
+            .map(|item| item.tree.to_token_stream().to_string())
+            .collect();
+        assert_eq!(
+            names,
+            ["lower :: anim :: ordinary", "lower :: anim :: SHARED"]
         );
-        assert!(
-            out.contains(concat!(
-                r#"#[cfg(any(all(any(not(windows),all(target_arch="aarch64"))),all(unix)))]"#,
-                "pubuse::lower::anim::ordinary;",
-            )),
-            "{out}"
+        let enabled = |item: &syn::ItemUse, atoms: &[&str]| {
+            mod_source::modules::cfg_predicates(&item.attrs)
+                .iter()
+                .all(|cfg| cfg.evaluate(|atom| Some(atoms.contains(&atom))) == Some(true))
+        };
+        assert!(enabled(imports[0], &["unix"]));
+        assert!(!enabled(imports[1], &["unix"]));
+        assert!(enabled(
+            imports[1],
+            &["unix", "target_pointer_width = \"64\""]
+        ));
+        assert!(!enabled(imports[0], &["windows"]));
+        assert!(enabled(
+            imports[0],
+            &["windows", "target_arch = \"aarch64\""]
+        ));
+        // Exercise the nested cfg_attr guard independently of the other cfg restrictions.
+        let attrs = &imports[1].attrs;
+        let nested = mod_source::modules::cfg_predicates(attrs).pop().unwrap();
+        assert_eq!(nested.evaluate(|atom| Some(atom == "windows")), Some(true));
+        assert_eq!(
+            nested.evaluate(|atom| Some(["windows", "target_env = \"msvc\""].contains(&atom))),
+            Some(false)
         );
     }
 
@@ -2406,21 +2518,134 @@ mod tests {
     }
 
     #[test]
-    fn a_lower_crate_item_gated_on_a_feature_comes_through_the_glob() {
-        let mut source = source_of(
-            "lower::anim",
-            r#"#[cfg_attr(feature = "default", cfg(any()))]
-            pub fn helper() {}
-            #[cfg(unix)]
-            pub fn plain() {}"#,
+    #[ignore = "daily"]
+    fn a_lower_crates_feature_gated_definition_takes_precedence_over_a_glob() {
+        use crate::functions::{CrateModules, FunctionIndex, ModuleFile, sha256};
+        use std::process::Command;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let lib = root.join("lib.rs");
+        let lower = r#"
+            pub mod other {
+                pub fn helper() -> u8 { 3 }
+            }
+            #[cfg_attr(feature = "local-helper", path = "with_helper.rs")]
+            pub mod anim;
+        "#;
+        let glob = "use super::other::*;";
+        let with_helper = format!(
+            r##"
+            {glob}
+            #[cfg(feature = r#"local-helper"#,)]
+            pub fn helper() -> u8 {{ 7 }}
+        "##
         );
-        let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
-            .unwrap()
-            .to_string()
-            .replace(' ', "");
-        assert!(out.contains("pubuse::lower::anim::*;"), "{out}");
-        assert!(!out.contains("pubuse::lower::anim::helper;"), "{out}");
-        assert!(out.contains("pubuse::lower::anim::plain;"), "{out}");
+        let file = |path: &str, text: &str, cfg: Vec<String>| {
+            std::fs::write(root.join(path), text).unwrap();
+            ModuleFile {
+                path: path.into(),
+                cfg,
+                sha256: sha256(text.as_bytes()),
+            }
+        };
+        let feature = r#"feature="local-helper""#;
+        let index = FunctionIndex {
+            crates: BTreeMap::from([(
+                "lower".to_owned(),
+                CrateModules {
+                    library: "lower".into(),
+                    modules: BTreeMap::from([
+                        ("lower".to_owned(), vec![file("lib.rs", lower, Vec::new())]),
+                        (
+                            "lower::anim".to_owned(),
+                            vec![
+                                file("anim.rs", glob, vec![format!("not({feature})")]),
+                                file("with_helper.rs", &with_helper, vec![feature.into()]),
+                            ],
+                        ),
+                    ]),
+                },
+            )]),
+            ..FunctionIndex::default()
+        };
+        let copy = Tree {
+            copies: vec![quote!(
+                pub fn copy() -> u8 {
+                    helper()
+                }
+            )],
+            ..Tree::default()
+        };
+        let tree = Tree {
+            children: BTreeMap::from([("anim".to_owned(), copy)]),
+            ..Tree::default()
+        };
+        let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+        let rlib = root.join("liblower.rlib");
+        for (lower_has_feature, expected) in [(true, 7), (false, 3)] {
+            let flags = lower_has_feature
+                .then_some(["--cfg", feature])
+                .into_iter()
+                .flatten();
+            let compiled = Command::new(&rustc)
+                .args(["--edition=2024", "--crate-type=rlib", "--crate-name=lower"])
+                .args(flags)
+                .arg(&lib)
+                .arg("-o")
+                .arg(&rlib)
+                .output()
+                .unwrap();
+            assert!(
+                compiled.status.success(),
+                "{}",
+                String::from_utf8_lossy(&compiled.stderr)
+            );
+
+            let cfg = BTreeMap::from([(
+                "lower".to_owned(),
+                lower_has_feature
+                    .then_some(feature.to_owned())
+                    .into_iter()
+                    .collect(),
+            )]);
+            let mut source = Source::indexed(root, &index, Some(&cfg)).unwrap();
+            let generated = mirror(&mut source, "lower", &tree, &[], None).unwrap();
+            let program = root.join("patch.rs");
+            std::fs::write(
+                &program,
+                format!("{generated}\nfn main() {{ assert_eq!(anim::copy(), {expected}); }}"),
+            )
+            .unwrap();
+            let exe = root.join(format!("patch{}", std::env::consts::EXE_SUFFIX));
+            // The patch crate is compiled with the opposite game feature, just like a lower
+            // library can have a different feature set from sunrise-client.
+            let flags = (!lower_has_feature)
+                .then_some(["--cfg", feature])
+                .into_iter()
+                .flatten();
+            let compiled = Command::new(&rustc)
+                .arg("--edition=2024")
+                .args(flags)
+                .arg("--extern")
+                .arg(format!("lower={}", rlib.display()))
+                .arg(&program)
+                .arg("-o")
+                .arg(&exe)
+                .output()
+                .unwrap();
+            assert!(
+                compiled.status.success(),
+                "{}",
+                String::from_utf8_lossy(&compiled.stderr)
+            );
+            let ran = Command::new(&exe).output().unwrap();
+            assert!(
+                ran.status.success(),
+                "{}",
+                String::from_utf8_lossy(&ran.stderr)
+            );
+        }
     }
 
     #[test]
@@ -2574,9 +2799,7 @@ mod tests {
                 target: "sunrise_client::game::Game".into(),
                 member: Some("ticks_until_autosave".into()),
             }],
-            idents: BTreeSet::new(),
-            linked: BTreeSet::new(),
-            loops: Vec::new(),
+            ..Extras::default()
         };
         let crate_ = generate_here(
             &["sunrise_client::game::autosave::Game<'_>::next_autosave_interval".into()],
@@ -2611,9 +2834,7 @@ mod tests {
                     member: Some("no_such_field".into()),
                     ..extras.bridges[0].clone()
                 }],
-                idents: BTreeSet::new(),
-                linked: BTreeSet::new(),
-                loops: Vec::new(),
+                ..Extras::default()
             },
         )
         .unwrap_err();

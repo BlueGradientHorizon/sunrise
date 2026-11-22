@@ -17,11 +17,7 @@ lists every public path a mod can name it by. Types inside signatures are normal
 `mod_api` and lifetimes kept.
 
 Hooks are named `hook:<name>` in SDK records. Hidden `HookId` discriminants are process-local dispatch indexes,
-never serialized or stable across builds, and native binaries must rebuild for the selected build. Normal named
-`Hooks` subscriptions with `#[sunrise_mod]` need no change when discriminants move; code that cast or compared a
-`HookId` ordinal across builds should use the hook name (`hook:<name>`) outside dispatch and the named `Hooks`
-method with `#[sunrise_mod]` for listening. Defaulted trait methods also need no marker attribute: omit the
-retired `#[computed_in_mod]` attribute and leave the default body.
+never serialized or stable across builds, and native binaries must rebuild for the selected build.
 
 `cargo sunrise-mod hooks <text>` searches the API records offline ([Commands](05-commands.md)).
 
@@ -118,6 +114,17 @@ examples and the `id` argument's `tab_complete` completion route.
 `CommandArgumentType::suggest` also requires the optional sender before the prefix. Providers own their sender
 policy; their returned suggestions remain unfiltered. Implement the required method explicitly, returning an
 empty list when the argument has no completions.
+
+## Tooling migrations for 1.0
+
+- Delete `#[sunrise_mod_api_macros::computed_in_mod]` (or `#[computed_in_mod]` if imported) from defaulted
+  trait methods, and remove any import of the attribute. Keep the default method body unchanged.
+- Replace any `HookId` ordinal cast, comparison, or stored number used outside its own build with the named
+  hook identity, for example `hook:player_logged_in`. If you stored ordinals, recover their names from the
+  build that wrote them, not from the new build's ordinals. Named `Hooks` methods with `#[sunrise_mod]`
+  subscribe the same way; no listener change is needed.
+
+These Sunrise tooling changes have no stable surface IDs.
 
 ## Change notes
 

@@ -45,6 +45,10 @@ pub struct CrateModules {
 pub struct ModuleFile {
     /// Relative to the source root, `/`-separated.
     pub path: String,
+    /// Conditions on this contribution to the module. A pinned lower build selects its files
+    /// before their declarations are re-exported into the patch crate.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cfg: Vec<String>,
     /// The SHA-256 of the file's bytes, hex.
     pub sha256: String,
 }
@@ -308,7 +312,7 @@ pub(crate) fn index_of(
         }
     }
     let mut index = FunctionIndex::default();
-    for (module, paths) in &source.files {
+    for (module, files) in &source.files {
         let krate = module.split("::").next().unwrap_or_default();
         let facts = index
             .crates
@@ -322,7 +326,8 @@ pub(crate) fn index_of(
                 modules: BTreeMap::new(),
             });
         let mut listed = Vec::new();
-        for path in paths {
+        for file in files {
+            let path = &file.path;
             // A `#[path]` leads through `..`: the index names the file as the archive holds it.
             let inside = path.strip_prefix(root).ok().and_then(|inside| {
                 let mut parts: Vec<String> = Vec::new();
@@ -345,6 +350,7 @@ pub(crate) fn index_of(
             let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
             listed.push(ModuleFile {
                 path: relative,
+                cfg: file.cfg.clone(),
                 sha256: sha256(&bytes),
             });
         }
