@@ -1093,3 +1093,174 @@ fn split_mode_hud_rendering_reach_miss_inventory_and_input_rules() {
         },
     );
 }
+
+fn add_entity_packet(game: &Game<'_>, id: i32, uuid: u128, kind_name: &str) -> C {
+    let kind = game
+        .remote
+        .as_ref()
+        .unwrap()
+        .builtin
+        .get("minecraft:entity_type")
+        .unwrap()
+        .id(kind_name)
+        .unwrap();
+    C::AddEntity(play::AddEntity {
+        id,
+        uuid,
+        kind,
+        position: [2.5, 64.0, 2.5],
+        velocity: [0.0; 3],
+        pitch: 0,
+        yaw: 0,
+        head_yaw: 0,
+        data: 0,
+    })
+}
+
+fn spawn_mob(
+    game: &mut Game<'_>,
+    id: i32,
+    uuid: u128,
+    kind: &str,
+    max_health: f32,
+    health: f32,
+    saddled: bool,
+) {
+    let pkt = add_entity_packet(game, id, uuid, kind);
+    game.handle_packet(pkt).unwrap();
+    let mob = game
+        .mobs
+        .iter_mut()
+        .find(|m| m.id == id as u32)
+        .expect("spawned mob");
+    mob.attrs.max_health = max_health;
+    mob.health = health;
+    mob.extra.set_saddled(saddled);
+}
+
+fn contextual_bar_name(bar: sunrise_client::locator_bar::ContextualBar) -> &'static str {
+    use sunrise_client::locator_bar::ContextualBar;
+    match bar {
+        ContextualBar::Empty => "empty",
+        ContextualBar::Experience => "experience",
+        ContextualBar::Locator => "locator",
+        ContextualBar::JumpableVehicle => "jumpable_vehicle",
+    }
+}
+
+/// Real 26.3 oracle (`scenarios.hud_camera_mounts`): vehicle hearts follow `getCameraPlayer`, jump bar follows `LocalPlayer`.
+#[test]
+#[ignore = "daily"]
+fn hud_camera_mounts_match_26_3_oracle() {
+    crate::game::in_own_process(
+        "game::remote::abilities::gamemode_split_tests::hud_camera_mounts_match_26_3_oracle",
+        || {
+            let witness = oracle_witness();
+            let rows = witness["scenarios"]["hud_camera_mounts"]
+                .as_array()
+                .expect("hud_camera_mounts rows");
+            with_client_game(|game| {
+                let (_peer, _writer) = setup_client(game, 3, None, [0.5, 64.0, 0.5]);
+                game.handle_packet(player_info_add_mode(SELF_UUID, SELF_NAME, 2))
+                    .unwrap();
+
+                spawn_mob(game, 201, 0x1001, "minecraft:horse", 30.0, 24.0, true);
+                let stand_pkt = add_entity_packet(game, 202, 0x1002, "minecraft:armor_stand");
+                game.handle_packet(stand_pkt).unwrap();
+                spawn_mob(game, 203, 0x1003, "minecraft:pig", 10.0, 10.0, false);
+
+                for (id, uuid, name) in [
+                    (204, 0x1004_u128, "RemoteUnmounted"),
+                    (205, 0x1005_u128, "RemoteOnPig"),
+                    (207, 0x1007_u128, "RemoteOnHorse"),
+                ] {
+                    game.handle_packet(player_info_add_mode(uuid, name, 0))
+                        .unwrap();
+                    let pkt = add_entity_packet(game, id, uuid, "minecraft:player");
+                    game.handle_packet(pkt).unwrap();
+                }
+                spawn_mob(game, 206, 0x1006, "minecraft:pig", 10.0, 8.0, false);
+                game.handle_packet(C::SetPassengers(play::SetPassengers {
+                    vehicle: 206,
+                    passengers: vec![205],
+                }))
+                .unwrap();
+                spawn_mob(game, 208, 0x1008, "minecraft:horse", 30.0, 20.0, true);
+                game.handle_packet(C::SetPassengers(play::SetPassengers {
+                    vehicle: 208,
+                    passengers: vec![207],
+                }))
+                .unwrap();
+
+                let cases = [
+                    ("spectator_local_mounted_camera_self", 3.0_f32, true, 83081),
+                    ("spectator_local_mounted_camera_armor_stand", 3.0, true, 202),
+                    ("spectator_local_mounted_camera_pig", 3.0, true, 203),
+                    ("survival_local_mounted_camera_armor_stand", 0.0, true, 202),
+                    (
+                        "spectator_local_mounted_camera_remote_unmounted",
+                        3.0,
+                        true,
+                        204,
+                    ),
+                    (
+                        "spectator_local_mounted_camera_remote_mounted_pig",
+                        3.0,
+                        true,
+                        205,
+                    ),
+                    (
+                        "spectator_local_unmounted_camera_remote_mounted_horse",
+                        3.0,
+                        false,
+                        207,
+                    ),
+                ];
+                assert_eq!(rows.len(), cases.len());
+                for (row, &(expected_step, mode_param, local_mounted, camera_id)) in
+                    rows.iter().zip(cases.iter())
+                {
+                    let label = row["step"].as_str().unwrap();
+                    assert_eq!(label, expected_step);
+                    game.handle_packet(change_mode_packet(mode_param)).unwrap();
+                    game.handle_packet(C::SetPassengers(play::SetPassengers {
+                        vehicle: 201,
+                        passengers: if local_mounted { vec![83081] } else { vec![] },
+                    }))
+                    .unwrap();
+                    game.handle_packet(C::SetCamera(play::SetCamera { camera_id }))
+                        .unwrap();
+
+                    assert_eq!(
+                        game.mode.name(),
+                        row["local_game_mode"].as_str().unwrap(),
+                        "{label}: local_game_mode"
+                    );
+                    assert_eq!(
+                        game.camera_player().is_some(),
+                        row["camera_is_player"].as_bool().unwrap(),
+                        "{label}: camera_is_player"
+                    );
+                    let got_vehicle = game.camera_player_vehicle_health();
+                    assert_eq!(
+                        got_vehicle.map_or(0, |(hearts, _)| hearts),
+                        row["vehicle_max_hearts"].as_i64().unwrap() as i32,
+                        "{label}: vehicle_max_hearts"
+                    );
+                    let want_health_bits = (!row["vehicle_health_bits"].is_null())
+                        .then(|| f32_bits(&row["vehicle_health_bits"]));
+                    assert_eq!(
+                        got_vehicle.map(|(_, health)| health.to_bits()),
+                        want_health_bits,
+                        "{label}: vehicle_health_bits"
+                    );
+                    assert_eq!(
+                        contextual_bar_name(game.contextual_bar()),
+                        row["contextual_info"].as_str().unwrap(),
+                        "{label}: contextual_info"
+                    );
+                }
+            });
+        },
+    );
+}

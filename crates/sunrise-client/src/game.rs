@@ -7495,13 +7495,7 @@ impl Game<'_> {
             let mount = if !show_hud {
                 None
             } else {
-                self.mount_index().map(|i| {
-                    let mob = &self.mobs[i];
-                    (
-                        hud_layout::vehicle_max_hearts(mob.attrs.max_health),
-                        mob.health,
-                    )
-                })
+                self.camera_player_vehicle_health()
             };
             // NeoForge applies hudVisible and survivalVisible to the vanilla bodies only.
             let show_survival_status = show_hud && self.can_hurt_player();
@@ -7632,13 +7626,7 @@ impl Game<'_> {
                         return;
                     }
                     let has_experience = g.can_hurt_player();
-                    let contextual = ContextualBar::next(
-                        g.waypoints.has_waypoints(),
-                        g.jumpable_mount(),
-                        g.mount_jumping(),
-                        has_experience,
-                        g.experience_recent(),
-                    );
+                    let contextual = g.contextual_bar();
                     if contextual == ContextualBar::JumpableVehicle {
                         g.draw_jump_bar(batch, wi, hi);
                     }

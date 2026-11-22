@@ -21,6 +21,7 @@ except ImportError:
 TESTS = [
     'game::remote::abilities::gamemode_split_tests::change_game_mode_updates_only_local_mode_and_abilities_26_3',
     'game::remote::abilities::gamemode_split_tests::genpvp_packet_sequence_matches_26_3_oracle_step_by_step',
+    'game::remote::abilities::gamemode_split_tests::hud_camera_mounts_match_26_3_oracle',
     'game::remote::abilities::gamemode_split_tests::live_player_info_updates_toggle_no_physics_while_local_spectator_26_3',
     'game::remote::abilities::gamemode_split_tests::login_and_respawn_set_previous_mode_and_fresh_abilities_26_3',
     'game::remote::abilities::gamemode_split_tests::resolved_player_info_retains_identity_across_remove_and_readd_26_3',
