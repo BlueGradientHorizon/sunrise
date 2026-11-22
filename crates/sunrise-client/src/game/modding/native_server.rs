@@ -2246,10 +2246,10 @@ impl Game<'_> {
                 mod_api::EntityRef::new(epoch, guest.entity_id as u32),
                 guest.uuid,
             );
-            let roots = graph.roots();
-            let send = Arc::new(());
-            let name_at = |index: usize| roots.clone().nth(index).expect("indexed usable root");
             let mut dispatch = |game: &Self| {
+                let roots = graph.roots();
+                let send = Arc::new(());
+                let name_at = |index: usize| roots.clone().nth(index).expect("indexed usable root");
                 let mut answers = |answer: mod_api::Answered<mod_api::CommandTreeSelection>| {
                     if let Some(indexes) =
                         mod_api::__private::selected_command_roots(&send, answer.answer)
