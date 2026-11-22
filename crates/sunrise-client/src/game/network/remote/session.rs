@@ -251,6 +251,7 @@ impl Game<'_> {
             display_address: Remote::display_address_for(&session.address),
             session,
             brand: "unknown".into(),
+            particle_packet_random: sunrise_client::random_source::create(),
             recipe_viewer: Default::default(),
             features: ["minecraft:vanilla".to_string()].into(),
             quiet_commands: false,
@@ -258,6 +259,7 @@ impl Game<'_> {
             logged_out: false,
             attachments: HashMap::new(),
             colliders: HashMap::new(),
+            collider_shove_start: None,
             carry_age: Default::default(),
             far_terrain: None,
             builtin,
@@ -325,6 +327,9 @@ impl Game<'_> {
             inventory_craft_grid: Default::default(),
             inventory_craft_result: None,
             use_target: None,
+            cauldron_entries: None,
+            cauldron_receipt: 0,
+            pending_cauldrons: Default::default(),
             menu_extra: None,
             entities: HashMap::new(),
             tick_fluids: Vec::new(),
@@ -514,12 +519,14 @@ impl Game<'_> {
             display_address: Remote::display_address_for(&session.address),
             session,
             brand: "sunrise-studio".into(),
+            particle_packet_random: sunrise_client::random_source::create(),
             recipe_viewer: Default::default(),
             features: ["minecraft:vanilla".to_string()].into(),
             quiet_commands: false,
             custom_books: false,
             attachments: HashMap::new(),
             colliders: HashMap::new(),
+            collider_shove_start: None,
             carry_age: Default::default(),
             far_terrain: None,
             builtin,
@@ -585,6 +592,9 @@ impl Game<'_> {
             inventory_craft_grid: Default::default(),
             inventory_craft_result: None,
             use_target: None,
+            cauldron_entries: None,
+            cauldron_receipt: 0,
+            pending_cauldrons: Default::default(),
             menu_extra: None,
             entities: HashMap::new(),
             tick_fluids: Vec::new(),
@@ -866,6 +876,9 @@ impl Game<'_> {
             .previous_game_type
             .map(crate::game::game_mode::mode_from_id);
         let r = self.remote.as_mut().unwrap();
+        if !same {
+            r.collider_shove_start = None;
+        }
         // A Sunrise server's bulk edit sends whole columns with the light
         // from before its relight; any other server's packet light is final.
         let relight_resent = r.quiet_commands;

@@ -80,8 +80,8 @@ impl Game<'_> {
         lines
     }
     /// `CreativeModeInventoryScreen.extractRenderState`: item slots share the
-    /// container screen's hover target for their highlight and tooltip.
-    pub(super) fn draw_creative(&mut self, batch: &mut HudBatch) {
+    /// container screen's hover target for their highlight and tooltip. False if no tab was drawn.
+    pub(super) fn draw_creative(&mut self, batch: &mut HudBatch) -> bool {
         // CreativeModeInventoryScreen: `CommonComponents.EMPTY` for a title.
         screen_info::begin_container("creative");
         let (ox, oy) = Self::creative_origin(batch);
@@ -89,7 +89,7 @@ impl Game<'_> {
         // Only what is drawn of the tabs: their stacks stay where they are.
         let tabs = self.creative_screen.tab_headers();
         let Some(tab) = tabs.get(selected.min(tabs.len().saturating_sub(1))) else {
-            return;
+            return false;
         };
         let tab_sprite = |t: &sunrise_client::creative::Tab, on: bool| {
             format!(
@@ -292,6 +292,7 @@ impl Game<'_> {
         if let Some(tooltip) = browser_tip {
             self.draw_mod_browser_tooltip(batch, tooltip);
         }
+        true
     }
     pub(super) fn creative_trash_hovered(batch: &HudBatch, cursor: (f32, f32)) -> bool {
         let (ox, oy) = Self::creative_origin(batch);
@@ -361,16 +362,16 @@ impl Game<'_> {
             true,
         );
     }
-    pub(super) fn click_creative(&mut self, right: bool) {
+    pub(super) fn click_creative(&mut self, right: bool) -> bool {
         if self.mod_browser_press(right) {
-            return;
+            return true;
         }
         let Some(size) = self
             .renderer
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
-            return;
+            return false;
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (ox, oy) = Self::creative_origin(&batch);
@@ -388,7 +389,7 @@ impl Game<'_> {
                 self.creative_screen.set_page(page as u32);
                 self.refresh_saved_hotbars();
             }
-            return;
+            return true;
         }
         // Only the clicked tab's index is needed: cloning the tabs here copied
         // every tab's items on each click, saved hotbars' stacks included.
@@ -407,7 +408,7 @@ impl Game<'_> {
             self.refresh_saved_hotbars();
             self.inv_drag = None;
             self.last_inv_click = None;
-            return;
+            return true;
         }
         if self.creative_inventory_open() {
             if Self::creative_trash_hovered(&batch, self.cursor) {
@@ -425,13 +426,14 @@ impl Game<'_> {
                 }
                 self.inv_drag = None;
                 self.inv_clicks = Default::default();
+                return true;
             } else if self.slot_at(&batch, cx, cy).is_some() || self.clicked_outside(&batch) {
-                self.inventory_press(right);
+                return self.inventory_press(right);
             }
-            return;
+            return false;
         }
         if !right && self.creative_search_click(ox, oy) {
-            return;
+            return true;
         }
         // Holding the scrollbar scrolls as the mouse moves (mouseDragged).
         if !right
@@ -439,11 +441,12 @@ impl Game<'_> {
                 .creative_screen
                 .press_scrollbar(cx - ox, cy - oy, &self.pack.names)
         {
-            return;
+            return true;
         }
         if self.slot_at(&batch, cx, cy).is_some() || self.clicked_outside(&batch) {
-            self.inventory_press(right);
+            return self.inventory_press(right);
         }
+        false
     }
     /// A click on the search tab's box (`EditBox.onClick`).
     pub(super) fn creative_search_click(&mut self, ox: f32, oy: f32) -> bool {

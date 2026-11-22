@@ -23,17 +23,20 @@ use sunrise_world::native_load_context::{LoopContext, LoopSide};
 mod models;
 pub use models::{
     AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlaceEdits, GrindstoneTakeEdits,
-    PendingGrindstoneTake, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome,
+    PendingGrindstoneTake, QuickCraftDrag, SlotContext, SlotRules, SlotView, StackedClick,
+    StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume, StackedSlotKind,
+    StackedSlotTarget,
 };
 mod slot_context;
 pub use slot_context::{apply_menu_slot_rules, lan_container};
 use std::sync::Arc;
 
 mod bundle;
+pub use bundle::{vanilla_carried_override, vanilla_clicked_override};
 pub mod container_items;
 pub use container_items::fits_inside_container_items;
 mod click;
-pub use click::{ClickContinuation, SlotTake};
+pub use click::{ClickContinuation, SlotTake, apply_stacked_outcome};
 mod storage;
 pub use storage::{MutationStamp, Snapshot};
 mod equip_movement;
@@ -815,6 +818,7 @@ impl Menu {
                 item_smithed: Vec::new(),
                 takes: None,
                 output_removed: 0,
+                furnace_extracted: Vec::new(),
                 equipped: Vec::new(),
                 merchant: None,
                 stone: Stonecutter::default(),
@@ -1253,7 +1257,11 @@ impl Menu {
         // neither side's game resolves with a key only Sunrise gives.
         let hover = self.state.containers[MAIN][0]
             .as_ref()
-            .map(|i| crate::lang::returned_to_server(|| crate::stations::hover_name(env.names, i)))
+            .map(|i| {
+                crate::lang::returned_to_server(|| {
+                    crate::stations::hover_name_in(env.loop_context, env.names, i).plain()
+                })
+            })
             .unwrap_or_default();
         let out = crate::stations::anvil_result(
             env.enchantments,
@@ -1415,8 +1423,9 @@ impl Menu {
         // The box (an EditBox of 50) keeps the first 50 UTF-16 units of what it is given.
         let name = if input.custom_name().is_some() {
             // As vanilla's client names it: the name goes to the server.
-            let hover =
-                crate::lang::returned_to_server(|| crate::stations::hover_name(env.names, &input));
+            let hover = crate::lang::returned_to_server(|| {
+                crate::stations::hover_name_in(env.loop_context, env.names, &input).plain()
+            });
             let mut units = 0;
             hover
                 .chars()
@@ -1671,8 +1680,9 @@ impl Menu {
         &*stack.item == "minecraft:bucket"
     }
 
+    /// `AbstractFurnaceMenu.isFuel`: presence, not the evaluated burn duration.
     fn is_fuel(env: &Env, stack: &ItemStack) -> bool {
-        env.items.get(&stack.item).is_some_and(|i| i.fuel.is_some())
+        crate::item_data::cooking_fuel::for_stack(env.items, stack).is_some()
     }
 
     // ---- Slot ----
@@ -2153,10 +2163,16 @@ impl Menu {
 
     /// `FurnaceResultSlot.checkTakeAchievements`: what `carried` and
     /// `removeCount` were, kept for `ItemSmeltedEvent` when a server caller
-    /// listens; the count starts again.
+    /// listens, and recorded in `furnace_extracted` so callers can award
+    /// smelting experience only on actual takes; the count starts again.
     fn furnace_take(&mut self, env: &Env, carried: &ItemStack) {
         self.touch();
         let removed = std::mem::take(&mut self.state.output_removed);
+        if removed > 0 {
+            self.state
+                .furnace_extracted
+                .push((carried.clone(), removed));
+        }
         if self.state.item_smelted_hook && env.loop_context.side() == LoopSide::Server {
             let carried = (carried.count > 0).then(|| carried.clone());
             self.state.item_smelted.push((carried, removed));
@@ -3103,14 +3119,23 @@ impl Menu {
     /// `MerchantMenu.removed` for a living player: the payment goes back to
     /// the inventory (`placeItemBackInInventory`), or is dropped.
     pub fn merchant_close(&mut self, env: &Env) {
+        self.merchant_removed(env, false);
+    }
+
+    /// MerchantMenu.removed: payment drops when the player has already been removed.
+    /// The caller handles the removed player's cursor through AbstractContainerMenu.removed.
+    pub fn merchant_removed(&mut self, env: &Env, drop_payment: bool) {
         self.touch();
-        // AbstractContainerMenu.removed: the carried stack first.
         if let Some(mut carried) = self.state.carried.take() {
             self.place_back(env, &mut carried);
         }
         for slot in [0usize, 1] {
             if let Some(mut stack) = self.state.containers[MAIN][slot].take() {
-                self.place_back(env, &mut stack);
+                if drop_payment {
+                    self.dropped.push(stack);
+                } else {
+                    self.place_back(env, &mut stack);
+                }
             }
         }
     }
@@ -3237,7 +3262,8 @@ pub(crate) mod tests {
             let handled = |clicked| StackedOutcome {
                 canceled: true,
                 handled: true,
-                clicked: Some(clicked),
+                resume: StackedResume::Done,
+                clicked: Some(StackedClickedEdit::Set(clicked)),
                 ..StackedOutcome::default()
             };
             // The result slot's onTake would not run: nothing goes in, nothing is taken out.
@@ -3274,7 +3300,8 @@ pub(crate) mod tests {
             let answer = StackedOutcome {
                 canceled: true,
                 handled: true,
-                clicked: Some(None),
+                resume: StackedResume::Done,
+                clicked: Some(StackedClickedEdit::Set(None)),
                 carried: Some(potion.clone()),
                 ..StackedOutcome::default()
             };

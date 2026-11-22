@@ -84,6 +84,8 @@ impl Game<'_> {
         for (x, z) in columns {
             self.client_chunk_unload(x, z, false);
         }
+        // The mods' extra block models were for the player's level.
+        self.world.clear_extra_models();
         let air = self.res.facts().air;
         let world = std::mem::replace(&mut self.world, Self::world_for_mods(air, seed));
         let Some(r) = self.remote.as_mut() else {
@@ -117,11 +119,15 @@ impl Game<'_> {
         }
         let mut kept: Vec<(i32, i32, i32)> = world.block_entities.keys().copied().collect();
         kept.sort_unstable();
-        for pos in kept {
-            if let Some(entity) = world.block_entities.remove(&pos) {
-                self.world.block_entities.insert(pos, entity);
-                let state = self.world.block(pos.0, pos.1, pos.2);
-                self.sync_block_entity(pos, None, state);
+        if !kept.is_empty() {
+            let _load = sunrise_client::spans::raw_flight_guard("load_block_entities");
+            for pos in kept {
+                if let Some(entity) = world.block_entities.remove(&pos) {
+                    self.world.block_entities.insert(pos, entity);
+                    sunrise_client::spans::note_block_entity_loads(1);
+                    let state = self.world.block(pos.0, pos.1, pos.2);
+                    self.sync_block_entity(pos, None, state);
+                }
             }
         }
         for key in columns {

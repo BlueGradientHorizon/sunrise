@@ -104,9 +104,10 @@ removes the body, no restitution query runs. The `entity_move` hook fires once w
 cancelled move returns `[0.0; 3]`. See the generated reference for which bodies the handle can move
 and for the relative-teleport semantics of player moves.
 
-`EntityRef::on_block(host)` uses the supporting block retained by the last move for players and the
-nonliving bodies that keep ground support, including items, boats and minecarts. It does not rerun
-collision detection. If there is no retained support, it reads the block at vanilla's feet offset.
+`EntityRef::on_block(host)` uses the block retained by the last support check for players, mobs,
+armor stands and nonliving bodies that keep ground support, including items, boats and minecarts.
+It does not rerun collision detection. If there is no retained support, it reads the block at
+vanilla's feet offset.
 
 `living_travel` runs on the server, after the player's swim steering or at a
 mob's travel entry. It receives the loop context, not a `Host`, and lets a
@@ -136,6 +137,25 @@ acknowledgement. A separate teleport in the same tick takes priority. The
 correction carries the live server position and velocity. The server compares
 the vectors bit for bit, except that inputs within vanilla's movement dead zone
 are equivalent. The client never calls this hook.
+
+## Swimming eligibility
+
+`Hooks::can_start_swimming` asks for a Boolean from the local player and the
+server's acting player. Return `Some(false)` to refuse or `Some(true)` to allow;
+the first answer wins. Return `None` to leave vanilla's answer in place. The
+player and `LogicalSide` are in the event, and the shared `Host` is read-only.
+Declare `side = "both"` and install the mod on both sides. Base the answer on facts
+available to both sides that tick; the server remains authoritative for position.
+For example, read the feet slot with `host.living(event.player.entity())` and
+return `Some(false)` on `SwimmingCheck::Entry` while a certain pair of boots is
+worn. Return `None` for callers your rule does not affect.
+
+`Entry` runs after fluid sampling for a sprinting player who isn't swimming or
+flying. The query runs before the passenger check: allowing it still cannot
+start swimming while riding. `ShallowWater` runs in local sprint eligibility
+when vanilla would not treat the water as shallow but the body is still in a
+swimmable fluid. In that case denying the predicate counts as shallow and can
+prevent or stop sprinting. An existing swim does not ask the entry question.
 
 ## Teleport hooks
 

@@ -233,14 +233,37 @@ fn standalone_combined_keeps_both_cubes_and_rebakes_changed_dependencies() {
 }
 
 #[test]
+fn standalone_file_and_baker_keep_a_child_of_a_rejected_model() {
+    let fixture = Fixture::new();
+    fixture.write("rejected", r#"{"loader":"source:unregistered"}"#);
+    fixture.write(
+        "child",
+        r##"{"parent":"source:rejected","textures":{"side":"source:child"},"elements":[{"from":[0,0,0],"to":[16,16,16],"faces":{"up":{"texture":"#side"}}}]}"##,
+    );
+    let models = with_test_registrations(
+        |event| {
+            event.register_model("source:child");
+            event.register("result:child", ["source:child"], |bake| {
+                bake.append_dependency("source:child", [0; 3], false)
+            });
+        },
+        |staged| fixture.bake(&freeze_standalone(staged)),
+    );
+    for id in ["source:child", "result:child"] {
+        let model = models.standalone(id).unwrap();
+        assert_eq!(model.faces.len(), 1);
+        assert_eq!(face(model, Direction::Up).material.sprite, "source:child");
+    }
+}
+
+#[test]
 fn standalone_missing_dependency_drops_entire_model_and_logs_registering_mod() {
     let fixture = Fixture::new();
     fixture.write("base", &cube([0, 0, 0], [8, 8, 8], "source:base"));
-    fixture.write("orphan", r#"{"parent":"source:missing_parent"}"#);
     let (models, logs) = crate::test_log::capture(|| {
         with_test_registrations(
             |event| {
-                combined(event, &["source:base", "source:orphan"]);
+                combined(event, &["source:base", "source:missing"]);
                 rotated(event, "third_namespace:missing_rotated", [0, 1, 0], true);
             },
             |staged| fixture.bake(&freeze_standalone(staged)),

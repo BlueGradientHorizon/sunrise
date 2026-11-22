@@ -574,7 +574,9 @@ pub mod tests {
                 r.block_entity_capability(
                     &crate::parts::capabilities::tests::CHEMICALS,
                     &press,
-                    |_, at| Some(Box::new(crate::parts::capabilities::tests::ChemTank(at))),
+                    |_, at, _, _, offer| {
+                        offer.offer(|| Box::new(crate::parts::capabilities::tests::ChemTank(at)))
+                    },
                 );
             }
         }
@@ -880,17 +882,23 @@ pub mod tests {
         )
         .unwrap();
         struct Unused;
-        impl BlockEntityTickAccess for Unused {
+        impl BlockEntityAccess for Unused {
             fn with_view(&mut self, _: &mut dyn FnMut(BlockEntityView<'_>)) {
                 unreachable!()
             }
             fn host(&mut self) -> &mut dyn ServerHost {
                 unreachable!()
             }
+            fn transaction(
+                &mut self,
+                _: &mut dyn FnMut(&mut dyn BlockEntityAccess, &Transaction) -> bool,
+            ) {
+                unreachable!()
+            }
         }
         let tick = |kind: &str| {
             let kind = mod_vocab::__private::block_entity_type_key(kind).unwrap();
-            dispatch_block_entity_tick(kind, BlockEntityTickScope::new(&mut Unused));
+            dispatch_block_entity_tick(kind, BlockEntityScope::new(&mut Unused));
             PRESS_TICKS.swap(0, std::sync::atomic::Ordering::Relaxed)
         };
         // The tick is asked by the entity's type, which differs from its block's id.

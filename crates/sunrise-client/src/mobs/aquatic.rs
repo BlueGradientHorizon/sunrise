@@ -16,6 +16,7 @@ use crate::health::DamageLevel;
 use crate::join_seq::JoinList;
 use crate::particles::ParticleType;
 use std::f32::consts::PI;
+use std::ops::ControlFlow;
 use sunrise_core::geometry::trig::Mth;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
@@ -166,7 +167,7 @@ pub fn register(m: &mut Mob) {
             // `Dolphin`'s `moistness` field starts full.
             m.extra.counter = 2400;
             let g = &mut m.ai.goals;
-            g.add(0, BreathAir);
+            g.add(0, BreathAir::default());
             g.add(0, TryFindWater::default());
             g.add(1, super::dolphin::SwimToTreasure::default());
             g.add(2, super::dolphin::SwimWithPlayer::new(4.0));
@@ -311,8 +312,14 @@ fn grow_up(m: &mut Mob, events: &mut Vec<MobEvent>) {
         }
     }
 }
-/// Species aiStep additions.
-pub fn ai_step(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<MobEvent>) {
+/// Species aiStep additions. True leaves a dry dolphin's hop to the tick tail,
+/// so the owner can settle its dry-out hurt first.
+pub(super) fn ai_step(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+) -> bool {
     use Species as S;
     match m.species() {
         S::Squid => squid_ai_step(m),
@@ -322,14 +329,14 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &
         }
         S::Tadpole => {
             grow_up(m, events);
-            if !m.fluids.in_water && m.on_ground && m.vertical_collision_below {
+            if !m.fluids.in_water && m.ground.on_ground && m.vertical_collision_below {
                 let (a, b) = (m.random.next_float(), m.random.next_float());
                 m.velocity = Vec3::new(
                     m.velocity.x + f64::from((a * 2.0 - 1.0) * 0.05),
                     m.velocity.y + 0.4,
                     m.velocity.z + f64::from((b * 2.0 - 1.0) * 0.05),
                 );
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 m.voice("entity.tadpole.flop", events);
             }
             // Tadpole.aiStep: the age lock's particles, after the age.
@@ -337,14 +344,14 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &
         }
         S::Cod | S::Salmon | S::TropicalFish | S::Pufferfish => {
             // AbstractFish.aiStep flops on land (applied before travel next tick).
-            if !m.fluids.in_water && m.on_ground && m.vertical_collision_below {
+            if !m.fluids.in_water && m.ground.on_ground && m.vertical_collision_below {
                 let (a, b) = (m.random.next_float(), m.random.next_float());
                 m.velocity = Vec3::new(
                     m.velocity.x + f64::from((a * 2.0 - 1.0) * 0.05),
                     m.velocity.y + 0.4,
                     m.velocity.z + f64::from((b * 2.0 - 1.0) * 0.05),
                 );
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 let flop = match m.species() {
                     S::Cod => "entity.cod.flop",
                     S::Salmon => "entity.salmon.flop",
@@ -368,19 +375,25 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &
                     // death message names dehydration, not drowning.
                     m.damage(level, 1.0, super::Damage::of(super::DamageKind::DryOut));
                 }
-                if m.on_ground {
-                    let (a, b) = (m.random.next_float(), m.random.next_float());
-                    m.velocity = Vec3::new(
-                        m.velocity.x + f64::from((a * 2.0 - 1.0) * 0.2),
-                        m.velocity.y + 0.5,
-                        m.velocity.z + f64::from((b * 2.0 - 1.0) * 0.2),
-                    );
-                    m.yaw = m.random.next_float() * 360.0;
-                    m.on_ground = false;
-                }
+                return true;
             }
         }
         _ => {}
+    }
+    false
+}
+
+/// `Dolphin.tick`: after the dry-out hurt, a grounded dolphin hops and turns.
+pub(super) fn dolphin_hop(m: &mut Mob) {
+    if m.ground.on_ground {
+        let (a, b) = (m.random.next_float(), m.random.next_float());
+        m.velocity = Vec3::new(
+            m.velocity.x + f64::from((a * 2.0 - 1.0) * 0.2),
+            m.velocity.y + 0.5,
+            m.velocity.z + f64::from((b * 2.0 - 1.0) * 0.2),
+        );
+        m.yaw = m.random.next_float() * 360.0;
+        m.ground.on_ground = false;
     }
 }
 
@@ -597,7 +610,7 @@ pub(super) fn travel_in_water(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<(), super::living::TravelPause> {
+) -> ControlFlow<super::living::TravelPause> {
     let speed = match m.species() {
         Species::Axolotl | Species::Dolphin => m.ai.speed,
         _ => 0.01,
@@ -1341,7 +1354,9 @@ mod pufferfish_sting_tests {
             .map(|m| m.seen(None, &crate::items::Items::empty()))
             .collect();
         let mut events = Vec::new();
-        with_test_world(&seen, |w, _| ai_step(&mut fish, w, level, &mut events));
+        with_test_world(&seen, |w, _| {
+            ai_step(&mut fish, w, level, &mut events);
+        });
         let expected_health: Vec<_> = targets.iter().map(|mob| mob.health).collect();
         let mut mobs: JoinList<_> = std::iter::once(fish).chain(targets).collect();
         apply_brain_events(&mut mobs, level, &mut events, 0, &Default::default());

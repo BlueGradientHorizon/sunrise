@@ -177,7 +177,11 @@ Answer on the client as well when prediction must stop the hand loop: an answer
 made only on the server cannot suppress an offhand attempt already predicted by
 the client.
 
-A client without this mod predicts vanilla here; the server corrects it.
+A client without this mod usually predicts vanilla here; the server corrects it.
+For a [server-registered cauldron click](../../how-to/world/cauldron-interactions.md#client-prediction),
+the client waits for the server's block phase to pass or be skipped before running
+its own `ItemAfterBlock`. The server's later item result does not decide whether
+that local phase runs, but it can stop air use and the other hand's turn.
 
 `Success`, `SuccessServer` and `Consume` consume the interaction and end the
 client's hand loop. Only `Success` swings on the client; `SuccessServer` swings
@@ -271,6 +275,32 @@ lookup.
   text the part leaves is drawn at the same place and fade. It is asked once a client tick while the name shows. The
   name's timer still restarts only when the item or its hover name changes, so a tip that changes every tick doesn't
   keep it up.
+- `ItemPart::item_name` is vanilla's `Item.getName(ItemStack)`: the name of `event.stack`, from its components, so
+  one item names each stack (a data model after the mob in it, a filled tank after its fluid). `event.name` arrives
+  as `None`, the default name: the `minecraft:item_name` component, else the item's translated name. Set it to
+  `Some(text)`, a translatable `Text` (`Text::translate`) so each viewer reads it in their language. It replaces the
+  default, as the vanilla items that override `getName` do, and a `minecraft:custom_name` or a written book's title
+  still wins over it (`ItemStack.getHoverName`); the part isn't asked then. Every place that names a stack reads it,
+  once per naming: tooltips, the held item's name above the hotbar, command feedback such as `/give`'s, the anvil's
+  rename box and its comparison on both sides, stats, the recipe book's and the creative inventory's search, recipe
+  screens and `Host::hover_name`. It takes the loop `context` and no `Host`, so it can't name a stack again: answer
+  from the stack alone, and fast.
+
+```rust,ignore
+struct DataModel;
+
+#[mod_api::sunrise_part]
+impl ItemPart for DataModel {
+    fn item_name(&self, _context: &dyn LoopContext, event: &mut ItemNameEvent<'_>) {
+        // The mob in the stack's own component names it: "Zombie Data Model".
+        let id = ComponentId::new("mymod:data_model").expect("a component id");
+        if let Some(Tag::String(mob)) = ItemResource::of(event.stack).component(&id) {
+            let mob = Text::translate(format!("entity.{}", mob.to_string_lossy().replace(':', ".")), Vec::new());
+            *event.name = Some(Text::translate("item.mymod.data_model.named", vec![mob]));
+        }
+    }
+}
+```
 
 ## Grindstone, repair combining and container items
 
@@ -346,3 +376,61 @@ need to keep it afterwards. The input views and staged edits are not Wire record
 
 `MenuPart::menu_slot_rules` answers per menu type and slot, including for a replacement from
 `item_stacked_on_other`.
+
+## Stacking onto another item in a menu
+
+`ItemPart::item_stacked_on_other` shares the `item_stacked_on_other` hook, event and
+decide/fire/apply transaction with `Hooks::item_stacked_on_other` (NeoForge's
+`ItemStackedOnOtherEvent`), covering vanilla 26.3's `Item.overrideStackedOnOther` and
+`Item.overrideOtherStackedOnMe` on both sides:
+
+- **Server (authoritative)**: single-player integrated server, LAN host and dedicated server
+  receive `HostSide::Server`.
+- **Client**: ordinary container/inventory click prediction and creative Survival Inventory tab or
+  Item Tab hotbar pickups receive `HostSide::Client`. During client prediction, server
+  reconciliation remains authoritative. Creative catalogue display slots are not pickup overrides.
+
+Dispatch runs at the resolved pickup moment: both a direct left/right `Pickup` when no drag is
+active and a one-slot left/right `QuickCraft` drag release (matching vanilla
+`AbstractContainerMenu.doClick`). Multi-slot drags, middle-button drags and direct pickups that
+only reset an active drag do not dispatch.
+
+On each resolved pickup, dispatch follows vanilla
+`AbstractContainerMenu.tryItemClickBehaviourOverride` order inside one transaction:
+
+1. Global `Hooks::item_stacked_on_other` listeners (`event.event.direction == StackedOnOtherDirection::Event`),
+   authoritative server side only.
+2. The carried (cursor) stack's `ItemPart::item_stacked_on_other` (`StackedOnOtherDirection::CarriedOnOther`).
+3. Vanilla's carried override (`BundleItem.overrideStackedOnOther`, dispatched by item type rather
+   than mere `bundle_contents` component presence), using its real outcome to decide whether to
+   stop before step 4.
+4. The clicked slot stack's `ItemPart::item_stacked_on_other` (`StackedOnOtherDirection::OtherStackedOnMe`).
+5. Vanilla's clicked override (`BundleItem.overrideOtherStackedOnMe`), then the plain pickup click.
+
+`ItemPart` overrides represent both vanilla outcomes inside the transaction:
+
+- **Handled (stop)**: set `event.result.handled = true`, set `event.result.carried` via
+  `StackResult::Set(...)` and/or `event.result.clicked` via `ClickedStackResult::Set(...)` or
+  `ClickedStackResult::Take(count)`, and return `Flow::Cancel`. Stops later overrides and plain
+  pickup.
+- **Not handled (continue, optionally with edits)**: leave `event.result.handled = false`,
+  optionally edit `event.result.carried` and/or `event.result.clicked`, and return
+  `Flow::Continue`. Later overrides and plain pickup observe the edited stacks.
+
+For `event.result.clicked`, direct writes and slot takes are distinct:
+
+- `ClickedStackResult::Set(stack)` writes the clicked slot directly (`Slot.set`), without running
+  `Slot.onTake` side effects — clearing an occupied furnace or crafting result slot with
+  `ClickedStackResult::Set(None)` produces no smelting experience, leaves `recipes_used` untouched,
+  and fires no take hooks.
+- `ClickedStackResult::Take(count)` takes `count` items from the clicked slot via `Slot.safeTake` /
+  `Slot.onTake` (spawning furnace XP, clearing `recipes_used`, consuming crafting inputs, and
+  firing take hooks such as `item_smelted` and `furnace_extract`). `ClickedStackResult::Take` is
+  refused for global listeners.
+
+Contradictory `ItemPart` answers (`Flow::Cancel` with `handled = false`, or `Flow::Continue` with
+`handled = true`), writing through the host to what the click read, returning an invalid stack,
+failing slot placement/pickup rules, or panicking refuses the click and rolls back every write.
+Global `Hooks::item_stacked_on_other` listeners preserve their separate contract (stacks may only
+be set on `Flow::Cancel` + `handled = true`, result/potion slots cannot be edited directly, and
+`Flow::Cancel` with `handled = false` skips vanilla bundle overrides and runs plain pickup).

@@ -101,7 +101,14 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
 
 /// Why a block entity's or an entity's Part state could not be read or changed. Nothing was
 /// stored.
-// no wire: reports a local Part-state operation's failure.
+///
+/// This is a process-local access refusal, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::PartStateError>();
+/// ```
+// no wire: local Part state access refusal carrying static names and runtime states.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PartStateError {
@@ -156,7 +163,14 @@ impl fmt::Display for PartStateError {
 impl std::error::Error for PartStateError {}
 
 /// Why a Part's state declaration was refused at registration.
-// no wire: only describes a local registrar refusal.
+///
+/// This is a process-local registration refusal, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::PartStateRefusal>();
+/// ```
+// no wire: local Part state registration refusal carrying &'static str type names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PartStateRefusal {
@@ -195,7 +209,14 @@ impl PartStateRefusal {
 }
 
 /// A Part with state could not be attached.
-// no wire: reports local block entity Part or state registration failures.
+///
+/// This is a process-local registration error, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::BlockEntityStateError>();
+/// ```
+// no wire: local block-entity Part registration error.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BlockEntityStateError {
@@ -248,7 +269,14 @@ impl From<BlockEntityPartError> for BlockEntityStateError {
 }
 
 /// One Part state declaration, as the registrar checks it.
-// no wire: native registration metadata, not the Part's saved value.
+///
+/// This is a process-local startup declaration, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::PartStateDeclaration>();
+/// ```
+// no wire: local startup declaration carrying a Rust type name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct PartStateDeclaration {

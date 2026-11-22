@@ -92,7 +92,7 @@ sunrise-client game::block_entity_ticks::slot_mutation_tests::a_caught_nested_pa
 sunrise-client game::block_entity_ticks::slot_mutation_tests::a_nested_pass_leaves_the_enclosing_pass_its_scratch lib daily resources
 sunrise-client game::block_entity_ticks::slot_mutation_tests::a_removed_current_entity_does_not_tick lib daily resources
 sunrise-client game::block_entity_ticks::slot_mutation_tests::a_replaced_current_entity_of_another_kind_does_not_tick lib daily resources
-sunrise-client game::block_entity_ticks::slot_mutation_tests::an_added_entity_ticks_from_the_next_pass lib daily resources
+sunrise-client game::block_entity_ticks::slot_mutation_tests::an_added_entity_ticks_from_the_next_pass lib daily child-process
 sunrise-client game::block_items::item_block_state_tests::a_block_state_component_does_not_update_neighbours lib daily resources
 sunrise-client game::block_items::plain_name_overlay_tests::removed_actual_plain_name_stays_absent_in_saved_and_reloaded_model lib daily resources
 sunrise-client game::block_items::styled_name_model_tests::actual_container_names_load_place_mutate_and_save_without_raw lib daily resources
@@ -182,16 +182,12 @@ sunrise-client game::carrier_transfers::tests::the_live_assembly_publishes_the_c
 sunrise-client game::carrier_transfers::tests::the_supported_backup_restores_identical_carriers_and_chunks lib daily resources
 sunrise-client game::cartography::tests::crafting_map_takes_use_real_saved_maps lib daily resources
 sunrise-client game::cauldron_interactions::tests::cauldron_client_skips_custom_prediction lib daily resources
-sunrise-client game::cauldron_interactions::tests::cauldron_duplicates_name_both_owners lib daily resources
 sunrise-client game::cauldron_interactions::tests::cauldron_dye_tag_shadows_exact_handler_even_on_pass lib daily resources
 sunrise-client game::cauldron_interactions::tests::cauldron_outer_abort_discards_effects_and_drops lib daily resources
-sunrise-client game::cauldron_interactions::tests::cauldron_panicking_fire_is_atomic lib daily resources
-sunrise-client game::cauldron_interactions::tests::cauldron_refused_fire_is_atomic lib daily resources
 sunrise-client game::cauldron_interactions::tests::cauldron_register_to_all_and_admission_errors lib daily resources
 sunrise-client game::cauldron_interactions::tests::cauldron_syrup_applies_once lib daily resources
 sunrise-client game::cauldron_interactions::tests::cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set lib daily resources
 sunrise-client game::cauldron_interactions::tests::cauldron_transfer_awards_two_statistics_once lib daily resources
-sunrise-client game::cauldron_interactions::tests::cauldron_unknown_effect_keys_refuse_before_fire lib daily resources
 sunrise-client game::cauldron_interactions::tests::cauldron_world_close_discards_callbacks_before_failed_preparation lib daily resources
 sunrise-client game::chat::damage_type_registry_tests::a_world_packs_damage_type_parses_in_damage lib daily resources
 sunrise-client game::chat::enchantment_snapshot_tests::synchronized_definitions_refresh_existing_enchantment_views lib daily resources
@@ -625,7 +621,6 @@ sunrise-client game::explosion::explosion_part_tests::block_parts_answer_drops_f
 sunrise-client game::explosion::explosion_part_tests::block_parts_answer_explosion_resistance lib daily resources
 sunrise-client game::explosion::explosion_part_tests::block_parts_xp_and_explosion_contract lib daily resources
 sunrise-client game::explosion::shulker_lock_drop_tests::destruction_captures_the_external_shulker_lock_before_removal lib daily resources
-sunrise-client game::explosion::tests::explosion_and_mob_breaks_apply_block_drops lib daily resources
 sunrise-client game::explosion::tests::rays_reusing_their_last_block_explode_what_each_step_did lib daily resources
 sunrise-client game::extras::mouse_tweaks::result_tests::a_chests_first_slot_keeps_its_own_item lib daily resources
 sunrise-client game::extras::mouse_tweaks::result_tests::a_predicted_take_carries_the_servers_result_and_empties_its_slot lib daily resources
@@ -1169,11 +1164,11 @@ sunrise-client game::native_custom_geometry::tests::each_stage_is_asked_in_frame
 sunrise-client game::native_custom_geometry::tests::fill_world_geometry_commits_an_accepted_batch lib daily resources
 sunrise-client game::native_custom_geometry::tests::persistent_groups_cpu_routes_and_lifetime lib daily resources
 sunrise-client game::native_custom_geometry::tests::persistent_groups_match_batch lib daily resources
-sunrise-client game::native_damage_tests::a_cancelled_deaths_post_fires_once_before_the_death_hooks lib daily resources
+sunrise-client game::native_damage_tests::a_cancelled_deaths_post_fires_once_after_the_death_hooks lib daily resources
 sunrise-client game::native_damage_tests::a_game_built_level_has_every_damage_hook lib daily resources
 sunrise-client game::native_damage_tests::a_hit_inside_the_cooldown_no_stronger_than_the_last_fires_no_post lib daily resources
 sunrise-client game::native_damage_tests::a_hit_on_the_dragon_fires_pre_and_post lib daily resources
-sunrise-client game::native_damage_tests::a_killing_blows_post_fires_once_before_the_death_hooks lib daily resources
+sunrise-client game::native_damage_tests::a_killing_blows_post_fires_once_after_the_death_hooks lib daily resources
 sunrise-client game::native_damage_tests::arrow_hits_name_the_projectile_on_players_mobs_and_the_dragon lib daily resources
 sunrise-client game::native_damage_tests::mob_and_dragon_post_records_fresh_hit_decision lib daily resources
 sunrise-client game::native_damage_tests::post_fires_for_a_player_hit_a_shield_blocked_whole lib daily resources
@@ -1181,11 +1176,10 @@ sunrise-client game::native_damage_tests::post_fires_for_a_player_hit_that_absor
 sunrise-client game::native_damage_tests::post_fires_once_for_a_killing_blow_on_a_mob lib daily resources
 sunrise-client game::native_damage_tests::pre_draws_from_the_level_random_of_the_hit lib daily resources
 sunrise-client game::native_damage_tests::pre_fires_for_a_hit_its_reductions_took_to_zero lib daily resources
-sunrise-client game::native_damage_tests::pre_sets_the_health_lost_and_the_last_hurt_the_cooldown_compares lib daily resources
+sunrise-client game::native_damage_tests::pre_sets_health_lost_but_cooldown_compares_the_outer_hit lib daily resources
 sunrise-client game::native_damage_tests::snapshot_crosses_the_real_damage_hook_with_reductions lib daily resources
 sunrise-client game::native_damage_tests::the_container_names_what_armor_took lib daily resources
 sunrise-client game::native_damage_tests::the_original_damage_is_the_hit_before_the_incoming_hook lib daily resources
-sunrise-client game::native_damage_tests::unsubscribed_damage_does_not_convert lib daily resources
 sunrise-client game::native_data_bound::tests::a_remote_login_announces_the_client_cause_before_the_tags lib daily resources
 sunrise-client game::native_data_bound::tests::defaults_are_announced_bound_before_the_tags lib daily resources
 sunrise-client game::native_data_bound::tests::the_first_open_announces_bound_defaults_readable lib daily resources
@@ -1490,8 +1484,8 @@ sunrise-client game::native_hooks::enchantment_and_lang_tests::a_trait_mod_measu
 sunrise-client game::native_hooks::enchantment_and_lang_tests::enchantment_registry_returns_records_and_unknown_cost lib daily resources
 sunrise-client game::native_hooks::enchantment_and_lang_tests::translate_gives_the_text_of_a_defined_key_and_none_otherwise lib daily resources
 sunrise-client game::native_hooks::entity_inside::entity_inside_tests::landing_writes_apply_at_the_batch_end lib daily resources
-sunrise-client game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_flush lib daily resources
-sunrise-client game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_items_flush lib daily resources
+sunrise-client game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_flush lib daily child-process
+sunrise-client game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_items_flush lib daily child-process
 sunrise-client game::native_hooks::entity_inside::sweep_tests::a_panicking_part_leaves_the_arrow_list_whole lib daily resources
 sunrise-client game::native_hooks::entity_inside::sweep_tests::a_panicking_part_leaves_the_item_batch_restored lib daily resources
 sunrise-client game::native_hooks::entity_inside::sweep_tests::a_panicking_part_leaves_the_players_tick_restored lib daily resources
@@ -1552,7 +1546,6 @@ sunrise-client game::native_hooks::player_game_mode_changed::player_game_mode_ch
 sunrise-client game::native_hooks::player_game_mode_changed::player_game_mode_changed_tests::the_second_listener_sees_the_first_listeners_write lib daily resources
 sunrise-client game::native_hooks::player_heart_type::player_heart_type_tests::a_client_mod_changes_the_health_bars_hearts lib daily resources
 sunrise-client game::native_hooks::register_enchantment_damage_effects::tests::custom_enchantment_changes_real_hit_damage_and_observes_hit_context lib daily resources
-sunrise-client game::native_hooks::register_preset_editors::tests::preset_editor_test_mod_draws_and_edits_through_real_client_hooks lib daily resources
 sunrise-client game::native_hooks::render_frame_pre::tests::frame_interpolation_matches_draw_and_holds_while_paused_or_frozen lib daily resources
 sunrise-client game::native_hooks::render_gui_pre::local_sound_tests::a_screen_hooks_sound_reaches_audio_at_the_next_update lib daily resources
 sunrise-client game::native_hooks::render_tooltip_texture::render_tooltip_texture_tests::a_mod_gives_a_tooltip_its_own_texture_or_colours lib daily resources
@@ -2248,7 +2241,7 @@ sunrise-client game::remote::interaction_event_tests::air_event_skips_the_item_a
 sunrise-client game::remote::interaction_event_tests::an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server lib daily resources
 sunrise-client game::remote::interaction_event_tests::before_block_cancellation_pass_continues_but_fail_and_consuming_results_stop lib daily resources
 sunrise-client game::remote::interaction_event_tests::canceled_item_results_keep_the_stack_wrappers_side_effects lib daily resources
-sunrise-client game::remote::interaction_event_tests::interaction_matrix_tests::native_interaction_shared_matrix lib daily resources
+sunrise-client game::remote::interaction_event_tests::interaction_matrix_tests::native_interaction_shared_matrix lib daily child-process
 sunrise-client game::remote::interaction_event_tests::interaction_key_tests::interaction_key_literal_matrix_preserves_actions_and_swing_independently lib daily resources
 sunrise-client game::remote::interaction_event_tests::interaction_key_tests::no_interaction_listener_attack_mining_offhand_and_pick lib daily resources
 sunrise-client game::remote::interaction_event_tests::interaction_key_tests::no_listener_preserves_natural_swing_and_unsuccessful_use_stays_quiet lib daily resources
@@ -2352,7 +2345,7 @@ sunrise-client game::render_tick::tests::a_mod_cancels_the_screen_effect_of_one_
 sunrise-client game::residency_tick::tests::client_tick_drains_actual_bound_owner_events_without_a_lookup lib daily resources
 sunrise-client game::resource_load::scope_tests::loader_workers_keep_owning_mod_sets_and_share_only_matching_numeric_payloads lib daily resources
 sunrise-client game::respawn_anchor::connected_spawnpoint_rotation_tests::command_forced_free_point_survives_real_guest_death_and_respawn_packet lib daily resources
-sunrise-client game::respawn_anchor::pitch_preservation_controls::bed_anchor_facing_and_invalid_personal_fallback_ignore_stored_pitch lib daily resources
+sunrise-client game::respawn_anchor::pitch_preservation_controls::bed_and_anchor_facing_ignore_stored_pitch lib daily resources
 sunrise-client game::respawn_position_tests::a_block_part_moves_or_refuses_the_respawn_spot lib daily resources
 sunrise-client game::runtime_levels_tests::a_delete_closes_the_level_and_removes_its_folder_and_references_file lib daily resources
 sunrise-client game::runtime_levels_tests::a_delete_is_applied_after_the_levels_and_not_inside_a_tick lib daily resources

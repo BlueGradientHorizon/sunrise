@@ -780,8 +780,9 @@ fn shaders_translate_to_hlsl_for_directx_12_and_glsl_for_opengl() {
         } else if name == "rt_unpack.wgsl" {
             // Appended to terrain.wgsl (`ray_scene`'s `Unpacker`), on ray tracing devices.
             continue;
+        } else if name == "entity.wgsl" {
+            sources.push((path, super::entity_shader()));
         } else if name == "terrain.wgsl"
-            || name == "entity.wgsl"
             || name == "stars.wgsl"
             || name == "custom_sky.wgsl"
             || name == "border.wgsl"

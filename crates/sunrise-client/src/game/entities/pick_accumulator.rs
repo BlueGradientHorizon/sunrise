@@ -82,10 +82,7 @@ impl PickAccumulator {
                 && let Some(epoch) = game.native_lifecycle.epoch()
             {
                 let entity = mod_api::EntityRef::new(epoch, candidate.id);
-                game.native_can_rider_interact(mod_api::__private::CanRiderInteractCall {
-                    entity,
-                    allowed: &mut allowed,
-                });
+                game.ask_can_rider_interact(entity, &mut allowed);
                 if game.pick_camera_id() != camera {
                     // Camera changed during hook; refuse the pick rather than recasting it.
                     self.hovered = None;

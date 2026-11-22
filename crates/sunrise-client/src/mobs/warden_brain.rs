@@ -844,11 +844,11 @@ impl B {
                     return false;
                 }
                 let liquid = m.fluids.in_water || m.fluids.in_lava;
-                if !(m.on_ground || liquid) {
+                if !(m.ground.on_ground || liquid) {
                     return false;
                 }
                 t.begin(cx.level.random(), cx.now);
-                if m.on_ground {
+                if m.ground.on_ground {
                     warden::set_pose(m, Pose::Digging);
                     sound(m, "entity.warden.dig", 5.0, 1.0, cx.events);
                 } else {

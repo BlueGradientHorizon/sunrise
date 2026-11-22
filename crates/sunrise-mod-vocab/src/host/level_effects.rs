@@ -33,6 +33,8 @@ pub trait LevelEffectsBackendMut {
     /// count sends one particle moving along `spread`). Block particle types
     /// need `state`; item particles need `options.item_stack` (validated against
     /// the item registry and stack limits). Trail and vibration remain unsupported.
+    /// A custom particle uses its registered stream codec and is sent only to Sunrise
+    /// clients. The receiving factory reads the same decoded value for every spawn.
     /// True means queued, not drawn.
     fn level_send_particles(
         &mut self,
@@ -201,4 +203,37 @@ pub trait LevelEffectsBackendMut {
         fire: bool,
         interaction: ExplosionInteraction,
     ) -> Result<u32, ExplosionDestroyError>;
+}
+/// The handles' client writes of the `level_effects` area, reached through [`ClientBackendMut`].
+// hidden: mods call the handle, not the game-side implementation.
+#[doc(hidden)]
+#[sunrise_mod_api_macros::host_area]
+pub trait LevelEffectsClientBackendMut {
+    /// Side: client.
+    /// Queues the ordinary hit crumb on `face` for the supplied state at `pos`
+    /// (`ClientLevel.addBreakingParticles`). Uses the level random and the state's outline.
+    /// Does not play a sound or redispatch the hit Part. Tint sources can still be asked.
+    /// `Ok(false)` means no sprite or outline. Returns an error for an unavailable level or
+    /// an unknown state. The engine still controls group admission.
+    fn level_add_breaking_particles(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        state: BlockState,
+        face: Direction,
+    ) -> Result<bool, LevelWriteError>;
+    /// Side: client.
+    /// Queues one `TerrainParticle` with the given world position and velocity. The sprite
+    /// comes from the supplied state; `source_pos` is where its tint is sampled.
+    /// Does not play a sound or redispatch the destroy Part. Tint sources can still be asked.
+    /// `Ok(false)` means non-finite input or no sprite. Returns an error for an unavailable
+    /// level or an unknown state. The engine still controls group admission.
+    fn level_add_terrain_particle(
+        &mut self,
+        level: LevelRef,
+        state: BlockState,
+        source_pos: [i32; 3],
+        at: [f64; 3],
+        velocity: [f64; 3],
+    ) -> Result<bool, LevelWriteError>;
 }
