@@ -1901,7 +1901,9 @@ fn home_block_pos(tag: Option<&Tag>) -> Option<[i32; 3]> {
     }
 }
 mod mob_load;
-pub use mob_load::{mob_from_nbt, mob_from_nbt_remote, mob_from_nbt_with_random};
+pub use mob_load::{
+    mob_from_nbt, mob_from_nbt_deferred, mob_from_nbt_remote, mob_from_nbt_with_random,
+};
 
 /// `LivingEntity.readAdditionalSaveData`'s `setHealth(getFloatOr("Health", getMaxHealth()))`:
 /// `Mth.clamp` to `[0, getMaxHealth()]`, the max health the loaded attributes and their
@@ -1920,14 +1922,13 @@ pub(crate) fn loaded_health(m: &Mob, health: Option<f64>) -> f32 {
 
 fn mob_from_nbt_at(
     tag: &Tag,
-    types: &HashMap<String, Arc<MobType>>,
+    kind: Arc<MobType>,
     id: u32,
     registry: Option<&BlockRegistry>,
     random: sunrise_core::random::LegacyRandom,
     position: Vec3,
     authoritative: bool,
-) -> Option<Mob> {
-    let kind = types.get(&self::kind(tag)?)?.clone();
+) -> Mob {
     let [yaw, pitch] = rotation(tag);
     let mut m = if authoritative {
         Mob::with_random(id, kind, position, yaw, random)
@@ -2756,7 +2757,7 @@ fn mob_from_nbt_at(
     if m.health < 0.0 {
         m.health = 0.0;
     }
-    Some(m)
+    m
 }
 
 /// `ItemEntity`: Health, Age, PickupDelay, Item, Thrower.

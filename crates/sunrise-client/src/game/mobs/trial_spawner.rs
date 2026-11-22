@@ -199,7 +199,7 @@ impl Game<'_> {
                     l.game
                         .plan_spawner_mob(l, r, source, &mut planned, rng, &mut sequences)?;
                 let uuid = match planned.last() {
-                    Some(Planned::Loaded(_, uuid, _)) => *uuid,
+                    Some(Planned::Loaded(tree, _)) => tree.root_uuid(),
                     _ => sunrise_client::save::random_uuid(),
                 };
                 uuids.push((added.id, uuid));

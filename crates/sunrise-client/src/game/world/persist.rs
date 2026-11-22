@@ -9,6 +9,9 @@ mod loaded_pass;
 pub(in crate::game) use loaded_pass::StagedEntityTree;
 #[path = "persist/object_memory.rs"]
 mod object_memory;
+#[path = "persist/spawn_tree.rs"]
+mod spawn_tree;
+pub(super) use spawn_tree::SpawnTree;
 #[path = "persist/unload_sweep.rs"]
 mod unload_sweep;
 
