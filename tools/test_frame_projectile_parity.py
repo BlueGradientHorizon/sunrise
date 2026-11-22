@@ -119,11 +119,65 @@ def non_mob_target_ops():
     return out
 
 
+def projectiles_121_124_ops():
+    out = []
+
+    def run(text, expected=None, record=True):
+        out.append(cmd(text, record=record, expect_result=expected))
+
+    for rule in ['spawn_mobs', 'advance_time', 'advance_weather']:
+        run(f'/gamerule {rule} false', record=False)
+    run('/gamerule mob_griefing true', record=False)
+    run('/gamerule entity_drops true', record=False)
+    run('/kill @e[type=!minecraft:player]', record=False)
+    run('/fill 0 209 0 15 209 15 minecraft:stone', record=False)
+    run('/fill 0 210 0 15 215 15 minecraft:air', record=False)
+    run('/fill 12 210 0 12 213 15 minecraft:stone', record=False)
+    # #121: wind charge passes through End crystal (z=2) and hits pig behind it.
+    run('/summon minecraft:end_crystal 7.25 210.0 2.5 {Tags:["c121"]}', 1)
+    run('/summon minecraft:pig 10.5 210.0 2.5 {NoAI:1b,Silent:1b,Tags:["p121"]}', 1)
+    run('/summon minecraft:wind_charge 4.5 211.0 2.5 {acceleration_power:0.0d,Motion:[1.0d,0.0d,0.0d],Tags:["w121"]}', 1)
+    # #122: trident dodged by Enderman (z=5) continues east past x=8 with dealtDamage=true (behind pig unharmed).
+    run('/summon minecraft:enderman 6.5 210.0 5.5 {NoAI:1b,Silent:1b,Tags:["e122"]}', 1)
+    run('/summon minecraft:pig 9.5 210.0 5.5 {NoAI:1b,Silent:1b,Tags:["p122"]}', 1)
+    run('/summon minecraft:trident 4.5 211.0 5.5 {Motion:[1.0d,0.0d,0.0d],Tags:["t122"]}', 1)
+    # #123: piercing arrow kills two mobs in the very first tick (z=8).
+    run('/summon minecraft:chicken 5.5 210.0 8.5 {NoAI:1b,Silent:1b,Health:1.0f,Tags:["m123a"]}', 1)
+    run('/summon minecraft:pig 6.8 210.0 8.5 {NoAI:1b,Silent:1b,Health:1.0f,Tags:["m123b"]}', 1)
+    run('/summon minecraft:arrow 4.5 210.5 8.5 {Motion:[3.0d,0.0d,0.0d],damage:20.0d,PierceLevel:2b,Tags:["a123"]}', 1)
+    # #124: firework rocket detonates on oak boat (z=11) and breaks nearby normal stand only (z=14).
+    run('/summon minecraft:oak_boat 6.5 210.0 11.5 {Tags:["b124"]}', 1)
+    run('/summon minecraft:firework_rocket 4.5 210.3 11.5 {LifeTime:20,ShotAtAngle:1b,Motion:[1.0d,0.0d,0.0d],Tags:["r124b"],FireworksItem:{id:"minecraft:firework_rocket",count:1,components:{"minecraft:fireworks":{flight_duration:1,explosions:[{shape:"small_ball",colors:[I;11743532]}]}}}}', 1)
+    run('/summon minecraft:armor_stand 8.5 210.0 14.5 {Tags:["s124_norm"]}', 1)
+    run('/summon minecraft:armor_stand 6.5 210.0 12.5 {Invisible:1b,Tags:["s124_inv"]}', 1)
+    run('/summon minecraft:armor_stand 4.5 210.0 14.5 {Marker:1b,Tags:["s124_mark"]}', 1)
+    run('/summon minecraft:firework_rocket 6.5 210.5 14.5 {LifeTime:1,ShotAtAngle:1b,Motion:[0.0d,0.0d,0.0d],Tags:["r124s"],FireworksItem:{id:"minecraft:firework_rocket",count:1,components:{"minecraft:fireworks":{flight_duration:1,explosions:[{shape:"small_ball",colors:[I;11743532]}]}}}}', 1)
+    # Check #123 after 1 single tick: both mobs are already dying (Health == 0).
+    out.append({'op': 'tick', 'n': 1})
+    run('/data get entity @e[tag=m123a,limit=1] Health')
+    run('/data get entity @e[tag=m123b,limit=1] Health')
+    # Advance 9 more ticks to settle #121, #122, #124.
+    out.append({'op': 'tick', 'n': 9})
+    run('/execute if entity @e[tag=c121]')
+    run('/execute if entity @e[tag=w121]')
+    run('/data get entity @e[tag=p121,limit=1] Health')
+    run('/data get entity @e[tag=e122,limit=1] Health')
+    run('/data get entity @e[tag=p122,limit=1] Health')
+    run('/execute if entity @e[tag=t122,x=8,y=209,z=5,dx=5,dy=4,dz=1]')
+    run('/execute if entity @e[tag=r124b]')
+    run('/execute if entity @e[tag=b124]')
+    run('/execute if entity @e[tag=s124_norm]')
+    run('/execute if entity @e[tag=s124_inv]')
+    run('/execute if entity @e[tag=s124_mark]')
+    return out
+
+
 if __name__ == '__main__':
     driver.corpus_module.groups = lambda: [
         ('setup', driver.corpus_module.group_setup()),
         ('arrows against item frames', ops()),
         ('projectiles against non-mob pickable targets', non_mob_target_ops()),
+        ('projectiles parity #121-#124', projectiles_121_124_ops()),
     ]
     if '--work-dir' not in sys.argv:
         sys.argv += ['--work-dir', str(Path(__file__).resolve().parents[1] / '.local/frame-projectile-parity')]

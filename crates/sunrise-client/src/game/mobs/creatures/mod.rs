@@ -9020,3 +9020,7 @@ mod frame_projectile_tests;
 #[cfg(test)]
 #[path = "projectile_targets_tests.rs"]
 mod projectile_targets_tests;
+
+#[cfg(test)]
+#[path = "projectiles_120_124_tests.rs"]
+mod projectiles_120_124_tests;
