@@ -300,8 +300,9 @@ impl MobWorld<'_> {
         self.items
             .is_some_and(|items| items.entity_type_tags.contains(tag, id))
     }
+    /// Membership in a prebound gameplay tag, indexed by the mob type's registry slot.
     #[inline]
-    pub(super) fn entity_tag_bit(&self, kind: &super::MobType, bit: u8) -> bool {
+    pub fn entity_tag_bit(&self, kind: &super::MobType, bit: u8) -> bool {
         self.items.is_some_and(|items| {
             items
                 .entity_type_tags

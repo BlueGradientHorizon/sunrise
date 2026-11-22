@@ -18,7 +18,6 @@ pub struct Flags {
     /// Cleared by default, like `EntityType.Builder` before `notInPeaceful`.
     pub not_in_peaceful: bool,
     pub undead: bool,
-    pub breathes_water: bool,
     /// Drowns out of water (fish, squid, dolphins after their air runs out).
     pub needs_water: bool,
     /// Hurt by water (endermen, blazes, striders out of lava, snow golems).

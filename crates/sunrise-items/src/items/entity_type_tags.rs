@@ -15,6 +15,8 @@ impl EntityTypeTags {
     pub const REGISTRY: &str = "minecraft:entity_type";
     pub const BURN_IN_DAYLIGHT: u8 = 1;
     pub const POWDER_SNOW_WALKABLE: u8 = 2;
+    pub const CAN_BREATHE_UNDER_WATER: u8 = 4;
+    pub const DISMOUNTS_UNDERWATER: u8 = 8;
 
     /// The component registry's entity type index, including content-mod types.
     pub fn registry_ids(
@@ -46,14 +48,25 @@ impl EntityTypeTags {
             .iter()
             .map(|(tag, values)| (tag.clone(), values.iter().cloned().collect()))
             .collect();
-        let daylight = members.get("minecraft:burn_in_daylight");
-        let powder_snow = members.get("minecraft:powder_snow_walkable_mobs");
+        let flags = [
+            ("minecraft:burn_in_daylight", Self::BURN_IN_DAYLIGHT),
+            (
+                "minecraft:powder_snow_walkable_mobs",
+                Self::POWDER_SNOW_WALKABLE,
+            ),
+            (
+                "minecraft:can_breathe_under_water",
+                Self::CAN_BREATHE_UNDER_WATER,
+            ),
+            ("minecraft:dismounts_underwater", Self::DISMOUNTS_UNDERWATER),
+        ]
+        .map(|(tag, bit)| (members.get(tag), bit));
         let bits = ids
             .iter()
             .map(|id| {
-                (u8::from(daylight.is_some_and(|tag| tag.contains(id))) * Self::BURN_IN_DAYLIGHT)
-                    | (u8::from(powder_snow.is_some_and(|tag| tag.contains(id)))
-                        * Self::POWDER_SNOW_WALKABLE)
+                flags.iter().fold(0, |bits, &(tag, bit)| {
+                    bits | (u8::from(tag.is_some_and(|tag| tag.contains(id))) * bit)
+                })
             })
             .collect();
         Self {
