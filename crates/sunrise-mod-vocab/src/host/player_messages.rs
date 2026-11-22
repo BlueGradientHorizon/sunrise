@@ -43,9 +43,10 @@ pub trait PlayerMessagesBackendMut {
     /// Side: server.
     /// `StopSoundCommand` for one player: their client stops the playing
     /// sounds that match `sound` (an event id) and `source`; `None` matches
-    /// any. True means sent (or queued for commit inside an open transaction).
-    /// Inside an open transaction, delivery waits for the outermost commit in call order across
-    /// deferred effects and is discarded on rollback or an aborted nested transaction.
+    /// any. `true` means the request was accepted, not that a client received or played it.
+    /// Inside an open transaction, delivery waits for the owning level's outermost commit in
+    /// journal order. A deferred request is discarded on abort or if the player no longer
+    /// resolves at commit.
     fn player_stop_sound(
         &mut self,
         player: PlayerRef,
@@ -55,12 +56,10 @@ pub trait PlayerMessagesBackendMut {
     /// Side: server.
     /// `PlaySoundCommand` for one player: plays sound event `sound` at the
     /// player, for them only, under `source`'s volume slider. The seed is the
-    /// request level's random `nextLong`, drawn once at the call outside a
-    /// transaction or at the outermost commit (in the request's level) inside
-    /// an open transaction; rolled-back transactions and aborted nested
-    /// transactions discard the sound without advancing the level's random.
-    /// True means sent (or queued for commit inside an open transaction), not
-    /// heard.
+    /// request level's random `nextLong`, drawn at the call outside a transaction or when
+    /// published at the owning level's outermost commit. `true` means the request was accepted,
+    /// not that a client received or played it. A deferred request is discarded on abort or if
+    /// the player no longer resolves at commit, without drawing a seed.
     fn player_play_sound(
         &mut self,
         player: PlayerRef,

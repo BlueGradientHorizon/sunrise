@@ -122,8 +122,13 @@ Use journaled capability handlers when you need rollback.
 
 ## Deferred level, entity, and player effects
 
-Server-side mod effect calls issued while a transaction is open in the active level wait for the
-outermost commit and are discarded on rollback or an aborted nested transaction:
+An explicit server-side presentation effect joins the innermost open transaction in the level
+active at the call. It waits for the outermost commit for that owning level and is discarded on
+rollback or an aborted nested transaction. Delivery still uses the level named by the request,
+including for sounds or particles targeting a parked level. An independent transaction in another
+level publishes its own effects at its own commit.
+
+Calls covered by these rules:
 
 - `LevelRef::play_sound`, `LevelRef::send_particles`, `LevelRef::level_event`,
   `LevelRef::block_break_effect`, `LevelRef::global_level_event` (and the `LevelWriteHost`
@@ -131,8 +136,12 @@ outermost commit and are discarded on rollback or an aborted nested transaction:
 - `EntityRef::play_sound`, `EntityRef::play_bound_sound`, `EntityRef::broadcast_event`
 - `PlayerRef::play_sound`, `PlayerRef::stop_sound`
 
+An accepted `LevelRef::game_event` is posted at the call for vibration listeners, not deferred by
+this rule.
+
 Argument and handle validation still happens at the call, so invalid requests return `false`
-immediately. For level and entity sounds, `play_level_sound_at_position` and
+immediately. For directed sounds, `true` means the request was accepted, not that a client received
+or played it. A deferred request is discarded on abort or if the player no longer resolves at commit. For level and entity sounds, `play_level_sound_at_position` and
 `play_level_sound_at_entity` run synchronously at the call inside the open transaction, so
 listeners can edit or cancel the sound and have their writes or effects journaled (in the
 listener's level when a transaction is open in that level, and for player-owned state in the
@@ -141,15 +150,10 @@ delivery sends every deferred record in journal order across all effect kinds, r
 request's level (even if another level is active when the transaction commits) without running mod
 callbacks or draining unrelated queued effects.
 
-Random-number streams advance only when an effect is actually published:
-
-- The server sound-seed stream (used by `LevelRef::play_sound`, `EntityRef::play_sound`,
-  `EntityRef::play_bound_sound`, and `LevelWriteHost::play_sound`) advances at the call outside a
-  transaction, at the outermost commit when a resolved sound publishes inside one, and stays
-  untouched on rollback, nested abort, or listener cancellation.
-- The request level's random (`world.random`, used by `PlayerRef::play_sound` for its `nextLong`
-  seed) advances at the call outside a transaction, at the outermost commit in the request's level
-  inside one, and stays untouched on rollback or nested abort.
+Outside a transaction, a queued level sound draws its seed at the call even if a later hook
+cancels it. Inside one, it draws a seed only when the resolved sound is published. Directed
+`PlayerRef::play_sound` draws from the request level's random at an immediate send or when
+published at commit. An aborted request does not advance either stream.
 
 ## Spawning and removing entities
 

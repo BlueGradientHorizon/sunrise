@@ -1810,9 +1810,10 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     ) -> bool {
         unimplemented!("LevelWriteHost::set_block_property")
     }
-    /// Play a sound for nearby players through `play_sound`. Inside an open transaction the sound
-    /// waits for the outermost commit (discarded on abort), and the sound seed advances when it is
-    /// published; see the modding book's transactions chapter.
+    /// Play a sound for nearby players. Inside an open transaction in the active level, the
+    /// level-sound hook runs synchronously; only the resolved sound waits for the owning level's
+    /// outermost commit and draws its seed when published. An abort discards it. Outside a
+    /// transaction a queued sound draws its seed at the call, even if a later hook cancels it.
     fn play_sound(
         &mut self,
         _sound: &str,
