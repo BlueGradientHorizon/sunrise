@@ -6,7 +6,39 @@ import test_command_exec_parity as runner
 from command_exec_corpus import cmd, setup
 
 
+FUNCTIONS = {
+    'parity:clear_night_vision': '''effect give @s minecraft:night_vision 30
+attribute @s minecraft:max_health base set 16.5
+execute unless data entity @s {Health:20.0f} run return fail
+effect clear @s minecraft:night_vision
+execute unless data entity @s {Health:16.5f} run return fail
+return 1
+''',
+    'parity:update_night_vision': '''effect give @s minecraft:night_vision 30
+attribute @s minecraft:max_health base set 12.5
+effect give @s minecraft:night_vision 60
+execute unless data entity @s {Health:12.5f} run return fail
+return 1
+''',
+}
+
+
 def cases():
+    yield 'first waypoint list', [
+        cmd('/effect give @s minecraft:invisibility infinite'),
+        cmd('/attribute @s minecraft:waypoint_transmit_range get', expect_result=0),
+        cmd('/waypoint list', expect_result=1),
+        {'op': 'tick', 'n': 1},
+        cmd('/waypoint list', expect_result=0),
+        cmd('/effect clear @s minecraft:invisibility'),
+        cmd('/waypoint list', expect_result=1),
+    ]
+    yield 'modifierless effect refresh', [
+        cmd('/function parity:clear_night_vision', expect_result=1),
+        cmd('/function parity:update_night_vision', expect_result=1),
+        *setup('/effect clear @s minecraft:night_vision',
+               '/attribute @s minecraft:max_health base reset'),
+    ]
     yield 'player absorption', [
         *setup('/attribute @s minecraft:max_absorption base set 2.5'),
         cmd('/effect give @s minecraft:absorption infinite 1'),
@@ -54,6 +86,7 @@ def cases():
 
 def main():
     runner.corpus_module.groups = lambda: [('setup', runner.corpus_module.group_setup()), *cases()]
+    runner.corpus_module.function_return_fixtures = lambda _groups: FUNCTIONS
     if '--work-dir' not in sys.argv:
         sys.argv += ['--work-dir', str(runner.lab.LOCAL / 'effect-gameplay-parity')]
     return runner.main()
