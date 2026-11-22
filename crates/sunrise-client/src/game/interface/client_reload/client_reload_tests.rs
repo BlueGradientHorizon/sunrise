@@ -436,7 +436,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
         }
     }
     thread_local! {
-        static REFUSE_EXTENSIONS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        static CHECK_UNKNOWN_TEXTURE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
     struct Probe(Arc<Mutex<Vec<&'static str>>>);
     #[mod_api::__subscriptions]
@@ -491,12 +491,12 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
             event: &mut mod_api::RegisterClientItemExtensionsEvent<'_>,
         ) {
             let extensions: &mut dyn ClientItemExtensionsRegistrar = &mut *event.extensions;
-            if REFUSE_EXTENSIONS.get() {
-                assert!(
-                    extensions
-                        .register_texture("startup_anchor:missing")
-                        .is_err()
+            if CHECK_UNKNOWN_TEXTURE.get() {
+                assert_eq!(
+                    extensions.register_texture("startup_anchor:missing"),
+                    Err("unknown armour texture startup_anchor:missing".into())
                 );
+                self.0.lock().unwrap().push("refuse unknown texture");
             }
         }
 
@@ -542,8 +542,10 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                 Game::native_standalone_models(&RegistrationContext::new(), &mut registrations);
                 let _models =
                     sunrise_client::models::StandaloneFixture::from_registrations(registrations);
-                for refusal in [None, Some("renderer"), Some("extensions")] {
-                    REFUSE_EXTENSIONS.set(refusal == Some("extensions"));
+                for (reject_renderer, unknown_texture) in
+                    [(false, false), (true, false), (false, true)]
+                {
+                    CHECK_UNKNOWN_TEXTURE.set(unknown_texture);
                     trace.lock().unwrap().clear();
                     let root = fixture_root();
                     let scratch = tempfile::tempdir().unwrap();
@@ -569,7 +571,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         &options.mods,
                     )
                     .unwrap();
-                    if refusal.is_none() {
+                    if !reject_renderer && !unknown_texture {
                         let reports = mod_api::__private::take_hook_panics();
                         assert_eq!(
                             reports.as_slice(),
@@ -611,7 +613,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     );
                     let pending = game.pending_initial_models.take().unwrap();
                     let candidate = pending.models.pack.render.generation;
-                    let renderer = if refusal == Some("renderer") {
+                    let renderer = if reject_renderer {
                         Err("renderer validation refused".into())
                     } else {
                         Ok(None)
@@ -619,13 +621,9 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     APPLY_GENERATIONS.replace(Some(Vec::new()));
                     let result = game.apply_pending_client_start(*pending, renderer);
                     let generations = APPLY_GENERATIONS.take().unwrap();
-                    if let Some(refusal) = refusal {
-                        let error = result.expect_err("startup must refuse the unknown texture");
-                        assert!(error.to_string().contains(if refusal == "renderer" {
-                            "renderer validation refused"
-                        } else {
-                            "unknown armour texture startup_anchor:missing"
-                        }));
+                    if reject_renderer {
+                        let error = result.expect_err("startup must refuse a failed renderer");
+                        assert!(error.to_string().contains("renderer validation refused"));
                         assert_eq!(game.pack.render.generation, 0);
                         assert!(generations.is_empty());
                         assert_eq!(
@@ -642,18 +640,18 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         [0, candidate],
                         "generation at the before- and after-model applies"
                     );
-                    assert_eq!(
-                        *trace.lock().unwrap(),
-                        [
-                            "prepare before",
-                            "bake model",
-                            "prepare after",
-                            "publish atlas without models",
-                            "apply before",
-                            "observe published models",
-                            "apply after",
-                        ]
-                    );
+                    let mut expected = vec!["prepare before", "bake model", "prepare after"];
+                    if unknown_texture {
+                        // Returning an extension error rejects just that binding; startup still applies.
+                        expected.push("refuse unknown texture");
+                    }
+                    expected.extend([
+                        "publish atlas without models",
+                        "apply before",
+                        "observe published models",
+                        "apply after",
+                    ]);
+                    assert_eq!(*trace.lock().unwrap(), expected);
                 }
             });
         })
