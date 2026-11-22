@@ -1512,13 +1512,15 @@ impl Game<'_> {
             let w = self.mob_world_base(&[]);
             self.mobs.iter().map(|m| m.on_climbable(&w)).collect()
         };
-        let inactive_equipment = (self.is_logical_server() && self.remote.is_none()).then(|| {
-            (
+        let inactive_equipment = if self.is_logical_server() && self.remote.is_none() {
+            Some((
                 self.entity_ticking_area(),
                 world_items!(self),
                 &self.motion.attributes,
-            )
-        });
+            ))
+        } else {
+            None
+        };
         for (m, climbing) in self.mobs.iter_mut().zip(climbing) {
             m.on_climbable = climbing;
             // Keep an inactive mob's modifiers current without consuming its next body-tick

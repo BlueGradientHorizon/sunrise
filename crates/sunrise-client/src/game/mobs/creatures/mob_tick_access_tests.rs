@@ -624,10 +624,6 @@ impl mod_api::Hooks for TraderDrinkPost {
         r.entity_tick_each("minecraft:wandering_trader");
     }
 
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut EntityTickListenedEvent) {
-        event.listened = true;
-    }
-
     fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
         let HostSide::Server(host) = host else {
             panic!("server fixture");
