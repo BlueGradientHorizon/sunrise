@@ -103,6 +103,7 @@ pub(in crate::game) use chat::{ChatTrust, Decoration};
 use chat_received::QueuedChat;
 pub(in crate::game) mod client_level_tick;
 mod effect;
+mod entity_data_schema;
 mod entity_section_steps;
 mod inventory;
 mod item_use;
@@ -206,7 +207,7 @@ impl ChunkGenerator for NoTerrain {
 /// A server entity the client tracks (position as last sent).
 pub(super) struct Tracked {
     kind: String,
-    position: [f64; 3],
+    pub(in crate::game) position: [f64; 3],
     /// `Entity.getPositionCodec`'s base: the position the server last
     /// reported (AddEntity, MoveEntity, EntityPositionSync), which a move
     /// packet's delta counts from. A TeleportEntity moves the entity but not
@@ -664,7 +665,7 @@ const BACKLOG_LIMIT: Duration = Duration::from_millis(50);
 const TICK_DECODE_WAIT: Duration = Duration::from_millis(250);
 /// The open menu name of a server's horse inventory, then its chest's
 /// columns (the packet names no `MenuType`).
-const MOUNT_MENU: &str = "sunrise:mount";
+pub(in crate::game) const MOUNT_MENU: &str = "sunrise:mount";
 /// ServerboundPlayerInputPacket's shift bit.
 const SHIFT_INPUT: u8 = 1 << 5;
 
@@ -1179,7 +1180,7 @@ impl Game<'_> {
             C::PlayerRotation(p) => self.remote_rotation(&p),
             C::PlayerLookAt(p) => self.remote_look_at(&p),
             // ClientCommonPacketListenerImpl.handlePostEffects.
-            C::PostEffects(p) => self.post_effects = p.effects,
+            C::PostEffects(p) => self.apply_post_effects_packet(p)?,
             C::SetCamera(p) => self.remote_set_camera(p.camera_id),
             C::LevelChunkWithLight(p) => self.remote_chunk(&p, None),
             C::LightUpdate(p) => self.remote_light_update(&p),
@@ -1257,7 +1258,7 @@ impl Game<'_> {
             C::MoveVehicle(p) => self.apply_move_vehicle_packet(p),
             C::MoveMinecartAlongTrack(p) => self.remote_move_minecart(p),
             C::RotateHead(p) => self.apply_rotate_head_packet(p),
-            C::SetEntityData(p) => self.apply_set_entity_data_packet(p),
+            C::SetEntityData(p) => self.apply_set_entity_data_packet(p)?,
             C::SetEquipment(p) => self.apply_set_equipment_packet(p),
             C::TakeItemEntity(p) => self.apply_take_item_entity_packet(p),
             C::SetEntityMotion(p) => self.apply_set_entity_motion_packet(p)?,
@@ -1377,11 +1378,10 @@ impl Game<'_> {
                 }
             }
             C::SetChunkCacheRadius(p) => {
-                self.streaming.radius = self
-                    .settings
-                    .render_distance
-                    .min(p.distance.saturating_add(1))
-                    .max(2);
+                self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+                    self.settings.render_distance,
+                    Some(p.distance),
+                );
                 if let Some(r) = self.remote.as_mut() {
                     r.view_distance = p.distance;
                     let center = r.chunk_center;

@@ -1467,7 +1467,7 @@ sunrise-client game::native_hooks::death_source_tests::skeleton_arrow_death_cred
 sunrise-client game::native_hooks::death_source_tests::zombie_ai_melee_armor_hurt_retains_the_real_source lib daily resources
 sunrise-client game::native_hooks::enchanted_block_loot::tests::a_listener_sets_the_level_a_block_table_reads lib daily resources
 sunrise-client game::native_hooks::enchantment_and_lang_tests::a_trait_mod_measures_text_through_its_draw_context lib daily resources
-sunrise-client game::native_hooks::enchantment_and_lang_tests::enchantment_registry_returns_records_and_unknown_cost lib daily resources
+sunrise-client game::native_hooks::enchantment_and_lang_tests::enchantment_registry_returns_records_and_unknown_cost lib daily child-process
 sunrise-client game::native_hooks::enchantment_and_lang_tests::translate_gives_the_text_of_a_defined_key_and_none_otherwise lib daily resources
 sunrise-client game::native_hooks::entity_inside::entity_inside_tests::landing_writes_apply_at_the_batch_end lib daily resources
 sunrise-client game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_flush lib daily child-process
@@ -1782,7 +1782,7 @@ sunrise-client game::native_merchant_refs::tests::merchant_handles_edit_offers_a
 sunrise-client game::native_merchant_refs::tests::unresolved_profession_preserves_offers_but_cannot_trade_them lib daily resources
 sunrise-client game::native_minecart_refs::tests::a_carts_display_block_and_offset_round_trip_through_its_handle lib daily resources
 sunrise-client game::native_minecart_refs::tests::a_furnace_carts_push_is_read_and_set_through_its_handle lib daily resources
-sunrise-client game::native_minecart_refs::tests::minecart_handles_narrow_read_and_write_by_kind lib daily resources
+sunrise-client game::native_minecart_refs::tests::minecart_handles_narrow_read_and_write_by_kind lib daily child-process
 sunrise-client game::native_mob_goals::tests::follow_mob_uses_the_mobs_actual_navigation lib daily resources
 sunrise-client game::native_mob_goals::tests::goal_constructors_follow_vanilla_classes lib daily resources
 sunrise-client game::native_mob_goals::tests::goals_read_add_remove_and_refuse_what_the_mob_does_not_hold lib daily resources

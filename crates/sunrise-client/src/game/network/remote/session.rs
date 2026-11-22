@@ -775,6 +775,8 @@ impl Game<'_> {
         self.streaming.paused = true;
         self.reset_client_world(0);
         self.remove_local_player_body();
+        self.post_effects.clear();
+        self.clear_spectated_entity_post_effect();
         // The vehicle went with the level: an id kept here would seat the
         // next login on an entity that is not there.
         self.riding = None;

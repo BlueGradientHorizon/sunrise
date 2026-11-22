@@ -53,6 +53,7 @@ impl Game<'_> {
             name,
             "key.togglePerspective"
                 | "key.smoothCamera"
+                | "key.toggleSpectatorShaderEffects"
                 | "key.inventory"
                 | "key.quickActions"
                 | "key.swapOffhand"
@@ -206,6 +207,9 @@ impl Game<'_> {
                     _ => unreachable!("listed GUI key"),
                 }
             }
+        }
+        while self.consume_mapping_click("key.toggleSpectatorShaderEffects") {
+            self.toggle_spectator_post_effect();
         }
         self.select_queued_hotbar();
         while self.consume_mapping_click("key.inventory") {

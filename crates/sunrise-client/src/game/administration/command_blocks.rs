@@ -342,12 +342,12 @@ impl Game<'_> {
     /// `CloseableCommandBlockSource.sendSystemMessage`: the block's last
     /// output, stamped with the time. Nothing when it doesn't track output
     /// (`CommandSource.NULL`).
-    pub(super) fn command_block_output(&mut self, pos: Pos, message: Text) {
+    pub(super) fn command_block_output(&mut self, pos: Pos, format: impl FnOnce(Text) -> Text) {
         if let Some(c) = command_block_mut(&mut self.world, pos)
             && c.track_output
         {
             let time = chrono::Local::now().format("[%H:%M:%S] ").to_string();
-            c.last_output = Some(Text::literal(time).append(message));
+            c.last_output = Some(format(Text::literal(time)));
         }
     }
     /// `CommandSourceStack.sendSuccess` from a command block: its output when
@@ -366,7 +366,7 @@ impl Game<'_> {
             .rules
             .bool_at(sunrise_client::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         if feedback {
-            self.command_block_output(pos, message.clone());
+            self.command_block_output(pos, |timestamp| timestamp.append(message.clone()));
         }
         if broadcast
             && feedback

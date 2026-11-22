@@ -1673,6 +1673,8 @@ pub enum Event {
     Language(String),
     /// The pack selection changed (reload resources).
     Packs(Vec<String>),
+    /// Video settings affecting stitched atlases changed on closing (`VideoSettingsScreen.removed`).
+    ReloadTextures,
     /// Create World's Data Packs screen closed with a new selection.
     DataPacks(Vec<String>),
     OpenPackFolder,
@@ -1848,6 +1850,8 @@ pub struct OptionsUi {
     pub agent_recording: bool,
     /// The Music page's groups (set by the game when it opens the page).
     pub music_groups: Vec<MusicGroup>,
+    /// `(textureFiltering, maxAnisotropyBit, mipmapLevels)` when entering video/graphics settings.
+    video_atlas_snapshot: Option<(i32, i32, i32)>,
     /// Keyboard focus: the interactive target currently focused.
     focus: Option<FocusId>,
     /// The focus came from keyboard or pad navigation, so the mouse wheel steps it
@@ -1938,6 +1942,7 @@ impl Default for OptionsUi {
             agent_status: Vec::new(),
             agent_recording: false,
             music_groups: Vec::new(),
+            video_atlas_snapshot: None,
             focus: None,
             focus_from_keyboard: false,
             can_change_value: false,
@@ -2379,6 +2384,7 @@ impl OptionsUi {
     pub fn open_at(&mut self, in_world: bool, page: Page) {
         self.discard_draw();
         self.stack.clear();
+        self.video_atlas_snapshot = None;
         self.data_pack_dir = None;
         self.focus = None;
         self.focus_from_keyboard = false;
@@ -2435,10 +2441,20 @@ impl OptionsUi {
     pub fn reveal(&mut self, s: &Settings, size: (f32, f32), rect: [f32; 4]) -> Option<f32> {
         self.shell_mut()?.reveal(s, size, rect)
     }
+    /// Capture `(textureFiltering, maxAnisotropyBit, mipmapLevels)` when entering video settings.
+    pub fn capture_video_atlas(&mut self, s: &Settings) {
+        if self.stack.iter().any(|&p| Self::is_video_page(p)) && self.video_atlas_snapshot.is_none()
+        {
+            self.video_atlas_snapshot = Some(s.texture_atlas_settings());
+        }
+    }
+    fn is_video_page(page: Page) -> bool {
+        page == Page::Video || Self::graphics_page(page).is_some()
+    }
     /// Whether a video settings screen is open, Sunrise's or vanilla's: the fullscreen mode
     /// waits for it to close, and Ctrl with the wheel steps the GUI scale.
     pub fn video_open(&self) -> bool {
-        self.page() == Page::Video || Self::graphics_page(self.page()).is_some()
+        Self::is_video_page(self.page())
     }
     /// Where the graphics screen opens for `page`, if it is one of its pages.
     fn graphics_page(page: Page) -> Option<crate::graphics_ui::Page> {
@@ -3120,6 +3136,7 @@ impl OptionsUi {
         drag: bool,
         right: bool,
     ) -> (Vec<Event>, bool) {
+        self.capture_video_atlas(s);
         if drag {
             let (handled, events) = self.drag(s, atlas, (x, y), size, framebuffer, right);
             return (events, handled);
@@ -3143,6 +3160,7 @@ impl OptionsUi {
         framebuffer: [i32; 2],
         right: bool,
     ) -> (bool, Vec<Event>) {
+        self.capture_video_atlas(s);
         if self.resource_error.is_some() {
             return (false, Vec::new());
         }
@@ -3435,7 +3453,8 @@ impl OptionsUi {
                             if *p == Page::ModBrowser {
                                 events.push(Event::BrowseMods);
                             }
-                            self.push(*p)
+                            self.push(*p);
+                            self.capture_video_atlas(s);
                         }
                         Act::Done => events.extend(self.back(s)),
                         Act::Cycle(opt) => {
@@ -3666,6 +3685,7 @@ impl OptionsUi {
         framebuffer: [i32; 2],
         amount: f32,
     ) -> (bool, Vec<Event>) {
+        self.capture_video_atlas(s);
         let (handled, events) = self.wheel_unrevised(s, size, cursor, framebuffer, amount);
         if !events.is_empty() {
             self.relayout();
@@ -3993,6 +4013,13 @@ impl OptionsUi {
             }
             _ => {}
         }
+        if Self::is_video_page(page)
+            && !self.stack.iter().any(|&p| Self::is_video_page(p))
+            && let Some(before) = self.video_atlas_snapshot.take()
+            && before != s.texture_atlas_settings()
+        {
+            events.push(Event::ReloadTextures);
+        }
         events.push(Event::Changed);
         if self.stack.is_empty() {
             events.push(Event::Close);
@@ -4166,6 +4193,7 @@ impl OptionsUi {
         text: Option<&str>,
         shift: bool,
     ) -> (bool, Vec<Event>) {
+        self.capture_video_atlas(s);
         let (handled, events) = self.key_modifiers_unrevised(s, atlas, key, text, shift);
         if !events.is_empty() {
             self.relayout();
@@ -4526,6 +4554,7 @@ impl OptionsUi {
                                 events.push(Event::BrowseMods);
                             }
                             self.push(p);
+                            self.capture_video_atlas(s);
                         }
                         Act::Done => {
                             self.focus = None;
@@ -8476,6 +8505,42 @@ mod tests {
         ui.click(&mut s, &atlas, px, py, size, [854, 480], false, false);
         assert_eq!(s.particles, 0);
         ui.shift = false;
+    }
+
+    #[test]
+    fn leaving_video_settings_reloads_textures_only_when_atlas_options_changed() {
+        let mut ui = OptionsUi::default();
+        let mut s = Settings::default();
+        // Changing mipmapLevels on Page::Video triggers ReloadTextures on exit.
+        ui.open_at(true, Page::Video);
+        ui.capture_video_atlas(&s);
+        s.mipmap_levels = 0;
+        let events = ui.back(&mut s);
+        assert!(events.contains(&Event::ReloadTextures));
+
+        // Changing and reverting before leaving triggers no ReloadTextures.
+        ui.open_at(true, Page::Video);
+        ui.capture_video_atlas(&s);
+        s.mipmap_levels = 2;
+        s.mipmap_levels = 0;
+        let events = ui.back(&mut s);
+        assert!(!events.contains(&Event::ReloadTextures));
+
+        // Changing textureFiltering triggers ReloadTextures.
+        ui.open_at(true, Page::Video);
+        ui.capture_video_atlas(&s);
+        s.file
+            .set("textureFiltering", crate::options_file::V::Int(2));
+        let events = ui.back(&mut s);
+        assert!(events.contains(&Event::ReloadTextures));
+
+        // Changing maxAnisotropyBit on Sunrise Graphics triggers ReloadTextures.
+        ui.open_at(true, Page::Graphics);
+        ui.capture_video_atlas(&s);
+        s.file
+            .set("maxAnisotropyBit", crate::options_file::V::Int(3));
+        let events = ui.back(&mut s);
+        assert!(events.contains(&Event::ReloadTextures));
     }
 }
 

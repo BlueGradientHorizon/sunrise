@@ -71,6 +71,7 @@ impl Game<'_> {
                     .ok_or("options-set KEY VALUE: missing the value")?;
                 let narrator = self.settings.narrator();
                 let reduced = self.settings.reduced_debug_info;
+                let before_atlas = self.settings.texture_atlas_settings();
                 self.settings = self.settings.with_option(key, value)?;
                 if self.settings.reduced_debug_info != reduced {
                     self.debug_entries.invalidate();
@@ -85,6 +86,9 @@ impl Game<'_> {
                 match *key {
                     "lang" => self.load_language(&self.settings.language.clone()),
                     "resourcePacks" | "incompatibleResourcePacks" => self.reload_packs(),
+                    _ if self.settings.texture_atlas_settings() != before_atlas => {
+                        self.reload_packs();
+                    }
                     _ => {}
                 }
                 // Labels change (a language, a value): `ui` reads the redrawn screen.
@@ -156,6 +160,7 @@ impl Game<'_> {
         self.hold_fullbright();
         let ui = &mut self.ui.options;
         ui.open_at(!from_title && self.title.is_none(), page);
+        ui.capture_video_atlas(&self.settings);
         ui.minecart_improvements = minecart_improvements;
         ui.languages = lang::available(&[&self.pack.source]);
         self.refresh_pack_lists();
@@ -437,6 +442,11 @@ impl Game<'_> {
                 }
                 Event::Packs(_) => {
                     self.settings.save(&Self::options_path());
+                    self.reload_packs();
+                }
+                Event::ReloadTextures => {
+                    self.settings.save(&Self::options_path());
+                    self.apply_settings();
                     self.reload_packs();
                 }
                 Event::PackOptions { entries, chosen } => {
