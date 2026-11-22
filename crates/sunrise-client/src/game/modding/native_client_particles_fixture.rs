@@ -35,8 +35,7 @@ impl Game<'_> {
     }
 
     pub(super) fn run_native_client_particles_fixture(&mut self, directory: &Path) -> Result<()> {
-        // The fixture stands in for a joined client level, where the mods' calls run in the
-        // World phase; the loading window it starts from is still in Setup.
+        // The fixture gives the window a player to test the live-client Host path.
         let at = [0.0, 100.0, 0.0];
         let smoke = ParticleOptions::simple(ParticleType::Smoke);
         self.particles.requested = Some(Vec::new());
@@ -220,9 +219,9 @@ mod tests {
         native_entity_refs::tests::{run_fresh_cases, run_with_game_stack, with_client_game},
     };
     use mod_api::{
-        __private::{ModPhase, PhaseOwner, game::RegistrationContextNew},
-        BlockState, CustomParticle, ModEntry, ParticleProvider, ParticleSpawn, ParticleTickView,
-        RegisterParticleProvidersEvent, Registrar, RegistrationContext,
+        __private::game::RegistrationContextNew, BlockState, CustomParticle, ModEntry,
+        ParticleProvider, ParticleSpawn, ParticleTickView, RegisterParticleProvidersEvent,
+        Registrar, RegistrationContext,
     };
     use std::{
         sync::{
@@ -323,10 +322,7 @@ mod tests {
 
     fn fixture_engine(source: &ResourceSource) -> ParticleEngine {
         let mut factories = mod_api::ParticleProviderRegistry::default();
-        {
-            let _registration = PhaseOwner::scope(ModPhase::Registration);
-            Game::native_register_particle_providers(&RegistrationContext::new(), &mut factories);
-        }
+        Game::native_register_particle_providers(&RegistrationContext::new(), &mut factories);
         let mut engine = ParticleEngine::with_test_providers(
             source,
             &HashMap::from([(
@@ -386,7 +382,6 @@ mod tests {
                             PlayerMotion::new(game.motion, Vec3::new(at[0], at[1], at[2])).unwrap(),
                         );
                         game.particles.camera = at;
-                        let _world = PhaseOwner::scope(ModPhase::World);
                         let host: &mut dyn ClientHost = game;
                         assert!(host.add_particle(&options, at, velocity));
 
@@ -533,7 +528,6 @@ mod tests {
                 with_client_game(|game| {
                     let _server = logged_client(game);
                     game.particles = fixture_engine(&sprite_description());
-                    let _world = PhaseOwner::scope(ModPhase::World);
                     let at = [0.0, 100.0, 0.0];
                     let options = provider.ty.get().unwrap().options(7);
                     let debris = [ExplosionParticle {
@@ -617,10 +611,7 @@ mod tests {
                     mod_api::__private::mods(),
                 )
                 .unwrap();
-                {
-                    let _registration = PhaseOwner::scope(ModPhase::Registration);
-                    register_particles(ExecutionRole::Client).unwrap();
-                }
+                register_particles(ExecutionRole::Client).unwrap();
                 with_client_game(|game| {
                     // Both engines see the description. Only the window may run its factory.
                     game.pack.source = game.pack.source.extended(
@@ -638,7 +629,6 @@ mod tests {
                     let client_thread = thread::current().id();
                     assert_eq!(*binds.lock().unwrap(), [client_thread]);
 
-                    game.mod_phase = PhaseOwner::new(ModPhase::Setup);
                     game.settings.render_distance = 2;
                     game.settings.simulation_distance = 2;
                     let options = sunrise_client::title::WorldOptions {
