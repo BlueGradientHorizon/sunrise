@@ -1121,6 +1121,7 @@ fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
                     name: "bred".into(),
                     trigger: TRIGGER.into(),
                     conditions: serde_json::json!({}).into(),
+                    player: None,
                 }],
                 requirements: vec![vec!["bred".into()]],
                 rewards: Rewards::default(),
