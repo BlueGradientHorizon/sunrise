@@ -31,6 +31,10 @@ impl Game<'_> {
         // pairs a vehicle again with ClientboundSetPassengersPacket).
         self.selected = 0;
         self.potions.effects.clear();
+        // handleLogin creates a fresh LocalPlayer only when none exists yet.
+        if self.remote.as_ref().is_none_or(|r| !r.logged_in) {
+            self.post_effects.clear();
+        }
         self.riding = None;
         if let Some(player) = self.player.as_mut() {
             player.entity_id = p.player_id;
@@ -61,6 +65,7 @@ impl Game<'_> {
             r.reduced_debug_info = p.reduced_debug_info;
             r.do_limited_crafting = p.limited_crafting;
         }
+        self.clear_spectated_entity_post_effect();
         self.bind_local_player_residency();
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
@@ -100,6 +105,7 @@ impl Game<'_> {
         // A new player, without effects (the server sends them
         // again) and with no item in use.
         self.potions.effects.clear();
+        self.post_effects.clear();
         // Every synced attachment but the player's is sent again; the viewed
         // levels go or stay with the level entered (`enter_respawn_level`).
         if let Some(r) = self.remote.as_mut() {
@@ -193,6 +199,7 @@ impl Game<'_> {
             // handleRespawn: the new LocalPlayer is the camera.
             r.camera = None;
         }
+        self.clear_spectated_entity_post_effect();
         self.capture(true);
         if let Some((old_id, uuid)) = old_player {
             self.native_client_player_clone(

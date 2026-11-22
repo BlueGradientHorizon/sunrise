@@ -3851,6 +3851,8 @@ struct Game<'a> {
     /// `LocalPlayer.postEffects`: the chains the server has the screen run
     /// (`ClientboundPostEffectsPacket`), in order.
     post_effects: Vec<String>,
+    /// Reused per-frame `requestedPostEffects` storage.
+    requested_post_effects_buf: Vec<String>,
     /// The game time (ticks and partial) of the last frame, for `PolyDeltaTime`.
     polytone_post_ticks: f64,
     /// The last expression context built (what the packs' expressions read), kept across frames
@@ -3858,6 +3860,8 @@ struct Game<'a> {
     expression_frame: sunrise_client::environment::Frame,
     /// `GameRenderer.spectatedEntityPostEffect` (`checkEntityPostEffect`).
     spectated_post_effect: Option<&'static str>,
+    /// `GameRenderer.spectatedEntityEffectActive` (`toggleSpectatorPostEffect`).
+    spectated_post_effect_active: bool,
     /// `LocalPlayer.experienceDisplayStartTick`: (last progress, seen a change, tick).
     experience_display: (f32, bool, u64),
     boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
@@ -11304,20 +11308,23 @@ impl Game<'_> {
         pr.lap("pr_hud");
         self.locator_camera =
             (!title).then_some((camera.to_array(), view_yaw, view_pitch, fov_degrees));
-        let mut requested_post_effects = self.requested_post_effects();
         // The packs' Polytone post chains, after vanilla's (#11486).
         let game_ticks = self.world.game_time as f64 + alpha;
         let delta_ticks = (game_ticks - self.polytone_post_ticks).clamp(0.0, 20.0) as f32;
         self.polytone_post_ticks = game_ticks;
         self.evaluate_pack_expressions(polytone_frame);
-        let polytone_extras = match (&self.pack.polytone_post, polytone_frame) {
+        let (polytone_effects, polytone_extras) = match (&self.pack.polytone_post, polytone_frame) {
             (Some(post), Some(frame)) => {
                 let (effects, extras) = post.frame(frame);
-                requested_post_effects.extend(effects);
-                Some(extras)
+                (effects, Some(extras))
             }
-            _ => None,
+            _ => (Vec::new(), None),
         };
+        let mut requested_post_effects = std::mem::take(&mut self.requested_post_effects_buf);
+        self.sync_requested_post_effects(
+            &mut requested_post_effects,
+            polytone_effects.iter().map(String::as_str),
+        );
         // Polytone's globals (wiki "Extra Shader Uniforms"), built only when something reads
         // them: here when an installed pack core shader does, and by the post effects when a
         // pass of theirs does (`Request::poly_globals`, called at most once a frame). The
@@ -11719,6 +11726,8 @@ impl Game<'_> {
             }
             None => Err("renderer".into()),
         };
+        drop(frame);
+        self.requested_post_effects_buf = requested_post_effects;
         prepared_draws.clear();
         *self.prepared_model_draws.borrow_mut() = prepared_draws;
         let _cleanup = spans::guard("pr_cleanup");
@@ -13899,9 +13908,11 @@ impl<'a> Game<'a> {
             native_camera_frame: None,
             posed_rotation: None,
             post_effects: Vec::new(),
+            requested_post_effects_buf: Vec::new(),
             polytone_post_ticks: 0.0,
             expression_frame: Default::default(),
             spectated_post_effect: None,
+            spectated_post_effect_active: false,
             experience_display: Default::default(),
             boats: Default::default(),
             leash_boats: Vec::new(),

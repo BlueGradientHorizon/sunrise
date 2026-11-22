@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex, atomic::Ordering};
 use sunrise_core::random::LegacyRandom;
 use sunrise_protocol::ids::play::clientbound as ids;
 use sunrise_protocol::{
-    entity_data::{Particle, ParticleData, Value, serializer},
+    entity_data::{Particle, ParticleData, Particles, Value, serializer},
     packets::play::{self, Clientbound as C, Serverbound as S},
     text::{literal, translatable},
 };
@@ -3300,7 +3300,11 @@ impl Hub {
             .collect();
         let mut meta = Vec::new();
         if !particles.is_empty() {
-            meta.push((10, serializer::PARTICLES, Value::Particles(particles)));
+            meta.push((
+                10,
+                serializer::PARTICLES,
+                Value::Particles(particles.into()),
+            ));
         }
         if ambient {
             meta.push((11, serializer::BOOLEAN, Value::Bool(true)));
@@ -3394,7 +3398,11 @@ impl Hub {
             forced_meta: [0; 4],
             // The effect swirls go back to none.
             defaults: vec![
-                (10, serializer::PARTICLES, Value::Particles(Vec::new())),
+                (
+                    10,
+                    serializer::PARTICLES,
+                    Value::Particles(Particles::new()),
+                ),
                 (11, serializer::BOOLEAN, Value::Bool(false)),
             ],
             equipment,
@@ -6896,7 +6904,13 @@ mod tests {
             (
                 10,
                 serializer::PARTICLES,
-                Value::Particles(vec![list[0].clone(), Particle { id: 0, data: None }]),
+                Value::Particles(
+                    vec![
+                        list.iter().next().unwrap().into_owned(),
+                        Particle { id: 0, data: None },
+                    ]
+                    .into(),
+                ),
             ),
             (11, serializer::BOOLEAN, Value::Bool(true)),
         ];
@@ -6920,7 +6934,7 @@ mod tests {
         let ordinary = vec![(
             10,
             serializer::PARTICLES,
-            Value::Particles(vec![Particle { id: 0, data: None }]),
+            Value::Particles(vec![Particle { id: 0, data: None }].into()),
         )];
         track(&mut hub, zombie(100, ordinary));
         let expected = [data(100, &[&particles(&[plain])])];

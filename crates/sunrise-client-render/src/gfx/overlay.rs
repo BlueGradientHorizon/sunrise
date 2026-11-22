@@ -218,6 +218,9 @@ impl Renderer {
                 &frame.post_effects,
                 timing.as_mut(),
             );
+        } else if let Some(post) = self.post_effects.as_mut() {
+            // GameRenderer.render -> preparePostEffects(Collections.emptyList()).
+            post.clear_active(frame.post_effects.root);
         }
         // The layered frame's light eases into the peak, before the camera overlays draw on it,
         // unless a 0.2 pack's own `[tonemap]` did.
