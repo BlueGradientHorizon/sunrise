@@ -111,17 +111,17 @@ pub(super) fn encode_record(record: &Record) -> std::io::Result<Option<Arc<Named
     }
 }
 
-pub(super) fn prepare_batch(batch: &[QueuedWrite]) -> std::io::Result<()> {
+pub(super) fn prepare_batch(batch: &[QueuedWrite]) -> Vec<(usize, String)> {
     // Coalescing may skip a disk write, never the callback of a captured record.
-    let mut refusal = None;
-    for job in batch {
+    let mut failures = Vec::new();
+    for (idx, job) in batch.iter().enumerate() {
         if let Some(record) = job.record.disk_job()
             && let Err(error) = record.encode()
         {
-            refusal.get_or_insert(error);
+            failures.push((idx, error.to_string()));
         }
     }
-    refusal.map_or(Ok(()), Err)
+    failures
 }
 
 fn replace_entries(tag: &mut NamedTag, entries: Compound) -> std::io::Result<()> {
@@ -301,13 +301,11 @@ impl SaveDir {
 }
 
 /// Remember the chunks of a failed write so the game can mark them dirty again.
-pub(super) fn note_failed(batch: &[QueuedWrite]) {
-    for job in batch {
-        if let Some(record) = job.record.disk_job()
-            && let Ok(mut failed) = record.runtime.failed_saves.lock()
-        {
-            failed.push(job.key);
-        }
+pub(super) fn note_failed_job(job: &QueuedWrite) {
+    if let Some(record) = job.record.disk_job()
+        && let Ok(mut failed) = record.runtime.failed_saves.lock()
+    {
+        failed.push(job.key);
     }
 }
 

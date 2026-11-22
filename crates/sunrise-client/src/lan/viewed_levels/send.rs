@@ -308,27 +308,56 @@ impl Hub {
         }
         let chunks: Vec<&Chunk> = taken.iter().map(|&(_, c)| c).collect();
         self.encoder.warm(&chunks);
-        let bodies = self.encoder.bodies_with(&chunks, world, &|x, z| {
+        let encoded = self.encoder.bodies_with(&chunks, world, &|x, z| {
             streaming.and_then(|s| s.proto_sections(x, z))
         });
-        let (payloads, taken) = batch_runs(view.level, &taken, &bodies);
-        if taken.is_empty() {
+        let mut ok_taken = Vec::with_capacity(taken.len());
+        let mut bodies = Vec::with_capacity(encoded.len());
+        let mut failed = Vec::new();
+        for ((idx, chunk), result) in taken.into_iter().zip(encoded) {
+            match result {
+                Ok(body) => {
+                    ok_taken.push((idx, chunk));
+                    bodies.push(body);
+                }
+                Err(error) => {
+                    log::warn!(
+                        "[lan] viewed chunk ({}, {}) could not be encoded: {error}",
+                        chunk.x,
+                        chunk.z
+                    );
+                    failed.push(idx);
+                }
+            }
+        }
+        let (payloads, sent) = batch_runs(view.level, &ok_taken, &bodies);
+        if sent.is_empty() && failed.is_empty() {
             return;
         }
         let dimension = self.config.dimension.clone();
-        let size = taken.len();
+        let size = sent.len();
         self.guests.update(i, |g| {
-            g.batch_quota -= size as f32;
-            g.send(&C::ChunkBatchStart(Empty));
-            g.sender.send_many(payloads);
-            g.send(&C::ChunkBatchFinished(play::ChunkBatchFinished {
-                size: size as i32,
-            }));
-            g.unacknowledged += 1;
+            if size > 0 {
+                g.batch_quota -= size as f32;
+                g.send(&C::ChunkBatchStart(Empty));
+                g.sender.send_many(payloads);
+                g.send(&C::ChunkBatchFinished(play::ChunkBatchFinished {
+                    size: size as i32,
+                }));
+                g.unacknowledged += 1;
+            }
             if let Some(view) = g.viewed.views.get_mut(&dimension) {
-                for idx in taken.into_iter().rev() {
+                let mut remove: Vec<(usize, bool)> = sent
+                    .into_iter()
+                    .map(|idx| (idx, true))
+                    .chain(failed.into_iter().map(|idx| (idx, false)))
+                    .collect();
+                remove.sort_unstable_by_key(|&(idx, _)| idx);
+                for (idx, was_sent) in remove.into_iter().rev() {
                     let key = view.queue.remove(idx);
-                    view.sent.insert(key);
+                    if was_sent {
+                        view.sent.insert(key);
+                    }
                 }
             }
         });

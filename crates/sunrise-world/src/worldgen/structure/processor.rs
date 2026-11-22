@@ -245,12 +245,16 @@ impl Modifier {
 }
 impl Modifier {
     /// RuleBlockEntityModifier.apply: the block entity the output gets.
-    fn apply(&self, nbt: Option<&Compound>, random: &mut impl ProcessorRandom) -> Option<Compound> {
+    fn apply(
+        &self,
+        nbt: Option<Box<Compound>>,
+        random: &mut impl ProcessorRandom,
+    ) -> Option<Box<Compound>> {
         match self {
-            Self::Passthrough => nbt.cloned(),
-            Self::Clear => Some(Compound::new()),
+            Self::Passthrough => nbt,
+            Self::Clear => Some(Box::new(Compound::new())),
             Self::AppendLoot(table) => {
-                let mut nbt = nbt.cloned().unwrap_or_default();
+                let mut nbt = nbt.unwrap_or_default();
                 nbt.insert("LootTable".into(), Tag::String(table.as_str().into()));
                 nbt.insert("LootTableSeed".into(), Tag::Long(random.long()));
                 Some(nbt)
@@ -262,8 +266,8 @@ impl Modifier {
 }
 /// A block entity with `remove`'s keys taken out and `data` merged in
 /// (append_static is the one with nothing to remove).
-fn edited(nbt: Option<&Compound>, remove: &[String], data: &Compound) -> Compound {
-    let mut nbt = nbt.cloned().unwrap_or_default();
+fn edited(nbt: Option<Box<Compound>>, remove: &[String], data: &Compound) -> Box<Compound> {
+    let mut nbt = nbt.unwrap_or_default();
     for key in remove {
         nbt.remove(&JavaString::from(key.as_str()));
     }
@@ -1154,10 +1158,7 @@ fn process_block<W: PlacementContext>(
                 return Ok(Some(BlockInfo {
                     pos: info.pos,
                     state: rule.output,
-                    nbt: rule
-                        .modifier
-                        .apply(info.nbt.as_deref(), &mut random)
-                        .map(Box::new),
+                    nbt: rule.modifier.apply(info.nbt, &mut random),
                 }));
             }
             Some(info)
@@ -1223,10 +1224,7 @@ fn process_block<W: PlacementContext>(
                     .unwrap_or(state),
                 false => state,
             };
-            let nbt = set
-                .modifier
-                .apply(info.nbt.as_deref(), &mut random)
-                .map(Box::new);
+            let nbt = set.modifier.apply(info.nbt, &mut random);
             Some(BlockInfo { state, nbt, ..info })
         }
         Processor::Condition(c) => {

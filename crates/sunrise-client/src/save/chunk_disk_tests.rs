@@ -476,6 +476,57 @@ fn failed_load_keeps_stored_8_and_runs_no_save_listener_for_every_save_path() {
     }
 }
 
+#[test]
+fn save_batch_isolates_unencodable_chunk_from_valid_sibling() {
+    let path = root();
+    let reports = Arc::new(crate::chunk_io::Reports::default());
+    let mut save = SaveDir::new(
+        path.clone(),
+        LevelShape::OVERWORLD,
+        Some(Default::default()),
+    );
+    save.chunk_reports = reports.clone();
+    let bad = NamedTag {
+        name: "".into(),
+        tag: Tag::compound([
+            ("DataVersion", Tag::Int(DATA_VERSION)),
+            ("xPos", Tag::Int(0)),
+            ("zPos", Tag::Int(0)),
+            ("bad", Tag::End),
+        ]),
+    };
+    let good = NamedTag {
+        name: "".into(),
+        tag: Tag::compound([
+            ("DataVersion", Tag::Int(DATA_VERSION)),
+            ("xPos", Tag::Int(1)),
+            ("zPos", Tag::Int(0)),
+            ("marker", Tag::Int(42)),
+        ]),
+    };
+    assert!(
+        save.write_records(
+            "region",
+            vec![((0, 0), Some(bad)), ((1, 0), Some(good))],
+            true
+        )
+        .is_err()
+    );
+    // Only the failed chunk is reported; the valid sibling committed to disk.
+    assert_eq!(reports.take().save_failure, Some((0, 0)));
+    let reopened = SaveDir::new(
+        path.clone(),
+        LevelShape::OVERWORLD,
+        Some(Default::default()),
+    );
+    assert!(reopened.read_record("region", 0, 0).is_none());
+    let loaded = reopened
+        .read_record("region", 1, 0)
+        .expect("valid sibling chunk committed to disk");
+    assert_eq!(loaded.tag.get("marker"), Some(&Tag::Int(42)));
+    fs::remove_dir_all(path).unwrap();
+}
+
 // Its own module: `sunrise_mod` defines one `hooks` function per module.
 mod breaker {
     use super::*;

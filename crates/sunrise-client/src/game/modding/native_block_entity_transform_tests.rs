@@ -628,7 +628,27 @@ fn structure_transform_leaves_nbt_limits_to_serialization() {
             nested = nested.get("child").unwrap();
         }
         assert_eq!(nested, &Tag::Byte(1));
-        // Placement accepts the live data. The depth rules belong to the actual writer.
+        // Placement accepts the live data. The depth rules belong to the actual packet
+        // and disk writers.
+        assert!(
+            <sunrise_protocol::buf::OptionalCompoundTag as sunrise_protocol::buf::Codec<_>>::validate(
+                &tag
+            )
+            .is_err(),
+            "chunk block-entity codec refuses over-depth NBT"
+        );
+        assert!(
+            sunrise_protocol::packets::play::Clientbound::BlockEntityData(
+                sunrise_protocol::packets::play::BlockEntityData {
+                    pos: [3, 64, 5],
+                    kind: 0,
+                    tag: tag.clone(),
+                },
+            )
+            .try_encode()
+            .is_err(),
+            "block-entity update packet refuses over-depth NBT"
+        );
         assert!(write_network(&tag, Limits::network()).is_err());
         assert!(
             ChunkRecord::from_nbt(

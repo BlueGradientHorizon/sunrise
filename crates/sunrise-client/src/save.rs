@@ -2074,65 +2074,141 @@ fn cached_region(
     cache.regions.insert(key, (region.clone(), now));
     Ok(region)
 }
+#[derive(Debug)]
+struct RegionWriteFailure {
+    key: (i32, i32),
+    error: String,
+}
+
 /// Write `records` into the region files of `folder` in place, as vanilla's
 /// `RegionFile.write` does: each chunk takes free sectors and the header
 /// then points to it; the region's other chunks are not touched. `None`
 /// clears a chunk. The chunks are encoded and compressed before their region
 /// is locked for the writes (`compress_records`), and each region is flushed
-/// to the disk once.
+/// to the disk once. One chunk's encoding or write failure is isolated to that
+/// chunk so sibling chunks in the batch still reach disk.
 fn write_region_records(
     root: &Path,
     cache: &RegionCache,
     folder: &str,
     records: &[((i32, i32), &Record)],
-) -> Result<()> {
+) -> std::result::Result<(), Vec<RegionWriteFailure>> {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as u32);
     let compressed = compress_records(records, timestamp);
     type RegionWrite<'a> = (ChunkPos, &'a Record, Option<CompressedWrite>);
     let mut by_region: BTreeMap<(i32, i32), Vec<RegionWrite<'_>>> = BTreeMap::new();
+    let mut failures = Vec::new();
     for (&((x, z), source), record) in records.iter().zip(compressed) {
-        let record = record?;
-        by_region
-            .entry((x >> 5, z >> 5))
-            .or_default()
-            .push((ChunkPos::new(x, z), source, record));
+        match record {
+            Ok(record) => by_region.entry((x >> 5, z >> 5)).or_default().push((
+                ChunkPos::new(x, z),
+                source,
+                record,
+            )),
+            Err(error) => failures.push(RegionWriteFailure {
+                key: (x, z),
+                error: error.to_string(),
+            }),
+        }
     }
     for ((rx, rz), list) in by_region {
         let path = region_path(root, folder, rx, rz);
         // Clearing chunks of a region that doesn't exist changes nothing.
         let create = list.iter().any(|(_, _, r)| r.is_some());
-        let Some(region) = cached_region(cache, (rx, rz), &path, create)? else {
-            continue;
+        let region = match cached_region(cache, (rx, rz), &path, create) {
+            Ok(Some(region)) => region,
+            Ok(None) => continue,
+            Err(error) => {
+                let msg = error.to_string();
+                for (pos, _, _) in list {
+                    failures.push(RegionWriteFailure {
+                        key: (pos.x, pos.z),
+                        error: msg.clone(),
+                    });
+                }
+                continue;
+            }
         };
         // Keep far readers on the exact locked read path while writes and their
         // flush are in progress, so they cannot use a stale kept header.
         let _writing = far_regions::writing(cache, (rx, rz));
-        let mut region = region.lock().map_err(|_| "region file poisoned")?;
-        let mut changed = false;
-        for (pos, source, record) in list {
-            match record {
-                Some(record) => {
-                    write_chunk_record(&mut region, pos, source, record)?;
-                    changed = true;
+        let mut region = match region.lock() {
+            Ok(region) => region,
+            Err(_) => {
+                for (pos, _, _) in list {
+                    failures.push(RegionWriteFailure {
+                        key: (pos.x, pos.z),
+                        error: "region file poisoned".into(),
+                    });
                 }
-                None => changed |= region.clear(pos, timestamp)?,
+                continue;
+            }
+        };
+        let mut changed = false;
+        let mut written_keys = Vec::new();
+        let mut accepted = Vec::new();
+        for (pos, source, record) in list {
+            let outcome = match record {
+                Some(record) => {
+                    write_chunk_record(&mut region, pos, source, record).map(|accept| {
+                        if accept {
+                            accepted.push(source);
+                        }
+                        true
+                    })
+                }
+                None => region.clear(pos, timestamp),
+            };
+            match outcome {
+                Ok(did_change) => {
+                    changed |= did_change;
+                    if did_change {
+                        written_keys.push((pos.x, pos.z));
+                    }
+                }
+                Err(error) => failures.push(RegionWriteFailure {
+                    key: (pos.x, pos.z),
+                    error: error.to_string(),
+                }),
             }
         }
-        if changed {
+        let sync_result = if changed {
             match region.sync_handle() {
                 Ok(handle) => {
                     drop(region);
-                    handle.sync_data()?;
+                    handle.sync_data()
                 }
                 // Out of descriptors: flush under the lock as before rather than
                 // skip durability for this region and every region after it.
-                Err(_) => region.sync()?,
+                Err(_) => region.sync(),
+            }
+        } else {
+            Ok(())
+        };
+        match sync_result {
+            Ok(()) => {
+                for source in accepted {
+                    source.accept_block_entity_edits();
+                }
+            }
+            Err(error) => {
+                let msg = error.to_string();
+                for key in written_keys {
+                    failures.push(RegionWriteFailure {
+                        key,
+                        error: msg.clone(),
+                    });
+                }
             }
         }
     }
-    Ok(())
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
 }
 
 fn write_chunk_record(
@@ -2140,14 +2216,9 @@ fn write_chunk_record(
     pos: ChunkPos,
     source: &Record,
     CompressedWrite { record, primary }: CompressedWrite,
-) -> std::io::Result<()> {
+) -> std::io::Result<bool> {
     let error = match region.write(pos, &record) {
-        Ok(()) => {
-            if primary {
-                source.accept_block_entity_edits();
-            }
-            return Ok(());
-        }
+        Ok(()) => return Ok(primary),
         Err(error) => error,
     };
     if !primary
@@ -2168,7 +2239,8 @@ fn write_chunk_record(
         pos.z
     );
     let stored = ChunkRecord::from_nbt(&stored, compression, timestamp, Limits::saved())?;
-    region.write(pos, &stored)
+    region.write(pos, &stored)?;
+    Ok(false)
 }
 
 /// `job(i)` for every `i` below `count`, in order, shared between this thread

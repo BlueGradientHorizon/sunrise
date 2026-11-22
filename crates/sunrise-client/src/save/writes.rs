@@ -193,36 +193,56 @@ impl SaveDir {
                                 p.get(&(kind, k.0, k.1)).is_none_or(|p| p.0 <= seq)
                             })
                         };
+                        let mut failed_indices: HashMap<usize, String> =
+                            chunk_disk::prepare_batch(&batch).into_iter().collect();
                         let resolved: Vec<_> = batch
                             .iter()
-                            .filter(|job| newest(&job.key, job.seq))
-                            .filter_map(|job| {
-                                Some((job.key, resolve_poi(&root, cache, job.key, &job.record)?))
+                            .enumerate()
+                            .filter(|(idx, job)| {
+                                !failed_indices.contains_key(idx) && newest(&job.key, job.seq)
+                            })
+                            .filter_map(|(idx, job)| {
+                                Some((
+                                    idx,
+                                    job.key,
+                                    resolve_poi(&root, cache, job.key, &job.record)?,
+                                ))
                             })
                             .collect();
-                        let records: Vec<_> = resolved.iter().map(|(k, r)| (*k, r)).collect();
-                        let result = (|| -> Result<()> {
-                            chunk_disk::prepare_batch(&batch)?;
-                            write_region_records(&root, cache, folder, &records)
-                        })();
-                        if let Err(e) = &result {
-                            chunk_disk::note_failed(&batch);
-                            let message = format!("failed to write {folder} files: {e}");
-                            log::warn!("Sunrise: {message}");
-                            *outstanding.error.lock().unwrap() = Some(message);
-                            for job in &batch {
-                                reports.report_save_failure(&root, job.key.0, job.key.1, e);
+                        let records: Vec<_> = resolved.iter().map(|(_, k, r)| (*k, r)).collect();
+                        if let Err(failures) = write_region_records(&root, cache, folder, &records)
+                        {
+                            for failure in failures {
+                                for &(idx, key, _) in &resolved {
+                                    if key == failure.key {
+                                        failed_indices
+                                            .entry(idx)
+                                            .or_insert_with(|| failure.error.clone());
+                                    }
+                                }
                             }
                         }
-                        if result.is_ok()
-                            && let Ok(mut pending) = pending.lock()
-                        {
-                            for job in &batch {
+                        let mut first_error: Option<String> = None;
+                        let mut pending_guard = pending.lock().ok();
+                        for (idx, job) in batch.iter().enumerate() {
+                            if let Some(error) = failed_indices.remove(&idx) {
+                                chunk_disk::note_failed_job(job);
+                                if first_error.is_none() {
+                                    first_error = Some(error.clone());
+                                }
+                                reports.report_save_failure(&root, job.key.0, job.key.1, &error);
+                            } else if let Some(pending) = pending_guard.as_mut() {
                                 let key = (kind, job.key.0, job.key.1);
                                 if pending.get(&key).is_some_and(|p| p.0 == job.seq) {
                                     pending.remove(&key);
                                 }
                             }
+                        }
+                        drop(pending_guard);
+                        if let Some(e) = first_error {
+                            let message = format!("failed to write {folder} files: {e}");
+                            log::warn!("Sunrise: {message}");
+                            *outstanding.error.lock().unwrap() = Some(message);
                         }
                         let chunk_count = batch.len();
                         drop(batch);
