@@ -11,6 +11,7 @@ pub trait Hooks {
         out = "cancel",
         scope = "block",
         key = "state",
+        target = "sunrise_client::game::native_hooks::block_particle_effects::Game<'_>::native_add_destroy_effects",
         neoforge = "IClientBlockExtensions.addDestroyEffects"
     )]
     fn add_destroy_effects(
