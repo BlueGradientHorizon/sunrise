@@ -15,7 +15,7 @@ impl Game<'_> {
     /// `new InventoryScreen(player)`: the player's inventory, or in creative
     /// mode the creative inventory `InventoryScreen.init` swaps in.
     pub(super) fn open_player_inventory(&mut self) {
-        if self.creative {
+        if self.instabuild() {
             self.set_screen(Screen::Creative);
             self.refresh_creative_tabs();
             self.creative_screen.reopen();
@@ -219,7 +219,7 @@ impl Game<'_> {
             self.open_quick_actions();
         }
         while self.consume_mapping_click("key.swapOffhand") {
-            if !self.spectator() {
+            if !self.own_player_is_spectator() {
                 if self.remote.is_some() {
                     self.remote_swap_hands();
                 } else {
@@ -228,7 +228,7 @@ impl Game<'_> {
             }
         }
         while self.consume_mapping_click("key.drop") {
-            if !self.spectator() {
+            if !self.own_player_is_spectator() {
                 if self.remote.is_some() {
                     let all = self.has_control_down() || self.input_takes_stack_drop();
                     self.remote_drop(all);

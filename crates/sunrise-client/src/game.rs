@@ -7499,19 +7499,13 @@ impl Game<'_> {
             // The installed vanilla bodies share the column heights and a scratch draw list.
             let mut status_heights = hud_layout::StatusBarHeights::default();
             let mut status_rows = Vec::new();
-            let mount = if !show_hud || spectator {
+            let mount = if !show_hud {
                 None
             } else {
-                self.mount_index().map(|i| {
-                    let mob = &self.mobs[i];
-                    (
-                        hud_layout::vehicle_max_hearts(mob.attrs.max_health),
-                        mob.health,
-                    )
-                })
+                self.camera_player_vehicle_health()
             };
             // NeoForge applies hudVisible and survivalVisible to the vanilla bodies only.
-            let show_survival_status = show_hud && !self.creative && !spectator;
+            let show_survival_status = show_hud && self.can_hurt_player();
             self.gui_layer(
                 VanillaGuiLayer::PlayerHealth,
                 &mut batch,
@@ -7629,7 +7623,6 @@ impl Game<'_> {
                     g.audio.capture = capture;
                 }
             });
-
             use sunrise_client::locator_bar::ContextualBar;
             // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
             self.gui_layer(
@@ -7639,14 +7632,8 @@ impl Game<'_> {
                     if !show_hud {
                         return;
                     }
-                    let has_experience = !g.creative && !spectator;
-                    let contextual = ContextualBar::next(
-                        g.waypoints.has_waypoints(),
-                        !spectator && g.jumpable_mount(),
-                        g.mount_jumping(),
-                        has_experience,
-                        g.experience_recent(),
-                    );
+                    let has_experience = g.can_hurt_player();
+                    let contextual = g.contextual_bar();
                     if contextual == ContextualBar::JumpableVehicle {
                         g.draw_jump_bar(batch, wi, hi);
                     }
@@ -7689,7 +7676,7 @@ impl Game<'_> {
                 &mut batch,
                 &mut |g, batch| {
                     if show_hud && !spectator {
-                        g.draw_selected_name(batch, !g.creative);
+                        g.draw_selected_name(batch, g.can_hurt_player());
                     }
                 },
             );
