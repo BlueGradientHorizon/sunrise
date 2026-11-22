@@ -175,6 +175,12 @@ pub enum HostEvent {
     Joined(u32),
     /// A guest left (state to save, entities to drop).
     Left(Box<Guest>),
+    /// Slot synchronization found a container whose backing storage is gone.
+    CloseInvalidContainer {
+        conn: u32,
+        window: i32,
+        generation: u64,
+    },
     Packet(u32, Box<S>),
     /// A guest sent new client information: the values before and after, for the mods.
     ClientInformation(
@@ -2540,7 +2546,6 @@ impl Hub {
     }
 
     fn tick_level_inner(&mut self, ctx: &mut TickCtx, publish_players: bool) -> Vec<HostEvent> {
-        let events = Vec::new();
         if !self.guests.simulation_iter().any(|g| self.watches(g)) {
             // ServerTickRateManager broadcasts a change to the players there
             // are; one who joins later is sent the state as it is then
@@ -2554,7 +2559,7 @@ impl Hub {
                 self.stepping = ctx.tick_steps.revision;
             }
             if self.viewed_pass(ctx) {
-                return events;
+                return Vec::new();
             }
             if !self
                 .guests
@@ -2565,7 +2570,7 @@ impl Hub {
                 let _ = ctx.world.light_log.take();
                 ctx.world.bulk_log.clear();
             }
-            return events;
+            return Vec::new();
         }
         if ctx.world.block_log.is_none() {
             ctx.world.block_log = Some(Vec::new());
@@ -2589,7 +2594,7 @@ impl Hub {
                 g.send(&C::BlockChangedAck(play::BlockChangedAck { sequence }));
             }
         }
-        crate::spans::time("lan_containers", || self.sync_containers(ctx.world));
+        let events = crate::spans::time("lan_containers", || self.sync_containers(ctx.world));
         self.sync_hidden();
         crate::spans::time("lan_track_entities", || self.track_entities(ctx));
         if publish_players {

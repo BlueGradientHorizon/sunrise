@@ -588,13 +588,23 @@ impl Guest {
         self.ip_address = address.ip().to_string();
     }
 
+    /// Reserve the protocol id without changing the current menu or its cursor.
+    pub fn reserve_menu_window(&mut self) -> i32 {
+        self.next_window = self.next_window % 100 + 1;
+        self.next_window
+    }
+
     /// Allocate the next protocol window and a non-reusable menu identity.
     pub fn next_menu_window(&mut self) -> i32 {
-        self.next_window = self.next_window % 100 + 1;
+        let window = self.reserve_menu_window();
+        self.activate_menu_window(window);
+        window
+    }
+
+    pub(super) fn activate_menu_window(&mut self, window: i32) {
         self.menu_generation = menu_generation();
         self.inactive_inventory_carried = self.carried.take();
-        self.open_carried_sent = Some((self.next_window, None));
-        self.next_window
+        self.open_carried_sent = Some((window, None));
     }
 
     /// Retire an open menu, returning its carried stack for `AbstractContainerMenu.removed`.

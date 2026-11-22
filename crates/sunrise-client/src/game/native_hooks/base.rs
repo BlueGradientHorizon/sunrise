@@ -3596,9 +3596,9 @@ impl Game<'_> {
     /// `ServerPlayer.doCloseContainer` after the menu's `removed` and before
     /// `containerMenu` resets to the player's inventory menu): they
     /// closed it, walked out of reach, died, changed level, or another menu
-    /// opened. A player who leaves closes it before `native_player_logged_out`
-    /// (vanilla posts nothing for a disconnect; Sunrise does, so each open has
-    /// its close). Once for each open; not told when the server stops. `menu`
+    /// opened. On disconnect, `PlayerList.remove` posts `native_player_logged_out`
+    /// before `Player.remove` closes the menu. Once for each open; not told
+    /// when the server stops. `menu`
     /// is the closing menu handle, live during this call and stale after. The
     /// menu's `removed` cleanup has already run. State swapped in, when the
     /// player has a body. Server-side.

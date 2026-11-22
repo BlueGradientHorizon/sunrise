@@ -339,6 +339,9 @@ change in place: `host.menu(uuid, window)` is its `MenuRef` while the player sti
 another window, a closed menu or a player who left), and a write to `ItemPlace::MenuSlot { menu, slot }` in a
 transaction is sent with the next tick's container sync, one `ContainerSetSlot` per changed slot, as vanilla's
 `broadcastChanges` sends a menu a mod changed. Nothing reopens and the cursor stays where it is.
+Opening in an ordinary transaction or in the old menu's cleanup reserves the id without opening the screen.
+Use it after the root commit or in `player_container_open`, respectively. A close request in a transaction
+runs all of the close at commit; an abort leaves the old menu and its slots intact.
 
 ```rust,ignore
 // In menu_clicked: show the next page's item in slot 4 of the same menu.

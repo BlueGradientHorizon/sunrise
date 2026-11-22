@@ -59,8 +59,8 @@ impl Game<'_> {
 
     /// `ServerPlayer.closeContainer` of a guest's menu: queue the client's close before
     /// running normal server teardown. Refuses clients, stale menus, a guest with a pending
-    /// disconnect or an active turn, and the inventory menu (window 0). While a click action
-    /// is active, true accepts a close at commit.
+    /// disconnect or an active turn, and the inventory menu (window 0). In a transaction,
+    /// true accepts a close at commit.
     pub(super) fn menu_close_container(&mut self, menu: MenuRef) -> bool {
         let window = menu.fields().window;
         if !self.is_logical_server() || window == 0 {
@@ -75,7 +75,7 @@ impl Game<'_> {
         {
             return false;
         }
-        self.request_menu_close(guest.conn, window, guest.menu_generation);
+        self.reply_menu_click(guest.conn, super::lan_menus::ClickReply::Close(window));
         true
     }
 
@@ -239,7 +239,9 @@ impl Game<'_> {
             let play = host.play.get(&guest.conn);
             let menus = host.menus.get(&guest.conn);
             if menu.fields().window != 0
-                || menus.is_some_and(|m| m.crafting.table.is_some() || m.station.is_some())
+                || menus.is_some_and(|m| {
+                    m.closing.is_some() || m.crafting.table.is_some() || m.station.is_some()
+                })
                 || play.is_some_and(|p| {
                     p.merchant.is_some() || p.lectern.is_some() || p.mount_window.is_some()
                 })

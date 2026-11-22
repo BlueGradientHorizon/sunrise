@@ -16,6 +16,8 @@ pub trait MenusServerHost {
     /// centring the mouse again. Packets for the old window are ignored. The
     /// items of an open menu change through its slots (`menu`), not by
     /// opening it again. An active speculative menu click refuses the open with `Ok(None)`.
+    /// In an ordinary transaction or a closing-menu callback, the returned id is reserved:
+    /// the new window is usable after commit and after the old menu's Close, respectively.
     #[access(WorldOnly)]
     fn open_menu(
         &mut self,
@@ -37,8 +39,8 @@ pub trait MenusServerHost {
     fn menu(&self, uuid: u128, window: i32) -> Option<MenuRef>;
     /// Side: server.
     /// Closes the player's native menu (`MenuPart::menu_removed` and `player_container_close`
-    /// follow). During an active menu click,
-    /// the close waits for the transaction to commit; an abort leaves the window open.
+    /// follow). Inside a transaction the complete close waits for the root commit;
+    /// an abort leaves the window open.
     #[access(WorldOnly)]
     fn close_menu(&mut self, uuid: u128);
     /// Side: server.
@@ -205,8 +207,8 @@ pub trait MenusBackendMut {
     /// `ContainerClose`, then removes the menu, returns the carried stack to the inventory,
     /// and fires `player_container_close`. Refuses stale menus, clients, a player whose state
     /// is swapped in for a turn, a pending disconnect, and the player's own inventory menu.
-    /// During a click action, true accepts a request to close that same window at commit; an
-    /// aborted action leaves it open. A client closes its own screen with `close`.
+    /// In a transaction, true accepts a request to close that same window at root commit;
+    /// an abort leaves it open. A client closes its own screen with `close`.
     #[access(WorldOnly)]
     fn menu_close_container(&mut self, menu: MenuRef) -> bool;
     /// Side: server.

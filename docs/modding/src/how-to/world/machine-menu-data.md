@@ -333,7 +333,10 @@ The menu the player had open closes on the server first, as a close does: its `r
 `opening_hand`), the cursor stack and crafting grids back to the inventory, and then one
 `player_container_close` before `containerMenu` resets to the inventory menu. Then
 the new menu is built, its screen opened and its contents sent, and `player_container_open`
-tells of it synchronously. `player_container_open` v2 and `player_container_close` v2 both name
+tells of it. Inside a transaction or a closing-menu callback, an open waits until the root commit or
+until Close returns. Use `player_container_open` to configure a menu opened from its predecessor's
+cleanup. On disconnect, `player_logged_out` runs before the old menu's owner and Close listeners.
+`player_container_open` v2 and `player_container_close` v2 both name
 the type string `menu_type` and supply `menu: Option<MenuRef>` (`player_container_close` v2 also
 passes `player: PlayerRef`), valid during the callback as `PlayerRef::container_menu` is, and
 stale once `player_container_close` returns. It is `None` for crafting tables, merchants,

@@ -28,9 +28,18 @@ pub(in crate::game) struct GuestMenus {
     pub(in crate::game) hub: MenuOwner<()>,
     /// The successful open already announced to mods, retained through a loan of `GuestPlay`.
     pub(in crate::game) menu_heard: Option<super::native_menus::HeardMenu>,
+    /// Installed from the start of `removed` until the general Close returns.
+    pub(super) closing: Option<ClosingMenu>,
     /// The storage a mod backed its open menu's slots with (`player_back_mod_menu_slots`);
     /// None for every menu no mod backed.
     pub(in crate::game) slot_places: Option<super::native_menu_places::MenuSlotPlaces>,
+}
+
+pub(super) type MenuOpen = Box<dyn FnOnce(&mut super::Game<'_>) + Send>;
+
+#[derive(Default)]
+pub(super) struct ClosingMenu {
+    pub(super) opens: Vec<MenuOpen>,
 }
 
 /// An authoritative click reply, published only once the click's transaction has committed.
@@ -44,6 +53,7 @@ pub(super) enum ClickReply {
     Predicted(sunrise_protocol::packets::play::ContainerClick, Vec<usize>),
     Resend(i32),
     Close(i32),
+    ClientClose(i32),
     Inventory,
     Offhand,
 }
@@ -77,18 +87,26 @@ impl super::Game<'_> {
         }
     }
 
-    /// Close the admitted window through the same generation-checked path whether it
-    /// can close immediately or a click transaction must publish it at commit.
-    pub(super) fn request_menu_close(&mut self, conn: u32, window: i32, generation: u64) {
-        let reply = MenuClickReply {
-            conn,
-            generation,
-            reply: ClickReply::Close(window),
-        };
-        if self.menu_click_in_progress(conn) {
-            self.after_commit(super::transactions::After::MenuClick(Box::new(reply)));
+    /// Whether an open must wait for the transaction or the current menu's close.
+    pub(super) fn menu_open_waits(&self, conn: u32) -> bool {
+        !self.transactions.is_empty()
+            || self
+                .lan
+                .as_ref()
+                .and_then(|host| host.menus.get(&conn))
+                .is_some_and(|menus| menus.closing.is_some())
+    }
+
+    pub(super) fn publish_menu_open(&mut self, conn: u32, open: MenuOpen) {
+        if let Some(closing) = self
+            .lan
+            .as_mut()
+            .and_then(|host| host.menus.get_mut(&conn))
+            .and_then(|menus| menus.closing.as_mut())
+        {
+            closing.opens.push(open);
         } else {
-            self.publish_menu_click(reply);
+            open(self);
         }
     }
 
@@ -99,6 +117,15 @@ impl super::Game<'_> {
             generation,
             reply,
         } = reply;
+        if let ClickReply::Close(window) | ClickReply::ClientClose(window) = reply {
+            self.close_guest_window(
+                conn,
+                window,
+                generation,
+                matches!(reply, ClickReply::Close(_)),
+            );
+            return;
+        }
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -130,16 +157,7 @@ impl super::Game<'_> {
                     g.menu_sent[45] = offhand;
                 });
             }
-            ClickReply::Close(window) => {
-                if host.hub.guests[i]
-                    .menu
-                    .as_ref()
-                    .is_some_and(|m| m.window == window)
-                {
-                    self.forget_menu_places(conn);
-                    self.guest_close_menus_and_tell(conn);
-                }
-            }
+            ClickReply::Close(_) | ClickReply::ClientClose(_) => unreachable!(),
         }
     }
 }

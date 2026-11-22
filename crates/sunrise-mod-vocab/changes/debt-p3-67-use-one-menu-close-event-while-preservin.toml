@@ -2,7 +2,17 @@ ids = [
     "hook:menu_closed",
     "method:Hooks::menu_closed",
     "type:MenuClosedEvent",
+    "hook:menu_closed.uuid",
+    "hook:menu_closed.window",
+    "hook:menu_closed.opening_hand",
+    "hook:menu_closed.owned_slots",
+    "type:MenuClosedEvent.uuid",
+    "type:MenuClosedEvent.window",
+    "type:MenuClosedEvent.opening_hand",
+    "type:MenuClosedEvent.owned_slots",
     "hook:player_container_close",
+    "method:Hooks::player_container_close",
+    "type:PlayerContainerCloseEvent",
     "hook:player_container_close.player",
     "hook:player_container_close.name",
     "hook:player_container_close.dimension",
@@ -14,6 +24,14 @@ ids = [
     "hook:menu_removed",
     "method:MenuPart::menu_removed",
     "type:MenuRemovedEvent",
+    "hook:player_logged_out",
+    "method:Hooks::player_logged_out",
+    "method:MenusServerHost::open_menu",
+    "method:MenusServerHost::close_menu",
+    "handle:MenuRef::close_container",
+    "handle:PlayerRef::open_menu",
+    "handle:PlayerRef::open_mod_menu",
+    "handle:PlayerRef::open_ender_chest",
 ]
-why = "Removes the duplicate menu_closed hook that advertised NeoForge's PlayerContainerEvent.Close alongside player_container_close. Following NeoForge's ServerPlayer.doCloseContainer patch and vanilla's AbstractContainerMenu.removed, player_container_close v2 is now the single general PlayerContainerEvent.Close event, firing after removed and before containerMenu resets to inventoryMenu with real player: PlayerRef and menu: Option<MenuRef> views instead of raw uuid/name/dimension strings. Menu-owned teardown (detached owned_slots and captured opening_hand) moves onto MenuPart::menu_removed (vanilla AbstractContainerMenu.removed), routed to the owning menu part and preserving teardown with player: Option<PlayerRef> and uuid even when the player is already gone."
-migrate = "Move owned_slots and opening_hand teardown from Hooks::menu_closed to MenuPart::menu_removed on the menu type's owning MenuPart, handling event.player == None if the player is already gone. Update Hooks::player_container_close listeners to read event.player (PlayerRef, using player.uuid(), player.name(host), or player.dimension(host)) and event.menu (Option<MenuRef>, live until the hook returns)."
+why = "Removes the duplicate menu_closed hook. Following vanilla's AbstractContainerMenu.removed and NeoForge's ServerPlayer.doCloseContainer patch, player_container_close is the single general PlayerContainerEvent.Close event: it fires after removed and state transfer but before the current container resets to the inventory menu. At disconnect it follows PlayerLoggedOutEvent (NeoForge's PlayerList.remove patch), as vanilla Player.remove closes the container. The owning MenuPart now runs detached slot and opening hand cleanup, even if the player is unavailable."
+migrate = "For observation only, replace Hooks::menu_closed with Hooks::player_container_close. Read the former uuid as event.player.uuid() and the former window as event.menu.and_then(|menu| menu.container_id(host)). Menus without a supported MenuRef have no equivalent of the old window id. Existing Hooks::player_container_close listeners read event.player.uuid(), event.player.name(host) or event.player.dimension(host) in place of the old identity fields and read event.menu_type for the registry name. For ownership cleanup, implement MenuPart::menu_removed on the menu's owning part, using event.uuid, event.window, event.opening_hand, event.owned_slots and event.player (None if the player is gone). Inside an ordinary transaction use the returned window after root commit; when replacing a menu from its close callback, configure the replacement in player_container_open. A close requested inside a transaction is not observable until commit. Player logout listeners can still read the real player and its current menu; observe teardown in Hooks::player_container_close, after logout."

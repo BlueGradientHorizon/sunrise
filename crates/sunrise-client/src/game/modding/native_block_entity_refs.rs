@@ -103,6 +103,7 @@ impl Game<'_> {
                 .find(|guest| {
                     guest.uuid == player.fields().uuid
                         && guest.placed
+                        && !guest.disconnect_pending
                         && guest.dimension == entity.fields().level.dimension_id()
                 })
                 .map(|guest| guest.conn)
@@ -113,6 +114,22 @@ impl Game<'_> {
             return Ok(false);
         }
         let [x, y, z] = entity.fields().position;
+        if self.menu_open_waits(conn) {
+            self.after_commit(super::transactions::After::MenuOpen(
+                conn,
+                Box::new(move |game| {
+                    if game.native_block_entity_target(entity).is_none()
+                        || game.open_block_menu(conn, (x, y, z))
+                            != super::lan_actions::MenuOpen::Opened
+                    {
+                        log::error!(
+                            "Could not open the block menu at {x}, {y}, {z} for connection {conn}"
+                        );
+                    }
+                }),
+            ));
+            return Ok(true);
+        }
         match self.open_block_menu(conn, (x, y, z)) {
             super::lan_actions::MenuOpen::Stale => Err(BlockEntityError::Stale),
             opened => Ok(opened == super::lan_actions::MenuOpen::Opened),

@@ -1118,7 +1118,7 @@ impl Game<'_> {
     /// None closes it whichever it is): the carried stack and the inputs go
     /// back to the inventory, what doesn't fit is dropped. False when no such
     /// window is open.
-    pub(super) fn lan_station_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
+    pub(super) fn lan_station_removed(&mut self, conn: u32, window: Option<i32>) -> bool {
         // A lectern's menu keeps nothing of its own (the book is the block entity's).
         let Some(host) = self.lan.as_mut() else {
             return false;
@@ -1135,7 +1135,6 @@ impl Game<'_> {
                 self.lan_place_back(gi, vec![carried]);
             }
             if window.is_some() {
-                self.player_menu_closing(conn);
                 return true;
             }
         }
@@ -1161,9 +1160,6 @@ impl Game<'_> {
             self.drop_guest_items(gi, inputs);
         } else {
             self.lan_place_back(gi, carried.into_iter().chain(inputs).collect());
-        }
-        if window.is_some() {
-            self.player_menu_closing(conn);
         }
         true
     }
@@ -1316,13 +1312,7 @@ impl Game<'_> {
             let (window, beacon, pos) = (gs.window, gs.kind == StationKind::Beacon, gs.pos);
             let invalid = !self.lan_station_valid(g, gs);
             if invalid {
-                self.lan_station_closed(conn, Some(window));
-                if let Some(host) = self.lan.as_mut() {
-                    host.hub.send_to(
-                        conn,
-                        &C::ContainerClose(play::ContainerClose { container: window }),
-                    );
-                }
+                self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
             } else if beacon {
                 // The beacon's data slots follow its block entity.
                 let data = self.beacon_data(pos);
@@ -1394,13 +1384,7 @@ impl Game<'_> {
             if self.lan_lectern_valid(g, key) {
                 self.lan_send_lectern(conn, false);
             } else {
-                self.lan_station_closed(conn, Some(window));
-                if let Some(host) = self.lan.as_mut() {
-                    host.hub.send_to(
-                        conn,
-                        &C::ContainerClose(play::ContainerClose { container: window }),
-                    );
-                }
+                self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
             }
         }
     }

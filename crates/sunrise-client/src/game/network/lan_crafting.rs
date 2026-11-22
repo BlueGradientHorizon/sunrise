@@ -1852,14 +1852,7 @@ impl Game<'_> {
             .map(|(c, window, _)| (c, window))
             .collect();
         for (conn, window) in invalid {
-            self.lan_crafting_closed(conn, Some(window));
-            let Some(host) = self.lan.as_mut() else {
-                return;
-            };
-            host.hub.send_to(
-                conn,
-                &C::ContainerClose(play::ContainerClose { container: window }),
-            );
+            self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
         }
     }
 
@@ -1903,14 +1896,6 @@ impl Game<'_> {
             .table
             .as_ref()?;
         Some(menu.slot_count() - 36)
-    }
-
-    pub(super) fn lan_crafting_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
-        let closed = self.lan_crafting_removed(conn, window, MenuRemoval::Live);
-        if closed && window != Some(0) {
-            self.player_menu_closing(conn);
-        }
-        closed
     }
 
     /// Retire a game-owned menu on the guest record, even when their active
@@ -2210,7 +2195,7 @@ mod machine_recipe_placement_tests {
                     .count,
                 2
             );
-            game.lan_crafting_closed(2, Some(0));
+            game.lan_crafting_removed(2, Some(0), MenuRemoval::Live);
             assert!(game.run_command("setblock 10 200 8 crafting_table"));
             let window = open(game, [10, 200, 8]);
             place(game, window, planks);

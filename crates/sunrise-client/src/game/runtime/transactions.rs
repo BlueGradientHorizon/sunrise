@@ -462,6 +462,7 @@ pub(super) enum After {
     LostMenuContents(Pos, Box<sunrise_client::containers::ModBlockEntity>),
     GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
     MenuClick(Box<super::lan_menus::MenuClickReply>),
+    MenuOpen(u32, super::lan_menus::MenuOpen),
     MenuPlacesNotice(u32, u128, i32),
     FurnaceMenu(Box<super::lan_crafting::FurnaceMenuEffects>),
     StoreCartItems(Pos),
@@ -1580,6 +1581,7 @@ impl Game<'_> {
             After::LostMenuContents(pos, taken) => self.drop_unreturned_mod_contents(pos, *taken),
             After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
             After::MenuClick(reply) => self.publish_menu_click(*reply),
+            After::MenuOpen(conn, open) => self.publish_menu_open(conn, open),
             After::MenuPlacesNotice(conn, uuid, window) => {
                 self.queue_menu_places_notice(conn, uuid, window);
             }

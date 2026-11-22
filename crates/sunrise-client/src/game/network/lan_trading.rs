@@ -468,14 +468,8 @@ impl Game<'_> {
                 .and_then(|h| h.play.get(&conn))
                 .and_then(|p| p.merchant.as_ref())
                 .map(|m| m.window);
-            if let Some(window) = window
-                && self.lan_merchant_closed(conn, Some(window))
-                && let Some(host) = self.lan.as_mut()
-            {
-                host.hub.send_to(
-                    conn,
-                    &C::ContainerClose(play::ContainerClose { container: window }),
-                );
+            if let Some(window) = window {
+                self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
             }
         }
     }
@@ -590,7 +584,7 @@ impl Game<'_> {
     }
     /// The guest closed the trading window (or it is closed for them):
     /// MerchantMenu.removed, then the villager gets its state back.
-    pub(super) fn lan_merchant_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
+    pub(super) fn lan_merchant_removed(&mut self, conn: u32, window: Option<i32>) -> bool {
         if !self.lan_merchant_op(conn, window, false, |menu, env| menu.merchant_close(env)) {
             return false;
         }
@@ -606,9 +600,6 @@ impl Game<'_> {
             self.lan_place_back(gi, vec![carried]);
         }
         self.merchant_closed(&mut gm.merchant);
-        if window.is_some() {
-            self.player_menu_closing(conn);
-        }
         true
     }
     /// `Merchant.stillValid` for a trader: it is alive and the guest is within
@@ -653,14 +644,7 @@ impl Game<'_> {
             })
             .unwrap_or_default();
         for (conn, window) in far {
-            if self.lan_merchant_closed(conn, Some(window))
-                && let Some(host) = self.lan.as_mut()
-            {
-                host.hub.send_to(
-                    conn,
-                    &C::ContainerClose(play::ContainerClose { container: window }),
-                );
-            }
+            self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(window));
         }
     }
     /// Refresh open guest prices after the actual villager reputation event.
