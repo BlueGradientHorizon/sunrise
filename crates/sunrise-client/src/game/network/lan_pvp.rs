@@ -5,7 +5,8 @@
 //! (`ServerPlayer.canHarmPlayer`, `isPvpAllowed`). A player's arrow on
 //! another player lands the same way.
 use super::{
-    Game, chat::PLAYER_NAME, lan_actions::CombatPlayer, lan_mobs::guest_bounds, mace::Spared,
+    Game, chat::PLAYER_NAME, commands::Target, lan_actions::CombatPlayer, lan_mobs::guest_bounds,
+    mace::Spared,
 };
 use sunrise_client::enchant::EffectContext;
 
@@ -670,7 +671,14 @@ impl Game<'_> {
             }
         }
         let (xd, zd) = sweep.knockback;
-        let attacker = self.player_attacker(sweep.attacker);
+        // The sweep uses the attacking player's source, even for a local body.
+        let attacker = match sweep.attacker {
+            Some(conn) => self.player_attacker(Some(conn)),
+            None => self
+                .player
+                .as_ref()
+                .map(|p| (p.entity_id as u32, self.target_name(Target::Player))),
+        };
         let attacker_id = self.player.as_ref().map_or(0, |p| p.entity_id);
         let attack = self.attack_of(attacker.as_ref().map_or(attacker_id, |(id, _)| *id as i32));
         let land = |g: &mut Self| {

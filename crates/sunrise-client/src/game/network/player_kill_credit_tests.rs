@@ -228,6 +228,47 @@ fn a_player_killing_another_player_credits_the_kill() {
     assert_eq!(score(&game, VICTIM, "player_kills_stat"), None);
 }
 
+/// `Player.doSweepAttack` uses the local player's source for a secondary victim.
+#[test]
+#[ignore = "daily"]
+fn a_local_player_sweep_credits_the_secondary_kill() {
+    if fresh(
+        "a_local_player_sweep_credits_the_secondary_kill",
+        &["sweep"],
+    ) {
+        return;
+    }
+    let mut resources = None;
+    let mut game = game(&mut resources);
+    add_objectives(&mut game);
+    add_guest_killer(&mut game);
+    game.player.as_mut().unwrap().position = Vec3::new(20.5, 100.0, 9.5);
+    let primary = game.guest_index(KILLER_CONN).unwrap();
+    let victim = game.guest_index(CONN).unwrap();
+    let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+    guests.update(victim, |g| g.health = 1.0);
+    guests.update(primary, |g| g.position = [21.5, 100.0, 9.5]);
+    let target = super::lan_mobs::guest_bounds(&guests[primary]);
+    game.sweep_damage(target, super::mace::Spared::Player(KILLER_ID as i32), 1.0);
+
+    assert!(game.lan.as_ref().unwrap().hub.guest(CONN).unwrap().dead);
+    assert!(
+        !game
+            .lan
+            .as_ref()
+            .unwrap()
+            .hub
+            .guest(KILLER_CONN)
+            .unwrap()
+            .dead
+    );
+    assert_player_kill(&game, PLAYER_NAME);
+    assert_eq!(game.stats.get("custom", "minecraft:player_kills"), 1);
+    game.tick_scoreboard();
+    assert_eq!(score(&game, PLAYER_NAME, "player_kills_stat"), Some(1));
+    assert_eq!(score(&game, VICTIM, "player_kills_stat"), None);
+}
+
 /// The same for a LAN guest's kill: a hosted world's players are all guests,
 /// the owner's window too, so the killer's own record takes the kill.
 #[test]
