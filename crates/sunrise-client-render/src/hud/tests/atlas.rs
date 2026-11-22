@@ -1896,3 +1896,37 @@ fn a_wrapped_border_repeats_the_opposite_edges() {
         2, 1, 2, 1,
     ]);
 }
+
+#[test]
+fn a_builtin_sprite_source_override_supplies_the_particle_atlas_consumer() {
+    use sunrise_assets::resource_source::Resource;
+    let source = ResourceSource::indexed(std::collections::BTreeMap::from([(
+        "assets/minecraft/atlases/particles.json".into(),
+        Resource::bytes(
+            br#"{"sources":[{"type":"minecraft:unstitch","resource":"test:unused",
+            "divisor_x":1,"divisor_y":1,"regions":[]}]}"#
+                .to_vec(),
+        ),
+    )]));
+    let mods =
+        crate::atlas_sources::test_mods::Mods::new(&["minecraft:unstitch"], |atlas, _, _, _| {
+            assert_eq!(atlas.to_string(), "minecraft:particles");
+            vec![mod_api::SpriteSourceOutput::Pixels {
+                sprite: mod_api::Identifier::parse("minecraft:particle/custom_spark").unwrap(),
+                width: 1,
+                height: 1,
+                rgba: vec![3, 9, 24, 255],
+            }]
+        });
+    crate::atlas_sources::shared(&source, &mods);
+    let sprites = atlas_sprites(&source, &[]);
+    let (_, w, h, pixels) = sprites
+        .images
+        .iter()
+        .find(|image| image.0 == "particle/custom_spark")
+        .expect("generated particle sprite");
+    assert_eq!(
+        (*w, *h, pixels.as_slice()),
+        (1, 1, [3, 9, 24, 255].as_slice())
+    );
+}

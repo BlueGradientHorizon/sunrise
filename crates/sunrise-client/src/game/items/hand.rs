@@ -517,12 +517,14 @@ impl Game<'_> {
             if d.active && d.ticks > ticks {
                 let (pos, first) = (d.pos, (d.ticks as u32 - 1).is_multiple_of(4));
                 let state = self.world.block(pos[0], pos[1], pos[2]);
-                if first {
-                    let face = sunrise_core::geometry::Direction::ALL[d.face as usize].normal();
-                    self.play_mining_hit_sound(state, pos, face, false);
-                }
-                if let Some(hit) = self.pick() {
-                    self.crack_particle(pos, hit.face, state);
+                if !self.res.facts().is_air(state) {
+                    if first {
+                        let face = sunrise_core::geometry::Direction::ALL[d.face as usize].normal();
+                        self.play_mining_hit_sound(state, pos, face, false);
+                    }
+                    if let Some(hit) = self.pick() {
+                        self.crack_particle(pos, hit.face, state);
+                    }
                 }
             }
         } else {

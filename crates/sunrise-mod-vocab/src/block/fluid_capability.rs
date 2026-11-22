@@ -63,7 +63,15 @@ impl FluidStack {
 
 /// A fluid and its components, without an amount, as NeoForge's `FluidResource`: what a tank
 /// holds. An empty tank holds none.
-// no wire: decoding calls FluidResource::of to normalize the incoming fluid amount to one; a structural derive would preserve a non-unit wire amount.
+///
+/// This is a process-local fluid transfer identity: convert to [`FluidStack`] for `Wire`
+/// schemas.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::FluidResource>();
+/// ```
+// no wire: process-local fluid transfer identity; convert to FluidStack at Wire boundaries.
 #[derive(Clone)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct FluidResource(pub(crate) FluidStack);
@@ -101,9 +109,17 @@ impl fmt::Debug for FluidResource {
 }
 
 /// Why a fluid ingredient could not be parsed.
+///
+/// This is a local JSON parse refusal returned by [`FluidIngredient::from_json`], not a `Wire`
+/// type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::FluidIngredientError>();
+/// ```
+// no wire: local JSON parse refusal returned by FluidIngredient::from_json.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum FluidIngredientError {
     /// Invalid or unsupported ingredient shape.
     Invalid,
@@ -243,11 +259,11 @@ impl SizedFluidIngredient {
 /// cauldron has no content and no answer.
 pub const FLUIDS: CapabilityKey<dyn ResourceHandler<FluidResource>> = CapabilityKey {
     name: "sunrise:fluids",
-    default: Some(|host, at| {
+    default: Some(crate::BlockCapabilityDefault::Server(|host, at| {
         crate::backend_of(host)
             .and_then(|backend| backend.fluid_tank_count(at))
             .map(|_| Box::new(GameFluids(at)) as Box<dyn ResourceHandler<FluidResource>>)
-    }),
+    })),
     handler: PhantomData,
 };
 

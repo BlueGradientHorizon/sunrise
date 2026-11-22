@@ -163,7 +163,7 @@ fn mob(game: &mut Game<'_>, id: u32, name: &str, position: Vec3) {
     let mut mob = Mob::new(id, kind, position, 0.0);
     mob.persistent = true;
     mob.no_ai = true;
-    mob.on_ground = true;
+    mob.ground.on_ground = true;
     game.mobs.push(mob);
 }
 
@@ -779,8 +779,11 @@ fn mob_death_and_handle_preserve_namespaced_types() {
                         .name
                         .clone()
                 }));
-                mod_api::__private::resolve_entity_types(["vulture:vulture", "minecraft:sheep"])
-                    .unwrap();
+                mod_api::__private::resolve_entity_types(
+                    ["vulture:vulture", "minecraft:sheep"],
+                    |_| Some(true),
+                )
+                .unwrap();
                 let sheep = game.res.mob_types().get("minecraft:sheep").unwrap().clone();
                 for (index, id) in ["vulture:vulture", "sheep", "minecraft:sheep"]
                     .into_iter()

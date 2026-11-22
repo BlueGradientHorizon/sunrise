@@ -1431,7 +1431,7 @@ impl Game<'_> {
             return;
         }
         // A proxy released this record to another server, which now owns saving it.
-        if guest.placed && !guest.released && !self.crash_save.excludes(guest.conn) {
+        if guest.joined() && !guest.released && !self.crash_save.excludes(guest.conn) {
             let _ = self.finish_player_autosaves(true);
             if self
                 .lan
@@ -1597,7 +1597,7 @@ impl Game<'_> {
     /// live record, independently of the dirty entries sent to their client.
     pub(super) fn save_connected_guest_statistics(&self, host: &LanHost) {
         for guest in &host.hub.guests {
-            if !guest.placed || guest.released || self.crash_save.excludes(guest.conn) {
+            if !guest.joined() || guest.released || self.crash_save.excludes(guest.conn) {
                 continue;
             }
             let Some(uuid) = self.records_uuid(host, guest.uuid) else {
@@ -1874,7 +1874,7 @@ impl Game<'_> {
             let place = super::lan_idle::Place {
                 position: [m.position.x, m.position.y, m.position.z],
                 rotation: (m.yaw, m.head_pitch, m.head_yaw),
-                on_ground: m.on_ground,
+                on_ground: m.ground.on_ground,
                 velocity: [m.velocity.x, m.velocity.y, m.velocity.z],
             };
             let kind = m.kind.id.as_str();
@@ -2222,6 +2222,10 @@ impl Game<'_> {
                     }
                     self.lan_guest_joined(conn, entities, spawn);
                     let host = self.lan.as_ref()?;
+                    super::cauldron_prediction::publish_registrations(
+                        &super::cauldron_interactions::snapshot(),
+                        host.hub.guest(conn),
+                    );
                     if self.is_dedicated_server()
                         && let Some(g) = host.hub.guest(conn)
                     {
@@ -2322,7 +2326,7 @@ impl Game<'_> {
                         }
                     }
                     self.lan_crafting_left(&mut guest);
-                    if guest.placed {
+                    if guest.joined() {
                         self.award_leave_game(guest.conn, guest.uuid, &guest.name);
                     }
                     // PlayerList.remove: the vehicle it alone rides goes too.

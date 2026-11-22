@@ -13,44 +13,6 @@ pub struct BlockKey(pub(crate) u32);
 // exhaustive: only the load-owned table creates keys
 pub struct BlockEntityTypeKey(pub(crate) u32);
 
-// no wire: borrowed payload, scoped to the owning call.
-/// A menu hook's mutable detached payload, with a read-only type identity.
-// exhaustive: only the game constructs this checked view.
-pub struct ModBlockEntityView<'a> {
-    pub(crate) entity: &'a mut ModBlockEntity,
-}
-
-impl<'a> ModBlockEntityView<'a> {
-    // hidden: the game supplies the detached payload for a menu hook.
-    #[doc(hidden)]
-    pub fn new(entity: &'a mut ModBlockEntity) -> Self {
-        Self { entity }
-    }
-
-    /// The block entity's immutable type id.
-    pub fn id(&self) -> &str {
-        self.entity.id()
-    }
-
-    /// Queue one-shot fields in the block entity's next update to its viewers.
-    pub fn set_client_update_fields(&mut self, fields: Compound) {
-        self.entity.client_update_fields = Some(fields);
-    }
-}
-
-impl std::ops::Deref for ModBlockEntityView<'_> {
-    type Target = crate::item::containers::ModBlockEntityFields;
-    fn deref(&self) -> &Self::Target {
-        self.entity
-    }
-}
-
-impl std::ops::DerefMut for ModBlockEntityView<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.entity
-    }
-}
-
 /// What an explosion does to blocks (`Explosion.BlockInteraction`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -367,6 +329,61 @@ pub struct BlockClick<'a> {
     pub player: u128,
     /// The player entity id.
     pub player_entity_id: i32,
+}
+
+/// The server's staged writes during a step-on Part call.
+// hidden: the generated dispatch passes this buffer from the engine, never the Part.
+#[doc(hidden)]
+// no wire: the engine owns this call-local staging buffer; Parts only borrow it.
+#[non_exhaustive]
+#[derive(Clone, Default)]
+pub struct StepOnWrites {
+    server: bool,
+    block: Vec<LandingWrite>,
+    entity: Vec<EntityWrite>,
+}
+
+impl StepOnWrites {
+    // hidden: only the engine chooses to lend server write access.
+    #[doc(hidden)]
+    pub fn server() -> Self {
+        Self {
+            server: true,
+            ..Self::default()
+        }
+    }
+}
+
+impl StepOnEvent<'_> {
+    // hidden: the game validates and drains one Part's outputs before invoking the next.
+    #[doc(hidden)]
+    pub fn __take_writes(&mut self) -> (Vec<LandingWrite>, Vec<EntityWrite>) {
+        (
+            std::mem::take(&mut self.writes.block),
+            std::mem::take(&mut self.writes.entity),
+        )
+    }
+
+    /// Queue a write to the contacted block. Returns false on the client.
+    pub fn request(&mut self, write: LandingWrite) -> bool {
+        if !self.writes.server {
+            return false;
+        }
+        self.writes.block.push(write);
+        true
+    }
+
+    /// Queue a write to the stepping entity, before inside-block effects.
+    /// Returns false on the client. As with `entity_inside`, the body applies
+    /// the writes it supports, in request order. Boats and minecarts (#4177),
+    /// armor stands and projectiles ignore contact hurt.
+    pub fn write_entity(&mut self, write: EntityWrite) -> bool {
+        if !self.writes.server {
+            return false;
+        }
+        self.writes.entity.push(write);
+        true
+    }
 }
 
 impl FallOnEvent<'_> {

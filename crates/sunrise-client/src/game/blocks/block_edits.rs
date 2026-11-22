@@ -48,9 +48,6 @@ impl Game<'_> {
         };
         let tags = [&self.res.items().block_tags, &world_items.block_tags];
         let facts = self.res.facts();
-        let journaled_groups = self
-            .transactions
-            .journaled_connection_group_positions(self.dim);
         let watched = std::mem::take(&mut self.world.watched);
         let matches = |f, s| {
             super::commands::block_input_matches(
@@ -71,31 +68,32 @@ impl Game<'_> {
         let (out, publication) = if let Some(frame) = self.transactions.level_frame(self.dim) {
             let (out, publication) = self.world.stage_edit_runs(
                 &runs,
-                &journaled_groups,
                 matches,
                 track,
-                |pos, old, new| {
+                |pos, old, new, clears_group, old_group| {
                     frame.keep_bulk_block(pos, old);
+                    if old_group.is_some() {
+                        frame.keep_connection_group(pos, old_group);
+                    }
                     let to = BlockStateId(new);
                     steps
                         .entry(pos)
-                        .and_modify(|step| step.to = to)
-                        .or_insert(StrictBlockStep { to, row: None });
+                        .and_modify(|step| {
+                            step.to = to;
+                            step.clear_connection_group |= clears_group;
+                        })
+                        .or_insert(StrictBlockStep {
+                            to,
+                            row: None,
+                            clear_connection_group: clears_group,
+                        });
                 },
             );
             (out, Some(publication))
         } else {
-            (
-                self.world
-                    .edit_runs(&runs, &journaled_groups, matches, track),
-                None,
-            )
+            (self.world.edit_runs(&runs, matches, track), None)
         };
         self.world.watched = watched;
-        if !out.group_clears.is_empty() {
-            self.transactions
-                .reconcile_bulk_connection_group_clears(self.dim, &out.group_clears);
-        }
         // The block entities the new blocks bring, as `native_set_block` makes them (a mod block's own,
         // included), in the order `replace_block_entities` takes them: the positions needing a fresh entity.
         let resources = Arc::clone(&self.res);
@@ -180,8 +178,8 @@ impl Game<'_> {
 
     /// Each column's height on `h` (none where its chunk is not loaded) and its blocks from `below` under it to
     /// `above` - 1 over it, bottom first (air outside the column and where it is not loaded), as indices into the
-    /// full states seen, with the biome's grass, foliage and water tints at the column's top (0 where it is not loaded;
-    /// unblended). `Err`, reading nothing, when `below + above` is 0 or more than the level's height, or the read
+    /// full states seen, with each column's biome JSON water colour at the column's top (`0xRRGGBB`, `0` where it is
+    /// not loaded). `Err`, reading nothing, when `below + above` is 0 or more than the level's height, or the read
     /// would be more than `MAX_READ` blocks.
     pub(super) fn read_loaded_block_columns(
         &self,
@@ -194,32 +192,24 @@ impl Game<'_> {
         let bases = self.loaded_column_heights(columns, h);
         let (palette, blocks) = column_blocks(&self.world, columns, &bases, below, above)
             .ok_or("the read is too big")?;
-        let biomes = self.res.biomes();
-        let mut tints = Vec::with_capacity(columns.len() * 3);
+        let biomes = world_biomes!(self);
+        let mut water_colors = Vec::with_capacity(columns.len());
         for (&(x, z), base) in columns.iter().zip(&bases) {
-            // (the biome tints at the column's top, as the block there is tinted)
-            match base.and_then(|b| {
-                self.world
-                    .chunks
-                    .get(&(x >> 4, z >> 4))
-                    .map(|c| c.biome(x, b - 1, z))
-            }) {
-                Some(id) => {
-                    let b = biomes.get(id);
-                    tints.extend([
-                        biomes.grass(id, f64::from(x), f64::from(z)),
-                        b.foliage,
-                        b.water,
-                    ]);
-                }
-                None => tints.extend([0, 0, 0]),
-            }
+            let water = base
+                .and_then(|b| {
+                    self.world
+                        .chunks
+                        .get(&(x >> 4, z >> 4))
+                        .map(|c| biomes.get(c.biome(x, b - 1, z)).water)
+                })
+                .unwrap_or(0);
+            water_colors.push(water);
         }
         Ok(ColumnBlocks {
             palette: super::api_values::block_edit::column_palette(palette)?,
             bases,
             blocks,
-            tints,
+            water_colors,
         })
     }
 
@@ -691,7 +681,6 @@ mod tests {
                 state: 1,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |s| s == 2,
         );
@@ -730,7 +719,6 @@ mod tests {
                 state: 1,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |s| s == 3,
         );
@@ -758,7 +746,6 @@ mod tests {
                 state: 3,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |s| s == 3,
         );
@@ -803,7 +790,6 @@ mod tests {
                 state: 4,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |_| true,
         );
@@ -828,7 +814,6 @@ mod tests {
                 state: 4,
                 only: None,
             }],
-            &FxHashSet::default(),
             |_, _| true,
             |_| true,
         );

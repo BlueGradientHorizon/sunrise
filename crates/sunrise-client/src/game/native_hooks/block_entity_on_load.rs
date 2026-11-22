@@ -1,4 +1,7 @@
+use super::block_entity_client_tick::ClientBlockEntityAccess;
+use super::block_entity_tick::ResidentBlockEntityAccess;
 use super::*;
+use mod_api::{BlockEntityClientScope, BlockEntityScope, BlockEntitySideScope};
 
 impl Game<'_> {
     pub(in crate::game) fn authoritative_world_for_mods(
@@ -57,14 +60,15 @@ impl Game<'_> {
         if !self.world.block_entities.has_pending_on_load() {
             return;
         }
-        let level = if self.is_logical_server() {
+        let server = self.is_logical_server();
+        let level = if server {
             self.level(self.dim.id())
         } else {
             self.native_client_level()
         };
         let Some(level) = level else { return };
         let mut remaining = self.world.block_entities.pending_on_load_len();
-        while let Some((pos, _)) = self
+        while let Some((pos, generation)) = self
             .world
             .block_entities
             .next_on_load_in_batch(&mut remaining)
@@ -72,24 +76,40 @@ impl Game<'_> {
             if !mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityOnLoad) {
                 continue;
             }
-            let Some(entity) = self.block_entity(level, [pos.0, pos.1, pos.2]) else {
+            let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
                 continue;
             };
-            let Some(id) = self.block_entity_kind(entity) else {
+            let Some(id) = mod_api::__private::block_entity_type_key(entity.id()) else {
                 continue;
             };
-            self.native_block_entity_on_load(mod_api::__private::BlockEntityOnLoadCall {
-                id,
-                entity,
-            });
+            let subject = mod_api::__private::game::block_entity_ref(
+                level,
+                [pos.0, pos.1, pos.2],
+                generation,
+            );
+            if server {
+                let mut access = ResidentBlockEntityAccess::on_load(self, subject);
+                Self::native_block_entity_on_load(mod_api::__private::BlockEntityOnLoadCall {
+                    id,
+                    subject: BlockEntitySideScope::Server(BlockEntityScope::new(&mut access)),
+                });
+            } else {
+                let mut access = ClientBlockEntityAccess {
+                    game: self,
+                    subject,
+                };
+                Self::native_block_entity_on_load(mod_api::__private::BlockEntityOnLoadCall {
+                    id,
+                    subject: BlockEntitySideScope::Client(BlockEntityClientScope::new(&mut access)),
+                });
+            }
         }
     }
 
     /// Notify subscribers after this instance is attached and its saved data is applied.
     pub(in crate::game) fn native_block_entity_on_load(
-        &mut self,
-        call: mod_api::__private::BlockEntityOnLoadCall,
+        call: mod_api::__private::BlockEntityOnLoadCall<'_>,
     ) {
-        self.fire_block_entity_on_load(call);
+        Self::fire_block_entity_on_load(call);
     }
 }

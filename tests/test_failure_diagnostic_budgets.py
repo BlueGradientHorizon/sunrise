@@ -58,14 +58,16 @@ class Budgets(unittest.TestCase):
     def test_relative_and_cross_crate_raw_panic_headers(self):
         path = 'crates/sunrise-client/src/title/tests.rs'
         for raw_path in (path, 'crates/sunrise-client-lib/../sunrise-client/src/title/tests.rs'):
-            log = self.render(f"test game::x::y ... FAILED\n"
-                              f"thread 'game::x::y' (12345) panicked at {raw_path}:109:5:\n"
-                              "assertion failed: PRIVATE\n")
+            # Keep real path validation, but do not tie this fixture to the contents of line 109.
+            with patch.object(ci, 'source_lines', return_value=[''] * 108 + ['assert!(ready);']):
+                log = self.render(f"test game::x::y ... FAILED\n"
+                                  f"thread 'game::x::y' (12345) panicked at {raw_path}:109:5:\n"
+                                  "assertion failed: PRIVATE\n")
             self.assertEqual(log,
                 '  failed test: game::x::y\n'
                 f'  panicked at {path}:109:5\n'
                 '  panic reason: assertion condition failed; payload withheld (resource privacy)\n'
-                '  panic source: assert!(!friends.1);\n'
+                '  panic source: assert!(ready);\n'
                 'failure diagnostics: 1 shown; 0 failing tests not shown (total byte budget 128000); '
                 '0 records shortened (per-test byte budget 500); 0 missing context; '
                 '1 withheld context/identity; 1 classified panic reasons; 0 identities withheld; '
