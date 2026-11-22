@@ -52,6 +52,7 @@ impl Game<'_> {
         // tick's actions and its move.
         self.remote_send_carried();
         self.tick_chat_session();
+        self.tick_debug_connection();
         self.fire_pending_block_entity_loads();
         self.ticks += 1;
         self.repro_tick();

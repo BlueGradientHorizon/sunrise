@@ -96,10 +96,13 @@ A fluid container can pick up and place fluid in the world as a bucket does
 
 The three that move fluid each run in their own transaction, nested in one you have
 open. The world-fluid writes they use take the innermost `&TransactionContext` and
-refuse a different context without making a change. `level.pickup_fluid(host, pos, player, tx)`
-and `level.place_fluid(host, pos, fluid, player, validate, tx)` decide everything at the
+return `Err(TransactionError::InvalidContext)` for a different context without making a
+change. `level.pickup_fluid(host, pos, player, tx)` (returning
+`Result<Option<FluidStack>, TransactionError<()>>`) and
+`level.place_fluid(host, pos, fluid, player, validate, tx)` (returning
+`Result<bool, TransactionError<()>>`) decide everything at the
 call against the world as the transaction has it and write the block at once, so a
-second pickup of the same source in the transaction gets nothing. A block the fluid
+second pickup of the same source in the transaction gets `Ok(None)`. A block the fluid
 replaces has its drops made at the call, with the block as it is and its block entity kept
 by the journal first: `block_drops` listeners, which only read, see the old block, and a
 cancelled drop keeps the replacement (it suppresses the drops and the experience, not the

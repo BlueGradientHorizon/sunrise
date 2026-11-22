@@ -83,30 +83,40 @@ impl Game<'_> {
         })
     }
     /// `BucketPickup.pickupBlock` for a mod's fluid container at `pos` in the level in place,
-    /// kept by transaction `tx`: the source taken, a bucket of it. None, with nothing done,
-    /// if the block gives no fluid, the level is not in place, or `tx` is not current.
+    /// kept by transaction `tx`: the source taken, a bucket of it. `Ok(None)`, with nothing done,
+    /// if the block gives no fluid or the level is not in place; `Err(TransactionError::InvalidContext)`
+    /// if `tx` is not current.
     pub(in crate::game) fn level_pickup_fluid(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
         player: Option<PlayerRef>,
         tx: &TransactionContext,
-    ) -> Option<FluidStack> {
-        if !self.fluid_write_allowed(level, pos, tx) {
-            return None;
+    ) -> Result<Option<FluidStack>, mod_api::TransactionError<()>> {
+        if !self.transaction_context_is_current(tx) {
+            return Err(mod_api::TransactionError::InvalidContext);
+        }
+        if !self.fluid_write_allowed(level, pos) {
+            return Ok(None);
         }
         let creative = self.creative(player);
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        let write =
-            self.with_level(|b, level, ticks| b.plan_fluid_pickup(level, ticks, at, creative))?;
-        let key = mod_api::__private::fluid_key(write.fluid.name())?;
+        let Some(write) =
+            self.with_level(|b, level, ticks| b.plan_fluid_pickup(level, ticks, at, creative))
+        else {
+            return Ok(None);
+        };
+        let Some(key) = mod_api::__private::fluid_key(write.fluid.name()) else {
+            return Ok(None);
+        };
         self.journal_fluid_write(level, write, true, player);
-        Some(FluidStack::new(key, BUCKET))
+        Ok(Some(FluidStack::new(key, BUCKET)))
     }
     /// `BucketItem.emptyContents` of a bucket of `fluid` at `pos` in the level in place, for
     /// a mod's fluid container, kept by transaction `tx`. Whether it was placed, or hissed away
-    /// where water evaporates. False, with nothing done, for a fluid without a world form,
-    /// where it can't be placed, if the level is not in place, or if `tx` is not current.
+    /// where water evaporates. `Ok(false)`, with nothing done, for a fluid without a world form,
+    /// where it can't be placed, or if the level is not in place; `Err(TransactionError::InvalidContext)`
+    /// if `tx` is not current.
     pub(in crate::game) fn level_place_fluid(
         &mut self,
         level: LevelRef,
@@ -115,15 +125,18 @@ impl Game<'_> {
         player: Option<PlayerRef>,
         validate: bool,
         tx: &TransactionContext,
-    ) -> bool {
-        if !self.fluid_write_allowed(level, pos, tx) {
-            return false;
+    ) -> Result<bool, mod_api::TransactionError<()>> {
+        if !self.transaction_context_is_current(tx) {
+            return Err(mod_api::TransactionError::InvalidContext);
+        }
+        if !self.fluid_write_allowed(level, pos) {
+            return Ok(false);
         }
         let Some(kind) = mod_api::__private::fluid_id(fluid)
             .and_then(FluidKind::from_name)
             .filter(|kind| *kind != FluidKind::Empty)
         else {
-            return false;
+            return Ok(false);
         };
         let user = player
             .and_then(|player| {
@@ -137,23 +150,22 @@ impl Game<'_> {
         let Some(mut write) = self.with_level(|b, level, ticks| {
             b.plan_bucket_pour(level, ticks, at, None, kind, false, user)
         }) else {
-            return false;
+            return Ok(false);
         };
         if let FluidChange::Fill(template) = write.change {
             let answer = self.journalled_place_liquid(level, &write);
             if validate && !answer.unwrap_or(template.is_some()) {
-                return false;
+                return Ok(false);
             }
             if answer.is_some() {
                 write.change = FluidChange::Fill(None);
             }
         }
         self.journal_fluid_write(level, write, false, player);
-        true
+        Ok(true)
     }
-    fn fluid_write_allowed(&self, level: LevelRef, pos: [i32; 3], tx: &TransactionContext) -> bool {
-        self.transaction_context_is_current(tx)
-            && self.current_transaction_is_here()
+    fn fluid_write_allowed(&self, level: LevelRef, pos: [i32; 3]) -> bool {
+        self.current_transaction_is_here()
             && self.level_in_place(level)
             && self.native_level_write_allowed(level, pos)
     }
@@ -215,15 +227,15 @@ impl Game<'_> {
         pickup: bool,
         player: Option<PlayerRef>,
         tx: &TransactionContext,
-    ) -> bool {
-        if !self.transaction_context_is_current(tx)
-            || !self.current_transaction_is_here()
-            || !self.level_in_place(level)
-        {
-            return false;
+    ) -> Result<bool, mod_api::TransactionError<()>> {
+        if !self.transaction_context_is_current(tx) {
+            return Err(mod_api::TransactionError::InvalidContext);
+        }
+        if !self.current_transaction_is_here() || !self.level_in_place(level) {
+            return Ok(false);
         }
         let Some(id) = mod_api::__private::fluid_id(fluid) else {
-            return false;
+            return Ok(false);
         };
         self.after_commit(After::FluidEffects(Box::new(FluidEffects {
             level,
@@ -232,7 +244,7 @@ impl Game<'_> {
             pickup,
             player,
         })));
-        true
+        Ok(true)
     }
     /// The rest of a world pickup or placement at the outermost commit, its block's updates
     /// done already: the fluid tick, the broken block's drops, its particles and

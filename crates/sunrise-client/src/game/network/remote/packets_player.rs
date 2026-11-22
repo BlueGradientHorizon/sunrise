@@ -11,6 +11,8 @@ impl Game<'_> {
         self.install_remote_tags();
         self.refresh_render_visibility();
         self.test_highlights.clear();
+        // handleLogin: `debugSubscriber.clear()`.
+        self.debug_charts.clear_subscriptions();
         self.forget_synced_recipes();
         self.level.hardcore = p.hardcore;
         // handleLogin: startWaitingForNewLevel with Reason.OTHER, which

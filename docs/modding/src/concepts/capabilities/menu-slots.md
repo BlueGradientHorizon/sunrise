@@ -334,8 +334,8 @@ use mod_api::{HostTransaction, TransactionError};
 // Put four of the menu's offered emeralds into slot 0 of the open chest, or nothing.
 let (slot, cursor) = (ItemPlace::MenuSlot { menu, slot: 0 }, menu.cursor());
 let moved: Result<(), TransactionError<()>> = host.transaction(|host, tx| {
-    let took = cursor.extract(host, tx, &emerald, 4);
-    if took == 4 && slot.insert(host, tx, &emerald, 4) == 4 { Ok(()) } else { Err(()) }
+    let took = cursor.extract(host, tx, &emerald, 4).map_err(|_| ())?;
+    if took == 4 && slot.insert(host, tx, &emerald, 4) == Ok(4) { Ok(()) } else { Err(()) }
 });
 ```
 
@@ -382,8 +382,8 @@ transaction is sent with the next tick's container sync, one `ContainerSetSlot` 
 if let Some(menu) = host.menu(uuid, window) {
     let slot = ItemPlace::MenuSlot { menu, slot: 4 };
     let _ = host.transaction(|host, tx| {
-        slot.extract(host, tx, &shown, 64);
-        if slot.insert(host, tx, &next, 1) == 1 { Ok(()) } else { Err(()) }
+        let _ = slot.extract(host, tx, &shown, 64).map_err(|_| ())?;
+        if slot.insert(host, tx, &next, 1) == Ok(1) { Ok(()) } else { Err(()) }
     });
 }
 ```

@@ -280,22 +280,43 @@ impl Game<'_> {
                     .iter()
                     .all(|member| channel(member, sunrise_protocol::viewed_levels::CHANNEL)))
         {
-            let group_packets: Vec<C> = packets
+            let Some(group_packets) = packets
                 .into_iter()
                 .map(|member| match member {
-                    BundleMember::Packet(packet) => packet,
+                    BundleMember::Packet(packet) => Some(packet),
                     BundleMember::AttachmentSync(staged) => {
-                        C::CustomPayload(staged.into_message().1)
+                        Some(C::CustomPayload(staged.into_message().1))
                     }
+                    BundleMember::OversizedDebugSample => None,
                 })
-                .collect();
+                .collect::<Option<Vec<_>>>()
+            else {
+                return self.refuse_play_payload("connection groups: unexpected packet in bundle");
+            };
             self.route_connection_group_bundle(&group_packets, negotiated)?;
             return Ok(());
         }
+        // One PacketProcessor task: a handler failure leaves the prefix applied,
+        // skips the suffix, and disconnects via onPacketError.
+        let stop_on_packet_error = |game: &Self, turn: &mut ListenerTurn| {
+            if let Some(remote) = &game.remote {
+                remote.session.close_after_pending();
+            }
+            turn.end.get_or_insert_with(|| io.packet_error());
+        };
         for packet in packets {
             match io.bundle_member(packet) {
                 BundleStep::Event(event) => {
-                    self.handle_remote_event(event, turn)?;
+                    if let Err(error) = self.handle_remote_event(event, turn) {
+                        log::warn!("Sunrise: bundle packet handler failed: {error}");
+                        stop_on_packet_error(self, turn);
+                        break;
+                    }
+                }
+                BundleStep::HandlerFailed => {
+                    log::warn!("Sunrise: oversized debug sample in play bundle");
+                    stop_on_packet_error(self, turn);
+                    break;
                 }
                 BundleStep::Payload(payload) => {
                     match Incoming::classify(endpoint.transport(), Phase::Play, payload) {
@@ -618,6 +639,111 @@ mod tests {
             .into();
             mod_platform::testing::with_mods(mods, || game.poll_remote().unwrap());
             assert_eq!(calls.try_recv(), Ok(None));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_bundled_long_debug_sample_applies_only_the_prefix_before_packet_error() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        if run_fresh_cases(
+            "game::remote::raw_ingress::tests::a_bundled_long_debug_sample_applies_only_the_prefix_before_packet_error",
+            "SUNRISE_DEBUG_SAMPLE_BUNDLE_CHILD",
+            &["debug-sample"],
+        ) {
+            return;
+        }
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::net::{PacketRecorder, RecorderStatus};
+        use sunrise_protocol::ids::play::clientbound::{BUNDLE_DELIMITER, SET_HELD_SLOT};
+
+        struct RecordIds(Arc<Mutex<Vec<i32>>>);
+        impl PacketRecorder for RecordIds {
+            fn is_active(&self) -> bool {
+                true
+            }
+            fn received(&self, _: &C, id: i32, _: &[u8]) {
+                self.0.lock().unwrap().push(id);
+            }
+            fn record_packet(&self, _: i32, _: &[u8]) {}
+            fn status(&self) -> RecorderStatus {
+                RecorderStatus {
+                    active: true,
+                    path: Default::default(),
+                    elapsed: Duration::ZERO,
+                    packet_count: self.0.lock().unwrap().len() as u64,
+                    bytes_written: 0,
+                    error: None,
+                }
+            }
+            fn stop(self: Box<Self>) -> std::io::Result<std::path::PathBuf> {
+                Ok(Default::default())
+            }
+        }
+
+        with_client_game(|game| {
+            let (_reader, mut writer) = connect_play_test(game, |_, _| {});
+            spawn_menu_test(game);
+            let recorded = Arc::new(Mutex::new(Vec::new()));
+            game.remote
+                .as_ref()
+                .unwrap()
+                .session
+                .start_recording(RecordIds(recorded.clone()), |_| {});
+            let delimiter = C::BundleDelimiter(sunrise_protocol::packets::Empty);
+            game.selected = 0;
+            for packet in [
+                delimiter.clone(),
+                C::SetHeldSlot(play::SetHeldSlot { slot: 1 }),
+                C::DebugSample(play::DebugSample {
+                    sample: vec![0; 5],
+                    kind: play::DEBUG_SAMPLE_TICK_TIME,
+                }),
+                C::SetHeldSlot(play::SetHeldSlot { slot: 2 }),
+                delimiter,
+            ] {
+                writer.send(&packet.encode()).unwrap();
+            }
+            let outcome =
+                |event: &Event| matches!(event, Event::Bundle(_) | Event::Disconnected { .. });
+            game.wait_for_test_remote_event(outcome);
+            let backlog = &mut game.remote.as_mut().unwrap().backlog;
+            let pos = backlog
+                .iter()
+                .position(|item| matches!(item, Received::Event(event, _) if outcome(event)))
+                .unwrap();
+            let Some(Received::Event(Event::Bundle(bundle), _credit)) = backlog.remove(pos) else {
+                panic!("the receiver closed before handing the completed bundle to main");
+            };
+            assert_eq!(
+                *recorded.lock().unwrap(),
+                [
+                    BUNDLE_DELIMITER,
+                    SET_HELD_SLOT,
+                    SET_HELD_SLOT,
+                    BUNDLE_DELIMITER
+                ],
+                "only the real bundle members surrounding the fault reach the recorder",
+            );
+            use sunrise_client::net::BundleMember;
+            assert!(matches!(
+                bundle.packets.as_slice(),
+                [
+                    BundleMember::Packet(C::SetHeldSlot(_)),
+                    BundleMember::OversizedDebugSample,
+                    BundleMember::Packet(C::SetHeldSlot(_)),
+                ]
+            ));
+            assert_eq!(game.selected, 0, "no member applied on the reader");
+            let mut turn = ListenerTurn::default();
+            game.handle_play_bundle(*bundle, &mut turn).unwrap();
+            assert_eq!(
+                game.selected, 1,
+                "the prefix applied but the suffix did not"
+            );
+            assert!(
+                matches!(turn.end, Some(Event::Disconnected { key: Some(key), from_server: false, .. }) if key == "disconnect.packetError")
+            );
         });
     }
 

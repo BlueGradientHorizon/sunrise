@@ -178,8 +178,8 @@ impl mod_api::ResourceHandler<mod_api::ItemResource> for StoragePort {
         _: usize,
         _: &mod_api::ItemResource,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> std::result::Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
+        Ok(0)
     }
     fn extract_at(
         &self,
@@ -188,8 +188,8 @@ impl mod_api::ResourceHandler<mod_api::ItemResource> for StoragePort {
         _: usize,
         _: &mod_api::ItemResource,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> std::result::Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
+        Ok(0)
     }
 }
 

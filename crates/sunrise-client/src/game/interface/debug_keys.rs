@@ -15,7 +15,9 @@ use sunrise_client::{
 };
 use sunrise_core::geometry::{Axis, Vec3};
 use sunrise_core::nbt::Tag;
-use sunrise_protocol::packets::play::{BlockEntityTagQuery, EntityTagQuery, Serverbound};
+use sunrise_protocol::packets::play::{
+    BlockEntityTagQuery, DebugSubscriptionRequest, EntityTagQuery, Serverbound,
+};
 use winit::keyboard::KeyCode;
 
 /// `ChatFormatting.YELLOW` and `RED`.
@@ -228,8 +230,8 @@ impl Game<'_> {
         }
         Ok(())
     }
-    /// The network charts' samples each tick: `PingDebugMonitor.tick` while
-    /// they show, `BandwidthDebugMonitor.tick` always.
+    /// The network charts' samples each tick: `BandwidthDebugMonitor.tick` always, and the
+    /// integrated server's instant ping (a remote one is `tick_debug_connection`).
     pub(super) fn tick_debug_charts(&mut self) {
         let shown = self.debug && self.debug_charts.network;
         let Some(r) = &self.remote else {
@@ -253,10 +255,25 @@ impl Game<'_> {
         }
         r.session
             .drain_debug_pings(|delay| self.debug_charts.ping.log(delay));
-        if shown {
+    }
+    /// `ClientPacketListener.tick` after the carried slot and the chat session: the ping while the
+    /// network charts show, then, with a level, `ClientDebugSubscriber.tick`'s request.
+    pub(in crate::game) fn tick_debug_connection(&mut self) {
+        let Some(r) = &self.remote else {
+            return;
+        };
+        let has_level = r.has_level();
+        if self.debug && self.debug_charts.network {
             use sunrise_protocol::packets::status::Ping;
             let time = sunrise_client::net::ping_millis();
             self.send(Serverbound::PingRequest(Ping { time }));
+        }
+        if has_level && let Some(wanted) = self.debug_charts.subscription_request(self.debug) {
+            // `dedicated_server_tick_time` is registry id 0.
+            let subscriptions = if wanted { vec![0] } else { vec![] };
+            self.send(Serverbound::DebugSubscriptionRequest(
+                DebugSubscriptionRequest { subscriptions },
+            ));
         }
     }
     /// The overlay's chart lines (`DebugScreenOverlay`'s "Debug charts").
@@ -380,7 +397,7 @@ impl Game<'_> {
                 width,
                 height,
                 self.settings.max_fps,
-                1000.0 / self.clock.rate(),
+                &self.clock,
                 !self.has_singleplayer_server(),
             );
             draws.push(hud_layout::GuiDraw::Push(vec![hud_layout::PoseOp::Scale(

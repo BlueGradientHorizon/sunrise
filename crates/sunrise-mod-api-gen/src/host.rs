@@ -985,16 +985,15 @@ fn handle_method(
             if path.path.segments.last().is_some_and(|seg| seg.ident == ident)))
     };
     let check_transaction = if let Some(tx) = transaction_arg {
-        let refusal = if let Some(error) = result_error(&sig.output) {
-            format!("Err(<{}>::InvalidContext)", error.to_token_stream())
-        } else if returns("Option") {
-            "None".into()
-        } else if returns("bool") {
-            "false".into()
-        } else {
-            return Err(format!("{name}: a transaction write needs a typed refusal"));
+        let Some(error) = result_error(&sig.output) else {
+            return Err(format!(
+                "{name}: a transaction write needs a Result refusal"
+            ));
         };
-        format!("if !host.transaction_matches(Some({tx})) {{ return {refusal}; }} ")
+        format!(
+            "if !host.transaction_matches(Some({tx})) {{ return Err(<{}>::InvalidContext); }} ",
+            error.to_token_stream()
+        )
     } else {
         String::new()
     };

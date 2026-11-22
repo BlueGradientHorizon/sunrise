@@ -8,7 +8,9 @@ retried with the accepted amount.
 
 `ENERGY` corresponds to NeoForge's `Capabilities.Energy.BLOCK`. An `EnergyHandler`
 reports an amount and a capacity, without a resource identity. Its `insert` and
-`extract` methods receive the innermost `&TransactionContext` and return the amount transferred.
+`extract` methods receive the innermost `&TransactionContext` and return
+`Result<u32, TransactionError<Overanswered>>` with the amount transferred (or
+`TransactionError::InvalidContext` for a mismatched transaction loan).
 
 ## Block providers
 

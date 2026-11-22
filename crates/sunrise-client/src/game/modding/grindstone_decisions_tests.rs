@@ -66,7 +66,7 @@ fn write_dirt(host: &mut dyn ServerHost) {
         slot: 20,
     };
     host.transaction(|host, tx| {
-        assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), 2);
+        assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), Ok(2));
         Ok::<_, ()>(())
     })
     .unwrap();
@@ -78,7 +78,10 @@ fn panic_during_write(host: &mut dyn ServerHost) {
         slot: 21,
     };
     let _: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, tx| {
-        assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt(1)), 3), 3);
+        assert_eq!(
+            place.insert(host, tx, &ItemResource::of(&dirt(1)), 3),
+            Ok(3)
+        );
         panic!("a grindstone listener failed during a write");
     });
 }

@@ -59,9 +59,9 @@ impl mod_api::MenuPart for InventoryPart {
         let give = ItemPlace::MenuSlot { menu, slot: 10 };
         let partial = ItemPlace::MenuSlot { menu, slot: 11 };
         host.transaction(|host, tx| {
-            assert_eq!(take.extract(host, tx, &stone, 4), 4);
-            assert_eq!(give.insert(host, tx, &dirt, 5), 5);
-            assert_eq!(partial.insert(host, tx, &pearl, 10), 4);
+            assert_eq!(take.extract(host, tx, &stone, 4), Ok(4));
+            assert_eq!(give.insert(host, tx, &dirt, 5), Ok(5));
+            assert_eq!(partial.insert(host, tx, &pearl, 10), Ok(4));
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -156,8 +156,8 @@ fn exercise(reopen: bool) {
             };
             (game as &mut dyn ServerHost)
                 .transaction(|host, tx| {
-                    assert_eq!(foreign.extract(host, tx, &stone, 4), 0);
-                    assert_eq!(foreign.insert(host, tx, &dirt, 5), 0);
+                    assert_eq!(foreign.extract(host, tx, &stone, 4), Ok(0));
+                    assert_eq!(foreign.insert(host, tx, &dirt, 5), Ok(0));
                     Ok::<_, ()>(())
                 })
                 .unwrap();
@@ -167,7 +167,7 @@ fn exercise(reopen: bool) {
             assert_eq!(partial.with_stack(game, |stack| stack.count()).unwrap(), 16);
             let aborted: Result<(), mod_api::TransactionError<()>> = (game as &mut dyn ServerHost)
                 .transaction(|host, tx| {
-                    assert_eq!(give.insert(host, tx, &dirt, 3), 3);
+                    assert_eq!(give.insert(host, tx, &dirt, 3), Ok(3));
                     Err(())
                 });
             assert!(aborted.is_err());
@@ -180,8 +180,8 @@ fn exercise(reopen: bool) {
                 .unwrap();
             (game as &mut dyn ServerHost)
                 .transaction(|host, tx| {
-                    assert_eq!(take.extract(host, tx, &stone, 4), 0);
-                    assert_eq!(give.insert(host, tx, &dirt, 5), 0);
+                    assert_eq!(take.extract(host, tx, &stone, 4), Ok(0));
+                    assert_eq!(give.insert(host, tx, &dirt, 5), Ok(0));
                     Ok::<_, ()>(())
                 })
                 .unwrap();
@@ -247,10 +247,10 @@ mod owner {
             let cursor = menu.cursor();
             let mut seen = Vec::new();
             host.transaction(|host, tx| {
-                seen.push(player_slot.extract(host, tx, &diamond, 1));
-                seen.push(menu_slot.extract(host, tx, &diamond, 1));
-                seen.push(own_slot.insert(host, tx, &diamond, 1));
-                seen.push(cursor.insert(host, tx, &diamond, 1));
+                seen.push(player_slot.extract(host, tx, &diamond, 1).unwrap());
+                seen.push(menu_slot.extract(host, tx, &diamond, 1).unwrap());
+                seen.push(own_slot.insert(host, tx, &diamond, 1).unwrap());
+                seen.push(cursor.insert(host, tx, &diamond, 1).unwrap());
                 seen.push(player_slot.amount(host));
                 seen.push(menu_slot.amount(host));
                 Ok::<_, ()>(())
@@ -350,9 +350,9 @@ mod owner {
             let dropped = game.dropped.len();
             let moved: Result<(), TransactionError<()>> = (game as &mut dyn ServerHost)
                 .transaction(|host, tx| {
-                    let taken = source.extract(host, tx, &diamond, 1);
+                    let taken = source.extract(host, tx, &diamond, 1).unwrap();
                     assert_eq!(taken, 1);
-                    assert_eq!(slot.insert(host, tx, &diamond, taken), 0);
+                    assert_eq!(slot.insert(host, tx, &diamond, taken), Ok(0));
                     Err(())
                 });
             assert!(moved.is_err());
@@ -369,7 +369,8 @@ mod owner {
     }
 
     /// A transaction that clears a stack of a guest in the Nether and aborts restores it, and
-    /// a stack given to them with a full inventory comes back to the mod, dropped nowhere.
+    /// a stack given to them with a full inventory drops in their own loaded level rather than
+    /// the caller's.
     #[test]
     #[ignore = "daily"]
     fn a_non_owner_guest_in_another_level_keeps_their_stack_through_an_abort() {
@@ -425,10 +426,14 @@ mod owner {
             let dropped = game.dropped.len();
             let given = (game as &mut dyn ServerHost)
                 .transaction(|host, _| Ok::<_, ()>(player.give_stack(host, diamond.clone())));
-            assert_eq!(given, Ok(Ok(Some(diamond))));
+            assert_eq!(given, Ok(Ok(None)));
             assert_eq!(game.dropped.len(), dropped);
             game.enter_level(super::super::Dim::Nether).unwrap();
-            assert_eq!(game.dropped.len(), 0);
+            let [overflow] = game.dropped.as_ref() else {
+                panic!("expected overflow to drop in the guest's own loaded level");
+            };
+            assert_eq!(overflow.stack, ItemStack::new("minecraft:diamond", 1));
+            assert_eq!(overflow.pickup_delay, 0);
         });
     }
 }

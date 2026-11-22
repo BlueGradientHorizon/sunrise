@@ -234,10 +234,10 @@ impl Game<'_> {
             let play = host.play.get(&guest.conn);
             let menus = host.menus.get(&guest.conn);
             if menu.fields().window != 0
-                || menus.is_some_and(|m| m.crafting.table.is_some() || m.station.is_some())
-                || play.is_some_and(|p| {
-                    p.merchant.is_some() || p.lectern.is_some() || p.mount_window.is_some()
+                || menus.is_some_and(|m| {
+                    m.crafting.table.is_some() || m.station.is_some() || m.merchant.is_some()
                 })
+                || play.is_some_and(|p| p.lectern.is_some() || p.mount_window.is_some())
             {
                 return None;
             }

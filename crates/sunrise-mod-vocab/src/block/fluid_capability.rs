@@ -6,7 +6,8 @@ use crate::__private::ingredient_parser::WalkedIngredient;
 use crate::Components;
 use crate::{
     BlockSide, CapabilityKey, DataLoadContext, FluidIdentity, FluidKey, ItemCapabilityKey,
-    ItemPlace, ItemResource, ItemStack, ResourceHandler, ServerHost, TransactionContext,
+    ItemPlace, ItemResource, ItemStack, Overanswered, ResourceHandler, ServerHost,
+    TransactionContext, TransactionError,
 };
 use std::{fmt, marker::PhantomData};
 
@@ -301,15 +302,15 @@ impl ResourceHandler<FluidResource> for GameFluids {
         index: usize,
         resource: &FluidResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let Some(backend) = crate::backend_mut_of(host) else {
-            return 0;
+            return Ok(0);
         };
         let rest = backend.fluid_tank_insert(self.0, index, resource.to_stack(amount), tx);
-        amount - rest.map_or(0, |rest| rest.amount.min(amount))
+        Ok(amount - rest.map_or(0, |rest| rest.amount.min(amount)))
     }
     fn extract_at(
         &self,
@@ -318,17 +319,17 @@ impl ResourceHandler<FluidResource> for GameFluids {
         index: usize,
         resource: &FluidResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let held = crate::backend_of(host).and_then(|backend| backend.fluid_tank(self.0, index));
         if !held.is_some_and(|held| resource.matches(&held)) {
-            return 0;
+            return Ok(0);
         }
-        crate::backend_mut_of(host)
+        Ok(crate::backend_mut_of(host)
             .and_then(|backend| backend.fluid_tank_extract(self.0, index, amount, tx))
-            .map_or(0, |out| out.amount.min(amount))
+            .map_or(0, |out| out.amount.min(amount)))
     }
 }
 
@@ -415,12 +416,12 @@ impl GameBucket {
         host: &mut dyn ServerHost,
         tx: &TransactionContext,
         bucket: crate::ItemKey,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         let bucket = ItemResource::of(&ItemStack::of(bucket));
-        match self.place.exchange(host, tx, &bucket, 1) {
+        Ok(match self.place.exchange(host, tx, &bucket, 1)? {
             1 => BUCKET,
             _ => 0,
-        }
+        })
     }
 }
 impl ResourceHandler<FluidResource> for GameBucket {
@@ -456,14 +457,14 @@ impl ResourceHandler<FluidResource> for GameBucket {
         index: usize,
         resource: &FluidResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let empty = self.place.with_stack(host, |stack| stack.item()) == Some(self.buckets[0]);
         match self.bucket_of(resource) {
             Some(full) if index == 0 && empty && amount >= BUCKET => self.exchange(host, tx, full),
-            _ => 0,
+            _ => Ok(0),
         }
     }
     fn extract_at(
@@ -473,16 +474,16 @@ impl ResourceHandler<FluidResource> for GameBucket {
         index: usize,
         resource: &FluidResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let held = self.resource(host, index);
         match held {
             Some(held) if held == *resource && amount >= BUCKET => {
                 self.exchange(host, tx, self.buckets[0])
             }
-            _ => 0,
+            _ => Ok(0),
         }
     }
 }

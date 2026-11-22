@@ -171,16 +171,16 @@ pub mod tests {
             index: usize,
             resource: &FluidResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let Some(backend) = crate::backend_mut_of(host) else {
-                return 0;
+                return Ok(0);
             };
             let rest = backend.fluid_tank_insert(self.at, index, resource.to_stack(amount), tx);
             let went = amount - rest.map_or(0, |rest| rest.amount);
-            match self.lie {
+            Ok(match self.lie {
                 Some(Lie::TakesMore) => went + 100,
                 _ => went,
-            }
+            })
         }
         fn extract_at(
             &self,
@@ -189,20 +189,20 @@ pub mod tests {
             index: usize,
             resource: &FluidResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let held =
                 crate::backend_of(host).and_then(|backend| backend.fluid_tank(self.at, index));
             if !held.is_some_and(|held| resource.matches(&held)) {
-                return 0;
+                return Ok(0);
             }
             let more = if self.lie == Some(Lie::GivesMore) {
                 100
             } else {
                 0
             };
-            crate::backend_mut_of(host)
+            Ok(crate::backend_mut_of(host)
                 .and_then(|backend| backend.fluid_tank_extract(self.at, index, amount + more, tx))
-                .map_or(0, |out| out.amount)
+                .map_or(0, |out| out.amount))
         }
     }
 

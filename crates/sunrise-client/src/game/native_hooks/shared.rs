@@ -2203,6 +2203,9 @@ impl Game<'_> {
             direct_kind: None,
             position: None,
             projectile_weapon: None,
+            attacker_uuid: (player_uuid.is_none() && attacker != 0)
+                .then(|| self.known_attacker_uuid(attacker as u32))
+                .flatten(),
             player_uuid,
         }
     }
@@ -2864,6 +2867,13 @@ impl Game<'_> {
     }
     /// The mobs from index `from` on are new in the world.
     pub(super) fn native_mobs_joined(&mut self, from: usize, natural: bool) {
+        // Preserve saved/constructed UUIDs. Natural spawns built with provisional
+        // IDs get their persistent identity when admitted, not on their first hit.
+        for mob in self.mobs.iter().skip(from) {
+            self.persist
+                .uuids
+                .get_or_insert_with(mob.id, sunrise_client::save::random_uuid);
+        }
         self.join_spawn_tags(from);
         // A mod can keep a mob out; it is then taken out and not told of.
         self.native_joins_flush(false, 0);

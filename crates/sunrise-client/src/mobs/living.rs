@@ -971,7 +971,9 @@ impl Mob {
         let scene = SceneCollisions {
             world: w.world,
             binding: w.collision,
-            subject: Some(self.collision_subject()),
+            subject: Some(
+                self.collision_subject(w.items.map(|items| items.entity_type_tags.as_ref())),
+            ),
         };
         // Entity.collide: the world border's walls stop the mob too, and so
         // do the entities it may not pass through.
@@ -1428,7 +1430,8 @@ impl Mob {
     /// `Entity.checkSupportingBlock` uses the post-move bounds and live collision context.
     fn update_ground_support(&mut self, w: &MobWorld, moved: Vec3) {
         let mut ground = self.ground;
-        let (context, subject) = self.support_collision();
+        let (context, subject) =
+            self.support_collision(w.items.map(|items| items.entity_type_tags.as_ref()));
         let mut scene = SceneCollisions {
             world: w.world,
             binding: w.collision,
@@ -2358,8 +2361,7 @@ impl Mob {
         // in the water than its jump threshold rises 0.04 a tick, which is
         // what keeps a ridden horse and its rider afloat.
         if (self.rider.is_some() || self.extra.rider.is_some())
-            && w.data
-                .entity_has("minecraft:can_float_while_ridden", &self.kind.id)
+            && w.entity_has("minecraft:can_float_while_ridden", &self.kind.id)
             && self.fluids.water > self.fluid_jump_threshold()
         {
             self.velocity.y += f64::from(0.04_f32);
@@ -3163,6 +3165,7 @@ mod tests {
                 asks_baby_spawn: false,
                 border: None,
                 section_writer: None,
+                trading_players: None,
             };
             let kind = std::sync::Arc::new(types.types["minecraft:pig"].clone());
             let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 0.5), 0.0);
@@ -3297,6 +3300,7 @@ mod tests {
                 asks_baby_spawn: false,
                 border: None,
                 section_writer: None,
+                trading_players: None,
             };
             let kind = std::sync::Arc::new(types.types["minecraft:pig"].clone());
             let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 0.5), 0.0);
@@ -3432,6 +3436,7 @@ mod tests {
             asks_baby_spawn: false,
             border: None,
             section_writer: None,
+            trading_players: None,
         };
         let kind = std::sync::Arc::new(types.types["minecraft:horse"].clone());
         let mut sank = 0.0;
@@ -3572,6 +3577,7 @@ mod tests {
                 mod_effects: None,
                 border: None,
                 section_writer: None,
+                trading_players: None,
             };
             let top = below.bounds().max_position().y;
             let mut zombie = mob(1, "minecraft:zombie", Vec3::new(8.5, top + 3.0, 8.5));

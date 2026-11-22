@@ -708,6 +708,15 @@ impl Dragon {
     fn down(&self) -> bool {
         matches!(self.phase, Phase::Dying { .. }) || !self.alive()
     }
+    /// The entity's own box, not any of the separate `EnderDragonPart` boxes.
+    pub(super) fn body_bounds(&self) -> Aabb {
+        // EntityTypes.ENDER_DRAGON dimensions: 16 wide, 8 high.
+        let p = self.position;
+        Aabb::new(
+            Vec3::new(p.x - 8.0, p.y, p.z - 8.0),
+            Vec3::new(p.x + 8.0, p.y + 8.0, p.z + 8.0),
+        )
+    }
     /// Where part `i` stands and its box.
     pub(super) fn part_geometry(&self, i: usize) -> (Vec3, Aabb) {
         (self.parts[i].0, self.part_box(i))
@@ -4841,6 +4850,8 @@ impl Game<'_> {
         // Finalization listeners can install another dragon after the initial
         // refusal check. Keep the constructor's existing replacement order.
         self.replace_resident_dragon(dragon);
+        // Entity's constructor assigns the identity before any join callbacks or hits.
+        self.uuid_for(id);
         self.place_dragon_parts();
         self.native_joins_flush(false, id).then_some(id)
     }

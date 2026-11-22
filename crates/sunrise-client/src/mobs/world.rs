@@ -295,6 +295,20 @@ impl MobWorld<'_> {
     pub fn has_tag(&self, tag: &str, block: &str) -> bool {
         self.block_tags.get(tag).is_some_and(|s| s.contains(block))
     }
+    /// `EntityType.is`: membership in the owning side's bound tags.
+    pub fn entity_has(&self, tag: &str, id: &str) -> bool {
+        self.items
+            .is_some_and(|items| items.entity_type_tags.contains(tag, id))
+    }
+    /// Membership in a prebound gameplay tag, indexed by the mob type's registry slot.
+    #[inline]
+    pub fn entity_tag_bit(&self, kind: &super::MobType, bit: u8) -> bool {
+        self.items.is_some_and(|items| {
+            items
+                .entity_type_tags
+                .has_bit(kind.flags.entity_tag_slot, bit)
+        })
+    }
     /// The state's [`crate::items::BlockTagFlags`]: 0 when this view carries
     /// no table.
     #[inline]
@@ -1096,6 +1110,7 @@ fn run_test_world(
         asks_baby_spawn: false,
         border: None,
         section_writer: None,
+        trading_players: None,
     };
     f(&w, types);
     true

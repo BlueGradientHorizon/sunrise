@@ -1159,7 +1159,10 @@ fn a_block_break_at_the_commit_never_announces_a_mob_the_transaction_removed() {
             .storage_transaction(|game, tx| {
                 let pig = summon(game, "minecraft:pig", "{}").unwrap();
                 assert!(game.entity_discard(game.entity(pig).unwrap()));
-                assert!(game.level_place_fluid(level, at, water, None, false, tx));
+                assert_eq!(
+                    game.level_place_fluid(level, at, water, None, false, tx),
+                    Ok(true)
+                );
                 assert_eq!(game.dropped.len(), items, "the drop waits for the commit");
                 Ok::<_, ()>(pig)
             })

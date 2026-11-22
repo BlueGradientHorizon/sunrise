@@ -19,12 +19,7 @@ impl Game<'_> {
                 }
             }
         } else {
-            // EntityType.ENDER_DRAGON dimensions: 16 wide, 8 high.
-            let p = dragon.position;
-            let body = Aabb::new(
-                Vec3::new(p.x - 8.0, p.y, p.z - 8.0),
-                Vec3::new(p.x + 8.0, p.y + 8.0, p.z + 8.0),
-            );
+            let body = dragon.body_bounds();
             if bounds.intersects(body) {
                 visit_id(dragon.id)?;
             }

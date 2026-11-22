@@ -171,9 +171,9 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
         host: &mut dyn ServerHost,
         tx: &TransactionContext,
         limit: u32,
-    ) -> bool {
+    ) -> Result<bool, TransactionError<()>> {
         if !host.transaction_matches(Some(tx)) {
-            return false;
+            return Err(TransactionError::InvalidContext);
         }
         self.handler.set_max_stack_size(host, tx, limit)
     }
@@ -213,14 +213,15 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
         index: usize,
         resource: &R,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
-        let answer = self.handler.insert_at(host, tx, index, resource, amount);
-        // Keep the raw answer so the caller knows to abort; this boundary knows whom to warn about.
-        let _ = self.checked(answer, amount, &index);
-        answer
+        self.check_resource_transfer(
+            self.handler.insert_at(host, tx, index, resource, amount),
+            amount,
+            "insert_at",
+        )
     }
 
     fn extract_at(
@@ -230,13 +231,15 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
         index: usize,
         resource: &R,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
-        let answer = self.handler.extract_at(host, tx, index, resource, amount);
-        let _ = self.checked(answer, amount, &index);
-        answer
+        self.check_resource_transfer(
+            self.handler.extract_at(host, tx, index, resource, amount),
+            amount,
+            "extract_at",
+        )
     }
 
     fn insert(
@@ -345,12 +348,12 @@ impl ResourceHandler<ItemResource> for GameItems {
         host: &mut dyn ServerHost,
         tx: &TransactionContext,
         limit: u32,
-    ) -> bool {
+    ) -> Result<bool, TransactionError<()>> {
         if !host.transaction_matches(Some(tx)) {
-            return false;
+            return Err(TransactionError::InvalidContext);
         }
-        backend_mut_of(host)
-            .is_some_and(|backend| backend.container_set_stack_limit(self.0, limit, tx))
+        Ok(backend_mut_of(host)
+            .is_some_and(|backend| backend.container_set_stack_limit(self.0, limit, tx)))
     }
 
     fn size(&self, host: &mut dyn ServerHost) -> usize {
@@ -384,20 +387,20 @@ impl ResourceHandler<ItemResource> for GameItems {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         if amount == 0 {
-            return 0;
+            return Ok(0);
         }
         let Some(backend) = backend_mut_of(host) else {
-            return 0;
+            return Ok(0);
         };
         let Ok(rest) = backend.container_insert(self.0, index, resource, amount, tx) else {
-            return 0;
+            return Ok(0);
         };
-        amount - rest.map_or(0, |rest| rest.count().min(amount))
+        Ok(amount - rest.map_or(0, |rest| rest.count().min(amount)))
     }
     fn extract_at(
         &self,
@@ -406,20 +409,20 @@ impl ResourceHandler<ItemResource> for GameItems {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let held = backend_of(&*host).and_then(|backend| backend.container_stack(self.0, index));
         if !held.is_some_and(|held| resource.matches(&held)) {
-            return 0;
+            return Ok(0);
         }
         let Some(backend) = backend_mut_of(host) else {
-            return 0;
+            return Ok(0);
         };
-        backend
+        Ok(backend
             .container_extract(self.0, index, amount, tx)
-            .map_or(0, |out| out.count().min(amount))
+            .map_or(0, |out| out.count().min(amount)))
     }
 }
 

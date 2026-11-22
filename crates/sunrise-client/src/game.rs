@@ -2853,24 +2853,39 @@ impl GameLevel<'_> {
                     .as_ref()
                     .unwrap_or(&self.guest_boxes),
             )
-            .chain(&self.cart_boxes)
             .map(boxed)
             .chain(b.mobs.iter().filter(|m| !m.removed).map(Mob::bounds))
             .chain(
-                b.armor_stands
+                b.non_mob_building_blocker_boxes(self.cart_boxes.iter().map(boxed), self.crystals),
+            )
+            .collect()
+    }
+}
+
+impl<'w> entity::EntityLists<'w> {
+    /// Non-player, non-mob boxes with `Entity.blocksBuilding`. The block level
+    /// supplies its minecart snapshot; the mob level reads the live cart boxes.
+    fn non_mob_building_blocker_boxes(
+        self,
+        carts: impl Iterator<Item = Aabb> + 'w,
+        crystals: &'w [dragon::Crystal],
+    ) -> impl Iterator<Item = Aabb> + 'w {
+        carts
+            .chain(
+                self.armor_stands
                     .iter()
                     .filter(|s| !s.marker)
                     .map(|s| s.bounds()),
             )
-            .chain(b.boats.iter().map(boats::Boat::bounds))
-            .chain(self.crystals.iter().map(dragon::Crystal::bounds))
-            .chain(b.tnts.iter().map(tnt::PrimedTnt::bounds))
+            .chain(self.boats.iter().map(boats::Boat::bounds))
+            .chain(crystals.iter().map(dragon::Crystal::bounds))
+            .chain(self.tnts.iter().map(tnt::PrimedTnt::bounds))
             .chain(
-                b.falling
+                self.falling
                     .iter()
+                    .filter(|f| f.blocks_building)
                     .map(|f| sunrise_client::falling_block::bounds(f.position)),
             )
-            .collect()
     }
 }
 /// A landing's block game event, emitted after its world write is applied.
@@ -2892,6 +2907,9 @@ struct FallingBlock {
     /// Its entity id: from the entity counter on the server, the server's on a client.
     id: u32,
     state: BlockStateId,
+    /// `FallingBlockEntity.fall` and `recreateFromPacket` set `blocksBuilding`;
+    /// constructing an entity from NBT leaves the default false.
+    blocks_building: bool,
     /// `DATA_START_POS`: spawn position used to select weighted block models.
     start_pos: BlockPos,
     position: Vec3,
@@ -3040,8 +3058,7 @@ use condition_reload_state::PreparedWorldReload;
 
 impl WorldTables {
     /// The registries [`WorldTables::pack_tags`] holds.
-    const PACK_TAG_REGISTRIES: [&'static str; 3] =
-        ["entity_type", "worldgen/biome", "worldgen/structure"];
+    const PACK_TAG_REGISTRIES: [&'static str; 2] = ["worldgen/biome", "worldgen/structure"];
 }
 
 /// The equipment slot of `armor[index]`: head, chest, legs, feet.
@@ -4251,6 +4268,8 @@ struct Game<'a> {
     save_after_guest_turn: bool,
     /// Guests whose records are displaced by nested player swaps, outer first.
     lan_guest_swaps: Vec<u32>,
+    /// Bodies and their statistics displaced by guest turns, outer first.
+    lan_displaced_players: Vec<lan_actions::DisplacedPlayer>,
     /// Connections whose turn a panic interrupted this tick: the turn helpers record the
     /// player before re-raising, the end-of-turn path records it before its callbacks run and
     /// clears it after a clean put-back. Cleared at the start of every server tick; the crash
@@ -6209,6 +6228,7 @@ impl Game<'_> {
                         join: Default::default(),
                         id: self.next_entity,
                         state,
+                        blocks_building: true,
                         start_pos: pos,
                         position: p,
                         previous: p,
@@ -8143,7 +8163,7 @@ impl Game<'_> {
         self.mark_motion(out.len(), 0);
         laps.lap("eg_other_creatures");
         // These billboards stay in their later pass, outside the ordered body runs.
-        for m in self.drawn_mobs() {
+        for m in &self.mobs {
             // Blaze.isOnFire: a charged blaze burns.
             let blazing = m.species() == sunrise_client::mobs::Species::Blaze && m.extra.flag;
             if (m.is_on_fire() || blazing) && !m.removed {
@@ -8171,7 +8191,7 @@ impl Game<'_> {
         if self.own_body_in_view()
             && let Some(p) = &self.player
             && p.is_on_fire()
-            && !(p.spectator || self.own_render_canceled())
+            && !p.spectator
         {
             let feet = self
                 .previous_position
@@ -8234,7 +8254,7 @@ impl Game<'_> {
                 )
             };
             let mut casters: Vec<(glam::DVec3, f32, f32)> =
-                sunrise_client::shadows::mob_casters(self.drawn_mobs(), a).collect();
+                sunrise_client::shadows::mob_casters(&self.mobs, a).collect();
             let item = sunrise_client::shadows::shadow_params("minecraft:item");
             casters.extend(
                 self.dropped
@@ -12125,16 +12145,18 @@ impl Game<'_> {
         {
             return true;
         }
-        if let Some(saving) = &mut self.pending_save {
+        if self.pending_save.is_some() {
             match event {
                 WindowEvent::CloseRequested => {
-                    if self.settings.quit_shortcuts
+                    if (self.settings.quit_shortcuts
                         || !sunrise_client::input::is_quit_shortcut_down(
                             self.modifiers,
                             &self.physical_keys,
-                        )
+                        ))
+                        && let Err(error) = self.begin_closing_save(true)
                     {
-                        saving.quit = true;
+                        self.error = Some(error);
+                        event_loop.exit();
                     }
                 }
                 WindowEvent::Focused(focused) => {
@@ -14149,6 +14171,7 @@ impl<'a> Game<'a> {
             lan_building_boxes: Default::default(),
             save_after_guest_turn: false,
             lan_guest_swaps: Vec::new(),
+            lan_displaced_players: Vec::new(),
             interrupted_turns: Vec::new(),
             crash_save: Default::default(),
             lan_ender_menus: Vec::new(),
@@ -14479,7 +14502,7 @@ pub(crate) fn run_with(
 }
 
 /// The right and left arms of a player model layer (`PlayerModel.rightArm`
-/// and `leftArm`, with their sleeves).
+/// and `leftArm`, with their sleeves), each keeping the layer.
 fn player_arms(
     root: &std::path::Path,
     key: &str,
@@ -14489,11 +14512,7 @@ fn player_arms(
         Some(document) => document.model(key),
         None => sunrise_client::mobs::load_model(root, key),
     };
-    ["right_arm", "left_arm"].map(|name| {
-        model
-            .as_ref()
-            .and_then(|m| m.children.iter().find(|c| c.name == name).cloned())
-    })
+    ["right_arm", "left_arm"].map(|name| model.as_ref().and_then(|m| m.detached_child(name)))
 }
 
 /// The most `Player.sleepCounter` reaches: 100 asleep, then up to here over the

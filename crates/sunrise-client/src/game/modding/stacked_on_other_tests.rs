@@ -94,9 +94,9 @@ impl Hooks for Listener {
             let dirt = api_stack("minecraft:dirt", 1);
             assert!(!host.transaction_matches(None), "inside the action");
             host.transaction(|host, tx| {
-                assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), 2);
+                assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), Ok(2));
                 if s.take_dirt_back {
-                    assert_eq!(place.extract(host, tx, &ItemResource::of(&dirt), 2), 2);
+                    assert_eq!(place.extract(host, tx, &ItemResource::of(&dirt), 2), Ok(2));
                 }
                 Ok::<_, ()>(())
             })
@@ -850,7 +850,7 @@ mod families {
                     },
                 );
                 window.set(
-                    game.lan.as_ref().unwrap().play[&12]
+                    game.lan.as_ref().unwrap().menus[&12]
                         .merchant
                         .as_ref()
                         .unwrap()
@@ -2081,7 +2081,7 @@ mod item_part_tests {
                             name: None,
                         },
                     );
-                    let mwin = game.lan.as_ref().unwrap().play[&12]
+                    let mwin = game.lan.as_ref().unwrap().menus[&12]
                         .merchant
                         .as_ref()
                         .unwrap()
@@ -2111,7 +2111,7 @@ mod item_part_tests {
                         );
                         assert!(observations()[0].primary);
                         assert_eq!(
-                            game.lan.as_ref().unwrap().play[&12]
+                            game.lan.as_ref().unwrap().menus[&12]
                                 .merchant
                                 .as_ref()
                                 .unwrap()
@@ -2123,7 +2123,7 @@ mod item_part_tests {
                         ((), false)
                     });
                     assert!(
-                        game.lan.as_ref().unwrap().play[&12]
+                        game.lan.as_ref().unwrap().menus[&12]
                             .merchant
                             .as_ref()
                             .unwrap()
@@ -2156,7 +2156,7 @@ mod item_part_tests {
                     );
                     assert!(!observations()[0].primary);
                     assert_eq!(
-                        game.lan.as_ref().unwrap().play[&12]
+                        game.lan.as_ref().unwrap().menus[&12]
                             .merchant
                             .as_ref()
                             .unwrap()
@@ -2186,7 +2186,7 @@ mod item_part_tests {
                         "direct pickup during active merchant drag must only reset drag"
                     );
                     assert!(
-                        game.lan.as_ref().unwrap().play[&12]
+                        game.lan.as_ref().unwrap().menus[&12]
                             .merchant
                             .as_ref()
                             .unwrap()
@@ -2210,7 +2210,7 @@ mod item_part_tests {
                     game.lan
                         .as_mut()
                         .unwrap()
-                        .play
+                        .menus
                         .get_mut(&12)
                         .unwrap()
                         .merchant
@@ -2233,7 +2233,7 @@ mod item_part_tests {
                         trace().is_empty(),
                         "LAN merchant 2-slot drag must not dispatch Parts"
                     );
-                    let mslots = &game.lan.as_ref().unwrap().play[&12]
+                    let mslots = &game.lan.as_ref().unwrap().menus[&12]
                         .merchant
                         .as_ref()
                         .unwrap()

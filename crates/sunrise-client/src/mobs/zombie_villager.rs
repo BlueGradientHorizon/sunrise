@@ -398,6 +398,7 @@ mod tests {
             asks_baby_spawn: false,
             border: None,
             section_writer: None,
+            trading_players: None,
         };
         for no_ai in [false, true] {
             let kind = std::sync::Arc::new(types.types["minecraft:zombie_villager"].clone());

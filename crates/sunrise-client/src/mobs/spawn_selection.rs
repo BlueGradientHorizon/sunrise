@@ -25,7 +25,7 @@ use std::{
     path::Path,
 };
 use sunrise_core::{
-    geometry::{Aabb, Vec3},
+    geometry::{Aabb, ShapeOp, Vec3, VoxelShape},
     random::RandomSource,
 };
 
@@ -405,7 +405,8 @@ pub trait NaturalLevel: SpawnLevel {
     /// `noCollision(null, box)`: blocks under an empty collision context and
     /// entities that can be collided with.
     fn no_collision(&self, bounds: Aabb) -> bool;
-    /// `isUnobstructed(entity)`: no entity blocking building overlaps.
+    /// `isUnobstructed(entity)`: no entity blocking building overlaps, including
+    /// entities already accepted by this spawn pass.
     fn unobstructed(&self, bounds: Aabb) -> bool;
     /// The `spawn_mobs` game rule.
     fn spawn_mobs(&self) -> bool;
@@ -659,27 +660,35 @@ pub fn position_ok<L: NaturalLevel>(
     }
     ok
 }
-/// `checkSpawnObstruction` of a freshly created mob with the given box, with
-/// the mobs already `spawned` in the way; None in a generation region, which
-/// has no entities (`WorldGenRegion.getEntities`).
+/// `EntityGetter.isUnobstructed`'s shape test after selecting an entity with
+/// `blocksBuilding`. A broad-phase AABB overlap alone is not an obstruction.
+pub fn blocks_spawn_shape(shape: &VoxelShape, query: Aabb, blocker: Aabb) -> bool {
+    blocker.intersects(query)
+        && VoxelShape::from_box(blocker).is_ok_and(|other| {
+            shape
+                .join_is_not_empty(&other, ShapeOp::AND)
+                .unwrap_or(false)
+        })
+}
+
+/// `checkSpawnObstruction` of a freshly created mob with the given box.
+/// Generation skips the entity query (`WorldGenRegion.getEntities` is empty).
 pub fn spawn_obstruction<L: NaturalLevel>(
     s: Species,
     l: &L,
     bounds: Aabb,
-    spawned: Option<&[Aabb]>,
+    check_entities: bool,
     x: i32,
     y: i32,
     z: i32,
 ) -> bool {
-    let unobstructed = |l: &L| {
-        spawned.is_none_or(|s| l.unobstructed(bounds) && !s.iter().any(|b| b.intersects(bounds)))
-    };
+    let unobstructed = || !check_entities || l.unobstructed(bounds);
     match obstruction(s) {
-        Obstruction::NoLiquidUnobstructed => !contains_any_liquid(l, bounds) && unobstructed(l),
-        Obstruction::Unobstructed => unobstructed(l),
+        Obstruction::NoLiquidUnobstructed => !contains_any_liquid(l, bounds) && unobstructed(),
+        Obstruction::Unobstructed => unobstructed(),
         Obstruction::NoLiquid => !contains_any_liquid(l, bounds),
         Obstruction::Ocelot => {
-            if unobstructed(l) && !contains_any_liquid(l, bounds) {
+            if unobstructed() && !contains_any_liquid(l, bounds) {
                 if y < l.sea_level() {
                     return false;
                 }
@@ -1268,8 +1277,8 @@ pub enum Event<'a> {
     /// A mob spawned.
     Spawn(&'a str, [f64; 3], f32),
 }
-/// A mob the spawner is about to add: the level runs `finalizeSpawn` and
-/// adds it, returning its finalized box and whether a tropical fish schools.
+/// A mob the spawner is about to add: the level runs `finalizeSpawn`,
+/// makes it visible to the pass's entity queries and returns its group data.
 #[derive(Clone, Debug)]
 pub struct SpawnRequest<'a> {
     pub entity: &'a str,
@@ -1282,7 +1291,6 @@ pub struct SpawnRequest<'a> {
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Spawned {
-    pub bounds: Aabb,
     /// `TropicalFish.isSchool`.
     pub school: bool,
     /// The group's size limit the new mob's entity parts answered; `None` leaves
@@ -1361,14 +1369,7 @@ pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource + Clone>(
         let Some(result) = spawn(l, &request, random) else {
             continue;
         };
-        cluster.after_spawn(
-            l,
-            state,
-            candidate,
-            candidate.block,
-            Some(result.bounds),
-            trace,
-        );
+        cluster.after_spawn(l, state, candidate, candidate.block, trace);
         cluster.check_limit(candidate, result.cluster_size, result.school);
     }
     cluster.finish(state);
@@ -1381,7 +1382,6 @@ pub struct SpawnCluster {
     category: Category,
     chunk: (i32, i32),
     nearest: Nearest,
-    spawned: Vec<Aabb>,
     count: u32,
     groups: u8,
     group_index: u32,
@@ -1418,7 +1418,6 @@ impl SpawnCluster {
             category,
             chunk,
             nearest: Nearest::new(start, std::mem::take(&mut state.nearby)),
-            spawned: Vec::new(),
             count: 0,
             groups: 0,
             group_index: 0,
@@ -1525,7 +1524,7 @@ impl SpawnCluster {
                     Pending { yaw, fresh: true },
                     || {
                         mob_spawn_rules(species, l, x, y, z)
-                            && spawn_obstruction(species, l, bounds, Some(&self.spawned), x, y, z)
+                            && spawn_obstruction(species, l, bounds, true, x, y, z)
                     },
                 )
             {
@@ -1556,24 +1555,19 @@ impl SpawnCluster {
         }
     }
 
-    /// Account for an attempted insertion, even if the level declined admission. Real levels
-    /// already expose admitted mobs; a probe may supply the bounds it models outside the level.
+    /// Account for an attempted insertion, even if the level declined admission.
     pub fn after_spawn(
         &mut self,
         l: &impl NaturalLevel,
         state: &mut SpawnState,
         candidate: SpawnCandidate,
         block: [i32; 3],
-        bounds: Option<Aabb>,
         trace: &mut dyn FnMut(Event<'_>),
     ) {
         attempt_count(1);
         self.group_index += 1;
         self.count += 1;
         self.nearest.ready = false;
-        if let Some(bounds) = bounds {
-            self.spawned.push(bounds);
-        }
         let (entry, _, _) = self
             .current
             .as_ref()
@@ -1878,7 +1872,7 @@ pub fn spawn_mobs_for_chunk_generation<
                         Pending { yaw, fresh: false },
                         || {
                             mob_spawn_rules(species, l, bx, pos[1], bz)
-                                && spawn_obstruction(species, l, bounds, None, bx, pos[1], bz)
+                                && spawn_obstruction(species, l, bounds, false, bx, pos[1], bz)
                         },
                     ) {
                         let request = SpawnRequest {

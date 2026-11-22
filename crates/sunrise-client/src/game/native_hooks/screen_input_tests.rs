@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 /// The window's key path: only a key's printable characters go on to the
 /// hook and the text box.
 #[test]

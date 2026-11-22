@@ -341,7 +341,6 @@ mod precheck_envelope_tests {
             emissive: Default::default(),
             blinks: Default::default(),
             biome_tags: Default::default(),
-            entity_tags: Default::default(),
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),

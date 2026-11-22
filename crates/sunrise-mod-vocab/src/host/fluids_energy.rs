@@ -75,9 +75,10 @@ pub trait FluidsEnergyBackendMut {
     /// `FluidUtil.tryPickupFluid`): takes the fluid source at `pos` in the level in place, a
     /// waterlogged block's water or a bubble column's, as an empty bucket would, `player`
     /// picking it up when given (only a creative player drains a barrier). What came out, a
-    /// bucket of it. None, with nothing done, where the block gives no fluid (a flowing fluid,
-    /// powder snow, any other block), in another level, or in a chunk that isn't loaded.
-    /// None, with nothing done, for a context other than this host's innermost open transaction.
+    /// bucket of it. `Ok(None)`, with nothing done, where the block gives no fluid (a flowing
+    /// fluid, powder snow, any other block), in another level, or in a chunk that isn't loaded.
+    /// `Err(TransactionError::InvalidContext)`, with nothing done, for a context other than this
+    /// host's innermost open transaction.
     ///
     /// Kept by transaction `tx`: the block is decided and written at the call, so later reads
     /// in the transaction see it drained and a second pickup there gets nothing; its updates, a
@@ -90,17 +91,18 @@ pub trait FluidsEnergyBackendMut {
         pos: [i32; 3],
         player: Option<PlayerRef>,
         tx: &TransactionContext,
-    ) -> Option<FluidStack>;
+    ) -> Result<Option<FluidStack>, TransactionError<()>>;
     /// Side: server.
     /// `BucketItem.emptyContents` of a bucket of `fluid` for a mod's fluid container (NeoForge's
     /// `FluidUtil.tryPlaceFluid`), with no hit result: at `pos` in the level in place, its source
     /// into air or a block it replaces (broken with its drops), into an accepting container
     /// (a part can accept nonwater), or hissing away where water evaporates (the Nether).
     /// The acceptance query lends `player` when supplied. With `validate`, a container's
-    /// false placement answer fails instead of emptying the bucket (NeoForge's `validatePlaced`). True
-    /// when it was placed or hissed away; false, with nothing done, for a fluid with no world
-    /// form, where it can't be placed, in another level, or in a chunk that isn't loaded.
-    /// False, with nothing done, for a context other than this host's innermost open transaction.
+    /// false placement answer fails instead of emptying the bucket (NeoForge's `validatePlaced`).
+    /// `Ok(true)` when it was placed or hissed away; `Ok(false)`, with nothing done, for a fluid
+    /// with no world form, where it can't be placed, in another level, or in a chunk that isn't
+    /// loaded. `Err(TransactionError::InvalidContext)`, with nothing done, for a context other
+    /// than this host's innermost open transaction.
     ///
     /// Kept by transaction `tx` as [`level_pickup_fluid`](Self::level_pickup_fluid) is: the
     /// block written at the call, its updates, the fluid tick, a replaced block's drops, a doused
@@ -114,14 +116,15 @@ pub trait FluidsEnergyBackendMut {
         player: Option<PlayerRef>,
         validate: bool,
         tx: &TransactionContext,
-    ) -> bool;
+    ) -> Result<bool, TransactionError<()>>;
     /// Side: server.
     /// The bucket's sound and game event for `fluid` at the centre of `pos` in the level in
     /// place, as `FluidUtil.triggerSoundAndGameEvent` plays them (`pickup`: the fill sound and
     /// `minecraft:fluid_pickup`, else the empty sound and `minecraft:fluid_place`; a tank-only
     /// fluid has no sound), from `player` when given, at the outermost commit of transaction
-    /// `tx`: nothing if it aborts. False, with nothing queued, in another level or for a
-    /// context other than this host's innermost open transaction.
+    /// `tx`: nothing if it aborts. `Ok(false)`, with nothing queued, in another level;
+    /// `Err(TransactionError::InvalidContext)` for a context other than this host's innermost open
+    /// transaction.
     fn level_play_fluid_effects(
         &mut self,
         level: LevelRef,
@@ -130,5 +133,5 @@ pub trait FluidsEnergyBackendMut {
         pickup: bool,
         player: Option<PlayerRef>,
         tx: &TransactionContext,
-    ) -> bool;
+    ) -> Result<bool, TransactionError<()>>;
 }

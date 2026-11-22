@@ -593,6 +593,8 @@ pub enum CraftedByError {
     NotHeld,
     /// The host has no server game backend, or the place is no longer usable.
     Unavailable,
+    /// The host rolled back the inner replacement commit (for example after a packet refusal).
+    CommitRefused,
 }
 
 impl crate::NoBackend for CraftedByError {

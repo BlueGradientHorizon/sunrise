@@ -9,7 +9,8 @@ A block's `ItemStorage` answers by kind, with `u64` amounts:
 - `amount(host, resource)` and `space_for(host, resource)`: how much of one kind it holds, and the planning bound
   for that kind. The default handler decides offer-dependent admission on the actual insert, not in `space_for`.
 - `insert(host, tx, resource, amount)` and `extract(...)`: write with the innermost
-  `&TransactionContext`, never moving more than asked.
+  `&TransactionContext`, returning `Result<u64, StorageError>` and never moving more than asked.
+  A mismatched context returns `Err(StorageError::InvalidContext)`.
 - `visit_entries(host, &mut visitor)`: calls `visitor(&kind, amount)` for each occupied entry, in provider order.
   For a container, this is the order of the slots exposed on the queried side, not necessarily physical slot order.
   Each slot has its own amount, even when several hold the same kind.

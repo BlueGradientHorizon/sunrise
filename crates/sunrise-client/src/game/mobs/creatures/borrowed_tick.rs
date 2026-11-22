@@ -55,12 +55,29 @@ fn route_player_events(
     }
 }
 
+/// Commit departures in the borrowed list, not when a tick merely proposes retention.
+/// In particular an interrupted pass keeps the credit of every row it gives back.
+fn retain_mob_rows(
+    mobs: &mut sunrise_client::join_seq::JoinList<Mob>,
+    player_credit: &mut std::collections::HashMap<u32, super::super::combat::PlayerCredit>,
+    mut keep: impl FnMut(&Mob) -> bool,
+) {
+    mobs.retain(|mob| {
+        let kept = keep(mob);
+        if !kept {
+            player_credit.remove(&mob.id);
+        }
+        kept
+    });
+}
+
 pub(super) struct BorrowedMobTick<'a> {
     pub(super) mobs: &'a mut sunrise_client::join_seq::JoinList<Mob>,
     pub(super) snapshot: &'a mut Vec<Seen>,
     pub(super) passenger_objects: &'a [Seen],
     pub(super) blocked: &'a std::collections::HashSet<u32>,
     pub(super) events: &'a mut Vec<MobEvent>,
+    pub(super) restocks: &'a mut Vec<sunrise_client::mobs::villager_brain::RestockNotice>,
     pub(super) pushes: &'a mut sunrise_client::mobs::PendingPushes,
     pub(super) dead: &'a mut Vec<Mob>,
     pub(super) died: &'a mut sunrise_client::fast_hash::FxHashSet<u32>,
@@ -225,6 +242,7 @@ impl Game<'_> {
                     Some(&self.pack.block_registries),
                     &self.damage_hooks,
                 )
+                .with_mob_uuids(&self.persist.uuids)
                 .with_player_resolver(
                     crate::game::entity::player_resolver!(self),
                     &mut player_credit,
@@ -679,34 +697,41 @@ impl Game<'_> {
                             &mut movement,
                         ),
                     };
-                    let progress =
-                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run_tick)) {
-                            Ok(progress) => progress,
-                            Err(payload) => {
-                                mobs[i].despawn = mod_api::Despawn::default();
-                                if seen_guest.is_none() {
-                                    base.player = w.player;
-                                } else if let Some(k) = lent {
-                                    spare =
-                                        w.player.map(|v| std::mem::replace(&mut guests[k].1, v));
-                                }
-                                sunrise_client::mobs::take_mob_pushes(
-                                    &mut events,
-                                    from,
-                                    &mut pushes,
-                                );
-                                route_player_events(
-                                    &mut events,
-                                    from,
-                                    seen_guest,
-                                    &guest_ids,
-                                    &mut guest_events,
-                                    mobs[i].id,
-                                );
-                                dispatch_panic = Some(payload);
-                                break;
+                    let progress = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run_tick));
+                    // Screen updates must run before the next callback. Take them out of this
+                    // villager's event tail now, before any continuation remembers an index in it.
+                    if mobs[i].species() == Species::Villager {
+                        for event in events.extract_if(from.., |event| {
+                            matches!(event, MobEvent::VillagerRestockStep(_))
+                        }) {
+                            let MobEvent::VillagerRestockStep(restock) = event else {
+                                unreachable!()
+                            };
+                            state.restocks.push(restock);
+                        }
+                    }
+                    let progress = match progress {
+                        Ok(progress) => progress,
+                        Err(payload) => {
+                            mobs[i].despawn = mod_api::Despawn::default();
+                            if seen_guest.is_none() {
+                                base.player = w.player;
+                            } else if let Some(k) = lent {
+                                spare = w.player.map(|v| std::mem::replace(&mut guests[k].1, v));
                             }
-                        };
+                            sunrise_client::mobs::take_mob_pushes(&mut events, from, &mut pushes);
+                            route_player_events(
+                                &mut events,
+                                from,
+                                seen_guest,
+                                &guest_ids,
+                                &mut guest_events,
+                                mobs[i].id,
+                            );
+                            dispatch_panic = Some(payload);
+                            break;
+                        }
+                    };
                     let kept = match progress {
                         sunrise_client::mobs::ai::TickProgress::Complete(kept) => {
                             movement = None;
@@ -921,7 +946,7 @@ impl Game<'_> {
                 && !section_yield;
             let same_rows = told_only && !gone_rows;
             if !same_rows {
-                mobs.retain(|m| {
+                retain_mob_rows(&mut mobs, &mut player_credit, |m| {
                     // Give the departing vehicle or cube/effect removal back for its pre-removal
                     // effects, splitting and marking it removed before dismount hooks.
                     removing_vehicle == Some(m.id)
@@ -970,7 +995,11 @@ impl Game<'_> {
                     &mut sections.borrow_mut(),
                 );
             }
+            // A work step's restock reaches the screen before any callback can edit it.
             let callback_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                for restock in state.restocks.drain(..) {
+                    self.villager_offers_open(restock);
+                }
                 if section_yield && let Some(sections) = section_table.as_ref() {
                     self.entity_sections_ticked_live(
                         &mut sections.borrow_mut(),
@@ -1194,9 +1223,11 @@ impl Game<'_> {
         if dispatch_panic.is_none() {
             if positions.is_none() {
                 let mut flags = keep.into_iter();
-                mobs.retain(|_| flags.next().unwrap_or(true));
+                retain_mob_rows(&mut mobs, &mut player_credit, |_| {
+                    flags.next().unwrap_or(true)
+                });
             } else {
-                mobs.retain(|m| {
+                retain_mob_rows(&mut mobs, &mut player_credit, |m| {
                     index
                         .get(&m.id)
                         .and_then(|&slot| keep.get(slot as usize))

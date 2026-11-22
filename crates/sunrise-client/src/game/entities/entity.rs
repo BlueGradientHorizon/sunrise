@@ -134,7 +134,10 @@ pub(super) trait Entity: EntityRules {
     fn ground_state_mut(&mut self) -> Option<&mut GroundState> {
         None
     }
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id(), self.position()),
             Some(PowderSnowSubject {
@@ -148,6 +151,7 @@ pub(super) trait Entity: EntityRules {
         &mut self,
         world: &sunrise_client::world::World,
         binding: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
+        tags: &sunrise_items::items::EntityTypeTags,
         on_ground: bool,
         movement: Option<Vec3>,
     ) -> Result<bool, CollisionScanError<std::io::Error>> {
@@ -155,7 +159,7 @@ pub(super) trait Entity: EntityRules {
             return Ok(false);
         };
         ground.on_ground = on_ground;
-        let (context, subject) = self.support_collision();
+        let (context, subject) = self.support_collision(tags);
         let mut scene = SceneCollisions {
             world,
             binding,
@@ -2395,8 +2399,11 @@ impl Entity for Mob {
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        let (context, subject) = Mob::support_collision(self);
+    fn support_collision(
+        &self,
+        tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        let (context, subject) = Mob::support_collision(self, Some(tags));
         (context, Some(subject))
     }
     /// `Entity.noPhysics`: written through the mod API; no mob tick rewrites it
@@ -2531,7 +2538,10 @@ impl Entity for Mob {
 
 impl Entity for ItemEntity {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             self.collision_context(),
             Some(PowderSnowSubject {
@@ -2876,7 +2886,10 @@ fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
 
 impl Entity for ArmorStand {
     stored_ground!(enchantment_fall_distance);
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         let (context, subject) = ArmorStand::support_collision(self);
         (context, Some(subject))
     }
@@ -3021,7 +3034,10 @@ impl Entity for ArmorStand {
 
 impl Entity for PrimedTnt {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (self.collision_context(), Some(self.powder_snow_subject()))
     }
     fn reset_fall_distance(&mut self) {
@@ -3108,7 +3124,10 @@ impl Entity for PrimedTnt {
 
 impl Entity for FallingBlock {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
@@ -3185,7 +3204,10 @@ impl Entity for FallingBlock {
 
 impl Entity for Projectile {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {

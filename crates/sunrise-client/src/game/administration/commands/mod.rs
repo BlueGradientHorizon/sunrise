@@ -876,17 +876,8 @@ impl Game<'_> {
         Some(result)
     }
     pub(in crate::game) fn entity_tag_matches(&self, tag: &str, ty: &str) -> bool {
-        let path = self.options.resources.join(format!(
-            "data/minecraft/tags/entity_type/{}.json",
-            tag.trim_start_matches("minecraft:")
-        ));
-        serde_json::from_slice::<serde_json::Value>(&std::fs::read(path).unwrap_or_default())
-            .ok()
-            .is_some_and(|v| {
-                v["values"]
-                    .as_array()
-                    .is_some_and(|a| a.iter().any(|e| e.as_str() == Some(ty)))
-            })
+        let tag = sunrise_client::command::args::normalized(tag);
+        self.items().entity_type_tags.contains(&tag, ty)
     }
     /// EntityArgument.getEntities / getPlayers / getEntity / getPlayer.
     pub(super) fn entities(&mut self, ctx: &Context, name: &str, players: bool) -> R<Vec<Target>> {
@@ -1327,7 +1318,7 @@ impl Game<'_> {
             }
             target_entity_mut!(g, t, e => {
                 e.velocity_mut().y = 0.0;
-                if matches!(e.update_retained_ground(&g.world, g.collision, true, None), Ok(false)) {
+                if matches!(e.update_retained_ground(&g.world, g.collision, &world_items!(g).entity_type_tags, true, None), Ok(false)) {
                     e.set_on_ground(true);
                 }
             });

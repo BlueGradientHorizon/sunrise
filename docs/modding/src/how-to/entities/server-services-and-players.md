@@ -65,6 +65,12 @@ permission and address reads work for connected players whose bodies are displac
 by another player's turn; stale handles are refused. Entity and living handles
 provide world-state reads, which require a resolvable body.
 
+In `player_stat_award`, find the recipient with
+`host.players().player_by_name(event.name)` or use their retained `PlayerRef`.
+`player.stat(host, stat_type, key)` reads that player's count before the award,
+even if a nested turn has displaced them. This does not make displaced players
+available for statistic writes.
+
 `player.level(host)` returns the authoritative `LevelRef`;
 `player.dimension(host)` returns its dimension `Identifier`, including registered
 custom dimensions. Both accept `&dyn Host`. On a server they identify the player's

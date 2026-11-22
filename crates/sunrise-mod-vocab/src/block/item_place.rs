@@ -13,8 +13,8 @@ use crate::item::item_stack::{component_edits::edit_item_components, read_stack_
 use crate::{
     BundleItems, Capability, Direction, ENTITY_ITEMS, EquipmentSlot, Hand, ITEMS,
     ItemComponentEditor, ItemKey, ItemResource, ItemStack, ItemStackView, LevelRef, MenuRef,
-    MenuSlotBacking, ResourceHandler, ServerHost, StackWriteError, TransactionContext,
-    backend_mut_of, backend_of,
+    MenuSlotBacking, Overanswered, ResourceHandler, ServerHost, StackWriteError,
+    TransactionContext, TransactionError, backend_mut_of, backend_of,
 };
 use std::{
     fmt::Debug,
@@ -364,7 +364,8 @@ pub trait PlaceProvider: Send + Sync + 'static {
     fn stack(&self, host: &mut dyn ServerHost, key: u64) -> Option<ItemStack>;
     /// Puts up to `amount` of `resource` at `key`, in transaction `tx`: how much went. What
     /// doesn't stack with what is there may go where the mod puts it, such as the player's
-    /// inventory (`ItemAccess.insert`); none where `key` is no longer a place.
+    /// inventory (`ItemAccess.insert`); none where `key` is no longer a place. A mismatched `tx`
+    /// returns `Err(TransactionError::InvalidContext)`.
     fn insert(
         &self,
         host: &mut dyn ServerHost,
@@ -372,8 +373,9 @@ pub trait PlaceProvider: Send + Sync + 'static {
         key: u64,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32;
-    /// Takes up to `amount` of `resource` from `key`, in transaction `tx`: how much came.
+    ) -> Result<u32, TransactionError<Overanswered>>;
+    /// Takes up to `amount` of `resource` from `key`, in transaction `tx`: how much came. A
+    /// mismatched `tx` returns `Err(TransactionError::InvalidContext)`.
     fn extract(
         &self,
         host: &mut dyn ServerHost,
@@ -381,7 +383,7 @@ pub trait PlaceProvider: Send + Sync + 'static {
         key: u64,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32;
+    ) -> Result<u32, TransactionError<Overanswered>>;
 }
 
 // no wire: process-local capability declaration carries a provider function pointer and type identity.
@@ -448,11 +450,13 @@ impl GameItemItems {
         tx: &TransactionContext,
         changed: &ItemStack,
         moved: u32,
-    ) -> u32 {
-        match self.0.exchange(host, tx, &ItemResource::of(changed), 1) {
-            1 => moved,
-            _ => 0,
-        }
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        Ok(
+            match self.0.exchange(host, tx, &ItemResource::of(changed), 1)? {
+                1 => moved,
+                _ => 0,
+            },
+        )
     }
 }
 impl ResourceHandler<ItemResource> for GameItemItems {
@@ -493,12 +497,12 @@ impl ResourceHandler<ItemResource> for GameItemItems {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let Some(offer) = resource.to_stack(amount) else {
-            return 0;
+            return Ok(0);
         };
         let Some((went, changed)) = self
             .0
@@ -506,10 +510,10 @@ impl ResourceHandler<ItemResource> for GameItemItems {
             .flatten()
             .and_then(|held| backend_of(host)?.item_container_insert_slot(&held, index, &offer))
         else {
-            return 0;
+            return Ok(0);
         };
         match went {
-            0 => 0,
+            0 => Ok(0),
             went => self.rewrite(host, tx, &changed, went.min(amount)),
         }
     }
@@ -520,9 +524,9 @@ impl ResourceHandler<ItemResource> for GameItemItems {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let Some((Some(out), changed)) = self
             .0
@@ -540,7 +544,7 @@ impl ResourceHandler<ItemResource> for GameItemItems {
                 backend.item_container_extract(&held, index, amount)
             })
         else {
-            return 0;
+            return Ok(0);
         };
         self.rewrite(host, tx, &changed, out.count().min(amount))
     }
@@ -653,13 +657,14 @@ impl ItemPlace {
     /// player is in another level than the hook's (not a creative one) takes only what fits their
     /// inventory, and nothing is dropped: the rest stays the caller's, and [`exchange`](Self::exchange)
     /// rolls back when it cannot insert the whole replacement.
+    /// A mismatched `tx` returns `Err(TransactionError::InvalidContext)`.
     pub fn insert(
         &self,
         host: &mut dyn ServerHost,
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         self.moved(host, tx, resource, amount, true)
     }
 
@@ -667,50 +672,63 @@ impl ItemPlace {
     /// match `resource` (`ItemAccess.extract`). In places the game handles directly, an
     /// override equal to the item's default does not change the match, and the resource
     /// need not be valid for insertion. A creative player's hand gives without losing any.
+    /// A mismatched `tx` returns `Err(TransactionError::InvalidContext)`.
     pub fn extract(
         &self,
         host: &mut dyn ServerHost,
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         self.moved(host, tx, resource, amount, false)
     }
 
     /// Takes `amount` of what is here and puts as many of `resource` in their place
     /// (`ItemAccess.exchange`): from a bigger stack, they go where [`insert`](Self::insert) puts
     /// what doesn't stack, as vanilla's `ItemUtils.createFilledResult` puts a filled bucket. In a
-    /// transaction of its own, nested in `tx`: all of it, or nothing and 0. Inside an item that
-    /// shares its place with others like it, it's done in one of them: that one splits off,
-    /// changed, and the others stay as they were.
+    /// transaction of its own, nested in `tx`: all of it, or nothing and `Ok(0)`. Inside an item
+    /// that shares its place with others like it, it's done in one of them: that one splits off,
+    /// changed, and the others stay as they were. A mismatched `tx` returns
+    /// `Err(TransactionError::InvalidContext)`.
     pub fn exchange(
         &self,
         host: &mut dyn ServerHost,
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let swap = |host: &mut dyn ServerHost, tx: &TransactionContext| {
-            let old = self.resource(host).ok_or(())?;
-            let out = self.extract(host, tx, &old, amount);
-            match out == amount && self.insert(host, tx, resource, out) == out {
+            let old = self.resource(host).ok_or(None)?;
+            let out = self.extract(host, tx, &old, amount).map_err(Some)?;
+            if out != amount {
+                return Err(None);
+            }
+            let put = self.insert(host, tx, resource, out).map_err(Some)?;
+            match put == out {
                 true => Ok(out),
-                false => Err(()),
+                false => Err(None),
             }
         };
-        let done =
-            host.transaction(|host, tx| alone(self, host, tx, &mut |host, tx| swap(host, tx)));
-        done.unwrap_or(0)
+        match host.transaction(|host, tx| alone(self, host, tx, &mut |host, tx| swap(host, tx))) {
+            Ok(done) => Ok(done),
+            Err(TransactionError::Aborted(None)) => Ok(0),
+            Err(TransactionError::Aborted(Some(error))) => Err(error),
+            Err(TransactionError::InvalidContext) => Err(TransactionError::InvalidContext),
+            Err(TransactionError::Unavailable) => Err(TransactionError::Unavailable),
+            Err(TransactionError::CommitRefused) => Err(TransactionError::CommitRefused),
+        }
     }
 
     /// Runs the item's `ItemStack.onCraftedBy` processing for a stack this place holds, as a
     /// server-side menu take does. This awards the player's `crafted` statistic, applies item
     /// post-processing such as a filled map's pending scale or lock, and runs the normal stat
     /// hook. Only a [`MenuSlot`](Self::MenuSlot) or [`PlayerCursor`](Self::PlayerCursor) is
-    /// accepted; the changed stack and statistic are part of `tx`.
+    /// accepted; the changed stack and statistic are part of `tx`. Returns
+    /// [`CraftedByError::CommitRefused`] without queueing the crafted statistic if the host rolls
+    /// back the inner replacement commit.
     pub fn on_crafted_by(
         &self,
         host: &mut dyn ServerHost,
@@ -790,10 +808,11 @@ impl ItemPlace {
             return Ok(());
         }
         let count = stack.count();
-        if self.exchange(host, tx, &ItemResource::of(&stack), count) == count {
-            Ok(())
-        } else {
-            Err(ItemPlaceEditError::Unavailable)
+        match self.exchange(host, tx, &ItemResource::of(&stack), count) {
+            Ok(moved) if moved == count => Ok(()),
+            Ok(_) => Err(ItemPlaceEditError::Unavailable),
+            Err(TransactionError::InvalidContext) => Err(ItemPlaceEditError::InvalidContext),
+            Err(_) => Err(ItemPlaceEditError::Unavailable),
         }
     }
 
@@ -808,12 +827,12 @@ impl ItemPlace {
         resource: &ItemResource,
         amount: u32,
         insert: bool,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         if amount == 0 {
-            return 0;
+            return Ok(0);
         }
         let (mut place, mut amount, mut spills) = (self, amount, true);
         loop {
@@ -852,7 +871,7 @@ impl ItemPlace {
         amount: u32,
         insert: bool,
         spills: bool,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         let _ = tx;
         // A menu slot's own rules come before its storage's: `Slot.mayPlace` and
         // `getMaxStackSize` for what goes in, `Slot.mayPickup` for what comes out.
@@ -882,7 +901,7 @@ impl ItemPlace {
             _ => amount,
         };
         if amount == 0 {
-            return 0;
+            return Ok(0);
         }
         // Through index `slot` of `handler`, then for an insert that `spills` the whole handler,
         // each in passes while one moves something (`Inventory.add`'s loop: a
@@ -903,12 +922,18 @@ impl ItemPlace {
                 while left > 0 {
                     let moved = match (insert, anywhere) {
                         (true, false) => handler.insert_at(host, tx, slot, resource, left),
-                        (true, true) => handler.insert(host, tx, resource, left).map_err(|_| ())?,
+                        (true, true) => handler.insert(host, tx, resource, left),
                         (false, _) => handler.extract_at(host, tx, slot, resource, left),
-                    };
-                    match handler.checked(moved, left, self).ok_or(())? {
-                        0 => break,
-                        moved => left -= moved,
+                    }
+                    .map_err(Some)?;
+                    match handler.checked(moved, left, self) {
+                        Some(0) => break,
+                        Some(moved) => left -= moved,
+                        None => {
+                            return Err(Some(TransactionError::Aborted(Overanswered {
+                                owner: Some(handler.owner()),
+                            })));
+                        }
                     }
                 }
             }
@@ -921,21 +946,21 @@ impl ItemPlace {
                 side,
                 slot,
             } => {
-                let handler = level.capability(host, &ITEMS, *pos, *side).ok_or(())?;
+                let handler = level.capability(host, &ITEMS, *pos, *side).ok_or(None)?;
                 through(handler, host, tx, *slot, spills)
             }
             ItemPlace::Nested { parent, slot } => {
-                let handler = parent.capability(host, &ITEM_ITEMS).ok_or(())?;
+                let handler = parent.capability(host, &ITEM_ITEMS).ok_or(None)?;
                 through(handler, host, tx, *slot, spills)
             }
             // The game's own write spreads; a strict one goes through the entity's handler.
             ItemPlace::EntitySlot { entity, slot } if !spills => {
-                let entity = host.entity(*entity).ok_or(())?;
-                let handler = entity.capability(host, &ENTITY_ITEMS, ()).ok_or(())?;
+                let entity = host.entity(*entity).ok_or(None)?;
+                let handler = entity.capability(host, &ENTITY_ITEMS, ()).ok_or(None)?;
                 through(handler, host, tx, *slot, false)
             }
             ItemPlace::MenuSlot { menu, slot } => {
-                let (handler, index) = match menu.slot_backing(host, *slot).ok_or(())? {
+                let (handler, index) = match menu.slot_backing(host, *slot).ok_or(None)? {
                     MenuSlotBacking::Player(index) => {
                         let player = menu.player.entity();
                         (player.capability(host, &ENTITY_ITEMS, ()), index)
@@ -947,7 +972,7 @@ impl ItemPlace {
                         (entity.capability(host, &ENTITY_ITEMS, ()), slot)
                     }
                     MenuSlotBacking::Place(place) => {
-                        let (handler, index) = place.handler(host, menu.player).ok_or(())?;
+                        let (handler, index) = place.handler(host, menu.player).ok_or(None)?;
                         (Some(handler), index)
                     }
                     MenuSlotBacking::CraftResult => return Ok(0),
@@ -964,20 +989,31 @@ impl ItemPlace {
                         });
                     }
                 };
-                through(handler.ok_or(())?, host, tx, index, false)
+                through(handler.ok_or(None)?, host, tx, index, false)
             }
             ItemPlace::Mod { provider, key } => {
                 let (provider, owner) = host
                     .capability_providers()
                     .place_provider(provider)
-                    .ok_or(())?;
+                    .ok_or(None)?;
                 let moved = match insert {
                     true => provider.insert(host, tx, *key, resource, amount),
                     false => provider.extract(host, tx, *key, resource, amount),
-                };
+                }
+                .map_err(|mut error| {
+                    if let TransactionError::Aborted(over) = &mut error
+                        && over.owner.is_none()
+                    {
+                        warn_broken(Some(owner), self);
+                        over.owner = Some(owner.to_owned());
+                    }
+                    Some(error)
+                })?;
                 if moved > amount {
                     warn_broken(Some(owner), self);
-                    return Err(());
+                    return Err(Some(TransactionError::Aborted(Overanswered {
+                        owner: Some(owner.to_owned()),
+                    })));
                 }
                 Ok(moved)
             }
@@ -992,7 +1028,14 @@ impl ItemPlace {
                 }),
             }),
         });
-        moved.unwrap_or(0)
+        match moved {
+            Ok(moved) => Ok(moved),
+            Err(TransactionError::Aborted(None)) => Ok(0),
+            Err(TransactionError::Aborted(Some(error))) => Err(error),
+            Err(TransactionError::InvalidContext) => Err(TransactionError::InvalidContext),
+            Err(TransactionError::Unavailable) => Err(TransactionError::Unavailable),
+            Err(TransactionError::CommitRefused) => Err(TransactionError::CommitRefused),
+        }
     }
 }
 
@@ -1009,9 +1052,9 @@ fn infinite_moved(
     resource: &ItemResource,
     amount: u32,
     insert: bool,
-) -> u32 {
+) -> Result<u32, TransactionError<Overanswered>> {
     if !insert {
-        return inner
+        return Ok(inner
             .with_stack(host, |held| {
                 if resource.matches_view(&held) {
                     amount.min(held.count())
@@ -1019,7 +1062,7 @@ fn infinite_moved(
                     0
                 }
             })
-            .unwrap_or(0);
+            .unwrap_or(0));
     }
     let had = host
         .player(player)
@@ -1032,9 +1075,9 @@ fn infinite_moved(
         })
         .unwrap_or(false);
     if !had {
-        ItemPlace::PlayerSlot { player, slot: 0 }.insert(host, tx, resource, 1);
+        ItemPlace::PlayerSlot { player, slot: 0 }.insert(host, tx, resource, 1)?;
     }
-    amount
+    Ok(amount)
 }
 
 /// Runs `f` with each item `place` is inside alone in its place, the outermost first
@@ -1044,8 +1087,11 @@ fn alone(
     place: &ItemPlace,
     host: &mut dyn ServerHost,
     tx: &TransactionContext,
-    f: &mut dyn FnMut(&mut dyn ServerHost, &TransactionContext) -> Result<u32, ()>,
-) -> Result<u32, ()> {
+    f: &mut dyn FnMut(
+        &mut dyn ServerHost,
+        &TransactionContext,
+    ) -> Result<u32, Option<TransactionError<Overanswered>>>,
+) -> Result<u32, Option<TransactionError<Overanswered>>> {
     match place {
         ItemPlace::Nested { parent, .. } => alone(parent, host, tx, &mut |host, tx| {
             one_of(parent, host, tx, &mut *f)
@@ -1061,32 +1107,41 @@ fn one_of(
     parent: &ItemPlace,
     host: &mut dyn ServerHost,
     tx: &TransactionContext,
-    f: impl FnOnce(&mut dyn ServerHost, &TransactionContext) -> Result<u32, ()>,
-) -> Result<u32, ()> {
+    f: impl FnOnce(
+        &mut dyn ServerHost,
+        &TransactionContext,
+    ) -> Result<u32, Option<TransactionError<Overanswered>>>,
+) -> Result<u32, Option<TransactionError<Overanswered>>> {
     let split = parent
         .with_stack(host, |held| {
             let others = held.count() - 1;
             if others == 0 {
-                Ok(None)
+                Ok::<_, Option<TransactionError<Overanswered>>>(None)
             } else {
-                let stack = held.project().ok_or(())?;
+                let stack = held.project().ok_or(None)?;
                 Ok(Some((others, ItemResource::of(&stack))))
             }
         })
-        .ok_or(())??;
+        .ok_or(None)??;
     let Some((others, resource)) = split else {
         return f(host, tx);
     };
-    let all = |moved: u32, asked: u32| (moved == asked).then_some(()).ok_or(());
-    all(parent.extract(host, tx, &resource, others), others)?;
+    let all = |moved: u32, asked: u32| (moved == asked).then_some(()).ok_or(None);
+    all(
+        parent.extract(host, tx, &resource, others).map_err(Some)?,
+        others,
+    )?;
     let moved = f(host, tx)?;
     let changed = parent.resource(host).filter(|now| *now != resource);
     if let Some(changed) = &changed {
-        all(parent.extract(host, tx, changed, 1), 1)?;
+        all(parent.extract(host, tx, changed, 1).map_err(Some)?, 1)?;
     }
-    all(parent.insert(host, tx, &resource, others), others)?;
+    all(
+        parent.insert(host, tx, &resource, others).map_err(Some)?,
+        others,
+    )?;
     if let Some(changed) = &changed {
-        all(parent.insert(host, tx, changed, 1), 1)?;
+        all(parent.insert(host, tx, changed, 1).map_err(Some)?, 1)?;
     }
     Ok(moved)
 }

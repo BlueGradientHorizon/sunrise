@@ -420,9 +420,15 @@ for either an absent tag or a loaded empty tag. Use `tags.items(tag_key)`,
 
 Include a fallback arm when matching `TagMembers`: the enum is non-exhaustive.
 
-Clients read only the tags their server sent. Item and block enumeration includes keys no
-mod requested. Key resolution itself can be refused if the runtime cannot allocate a name
-slot. No lookup stringifies a retained key.
+Use `tags.item_tags(item_key)` to find which tags contain an item, or `tags.item_tag_names()`
+to list every currently bound item tag, including bound empty tags. Both return each
+`Identifier` once with no specified order. `None` means the authoritative names or a
+required item mapping are unavailable; `Some(vec![])` means the lookup succeeded and found
+nothing. Listing does not resolve keys; use `tags.key(&id)` if you need one. A reload replaces
+both lists along with `is_in_tag`. Requesting a key never adds its name to a list.
+
+Clients read only the tags their server sent. Member enumeration includes keys no mod
+requested. Key resolution itself can be refused if the runtime cannot allocate a name slot.
 The engine `TagRegistry`, `StackData`, `StackView` and `DisplayContext` are not API types.
 
 ## Scoped Parts

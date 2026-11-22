@@ -3214,10 +3214,19 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn tooltip_part_lines_come_after_the_name_and_never_for_a_hidden_tooltip() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
         use mod_api::{
             self, ClientHost, Hooks, ItemPart, ItemTooltipEvent, ModEntry, Mods, Registrar,
             TooltipEvent,
         };
+
+        if run_fresh_cases(
+            "game::stations::tests::tooltip_part_lines_come_after_the_name_and_never_for_a_hidden_tooltip",
+            "SUNRISE_TOOLTIP_PART_CHILD",
+            &["tooltip"],
+        ) {
+            return;
+        }
 
         #[derive(Clone)]
         struct Lore;
@@ -3244,7 +3253,7 @@ mod tests {
                         .map(|line| line.unwrap().0)
                         .collect::<Vec<_>>(),
                     [
-                        mod_api::Text::translate("item.minecraft.stick", vec![]),
+                        mod_api::Text::translate("item.minecraft.stick", Vec::new()),
                         mod_api::Text::literal("part"),
                         mod_api::Text::literal("minecraft:stick"),
                     ]
@@ -3264,7 +3273,7 @@ mod tests {
         let mods: Mods = vec![ModEntry::new("lore", Box::new(Mod))].into();
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            with_game(|game| {
                 game.settings.file.set(
                     "advancedItemTooltips",
                     sunrise_client::options_file::V::Bool(true),
@@ -3276,7 +3285,7 @@ mod tests {
                     .map(|(text, _)| text.plain())
                     .collect();
                 assert_eq!(lines, ["Stick", "part", "minecraft:stick", "event"]);
-                // `hide_tooltip`: no name, and the part isn't asked; the advanced lines stay.
+                // `hide_tooltip`: no name, Part line, or tooltip event line.
                 let mut hidden = stick.clone();
                 hidden.data_mut().set_other(
                     "minecraft:tooltip_display",
@@ -3304,7 +3313,12 @@ mod tests {
                     .iter()
                     .map(|(text, _)| text.plain())
                     .collect();
-                assert!(!inventory.iter().any(|l| l == "Stick"), "{inventory:?}");
+                assert!(
+                    !inventory
+                        .iter()
+                        .any(|l| l == "Stick" || l == "part" || l == "event"),
+                    "{inventory:?}"
+                );
                 // A creative tab's own slot (`TooltipFlag.isCreative`) shows it anyway.
                 let creative: Vec<String> = game
                     .stack_tooltip_lines(&hidden, false, true)
@@ -3312,6 +3326,7 @@ mod tests {
                     .map(|(text, _)| text.plain())
                     .collect();
                 assert_eq!(creative[..2], ["Stick", "part"]);
+                assert_eq!(creative.last().map(String::as_str), Some("event"));
             });
         });
     }
@@ -3676,11 +3691,20 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn item_tooltip_invalid_edit_keeps_other_listeners_lines() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
         use mod_api::{ClientHost, Hooks, ItemTooltipEvent, ModEntry, Mods, Text, TextFormError};
         use std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
         };
+
+        if run_fresh_cases(
+            "game::stations::tests::item_tooltip_invalid_edit_keeps_other_listeners_lines",
+            "SUNRISE_ITEM_TOOLTIP_INVALID_EDIT_CHILD",
+            &["malformed"],
+        ) {
+            return;
+        }
 
         struct ValidListener;
         #[mod_api::__subscriptions]
@@ -3701,7 +3725,7 @@ mod tests {
         #[mod_api::__subscriptions]
         impl Hooks for InvalidListener {
             fn item_tooltip(&self, _: &dyn ClientHost, event: &mut ItemTooltipEvent<'_>) {
-                let mut malformed = Text::literal("bad");
+                let mut malformed = Text::literal("invalid");
                 malformed.metadata = mod_api::Tag::Int(7);
                 assert_eq!(
                     event.lines.push(malformed.clone(), u32::MAX),
@@ -3722,7 +3746,7 @@ mod tests {
         ]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_client_game(|game| {
+            with_client_game(|game| {
                 game.settings.file.set(
                     "advancedItemTooltips",
                     sunrise_client::options_file::V::Bool(false),

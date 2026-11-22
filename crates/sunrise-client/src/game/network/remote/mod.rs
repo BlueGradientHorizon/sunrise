@@ -1184,6 +1184,7 @@ impl Game<'_> {
                 let delay = sunrise_client::net::ping_millis().wrapping_sub(p.time);
                 self.debug_charts.ping.log(delay);
             }
+            C::DebugSample(p) => self.debug_charts.log_remote_sample(&p.sample)?,
             C::Login(p) => self.apply_login_packet(p),
             C::Respawn(p) => self.apply_respawn_packet(p),
             C::PlayerPosition(p) => self.remote_teleport(&p)?,
@@ -2077,6 +2078,10 @@ fn keep_client_state(old: Option<&BlockEntity>, new: &mut BlockEntity) {
             new.sections.clone_from(&old.sections);
             new.checking.clone_from(&old.checking);
             (new.last_check_y, new.levels) = (old.last_check_y, old.levels);
+        }
+        // `eruptionTick` is set once, when the level is set; an update tag leaves it.
+        (Some(BlockEntity::PotentSulfur(old)), BlockEntity::PotentSulfur(new)) => {
+            new.eruption_tick = old.eruption_tick;
         }
         _ => {}
     }

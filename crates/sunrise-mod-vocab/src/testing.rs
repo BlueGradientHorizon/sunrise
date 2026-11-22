@@ -1217,12 +1217,14 @@ impl crate::prelude::FluidsEnergyBackendMut for FakeHost {
         pos: [i32; 3],
         _: Option<PlayerRef>,
         tx: &TransactionContext,
-    ) -> Option<FluidStack> {
+    ) -> Result<Option<FluidStack>, crate::TransactionError<()>> {
         if !self.journal.matches(Some(tx)) {
-            return None;
+            return Err(crate::TransactionError::InvalidContext);
         }
-        let fluid = self.level.take_source(level, pos)?;
-        Some(FluidStack::new(fluid, 1000))
+        Ok(self
+            .level
+            .take_source(level, pos)
+            .map(|fluid| FluidStack::new(fluid, 1000)))
     }
     /// A source of `fluid` where nothing is; the fake plays no sound or game event for it.
     fn level_place_fluid(
@@ -1233,11 +1235,11 @@ impl crate::prelude::FluidsEnergyBackendMut for FakeHost {
         _: Option<PlayerRef>,
         _: bool,
         tx: &TransactionContext,
-    ) -> bool {
+    ) -> Result<bool, crate::TransactionError<()>> {
         if !self.journal.matches(Some(tx)) {
-            return false;
+            return Err(crate::TransactionError::InvalidContext);
         }
-        self.level.put_source(level, pos, fluid)
+        Ok(self.level.put_source(level, pos, fluid))
     }
     /// Queued with the level for the outermost commit, which plays it as the game does.
     fn level_play_fluid_effects(
@@ -1248,15 +1250,15 @@ impl crate::prelude::FluidsEnergyBackendMut for FakeHost {
         pickup: bool,
         player: Option<PlayerRef>,
         tx: &TransactionContext,
-    ) -> bool {
+    ) -> Result<bool, crate::TransactionError<()>> {
         if !self.journal.matches(Some(tx)) {
-            return false;
+            return Err(crate::TransactionError::InvalidContext);
         }
         let Some(id) = crate::content::registry_keys::fluid_id(fluid) else {
-            return false;
+            return Ok(false);
         };
         if level != self.level.level() {
-            return false;
+            return Ok(false);
         }
         self.level.fluid_effects.push(level::QueuedFluidEffects {
             at: pos.map(|c| f64::from(c) + 0.5),
@@ -1264,7 +1266,7 @@ impl crate::prelude::FluidsEnergyBackendMut for FakeHost {
             pickup,
             player,
         });
-        true
+        Ok(true)
     }
 }
 impl crate::prelude::EntityIdentityBackendMut for FakeHost {

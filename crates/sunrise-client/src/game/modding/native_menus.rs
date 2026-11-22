@@ -108,6 +108,7 @@ impl Game<'_> {
     /// tells the client, or `doCloseContainer` for a provider that skips the client's close.
     /// Either way the old menu's `removed` runs and the mods hear it close.
     pub(super) fn close_for_open(&mut self, conn: u32, replace: MenuReplace) {
+        self.journal_merchant_replacement(conn);
         match replace {
             MenuReplace::CloseFirst => self.guest_close_menus_and_tell(conn),
             MenuReplace::InPlace => self.guest_close_all(conn),
@@ -327,8 +328,7 @@ pub(super) fn open_menu_of(host: &LanHost, conn: u32) -> Option<(i32, &str, Opti
             .map(|p| [p.0, p.1, p.2]);
         return Some((m.window, menu, pos));
     }
-    let play = play?;
-    let (window, menu, pos) = if let Some(gm) = &play.merchant {
+    let (window, menu, pos) = if let Some(gm) = menus.and_then(|m| m.merchant.as_ref()) {
         (gm.window, "minecraft:merchant", None)
     } else if let Some((window, _, _, pos)) = menus.and_then(|m| m.crafting.table.as_ref()) {
         (*window, "minecraft:crafting", Some(*pos))
@@ -338,16 +338,15 @@ pub(super) fn open_menu_of(host: &LanHost, conn: u32) -> Option<(i32, &str, Opti
             super::lan_stations::menu_of(st.kind)?.0,
             Some(st.pos),
         )
-    } else if let Some(l) = &play.lectern {
+    } else if let Some(l) = play.and_then(|p| p.lectern.as_ref()) {
         (
             l.window,
             "minecraft:lectern",
             Some([l.key.0, l.key.1, l.key.2]),
         )
-    } else if let Some(m) = &play.mount_window {
-        (m.window, MOUNT_MENU, None)
     } else {
-        return None;
+        let m = play.and_then(|p| p.mount_window.as_ref())?;
+        (m.window, MOUNT_MENU, None)
     };
     Some((window, menu, pos))
 }
@@ -605,15 +604,15 @@ mod tests {
                         let mut inner_restored = None;
                         let host: &mut dyn ServerHost = game;
                         let aborted = host.transaction(|host, tx| {
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                             let inner = host.transaction(|host, tx| {
-                                assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                                assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                                 Err::<(), ()>(())
                             });
                             assert_eq!(inner, Err(TransactionError::Aborted(())));
                             inner_restored =
                                 place.with_stack(host, |stack| stack.project()).flatten();
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                             Err::<(), ()>(())
                         });
                         assert_eq!(aborted, Err(TransactionError::Aborted(())));
@@ -623,8 +622,8 @@ mod tests {
                         ));
                         // Player and menu writes share the ender snapshot, not competing copies.
                         let aborted = host.transaction(|host, tx| {
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
-                            assert_eq!(menu.cursor().insert(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
+                            assert_eq!(menu.cursor().insert(host, tx, &resource, 1), Ok(1));
                             Err::<(), ()>(())
                         });
                         assert_eq!(aborted, Err(TransactionError::Aborted(())));
@@ -636,7 +635,7 @@ mod tests {
                         // A committed child lends its first snapshot to the parent.
                         let aborted = host.transaction(|host, _| {
                             host.transaction(|host, tx| {
-                                assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                                assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                                 Ok::<_, ()>(())
                             })
                             .unwrap();
@@ -979,9 +978,8 @@ mod tests {
                 .try_into_api()
                 .unwrap();
             let slot = ItemPlace::MenuSlot { menu, slot: 4 };
-            let written = host.transaction(|host, tx| {
-                Ok::<_, ()>(slot.insert(host, tx, &ItemResource::of(&diamond), 3))
-            });
+            let written =
+                host.transaction(|host, tx| slot.insert(host, tx, &ItemResource::of(&diamond), 3));
             assert_eq!(written, Ok(3));
             assert!(sent(&rx).is_empty(), "nothing before the tick's sync");
 

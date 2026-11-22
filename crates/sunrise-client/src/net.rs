@@ -1551,6 +1551,11 @@ fn receive_play(
         ) {
             Ok(p) => p,
             Err(err) => {
+                // The enum is decoded before the bundle packer. Connection.exceptionCaught
+                // handles an invalid sample ordinal inside or outside a bundle.
+                if id == sunrise_protocol::ids::play::clientbound::DEBUG_SAMPLE {
+                    return Err(Reason::plain(connection_lost(err, lang)));
+                }
                 if bundle.assembling() {
                     log::warn!("Sunrise: bundle packet refused: {err}");
                     return Err(Reason::keyed("multiplayer.disconnect.invalid_packet", lang));
@@ -1568,12 +1573,33 @@ fn receive_play(
                 continue;
             }
         };
-        if let Some(rec) = recorder.lock().unwrap().as_ref()
+        // Standalone handleDebugSample runs on the reader. Refuse its logger fault
+        // before capture, but keep the fault in member order if packing a bundle.
+        let oversized_sample = match &packet {
+            play::Clientbound::DebugSample(p) if p.sample.len() > play::DEBUG_SAMPLE_DIMENSIONS => {
+                Some(p.sample.len())
+            }
+            _ => None,
+        };
+        if let Some(size) = oversized_sample
+            && !bundle.assembling()
+        {
+            let error = sunrise_protocol::Error::new(format!(
+                "debug sample of {size} values, at most {}",
+                play::DEBUG_SAMPLE_DIMENSIONS
+            ));
+            return Err(Reason::plain(connection_lost(error, lang)));
+        }
+        // A malformed sample is not a recordable packet in either path. In
+        // a bundle only the ordered fault survives, never its body.
+        if oversized_sample.is_none()
+            && let Some(rec) = recorder.lock().unwrap().as_ref()
             && rec.is_active()
         {
             rec.received(&packet, id, &payload);
         }
         let member = match packet {
+            _ if oversized_sample.is_some() => BundleMember::OversizedDebugSample,
             play::Clientbound::CustomPayload(payload)
                 if payload.channel == sunrise_protocol::attachment_sync::CHANNEL =>
             {
@@ -1605,6 +1631,9 @@ fn receive_play(
                 continue;
             }
             Some(PlayTurn::Single(BundleMember::Packet(packet))) => packet,
+            Some(PlayTurn::Single(BundleMember::OversizedDebugSample)) => {
+                unreachable!("an oversized standalone sample was refused before packing")
+            }
             Some(PlayTurn::Bundle(packets)) => {
                 if io.accepts_bundle() {
                     send.send_wait(Event::Bundle(Box::new(CompletedBundle {
@@ -3709,6 +3738,7 @@ mod tests {
             serial: next_serial(),
         };
         let (configuring, cookies) = (session.configuring.clone(), session.cookies.clone());
+        let recorder = session.recorder.clone();
         let thread = std::thread::spawn(move || {
             let result = receive_play(
                 &mut reader,
@@ -3720,7 +3750,7 @@ mod tests {
                 &cookies,
                 &Arc::default(),
                 &data,
-                &Arc::new(Mutex::new(None)),
+                &recorder,
                 &crate::raw_payloads::Transport::empty(),
                 &Arc::default(),
                 &Arc::default(),
@@ -3733,6 +3763,43 @@ mod tests {
             .set_read_timeout(Some(Duration::from_secs(5)))
             .unwrap();
         (root, server, session, thread)
+    }
+
+    #[test]
+    fn a_malformed_standalone_debug_sample_disconnects_without_waiting_for_the_peer() {
+        for (sample, kind) in [(vec![0; 4], 1), (vec![0; 5], play::DEBUG_SAMPLE_TICK_TIME)] {
+            let (root, mut server, session, reader) =
+                bundle_pipe("malformed-debug-sample", 1 << 20);
+            let recorder = TestRecorder::default();
+            *session.recorder.lock().unwrap() = Some(Box::new(recorder.clone()));
+            let valid = play::Clientbound::DebugSample(play::DebugSample {
+                sample: vec![1],
+                kind: play::DEBUG_SAMPLE_TICK_TIME,
+            });
+            server.send(&valid.encode()).unwrap();
+            let (event, _credit) = session
+                .events
+                .recv_timeout_owned(Duration::from_secs(5))
+                .unwrap()
+                .into_parts();
+            assert!(matches!(event, Event::Packet(packet) if *packet == valid));
+            server
+                .send(&play::Clientbound::DebugSample(play::DebugSample { sample, kind }).encode())
+                .unwrap();
+            let result = session.events.recv_timeout_owned(Duration::from_secs(5));
+            drop(server);
+            reader.join().unwrap();
+            std::fs::remove_dir_all(root).unwrap();
+            assert_eq!(recorder.decoded(), [valid]);
+            let (event, _credit) = result.unwrap().into_parts();
+            assert!(matches!(
+                event,
+                Event::Disconnected {
+                    from_server: false,
+                    ..
+                }
+            ));
+        }
     }
 
     #[test]

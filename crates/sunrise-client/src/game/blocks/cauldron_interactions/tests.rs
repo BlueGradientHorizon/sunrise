@@ -49,18 +49,21 @@ impl mod_api::Interaction for Syrup {
                     BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS,
                 )
                 .map_err(|_| ())?;
-            if hand.exchange(host, tx, &resource, 1) != 1 {
+            if hand.exchange(host, tx, &resource, 1) != Ok(1) {
                 return Err(());
             }
             let fluid = mod_api::__private::fluid_key("minecraft:water").unwrap();
-            assert!(input.level.play_fluid_effects(
-                host,
-                input.pos,
-                fluid,
-                false,
-                Some(input.player),
-                tx,
-            ));
+            assert_eq!(
+                input.level.play_fluid_effects(
+                    host,
+                    input.pos,
+                    fluid,
+                    false,
+                    Some(input.player),
+                    tx,
+                ),
+                Ok(true)
+            );
             Ok(())
         })
         .unwrap();

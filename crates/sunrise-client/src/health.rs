@@ -334,6 +334,8 @@ pub struct DamageLevel<'a> {
     hooks: &'a DamageHooks,
     /// Who attacks in this hit and what they hold: the facts of the site that built the level.
     attack: &'a Attack,
+    /// Canonical UUIDs for attacks first constructed during a borrowed mob tick.
+    mob_uuids: Option<&'a std::collections::HashMap<u32, [i32; 4]>>,
     /// Whether this is a client's level, for a hook asked on both sides ([`Self::on_client`]).
     client_side: bool,
     /// Which entry of `LivingEntity.knockback` a push in progress came through, for
@@ -379,6 +381,7 @@ impl<'a> DamageLevel<'a> {
             attachment_syncs,
             hooks,
             attack: &NO_ATTACK,
+            mob_uuids: None,
             client_side: false,
             knock_entry: mod_api::KnockbackEntry::Full,
             credit: Credit::Memory,
@@ -408,6 +411,7 @@ impl<'a> DamageLevel<'a> {
             attachment_syncs: &mut lent.attachment_syncs,
             hooks,
             attack: &NO_ATTACK,
+            mob_uuids: None,
             client_side: false,
             knock_entry: mod_api::KnockbackEntry::Full,
             credit: Credit::Memory,
@@ -415,6 +419,14 @@ impl<'a> DamageLevel<'a> {
             effects: None,
             player_equipment: [None; 8],
         }
+    }
+    /// Lend the UUID owner when mobs can start attacks inside this borrow.
+    pub fn with_mob_uuids(mut self, uuids: &'a std::collections::HashMap<u32, [i32; 4]>) -> Self {
+        self.mob_uuids = Some(uuids);
+        self
+    }
+    pub(crate) fn mob_uuid(&self, id: u32) -> Option<[i32; 4]> {
+        self.mob_uuids?.get(&id).copied()
     }
     /// The same level, for a shorter borrow.
     pub fn reborrow(&mut self) -> DamageLevel<'_> {
@@ -430,6 +442,7 @@ impl<'a> DamageLevel<'a> {
             attachment_syncs: self.attachment_syncs,
             hooks: self.hooks,
             attack: self.attack,
+            mob_uuids: self.mob_uuids,
             client_side: self.client_side,
             knock_entry: self.knock_entry,
             credit: self.credit.reborrow(),
@@ -489,7 +502,20 @@ impl<'a> DamageLevel<'a> {
         }
     }
     /// Commit this accepted hit's responsibility at vanilla's pre-push memory point.
-    pub fn accepted_mob_hit(&mut self, mob: &mut crate::mobs::Mob) {
+    pub fn accepted_mob_hit(&mut self, mob: &mut crate::mobs::Mob, source: &crate::mobs::Damage) {
+        // The hit's own source, whatever the credit kind.
+        let uuid = match (&self.credit, source.attacker) {
+            _ if mob.species() != crate::mobs::Species::Villager => None,
+            (Credit::Loan(credit), _) => credit.hurt_by_uuid(source),
+            (_, Some(crate::mobs::Who::Player)) => self.attack.player_uuid,
+            (_, Some(crate::mobs::Who::Mob(id))) if self.attack.attacker == id as i32 => {
+                self.attack.attacker_uuid
+            }
+            _ => None,
+        };
+        if let Some(uuid) = uuid {
+            crate::mobs::villager::hurt_by(mob, source, uuid);
+        }
         if let Credit::Loan(credit) = &mut self.credit {
             credit.accepted_mob_hit(mob);
         }
@@ -928,6 +954,8 @@ pub struct Attack {
     pub projectile_weapon: Option<crate::items::ItemStack>,
     /// The verified causing player's UUID, when the attacker is a player.
     pub player_uuid: Option<[i32; 4]>,
+    /// The causing mob's UUID for `Villager.setLastHurtByMob`'s gossip.
+    pub attacker_uuid: Option<[i32; 4]>,
     /// What it holds, or none when it is not known (no native mod listens: the game only
     /// records it then).
     pub held: Held,
@@ -942,6 +970,7 @@ pub static NO_ATTACK: Attack = Attack {
     position: None,
     projectile_weapon: None,
     player_uuid: None,
+    attacker_uuid: None,
     held: [None, None],
 };
 /// Whether vanilla's factory for `damage_type` passes the projectile as
@@ -2507,6 +2536,7 @@ mod tests {
             projectile: None,
             direct: None,
             player_uuid: None,
+            attacker_uuid: None,
             held: [Some(sword.clone()), None],
             ..Default::default()
         };
@@ -2526,6 +2556,7 @@ mod tests {
             projectile: Some(12),
             direct: None,
             player_uuid: None,
+            attacker_uuid: None,
             held: [None, None],
             ..Default::default()
         };

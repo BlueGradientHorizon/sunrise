@@ -6,7 +6,7 @@
 pub(super) mod biome_facts;
 #[cfg(test)]
 mod borrowed_panic_tests;
-mod borrowed_tick;
+pub(in crate::game) mod borrowed_tick;
 mod breeding;
 mod combat_adaptations;
 mod conversion_identity;
@@ -146,6 +146,9 @@ pub(super) struct NativeSound {
     /// The entity the sound follows (`ClientboundSoundEntityPacket`), sent
     /// from `at`, where it was when the mod queued the sound.
     pub entity: Option<i32>,
+    /// True when queued from inside a `play_level_sound_at_*` listener so the tick flush validates
+    /// and delivers the sound without re-dispatching level-sound listeners.
+    pub skip_hooks: bool,
 }
 
 /// Shared state for the mob runs in one entity pass.
@@ -181,16 +184,10 @@ struct MobOutputBatch {
     normal: NormalMobActions,
     guests: Vec<(u32, u32, MobEvent)>,
 }
-// Backpressure applies to producer passes retained behind either producer or
-// consumer failure, never to healthy mob counts. Empty delivery resets the quota.
-// Sixteen retained passes permit 0.8 seconds of production at the vanilla tick rate.
-const MAX_PENDING_MOB_PASSES: usize = 16;
 #[derive(Default)]
 struct PendingMobBatch {
     batches: std::collections::VecDeque<MobOutputBatch>,
     pushes: sunrise_client::mobs::PendingPushes,
-    retained_passes: usize,
-    refusal_logged: bool,
 }
 
 /// Remove the current action before dispatch; retain only the unentered tail on unwind.
@@ -282,6 +279,9 @@ pub(super) struct Creatures {
     pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
     /// Native sounds waiting for the server host to be available.
     pub lan_sounds: Vec<NativeSound>,
+    /// True while `ask_level_sound` is running `play_level_sound_at_*` listeners so sounds emitted
+    /// from inside a listener are not re-dispatched to level-sound hooks.
+    pub asking_level_sound: bool,
     /// Particles from a guest's turn, waiting for it to end.
     pub lan_particles: Vec<super::lan_particles::QueuedParticle>,
 }
@@ -1365,28 +1365,11 @@ impl Game<'_> {
     }
     /// The entity phase of `tick_creatures`: every mob's tick, deaths, and the
     /// projectiles and effects that follow from them.
-    pub(super) fn tick_creature_entities(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_creature_entities(&mut self) -> Result<()> {
         // Its steps as spans for `sunrise-report` (nothing is read while spans are off).
         let mut laps = sunrise_client::spans::laps();
         let blocked = self.mobs_below_off_level();
         let level_id = self.dim.id();
-        if let Some(pending) = self.creatures.pending.get_mut(level_id)
-            && (pending.refusal_logged || pending.retained_passes >= MAX_PENDING_MOB_PASSES)
-        {
-            if !pending.refusal_logged {
-                log::warn!(
-                    "Refusing mob production in {level_id}: {} retained producer passes (limit {MAX_PENDING_MOB_PASSES}); draining before retry",
-                    pending.retained_passes
-                );
-                pending.refusal_logged = true;
-            }
-            // No new producer work until the backlog drains. Unrelated projectile
-            // phases still advance; mob-specific follow-up must not reuse old ticks.
-            self.creatures.ticked.clear();
-            let primable = self.sulfur_cubes_adopted_explosive();
-            self.deliver_pending_mob_actions(level_id)?;
-            return self.finish_creature_entities(&mut laps, &primable);
-        }
         // `EntityEvent.Size` for the sizes that changed outside the mob ticks (spawns,
         // commands, a player's interaction), before the ticks move by them.
         self.native_mob_sizes();
@@ -1497,6 +1480,7 @@ impl Game<'_> {
         let mut path_writes = std::mem::take(self.world.path_writes.get_or_insert_with(Vec::new));
         // The mobs whose bodies go this tick: (id, feet, width, height).
         let mut gone = Vec::new();
+        let mut restocks = Vec::new();
         // The level's random and attachments, lent to the mobs (brain behaviours draw from
         // the random, and a hit's damage hooks get both) and taken back after their ticks.
         let lent = sunrise_client::health::LentLevel::take(&mut self.world);
@@ -1506,6 +1490,7 @@ impl Game<'_> {
             passenger_objects: &passenger_objects,
             blocked: &blocked,
             events: &mut events,
+            restocks: &mut restocks,
             pushes: &mut pending.pushes,
             dead: &mut dead,
             died: &mut died,
@@ -1563,6 +1548,11 @@ impl Game<'_> {
         snapshot.clear();
         self.creatures.seen_buf = snapshot;
         self.creatures.ticked = ticked;
+        // A work step's restock lands on the screen now, before any callback of
+        // this tick can edit the offers (those edits are then the last write).
+        for restock in restocks {
+            self.villager_offers_open(restock);
+        }
         // Completed brain actions are never fed back into the producer pass.
         if !events.is_empty() || !guest_events.is_empty() {
             pending.batches.push_back(MobOutputBatch {
@@ -1570,9 +1560,6 @@ impl Game<'_> {
                 guests: std::mem::take(&mut guest_events),
             });
         }
-        // A successful producer can still be retained behind a failing consumer.
-        // Count before any downstream callbacks; fully empty delivery resets it.
-        pending.retained_passes += 1;
         if dispatch_panic.is_none() {
             // The successful final sweep consumed all pushes for surviving mobs.
             pending.pushes = Default::default();
@@ -1589,7 +1576,6 @@ impl Game<'_> {
         self.sync_riders();
         self.tick_skeleton_traps();
         self.guardian_bubbles();
-        self.villager_reputation_tick();
         self.villager_item_sense();
         self.villager_pickups();
         laps.lap("creature_villagers");
@@ -1628,10 +1614,6 @@ impl Game<'_> {
             }
             Ok(())
         }));
-        if pending.batches.is_empty() && pending.pushes.is_empty() {
-            pending.retained_passes = 0;
-            pending.refusal_logged = false;
-        }
         self.creatures.pending.insert(level_id, pending);
         match delivery {
             Ok(result) => result,
@@ -1701,6 +1683,7 @@ impl Game<'_> {
     }
     /// Settle a hit while its damage owner still has the level in place.
     pub(in crate::game) fn finish_mob_damage_at(&mut self, index: usize) {
+        self.settle_villager_hurt(index);
         let Some(mob) = self.mobs.get_mut(index) else {
             return;
         };
@@ -1721,7 +1704,8 @@ impl Game<'_> {
 
     /// `LivingEntity.die` / `dropAllDeathLoot`. Does not finish a hurt.
     pub(super) fn mob_die(&mut self, m: &Mob) {
-        // The killing blow for the drop hooks, before the player's hit is forgotten.
+        // Death reads the remembered player without consuming it. A body
+        // still in the level can answer getKillCredit after this call.
         let source = (!mod_api::__private::mods().is_empty()).then(|| self.mob_damage_source(m));
         let killer = self
             .last_hurt_by_player
@@ -1738,7 +1722,6 @@ impl Game<'_> {
             // The body may be gone already.
             self.set_bed_occupied(bed, false);
         }
-        self.last_hurt_by_player.remove(&m.id);
         // TamableAnimal.die, before the rest of LivingEntity.die.
         self.tell_owner_pet_died(m, killer);
         self.love_cause.remove(&m.id);
@@ -2088,6 +2071,8 @@ impl Game<'_> {
         let mut settle = false;
         let mut hurt = false;
         let mut infested = Vec::new();
+        let mut sounds = Vec::new();
+        let mut center = [0.0; 3];
         let catch_up = self.catch_up_countdowns(source.attacker, target);
         let aim = self.attacker_aim(source.attacker);
         // So `living_knockback` sees who hit and what they hold.
@@ -2137,12 +2122,10 @@ impl Game<'_> {
             if hit {
                 killed = !t.alive();
                 // The hurt or death sound the mob raised.
-                let center = t.center();
+                center = t.center();
                 for event in std::mem::take(&mut t.outbox) {
                     match event {
-                        MobEvent::Sound(s, _, volume, pitch) => {
-                            self.audio.play(&full_id(s), Some(center), volume, pitch);
-                        }
+                        MobEvent::Sound(s, _, volume, pitch) => sounds.push((s, volume, pitch)),
                         MobEvent::Infested { at, velocities } => infested.push((at, velocities)),
                         other => {
                             // Left for the end of the tick.
@@ -2151,6 +2134,12 @@ impl Game<'_> {
                     }
                 }
             }
+        }
+        if let Some(index) = target_index {
+            self.settle_villager_hurt(index);
+        }
+        for (s, volume, pitch) in sounds {
+            self.audio.play(&full_id(s), Some(center), volume, pitch);
         }
         if settle && let Some(index) = target_index {
             self.finish_mob_damage_at(index);
@@ -3760,6 +3749,8 @@ impl Game<'_> {
                     child,
                 } => self.villager_birth(parent, partner, child),
                 MobEvent::WorkAtComposter { mob, pos } => self.villager_work_at_composter(mob, pos),
+                // The borrowed tick routes these directly to the open trading screen.
+                MobEvent::VillagerRestockStep(_) => {}
                 MobEvent::GolemCheck { mob, needed } => self.villager_golem_check(mob, needed),
                 MobEvent::Firework { at, color, flight } => {
                     self.villager_firework(at, color, flight)
@@ -4099,12 +4090,16 @@ impl Game<'_> {
             }
             _ => p.kind.id.clone(),
         };
+        // Animal.spawnChildFromBreeding places the child at yaw zero. Its constructor still
+        // spends LivingEntity's yaw draw on the child's stream, not the level's.
         let mut child = self.create_mob_reason(
             &kind,
             [p.position.x, p.position.y, p.position.z],
             true,
             SpawnSite::Raw,
-            None,
+            // Animal.spawnChildFromBreeding places the child at yaw zero. Its constructor still
+            // spends LivingEntity's yaw draw on the child's stream, not the level's.
+            Some(0.0),
         );
         if let Some(child) = child.as_mut() {
             'offspring: {
@@ -6807,9 +6802,9 @@ impl Game<'_> {
             false
         };
         let cannot = self
-            .res
-            .mob_data()
-            .entity_has("minecraft:cannot_be_age_locked", &m.kind.id);
+            .items()
+            .entity_type_tags
+            .contains("minecraft:cannot_be_age_locked", &m.kind.id);
         sunrise_client::mobs::ai::can_use_golden_dandelion(
             item,
             baby,

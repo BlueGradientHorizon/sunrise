@@ -44,8 +44,8 @@ impl ResourceHandler<ItemResource> for Empty {
         _: usize,
         _: &ItemResource,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
+        Ok(0)
     }
     fn extract_at(
         &self,
@@ -54,8 +54,8 @@ impl ResourceHandler<ItemResource> for Empty {
         _: usize,
         _: &ItemResource,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
+        Ok(0)
     }
 }
 

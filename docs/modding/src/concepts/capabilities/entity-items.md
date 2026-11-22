@@ -52,7 +52,7 @@ host.transaction(|host, tx| {
             let still = from.resource(host, *index).as_ref() == Some(&offered)
                 && from.amount(host, *index) == stack.count();
             if !still
-                || from.extract_at(host, tx, *index, &offered, stack.count()) != stack.count()
+                || from.extract_at(host, tx, *index, &offered, stack.count()) != Ok(stack.count())
                 || to.insert(host, tx, &offered, stack.count()) != Ok(stack.count())
             {
                 return Err(());

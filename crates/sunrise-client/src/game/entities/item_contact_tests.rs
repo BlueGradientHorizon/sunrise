@@ -1366,7 +1366,9 @@ fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
     crate::game::in_own_process(
         "game::item_contact_tests::contact_hurt_uses_the_orbs_level_fall_immunity_tag",
         || {
-            use sunrise_client::{entities::ExperienceOrb, join_seq::JoinSeq};
+            use sunrise_client::{
+                entities::ExperienceOrb, items::EntityTypeTags, join_seq::JoinSeq,
+            };
             with_heated_game(|game| {
                 let block = game
                     .pack
@@ -1378,14 +1380,18 @@ fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
                 game.tickets.update(None);
                 for tagged in [false, true] {
                     let mut items = world_items!(game).clone();
-                    let members = Arc::make_mut(&mut items.enchantments)
-                        .entity_tags
+                    let mut tags = items.entity_type_tags.ordered().clone();
+                    let members = tags
                         .entry("minecraft:fall_damage_immune".into())
                         .or_default();
-                    members.remove("minecraft:experience_orb");
+                    members.retain(|id| id != "minecraft:experience_orb");
                     if tagged {
-                        members.insert("minecraft:experience_orb".into());
+                        members.push("minecraft:experience_orb".into());
                     }
+                    items.set_entity_type_tags(EntityTypeTags::from_ordered(
+                        tags,
+                        items.entity_type_tags.ids().clone(),
+                    ));
                     game.server_items = Some(Arc::new(items));
                     game.orbs.push(ExperienceOrb::new(
                         17,

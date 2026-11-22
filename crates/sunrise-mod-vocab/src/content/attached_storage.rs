@@ -7,7 +7,7 @@ use crate::content::registry_keys::{fluid_id, fluid_key, item_id, item_key_by_id
 use crate::{
     AttachmentCodec, AttachmentError, AttachmentKey, Components, Compound, EnergyHandler,
     FluidIdentity, FluidResource, FluidStack, Holder, Identifier, ItemResource, ItemStack,
-    ResourceHandler, ServerHost, Tag, TransactionContext,
+    Overanswered, ResourceHandler, ServerHost, Tag, TransactionContext, TransactionError,
 };
 use sunrise_core::nbt::JavaString;
 
@@ -161,24 +161,24 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
         index: usize,
         resource: &R,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         if !self.is_valid(host, index, resource) {
-            return 0;
+            return Ok(0);
         }
         let room = self.capacity(host, index, Some(resource));
         let have = match self.with_entry(host, index, Clone::clone) {
-            Some((held, _)) if held != *resource => return 0,
+            Some((held, _)) if held != *resource => return Ok(0),
             Some((_, have)) => have,
             None => 0,
         };
-        match amount.min(room.saturating_sub(have)) {
+        Ok(match amount.min(room.saturating_sub(have)) {
             0 => 0,
             went if self.write(host, index, Some((resource.clone(), have + went))) => went,
             _ => 0,
-        }
+        })
     }
     fn extract_at(
         &self,
@@ -187,21 +187,21 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
         index: usize,
         resource: &R,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let Some((held, have)) = self
             .with_entry(host, index, Clone::clone)
             .filter(|(held, _)| held == resource)
         else {
-            return 0;
+            return Ok(0);
         };
-        match amount.min(have) {
+        Ok(match amount.min(have) {
             0 => 0,
             came if self.write(host, index, Some((held, have - came))) => came,
             _ => 0,
-        }
+        })
     }
 }
 
@@ -253,28 +253,40 @@ impl EnergyHandler for AttachedEnergy {
     fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
         self.capacity
     }
-    fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let held = self.amount(host);
-        match amount
-            .min(self.max_insert)
-            .min(self.capacity.saturating_sub(held))
-        {
-            0 => 0,
-            went => self.write(host, held + went, went),
-        }
+        Ok(
+            match amount
+                .min(self.max_insert)
+                .min(self.capacity.saturating_sub(held))
+            {
+                0 => 0,
+                went => self.write(host, held + went, went),
+            },
+        )
     }
-    fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let held = self.amount(host);
-        match amount.min(self.max_extract).min(held) {
+        Ok(match amount.min(self.max_extract).min(held) {
             0 => 0,
             came => self.write(host, held - came, came),
-        }
+        })
     }
 }
 

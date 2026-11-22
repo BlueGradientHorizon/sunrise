@@ -39,13 +39,13 @@ fn infinite_hand() -> ItemPlace {
 /// `place.insert` of `amount` in a transaction that commits.
 fn insert(host: &mut FakeHost, place: &ItemPlace, resource: &ItemResource, amount: u32) -> u32 {
     let host: &mut dyn ServerHost = host;
-    host.transaction(|host, tx| Ok::<_, ()>(place.insert(host, tx, resource, amount)))
+    host.transaction(|host, tx| place.insert(host, tx, resource, amount))
         .unwrap()
 }
 
 fn extract(host: &mut FakeHost, place: &ItemPlace, resource: &ItemResource, amount: u32) -> u32 {
     let host: &mut dyn ServerHost = host;
-    host.transaction(|host, tx| Ok::<_, ()>(place.extract(host, tx, resource, amount)))
+    host.transaction(|host, tx| place.extract(host, tx, resource, amount))
         .unwrap()
 }
 

@@ -2,9 +2,9 @@
 use crate::{
     Error, Result,
     buf::{
-        Bool, Byte, BytesN, ChunkPos, Codec, Double, Float, Ident, Int, List, Long, LpVec3, Nbt,
-        Opt, OptVarInt, Pos, Reader, SectionPos, Short, Str, StrN, UByte, Uuid, VarInt, VarLong,
-        VarVec3i, Vec3d,
+        Bool, Byte, BytesN, ChunkPos, Codec, Double, Float, Ident, Int, List, Long, Longs, LpVec3,
+        Nbt, Opt, OptVarInt, Pos, Reader, SectionPos, Short, Str, StrN, UByte, Uuid, VarInt,
+        VarLong, VarVec3i, Vec3d,
     },
     chunk::{ChunkData, LightData},
     entity_data::{EntityData, Particle, Value},
@@ -128,6 +128,56 @@ packet!(
     /// extra chat completions (`custom_chat_action`) and the entries.
     CustomChatCompletions { action: i32 => VarInt, entries: Vec<String> => List<Str> }
 );
+/// `LocalSampleLogger`'s `TpsDebugDimensions`: a tick sample has at most this many values.
+pub const DEBUG_SAMPLE_DIMENSIONS: usize = 4;
+/// `RemoteDebugSampleType`'s one ordinal, `TICK_TIME`.
+pub const DEBUG_SAMPLE_TICK_TIME: i32 = 0;
+/// The `debug_subscription` registry has this many entries (ids `0..16`); 0 is
+/// `dedicated_server_tick_time`.
+pub const DEBUG_SUBSCRIPTION_COUNT: i32 = 16;
+/// `ByteBufCodecs.collection(.., 32)`: the most ids a request holds.
+pub const DEBUG_SUBSCRIPTION_LIMIT: usize = 32;
+/// `readEnum(RemoteDebugSampleType.class)`: ordinal 0 only; any other fails to decode.
+pub struct DebugSampleKind;
+impl Codec<i32> for DebugSampleKind {
+    fn read(r: &mut Reader) -> Result<i32> {
+        match r.varint()? {
+            DEBUG_SAMPLE_TICK_TIME => Ok(DEBUG_SAMPLE_TICK_TIME),
+            other => Err(Error::new(format!("invalid debug sample type {other}"))),
+        }
+    }
+    fn write(v: &i32, w: &mut Writer) {
+        w.varint(*v);
+    }
+}
+/// `ByteBufCodecs.registry(DEBUG_SUBSCRIPTION)` in `collection(ReferenceOpenHashSet::new, 32)`:
+/// at most 32 ids, each registered; a repeated id is one member of the set.
+pub struct DebugSubscriptionSet;
+impl Codec<Vec<i32>> for DebugSubscriptionSet {
+    /// The ids ascending, each once.
+    fn read(r: &mut Reader) -> Result<Vec<i32>> {
+        let n = r.count(DEBUG_SUBSCRIPTION_LIMIT)?;
+        let mut ids = Vec::with_capacity(n);
+        for _ in 0..n {
+            match r.varint()? {
+                id @ 0..DEBUG_SUBSCRIPTION_COUNT => ids.push(id),
+                id => return Err(Error::new(format!("unknown debug subscription {id}"))),
+            }
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        Ok(ids)
+    }
+    fn write(v: &Vec<i32>, w: &mut Writer) {
+        List::<VarInt>::write(v, w);
+    }
+}
+// ClientboundDebugSamplePacket: `LongArray` then the `RemoteDebugSampleType` ordinal (VarInt).
+// ClientboundDebugSamplePacket reads the array as-is. Its logger checks the
+// number of dimensions when the handler runs, which may be inside a bundle.
+packet!(DebugSample { sample: Vec<i64> => Longs, kind: i32 => DebugSampleKind });
+// ServerboundDebugSubscriptionRequestPacket: the `debug_subscription` ids wanted.
+packet!(DebugSubscriptionRequest { subscriptions: Vec<i32> => DebugSubscriptionSet });
 /// ClientboundCustomChatCompletionsPacket.Action, by id (`ByIdMap.continuous`
 /// with `OutOfBoundsStrategy.ZERO`: an unknown id is `ADD`).
 pub mod custom_chat_action {
@@ -876,6 +926,7 @@ packet_enum!(Clientbound, crate::ids::play::clientbound {
     Cooldown(Cooldown) = COOLDOWN,
     CustomChatCompletions(CustomChatCompletions) = CUSTOM_CHAT_COMPLETIONS,
     CustomPayload(CustomPayload) = CUSTOM_PAYLOAD => super::custom_payload::ClientboundPlayPayload,
+    DebugSample(DebugSample) = DEBUG_SAMPLE,
     Disconnect(Disconnect) = DISCONNECT,
     DeleteChat(DeleteChat) = DELETE_CHAT,
     DisguisedChat(DisguisedChat) = DISGUISED_CHAT,
@@ -1376,6 +1427,7 @@ packet_enum!(Serverbound, crate::ids::play::serverbound {
     ClientTickEnd(Empty) = CLIENT_TICK_END,
     ConfigurationAcknowledged(Empty) = CONFIGURATION_ACKNOWLEDGED,
     ContainerButtonClick(ContainerButtonClick) = CONTAINER_BUTTON_CLICK,
+    DebugSubscriptionRequest(DebugSubscriptionRequest) = DEBUG_SUBSCRIPTION_REQUEST,
     ContainerClick(ContainerClick) = CONTAINER_CLICK,
     ContainerClose(ContainerClose) = CONTAINER_CLOSE,
     CookieResponse(CookieResponse) = COOKIE_RESPONSE,

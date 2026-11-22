@@ -74,26 +74,26 @@ fn scratch_stack_commits_same_item_ops_refuses_other_items_and_caps_at_max_stack
         assert_eq!(place.resource(host), Some(stone.clone()));
 
         // Different item is refused for insert, extract, and exchange (leaving stack intact).
-        assert_eq!(place.insert(host, tx, dirt, 4), 0);
-        assert_eq!(place.extract(host, tx, dirt, 1), 0);
-        assert_eq!(place.exchange(host, tx, dirt, 5), 0);
+        assert_eq!(place.insert(host, tx, dirt, 4), Ok(0));
+        assert_eq!(place.extract(host, tx, dirt, 1), Ok(0));
+        assert_eq!(place.exchange(host, tx, dirt, 5), Ok(0));
         assert_eq!(place.amount(host), 5);
         assert_eq!(place.resource(host), Some(stone.clone()));
 
         // Same-item insert respects the item's max stack size.
-        assert_eq!(place.insert(host, tx, stone, 20), 11);
+        assert_eq!(place.insert(host, tx, stone, 20), Ok(11));
         assert_eq!(place.amount(host), 16);
-        assert_eq!(place.insert(host, tx, stone, 1), 0);
+        assert_eq!(place.insert(host, tx, stone, 1), Ok(0));
 
         // Different components cannot stack onto the occupied slot.
-        assert_eq!(place.insert(host, tx, &stone_tagged, 1), 0);
+        assert_eq!(place.insert(host, tx, &stone_tagged, 1), Ok(0));
 
         // Partial extract reduces the count.
-        assert_eq!(place.extract(host, tx, stone, 12), 12);
+        assert_eq!(place.extract(host, tx, stone, 12), Ok(12));
         assert_eq!(place.amount(host), 4);
 
         // Same-item exchange with different components succeeds for the whole stack.
-        assert_eq!(place.exchange(host, tx, &stone_tagged, 4), 4);
+        assert_eq!(place.exchange(host, tx, &stone_tagged, 4), Ok(4));
         assert_eq!(place.amount(host), 4);
         assert_eq!(place.resource(host), Some(stone_tagged.clone()));
 
@@ -106,17 +106,17 @@ fn scratch_stack_commits_same_item_ops_refuses_other_items_and_caps_at_max_stack
         let damaged = place.resource(host).unwrap();
 
         // Emptying the slot still keeps the fixed item (StackItemAccess): other items refuse.
-        assert_eq!(place.extract(host, tx, &damaged, 4), 4);
+        assert_eq!(place.extract(host, tx, &damaged, 4), Ok(4));
         assert_eq!(place.amount(host), 0);
         assert_eq!(place.with_stack(host, |_| ()), None);
         assert_eq!(
             place.edit(host, tx, |editor| editor.set_damage(1)),
             Err(ItemPlaceEditError::NotHeld)
         );
-        assert_eq!(place.insert(host, tx, dirt, 1), 0);
+        assert_eq!(place.insert(host, tx, dirt, 1), Ok(0));
 
         // Reinserting the original item succeeds.
-        assert_eq!(place.insert(host, tx, &stone_tagged, 3), 3);
+        assert_eq!(place.insert(host, tx, &stone_tagged, 3), Ok(3));
         assert_eq!(place.amount(host), 3);
         Ok::<_, ()>(42)
     });
@@ -127,7 +127,7 @@ fn scratch_stack_commits_same_item_ops_refuses_other_items_and_caps_at_max_stack
 
     // Committing an emptied scratch_stack publishes None.
     let emptied = host.scratch_stack(stone.to_stack(2).unwrap(), |host, tx, place| {
-        assert_eq!(place.extract(host, tx, stone, 2), 2);
+        assert_eq!(place.extract(host, tx, stone, 2), Ok(2));
         Ok::<_, ()>("empty")
     });
     assert_eq!(emptied, Ok(("empty", None)));
@@ -144,8 +144,8 @@ fn scratch_stack_abort_publishes_nothing_and_rolls_back_world() {
     let chest = level.capability(&mut host, &ITEMS, CHEST, None).unwrap();
 
     let outcome = host.scratch_stack(stone.to_stack(5).unwrap(), |host, tx, place| {
-        assert_eq!(chest.extract_at(host, tx, 0, stone, 4), 4);
-        assert_eq!(place.insert(host, tx, stone, 4), 4);
+        assert_eq!(chest.extract_at(host, tx, 0, stone, 4), Ok(4));
+        assert_eq!(place.insert(host, tx, stone, 4), Ok(4));
         assert_eq!(place.amount(host), 9);
         assert_eq!(chest.amount(host, 0), 6);
         Err::<(), _>("aborted")
@@ -169,7 +169,7 @@ fn scratch_slots_allows_item_change_replaces_slot_zero_and_overflows_to_slot_one
 
     // Single stack: exchange replaces slot 0 in place and leaves slot 1 empty.
     let single = host.scratch_slots(bucket.to_stack(1).unwrap(), |host, tx, place| {
-        assert_eq!(place.exchange(host, tx, water, 1), 1);
+        assert_eq!(place.exchange(host, tx, water, 1), Ok(1));
         assert_eq!(place.resource(host), Some(water.clone()));
         assert_eq!(place.amount(host), 1);
         Ok::<_, ()>("single")
@@ -183,13 +183,13 @@ fn scratch_slots_allows_item_change_replaces_slot_zero_and_overflows_to_slot_one
     let multi = host.scratch_slots(bucket.to_stack(3).unwrap(), |host, tx, place| {
         let one = ItemPlace::OneByOne(Box::new(place.clone()));
         assert_eq!(one.amount(host), 1);
-        assert_eq!(one.exchange(host, tx, water, 1), 1);
+        assert_eq!(one.exchange(host, tx, water, 1), Ok(1));
         // Reads and extracts target slot 0 only.
         assert_eq!(place.amount(host), 2);
         assert_eq!(place.resource(host), Some(bucket.clone()));
-        assert_eq!(place.extract(host, tx, water, 1), 0);
+        assert_eq!(place.extract(host, tx, water, 1), Ok(0));
         // Slot 1 is full (max stack 1), so another distinct item is refused.
-        assert_eq!(place.insert(host, tx, lava, 1), 0);
+        assert_eq!(place.insert(host, tx, lava, 1), Ok(0));
         Ok::<_, ()>("overflow")
     });
     assert_eq!(
@@ -205,13 +205,13 @@ fn scratch_slots_allows_item_change_replaces_slot_zero_and_overflows_to_slot_one
 
     // Sequential fill of the same item caps slot 0 at max_stack, then spills into slot 1.
     let sequential = host.scratch_slots(stone.to_stack(10).unwrap(), |host, tx, place| {
-        assert_eq!(place.insert(host, tx, stone, 12), 12);
+        assert_eq!(place.insert(host, tx, stone, 12), Ok(12));
         assert_eq!(place.amount(host), 16);
-        assert_eq!(place.insert(host, tx, stone, 20), 10);
-        assert_eq!(place.extract(host, tx, stone, 16), 16);
+        assert_eq!(place.insert(host, tx, stone, 20), Ok(10));
+        assert_eq!(place.extract(host, tx, stone, 16), Ok(16));
         // Slot 0 is now empty; reads and extracts do not fall through to slot 1.
         assert_eq!(place.amount(host), 0);
-        assert_eq!(place.extract(host, tx, stone, 1), 0);
+        assert_eq!(place.extract(host, tx, stone, 1), Ok(0));
         Ok::<_, ()>(())
     });
     assert_eq!(
@@ -221,8 +221,8 @@ fn scratch_slots_allows_item_change_replaces_slot_zero_and_overflows_to_slot_one
 
     // Abort publishes neither slot.
     let aborted = host.scratch_slots(bucket.to_stack(2).unwrap(), |host, tx, place| {
-        assert_eq!(place.extract(host, tx, bucket, 1), 1);
-        assert_eq!(place.insert(host, tx, water, 1), 1);
+        assert_eq!(place.extract(host, tx, bucket, 1), Ok(1));
+        assert_eq!(place.insert(host, tx, water, 1), Ok(1));
         Err::<(), _>("nope")
     });
     assert_eq!(aborted, Err(ScratchError::Aborted("nope")));
@@ -246,7 +246,7 @@ fn restore_before_fallback_restores_lent_slots_after_nested_abort() {
     let single = host.scratch_stack(initial_stone.clone(), |host, tx, place| {
         let primary = host.transaction(|host, tx| {
             let current = place.resource(host).unwrap();
-            assert_eq!(place.extract(host, tx, &current, 3), 3);
+            assert_eq!(place.extract(host, tx, &current, 3), Ok(3));
             assert_eq!(place.edit(host, tx, |editor| editor.set_damage(4)), Ok(()));
             assert_eq!(
                 place.with_stack(host, |view| (view.count(), view.damage())),
@@ -262,7 +262,7 @@ fn restore_before_fallback_restores_lent_slots_after_nested_abort() {
             Some(initial_stone.clone())
         );
         let restored = place.resource(host).unwrap();
-        assert_eq!(place.extract(host, tx, &restored, 1), 1);
+        assert_eq!(place.extract(host, tx, &restored, 1), Ok(1));
         Ok::<_, ()>(())
     });
     assert_eq!(single, Ok(((), Some(expected_stone))));
@@ -270,11 +270,11 @@ fn restore_before_fallback_restores_lent_slots_after_nested_abort() {
     // Two-slot restore before fallback (both slot 0 and overflow slot 1 restored).
     let two_slot = host.scratch_slots(bucket.to_stack(3).unwrap(), |host, tx, place| {
         let primary = host.transaction(|host, tx| {
-            assert_eq!(place.extract(host, tx, bucket, 1), 1);
-            assert_eq!(place.insert(host, tx, water, 1), 1);
+            assert_eq!(place.extract(host, tx, bucket, 1), Ok(1));
+            assert_eq!(place.insert(host, tx, water, 1), Ok(1));
             assert_eq!(place.amount(host), 2);
             // Overflow slot is occupied by water_bucket.
-            assert_eq!(place.insert(host, tx, lava, 1), 0);
+            assert_eq!(place.insert(host, tx, lava, 1), Ok(0));
             Err::<(), _>("pickup failed")
         });
         assert_eq!(primary, Err(TransactionError::Aborted("pickup failed")));
@@ -282,8 +282,8 @@ fn restore_before_fallback_restores_lent_slots_after_nested_abort() {
         // Fallback sees slot 0 restored to 3 buckets and slot 1 restored to empty.
         assert_eq!(place.amount(host), 3);
         assert_eq!(place.resource(host), Some(bucket.clone()));
-        assert_eq!(place.extract(host, tx, bucket, 1), 1);
-        assert_eq!(place.insert(host, tx, lava, 1), 1);
+        assert_eq!(place.extract(host, tx, bucket, 1), Ok(1));
+        assert_eq!(place.insert(host, tx, lava, 1), Ok(1));
         Ok::<_, ()>(())
     });
     assert_eq!(
@@ -316,8 +316,8 @@ fn nested_success_remains_provisional_across_subsequent_abort_enclosing_abort_an
     // and enclosing loan abort discards everything without publishing.
     let aborted_stack = host.scratch_stack(stone.to_stack(5).unwrap(), |host, _tx, place| {
         host.transaction(|host, tx| {
-            assert_eq!(place.extract(host, tx, stone, 2), 2);
-            assert_eq!(chest.extract_at(host, tx, 0, stone, 1), 1);
+            assert_eq!(place.extract(host, tx, stone, 2), Ok(2));
+            assert_eq!(chest.extract_at(host, tx, 0, stone, 1), Ok(1));
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -325,8 +325,8 @@ fn nested_success_remains_provisional_across_subsequent_abort_enclosing_abort_an
         assert_eq!(chest.amount(host, 0), 9);
 
         let second = host.transaction(|host, tx| {
-            assert_eq!(place.extract(host, tx, stone, 2), 2);
-            assert_eq!(chest.extract_at(host, tx, 0, stone, 3), 3);
+            assert_eq!(place.extract(host, tx, stone, 2), Ok(2));
+            assert_eq!(chest.extract_at(host, tx, 0, stone, 3), Ok(3));
             assert_eq!(place.amount(host), 1);
             Err::<(), _>("second")
         });
@@ -344,15 +344,15 @@ fn nested_success_remains_provisional_across_subsequent_abort_enclosing_abort_an
     // Same provisional behavior for two-slot scratch loans.
     let aborted_slots = host.scratch_slots(bucket.to_stack(3).unwrap(), |host, _tx, place| {
         host.transaction(|host, tx| {
-            assert_eq!(place.extract(host, tx, bucket, 1), 1);
-            assert_eq!(place.insert(host, tx, water, 1), 1);
+            assert_eq!(place.extract(host, tx, bucket, 1), Ok(1));
+            assert_eq!(place.insert(host, tx, water, 1), Ok(1));
             Ok::<_, ()>(())
         })
         .unwrap();
         assert_eq!(place.amount(host), 2);
 
         let second = host.transaction(|host, tx| {
-            assert_eq!(place.extract(host, tx, bucket, 2), 2);
+            assert_eq!(place.extract(host, tx, bucket, 2), Ok(2));
             assert_eq!(place.amount(host), 0);
             Err::<(), _>("second slots")
         });
@@ -374,8 +374,8 @@ fn nested_success_remains_provisional_across_subsequent_abort_enclosing_abort_an
             stone.to_stack(5).unwrap(),
             |host, _tx, place| -> Result<(), ()> {
                 host.transaction(|host, tx| {
-                    assert_eq!(place.extract(host, tx, stone, 3), 3);
-                    assert_eq!(chest.extract_at(host, tx, 0, stone, 4), 4);
+                    assert_eq!(place.extract(host, tx, stone, 3), Ok(3));
+                    assert_eq!(chest.extract_at(host, tx, 0, stone, 4), Ok(4));
                     Ok::<_, ()>(())
                 })
                 .unwrap();
@@ -404,7 +404,7 @@ fn committed_scratch_loans_stay_out_of_outer_transaction_journal() {
         let mut escaped_stack = None;
         let ((), final_stack) = host
             .scratch_stack(stone.to_stack(5).unwrap(), |host, tx, place| {
-                assert_eq!(place.extract(host, tx, stone, 2), 2);
+                assert_eq!(place.extract(host, tx, stone, 2), Ok(2));
                 escaped_stack = Some(place.clone());
                 Ok::<_, ()>(())
             })
@@ -422,15 +422,15 @@ fn committed_scratch_loans_stay_out_of_outer_transaction_journal() {
         assert!(!host.scratch_kept_contains(0, escaped_stack_slot));
         assert_eq!(escaped_stack.with_stack(host, |_| ()), None);
         assert_eq!(escaped_stack.amount(host), 0);
-        assert_eq!(escaped_stack.insert(host, tx, stone, 1), 0);
-        assert_eq!(escaped_stack.extract(host, tx, stone, 1), 0);
+        assert_eq!(escaped_stack.insert(host, tx, stone, 1), Ok(0));
+        assert_eq!(escaped_stack.extract(host, tx, stone, 1), Ok(0));
 
         // Inner scratch_slots commits inside the same still-open outer transaction.
         let mut escaped_slots = None;
         let ((), final_slots) = host
             .scratch_slots(bucket.to_stack(2).unwrap(), |host, tx, place| {
-                assert_eq!(place.extract(host, tx, bucket, 1), 1);
-                assert_eq!(place.insert(host, tx, water, 1), 1);
+                assert_eq!(place.extract(host, tx, bucket, 1), Ok(1));
+                assert_eq!(place.insert(host, tx, water, 1), Ok(1));
                 escaped_slots = Some(place.clone());
                 Ok::<_, ()>(())
             })
@@ -453,8 +453,8 @@ fn committed_scratch_loans_stay_out_of_outer_transaction_journal() {
         assert!(!host.scratch_kept_contains(0, escaped_slots_slot));
         assert_eq!(escaped_slots.with_stack(host, |_| ()), None);
         assert_eq!(escaped_slots.amount(host), 0);
-        assert_eq!(escaped_slots.insert(host, tx, bucket, 1), 0);
-        assert_eq!(escaped_slots.extract(host, tx, bucket, 1), 0);
+        assert_eq!(escaped_slots.insert(host, tx, bucket, 1), Ok(0));
+        assert_eq!(escaped_slots.extract(host, tx, bucket, 1), Ok(0));
 
         (true, ())
     });
@@ -484,9 +484,9 @@ fn nested_scratch_loan_leaves_outer_loan_journal_clean_and_outer_mutation_provis
             let mut escaped_s2 = None;
             let ((), s2_final) = host
                 .scratch_slots(bucket.to_stack(2).unwrap(), |host, tx, s2| {
-                    assert_eq!(s1.extract(host, tx, stone, 2), 2);
-                    assert_eq!(s2.extract(host, tx, bucket, 1), 1);
-                    assert_eq!(s2.insert(host, tx, water, 1), 1);
+                    assert_eq!(s1.extract(host, tx, stone, 2), Ok(2));
+                    assert_eq!(s2.extract(host, tx, bucket, 1), Ok(1));
+                    assert_eq!(s2.insert(host, tx, water, 1), Ok(1));
                     escaped_s2 = Some(s2.clone());
                     Ok::<_, ()>(())
                 })
@@ -511,8 +511,8 @@ fn nested_scratch_loan_leaves_outer_loan_journal_clean_and_outer_mutation_provis
             assert_eq!(s1.amount(host), 3);
             assert_eq!(escaped_s2.with_stack(host, |_| ()), None);
             assert_eq!(escaped_s2.amount(host), 0);
-            assert_eq!(escaped_s2.insert(host, tx, bucket, 1), 0);
-            assert_eq!(escaped_s2.extract(host, tx, bucket, 1), 0);
+            assert_eq!(escaped_s2.insert(host, tx, bucket, 1), Ok(0));
+            assert_eq!(escaped_s2.extract(host, tx, bucket, 1), Ok(0));
 
             // Abort S1 so S1's mutation is discarded and never published.
             (false, ())
@@ -528,10 +528,10 @@ fn nested_scratch_loan_leaves_outer_loan_journal_clean_and_outer_mutation_provis
             let mut escaped_s2 = None;
             let ((), s2_final) = host
                 .scratch_slots(bucket.to_stack(2).unwrap(), |host, tx2, s2| {
-                    assert_eq!(s0.extract(host, tx2, stone, 3), 3);
-                    assert_eq!(s1.extract(host, tx2, dirt, 2), 2);
-                    assert_eq!(s2.extract(host, tx2, bucket, 1), 1);
-                    assert_eq!(s2.insert(host, tx2, water, 1), 1);
+                    assert_eq!(s0.extract(host, tx2, stone, 3), Ok(3));
+                    assert_eq!(s1.extract(host, tx2, dirt, 2), Ok(2));
+                    assert_eq!(s2.extract(host, tx2, bucket, 1), Ok(1));
+                    assert_eq!(s2.insert(host, tx2, water, 1), Ok(1));
                     escaped_s2 = Some(s2.clone());
                     Ok::<_, ()>(())
                 })
@@ -547,7 +547,7 @@ fn nested_scratch_loan_leaves_outer_loan_journal_clean_and_outer_mutation_provis
             assert_eq!(s1.amount(host), 3);
             let escaped_s2 = escaped_s2.unwrap();
             assert_eq!(escaped_s2.amount(host), 0);
-            assert_eq!(escaped_s2.insert(host, tx1, bucket, 1), 0);
+            assert_eq!(escaped_s2.insert(host, tx1, bucket, 1), Ok(0));
             Err::<(), _>("abort s1")
         });
         assert_eq!(s1_result, Err(ScratchError::Aborted("abort s1")));
@@ -578,8 +578,8 @@ fn foreign_host_scratch_place_reads_none_and_writes_zero() {
                 assert_eq!(leaked.with_stack(host_b, |_| ()), None);
                 assert_eq!(leaked.resource(host_b), None);
                 assert_eq!(leaked.amount(host_b), 0);
-                assert_eq!(leaked.insert(host_b, tx_b, stone, 1), 0);
-                assert_eq!(leaked.extract(host_b, tx_b, stone, 1), 0);
+                assert_eq!(leaked.insert(host_b, tx_b, stone, 1), Ok(0));
+                assert_eq!(leaked.extract(host_b, tx_b, stone, 1), Ok(0));
                 assert_eq!(
                     leaked.edit(host_b, tx_b, |editor| editor.set_damage(1)),
                     Err(ItemPlaceEditError::NotHeld)
@@ -599,8 +599,8 @@ fn foreign_host_scratch_place_reads_none_and_writes_zero() {
 
             assert_eq!(leaked.with_stack(host_b, |_| ()), None);
             assert_eq!(leaked.amount(host_b), 0);
-            assert_eq!(leaked.insert(host_b, tx_b, stone, 1), 0);
-            assert_eq!(leaked.extract(host_b, tx_b, stone, 1), 0);
+            assert_eq!(leaked.insert(host_b, tx_b, stone, 1), Ok(0));
+            assert_eq!(leaked.extract(host_b, tx_b, stone, 1), Ok(0));
             assert_eq!(place_b.amount(host_b), 8);
             Ok::<_, ()>(())
         });
@@ -628,8 +628,8 @@ fn foreign_host_scratch_place_reads_none_and_writes_zero() {
         assert_ne!(slot_a.id(), slot_c.id());
         assert_eq!(leaked.with_stack(host_c, |_| ()), None);
         assert_eq!(leaked.amount(host_c), 0);
-        assert_eq!(leaked.insert(host_c, tx_c, stone_c, 1), 0);
-        assert_eq!(leaked.extract(host_c, tx_c, stone_c, 1), 0);
+        assert_eq!(leaked.insert(host_c, tx_c, stone_c, 1), Ok(0));
+        assert_eq!(leaked.extract(host_c, tx_c, stone_c, 1), Ok(0));
         assert_eq!(place_c.amount(host_c), 9);
         Ok::<_, ()>(())
     });
@@ -648,9 +648,18 @@ fn wrong_transaction_context_is_refused_before_mutating_lent_scratch_slot() {
     let ancestor = host_a.scratch_stack(stone.to_stack(5).unwrap(), |host, outer_tx, place| {
         host.transaction(|host, inner_tx| {
             assert_eq!((outer_tx.depth(), inner_tx.depth()), (0, 1));
-            assert_eq!(place.insert(host, outer_tx, stone, 1), 0);
-            assert_eq!(place.extract(host, outer_tx, stone, 1), 0);
-            assert_eq!(place.exchange(host, outer_tx, &stone_tagged, 5), 0);
+            assert_eq!(
+                place.insert(host, outer_tx, stone, 1),
+                Err(TransactionError::InvalidContext)
+            );
+            assert_eq!(
+                place.extract(host, outer_tx, stone, 1),
+                Err(TransactionError::InvalidContext)
+            );
+            assert_eq!(
+                place.exchange(host, outer_tx, &stone_tagged, 5),
+                Err(TransactionError::InvalidContext)
+            );
             assert_eq!(
                 place.edit(host, outer_tx, |_| panic!(
                     "invalid context reached the editor"
@@ -662,7 +671,7 @@ fn wrong_transaction_context_is_refused_before_mutating_lent_scratch_slot() {
             assert_eq!(place.with_stack(host, |view| view.damage()), Some(0));
 
             // Inner context still works cleanly after the refused ancestor calls.
-            assert_eq!(place.extract(host, inner_tx, stone, 1), 1);
+            assert_eq!(place.extract(host, inner_tx, stone, 1), Ok(1));
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -677,8 +686,18 @@ fn wrong_transaction_context_is_refused_before_mutating_lent_scratch_slot() {
             let res =
                 host_a.scratch_stack(stone.to_stack(5).unwrap(), |host_a, own_tx, place_a| {
                     assert_eq!((foreign_tx.depth(), own_tx.depth()), (0, 0));
-                    assert_eq!(place_a.insert(host_a, foreign_tx, stone, 1), 0);
-                    assert_eq!(place_a.extract(host_a, foreign_tx, stone, 1), 0);
+                    assert_eq!(
+                        place_a.insert(host_a, foreign_tx, stone, 1),
+                        Err(TransactionError::InvalidContext)
+                    );
+                    assert_eq!(
+                        place_a.extract(host_a, foreign_tx, stone, 1),
+                        Err(TransactionError::InvalidContext)
+                    );
+                    assert_eq!(
+                        place_a.exchange(host_a, foreign_tx, &stone_tagged, 5),
+                        Err(TransactionError::InvalidContext)
+                    );
                     assert_eq!(
                         place_a.edit(host_a, foreign_tx, |_| panic!(
                             "invalid context reached the editor"
@@ -687,7 +706,7 @@ fn wrong_transaction_context_is_refused_before_mutating_lent_scratch_slot() {
                     );
                     assert_eq!(place_a.amount(host_a), 5);
                     assert_eq!(place_a.with_stack(host_a, |view| view.damage()), Some(0));
-                    assert_eq!(place_a.extract(host_a, own_tx, stone, 2), 2);
+                    assert_eq!(place_a.extract(host_a, own_tx, stone, 2), Ok(2));
                     Ok::<_, ()>(())
                 });
             assert_eq!(res, Ok(((), Some(stone.to_stack(3).unwrap()))));
@@ -757,20 +776,20 @@ fn invalid_scratch_stack_and_unavailable_host_refuse_without_running_closure() {
     let oversized = bucket.to_stack(20).unwrap();
     let single_over = host.scratch_stack(oversized.clone(), |host, tx, place| {
         assert_eq!(place.amount(host), 20);
-        assert_eq!(place.insert(host, tx, bucket, 1), 0);
-        assert_eq!(place.extract(host, tx, bucket, 2), 2);
+        assert_eq!(place.insert(host, tx, bucket, 1), Ok(0));
+        assert_eq!(place.extract(host, tx, bucket, 2), Ok(2));
         assert_eq!(place.amount(host), 18);
-        assert_eq!(place.insert(host, tx, bucket, 1), 0);
+        assert_eq!(place.insert(host, tx, bucket, 1), Ok(0));
         Ok::<_, ()>(())
     });
     assert_eq!(single_over, Ok(((), Some(bucket.to_stack(18).unwrap()))));
 
     let two_over = host.scratch_slots(oversized, |host, tx, place| {
         assert_eq!(place.amount(host), 20);
-        assert_eq!(place.extract(host, tx, bucket, 2), 2);
+        assert_eq!(place.extract(host, tx, bucket, 2), Ok(2));
         assert_eq!(place.amount(host), 18);
         // Slot 0 is still above max_stack (16), so an insert spills into slot 1.
-        assert_eq!(place.insert(host, tx, bucket, 1), 1);
+        assert_eq!(place.insert(host, tx, bucket, 1), Ok(1));
         assert_eq!(place.amount(host), 18);
         Ok::<_, ()>(())
     });
@@ -823,9 +842,9 @@ fn panic_unwind_restores_world_and_ancestor_scratch_and_cleans_up_loan() {
                 let _ = host.scratch_stack(
                     dirt.to_stack(4).unwrap(),
                     |host, tx, s2| -> Result<(), ()> {
-                        assert_eq!(chest.extract_at(host, tx, 0, stone, 3), 3);
-                        assert_eq!(s1.extract(host, tx, stone, 2), 2);
-                        assert_eq!(s2.extract(host, tx, dirt, 1), 1);
+                        assert_eq!(chest.extract_at(host, tx, 0, stone, 3), Ok(3));
+                        assert_eq!(s1.extract(host, tx, stone, 2), Ok(2));
+                        assert_eq!(s2.extract(host, tx, dirt, 1), Ok(1));
                         leaked_stack = Some(s2.clone());
                         panic!("nested scratch_stack panic");
                     },
@@ -839,7 +858,7 @@ fn panic_unwind_restores_world_and_ancestor_scratch_and_cleans_up_loan() {
             let leaked_stack = leaked_stack.unwrap();
             assert_eq!(leaked_stack.with_stack(host, |_| ()), None);
             assert_eq!(leaked_stack.amount(host), 0);
-            assert_eq!(leaked_stack.insert(host, tx, dirt, 1), 0);
+            assert_eq!(leaked_stack.insert(host, tx, dirt, 1), Ok(0));
 
             // Nested scratch_slots panicking restores chest + ancestor S1 and cleans up both slots.
             let mut leaked_slots = None;
@@ -847,10 +866,10 @@ fn panic_unwind_restores_world_and_ancestor_scratch_and_cleans_up_loan() {
                 let _ = host.scratch_slots(
                     bucket.to_stack(2).unwrap(),
                     |host, tx, s2| -> Result<(), ()> {
-                        assert_eq!(chest.extract_at(host, tx, 0, stone, 4), 4);
-                        assert_eq!(s1.extract(host, tx, stone, 4), 4);
-                        assert_eq!(s2.extract(host, tx, bucket, 1), 1);
-                        assert_eq!(s2.insert(host, tx, water, 1), 1);
+                        assert_eq!(chest.extract_at(host, tx, 0, stone, 4), Ok(4));
+                        assert_eq!(s1.extract(host, tx, stone, 4), Ok(4));
+                        assert_eq!(s2.extract(host, tx, bucket, 1), Ok(1));
+                        assert_eq!(s2.insert(host, tx, water, 1), Ok(1));
                         leaked_slots = Some(s2.clone());
                         panic!("nested scratch_slots panic");
                     },
@@ -864,7 +883,7 @@ fn panic_unwind_restores_world_and_ancestor_scratch_and_cleans_up_loan() {
             let leaked_slots = leaked_slots.unwrap();
             assert_eq!(leaked_slots.with_stack(host, |_| ()), None);
             assert_eq!(leaked_slots.amount(host), 0);
-            assert_eq!(leaked_slots.insert(host, tx, bucket, 1), 0);
+            assert_eq!(leaked_slots.insert(host, tx, bucket, 1), Ok(0));
 
             (true, ())
         });
@@ -880,8 +899,8 @@ fn panic_unwind_restores_world_and_ancestor_scratch_and_cleans_up_loan() {
         let _ = host.scratch_stack(
             stone.to_stack(3).unwrap(),
             |host, tx, place| -> Result<(), ()> {
-                assert_eq!(chest.extract_at(host, tx, 0, stone, 4), 4);
-                assert_eq!(place.extract(host, tx, stone, 1), 1);
+                assert_eq!(chest.extract_at(host, tx, 0, stone, 4), Ok(4));
+                assert_eq!(place.extract(host, tx, stone, 1), Ok(1));
                 panic!("root scratch_stack panic");
             },
         );

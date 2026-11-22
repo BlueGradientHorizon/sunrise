@@ -3678,7 +3678,7 @@ pub(super) mod tests {
             let host: &mut dyn mod_api::ServerHost = game;
             let rolled_back: Result<(), mod_api::TransactionError<()>> =
                 host.transaction(|host, tx| {
-                    assert_eq!(place.insert(host, tx, &sticks, 1), 1);
+                    assert_eq!(place.insert(host, tx, &sticks, 1), Ok(1));
                     Err(())
                 });
             assert!(rolled_back.is_err());
@@ -3697,7 +3697,7 @@ pub(super) mod tests {
             );
             let host: &mut dyn mod_api::ServerHost = game;
             assert_eq!(
-                host.transaction(|host, tx| Ok::<_, ()>(place.insert(host, tx, &sticks, 1))),
+                host.transaction(|host, tx| place.insert(host, tx, &sticks, 1)),
                 Ok(1)
             );
             assert_eq!(place.with_stack(game, |stack| stack.count()).unwrap(), 1);

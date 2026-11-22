@@ -944,6 +944,7 @@ fn a_falling_block_finishes_each_hit_before_the_next_victim() {
                 rotation: [0.0; 2],
                 join: Default::default(),
                 id: 225050,
+                blocks_building: true,
                 state: game
                     .pack
                     .assets

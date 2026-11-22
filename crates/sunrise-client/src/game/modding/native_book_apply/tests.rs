@@ -352,8 +352,8 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                 host.transaction(|host, tx| {
                     let old = nested.resource(host).ok_or(())?;
                     let count = nested.amount(host);
-                    if nested.extract(host, tx, &old, count) != count
-                        || nested.insert(host, tx, &dirt, 1) != 1
+                    if nested.extract(host, tx, &old, count) != Ok(count)
+                        || nested.insert(host, tx, &dirt, 1) != Ok(1)
                     {
                         return Err(());
                     }
