@@ -291,11 +291,76 @@ fn can_store_enchantments(stack: &ItemStack) -> bool {
 pub fn increased_repair_cost(cost: u32) -> u32 {
     (u64::from(cost) * 2 + 1).min(i32::MAX as u64) as u32
 }
-/// `ItemStack.getHoverName` as a component: the custom name as written, a potion's or tipped
-/// arrow's contents, a written book's title, the `item_name` component, else the item's or head
-/// owner's name, translatable so each viewer renders it in their own language.
+/// `ItemStack.getHoverName` as a component: the custom name, a written book's nonblank title,
+/// or the item's name. It stays translatable so each viewer renders it in their own language.
+/// The name a mod item's part gives the stack is not asked: [`hover_name_in`] asks it.
 pub fn hover_name_text(names: &crate::creative::Names, stack: &ItemStack) -> crate::text::Text {
+    hover_name_text_with(names, stack, |_| None, None)
+}
+/// [`hover_name_text`] with the name the parts of a mod item give the stack
+/// (`Item.getName(ItemStack)`, `ItemPart::item_name`), asked once, with the loop `context` of the
+/// side naming it, when the stack has no custom name or book title.
+pub fn hover_name_in(
+    context: &LoopContext,
+    names: &crate::creative::Names,
+    stack: &ItemStack,
+) -> crate::text::Text {
+    hover_name_in_reusing(context, names, stack, None)
+}
+/// Resolve as in [`hover_name_in`], sharing an unchanged translation's component
+/// with the previous HUD tick.
+pub fn hover_name_in_reusing(
+    context: &LoopContext,
+    names: &crate::creative::Names,
+    stack: &ItemStack,
+    previous: Option<&crate::text::Text>,
+) -> crate::text::Text {
+    hover_name_text_with(
+        names,
+        stack,
+        |stack| item_name_part(context, stack),
+        previous,
+    )
+}
+/// Whether `stack` names itself (`ItemStack.getCustomName`): a custom name, or a written book's
+/// non-blank title. `Item.getName` isn't asked then.
+pub fn names_itself(stack: &ItemStack) -> bool {
+    stack.custom_name().is_some()
+        || stack
+            .data()
+            .and_then(|d| d.written.as_ref())
+            .is_some_and(|w| !sunrise_core::java_character::is_blank(&w.title))
+}
+/// `Item.getName(ItemStack)` of a mod item: the name the parts of `stack`'s item give it
+/// (`ItemPart::item_name`), or None to keep the default. Asked with the loop `context` only, so a
+/// part can't name a stack again through a host. An item with no such part costs one lookup.
+pub fn item_name_part(context: &LoopContext, stack: &ItemStack) -> Option<crate::text::Text> {
+    let mut name = None;
+    crate::native_client_hooks::item_name(context, stack, &mut name);
+    name
+}
+/// `Item.getName(ItemStack)` is being asked of the parts of `stack`'s item: `name` starts as
+/// `None`, the default, and a part may set it. Asked on both sides.
+#[inline(never)]
+pub fn native_item_name(
+    context: &LoopContext,
+    stack: &mod_api::ItemStack,
+    name: &mut Option<mod_api::Text>,
+) {
+    mod_api::dispatch_item_name(
+        &sunrise_client_render::api_context::LoopReader(context).context(),
+        stack,
+        name,
+    );
+}
+fn hover_name_text_with(
+    names: &crate::creative::Names,
+    stack: &ItemStack,
+    part: impl FnOnce(&ItemStack) -> Option<crate::text::Text>,
+    previous: Option<&crate::text::Text>,
+) -> crate::text::Text {
     use crate::text::Text;
+    let translate = |key: &str| Text::translate_reusing(key, previous);
     let data = stack.data();
     // `ItemStack.getCustomName`: the custom name, else a written book's non-blank title.
     if stack.custom_name().is_some()
@@ -306,26 +371,30 @@ pub fn hover_name_text(names: &crate::creative::Names, stack: &ItemStack) -> cra
     if let Some(title) = data
         .and_then(|d| d.written.as_ref())
         .map(|w| w.title.as_str())
-        .filter(|t| !t.trim().is_empty())
+        .filter(|t| !sunrise_core::java_character::is_blank(t))
     {
         return Text::literal(title);
+    }
+    // `ItemStack.getItemName`: a mod item's `getName` (its part), asked once.
+    if let Some(name) = part(stack) {
+        return name;
     }
     // `ItemStack.getItemName`: the item's own `getName`, which for a few items is not its
     // `item_name` component.
     if let Some(key) = crate::brewing::contents_name_key(stack) {
-        return Text::translate(&key, &[]);
+        return translate(&key);
     }
     if &*stack.item == "minecraft:shield"
         && let Some(color) = data.and_then(|d| d.base_color.as_deref())
     {
         // `ShieldItem.getName`: the banner's base colour names the shield.
-        return Text::translate(&format!("item.minecraft.shield.{color}"), &[]);
+        return translate(&format!("item.minecraft.shield.{color}"));
     }
     if &*stack.item == "minecraft:compass"
         && data.is_some_and(|d| d.other("minecraft:lodestone_tracker").is_some())
     {
         // `CompassItem.getName`: a lodestone tracker names it, over `item_name`.
-        return Text::translate("item.minecraft.lodestone_compass", &[]);
+        return translate("item.minecraft.lodestone_compass");
     }
     if let Some(head) = crate::item_tooltip::player_head_name(stack) {
         // `PlayerHeadItem.getName`: a profile's name, else the item name.
@@ -348,7 +417,7 @@ pub fn hover_name_text(names: &crate::creative::Names, stack: &ItemStack) -> cra
             .and_then(|component| component.get("translate"))
             .and_then(serde_json::Value::as_str)
         {
-            Some(key) => Text::translate(key, &[]),
+            Some(key) => translate(key),
             None => crate::entity_nbt::name_text(&crate::scoreboard::json_to_tag(name)),
         };
     }
@@ -363,10 +432,7 @@ pub fn hover_name_text(names: &crate::creative::Names, stack: &ItemStack) -> cra
     } else {
         "item"
     };
-    Text::translate(
-        &format!("{prefix}.{namespace}.{}", path.replace('/', ".")),
-        &[],
-    )
+    translate(&format!("{prefix}.{namespace}.{}", path.replace('/', ".")))
 }
 /// `ItemStack.getHoverName` as plain text in the current language: the component of
 /// [`hover_name_text`], rendered.
@@ -1817,6 +1883,8 @@ mod tests {
             };
             assert_eq!(hover_name(&names, &book("Log")), "Log");
             assert_eq!(hover_name(&names, &book(" ")), "Written Book");
+            assert_eq!(hover_name(&names, &book("\u{001c}")), "Written Book");
+            assert_eq!(hover_name(&names, &book("\u{0085}")), "\u{0085}");
             let diamond = stack(r#"{id:"minecraft:diamond",count:1}"#);
             assert_eq!(hover_name(&names, &diamond), "Diamond");
         });

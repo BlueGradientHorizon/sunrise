@@ -22,3 +22,9 @@ wgpu = { version = "30.0.1", default-features = false, features = ["std", "parki
 
 [lints]
 workspace = true
+
+# tools/shader_fuzz.py's fuzzer; `test = true` runs its unit tests with the crate's.
+[[example]]
+name = "shader_fuzz"
+path = "examples/shader_fuzz/main.rs"
+test = true

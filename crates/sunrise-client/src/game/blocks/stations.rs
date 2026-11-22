@@ -642,7 +642,10 @@ impl Game<'_> {
         match &s.inputs[0] {
             Some(input)
                 if input.custom_name().is_none()
-                    && s.name == self.pack.names.display_item(&input.item) =>
+                    && s.name
+                        == sunrise_client::lang::returned_to_server(|| {
+                            self.stack_hover_name_text(input).plain()
+                        }) =>
             {
                 String::new()
             }
@@ -705,7 +708,7 @@ impl Game<'_> {
                     .as_ref()
                     .map(|i| {
                         sunrise_client::lang::returned_to_server(|| {
-                            stations::hover_name(&self.pack.names, i)
+                            self.stack_hover_name_text(i).plain()
                         })
                     })
                     .unwrap_or_default();
@@ -1214,22 +1217,25 @@ impl Game<'_> {
     }
     /// Recompute after slot changes; the anvil box follows its input item.
     fn station_after_input(&mut self) {
-        let Some(s) = self.station.as_mut() else {
+        let Some(s) = self.station.as_ref() else {
             return;
         };
         if s.kind == Kind::Anvil && s.inputs[0] != s.anvil_last {
             // AnvilScreen.slotChanged: the box follows its input item, named as vanilla's
             // client names it (the box's text goes back to a server).
-            s.anvil_last = s.inputs[0].clone();
-            let name = s.inputs[0]
+            let input = s.inputs[0].clone();
+            let name = input
                 .as_ref()
                 .map(|i| {
                     sunrise_client::lang::returned_to_server(|| {
-                        stations::hover_name(&self.pack.names, i)
+                        self.stack_hover_name_text(i).plain()
                     })
                 })
                 .unwrap_or_default();
-            anvil::input_changed(s, name);
+            if let Some(s) = self.station.as_mut() {
+                s.anvil_last = input;
+                anvil::input_changed(s, name);
+            }
         }
         self.station_changed();
     }
@@ -1566,47 +1572,28 @@ impl Game<'_> {
     ) -> Vec<(sunrise_client::text::Text, u32)> {
         self.stack_tooltip_lines(stack, false, false)
     }
-    /// `ItemStack.getRarity`'s colour for the name line and a `[name]` link.
-    fn rarity_color(&self, stack: &ItemStack) -> u32 {
+    /// `ItemStack.getRarity().color()` in text's RGB format.
+    pub(in crate::game) fn stack_rarity_color(&self, stack: &ItemStack) -> u32 {
+        use sunrise_client::text;
         let props = self.stations().enchantments.props(&stack.item);
-        let rarity = sunrise_client::item_tooltip::rarity(
+        match sunrise_client::item_tooltip::rarity(
             stack,
             props.map_or("common", |p| p.rarity.as_str()),
-        );
-        match rarity {
-            "uncommon" => rgba(255, 255, 85, 255),
-            "rare" => rgba(85, 255, 255, 255),
-            "epic" => rgba(255, 85, 255, 255),
-            _ => u32::MAX,
+        ) {
+            "uncommon" => text::YELLOW,
+            "rare" => text::AQUA,
+            "epic" => text::LIGHT_PURPLE,
+            _ => text::WHITE,
         }
     }
-    /// `ItemStack.getHoverName`: the custom name, a potion's or tipped
-    /// arrow's contents, a written book's title, the item name component,
-    /// else the item's name.
-    fn stack_hover_name(&self, stack: &ItemStack) -> String {
-        if let Some(n) = stack.custom_name() {
-            n.to_owned()
-        } else if let Some(key) = brewing::contents_name_key(stack) {
-            self.pack
-                .names
-                .display_get(&key)
-                .unwrap_or_else(|| self.pack.names.display_item(&stack.item))
-        } else if let Some(title) = stack
-            .data()
-            .and_then(|d| d.written.as_ref())
-            .map(|w| w.title.as_str())
-            .filter(|t| !t.trim().is_empty())
-        {
-            title.to_owned()
-        } else if let Some(n) = stack.item_name() {
-            n
-        } else if stack.data().is_some_and(|d| d.ominous_banner) {
-            self.translate_with_fallback("block.minecraft.ominous_banner", "Ominous Banner")
-        } else if let Some(head) = sunrise_client::item_tooltip::player_head_name(stack) {
-            head.title(&|key| self.pack.names.display_get(key))
-        } else {
-            self.pack.names.display_item(&stack.item)
-        }
+    /// The same rarity colour in the GUI batch's packed RGBA format.
+    fn rarity_color(&self, stack: &ItemStack) -> u32 {
+        let c = self.stack_rarity_color(stack);
+        rgba((c >> 16) as u8, (c >> 8) as u8, c as u8, 255)
+    }
+    /// The resolved `ItemStack.getHoverName` rendered as plain text.
+    pub(in crate::game) fn stack_hover_name(&self, stack: &ItemStack) -> String {
+        self.stack_hover_name_text(stack).plain()
     }
     /// `ItemStack.getTooltipLines`. A `nested` stack is a crossbow's
     /// projectile: `ChargedProjectiles.addProjectileTooltip` takes its details
@@ -1676,8 +1663,7 @@ impl Game<'_> {
         // `getTooltipLines`' own branch: a tooltip the stack doesn't hide.
         let shown = !nested && display.name_visible(creative);
         if shown {
-            let name =
-                sunrise_client::item_tooltip::styled_name(stack, || self.stack_hover_name(stack));
+            let name = self.styled_stack_name(stack);
             lines.push((name, color));
         }
         let translate = |k: &str| self.pack.names.display_get(k);
@@ -1775,15 +1761,12 @@ impl Game<'_> {
         }
         details.start("minecraft:container", lines.len());
         // ItemContainerContents.addToTooltip.
-        let hover_name = |s: &ItemStack| {
-            s.custom_name()
-                .or_else(|| s.item_name())
-                .unwrap_or_else(|| self.pack.names.display_item(&s.item))
-        };
         if display.shows("minecraft:container") {
-            for text in
-                sunrise_client::item_tooltip::container_lines(stack, &hover_name, &translate)
-            {
+            for text in sunrise_client::item_tooltip::container_lines(
+                stack,
+                &|s| self.stack_hover_name(s),
+                &translate,
+            ) {
                 push(&mut lines, text, u32::MAX);
             }
         }
@@ -1811,20 +1794,13 @@ impl Game<'_> {
             let charged = stack.data().map_or(&[][..], |d| &d.charged[..]);
             for run in charged.chunk_by(|a, b| a.same_item_same_components(b)) {
                 let projectile = &run[0];
-                let name = self.stack_hover_name(projectile);
                 let line = if run.len() == 1 {
-                    // `getDisplayName`: `[name]` in the rarity colour.
-                    let mut shown = sunrise_client::text::Text::literal(format!("[{name}]"))
-                        .with_color(rgb_of(self.rarity_color(projectile)));
-                    if projectile.custom_name().is_some() {
-                        shown = shown.italic();
-                    }
                     sunrise_client::text::format_translation(
                         &self.translate_with_fallback(
                             "item.minecraft.crossbow.projectile.single",
                             "Projectile: %s",
                         ),
-                        &[shown],
+                        &[self.stack_display_name(projectile)],
                     )
                 } else {
                     sunrise_client::text::format_translation(
@@ -1834,7 +1810,7 @@ impl Game<'_> {
                         ),
                         &[
                             sunrise_client::text::Text::literal(run.len().to_string()),
-                            sunrise_client::text::Text::literal(name),
+                            self.stack_hover_name_text(projectile),
                         ],
                     )
                 };
@@ -2339,8 +2315,7 @@ impl Game<'_> {
         let Some((_, stack)) = layout.selected.and_then(|i| layout.slots.get(i)) else {
             return;
         };
-        let name =
-            sunrise_client::item_tooltip::styled_name(stack, || self.stack_hover_name(stack));
+        let name = self.styled_stack_name(stack);
         let lines = Self::resolved(&[(name, self.rarity_color(stack))]);
         let atlas = &self.gui.atlas;
         let tw = atlas.font.width_text(&lines[0].0);
