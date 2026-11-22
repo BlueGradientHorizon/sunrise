@@ -395,6 +395,7 @@ pub(super) fn spawn_loader(
     vanilla_root: &std::path::Path,
     started: Instant,
     progress: &Progress,
+    max_atlas_size: &Arc<AtomicU32>,
 ) -> Result<(Receiver<LoaderMsg>, JoinHandle<()>)> {
     let (sender, receiver) = std::sync::mpsc::channel();
     let settings = settings.clone();
@@ -403,6 +404,7 @@ pub(super) fn spawn_loader(
     mod_sources.capture_code_switches(&settings.mods.disabled);
     let world = launch_world(options).map(str::to_owned);
     let progress = progress.clone();
+    let max_atlas_size = max_atlas_size.clone();
     let handle = std::thread::Builder::new()
         .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
         .name("resource-loader".into())
@@ -419,7 +421,7 @@ pub(super) fn spawn_loader(
                     });
             let result = root
                 .and_then(|root| {
-                    load_resources_for_mods(
+                    load_resources_for_mods_with_limit(
                         root,
                         super::pack_finders::data_packs(&mod_sources),
                         world.as_deref(),
@@ -429,8 +431,10 @@ pub(super) fn spawn_loader(
                         true,
                         load_role,
                         &progress,
-                        &mut |gui, root| {
-                            let _ = sender.send(LoaderMsg::Ui(gui, root.to_path_buf()));
+                        &max_atlas_size,
+                        &mut |gui, root, source| {
+                            let _ =
+                                sender.send(LoaderMsg::Ui(gui, root.to_path_buf(), source.clone()));
                         },
                         &mod_sources,
                     )
@@ -451,7 +455,7 @@ impl Loading {
         if self.loaded.is_none() && !self.delivered {
             loop {
                 match self.receiver.try_recv() {
-                    Ok(LoaderMsg::Ui(gui, root)) => self.set_ui(gui, root),
+                    Ok(LoaderMsg::Ui(gui, root, source)) => self.set_ui(gui, root, source),
                     Ok(LoaderMsg::Done(result)) => {
                         self.loaded = Some(result);
                         self.delivered = true;
@@ -1513,6 +1517,7 @@ impl Loading {
             &self.vanilla_root,
             self.started,
             &self.progress,
+            &self.max_atlas_size,
         )?;
         self.receiver = receiver;
         self.handle = Some(handle);
@@ -1567,6 +1572,7 @@ mod tests {
         Loading {
             window: None,
             renderer: None,
+            max_atlas_size: Arc::new(AtomicU32::new(sunrise_client::hud::MAX_ATLAS_SIZE)),
             boot: sunrise_client::hud::HudAtlas::boot(),
             gui: None,
             settings: Settings::default(),
@@ -1837,7 +1843,11 @@ mod tests {
         let worker_root = root.clone();
         let worker = std::thread::spawn(move || {
             sender
-                .send(LoaderMsg::Ui(gui(&worker_root), worker_root))
+                .send(LoaderMsg::Ui(
+                    gui(&worker_root),
+                    worker_root,
+                    sunrise_assets::resource_source::ResourceSource::default(),
+                ))
                 .unwrap();
             published.send(()).unwrap();
             wait.recv().unwrap();
@@ -1862,7 +1872,11 @@ mod tests {
             options: Default::default(),
         };
         title.type_text("My world");
-        loading.set_ui(gui(&root), root);
+        loading.set_ui(
+            gui(&root),
+            root,
+            sunrise_assets::resource_source::ResourceSource::default(),
+        );
         let action = loading.menu.title.as_ref().unwrap().create_action();
         loading.menu.queue_entry(action, "Player".into());
         assert!(

@@ -397,6 +397,12 @@ impl Game<'_> {
             self.pack.context.clone(),
         );
         let (unicode, japanese) = (self.settings.force_unicode, self.settings.japanese_glyphs);
+        let max_atlas_size = self
+            .renderer
+            .as_ref()
+            .map_or(sunrise_client::hud::MAX_ATLAS_SIZE, |r| {
+                r.device.limits().max_texture_dimension_2d
+            });
         // The reload's mod listeners register here, on the thread that owns
         // the game, before the staging worker starts: each listener keeps its
         // registering mod for crash attribution.
@@ -418,6 +424,7 @@ impl Game<'_> {
                 &context,
                 unicode,
                 japanese,
+                max_atlas_size,
                 progress,
             )
             .map_err(|e| e.to_string())
@@ -709,10 +716,12 @@ pub(super) fn stage_pack(
         context,
         force_unicode,
         japanese,
+        sunrise_client::hud::MAX_ATLAS_SIZE,
         progress,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn stage_pack_with_emissive(
     vanilla_root: &Path,
     selected: &[String],
@@ -726,6 +735,7 @@ pub(super) fn stage_pack_with_emissive(
     context: &WorkerContext,
     force_unicode: bool,
     japanese: bool,
+    max_atlas_size: u32,
     progress: &super::Progress,
 ) -> sunrise_client::Result<StagedPack> {
     let resource_root = startup_root(vanilla_root, selected, server, mod_sources)?;
@@ -752,8 +762,14 @@ pub(super) fn stage_pack_with_emissive(
             let game = sunrise_assets::resource_source::ResourceSource::directory(
                 vanilla_root.to_path_buf(),
             );
-            HudAtlas::build_over_with_dynamic_textures(&source, &source, &game, pool)
-                .map_err(|e| e.to_string())
+            HudAtlas::build_over_with_dynamic_textures_and_limit(
+                &source,
+                &source,
+                &game,
+                pool,
+                max_atlas_size,
+            )
+            .map_err(|e| e.to_string())
         });
         let panorama = super::resource_load::named_scope(s, "pack-assets", || {
             sunrise_client::gfx::panorama::Faces::load(&source, &source)

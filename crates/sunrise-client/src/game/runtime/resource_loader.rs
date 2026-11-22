@@ -189,7 +189,11 @@ pub(super) struct Loaded {
 /// What the background loader publishes: the menu bundle as soon as it is
 /// ready, then the core bundle with a handle to the rest worker.
 pub(super) enum LoaderMsg {
-    Ui(UiResources, PathBuf),
+    Ui(
+        UiResources,
+        PathBuf,
+        sunrise_assets::resource_source::ResourceSource,
+    ),
     Done(std::result::Result<Loaded, LoaderFailure>),
 }
 
@@ -285,6 +289,7 @@ pub(super) fn run_loading(
     started: Instant,
 ) -> Result<()> {
     let progress = Progress::new();
+    let max_atlas_size = Arc::new(AtomicU32::new(sunrise_client::hud::MAX_ATLAS_SIZE));
     let (receiver, loader) = startup_menu::spawn_loader(
         &options,
         &settings,
@@ -292,11 +297,13 @@ pub(super) fn run_loading(
         &vanilla_root,
         started,
         &progress,
+        &max_atlas_size,
     )?;
     let menu = startup_menu::StartupMenu::new(&options, pack_error.as_deref())?;
     let loading = Loading {
         window: None,
         renderer: None,
+        max_atlas_size,
         boot: sunrise_client::hud::HudAtlas::boot(),
         gui: None,
         settings,

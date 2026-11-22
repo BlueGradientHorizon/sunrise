@@ -432,7 +432,43 @@ impl ApplicationHandler for Game<'_> {
             sunrise_threads::system_menu::suppress(hwnd);
         }
         drop(window_step);
-        match self.new_renderer(window.clone()) {
+        let renderer = match self.new_renderer(window.clone()) {
+            Ok(r) => Ok(r),
+            Err(e) => match e.downcast_ref::<sunrise_client::gfx::AtlasExceedsDeviceLimit>() {
+                Some(exceeded) => {
+                    let limit = exceeded.limit;
+                    let game = sunrise_assets::resource_source::ResourceSource::directory(
+                        self.vanilla_root(),
+                    );
+                    let pool = resource_tables::dynamic_texture_pool();
+                    match HudAtlas::build_over_with_dynamic_textures_and_limit(
+                        &self.pack.source,
+                        &self.pack.source,
+                        &game,
+                        pool,
+                        limit,
+                    ) {
+                        Ok(mut atlas) => {
+                            atlas.font.uniform = self.settings.force_unicode;
+                            atlas.font.japanese = self.settings.japanese_glyphs;
+                            self.gui.atlas = atlas;
+                            let (pool, mut names) = self.gui.atlas.dynamic_names();
+                            self.dynamic_textures.rebind(pool, &mut names);
+                            self.particles.reload(
+                                &self.pack.source,
+                                &self.gui.atlas.sprites,
+                                &self.gui.atlas.translucent,
+                            );
+                            sunrise_client::ui_theme::reset_atlas();
+                            self.new_renderer(window.clone())
+                        }
+                        Err(rebuild) => Err(rebuild),
+                    }
+                }
+                None => Err(e),
+            },
+        };
+        match renderer {
             Ok(r) => {
                 self.renderer = Some(r);
                 self.world_renderer_ready = true;

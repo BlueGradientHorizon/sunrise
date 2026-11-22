@@ -192,6 +192,14 @@ impl UiResources {
         root: &sunrise_assets::resource_source::ResourceSource,
         vanilla: &Path,
     ) -> Result<Self> {
+        Self::load_with_limit(root, vanilla, sunrise_client::hud::MAX_ATLAS_SIZE)
+    }
+    /// [`Self::load`] bounded by the renderer device's actual `max_texture_dimension_2d`.
+    pub fn load_with_limit(
+        root: &sunrise_assets::resource_source::ResourceSource,
+        vanilla: &Path,
+        max_atlas_size: u32,
+    ) -> Result<Self> {
         // The title screen waits for both: the panorama's six faces decode
         // beside the atlas.
         std::thread::scope(|scope| {
@@ -203,7 +211,13 @@ impl UiResources {
             let pool = dynamic_texture_pool();
             let game = sunrise_assets::resource_source::ResourceSource::directory(vanilla.into());
             let atlas = startup::time("ui.atlas", || {
-                HudAtlas::build_over_with_dynamic_textures(root, root, &game, pool)
+                HudAtlas::build_over_with_dynamic_textures_and_limit(
+                    root,
+                    root,
+                    &game,
+                    pool,
+                    max_atlas_size,
+                )
             });
             let panorama = panorama
                 .join()

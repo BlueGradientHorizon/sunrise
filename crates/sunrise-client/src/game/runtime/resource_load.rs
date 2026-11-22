@@ -581,7 +581,7 @@ pub(super) fn load_resources(
 /// content roots and reload data.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn load_resources_for_mods(
-    mut resolved: sunrise_assets::resource_source::ResourceRoot,
+    resolved: sunrise_assets::resource_source::ResourceRoot,
     additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
     launch_world: Option<&str>,
     vanilla_root: &std::path::Path,
@@ -591,6 +591,42 @@ pub(super) fn load_resources_for_mods(
     role: impl Into<mods::LoadRole>,
     progress: &Progress,
     publish: &mut dyn FnMut(UiResources, &std::path::Path),
+    mod_sources: &mods::ModsState,
+) -> Result<Loaded> {
+    let default_limit = Arc::new(AtomicU32::new(sunrise_client::hud::MAX_ATLAS_SIZE));
+    load_resources_for_mods_with_limit(
+        resolved,
+        additional_data,
+        launch_world,
+        vanilla_root,
+        settings,
+        started,
+        menu,
+        role,
+        progress,
+        &default_limit,
+        &mut |ui, root, _| publish(ui, root),
+        mod_sources,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn load_resources_for_mods_with_limit(
+    mut resolved: sunrise_assets::resource_source::ResourceRoot,
+    additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
+    launch_world: Option<&str>,
+    vanilla_root: &std::path::Path,
+    settings: &Settings,
+    started: Instant,
+    menu: bool,
+    role: impl Into<mods::LoadRole>,
+    progress: &Progress,
+    max_atlas_size: &Arc<AtomicU32>,
+    publish: &mut dyn FnMut(
+        UiResources,
+        &std::path::Path,
+        &sunrise_assets::resource_source::ResourceSource,
+    ),
     mod_sources: &mods::ModsState,
 ) -> Result<Loaded> {
     let load_role: mods::LoadRole = role.into();
@@ -623,7 +659,8 @@ pub(super) fn load_resources_for_mods(
         if headless {
             UiResources::server(source)
         } else {
-            UiResources::load(source, vanilla_root).map(|ui| {
+            let limit = max_atlas_size.load(Ordering::Relaxed);
+            UiResources::load_with_limit(source, vanilla_root, limit).map(|ui| {
                 ui.with_splashes(
                     source,
                     vanilla_root,
@@ -637,13 +674,15 @@ pub(super) fn load_resources_for_mods(
     // in either starts both again with the game's own resources
     // (Minecraft.rollbackResourcePacks).
     let parallel = threads > 1;
-    let mut offer = |ui: UiResources, root: &std::path::Path| {
+    let mut offer = |ui: UiResources,
+                     root: &std::path::Path,
+                     source: &sunrise_assets::resource_source::ResourceSource| {
         if menu {
             log::info!(
                 "Sunrise: UI bundle ready after {} ms",
                 started.elapsed().as_millis()
             );
-            publish(ui, root);
+            publish(ui, root, source);
             None
         } else {
             Some(ui)
@@ -672,7 +711,7 @@ pub(super) fn load_resources_for_mods(
                     )
                 })
             });
-            let ui = load_ui(resolved.source()).map(|ui| offer(ui, &root));
+            let ui = load_ui(resolved.source()).map(|ui| offer(ui, &root, resolved.source()));
             (ui, core.join())
         });
         // A cloud texture vanilla would read past fails its reload (`CloudRenderer.prepare`),

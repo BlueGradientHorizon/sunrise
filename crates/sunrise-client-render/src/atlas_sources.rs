@@ -7,7 +7,7 @@
 use mod_api::{Identifier, ResourceReader, SpriteSourceOutput};
 use serde_json::Value;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     hash::{DefaultHasher, Hash, Hasher},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -645,9 +645,9 @@ fn sorted_textures(source: &crate::resource_source::ResourceSource) -> Vec<Strin
 }
 
 /// The sprites of the atlases a mod registered, each atlas listed from its own definition and
-/// asked of the mods under its own id: two atlases sharing a definition get an answer each. An
-/// atlas whose definition doesn't decode is left out. Once per client prepare, by the staging of
-/// the mods' atlases; the game's atlases are [`Listing`]'s.
+/// asked of the mods under its own id. An atlas whose definition doesn't decode is left out.
+/// Once per client prepare, by the staging of the mods' atlases; the game's atlases are
+/// [`Listing`]'s.
 pub fn registered(
     source: &crate::resource_source::ResourceSource,
     mods: &dyn ModSources,
@@ -666,11 +666,21 @@ pub fn registered(
         .collect()
 }
 
+/// Registration order and atlas ownership of sprites staged by `register_texture_atlases` for
+/// one resource generation, preserved through `HudAtlas` placement so an oversized atlas is
+/// diagnosed and isolated without affecting the base HUD or other mod atlases.
+#[derive(Debug, Default)]
+pub struct StagedTextureAtlases {
+    /// Admitted registrations in order: `(atlas_id, mod_id)`.
+    pub order: Vec<(String, &'static str)>,
+    /// Staged sprite identifier (`<namespace>:gui/atlases/...`) mapped to its owning index in
+    /// [`Self::order`].
+    pub sprite_atlas: HashMap<String, usize>,
+}
+
 /// Built-in engine atlas paths under `minecraft:` (`AtlasManager.KNOWN_ATLASES` in vanilla 26.3).
 pub const KNOWN_ATLASES: &[&str] = &[
-    "armor_trims",
     "banner_patterns",
-    "beds",
     "blocks",
     "items",
     "chests",
@@ -681,7 +691,6 @@ pub const KNOWN_ATLASES: &[&str] = &[
     "particles",
     "shield_patterns",
     "shulker_boxes",
-    "signs",
     "celestials",
 ];
 
@@ -692,7 +701,7 @@ pub fn is_builtin_atlas(id: &Identifier) -> bool {
 
 /// Sprite listings of the engine atlases (`AtlasManager.KNOWN_ATLASES`). A definition on its own
 /// does not register an atlas. Mod-registered atlases are listed under their own IDs by
-/// [`registered`], even when several atlas IDs use the same definition.
+/// [`registered`].
 #[derive(Debug, Default)]
 pub struct Listing {
     atlases: BTreeMap<String, Listed>,

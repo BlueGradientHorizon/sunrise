@@ -21,17 +21,19 @@ sprites again from the definition as the packs now give it.
 
 The hook runs at client startup and on the game-owning thread before reload
 staging; re-submit the atlases on each call. Any namespace is allowed, including
-`minecraft:` and `sunrise:`. Collisions with vanilla's built-in engine atlases
-(`AtlasManager.KNOWN_ATLASES`, such as `minecraft:blocks` or `minecraft:gui`)
-and duplicate atlas ids are logged as errors naming the registering mod and
-earlier owner, keeping the first registration (matching NeoForge's
-`RegisterTextureAtlasesEvent.register`). There is no synthetic atlas or sprite
-count cap; only GPU atlas texture limits apply, with per-atlas and per-sprite
-diagnostics so one bad definition or image does not discard other atlases or
-sprites. A registered atlas sprite replaces a raw pack file at the same staged
-path with a warning (matching vanilla's `TextureManager.register`); if two
-registered atlases stage the same sprite path, the first stands and a warning
-names both."#]
+`minecraft:` and `sunrise:`. Collisions with vanilla 26.3's built-in engine
+atlases (`AtlasManager.KNOWN_ATLASES`, such as `minecraft:blocks` or
+`minecraft:gui`) on either `definition` or `atlas`, and duplicate `definition`
+or `atlas` ids, are logged as errors naming the registering mod and earlier
+owner, keeping the first registration (matching NeoForge's
+`ClientHooks.gatherTextureAtlases` and `RegisterTextureAtlasesEvent.register`).
+There is no synthetic atlas or sprite count cap; only the GPU device's actual
+`max_texture_dimension_2d` limit applies, with per-atlas isolation and
+diagnostics so an overflowing or bad atlas never shrinks unrelated model
+textures or discards other atlases or sprites. A registered atlas sprite
+replaces a raw pack file at the same staged path with a warning (matching
+vanilla's `TextureManager.register`); if two registered atlases stage the same
+sprite path, the first stands and a warning names both."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

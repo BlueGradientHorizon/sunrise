@@ -25,8 +25,11 @@ overlay textures at any `assets/<namespace>/textures/<path>.png` without the `em
 32-entry cap.
 
 In Hooks::register_texture_atlases, call `event.register(atlas)` as before; non-built-in atlases in
-`minecraft:` or `sunrise:` are now accepted, collisions with vanilla's built-in engine atlases
-(`AtlasManager.KNOWN_ATLASES`) and duplicate atlas ids are rejected with error diagnostics keeping
-the first registration, and registered atlas sprites replace raw pack files at the same staged path
-with a warning. Rebuild native mods against the updated SDK.
+`minecraft:` or `sunrise:` are now accepted, collisions with vanilla 26.3's built-in engine atlases
+(`AtlasManager.KNOWN_ATLASES`) on either `definition` or `atlas` and duplicate `definition` or
+`atlas` ids are rejected with error diagnostics keeping the first registration, overflowing mod
+atlases are isolated per atlas against the renderer's actual `max_texture_dimension_2d` limit
+without shrinking unrelated model textures or dropping other atlases, and registered atlas sprites
+replace raw pack files at the same staged path with a warning. Rebuild native mods against the
+updated SDK.
 """

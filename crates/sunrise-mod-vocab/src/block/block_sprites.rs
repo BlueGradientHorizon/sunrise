@@ -148,13 +148,15 @@ pub enum TextureAtlas {
 // exhaustive: mods submit declarations by value
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct TextureAtlasRegistration {
-    /// The atlas's id (`mymod:icons`). Any namespace is allowed except collisions with vanilla's
-    /// built-in engine atlases (`AtlasManager.KNOWN_ATLASES`, such as `minecraft:blocks` or
+    /// The atlas's id (`mymod:icons`). Any namespace is allowed except collisions with vanilla
+    /// 26.3's built-in engine atlases (`AtlasManager.KNOWN_ATLASES`, such as `minecraft:blocks` or
     /// `minecraft:gui`).
     pub atlas: Identifier,
     /// Its definition, `assets/<namespace>/atlases/<path>.json` (`mymod:icons`): a `sources` list
     /// like vanilla's atlas definitions (`directory`, `single`, `filter`, `unstitch`,
-    /// `paletted_permutations`), which resource packs can change like theirs.
+    /// `paletted_permutations`), which resource packs can change like theirs. Must not reuse a
+    /// built-in engine atlas definition (`AtlasManager.KNOWN_ATLASES`) or a definition already
+    /// registered by an earlier mod.
     pub definition: Identifier,
 }
 
