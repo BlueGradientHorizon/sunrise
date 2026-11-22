@@ -29,7 +29,7 @@ use sunrise_client::{
     lan::{
         self, NetConfig,
         chunks::ChunkEncoder,
-        configuration_tasks::Configured,
+        configuration_tasks::{Configured, PreparedSpawn},
         data::{BIOME_REGISTRY, SyncData},
         entity::{EntityState, States},
         hub::{HostEvent, Hub, HubConfig, TickCtx, stuck_meta},
@@ -55,6 +55,8 @@ pub struct LanSettings {
 
 pub(super) struct LanHost {
     pub hub: Hub,
+    /// Acknowledged joins whose runtime destination closed before placement.
+    spawn_joins: Vec<(u32, Configured)>,
     /// The mods heard that everyone still here leaves with the server.
     pub players_told_left: bool,
     pub settings: LanSettings,
@@ -1297,6 +1299,7 @@ impl Game<'_> {
         self.lan = Some(LanHost {
             players_told_left: false,
             hub,
+            spawn_joins: Vec::new(),
             settings: LanSettings { port, ..settings },
             play: HashMap::new(),
             menus: HashMap::new(),
@@ -2185,7 +2188,45 @@ impl Game<'_> {
                     let host = self.lan.as_mut()?;
                     host.hub.broadcast(&C::PlayerInfoUpdate(*update));
                 }
-                HostEvent::Joined(conn, prepared) => {
+                HostEvent::Joined(conn, configured) => {
+                    let host = self.lan.as_ref()?;
+                    if host
+                        .hub
+                        .guest(conn)
+                        .is_none_or(|g| !g.left_reason.is_empty())
+                    {
+                        continue;
+                    }
+                    let prepared = if let Some(ref lease) = configured {
+                        if lease.session().closed() {
+                            continue;
+                        }
+                        match self.acknowledged_spawn(lease) {
+                            Some(Ok(spawn)) => spawn,
+                            Some(Err(error)) => {
+                                log::warn!(
+                                    "Could not prepare spawn after acknowledgement: {error}"
+                                );
+                                self.lan.as_mut()?.hub.kick(
+                                    conn,
+                                    sunrise_protocol::text::translatable(
+                                        "multiplayer.disconnect.invalid_player_data",
+                                        &[],
+                                    ),
+                                );
+                                continue;
+                            }
+                            None => {
+                                self.lan
+                                    .as_mut()?
+                                    .spawn_joins
+                                    .push((conn, configured.unwrap()));
+                                continue;
+                            }
+                        }
+                    } else {
+                        None
+                    };
                     // The mods may refuse the login before the player is placed.
                     if let Some((uuid, name)) = self
                         .lan
@@ -2508,6 +2549,13 @@ impl Game<'_> {
             } else {
                 Vec::new()
             };
+            if pass.first {
+                events.extend(
+                    host.spawn_joins
+                        .drain(..)
+                        .map(|(conn, lease)| HostEvent::Joined(conn, Some(lease))),
+                );
+            }
             events.extend(sunrise_client::spans::time("lan_drain", || {
                 host.hub.drain_packets(&mut ctx)
             }));
@@ -2998,15 +3046,14 @@ impl Game<'_> {
         conn: u32,
         entities: &[EntityState],
         spawn: [f64; 3],
-        configured: Option<Configured>,
+        prepared: Option<PreparedSpawn>,
     ) {
-        let prepared = configured.as_ref().and_then(Configured::spawn);
         let spawn_level = self.world_spawn_level();
         let back = self.dim;
         // `PrepareSpawnTask.Ready.spawn` waits for saved entities before the player loads.
         // Streaming commits terrain and the corresponding entity records together.
         if let Some(prepared) = prepared {
-            let level = super::Dim::from_id(prepared.dimension);
+            let level = super::Dim::from_id(prepared.level.id);
             if let Err(e) = self.enter_level(level) {
                 log::error!("could not open {}: {e}", level.id());
                 return;
@@ -3060,7 +3107,7 @@ impl Game<'_> {
             .update_guest(conn, |g| {
                 // Ready.spawn loads the player data again, but snaps to the prepared place.
                 if let Some(prepared) = prepared {
-                    g.dimension = prepared.dimension.to_owned();
+                    g.dimension = prepared.level.id.to_owned();
                     g.place(prepared.position);
                     [g.yaw, g.pitch] = prepared.rotation;
                     g.head_yaw = g.yaw;
@@ -3692,6 +3739,7 @@ mod tests {
                 },
                 hub,
                 players_told_left: false,
+                spawn_joins: Vec::new(),
                 play: Default::default(),
                 menus: Default::default(),
                 broken: Default::default(),
@@ -5894,6 +5942,7 @@ mod merchant_packet_tests {
             hub.guests.push(guest);
             game.lan = Some(super::LanHost {
                 hub,
+                spawn_joins: Vec::new(),
                 players_told_left: false,
                 settings: super::LanSettings {
                     port: 0,

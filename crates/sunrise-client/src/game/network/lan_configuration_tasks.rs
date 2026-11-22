@@ -10,7 +10,9 @@ use std::{io, sync::Arc};
 use sunrise_client::{
     lan::{
         Lan, NetConfig,
-        configuration_tasks::{ConfigurationRequest, PreparedSpawn, Session, SpawnTask},
+        configuration_tasks::{
+            ConfigurationRequest, Configured, PreparedSpawn, Session, SpawnLevel, SpawnTask,
+        },
         data::SyncData,
         playerdata,
     },
@@ -175,6 +177,45 @@ impl Game<'_> {
         Some(())
     }
 
+    fn spawn_level_current(&self, level: SpawnLevel) -> bool {
+        Dim::exists(level.id) && self.levels.runtime.generation_of(level.id) == level.generation
+    }
+
+    /// PlayerList's unknown-dimension path uses the Overworld. A runtime level's
+    /// ticket disappeared with that open, so prepare a fresh Overworld spawn.
+    fn prepare_overworld_spawn(&self, lost: SpawnLevel, rotation: [f32; 2]) -> SpawnTask {
+        log::warn!(
+            "Unknown respawn dimension {}, preparing spawn in the Overworld",
+            lost.id
+        );
+        SpawnTask::Find {
+            level: SpawnLevel {
+                id: Dim::Overworld.id(),
+                generation: 0,
+            },
+            suggestion: self.world_spawn_position().map(|v| v.floor() as i32),
+            rotation,
+            finder: None,
+        }
+    }
+
+    /// Revalidate on the game thread, even when the level was lost between
+    /// sending FinishConfiguration and seeing its acknowledgement.
+    pub(super) fn acknowledged_spawn(
+        &self,
+        configured: &Configured,
+    ) -> Option<Result<Option<PreparedSpawn>, String>> {
+        let session = configured.session();
+        if let Some(spawn) = session.prepared_spawn()
+            && !self.spawn_level_current(spawn.level)
+        {
+            session.advance_spawn(self.prepare_overworld_spawn(spawn.level, spawn.rotation));
+        }
+        session
+            .result()
+            .map(|r| r.map(|()| session.prepared_spawn()))
+    }
+
     /// `PrepareSpawnTask`: resolve the place before play, load its FULL square,
     /// then refresh the ticket while the client acknowledges configuration.
     fn tick_prepare_spawn(&mut self, task: SpawnTask) -> Result<SpawnTask, String> {
@@ -196,10 +237,14 @@ impl Game<'_> {
                     .find(|id| shapes.has(id))
                     .map_or(Dim::Overworld, Dim::from_id)
                     .id();
+                let level = SpawnLevel {
+                    id: dimension,
+                    generation: self.levels.runtime.generation_of(dimension),
+                };
                 let rotation = saved.rotation.unwrap_or(self.level.world_spawn_angle);
                 if let Some(position) = saved.position {
                     let prepared = PreparedSpawn {
-                        dimension,
+                        level,
                         position,
                         rotation,
                     };
@@ -212,7 +257,7 @@ impl Game<'_> {
                     return Ok(SpawnTask::Load(prepared));
                 }
                 SpawnTask::Find {
-                    dimension,
+                    level,
                     suggestion: self.world_spawn_position().map(|v| v.floor() as i32),
                     rotation,
                     finder: None,
@@ -220,24 +265,29 @@ impl Game<'_> {
             }
             task => task,
         };
-        let dimension = match &task {
-            SpawnTask::Find { dimension, .. } => dimension,
-            SpawnTask::Load(p) | SpawnTask::Ready(p) => &p.dimension,
+        let (level, rotation) = match &task {
+            SpawnTask::Find {
+                level, rotation, ..
+            } => (*level, *rotation),
+            SpawnTask::Load(p) | SpawnTask::Ready(p) => (p.level, p.rotation),
             SpawnTask::Start(_) => unreachable!(),
         };
+        if !self.spawn_level_current(level) {
+            return Ok(self.prepare_overworld_spawn(level, rotation));
+        }
         let back = self.dim;
-        self.enter_level(Dim::from_id(dimension))
+        self.enter_level(Dim::from_id(level.id))
             .map_err(|e| e.to_string())?;
         let task = match task {
             SpawnTask::Find {
-                dimension,
+                level,
                 suggestion,
                 rotation,
                 mut finder,
             } => match self.search_spawn(suggestion, &mut finder) {
                 Ok(feet) => {
                     let prepared = PreparedSpawn {
-                        dimension,
+                        level,
                         position: [feet.x, feet.y, feet.z],
                         rotation,
                     };
@@ -248,7 +298,7 @@ impl Game<'_> {
                 Err(chunk) => {
                     self.tickets.add_spawn(chunk, SpawnTicketKind::Search);
                     SpawnTask::Find {
-                        dimension,
+                        level,
                         suggestion,
                         rotation,
                         finder,

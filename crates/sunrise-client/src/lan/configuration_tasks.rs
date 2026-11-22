@@ -143,10 +143,17 @@ impl Tasks {
             })
     }
 }
+/// The particular open of the destination level, not just its dimension name.
+#[derive(Clone, Copy, Debug)]
+pub struct SpawnLevel {
+    pub id: &'static str,
+    pub generation: u32,
+}
+
 /// The prepared place and angle survive the configuration acknowledgement.
 #[derive(Clone, Copy, Debug)]
 pub struct PreparedSpawn {
-    pub dimension: &'static str,
+    pub level: SpawnLevel,
     pub position: [f64; 3],
     pub rotation: [f32; 2],
 }
@@ -163,8 +170,8 @@ impl PreparedSpawn {
 /// the connection or join is dropped.
 pub struct Configured(pub(crate) Arc<Session>);
 impl Configured {
-    pub fn spawn(&self) -> Option<PreparedSpawn> {
-        self.0.prepared_spawn()
+    pub fn session(&self) -> &Session {
+        &self.0
     }
 }
 impl Drop for Configured {
@@ -176,7 +183,7 @@ impl Drop for Configured {
 pub enum SpawnTask {
     Start(u128),
     Find {
-        dimension: &'static str,
+        level: SpawnLevel,
         suggestion: [i32; 3],
         rotation: [f32; 2],
         finder: Option<PlayerSpawnFinder>,
@@ -251,9 +258,10 @@ impl Session {
 
     pub fn advance_spawn(&self, task: SpawnTask) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if let SpawnTask::Ready(spawn) = &task {
-            state.prepared_spawn = Some(*spawn);
-        }
+        state.prepared_spawn = match &task {
+            SpawnTask::Ready(spawn) => Some(*spawn),
+            _ => None,
+        };
         state.spawn = Some(task);
     }
 
@@ -621,7 +629,10 @@ mod tests {
         assert!(matches!(session.take_spawn(), Some(SpawnTask::Start(123))));
         assert!(session.result().is_none());
         let prepared = PreparedSpawn {
-            dimension: "minecraft:the_nether",
+            level: SpawnLevel {
+                id: "minecraft:the_nether",
+                generation: 0,
+            },
             position: [-0.5, 67.0, 48.5],
             rotation: [135.0, -20.0],
         };
