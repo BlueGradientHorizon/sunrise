@@ -8,5 +8,7 @@ pub trait ParticlesRegistrar {
     /// Publish a native particle type's identity and return its key (NeoForge's particle type
     /// `RegisterEvent`). Declare it on both logical sides. The client separately registers its
     /// sprite-set factory; an absent description does not invalidate the particle type.
+    /// The ID must have a nonempty namespace and path. Invalid declarations are reported at
+    /// startup with the declaring mod's name.
     fn declare_particle(&mut self, id: &crate::Identifier) -> crate::ParticleKey;
 }

@@ -570,6 +570,72 @@ impl ParticleProvider for SpawnLightProbe {
 impl CustomParticle for SpawnLightProbe {}
 
 #[test]
+fn direct_named_add_lends_the_level_and_applies_the_level_limiters() {
+    let provider = SpawnLightProbe::default();
+    let mut engine = fixture_engine(provider_factories([(
+        "example:orbit",
+        Arc::new(provider.clone()),
+    )]));
+    let mut scene = Scene::new();
+    scene.world.chunks.insert((0, 0), Arc::new(lit_chunk()));
+    let level = scene.level();
+    let mut typed = fixture_options();
+    typed.scale = 2.5;
+    let scope = SpawnScope::with_level(&level, Some(&typed));
+    let options = ParticleOptions::named("example:orbit");
+    let near = [1.0, 64.0, 3.0];
+    engine.camera = near;
+    engine.particle_level = 0;
+    engine.add(&options, [34.0, 64.0, 3.0], [0.0; 3], scope);
+    engine.particle_level = 2;
+    engine.add(&options, near, [0.0; 3], scope);
+    assert!(provider.0.lock().unwrap().is_empty());
+
+    engine.particle_level = 0;
+    engine.add(&options, near, [0.0; 3], scope);
+    assert_eq!(*provider.0.lock().unwrap(), [(2.5, 4)]);
+    engine.tick(&level);
+    assert_eq!(engine.len(), 1);
+}
+
+#[test]
+fn named_controller_spawns_lend_the_level_from_both_tick_paths() {
+    #[derive(Debug)]
+    struct SpawnOrbit;
+    impl ParticleController for SpawnOrbit {
+        fn tick(&mut self, _: &mut Particle, _: &ParticleLevel<'_>) -> ParticleUpdate {
+            ParticleUpdate {
+                spawned: vec![(ParticleOptions::named("example:orbit"), [0.0; 3], [0.0; 3])],
+                ..Default::default()
+            }
+        }
+    }
+
+    let mut scene = Scene::new();
+    scene.world.chunks.insert((0, 0), Arc::new(lit_chunk()));
+    let level = scene.level();
+    for pre_tick in [true, false] {
+        let provider = SpawnLightProbe::default();
+        let mut engine = fixture_engine(provider_factories([(
+            "example:orbit",
+            Arc::new(provider.clone()),
+        )]));
+        engine.options_to_api = Some(|_| Some(fixture_options()));
+        let mut controller = engine
+            .controlled("example:orbit", [0.0; 3], false, SpawnOrbit)
+            .unwrap();
+        controller.pre_tick = pre_tick;
+        engine.push(controller);
+        engine.tick(&level);
+        if !pre_tick {
+            assert!(provider.0.lock().unwrap().is_empty());
+            engine.tick(&level);
+        }
+        assert_eq!(*provider.0.lock().unwrap(), [(1.0, 4)]);
+    }
+}
+
+#[test]
 fn direct_create_lends_the_level_without_the_add_particle_limiters() {
     let provider = SpawnLightProbe::default();
     let mut engine = fixture_engine(provider_factories([(

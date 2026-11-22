@@ -47,10 +47,12 @@ velocity and the level's light.
 
 A native provider constructs one owned instance per spawn of a registered particle type.
 Declare the type in `Hooks::register` with `Registrar::declare_particle(&id)` on both logical
-sides, and pass that ID to `register_sprite_set` on the client. Supply the sprite description in
-`assets/mymod/particles/spark.json`. Spawn with `ParticleOptions::simple(spark_key)` using the key
-returned by the declaration. The type is registered even if the client lacks that file; a
-missing description prevents the factory from binding, not the game from starting.
+sides, and pass that ID to `register_sprite_set` on the client. Use a fully qualified ID such as
+`mymod:spark`; startup reports a declaration with an empty namespace or path under the mod's name.
+Supply the sprite description in `assets/mymod/particles/spark.json`. Spawn with
+`ParticleOptions::simple(spark_key)` using the key returned by the declaration. The type is
+registered even if the client lacks that file; a missing description prevents the factory from
+binding, not the game from starting.
 
 Local spawns retain their original typed option fields. The named network particle codec carries
 only the registered ID, so network spawns reconstruct `ParticleOptions::simple(key)` with default

@@ -3703,13 +3703,7 @@ impl ParticleEngine {
             self.groups[handle].particles = particles;
         }
         for (options, pos, velocity) in self.spawned_in_tick.take().unwrap_or_default() {
-            self.add_with(
-                &options,
-                pos,
-                velocity,
-                ParticleSpawnFlags::default(),
-                scope,
-            );
+            self.add(&options, pos, velocity, SpawnScope::with_level(level, None));
         }
         for pending in std::mem::take(&mut self.pending) {
             match pending {
@@ -3786,7 +3780,7 @@ impl ParticleEngine {
                         later.extend(update.spawned);
                     } else {
                         for (options, pos, velocity) in update.spawned {
-                            self.add(&options, pos, velocity, SpawnScope::BARE);
+                            self.add(&options, pos, velocity, SpawnScope::with_level(level, None));
                         }
                     }
                 } else {
@@ -4933,10 +4927,10 @@ const CREEPER: [[f64; 2]; 12] = [
 #[cfg(test)]
 mod tick_bench;
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn with_empty_particle_level(test: impl FnOnce(&ParticleLevel<'_>)) {
+    pub(crate) fn with_empty_particle_level(test: impl FnOnce(&ParticleLevel<'_>)) {
         use {
             sunrise_core::nbt::Tag,
             sunrise_world::{

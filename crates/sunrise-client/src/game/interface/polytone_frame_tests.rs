@@ -7,7 +7,7 @@ use std::sync::Arc;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
 use sunrise_client::hud::Rect;
 use sunrise_client::particles::polytone::Registry;
-use sunrise_client::particles::{ParticleEngine, ParticleOptions, SpawnScope};
+use sunrise_client::particles::{ParticleEngine, ParticleLevel, ParticleOptions, SpawnScope};
 
 /// A game over the prepared resources that registers no mod tables of the process (the
 /// particles here are the pack's): `server_game`, not the mod fixture's `with_game`.
@@ -62,11 +62,12 @@ fn a_frame_of_gpu_records_only_draws_their_quads() {
     with_game(|game| {
         let at = [0.5, 80.0, 0.5];
         rain_particles(game, &rain_pack(false), at);
+        let level = ParticleLevel::new(&game.world, game.res.facts(), game.collision);
         game.particles.add(
             &ParticleOptions::named("test:rain"),
             at,
             [0.0; 3],
-            SpawnScope::BARE,
+            SpawnScope::with_level(&level, None),
         );
         assert_eq!(game.client_particle_count(), 0, "not in the native count");
         assert_eq!(game.particles.polytone_gpu_records(), 1);
@@ -89,10 +90,15 @@ fn rain_under_the_surface_is_hidden_from_its_first_frame() {
         let camera = [0.5, bottom + 4.0, 0.5];
         rain_particles(game, &rain_pack(true), camera);
         let rain = ParticleOptions::named("test:rain");
-        game.particles
-            .add(&rain, [0.5, bottom + 2.0, 0.5], [0.0; 3], SpawnScope::BARE);
-        game.particles
-            .add(&rain, [0.5, bottom - 2.0, 0.5], [0.0; 3], SpawnScope::BARE);
+        let level = ParticleLevel::new(&game.world, game.res.facts(), game.collision);
+        for y in [bottom + 2.0, bottom - 2.0] {
+            game.particles.add(
+                &rain,
+                [0.5, y, 0.5],
+                [0.0; 3],
+                SpawnScope::with_level(&level, None),
+            );
+        }
         assert_eq!(game.particles.polytone_gpu_records(), 2);
         let camera = glam::DVec3::from_array(camera);
         game.polytone_gpu_decide(camera);
@@ -111,11 +117,12 @@ fn a_pending_clear_goes_before_the_heightmap_is_read() {
         let bottom = f64::from(game.world.bottom_y());
         let camera = [0.5, bottom + 4.0, 0.5];
         rain_particles(game, &rain_pack(true), camera);
+        let level = ParticleLevel::new(&game.world, game.res.facts(), game.collision);
         game.particles.add(
             &ParticleOptions::named("test:rain"),
             [0.5, bottom + 2.0, 0.5],
             [0.0; 3],
-            SpawnScope::BARE,
+            SpawnScope::with_level(&level, None),
         );
         game.mod_clear_particles.set(true);
         game.polytone_gpu_decide(glam::DVec3::from_array(camera));

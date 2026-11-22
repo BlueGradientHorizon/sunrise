@@ -19,7 +19,16 @@ impl ParticlesRegistrar for PartRegistrar {
 
     fn declare_particle(&mut self, id: &crate::Identifier) -> crate::ParticleKey {
         let mut keys = self.registry_keys.borrow_mut();
-        match keys.particles.request_identifier(self.mod_id, id) {
+        // `Identifier` validates the characters, but registry names require both components.
+        let request = if id.namespace().is_empty() || id.path().is_empty() {
+            Err(format!(
+                "mod {}: invalid registry key \"{id}\"",
+                self.mod_id
+            ))
+        } else {
+            keys.particles.request_identifier(self.mod_id, id)
+        };
+        match request {
             Ok(slot) => {
                 keys.declared_particles.insert(id.to_string());
                 mod_vocab::__private::parts_installation::particle_key(slot)
@@ -37,6 +46,31 @@ mod tests {
     use super::*;
     use crate::{Hooks, ModEntry, RegistrationContext};
     use std::sync::Mutex;
+
+    #[test]
+    fn particle_type_startup_reports_empty_identifier_components() {
+        struct BadParticles;
+        #[mod_api::__subscriptions]
+        impl Hooks for BadParticles {
+            fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+                registrar.declare_particle(&crate::Identifier::from_parts("", "spark").unwrap());
+                registrar.declare_particle(&crate::Identifier::from_parts("test", "").unwrap());
+            }
+        }
+
+        assert_eq!(
+            install_parts(
+                &[ModEntry::new("bad_particles", Box::new(BadParticles))],
+                &crate::parts::tests::rule_schema(),
+                |_| false,
+            ),
+            Err(vec![
+                "mod bad_particles: invalid registry key \":spark\"".to_owned(),
+                "mod bad_particles: invalid registry key \"test:\"".to_owned(),
+            ]),
+        );
+    }
+
     #[test]
     fn particle_registration_retains_requested_slots_until_atomic_publication() {
         struct Keys(Arc<Mutex<Vec<crate::ParticleKey>>>);

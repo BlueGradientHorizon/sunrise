@@ -49,7 +49,8 @@ pub(super) type Factories = BTreeMap<String, Factory>;
 /// Frozen before the first resource load. Each engine shares these factories, not their providers.
 static REGISTERED: OnceLock<Arc<Factories>> = OnceLock::new();
 
-/// Freeze attributed factories once at client startup. The last registration of an ID wins.
+/// Freeze the factories collected by the `register_particle_providers` hook at client startup.
+/// Pass the hook's attributed answers unmodified; the last registration of an ID wins.
 /// Returns false if the registry was already frozen.
 pub fn register_particle_providers(providers: Vec<Answered<ParticleProviderRegistration>>) -> bool {
     if let Err(rejected) = REGISTERED.set(Arc::new(freeze(providers))) {
