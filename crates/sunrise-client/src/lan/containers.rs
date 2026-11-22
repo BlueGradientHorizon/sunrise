@@ -384,12 +384,11 @@ impl Hub {
             slots,
             items,
             extra,
-            None,
             crate::containers::mod_menu_type(menu_kind),
         )
     }
 
-    /// Install a window, using its reserved protocol id if it was staged in a transaction.
+    /// Install a window and allocate its next vanilla protocol id (`1..=100`).
     /// Stock displays have no mod menu type, even if a part listens to their clicks.
     #[allow(clippy::too_many_arguments)]
     pub fn open_menu_window_at(
@@ -401,15 +400,15 @@ impl Hub {
         slots: Slots,
         items: Vec<Option<ItemStack>>,
         extra: Option<Vec<u8>>,
-        reserved: Option<i32>,
         mod_type: Option<&'static ModMenuType>,
     ) -> Option<i32> {
         let kind = self.registry_id("minecraft:menu", menu_kind)?;
         let i = self.guests.iter().position(|g| g.conn == conn)?;
         let encoded_extra = match extra {
             Some(data) => {
+                let next_window = self.guests[i].next_window % 100 + 1;
                 let message = sunrise_protocol::menu_extra::Message {
-                    window: reserved.unwrap_or_else(|| self.guests[i].upcoming_menu_window()),
+                    window: next_window,
                     pos: pos.map(|p| [p.0, p.1, p.2]),
                     data,
                 };
@@ -425,8 +424,7 @@ impl Hub {
         };
         self.close_container_at(i);
         let window = self.guests.update(i, |g| {
-            let window = reserved.unwrap_or_else(|| g.reserve_menu_window());
-            g.begin_menu_window(window);
+            let window = g.next_menu_window();
             if slots == Slots::Native {
                 g.native_menu = items.clone();
             }
@@ -497,7 +495,6 @@ impl Hub {
             None,
             Slots::Native,
             items,
-            None,
             None,
             None,
         )

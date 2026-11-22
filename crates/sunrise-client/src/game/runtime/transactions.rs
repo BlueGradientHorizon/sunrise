@@ -83,6 +83,8 @@ pub(super) struct OpenTransactions {
     composter_epoch: Option<mod_api::WorldEpoch>,
     /// Each composter port owns its transactional random stream, independently of Level.random.
     composter_randoms: ComposterRandoms,
+    /// Negative staged-open identity counter (`i32::MIN..=-1`), separate from live protocol ids.
+    staged_menu_open: i32,
     #[cfg(test)]
     pub(in crate::game) trace: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
 }
@@ -148,6 +150,15 @@ impl OpenTransactions {
     }
     pub(super) fn block_writes(&self) -> u64 {
         self.block_writes
+    }
+    /// Allocates a negative staged-open identity that never overlaps live protocol window
+    /// ids (`0` for inventory, `1..=100` for `ServerPlayer.nextContainerCounter`).
+    pub(in crate::game) fn next_staged_menu_open(&mut self) -> i32 {
+        self.staged_menu_open = match self.staged_menu_open.checked_sub(1) {
+            Some(next) if next < 0 => next,
+            _ => -1,
+        };
+        self.staged_menu_open
     }
 }
 

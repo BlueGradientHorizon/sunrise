@@ -306,8 +306,11 @@ declares a temporary container that belongs to the window. Opening returns the w
 `Ok(None)` when vetoed or a registered slot exclusion is out of range. Invalid type,
 connection or client support, opening bytes, data count or
 title returns `OpenMenuError`. Neither a refused nor a cancelled open closes the old menu.
-In a transaction the returned id is reserved for the outermost commit. Look up or back the new
-menu after commit or in `player_container_open`; an abort leaves the old menu open.
+In a transaction `Ok(Some(staged))` returns a negative staged-open identity (`< 0`), separate
+from live protocol window ids (`0..=100`), and defers `container_opened` and installation to
+outermost commit in the player's level. Read the allocated vanilla window id after commit from
+`player.container_menu(host)` or in `player_container_open`; an abort leaves the old menu and
+its window counter untouched.
 
 For a slotless status screen, declare `data/mymod/sunrise/menu/status.json` as
 `{ "slots": 0, "player_inventory": false, "data_slots": 2 }`. Register a screen factory

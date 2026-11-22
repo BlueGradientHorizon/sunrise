@@ -61,9 +61,13 @@ pub trait PlayerMenusBackendMut {
     /// `PlayerUnavailable` (including a client that does not support the blockless layout, a
     /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
     /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open
-    /// does not close the old menu. In a transaction, `Ok(Some(window))` reserves the id
-    /// for the outermost commit. The old menu stays live until then, and an abort does not
-    /// open the new one. Look up or back the new menu after commit or in `player_container_open`.
+    /// does not close the old menu. In a transaction, `Ok(Some(staged))` returns a negative
+    /// staged-open identity (`< 0`), separate from live protocol window ids (`0..=100`),
+    /// without switching levels, running `container_opened`, or advancing the window counter.
+    /// At outermost commit, the veto runs in the player's level outside the transaction, the
+    /// next vanilla window id (`1..=100`) is allocated when the open installs, and that id is
+    /// exposed in `player_container_open` and `PlayerRef::container_menu`. An abort drops the
+    /// request and keeps the old menu.
     #[access(WorldOnly)]
     fn player_open_mod_menu(
         &mut self,

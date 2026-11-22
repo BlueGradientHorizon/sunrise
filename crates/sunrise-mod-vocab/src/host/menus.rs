@@ -15,10 +15,14 @@ pub trait MenusServerHost {
     /// `MenuReplace::InPlace` changes the title and rows without the client
     /// centring the mouse again. Packets for the old window are ignored. The
     /// items of an open menu change through its slots (`menu`), not by
-    /// opening it again. In a transaction, the returned window id is reserved for the
-    /// outermost commit; it cannot be used to look up or change the new menu until then.
-    /// An abort keeps the current menu. An active speculative trade action still refuses
-    /// an open with `Ok(None)`.
+    /// opening it again. In a transaction, the open is staged for outermost commit
+    /// and returns a negative staged-open identity (`< 0`), separate from live
+    /// protocol window ids (`0..=100`); it cannot look up or change any live menu.
+    /// The next vanilla protocol window id (`1..=100`) is allocated when the open is
+    /// installed at commit and exposed through `player_container_open` and
+    /// `PlayerRef::container_menu`. An abort keeps the current menu without advancing
+    /// the window counter. An active speculative trade action still refuses an open
+    /// with `Ok(None)`.
     #[access(WorldOnly)]
     fn open_menu(
         &mut self,

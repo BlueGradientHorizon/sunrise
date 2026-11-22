@@ -324,10 +324,13 @@ target omitted from the menu. A display-only menu has no default moves.
 Inside `menu_clicked`, `host.open_menu`, `PlayerRef::open_mod_menu`, `PlayerRef::open_menu`,
 `PlayerRef::open_ender_chest`, `host.close_menu` and `MenuRef::close_container` can act on the
 player's live menu. Outside a transaction the close or replacement is immediate. Inside one it
-takes effect only at the outermost commit; an abort leaves the live menu and its cursors alone.
-The id returned by a queued open is reserved, so look up or back the new menu after commit or in
-`player_container_open`. A close or replacement that takes effect before default execution prevents
-it from running on the old menu.
+takes effect only at the outermost commit; an abort leaves the live menu, its cursors and its
+window counter alone. A staged `open_menu` or `open_mod_menu` returns a negative staged-open
+identity (`< 0`), separate from live protocol window ids (`0..=100`), without running
+`container_opened` inside the transaction. At outermost commit, the veto runs in the player's
+level outside the transaction, the next vanilla window id is allocated when the open installs,
+and you can read it from `player_container_open` or `player.container_menu(host)`. A close or
+replacement that takes effect before default execution prevents it from running on the old menu.
 
 A panic aborts any transaction still open in the callback and disables only that mod's `menu_clicked`
 callback for the session, with an error log and toast naming the mod. Other parts still run, but the
