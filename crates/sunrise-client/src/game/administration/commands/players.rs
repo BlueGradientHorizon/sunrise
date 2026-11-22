@@ -214,8 +214,9 @@ impl Game<'_> {
         shown
     }
 
-    /// Run `f` for the player `t` (None for anything else): in place, or
-    /// with the guest's state swapped in, in their level, as their own turn.
+    /// Run `f` for the player `t`: in place, or with the guest's state swapped
+    /// in, in their level, as their own turn. Return `None` if the target is
+    /// not a reachable player or their level cannot be entered.
     /// What `f` tells the player (`system_message`) goes to their chat; the
     /// command's own feedback is the caller's to send.
     pub(in crate::game) fn for_player<T>(
