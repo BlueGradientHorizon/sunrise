@@ -137,8 +137,13 @@ fn surface_catalogs(args: &[PathBuf]) {
 
 fn read_manifest_facts(dir: &Path) -> Result<ManifestFacts, String> {
     let path = dir.join(MANIFEST);
-    if !path.is_file() {
-        return Ok(ManifestFacts::default());
+    match std::fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.is_file() => {}
+        Ok(_) => return Err(format!("{MANIFEST}: not a regular file")),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ManifestFacts::default());
+        }
+        Err(e) => return Err(format!("{MANIFEST}: {e}")),
     }
     let file = std::fs::File::open(path).map_err(|e| format!("{MANIFEST}: {e}"))?;
     let manifest = Manifest::read(file)?;
@@ -156,6 +161,26 @@ fn read_manifest_facts(dir: &Path) -> Result<ManifestFacts, String> {
         );
     }
     Ok((&manifest).into())
+}
+
+#[cfg(test)]
+#[test]
+fn only_an_absent_manifest_allows_a_source_only_scan() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let path = root.join(MANIFEST);
+    assert_eq!(read_manifest_facts(root).unwrap(), ManifestFacts::default());
+
+    std::fs::create_dir(&path).unwrap();
+    assert!(read_manifest_facts(root).unwrap_err().starts_with(MANIFEST));
+
+    std::fs::remove_dir(&path).unwrap();
+    std::fs::write(&path, "").unwrap();
+    assert!(
+        read_manifest_facts(&path)
+            .unwrap_err()
+            .starts_with(MANIFEST)
+    );
 }
 
 #[cfg(test)]
