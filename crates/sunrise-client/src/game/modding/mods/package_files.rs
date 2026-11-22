@@ -245,6 +245,8 @@ mod tests {
         mods.select(root, &Default::default());
         validate_startup_packages(&mods).unwrap();
         let admission = mods.admit_startup_packages(&root.join("jars")).unwrap();
+        assert_eq!(admission.refused.len(), 1);
+        assert_eq!(admission.refused[0].owners, ["missing"]);
         with_registration(&admission, |cx| {
             assert_eq!(cx.mods().ids().collect::<Vec<_>>(), ["native_demo", "demo"]);
             let demo = cx.package_files("demo").unwrap();
