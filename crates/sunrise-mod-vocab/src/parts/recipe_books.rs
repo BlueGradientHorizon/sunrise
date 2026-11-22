@@ -9,17 +9,16 @@ pub trait RecipeBooksRegistrar {
     /// namespace or whitespace trimming) in a manifest-owned namespace.
     /// Registration imposes no separate book-count or 256-byte ID cap.
     /// Invalid or duplicate declarations refuse installation even if the caller ignores
-    /// the error. The registry freezes before player state is loaded. Saved compound names
-    /// and synchronized IDs are subject only to ordinary NBT modified UTF-8 and wire
-    /// `Identifier.STREAM_CODEC` (32,767-byte) encodings, respectively.
+    /// the error. The registry freezes before player state is loaded. The ID is the saved
+    /// NBT extension key and must fit `DataOutput.writeUTF` (65,535 modified UTF-8 bytes).
+    /// Synchronized IDs use the separate wire `Identifier.STREAM_CODEC` (32,767-byte) encoding.
     fn recipe_book_type(&mut self, id: &str) -> Result<RecipeBookTypeKey, String>;
     /// Register a book whose flags use explicit, case-sensitive fields in the player's
     /// `recipeBook` compound, like vanilla's `RecipeBookSettings.TypeSettings` codec.
-    /// The book ID follows the same rules as [`Self::recipe_book_type`].
-    /// Each true flag is saved as a byte; false flags are omitted. This book is not
-    /// also saved in the engine extension. Names may contain any characters, must be
-    /// nonempty, and must differ, with no separate byte-length cap beyond the NBT
-    /// writer's modified UTF-8 encoding.
+    /// The book ID follows the identifier rules of [`Self::recipe_book_type`] but is not
+    /// saved as an NBT key. Each true flag is saved as a byte; false flags are omitted.
+    /// The two field names may contain any characters, must be nonempty and distinct,
+    /// and must each fit `DataOutput.writeUTF` (65,535 modified UTF-8 bytes).
     /// Vanilla flag fields, `recipes`, `toBeDisplayed`, `sunrise:book_settings`, and
     /// other books' fields are reserved. Invalid declarations refuse installation even if ignored.
     fn recipe_book_type_with_fields(

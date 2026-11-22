@@ -333,7 +333,7 @@ impl Menu {
         if placement.impossible() {
             return PostPlace::Nothing;
         }
-        if !allow_drop && !self.test_clear_grid(env, &grid) {
+        if !allow_drop && !self.test_clear_slots(env, &grid.inputs) {
             return PostPlace::Nothing;
         }
         let mut stacked = self.stacked_contents(env);
@@ -762,11 +762,6 @@ impl Menu {
             }
         }
         true
-    }
-
-    /// `testClearGrid`: whether the inventory can take the grid back.
-    fn test_clear_grid(&self, env: &Env, grid: &Grid) -> bool {
-        self.test_clear_slots(env, &grid.inputs)
     }
 }
 

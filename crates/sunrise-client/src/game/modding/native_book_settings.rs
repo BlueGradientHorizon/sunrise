@@ -41,25 +41,41 @@ impl Game<'_> {
         let id = ResourceId::from_registered_book(book);
         let mut changed = false;
         if !self.native_as_player_handle(player, |game| {
-            changed = game.level.recipe_book.custom.set(&id, flags);
+            if game.level.recipe_book.custom.get(id.as_str()) != flags {
+                game.journal_player_book(player.uuid(), id.as_str());
+                changed = game.level.recipe_book.custom.set(&id, flags);
+            }
         }) {
             return false;
         }
         if changed {
-            self.sync_server_book_write(player, book, flags);
-            if mod_api::__private::listened(mod_api::HookId::PlayerRecipeBookSettingsChange)
-                && let Some(name) = self.player_name(player).map(str::to_owned)
-            {
-                self.native_player_recipe_book_settings_change(
-                    player.uuid(),
-                    &name,
-                    mod_api::RecipeBookIdentity::Custom(book.clone()),
-                    flags.open,
-                    flags.filtering,
-                );
-            }
+            self.after_commit(super::transactions::After::RecipeBookSettings(
+                player,
+                book.clone(),
+                flags,
+            ));
         }
         true
+    }
+
+    pub(super) fn publish_player_book_settings(
+        &mut self,
+        player: PlayerRef,
+        book: RecipeBookTypeKey,
+        flags: BookFlags,
+    ) {
+        self.sync_server_book_write(player, &book, flags);
+        if mod_api::__private::listened(mod_api::HookId::PlayerRecipeBookSettingsChange)
+            && let Some(name) = self.player_name(player).map(str::to_owned)
+        {
+            self.native_player_recipe_book_settings_change(
+                player.uuid(),
+                &name,
+                mod_api::RecipeBookIdentity::Custom(book),
+                flags.open,
+                flags.filtering,
+            );
+        }
     }
 
     pub(super) fn player_recipe_book_settings(

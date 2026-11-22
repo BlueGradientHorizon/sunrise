@@ -889,7 +889,6 @@ sunrise-client game::lan_crafting::lending_tests::inventory_menu_does_not_ask_re
 sunrise-client game::lan_crafting::lending_tests::lent_chest_supplies_transfer_and_placement_and_is_written_back lib daily resources
 sunrise-client game::lan_crafting::lending_tests::menu_links_expose_chest_contents_in_the_answering_tick lib daily resources
 sunrise-client game::lan_crafting::lending_tests::menu_links_skip_a_furnace_the_mod_names lib daily resources
-sunrise-client game::lan_crafting::lending_tests::sources_skip_invalid_answers_and_keep_exactly_first_sixty_four lib daily resources
 sunrise-client game::lan_crafting::machine_recipe_placement_tests::h234_registered_place_recipe_reaches_actual_furnace_and_preserves_controls lib daily resources
 sunrise-client game::lan_crafting::recipe_check_tests::a_check_answers_and_leaves_the_world_and_the_guest_alone lib daily resources
 sunrise-client game::lan_crafting::recipe_check_tests::checks_past_the_limit_go_unanswered lib daily resources

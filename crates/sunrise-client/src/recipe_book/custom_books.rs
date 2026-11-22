@@ -28,7 +28,18 @@ pub struct CustomBooks {
 impl CustomBooks {
     /// The flags of book `id`: `(false, false)` for a book that has none.
     pub fn get(&self, id: &str) -> BookFlags {
-        self.books.get(id).copied().unwrap_or_default()
+        self.stored(id).unwrap_or_default()
+    }
+    /// The exact saved entry, distinguishing an explicit closed book from an absent one.
+    pub fn stored(&self, id: &str) -> Option<BookFlags> {
+        self.books.get(id).copied()
+    }
+    /// Restore a journaled entry, including absence, without publishing a settings change.
+    pub fn restore(&mut self, id: String, flags: Option<BookFlags>) {
+        match flags {
+            Some(flags) => self.books.insert(id, flags),
+            None => self.books.remove(&id),
+        };
     }
     /// Sets the validated book's flags; returns whether they changed.
     pub fn set(&mut self, id: &ResourceId, flags: BookFlags) -> bool {

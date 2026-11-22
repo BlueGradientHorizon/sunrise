@@ -39,16 +39,21 @@ vanilla's flag fields, `recipes`, `toBeDisplayed`, or `sunrise:book_settings`.
 Invalid declarations refuse installation even if the mod ignores the returned
 error. Registration freezes before player files are loaded.
 
-The NBT writer's modified UTF-8 encoding constrains saved names (book IDs in
-extension entries and explicit flat field names). A book ID sent to a peer must
-fit vanilla's Identifier stream codec. A longer ID stays local and is logged
-when settings sync is negotiated. Each packet must fit the active connection's
-framing. These encoding limits are not registration limits.
+Each saved compound key must fit Java's `DataOutput.writeUTF`: at most 65,535
+modified UTF-8 bytes, counting NUL as two bytes and supplementary characters as
+six. Registration refuses a longer extension book ID or explicit flat field name
+and names the declaring mod. A flat-field book's ID is not a saved key. The wire
+limit is separate: an ID sent to a peer must fit vanilla's `Identifier` stream
+codec, and each packet must fit the active connection's framing.
 
 The saved field names do not change the book ID used by menus or synchronization.
 Both flags live in the player's whole recipe-book state, rather than in a menu
 instance. Custom panels wait for the server's negotiated settings snapshot before
-using that state; local intent does not overwrite the authoritative flags.
+using that state; local intent does not overwrite the authoritative flags. The
+channel's version and negotiation, not the client's brand, decide whether the
+peer receives custom settings and can place recipes. `PlayerRef::set_recipe_book_settings`
+changes server state; when called in a transaction it publishes its settings-change
+hook and client update only on commit.
 
 ## Toggle button position
 

@@ -217,10 +217,11 @@ fn lent_chest_supplies_transfer_and_placement_and_is_written_back() {
 
 #[test]
 #[ignore = "daily"]
-fn sources_skip_invalid_answers_and_keep_exactly_first_sixty_four() {
+fn recipe_checks_and_placement_use_late_sources_and_skip_invalid_answers() {
     crate::game::native_entity_refs::tests::with_game(|game| {
         let t = setup(game);
         // Keep self lendable so removing only the self-position exclusion fails.
+        let station = game.world.block_entities.get(&STATION).unwrap().clone();
         game.world
             .block_entities
             .insert(STATION, BlockEntity::Chest(vec![None; 27]));
@@ -233,11 +234,11 @@ fn sources_skip_invalid_answers_and_keep_exactly_first_sixty_four() {
             ))),
         );
         let positions: Vec<_> = (0..70).map(|i| [100 + i, 200, 4]).collect();
-        for at in &positions {
-            game.world.block_entities.insert(
-                (at[0], at[1], at[2]),
-                BlockEntity::Chest(vec![Some(ItemStack::new("minecraft:oak_planks", 1))]),
-            );
+        for &[x, y, z] in &positions {
+            let stack = (x == 169).then(|| ItemStack::new("minecraft:oak_planks", 3));
+            game.world
+                .block_entities
+                .insert((x, y, z), BlockEntity::Chest(vec![stack]));
         }
         let mut answers = vec![
             [4, 200, 4],
@@ -249,13 +250,34 @@ fn sources_skip_invalid_answers_and_keep_exactly_first_sixty_four() {
         answers.extend_from_slice(&positions[1..]);
         lending(answers, Arc::default(), || {
             let sources = game.lan_recipe_sources(0, t, STATION);
-            assert_eq!(sources.len(), 64);
             assert_eq!(
                 sources
                     .iter()
-                    .map(|s| [s.0.0, s.0.1, s.0.2])
+                    .map(|&((x, y, z), _)| [x, y, z])
                     .collect::<Vec<_>>(),
-                positions[..64]
+                positions
+            );
+            game.world.block_entities.insert(STATION, station);
+            assert_eq!(
+                game.lan_check_recipe(0, WINDOW, "minecraft:stick")
+                    .unwrap()
+                    .result,
+                Ok(())
+            );
+            assert_eq!(
+                game.lan_apply_recipe(0, WINDOW, |menu, env| menu.place_recipe(
+                    env,
+                    "minecraft:stick",
+                    false,
+                    false,
+                    None
+                )),
+                Some(PostPlace::Nothing)
+            );
+            let container = game.world.block_entities.get(&(169, 200, 4)).unwrap();
+            assert_eq!(
+                container.slots(),
+                &[Some(ItemStack::new("minecraft:oak_planks", 1))]
             );
         });
     });

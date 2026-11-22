@@ -26,17 +26,18 @@ pub trait Hooks {
     /// The game has checked what vanilla checks before `handlePlacement`: the
     /// player is not a spectator, the window is the open menu of this type,
     /// the menu is still valid, the player's book holds `recipe`, and its
-    /// `PlacementInfo` is not `NOT_PLACEABLE`. Nothing is asked of a part for
-    /// a menu with another layout; the game places those itself.
+    /// `PlacementInfo` is not `NOT_PLACEABLE`. The general `player_recipe_book_click`
+    /// hook has already run. Nothing is asked of a part for a menu with another
+    /// layout; the game places those itself.
     ///
     /// After a mutating callback returns, the engine resolves the menu only to
     /// verify the same opening and uses its current state. Refused `Grid`
     /// inputs (a slot the menu lacks, hides or cannot store, a repeated slot,
     /// an empty grid, or a recipe larger than the slots given) are reported on
-    /// each attempt without applying the grid. A panicking callback rolls back
-    /// its nested transaction, does not publish its `placement`, names the mod
-    /// in logs and error toasts, and disables only that callback for the
-    /// session. When no part listens, the click is refused.
+    /// each attempt without applying the grid. A phase refusal or panic rolls back
+    /// the callback's nested transaction and discards its `placement`. Only a panic
+    /// disables the callback for the session, naming the mod in logs and error
+    /// toasts. When no part listens, the click is refused.
     #[hook(
         dispatch = "api_carrier",
         side = "server",

@@ -1145,8 +1145,8 @@ impl mod_api::Hooks for Machine {
 `player` is the requesting player's UUID; their state is not swapped in. The
 engine uses the player's inventory first, then answered containers in mod/push
 order. It silently skips the open machine itself, duplicate positions (first
-wins), missing or non-lendable containers, and anything after 64 accepted
-containers. Chest-like block entities (including barrels, shulkers, hoppers,
+wins), and missing or non-lendable containers. There is no container-count cap.
+Chest-like block entities (including barrels, shulkers, hoppers,
 dispensers and droppers) and mod containers' declared slots can lend. No answer
 keeps vanilla placement. The engine owns ingredient removal, container
 write-back and `container_changed` notifications, not the listener.

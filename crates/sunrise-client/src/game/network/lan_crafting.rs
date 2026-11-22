@@ -82,9 +82,6 @@ pub(super) struct GuestCrafting {
     pub(super) machine: MenuOwner<Option<(i32, Box<Menu>)>>,
 }
 
-/// The most containers `native_recipe_sources` adds to one placement.
-const MAX_RECIPE_SOURCES: usize = 64;
-
 /// ServerboundContainerClickPacket's input.
 pub(super) fn input(id: i32) -> Input {
     match id {
@@ -1795,11 +1792,11 @@ impl Game<'_> {
             return Vec::new();
         };
         self.native_recipe_sources(uuid, t.id, [pos.0, pos.1, pos.2], &mut asked);
-        let mut sources: Vec<((i32, i32, i32), Vec<Option<ItemStack>>)> = Vec::new();
-        for at in asked {
-            let at = (at[0], at[1], at[2]);
-            if at == pos || sources.len() >= MAX_RECIPE_SOURCES || sources.iter().any(|s| s.0 == at)
-            {
+        let mut sources = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for [x, y, z] in asked {
+            let at = (x, y, z);
+            if at == pos || !seen.insert(at) {
                 continue;
             }
             let Some(items) = self.linkable_container(at) else {

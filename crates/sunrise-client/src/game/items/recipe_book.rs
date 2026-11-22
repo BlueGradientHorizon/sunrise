@@ -1887,6 +1887,7 @@ impl Game<'_> {
                 grid,
                 fuel_empty,
                 self.items(),
+                |stack| self.decode_remote_stack(stack),
             )
         }) {
             self.recipe_ui.ghost = map_ghost_slots(book_type, slots);

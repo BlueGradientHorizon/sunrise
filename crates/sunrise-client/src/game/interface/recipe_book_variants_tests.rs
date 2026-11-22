@@ -307,6 +307,7 @@ fn clicked_multi_display_recipe_sends_exact_ghost_and_ordinary_placement_sends_n
         3,
         true,
         game.items(),
+        |stack| item(stack.item).map(|id| ItemStack::new(&id, stack.count as u32)),
     );
     assert_eq!(projected.len(), 6);
 

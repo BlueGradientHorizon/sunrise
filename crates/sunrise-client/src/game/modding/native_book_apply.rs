@@ -90,14 +90,17 @@ impl Game<'_> {
             .map_err(refusal)?
             .clone();
         let opening = self.mod_book_live_opening(conn, catalog)?;
-        let known = self
+        let guest = self
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.get(opening.gi))
-            .is_some_and(|guest| guest.recipe_book.recipes.contains(display.recipe.as_str()));
-        if !known {
+            .ok_or(R::Unavailable)?;
+        let recipe = display.recipe.as_str();
+        if !guest.recipe_book.knows(recipe) {
             return Err(R::Denied);
         }
+        let name = guest.name.clone();
+        self.native_player_recipe_book_click(opening.uuid, &name, recipe, use_max);
         self.apply_mod_book_plan(conn, catalog, display, &plan, use_max)
     }
 

@@ -88,6 +88,26 @@ impl PartRegistrar {
             if namespace == "minecraft" || !owns_namespace(self.mod_id, namespace) {
                 return Err("namespace must be owned by the registering mod, not minecraft".into());
             }
+            // CompoundTag.write names each field with DataOutput.writeUTF. Check only
+            // the names this declaration will actually write, before recording it.
+            let saved_names = fields.map_or(
+                [Some(("extension book ID", id)), None],
+                |(open, filtering)| {
+                    [
+                        Some(("open field", open)),
+                        Some(("filtering field", filtering)),
+                    ]
+                },
+            );
+            for (role, name) in saved_names.into_iter().flatten() {
+                if u16::try_from(sunrise_core::nbt::JavaString::from(name).modified_utf8_len())
+                    .is_err()
+                {
+                    return Err(format!(
+                        "{role} exceeds the NBT field name limit of 65,535 modified UTF-8 bytes"
+                    ));
+                }
+            }
             if let Some((open, filtering)) = fields {
                 use crate::item::recipe_book::saved_fields;
                 if open == filtering {
@@ -192,6 +212,32 @@ mod tests {
         assert_eq!(r.recipe_book_types.len(), 2);
         r.recipe_book_type_with_fields("second:ok", "unused", &"é".repeat(128))
             .unwrap();
+    }
+
+    #[test]
+    fn only_persisted_names_must_fit_the_modified_utf8_field_width() {
+        let mut registrar = PartRegistrar::new("demo");
+        let longest_id = format!("demo:{}", "a".repeat(65_530));
+        assert!(registrar.recipe_book_type(&longest_id).is_ok());
+        let oversized_id = longest_id + "a";
+        let error = registrar.recipe_book_type(&oversized_id).unwrap_err();
+        assert!(error.contains("mod demo") && error.contains("extension book ID"));
+
+        // A supplementary character takes two UTF-16 surrogates (six bytes), and NUL two bytes.
+        let longest_field = "😀".repeat(10_922) + "\0a";
+        let oversized_field = longest_field.clone() + "a";
+        let error = registrar
+            .recipe_book_type_with_fields(&oversized_id, "open", &oversized_field)
+            .unwrap_err();
+        assert!(error.contains("mod demo") && error.contains("filtering field"));
+        // The oversized ID is not written as an NBT field when flat fields are declared.
+        assert!(
+            registrar
+                .recipe_book_type_with_fields(&oversized_id, "open", &longest_field)
+                .is_ok()
+        );
+        assert_eq!(registrar.recipe_book_types.len(), 2);
+        assert_eq!(registrar.recipe_book_fields.len(), 1);
     }
 
     #[test]

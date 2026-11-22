@@ -484,8 +484,8 @@ pub(crate) fn entered_parts<'a, P: ?Sized>(
 
 /// Run each attached part for an isolated mutable-output server callback through the shared
 /// callback panic boundary (`callback_owner::call`), keeping a per-part candidate output and a
-/// nested `Host` transaction so a panicking or refused callback disables only itself, rolls back
-/// its partial `Host` writes, and never publishes its candidate output.
+/// nested `Host` transaction. A panic or refusal rolls back partial `Host` writes and discards the
+/// candidate. Only a panic disables the callback.
 pub(crate) fn run_isolated_part_output<P: ?Sized, H: crate::ServerHost + ?Sized, O: Clone>(
     parts: &[Attached<P>],
     host: &mut H,
@@ -509,15 +509,60 @@ pub(crate) fn run_isolated_part_output<P: ?Sized, H: crate::ServerHost + ?Sized,
                         hook: operation,
                         part: Some(attached.type_name),
                     });
-                let _ = crate::run_transaction(&mut *host, |host, _| {
-                    invoke(&*attached.part, host, &mut candidate);
-                    Ok::<(), ()>(())
-                });
+                crate::run_transaction(&mut *host, |host, _| {
+                    crate::world::phase_refusal::contain_refusal(attached.mod_id, || {
+                        invoke(&*attached.part, host, &mut candidate);
+                    })
+                })
             },
         );
-        if ran.is_ok() {
-            *output = candidate;
+        match ran {
+            Ok(Ok(())) => *output = candidate,
+            Ok(Err(refusal)) => refusal.report_each(),
+            Err(_) => {} // The retained callback boundary reported the panic or found it disabled.
         }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn caught_part_phase_refusal_rolls_back_storage_and_candidate_without_disabling() {
+    use crate::world::{phase::ModPhase, phase_refusal};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::sync::atomic::Ordering;
+
+    let attached = Attached {
+        mod_id: "test_book_placement",
+        mod_index: usize::MAX,
+        order: 0,
+        type_name: "test_book_part",
+        part: std::sync::Arc::new(()),
+        panicked: Default::default(),
+    };
+    let mut host = crate::testing::FakeHost::new();
+    let mut answer = RecipeBookPlacement::Nothing;
+    for _ in 0..2 {
+        let mut ran = false;
+        run_isolated_part_output(
+            std::slice::from_ref(&attached),
+            &mut host,
+            &mut answer,
+            "menu part",
+            "recipe_book_place",
+            |_, host, candidate| {
+                ran = true;
+                host.level.block_entity([1, 2, 3]);
+                *candidate = RecipeBookPlacement::Ghost;
+                let caught = catch_unwind(AssertUnwindSafe(|| {
+                    phase_refusal::refuse("phase-gated test write", ModPhase::Setup);
+                }));
+                assert!(caught.unwrap_err().is::<phase_refusal::PhaseRefusal>());
+            },
+        );
+        assert!(ran);
+        assert_eq!(answer, RecipeBookPlacement::Nothing);
+        assert!(host.level.block_entity_at([1, 2, 3]).is_none());
+        assert!(!attached.panicked.load(Ordering::Relaxed));
     }
 }
 

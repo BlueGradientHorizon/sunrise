@@ -145,15 +145,27 @@ impl mod_api::MenuPart for CountingPlacer {
     }
 }
 
-struct PanickingPlacer(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+struct PanickingPlacer {
+    calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    book: mod_api::RecipeBookTypeKey,
+}
 #[mod_api::sunrise_part]
 impl mod_api::MenuPart for PanickingPlacer {
     fn recipe_book_place(
         &self,
-        _: &mut dyn mod_api::ServerHost,
+        host: &mut dyn mod_api::ServerHost,
         event: &mut mod_api::RecipeBookPlaceEvent<'_>,
     ) {
-        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let player = host.players().acting_player().unwrap();
+        assert!(player.set_recipe_book_settings(
+            host,
+            &self.book,
+            mod_api::RecipeBookSettings {
+                open: true,
+                filtering: true,
+            }
+        ));
         *event.placement = mod_api::RecipeBookPlacement::Grid {
             width: 1,
             height: 1,
@@ -231,17 +243,40 @@ fn observed_mod_click_supplies_grid_once_and_second_click_acts_on_changed_grid()
 #[ignore = "daily"]
 fn panicking_recipe_book_place_discards_answer_disables_only_that_callback_and_keeps_other_menus_running()
  {
+    use sunrise_client::recipe_book::{
+        BookFlags, settings_codec,
+        settings_sync::{CHANNEL, Message},
+    };
+    use sunrise_protocol::packets::play::Clientbound as C;
+
     struct TwoMenuMod {
         panic_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
         other_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        changes: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     }
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for TwoMenuMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.menu_part("review:menu", PanickingPlacer(self.panic_calls.clone()));
+            let book = r.recipe_book_type("review:book").unwrap();
+            r.menu_part(
+                "review:menu",
+                PanickingPlacer {
+                    calls: self.panic_calls.clone(),
+                    book,
+                },
+            );
             r.menu_part("review:other", CountingPlacer(self.other_calls.clone()));
         }
+        fn player_recipe_book_settings_change(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &mut mod_api::PlayerRecipeBookSettingsChangeEvent<'_>,
+        ) {
+            self.changes
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
     }
+    let changes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let panic_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let other_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -249,6 +284,7 @@ fn panicking_recipe_book_place_discards_answer_disables_only_that_callback_and_k
         Box::new(TwoMenuMod {
             panic_calls: panic_calls.clone(),
             other_calls: other_calls.clone(),
+            changes: changes.clone(),
         }),
     )]
     .into();
@@ -256,7 +292,9 @@ fn panicking_recipe_book_place_discards_answer_disables_only_that_callback_and_k
         super::super::native_guest_turn_tests::with_guests(|game| {
             let _ = mod_api::__private::game::take_callback_panic_notices();
             let (pos, catalog, display) = open_mod_menu_named(game, "review:menu");
+            let (tx, rx) = std::sync::mpsc::channel();
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender = sunrise_client::lan::PlayerSender::new(tx, Default::default());
                 g.inventory[9] = Some(sunrise_client::items::ItemStack::new(
                     "minecraft:iron_ore",
                     3,
@@ -281,11 +319,29 @@ fn panicking_recipe_book_place_discards_answer_disables_only_that_callback_and_k
                 .unwrap();
             assert_eq!(untouched.item.as_ref(), "minecraft:dirt");
             assert_eq!(untouched.count, 1);
+            let saved = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(12)
+                .unwrap()
+                .recipe_book
+                .write();
+            assert!(
+                saved
+                    .get(mod_api::item::recipe_book::saved_fields::EXTENSION)
+                    .is_none()
+            );
+            assert_eq!(changes.load(std::sync::atomic::Ordering::SeqCst), 0);
+            assert!(!drain_clientbound(&rx).iter().any(|packet| matches!(packet,
+                C::CustomPayload(payload) if payload.channel == CHANNEL
+            )));
             let notices = mod_api::__private::game::take_callback_panic_notices();
             assert!(
-                notices
-                    .iter()
-                    .any(|n| n.mod_id == "review" && n.operation == "recipe_book_place"),
+                notices.iter().any(|n| n.mod_id == "review"
+                    && n.operation == "recipe_book_place"
+                    && n.message.contains("menu placer exploded")),
                 "expected panic notice naming mod review and recipe_book_place, got {notices:?}"
             );
 
@@ -324,6 +380,48 @@ fn panicking_recipe_book_place_discards_answer_disables_only_that_callback_and_k
                 .unwrap();
             assert_eq!(placed.item.as_ref(), "minecraft:iron_ore");
             assert_eq!(placed.count, 1);
+
+            // A committed change still publishes once to the negotiated peer and the hook.
+            let player = game.player(12).unwrap();
+            let book = mod_api::RecipeBookTypeKey::registered()
+                .into_iter()
+                .next()
+                .unwrap();
+            mod_api::run_transaction(game, |game, _| {
+                assert!(player.set_recipe_book_settings(
+                    game,
+                    &book,
+                    mod_api::RecipeBookSettings {
+                        open: true,
+                        filtering: true,
+                    }
+                ));
+                assert_eq!(changes.load(std::sync::atomic::Ordering::SeqCst), 0);
+                Ok::<(), ()>(())
+            })
+            .unwrap();
+            assert_eq!(changes.load(std::sync::atomic::Ordering::SeqCst), 1);
+            let messages: Vec<_> = drain_clientbound(&rx)
+                .into_iter()
+                .filter_map(|packet| match packet {
+                    C::CustomPayload(payload) if payload.channel == CHANNEL => {
+                        settings_codec::decode(&payload.data)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                messages,
+                [Message::Update {
+                    epoch: 1,
+                    revision: 1,
+                    key: other_catalog.book,
+                    flags: BookFlags {
+                        open: true,
+                        filtering: true
+                    },
+                }]
+            );
         });
     });
 }
@@ -338,7 +436,7 @@ impl mod_api::Hooks for BackedPack {
 }
 
 /// The menu's part: it places the clicked recipe in a one-slot grid, as a mod would.
-struct Placer;
+struct Placer(std::sync::Arc<std::sync::Mutex<Vec<&'static str>>>);
 #[mod_api::sunrise_part]
 impl mod_api::MenuPart for Placer {
     fn recipe_book_place(
@@ -346,6 +444,7 @@ impl mod_api::MenuPart for Placer {
         _: &mut dyn mod_api::ServerHost,
         event: &mut mod_api::RecipeBookPlaceEvent<'_>,
     ) {
+        self.0.lock().unwrap().push("menu decision");
         *event.placement = mod_api::RecipeBookPlacement::Grid {
             width: 1,
             height: 1,
@@ -355,14 +454,17 @@ impl mod_api::MenuPart for Placer {
     }
 }
 
-struct BackedRouterMod(std::sync::Mutex<Option<mod_api::RecipeBookTypeKey>>);
+struct BackedRouterMod {
+    book: std::sync::Mutex<Option<mod_api::RecipeBookTypeKey>>,
+    click_order: std::sync::Arc<std::sync::Mutex<Vec<&'static str>>>,
+}
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for BackedRouterMod {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
         r.register_recipe_type("review:furnace");
         r.register_raw_recipe_serializer("review:furnace", "review:furnace");
         let key = r.recipe_book_type("review:book").unwrap();
-        *self.0.lock().unwrap() = Some(key.clone());
+        *self.book.lock().unwrap() = Some(key.clone());
         r.menu_recipe_book(
             "review:menu",
             &key,
@@ -370,7 +472,18 @@ impl mod_api::Hooks for BackedRouterMod {
             mod_api::RecipeBookLayout::Mod,
         )
         .unwrap();
-        r.menu_part("review:menu", Placer);
+        r.menu_part("review:menu", Placer(self.click_order.clone()));
+    }
+    fn player_recipe_book_click(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut mod_api::PlayerRecipeBookClickEvent<'_>,
+    ) {
+        assert_eq!(
+            (event.player, event.name, event.recipe, event.all),
+            (12, "guest12", "review:recipe", false)
+        );
+        self.click_order.lock().unwrap().push("general click");
     }
     fn recipe_book_categories(
         &self,
@@ -383,7 +496,7 @@ impl mod_api::Hooks for BackedRouterMod {
             icon: "minecraft:furnace".into(),
             secondary_icon: None,
             target_menu: "review:menu".into(),
-            book: self.0.lock().unwrap().clone().unwrap(),
+            book: self.book.lock().unwrap().clone().unwrap(),
             search_group: "review:search".into(),
             displays: vec![mod_api::RecipeBookDisplayEntry {
                 recipe: "review:recipe".into(),
@@ -454,9 +567,16 @@ fn drain_placement_frames(
 #[ignore = "daily"]
 fn a_listening_part_places_the_recipe_through_the_real_stage() {
     use sunrise_protocol::packets::play::Clientbound as C;
+    let click_order = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![
         mod_api::ModEntry::new("backed_pack_fixture", Box::new(BackedPack)),
-        mod_api::ModEntry::new("review", Box::new(BackedRouterMod(Default::default()))),
+        mod_api::ModEntry::new(
+            "review",
+            Box::new(BackedRouterMod {
+                book: Default::default(),
+                click_order: click_order.clone(),
+            }),
+        ),
     ]
     .into();
     mod_platform::testing::with_mods(mods, || {
@@ -572,6 +692,10 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                             display: display.clone(),
                             use_max: false,
                         },
+                    );
+                    assert_eq!(
+                        click_order.lock().unwrap().as_slice(),
+                        ["general click", "menu decision"]
                     );
                     let packets = drain_clientbound(&rx);
                     assert!(placement_frames_in(&packets).is_empty());

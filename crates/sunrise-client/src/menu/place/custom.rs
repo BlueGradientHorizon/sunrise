@@ -37,7 +37,7 @@ impl Menu {
 
     /// Run `ServerPlaceRecipe.placeRecipe` stages directly on this live menu for an
     /// arbitrary-role mod layout. Returns `Ok(PostPlace::Nothing)` without mutating
-    /// when survival inventory cannot clear the target slots (`testClearGrid`) or the
+    /// when survival inventory cannot clear the input grid (`testClearGrid`) or the
     /// grid already matches at maximum capacity, and `Ok(PostPlace::Ghost)` after
     /// clearing only when eligible ingredients are missing.
     pub fn place_custom_recipe(
@@ -56,7 +56,7 @@ impl Menu {
                 return Err(Refused::Denied);
             }
         }
-        if !allow_drop && !self.test_clear_slots(env, &plan.clear) {
+        if !allow_drop && !self.test_clear_slots(env, &plan.inputs) {
             return Ok(PostPlace::Nothing);
         }
         let mut prototypes: Vec<ItemStack> = Vec::new();

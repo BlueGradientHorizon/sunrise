@@ -170,6 +170,10 @@ and hides affect where ghosts draw, not which backing indices the server uses.
 
 ## Placing a recipe yourself
 
+`Hooks::player_recipe_book_click` observes a known recipe clicked in the current vanilla or mod
+book, after display, knowledge and menu checks and before placement. For a `Mod` layout it runs
+before the menu part's `recipe_book_place` decision, not instead of it.
+
 A menu whose inputs are not a crafting grid, a furnace, a stonecutter or a smithing table (a cooking pot
 with six inputs, a preview slot and a container slot) registers `RecipeBookLayout::Mod` as its layout.
 The game then maps no display to a slot and answers a recipe click through your
@@ -210,10 +214,11 @@ fn recipe_book_place(
 
 After a mutating callback returns, the engine resolves the menu only to verify the same opening and uses
 its current state. Refused `Grid` inputs (a slot the menu lacks, hides or cannot store, a repeated slot,
-an empty grid, a recipe larger than the slots given, a slot whose pickup a part refuses, or no room for
-the cleared items) are logged on each attempt without applying the grid. A panicking callback rolls back
-its nested transaction, discards its `placement`, names the mod in logs and error toasts, and disables
-only that callback for the session. A menu with no part that listens refuses every click.
+an empty grid, a recipe larger than the slots given, or a slot whose pickup a part refuses) are logged
+on each attempt without applying the grid. As in vanilla, the survival inventory room check applies
+to the input grid, not to extra slots on the clear list. A phase refusal or panic rolls back the
+callback's nested transaction and discards its `placement`. Only a panic disables the callback for
+the session, naming the mod in logs and error toasts. A menu with no part that listens refuses every click.
 
 ## Drawing the ghosts yourself
 

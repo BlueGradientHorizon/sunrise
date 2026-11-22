@@ -161,6 +161,35 @@ fn full_inventory_refuses_unchanged_in_survival_and_defers_creative_drops() {
 }
 #[test]
 #[ignore = "daily"]
+fn furnace_preflights_only_the_input_and_clears_the_output() {
+    with_env(|env| {
+        let mut menu = Menu::new(kind());
+        for slot in 0..36 {
+            menu.set_player_item(slot, stack("minecraft:stone", 64));
+        }
+        menu.set_player_item(0, stack("minecraft:iron_ore", 64));
+        menu.load_slot(7, stack("minecraft:coal", 3));
+        menu.load_slot(9, stack("minecraft:iron_ingot", 1));
+        assert_eq!(
+            menu.place_custom_recipe(env, &single("minecraft:iron_ore"), false, false),
+            Ok(PostPlace::Nothing)
+        );
+        assert_eq!(menu.slot(4), stack("minecraft:iron_ore", 1).as_ref());
+        assert_eq!(menu.slot(7), stack("minecraft:coal", 3).as_ref());
+        assert!(menu.slot(9).is_none());
+        assert_eq!(
+            menu.player_item(0),
+            stack("minecraft:iron_ore", 63).as_ref()
+        );
+        assert_eq!(
+            menu.dropped,
+            vec![ItemStack::new("minecraft:iron_ingot", 1)]
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn per_slot_caps_limit_max_and_policy_refusal_is_not_a_missing_ingredient_ghost() {
     with_env(|env| {
         let mut menu = Menu::new(kind());
