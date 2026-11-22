@@ -304,27 +304,11 @@ impl<R: RandomSource> sunrise_world::loot::global_modifiers::ModifierRoll
         self.random.next_gaussian()
     }
     fn condition(&mut self, condition: &sunrise_world::loot::types::PreparedCondition) -> bool {
-        let context = self.context;
-        LootContext {
-            query: context.query.clone(),
-            place: context.place.clone(),
-            items: context.items,
-            local_bindings: Some(condition.rules()),
-            block: context.block,
-            properties: context.properties,
-            held: context.held,
-            killed_by_player: context.killed_by_player,
-            explosion_radius: context.explosion_radius,
-            this_entity: context.this_entity,
-            entity_levels: context.entity_levels,
-            block_levels: context.block_levels,
-            target: context.target,
-            target_entity: context.target_entity,
-            interacting_entity: context.interacting_entity,
-            location: context.location,
-            keep_empty: context.keep_empty,
-        }
-        .condition(condition.value(), self.random)
+        self.context.condition_with_bindings(
+            condition.value(),
+            self.random,
+            Some(condition.rules()),
+        )
     }
     fn roll_raw(
         &mut self,

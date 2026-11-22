@@ -1,146 +1,72 @@
-//! Resolve predicate/item-modifier tags once, without entering codec-owned payloads.
+//! Resolve holder sets and tags without entering codec-owned payloads.
 use super::super::loot_tags::BoundTags as Tags;
 use super::*;
 
 impl super::super::LootData {
-    /// Edit, normalize and bind private table replacements before the one publication.
-    /// A refused replacement leaves this snapshot and its retained bindings intact.
-    pub fn apply_native_table_loads(
+    pub(in crate::loot) fn prepare_types(
         &mut self,
-        context: &crate::native_load_context::LoadContext,
+        types: &Types,
+        native: Option<&crate::native_load_context::LoadContext>,
     ) -> io::Result<()> {
         let mut ids: Vec<_> = self.tables.ids().collect();
-        ids.sort();
+        ids.sort_unstable();
         let mut tables = HashMap::with_capacity(ids.len());
         for id in ids {
             let mut table = self.tables[id].clone();
-            super::super::native_loot_table_load(context, id, &mut table);
-            super::super::validate_loot_table(&table).map_err(|reason| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("native loot_table {id}: {reason}"),
-                )
-            })?;
+            if let Some(context) = native {
+                super::super::native_loot_table_load(context, id, &mut table);
+                super::super::validate_loot_table(&table).map_err(|reason| {
+                    invalid(&format!("native loot_table {id}"), "loot_table", reason)
+                })?;
+            }
+            let path = if native.is_some() {
+                format!("native loot_table {id}")
+            } else {
+                resource("loot_table", id)
+            };
             self.holder_sets
-                .walk(&format!("native loot_table {id}"), &mut table, &self.tags)?;
-            table_fields(&mut table, &self.tags, &self.types);
+                .walk(&path, &mut table, &self.tags, types, None)?;
+            table_fields(&mut table, &self.tags, types);
             tables.insert(id.to_owned(), table);
         }
-        let tables: Arc<super::super::LootTables> = Arc::new(tables.into_iter().collect());
-        let (predicates, modifiers, enchantment_effects) = if self.normalized {
-            (
-                self.predicates.clone(),
-                self.modifiers.clone(),
-                self.enchantments
-                    .iter()
-                    .map(|e| (e.name.clone(), e.effects.clone()))
-                    .collect(),
-            )
-        } else {
-            normalize_resources(self)
-        };
-        let bindings = self.types.bind_generation(
-            tables.clone(),
-            predicates.clone(),
-            modifiers.clone(),
-            enchantment_effects.clone(),
-            loot_tag_subset(&self.tags),
-        )?;
-        self.tables = tables;
-        self.predicates = predicates;
-        self.modifiers = modifiers;
-        for (enchantment, (_, effects)) in self.enchantments.iter_mut().zip(enchantment_effects) {
-            enchantment.effects = effects;
+        self.tables = Arc::new(tables.into_iter().collect());
+        for value in Arc::make_mut(&mut self.predicates).values_mut() {
+            typed(value, false, &self.tags, types);
         }
-        self.bindings = bindings;
-        self.normalized = true;
+        for value in Arc::make_mut(&mut self.modifiers).values_mut() {
+            typed(value, true, &self.tags, types);
+        }
+        for enchantment in &mut self.enchantments {
+            for effect in Arc::make_mut(&mut enchantment.effects)
+                .get_mut("minecraft:equipment_drops")
+                .and_then(Value::as_array_mut)
+                .into_iter()
+                .flatten()
+            {
+                if let Some(req) = effect
+                    .get_mut("requirements")
+                    .filter(|value| !value.is_null())
+                {
+                    typed(req, false, &self.tags, types);
+                }
+            }
+        }
+        self.bindings = types.bind_generation(
+            self.tables.clone(),
+            self.predicates.clone(),
+            self.modifiers.clone(),
+            self.enchantments
+                .iter()
+                .map(|e| (e.name.clone(), e.effects.clone()))
+                .collect(),
+            Normalization {
+                holder_sets: self.holder_sets.clone(),
+                tags: self.tags.clone(),
+            },
+        )?;
         self.refresh_copy_requirements();
         Ok(())
     }
-
-    /// Normalize and bind tables, predicates, modifiers and enchantment equipment-drop
-    /// requirements once into an immutable generation bundle.
-    pub fn prepare_types(&mut self) -> io::Result<()> {
-        let mut tables = HashMap::with_capacity(self.tables.len());
-        for id in self.tables.ids() {
-            let mut table = self.tables[id].clone();
-            table_fields(&mut table, &self.tags, &self.types);
-            tables.insert(id.to_owned(), table);
-        }
-        let tables: Arc<super::super::LootTables> = Arc::new(tables.into_iter().collect());
-        let (predicates, modifiers, enchantment_effects) = normalize_resources(self);
-        let bindings = self.types.bind_generation(
-            tables.clone(),
-            predicates.clone(),
-            modifiers.clone(),
-            enchantment_effects.clone(),
-            loot_tag_subset(&self.tags),
-        )?;
-        self.tables = tables;
-        self.predicates = predicates;
-        self.modifiers = modifiers;
-        for (enchantment, (_, effects)) in self.enchantments.iter_mut().zip(enchantment_effects) {
-            enchantment.effects = effects;
-        }
-        self.bindings = bindings;
-        self.normalized = true;
-        self.refresh_copy_requirements();
-        Ok(())
-    }
-}
-
-fn normalize_resources(
-    data: &super::super::LootData,
-) -> (
-    Arc<HashMap<String, Value>>,
-    Arc<HashMap<String, Value>>,
-    Vec<(String, Arc<Value>)>,
-) {
-    let mut predicates = (*data.predicates).clone();
-    for value in predicates.values_mut() {
-        typed(value, false, &data.tags, &data.types);
-    }
-    let mut modifiers = (*data.modifiers).clone();
-    for value in modifiers.values_mut() {
-        typed(value, true, &data.tags, &data.types);
-    }
-    let mut enchantment_effects = Vec::with_capacity(data.enchantments.len());
-    for enchantment in &data.enchantments {
-        let mut effects = (*enchantment.effects).clone();
-        equipment_drop_requirements(&mut effects, &data.tags, &data.types);
-        enchantment_effects.push((enchantment.name.clone(), Arc::new(effects)));
-    }
-    (
-        Arc::new(predicates),
-        Arc::new(modifiers),
-        enchantment_effects,
-    )
-}
-
-fn equipment_drop_requirements(effects: &mut Value, tags: &Tags, types: &Types) {
-    for effect in effects
-        .get_mut("minecraft:equipment_drops")
-        .and_then(Value::as_array_mut)
-        .into_iter()
-        .flatten()
-    {
-        if let Some(req) = effect
-            .get_mut("requirements")
-            .filter(|value| !value.is_null())
-        {
-            typed(req, false, tags, types);
-        }
-    }
-}
-
-fn loot_tag_subset(tags: &Tags) -> HashMap<String, HashMap<String, Vec<String>>> {
-    let mut subset = HashMap::new();
-    for registry in ["predicate", "item_modifier"] {
-        if let Some(entries) = tags.get(registry) {
-            subset.insert(registry.to_owned(), entries.clone());
-        }
-    }
-    subset
 }
 
 pub(super) fn normalize_table(value: &mut Value, tags: &Tags, types: &Types) {
@@ -188,6 +114,11 @@ fn fields(value: &mut Value, tags: &Tags, types: &Types) {
     if let Some(condition) = value.get_mut("condition") {
         typed(condition, false, tags, types);
     }
+    if let Some(conditions) = value.get_mut("conditions").and_then(Value::as_array_mut) {
+        for condition in conditions {
+            typed(condition, false, tags, types);
+        }
+    }
     if let Some(modifier) = value.get_mut("modifier") {
         typed(modifier, true, tags, types);
     }
@@ -228,11 +159,15 @@ fn typed(value: &mut Value, function: bool, tags: &Tags, types: &Types) {
             }
         }
     }
-    if function
-        && conditional
-        && let Some(condition) = value.get_mut("condition").filter(|value| !value.is_null())
-    {
-        typed(condition, false, tags, types);
+    if function && conditional {
+        if let Some(condition) = value.get_mut("condition").filter(|value| !value.is_null()) {
+            typed(condition, false, tags, types);
+        }
+        if let Some(conditions) = value.get_mut("conditions").and_then(Value::as_array_mut) {
+            for condition in conditions {
+                typed(condition, false, tags, types);
+            }
+        }
     }
 }
 

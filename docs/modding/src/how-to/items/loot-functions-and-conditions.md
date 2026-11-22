@@ -24,14 +24,15 @@ The data form is an object with `type` and the codec's own fields side by side:
 ```
 
 Register a load-time codec implementing `ModLootFunctionCodec` or `ModLootConditionCodec`.
-Its `decode(&serde_json::Value) -> Result<Arc<dyn ModLootFunction | ModLootCondition>, String>`
-runs once per resource entry when data loads (including tables edited by `loot_table_load`,
+The function codec's `decode(&serde_json::Value)` returns `Result<Arc<dyn ModLootFunction>, String>`;
+the condition codec returns `Result<Arc<dyn ModLootCondition>, String>`. Each decoder runs once
+per resource entry when data loads (including tables edited by `loot_table_load`,
 named predicates and item modifiers, enchantment `equipment_drops` requirements, global loot
 modifier conditions, and inline `/loot` tables prepared at the command boundary), producing an
 immutable bound rule. Unknown fields are retained for the codec, not rejected by the engine.
 Declare parameters read by a bound rule with `referenced_context_params`; a table whose context
 set does not allow one logs a warning but still loads. At runtime an absent parameter remains
-absent.
+absent. Named references reuse the same bound rule in every context set that references them.
 
 Unknown loot types, malformed registered entries, failed codec decoders, and
 predicate/item-modifier reference cycles fail the candidate preparation, with a

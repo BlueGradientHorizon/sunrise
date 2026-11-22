@@ -20,9 +20,7 @@ fn data(tables: Vec<(&str, Value)>) -> LootData {
         holder_sets: Default::default(),
         component_defaults: Arc::default(),
         copies_entity_nbt: false,
-        types,
         bindings,
-        normalized: true,
         tables,
         global_modifiers: Arc::default(),
         modifiers,
@@ -31,7 +29,7 @@ fn data(tables: Vec<(&str, Value)>) -> LootData {
         enchantments: vec![],
         primary_answers: Default::default(),
         support_answers: Default::default(),
-        tags: HashMap::new(),
+        tags: Default::default(),
         smelting: vec![],
     }
 }
@@ -352,9 +350,10 @@ fn modifiers_run_once_after_split_and_raw_subrolls_share_random_and_guards() {
                 "test:refuse" => (1000, None, Arc::new(Refuse)),
                 _ => (
                     999,
-                    Some(types::PreparedCondition::stock(
+                    Some(data.bindings().prepare_condition(
                         json!({"type":"neoforge:loot_table_id","loot_table_id":"test:never"}),
-                    )),
+                        "test:skip $.condition",
+                    ).unwrap()),
                     Arc::new(Skipped),
                 ),
             };

@@ -37,7 +37,8 @@ impl Serializers {
         let prepare_condition = |condition: Option<serde_json::Value>| {
             condition
                 .map(|value| {
-                    loot.prepare_condition(value, &format!("loot_modifier {id} $.condition"))
+                    loot.bindings()
+                        .prepare_condition(value, &format!("loot_modifier {id} $.condition"))
                         .map_err(|error| error.to_string())
                 })
                 .transpose()

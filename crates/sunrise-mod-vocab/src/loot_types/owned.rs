@@ -36,7 +36,8 @@ impl ModLootFunctionCodec for FunctionCodec {
             .owner
             .call("loot function type", "loot_function_decode", || {
                 self.codec.decode(data)
-            })??;
+            })?
+            .map_err(|reason| format!("mod {}: {reason}", self.owner.id()))?;
         let params = match self
             .owner
             .call("loot function type", "loot_function_metadata", || {
@@ -92,7 +93,8 @@ impl ModLootConditionCodec for ConditionCodec {
             .owner
             .call("loot condition type", "loot_condition_decode", || {
                 self.codec.decode(data)
-            })??;
+            })?
+            .map_err(|reason| format!("mod {}: {reason}", self.owner.id()))?;
         let params = match self
             .owner
             .call("loot condition type", "loot_condition_metadata", || {

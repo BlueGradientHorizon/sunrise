@@ -101,7 +101,7 @@ impl LootData {
         table: &Value,
         random: &mut R,
     ) -> Vec<LootStack> {
-        let prepared = match self.prepare_inline_table(table) {
+        let prepared = match self.bindings.prepare_inline_table(table) {
             Ok(prepared) => prepared,
             Err(error) => {
                 log::warn!("inline loot table refused: {error}");

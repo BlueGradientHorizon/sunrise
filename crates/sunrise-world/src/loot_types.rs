@@ -147,6 +147,7 @@ impl Types {
             modifiers,
             visiting: HashSet::new(),
             inherited: None,
+            strict: true,
             rules: RuleMap::default(),
             allowed: None,
         };
@@ -180,7 +181,7 @@ impl Types {
         predicates: Arc<HashMap<String, Value>>,
         modifiers: Arc<HashMap<String, Value>>,
         enchantment_effects: Vec<(String, Arc<Value>)>,
-        loot_tags: HashMap<String, HashMap<String, Vec<String>>>,
+        normalization: Normalization,
     ) -> io::Result<Bindings> {
         let rules = {
             let mut walker = Walker {
@@ -191,6 +192,7 @@ impl Types {
                 modifiers: &modifiers,
                 visiting: HashSet::new(),
                 inherited: None,
+                strict: true,
                 rules: RuleMap::default(),
                 allowed: None,
             };
@@ -247,31 +249,66 @@ impl Types {
                     .into_iter()
                     .map(|(_, effects)| effects)
                     .collect(),
-                loot_tags,
+                normalization,
                 rules,
             }),
         })
     }
 }
 
-#[derive(Clone)]
-struct BoundEntry<T: ?Sized> {
+pub struct BoundEntry<T: ?Sized> {
+    kind: Box<str>,
     location: Arc<str>,
     referenced_params: Arc<[String]>,
     rule: Arc<T>,
 }
 
+impl BoundEntry<dyn BoundFunction> {
+    pub fn apply(
+        &self,
+        ctx: &LootContext<'_>,
+        random: &mut dyn RollRandom,
+        tags: &dyn LootTags,
+        stack: &mut LootStack,
+    ) {
+        if let Err(reason) = self.rule.apply(ctx, random, tags, stack) {
+            log::warn!(
+                "loot function type {} ({}): {reason}",
+                self.kind,
+                self.location
+            );
+        }
+    }
+}
+impl BoundEntry<dyn BoundCondition> {
+    pub fn test(
+        &self,
+        ctx: &LootContext<'_>,
+        random: &mut dyn RollRandom,
+        tags: &dyn LootTags,
+    ) -> bool {
+        match self.rule.test(ctx, random, tags) {
+            Ok(value) => value,
+            Err(reason) => {
+                log::warn!(
+                    "loot condition type {} ({}): {reason}",
+                    self.kind,
+                    self.location
+                );
+                false
+            }
+        }
+    }
+}
+
 /// Side table of decoded rules keyed by the address of their exact final immutable `Value` node.
 /// Addresses are opaque identities, never dereferenced, and never outlive their owning documents.
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct RuleMap {
     functions: HashMap<usize, BoundEntry<dyn BoundFunction>>,
     conditions: HashMap<usize, BoundEntry<dyn BoundCondition>>,
 }
 impl RuleMap {
-    pub fn is_empty(&self) -> bool {
-        self.functions.is_empty() && self.conditions.is_empty()
-    }
     fn referenced_params(&self, function: bool, key: usize) -> Option<Arc<[String]>> {
         if function {
             self.functions
@@ -293,110 +330,89 @@ pub struct Bindings {
     inner: Arc<BindingsInner>,
 }
 struct BindingsInner {
+    rules: RuleMap,
     tables: Arc<super::LootTables>,
     predicates: Arc<HashMap<String, Value>>,
     modifiers: Arc<HashMap<String, Value>>,
     _enchantment_effects: Vec<Arc<Value>>,
-    loot_tags: HashMap<String, HashMap<String, Vec<String>>>,
-    rules: RuleMap,
+    normalization: Normalization,
 }
+
+/// The merged holder sets and tags used when binding inline data to a loot generation.
+#[derive(Default)]
+pub struct Normalization {
+    holder_sets: Arc<super::holder_sets::Binding>,
+    tags: Arc<super::loot_tags::BoundTags>,
+}
+
 impl Default for Bindings {
     fn default() -> Self {
-        Self::empty(Types::default())
-    }
-}
-impl Bindings {
-    /// Empty bindings retaining a codec registry with no bound documents.
-    pub fn empty(types: Types) -> Self {
         Self {
-            types,
+            types: Types::default(),
             inner: Arc::new(BindingsInner {
                 tables: Arc::default(),
                 predicates: Arc::default(),
                 modifiers: Arc::default(),
                 _enchantment_effects: Vec::new(),
-                loot_tags: HashMap::new(),
+                normalization: Normalization::default(),
                 rules: RuleMap::default(),
             }),
         }
     }
-    pub fn types(&self) -> &Types {
-        &self.types
-    }
-    pub fn contains(&self, kind: &str, function: bool) -> bool {
-        self.types.contains(kind, function)
-    }
+}
+impl Bindings {
     pub fn conditional(&self, kind: &str) -> bool {
         self.types.conditional(kind)
     }
-    pub fn apply(
-        &self,
-        local: Option<&RuleMap>,
+
+    pub fn function<'a>(
+        &'a self,
+        local: Option<&'a RuleMap>,
         kind: &str,
         data: &Value,
-        ctx: &LootContext<'_>,
-        random: &mut dyn RollRandom,
-        tags: &dyn LootTags,
-        stack: &mut LootStack,
-    ) {
-        if !self.types.contains(kind, true) {
-            return;
-        }
+    ) -> Option<&'a BoundEntry<dyn BoundFunction>> {
         let key = std::ptr::from_ref(data) as usize;
-        let bound = local
+        let entry = local
             .and_then(|map| map.functions.get(&key))
             .or_else(|| self.inner.rules.functions.get(&key));
-        let Some(bound) = bound else {
+        if entry.is_none() && self.types.contains(kind, true) {
             log::error!(
                 "loot function type {kind}: missing prepared binding (preparation/integration error)"
             );
-            return;
-        };
-        if let Err(reason) = bound.rule.apply(ctx, random, tags, stack) {
-            log::warn!("loot function type {kind} ({}): {reason}", bound.location);
         }
+        entry
     }
-    pub fn test(
-        &self,
-        local: Option<&RuleMap>,
+
+    pub fn condition<'a>(
+        &'a self,
+        local: Option<&'a RuleMap>,
         kind: &str,
         data: &Value,
-        ctx: &LootContext<'_>,
-        random: &mut dyn RollRandom,
-        tags: &dyn LootTags,
-    ) -> bool {
-        if !self.types.contains(kind, false) {
-            return false;
-        }
+    ) -> Option<&'a BoundEntry<dyn BoundCondition>> {
         let key = std::ptr::from_ref(data) as usize;
-        let bound = local
+        let entry = local
             .and_then(|map| map.conditions.get(&key))
             .or_else(|| self.inner.rules.conditions.get(&key));
-        let Some(bound) = bound else {
+        if entry.is_none() && self.types.contains(kind, false) {
             log::error!(
                 "loot condition type {kind}: missing prepared binding (preparation/integration error)"
             );
-            return false;
-        };
-        match bound.rule.test(ctx, random, tags) {
-            Ok(value) => value,
-            Err(reason) => {
-                log::warn!("loot condition type {kind} ({}): {reason}", bound.location);
-                false
-            }
         }
+        entry
     }
     /// Normalize and bind an inline loot table at the argument boundary before drawing,
     /// reusing named generation bindings without re-decoding them.
     pub fn prepare_inline_table(&self, table: &Value) -> io::Result<PreparedInlineTable> {
         let mut boxed = Box::new(table.clone());
-        normalize::normalize_table(&mut boxed, &self.inner.loot_tags, &self.types);
-        self.bind_prepared_inline_table(boxed)
-    }
-    pub(crate) fn bind_prepared_inline_table(
-        &self,
-        boxed: Box<Value>,
-    ) -> io::Result<PreparedInlineTable> {
+        let normalization = &self.inner.normalization;
+        normalization.holder_sets.walk(
+            "inline loot_table",
+            &mut boxed,
+            &normalization.tags,
+            &self.types,
+            None,
+        )?;
+        normalize::normalize_table(&mut boxed, &normalization.tags, &self.types);
         let rules = {
             let mut walker = Walker {
                 types: &self.types,
@@ -406,6 +422,9 @@ impl Bindings {
                 modifiers: &self.inner.modifiers,
                 visiting: HashSet::new(),
                 inherited: Some(&self.inner.rules),
+                // Programmatic roots keep their evaluator's stock-kind handling; bind
+                // custom nodes at the same schema-owned edges as resource files.
+                strict: false,
                 rules: RuleMap::default(),
                 allowed: None,
             };
@@ -421,14 +440,15 @@ impl Bindings {
     /// reusing named predicate bindings from this generation without re-decoding them.
     pub fn prepare_condition(&self, condition: Value, path: &str) -> io::Result<PreparedCondition> {
         let mut boxed = Box::new(condition);
-        normalize::normalize_condition(&mut boxed, &self.inner.loot_tags, &self.types);
-        self.bind_prepared_condition(boxed, path)
-    }
-    pub(crate) fn bind_prepared_condition(
-        &self,
-        boxed: Box<Value>,
-        path: &str,
-    ) -> io::Result<PreparedCondition> {
+        let normalization = &self.inner.normalization;
+        normalization.holder_sets.walk(
+            path,
+            &mut boxed,
+            &normalization.tags,
+            &self.types,
+            Some(false),
+        )?;
+        normalize::normalize_condition(&mut boxed, &normalization.tags, &self.types);
         let rules = {
             let mut walker = Walker {
                 types: &self.types,
@@ -438,6 +458,7 @@ impl Bindings {
                 modifiers: &self.inner.modifiers,
                 visiting: HashSet::new(),
                 inherited: Some(&self.inner.rules),
+                strict: true,
                 rules: RuleMap::default(),
                 allowed: None,
             };
@@ -445,10 +466,8 @@ impl Bindings {
             walker.rules
         };
         Ok(PreparedCondition {
-            inner: Arc::new(PreparedConditionInner {
-                value: boxed,
-                rules,
-            }),
+            value: boxed,
+            rules,
         })
     }
 }
@@ -456,8 +475,8 @@ impl Bindings {
 /// A normalized inline loot table paired with its locally bound custom rules.
 /// Keeps the normalized `Value` on the heap so its node addresses stay stable across moves.
 pub struct PreparedInlineTable {
-    value: Box<Value>,
     rules: RuleMap,
+    value: Box<Value>,
 }
 impl PreparedInlineTable {
     pub fn value(&self) -> &Value {
@@ -471,65 +490,25 @@ impl PreparedInlineTable {
 /// A normalized condition node (for example a global loot modifier's `condition`) paired
 /// with its locally bound custom rules. Named predicate references resolve through the
 /// owning generation's [`Bindings`].
-#[derive(Clone)]
 pub struct PreparedCondition {
-    inner: Arc<PreparedConditionInner>,
-}
-struct PreparedConditionInner {
-    value: Box<Value>,
     rules: RuleMap,
+    value: Box<Value>,
 }
 impl PreparedCondition {
     pub fn value(&self) -> &Value {
-        &self.inner.value
+        &self.value
     }
     pub fn rules(&self) -> &RuleMap {
-        &self.inner.rules
-    }
-    /// Wrap a stock condition with no custom rules for unit fixtures that bypass preparation.
-    pub fn stock(value: Value) -> Self {
-        Self {
-            inner: Arc::new(PreparedConditionInner {
-                value: Box::new(value),
-                rules: RuleMap::default(),
-            }),
-        }
+        &self.rules
     }
 }
 
 impl super::LootData {
-    /// Validate a private candidate before publishing it or replacing prior data.
-    pub fn validate_types(&self) -> io::Result<()> {
-        self.types.validate(
-            self.tables.ids().map(|id| (id, &self.tables[id])),
-            &self.predicates,
-            &self.modifiers,
-        )
-    }
-    pub fn types(&self) -> &Types {
-        &self.types
-    }
     pub fn bindings(&self) -> &Bindings {
         &self.bindings
     }
     pub fn modifiers(&self) -> &Arc<HashMap<String, Value>> {
         &self.modifiers
-    }
-    /// Prepare an inline loot table against this generation's holder sets, tags and bindings.
-    pub fn prepare_inline_table(&self, table: &Value) -> io::Result<PreparedInlineTable> {
-        let mut boxed = Box::new(table.clone());
-        self.holder_sets
-            .walk("inline loot_table", &mut boxed, &self.tags)?;
-        normalize::normalize_table(&mut boxed, &self.tags, &self.types);
-        self.bindings.bind_prepared_inline_table(boxed)
-    }
-    /// Prepare a standalone condition (such as a global loot modifier's `condition`) against
-    /// this generation's holder sets, tags and bindings.
-    pub fn prepare_condition(&self, condition: Value, path: &str) -> io::Result<PreparedCondition> {
-        let mut boxed = Box::new(condition);
-        self.holder_sets.walk(path, &mut boxed, &self.tags)?;
-        normalize::normalize_condition(&mut boxed, &self.tags, &self.types);
-        self.bindings.bind_prepared_condition(boxed, path)
     }
 }
 
@@ -565,6 +544,7 @@ struct Walker<'a> {
     modifiers: &'a HashMap<String, Value>,
     visiting: HashSet<(bool, String)>,
     inherited: Option<&'a RuleMap>,
+    strict: bool,
     rules: RuleMap,
     allowed: Option<&'static [&'static str]>,
 }
@@ -646,6 +626,11 @@ impl Walker<'_> {
         if let Some(value) = data.get("modifier").filter(|value| !value.is_null()) {
             self.entry(value, true, &format!("{path}.modifier"))?;
         }
+        if let Some(list) = data.get("conditions").and_then(Value::as_array) {
+            for (i, value) in list.iter().enumerate() {
+                self.entry(value, false, &format!("{path}.conditions[{i}]"))?;
+            }
+        }
         Ok(())
     }
     fn entry(&mut self, data: &Value, function: bool, path: &str) -> io::Result<()> {
@@ -661,31 +646,36 @@ impl Walker<'_> {
                 self.modifiers.get(&id)
             } else {
                 self.predicates.get(&id)
-            }
-            .ok_or_else(|| invalid(path, &id, "unknown reference"))?;
-            self.entry(value, function, &format!("{path} -> {id}"))?;
+            };
+            let result = match value {
+                Some(value) => self.entry(value, function, &format!("{path} -> {id}")),
+                None if self.strict => Err(invalid(path, &id, "unknown reference")),
+                None => Ok(()),
+            };
             self.visiting.remove(&key);
-            return Ok(());
+            return result;
         }
-        if function && data.is_array() {
-            return self.set(data, true, path);
+        if data.is_array() && (function || !self.strict) {
+            return self.set(data, function, path);
         }
-        let kind = data
-            .get("type")
-            .and_then(Value::as_str)
-            .ok_or_else(|| invalid(path, "<missing>", "expected typed loot object"))?;
+        let Some(kind) = data.get("type").and_then(Value::as_str) else {
+            return if self.strict {
+                Err(invalid(path, "<missing>", "expected typed loot object"))
+            } else {
+                Ok(())
+            };
+        };
         let qualified = sunrise_core::identifier::Identifier::parse(kind)
             .map_err(|reason| invalid(path, kind, reason))?
             .to_string();
         let kind = qualified.as_str();
         let builtin = builtin(kind, function);
-        if !builtin {
-            let registry = self
-                .types
-                .registry
-                .as_ref()
-                .filter(|r| r.contains(kind, function))
-                .ok_or_else(|| invalid(path, kind, "unknown loot type"))?;
+        let registry = self
+            .types
+            .registry
+            .as_ref()
+            .filter(|r| r.contains(kind, function));
+        if !builtin && let Some(registry) = registry {
             let key = std::ptr::from_ref(data) as usize;
             let params = if let Some(params) = self
                 .inherited
@@ -701,6 +691,7 @@ impl Walker<'_> {
                 self.rules.functions.insert(
                     key,
                     BoundEntry {
+                        kind: kind.into(),
                         location: Arc::from(path),
                         referenced_params: Arc::clone(&params),
                         rule: decoded.rule,
@@ -715,6 +706,7 @@ impl Walker<'_> {
                 self.rules.conditions.insert(
                     key,
                     BoundEntry {
+                        kind: kind.into(),
                         location: Arc::from(path),
                         referenced_params: Arc::clone(&params),
                         rule: decoded.rule,
@@ -732,15 +724,26 @@ impl Walker<'_> {
                     }
                 }
             }
+        } else if !builtin && self.strict {
+            return Err(invalid(path, kind, "unknown loot type"));
         }
-        if function
-            && (builtin || self.types.conditional(kind))
-            && let Some(condition) = data.get("condition").filter(|value| !value.is_null())
-        {
-            self.entry(condition, false, &format!("{path}.condition"))?;
+        if function && (builtin || self.types.conditional(kind)) {
+            if let Some(condition) = data.get("condition").filter(|value| !value.is_null()) {
+                self.entry(condition, false, &format!("{path}.condition"))?;
+            }
+            if let Some(list) = data.get("conditions").and_then(Value::as_array) {
+                for (i, value) in list.iter().enumerate() {
+                    self.entry(value, false, &format!("{path}.conditions[{i}]"))?;
+                }
+            }
         }
         if builtin {
-            for child in shapes::validate(data, function, kind, path)? {
+            let children = if self.strict {
+                shapes::validate(data, function, kind, path)?
+            } else {
+                shapes::children(data, function, kind)
+            };
+            for child in children {
                 match child.kind {
                     shapes::ChildKind::Function => self.entry(child.value, true, &child.path)?,
                     shapes::ChildKind::Condition => self.entry(child.value, false, &child.path)?,
@@ -760,7 +763,7 @@ impl Walker<'_> {
     fn set(&mut self, data: &Value, function: bool, path: &str) -> io::Result<()> {
         if let Some(list) = data.as_array() {
             for (i, value) in list.iter().enumerate() {
-                if value.is_array() {
+                if value.is_array() && self.strict {
                     return Err(invalid(
                         &format!("{path}[{i}]"),
                         "holder_set",
@@ -785,7 +788,15 @@ fn builtin(kind: &str, function: bool) -> bool {
 }
 
 impl<R: sunrise_core::random::RandomSource> super::Context<'_, R> {
-    pub(super) fn registered_condition(&mut self, kind: &str, data: &Value) -> bool {
+    pub(super) fn registered_condition(
+        &mut self,
+        bindings: Option<&RuleMap>,
+        kind: &str,
+        data: &Value,
+    ) -> bool {
+        let Some(bound) = self.data.bindings.condition(bindings, kind, data) else {
+            return false;
+        };
         let facts = super::query_context::roll_facts(
             &self.query,
             self.place.as_deref(),
@@ -793,16 +804,12 @@ impl<R: sunrise_core::random::RandomSource> super::Context<'_, R> {
             self.biome,
             self.luck,
         );
-        self.data.bindings.test(
-            self.local_bindings,
-            kind,
-            data,
-            &facts,
-            &mut self.random,
-            self.data,
-        )
+        bound.test(&facts, &mut self.random, self.data)
     }
     pub(super) fn registered_function(&mut self, kind: &str, data: &Value, stack: &mut LootStack) {
+        let Some(bound) = self.data.bindings.function(self.local_bindings, kind, data) else {
+            return;
+        };
         let facts = super::query_context::roll_facts(
             &self.query,
             self.place.as_deref(),
@@ -810,15 +817,7 @@ impl<R: sunrise_core::random::RandomSource> super::Context<'_, R> {
             self.biome,
             self.luck,
         );
-        self.data.bindings.apply(
-            self.local_bindings,
-            kind,
-            data,
-            &facts,
-            &mut self.random,
-            self.data,
-            stack,
-        );
+        bound.apply(&facts, &mut self.random, self.data, stack);
     }
 }
 

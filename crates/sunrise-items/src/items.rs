@@ -2369,12 +2369,24 @@ impl<R: RandomSource> LootContext<'_, R> {
         Self::number(v, random).round() as i32
     }
     fn condition(&self, c: &Value, random: &mut R) -> bool {
+        self.condition_with_bindings(c, random, self.local_bindings)
+    }
+    fn condition_with_bindings(
+        &self,
+        c: &Value,
+        random: &mut R,
+        bindings: Option<&sunrise_world::loot::types::RuleMap>,
+    ) -> bool {
         if let Some(holds) = self.stock_condition(c) {
             return holds;
         }
         let (kind, c) = match c {
             Value::Null => return true,
-            Value::Array(list) => return list.iter().all(|c| self.condition(c, random)),
+            Value::Array(list) => {
+                return list
+                    .iter()
+                    .all(|c| self.condition_with_bindings(c, random, bindings));
+            }
             // A string names a `Registries.PREDICATE` id (`LootItemCondition.CODEC`).
             Value::String(id) => return self.named_condition(id, random),
             Value::Object(o) => (o.get("type").and_then(Value::as_str).unwrap_or(""), c),
@@ -2385,17 +2397,17 @@ impl<R: RandomSource> LootContext<'_, R> {
             "minecraft:survives_explosion" => self
                 .explosion_radius
                 .is_none_or(|r| random.next_float() <= 1.0 / r),
-            "minecraft:inverted" => !self.condition(&c["term"], random),
+            "minecraft:inverted" => !self.condition_with_bindings(&c["term"], random, bindings),
             "minecraft:any_of" => c["terms"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .any(|t| self.condition(t, random)),
+                .any(|t| self.condition_with_bindings(t, random, bindings)),
             "minecraft:all_of" => c["terms"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .all(|t| self.condition(t, random)),
+                .all(|t| self.condition_with_bindings(t, random, bindings)),
             "minecraft:random_chance" => random.next_float() < Self::number(&c["chance"], random),
             "minecraft:table_bonus" => {
                 // BonusLevelTableCondition: chances[min(level, len - 1)].
@@ -2484,15 +2496,11 @@ impl<R: RandomSource> LootContext<'_, R> {
                 .and_then(|location| location(c))
                 .unwrap_or(true),
             // A registered condition answers using the current roll context.
-            k if !c.is_null() && k.contains(':') && !k.starts_with("minecraft:") => {
-                if !self.items.loot_bindings.contains(k, false) {
-                    return false;
-                }
-                let ctx = self.roll_facts();
-                self.items
-                    .loot_bindings
-                    .test(self.local_bindings, k, c, &ctx, random, self.items)
-            }
+            k if k.contains(':') && !k.starts_with("minecraft:") => self
+                .items
+                .loot_bindings
+                .condition(bindings, k, c)
+                .is_some_and(|bound| bound.test(&self.roll_facts(), random, self.items)),
             _ => false,
         }
     }
@@ -3008,24 +3016,15 @@ impl<R: RandomSource> LootContext<'_, R> {
                     stack.tidy();
                 }
                 "minecraft:set_components" => apply_components(stack, &f["components"]),
-                // A mod's own kind: the function hook changes the stack, as it
-                // does in the main loot engine.
                 k if k.contains(':') && !k.starts_with("minecraft:") => {
-                    if !self.items.loot_bindings.contains(k, true) {
-                        continue;
+                    if let Some(bound) =
+                        self.items.loot_bindings.function(self.local_bindings, k, f)
+                    {
+                        let facts = self.roll_facts();
+                        mod_function(self.items, stack, |stack| {
+                            bound.apply(&facts, random, self.items, stack)
+                        });
                     }
-                    let ctx = self.roll_facts();
-                    mod_function(k, f, &ctx, self.items, stack, |kind, data, ctx, stack| {
-                        self.items.loot_bindings.apply(
-                            self.local_bindings,
-                            kind,
-                            data,
-                            ctx,
-                            random,
-                            self.items,
-                            stack,
-                        );
-                    });
                 }
                 _ => {}
             }
@@ -3282,21 +3281,13 @@ fn apply_loot(
 /// Tests can supply the transformation without installing a process-wide registry.
 /// `items` holds the prototypes a removal is checked against.
 fn mod_function(
-    kind: &str,
-    data: &Value,
-    ctx: &sunrise_world::loot::LootContext<'_>,
     items: &Items,
     stack: &mut ItemStack,
-    hook: impl FnOnce(
-        &str,
-        &Value,
-        &sunrise_world::loot::LootContext<'_>,
-        &mut sunrise_world::loot::LootStack,
-    ),
+    apply: impl FnOnce(&mut sunrise_world::loot::LootStack),
 ) {
     let before = loot_of(stack);
     let mut working = before.clone();
-    hook(kind, data, ctx, &mut working);
+    apply(&mut working);
     apply_loot(&before, &working, stack, prototypes_of(items));
 }
 
@@ -4664,28 +4655,18 @@ mod tests {
         let block = ctx(&items, Some(&held), &props, "minecraft:stone");
         let native = block.roll_facts();
         let mut stack = ItemStack::new("minecraft:stone", 1);
-        mod_function(
-            "mymod:seven",
-            &json!({"type": "mymod:seven"}),
-            &native,
-            &items,
-            &mut stack,
-            |_, _, facts, loot| {
-                let tool = facts.tool.unwrap();
-                assert_eq!(tool.item_id(), "minecraft:diamond_pickaxe");
-                assert_eq!(tool.enchantment_at(0), Some(("minecraft:fortune", 3)));
-                assert!(tool.enchantment_at(1).is_none());
-                loot.item = "minecraft:diamond".to_owned();
-                loot.count = 7;
-                loot.components.push((
-                    "minecraft:custom_data".to_owned(),
-                    Some(
-                        sunrise_core::json_nbt::json_to_tag(&json!({"machine": "furnace"}))
-                            .unwrap(),
-                    ),
-                ));
-            },
-        );
+        mod_function(&items, &mut stack, |loot| {
+            let tool = native.tool.unwrap();
+            assert_eq!(tool.item_id(), "minecraft:diamond_pickaxe");
+            assert_eq!(tool.enchantment_at(0), Some(("minecraft:fortune", 3)));
+            assert!(tool.enchantment_at(1).is_none());
+            loot.item = "minecraft:diamond".to_owned();
+            loot.count = 7;
+            loot.components.push((
+                "minecraft:custom_data".to_owned(),
+                Some(sunrise_core::json_nbt::json_to_tag(&json!({"machine": "furnace"})).unwrap()),
+            ));
+        });
         assert_eq!(&*stack.item, "minecraft:diamond");
         assert_eq!(stack.count, 7);
         assert_eq!(
@@ -5041,18 +5022,10 @@ mod tests {
         let items = prepared_items().expect("prepared item resources");
         let info = items.get("minecraft:stick").expect("stick");
         assert!(info.components.iter().any(|c| c == "minecraft:rarity"));
-        let props = sunrise_world::chunk::BlockProperties::new();
-        let block = ctx(&items, None, &props, "minecraft:stone");
-        let native = block.roll_facts();
         let mut stack = epic_stick();
-        mod_function(
-            "mymod:plain",
-            &json!({"type": "mymod:plain"}),
-            &native,
-            &items,
-            &mut stack,
-            |_, _, _, loot| loot.components.retain(|(id, _)| id != "minecraft:rarity"),
-        );
+        mod_function(&items, &mut stack, |loot| {
+            loot.components.retain(|(id, _)| id != "minecraft:rarity");
+        });
         assert!(!stack.carries_component(Some(info), "minecraft:rarity"));
     }
 
@@ -5061,23 +5034,13 @@ mod tests {
     #[test]
     fn a_mod_function_that_changes_nothing_keeps_the_stacks_form() {
         let items = Items::for_tests(HashMap::new());
-        let props = sunrise_world::chunk::BlockProperties::new();
-        let block = ctx(&items, None, &props, "minecraft:stone");
-        let native = block.roll_facts();
         let mut stack = ItemStack::new("minecraft:diamond_sword", 1);
         stack.enchant("minecraft:sharpness", 3);
         stack
             .data_mut()
             .set_loot_name("minecraft:custom_name", &json!("Excalibur"));
         let before = stack.clone();
-        mod_function(
-            "mymod:nothing",
-            &json!({"type": "mymod:nothing"}),
-            &native,
-            &items,
-            &mut stack,
-            |_, _, _, _| {},
-        );
+        mod_function(&items, &mut stack, |_| {});
         assert_eq!(stack, before);
     }
 

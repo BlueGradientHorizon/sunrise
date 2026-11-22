@@ -267,10 +267,8 @@ mod holder_sets;
 
 /// Loot tables, items, enchantments and the tags they reference.
 pub struct LootData {
-    holder_sets: holder_sets::Binding,
-    types: types::Types,
+    holder_sets: Arc<holder_sets::Binding>,
     bindings: types::Bindings,
-    normalized: bool,
     component_defaults: Arc<HashMap<String, Compound>>,
     copies_entity_nbt: bool,
     tables: Arc<LootTables>,
@@ -285,7 +283,7 @@ pub struct LootData {
     primary_answers: crate::enchantment_answers::AnswerTable,
     support_answers: crate::enchantment_answers::AnswerTable,
     /// Bound tags by registry and tag ID.
-    tags: loot_tags::BoundTags,
+    tags: Arc<loot_tags::BoundTags>,
     /// Smelting recipes in recipe id order: (ingredient, result, result count).
     smelting: Vec<(Value, String, i32)>,
 }
@@ -694,6 +692,27 @@ fn cost(v: &Value) -> (i32, i32) {
     )
 }
 
+/// Selected loot resources awaiting the owning server's load hooks and codec binding.
+pub struct LootLoadCandidate {
+    data: LootData,
+    types: types::Types,
+}
+
+impl LootLoadCandidate {
+    pub fn component_defaults(&self) -> &Arc<HashMap<String, Compound>> {
+        self.data.component_defaults()
+    }
+
+    /// Apply native edits before normalizing and binding the final immutable documents.
+    pub fn prepare(
+        mut self,
+        native: Option<&crate::native_load_context::LoadContext>,
+    ) -> io::Result<LootData> {
+        self.data.prepare_types(&self.types, native)?;
+        Ok(self.data)
+    }
+}
+
 impl LootData {
     /// Load tables, modifiers, predicates, tags and recipes from `data/`,
     /// and item metadata from the owning load's default-component snapshot.
@@ -712,41 +731,35 @@ impl LootData {
         defaults: &crate::item_defaults::ItemDefaults,
         types: types::Types,
     ) -> io::Result<Self> {
-        Self::load_generation(root, overlay, defaults, types, None, true)
+        Self::load_generation(root, overlay, defaults, types, None)?.prepare(None)
     }
 
-    /// Load server loot with the damage catalog already bound for this generation.
+    /// Load server loot against its damage catalog, applying native edits, when present,
+    /// before binding the immutable generation's rules.
     pub fn load_with_damage(
         root: &Path,
         overlay: &PackOverlay,
         defaults: &crate::item_defaults::ItemDefaults,
         damage: &crate::damage_source::Catalog,
+        native: Option<&crate::native_load_context::LoadContext>,
     ) -> io::Result<Self> {
-        Self::load_generation(
-            root,
-            overlay,
-            defaults,
-            types::Types::capture(),
-            Some(damage),
-            true,
-        )
+        Self::load_candidate_with_damage(root, overlay, defaults, damage)?.prepare(native)
     }
 
-    /// Load server loot before native table-load hooks run, deferring codec
-    /// binding so the caller binds once via `apply_native_table_loads` or `prepare_types`.
-    pub fn load_unbound_with_damage(
+    /// Read the server's loot resources while the other dependent registries are staged.
+    /// This candidate cannot be rolled until the owner prepares it.
+    pub fn load_candidate_with_damage(
         root: &Path,
         overlay: &PackOverlay,
         defaults: &crate::item_defaults::ItemDefaults,
         damage: &crate::damage_source::Catalog,
-    ) -> io::Result<Self> {
+    ) -> io::Result<LootLoadCandidate> {
         Self::load_generation(
             root,
             overlay,
             defaults,
             types::Types::capture(),
             Some(damage),
-            false,
         )
     }
 
@@ -756,9 +769,8 @@ impl LootData {
         defaults: &crate::item_defaults::ItemDefaults,
         types: types::Types,
         damage: Option<&crate::damage_source::Catalog>,
-        prepare: bool,
-    ) -> io::Result<Self> {
-        let mut loaded = Self::load_table_candidate(root, overlay, defaults, types, damage)?;
+    ) -> io::Result<LootLoadCandidate> {
+        let mut loaded = Self::load_table_candidate(root, overlay, defaults, &types, damage)?;
         let mut recipes = HashMap::new();
         load_kind(&root.join("data"), "recipe", &mut recipes)?;
         overlay_map(overlay, "recipe", &mut recipes);
@@ -790,10 +802,10 @@ impl LootData {
                 &loaded.tags,
             )?;
         }
-        if prepare {
-            loaded.prepare_types()?;
-        }
-        Ok(loaded)
+        Ok(LootLoadCandidate {
+            data: loaded,
+            types,
+        })
     }
 
     /// Prepare shared loot tables, predicates and modifiers for an item catalog.
@@ -805,9 +817,9 @@ impl LootData {
         overlay: &PackOverlay,
         defaults: &crate::item_defaults::ItemDefaults,
     ) -> io::Result<Self> {
-        let mut loaded =
-            Self::load_table_candidate(root, overlay, defaults, types::Types::capture(), None)?;
-        loaded.prepare_types()?;
+        let types = types::Types::capture();
+        let mut loaded = Self::load_table_candidate(root, overlay, defaults, &types, None)?;
+        loaded.prepare_types(&types, None)?;
         Ok(loaded)
     }
 
@@ -815,7 +827,7 @@ impl LootData {
         root: &Path,
         overlay: &PackOverlay,
         defaults: &crate::item_defaults::ItemDefaults,
-        types: types::Types,
+        types: &types::Types,
         damage: Option<&crate::damage_source::Catalog>,
     ) -> io::Result<Self> {
         let all = root.join("data");
@@ -936,15 +948,12 @@ impl LootData {
                 crate::tag_layers::TagLayers::bind(registry, &raw, contains),
             );
         }
-        let bindings = types::Bindings::empty(types.clone());
         let mut loaded = Self {
             holder_sets: Default::default(),
             copies_entity_nbt: false,
             component_defaults: copy::component_defaults(defaults)
                 .map_err(|reason| io::Error::new(io::ErrorKind::InvalidData, reason))?,
-            types,
-            bindings,
-            normalized: false,
+            bindings: Default::default(),
             tables,
             global_modifiers: Arc::default(),
             modifiers: Arc::new(modifiers),
@@ -953,10 +962,10 @@ impl LootData {
             enchantments,
             primary_answers: Default::default(),
             support_answers: Default::default(),
-            tags,
+            tags: Arc::new(tags),
             smelting: Vec::new(),
         };
-        binding.snapshot(&mut loaded)?;
+        binding.snapshot(&mut loaded, types)?;
         // Both enchantment engines bind the same item holder identities before
         // a part can leave an unchanged default out of the shared answer table.
         for enchantment in &mut loaded.enchantments {
@@ -973,7 +982,7 @@ impl LootData {
                 }
             }
         }
-        loaded.holder_sets = binding;
+        loaded.holder_sets = Arc::new(binding);
         Ok(loaded)
     }
     /// Whether any loaded function may request an entity's full saved NBT.
@@ -1460,6 +1469,9 @@ impl<R: RandomSource> Context<'_, R> {
         }
     }
     fn condition(&mut self, c: &Value) -> bool {
+        self.condition_with_bindings(c, self.local_bindings)
+    }
+    fn condition_with_bindings(&mut self, c: &Value, bindings: Option<&types::RuleMap>) -> bool {
         if let Some(holds) = query::condition(
             c,
             &self.query,
@@ -1486,23 +1498,25 @@ impl<R: RandomSource> Context<'_, R> {
         let data = self.data;
         match c {
             Value::Null => true,
-            Value::Array(list) => list.iter().all(|c| self.condition(c)),
+            Value::Array(list) => list
+                .iter()
+                .all(|c| self.condition_with_bindings(c, bindings)),
             Value::String(id) => match data.predicates.get(id) {
-                Some(p) => self.condition(p),
+                Some(p) => self.condition_with_bindings(p, None),
                 None => false,
             },
             Value::Object(_) => match c["type"].as_str().unwrap_or("") {
-                "minecraft:inverted" => !self.condition(&c["term"]),
+                "minecraft:inverted" => !self.condition_with_bindings(&c["term"], bindings),
                 "minecraft:all_of" => c["terms"]
                     .as_array()
                     .into_iter()
                     .flatten()
-                    .all(|t| self.condition(t)),
+                    .all(|t| self.condition_with_bindings(t, bindings)),
                 "minecraft:any_of" => c["terms"]
                     .as_array()
                     .into_iter()
                     .flatten()
-                    .any(|t| self.condition(t)),
+                    .any(|t| self.condition_with_bindings(t, bindings)),
                 // FishingHookPredicate: the only entity property a hook has.
                 "minecraft:entity_properties"
                     if self.open_water.is_some()
@@ -1580,7 +1594,7 @@ impl<R: RandomSource> Context<'_, R> {
                 }
                 // A validated registered condition runs in the current roll's order.
                 k if k.contains(':') && !k.starts_with("minecraft:") => {
-                    self.registered_condition(k, c)
+                    self.registered_condition(bindings, k, c)
                 }
                 // An unknown type fails, as in items.rs `condition`.
                 _ => false,
@@ -2457,7 +2471,7 @@ mod namespace_tests {
         // retains the damage registry and binds only these new tag files.
         let overlay = PackOverlay::new(&files);
         let damage = damage.reload_tags(&root, &overlay).unwrap();
-        let loot = LootData::load_with_damage(&root, &overlay, &defaults, &damage).unwrap();
+        let loot = LootData::load_with_damage(&root, &overlay, &defaults, &damage, None).unwrap();
         let params = EntityLootParams {
             damage: Some(LootDamage {
                 kind: "test:hit".into(),

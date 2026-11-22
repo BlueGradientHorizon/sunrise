@@ -30,9 +30,11 @@ not a mutable game host. Report invalid fields with `LootModifierError::new(fiel
 
 A serializer can retain those settings and implement `GlobalLootModifier::priority` and `condition`
 from them, returning `Ok(value)`. An error from either metadata method refuses the modifier instead of silently using
-a default priority or an absent condition. The runtime captures them once during
-decoding, not during rolls. The prepared
-instance and its code store stay alive while a roll retains their generation, even after reload.
+a default priority or an absent condition. The runtime captures them once during decoding,
+not during rolls. An inline condition uses the registered condition codec to bind its rule at the
+same boundary. A named reference uses the bound predicate already in the owning loot generation.
+An invalid condition refuses only that modifier file. The prepared instance and its code store
+stay alive while a roll retains their generation, even after reload.
 
 Instances are selected by files under `data/<namespace>/loot_modifiers/<path>.json`, for example:
 
