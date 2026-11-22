@@ -245,6 +245,10 @@ impl<'a> Reader<'a> {
     pub fn nbt(&mut self) -> Result<Tag> {
         self.nbt_within(nbt::Limits::network())
     }
+    /// A network NBT tag using vanilla's trusted depth limit without a size or node quota.
+    pub fn trusted_nbt(&mut self) -> Result<Tag> {
+        self.nbt_within(nbt::Limits::unlimited_heap())
+    }
     /// [`Self::nbt`] within `limits`, for a codec whose writer uses the same ones.
     pub fn nbt_within(&mut self, limits: nbt::Limits) -> Result<Tag> {
         let (tag, used) = nbt::read_network(&self.data[self.pos..], limits)
@@ -463,6 +467,16 @@ impl Codec<Tag> for Nbt {
     }
     fn write(v: &Tag, w: &mut Writer) {
         w.nbt(v)
+    }
+}
+/// Network NBT read with `NbtAccounter.unlimitedHeap()` limits.
+pub struct TrustedNbt;
+impl Codec<Tag> for TrustedNbt {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        r.trusted_nbt()
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        Nbt::write(v, w)
     }
 }
 /// ByteBufCodecs.LONG_ARRAY.

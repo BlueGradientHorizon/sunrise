@@ -1,4 +1,8 @@
 use super::*;
+use sunrise_protocol::{
+    buf::{Codec, Reader},
+    packets::play::CommandSuggestion,
+};
 
 impl Game<'_> {
     /// ClientboundCommandSuggestionsPacket: id, range start and length, then
@@ -9,7 +13,7 @@ impl Game<'_> {
             .as_ref()
             .map(|r| r.lang.clone())
             .unwrap_or_default();
-        let mut r = sunrise_protocol::buf::Reader::new(data);
+        let mut r = Reader::new(data);
         let decoded = (|| {
             let id = r.varint()?;
             let start = r.varint()?;
@@ -17,13 +21,11 @@ impl Game<'_> {
             let n = r.count(usize::MAX)?;
             let mut list = Vec::with_capacity(n.min(1000));
             for _ in 0..n {
-                let text = r.string(32767)?;
-                let tooltip = if r.bool()? {
-                    Some(plain(&r.nbt()?, &lang))
-                } else {
-                    None
-                };
-                list.push((text, tooltip));
+                let entry = CommandSuggestion::read(&mut r)?;
+                list.push((
+                    entry.text,
+                    entry.tooltip.as_ref().map(|tag| plain(tag, &lang)),
+                ));
             }
             sunrise_protocol::Result::Ok((id, start, length, list))
         })();

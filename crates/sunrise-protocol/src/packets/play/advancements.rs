@@ -56,8 +56,8 @@ impl Codec<UpdateAdvancements> for UpdateAdvancements {
                 None
             };
             let display = if r.bool()? {
-                let title = r.nbt()?;
-                let description = r.nbt()?;
+                let title = r.trusted_nbt()?;
+                let description = r.trusted_nbt()?;
                 let icon = crate::item::Template::read(r)?;
                 let frame = r.varint()?;
                 let flags = r.i32()?;
