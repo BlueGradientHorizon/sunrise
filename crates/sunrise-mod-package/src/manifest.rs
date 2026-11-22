@@ -1182,22 +1182,25 @@ impl Package {
                 for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
                     let entry = entry.map_err(|e| e.to_string())?;
                     let kind = entry.file_type().map_err(|e| e.to_string())?;
-                    // At the top only the root source files and `src/` can be selected: any
-                    // other folder, and a name that is not UTF-8, is left out unread.
-                    if dir == root
-                        && entry
-                            .file_name()
-                            .to_str()
-                            .is_none_or(|name| kind.is_dir() && name != "src")
-                    {
+                    // A name no package path can hold (not UTF-8, or with a `\` in it) is left
+                    // out, and at the top so is any folder but `src/`.
+                    let Some(file_name) = entry
+                        .file_name()
+                        .to_str()
+                        .filter(|name| !name.contains('\\'))
+                        .map(str::to_owned)
+                    else {
+                        continue;
+                    };
+                    if dir == root && kind.is_dir() && file_name != "src" {
                         continue;
                     }
                     let path = entry.path();
-                    let relative = path.strip_prefix(root).map_err(|e| e.to_string())?;
-                    let name = relative
-                        .to_str()
-                        .ok_or("non-UTF-8 package path")?
-                        .replace('\\', "/");
+                    let name = match dir.strip_prefix(root).map_err(|e| e.to_string())?.to_str() {
+                        Some("") => file_name,
+                        Some(parent) => format!("{}/{file_name}", parent.replace('\\', "/")),
+                        None => continue,
+                    };
                     if kind.is_dir() {
                         if entry
                             .file_name()
@@ -1535,6 +1538,8 @@ mod tests {
                 "",
             )
             .unwrap();
+            // On Unix a `\` is part of a file name, never a separator.
+            std::fs::write(folder.path().join("src").join("a\\b.rs"), "").unwrap();
         }
 
         let bytes = Package::pack_directory(folder.path()).unwrap();
