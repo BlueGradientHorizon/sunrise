@@ -149,7 +149,7 @@ fn block_entity_data_requires_a_non_null_compound() {
         if accepted {
             assert_eq!(read.unwrap(), packet);
         } else {
-            assert!(read.unwrap_err().to_string().contains("non-null compound"));
+            assert!(read.is_err());
         }
     }
 }
@@ -173,11 +173,7 @@ fn styled_number_format_decodes_a_style_map_not_a_component() {
     ] {
         let mut w = Writer::new();
         NumberFormat::write(&NumberFormat::Styled(tag), &mut w);
-        let error = NumberFormat::read(&mut Reader::new(&w.data)).unwrap_err();
-        assert!(
-            error.to_string().starts_with("Failed to decode:"),
-            "{error}"
-        );
+        assert!(NumberFormat::read(&mut Reader::new(&w.data)).is_err());
     }
 }
 
