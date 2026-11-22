@@ -192,6 +192,7 @@ impl EntityRenderers for EntityRendererRegistry {
 
 impl EntityRendererRegistry {
     /// Apply the current listener's renderer edits only if its registration succeeds.
+    // hidden: the engine stages one listener at a time; mods receive only the registrar trait.
     #[doc(hidden)]
     pub fn register_listener(&mut self, listen: &mut dyn FnMut(&mut dyn EntityRenderers) -> bool) {
         let mut edits = RendererEdits::default();

@@ -29,6 +29,7 @@ impl<'a> PoiTypeExtensionRegistry<'a> {
         }
     }
     /// Discard the current listener's appended predicates if it fails.
+    // hidden: the engine stages one listener at a time; mods receive only the registrar trait.
     #[doc(hidden)]
     pub fn register_listener(
         &mut self,

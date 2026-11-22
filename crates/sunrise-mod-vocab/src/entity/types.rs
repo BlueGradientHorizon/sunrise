@@ -1706,17 +1706,13 @@ pub enum TravelMode {
     VelocityOnly,
 }
 
-/// The finite, per-axis range shared by mod move requests and hook replacements.
-#[doc(hidden)]
-pub fn valid_mod_move_delta(delta: [f64; 3]) -> bool {
-    delta.iter().all(|v| v.is_finite() && v.abs() <= 64.0)
-}
-
 pub(crate) fn refused_move_output(
     accepted: &[f64; 3],
     delta: &[f64; 3],
 ) -> Result<(), &'static str> {
-    if accepted.map(f64::to_bits) != delta.map(f64::to_bits) && !valid_mod_move_delta(*delta) {
+    if accepted.map(f64::to_bits) != delta.map(f64::to_bits)
+        && !crate::__private::valid_mod_move_delta(*delta)
+    {
         return Err("delta");
     }
     Ok(())

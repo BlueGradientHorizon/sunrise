@@ -145,6 +145,7 @@ pub trait HostItemResourceMetadata {
 
 /// Borrow of the item tables used by [`ItemResource`]'s metadata reads.
 // no wire: lends the current item metadata for a scoped callback.
+#[non_exhaustive]
 pub struct ItemResourceMetadata<'a> {
     backend: Option<&'a dyn Backend>,
 }

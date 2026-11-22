@@ -95,6 +95,7 @@ impl EnchantmentDamageEffects for EnchantmentDamageRegistry {
 
 impl EnchantmentDamageRegistry {
     /// Append this listener's effects only if its registration succeeds.
+    // hidden: the engine stages one listener at a time; mods receive only the registrar trait.
     #[doc(hidden)]
     pub fn register_listener(
         &mut self,

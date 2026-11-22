@@ -414,6 +414,7 @@ pub(crate) fn contain_callback<T>(
 }
 
 /// Check the session's enablement for a callback identified across reloads or peers.
+// hidden: the game owns the session’s callback enablement and diagnostics.
 #[doc(hidden)]
 pub fn session_callback_enabled(
     hook: generated::HookId,
@@ -435,6 +436,7 @@ pub fn session_callback_enabled(
 }
 
 /// Invoke an enabled named callback through the same failure boundary as a hook subscriber.
+// hidden: the game owns the session’s callback enablement and diagnostics.
 #[doc(hidden)]
 pub fn call_session_callback<T>(
     hook: generated::HookId,

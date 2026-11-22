@@ -77,6 +77,7 @@ impl SectionGeometryRenderers for SectionGeometryRegistry {
 
 impl SectionGeometryRegistry {
     /// Discard only the current listener's renderer registrations if it fails.
+    // hidden: the engine stages one listener at a time; mods receive only the registrar trait.
     #[doc(hidden)]
     pub fn register_listener(
         &mut self,

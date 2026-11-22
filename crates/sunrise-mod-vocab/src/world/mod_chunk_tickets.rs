@@ -115,6 +115,7 @@ impl ControllerTickets {
         }
     }
     /// Publish one callback's removals only if it completed successfully. For the game.
+    // hidden: the engine validates the loaded tickets; mods receive only TicketValidation.
     #[doc(hidden)]
     pub fn register_listener(&mut self, listen: &mut dyn FnMut(&mut dyn TicketValidation) -> bool) {
         if listen(self) && !self.selected.is_empty() {
@@ -141,6 +142,7 @@ impl ControllerTickets {
     }
 
     /// The tickets that survived validation. For the game.
+    // hidden: the engine consumes the validated tickets after all callbacks have run.
     #[doc(hidden)]
     pub fn into_loaded(self) -> Vec<ModTicket> {
         self.loaded

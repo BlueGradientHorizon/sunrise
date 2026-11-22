@@ -223,6 +223,7 @@ impl ServerReloadListeners for ServerListenerRegistry {
 }
 impl ServerListenerRegistry {
     /// Run one registration callback and discard only its appended ordered and retained rows on failure.
+    // hidden: the engine stages one listener at a time; mods receive only the registrar trait.
     #[doc(hidden)]
     pub fn register_listener(
         &mut self,

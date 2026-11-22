@@ -1,7 +1,6 @@
 //! The game's side of the mod API: the installed tables, the reload machinery, the structs the
 //! game fills for its hooks (`built`) and what it reads of handles and the API's own types
 //! (`game`). None of it is part of the API a mod is written against.
-pub use crate::entity::types::valid_mod_move_delta;
 use crate::*;
 #[path = "__private/registry_installation.rs"]
 mod registry_installation;
@@ -36,7 +35,10 @@ pub mod native {
     }
 }
 
-pub use crate::runtime::{call_session_callback, session_callback_enabled};
+/// The finite, per-axis range shared by mod move requests and hook replacements.
+pub fn valid_mod_move_delta(delta: [f64; 3]) -> bool {
+    delta.iter().all(|v| v.is_finite() && v.abs() <= 64.0)
+}
 
 /// Switch an installed mod's dispatches on or off, returning whether it was found.
 pub fn set_mod_enabled(id: &str, on: bool) -> bool {
@@ -83,8 +85,6 @@ pub fn mod_index(id: &str) -> Option<usize> {
 pub fn mod_index_on(index: usize) -> bool {
     crate::mod_index_on(index)
 }
-
-pub use crate::runtime::retained::{RetainedCallback, RetainedFailure};
 
 /// Marks the thread as inside mod `id`'s `call` until the guard drops, as a hook's dispatch does,
 /// so a panic in it names both.
@@ -303,8 +303,6 @@ pub mod built {
 /// What the game reads of handles and calls on the API's own types.
 pub mod game {
     include!(concat!(env!("OUT_DIR"), "/mod_api_exports_private_game.rs"));
-    #[doc(hidden)]
-    pub use crate::runtime::discard_registration;
     use crate::*;
     use std::fmt::Debug;
 

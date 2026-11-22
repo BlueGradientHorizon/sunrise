@@ -20,11 +20,8 @@ impl ConsumeEffectsRegistrar for PartRegistrar {
         } else if self.consume_effects.iter().any(|effect| effect.id == id) {
             "duplicate consume effect type"
         } else {
-            self.consume_effects.push(RegisteredConsumeEffect {
-                owner: self.mod_id,
-                id,
-                ty,
-            });
+            self.consume_effects
+                .push(RegisteredConsumeEffect::new(self.mod_id, id, ty));
             return Ok(());
         };
         let error = format!("mod {}: {reason} {id}", self.mod_id);

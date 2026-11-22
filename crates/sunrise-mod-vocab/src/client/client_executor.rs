@@ -13,6 +13,7 @@ pub struct ClientExecutor(Arc<Submit>);
 
 impl ClientExecutor {
     /// Game-side constructor for the calling mod's executor.
+    // hidden: only the game can supply the calling mod’s task queue.
     #[doc(hidden)]
     pub fn new(submit: impl Fn(Task) + Send + Sync + 'static) -> Self {
         Self(Arc::new(submit))

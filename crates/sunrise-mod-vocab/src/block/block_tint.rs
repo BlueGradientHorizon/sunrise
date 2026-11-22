@@ -101,6 +101,7 @@ impl ColorResolvers for ColorResolverRegistry {
 
 impl ColorResolverRegistry {
     /// Commit this listener's resolver tail using the indices issued during registration.
+    // hidden: the engine stages one listener at a time; mods receive only the registrar trait.
     #[doc(hidden)]
     pub fn register_listener(&mut self, listen: &mut dyn FnMut(&mut dyn ColorResolvers) -> bool) {
         let mut tail = Self {
@@ -289,6 +290,7 @@ impl BlockTintSources for BlockTintRegistry {
 
 impl BlockTintRegistry {
     /// Append this listener's tint sources only if its registration succeeds.
+    // hidden: the engine stages one listener at a time; mods receive only the registrar trait.
     #[doc(hidden)]
     pub fn register_listener(&mut self, listen: &mut dyn FnMut(&mut dyn BlockTintSources) -> bool) {
         let mut tail = Self::default();

@@ -451,6 +451,7 @@ impl SpecialModelRenderers for SpecialModelRendererRegistry {
 
 impl SpecialModelRendererRegistry {
     /// Publish one completed listener's factories and replacement reports together.
+    // hidden: the engine stages one listener at a time; mods receive only the registrar trait.
     #[doc(hidden)]
     pub fn register_listener(
         &mut self,

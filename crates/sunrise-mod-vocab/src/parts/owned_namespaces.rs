@@ -206,12 +206,14 @@ impl Declaration for crate::Item {
 
 // no wire: in-process closures that stage one listener's declarations.
 /// The owner validates each submission immediately and publishes only an accepted batch.
+// hidden: registrars use this callback to validate or commit an owner’s staged batch.
 #[doc(hidden)]
 pub type DeclarationStage<'a, D> =
     dyn FnMut(&mut dyn FnMut(&mut DeclarationSink<'_, D>) -> bool) + 'a;
 
 // no wire: an in-process closure borrowing the current declaration batch.
 /// The validated submission callback for one listener.
+// hidden: only declaration registrars use this validated ingress callback.
 #[doc(hidden)]
 pub type DeclarationSink<'a, D> = dyn FnMut(Answered<D>) -> Result<(), DeclarationError> + 'a;
 

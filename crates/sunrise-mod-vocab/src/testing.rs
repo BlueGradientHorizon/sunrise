@@ -82,6 +82,7 @@ pub fn with_dispatch<R>(mods: Mods, f: impl FnOnce() -> R) -> R {
 
 /// Lend new registration contexts on this thread a test startup screen, restoring the previous
 /// screen on exit or unwind.
+// hidden: only test fixtures supply a stand-in startup screen.
 #[doc(hidden)]
 pub fn with_startup_screen<R>(
     screen: std::sync::Arc<dyn crate::StartupScreen>,

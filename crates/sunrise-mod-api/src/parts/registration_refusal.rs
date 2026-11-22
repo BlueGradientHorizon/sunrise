@@ -393,6 +393,7 @@ mod tests {
 
     #[test]
     fn panic_in_hooks_register_rolls_back_only_its_owner_and_queues_report() {
+        crate::__private::initialize().expect("test registration requires the mod API runtime");
         struct Batch(Option<Arc<AtomicUsize>>);
         impl Hooks for Batch {
             fn subscribed(&self) -> &'static [Option<crate::HookId>] {
@@ -490,6 +491,7 @@ mod tests {
 
     #[test]
     fn destructor_panics_in_rejected_parts_do_not_interrupt_registration() {
+        crate::__private::initialize().expect("test registration requires the mod API runtime");
         struct PanicsOnDrop(Arc<AtomicUsize>);
         impl crate::BlockPart for PanicsOnDrop {
             fn block_subscribed(&self) -> &'static [Option<crate::HookId>] {

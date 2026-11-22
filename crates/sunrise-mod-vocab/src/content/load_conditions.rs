@@ -95,6 +95,7 @@ impl LoadConditionDeclarations {
     }
 
     /// Publish the completed listener's handlers and its preparation errors together.
+    // hidden: the engine stages one listener at a time; mods receive only the registrar trait.
     #[doc(hidden)]
     pub fn register_listener(&mut self, listen: &mut dyn FnMut(&mut dyn LoadConditions) -> bool) {
         let mut pending = Self::new(self.is_reserved);

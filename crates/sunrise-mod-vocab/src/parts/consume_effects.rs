@@ -4,6 +4,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 // no wire: this is a process-local codec registration; only its values have a Wire form.
 /// A consume-effect type's save codec and its typed `Wire` stream form.
+#[non_exhaustive]
 pub struct ConsumeEffectType {
     install: Box<InstallCodec>,
 }
@@ -13,6 +14,8 @@ type Load = dyn Fn(&Compound) -> Result<(Compound, Vec<u8>), String> + Send + Sy
 type Read = dyn Fn(&[u8], bool) -> Result<(usize, Option<Compound>), String> + Send + Sync;
 
 // no wire: type-erased engine adapter for the map and Wire codec callbacks.
+// hidden: the engine installs type-erased callbacks; mods register a ConsumeEffectType.
+#[non_exhaustive]
 #[doc(hidden)]
 pub struct ConsumeEffectCodecs {
     pub schema: u64,
@@ -120,18 +123,25 @@ pub trait ConsumeEffectsRegistrar {
 }
 
 // no wire: engine-owned collection entry with process-local callbacks.
+// exhaustive: its private fields can only be supplied by the Parts registrar.
 /// An attributed consume-effect registration, not exposed to mods.
+// hidden: the Parts registrar attaches the runtime owner after validating the declaration.
 #[doc(hidden)]
 pub struct RegisteredConsumeEffect {
-    /// Mod that supplied the codecs.
-    pub owner: &'static str,
-    /// Canonical dispatch key.
-    pub id: Identifier,
-    /// Registered codecs.
-    pub ty: ConsumeEffectType,
+    owner: &'static str,
+    id: Identifier,
+    ty: ConsumeEffectType,
+}
+
+impl RegisteredConsumeEffect {
+    /// Form the registry row for an already validated and attributed declaration.
+    pub fn new(owner: &'static str, id: Identifier, ty: ConsumeEffectType) -> Self {
+        Self { owner, id, ty }
+    }
 }
 
 /// Take the registered engine-side codecs after mod registration has finished.
+// hidden: the engine builds the codec table from the frozen Parts, not from mod code.
 #[doc(hidden)]
 pub fn consume_effect_codecs() -> Vec<(String, ConsumeEffectCodecs)> {
     super::installed()
