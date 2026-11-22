@@ -357,11 +357,10 @@ pub fn decode_consumable_bytes_with(
     let n = r.count(r.remaining()).unwrap_or(0);
     let mut effects = Vec::with_capacity(n.min(64));
     for _ in 0..n {
-        if let Some(Some(tag)) = consume_effect_tag(&mut r, b, &mut EffectProjection::default()) {
-            let json = crate::item_render::tag_json(&tag);
-            if let Some(parsed) = sunrise_items::items::parse_consume_effect(&json) {
-                effects.push(parsed);
-            }
+        if let Some(Some(tag)) = consume_effect_tag(&mut r, b, &mut EffectProjection::default())
+            && let Some(parsed) = sunrise_items::items::parse_consume_effect(&tag)
+        {
+            effects.push(parsed);
         }
     }
     Some(Consumable {
