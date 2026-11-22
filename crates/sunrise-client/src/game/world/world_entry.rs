@@ -1,6 +1,13 @@
 //! Entering a world without blocking the window: the deferred entry, world creation, the world
 //! resources' background load, and the world's own content tables.
 use super::*;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static BIOME_KEYS_SESSION: AtomicU64 = AtomicU64::new(1);
+
+fn next_biome_keys_session() -> u64 {
+    BIOME_KEYS_SESSION.fetch_add(1, Ordering::Relaxed)
+}
 
 impl Game<'_> {
     /// The server's data-pack enchantments, or the local world's registry.
@@ -108,7 +115,8 @@ impl Game<'_> {
                 })
                 .unwrap_or_default();
             let data_source = self.pack.data_changes.clone();
-            let job = sunrise_guest_stack::builder()
+            let job = std::thread::Builder::new()
+                .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
                 .name("world-creation".into())
                 .spawn(move || {
                     sunrise_client::vanillagen::shared_data_from(
@@ -240,10 +248,6 @@ impl Game<'_> {
         reload: bool,
         root: &std::path::Path,
     ) -> Result<super::condition_reload_state::StagedWorldTables> {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("server tables on their owning thread");
         // The ask of this load, both here and on `/reload`: a native mod
         // recomputes the pack files it contributes every time.
         let mut contributed = Vec::new();
@@ -338,15 +342,28 @@ impl Game<'_> {
             &overlay,
         ));
         let datapack_candidate = self.datapack_candidate(stack, &conditions);
+        let install_items_result = match &packed_registry_definitions {
+            Ok(packed) => {
+                packed.install_items(&mut items, root, &overlay, self.res.item_defaults())
+            }
+            Err(_) => Ok(()),
+        };
+        // Item damage predicates use the same frozen registry as player hurt.
+        Arc::make_mut(&mut items.enchantments).bind_damage_catalog(&health.damage);
+        items.bind_component_damage_catalog(&health.damage);
+        if let Ok(loot) = &loot {
+            items.component_defaults = loot.component_defaults().clone();
+        }
         // The recipe tables, the stations and the recipe book read one folder:
         // hold its files so it is read once.
         let _recipe_files = sunrise_client::json_folder::read(&root.join("data/minecraft/recipe"));
         let sources = if reload {
-            lan::sync::prepare_server_sources(root, &self.res.core.item_data, &overlay)
+            lan::sync::prepare_server_sources(root, &self.res.core.item_data, &items, &overlay)
         } else {
             lan::sync::load_sources(
                 root,
                 &self.res.core.item_data,
+                &items,
                 self.options.execution_role.data_load_origin(),
                 &overlay,
             )
@@ -360,6 +377,7 @@ impl Game<'_> {
                         packed.err(),
                         conditions.err(),
                         providers.as_ref().err().cloned(),
+                        install_items_result.err().map(|error| error.to_string()),
                         loot.as_ref().err().map(ToString::to_string),
                         datapack_candidate.as_ref().err().map(ToString::to_string),
                         sources.as_ref().err().map(ToString::to_string),
@@ -372,18 +390,9 @@ impl Game<'_> {
                 }
             };
         let providers = providers?;
-        packed_registry_definitions.install_items(
-            &mut items,
-            root,
-            &overlay,
-            self.res.item_defaults(),
-        )?;
-        // Item damage predicates use the same frozen registry as player hurt.
-        Arc::make_mut(&mut items.enchantments).bind_damage_catalog(&health.damage);
-        items.bind_component_damage_catalog(&health.damage);
+        install_items_result?;
         let sources = sources?;
         let mut loot = loot?;
-        items.component_defaults = loot.component_defaults().clone();
         let recipes = Recipes::from_resolved(root, &items, &overlay, &sources)?;
         let mut stations = sunrise_client::stations::StationData::from_sources(
             root,
@@ -396,25 +405,12 @@ impl Game<'_> {
         // The world's loaded datapack registries are a mod-declared registry's
         // authority for the data maps' id checks, as the command ids are for
         // the registries they list.
-        // Resolve membership against the very generation that will be published.
-        // In particular, generation exhaustion refuses preparation before any state changes.
         let mut datapack_candidate = datapack_candidate?;
         if let Some(candidate) = &mut datapack_candidate {
             native_registry_entries::bind_datapack_tags(root, &tag_files, candidate)?;
         }
-        let datapack_registries = datapack_candidate
-            .map(
-                |candidate| match self.mods.datapack_registries.as_ref().filter(|_| reload) {
-                    Some(old) => old
-                        .reload(candidate)
-                        .map_err(|error| format!("datapack registry reload: {error:?}")),
-                    None => Ok(mod_api::DatapackRegistrySet::first(
-                        candidate,
-                        sunrise_client::datapack_net::next_session(),
-                    )),
-                },
-            )
-            .transpose()?;
+        let datapack_registries =
+            datapack_candidate.map(mod_api::DatapackRegistrySet::from_candidate);
         let received = sunrise_client::datapack_net::received();
         let datapack_set = if self.is_logical_server() {
             datapack_registries.as_ref()
@@ -507,7 +503,7 @@ impl Game<'_> {
         let data_maps = native_data_maps::DataMaps::load(&data_map_types, &overlay, &registries)
             .with_builtins(builtin)
             .with_biome_keys(mod_api::__private::BiomeKeys::new(
-                sunrise_client::datapack_net::next_session(),
+                next_biome_keys_session(),
                 self.world_biomes
                     .as_ref()
                     .unwrap_or_else(|| self.res.biomes())
@@ -883,6 +879,7 @@ impl Game<'_> {
                     let sources = lan::sync::prepare_server_sources(
                         root,
                         &self.res.core.item_data,
+                        items,
                         &overlay,
                     )?;
                     sources.check()?;

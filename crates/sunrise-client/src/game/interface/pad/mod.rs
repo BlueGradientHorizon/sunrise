@@ -593,13 +593,10 @@ impl Game<'_> {
                 }
                 let screen_open = self.screen != Screen::Playing || self.title.is_some();
                 self.keys.resume_device_input(&KeyCode::ShiftLeft);
-                let was = self.keys.held(Action::Sneak);
-                self.toggles.pad_toggle(SNEAK, screen_open);
-                self.sync_toggle(SNEAK);
-                if !was && self.keys.held(Action::Sneak) {
-                    // The pad's latch: a keyboard handoff leaves it.
-                    self.keys.press(KeyCode::ShiftLeft, Source::Pad);
-                    self.keys.release(&KeyCode::ShiftLeft, Source::Keyboard);
+                if !screen_open {
+                    let state = self.vanilla_mappings.toggle_state_mut(SNEAK);
+                    state.pad_toggle();
+                    state.click();
                 }
                 self.key_pressed(KeyCode::ShiftLeft, KeyCode::ShiftLeft)
             }
@@ -618,7 +615,7 @@ impl Game<'_> {
             }
             Route::SmoothCamera => {
                 if down {
-                    self.smooth_camera_action();
+                    self.queue_mapping_click("key.smoothCamera");
                 }
                 Ok(())
             }
@@ -635,7 +632,12 @@ impl Game<'_> {
                 }
                 Ok(())
             }
-            Route::Held => Ok(()),
+            Route::Held => {
+                if let Some(key) = Action::parse(action).and_then(Action::key) {
+                    self.mapped_key(key, down, false, key, Source::Pad)?;
+                }
+                Ok(())
+            }
             Route::Mouse(button) => {
                 let playing = self.title.is_none() && self.screen == Screen::Playing;
                 // What the window path tells mods and the click counters. Pick block isn't one

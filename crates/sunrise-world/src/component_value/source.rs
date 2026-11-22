@@ -1,5 +1,8 @@
 //! Persistent component codecs, without protocol state or registry-number assumptions.
-use super::{Patch, Template, Value};
+use super::{
+    Patch, Template, Value,
+    consume_effects::{self, Admitted},
+};
 use sunrise_core::nbt::Tag;
 
 type Result<T, E = String> = std::result::Result<T, E>;
@@ -12,9 +15,8 @@ pub fn identifier(s: &str) -> Result<String> {
 #[doc(hidden)]
 pub fn normalized_identifier(s: &str) -> Result<std::borrow::Cow<'_, str>> {
     use std::borrow::Cow;
-    let (namespace, path) = s.split_once(':').unwrap_or(("minecraft", s));
-    if namespace.is_empty()
-        || path.is_empty()
+    let (namespace, path) = s.split_once(':').unwrap_or(("", s));
+    if path.is_empty()
         || !namespace
             .bytes()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"_.-".contains(&c))
@@ -24,10 +26,10 @@ pub fn normalized_identifier(s: &str) -> Result<std::borrow::Cow<'_, str>> {
     {
         return Err(format!("invalid identifier {s}"));
     }
-    Ok(if s.contains(':') {
-        Cow::Borrowed(s)
+    Ok(if namespace.is_empty() {
+        Cow::Owned(format!("minecraft:{path}"))
     } else {
-        Cow::Owned(format!("minecraft:{s}"))
+        Cow::Borrowed(s)
     })
 }
 
@@ -642,11 +644,44 @@ fn effect_details(t: &Tag, with_id: bool) -> Result<Value> {
         })
     })
 }
-fn consume_effect(t: &Tag) -> Result<Value> {
+type AdmittedLookup<'a> = dyn Fn(&Tag) -> Option<Admitted> + 'a;
+type ProjectedEffect<'a> = dyn Fn(&Admitted) + 'a;
+
+#[derive(Clone, Copy)]
+struct EffectProjection<'a> {
+    retained: &'a AdmittedLookup<'a>,
+    projected: &'a ProjectedEffect<'a>,
+}
+
+fn consume_effect(t: &Tag, source: Source<'_>) -> Result<Option<Value>> {
     let kind = identifier(&string(
         t.get("type").ok_or("missing consume effect type")?,
     )?)?;
     validate_source(kind.strip_prefix("minecraft:").unwrap_or(&kind), t)?;
+    let Tag::Compound(fields) = t else {
+        return Err("consume effect is not a map".into());
+    };
+    let registered = if let Some(projection) = source.effects {
+        match (projection.retained)(t) {
+            None if source.deferred_template => {
+                // The registered codec reports any refusal. Keep the siblings of a
+                // refused effect when projecting a live template to the network.
+                let Ok(effect) = consume_effects::admit(&kind, fields) else {
+                    return Ok(None);
+                };
+                if let Some(effect) = &effect {
+                    (projection.projected)(effect);
+                }
+                effect
+            }
+            retained => retained,
+        }
+    } else {
+        consume_effects::admit(&kind, fields)?
+    };
+    if let Some(effect) = registered {
+        return Ok(Some(Value::RegisteredConsumeEffect(effect)));
+    }
     record(t, |r| {
         r.fields.push((Value::string("type"), Value::string(&kind)));
         match kind.as_str() {
@@ -661,10 +696,20 @@ fn consume_effect(t: &Tag) -> Result<Value> {
                 r.b("directional_particles", true)?;
             }
             "minecraft:play_sound" => r.required("sound", sound)?,
-            _ => return Err(format!("unknown consume effect {kind}")),
+            _ if kind.starts_with("minecraft:") => {
+                return Err(format!("unknown consume effect {kind}"));
+            }
+            _ => {
+                let type_key = "type".into();
+                r.fields
+                    .extend(fields.iter().filter(|(key, _)| *key != &type_key).map(
+                        |(key, value)| (Value::String(key.0.clone()), Value::from_nbt(value, &[])),
+                    ));
+            }
         }
         Ok(())
     })
+    .map(Some)
 }
 fn explosion(t: &Tag) -> Result<Value> {
     validate_source("firework_explosion", t)?;
@@ -731,14 +776,18 @@ fn resolvable(t: &Tag, f: impl Fn(&Tag) -> Result<Value>) -> Result<Value> {
 }
 
 #[derive(Clone, Copy)]
-struct Source {
+struct Source<'a> {
     upgraded: bool,
     is_native: fn(&str) -> bool,
+    effects: Option<EffectProjection<'a>>,
+    deferred_template: bool,
 }
-impl Source {
+impl Source<'_> {
     const SAVED: Self = Self {
         upgraded: false,
         is_native: |_| false,
+        effects: None,
+        deferred_template: false,
     };
 
     fn component_type(self, id: &str) -> Result<()> {
@@ -867,6 +916,56 @@ fn predicate(t: &Tag, source: Source) -> Result<Value> {
 pub fn from_component_tag(id: &str, t: &Tag) -> Result<Value> {
     from_component_tag_with(id, t, |_| false)
 }
+/// Project a live component, reusing its admitted effects and reporting any effects
+/// newly materialized from deferred templates to the caller.
+pub fn from_admitted_component_tag(
+    id: &str,
+    t: &Tag,
+    is_native: fn(&str) -> bool,
+    admitted: &AdmittedLookup<'_>,
+    projected: &ProjectedEffect<'_>,
+) -> Result<Value> {
+    component_tag(
+        &identifier(id)?,
+        t,
+        Source {
+            is_native,
+            effects: Some(EffectProjection {
+                retained: admitted,
+                projected,
+            }),
+            ..Source::SAVED
+        },
+    )
+}
+
+fn effect_component(t: &Tag, consumable: bool, source: Source<'_>) -> Result<Value> {
+    record(t, |r| {
+        let key = if consumable {
+            r.f("consume_seconds", 1.6)?;
+            r.id("animation", "eat", string_value)?;
+            r.id("sound", "minecraft:entity.generic.eat", sound)?;
+            r.b("has_consume_particles", true)?;
+            "on_consume_effects"
+        } else {
+            "death_effects"
+        };
+        r.default(key, Value::List(vec![]), |t| {
+            let effects = match t {
+                Tag::List(effects) => effects
+                    .iter()
+                    .filter_map(|effect| consume_effect(effect, source).transpose())
+                    .collect::<Result<_>>()?,
+                Tag::ByteArray(a) if a.is_empty() => vec![],
+                Tag::IntArray(a) if a.is_empty() => vec![],
+                Tag::LongArray(a) if a.is_empty() => vec![],
+                _ => return Err("expected consume effect list".into()),
+            };
+            Ok(Value::List(effects))
+        })
+    })
+}
+
 /// Decode against the pinned component registry plus the owning registry's native types.
 pub fn from_component_tag_with(id: &str, t: &Tag, is_native: fn(&str) -> bool) -> Result<Value> {
     component_tag(
@@ -903,7 +1002,13 @@ fn decode_component(id: &str, t: &Tag, source: Source) -> Result<Value> {
     // Recursive template and predicate paths do not carry the large leaf dispatcher's frame.
     Ok(match name {
         "lock" => item_predicate(t, source)?,
-        "use_remainder" | "sulfur_cube_content" => template(t, source)?,
+        "use_remainder" | "sulfur_cube_content" => template(
+            t,
+            Source {
+                deferred_template: true,
+                ..source
+            },
+        )?,
         "can_place_on" | "can_break" => {
             if let Tag::List(v) = t {
                 match v.len() {
@@ -1084,13 +1189,7 @@ fn component_leaf(name: &str, id: &str, t: &Tag, source: Source) -> Result<Value
             r.required("saturation", float)?;
             r.b("can_always_eat", false)
         })?,
-        "consumable" => record(t, |r| {
-            r.f("consume_seconds", 1.6)?;
-            r.id("animation", "eat", string_value)?;
-            r.id("sound", "minecraft:entity.generic.eat", sound)?;
-            r.b("has_consume_particles", true)?;
-            r.list("on_consume_effects", consume_effect)
-        })?,
+        "consumable" => effect_component(t, true, source)?,
         "use_cooldown" => record(t, |r| {
             r.required("seconds", float)?;
             r.optional("cooldown_group", ident)
@@ -1147,7 +1246,7 @@ fn component_leaf(name: &str, id: &str, t: &Tag, source: Source) -> Result<Value
             }
             r.id("shearing_sound", "minecraft:item.shears.snip", sound)
         })?,
-        "death_protection" => record(t, |r| r.list("death_effects", consume_effect))?,
+        "death_protection" => effect_component(t, false, source)?,
         "piercing_weapon" => record(t, |r| {
             r.b("deals_knockback", true)?;
             r.b("dismounts", false)?;

@@ -151,21 +151,22 @@ impl Game<'_> {
     }
 
     /// Map a slot when the caller already knows the window's registered layout.
-    pub(in crate::game) fn inventory_screen_slot_with_type(
+    pub(in crate::game) fn inventory_screen_slot_with_type<'m>(
         menu: &str,
         slot: i32,
-        mod_type: impl FnOnce() -> Option<&'static sunrise_client::containers::ModMenuType>,
+        mod_type: impl FnOnce() -> Option<&'m sunrise_client::containers::ModMenuType>,
     ) -> Option<usize> {
         let s = usize::try_from(slot).ok()?;
         // A container of `n` slots, then the inventory and the hotbar.
-        let slots = |n: usize| -> Option<usize> {
+        let slots_with_base = |n: usize, base: usize| -> Option<usize> {
             match s {
-                _ if s < n => Some(300 + s),
+                _ if s < n => Some(base + s),
                 _ if s < n + 27 => Some(9 + s - n),
                 _ if s < n + 36 => Some(s - n - 27),
                 _ => None,
             }
         };
+        let slots = |n| slots_with_base(n, 300);
         let rows = |n: usize| slots(n * 9);
         match menu {
             "inventory" => match s {
@@ -228,10 +229,11 @@ impl Game<'_> {
             // A workstation: its inputs, its result, then the inventory.
             m => {
                 if let Some(t) = mod_type() {
+                    use crate::game::inventory_slots::MOD_MENU_SLOT_BASE;
                     return if t.player_inventory {
-                        slots(t.slots)
+                        slots_with_base(t.slots, MOD_MENU_SLOT_BASE)
                     } else {
-                        (s < t.slots).then_some(300 + s)
+                        (s < t.slots).then_some(MOD_MENU_SLOT_BASE + s)
                     };
                 }
                 let kind = Self::remote_station_kind(m)?;

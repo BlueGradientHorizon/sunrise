@@ -210,14 +210,15 @@ pub(crate) trait BlockEntityTickSlot {
     /// Just before the visited block entity ticks. [`LoopFlow::Skip`] leaves it out this tick;
     /// [`LoopFlow::Stop`] ends the pass (what follows the loop, such as shulker box lids, still runs).
     /// After [`LoopFlow::Continue`] from every slot the loop looks again: when the visited block
-    /// entity was removed, or replaced by one of another [`TickedKind`] or a mod's of another type,
-    /// it does not tick and no slot's [`Self::after`] is called for it.
+    /// entity was removed, replaced by one of another [`TickedKind`] or a mod's of another type,
+    /// or a mod block entity is now on an incompatible block, it does not tick and no slot's
+    /// [`Self::after`] is called for it.
     #[inline(always)]
     fn before(&mut self, tick: &mut BlockEntityTick<'_, '_>) -> LoopFlow {
         let _ = tick;
         LoopFlow::Continue
     }
-    /// Just after the visited block entity ticked; not called for one a slot skipped.
+    /// Just after the visited block entity ticked; not called if its tick was skipped.
     #[inline(always)]
     fn after(&mut self, tick: &mut BlockEntityTick<'_, '_>) {
         let _ = tick;
@@ -325,7 +326,6 @@ impl Game<'_> {
         this.tick_mount_menu();
         this.tick_craft_table();
         this.tick_container_reach();
-        this.load_entity_types();
         this.ensure_stateful_entity_table();
         if !this.world.block_entities.has_states() {
             let states = this.ticking_states();
@@ -428,7 +428,11 @@ impl Game<'_> {
                 TickedKind::DaylightDetector => this.tick_daylight_detector(pos),
                 TickedKind::EndGateway => this.tick_end_gateway(pos),
                 TickedKind::Campfire => this.tick_campfire(pos)?,
-                TickedKind::Mod => this.tick_mod_block_entity(pos),
+                TickedKind::Mod => {
+                    if !this.tick_mod_block_entity(pos) {
+                        continue;
+                    }
+                }
                 TickedKind::PotentSulfur => {
                     this.tick_potent_sulfur(pos)?;
                     // A window that simulates the world itself is its own
@@ -1515,53 +1519,6 @@ mod slot_guard_tests {
         assert_eq!(seen.after, [Some(Row::CALL)]);
         assert_eq!(current_native_call(), None);
     }
-
-    /// A slot that reads the world through the Host, as a mod's slot may.
-    #[derive(Default)]
-    struct Gated {
-        asked: u32,
-    }
-    impl BlockEntityTickSlot for Gated {
-        fn before(&mut self, tick: &mut BlockEntityTick<'_, '_>) -> LoopFlow {
-            self.asked += 1;
-            let host: &dyn mod_api::Host = &*tick.game;
-            let _ = host.level("minecraft:overworld");
-            LoopFlow::Stop
-        }
-        fn after(&mut self, tick: &mut BlockEntityTick<'_, '_>) {
-            self.asked += 1;
-            let host: &dyn mod_api::Host = &*tick.game;
-            let _ = host.level("minecraft:overworld");
-        }
-    }
-
-    /// Loop slots run in ticks, after the thread reached World. Fired in Setup and in Reloading
-    /// anyway, a slot's world read is a contained refusal answered as no answer (Continue, nothing),
-    /// never the no-scope panic, and the slot is not poisoned; in World it answers.
-    #[test]
-    #[ignore = "daily"]
-    fn a_loop_slot_outside_the_world_is_refused_not_a_panic() {
-        use mod_api::__private::{ModPhase, PhaseOwner};
-        let mut game_resources = None;
-        let mut game = server_game(&mut game_resources);
-        let mut slots = <(Attributed<Row, Gated>, ())>::make();
-        let mut tick = BlockEntityTick {
-            game: &mut game,
-            pos: (8, 64, 8),
-            kind: TickedKind::Hopper,
-            mod_type: None,
-        };
-        for reloading in [false, true] {
-            let setup = PhaseOwner::scope(ModPhase::Setup);
-            let _reload = reloading.then(|| setup.reloading().unwrap());
-            assert_eq!(slots.before(&mut tick), LoopFlow::Continue);
-            slots.after(&mut tick);
-        }
-        let _world = PhaseOwner::scope(ModPhase::World);
-        assert_eq!(slots.before(&mut tick), LoopFlow::Stop);
-        assert_eq!(slots.0.call(|slot| slot.asked), Some(5));
-        assert_eq!(current_native_call(), None);
-    }
 }
 
 /// What a slot that changes the block entities does to the pass (`BlockEntityTickSlot`'s docs).
@@ -1865,8 +1822,12 @@ mod own_block_entity_tests {
                 event.ticks = true;
             }
         }
-        fn block_entity_tick(&self, _: &mut dyn ServerHost, event: &mut BlockEntityTickEvent<'_>) {
-            event.entity.data.push(mark(self.0));
+        fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+            event.subject.with_view(|mut entity| {
+                let mut data = entity.data_slots().to_vec();
+                data.push(mark(self.0));
+                assert!(entity.set_data_slots(&data));
+            });
         }
     }
     /// What a tick of mod A's type (1) or mod B's (2) leaves in a block entity's data.
