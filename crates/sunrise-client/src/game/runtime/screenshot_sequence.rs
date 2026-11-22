@@ -265,7 +265,17 @@ impl Game<'_> {
         let queued = last && renderer.screenshot.take().is_some();
         let failed = drawn.is_err();
         let done = match drawn {
-            Ok(false) => return Ok(false),
+            Ok(false) => {
+                let sequence = self
+                    .screenshot_sequence
+                    .as_mut()
+                    .expect("a running sequence");
+                if sequence.next == 1 {
+                    // The surface did not draw this attempt. The first drawn frame sets the baseline.
+                    sequence.camera = None;
+                }
+                return Ok(false);
+            }
             Err(e) => Err(e.to_string()),
             Ok(true) => renderer.finish_sequence_frame().map_err(|e| e.to_string()),
         };
