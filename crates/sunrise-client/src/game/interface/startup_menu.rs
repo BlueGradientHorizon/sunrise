@@ -644,6 +644,10 @@ impl Loading {
                     self.save_menu_settings();
                     self.menu.reload_packs = true;
                 }
+                Event::ReloadTextures => {
+                    self.save_menu_settings();
+                    self.menu.reload_packs = true;
+                }
                 Event::PackOptions { entries, chosen } => {
                     packs::save_pack_options(&entries, chosen);
                     self.menu.options.pack_configs = packs::pack_configs(&self.vanilla_root);

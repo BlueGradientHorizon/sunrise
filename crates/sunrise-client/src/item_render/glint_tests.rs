@@ -809,6 +809,83 @@ fn cuboid_glint_prefers_stitched_blocks_and_blocks_missingno() {
 }
 
 #[test]
+fn mip_level_reduces_from_loaded_sprites_and_restitching_updates_block_glint() {
+    let root = fixture("mip-restitch");
+    fs::write(
+        root.join("assets/minecraft/atlases/blocks.json"),
+        r#"{"sources":[
+            {"type":"single","resource":"test:stone"},
+            {"type":"single","resource":"test:tall"}
+        ]}"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("assets/test/textures")).unwrap();
+    png(
+        &root.join("assets/test/textures/stone.png"),
+        16,
+        16,
+        [255; 4],
+    );
+    // 12x16 has lowestOneBit(12) == 4, reducing requested mip 4 to mip 2 (padding 4).
+    png(
+        &root.join("assets/test/textures/tall.png"),
+        12,
+        16,
+        [255; 4],
+    );
+    let data = crate::test_resources::item_data(
+        &root,
+        sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
+    )
+    .unwrap();
+    let renderer = ItemRenderer::load(
+        &sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
+        &data,
+    )
+    .unwrap();
+    let mut settings = crate::settings::Settings::default();
+    let (f, a, m) = settings.texture_atlas_settings();
+    renderer
+        .prepare_glint_atlas_with_mips(16384, (f, a), m)
+        .unwrap();
+    let mip4_rect = renderer
+        .block_glint_atlas
+        .lock()
+        .unwrap()
+        .get_stitched("test:stone")
+        .unwrap();
+    // Requesting 16 mip levels still reduces cleanly to mip 2 without any artificial cap.
+    let reduced = glint_atlas::load_atlas(
+        &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
+        "minecraft:blocks",
+        16,
+        0,
+        16384,
+    )
+    .unwrap();
+    assert_eq!(reduced.get_stitched("test:stone").unwrap(), mip4_rect);
+
+    // Changing live `mipmap_levels` from 4 to 0 and restitching moves the block glint rectangle.
+    settings.mipmap_levels = 0;
+    let (f, a, m) = settings.texture_atlas_settings();
+    assert_eq!(m, 0);
+    renderer
+        .prepare_glint_atlas_with_mips(16384, (f, a), m)
+        .unwrap();
+    let mip0_rect = renderer
+        .block_glint_atlas
+        .lock()
+        .unwrap()
+        .get_stitched("test:stone")
+        .unwrap();
+    assert_ne!(
+        [mip4_rect.u0, mip4_rect.v0, mip4_rect.u1, mip4_rect.v1],
+        [mip0_rect.u0, mip0_rect.v0, mip0_rect.u1, mip0_rect.v1]
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 #[ignore = "daily"]
 fn prepared_item_atlas_matches_pinned_vanilla() {
     let root =

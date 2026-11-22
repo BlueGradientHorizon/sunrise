@@ -121,20 +121,21 @@ fn finish_atlas(
     Ok(GlintAtlas { regions, missing })
 }
 
-/// `SpriteLoader.stitch`: clamp `max_mip` to the smallest sprite side and lowest power-of-two bit.
+/// `SpriteLoader.stitch`: reduce `max_mip` to the smallest sprite side and lowest power-of-two bit.
 fn mip_level_for(entries: &[Entry], max_mip: u32) -> u32 {
-    let max_mip = max_mip.min(30);
-    let mut min_texel = u32::MAX;
-    let mut lowest_bit = 1u32 << max_mip;
+    let mut min_texel = i32::MAX as u32;
+    let mut lowest_bit = 1_i32.wrapping_shl(max_mip);
     for &(_, w, h) in entries {
         min_texel = min_texel.min(w.min(h));
-        lowest_bit = lowest_bit.min((1u32 << w.trailing_zeros()).min(1u32 << h.trailing_zeros()));
+        let low_w = (w as i32) & (w as i32).wrapping_neg();
+        let low_h = (h as i32) & (h as i32).wrapping_neg();
+        lowest_bit = lowest_bit.min(low_w.min(low_h));
     }
-    let min_size = min_texel.min(lowest_bit);
-    if min_size == 0 {
+    let min_size = (min_texel as i32).min(lowest_bit);
+    if min_size <= 0 {
         0
     } else {
-        min_size.ilog2().min(max_mip)
+        (min_size as u32).ilog2().min(max_mip)
     }
 }
 
