@@ -473,18 +473,27 @@ class ReleaseTests(unittest.TestCase):
 
 class WorkflowTests(unittest.TestCase):
     def test_workflow_is_safe(self):
-        text = (ROOT / ".github/workflows/claim-command.yml").read_text()
+        text = (ROOT / ".github/workflows/fork-claim.yml").read_text()
         run_lines = [l.strip() for l in text.splitlines() if l.strip().startswith("run:")]
-        self.assertEqual(run_lines, ["run: python3 tools/ci/claim_command.py command",
-                                     "run: python3 tools/ci/claim_command.py release"])
+        self.assertEqual(run_lines, ["run: python3 tools/fork/claim.py command",
+                                     "run: python3 tools/fork/claim.py release"])
         self.assertEqual(text.count("persist-credentials: false"), 2)
-        self.assertEqual(text.count("ref: main"), 2)
+        self.assertEqual(text.count("ref: ${{ github.event.repository.default_branch }}"), 2)
         self.assertNotIn("pull_request_target", text)
         self.assertNotIn("contents: write", text)
         self.assertNotIn("pull-requests: write", text)
         for line in text.splitlines():
             if "github.event.comment" in line and "run:" in line:
                 self.fail(f"comment data in a shell line: {line}")
+
+    def test_the_command_gets_what_exempts_the_repositorys_own_people_from_the_limit(self):
+        # Without them the script reads every commenter as association NONE with no exempt logins, and refuses an org
+        # member's sixth claim (#4463, 2026-11-22).
+        from test_ci_concurrency import yaml
+        jobs = yaml.load((ROOT / ".github/workflows/fork-claim.yml").read_text(), Loader=yaml.BaseLoader)["jobs"]
+        step = next(step for step in jobs["command"]["steps"] if step.get("name") == "Run the command")
+        self.assertEqual(step["env"]["AUTHOR_ASSOCIATION"], "${{ github.event.comment.author_association }}")
+        self.assertEqual(step["env"]["CLAIM_LIMIT_EXEMPT"], "${{ vars.CLAIM_LIMIT_EXEMPT }}")
 
 
 if __name__ == "__main__":
