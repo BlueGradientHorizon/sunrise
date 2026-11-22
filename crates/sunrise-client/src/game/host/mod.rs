@@ -5,6 +5,7 @@
 // The generated impls convert error types that are already equal; TODO(#2273): make the generator skip it.
 #![allow(clippy::useless_conversion, clippy::unit_arg)]
 use super::Game;
+use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEnginePreservingCount};
 use mod_api::__private::game::*;
 use mod_api::*;
 
@@ -33,6 +34,65 @@ impl ServerHost for Game<'_> {
     ) -> Result<(), TransactionUnavailable> {
         let _ = self.storage_transaction(|game, tx| callback(game, tx).then_some(()).ok_or(()));
         Ok(())
+    }
+
+    fn with_scratch_stack_scope(
+        &mut self,
+        stack: ItemStack,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn ServerHost,
+            &'loan TransactionContext,
+            &'loan ItemPlace,
+        ) -> bool,
+    ) -> Result<Option<Option<ItemStack>>, ScratchUnavailable> {
+        if !mod_api::__private::access_allowed(
+            "with_scratch_stack_scope",
+            mod_api::__private::LoadAccess::WorldOnly,
+        ) {
+            return Err(ScratchUnavailable::Transaction(TransactionUnavailable));
+        }
+        let engine_stack = self
+            .boundary_items()
+            .ok_or(StackWriteError::Unavailable)
+            .and_then(|items| stack.try_into_engine_preserving_count(items))
+            .map_err(ScratchUnavailable::Stack)?;
+        let taken = self.scratch_scope(
+            Some(engine_stack.item.clone()),
+            engine_stack,
+            |game, tx, place| callback(game, tx, place),
+        );
+        Ok(taken.map(|taken| taken.stack.and_then(|stack| stack.try_into_api().ok())))
+    }
+
+    fn with_scratch_slots_scope(
+        &mut self,
+        stack: ItemStack,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn ServerHost,
+            &'loan TransactionContext,
+            &'loan ItemPlace,
+        ) -> bool,
+    ) -> Result<Option<(Option<ItemStack>, Option<ItemStack>)>, ScratchUnavailable> {
+        if !mod_api::__private::access_allowed(
+            "with_scratch_slots_scope",
+            mod_api::__private::LoadAccess::WorldOnly,
+        ) {
+            return Err(ScratchUnavailable::Transaction(TransactionUnavailable));
+        }
+        let engine_stack = self
+            .boundary_items()
+            .ok_or(StackWriteError::Unavailable)
+            .and_then(|items| stack.try_into_engine_preserving_count(items))
+            .map_err(ScratchUnavailable::Stack)?;
+        let taken = self.scratch_scope(None, engine_stack, |game, tx, place| {
+            callback(game, tx, place)
+        });
+        Ok(taken.map(|taken| {
+            (
+                taken.stack.and_then(|stack| stack.try_into_api().ok()),
+                taken.overflow.and_then(|stack| stack.try_into_api().ok()),
+            )
+        }))
     }
 
     fn transaction_matches(&self, expected: Option<&TransactionContext>) -> bool {

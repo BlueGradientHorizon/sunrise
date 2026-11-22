@@ -94,8 +94,10 @@ pub trait ItemsServerHost {
     /// Side: server.
     /// Drop one item as DefaultDispenseItemBehavior does. For a dispenser hook:
     /// return this remainder in its answer with `CLICK`; the caller plays the
-    /// answer's event and smoke once. A client, another dimension or an unloaded
-    /// chunk keeps the input stack unchanged.
+    /// answer's event and smoke once. The detached stack keeps its actual count
+    /// until one item is dropped; placement limits apply only to the final slot write.
+    /// An enclosing transaction defers the drop in the dispenser's level until commit.
+    /// A client, another dimension or an unloaded chunk keeps the input stack unchanged.
     fn dispense_default(
         &mut self,
         dimension: &str,
@@ -104,44 +106,14 @@ pub trait ItemsServerHost {
         stack: ItemStack,
     ) -> Result<Option<ItemStack>, StackWriteError>;
     /// Side: server.
-    /// Holds `stack` outside the world, in the open transaction `tx` (`ItemAccess.forStack`):
-    /// the [`ItemPlace::Scratch`] to run item capabilities against. It lives until the
-    /// outermost transaction closes, and an abort of the one that made it drops it. None
-    /// where `tx` is not open.
-    fn scratch_stack(
-        &mut self,
-        tx: &TransactionContext,
-        stack: ItemStack,
-    ) -> Result<Option<ItemPlace>, StackWriteError>;
-    /// Side: server.
-    /// Takes the stack out of scratch place `place`, in `tx`, ending the place: none where it
-    /// is empty, no longer held, or not a scratch place.
-    fn scratch_take(&mut self, tx: &TransactionContext, place: &ItemPlace) -> Option<ItemStack>;
-    /// Side: server.
-    /// Holds `stack` outside the world in a two-slot copy whose item may change, in the open
-    /// transaction `tx`: the [`ItemPlace::ScratchSlots`] a dispensed fluid container runs in
-    /// (`DispenseFluidContainer`), `stack` in its first slot. It lives as a
-    /// [`scratch_stack`](Self::scratch_stack) place does. None where `tx` is not open.
-    fn scratch_slots(
-        &mut self,
-        tx: &TransactionContext,
-        stack: ItemStack,
-    ) -> Result<Option<ItemPlace>, StackWriteError>;
-    /// Side: server.
-    /// Takes both slots out of two-slot place `place`, in `tx`, ending the place: what the
-    /// first holds and what the second caught. None where it is no longer held or not a
-    /// two-slot place.
-    fn scratch_take_slots(
-        &mut self,
-        tx: &TransactionContext,
-        place: &ItemPlace,
-    ) -> Option<(Option<ItemStack>, Option<ItemStack>)>;
-    /// Side: server.
     /// `DefaultDispenseItemBehavior.consumeWithRemainder`: one of `stack` is used and
     /// `remainder` replaces it, a single `stack` by becoming it, else into the dispenser at
     /// `pos` (`DispenserBlockEntity.insertItem`) or, where it doesn't fit, out of its front with
-    /// the click and smoke. What the slot holds then. A client, another dimension or an unloaded
-    /// chunk keeps `stack` unchanged.
+    /// the click and smoke. Returns the detached active-slot remainder immediately. Inside a
+    /// transaction, insertion into another slot is provisional; slot notices, overflow drops,
+    /// click and smoke are published in the source level only when the enclosing transaction
+    /// commits at the root. A client, another dimension or an unloaded chunk keeps `stack`
+    /// unchanged.
     fn dispense_with_remainder(
         &mut self,
         dimension: &str,
@@ -515,4 +487,15 @@ pub trait ItemsBackendMut {
     /// Drops `stack` at the middle of the block at `pos`, as a block entity's handler gives up
     /// what it can't put back.
     fn drop_at(&mut self, pos: [i32; 3], stack: ItemStack) -> Result<(), StackWriteError>;
+    /// Side: server.
+    /// `DefaultDispenseItemBehavior.addToInventoryOrDispense`: inserts `remainder` into the
+    /// dispenser at `pos`, or drops what does not fit with the click and smoke, journaling
+    /// slot writes and deferring drops and events when a storage transaction is open.
+    fn dispense_add_remainder(
+        &mut self,
+        dimension: &str,
+        pos: [i32; 3],
+        facing: Direction,
+        remainder: ItemStack,
+    ) -> Result<(), LevelWriteError>;
 }

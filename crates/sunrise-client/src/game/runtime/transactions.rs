@@ -88,6 +88,8 @@ pub(super) struct OpenTransactions {
     // A live, non-ZST address distinguishes journal instances.
     tag: Option<Box<u8>>,
     next_frame: u64,
+    /// Live scratch rows; the frame opening a loan owns its ID.
+    scratch: HashMap<u64, scratch::Scratch>,
     closing: Option<TransactionLifecycle>,
     /// Implicit container notices waiting for this quick move's source settlement.
     quick_move_notices: Option<Vec<QuickMoveNotice>>,
@@ -135,6 +137,12 @@ impl OpenTransactions {
     }
     pub(super) fn level_frame(&mut self, dim: super::Dim) -> Option<&mut Level> {
         entities::open_in(self, dim)
+    }
+
+    fn insert_scratch(&mut self, entry: scratch::Scratch) -> mod_api::ScratchSlot {
+        let slot = mod_api::ScratchSlot::fresh();
+        self.scratch.insert(slot.id(), entry);
+        slot
     }
 
     fn player_write(&mut self) -> Option<&mut Level> {
@@ -444,10 +452,9 @@ pub(super) struct Level {
     pub(in crate::game) packets: Option<sunrise_client::lan::conn::transaction_packets::Scope>,
     captured_packets: Vec<sunrise_client::lan::conn::transaction_packets::Packets>,
     action: Option<decision::ActiveAction>,
-    /// The scratch stacks (`ItemPlace::Scratch`), live: kept by the outermost transaction only.
-    scratch: HashMap<u64, scratch::Scratch>,
-    /// Each scratch stack before this transaction first wrote it; none where it didn't exist.
-    scratch_kept: HashMap<u64, Option<scratch::Scratch>>,
+    /// A scratch slot owned by this frame, and before-images of ancestor loans it wrote.
+    owned_scratch: Option<u64>,
+    scratch_kept: HashMap<u64, scratch::Scratch>,
     /// The entities it added and removed, and the announcements it holds.
     lifetimes: entities::EntityJournal,
     /// Each attachment map that went with an entity to another level after this transaction
@@ -601,6 +608,13 @@ pub(super) enum After {
     FluidWrite(Box<super::world_fluids::WrittenFluid>),
     /// A bucket's sound and fluid game event (`level_play_fluid_effects`).
     FluidEffects(Box<super::world_fluids::FluidEffects>),
+    /// A dispenser drop in the source level, with optional overflow click and smoke.
+    DispenserDrop {
+        pos: Pos,
+        facing: sunrise_core::geometry::Direction,
+        stack: ItemStack,
+        play_events: bool,
+    },
     /// `BlockEntity.setChanged`.
     Changed(Pos),
     /// An implicit notice staged during a mod quick move.
@@ -696,6 +710,7 @@ impl After {
                 | Self::LevelWrite(_)
                 | Self::FluidWrite(_)
                 | Self::FluidEffects(_)
+                | Self::DispenserDrop { .. }
                 | Self::BlockGameEvent(..)
                 | Self::Drop(..)
                 | Self::Spawn(..)
@@ -858,16 +873,16 @@ struct StorageScope<'a, 'g> {
 }
 
 impl StorageScope<'_, '_> {
-    fn close(mut self, commit: bool) {
+    fn close(mut self, commit: bool) -> Option<scratch::Scratch> {
         self.open = false;
-        self.game.close_storage_frame(self.frame, commit);
+        self.game.close_storage_frame(self.frame, commit)
     }
 }
 
 impl Drop for StorageScope<'_, '_> {
     fn drop(&mut self) {
         if self.open {
-            self.game.close_storage_frame(self.frame, false);
+            let _ = self.game.close_storage_frame(self.frame, false);
         }
     }
 }
@@ -919,21 +934,22 @@ impl Game<'_> {
     }
     /// Closes `frame`, first aborting every transaction opened inside it and left open, so a
     /// scope closing its own is never stranded behind an abandoned child.
-    fn close_storage_frame(&mut self, frame: TransactionFrame, commit: bool) {
-        let Some(at) = self
+    fn close_storage_frame(
+        &mut self,
+        frame: TransactionFrame,
+        commit: bool,
+    ) -> Option<scratch::Scratch> {
+        let at = self
             .transactions
             .iter()
-            .rposition(|level| level.frame == Some(frame))
-        else {
-            return;
-        };
+            .rposition(|level| level.frame == Some(frame))?;
         if self.transactions.len() > at + 1 {
             log::warn!("Sunrise: aborted a transaction left open inside the one being closed");
         }
         while self.transactions.len() > at + 1 {
-            self.close_storage_transaction(false);
+            let _ = self.close_storage_transaction(false);
         }
-        self.close_storage_transaction(commit);
+        self.close_storage_transaction(commit)
     }
     /// Runs `f` inside a new (or nested) storage transaction, committing iff `f` returns
     /// `(out, true)` and aborting on `false` or unwind.
@@ -941,6 +957,14 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&mut Self, TransactionFrame) -> (R, bool),
     ) -> R {
+        self.run_storage_scope(f).0
+    }
+
+    /// Also returns the frame's own detached scratch row when it commits.
+    fn run_storage_scope<R>(
+        &mut self,
+        f: impl FnOnce(&mut Self, TransactionFrame) -> (R, bool),
+    ) -> (R, Option<scratch::Scratch>) {
         let frame = self.open_storage_transaction();
         let guard = StorageScope {
             game: self,
@@ -948,8 +972,7 @@ impl Game<'_> {
             open: true,
         };
         let (out, commit) = f(&mut *guard.game, frame);
-        guard.close(commit);
-        out
+        (out, guard.close(commit))
     }
     /// Runs `f` inside a new (or nested) storage transaction, lending a scoped
     /// [`TransactionContext`]; commits on `Ok` and aborts on `Err` or unwind.
@@ -1015,17 +1038,24 @@ impl Game<'_> {
     /// an engine decision unwinds before it can close its savepoint).
     pub(in crate::game) fn abort_abandoned_transactions(&mut self, depth: usize) {
         while self.transactions.len() > depth {
-            self.close_storage_transaction(false);
+            let _ = self.close_storage_transaction(false);
         }
     }
 
     /// Closes the innermost transaction: `commit` hands its changes to the one around it, or
     /// at the root makes them final and tells the world; otherwise every storage it wrote goes
     /// back to how it was. Nothing happens with none open.
-    fn close_storage_transaction(&mut self, commit: bool) {
-        let Some(level) = self.transactions.pop() else {
-            return;
-        };
+    fn close_storage_transaction(&mut self, commit: bool) -> Option<scratch::Scratch> {
+        let mut level = self.transactions.pop()?;
+        let commit = commit
+            && !(level.packets.is_some()
+                && sunrise_client::lan::conn::transaction_packets::Scope::refused());
+        // Expire the loan before replay can reenter mods. Its closed row must never join
+        // another journal, even if the current frame's commit is nested.
+        let owned = level.owned_scratch.take().and_then(|id| {
+            level.scratch_kept.remove(&id);
+            self.transactions.scratch.remove(&id)
+        });
         self.transactions
             .attachment_query_scopes
             .leave(level.parent_attachment_query_scope);
@@ -1051,12 +1081,10 @@ impl Game<'_> {
         if retire {
             guard.game.world.block_entities.publish_retirement();
         }
+        owned.filter(|_| commit)
     }
     /// What closing `level` does, with the closing phase already set.
     fn close_level(&mut self, mut level: Level, commit: bool) {
-        let commit = commit
-            && !(level.packets.is_some()
-                && sunrise_client::lan::conn::transaction_packets::Scope::refused());
         if let Some(scope) = level.packets.take()
             && commit
             && let Some(packets) = scope.finish()
@@ -1131,8 +1159,13 @@ impl Game<'_> {
                 }
             }
         }
-        match (commit, self.transactions.last_mut()) {
+        match (commit, self.transactions.levels.last_mut()) {
             (true, Some(outer)) => {
+                for (id, kept) in level.scratch_kept {
+                    if self.transactions.scratch.contains_key(&id) {
+                        outer.scratch_kept.entry(id).or_insert(kept);
+                    }
+                }
                 outer.actions.merge(level.actions);
                 outer.trades.merge(level.trades);
                 for (pos, was) in level.connection_groups {
@@ -1217,9 +1250,6 @@ impl Game<'_> {
                 for (id, slot) in level.in_flight {
                     outer.in_flight.entry(id).or_insert(slot);
                 }
-                for (id, kept) in level.scratch_kept {
-                    outer.scratch_kept.entry(id).or_insert(kept);
-                }
                 outer.save_gate = outer.save_gate.take().or(level.save_gate);
                 outer.save_chunks.extend(level.save_chunks);
                 outer.new_maps.append(&mut level.new_maps);
@@ -1269,7 +1299,7 @@ impl Game<'_> {
     /// there is no caller-owned frame; the tick start also uses this as a backstop.
     pub(super) fn abort_open_transactions(&mut self) {
         while !self.transactions.is_empty() {
-            self.close_storage_transaction(false);
+            let _ = self.close_storage_transaction(false);
         }
         // If called during a root close, the enclosing close still owns retirement.
         if self.transactions.closing.is_none() {
@@ -2031,6 +2061,22 @@ impl Game<'_> {
             After::Composter(effects) => self.commit_composter_effects(effects),
             After::FluidWrite(written) => self.commit_fluid_write(*written),
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
+            After::DispenserDrop {
+                pos,
+                facing,
+                stack,
+                play_events,
+            } => {
+                self.spawn_dispensed(pos, facing, stack);
+                if play_events {
+                    self.dispenser_event(super::dispenser::CLICK, pos, 0);
+                    self.dispenser_event(
+                        2000,
+                        pos,
+                        sunrise_gameplay::dispense_rules::data_value(facing),
+                    );
+                }
+            }
             After::LevelWrite(write) => self.commit_level_write(*write),
             After::BlockGameEvent(id, pos, who, state) => {
                 self.post_block_game_event(id, pos, Some(who), Some(state));

@@ -1,7 +1,7 @@
 //! `host.transaction` (#41 §7): NeoForge 26.3's `Transaction`. Changes made through the
 //! capability helpers inside one are kept by the game and made final only when the outermost
 //! transaction commits; an abort puts back everything its closure changed.
-use crate::ServerHost;
+use crate::{ItemPlace, ItemStack, ServerHost, StackWriteError};
 use std::{fmt, marker::PhantomData, rc::Rc};
 
 // no wire: only the host can lend this thread-bound authority over a live journal.
@@ -143,6 +143,67 @@ impl<E: std::error::Error + 'static> std::error::Error for TransactionError<E> {
     }
 }
 
+// no wire: a local refusal to open a scratch transaction scope, not a mod boundary payload.
+// exhaustive: either the host cannot open a transaction or the initial stack failed write validation.
+/// Why this host could not open a scratch item-place scope.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ScratchUnavailable {
+    /// The host could not open a transaction in the current phase.
+    Transaction(TransactionUnavailable),
+    /// The initial stack did not pass the game's write validation.
+    Stack(StackWriteError),
+}
+
+impl fmt::Display for ScratchUnavailable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Transaction(error) => error.fmt(f),
+            Self::Stack(error) => write!(f, "invalid scratch stack: {error:?}"),
+        }
+    }
+}
+
+impl std::error::Error for ScratchUnavailable {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Transaction(error) => Some(error),
+            Self::Stack(_) => None,
+        }
+    }
+}
+
+// no wire: the error belongs to a local closure and can contain any Rust type.
+// exhaustive: either the scope could not open, the initial stack was rejected, or the closure aborted.
+/// Why [`HostTransaction::scratch_stack`] or [`HostTransaction::scratch_slots`] did not commit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ScratchError<E> {
+    /// The host could not open a transaction. The closure was not called.
+    Unavailable,
+    /// The initial stack did not pass the game's write validation. The closure was not called.
+    Stack(StackWriteError),
+    /// The closure returned this error. Its writes were rolled back.
+    Aborted(E),
+}
+
+impl<E: fmt::Display> fmt::Display for ScratchError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unavailable => TransactionUnavailable.fmt(f),
+            Self::Stack(error) => write!(f, "invalid scratch stack: {error:?}"),
+            Self::Aborted(error) => error.fmt(f),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for ScratchError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Unavailable | Self::Stack(_) => None,
+            Self::Aborted(error) => Some(error),
+        }
+    }
+}
+
 /// Asserts that `expected` matches the innermost open transaction on `host` (`None` requiring no
 /// open transaction), panicking as NeoForge's `TransactionManager.validateCurrentTransaction`
 /// throws `IllegalStateException` on a mismatched, foreign, or ancestor context.
@@ -244,6 +305,84 @@ pub trait HostTransaction: ServerHost {
             .ok_or(TransactionError::Unavailable)?
             .map_err(TransactionError::Aborted)
     }
+
+    /// Runs `f` in a transaction with a lent single-slot scratch [`ItemPlace`] initialised from
+    /// `stack` (`ItemAccess.forStack`), nested in the open transaction if any. Writes through the
+    /// lent place never change its item, only its count and components, refusing what doesn't fit
+    /// or is another item.
+    ///
+    /// On `Ok`, the transaction commits into its enclosing transaction (or for good at the root)
+    /// and returns `(value, final_stack)`. On `Err` or unwind, the transaction aborts and the
+    /// scratch slot is dropped without publishing. If no transaction can open or `stack` fails
+    /// write validation, `f` does not run.
+    fn scratch_stack<T, E>(
+        &mut self,
+        stack: ItemStack,
+        f: impl for<'loan> FnOnce(
+            &'loan mut dyn ServerHost,
+            &'loan TransactionContext,
+            &'loan ItemPlace,
+        ) -> Result<T, E>,
+    ) -> Result<(T, Option<ItemStack>), ScratchError<E>> {
+        let mut f = Some(f);
+        let mut outcome = None;
+        let slots = self
+            .with_scratch_stack_scope(stack, &mut |host, tx, place| {
+                let Some(f) = f.take() else { return false };
+                let result = f(host, tx, place);
+                let commit = result.is_ok();
+                outcome = Some(result);
+                commit
+            })
+            .map_err(|error| match error {
+                ScratchUnavailable::Transaction(_) => ScratchError::Unavailable,
+                ScratchUnavailable::Stack(error) => ScratchError::Stack(error),
+            })?;
+        match (slots, outcome) {
+            (Some(slots), Some(Ok(value))) => Ok((value, slots)),
+            (_, Some(Err(error))) => Err(ScratchError::Aborted(error)),
+            (None, Some(Ok(_))) | (_, None) => Err(ScratchError::Unavailable),
+        }
+    }
+
+    /// Runs `f` in a transaction with a lent two-slot scratch [`ItemPlace`] whose first slot is
+    /// initialised from `stack` (`DispenseFluidContainer`), nested in the open transaction if any.
+    /// Reads and extracts use the first slot; inserts fill the first slot when it is empty or
+    /// holds the same item and components, and what doesn't fit goes to the second slot.
+    ///
+    /// On `Ok`, the transaction commits into its enclosing transaction (or for good at the root)
+    /// and returns `(value, (first, second))`. On `Err` or unwind, the transaction aborts and the
+    /// scratch slots are dropped without publishing. If no transaction can open or `stack` fails
+    /// write validation, `f` does not run.
+    fn scratch_slots<T, E>(
+        &mut self,
+        stack: ItemStack,
+        f: impl for<'loan> FnOnce(
+            &'loan mut dyn ServerHost,
+            &'loan TransactionContext,
+            &'loan ItemPlace,
+        ) -> Result<T, E>,
+    ) -> Result<(T, (Option<ItemStack>, Option<ItemStack>)), ScratchError<E>> {
+        let mut f = Some(f);
+        let mut outcome = None;
+        let slots = self
+            .with_scratch_slots_scope(stack, &mut |host, tx, place| {
+                let Some(f) = f.take() else { return false };
+                let result = f(host, tx, place);
+                let commit = result.is_ok();
+                outcome = Some(result);
+                commit
+            })
+            .map_err(|error| match error {
+                ScratchUnavailable::Transaction(_) => ScratchError::Unavailable,
+                ScratchUnavailable::Stack(error) => ScratchError::Stack(error),
+            })?;
+        match (slots, outcome) {
+            (Some(slots), Some(Ok(value))) => Ok((value, slots)),
+            (_, Some(Err(error))) => Err(ScratchError::Aborted(error)),
+            (None, Some(Ok(_))) | (_, None) => Err(ScratchError::Unavailable),
+        }
+    }
 }
 
 impl<H: ServerHost + ?Sized> HostTransaction for H {}
@@ -299,6 +438,16 @@ mod tests {
             panic!("closure must not run when transactions are unavailable");
         });
         assert_eq!(outcome, Err(TransactionError::Unavailable));
+        let (_, resource) = fake_with_stone();
+        let stack = resource.to_stack(1).unwrap();
+        let stack_outcome = host.scratch_stack(stack.clone(), |_, _, _| -> Result<(), ()> {
+            panic!("closure must not run when transactions are unavailable");
+        });
+        assert_eq!(stack_outcome, Err(ScratchError::Unavailable));
+        let slots_outcome = host.scratch_slots(stack, |_, _, _| -> Result<(), ()> {
+            panic!("closure must not run when transactions are unavailable");
+        });
+        assert_eq!(slots_outcome, Err(ScratchError::Unavailable));
     }
 
     #[test]

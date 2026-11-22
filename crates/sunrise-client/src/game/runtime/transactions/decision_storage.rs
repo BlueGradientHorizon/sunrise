@@ -180,7 +180,7 @@ impl ActionHost for GameHost<'_, '_> {
     }
 
     fn close_action(&mut self, savepoint: TransactionFrame, commit: bool) {
-        self.game.close_storage_frame(savepoint, commit);
+        let _ = self.game.close_storage_frame(savepoint, commit);
     }
 
     fn journal(&mut self) -> &mut Journal {

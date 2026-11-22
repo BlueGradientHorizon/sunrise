@@ -125,14 +125,34 @@ fn dispense_item(&self, host: &mut dyn ServerHost, event: &mut DispenseItemEvent
 }
 ```
 
-The dispensed container runs in a private two-slot copy (`ItemPlace::ScratchSlots`), so an
-empty container may become a full one of another item, as a bucket does. Its handler reaches
+The dispensed container runs in a lent two-slot copy (`HostTransaction::scratch_slots`,
+yielding an `ItemPlace::Scratch` for the callback scope), so an empty container may become a
+full one of another item, as a bucket does. Its handler reaches
 the copy one item at a time (`ItemPlace::OneByOne`), so it sees one container whatever the
 stack. It always tries
-`try_pickup_fluid` on the block in front first (its `FLUIDS` reached from the dispenser's side)
-and places with `try_place_fluid` (unvalidated, as a bucket) only where nothing was picked up.
-A single container is replaced in its slot. From a larger stack the slot keeps the rest and the
-changed container goes into the dispenser's other slots, else out of its front with a second
-click (`host.dispense_with_remainder`). The fluid's sound and game event come before the
-dispenser's click and smoke. Where neither moves anything, nothing changes and one unchanged
-container is dispensed as `DefaultDispenseItemBehavior` does.
+`try_pickup_fluid` on the block in front first (its `FLUIDS` reached from the dispenser's side);
+if pickup fails, its nested transaction aborts and restores the lent slots before
+`try_place_fluid` (unvalidated, as a bucket) runs as the fallback. The updated slots are
+published only when a transfer commits.
+A single container is replaced in its slot (the final first slot, or the second slot when the
+first was emptied). When both slots remain populated, the final first slot stays in the
+dispenser's active slot and the second slot's remainder goes into the dispenser's other slots,
+else out of its front with a second click (`DefaultDispenseItemBehavior.addToInventoryOrDispense`).
+While an enclosing transaction is open, the helper's fluid and slot changes are provisional.
+Block updates, fluid ticks, drops, sounds, game events, and slot notices publish in the
+**dispenser's level** at the root commit, even if the transaction opened in another level.
+This includes the pickup event from a `FLUIDS` transfer and both vanilla waterlogging ticks
+and ticks scheduled through `LevelWriteHost` by a `place_liquid` Part. An abort publishes none
+of them. If a fluid game-event listener opens another transaction during commit, it does not
+delay attachment retirement for block entities removed after the outermost close.
+
+`ItemsServerHost::dispense_with_remainder` likewise returns a detached active-slot
+remainder immediately, but any other slot it fills is provisional, and overflow drops, click
+and smoke wait for the root commit. Inserting the remainder into an empty slot notifies; growing
+a compatible stack does not. The detached active stack keeps its count until the dispenser
+writes its slot, using the effective stack-size component (one if absent). An inert Part or a
+refused reply leaves the slot untouched and sends no slot change notice.
+Where neither pickup nor placement moves anything, one unchanged container is dispensed as
+`DefaultDispenseItemBehavior` does. Where the helper returns `None` (for example, when a
+transaction is unavailable or stack validation fails), return `None` from the Part rather than
+calling `dispense_default` yourself.

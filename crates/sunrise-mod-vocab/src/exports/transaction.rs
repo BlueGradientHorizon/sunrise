@@ -1,6 +1,6 @@
 pub use item::transaction::{
-    HostTransaction, TransactionContext, TransactionError, TransactionLifecycle,
-    TransactionUnavailable,
+    HostTransaction, ScratchError, ScratchUnavailable, TransactionContext, TransactionError,
+    TransactionLifecycle, TransactionUnavailable,
 };
 mod __private {
     /// A journal frame's process-local identity, built and matched by the game's journal.

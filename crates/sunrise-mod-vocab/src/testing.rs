@@ -34,6 +34,8 @@ mod level;
 mod players;
 #[path = "testing/registries.rs"]
 mod registries;
+#[path = "testing/scratch.rs"]
+mod scratch;
 #[path = "testing/services.rs"]
 mod services;
 
@@ -49,14 +51,15 @@ pub use registries::FakeRegistries;
 pub use services::{FakeCommands, FakeMessages};
 
 use crate::item::item_stack::component_edits::edit_item_components;
-use crate::item::transaction::{TransactionContext, TransactionUnavailable};
+use crate::item::transaction::{ScratchUnavailable, TransactionContext, TransactionUnavailable};
 use crate::runtime::Installed;
 use crate::world::ticket_controller::{ControllerInfo, TEST_CONTROLLERS};
 use crate::{
     Backend, BackendMut, BackendMutRef, BackendRef, BlockEntityRef, BlockEntityTypeKey, BlockSide,
-    ClientHost, Commands, EntityRef, FluidStack, Host, InventoryView, ItemComponentEditor,
+    ClientHost, Commands, EntityRef, FluidStack, Host, InventoryView, ItemComponentEditor, ItemKey,
     ItemPlace, ItemPlaceEditError, ItemStack, ItemStackView, LevelRef, Messages, Mods, PlayerRef,
-    Players, ServerHost, TEST_MODS, Tag, Text, TicketController, WorldEpoch,
+    Players, ScratchSlot, ServerHost, StackWriteError, TEST_MODS, Tag, Text, TicketController,
+    WorldEpoch,
 };
 
 /// The world epoch of every fake's handles.
@@ -258,6 +261,7 @@ pub struct FakeHost {
     pub game_events: Vec<FakeGameEvent>,
     /// The holders' attachments: a lone map answers for any holder.
     pub attachments: sunrise_mod_runtime::attachments::Attachments,
+    scratch: scratch::FakeScratch,
 }
 
 impl FakeHost {
@@ -340,6 +344,140 @@ impl FakeHost {
             None => 1,
             _ => 0,
         }
+    }
+    fn validate_scratch_stack(&self, stack: &ItemStack) -> Result<(), StackWriteError> {
+        if FakeRegistries::resolved_item_id(stack.item()).is_none() {
+            return Err(StackWriteError::UnknownItem);
+        }
+        let maximum = self.max_stack(&crate::ItemResource::of(stack));
+        if maximum == 0 {
+            return Err(StackWriteError::InvalidMaximum);
+        }
+        Ok(())
+    }
+    fn run_transaction_scope(
+        &mut self,
+        loan: Option<(Option<ItemKey>, ItemStack)>,
+        run: impl for<'loan> FnOnce(
+            &'loan mut FakeHost,
+            &'loan TransactionContext,
+            Option<ScratchSlot>,
+        ) -> bool,
+    ) -> Result<Option<scratch::FakeScratchEntry>, TransactionUnavailable> {
+        struct ScratchScopeGuard<'a> {
+            host: &'a mut FakeHost,
+            owned_id: Option<u64>,
+            closed: bool,
+        }
+        impl ScratchScopeGuard<'_> {
+            fn finish(mut self, commit: bool) -> Option<scratch::FakeScratchEntry> {
+                self.closed = true;
+                let entry = self
+                    .owned_id
+                    .and_then(|id| self.host.scratch.remove_loan(id));
+                self.host.scratch.close_frame(commit);
+                if commit { entry } else { None }
+            }
+        }
+        impl Drop for ScratchScopeGuard<'_> {
+            fn drop(&mut self) {
+                if !self.closed {
+                    if let Some(id) = self.owned_id {
+                        self.host.scratch.remove_loan(id);
+                    }
+                    self.host.scratch.close_frame(false);
+                }
+            }
+        }
+
+        self.scratch.push_frame();
+        let slot = loan.map(|(item, stack)| self.scratch.insert_loan(item, stack));
+        let mut guard = ScratchScopeGuard {
+            host: self,
+            owned_id: slot.map(ScratchSlot::id),
+            closed: false,
+        };
+        let mut committed = false;
+        let result = FakeJournal::with_scope_with(
+            &mut *guard.host,
+            |host| &mut host.journal,
+            |host| {
+                (
+                    host.players.clone(),
+                    host.level.clone(),
+                    host.attachments.clone(),
+                )
+            },
+            |host, (players, level, attachments)| {
+                (host.players, host.level, host.attachments) = (players, level, attachments);
+            },
+            |host, tx| {
+                let commit = run(host, tx, slot);
+                committed = commit;
+                commit
+            },
+        );
+        let published = guard.finish(result.is_ok() && committed);
+        result?;
+        // The outermost commit plays what waited for it; an abort already restored `level`.
+        if self.journal.depth() == 0 {
+            for queued in std::mem::take(&mut self.level.fluid_effects) {
+                self.play_fluid_effects(queued);
+            }
+        }
+        Ok(published)
+    }
+}
+
+#[cfg(test)]
+impl FakeHost {
+    pub(crate) fn scratch_live_count(&self) -> usize {
+        self.scratch.live_count()
+    }
+    pub(crate) fn scratch_kept_frame_counts(&self) -> Vec<usize> {
+        self.scratch.kept_frame_counts()
+    }
+    pub(crate) fn scratch_kept_contains(&self, frame_index: usize, slot: ScratchSlot) -> bool {
+        self.scratch.kept_contains(frame_index, slot)
+    }
+    pub(crate) fn with_test_transaction<R>(
+        &mut self,
+        f: impl for<'loan> FnOnce(&'loan mut FakeHost, &'loan TransactionContext) -> (bool, R),
+    ) -> R {
+        let mut out = None;
+        self.run_transaction_scope(None, |host, tx, _| {
+            let (commit, value) = f(host, tx);
+            out = Some(value);
+            commit
+        })
+        .expect("FakeHost transactions are always available");
+        out.expect("transaction callback ran")
+    }
+    pub(crate) fn with_test_scratch_stack<R>(
+        &mut self,
+        stack: ItemStack,
+        f: impl for<'loan> FnOnce(
+            &'loan mut FakeHost,
+            &'loan TransactionContext,
+            &'loan ItemPlace,
+        ) -> (bool, R),
+    ) -> (Option<Option<ItemStack>>, R) {
+        self.validate_scratch_stack(&stack)
+            .expect("test scratch stack is valid");
+        let item = stack.item();
+        let mut out = None;
+        let published = self
+            .run_transaction_scope(Some((Some(item), stack)), |host, tx, slot| {
+                let place = ItemPlace::Scratch(slot.expect("scratch loan minted"));
+                let (commit, value) = f(host, tx, &place);
+                out = Some(value);
+                commit
+            })
+            .expect("FakeHost transactions are always available");
+        (
+            published.map(|entry| entry.stack),
+            out.expect("scratch callback ran"),
+        )
     }
 }
 impl Host for FakeHost {
@@ -448,28 +586,49 @@ impl ServerHost for FakeHost {
             &'loan TransactionContext,
         ) -> bool,
     ) -> Result<(), TransactionUnavailable> {
-        FakeJournal::with_scope(
-            self,
-            |host| &mut host.journal,
-            |host| {
-                (
-                    host.players.clone(),
-                    host.level.clone(),
-                    host.attachments.clone(),
-                )
-            },
-            |host, (players, level, attachments)| {
-                (host.players, host.level, host.attachments) = (players, level, attachments);
-            },
-            callback,
-        )?;
-        // The outermost commit plays what waited for it; an abort already restored `level`.
-        if self.journal.depth() == 0 {
-            for queued in std::mem::take(&mut self.level.fluid_effects) {
-                self.play_fluid_effects(queued);
-            }
-        }
+        self.run_transaction_scope(None, |host, tx, _| callback(host, tx))?;
         Ok(())
+    }
+    fn with_scratch_stack_scope(
+        &mut self,
+        stack: ItemStack,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn ServerHost,
+            &'loan TransactionContext,
+            &'loan ItemPlace,
+        ) -> bool,
+    ) -> Result<Option<Option<ItemStack>>, ScratchUnavailable> {
+        self.validate_scratch_stack(&stack)
+            .map_err(ScratchUnavailable::Stack)?;
+        let item = stack.item();
+        let published = self
+            .run_transaction_scope(Some((Some(item), stack)), |host, tx, slot| {
+                let Some(slot) = slot else { return false };
+                let place = ItemPlace::Scratch(slot);
+                callback(host, tx, &place)
+            })
+            .map_err(ScratchUnavailable::Transaction)?;
+        Ok(published.map(|entry| entry.stack))
+    }
+    fn with_scratch_slots_scope(
+        &mut self,
+        stack: ItemStack,
+        callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn ServerHost,
+            &'loan TransactionContext,
+            &'loan ItemPlace,
+        ) -> bool,
+    ) -> Result<Option<(Option<ItemStack>, Option<ItemStack>)>, ScratchUnavailable> {
+        self.validate_scratch_stack(&stack)
+            .map_err(ScratchUnavailable::Stack)?;
+        let published = self
+            .run_transaction_scope(Some((None, stack)), |host, tx, slot| {
+                let Some(slot) = slot else { return false };
+                let place = ItemPlace::Scratch(slot);
+                callback(host, tx, &place)
+            })
+            .map_err(ScratchUnavailable::Transaction)?;
+        Ok(published.map(|entry| (entry.stack, entry.overflow)))
     }
     fn transaction_matches(&self, tx: Option<&TransactionContext>) -> bool {
         self.journal.matches(tx)
@@ -840,6 +999,11 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         place: &ItemPlace,
         read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
     ) -> Option<()> {
+        if let ItemPlace::Scratch(slot) = place {
+            let stack = self.scratch.held(*slot)?;
+            read(ItemStackView::from_stack(stack));
+            return Some(());
+        }
         let (player, slot) = self.players.place(place)?;
         read(ItemStackView::from_stack(player.slots.get(&slot)?));
         Some(())
@@ -885,6 +1049,9 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         if max_stack == 0 {
             return Err(crate::StackWriteError::InvalidMaximum);
         }
+        if let ItemPlace::Scratch(slot) = place {
+            return Ok(self.scratch.insert(*slot, resource, amount, max_stack));
+        }
         Ok(match self.players.place(place) {
             Some((player, slot)) => player.insert(slot, resource, amount, max_stack),
             _ => 0,
@@ -898,6 +1065,9 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         tx: &TransactionContext,
     ) -> Result<u32, crate::StackWriteError> {
         self.journal.assert_current(tx);
+        if let ItemPlace::Scratch(slot) = place {
+            return Ok(self.scratch.extract(*slot, resource, amount));
+        }
         Ok(self
             .players
             .place(place)

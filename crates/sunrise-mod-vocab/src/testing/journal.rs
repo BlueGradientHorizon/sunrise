@@ -57,6 +57,19 @@ impl<S> FakeJournal<S> {
             &'loan TransactionContext,
         ) -> bool,
     ) -> Result<(), TransactionUnavailable> {
+        Self::with_scope_with(host, journal, snapshot, restore, |host, tx| {
+            callback(host, tx)
+        })
+    }
+
+    /// Runs `run` inside one scoped transaction while keeping the concrete host type `H`.
+    pub(super) fn with_scope_with<H: ServerHost>(
+        host: &mut H,
+        journal: fn(&mut H) -> &mut Self,
+        snapshot: fn(&H) -> S,
+        restore: fn(&mut H, S),
+        run: impl for<'loan> FnOnce(&'loan mut H, &'loan TransactionContext) -> bool,
+    ) -> Result<(), TransactionUnavailable> {
         struct Scope<'a, H, S> {
             host: &'a mut H,
             journal: fn(&mut H) -> &mut FakeJournal<S>,
@@ -114,7 +127,7 @@ impl<S> FakeJournal<S> {
             frame,
             commit: false,
         };
-        let commit = frame.lend(|tx| callback(&mut *scope.host, tx));
+        let commit = frame.lend(|tx| run(&mut *scope.host, tx));
         scope.commit = commit;
         Ok(())
     }
