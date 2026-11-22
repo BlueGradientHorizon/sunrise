@@ -45,7 +45,12 @@ condition payload in that load. Built-in reads of feature flags, registries or
 tags also distinguish different context views. A string in a custom handler's
 arguments does not count as such a read. A new load reevaluates the entry.
 Handlers must not mutate live data.
-A handler panic becomes a named load error ("handler panicked").
+A handler panic becomes a load error naming the condition and its owning mod.
+It is logged and queues an error toast. Only that handler is disabled for the
+rest of the session, including after a reload. An evaluation that reaches the
+disabled handler reports an error without running it. A returned
+`ConditionError` or an ordinary phase refusal is reported by the loader but
+leaves the handler available for the next evaluation.
 
 `true` loads the entry; `false` omits it, without exposing a lower pack's
 version. The loader handles callback errors and unknown condition types as

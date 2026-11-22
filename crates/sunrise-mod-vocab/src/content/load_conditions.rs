@@ -1,7 +1,7 @@
 //! Load-phase condition handlers.
 use crate::Identifier;
 use std::{collections::BTreeMap, sync::Arc};
-type Entries = BTreeMap<Identifier, (String, Arc<dyn LoadCondition>)>;
+type Entries = BTreeMap<Identifier, (&'static str, Arc<dyn LoadCondition>)>;
 
 /// A condition's invalid arguments or a registration refusal.
 // exhaustive: mods construct this error with a diagnostic message.
@@ -43,7 +43,11 @@ impl From<(Identifier, String)> for ConditionError {
 /// change the handling of an unknown ID. An unknown ID, malformed condition
 /// list, returned error, or native panic refuses registry-backed data before it
 /// is installed. A simple JSON listener or data map instead logs the error and
-/// skips the entire offending file. Handlers must not mutate published data.
+/// skips the entire offending file. A panic is logged and reported to the player
+/// and disables only that handler for the session, across loads. Evaluations that
+/// reach the disabled handler report an error without calling it again. A returned
+/// `ConditionError` or a phase refusal does not disable the handler. Handlers
+/// must not mutate published data.
 pub trait LoadCondition: Send + Sync + 'static {
     /// Read and validate the raw JSON arguments when testing reaches this condition.
     /// Return false when the condition does not hold. Testing stops as soon as
@@ -92,7 +96,8 @@ impl LoadConditionDeclarations {
         }
     }
 
-    /// Finish registration, refusing even errors a listener ignored.
+    /// Finish registration with each handler's dispatch owner, refusing even
+    /// errors a listener ignored.
     // hidden: engine preparation consumes the declaration table.
     #[doc(hidden)]
     pub fn finish(self) -> Result<Entries, ConditionError> {
@@ -127,7 +132,7 @@ impl LoadConditions for LoadConditionDeclarations {
             self.errors.push(error.clone());
             return Err(error);
         }
-        self.entries.insert(name, (owner.to_owned(), condition));
+        self.entries.insert(name, (owner, condition));
         Ok(())
     }
 }

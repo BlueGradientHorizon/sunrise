@@ -1,11 +1,11 @@
 //! Load-scoped registration and per-candidate condition lookup.
 use super::Game;
-use mod_api::__private::game::RegistrationContextNew;
+use mod_api::__private::game::{CallbackOwner, RegistrationContextNew};
 use std::{collections::BTreeMap, sync::Arc};
 use sunrise_world::conditions::ConditionContextRead;
 
 pub(super) type ConditionTable =
-    Arc<BTreeMap<mod_api::Identifier, (String, Arc<dyn mod_api::LoadCondition>)>>;
+    Arc<BTreeMap<mod_api::Identifier, (CallbackOwner, Arc<dyn mod_api::LoadCondition>)>>;
 impl Game<'_> {
     pub(super) fn begin_condition_reload(
         &mut self,
@@ -239,17 +239,21 @@ pub(super) fn conditions_for_mods(
                 &mod_api::RegistrationContext::new(),
                 &mut registrar,
             );
-            registrar
-                .finish()
-                .map(Arc::new)
-                .map_err(|error| error.message)
+            let entries = registrar.finish().map_err(|error| error.message)?;
+            // Every candidate shares the owner of each retained registration.
+            Ok(Arc::new(
+                entries
+                    .into_iter()
+                    .map(|(id, (owner, handler))| (id, (CallbackOwner::for_mod(owner), handler)))
+                    .collect(),
+            ))
         })
         .clone()?;
     let conditions = sunrise_world::conditions::LoadConditions::new(inventory.server_ids());
     Ok(
         conditions.with_lookup(table.iter().map(|(id, (owner, handler))| {
             let name = id.to_string();
-            let enabled = sources.code_owner_enabled(owner);
+            let enabled = sources.code_owner_enabled(owner.id());
             let owner = owner.clone();
             let handler = handler.clone();
             (name.clone(), move |args: &serde_json::Value| {
@@ -258,24 +262,13 @@ pub(super) fn conditions_for_mods(
                 }
                 let mut arguments = args.as_object().cloned().expect("decoded condition object");
                 arguments.remove("type");
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    mod_api::__private::contain_refusal(
-                        mod_api::content::crash::current_native_mod().unwrap_or("unknown"),
-                        || handler.test(&mod_api::serde_json::Value::Object(arguments)),
-                    )
-                }))
-                .map_err(|_| format!("condition {name} (mod {owner}): handler panicked"))
-                .and_then(|contained| {
-                    contained.map_err(|refusal| {
-                        refusal.report();
-                        format!("condition {name} (mod {owner}): handler refused: {refusal}")
+                let arguments = serde_json::Value::Object(arguments);
+                owner
+                    .call("load condition", "test_load_condition", || {
+                        handler.test(&arguments)
                     })
-                })
-                .and_then(|answer| {
-                    answer.map_err(|error| {
-                        format!("condition {name} (mod {owner}): {}", error.message)
-                    })
-                })
+                    .map_err(|reason| format!("condition {name}: {reason}"))?
+                    .map_err(|error| format!("condition {name}: mod {}: {error}", owner.id()))
             })
         })),
     )

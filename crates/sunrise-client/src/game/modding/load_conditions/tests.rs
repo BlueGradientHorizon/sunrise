@@ -49,7 +49,6 @@ impl Hooks for Registrant {
         let yes = match self.mode.load(Ordering::SeqCst) {
             1 => json!({"type":"testmod:nope"}),
             2 => json!({"type":"testmod:flag","value":"bad"}),
-            3 => json!({"type":"testmod:flag","value":"panic"}),
             _ => json!({"type":"testmod:flag","value":true}),
         };
         if self.mode.load(Ordering::SeqCst) == 5 {
@@ -246,7 +245,6 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                 for (bad, expected) in [
                     (1, "testmod:nope"),
                     (2, "value must be a boolean"),
-                    (3, "handler panicked"),
                     (6, "invalid result"),
                     (7, "ingredient kind testmod:unregistered"),
                     (8, "invalid ingredients or required fields"),
@@ -263,11 +261,11 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                         "{error}"
                     );
                     assert!(error.contains(expected), "{error}");
-                    if bad == 2 || bad == 3 {
-                        assert!(error.contains("testmod:flag"), "{error}");
-                    }
-                    if bad == 3 {
-                        assert!(error.contains("mod testmod"), "{error}");
+                    if bad == 2 {
+                        assert!(
+                            error.contains("condition testmod:flag: mod testmod"),
+                            "{error}"
+                        );
                     }
                     assert_eq!(
                         game.recipes()
@@ -365,7 +363,7 @@ fn load_conditions_registration_allows_shared_namespaces() {
             for (name, owner, value) in [("a:y", "a", true), ("a:x", "b", false)] {
                 let (registered_owner, handler) =
                     entries.get(&Identifier::parse(name).unwrap()).unwrap();
-                assert_eq!(registered_owner, owner);
+                assert_eq!(*registered_owner, owner);
                 assert_eq!(handler.test(&json!({"value": value})), Ok(value));
             }
         },
@@ -481,6 +479,77 @@ fn load_conditions_disabled_owner_does_not_execute_registered_handler() {
     );
 }
 
+#[test]
+fn load_condition_panic_disables_only_that_handler_across_generations() {
+    use mod_api::__private::game::take_callback_panic_notices;
+
+    struct Pair(Arc<AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Pair {
+        fn register_load_conditions(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterLoadConditionsEvent<'_>,
+        ) {
+            for (id, count) in [
+                ("foreign:faulty", self.0.clone()),
+                ("foreign:healthy", Arc::default()),
+            ] {
+                event
+                    .conditions
+                    .register(Identifier::parse(id).unwrap(), Flag(count, Arc::default()))
+                    .unwrap();
+            }
+        }
+    }
+
+    let count = Arc::new(AtomicUsize::new(0));
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new(
+            "condition_pair",
+            Box::new(Pair(count.clone())),
+        )]
+        .into(),
+        || {
+            let sources = crate::game::mods::ModsState::default();
+            let inventory = sunrise_mod_package::enabled::EnabledMods::default();
+            let load = super::conditions_for_mods(&sources, &inventory).unwrap();
+            let faulty = json!({"neoforge:conditions":[{"type":"foreign:faulty","value":"panic"}]});
+            let path = "data/foreign/recipe/faulty.json";
+            assert!(!load.allows_file(&faulty, path));
+            let error = load.check_errors().unwrap_err();
+            assert!(
+                error.contains("data/foreign/recipe/faulty.json: condition foreign:faulty: mod condition_pair: load condition callback panicked"),
+                "{error}"
+            );
+            assert!(take_callback_panic_notices().iter().any(|notice| {
+                notice.mod_id == "condition_pair"
+                    && notice.kind == "load condition"
+                    && notice.message.contains("fixture panic")
+            }));
+
+            let next = super::conditions_for_mods(&sources, &inventory).unwrap();
+            let error = next.allows_file_isolated(&faulty, path).unwrap_err();
+            assert_eq!(
+                error,
+                "condition foreign:faulty: mod condition_pair: load condition owner is disabled"
+            );
+            assert_eq!(count.load(Ordering::SeqCst), 1);
+            assert!(
+                !take_callback_panic_notices()
+                    .iter()
+                    .any(|notice| notice.mod_id == "condition_pair")
+            );
+
+            let healthy = json!({"neoforge:conditions":[{"type":"foreign:healthy","value":true}]});
+            assert_eq!(
+                next.allows_file_isolated(&healthy, "healthy.json"),
+                Ok(true)
+            );
+        },
+    );
+}
+
 /// `neoforge:registered` reads the candidate's registries: the built-in entries the prepared root
 /// exports and what this load's packs add, so a new pack entry counts on its first load and one
 /// a pack dropped stops counting, whatever an earlier load put in the game's registries.
@@ -570,11 +639,9 @@ impl Hooks for GatedRegistrant {
     }
 }
 
-/// A Host call the load phase refuses is a refusal of that condition, named, and no panic: the
-/// arm of the client's catch sites that reads `PhaseRefusal`.
+/// A refused Host call names the mod without disabling its condition handler.
 #[test]
 fn a_handler_refused_by_the_load_phase_is_a_named_refusal_not_a_panic() {
-    mod_platform::__private::initialize().unwrap();
     mod_platform::testing::with_mods(
         vec![ModEntry::new("testmod", Box::new(GatedRegistrant))].into(),
         || {
@@ -582,16 +649,23 @@ fn a_handler_refused_by_the_load_phase_is_a_named_refusal_not_a_panic() {
             let inventory = sunrise_mod_package::enabled::EnabledMods::default();
             let conditions = super::conditions_for_mods(&sources, &inventory).unwrap();
             let file = json!({"neoforge:conditions":[{"type":"testmod:gated"}]});
-            let _setup = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
-            let error = conditions
-                .allows_file_isolated(&file, "gated.json")
-                .unwrap_err();
-            assert!(
-                error.contains("testmod")
-                    && error.contains("refused")
-                    && error.contains("mod API level is unavailable during Setup"),
-                "{error}"
-            );
+            {
+                let _setup =
+                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
+                for path in ["first.json", "second.json"] {
+                    let error = conditions.allows_file_isolated(&file, path).unwrap_err();
+                    assert!(
+                        error.contains(
+                            "condition testmod:gated: mod testmod: load condition callback refused"
+                        ) && error
+                            .contains("mod testmod: mod API level is unavailable during Setup"),
+                        "{error}"
+                    );
+                }
+            }
+            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+            let next = super::conditions_for_mods(&sources, &inventory).unwrap();
+            assert_eq!(next.allows_file_isolated(&file, "first.json"), Ok(true));
         },
     );
 }
