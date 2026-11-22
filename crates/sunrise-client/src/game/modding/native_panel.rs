@@ -706,7 +706,7 @@ impl Game<'_> {
                     rgba(255, 255, 255, 128),
                 );
             }
-            let name = self.pack.names.display_item(&stack.item);
+            let name = self.stack_hover_name(&stack);
             sunrise_client::widgets::record_as(
                 &name,
                 rect,

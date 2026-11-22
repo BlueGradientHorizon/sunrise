@@ -5,6 +5,8 @@ use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::Tag;
 
 const NAME: &str = "game::item_name_tests::a_part_names_its_stacks_everywhere_the_game_names_them";
+const RENAME_BOX: &str =
+    "game::item_name_tests::a_client_anvil_click_fills_the_rename_box_with_the_parts_name";
 const KEY: &str = "item.test.bundle_of_notes";
 
 /// A paper's Part: a stack of more than one is named by `KEY`, one is left to the default.
@@ -77,6 +79,11 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             renamed.data_mut().custom_name = Some(Tag::String("Diary".into()));
             assert_eq!(plain(game.stack_hover_name_text(&renamed)), "Diary");
 
+            // `ItemStack.getItemName` (`ItemEntity.getName` under its own custom name): the Part's
+            // name, the stack's custom name not part of it; a stack the Part leaves keeps its own.
+            assert_eq!(plain(game.stack_item_name_text(&renamed)), KEY);
+            assert_eq!(plain(game.stack_item_name_text(&single)), "Label");
+
             // The tooltip's and the hotbar's styled name is the same resolved name.
             assert_eq!(plain(game.styled_stack_name(&labelled)), KEY);
             assert_eq!(plain(game.styled_stack_name(&single)), "Label");
@@ -141,6 +148,16 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             assert_eq!(shown.count, 1);
             assert_eq!(shown.custom_name().as_deref(), Some("Diary"));
 
+            // EnchantCommand's refusal names the held stack by `getHoverName().getString()`.
+            game.inventory[game.selected] = Some(named.clone());
+            let refusal = game
+                .execute_line("enchant @s minecraft:sharpness", game.player_source())
+                .unwrap_err();
+            let message = refusal.message.component();
+            assert_eq!(message["translate"], "commands.enchant.failed.incompatible");
+            assert!(refusal.message.plain().contains(KEY), "{message}");
+            game.inventory[game.selected] = None;
+
             // The screen uses the same comparison before sending the rename packet.
             let mut station = super::stations::Station::new(super::stations::Kind::Anvil, [0; 3]);
             station.inputs[0] = Some(named);
@@ -148,6 +165,76 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             assert_eq!(game.anvil_item_name(&station), "");
             station.name = "Paper".into();
             assert_eq!(game.anvil_item_name(&station), "Paper");
+        });
+    });
+}
+
+/// `AnvilScreen.slotChanged` after a client's anvil click on a server's menu (the click predicted
+/// by `anvil_menu_session`, then `anvil_session_end`): the box is set to the input's
+/// `getHoverName().getString()` and made editable; a custom name wins over the Part's
+/// `Item.getName(stack)`; a stack the Part leaves shows vanilla's name; taking the input out sets
+/// the box to "" and makes it read-only. In its own process, as the test above.
+#[test]
+#[ignore = "daily"]
+fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
+    use super::execution_role::ExecutionRole;
+    use super::stations::{INPUT, Kind, Station};
+    use sunrise_client::menu::Input;
+    if run_fresh_cases(RENAME_BOX, "SUNRISE_ITEM_NAME_RENAME_BOX_CHILD", &["names"]) {
+        return;
+    }
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("names", Box::new(Notes))].into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        crate::entry::install_client_hooks();
+        with_game(|game| {
+            game.resolve_parts().unwrap();
+            game.options.execution_role = ExecutionRole::Client;
+            let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+            game.connect_local(client, "AnvilTest").unwrap();
+            game.remote_set_menu(Some((1, "minecraft:anvil".into())), None);
+            game.station = Some(Station::new_kind(Kind::Anvil, [0, 64, 0]));
+            let rename_box = |game: &super::Game<'_>| {
+                let station = game.station.as_ref().unwrap();
+                (station.rename.value.clone(), station.rename.editable)
+            };
+            // One left click on the input slot: puts the carried stack in, or takes it out.
+            let click = |game: &mut super::Game<'_>| {
+                assert!(game.remote_menu_ops(&[(Some(INPUT), 0, Input::Pickup)]));
+            };
+            let input = |game: &super::Game<'_>| game.station.as_ref().unwrap().inputs[0].clone();
+
+            // The Part names a stack of two: the box shows its name, as the anvil menu compares.
+            let notes = ItemStack::new("minecraft:paper", 2);
+            game.carried = Some(notes.clone());
+            click(game);
+            assert_eq!(input(game), Some(notes.clone()));
+            assert_eq!(rename_box(game), (KEY.to_owned(), true));
+
+            // Taken out again: `setValue("")`, read-only.
+            click(game);
+            assert_eq!(input(game), None);
+            assert_eq!(game.carried, Some(notes.clone()));
+            assert_eq!(rename_box(game), (String::new(), false));
+
+            // `ItemStack.getHoverName`: the custom name wins over the Part's name.
+            let mut diary = notes.clone();
+            diary.data_mut().custom_name = Some(Tag::String("Diary".into()));
+            game.carried = Some(diary);
+            click(game);
+            assert_eq!(rename_box(game), ("Diary".to_owned(), true));
+            click(game);
+            assert_eq!(rename_box(game), (String::new(), false));
+
+            // One sheet, which the Part leaves: vanilla's name, as a vanilla client sends it.
+            let sheet = ItemStack::new("minecraft:paper", 1);
+            let vanilla = sunrise_client::lang::returned_to_server(|| {
+                sunrise_client::stations::hover_name_text(&game.pack.names, &sheet).plain()
+            });
+            assert_eq!(vanilla, "Paper");
+            game.carried = Some(sheet);
+            click(game);
+            assert_eq!(rename_box(game), (vanilla, true));
         });
     });
 }
