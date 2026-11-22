@@ -553,11 +553,11 @@ fn dispenser_remainder_merges_without_contents_changed() {
             .unwrap()
             .slots_mut()[0] = Some(ItemStack::new("minecraft:stick", 10));
         let merge = |game: &mut Game<'_>| {
-            game.add_to_inventory_or_dispense(
-                SLOT_POS,
-                Direction::East,
-                ItemStack::new("minecraft:stick", 2),
-            );
+            let mut offered = ItemStack::new("minecraft:stick", 2);
+            offered
+                .data_mut()
+                .set_other("minecraft:max_stack_size", Some(Tag::Int(64)));
+            game.add_to_inventory_or_dispense(SLOT_POS, Direction::East, offered);
             assert_eq!(
                 game.world.block_entities.get(&SLOT_POS).unwrap().slots()[0],
                 Some(ItemStack::new("minecraft:stick", 12))

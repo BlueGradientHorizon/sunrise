@@ -417,7 +417,9 @@ impl Game<'_> {
                 .and_then(|entity| entity.slots().get(slot))
                 .map_or(0, |existing| match existing {
                     None => max,
-                    Some(item) if item.same_item_same_components(&rest) => {
+                    Some(item)
+                        if item.same_item_same_components_with_prototype(&rest, self.items()) =>
+                    {
                         max.saturating_sub(item.count)
                     }
                     Some(_) => 0,
