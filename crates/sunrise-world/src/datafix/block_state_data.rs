@@ -123,8 +123,8 @@ fn parse_data(lines: &[&str]) -> std::io::Result<Data> {
         };
         let id = id.parse::<usize>().map_err(|_| invalid())?;
         let slot = map.get_mut(id).ok_or_else(invalid)?;
-        let pairs = old.chunks_exact(2);
-        if name.is_empty() || !pairs.remainder().is_empty() {
+        let (pairs, remainder) = old.as_chunks::<2>();
+        if name.is_empty() || !remainder.is_empty() {
             return Err(invalid());
         }
         let instance = instances.len() as u32;
@@ -134,10 +134,10 @@ fn parse_data(lines: &[&str]) -> std::io::Result<Data> {
         });
         *slot = Some(instance);
         defaults[id >> 4].get_or_insert(instance);
-        for pair in pairs {
+        for &[name, props] in pairs {
             let old = State {
-                name: pair[0].to_owned(),
-                props: parse_props(pair[1])?,
+                name: name.to_owned(),
+                props: parse_props(props)?,
             };
             id_by_old_name.entry(old.name.clone()).or_insert(id as i32);
             id_by_old.insert(old, id as i32);

@@ -1,5 +1,4 @@
 //! Upgrade standalone saved data on either side, without a world.
-#![allow(unused_variables)]
 use crate::*;
 
 /// The shared host's saved-data upgrade, reached through [`Host`].
@@ -23,8 +22,8 @@ pub trait DatafixHost {
     #[static_call]
     fn upgrade_nbt(
         &self,
-        kind: NbtDataType,
-        data_version: i32,
-        nbt: Compound,
+        _kind: NbtDataType,
+        _data_version: i32,
+        _nbt: Compound,
     ) -> Result<Compound, NbtUpgradeError>;
 }
