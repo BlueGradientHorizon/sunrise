@@ -31,12 +31,13 @@ documentation examples and the Python steps of `verify` are not under the guard.
 tests and the summed test seconds. (libtest's own `--ensure-time` was the alternative: it fails a slow test inside
 the binary with libtest's words, not the instruction, and needs a threshold variable per kind of test target.)
 
-With `--time-limits` a hung test fails at once, by name, instead of holding verify until the job is cancelled.
-libtest prints `test NAME has been running for over 60 seconds` from its own thread once a test passes
-TEST_WARN_TIMEOUT_S (60 s, library/test/src/time.rs), with more than one test thread. The runner reads each
-binary's output as it grows, and the first such line kills the binary, which then fails, naming every test the
-warning named. A single-test rerun (`--exact NAME --test-threads=1`) gets no warning from libtest, so it is
-killed after the same 60 s and names its test. Such a test is far over the unit tier's FAIL limit already.
+A hung test fails at once, by name, instead of holding verify until the job is cancelled. The runner reads each
+binary's output as it grows. With more than one test thread libtest prints `test NAME has been running for over
+60 seconds` once a test passes TEST_WARN_TIMEOUT_S (60 s, library/test/src/time.rs); the first such line kills the
+binary, which fails naming every test the warning named. On one thread (`--test-threads=1`, `RUST_TEST_THREADS=1`
+or a one-CPU machine) libtest warns about nothing but prints `test NAME ... ` as each test starts, so a test whose
+start line has had no result for the same 60 s kills the binary and is named. Such a test is far over the unit
+tier's FAIL limit already. A network-guard diagnosis rerun is watched the same way.
 
 `--no-data-skips` (verify) fails the run when a test that ran prints the `skipped: no vanilla data; test=NAME` line of
 the shared helper (`crates/sunrise-client/src/test_fixtures.rs`, `report_missing`): such a test returns early and is
@@ -171,7 +172,7 @@ def run_one(binary: dict, extra_env: dict, test_args: list[str], timed: bool = F
             os.unlink(log)
         return result
     result["pid"] = process.pid
-    hung, wait_status, usage = wait_killing_a_hang(process.pid, result["output"], test_args, started, timed)
+    hung, wait_status, usage = wait_killing_a_hang(process.pid, result["output"])
     process.returncode = code = os.waitstatus_to_exitcode(wait_status)
     status = "ok" if code == 0 else f"killed by signal {-code}" if code < 0 else f"exit {code}"
     if hung:
@@ -185,24 +186,31 @@ def run_one(binary: dict, extra_env: dict, test_args: list[str], timed: bool = F
     return result
 
 
-def wait_killing_a_hang(pid: int, output, test_args: list[str], started: float, watch: bool):
-    """Wait for the test binary `pid` like os.wait4; with `watch`, kill it on the first sign of a hung test. Returns
-    (the hung tests' names, none if it ended by itself; its wait status; its resource usage). The sign is libtest's
-    over-60-seconds warning in its output, or HANG_SECONDS of running for a single-test rerun libtest never warns about."""
-    single = test_args[test_args.index("--exact") + 1] if "--exact" in test_args else None
-    seen, partial, hung = 0, "", []
+def wait_killing_a_hang(pid: int, output) -> tuple[list[str], int, object]:
+    """Wait for the test binary `pid` like os.wait4, killing it on the first sign of a hung test. Returns (the hung
+    tests' names, none if it ended by itself; its wait status; its resource usage). The signs are libtest's
+    over-60-seconds warning, and a one-thread start line with no result for HANG_SECONDS."""
+    seen, tail, hung = 0, "", []
+    started = None  # (offset in the output, name, when it was first seen) of a start line with no result yet
     while True:
-        done, wait_status, usage = os.wait4(pid, 0 if hung or not watch else os.WNOHANG)
+        done, wait_status, usage = os.wait4(pid, 0 if hung else os.WNOHANG)
         if done:
             return hung, wait_status, usage
         output.flush()
-        grown = os.pread(output.fileno(), 1 << 20, seen)
-        seen += len(grown)
-        text = partial + grown.decode(errors="replace")
-        complete, _, partial = text.rpartition("\n")
+        while grown := os.pread(output.fileno(), 1 << 20, seen):  # drain what is waiting before judging
+            seen += len(grown)
+            tail = (tail + grown.decode(errors="replace"))[-(1 << 16):]
+        complete = tail[:tail.rfind("\n") + 1]
         hung = HUNG.findall(complete)
-        if not hung and single and time.monotonic() - started > HANG_SECONDS:
-            hung = [single]
+        last = None
+        for last in STARTED.finditer(tail):
+            pass
+        if last is None or RESULT.match(tail[last.end():].lstrip()):
+            started = None
+        elif started is None or started[1] != last[1] or started[0] != seen - len(tail) + last.start():
+            started = (seen - len(tail) + last.start(), last[1], time.monotonic())
+        elif time.monotonic() - started[2] > HANG_SECONDS:
+            hung = hung or [started[1]]
         if hung:
             os.kill(pid, signal.SIGKILL)
         else:
@@ -231,8 +239,12 @@ FAILED = re.compile(r"^test (\S+)(?: - should panic)? \.\.\. FAILED(?: <\d+(?:\.
 DATA_SKIP = re.compile(r"skipped: no vanilla data; test=([^;\n]+); skipped tests=\d+")
 # libtest's warning for a test running past TEST_WARN_TIMEOUT_S, printed only with more than one test thread.
 HUNG = re.compile(r"^test (\S+) has been running for over \d+ seconds$", re.M)
-# libtest's TEST_WARN_TIMEOUT_S (library/test/src/time.rs): the bound for a single-test rerun, which gets no warning.
+# libtest's TEST_WARN_TIMEOUT_S (library/test/src/time.rs): the bound for a test started on one thread, which gets
+# no warning.
 HANG_SECONDS = 60
+# libtest's start line on one thread (formatters/pretty.rs, write_test_start), and what may follow it on its line.
+STARTED = re.compile(r"(?m)^test (\S+)(?: - should panic)? \.\.\. ")
+RESULT = re.compile(r"(ok|FAILED|ignored)\b")
 
 
 def report(result: dict) -> list[str]:
