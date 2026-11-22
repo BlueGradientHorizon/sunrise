@@ -1515,40 +1515,6 @@ impl NoBackend for MenuItemsRefusal {
     }
 }
 
-/// Why [`MenuRef::place_recipe_in_grid`] placed nothing (`RecipeBookMenu.handlePlacement`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
-#[non_exhaustive]
-pub enum RecipePlaceError {
-    /// The call is not available in this phase, host state, or menu state.
-    Unavailable,
-    /// Called outside the `recipe_book_place` hook.
-    OutsideHook,
-    /// The handle does not name the open menu handling the current recipe-book click.
-    WrongMenu,
-    /// `place_recipe_in_grid` was already called for this click.
-    AlreadyPlaced,
-    /// `recipe` is not the recipe clicked in this `recipe_book_place` event.
-    WrongRecipe,
-    /// The recipe cannot be placed.
-    NotPlaceable,
-    /// The grid size, slot list, or recipe shape does not fit the menu.
-    InvalidLayout,
-    /// A cleared or grid slot has no backing storage.
-    UnbackedSlot(u16),
-    /// A slot refused pickup.
-    Denied,
-    /// The player has no room for the cleared items outside creative mode.
-    NoRoom,
-    /// The player or the menu changed during placement.
-    Changed,
-}
-
-impl NoBackend for RecipePlaceError {
-    fn no_backend() -> Self {
-        Self::Unavailable
-    }
-}
-
 /// Why [`PlayerRef::give_creative`] refused the request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]

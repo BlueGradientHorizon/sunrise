@@ -251,31 +251,4 @@ pub trait MenusBackendMut {
         menu: MenuRef,
         places: Vec<MenuSlotPlace>,
     ) -> Result<(), MenuSlotBackRefusal>;
-    /// Side: server.
-    /// Only inside `recipe_book_place`, once per click: places `recipe`, the recipe that hook
-    /// was asked about, into a grid of the open mod menu `menu` as vanilla's
-    /// `RecipeBookMenu.handlePlacement` and `ServerPlaceRecipe.placeRecipe` do. `grid_width`
-    /// and `grid_height` give the grid's cells, row by row; `grid_slots` the menu slot of each
-    /// cell (a recipe never fills a cell past the last slot given); `clear_slots` the slots
-    /// emptied first, their items going back to the player's inventory (the grid's slots are
-    /// cleared too). `use_max_items` places as many sets as the items allow (Shift), else one
-    /// more than the grid holds when it already matches. Items are taken from the player's
-    /// inventory and from what the menu's sources lend. Candidate IDs and client displays do
-    /// not replace the server's recheck of live stacks, including custom predicates. Returns
-    /// whether items were missing: the grid was cleared and the answer for `ghost`. Refused
-    /// (and nothing changes) with [`RecipePlaceError`] outside that hook, for a different or
-    /// stale menu, on a second call, for another recipe, a slot the menu lacks, a
-    /// slot without backing storage, a repeated slot, an empty grid, a recipe larger than the
-    /// slots given, a slot whose pickup a part refuses, or a player with no room for the
-    /// cleared items outside creative mode.
-    fn menu_place_recipe_in_grid(
-        &mut self,
-        menu: MenuRef,
-        recipe: &str,
-        grid_width: u16,
-        grid_height: u16,
-        grid_slots: &[u16],
-        clear_slots: &[u16],
-        use_max_items: bool,
-    ) -> Result<bool, RecipePlaceError>;
 }
