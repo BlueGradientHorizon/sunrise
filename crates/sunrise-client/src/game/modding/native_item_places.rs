@@ -114,8 +114,9 @@ impl Game<'_> {
                 .find(|m| m.id == id && m.extra.chested)?;
             let size = super::mount_menu::mount_columns(m) * 3;
             if m.extra.items.len() < size {
+                let dim = self.dim;
                 if let Some(level) = self.transactions.last_mut() {
-                    level.keep_mob_length(id, m.extra.items.len());
+                    level.keep_mob_length(dim, id, m.extra.items.len());
                 }
                 m.extra.items.resize(size, None);
             }
@@ -219,8 +220,7 @@ impl Game<'_> {
     /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
     /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
     pub(super) fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
-        let tag = sunrise_client::command::args::normalize(tag);
-        self.res.mob_data().entity_has(&tag, entity_type)
+        self.entity_tag_matches(tag, entity_type)
     }
     /// Lend a native place's stack without encoding components. Reading a chest vehicle's
     /// `EntitySlot` unpacks its pending loot table without a player
@@ -396,8 +396,9 @@ impl Game<'_> {
                 let Some((patch, edits)) = prepared else {
                     return Ok(());
                 };
+                let dim = self.dim;
                 if let Some(level) = self.transactions.last_mut() {
-                    level.keep_equipment(entity, equipment, mob_gear.as_deref());
+                    level.keep_equipment(dim, entity, equipment, mob_gear.as_deref());
                 }
                 let held = equipment[index].as_mut().expect("prepared equipment slot");
                 apply(held, patch);

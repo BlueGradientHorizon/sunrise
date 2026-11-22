@@ -148,6 +148,9 @@ pub(super) struct NativeSound {
     /// The entity the sound follows (`ClientboundSoundEntityPacket`), sent
     /// from `at`, where it was when the mod queued the sound.
     pub entity: Option<i32>,
+    /// True when queued from inside a `play_level_sound_at_*` listener so the tick flush validates
+    /// and delivers the sound without re-dispatching level-sound listeners.
+    pub skip_hooks: bool,
 }
 
 /// Shared state for the mob runs in one entity pass.
@@ -283,6 +286,9 @@ pub(super) struct Creatures {
     pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
     /// Native sounds waiting for the server host to be available.
     pub lan_sounds: Vec<NativeSound>,
+    /// True while `ask_level_sound` is running `play_level_sound_at_*` listeners so sounds emitted
+    /// from inside a listener are not re-dispatched to level-sound hooks.
+    pub asking_level_sound: bool,
     /// Particles from a guest's turn, waiting for it to end.
     pub lan_particles: Vec<super::lan_particles::QueuedParticle>,
 }
@@ -1699,9 +1705,22 @@ impl Game<'_> {
         self.native_mob_sizes();
         Ok(())
     }
+    /// Finish the death animation of a mob whose row has already left the level.
+    fn finish_mob_death_animation(
+        &mut self,
+        id: u32,
+        at: Vec3,
+        width: f64,
+        height: f64,
+        split: Option<Mob>,
+    ) {
+        self.last_hurt_by_player.remove(&id);
+        self.animate_mob_removal(id, at, width, height, split);
+    }
+
     /// `LivingEntity.tickDeath` broadcasts the poof before `remove`, which
     /// also splits a large cube before it reaches `Entity.setRemoved`.
-    fn finish_mob_death_animation(
+    fn animate_mob_removal(
         &mut self,
         id: u32,
         at: Vec3,
@@ -1755,7 +1774,8 @@ impl Game<'_> {
 
     /// `LivingEntity.die` / `dropAllDeathLoot`. Does not finish a hurt.
     pub(super) fn mob_die(&mut self, m: &Mob) {
-        // The killing blow for the drop hooks, before the player's hit is forgotten.
+        // Death reads the remembered player without consuming it. A body
+        // still in the level can answer getKillCredit after this call.
         let source = (!mod_api::__private::mods().is_empty()).then(|| self.mob_damage_source(m));
         let killer = self
             .last_hurt_by_player
@@ -1772,7 +1792,6 @@ impl Game<'_> {
             // The body may be gone already.
             self.set_bed_occupied(bed, false);
         }
-        self.last_hurt_by_player.remove(&m.id);
         // TamableAnimal.die, before the rest of LivingEntity.die.
         self.tell_owner_pet_died(m, killer);
         self.love_cause.remove(&m.id);
@@ -6764,9 +6783,9 @@ impl Game<'_> {
             false
         };
         let cannot = self
-            .res
-            .mob_data()
-            .entity_has("minecraft:cannot_be_age_locked", &m.kind.id);
+            .items()
+            .entity_type_tags
+            .contains("minecraft:cannot_be_age_locked", &m.kind.id);
         sunrise_client::mobs::ai::can_use_golden_dandelion(
             item,
             baby,
@@ -6823,7 +6842,7 @@ impl Game<'_> {
             Some(t) => Self::named_entity(&self.mobs, t.id, |m| m.id)
                 .filter(|&i| {
                     let m = &self.mobs[i];
-                    named_mob_pickable(m.alive(), m.id, self.riding, self.remote_camera_id())
+                    named_mob_pickable(m.alive(), m.id, self.riding, self.live_remote_camera_id())
                         && !self.is_pick_camera(m.id)
                 })
                 .map(|i| (i, 0.0, [0.0; 3])),

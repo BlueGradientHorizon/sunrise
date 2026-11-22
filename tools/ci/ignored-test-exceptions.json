@@ -728,46 +728,6 @@
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_mob_attribute_nbt_parity.py records the vanilla 26.3 loaded-health witness into .local and runs this test against it through SUNRISE_MOB_LOADED_HEALTH_WITNESS, so no recorded vanilla data is committed."
   },
   {
-    "package": "sunrise-client",
-    "target": "lib",
-    "test": "game::remote::abilities::gamemode_split_tests::change_game_mode_updates_only_local_mode_and_abilities_26_3",
-    "path": "crates/sunrise-client/src/game/network/remote/gamemode_split_tests.rs",
-    "reason": "run by tools/test_gamemode_split_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_gamemode_split_parity.py records the vanilla 26.3 game-mode split witness into .local and runs this test against it through SUNRISE_GAMEMODE_SPLIT_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client",
-    "target": "lib",
-    "test": "game::remote::abilities::gamemode_split_tests::genpvp_packet_sequence_matches_26_3_oracle_step_by_step",
-    "path": "crates/sunrise-client/src/game/network/remote/gamemode_split_tests.rs",
-    "reason": "run by tools/test_gamemode_split_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_gamemode_split_parity.py records the vanilla 26.3 game-mode split witness into .local and runs this test against it through SUNRISE_GAMEMODE_SPLIT_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client",
-    "target": "lib",
-    "test": "game::remote::abilities::gamemode_split_tests::live_player_info_updates_toggle_no_physics_while_local_spectator_26_3",
-    "path": "crates/sunrise-client/src/game/network/remote/gamemode_split_tests.rs",
-    "reason": "run by tools/test_gamemode_split_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_gamemode_split_parity.py records the vanilla 26.3 game-mode split witness into .local and runs this test against it through SUNRISE_GAMEMODE_SPLIT_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client",
-    "target": "lib",
-    "test": "game::remote::abilities::gamemode_split_tests::login_and_respawn_set_previous_mode_and_fresh_abilities_26_3",
-    "path": "crates/sunrise-client/src/game/network/remote/gamemode_split_tests.rs",
-    "reason": "run by tools/test_gamemode_split_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_gamemode_split_parity.py records the vanilla 26.3 game-mode split witness into .local and runs this test against it through SUNRISE_GAMEMODE_SPLIT_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client",
-    "target": "lib",
-    "test": "game::remote::abilities::gamemode_split_tests::split_local_and_player_info_physics_matrix_26_3",
-    "path": "crates/sunrise-client/src/game/network/remote/gamemode_split_tests.rs",
-    "reason": "run by tools/test_gamemode_split_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_gamemode_split_parity.py records the vanilla 26.3 game-mode split witness into .local and runs this test against it through SUNRISE_GAMEMODE_SPLIT_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
     "package": "sunrise-client-render",
     "target": "lib",
     "test": "gfx::view::tests::cull_frustum_matches_26_3_witness_with_zoom_widen_and_bob",
@@ -907,6 +867,14 @@
     "package": "sunrise-client",
     "target": "lib",
     "test": "game::remote::tests::camera_parity_red_tests::sleeping_spectated_living_entity_bed_view_and_visibility_26_3",
+    "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
+    "reason": "run by tools/test_camera_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::remote::tests::camera_parity_red_tests::review_followup_camera_parity_26_3",
     "path": "crates/sunrise-client/src/game/network/remote/camera_parity_red_tests.rs",
     "reason": "run by tools/test_camera_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 camera parity witness into .local and runs this test against it through SUNRISE_CAMERA_PARITY_WITNESS, so no recorded vanilla data is committed."

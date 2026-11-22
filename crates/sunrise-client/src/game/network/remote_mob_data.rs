@@ -502,6 +502,9 @@ impl Game<'_> {
             _ => None,
         });
         let bed = sleeping_pos.map(|bed| bed.map_or(0, |b| self.bed_facing(b)));
+        let sleep_at = sleeping_pos
+            .flatten()
+            .and_then(|head| self.sleeping_position(head));
         let professions = r.professions.clone();
         if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id as u32) {
             let stare_sound =
@@ -509,6 +512,12 @@ impl Game<'_> {
             apply_registry_data(m, values, &r.registries, self.world.game_time);
             if let Some(pos) = sleeping_pos {
                 m.extra.sleeping_pos = pos;
+                if pos.is_some()
+                    && let Some(at) = sleep_at
+                {
+                    // LivingEntity.onSyncedDataUpdated(SLEEPING_POS_ID): setPosToBed.
+                    m.position = at;
+                }
             }
             if let Some(code) = bed
                 && m.species() == Species::Villager

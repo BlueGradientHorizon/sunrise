@@ -381,7 +381,7 @@ impl Game<'_> {
         let range = self
             .held()
             .and_then(|stack| self.attack_range_component(stack));
-        range.is_none_or(|r| attack_range_contains(&r, distance, self.creative))
+        range.is_none_or(|r| attack_range_contains(&r, distance, self.own_player_is_creative()))
     }
     /// `LocalPlayer.raycastHitResult`'s item (`getActiveItem`: the one in
     /// use, else the main hand's) `attack_range` component.
@@ -396,7 +396,7 @@ impl Game<'_> {
     pub(super) fn client_pick_entity_reach(&self, direction: [f64; 3]) -> f64 {
         self.active_attack_range()
             .map_or(self.entity_reach, |range| {
-                (f64::from(attack_reach(&range, self.creative).1)
+                (f64::from(attack_reach(&range, self.own_player_is_creative()).1)
                     + self.known_player_movement().dot(v3(direction)).max(0.0))
                 .max(self.entity_reach)
             })
@@ -418,7 +418,7 @@ impl Game<'_> {
         let partial_eye = v3(partial_eye_arr);
         let look = v3(look_arr);
         let eye = self.camera_eye_position().map(v3).unwrap_or(partial_eye);
-        let (min, max, margin) = attack_reach(range, self.creative);
+        let (min, max, margin) = attack_reach(range, self.own_player_is_creative());
         let movement = self.known_player_movement();
         let from = eye.add_vector(look.scale(f64::from(min)));
         let max_len = f64::from(max) + movement.dot(look).max(0.0);
@@ -901,10 +901,9 @@ impl Game<'_> {
             {
                 return None;
             }
-            if self
-                .active_attack_range()
-                .is_some_and(|range| !attack_range_contains(&range, distance, self.creative))
-            {
+            if self.active_attack_range().is_some_and(|range| {
+                !attack_range_contains(&range, distance, self.own_player_is_creative())
+            }) {
                 return None;
             }
             return Some(true);
@@ -917,7 +916,7 @@ impl Game<'_> {
         let spear = range.as_ref().and_then(|r| {
             let eye = self.eye_position()?;
             let look = super::view_vector(self.yaw, self.pitch);
-            let reach = attack_reach(r, self.creative);
+            let reach = attack_reach(r, self.own_player_is_creative());
             let boxes = self.hittable_mob_boxes();
             let clip = |from: Vec3, to: Vec3| {
                 let length = from.distance_squared(to).sqrt();
@@ -945,7 +944,7 @@ impl Game<'_> {
         };
         // Hud.extractCrosshair: with an attack range, the hit must be in it.
         if let Some(range) = &range
-            && !attack_range_contains(range, living, self.creative)
+            && !attack_range_contains(range, living, self.own_player_is_creative())
         {
             return None;
         }
@@ -963,7 +962,7 @@ impl Game<'_> {
             .is_some_and(|hit| self.block_interactable_for_spectator(&hit))
     }
     /// `BlockBehaviour.showAsInteractableInSpectatorMode`: a block with a menu, or a portal.
-    fn block_interactable_for_spectator(&self, hit: &super::Hit) -> bool {
+    pub(in crate::game) fn block_interactable_for_spectator(&self, hit: &super::Hit) -> bool {
         let block = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         matches!(
             &*self.res.facts().get(block).name,
@@ -1147,7 +1146,7 @@ impl HandWorld for GameHands<'_, '_> {
         self.game.res.facts().get(state).name.ends_with("air")
     }
     fn creative(&self) -> bool {
-        self.game.creative
+        !self.game.has_miss_time()
     }
     fn spectator(&self) -> bool {
         self.game.spectator()

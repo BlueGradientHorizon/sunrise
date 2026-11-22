@@ -881,52 +881,64 @@ impl Game<'_> {
                     }
                     return ok();
                 }
-                let key = if typing && action != "up" {
-                    key
+                let translated = if typing && action != "up" {
+                    vec![Ok(key)]
                 } else {
-                    match self.settings.keys.translate(key) {
-                        Some(Ok(k)) => k,
-                        Some(Err(button)) => {
-                            if self.screen == Screen::Playing
-                                && self.shared_default_acts(
-                                    button,
-                                    sunrise_client::keybinds::key_name(physical),
-                                )
-                            {
-                                if action != "up" {
-                                    self.mouse_mapping(button, true, Source::Agent)?;
-                                }
-                                // A repeat keeps the key held, as the window's.
-                                if action == "up" || action == "tap" {
-                                    self.mouse_mapping(button, false, Source::Agent)?;
+                    let mapped = self.settings.keys.translate_all(key);
+                    if mapped.is_empty() {
+                        return ok();
+                    }
+                    mapped
+                };
+                for target in translated {
+                    match target {
+                        Ok(key) => match action {
+                            "down" => self.control_key_down(key, physical)?,
+                            "up" => {
+                                self.control_key_up(key);
+                                self.physical_keys.remove(&key);
+                            }
+                            // The system's auto-repeat while the key is held.
+                            "repeat" => {
+                                self.physical_keys.insert(physical);
+                                self.mapped_key(key, true, true, key, Source::Agent)?;
+                            }
+                            "tap" => {
+                                self.control_key_down(key, physical)?;
+                                self.control_key_up(key);
+                                self.physical_keys.remove(&physical);
+                                self.debug_key(
+                                    physical,
+                                    sunrise_client::debug_keys::KeyAction::Release,
+                                );
+                            }
+                            _ => unreachable!("checked above"),
+                        },
+                        Err(button) => {
+                            if self.screen == Screen::Playing {
+                                if button == MouseButton::Middle {
+                                    let input = sunrise_client::keybinds::key_name(physical);
+                                    if action != "up" {
+                                        self.play_middle_bindings(input, true);
+                                    }
+                                    if action == "up" || action == "tap" {
+                                        self.play_middle_bindings(input, false);
+                                    }
+                                } else {
+                                    if action != "up" {
+                                        self.mouse_mapping(button, true, Source::Agent)?;
+                                    }
+                                    // A repeat keeps the key held, as the window's.
+                                    if action == "up" || action == "tap" {
+                                        self.mouse_mapping(button, false, Source::Agent)?;
+                                    }
                                 }
                             }
                             if action == "tap" {
                                 self.physical_keys.remove(&physical);
                             }
-                            return ok();
                         }
-                        None => return ok(),
                     }
-                };
-                match action {
-                    "down" => self.control_key_down(key, physical)?,
-                    "up" => {
-                        self.control_key_up(key);
-                        self.physical_keys.remove(&key);
-                    }
-                    // The system's auto-repeat while the key is held.
-                    "repeat" => {
-                        self.physical_keys.insert(physical);
-                        self.mapped_key(key, true, true, key, Source::Agent)?;
-                    }
-                    "tap" => {
-                        self.control_key_down(key, physical)?;
-                        self.control_key_up(key);
-                        self.physical_keys.remove(&physical);
-                        self.debug_key(physical, sunrise_client::debug_keys::KeyAction::Release);
-                    }
-                    _ => unreachable!("checked above"),
                 }
                 ok()
             }
@@ -967,20 +979,37 @@ impl Game<'_> {
                 if matches!(action, "up" | "click") {
                     self.mod_mappings_button(button, false);
                 }
+                let middle_input = (button == MouseButton::Middle)
+                    .then(|| sunrise_client::keybinds::mouse_name(button));
                 match action {
                     "down" => {
                         self.extras_mouse(button, true);
-                        self.mouse_mapping(button, true, Source::Agent)?
+                        if let Some(input) = middle_input.as_deref() {
+                            self.pvp_click(button);
+                            self.play_middle_bindings(Some(input), true);
+                        } else {
+                            self.mouse_mapping(button, true, Source::Agent)?;
+                        }
                     }
                     "up" => {
                         self.extras_mouse(button, false);
-                        self.mouse_mapping(button, false, Source::Agent)?
+                        if let Some(input) = middle_input.as_deref() {
+                            self.play_middle_bindings(Some(input), false);
+                        } else {
+                            self.mouse_mapping(button, false, Source::Agent)?;
+                        }
                     }
                     "click" => {
                         self.extras_mouse(button, true);
                         self.extras_mouse(button, false);
-                        self.mouse_mapping(button, true, Source::Agent)?;
-                        self.mouse_mapping(button, false, Source::Agent)?;
+                        if let Some(input) = middle_input.as_deref() {
+                            self.pvp_click(button);
+                            self.play_middle_bindings(Some(input), true);
+                            self.play_middle_bindings(Some(input), false);
+                        } else {
+                            self.mouse_mapping(button, true, Source::Agent)?;
+                            self.mouse_mapping(button, false, Source::Agent)?;
+                        }
                     }
                     other => {
                         return Err(

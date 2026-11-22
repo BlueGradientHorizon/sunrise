@@ -22,9 +22,15 @@ impl Game<'_> {
             .default_base(&tracked.kind, attribute)
     }
 
-    /// No-op on main because `remote_mob_attributes` applies updates immediately.
-    #[cfg(test)]
-    pub(in crate::game) fn refresh_remote_attributes(&mut self) {}
+    /// `LivingEntity.refreshDirtyAttributes`: clamp health to max health on living tick.
+    pub(in crate::game) fn refresh_remote_attributes(&mut self) {
+        for m in &mut self.mobs {
+            if m.extra.max_health_dirty {
+                m.extra.max_health_dirty = false;
+                m.health = m.health.min(m.attrs.max_health);
+            }
+        }
+    }
 
     /// Computes one synced attribute using the catalog's vanilla range.
     fn remote_attribute_value(
@@ -129,7 +135,7 @@ impl Game<'_> {
                 sunrise_client::mobs::finalize::Attr::MaxHealth,
                 max_health,
             );
-            m.health = m.health.min(m.attrs.max_health);
+            m.extra.max_health_dirty = true;
         }
         if let Some(armor) = armor {
             sunrise_client::mobs::finalize::set_base(

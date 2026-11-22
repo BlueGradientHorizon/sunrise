@@ -55,6 +55,22 @@ impl MobIndex {
         let i = self.find(mobs, id)?;
         Some(&mobs[i])
     }
+
+    /// Immutable indexed position lookup: O(1) on cache hit, falls back to linear scan on miss.
+    pub fn find_ref(&self, mobs: &[Mob], id: u32) -> Option<usize> {
+        if let Some(&i) = self.slots.get(&id)
+            && mobs.get(i as usize).is_some_and(|m| m.id == id)
+        {
+            return Some(i as usize);
+        }
+        mobs.iter().position(|m| m.id == id)
+    }
+
+    /// Immutable indexed borrow: O(1) on cache hit, falls back to linear scan on miss.
+    pub fn get_ref<'a>(&self, mobs: &'a [Mob], id: u32) -> Option<&'a Mob> {
+        let i = self.find_ref(mobs, id)?;
+        Some(&mobs[i])
+    }
 }
 
 #[cfg(test)]

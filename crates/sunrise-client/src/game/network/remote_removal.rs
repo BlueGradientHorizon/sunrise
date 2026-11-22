@@ -50,24 +50,7 @@ impl Game<'_> {
             include(id);
         }
         // Retain removed camera entity snapshot until SetCamera replaces it (vanilla 26.3).
-        if let Some(cam_id) = self
-            .remote
-            .as_ref()
-            .filter(|r| r.detached_camera.is_none())
-            .and_then(|r| r.camera)
-            .filter(|&id| removed.contains(&(id as u32)))
-            && let Some(mut detached) = self.camera_subject()
-            && detached.entity_id == cam_id as u32
-        {
-            detached.has_player_passenger = false;
-            detached.camera.mount = None;
-            detached.camera.previous = detached.camera.position;
-            detached.camera.x_rot_o = detached.camera.x_rot;
-            detached.camera.y_rot_o = detached.camera.y_rot;
-            if let Some(r) = self.remote.as_mut() {
-                r.detached_camera = Some(Box::new(detached));
-            }
-        }
+        self.detach_camera_if_matching(|cam_id| removed.contains(&(cam_id as u32)));
         // Snapshot before removing passenger keys: a removed passenger can
         // precede its vehicle, whose other seat state still needs clearing.
         for &id in ids {

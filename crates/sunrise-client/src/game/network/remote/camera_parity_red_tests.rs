@@ -750,7 +750,7 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
         stream["camera_chunk"][0].as_i64().unwrap() as i32,
         stream["camera_chunk"][1].as_i64().unwrap() as i32,
     );
-    let want_block_y = stream["entity_block_y"].as_i64().unwrap() as i32;
+    let want_block_y = stream["camera_block_y"].as_i64().unwrap() as i32;
     let want_cam_pos_bits = vec3_bits_expected(&stream["camera_pos_bits"]);
     let want_xyz_line = debug["position_lines"][0].as_str().unwrap();
     let want_biome_line = debug["biome_line"].as_str().unwrap();
@@ -2317,6 +2317,445 @@ fn particle_camera_before_first_frame_and_after_reset_26_3() {
             accepted(game, [200.5, 65.62, 200.5]),
             after_reset["accepted_at_new_entity_eye"].as_bool().unwrap(),
             "after_camera_reset_before_next_frame: accepted_at_new_entity_eye"
+        );
+    });
+}
+
+/// Review follow-up parity checks against vanilla 26.3 (`review_followup` witness).
+#[test]
+#[ignore = "run by tools/test_camera_parity.py"]
+fn review_followup_camera_parity_26_3() {
+    let witness = parity_witness();
+    let rf = &witness["review_followup"];
+    with_client_game(|game| {
+        let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+        let plains = *world_biomes!(game).index.get("minecraft:plains").unwrap();
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(make_chunk(0, 0, plains, 0xF0)));
+
+        // Finding 1: ExperienceOrb 3-tick correction + EnderDragon living camera state.
+        add_entity(
+            game,
+            401,
+            "minecraft:experience_orb",
+            [10.0, 64.0, 10.0],
+            0.0,
+            0.0,
+        );
+        game.orbs
+            .iter_mut()
+            .find(|o| o.id == 401)
+            .unwrap()
+            .no_gravity = true;
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 401 }))
+            .unwrap();
+        game.view = Default::default();
+        for _ in 0..40 {
+            game.tick_fov();
+        }
+        game.handle_packet(C::EntityPositionSync(play::EntityPositionSync {
+            id: 401,
+            path: play::PositionPath::Linear([13.0, 64.0, 10.0]),
+            yaw: 0.0,
+            pitch: 0.0,
+            on_ground: false,
+        }))
+        .unwrap();
+        game.tick_remote_entities(true);
+        let (orb_cam_pos, _, _) = game.camera_view(0.5).unwrap();
+        assert_eq!(
+            orb_cam_pos.to_array().map(f64::to_bits),
+            vec3_bits_expected(&rf["orb_correction"]["step1_cam_half_bits"]),
+            "orb 3-tick correction half-frame camera pos must match 26.3"
+        );
+
+        add_entity(
+            game,
+            402,
+            "minecraft:ender_dragon",
+            [10.0, 80.0, -5.0],
+            45.0,
+            0.0,
+        );
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 402 }))
+            .unwrap();
+        let dragon_cam = game.camera_subject().unwrap();
+        assert_eq!(
+            dragon_cam.camera.living.is_some(),
+            rf["ender_dragon"]["is_living"].as_bool().unwrap()
+        );
+        assert_eq!(
+            dragon_cam.camera.eye_height.to_bits(),
+            hex_f32(&rf["ender_dragon"]["eye_height_bits"])
+        );
+
+        // Finding 3: SetCamera(creeper) while already in third person installs post effect.
+        add_entity(game, 403, "minecraft:creeper", [5.0, 64.0, 5.0], 0.0, 0.0);
+        game.camera_type = sunrise_client::camera::CameraType::ThirdPersonBack;
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 403 }))
+            .unwrap();
+        assert_eq!(
+            game.spectated_post_effect,
+            rf["third_person_post_effect"]["third_person_creeper_post_effect"].as_str()
+        );
+        game.camera_type = sunrise_client::camera::CameraType::FirstPerson;
+
+        // Finding 4: should_render_block_outline_for_hit with spectator/interactable and remote player.
+        let craft_state = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:crafting_table")
+            .unwrap();
+        let stone_state = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        game.world.set(0, 64, 2, craft_state).unwrap();
+        game.world.set(0, 64, 3, stone_state).unwrap();
+        game.handle_packet(C::GameEvent(play::GameEvent {
+            event: 3,
+            param: 3.0,
+        }))
+        .unwrap();
+        game.ui.hide_gui = false;
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 1 }))
+            .unwrap();
+        let craft_hit = crate::game::Hit {
+            pos: [0, 64, 2],
+            face: [0, 0, -1],
+            point: [0.5, 64.5, 2.0],
+            inside: false,
+        };
+        let stone_hit = crate::game::Hit {
+            pos: [0, 64, 3],
+            face: [0, 0, -1],
+            point: [0.5, 64.5, 3.0],
+            inside: false,
+        };
+        let bom = &rf["block_outline_matrix"];
+        assert_eq!(
+            game.should_render_block_outline_for_hit(Some(&craft_hit)),
+            bom["spectator_self_crafting_table"].as_bool().unwrap()
+        );
+        assert_eq!(
+            game.should_render_block_outline_for_hit(Some(&stone_hit)),
+            bom["spectator_self_stone"].as_bool().unwrap()
+        );
+        add_entity(game, 2, "minecraft:player", [2.0, 64.0, 2.0], 0.0, 0.0);
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 2 }))
+            .unwrap();
+        assert_eq!(
+            game.should_render_block_outline_for_hit(Some(&stone_hit)),
+            bom["spectator_watching_remote_player_stone"]
+                .as_bool()
+                .unwrap()
+        );
+
+        // Finding 6: EnderDragon wire id wrapping matches 26.3 signed 32-bit arithmetic.
+        for (key, wire) in [
+            ("part_ids_for_max_i32", i32::MAX as u32),
+            ("part_ids_for_neg_ten", (-10i32) as u32),
+        ] {
+            let expected_parts: Vec<i32> = rf["dragon_part_wrapping"][key]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_i64().unwrap() as i32)
+                .collect();
+            for (idx, want) in expected_parts.into_iter().enumerate() {
+                assert_eq!(
+                    crate::game::dragon::dragon_part_wire_id(wire, idx),
+                    want,
+                    "dragon part wire id mismatch for {key}[{idx}]"
+                );
+            }
+        }
+
+        // Finding 7: Removing moving remote player keeps mid-tick pose and detached CameraPlayer.
+        add_entity(game, 407, "minecraft:player", [0.0, 64.0, 0.0], 0.0, 0.0);
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 407 }))
+            .unwrap();
+        game.view = Default::default();
+        for _ in 0..40 {
+            game.tick_fov();
+        }
+        if let Some(m) = game.mobs.iter_mut().find(|m| m.id == 407) {
+            m.previous = sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0);
+            m.position = sunrise_core::geometry::Vec3::new(2.0, 64.0, 0.0);
+        }
+        game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![407] }))
+            .unwrap();
+        let (mid_pos, _, _) = game.camera_view(0.5).unwrap();
+        assert_eq!(
+            mid_pos.to_array().map(f64::to_bits),
+            vec3_bits_expected(&rf["detached_mid_tick"]["mid_tick_cam_pos_bits"]),
+            "removing moving camera must preserve mid-tick pose"
+        );
+        assert_eq!(
+            matches!(
+                game.camera_player(),
+                crate::game::remote_camera::CameraPlayer::Detached
+            ),
+            rf["detached_mid_tick"]["detached_player_still_camera_player"]
+                .as_bool()
+                .unwrap()
+        );
+
+        // Finding 9: Relative +65 teleport preserves relative old pose and velocity delta.
+        add_entity(
+            game,
+            409,
+            "minecraft:interaction",
+            [0.0, 64.0, 0.0],
+            0.0,
+            0.0,
+        );
+        game.tick_remote_entities(true);
+        game.handle_packet(C::EntityPositionSync(play::EntityPositionSync {
+            id: 409,
+            path: play::PositionPath::Linear([1.0, 64.0, 0.0]),
+            yaw: 0.0,
+            pitch: 0.0,
+            on_ground: false,
+        }))
+        .unwrap();
+        game.handle_packet(C::TeleportEntity(play::TeleportEntity {
+            id: 409,
+            position: [65.0, 0.0, 0.0],
+            delta: [0.5, 0.0, 0.0],
+            yaw: 0.0,
+            pitch: 0.0,
+            relatives: play::relative::X
+                | play::relative::Y
+                | play::relative::Z
+                | play::relative::Y_ROT
+                | play::relative::X_ROT,
+            on_ground: false,
+        }))
+        .unwrap();
+        let inter = game.interactions.get(&409).unwrap();
+        assert_eq!(
+            [inter.previous.x, inter.previous.y, inter.previous.z].map(f64::to_bits),
+            vec3_bits_expected(&rf["relative_teleport_old_pose"]["old_pos_bits"])
+        );
+        assert_eq!(
+            [inter.position.x, inter.position.y, inter.position.z].map(f64::to_bits),
+            vec3_bits_expected(&rf["relative_teleport_old_pose"]["cur_pos_bits"])
+        );
+
+        // Finding 10: ArmorStand pitch history preserved on intermediate frame.
+        add_entity(
+            game,
+            410,
+            "minecraft:armor_stand",
+            [5.0, 64.0, 5.0],
+            0.0,
+            0.0,
+        );
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 410 }))
+            .unwrap();
+        if let Some(a) = game.armor_stands.iter_mut().find(|a| a.id == 410) {
+            a.previous_pitch = 0.0;
+            a.pitch = 30.0;
+        }
+        let (_, _, stand_half_pitch) = game.camera_view(0.5).unwrap();
+        assert_eq!(
+            stand_half_pitch.to_bits(),
+            hex_f32(&rf["armor_stand_pitch"]["cam_half_xRot_bits"])
+        );
+
+        // Finding 11: 18-deep passenger chain keeps root unfrozen when frozen.
+        for k in 0..=17 {
+            add_entity(
+                game,
+                420 + k,
+                "minecraft:interaction",
+                [0.0, 64.0, 0.0],
+                0.0,
+                0.0,
+            );
+        }
+        add_entity(game, 440, "minecraft:player", [0.0, 64.0, 0.0], 0.0, 0.0);
+        for k in 0..17 {
+            game.handle_packet(C::SetPassengers(play::SetPassengers {
+                vehicle: 420 + k,
+                passengers: vec![420 + k + 1],
+            }))
+            .unwrap();
+        }
+        game.handle_packet(C::SetPassengers(play::SetPassengers {
+            vehicle: 437,
+            passengers: vec![440],
+        }))
+        .unwrap();
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 420 }))
+            .unwrap();
+        let deep_sub = game.camera_subject().unwrap();
+        assert_eq!(
+            !deep_sub.has_player_passenger,
+            rf["deep_passenger_chain_18"]["root_frozen"]
+                .as_bool()
+                .unwrap()
+        );
+
+        // Finding 12: Watched living entity blindness blocks sky.
+        add_entity(game, 450, "minecraft:creeper", [5.0, 64.0, 5.0], 0.0, 0.0);
+        let blindness_id = game
+            .remote
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:mob_effect")
+            .unwrap()
+            .id("minecraft:blindness")
+            .unwrap();
+        game.handle_packet(C::UpdateMobEffect(play::UpdateMobEffect {
+            id: 450,
+            effect: blindness_id,
+            amplifier: 0,
+            duration: 200,
+            flags: 0,
+        }))
+        .unwrap();
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 450 }))
+            .unwrap();
+        assert_eq!(
+            game.camera_subject().unwrap().blocks_sky,
+            rf["watched_living_effects"]["creeper_blindness_blocks_sky"]
+                .as_bool()
+                .unwrap()
+        );
+
+        // Finding 13: Watched player HurtAnimation stores yaw and living tick decrements cooldown.
+        add_entity(game, 451, "minecraft:player", [5.0, 64.0, 5.0], 0.0, 0.0);
+        game.handle_packet(C::HurtAnimation(play::HurtAnimation {
+            id: 451,
+            yaw: 123.5,
+        }))
+        .unwrap();
+        if let Some(m) = game.mobs.iter_mut().find(|m| m.id == 451) {
+            m.invulnerable = 20;
+        }
+        game.tick_remote_entities(true);
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 451 }))
+            .unwrap();
+        assert_eq!(
+            game.camera_subject()
+                .unwrap()
+                .hurt
+                .unwrap()
+                .hurt_dir
+                .to_bits(),
+            hex_f32(&rf["watched_player_hurt"]["hurt_dir_bits"])
+        );
+        assert_eq!(
+            game.mobs.iter().find(|m| m.id == 451).unwrap().invulnerable,
+            rf["watched_player_hurt"]["cooldown_after_base_tick"]
+                .as_i64()
+                .unwrap() as i32
+        );
+
+        // Finding 14: Max-health updates clamp at living tick, not on receipt.
+        let max_health_attr = game
+            .motion
+            .attributes
+            .id("minecraft:max_health")
+            .unwrap()
+            .registry_id();
+        add_entity(game, 452, "minecraft:pig", [0.0, 64.0, 0.0], 0.0, 0.0);
+        if let Some(m) = game.mobs.iter_mut().find(|m| m.id == 452) {
+            m.attrs.max_health = 20.0;
+            m.health = 20.0;
+        }
+        for val in [10.0, 20.0] {
+            game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
+                id: 452,
+                values: vec![play::AttributeSnapshot {
+                    attribute: max_health_attr,
+                    base: val,
+                    modifiers: Vec::new(),
+                }],
+            }))
+            .unwrap();
+        }
+        game.tick_remote_entities(true);
+        assert_eq!(
+            game.mobs
+                .iter()
+                .find(|m| m.id == 452)
+                .unwrap()
+                .health
+                .to_bits(),
+            hex_f32(&rf["max_health_clamp"]["same_tick_health_bits"])
+        );
+
+        add_entity(game, 453, "minecraft:pig", [0.0, 64.0, 0.0], 0.0, 0.0);
+        if let Some(m) = game.mobs.iter_mut().find(|m| m.id == 453) {
+            m.attrs.max_health = 20.0;
+            m.health = 20.0;
+        }
+        game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
+            id: 453,
+            values: vec![play::AttributeSnapshot {
+                attribute: max_health_attr,
+                base: 10.0,
+                modifiers: Vec::new(),
+            }],
+        }))
+        .unwrap();
+        game.tick_remote_entities(true);
+        game.handle_packet(C::UpdateAttributes(play::UpdateAttributes {
+            id: 453,
+            values: vec![play::AttributeSnapshot {
+                attribute: max_health_attr,
+                base: 20.0,
+                modifiers: Vec::new(),
+            }],
+        }))
+        .unwrap();
+        game.tick_remote_entities(true);
+        assert_eq!(
+            game.mobs
+                .iter()
+                .find(|m| m.id == 453)
+                .unwrap()
+                .health
+                .to_bits(),
+            hex_f32(&rf["max_health_clamp"]["across_tick_health_bits"])
+        );
+
+        // Finding 15: Sleeping metadata moves a living mob onto the bed.
+        let bed_state = game
+            .pack
+            .assets
+            .registry
+            .resolve(&sunrise_world::chunk::BlockState {
+                name: "minecraft:red_bed".into(),
+                properties: [("facing", "south"), ("occupied", "false"), ("part", "head")]
+                    .into_iter()
+                    .map(|(k, v)| (k.into(), v.into()))
+                    .collect(),
+            })
+            .unwrap();
+        game.world.set(7, 64, 5, bed_state).unwrap();
+        add_entity(game, 454, "minecraft:creeper", [5.5, 64.0, 5.5], 0.0, 0.0);
+        game.handle_packet(C::SetEntityData(play::SetEntityData {
+            id: 454,
+            values: vec![(
+                14,
+                serializer::OPTIONAL_BLOCK_POS,
+                EntityDataValue::OptPos(Some([7, 64, 5])),
+            )],
+        }))
+        .unwrap();
+        let v = game.mobs.iter().find(|m| m.id == 454).unwrap();
+        assert_eq!(
+            [v.position.x, v.position.y, v.position.z].map(f64::to_bits),
+            vec3_bits_expected(&rf["sleeping_mob_set_pos_to_bed"]["mob_pos_after_sleep_bits"])
         );
     });
 }

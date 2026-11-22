@@ -89,12 +89,23 @@ pub(super) fn motion_blocking_height(
         HeightmapType::MotionBlocking.is_opaque(properties.heightmap_state(s))
     })
 }
+/// `GameRenderer.nightVisionScale` for an optional night-vision duration (`-1` is infinite).
+fn night_vision_scale(duration: Option<i32>, partial: f32) -> f32 {
+    match duration {
+        Some(d) if d < 0 || d > 200 => 1.0,
+        Some(d) => 0.7 + ((d as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3,
+        None => 0.0,
+    }
+}
+
 /// `ClientLevel.tickWeatherEffects`: the MOTION_BLOCKING height of the column
 /// `x`, `z` when a rain splash may land on it for a camera in block row `y`,
 /// that is above the world's bottom and within 10 blocks of the camera.
 fn splash_height(world: &World, properties: &Properties, x: i32, y: i32, z: i32) -> Option<i32> {
     let top = motion_blocking_height(world, properties, x, z);
-    (top > world.bottom_y() && (y - 10..=y + 10).contains(&top)).then_some(top)
+    let hi = y.wrapping_add(10);
+    let lo = y.wrapping_sub(10);
+    (top > world.bottom_y() && top <= hi && top >= lo).then_some(top)
 }
 /// The first block at or below `from` that blocks motion (leaves only when
 /// `leaves`, as MOTION_BLOCKING_NO_LEAVES skips them) or holds a fluid, plus one.
@@ -220,6 +231,33 @@ impl Game<'_> {
         } else {
             self.res.fog()
         };
+        let partial = self.clock.fraction() as f32;
+        let fog_effects = cam.as_ref().map(|c| c.fog_effects);
+        let blindness = fog_effects.map(|e| e.blindness).unwrap_or_else(|| {
+            self.potions
+                .effects
+                .get("blindness")
+                .map(|effect| (effect.duration, effect.duration == -1))
+        });
+        let darkness = fog_effects
+            .map(|e| {
+                e.darkness_blend
+                    .map(|(previous, current)| previous + (current - previous) * partial)
+            })
+            .unwrap_or_else(|| self.darkness_fog());
+        let fire_resistance = fog_effects.map_or_else(
+            || self.potions.effects.get("fire_resistance").is_some(),
+            |e| e.fire_resistance,
+        ) || (is_local && self.pvp_clear_fluids().0);
+        let night_vision = fog_effects
+            .map(|e| {
+                if e.darkness_blend.is_some() {
+                    0.0
+                } else {
+                    night_vision_scale(e.night_vision, partial)
+                }
+            })
+            .unwrap_or_else(|| self.fog_night_vision());
         let input = FogInputs {
             fog_type,
             sky,
@@ -235,31 +273,16 @@ impl Game<'_> {
             rain,
             thunder,
             skybox: self.overworld_skybox(),
-            blindness: is_local
-                .then(|| {
-                    self.potions
-                        .effects
-                        .get("blindness")
-                        .map(|effect| (effect.duration, effect.duration == -1))
-                })
-                .flatten(),
-            darkness: if is_local { self.darkness_fog() } else { None },
-            darken_world: self
-                .boss_overlay
-                .darken_amount(self.clock.fraction() as f32),
+            blindness,
+            darkness,
+            darken_world: self.boss_overlay.darken_amount(partial),
             boss_world_fog: self.boss_overlay.should_create_world_fog(),
             spectator: cam
                 .as_ref()
                 .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator),
-            fire_resistance: is_local
-                && (self.potions.effects.get("fire_resistance").is_some()
-                    || self.pvp_clear_fluids().0),
+            fire_resistance,
             full_water_vision: !is_local || self.pvp_clear_fluids().1,
-            night_vision: if is_local {
-                self.fog_night_vision()
-            } else {
-                0.0
-            },
+            night_vision,
             environment: self.pack.polytone_colors.env,
             fluid_fog: self.pack.polytone_colors.fluid_fog,
         };
@@ -325,17 +348,13 @@ impl Game<'_> {
     /// `GameRenderer.nightVisionScale`, but not while Darkness is on.
     fn fog_night_vision(&self) -> f32 {
         let partial = self.clock.fraction() as f32;
-        match self.potions.effects.get("night_vision") {
-            Some(e) if self.potions.effects.get("darkness").is_none() => {
-                // MobEffectInstance.endsWithin(200); -1 is infinite.
-                if e.duration < 0 || e.duration > 200 {
-                    1.0
-                } else {
-                    0.7 + ((e.duration as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3
-                }
-            }
-            _ => 0.0,
+        if self.potions.effects.get("darkness").is_some() {
+            return 0.0;
         }
+        night_vision_scale(
+            self.potions.effects.get("night_vision").map(|e| e.duration),
+            partial,
+        )
     }
     /// `ClientLevelData.isFlat`: on the server thread, the world-wide flag.
     fn level_flat(&self) -> bool {
@@ -506,15 +525,12 @@ impl Game<'_> {
         size: [u32; 2],
         scale: f32,
     ) -> BlockScreenEffects {
-        // `LevelExtractor.getViewBlockingState`: 8 points around the eye, each
-        // tested with `BlockState.isViewBlocking` against the near plane.
-        // ScreenEffectRenderer: none of it for a spectator (noPhysics).
-        let spectator = self.own_player_is_spectator();
+        // LevelExtractor.getViewBlockingState checks player.noPhysics (p.spectator); submit checks isSpectator.
         let modded = mod_api::__private::listened(mod_api::HookId::ExtractBlockScreenEffect);
         let player_partial_tick = self.clock.camera_fraction() as f32;
         let mut block = None;
         let mut custom = [None, None, None];
-        if !spectator {
+        if !p.spectator {
             // Frustum.getNearPlaneBounds from culling projection (max(fov, option_fov), camera rot).
             let cull_fov = self
                 .fov_degrees(partial, eye)
@@ -583,7 +599,7 @@ impl Game<'_> {
                 }
             }
         }
-        let first_person = self.camera_type.is_first_person() && !spectator;
+        let first_person = self.camera_type.is_first_person() && !self.own_player_is_spectator();
         let water = first_person && {
             // LevelExtractor uses the player's tick-sampled eye state, not camera fog geometry.
             // Keep the existing mod override explicit, applied to that answer at the eye.
@@ -863,10 +879,12 @@ impl Game<'_> {
                         / if self.settings.particles == 1 { 2 } else { 1 };
                     let mut rain_position = None;
                     for _ in 0..count {
-                        let x = weather_block[0] + random.next_int_bound(diameter).unwrap_or(0)
-                            - radius;
-                        let z = weather_block[2] + random.next_int_bound(diameter).unwrap_or(0)
-                            - radius;
+                        let x = weather_block[0]
+                            .wrapping_add(random.next_int_bound(diameter).unwrap_or(0))
+                            .wrapping_sub(radius);
+                        let z = weather_block[2]
+                            .wrapping_add(random.next_int_bound(diameter).unwrap_or(0))
+                            .wrapping_sub(radius);
                         let Some(top) = splash_height(world, properties, x, weather_block[1], z)
                         else {
                             continue;
@@ -874,7 +892,7 @@ impl Game<'_> {
                         if !rains_at(world, biomes, x, top, z) {
                             continue;
                         }
-                        let below = top - 1;
+                        let below = top.wrapping_sub(1);
                         rain_position = Some([x, below, z]);
                         // The Minimal option stops at the first spot that rains (the
                         // rain sound still plays there).
@@ -926,12 +944,13 @@ impl Game<'_> {
                                 weather_block[0],
                                 weather_block[2],
                             );
-                            let (name, volume, pitch) =
-                                if at[1] > weather_block[1] + 1 && roof > weather_block[1] {
-                                    ("minecraft:weather.rain.above", 0.1, 0.5)
-                                } else {
-                                    ("minecraft:weather.rain", 0.2, 1.0)
-                                };
+                            let (name, volume, pitch) = if at[1] > weather_block[1].wrapping_add(1)
+                                && roof > weather_block[1]
+                            {
+                                ("minecraft:weather.rain.above", 0.1, 0.5)
+                            } else {
+                                ("minecraft:weather.rain", 0.2, 1.0)
+                            };
                             let p = at.map(|c| f64::from(c) + 0.5);
                             // playLocalSound: guests make their own rain, so a host
                             // must not capture it for them.

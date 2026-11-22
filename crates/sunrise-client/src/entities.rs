@@ -1753,6 +1753,8 @@ pub struct ArmorStand {
     pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.xRot`: kept for `/tp` and `Rotation`; the kind turns only in yaw.
     pub pitch: f32,
+    /// `Entity.xRotO`: pitch at the start of the tick for camera interpolation.
+    pub previous_pitch: f32,
     /// When it joined its list ([`crate::join_seq`]); set by the list, not by the spawn site.
     pub join: crate::join_seq::JoinSeq,
     pub fire_ticks: i32,
@@ -2029,26 +2031,31 @@ impl ArmorStand {
     /// put at, when one is due). The yaw
     /// turns the short way and stays continuous, so a frame between ticks
     /// never spins it.
-    pub fn interpolate(&mut self, step: Option<(Vec3, f32)>) {
+    pub fn interpolate(&mut self, step: Option<(Vec3, f32, f32)>) {
         self.previous = self.position;
         self.previous_yaw = self.yaw;
-        if let Some((at, yaw)) = step {
+        self.previous_pitch = self.pitch;
+        if let Some((at, yaw, pitch)) = step {
             self.position = at;
             self.yaw += crate::camera::wrap_degrees(yaw - self.yaw);
+            self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
         }
     }
     /// Put there at once, with nothing to blend from
     /// (`Entity.snapTo`).
-    pub fn snap(&mut self, at: Vec3, yaw: f32) {
+    pub fn snap(&mut self, at: Vec3, yaw: f32, pitch: f32) {
         self.position = at;
         self.previous = at;
         self.yaw = yaw;
         self.previous_yaw = yaw;
+        self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
+        self.previous_pitch = self.pitch;
     }
     pub fn new(id: u32, position: Vec3, yaw: f32) -> Self {
         Self {
             attachment_lifetime: Default::default(),
             pitch: 0.0,
+            previous_pitch: 0.0,
             join: Default::default(),
             fire_ticks: 0,
             mod_fire_immune: false,

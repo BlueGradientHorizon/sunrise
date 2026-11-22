@@ -360,6 +360,9 @@ pub(super) struct Remote {
     /// `handleLogin` ran: vanilla's `Minecraft.player` exists from then on,
     /// while here the player is made at the first teleport.
     pub(super) logged_in: bool,
+    /// Whether a logical `LocalPlayer` already exists on this connection (retained across
+    /// a second `Login`, replaced on `Respawn`, cleared on reconfiguration).
+    pub(super) has_logical_player: bool,
     status: String,
     pub(super) entity_id: i32,
     local_entity_silent: bool,
@@ -567,6 +570,11 @@ pub(super) struct Remote {
     players: HashMap<u128, String>,
     /// `ClientPacketListener.playerInfoMap` as player-list entries, and which of them are listed.
     tab_players: HashMap<u128, sunrise_client::tab_list::TabPlayer>,
+    /// Live `PlayerInfo.gameMode` cell per active tab entry; `PlayerInfoRemove` drops the map
+    /// slot while leaving any entity's cached `Arc` untouched (`AbstractClientPlayer.playerInfo`).
+    tab_game_modes: HashMap<u128, Arc<std::sync::atomic::AtomicI32>>,
+    /// First resolved `PlayerInfo` game mode cell of the current `LocalPlayer` entity.
+    own_player_info: std::cell::OnceCell<Arc<std::sync::atomic::AtomicI32>>,
     /// Each listed profile's unpacked `textures` property.
     skin_textures: HashMap<u128, sunrise_client::skins::Textures>,
     /// Active skin and cape from the services profile when the server sent none.
@@ -583,6 +591,8 @@ pub(super) struct Remote {
     pub(super) levels: Vec<String>,
     /// Player entities in the level: entity id to profile UUID.
     pub(super) level_players: HashMap<i32, u128>,
+    /// First resolved `PlayerInfo` game mode cell per remote `AbstractClientPlayer` entity.
+    level_player_infos: HashMap<i32, std::cell::OnceCell<Arc<std::sync::atomic::AtomicI32>>>,
     /// The profile name each player entity was created with (`RemotePlayer.getGameProfile`): it outlives the
     /// player-list entry, which servers remove to hide their NPCs from the list.
     level_player_names: HashMap<i32, String>,
@@ -1180,6 +1190,7 @@ impl Game<'_> {
                 let delay = sunrise_client::net::ping_millis().wrapping_sub(p.time);
                 self.debug_charts.ping.log(delay);
             }
+            C::DebugSample(p) => self.debug_charts.log_remote_sample(&p.sample)?,
             C::Login(p) => self.apply_login_packet(p),
             C::Respawn(p) => self.apply_respawn_packet(p),
             C::PlayerPosition(p) => self.remote_teleport(&p)?,

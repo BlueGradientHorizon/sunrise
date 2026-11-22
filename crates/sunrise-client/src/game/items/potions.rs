@@ -724,6 +724,13 @@ impl PotionState {
     }
     /// A server's move: thrown potions have no interpolation handler, so
     /// `moveOrInterpolateTo` puts them there at once. False when `id` isn't one.
+    pub(in crate::game) fn remote_thrown_pose(&self, id: u32) -> Option<([f64; 3], [f64; 3])> {
+        let t = self.thrown.iter().find(|t| t.id == id)?;
+        Some((
+            [t.position.x, t.position.y, t.position.z],
+            [t.previous.x, t.previous.y, t.previous.z],
+        ))
+    }
     pub(super) fn move_remote_thrown(&mut self, id: u32, at: Vec3) -> bool {
         let Some(t) = self.thrown.iter_mut().find(|t| t.id == id) else {
             return false;
@@ -1092,12 +1099,9 @@ impl Game<'_> {
                     return;
                 };
                 let inverted = self
-                    .res
-                    .stations()
-                    .enchantments
-                    .entity_tags
-                    .get("minecraft:inverted_healing_and_harm")
-                    .is_some_and(|t| t.contains(&self.mobs[i].kind.id));
+                    .items()
+                    .entity_type_tags
+                    .contains("minecraft:inverted_healing_and_harm", &self.mobs[i].kind.id);
                 for (effect, duration, amp) in effects {
                     // A mod's `onEffectAdded` may have changed the mobs.
                     let Some(index) = self.mob_index.find(&self.mobs, id) else {
@@ -1456,7 +1460,7 @@ impl Game<'_> {
             Some(EffectApplicable::Deny) => false,
             // An unanswered hook, or a future variant, defers to the
             // vanilla tag check.
-            _ => mob_can_be_affected(&self.res.stations().enchantments.entity_tags, kind, effect),
+            _ => mob_can_be_affected(self.items().entity_type_tags.members(), kind, effect),
         }
     }
     pub(super) fn add_player_effect(&mut self, effect: EffectInstance) -> bool {
@@ -2861,7 +2865,7 @@ impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
 /// counts its effect down, then ticks its `BlendState`. The darkness effect's
 /// is the fade `darkness_lighting` and `darkness_fog` draw; the integrated
 /// level's `tick_sculk_entities` is not run for a server's client (#3393).
-fn client_tick_effects(effects: &mut PlayerEffects, darkness: &mut (f32, f32)) {
+pub(in crate::game) fn client_tick_effects(effects: &mut PlayerEffects, darkness: &mut (f32, f32)) {
     for e in &mut effects.list {
         e.tick_client();
     }

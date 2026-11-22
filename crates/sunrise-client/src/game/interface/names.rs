@@ -308,7 +308,12 @@ impl Game<'_> {
             };
             // LivingEntityRenderer.shouldShowName (team rules included), then
             // MobRenderer: a visible name, or the mob under the crosshair.
-            let invisible = sb::invisible_to(team, viewer, self.spectator(), m.is_invisible());
+            let invisible = sb::invisible_to(
+                team,
+                viewer,
+                self.own_player_is_spectator(),
+                m.is_invisible(),
+            );
             // Entity.isDiscrete: a crouching player.
             let discrete = player && m.extra.crouching;
             let view = sb::NameView {
@@ -316,7 +321,7 @@ impl Game<'_> {
                 distance_sqr,
                 invisible_to_viewer: invisible,
                 hud_hidden: self.ui.hide_gui,
-                is_camera: self.remote_camera_id() == Some(m.id),
+                is_camera: self.live_remote_camera_id() == Some(m.id),
                 is_vehicle: ridden.contains(&m.id),
             };
             // MobRenderer.shouldShowName: a visible name, or the mob under the

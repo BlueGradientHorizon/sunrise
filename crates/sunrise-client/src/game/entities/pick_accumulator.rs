@@ -80,8 +80,9 @@ impl PickAccumulator {
                 && (candidate.distance_sq < self.nearest_sq || self.nearest_sq == 0.0)
                 && same_vehicle
                 && let Some(epoch) = game.native_lifecycle.epoch()
+                && let Some(wire_id) = game.wire_entity_id(candidate.id)
             {
-                let entity = mod_api::EntityRef::new(epoch, candidate.id);
+                let entity = mod_api::EntityRef::new(epoch, wire_id as u32);
                 game.ask_can_rider_interact(entity, &mut allowed);
                 if game.pick_camera_id() != camera {
                     // Camera changed during hook; refuse the pick rather than recasting it.
@@ -161,14 +162,18 @@ impl Game<'_> {
     }
 
     pub(super) fn pick_camera_id(&self) -> Option<u32> {
-        self.remote_camera_id()
-            .or_else(|| self.remote.as_ref().map(|r| r.entity_id as u32))
-            .or_else(|| {
-                self.player
-                    .as_ref()
-                    .map(|_| self.own_entity_id() as u32)
-                    .filter(|&id| id != 0)
-            })
+        if let Some(remote) = self.remote.as_ref() {
+            if let Some(id) = remote.camera {
+                remote.detached_camera.is_none().then_some(id as u32)
+            } else {
+                Some(remote.entity_id as u32)
+            }
+        } else {
+            self.player
+                .as_ref()
+                .map(|_| self.own_entity_id() as u32)
+                .filter(|&id| id != 0)
+        }
     }
 
     /// True if `id` (or the wire entity behind a synthetic special-target id) is the camera entity.
@@ -234,8 +239,9 @@ impl Game<'_> {
             .pick_camera_id()
             .and_then(|camera| self.pick_vehicle_root(camera))
             .or_else(|| {
-                self.riding
-                    .and_then(|vehicle| self.pick_vehicle_root(vehicle))
+                self.controls_camera()
+                    .then(|| self.riding.and_then(|v| self.pick_vehicle_root(v)))
+                    .flatten()
             });
         camera_root.is_some() && self.pick_vehicle_root(id) == camera_root
     }

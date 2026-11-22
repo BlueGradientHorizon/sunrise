@@ -128,6 +128,11 @@ fn fireball_cloud_origin(feet: [f64; 3], targets: &[(Aabb, Vec3)]) -> [f64; 3] {
 /// (`SPECIAL + 16 + crystal`), so projectiles can target them.
 pub(super) const SPECIAL: u32 = u32::MAX - 4096;
 pub(super) const CRYSTAL_IDS: u32 = SPECIAL + 16;
+
+/// `EnderDragon.recreateFromPacket`: signed wrapping `i32` id of part `part` (`i + dragonId + 1`).
+pub(in crate::game) fn dragon_part_wire_id(dragon_id: u32, part: usize) -> i32 {
+    dragon_part_id(dragon_id, part) as i32
+}
 const FIGHT_FILE: &str = "data/minecraft/ender_dragon_fight.dat";
 pub(super) const MAX_HEALTH: f32 = 200.0;
 /// `Mob.getAmbientSoundInterval`.
@@ -719,6 +724,15 @@ impl Dragon {
     /// `isDeadOrDying` for the killing blow: the dying flight, or no health.
     fn down(&self) -> bool {
         matches!(self.phase, Phase::Dying { .. }) || !self.alive()
+    }
+    /// The entity's own box, not any of the separate `EnderDragonPart` boxes.
+    pub(super) fn body_bounds(&self) -> Aabb {
+        // EntityTypes.ENDER_DRAGON dimensions: 16 wide, 8 high.
+        let p = self.position;
+        Aabb::new(
+            Vec3::new(p.x - 8.0, p.y, p.z - 8.0),
+            Vec3::new(p.x + 8.0, p.y + 8.0, p.z + 8.0),
+        )
     }
     /// Where part `i` stands and its box.
     pub(super) fn part_geometry(&self, i: usize) -> (Vec3, Aabb) {
@@ -2099,11 +2113,23 @@ impl Game<'_> {
     pub(super) fn dragon_hit(&self) -> Option<(u32, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
+            let id = entity.id();
+            if let Some(d) = self
+                .dragon
+                .as_ref()
+                .filter(|d| d.id != 0 || self.remote.is_some())
+                && let Some(part) = dragon_part_index(d.id, id)
+            {
+                return Some((SPECIAL + part as u32, distance));
+            }
+            if let Some(i) = self.crystals.iter().position(|c| c.id != 0 && c.id == id) {
+                return Some((CRYSTAL_IDS + i as u32, distance));
+            }
             return self
                 .special_targets()
                 .into_iter()
-                .any(|(id, _)| id == entity.id())
-                .then_some((entity.id(), distance));
+                .any(|(special, _)| special == id)
+                .then_some((id, distance));
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
@@ -5124,6 +5150,24 @@ mod crystal;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dragon_part_wire_ids_wrap_like_vanilla_i32() {
+        let neg_one = (-1i32) as u32;
+        for part in 0..8 {
+            let wire = dragon_part_wire_id(neg_one, part);
+            assert_eq!(wire, part as i32);
+            assert_eq!(dragon_part_index(neg_one, wire as u32), Some(part));
+        }
+        assert_eq!(dragon_part_index(neg_one, (-1i32) as u32), None);
+        assert_eq!(dragon_part_index(neg_one, 8), None);
+
+        let max = i32::MAX as u32;
+        assert_eq!(dragon_part_wire_id(max, 0), i32::MIN);
+        assert_eq!(dragon_part_index(max, i32::MIN as u32), Some(0));
+        assert_eq!(dragon_part_wire_id(max, 7), i32::MIN + 7);
+        assert_eq!(dragon_part_index(max, (i32::MIN + 7) as u32), Some(7));
+    }
 
     #[test]
     fn dragon_search_preserves_equal_cost_heap_order() {

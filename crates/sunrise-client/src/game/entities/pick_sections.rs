@@ -513,7 +513,7 @@ impl Game<'_> {
     }
 
     fn locate_pick_member(&self, id: u32) -> Option<(PickKind, [f64; 3])> {
-        if let Some(i) = self.mob_index.find(&self.mobs, id) {
+        if let Some(i) = self.mob_index.find_ref(&self.mobs, id) {
             let p = self.mobs[i].position;
             return Some((PickKind::Mob, [p.x, p.y, p.z]));
         }
@@ -595,7 +595,7 @@ impl Game<'_> {
 
     fn pick_member_position_of_kind(&self, kind: PickKind, id: u32) -> Option<[f64; 3]> {
         match kind {
-            PickKind::Mob => self.mob_index.find(&self.mobs, id).map(|i| {
+            PickKind::Mob => self.mob_index.find_ref(&self.mobs, id).map(|i| {
                 let p = self.mobs[i].position;
                 [p.x, p.y, p.z]
             }),
@@ -693,7 +693,7 @@ impl Game<'_> {
         let id = member.id;
         match member.kind {
             PickKind::Mob => {
-                let m = &self.mobs[self.mob_index.find(&self.mobs, id)?];
+                let m = &self.mobs[self.mob_index.find_ref(&self.mobs, id)?];
                 m.is_pickable().then(|| (m.id, m.bounds(), 0.0))
             }
             PickKind::Boat => self
@@ -799,7 +799,7 @@ impl Game<'_> {
     }
 
     fn live_entity_bounds_for_pick(&self, id: u32) -> Option<Aabb> {
-        if let Some(i) = self.mob_index.find(&self.mobs, id) {
+        if let Some(i) = self.mob_index.find_ref(&self.mobs, id) {
             return Some(self.mobs[i].bounds());
         }
         if let Some(a) = self.armor_stands.iter().find(|e| e.id == id) {

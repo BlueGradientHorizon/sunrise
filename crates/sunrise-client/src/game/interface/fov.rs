@@ -89,29 +89,29 @@ impl Game<'_> {
     pub(super) fn tick_fov(&mut self) {
         let first_person = self.camera_type.is_first_person();
         let effect = self.fov_effect_scale();
-        if let Some(cam) = self.camera_subject().filter(|c| !c.is_local_player) {
-            let target = cam.fov_player.map_or(1.0, |player| {
-                field_of_view_modifier(&player, first_person, effect)
-            });
-            self.view
-                .tick(Some(cam.camera.eye_height), self.zoomed_fov_target(target));
-            return;
-        }
-        let target = self.fov_player().map_or(1.0, |player| {
+        let (fov_player, eye) = match self.camera_subject() {
+            Some(cam) if !cam.is_local_player => (cam.fov_player, Some(cam.camera.eye_height)),
+            _ => (
+                self.fov_player(),
+                self.player.as_ref().map(|p| {
+                    if self.sleeping.is_some() {
+                        0.2
+                    } else {
+                        p.dimensions.eye_height
+                    }
+                }),
+            ),
+        };
+        let target = fov_player.map_or(1.0, |player| {
             let base = field_of_view_modifier(&player, first_person, effect);
+            if first_person && matches!(player.using, Some((UseItem::Spyglass, _))) {
+                return base;
+            }
             let mut modifier = base;
             self.native_compute_fov_modifier(&player, base, &mut modifier);
             valid_fov_modifier(modifier, base)
         });
-        let target = self.zoomed_fov_target(target);
-        let eye = self.player.as_ref().map(|p| {
-            if self.sleeping.is_some() {
-                0.2
-            } else {
-                p.dimensions.eye_height
-            }
-        });
-        self.view.tick(eye, target);
+        self.view.tick(eye, self.zoomed_fov_target(target));
     }
     /// The player's `deathTime` while dead or dying: whole ticks counted by
     /// `LivingEntity.tickDeath`, so `deathTime + partialTicks` in

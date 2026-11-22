@@ -45,11 +45,7 @@ impl Game<'_> {
             if kind == "minecraft:player"
                 && let Some(r) = self.remote.as_ref()
             {
-                mob.extra.spectator = r
-                    .level_players
-                    .get(&id)
-                    .and_then(|uuid| r.tab_players.get(uuid))
-                    .is_some_and(|t| t.game_mode == SPECTATOR);
+                mob.extra.spectator = r.remote_player_info_game_mode(id) == Some(SPECTATOR);
             }
             (mob.yaw, mob.previous_yaw) = (yaw, yaw);
             (mob.head_pitch, mob.previous_head_pitch) = (pitch, pitch);
