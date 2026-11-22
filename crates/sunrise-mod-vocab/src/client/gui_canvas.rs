@@ -9,6 +9,7 @@ use super::hud_layout::{Blend, PoseOp};
 
 /// A partial `blitSprite`, in the sprite's logical pixel units.
 // no wire: arguments to an in-process GUI draw
+// exhaustive: plain sprite sub-rectangle coordinates built by struct literal
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GuiSpriteRegion {
     /// Positive width and height of the whole sprite.
@@ -19,6 +20,7 @@ pub struct GuiSpriteRegion {
 
 /// A source rectangle for `blit`, in the texture's logical pixel units.
 // no wire: arguments to an in-process GUI draw
+// exhaustive: plain texture source rectangle coordinates built by struct literal
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GuiBlitRegion {
     /// Source `u, v` offset, which must be finite.

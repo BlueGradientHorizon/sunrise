@@ -17,6 +17,7 @@ use sunrise_mod_runtime::attachments::{
 /// ([`sync`](Self::sync)), and [`copy_on_death`](Self::copy_on_death). Persistence and sync
 /// codecs are independent.
 // no wire: host-local registration builder with callback pointers; never crosses the wire.
+// exhaustive: its fields are private; constructed through AttachmentDescriptor::new
 pub struct AttachmentDescriptor<T: 'static> {
     id: &'static str,
     default: fn() -> T,
@@ -114,6 +115,7 @@ type MatchAttachmentWrite = fn(&(dyn Any + Send + Sync), &AttachmentStoreWrite<'
 ///
 /// Built from a typed [`AttachmentDescriptor<T>`] via [`From`] / [`Into`].
 // no wire: host-local registration descriptor carrying erased typed callbacks; never crosses the wire.
+// exhaustive: its fields are private; built via From<AttachmentDescriptor<T>>
 pub struct ErasedAttachmentDescriptor {
     id: &'static str,
     has_codec: bool,
@@ -262,6 +264,7 @@ impl fmt::Debug for AttachmentIdentity {
 
 /// An opaque handle to an attachment registered during startup.
 // no wire: host-local registration record holding an erased typed descriptor; never crosses the wire.
+// exhaustive: its fields are private; opaque registration handle
 #[derive(Clone)]
 pub struct RegisteredAttachment {
     id: &'static str,
@@ -391,6 +394,7 @@ pub fn check_attachment_descriptor(
 /// [`AttachmentError::StaleKey`] even when a later installation registers the same ID and Rust
 /// type.
 // no wire: host-local typed handle with callback pointers and registration identity; never crosses the wire.
+// exhaustive: its field is private; issued only by attachment registration
 pub struct AttachmentKey<T: 'static>(Arc<AttachmentRegistration<T>>);
 
 impl<T: 'static> Clone for AttachmentKey<T> {
@@ -679,6 +683,7 @@ impl dyn Registrar + '_ {
 
 /// Capture the installed descriptors for a client sync send pass. Pairing workers
 /// may run this projection off the calling server thread.
+// hidden: engine-owned client attachment sync projection; not an authoring method.
 #[doc(hidden)]
 pub fn attachment_sync_projection()
 -> impl Fn(&str, &str, AttachmentSyncInput<'_>) -> Result<Option<Compound>, String> + Sync {
@@ -731,6 +736,7 @@ pub fn validate_attachment_use(
 }
 
 /// Resolve removal policy at the authoritative store, not in an adapter supplying the call.
+// hidden: engine-owned attachment removal sync lookup; not an authoring method.
 #[doc(hidden)]
 pub fn attachment_removal_sync(
     namespace: &str,
@@ -748,6 +754,7 @@ pub fn attachment_removal_sync(
 }
 
 /// Require a write prepared by this installation's exact typed descriptor.
+// hidden: engine-owned attachment store write check; not an authoring method.
 #[doc(hidden)]
 pub fn validate_attachment_write(write: &AttachmentStoreWrite<'_>) -> Result<(), AttachmentError> {
     let (namespace, name) = write.id();

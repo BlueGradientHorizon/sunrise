@@ -1,11 +1,9 @@
 //! The game's side of the mod API: the installed tables, the reload machinery, the structs the
 //! game fills for its hooks (`built`) and what it reads of handles and the API's own types
 //! (`game`). None of it is part of the API a mod is written against.
-pub use crate::world::inside_write::BuiltinInsideAction;
 use crate::*;
 #[path = "__private/registry_installation.rs"]
 mod registry_installation;
-pub use crate::world::datapack_registry_set::queued_datapack_set_bytes;
 
 /// The argument of a handler trait's hidden marks method. Its field is private, so no mod can
 /// make one: nothing outside this crate can call the method.

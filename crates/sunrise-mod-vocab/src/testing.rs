@@ -1422,6 +1422,7 @@ pub fn install_attachment_fixture<T: Send + Sync + 'static>(
 }
 
 /// Retrieve the key issued by this test thread's registration fixture.
+// hidden: API-owned test setup uses this vocabulary fixture, not mod authoring code.
 #[doc(hidden)]
 pub fn attachment_key<T: Send + Sync + 'static>(
     namespace: &str,

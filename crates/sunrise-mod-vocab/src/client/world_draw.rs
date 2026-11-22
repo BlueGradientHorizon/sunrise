@@ -78,6 +78,7 @@ pub enum DrawError {
 }
 
 // no wire: a draw handle only names a batch in the current in-process render view.
+// exhaustive: its fields are private; only the renderer constructs a draw handle
 /// Geometry submitted in `prepare_render_buffers`. Use it in the matching stage of this view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PreparedWorldDraw {
@@ -100,6 +101,7 @@ impl PreparedWorldDraw {
 }
 
 // no wire: only returned when resolving an in-process draw handle.
+// exhaustive: unit error marker carrying no fields
 /// A draw handle was not prepared for this view and stage.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PreparedWorldDrawError;
@@ -163,6 +165,7 @@ impl NameTagOptions {
 
 /// Order-independent transparency (OIT) sub-passes in vanilla 26.3 (`OitStage`), in execution
 /// order.
+// exhaustive: vanilla 26.3's closed three-pass OitStage enum
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
 pub enum OitStage {
     /// First OIT pass: records depth bounds for translucent fragments (`OitStage.DEPTH_BOUNDS`).
@@ -263,6 +266,7 @@ impl RenderLevelStage {
 }
 
 // no wire: borrows the active stage's pass surface for the duration of a render_level_stage callback.
+// exhaustive: covers the three engine pass kinds for a render stage callback
 /// The drawing capability active for one [`RenderLevelStage`] callback.
 pub enum StagePass<'a> {
     /// No active render pass (`RenderLevelStage::AfterSky`, `RenderLevelStage::AfterLevel`).
