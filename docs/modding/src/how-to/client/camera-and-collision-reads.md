@@ -13,9 +13,12 @@ or the frame's animation clock.
 or `None` without a window (a server, a headless run). Vanilla's `Window.calculateScale` resolves
 it from the GUI Scale option and the window size: the option is a maximum, where 0 means automatic,
 so a large window still resolves below it, and with the Unicode font forced an odd result is raised
-by one. `ClientHost::gui_options().gui_scale` is only that option. The framebuffer size stays
-`native_physical_window_size()`; divide it by this scale, rounding up, for the GUI-scaled width and
-height (`Window.getGuiScaledWidth/Height`).
+by one. `ClientHost::gui_options().gui_scale` is only that option. Divide `ClientHost::window_size()`
+by this scale, rounding up, for the GUI-scaled width and height (`Window.getGuiScaledWidth/Height`).
+
+`ClientHost::window_size()` reads the window's width and height in framebuffer pixels
+(`Window.getWidth`, `Window.getHeight`), whatever the GUI scale, or `None` without a window. Read it
+at any time, not only in `window_resize`: that hook reports this same size, so the two always agree.
 
 `LevelRef::brightness(host, layer, pos)` (`getBrightness`, the stored light 0 to 15) reads on a client too: the
 light of the level the client shows, as the server sent it for a chunk the client holds. It is `None` for a

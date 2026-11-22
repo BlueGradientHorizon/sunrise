@@ -1,0 +1,2 @@
+# Client reads of vanilla state for mods (#4677): each on a client game built from the prepared resources.
+sunrise-client game::options::resize_state_tests::window_size_reads_the_size_window_resize_reports lib daily resources
