@@ -378,6 +378,15 @@ fn asset_names_state_kind_target_and_side() {
             )),
         ),
         (
+            "programs-x86_64-unknown-linux-gnu-server.tar.xz",
+            Some((
+                Kind::Programs,
+                Codec::Xz,
+                Some("x86_64-unknown-linux-gnu".into()),
+                Some(Side::Server),
+            )),
+        ),
+        (
             "tool-x86_64-pc-windows-gnu.tar.xz",
             Some((
                 Kind::Tool,
@@ -448,27 +457,24 @@ fn the_package_format_reads_with_any_line_ending() {
 
 #[test]
 fn a_newer_sdks_asset_kind_is_left_out_and_refused_only_by_a_route_that_needs_it() {
-    const PROGRAMS: &str = "programs-x86_64-unknown-linux-gnu.tar.xz";
+    const SYMBOLS: &str = "symbols-x86_64-unknown-linux-gnu.tar.xz";
     let mut newer = json(&index(&[(ENGINE, b"engine")]));
-    newer["assets"][PROGRAMS] = serde_json::json!({
-        "sha256": sha256_hex(b"programs"), "size": 8, "kind": "programs", "codec": "zstd",
+    newer["assets"][SYMBOLS] = serde_json::json!({
+        "sha256": sha256_hex(b"symbols"), "size": 7, "kind": "symbols", "codec": "zstd",
         "target": "x86_64-unknown-linux-gnu", "side": "client",
     });
-    newer["inputs"]["routes"]["play"] = serde_json::json!({"sdk": ["runtime", "programs"]});
+    newer["inputs"]["routes"]["play"] = serde_json::json!({"sdk": ["runtime", "symbols"]});
     let read = Index::read(newer.to_string().as_bytes(), COMMIT).unwrap();
     // Everything this reader knows still reads: the engine route and its asset.
     assert!(read.asset(ENGINE).is_ok());
     assert!(read.inputs.route("engine").is_ok());
     // The new kind's asset is not listed, and its route is refused when it is asked for.
-    assert_eq!(
-        read.asset(PROGRAMS),
-        Err(Refusal::Unlisted(PROGRAMS.into()))
-    );
+    assert_eq!(read.asset(SYMBOLS), Err(Refusal::Unlisted(SYMBOLS.into())));
     assert_eq!(
         read.route_assets("play", "x86_64-unknown-linux-gnu", Side::Client),
         Err(Refusal::Kind {
             asset: "play".into(),
-            kind: "programs".into(),
+            kind: "symbols".into(),
         })
     );
 }

@@ -169,10 +169,14 @@ pub enum Kind {
     Engine,
     /// `cargo-sunrise-mod` for one computer: its `native-build` compiles native mods as the launcher does.
     Tool,
+    /// What the player folder holds besides the game program (`xtask package`'s companion
+    /// programs, exporters, prepare sources and licences), so the `runtime` slice's game runs
+    /// installed from the SDK alone.
+    Programs,
 }
 
 impl Kind {
-    const ALL: [Kind; 7] = [
+    const ALL: [Kind; 8] = [
         Kind::Surface,
         Kind::BuildData,
         Kind::ApiSource,
@@ -180,6 +184,7 @@ impl Kind {
         Kind::Api,
         Kind::Engine,
         Kind::Tool,
+        Kind::Programs,
     ];
 
     /// The kind `sdk.json` writes as `name`, if this reader knows it.
@@ -197,17 +202,24 @@ impl Kind {
             Kind::Api => "api",
             Kind::Engine => "engine",
             Kind::Tool => "tool",
+            Kind::Programs => "programs",
         }
     }
 
     /// Whether its assets exist once per target.
     pub fn per_target(self) -> bool {
-        matches!(self, Kind::Runtime | Kind::Api | Kind::Engine | Kind::Tool)
+        matches!(
+            self,
+            Kind::Runtime | Kind::Api | Kind::Engine | Kind::Tool | Kind::Programs
+        )
     }
 
     /// Whether its assets also exist once per side: the tool serves both.
     pub fn per_side(self) -> bool {
-        matches!(self, Kind::Runtime | Kind::Api | Kind::Engine)
+        matches!(
+            self,
+            Kind::Runtime | Kind::Api | Kind::Engine | Kind::Programs
+        )
     }
 }
 
@@ -240,7 +252,7 @@ impl Asset {
 
     /// The kind, codec, target and side an asset's file name states:
     /// `surface.json`, `build-data.tar.xz`, `api-source.tar.xz`, `tool-<target>.tar.xz` and
-    /// `<runtime|api|engine>-<target>[-server].tar.xz`, where a target is made of `a-z`, `0-9`,
+    /// `<runtime|api|engine|programs>-<target>[-server].tar.xz`, where a target is made of `a-z`, `0-9`,
     /// `_` and `-` only. `None` for any other name, so a name this accepts is a plain file name.
     pub fn parts_of(name: &str) -> Option<(Kind, Codec, Option<String>, Option<Side>)> {
         if name == "surface.json" {
