@@ -125,7 +125,7 @@ fn physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive() 
         };
         let _first_mod = enter_native_mod(call("first"));
         let first = game.hold_packets().unwrap();
-        assert!(game.send_play(S::Pong(Ping { id: 1 })));
+        assert_eq!(game.send_play(S::Pong(Ping { id: 1 })), PlaySend::Admitted);
 
         let second;
         {
@@ -138,7 +138,7 @@ fn physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive() 
             game.send_packet(ServerboundPlayPacket::new(pong.clone(), vec![0, 0, 0, 2]))
                 .unwrap();
             // Invocation order is not commit order: the engine send joins first.
-            assert!(game.send_play(S::Pong(Ping { id: 3 })));
+            assert_eq!(game.send_play(S::Pong(Ping { id: 3 })), PlaySend::Admitted);
             game.transaction_close(&transaction, true);
             let aborted = game.transaction_open();
             game.send_packet(ServerboundPlayPacket::new(pong, vec![0, 0, 0, 4]))
@@ -161,7 +161,7 @@ fn physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive() 
                 vec![0, 0, 0, 1]
             )
         );
-        assert!(game.send_play(S::Pong(Ping { id: 5 })));
+        assert_eq!(game.send_play(S::Pong(Ping { id: 5 })), PlaySend::Admitted);
         {
             let _second_mod = enter_native_mod(call("second"));
             assert_eq!(game.release_held(second), Ok(3));
@@ -300,4 +300,107 @@ fn generation_change_after_a_drops_b_and_invalidates_the_hold() {
         peer.recv().is_err(),
         "old packets must not reach the new Play phase"
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn held_pressure_refuses_send_play_and_cross_passage_without_moving() {
+    if run_fresh_cases(
+        "game::native_net::packet_hold::tests::held_pressure_refuses_send_play_and_cross_passage_without_moving",
+        "SUNRISE_PACKET_HOLD_CROSS_CHILD",
+        &["cross"],
+    ) {
+        return;
+    }
+    mod_platform::__private::initialize().unwrap();
+    with_client_game(|game| {
+        use sunrise_core::vanilla_bytes::Writer;
+        let (client, _server) = Pipe::pair();
+        game.connect_local(client, "HoldCrossTest").unwrap();
+        let (session, mut peer, keepalive) = sunrise_client::net::Session::packet_hold_probe();
+        let remote = game.remote.as_mut().unwrap();
+        remote.session = session;
+        remote.joined = true;
+
+        let start = sunrise_core::geometry::Vec3::new(0.5, 65.0, 8.25);
+        let velocity = sunrise_core::geometry::Vec3::new(0.0, -0.0784, 0.25);
+        let prev = sunrise_core::geometry::Vec3::new(0.5, 65.0, 8.0);
+        let mut player = sunrise_client::motion::PlayerMotion::new(game.motion, start).unwrap();
+        player.velocity = velocity;
+        game.player = Some(player);
+        game.previous_position = prev;
+        game.yaw = 0.0;
+        game.passages.held.insert(
+            mod_api::PassageId::from_raw(1),
+            mod_api::Passage {
+                origin: mod_api::Vec3::new(0.5, 65.5, 8.5),
+                axis_w: mod_api::Vec3::new(1.0, 0.0, 0.0),
+                axis_h: mod_api::Vec3::new(0.0, 1.0, 0.0),
+                width: 2.0,
+                height: 3.0,
+                destination: mod_api::Vec3::new(24.5, 65.5, 8.5),
+                turn: mod_api::PassageTurn::Clockwise90,
+                destination_level: None,
+            },
+        );
+
+        let _mod = enter_native_mod(ModCall {
+            id: "holder",
+            hook: "client_tick",
+            part: None,
+        });
+        let hold = game.hold_packets().unwrap();
+        let mut data = Writer::new();
+        data.string("example:unrelated");
+        data.bytes(&vec![
+            0x59;
+            sunrise_protocol::packets::custom_payload::SERVERBOUND_LIMIT
+        ]);
+        let large = ServerboundPlayPacket::new(
+            Identifier::parse("minecraft:custom_payload").unwrap(),
+            data.data,
+        );
+        while game.send_packet(large.clone()).is_ok() {}
+        let small = ServerboundPlayPacket::new(
+            Identifier::parse("minecraft:pong").unwrap(),
+            vec![0, 0, 0, 1],
+        );
+        while game.send_packet(small.clone()).is_ok() {}
+
+        // Excluded replies still drain under hold-only pressure.
+        keepalive(42);
+        assert_eq!(
+            peer.recv().unwrap(),
+            (
+                sunrise_protocol::ids::play::serverbound::KEEP_ALIVE,
+                vec![0, 0, 0, 0, 0, 0, 0, 42]
+            )
+        );
+        game.remote.as_ref().unwrap().session.send_pack_status(7, 3);
+        let (id, body) = peer.recv().unwrap();
+        assert_eq!(
+            S::decode(id, &body).unwrap(),
+            S::ResourcePack(
+                sunrise_protocol::packets::configuration::ResourcePackResponse { id: 7, action: 3 }
+            )
+        );
+
+        // Held backpressure refuses the crossing payload, shuts down the writer,
+        // and leaves the player unmoved with no pending crossing.
+        assert_eq!(
+            game.cross_passage(mod_api::PassageId::from_raw(1)),
+            Err(mod_api::PassageCrossError::Unavailable)
+        );
+        let player = game.player.as_ref().unwrap();
+        assert_eq!(player.position, start);
+        assert_eq!(player.velocity, velocity);
+        assert_eq!(game.previous_position, prev);
+        assert_eq!(game.yaw, 0.0);
+        assert_eq!(game.passages.crossing, None);
+        assert_eq!(
+            game.send_play(S::Pong(Ping { id: 99 })),
+            PlaySend::Unavailable
+        );
+        assert_eq!(game.release_held(hold), Err(HoldError::Unknown));
+    });
 }

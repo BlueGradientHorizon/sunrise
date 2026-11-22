@@ -3,6 +3,7 @@ use super::Game;
 #[path = "native_net/packet_hold.rs"]
 mod packet_hold;
 use mod_api::{SendPacketError, ServerboundPlayPacket};
+pub(in crate::game) use packet_hold::PlaySend;
 use std::collections::HashMap;
 #[derive(Default)]
 pub(super) struct NativeNet {

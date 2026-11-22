@@ -8,6 +8,13 @@ use sunrise_protocol::packets::play::Serverbound as S;
 
 static NEXT: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::game) enum PlaySend {
+    Admitted,
+    Cancelled,
+    Unavailable,
+}
+
 struct Hold {
     id: HoldId,
     owner: &'static str,
@@ -171,13 +178,13 @@ impl Game<'_> {
     }
 
     /// `Connection.send` for the game's play packets: a mod may cancel one
-    /// (`client_packet_send`), and the server never hears of it. True when not cancelled.
-    pub(in crate::game) fn send_play(&self, packet: S) -> bool {
+    /// (`client_packet_send`), and the server never hears of it.
+    pub(in crate::game) fn send_play(&self, packet: S) -> PlaySend {
         let Some(remote) = &self.remote else {
-            return false;
+            return PlaySend::Unavailable;
         };
         if self.client_packet_send_canceled(&packet) {
-            return false;
+            return PlaySend::Cancelled;
         }
         let mut holds = self.native_net.holds.borrow_mut();
         if !holds.active.is_empty() {
@@ -185,18 +192,24 @@ impl Game<'_> {
             if !holds.active.is_empty()
                 && let Some((_, generation)) = holds.incarnation
             {
-                match remote.session.prepare_held_play(packet, generation) {
-                    Ok(packet) => holds.queue(packet),
+                return match remote.session.prepare_held_play(packet, generation) {
+                    Ok(packet) => {
+                        holds.queue(packet);
+                        PlaySend::Admitted
+                    }
                     Err(error) => {
                         log::warn!("held play packet refused: {error:?}");
                         holds.sync(self.hold_incarnation());
+                        PlaySend::Unavailable
                     }
-                }
-                return true;
+                };
             }
         }
-        remote.session.send(packet);
-        true
+        if remote.session.send(packet) {
+            PlaySend::Admitted
+        } else {
+            PlaySend::Unavailable
+        }
     }
 }
 

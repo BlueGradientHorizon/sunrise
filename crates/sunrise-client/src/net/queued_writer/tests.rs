@@ -229,3 +229,54 @@ fn a_dropped_droppable_leaves_the_framed_stream_as_if_never_sent() {
     };
     assert_eq!(run(true), run(false));
 }
+
+#[test]
+fn exhausted_held_play_credit_still_serves_control_replies_and_reconfiguration_ack() {
+    let (a, b) = Pipe::pair();
+    let (_, physical) = Connection::local(a).split();
+    let writer = QueuedWriter::new(physical).unwrap();
+    let mut peer = Connection::local(b);
+    peer.reader
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    writer.transition_protocol(Phase::Play, &[4]).unwrap();
+    assert_eq!(peer.recv().unwrap(), (4, vec![]));
+
+    let mut held = writer.exhaust_play_credit(7);
+    assert!(matches!(
+        writer.prepare_packet(vec![1], 7, None),
+        Err(SendPacketError::Backpressure)
+    ));
+
+    // Excluded replies still drain through the existing writer while held permits stay unpublished.
+    writer.send_bypassing_held(&[11, 1]).unwrap();
+    assert_eq!(peer.recv().unwrap(), (11, vec![1]));
+    writer.send_bypassing_held(&[12, 2]).unwrap();
+    assert_eq!(peer.recv().unwrap(), (12, vec![2]));
+
+    // Reconfiguration revokes unpublished old-play permits before admitting the ACK,
+    // even before the actor drops any held PreparedPackets.
+    writer
+        .transition_protocol(Phase::Configuration, &[9])
+        .unwrap();
+    assert_eq!(peer.recv().unwrap(), (9, vec![]));
+    assert_eq!(
+        held.pop().unwrap().try_publish(),
+        Err(SendPacketError::NotInPlay)
+    );
+
+    writer.transition_protocol(Phase::Play, &[10]).unwrap();
+    assert_eq!(peer.recv().unwrap(), (10, vec![]));
+    drop(held);
+
+    let stats = writer.sender.lock().unwrap().as_ref().unwrap().stats();
+    assert_eq!(stats.queued_items, 0);
+    assert_eq!(stats.reserved_bytes, 0);
+
+    writer
+        .prepare_packet(vec![5, 55], 7, Some(3))
+        .unwrap()
+        .try_publish()
+        .unwrap();
+    assert_eq!(peer.recv().unwrap(), (5, vec![55]));
+}

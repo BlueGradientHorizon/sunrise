@@ -614,7 +614,7 @@ impl Session {
             play::Serverbound::ResourcePack(status).encode()
         };
         if let Some(w) = writer.as_mut()
-            && w.send(&body).is_err()
+            && w.send_bypassing_held(&body).is_err()
         {
             w.shutdown();
         }
@@ -633,7 +633,7 @@ impl Session {
             play::Serverbound::CustomClickAction(click).encode()
         };
         if let Some(w) = writer.as_mut()
-            && w.send(&body).is_err()
+            && w.send_bypassing_held(&body).is_err()
         {
             w.shutdown();
         }
@@ -642,7 +642,7 @@ impl Session {
     pub fn accept_code_of_conduct(&self) {
         let mut writer = self.writer.lock().unwrap();
         if let Some(w) = writer.as_mut()
-            && w.send(&cfg::Serverbound::AcceptCodeOfConduct(Empty).encode())
+            && w.send_bypassing_held(&cfg::Serverbound::AcceptCodeOfConduct(Empty).encode())
                 .is_err()
         {
             w.shutdown();
@@ -1152,7 +1152,7 @@ fn receive_play(
         }
         let reply = |p: play::Serverbound| {
             if let Some(w) = shared_writer.lock().unwrap().as_mut() {
-                let _ = w.send(&p.encode());
+                let _ = w.send_bypassing_held(&p.encode());
             }
         };
         match packet {
@@ -3042,6 +3042,164 @@ mod tests {
         session.send(tick_end.clone());
         let (id, body) = server.recv().unwrap();
         assert_eq!(play::Serverbound::decode(id, &body).unwrap(), tick_end);
+        drop(session);
+        assert!(thread.join().unwrap().is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exhausted_held_play_credit_still_serves_replies_and_reconfiguration_ack() {
+        use mod_api::{Identifier, SendPacketError, ServerboundPlayPacket};
+        use sunrise_protocol::payload_negotiation::Phase;
+
+        let (root, data) = empty_item_data("reconfig-held-pressure");
+        let (client, server) = sunrise_protocol::connection::Pipe::pair();
+        let (mut reader, writer) = Connection::local(client).split();
+        let writer = QueuedWriter::new(writer).unwrap();
+        let mut server = Connection::local(server);
+        server
+            .reader
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        writer.transition_protocol(Phase::Play, &[3]).unwrap();
+        assert_eq!(server.recv().unwrap(), (3, vec![]));
+
+        let (send, events) = event_channel();
+        let session = Session {
+            events,
+            payload_events: event_channel().0,
+            payloads: crate::raw_payloads::Transport::empty(),
+            writer: Arc::new(Mutex::new(Some(writer))),
+            configuring: Arc::new(AtomicBool::new(false)),
+            thread: None,
+            address: "local".into(),
+            name: "Player".into(),
+            counters: Arc::new(Mutex::new(None)),
+            cookies: Cookies::default(),
+            debug: false,
+            far: Arc::default(),
+            recorder: Arc::new(Mutex::new(None)),
+            serial: next_serial(),
+        };
+        let (thread_writer, thread_configuring, thread_recorder, thread_cookies) = (
+            session.writer.clone(),
+            session.configuring.clone(),
+            session.recorder.clone(),
+            session.cookies.clone(),
+        );
+        let thread = std::thread::spawn(move || {
+            receive_play(
+                &mut reader,
+                &thread_writer,
+                &thread_configuring,
+                &Language::new(),
+                &send,
+                &thread_cookies,
+                &crate::lod_net::Inbox::default(),
+                &data,
+                &thread_recorder,
+                &crate::raw_payloads::Transport::empty(),
+            )
+        });
+
+        let mut held = {
+            let writer = session.writer.lock().unwrap();
+            writer
+                .as_ref()
+                .unwrap()
+                .exhaust_play_credit(session.serial())
+        };
+        assert!(!held.is_empty());
+
+        // Excluded replies bypass unpublished held credit without flushing held packets.
+        server
+            .send(&play::Clientbound::KeepAlive(cfg::KeepAlive { id: 11 }).encode())
+            .unwrap();
+        let (id, body) = server.recv().unwrap();
+        assert_eq!(
+            play::Serverbound::decode(id, &body).unwrap(),
+            play::Serverbound::KeepAlive(cfg::KeepAlive { id: 11 })
+        );
+
+        server
+            .send(&play::Clientbound::ChunkBatchStart(Empty).encode())
+            .unwrap();
+        server
+            .send(
+                &play::Clientbound::ChunkBatchFinished(play::ChunkBatchFinished { size: 0 })
+                    .encode(),
+            )
+            .unwrap();
+        let (id, body) = server.recv().unwrap();
+        assert!(matches!(
+            play::Serverbound::decode(id, &body).unwrap(),
+            play::Serverbound::ChunkBatchReceived(_)
+        ));
+
+        server
+            .send(
+                &play::Clientbound::CookieRequest(cfg::CookieRequest {
+                    key: "proxy:held".into(),
+                })
+                .encode(),
+            )
+            .unwrap();
+        let (id, body) = server.recv().unwrap();
+        assert_eq!(
+            play::Serverbound::decode(id, &body).unwrap(),
+            play::Serverbound::CookieResponse(cfg::CookieResponse {
+                key: "proxy:held".into(),
+                payload: None,
+            })
+        );
+
+        session.send_pack_status(42, 3);
+        let (id, body) = server.recv().unwrap();
+        assert_eq!(
+            play::Serverbound::decode(id, &body).unwrap(),
+            play::Serverbound::ResourcePack(cfg::ResourcePackResponse { id: 42, action: 3 })
+        );
+
+        // Reconfiguration arrives before the game actor has processed Event::Reconfiguring
+        // or dropped any held permits: old-play reservations revoke before admitting the ACK.
+        server
+            .send(&play::Clientbound::StartConfiguration(Empty).encode())
+            .unwrap();
+        let (id, body) = server.recv().unwrap();
+        assert_eq!(
+            play::Serverbound::decode(id, &body).unwrap(),
+            play::Serverbound::ConfigurationAcknowledged(Empty)
+        );
+        server
+            .send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
+            .unwrap();
+        let (id, body) = server.recv().unwrap();
+        assert_eq!(
+            cfg::Serverbound::decode(id, &body).unwrap(),
+            cfg::Serverbound::FinishConfiguration(Empty)
+        );
+
+        assert_eq!(
+            held.pop().unwrap().try_publish(),
+            Err(SendPacketError::NotInPlay)
+        );
+        drop(held);
+
+        // New play incarnation has full credit and accepts packets normally.
+        session
+            .prepare_mod_packet(ServerboundPlayPacket::new(
+                Identifier::parse("minecraft:pong").unwrap(),
+                vec![0, 0, 0, 7],
+            ))
+            .unwrap()
+            .try_publish()
+            .unwrap();
+        let (id, body) = server.recv().unwrap();
+        assert_eq!(
+            play::Serverbound::decode(id, &body).unwrap(),
+            play::Serverbound::Pong(cfg::Ping { id: 7 })
+        );
+
         drop(session);
         assert!(thread.join().unwrap().is_err());
         std::fs::remove_dir_all(root).unwrap();

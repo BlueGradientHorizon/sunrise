@@ -178,3 +178,66 @@ fn generic_prepared_packet_cannot_cross_a_configuration_round_trip() {
         "boolean Play state hid a stale protocol incarnation"
     );
 }
+#[test]
+fn prepare_held_play_shuts_down_on_framing_and_pressure_but_not_encode_or_phase() {
+    use sunrise_protocol::connection::Framing;
+    use sunrise_protocol::payload_negotiation::Phase;
+
+    let (a, b) = Pipe::pair();
+    let (_, physical) = Connection::local(a).split();
+    let writer = QueuedWriter::with_framing(physical, Framing::Network(None)).unwrap();
+    let mut peer = Connection::local(b);
+    peer.reader
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    writer.transition_protocol(Phase::Play, &[3]).unwrap();
+    assert_eq!(peer.recv().unwrap(), (3, vec![]));
+    let session = Session::replay("held framing");
+    *session.writer.lock().unwrap() = Some(writer);
+    let (_, generation) = session.hold_incarnation().unwrap();
+
+    // Packet-codec refusal before framing keeps the writer alive, matching Session::send.
+    let oversized_custom = play::Serverbound::CustomPayload(cfg::CustomPayload {
+        channel: "test:opaque".into(),
+        data: vec![0x83; 32_768],
+    });
+    assert!(matches!(
+        session.prepare_held_play(oversized_custom, generation),
+        Err(SendPacketError::EncodeFailed { .. })
+    ));
+    assert_eq!(session.hold_incarnation().map(|(_, g)| g), Some(generation));
+
+    // Phase mismatch is non-terminal (reconfiguration is normal).
+    assert!(matches!(
+        session.prepare_held_play(play::Serverbound::Pong(cfg::Ping { id: 1 }), generation + 1),
+        Err(SendPacketError::NotInPlay)
+    ));
+    assert_eq!(session.hold_incarnation().map(|(_, g)| g), Some(generation));
+
+    // Transport framing refusal takes the terminal writer-error path, matching Session::send.
+    let oversized_frame = play::Serverbound::RenameItem(play::RenameItem {
+        name: "x".repeat(sunrise_protocol::frame::MAX_FRAME + 1),
+    });
+    assert!(matches!(
+        session.prepare_held_play(oversized_frame, generation),
+        Err(SendPacketError::FrameTooLarge { .. })
+    ));
+    assert_eq!(session.hold_incarnation(), None);
+    assert!(!session.send(play::Serverbound::Pong(cfg::Ping { id: 2 })));
+
+    // Writer backpressure also takes the terminal shutdown path.
+    let (session, _peer) = connected();
+    let (_, generation) = session.hold_incarnation().unwrap();
+    let _held = {
+        let writer = session.writer.lock().unwrap();
+        writer
+            .as_ref()
+            .unwrap()
+            .exhaust_play_credit(session.serial())
+    };
+    assert!(matches!(
+        session.prepare_held_play(play::Serverbound::Pong(cfg::Ping { id: 3 }), generation),
+        Err(SendPacketError::Backpressure)
+    ));
+    assert_eq!(session.hold_incarnation(), None);
+}

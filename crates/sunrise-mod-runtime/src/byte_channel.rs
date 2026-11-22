@@ -44,6 +44,7 @@ pub enum ReserveError {
 pub struct Permit<T> {
     shared: Arc<Shared<T>>,
     charge: usize,
+    epoch: Option<u64>,
 }
 
 /// A dequeued value whose original charge stays reserved until its lease drops.
@@ -73,6 +74,8 @@ impl<T> Drop for ReceiveLease<T> {
 
 struct State<T> {
     pending_bytes: usize,
+    revocable_pending_bytes: usize,
+    pending_epoch: u64,
     held_bytes: usize,
     queue: LinkedList<(T, usize)>,
     stats: Stats,
@@ -110,6 +113,8 @@ pub fn channel<T>(capacity: usize) -> Result<(Sender<T>, Receiver<T>), InvalidCa
         capacity,
         state: Mutex::new(State {
             pending_bytes: 0,
+            revocable_pending_bytes: 0,
+            pending_epoch: 0,
             held_bytes: 0,
             queue: LinkedList::new(),
             stats: Stats {
@@ -138,6 +143,18 @@ impl<T> Sender<T> {
     /// Charges owned heap bytes plus inline value and node overhead immediately.
     /// Never waits for capacity. The future value must fit this declared charge.
     pub fn reserve(&self, owned_bytes: usize) -> Result<Permit<T>, ReserveError> {
+        self.reserve_inner(owned_bytes, false)
+    }
+    /// Like [`Self::reserve`], except [`Self::revoke_pending`] refunds the
+    /// reservation immediately and rejects later publication.
+    pub fn reserve_revocable(&self, owned_bytes: usize) -> Result<Permit<T>, ReserveError> {
+        self.reserve_inner(owned_bytes, true)
+    }
+    fn reserve_inner(
+        &self,
+        owned_bytes: usize,
+        revocable: bool,
+    ) -> Result<Permit<T>, ReserveError> {
         let mut state = self.0.lock();
         if !state.receiver_alive {
             return Err(ReserveError::Disconnected);
@@ -145,10 +162,16 @@ impl<T> Sender<T> {
         let charge = owned_bytes
             .checked_add(message_overhead::<T>())
             .ok_or(ReserveError::Full)?;
-        if charge > self.0.capacity - state.stats.reserved_bytes {
+        if charge > self.0.capacity.saturating_sub(state.stats.reserved_bytes) {
             return Err(ReserveError::Full);
         }
         state.pending_bytes += charge;
+        let epoch = if revocable {
+            state.revocable_pending_bytes += charge;
+            Some(state.pending_epoch)
+        } else {
+            None
+        };
         state.stats.reserved_bytes += charge;
         state.stats.peak_reserved_bytes = state
             .stats
@@ -157,18 +180,71 @@ impl<T> Sender<T> {
         Ok(Permit {
             shared: self.0.clone(),
             charge,
+            epoch,
         })
+    }
+    /// Refund every unpublished revocable permit and reject their later publication.
+    /// Published values and non-revocable permits keep their credit and order.
+    pub fn revoke_pending(&self) {
+        let mut state = self.0.lock();
+        if !state.receiver_alive {
+            return;
+        }
+        state.pending_epoch = state.pending_epoch.wrapping_add(1);
+        let revoked = state.revocable_pending_bytes;
+        state.revocable_pending_bytes = 0;
+        state.pending_bytes -= revoked;
+        state.stats.reserved_bytes -= revoked;
+    }
+    /// Enqueue against published, held, and non-revocable credit only, ignoring
+    /// unpublished revocable reservations so excluded replies still drain while
+    /// revocable permits are held. Real published backlog stays bounded by capacity.
+    pub fn try_send_excluding_revocable(
+        &self,
+        value: T,
+        owned_bytes: usize,
+    ) -> Result<(), TrySendError<T>> {
+        let mut state = self.0.lock();
+        if !state.receiver_alive {
+            return Err(TrySendError::Disconnected(value));
+        }
+        let Some(charge) = owned_bytes.checked_add(message_overhead::<T>()) else {
+            return Err(TrySendError::Full(value));
+        };
+        let active_bytes = state.stats.reserved_bytes - state.revocable_pending_bytes;
+        if charge > self.0.capacity.saturating_sub(active_bytes) {
+            return Err(TrySendError::Full(value));
+        }
+        let Some(next_reserved) = state.stats.reserved_bytes.checked_add(charge) else {
+            return Err(TrySendError::Full(value));
+        };
+        state.queue.push_back((value, charge));
+        state.stats.reserved_bytes = next_reserved;
+        state.stats.peak_reserved_bytes = state
+            .stats
+            .peak_reserved_bytes
+            .max(state.stats.reserved_bytes);
+        state.stats.queued_items += 1;
+        drop(state);
+        self.0.ready.notify_one();
+        Ok(())
     }
     pub fn stats(&self) -> Stats {
         self.0.lock().stats
     }
 }
 impl<T> Permit<T> {
-    /// Publishes exactly once without charging again. On closure returns ownership.
+    /// Publishes exactly once without charging again. On closure or revocation returns ownership.
     pub fn publish(mut self, value: T) -> Result<(), T> {
         let mut state = self.shared.lock();
         if !state.receiver_alive || state.senders == 0 {
             return Err(value);
+        }
+        if let Some(epoch) = self.epoch {
+            if epoch != state.pending_epoch {
+                return Err(value);
+            }
+            state.revocable_pending_bytes -= self.charge;
         }
         state.queue.push_back((value, self.charge));
         state.pending_bytes -= self.charge;
@@ -181,10 +257,23 @@ impl<T> Permit<T> {
 }
 impl<T> Drop for Permit<T> {
     fn drop(&mut self) {
+        if self.charge == 0 {
+            return;
+        }
         let mut state = self.shared.lock();
         if state.receiver_alive && state.senders != 0 {
-            state.pending_bytes -= self.charge;
-            state.stats.reserved_bytes -= self.charge;
+            match self.epoch {
+                None => {
+                    state.pending_bytes -= self.charge;
+                    state.stats.reserved_bytes -= self.charge;
+                }
+                Some(epoch) if epoch == state.pending_epoch => {
+                    state.revocable_pending_bytes -= self.charge;
+                    state.pending_bytes -= self.charge;
+                    state.stats.reserved_bytes -= self.charge;
+                }
+                Some(_) => {}
+            }
         }
     }
 }
@@ -202,6 +291,7 @@ impl<T> Drop for Sender<T> {
         if closed {
             state.stats.reserved_bytes -= state.pending_bytes;
             state.pending_bytes = 0;
+            state.revocable_pending_bytes = 0;
         }
         drop(state);
         if closed {
@@ -312,6 +402,7 @@ impl<T> Drop for Receiver<T> {
             let mut state = self.0.lock();
             state.receiver_alive = false;
             state.pending_bytes = 0;
+            state.revocable_pending_bytes = 0;
             state.stats.reserved_bytes = state.held_bytes;
             state.stats.queued_items = 0;
             std::mem::take(&mut state.queue)
@@ -584,5 +675,44 @@ mod tests {
                 Err(RecvTimeoutError::Disconnected)
             );
         });
+    }
+
+    #[test]
+    fn revocable_permits_can_be_revoked_and_do_not_block_excluding_sends() {
+        let charge = message_overhead::<u32>() + 16;
+        let (tx, rx) = channel::<u32>(charge * 2).unwrap();
+        let kept = tx.reserve(16).unwrap();
+        let revocable = tx.reserve_revocable(16).unwrap();
+        assert!(matches!(tx.reserve(0), Err(ReserveError::Full)));
+        assert!(matches!(tx.reserve_revocable(0), Err(ReserveError::Full)));
+        assert_eq!(tx.try_send(9, 0), Err(TrySendError::Full(9)));
+
+        // Non-revocable credit takes one slot, revocable credit takes the second;
+        // excluding revocable reservations leaves room for one published reply.
+        tx.try_send_excluding_revocable(10, 16).unwrap();
+        assert_eq!(
+            tx.try_send_excluding_revocable(11, 16),
+            Err(TrySendError::Full(11))
+        );
+        // Temporary overshoot from the excluded send must not underflow reserve().
+        assert!(matches!(tx.reserve(0), Err(ReserveError::Full)));
+        assert_eq!(rx.recv(), Ok(10));
+        assert_eq!(tx.stats().reserved_bytes, charge * 2);
+
+        // Revoking refunds only revocable credit without disturbing non-revocable permits.
+        tx.revoke_pending();
+        assert_eq!(tx.stats().reserved_bytes, charge);
+        assert_eq!(revocable.publish(99), Err(99));
+        assert_eq!(tx.stats().reserved_bytes, charge);
+
+        // A new revocable permit in the next epoch still charges and publishes normally.
+        let fresh = tx.reserve_revocable(16).unwrap();
+        assert_eq!(tx.stats().reserved_bytes, charge * 2);
+        fresh.publish(20).unwrap();
+        kept.publish(30).unwrap();
+        assert_eq!(rx.recv(), Ok(20));
+        assert_eq!(rx.recv(), Ok(30));
+        assert_eq!(tx.stats().reserved_bytes, 0);
+        assert_eq!(tx.stats().queued_items, 0);
     }
 }
