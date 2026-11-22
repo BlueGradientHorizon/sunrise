@@ -3365,12 +3365,16 @@ mod tests {
 
             let y_top = drawn_y
                 .vertices
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .find(|q| q.iter().all(|v| v.pos[1] == 1.0))
                 .expect("top face on axis=y");
             let y_east = drawn_y
                 .vertices
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .find(|q| q.iter().all(|v| v.pos[0] == 11.0))
                 .expect("east face on axis=y");
             assert!(face_in_sprite(y_top, top_sprite));
@@ -3378,12 +3382,16 @@ mod tests {
 
             let x_top = drawn_x
                 .vertices
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .find(|q| q.iter().all(|v| v.pos[1] == 1.0))
                 .expect("top face on axis=x");
             let x_east = drawn_x
                 .vertices
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .find(|q| q.iter().all(|v| v.pos[0] == 11.0))
                 .expect("east face on axis=x");
             assert!(face_in_sprite(x_top, side_sprite));
