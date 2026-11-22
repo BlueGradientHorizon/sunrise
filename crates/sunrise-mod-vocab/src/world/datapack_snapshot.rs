@@ -44,7 +44,9 @@ pub struct DatapackSnapshotRegistry {
     pub tags: BTreeMap<String, Vec<String>>,
 }
 
-/// The synchronized registries of a set, as a server sends them.
+/// The synchronized registries of a published set that a peer negotiated.
+/// A local commit does not guarantee that this projection fits the transport;
+/// failing to send it does not roll back the local set.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: a plain record that the snapshot builds and reads
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -221,9 +223,10 @@ impl DatapackSnapshot {
     /// Checks the snapshot against this side's `declarations` and builds the candidate to
     /// activate: every registry must be one this side declared with the same schema, every
     /// value must fit its field, ids must be valid and unique, references and tag members must
-    /// resolve, and a registry declared `Required` must be present. A declared registry the
-    /// snapshot lacks (server-only, or optional and not negotiated) stays empty. Encoding and
-    /// transport limits do not enter into this validation. Nothing is built unless everything passes.
+    /// resolve, and a registry declared `Required` must be present. Declared registries omitted
+    /// from the snapshot (server-only, or optional and not negotiated) are unavailable to client
+    /// reads. Encoding and transport limits do not enter into this validation; use [`Self::decode`]
+    /// on received bytes first. Nothing is built unless everything passes.
     pub fn candidate(
         &self,
         declarations: &[DatapackRegistryDeclaration],

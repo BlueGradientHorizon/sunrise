@@ -10,7 +10,8 @@ use super::datapack_registry::{
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Why a candidate was refused. The whole candidate fails, never one entry.
+/// Why a local candidate was refused. A load error leaves the whole candidate unpublished;
+/// a false load condition omits an entry without an error.
 #[derive(Clone, Debug, PartialEq, Eq)]
 // no wire: loading runs in the game; mods read published entries, never load failures
 #[non_exhaustive]
@@ -41,7 +42,7 @@ pub enum DatapackLoadReason {
     },
 }
 
-/// A refused candidate: which registry, entry and file, and why.
+/// A refused candidate: the registry, entry, winning pack and file, and the reason.
 #[derive(Clone, Debug, PartialEq, Eq)]
 // no wire: loading runs in the game; mods read published entries, never load failures
 // exhaustive: the game builds it with a literal and reports it
@@ -199,13 +200,15 @@ impl DatapackCandidateBuilder {
 impl DatapackCandidate {
     /// Decodes the winning file of every entry of every declared registry in `files`, using
     /// [`DatapackRegistryDeclaration::entry_file`]'s directory rule. Each file has versions in
-    /// pack order, the last winning as `ResourceManager` hands them out. The caller selects
-    /// which files to supply; this constructor does not test pack conditions.
+    /// pack order, the last winning as `ResourceManager` hands them out. A physical file can
+    /// match more than one registry directory. This constructor treats `neoforge:conditions`
+    /// as metadata without testing it: after a false condition, the caller omits the entire
+    /// path rather than exposing a lower version. A condition error is not a false result.
     ///
     /// References resolve against the whole candidate, so a forward reference works and an
     /// absent target in a declared registry refuses everything. References to undeclared
     /// registries are not checked. Each version is its pack's id and its bytes, so a refusal
-    /// names the pack. Local loading does not check snapshot size or entry counts.
+    /// names the pack. Local loading does not impose network byte or collection count limits.
     pub fn build(
         declarations: &[DatapackRegistryDeclaration],
         files: &[(String, Vec<(String, Vec<u8>)>)],
@@ -232,6 +235,7 @@ impl DatapackCandidate {
 
     /// Binds the engine's fully resolved tags atomically against accepted entries.
     /// An unknown registry, invalid tag name or missing member leaves the candidate unchanged.
+    /// This checks membership, not the size of a future encoded snapshot.
     pub fn bind_tags(
         &mut self,
         registry: &str,

@@ -3,7 +3,8 @@
 Add a `neoforge:conditions` array to control whether a server JSON file loads.
 Supported readers are
 recipes, loot tables, item modifiers, predicates, enchantments, jukebox songs,
-instruments, damage types, advancements, and synchronized registry JSON.
+instruments, damage types, advancements, other supported synchronized vanilla registries, and
+[mod-declared datapack registries](../content-mods.md), even if their entries are never sent to clients.
 Every condition must hold; a false condition omits the file. Mods can
 [register conditions](load-conditions.md) for this same evaluator.
 Register one handler per id using the read-only `RegistrationContext`. A handler
@@ -30,12 +31,27 @@ server-mod IDs, including active code-only mods, plus
 resource namespaces are not mod IDs. Other supported forms are `neoforge:always`
 (true), `neoforge:never` (false), `neoforge:not` (`value`), `neoforge:and` / `neoforge:or`
 (`values`), `neoforge:feature_flags_enabled`, `neoforge:registered` and
-`neoforge:tag_empty`. `feature_flags_enabled` takes `flags`, an array of feature-id
-strings that must all be enabled. `registered` and `tag_empty` take a `registry` (default `minecraft:item`)
-and a `value` or `tag`: `registered` reads the registries as this load holds them,
-and `tag_empty` reads the block, item and fluid tags this load bound, so it is
-answered for recipes and the readers after them, never for tag files.
-Within a supplied view, a registry absent from it has no entries or tags: `registered` is false and `tag_empty` is true, with no diagnostic.
+`neoforge:tag_empty`. `feature_flags_enabled` takes `flags`, a nonempty array of feature IDs that must
+all be enabled. `registered` and `tag_empty` take a `registry` (default `minecraft:item`) and a `value` or
+`tag`, respectively. They look up an admitted entry or test whether a tag has any resolved members.
+Within a supplied view, an absent registry has no entries or tags: `registered` is false and `tag_empty`
+is true, with no diagnostic. That is different from a loader that cannot supply the context at all:
+a check that reaches an unavailable context reports a load error.
+
+## Registry conditions
+
+A registry file sees the current candidate's static holders and resolved static tags, including tags
+staged for the load but not yet published. A mod-declared registry also sees the available frozen world
+registries and completed dependencies in the candidate. The loader uses the decoded `registered` and
+`tag_empty` operands to order registries, not strings in a custom condition's arguments. It finishes each
+dependency's entries and tags before testing its consumers. The file's own registry and registries in the
+same dependency cycle are still pending: their entries do not satisfy `registered` and their tags count
+as empty. A consumer outside the cycle sees the whole batch after it binds. A rejected file never makes
+its ID visible, and no condition reads the previous generation to fill in missing pending entries.
+
+Registry entry codecs use the vanilla feature flag set. Downstream readers such as recipes use the
+world's enabled flags and the completed candidate registry and tag view. If an entry condition needs
+an experimental world flag or a tag in its own registry, put that test in a downstream consumer instead.
 
 ## Errors by loader
 
@@ -49,11 +65,14 @@ Handlers in an untested branch do not run.
 
 | Loader | Condition decode or handler error |
 | --- | --- |
-| World and mod-declared data-pack registries that read conditions | Report the failing entries and refuse the world open. |
+| World-open registries that read conditions, including frozen vanilla definitions | Report the failing entries and refuse the world open. |
+| Mod-declared datapack registries | Report the registry, entry, pack and file. Refuse world open or keep the previous generation on reload. |
 | Reloadable registries (loot tables and their pools, predicates, item modifiers, advancements, recipes) | Report the failing entries and keep the previous data generation. At world open, refuse the open. |
 | Simple JSON reload listeners, including global loot modifiers | Log the condition ID and file path and skip only that file. |
 | Data maps | Log the condition ID, file path, map type and registry. Skip the entire file, so its values, removals and `replace` flag have no effect. |
 
-A file without the conditions key, or with an empty array, loads normally.
-Successful reloads publish changed enabled IDs together with the data
-generation; retained readers keep their old snapshot.
+A file without the conditions key, or with an empty array, loads normally. A handler error is not a false
+condition. A handler panic is logged and queues an error toast naming the mod; only that handler is disabled
+for the session. Returned errors and phase refusals follow the loader's error policy without disabling the
+handler. Successful reloads publish changed enabled IDs with the new data generation; retained readers keep
+their old snapshot.

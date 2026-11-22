@@ -42,16 +42,19 @@ pub trait DatapackRegistriesRegistrar {
     ///
     /// Entries are JSON files in data packs: entry `addon:fire` of
     /// `example:spell` is `data/addon/example/spell/fire.json`
-    /// ([`DatapackRegistryDeclaration::entry_file`]). The game decodes every
-    /// file against `fields` without running mod code. A key the schema does not
-    /// declare, a missing required key or an out-of-range value fails the
-    /// entry; a default never stands in for invalid data.
+    /// ([`DatapackRegistryDeclaration::entry_file`]). The game selects the winning
+    /// resource before testing its load conditions against the candidate's registry
+    /// and tag view. An omitted winner does not expose a lower pack's file. The game
+    /// decodes accepted entries against `fields`: an undeclared key, missing required
+    /// key or out-of-range value fails the entry. A default never stands in for
+    /// invalid data. Transport limits do not apply to local files or candidates.
     ///
     /// Client-only packages cannot declare datapack registries. Server-only
     /// packages may declare [`DatapackRegistrySync::ServerOnly`] and
-    /// [`DatapackRegistrySync::Optional`] registries. A
-    /// [`DatapackRegistrySync::Required`] declaration needs a both-side
-    /// package; the game refuses the server-only package at load, naming the registry.
+    /// [`DatapackRegistrySync::Optional`] registries without requiring clients to
+    /// install the mod, as long as the package's other content does not require it.
+    /// A [`DatapackRegistrySync::Required`] declaration needs a both-side package;
+    /// the game refuses the server-only package at load, naming the registry.
     ///
     /// Also refused, naming the mod: a key outside the mod's namespace (a vanilla
     /// registry's included), a malformed key, a duplicate (of this mod's or

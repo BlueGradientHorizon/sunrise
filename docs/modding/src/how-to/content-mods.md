@@ -974,33 +974,43 @@ check it already passes at join: a client without the mod cannot join. A save ke
 the mod is there; once it is gone, the load clamps the base into the bounds and logs it, once per attribute in each
 world load.
 
-A code mod can declare a datapack registry of its own with `Registrar::declare_datapack_registry(path, sync,
-fields)` (NeoForge's `NewDatapackRegistryEvent`).
-`path` lands in the mod's namespace (`spell` of `example` is `example:spell`), and `fields` is a flat record
-schema: `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`, `Identifier` or `Reference { registry }`,
-each required or given a default. `DatapackRegistryDeclaration::entry_file` uses NeoForge's directory rule:
-entry `addon:fire` in `example:spell` is `data/addon/example/spell/fire.json`; in a registry named
-`minecraft:spell` it is `data/addon/spell/fire.json`, with no `minecraft/` registry prefix. Tags use
-that same registry directory under `tags/`. Nested registry and entry paths keep their subfolders.
-The game loads entries from mod content and enabled data packs, reading only the winning resource at
-each file path. If two registry directories contain that path, each registry interprets it relative to its
-own directory. An unreadable winner fails the load and the error names its pack and file.
-The game decodes entries against the schema without running mod code: an undeclared key, a missing required
-key, a wrong type or an out-of-range value fails the entry, and a default never stands in for invalid data.
-Local loads do not use the byte limits of network offers or snapshots.
+A code mod can declare a datapack registry with `Registrar::declare_datapack_registry(path, sync, fields)`
+(NeoForge's `NewDatapackRegistryEvent`). A bare `path` uses the declaring mod's namespace (`spell` from
+`example` becomes `example:spell`). An explicit key such as `other:spell` keeps its namespace; built-in
+registry keys and duplicate declarations return `DatapackRegistrationError::Duplicate`. The declaring mod
+is still named in diagnostics. This does not change how the package declares the namespaces of its data files.
+
+`fields` is a flat record schema: `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`,
+`Identifier` or `Reference { registry }`, each required or given a default.
+`DatapackRegistryDeclaration::entry_file` uses NeoForge's directory rule: entry `addon:fire` in
+`example:spell` is `data/addon/example/spell/fire.json`; in a registry named `minecraft:spell` it is
+`data/addon/spell/fire.json`, with no `minecraft/` registry prefix. Tags use that same registry directory
+under `tags/` (for example, `data/addon/tags/example/spell/hot.json`). Nested paths keep their subfolders.
+
+The game selects the winning resource from mod content and enabled data packs before it reads the file or
+evaluates [its conditions](items/conditional-data.md#registry-conditions). If two registry directories contain
+that path, each interprets it relative to its own directory. A false condition omits the winner, without a
+lower-pack fallback. An unreadable winner refuses the load and names its pack and file. After conditions pass,
+the game decodes the entry against `fields`: an undeclared key, missing required key, wrong type or out-of-range
+value fails the entry. A default never stands in for invalid data. Tags resolve against accepted entries and
+references are checked across the complete candidate. Local loading has no per-file byte, whole-candidate byte
+or collection count ceiling from network publication; the declared field schema still applies.
 
 Client-only packages cannot declare datapack registries. A `side = "server"` package can declare
-`DatapackRegistrySync::ServerOnly` (entries are never sent) or `DatapackRegistrySync::Optional`
-(entries are sent only to clients that offer the same registry and schema). Neither declaration by
-itself requires a client to install the mod. A `DatapackRegistrySync::Required` declaration requires
-`side = "both"`; otherwise the game refuses the server-only package at load and names the registry.
+`DatapackRegistrySync::ServerOnly` (entries and tags are never sent) or `DatapackRegistrySync::Optional`
+(entries and tags go only to clients that offer the same registry and schema). Neither declaration by itself
+requires the client to install the mod; the package must still meet the join-content rule for everything else
+it declares. Use `DatapackRegistrySync::Required` with `side = "both"` when joining clients must have the
+registry. A server-only package declaring a `Required` registry is refused at load, naming the registry.
 
 A client's offer lists only synchronized registries and their schemas. It must fit one vanilla
-serverbound custom payload (32,767 bytes); an oversized offer stops the join rather than acting as
-an empty offer. The server encodes only the registries negotiated for that client, both at join and
-on reload. Their combined encoded snapshot can be up to 128 MiB (NeoForge's default split-packet
-limit). There is no separate count limit on registries, entries, tags or tag members. If the
-snapshot cannot be sent or validated, the connection ends without activating a partial snapshot.
+serverbound custom payload (32,767 bytes); an oversized offer stops the join rather than acting as an empty
+offer. The server encodes only the registries negotiated for that client. Each fragment, including its header,
+fits vanilla's clientbound custom payload limit (1 MiB); the combined encoded snapshot can be up to 128 MiB
+(NeoForge's default split-packet limit). There is no separate registry, entry, tag or tag-member count limit.
+After a successful local reload commits, a connection that negotiated a snapshot receives it before the reload's
+mod messages. If the snapshot cannot be sent or validated, only that connection ends. The client never activates
+a partial snapshot, and the server keeps the new local generation.
 
 Use `level.datapack_entries(host, registry)` to list owned entry IDs in sorted order and
 `level.datapack_read(host, registry, entry_id, &mut visit)` to borrow the published entry
@@ -1023,10 +1033,11 @@ The visitor runs once on success, never on error. On the logical server, both th
 dimension and any loaded parked server dimension are accepted (matching vanilla
 `Level.registryAccess()`); stale epochs and unloaded dimensions are refused. Unknown or
 unavailable registries, stale or unloaded levels, and a missing published set give
-`UnknownRegistry`; a registry without the entry gives `MissingEntry`. A host without a backend
+`UnknownRegistry`; a known registry without the entry gives `MissingEntry`. A host without a backend
 returns `Unavailable`. Listing returns `None` for an unavailable level or registry, not for a
-known empty registry. Once a client receives a valid snapshot at join or reload, it reads those
-entries; any of its declared registries omitted from the snapshot have no entries there.
+known empty registry. A failed local reload leaves the published generation in place; each successful
+reload replaces it once. A client reads only the registries in its most recent complete, validated snapshot;
+a server-only or unnegotiated registry is unavailable to that client.
 
 A code mod can also use `Registrar::declare_entity_attributes(path, template, attributes)` during registration.
 That declaration starts from the vanilla template's attribute row, replacing the content row's overrides.

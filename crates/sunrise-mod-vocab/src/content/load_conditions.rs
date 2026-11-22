@@ -38,20 +38,21 @@ impl From<(Identifier, String)> for ConditionError {
 /// A handler that reads the condition's JSON from a borrowed raw value.
 /// Arguments are the JSON object without `type`; validate their shape and
 /// return `ConditionError` for invalid mod input, never panic while decoding it.
-/// Called before publication, after the entire condition list (including children of
-/// `not`, `and` and `or`) has been decoded. Namespace and mod presence do not
-/// change the handling of an unknown ID. An unknown ID, malformed condition
-/// list, returned error, or native panic refuses registry-backed data before it
-/// is installed. A simple JSON listener or data map instead logs the error and
-/// skips the entire offending file. A panic is logged and reported to the player
-/// and disables only that handler for the session, across loads. Evaluations that
-/// reach the disabled handler report an error without calling it again. A returned
-/// `ConditionError` or a phase refusal does not disable the handler. Handlers
-/// must not mutate published data.
+/// A loader first selects the winning file and decodes its entire condition list,
+/// including children of `not`, `and` and `or`. Only built-in registry and tag reads
+/// order the dependencies between registry files; custom arguments are just JSON.
+/// An unknown ID, malformed condition list, returned error, or native panic refuses
+/// registry-backed data before publication. A simple JSON listener or data map logs
+/// the error and skips the offending file instead. A panic is logged and queues an
+/// error toast naming the mod, and disables only that handler for the session, across
+/// loads. Evaluations that reach it report an error without calling it again. A returned
+/// `ConditionError` or an ordinary phase refusal is reported without disabling the
+/// handler. Handlers must not mutate published data.
 pub trait LoadCondition: Send + Sync + 'static {
     /// Read and validate the raw JSON arguments when testing reaches this condition.
-    /// Return false when the condition does not hold. Testing stops as soon as
-    /// the enclosing list, `and`, or `or` is decided.
+    /// Return `Ok(false)` when the condition does not hold: the winner is omitted, not
+    /// replaced by a lower pack. Return `Err` for invalid arguments. Testing stops as
+    /// soon as the enclosing list, `and`, or `or` is decided.
     fn test(&self, args: &serde_json::Value) -> Result<bool, ConditionError>;
 }
 

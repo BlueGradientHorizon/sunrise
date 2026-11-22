@@ -1,57 +1,44 @@
+# The shape diff attaches this note to the added and removed variants. It does not
+# hash behavior or rustdoc changes, so these existing IDs are covered in the text:
+# method:DatapackRegistriesRegistrar::declare_datapack_registry
+# type:DatapackRegistrationError.WrongSide
+# type:DatapackRegistrySync.ServerOnly, type:DatapackRegistrySync.Optional, type:DatapackRegistrySync.Required
+# type:DatapackLoadError, handle:DatapackCandidate::build, handle:DatapackCandidate::bind_tags
+# handle:DatapackRegistryDeclaration::entry_file, handle:DatapackRegistryDeclaration::decode_entry
+# handle:DatapackSnapshot::encode_offer, handle:DatapackSnapshot::decode_offer
+# handle:DatapackSnapshot::encode, handle:DatapackSnapshot::decode, handle:DatapackSnapshot::candidate
+# type:DatapackSnapshotError.Malformed, type:DatapackSnapshotError.TooLarge
+# type:DatapackNegotiationError.UnreadableOffer, trait:LoadCondition, method:LoadCondition::test
+# Standalone size constants are not surface records; their removal is in the migration text.
 ids = [
-    "method:DatapackRegistriesRegistrar::declare_datapack_registry",
-    "type:DatapackRegistrationError",
-    "type:DatapackRegistrySync",
-    "const:MAX_DATAPACK_ENTRY_BYTES",
-    "type:DatapackCandidate",
-    "handle:DatapackCandidate::build",
-    "handle:DatapackCandidate::bind_tags",
-    "handle:DatapackRegistryDeclaration::entry_file",
-    "handle:DatapackRegistryDeclaration::decode_entry",
-    "type:DatapackLoadError",
-    "type:DatapackLoadReason",
-    "type:DatapackLoadReason.TooManyRegistries",
-    "type:DatapackLoadReason.EntryTooLarge",
-    "type:DatapackLoadReason.TooManyEntries",
     "type:DatapackLoadReason.CandidateTooLarge",
-    "type:DatapackLoadReason.SnapshotTooLarge",
+    "type:DatapackLoadReason.EntryTooLarge",
     "type:DatapackLoadReason.ReadFile",
-    "const:MAX_SNAPSHOT_BYTES",
-    "const:MAX_SNAPSHOT_REGISTRIES",
-    "const:MAX_SNAPSHOT_ENTRIES",
-    "handle:DatapackSnapshot::encode_offer",
-    "handle:DatapackSnapshot::decode_offer",
-    "handle:DatapackSnapshot::encode",
-    "handle:DatapackSnapshot::decode",
-    "handle:DatapackSnapshot::candidate",
-    "type:DatapackSnapshotError",
-    "type:DatapackSnapshotError.Malformed",
-    "type:DatapackSnapshotError.TooLarge",
-    "type:DatapackNegotiationError",
-    "type:DatapackNegotiationError.UnreadableOffer",
-    "trait:LoadCondition",
-    "method:LoadCondition::test",
+    "type:DatapackLoadReason.SnapshotTooLarge",
+    "type:DatapackLoadReason.TooManyEntries",
+    "type:DatapackLoadReason.TooManyRegistries",
 ]
 why = """
 Registry declaration no longer means that clients need the mod. Like NeoForge's NewDatapackRegistryEvent.worldRegistry and reloadableRegistry and DataPackRegistriesHooks.addWorldRegistry, and vanilla's RegistryDataLoader.load, local loading is distinct from what is sent to clients. Only a Required registry makes a server-only package incompatible with the join-content rule; the load refusal names the registry.
 
 Vanilla's ResourceManagerRegistryLoadTask.load selects the winning resource and RegistryLoadTask.PendingRegistration.loadFromResource reads it with pack attribution. Local registry loading now reads the whole winner and checks its schema, references and tags without the transport ceilings. Entries and tags share NeoForge's Registries.registryDirPath and CommonHooks.prefixNamespace convention: only a non-minecraft registry namespace adds a folder. Like vanilla's FileToIdConverter.registry, each declared directory can claim the same physical winner independently. As in RegistryDataLoader.load, local staging checks references against the complete set and names the pack that supplied the referring entry.
 
-Only the negotiated snapshot is encoded. A single offer uses vanilla's ServerboundCustomPayloadPacket.MAX_PAYLOAD_SIZE (32,767 bytes), and each snapshot fragment, including its header, uses ClientboundCustomPayloadPacket.MAX_PAYLOAD_SIZE. A reassembled snapshot uses NeoForge's 128 MiB NeoForgeLocalConfig.splitPacketMaxSizeLimitMb default as applied by GenericPacketSplitter.receivedPacket. Like vanilla's ClientboundRegistryDataPacket.STREAM_CODEC using ByteBufCodecs.list(), there is no separate registry, entry, tag or tag-member ceiling; MAX_INITIAL_COLLECTION_SIZE is an allocation hint, not a rejection rule.
+Only a peer's negotiated snapshot is encoded. A single offer uses vanilla's ServerboundCustomPayloadPacket.MAX_PAYLOAD_SIZE (32,767 bytes), and each snapshot fragment, including its header, uses vanilla's ClientboundCustomPayloadPacket.MAX_PAYLOAD_SIZE (1 MiB). A reassembled snapshot uses NeoForge's 128 MiB NeoForgeLocalConfig.splitPacketMaxSizeLimitMb default as applied by GenericPacketSplitter.receivedPacket. Like vanilla's ClientboundRegistryDataPacket.STREAM_CODEC using ByteBufCodecs.list(), there is no separate registry, entry, tag or tag-member ceiling; ByteBufCodecs.MAX_INITIAL_COLLECTION_SIZE is an allocation hint, not a rejection rule. On reload, a failed send or validation refuses the affected connection after local commit, not the server's generation. Stale level checks and publication order are unchanged.
 
 NeoForge's ConditionalOps.ConditionalDecoder decodes the entire ICondition.LIST_CODEC before testing it. The decoded built-in operands identify the context reads in RegisteredCondition.test and TagEmptyCondition.test; a string in a custom condition's arguments is not a read. Testing now stops when the result is known, as in ConditionalDecoder, AndCondition.test and OrCondition.test, without hiding decode errors in untested branches.
 
 NeoForge's ConditionalOps.ConditionalDecoder.decode treats an exception from ICondition.test as an error, not a false condition. Sunrise attributes native handler errors to the registering mod and uses the retained callback policy to report a panic in the log and error toast and disable just that handler for the session. Ordinary errors and phase refusals do not disable it.
 
-Vanilla's WorldLoader binds pending static tags before RegistryDataLoader.load. ResourceManagerRegistryLoadTask.load registers decoded entries before binding their tags, and NeoForge's RegisteredCondition.test and ConditionContext.getTag read bound holders, not file names. Registry conditions now see the candidate's static and frozen registries and already bound dependency batches. Self-reads and reads within a cycle see unbound holders; downstream registries see that batch only after it binds. Registry codecs use the task's VANILLA_SET, while NeoForge's ReloadableServerResources supplies the world's enabled features to the downstream listeners.
+Vanilla's WorldLoader.load supplies static lookups updated with pending tags to RegistryDataLoader.load. ResourceManagerRegistryLoadTask.load registers entries before binding their tags. NeoForge's RegisteredCondition.test checks whether the holder is bound; ConditionContext.getTag and TagEmptyCondition.test read bound or resolved pending tag members, not file names. Registry conditions now see the candidate's static and frozen registries and already bound dependency batches, never the prior publication. Self-reads and reads within a cycle see unbound holders; downstream registries see that batch only after it binds. NeoForge's patch to ResourceManagerRegistryLoadTask.load gives registry codecs VANILLA_SET, while ReloadableServerResources supplies the world's enabled features to downstream listeners.
 """
 migrate = """
 - Keep the declare_datapack_registry call. When moving a registry to a side = "server" package, pass DatapackRegistrySync::ServerOnly to keep entries local, or DatapackRegistrySync::Optional to send entries only to clients that offer the same registry and schema. Keep DatapackRegistrySync::Required with side = "both" if joining clients must have the registry. DatapackRegistrationError::WrongSide now means the declaring package is client-only; a server-only package declaring Required is refused at package load instead.
-- Remove MAX_DATAPACK_ENTRY_BYTES and checks based on it; there is no replacement for local files. Keep calling DatapackCandidate::build(declarations, files), candidate.bind_tags(registry, tags), or declaration.decode_entry(text) as before. Remove DatapackLoadReason match arms for TooManyRegistries, EntryTooLarge, TooManyEntries, CandidateTooLarge and SnapshotTooLarge. Match the new DatapackLoadReason::ReadFile(message) for an I/O failure and report it with DatapackLoadError's registry, entry, pack and file fields. A failed read does not yield an empty file or trigger a lower-pack read.
-- Keep calling declaration.entry_file(entry). For a registry with key minecraft:<path>, move entry files from data/<entry namespace>/minecraft/<path>/<entry>.json to data/<entry namespace>/<path>/<entry>.json, and tag files from data/<tag namespace>/tags/minecraft/<path>/<tag>.json to data/<tag namespace>/tags/<path>/<tag>.json. Keep nested paths and the entry and tag IDs. Non-minecraft registry directories do not change. Pass those same physical entry paths to DatapackCandidate::build(declarations, files); supply only entries whose conditions you already accepted.
-- Remove MAX_SNAPSHOT_REGISTRIES and MAX_SNAPSHOT_ENTRIES and any checks based on them. Keep calling DatapackSnapshot::encode() on the negotiated snapshot; None means it could not be encoded within MAX_SNAPSHOT_BYTES, now 128 MiB. Keep calling DatapackSnapshot::decode(bytes) followed by snapshot.candidate(declarations). Match TooLarge from decode for bytes over MAX_SNAPSHOT_BYTES, not Malformed or an error from candidate. Malformed still means invalid or trailing Wire bytes. Candidate still checks the declared schemas, entries, references and tags, without size or count checks.
-- Keep calling DatapackSnapshot::encode_offer(declarations) and DatapackSnapshot::decode_offer(bytes) for the one serverbound payload. Treat None from encode_offer as an encoding failure, not as an absence of synchronized registries. Handle UnreadableOffer from decode_offer for malformed bytes or more than 32,767 bytes, not for a registry count.
+- Remove imports and checks for MAX_DATAPACK_ENTRY_BYTES, MAX_SNAPSHOT_REGISTRIES and MAX_SNAPSHOT_ENTRIES; none has a replacement. When matching DatapackLoadReason, delete TooManyRegistries, EntryTooLarge, TooManyEntries, CandidateTooLarge and SnapshotTooLarge. Match DatapackLoadReason::ReadFile(message) for an unreadable winning resource and report the message with DatapackLoadError's registry, entry, pack and file. Do not substitute an empty body or try a lower pack. This is a load error, not a decode error from bytes you already have.
+- Keep declaration.entry_file(entry). For a registry with key minecraft:<path>, move entry files from data/<entry namespace>/minecraft/<path>/<entry>.json to data/<entry namespace>/<path>/<entry>.json, and tag files from data/<tag namespace>/tags/minecraft/<path>/<tag>.json to data/<tag namespace>/tags/<path>/<tag>.json. Keep nested paths and entry and tag IDs. Other registry directories do not change; if a path matches two declared directories, each interprets it relative to its own directory.
+- Keep DatapackCandidate::build(declarations, files), candidate.bind_tags(registry, tags) and declaration.decode_entry(text). For build, supply the new physical entry paths, keep each path's versions in pack order, and select the winner before testing its conditions. If it evaluates to false, omit the entire path rather than dropping that version and passing lower ones to build. Report a condition error instead of treating it as false. Build treats neoforge:conditions as metadata but does not test it; for direct decode_entry pass only the schema object, with that metadata removed. Do not preflight the candidate or its resolved tags through a snapshot. Build still checks entries and references; bind_tags still checks names and members against accepted entries and changes no tags on error.
+- Keep DatapackSnapshot::encode_offer(declarations) and DatapackSnapshot::decode_offer(bytes) for one serverbound payload. None from encode_offer means the offer could not be encoded, not that there are no synchronized registries. Handle DatapackNegotiationError::UnreadableOffer from decode_offer for invalid or trailing Wire bytes or more than 32,767 bytes, not for a registry count.
+- Keep DatapackSnapshot::encode() on the negotiated snapshot; handle None as a send failure against MAX_SNAPSHOT_BYTES, now 128 MiB. Keep DatapackSnapshot::decode(bytes) followed by snapshot.candidate(declarations). Move the DatapackSnapshotError::TooLarge case to decode: it now means the encoded bytes exceed MAX_SNAPSHOT_BYTES, not that the candidate has too many entries or registries. Malformed now means invalid or trailing Wire bytes only. Candidate continues to check declarations, required registries, schema, IDs, references and tags, with no second encoding or count check. On reload a peer's failure does not undo local publication.
 - Keep implementing LoadCondition::test(&self, args) with the same signature. If a data file uses a single object for neoforge:conditions, wrap it in an array; if it uses null for no conditions, omit the key or use an empty array. Use valid condition nodes and registered IDs even in branches that cannot affect the answer. Do not rely on callbacks after the first false condition in the array or an and, or after the first true condition in an or: those callbacks no longer run.
 - Return Err(ConditionError::new(message)) instead of panicking on invalid arguments, or Ok(false) when the condition does not hold. A handler that panics no longer runs on subsequent reloads in the same session; evaluations that reach it report a named error until restart. Returning ConditionError does not require a restart.
-- Keep the neoforge:registered and neoforge:tag_empty syntax. A registered check requires an admitted entry, and tag_empty is true for an empty or unbound tag. If a condition in a registry file depends on an entry or tag from its own registry or a cycle of registries, move the condition to a consuming registry outside the cycle or to a downstream resource such as a recipe that runs after those registries bind. Do not use an entry file condition to test an experimental world flag: those codecs see the vanilla flag set; test the flag in the downstream resource instead.
+- Keep the neoforge:registered and neoforge:tag_empty syntax. Registry conditions use admitted holders and resolved tags in this load, not file names or the previous publication. A string in a custom handler's JSON does not order a registry; put the built-in test in the condition array. If a condition requires a bound entry or nonempty tag from its own registry or a dependency cycle, move the test to a consuming registry outside the cycle or a downstream resource such as a recipe. For an experimental world flag, use a downstream resource: registry entry codecs see the vanilla flag set.
 """

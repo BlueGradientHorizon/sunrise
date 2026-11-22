@@ -1,7 +1,7 @@
-//! Datapack registries a native mod declares: a registry
-//! of the mod's own, whose entries are JSON files in data packs. The mod
-//! declares a flat record schema once at startup; the game decodes every
-//! entry against it without running mod code. See `docs/design/mod-api/mod-datapack-registries.md`.
+//! Datapack registries a native mod declares: a flat record schema at startup,
+//! and JSON entries loaded from data packs. After pack selection and conditions,
+//! the game decodes each accepted entry against the schema without a mod decoder.
+//! See `docs/design/mod-api/mod-datapack-registries.md`.
 use serde_json::Value;
 use std::borrow::Cow;
 use sunrise_core::identifier::Identifier;
@@ -11,13 +11,13 @@ use sunrise_core::identifier::Identifier;
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum DatapackRegistrySync {
-    /// Entries stay on the server; a client needs nothing of the mod for them.
+    /// Entries and tags stay on the server; they do not require clients to install the mod.
     #[default]
     ServerOnly,
     /// A joining client must offer the registry with the same schema to receive
     /// it and join. The declaring package must be both-side.
     Required,
-    /// Send entries only to clients that offer the registry with the same schema.
+    /// Send entries and tags only to clients that offer the registry with the same schema.
     /// This declaration does not require clients to install the mod.
     Optional,
 }
@@ -297,7 +297,8 @@ pub fn datapack_registry_directory(registry: &str) -> Option<Cow<'_, str>> {
 impl DatapackRegistryDeclaration {
     /// The file an entry (`addon:fire`) sits in, inside a data pack. For
     /// `example:spell` it is `data/addon/example/spell/fire.json`; for
-    /// `minecraft:spell` it is `data/addon/spell/fire.json`.
+    /// `minecraft:spell` it is `data/addon/spell/fire.json`. Tags use the same
+    /// registry directory under `tags/`, and nested paths keep their subfolders.
     pub fn entry_file(&self, entry: &str) -> Option<String> {
         let (entry_namespace, entry_path) = entry.split_once(':')?;
         let directory = datapack_registry_directory(&self.key)?;
@@ -309,8 +310,9 @@ impl DatapackRegistryDeclaration {
     /// Decodes one entry file against the schema. A key the schema does not
     /// declare, a missing required key, a wrong type or an out-of-range value
     /// fails the whole entry, and no default stands in for invalid data.
-    /// Nothing here runs mod code or applies a network snapshot limit. The schema is
-    /// flat, so nested field values fail decoding.
+    /// Pass the entry object without load condition metadata; this method only
+    /// decodes the schema. It neither runs mod code nor applies a network snapshot
+    /// limit. The schema is flat, so nested field values fail decoding.
     pub fn decode_entry(&self, text: &str) -> Result<DatapackEntry, DatapackDecodeError> {
         let json: Value = serde_json::from_str(text)
             .map_err(|error| DatapackDecodeError::Malformed(error.to_string()))?;

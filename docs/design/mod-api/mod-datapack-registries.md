@@ -2,9 +2,9 @@
 
 > Historical: this design predates the removal of WebAssembly mods.
 > See [`DatapackRegistriesRegistrar`](../../../crates/sunrise-mod-vocab/src/parts/datapack_registries.rs) for the current native API.
-> The current registrar declares a schema and the game decodes entries. For the native read API, see
-> [Stage 3 progress](#stage-3-progress) below. The proposed mod decoder
-> callback, guest failure cases and dual-target stage are historical.
+> The current registrar declares a schema and the game decodes entries. The proposals below are
+> historical; see [Stage 3 progress](#stage-3-progress) for implemented local staging and reads, and
+> [Stage 4 progress](#stage-4-progress) for implemented network publication.
 
 Provisional contract for [#811](https://github.com/arismoko/horizon/issues/811), not an implemented API. Ari's side posts the decision on the issue. This note files no issues or PRs.
 
@@ -30,7 +30,7 @@ Decode after pack selection and overlay precedence have selected one winning fil
 
 Use a world/session identity plus monotonically increasing u64 registry-set generation. Initial successful publication is generation 1, every successful reload increments once, including identical content. Refuse exhaustion instead of wrapping. Failed reload does not increment. A handle contains session, registry type, generation and entry identity. All access and use checks them against the active set: generation 1 handles and held entry wrappers return StaleGeneration after generation 2, even if names and slot numbers match. Deleted entry lookup returns MissingEntry. Closing and reopening a world invalidates session identity. A retained handle must validate on every read. A successful read lends the entry only to a visitor, pinning that generation without holding a registry lock during the callback. Explicit copied plain data is a snapshot, carries no live entry authority, and cannot be passed as a current entry. Persist names, never session slots; re-resolve explicitly after load.
 
-Prepare codecs, references, derived tables and wire payloads before commit. Publish the registry set with WorldTables and dependent data under one coordinator at a safe server boundary. Consumers cannot observe mixed generations. Existing reload-listener apply callbacks run before world preparation today; implementation must move fallible preparation before effects or constrain callbacks to candidate-local effects, rather than claiming existing ordering provides rollback. Listener panic or guest trap aborts the candidate; no partial publication. Catch native unwind at the boundary, disable/report the failing callable under runtime policy; process-aborting panics cannot be recovered.
+Prepare codecs, references and derived tables before commit. Publish the registry set with WorldTables and dependent data under one coordinator at a safe server boundary. The implemented registry path encodes negotiated snapshots after commit; see Stage 4. Consumers cannot observe mixed generations. Existing reload-listener apply callbacks run before world preparation today; implementation must move fallible preparation before effects or constrain callbacks to candidate-local effects, rather than claiming existing ordering provides rollback. Listener panic or guest trap aborts the candidate; no partial publication. Catch native unwind at the boundary, disable/report the failing callable under runtime policy; process-aborting panics cannot be recovered.
 
 ## Verified Sunrise route owners
 
@@ -96,7 +96,15 @@ File none. Stage 1: obtain exact public 26.3 contract and vanilla load/reload ca
 
 ## Stage 3 progress
 
-Built in `sunrise-mod-vocab` (`world/datapack_registry_set.rs`), engine-neutral and tested without a world: `DatapackCandidate::build` decodes the winning file of every entry of every declared registry and resolves references against the whole candidate (forward references work, an absent target refuses everything, a reference to an undeclared registry is left to its owner); `DatapackRegistrySet::from_candidate` publishes it infallibly. The game builds the candidate in `build_world_tables` and publishes it at world open and on `/reload`. Every route in the table above ends in `install_world_tables`, so each publishes once: explicit `/reload` and datapack selection, a content inventory change (`reload_datapacks(true)`) and the additional content refresh all prepare their tables with `prepare_world_reload` and install them there, and a world open publishes through `open_world_tables`. A remote client builds no tables, so it publishes nothing. Not built yet: the listener ordering (candidate-local writes until publication).
+`DatapackCandidate::build` (`sunrise-mod-vocab`, `world/datapack_registry_set.rs`) accepts
+pack-ordered versions of files the caller has already selected and admitted. It decodes winners
+without running their conditions and checks references across the complete candidate. Forward references
+work; a missing target in a declared registry refuses the candidate, and a reference to an undeclared
+registry is left to its owner. `DatapackRegistrySet::from_candidate` turns a valid local candidate into
+a set without encoding a snapshot. The game stages and builds that set in `build_world_tables`. It
+installs the first set via `open_world_tables`; reload routes use `prepare_world_reload` and publish
+one replacement through `install_world_tables`. Failed preparation does not advance the published
+generation. A remote client does not publish local server registries.
 
 Mods use `level.datapack_entries(host, registry)` for sorted owned entry IDs and
 `level.datapack_read(host, registry, entry_id, &mut visit)` to borrow one entry directly by
@@ -112,22 +120,62 @@ stored there. The visitor is called once on success and never on refusal. It can
 schema order or use `entry.get(name)`. It cannot retain the borrow; a mod keeps IDs for a new
 lookup or explicitly copies the fields it needs as a snapshot.
 
-Local registry loading does not use the network snapshot's byte limit. NeoForge's
-`Registries.registryDirPath` uses `<path>` for a `minecraft:<path>` key and `<namespace>/<path>` for
-other registry keys; entries and tags share that rule. As in `FileToIdConverter.registry`, a physical
-path in two registry directories is an entry in both. The scanner reads only the winning resource per
-path and keeps its pack identity. The local builder stages decoded entries and resolved tags per
-registry, then checks references against the complete candidate. An unreadable resource or an
-unresolved reference names the pack supplying that entry. Neither local path encodes a trial
-snapshot. A failure leaves the old generation live.
+NeoForge's `Registries.registryDirPath` (`CommonHooks.prefixNamespace`) uses `<path>` for a
+`minecraft:<path>` key and `<namespace>/<path>` for other registry keys; entries and tags share that
+rule. A physical path in two registry directories is an entry in both, relative to each directory.
+As in vanilla's `ResourceManagerRegistryLoadTask.load`, pack precedence selects the winner before
+it is read or decoded. An unreadable winner reports `DatapackLoadReason::ReadFile(message)` with its
+pack and file; an unresolved reference names the pack supplying the referring entry. A false
+condition omits the winner without exposing a lower pack's file. Local loading has no per-file or
+whole-candidate byte ceiling and no registry or entry count ceiling borrowed from network transport.
+Unknown schema keys still fail; duplicate registry declarations still fail, rather than using pack
+precedence to choose a declaration.
+
+Like NeoForge's `ICondition` and `ConditionalOps.ConditionalDecoder`, the loader decodes the whole
+condition array before testing and stops testing once the answer is known. `RegistryDataLoader.load`
+uses current registry lookups. `RegisteredCondition.test` checks a bound holder;
+`TagEmptyCondition.test` asks `ConditionContext.getTag` for resolved members. Static holders and
+resolved pending static tags are available before registry codecs. Mod-declared registries also see the
+candidate's frozen world data and previously bound dependency batches. A batch binds entries and tags
+before consumers run; reads within the batch (self-reads or cycles) do not see its pending holders as
+bound. Only typed built-in reads order those dependencies. Registry codecs use the vanilla feature
+set; recipes and other downstream readers receive the completed candidate and the world's enabled
+features, not an earlier published generation.
+
+Ordinary `Host` queries still see published data. A registered `LoadCondition` receives the raw
+JSON arguments, not a world handle. Its panic names the registering mod and condition in the load
+error, is logged and queues an error toast, and disables only that handler for the session. Returned
+errors and phase refusals are reported without disabling it. Loader-specific error handling decides
+whether to refuse the candidate or skip an offending file; see
+[Conditional data](../../modding/src/how-to/items/conditional-data.md#errors-by-loader).
 
 ## Stage 4 progress
 
-Built in `sunrise-mod-vocab` (`world/datapack_snapshot.rs`), engine-neutral and tested without a connection: `DatapackRegistrySet::snapshot` takes the synchronized registries (never server-only ones) that a peer's negotiation lets through, as a `DatapackSnapshot` of, per registry, its key, the schema it was decoded with, its tags, and its entries sorted by id. The Wire codec bounds the actual encoded size. On the client, `DatapackSnapshot::candidate` validates the decoded snapshot against the client's own declarations without applying a second size check or collection ceilings. An unknown or repeated registry, a schema that differs from the local declaration, a required registry that is missing, a bad or repeated id, a value outside its field's bounds, or a reference or tag member that does not resolve each refuse the whole snapshot. A declared registry the snapshot lacks (server-only, or optional and not negotiated) stays empty, never a fabricated registry. `DatapackRegistrySet::received` publishes the candidate infallibly on the client.
+NeoForge's `NewDatapackRegistryEvent.worldRegistry` and `reloadableRegistry` separate local loading
+from network publication; `DataPackRegistriesHooks.addWorldRegistry` only adds a synchronized copy
+with a network codec. In Sunrise, `ServerOnly` never sends entries and `Optional` sends them only to a
+peer with the matching declaration. A server-only package can use either mode subject to the rest of
+the join-content rule. `Required` needs a both-side package; a client-only package cannot declare a
+datapack registry at all.
+
+`DatapackRegistrySet::snapshot` projects the synchronized registries that a peer negotiated into a
+`DatapackSnapshot` (`sunrise-mod-vocab`, `world/datapack_snapshot.rs`): keys, schemas, tags and
+entries sorted by ID. The Wire offer and snapshot codecs bound the actual sent bytes.
+`DatapackSnapshot::decode` uses `TooLarge` for an oversized encoded snapshot and `Malformed` for
+invalid or trailing Wire bytes. `DatapackSnapshot::candidate` checks the decoded snapshot against the
+client's declarations without a second size or collection limit. An unknown or repeated registry, a
+mismatched schema, a missing required registry, a bad or repeated ID, an invalid field value, or an
+unresolved reference or tag member each refuses the whole snapshot. An omitted registry is unavailable
+to client reads rather than a fabricated empty registry. `DatapackRegistrySet::received` installs the
+validated set on the client.
 
 The join carries it (`sunrise-client/src/datapack_net.rs`). A Sunrise client that declared synchronized registries sends `sunrise:datapack_offer` (key and schema of each) after the mod list. The offer must fit vanilla's 32,767-byte serverbound custom payload; a failed encode ends configuration instead of sending no offer. Before any registry data the server answers on `sunrise:datapack_registries` with the snapshot of the registries both sides have, built by `snapshot_for`: a `Required` registry the client did not offer with the same schema ends the join with a reason naming the mod and the registry (a vanilla client, or a Sunrise one that sent no offer, is refused the same way), and an `Optional` one is left out with nothing sent. The client checks the snapshot with `candidate` while configuring; a snapshot that fails ends the join and nothing is kept. The received set is what a client mod reads through the same `LevelRef` methods. The visitor's borrow remains valid until it returns even if that received publication is cleared in the meantime; a new read checks the current publication.
 
-A reload that publishes a new set sends every joined Sunrise client a new snapshot on the same channel, built from the offer it made at the join (owned by that live connection and released when its senders are dropped). The client checks it as at the join and swaps its set in one step. A server refusal or encoding failure disconnects that client with a named reason instead of silently retaining its previous set. A snapshot that fails the check ends the connection with the old set unchanged until then; the server's committed set does not roll back for a disconnected peer.
+After a reload commits the local set, the server uses each joined Sunrise client's original offer to
+select and encode its negotiated snapshot, if any. Local commit does not guarantee that every
+peer's projection fits. An encoding, transport or validation failure ends only the affected connection
+with a named reason; the server's committed generation is not rolled back. The client swaps its set
+only after complete reassembly and validation, just as at join.
 
 What was left open in the first draft of this stage is settled by how the code is ordered, not by new code. (1) Activation versus play traffic: `install_world_tables` publishes the set and sends each joined Sunrise client its snapshot first, through the connection sender, which preserves packet order; what a mod sends to players is queued in `native_net.to_players` and leaves at the tick's end (`native_net.rs`). So on one connection the snapshot always precedes every mod message queued in the reload's tick. A client never sees a reload-tick message before the snapshot it refers to, so no holding queue is needed. (2) Reconfiguration: the declarations (registries, schemas, required or optional) come from the loaded mods and are fixed for the process; a reload changes entries only, so the negotiated set of registries cannot change under a joined client, and the snapshot a reload sends is built from the offer made at the join. A change of the mod list needs a new join, as for every other mod content. The native borrowed read does not change either the join or reload packet bytes.
 
