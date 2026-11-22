@@ -10193,7 +10193,7 @@ impl Game<'_> {
             self.options.offscreen,
             &self.pack,
             &self.gui,
-            None,
+            sunrise_client::gfx::RendererDevice::New,
             None,
             self.settings.sunrise.api,
             self.settings.sunrise.translucent_batching,
