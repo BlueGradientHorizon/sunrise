@@ -230,7 +230,7 @@ jobs:
             test -f "$BIN/$binary${{ matrix.exe }}" || { echo "::error::$BIN/$binary${{ matrix.exe }} is missing"; exit 1; }
           done
       - name: Verify Windows executable architecture
-        # Snapshots can build older refs. The exact stack check belongs to the same-ref Windows job in ci.yml.
+        # Snapshots can build older refs, whose stack reservation may differ: the machine is checked, not the stack.
         if: runner.os == 'Windows'
         run: |
           python .workflow-tools/tools/check_pe_arch.py "${{ matrix.pe_arch }}" \

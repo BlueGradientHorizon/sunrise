@@ -813,10 +813,10 @@ another commit of main: root then runs `gh workflow run release.yml -f kind=nigh
 -f exception="<who, when, why>"` (or `nightly-build.yml` with `base` and `exception`), and the run names the grant in
 a warning. A grant names its commit in full; a blank one is no grant. The commit's SDK, `sdk-<sha>`, is published
 first, as for every Nightly. The gate
-still holds, and an exception never changes the rule (owner, 2026-11-17). A complete published
-`sdk-<sha>` is verified and carried when available; without it, notes say native mods cannot be built for this
-build and no `sdk.json` is signed or published. Linux, Windows x64 and Apple-chip macOS are all required: a build
-missing any of them is neither signed nor published.
+still holds, and an exception never changes the rule (owner, 2026-11-17). Publishing checks that the complete
+`sdk-<sha>` exists (`nightly.py require-sdk`) and carries its `sdk.json`, signed with the build: a build without its
+published SDK is not published. Linux, Windows x64 and Apple-chip macOS are all required: a build missing any of
+them is neither signed nor published.
 
 The upstream Nightly selection machinery below describes Sunrise's picked-PR channel, not Sunrise's selection.
 

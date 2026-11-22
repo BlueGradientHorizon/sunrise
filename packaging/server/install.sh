@@ -52,16 +52,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# The archives to look for, in order: on Linux the server build, else (releases before it) the full game.
-MACHINE=$(uname -m)
-# A shell under Rosetta 2 says x86_64 on Apple Silicon: the native build runs faster there.
-[ "$(uname -s)" = Darwin ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = 1 ] && MACHINE=arm64
-case "$(uname -s)-$MACHINE" in
-  Linux-x86_64) PLATFORM=linux-x86_64; ASSETS="sunrise-server-linux-x86_64.tar.gz sunrise-linux-x86_64.tar.gz" ;;
-  Darwin-arm64) PLATFORM=macos-arm64; ASSETS=sunrise-macos-arm64.zip ;;
-  *) die "no Sunrise release for $(uname -s) $(uname -m) yet: build it from source (docs/server.md)" ;;
-esac
-
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 if [ -n "$ARCHIVE" ]; then
@@ -71,6 +61,15 @@ if [ -n "$ARCHIVE" ]; then
   ASSET=$(basename "$ARCHIVE")
   cp "$ARCHIVE" "$TMP/$ASSET"
 else
+  # A download only: the archives to look for, in order: on Linux the server build, else (releases before it) the full game.
+  MACHINE=$(uname -m)
+  # A shell under Rosetta 2 says x86_64 on Apple Silicon: the native build runs faster there.
+  [ "$(uname -s)" = Darwin ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = 1 ] && MACHINE=arm64
+  case "$(uname -s)-$MACHINE" in
+    Linux-x86_64) PLATFORM=linux-x86_64; ASSETS="sunrise-server-linux-x86_64.tar.gz sunrise-linux-x86_64.tar.gz" ;;
+    Darwin-arm64) PLATFORM=macos-arm64; ASSETS=sunrise-macos-arm64.zip ;;
+    *) die "no Sunrise release for $(uname -s) $(uname -m) yet: build it from source and install it with --archive (docs/server.md)" ;;
+  esac
   command -v curl >/dev/null || die "curl is needed"
   if command -v sha256sum >/dev/null; then SHA="sha256sum"
   elif command -v shasum >/dev/null; then SHA="shasum -a 256"

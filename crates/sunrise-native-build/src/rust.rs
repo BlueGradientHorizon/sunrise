@@ -35,7 +35,7 @@ pub struct Unpacked {
     pub target: String,
     /// The Cargo home of builds.
     pub cargo_home: PathBuf,
-    /// `--config` values every cargo command gets (the launcher's Windows ARM64 flags).
+    /// `--config` values every cargo command gets.
     #[serde(default)]
     pub cargo_config: Vec<String>,
     /// The folder of its C and link programs, when it brings them (Windows).
