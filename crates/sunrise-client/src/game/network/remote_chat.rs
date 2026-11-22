@@ -10,7 +10,7 @@ use super::{
     books::BookScreen,
     dialogs::ClosedDialog,
     native_net::PlaySend,
-    native_server::{ClientCommandOutcome, PendingClientCommand, PendingClientCommandKind},
+    native_server::{ClientCommandChain, ClientCommandOutcome, PendingClientCommandKind},
 };
 use std::sync::Arc;
 use sunrise_client::{
@@ -277,29 +277,48 @@ impl Game<'_> {
         Ok(())
     }
 
-    /// Give the local dispatcher the command before the server sees it.
+    /// `ClientPacketListener.sendCommand`: submit the player's slash command without its slash.
     pub(super) fn send_command(
         &mut self,
         command: &str,
+    ) -> Result<Option<ClientCommandOutcome>, String> {
+        self.submit_client_command(command, PendingClientCommandKind::Signed, None)
+    }
+
+    /// `ClientCommandHandler.runCommand` precedes both signed and unattended server submission.
+    pub(super) fn submit_client_command(
+        &mut self,
+        input: &str,
+        kind: PendingClientCommandKind,
+        chain: Option<Arc<ClientCommandChain>>,
     ) -> Result<Option<ClientCommandOutcome>, String> {
         let remote = self.remote.as_ref().ok_or("not connected to a server")?;
         if !remote.joined || remote.reconfiguring.is_some() {
             return Err("the player has not joined yet".into());
         }
-        if self.native_client_commands.executing {
-            self.native_client_commands
-                .pending_commands
-                .push(PendingClientCommand {
-                    command: command.to_owned(),
-                    kind: PendingClientCommandKind::Signed,
-                });
+        let command = match kind {
+            PendingClientCommandKind::Signed => input,
+            PendingClientCommandKind::Unattended => {
+                let input = input.trim();
+                let command = input.strip_prefix('/').unwrap_or(input);
+                if command.is_empty() || !self.chat_abilities().allows(&format!("/{command}")) {
+                    return Ok(None);
+                }
+                command
+            }
+        };
+        if self.native_client_commands.defer(input, kind) {
             return Ok(None);
         }
-        if let Some(outcome) = self.run_client_native_command(command) {
+        if let Some(outcome) = self.run_client_native_command_in_chain(command, chain) {
             return Ok(Some(outcome));
         }
-        if !self.studio_command(command) {
-            self.send_server_command(command)?;
+        match kind {
+            PendingClientCommandKind::Signed if !self.studio_command(command) => {
+                self.send_server_command(command)?;
+            }
+            PendingClientCommandKind::Signed => {}
+            PendingClientCommandKind::Unattended => self.send_server_unattended_command(command),
         }
         Ok(None)
     }
@@ -398,26 +417,10 @@ impl Game<'_> {
     /// the player can only send it themselves, from the chat box. So neither
     /// a server nor a mod can have the player sign a message they never saw.
     pub(super) fn send_unattended_command(&mut self, command: &str) {
-        let command = command.trim();
-        let command = command.strip_prefix('/').unwrap_or(command);
-        if command.is_empty() || !self.chat_abilities().allows(&format!("/{command}")) {
-            return;
-        }
-        if self.remote.is_none() {
-            return;
-        }
-        if self.native_client_commands.executing {
-            self.native_client_commands
-                .pending_commands
-                .push(PendingClientCommand {
-                    command: format!("/{command}"),
-                    kind: PendingClientCommandKind::Unattended,
-                });
-            return;
-        }
-        if self.run_client_native_command(command).is_some() {
-            return;
-        }
+        let _ = self.submit_client_command(command, PendingClientCommandKind::Unattended, None);
+    }
+
+    fn send_server_unattended_command(&mut self, command: &str) {
         // Vanilla's dispatcher is empty until the server sends its tree.
         let check = self
             .remote
