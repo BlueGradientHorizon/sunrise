@@ -1366,17 +1366,26 @@ pub fn stored_stack(m: &Mob, slot: usize) -> Option<ItemStack> {
     let base = m.extra.slot_stack(slot)?;
     Some(stored_equipment(m, slot, base)?.project().into_owned())
 }
-/// What a mob has in `slot` as a stack: the one it kept, else one item with
-/// its enchantments.
+/// What a mob has in `slot` as a stack, including its count, enchantments and trim.
 pub fn item_stack(m: &Mob, slot: usize) -> Option<crate::items::ItemStack> {
-    stored_stack(m, slot).or_else(|| {
-        let mut stack = crate::items::ItemStack::new(&item(m, slot)?, 1);
-        stack.set_crafting_enchantments(slot_enchantments(m, slot));
-        if let Some(trim) = gear::gear(m).and_then(|g| g.trims[gear_slot(slot)].clone()) {
-            stack.data_mut().trim = Some(trim);
-        }
-        Some(stack)
-    })
+    if !matches!(slot, MAINHAND..=HEAD | SADDLE) {
+        return None;
+    }
+    let base = m.extra.slot_stack(slot)?;
+    if let Some(stored) = stored_equipment(m, slot, base) {
+        return Some(stored.project().into_owned());
+    }
+    let mut stack = ItemStack {
+        item: base.item.clone(),
+        count: base.count,
+        damage: 0,
+        extra: None,
+    };
+    stack.set_crafting_enchantments(slot_enchantments(m, slot));
+    if let Some(trim) = gear::gear(m).and_then(|g| g.trims[gear_slot(slot)].clone()) {
+        stack.data_mut().trim = Some(trim);
+    }
+    Some(stack)
 }
 /// `LivingEntity.getItemBySlot` from the stacks a mob keeps: the hands and
 /// armour from `item_stack` (`EquipmentSlot` ordinals match these slots), the
