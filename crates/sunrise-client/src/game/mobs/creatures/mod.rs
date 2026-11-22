@@ -5907,6 +5907,61 @@ impl Game<'_> {
         result.unwrap_or(Ok(EntityHit::Refused))
     }
 
+    /// Dispatch the same crystal and dragon-part hit for arrows and mob tridents.
+    fn special_arrow_hit(&mut self, arrow: &mut Projectile, id: u32, amount: f32) -> EntityHit {
+        let owner = self.resolved_projectile_owner(arrow.owner, arrow.guest);
+        let kind = self.projectile_damage_kind(arrow);
+        let damage_type = self.projectile_damage_type(arrow);
+        // EndCrystal.hurtServer can push this arrow before its next hit or deflection.
+        // Lend the contact state to the level walk, as for an impact callback.
+        let crystal = self.is_crystal_id(id);
+        let join = arrow.join;
+        if crystal {
+            let mut contact = arrow.clone();
+            std::mem::swap(
+                &mut contact.attachment_lifetime,
+                &mut arrow.attachment_lifetime,
+            );
+            let followers = self
+                .creatures
+                .bounced_followers
+                .iter()
+                .find(|(id, _)| *id == arrow.id)
+                .map_or(&[][..], |(_, followers)| followers.as_slice());
+            let projectiles = &mut self.creatures.projectiles;
+            let index = bounced_place(projectiles, followers);
+            projectiles.put_back(index, contact);
+        }
+        let hurt = self.hit_special_full(
+            id,
+            amount,
+            owner,
+            arrow.guest,
+            kind,
+            Some(damage_type),
+            Some(super::dragon::DirectHit::from_projectile(arrow)),
+        );
+        if crystal {
+            if !self.projectile_removal_pending(arrow.id)
+                && let Some(live) = self.creatures.projectiles.extract(join)
+            {
+                *arrow = live;
+            } else if let Some(a) = arrow.arrow.as_mut() {
+                a.removed = true;
+            }
+        }
+        match hurt {
+            super::dragon::Hurt::Landed { .. } => EntityHit::Hurt,
+            super::dragon::Hurt::Refused => EntityHit::Refused,
+            super::dragon::Hurt::Shrugged => {
+                if let Some(a) = arrow.arrow.as_mut() {
+                    a.ignite_for_seconds(1.0);
+                }
+                EntityHit::Refused
+            }
+        }
+    }
+
     /// Apply one arrow entity hit (`AbstractArrow.onHitEntity`), returning the hit outcome.
     fn arrow_hit_one_entity(
         &mut self,
@@ -5925,57 +5980,7 @@ impl Game<'_> {
         if let Who::Mob(id) = who
             && self.is_special_target(id)
         {
-            let owner = self.resolved_projectile_owner(arrow.owner, arrow.guest);
-            let kind = self.projectile_damage_kind(arrow);
-            let damage_type = self.projectile_damage_type(arrow);
-            // EndCrystal.hurtServer can push this arrow before its next hit or deflection.
-            // Lend the contact state to the level walk, as for an impact callback.
-            let crystal = self.is_crystal_id(id);
-            let join = arrow.join;
-            if crystal {
-                let mut contact = arrow.clone();
-                std::mem::swap(
-                    &mut contact.attachment_lifetime,
-                    &mut arrow.attachment_lifetime,
-                );
-                let followers = self
-                    .creatures
-                    .bounced_followers
-                    .iter()
-                    .find(|(id, _)| *id == arrow.id)
-                    .map_or(&[][..], |(_, followers)| followers.as_slice());
-                let projectiles = &mut self.creatures.projectiles;
-                let index = bounced_place(projectiles, followers);
-                projectiles.put_back(index, contact);
-            }
-            let hurt = self.hit_special_full(
-                id,
-                amount,
-                owner,
-                arrow.guest,
-                kind,
-                Some(damage_type),
-                Some(super::dragon::DirectHit::from_projectile(arrow)),
-            );
-            if crystal {
-                if !self.projectile_removal_pending(arrow.id)
-                    && let Some(live) = self.creatures.projectiles.extract(join)
-                {
-                    *arrow = live;
-                } else if let Some(a) = arrow.arrow.as_mut() {
-                    a.removed = true;
-                }
-            }
-            return Ok(match hurt {
-                super::dragon::Hurt::Landed { .. } => EntityHit::Hurt,
-                super::dragon::Hurt::Refused => EntityHit::Refused,
-                super::dragon::Hurt::Shrugged => {
-                    if let Some(a) = arrow.arrow.as_mut() {
-                        a.ignite_for_seconds(1.0);
-                    }
-                    EntityHit::Refused
-                }
-            });
+            return Ok(self.special_arrow_hit(arrow, id, amount));
         }
         if let Who::Mob(id) = who {
             let was_stand = self.armor_stands.iter().any(|a| a.id == id);
@@ -6599,24 +6604,10 @@ impl Game<'_> {
                 let mut trident = p.clone();
                 let victim = self.entity_kind_for_who(Who::Mob(id));
                 let amount = self.shot_damage(&mut trident, victim.as_deref(), Who::Mob(id));
-                let outcome = match self.hit_special_full(
-                    id,
-                    amount,
-                    resolved_owner,
-                    p.guest,
-                    self.projectile_damage_kind(p),
-                    Some(damage_type),
-                    Some(super::dragon::DirectHit::from_projectile(p)),
-                ) {
-                    super::dragon::Hurt::Landed { .. } => EntityHit::Hurt,
-                    super::dragon::Hurt::Refused => EntityHit::Refused,
-                    super::dragon::Hurt::Shrugged => {
-                        if let Some(a) = trident.arrow.as_mut() {
-                            a.ignite_for_seconds(1.0);
-                        }
-                        EntityHit::Refused
-                    }
-                };
+                let _save_lease = self
+                    .is_crystal_id(id)
+                    .then(|| self.creatures.projectiles.visibility_lease());
+                let outcome = self.special_arrow_hit(&mut trident, id, amount);
                 self.finish_arrow_hit(trident, outcome);
                 self.projectile_hit_landed_event(p.id, p.owner, hit);
                 return Ok(());
