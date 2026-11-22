@@ -9,7 +9,6 @@ use std::sync::{
 };
 use sunrise_client::{
     chunk::Chunk,
-    hud::HudBatch,
     lan::PlayerSender,
     raw_payloads::{Classified, Endpoint, Incoming, Side, Transport},
 };
@@ -81,7 +80,10 @@ impl Hooks for Declares {
 #[test]
 #[ignore = "daily"]
 fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner() {
-    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
+    use crate::game::{
+        native_entity_refs::tests::{run_fresh_cases, with_game},
+        toast_manager::Toast,
+    };
 
     if run_fresh_cases(
         "game::payload_transport::work_panic_tests::a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner",
@@ -144,8 +146,9 @@ fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner()
 
             // The client drains the shared queue, not the server action that aborted.
             game.options.dedicated = None;
-            game.draw_pack_toasts(&mut HudBatch::scratch([640, 480]), false, false);
-            let [(Some(toast), _)] = game.server_packs.hook_panics.as_slice() else {
+            game.add_hook_panic_toasts();
+            assert_eq!(game.toast_manager.queued.len(), 1);
+            let Some(Toast::Diagnostic { toast, .. }) = game.toast_manager.queued.front() else {
                 panic!("expected exactly one shared panic toast");
             };
             assert_eq!(

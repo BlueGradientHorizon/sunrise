@@ -667,7 +667,18 @@ impl Game<'_> {
     /// `GuiGraphics.renderItem(player, level, stack, x, y, 0)`.
     pub(super) fn draw_item_model(&self, batch: &mut HudBatch, stack: &ItemStack, x: f32, y: f32) {
         let owner = self.player_owner(Some(stack));
-        let state = self.resolve_item(stack, DisplayContext::Gui, Some(&owner), 0);
+        self.draw_item_model_with_owner(batch, stack, x, y, Some(&owner));
+    }
+    /// `GuiGraphicsExtractor.item`: `fakeItem` uses the same model draw with no owner.
+    pub(super) fn draw_item_model_with_owner(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        x: f32,
+        y: f32,
+        owner: Option<&OwnerState>,
+    ) {
+        let state = self.resolve_item(stack, DisplayContext::Gui, owner, 0);
         item_render::gui::draw_with_frame(
             &state,
             &self.pack.item_renderer,
