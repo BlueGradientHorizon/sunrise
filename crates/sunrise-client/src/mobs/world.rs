@@ -1110,6 +1110,7 @@ fn run_test_world(
         asks_baby_spawn: false,
         border: None,
         section_writer: None,
+        trading_players: None,
     };
     f(&w, types);
     true

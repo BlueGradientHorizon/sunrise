@@ -23,6 +23,7 @@ impl Game<'_> {
     }
 
     /// `LivingEntity.refreshDirtyAttributes`: clamp health to max health on living tick.
+    #[cfg(test)]
     pub(in crate::game) fn refresh_remote_attributes(&mut self) {
         for m in &mut self.mobs {
             if m.extra.max_health_dirty {

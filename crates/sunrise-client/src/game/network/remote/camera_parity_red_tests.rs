@@ -1738,7 +1738,7 @@ fn camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26
                             )],
                         }))
                         .unwrap();
-                        game.tick_text_displays();
+                        game.tick_text_displays(true);
                     }
                     "minecraft:item_display" => {
                         game.handle_packet(C::SetEntityData(play::SetEntityData {
@@ -1750,7 +1750,7 @@ fn camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26
                             )],
                         }))
                         .unwrap();
-                        game.tick_text_displays();
+                        game.tick_text_displays(true);
                     }
                     "minecraft:text_display" => {
                         game.handle_packet(C::SetEntityData(play::SetEntityData {
@@ -1762,7 +1762,7 @@ fn camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26
                             )],
                         }))
                         .unwrap();
-                        game.tick_text_displays();
+                        game.tick_text_displays(true);
                     }
                     _ => {}
                 }

@@ -2075,6 +2075,9 @@ impl Game<'_> {
             direct_kind: None,
             position: None,
             projectile_weapon: None,
+            attacker_uuid: (player_uuid.is_none() && attacker != 0)
+                .then(|| self.known_attacker_uuid(attacker as u32))
+                .flatten(),
             player_uuid,
         }
     }
@@ -2747,6 +2750,13 @@ impl Game<'_> {
     }
     /// The mobs from index `from` on are new in the world.
     pub(super) fn native_mobs_joined(&mut self, from: usize, natural: bool) {
+        // Preserve saved/constructed UUIDs. Natural spawns built with provisional
+        // IDs get their persistent identity when admitted, not on their first hit.
+        for mob in self.mobs.iter().skip(from) {
+            self.persist
+                .uuids
+                .get_or_insert_with(mob.id, sunrise_client::save::random_uuid);
+        }
         self.join_spawn_tags(from);
         // A mod can keep a mob out; it is then taken out and not told of.
         self.native_joins_flush(false, 0);
@@ -4220,38 +4230,44 @@ mod tests {
     /// With no window to lay a screen out in there is no slot under the pointer.
     #[test]
     #[ignore = "daily"]
-    fn no_item_is_hovered_without_a_window() {
-        use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
+    fn no_stack_is_hovered_without_a_window() {
+        crate::game::in_own_process(
+            "game::native_hooks::tests::no_stack_is_hovered_without_a_window",
+            || {
+                use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
 
-        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!("no menu handoff"),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        let game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
-            None,
-        )
-        .unwrap();
-        assert_eq!(game.screen_hovered_item(), None);
+                let root =
+                    std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+                let settings = Settings::default();
+                let loaded = load_resources(
+                    sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+                    Vec::new(),
+                    None,
+                    &root,
+                    &settings,
+                    std::time::Instant::now(),
+                    false,
+                    crate::game::execution_role::ExecutionRole::IntegratedServer,
+                    &Progress::new(),
+                    &mut |_, _| unreachable!("no menu handoff"),
+                )
+                .unwrap();
+                let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+                options.resources = root.clone();
+                let game = Game::new(
+                    &loaded.resources,
+                    loaded.pack,
+                    loaded.gui.unwrap(),
+                    options,
+                    settings,
+                    Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+                        root.to_path_buf(),
+                    )),
+                    None,
+                )
+                .unwrap();
+                assert_eq!(game.screen_hovered_stack(), None);
+            },
+        );
     }
 }

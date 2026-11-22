@@ -11,6 +11,12 @@ impl Tags for LootTags<'_> {
         let item = mod_api::__private::item_key_id(item)?;
         mod_api::__private::with_tag_name(tag, |tag| Some(self.0.contains("item", tag?, item)))
     }
+    fn item_tags(&self, item: ItemKey) -> Option<Vec<Identifier>> {
+        super::native_tags::item_tags(self.0, item)
+    }
+    fn item_tag_names(&self) -> Option<Vec<Identifier>> {
+        super::native_tags::item_tag_names(self.0)
+    }
     fn items(&self, tag: TagKey) -> TagMembers<ItemKey> {
         super::native_tags::members(
             tag,
