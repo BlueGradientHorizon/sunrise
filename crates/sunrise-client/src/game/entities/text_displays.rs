@@ -81,16 +81,17 @@ pub(super) struct RemoteTextDisplay {
 /// `Display.RENDER_STATE_IDS` and each subclass's render-state synced data IDs (not view range,
 /// width, height, or glow colour).
 fn renders(shows: Shows, id: u8) -> bool {
-    match id {
+    let shared = match id {
         11..=16 | 18 | 19 => true,
         23..=27 => shows == Shows::Text,
         _ => false,
-    }
-    || match shows {
-        Shows::Block => id == 23,
-        Shows::Item => matches!(id, 23 | 24),
-        Shows::Text => false,
-    }
+    };
+    shared
+        || match shows {
+            Shows::Block => id == 23,
+            Shows::Item => matches!(id, 23 | 24),
+            Shows::Text => false,
+        }
 }
 
 /// `Mth.wrapDegrees(float)`.
