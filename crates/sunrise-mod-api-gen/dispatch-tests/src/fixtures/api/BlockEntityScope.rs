@@ -10,4 +10,11 @@ impl BlockEntityScope<'_> {
     pub fn reborrow(&mut self) -> BlockEntityScope<'_> {
         BlockEntityScope(self.0.as_deref_mut())
     }
+    pub fn transaction<T, E>(
+        &mut self,
+        f: impl FnOnce(&mut BlockEntityScope<'_>, &()) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let mut scope = self.reborrow();
+        f(&mut scope, &())
+    }
 }
