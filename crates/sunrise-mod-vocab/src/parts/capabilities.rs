@@ -154,8 +154,8 @@ pub(crate) fn ask_providers<'a, T: ?Sized>(
     }
 }
 
-/// CapabilityProviders operations for capabilities.
-// hidden: per-kind lookup implementation for native provider bindings
+/// Published capability metadata and switch generation for lookups and caches.
+// hidden: capability metadata read by lookups and game helpers
 #[doc(hidden)]
 pub trait CapabilitiesCapabilityProviders {
     /// Known block capability names in declaration/discovery order.

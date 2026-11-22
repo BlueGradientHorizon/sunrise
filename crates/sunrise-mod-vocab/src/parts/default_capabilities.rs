@@ -63,7 +63,7 @@ pub trait DefaultCapabilitiesRegistrar {
     );
 }
 
-/// Default-provider operations available to both native and portable hosts.
+/// Published default stock storage declarations read by the game's default capability providers.
 // hidden: the game reads the installed default providers through it; mods declare them through the registrar.
 #[doc(hidden)]
 pub trait DefaultCapabilitiesCapabilityProviders {

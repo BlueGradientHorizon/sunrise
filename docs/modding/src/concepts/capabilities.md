@@ -46,8 +46,9 @@ Lookup uses this order:
 Within each mod-provider group, block and block entity type providers form one list in registration
 order. The first `Some` wins; handlers are not merged. Use `_before_game` when you need priority over
 the game's handler, but do not assume precedence over another mod at the same priority.
-Disabled mods' providers are skipped. A stale level handle or a level that is not in place returns
-`None` without asking providers.
+Disabled mods' providers are skipped, and a provider callback that panics is disabled for the
+rest of the session without stopping later providers from answering. A stale level handle or a
+level that is not in place returns `None` without asking providers.
 
 Registration queries see the game's coverage, earlier mods in registration order, and providers already
 added by the current mod; they do not see later registrations. For example, `ITEMS` covers
@@ -76,10 +77,6 @@ indices must be strictly below `slots` and `insert_rules.len()` at most `slots`;
 registration rather than clamped or filtered. The first enabled declaration for a block
 type supplies its default storage. Item-container declarations may target vanilla items too, and
 their callbacks run in registration order until one returns `Some`.
-
-One capability supports at most 65,535 providers per block or block entity type. The next registration
-is refused at load with a message naming the mod, capability and target and stating that the target
-already has the most providers it may have.
 
 Declare your own capability with `CapabilityKey::new("mymod:chemicals")`. Only registered providers
 answer it; it has no game-provided handler. A `Capability` wraps the handler and identifies its

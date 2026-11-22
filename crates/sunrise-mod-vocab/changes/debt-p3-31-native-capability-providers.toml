@@ -1,0 +1,82 @@
+ids = [
+    "type:BlockProviderOf",
+    "type:ItemProviderOf",
+    "type:EntityProviderOf",
+    "type:OwnProvider",
+    "type:NativeCapabilityProvider",
+    "method:BlocksRegistrar::provide_block_capability",
+    "method:BlockEntitiesRegistrar::provide_block_entity_capability",
+    "method:ItemsRegistrar::provide_item_capability",
+    "method:EntitiesRegistrar::provide_entity_capability",
+    "method:CapabilityRegistrationRegistrar::entity_capability_registered",
+    "method:CapabilityRegistrationRegistrar::item_capability_registered",
+]
+why = """
+Built-in and mod-defined capability keys now both bind typed in-process callbacks through
+`NativeCapabilityProvider` instead of carrying closed enum wrappers (`BlockProviderOf`,
+`ItemProviderOf`, `EntityProviderOf`) and `OwnProvider` inherited from the removed guest runtime.
+This follows NeoForge 26.3's `RegisterCapabilitiesEvent`, `CapabilityRegistry.create`, and
+`BlockCapability`/`ItemCapability`/`EntityCapability.getCapability`: registrations for one
+capability name agree on both handler and context type by type identity (not displayed type name),
+conflicts refuse registration naming both mods, and capability names plus raw item/entity target
+IDs follow vanilla 26.3's `Identifier.isValidNamespace` and `Identifier.isValidPath` with a
+required namespace.
+
+Lookups walk borrowed provider slices directly in precedence order (`_before_game`, game default,
+then other providers, each in registration order) without a 65,535-provider cap or per-step
+cloning, and a panicking provider callback is disabled for the rest of the session without
+stopping later providers from answering. The vanilla container fallback path
+(`HopperBlockEntity.getBlockContainer`) and registration-time coverage queries are preserved.
+
+Stock mod block storage declarations (`DefaultCapabilitiesRegistrar::block_container`,
+`block_fluids`, `block_energy`, and their structs `ModContainer`, `ModFluidTanks`,
+`ModEnergyBuffer`) now validate shapes once at registration instead of silently clamping or
+rewriting them:
+- `ModContainer::slots` must fit in a nonnegative `i32` (matching NeoForge `ResourceHandler.size`
+  and `getResource(int)`), every index in `faces`, `inputs` and `outputs` must be `< slots`, and
+  `insert_rules.len() <= slots`. Unsupported or slot-count-mismatched menus are ignored without
+  altering `slots`. Vanilla containers keep `ContainerHelper.saveAllItems`/`loadAllItems` and
+  `ItemStackWithSlot.CODEC` unsigned-byte slot encoding, while mod-only saved `Items` entries
+  store extended indices (`>= 256`) in NBT `Int` `Slot` fields without wrapping (matching NeoForge
+  `StacksResourceHandler.serialize`).
+- `ModFluidTanks` validates that every index in `faces`, `inputs` and `outputs` is `< tanks.len()`
+  and keeps declared tank counts and capacities verbatim (matching NeoForge
+  `FluidStacksResourceHandler`); zero-capacity tanks remain 0 mB and accept no fluid.
+- `ModEnergyBuffer` validates nonnegative (`>= 0`) `capacity`, `max_insert` and `max_extract`
+  (matching NeoForge `SimpleEnergyHandler`), keeping zero capacity and transfer rates larger than
+  `capacity` as declared.
+"""
+migrate = """
+Mods that register capabilities through the typed `Registrar` helpers and do not rely on silent
+stock-storage clipping need no source changes beyond fixing any malformed identifiers or shapes:
+- Replace any direct `BlockProviderOf`, `ItemProviderOf`, `EntityProviderOf`, or `OwnProvider`
+  construction or matching, and any direct raw `provide_*_capability` calls, with the typed
+  `dyn Registrar` helpers:
+  - `provide_block_capability` -> `r.block_capability(&key, &block, callback)`
+  - `provide_block_entity_capability` -> `r.block_entity_capability(&key, &kind, callback)`
+  - `provide_item_capability` -> `r.item_capability(&key, item_id, callback)`
+  - `provide_entity_capability` -> `r.entity_capability(&key, kind_id, callback)`
+  Use the matching `*_before_game` helper where the old `before_game` flag was `true`.
+- Query capabilities through `LevelRef::capability`, `EntityRef::capability`, and
+  `ItemPlace::capability` (engine callers use `block_providers`/`entity_providers` and `ask`
+  directly instead of the removed cursor helpers).
+- For shared capabilities, import the defining mod's `CapabilityKey` or `EntityCapabilityKey` so
+  both handler and context types match by type identity, and pass valid `namespace:path`
+  identifiers (for example, `"test:robot"` instead of `"test:Robot"`).
+- Pass keys obtained from `block_key`, `block_entity_type_key`, `item_key` or `entity_type_key`
+  to registration calls and `is_*_capability_registered` coverage queries.
+- Update mock or forwarding `Registrar` implementations so each raw `provide_*_capability` method
+  accepts `NativeCapabilityProvider` and passes it through unchanged.
+- Update `CapabilityRegistrationRegistrar` implementations so `item_capability_registered` and
+  `entity_capability_registered` take `&mut self` instead of `&self` (calls through
+  `is_item_capability_registered` and `is_entity_capability_registered` are unchanged).
+- For `block_container`: pass `slots` in `0..=i32::MAX`, keep all `faces`/`inputs`/`outputs`
+  indices `< slots` and `insert_rules.len() <= slots`, and ensure any declared `menu` matches
+  `slots` if you expect it to open.
+- For `block_fluids`: keep all `faces`/`inputs`/`outputs` indices `< tanks.len()`, and pass the
+  intended positive tank capacity instead of relying on 0 mB being promoted to 1 mB or capacities
+  being capped at 1,000,000 mB.
+- For `block_energy`: pass nonnegative (`>= 0`) `capacity`, `max_insert` and `max_extract`; if
+  you previously relied on transfer rates above `capacity` being clamped down to `capacity`, set
+  them explicitly.
+"""
