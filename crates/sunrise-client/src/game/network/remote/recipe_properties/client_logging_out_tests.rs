@@ -1,7 +1,10 @@
 use crate::game::event_loop::EventLoopCtl;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_lifecycle::NativeLifecycle;
-use crate::game::remote::RemoteDimensionEntry;
+use crate::game::remote::{
+    RemoteDimensionEntry,
+    tests::{connect_play_test, spawn_menu_test},
+};
 use mod_api::{
     ClientHost, ClientLevelUnloadEvent, ClientPlayerLoggingOutEvent, ClientStoppingEvent, GameMode,
     Hooks, ModEntry, PlayerRef,
@@ -347,31 +350,28 @@ fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_tr
                 ]
             );
 
-            // 7a. Reconfiguration disconnect via ServerReconfigScreen's Disconnect button
-            // emits one no-player logout.
+            // 7a. StartConfiguration unloads the level before ServerReconfigScreen's
+            // Disconnect button can emit a no-player logout.
             game.native_lifecycle = NativeLifecycle::default();
-            let (client, _server) = Pipe::pair();
-            game.connect_local(client, "ReconfigButton").unwrap();
-            game.enter_remote_dimension(
-                &spawn_info("minecraft:overworld", GameMode::Survival.id()),
-                RemoteDimensionEntry::Login,
-                Reason::Other,
-            );
-            {
-                let remote = game.remote.as_mut().unwrap();
-                remote.logged_in = true;
-                remote.entity_id = 88;
-                remote.profile = 0x1234_5678;
-                remote.reconfiguring = Some(0);
-                remote.heard_level = None;
-            }
-            game.native_lifecycle.begin_close();
-            game.ticks = 600;
+            let (_reader, mut writer) = connect_play_test(game, |_, _| {});
+            spawn_menu_test(game);
             take();
+            writer.send(&C::StartConfiguration(Empty).encode()).unwrap();
+            poll_until(
+                game,
+                |g| g.remote.as_ref().is_some_and(|r| r.reconfiguring.is_some()),
+                "start reconfiguration before clicking Disconnect",
+            );
+            assert_eq!(
+                take(),
+                vec![Observed::LevelUnload("minecraft:overworld".to_owned())],
+                "reconfiguration starts by unloading the level without a logout"
+            );
 
+            game.ticks += 600;
             let (_, (rx, ry)) = game.reconfigure_layout(game.gui_size());
             game.cursor = (rx + 1.0, ry + 1.0);
-            game.connect_screen_click().unwrap();
+            assert!(game.connect_screen_click().unwrap());
             assert!(game.remote.is_none());
             assert_eq!(
                 take(),
