@@ -143,10 +143,7 @@ impl Game<'_> {
             return Some(part);
         }
         remote.tracked(id)?;
-        match self.level_entity(id)? {
-            Target::Mob(mob) if !self.mobs.iter().any(|m| m.id == mob && !m.removed) => None,
-            target => Some(target),
-        }
+        self.level_entity(id)
     }
     /// What a handle names for a read that works on both sides: the server's
     /// entity (`native_entity_target`) or, on a client, its own copy of it.
@@ -3374,7 +3371,7 @@ pub(super) mod tests {
                         g.abilities = Default::default();
                     })
                     .unwrap();
-                game.lan_guest_joined(13, &[], [0.0, 64.0, 0.0]);
+                game.lan_guest_joined(13, &[], [0.0, 64.0, 0.0], None);
                 let g = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
                 (
                     g.game_mode,
@@ -4061,18 +4058,21 @@ pub(super) mod tests {
             let (tx, _rx) = std::sync::mpsc::channel();
             shared
                 .events
-                .send(sunrise_client::lan::NetEvent::Joined(Box::new(Joined {
-                    conn,
-                    uuid: 5678,
-                    name: "joiner".into(),
-                    properties: Vec::new(),
-                    info: ClientInformation::new(8),
-                    brand: String::new(),
-                    sender: PlayerSender::new(tx, Arc::default()),
-                    latency: Arc::default(),
-                    address: ([127, 0, 0, 1], 1).into(),
-                    expected: false,
-                })))
+                .send(sunrise_client::lan::NetEvent::Joined(
+                    Box::new(Joined {
+                        conn,
+                        uuid: 5678,
+                        name: "joiner".into(),
+                        properties: Vec::new(),
+                        info: ClientInformation::new(8),
+                        brand: String::new(),
+                        sender: PlayerSender::new(tx, Arc::default()),
+                        latency: Arc::default(),
+                        address: ([127, 0, 0, 1], 1).into(),
+                        expected: false,
+                    }),
+                    None,
+                ))
                 .unwrap();
             use mod_api;
             struct Logout(std::sync::Arc<std::sync::atomic::AtomicUsize>);
