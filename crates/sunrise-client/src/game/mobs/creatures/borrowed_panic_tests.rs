@@ -405,12 +405,6 @@ fn fresh_dimension(test: &str, cases: &[&str]) -> Option<Dim> {
     })
 }
 
-fn run(family: Family) {
-    for dim in [Dim::Overworld, Dim::Nether] {
-        run_fixture(family, Output::Quiet, dim);
-    }
-}
-
 fn fixture_game(output: Output, test: impl FnOnce(&mut Game<'_>)) {
     if matches!(output, Output::Guest | Output::Mixed) {
         crate::game::native_guest_turn_tests::with_guests(test);
@@ -991,14 +985,16 @@ fn landing() {
     run_output("landing", Family::Landing, Output::Quiet);
 }
 
-macro_rules! cases {
-    ($($name:ident => $family:ident),* $(,)?) => {$(
-        #[test]
-        #[ignore = "needs prepared resources in SUNRISE_TEST_RESOURCES"]
-        fn $name() { run(Family::$family); }
-    )*};
+#[test]
+#[ignore = "daily"]
+fn goal() {
+    run_output("goal", Family::Goal, Output::Quiet);
 }
-cases!(goal => Goal, mounted_goal => MountedGoal);
+#[test]
+#[ignore = "daily"]
+fn mounted_goal() {
+    run_output("mounted_goal", Family::MountedGoal, Output::Quiet);
+}
 
 #[test]
 #[ignore = "daily"]
