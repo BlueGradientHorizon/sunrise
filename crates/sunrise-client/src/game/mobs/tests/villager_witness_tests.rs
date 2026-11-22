@@ -68,12 +68,25 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
             .unwrap()
             .clone();
         let at = Vec3::new(1.0, 100.0, 1.0);
-        for id in [90, 91, 92] {
+        game.discard_resident_dragon();
+        game.next_entity = 100;
+        let dragon = game
+            .spawn_mob_spawned(
+                "minecraft:ender_dragon",
+                at.components(),
+                super::super::creatures::SpawnSite::Finalizing(
+                    sunrise_client::mobs::spawn_rules::Reason::SpawnItemUse,
+                ),
+            )
+            .expect("a dragon admitted by the egg path");
+        let mob_uuid = game
+            .known_attacker_uuid(dragon)
+            .expect("the dragon has its UUID before tracking or saving");
+        for id in [91, 92] {
             game.mobs.push(Mob::new(id, kind.clone(), at, 0.0));
         }
         game.persist.uuids.insert(92, [0, 0, 0, 4]);
         game.native_mobs_joined(0, false);
-        let mob_uuid = game.persist.uuids[&90];
         game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
         let player_hit = |game: &mut Game<'_>, uuid, amount| {
             bind_local_player(game, 300, uuid);
@@ -81,11 +94,11 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
         };
         assert!(player_hit(game, 2, 1.0));
         assert!(player_hit(game, 3, 3.0));
-        let mob = Damage::mob(90, [at.x, at.y, at.z]);
+        let mob = Damage::mob(dragon, at.components());
         assert!(game.mob_hits_mob(91, 5.0, mob));
         assert!(!game.mob_hits_mob(91, 2.0, Damage::mob(92, [at.x, at.y, at.z])));
         assert!(game.mob_hits_mob(91, 7.0, mob));
-        game.mobs.remove(0);
+        game.discard_resident_dragon();
         assert!(player_hit(game, 5, 1000.0));
         assert!(!game.mobs[0].alive());
         let got = [
