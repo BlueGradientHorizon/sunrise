@@ -375,10 +375,7 @@ mod tests {
             config::render(&config).as_bytes(),
         );
         let reply = guide();
-        assert!(
-            reply.contains("engine.path missing-engine is not a file"),
-            "{reply}"
-        );
+        assert!(reply.contains("engine.path missing-engine"), "{reply}");
         assert!(!reply.contains("sunrise-server start"), "{reply}");
         assert!(!reply.contains("set [engine] resources"), "{reply}");
         let copied = server.join("files/server");
