@@ -2168,11 +2168,10 @@ impl Menu {
     fn furnace_take(&mut self, env: &Env, carried: &ItemStack) {
         self.touch();
         let removed = std::mem::take(&mut self.state.output_removed);
-        let extracted = if removed > 0 { removed } else { carried.count };
-        if extracted > 0 {
+        if removed > 0 {
             self.state
                 .furnace_extracted
-                .push((carried.clone(), extracted));
+                .push((carried.clone(), removed));
         }
         if self.state.item_smelted_hook && env.loop_context.side() == LoopSide::Server {
             let carried = (carried.count > 0).then(|| carried.clone());

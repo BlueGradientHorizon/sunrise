@@ -2303,6 +2303,105 @@ mod item_part_tests {
 
     #[test]
     #[ignore = "daily"]
+    fn hosted_furnace_counts_transfers_separately_from_smelted_callbacks() {
+        crate::game::in_own_process(
+            "game::stacked_on_other_tests::item_part_tests::hosted_furnace_counts_transfers_separately_from_smelted_callbacks",
+            || {
+                use sunrise_client::containers::{BlockEntity, Furnace, FurnaceKind};
+                use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+                with_part_and_furnace_hooks_mod(|| {
+                    with_guests(|game| {
+                        let pos = (1, 64, 1);
+                        let ingot = "minecraft:iron_ingot";
+                        game.world.chunks.insert(
+                            (0, 0),
+                            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                        );
+                        let furnace = game
+                            .pack
+                            .assets
+                            .registry
+                            .default_state("minecraft:furnace")
+                            .unwrap();
+                        game.world.set(pos.0, pos.1, pos.2, furnace).unwrap();
+                        game.world.block_entities.insert(
+                            pos,
+                            BlockEntity::Furnace(Furnace {
+                                kind: FurnaceKind::Furnace,
+                                items: [None, None, Some(ItemStack::new(ingot, 4))],
+                                lit_remaining: 0,
+                                lit_total: 0,
+                                cooking_timer: 0,
+                                cooking_total: 0,
+                                speed: 1.0,
+                                recipes_used: Default::default(),
+                            }),
+                        );
+                        assert!(matches!(
+                            game.open_block_menu(12, pos),
+                            crate::game::lan_actions::MenuOpen::Opened
+                        ));
+                        let window = game.lan.as_ref().unwrap().hub.guests[0]
+                            .menu
+                            .as_ref()
+                            .unwrap()
+                            .window;
+                        let click = |input| {
+                            Serverbound::ContainerClick(ContainerClick {
+                                container: window,
+                                state: 0,
+                                slot: 2,
+                                button: 0,
+                                input,
+                                changed: Vec::new(),
+                                carried: None,
+                            })
+                        };
+                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                            guest
+                                .inventory
+                                .fill(Some(ItemStack::new("minecraft:dirt", 64)));
+                            guest.inventory[0] = Some(ItemStack::new(ingot, 62));
+                        });
+                        set_part_script(PartScript::default());
+                        game.lan_guest_packet(12, click(1)); // QUICK_MOVE
+                        assert_eq!(
+                            game.world.block_entities[&pos].slots()[2],
+                            Some(ItemStack::new(ingot, 2))
+                        );
+                        assert_eq!(
+                            game.lan.as_ref().unwrap().hub.guests[0].inventory[0],
+                            Some(ItemStack::new(ingot, 64))
+                        );
+                        assert_eq!(
+                            smelted_events(),
+                            [
+                                (Some((ingot.to_owned(), 4)), 2),
+                                (Some((ingot.to_owned(), 2)), 0)
+                            ]
+                        );
+                        assert_eq!(extracted_events(), [(ingot.to_owned(), 2)]);
+
+                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                            guest.inventory[0] = None;
+                        });
+                        set_part_script(PartScript::default());
+                        game.lan_guest_packet(12, click(2)); // SWAP
+                        assert_eq!(game.world.block_entities[&pos].slots()[2], None);
+                        assert_eq!(
+                            game.lan.as_ref().unwrap().hub.guests[0].inventory[0],
+                            Some(ItemStack::new(ingot, 2))
+                        );
+                        assert_eq!(smelted_events(), [(Some((ingot.to_owned(), 2)), 0)]);
+                        assert_eq!(extracted_events(), [(ingot.to_owned(), 2)]);
+                    });
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn item_part_override_contract_supports_decline_edits_and_output_slots() {
         use sunrise_client::containers::{BlockEntity, Furnace, FurnaceKind};
         with_part_only_mod(|| {

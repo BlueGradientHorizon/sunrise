@@ -900,6 +900,13 @@ impl Menu {
             (None, Some(mut taken)) => {
                 if self.may_pickup(env, target) {
                     self.state.containers[PLAYER][inv_slot] = Some(taken.clone());
+                    if target_slot.role == Role::Output {
+                        // A swap skips FurnaceResultSlot.remove, so record the transfer without
+                        // adding to removeCount (the onTake callback still sees zero).
+                        self.state
+                            .furnace_extracted
+                            .push((taken.clone(), taken.count));
+                    }
                     self.set_by_player(env, target, None);
                     self.on_take(env, target, &mut taken);
                     if self.state.slots[target].role == Role::CraftResult {
