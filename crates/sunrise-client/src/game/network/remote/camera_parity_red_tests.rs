@@ -1149,8 +1149,7 @@ fn sleeping_spectated_living_entity_bed_view_and_visibility_26_3() {
             .unwrap();
         let stone = registry.default_state("minecraft:stone").unwrap();
 
-        let mut next_id = 500;
-        for tc in cases {
+        for (id, tc) in (500..).zip(cases.iter()) {
             let name = tc["name"].as_str().unwrap();
             let kind = tc["kind"].as_str().unwrap();
             let sleeping = tc["sleeping"].as_bool().unwrap();
@@ -1165,8 +1164,6 @@ fn sleeping_spectated_living_entity_bed_view_and_visibility_26_3() {
             };
             game.world.set(10, 64, 10, state).unwrap();
 
-            let id = next_id;
-            next_id += 1;
             add_entity_with_data(game, id, kind, [10.5, 64.6875, 10.5], 37.5, -15.0, 0);
             game.handle_packet(C::SetEntityData(play::SetEntityData {
                 id,
