@@ -189,7 +189,7 @@ fn constructing_a_menu_screen_requires_the_client() {
 }
 
 #[test]
-fn served_content_menu_buttons_dispatch_to_serving_host_only() {
+fn menu_buttons_follow_the_admitted_menu_or_stock_opener_owner() {
     use std::sync::{Arc, Mutex};
 
     struct HostPart(Arc<Mutex<Option<&'static str>>>);
@@ -295,10 +295,28 @@ fn served_content_menu_buttons_dispatch_to_serving_host_only() {
                 crate::dispatch_menu_button_valid(&host, menu, block, 1, &mut accepted);
                 *seen.lock().unwrap()
             };
+            // The game publishes exact admitted menu and block keys after resolving served_by.
+            // with_mods gives this snapshot its own thread-local dispatch table.
+            crate::__private::install_content_owners(
+                [
+                    ("runes:altar", "horizon_java"),
+                    ("runes_extra:forge", "horizon_java"),
+                    ("third:block", "third"),
+                    ("plain:table", "plain"),
+                ],
+                [],
+                [],
+                [
+                    ("runes:altar", "horizon_java"),
+                    ("runes_extra:forge", "horizon_java"),
+                    ("plain:table", "plain"),
+                ],
+            );
             crate::parts::tests::install_parts_fixture(&mods).unwrap();
             assert_eq!(menu_opener_owner("runes:altar", None), Some("horizon_java"));
+            // Custom types route by menu even when the opener belongs to another package.
             assert_eq!(
-                menu_opener_owner("runes_extra:forge", None),
+                menu_opener_owner("runes_extra:forge", Some("third:block")),
                 Some("horizon_java")
             );
             assert_eq!(
@@ -340,12 +358,21 @@ fn served_content_menu_buttons_dispatch_to_serving_host_only() {
         });
     });
 
-    let hijack_mods: crate::Mods = vec![third()].into();
+    struct NoParts;
+    #[mod_api::__subscriptions]
+    impl crate::Hooks for NoParts {}
+
+    let hijack_mods: crate::Mods = vec![
+        third(),
+        crate::ModEntry::new("horizon_java", Box::new(NoParts)),
+    ]
+    .into();
     crate::load_state::with_test_package_inventory(packages(), || {
         crate::testing::with_mods(hijack_mods.clone(), || {
+            crate::__private::install_content_owners([], [], [], [("runes:altar", "horizon_java")]);
             crate::parts::tests::install_parts_fixture(&hijack_mods).unwrap();
-            // A Part attached by a non-owner cannot become the button handler even
-            // when the serving mod itself did not register a Part.
+            // The admitted owner is loaded but did not attach a Part. Another mod's
+            // attached Part cannot become the button handler.
             *seen.lock().unwrap() = None;
             let mut accepted = false;
             crate::dispatch_menu_button_valid(&host, "runes:altar", None, 1, &mut accepted);

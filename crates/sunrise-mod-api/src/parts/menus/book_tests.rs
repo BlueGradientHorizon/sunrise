@@ -89,7 +89,7 @@ fn registration_refuses_unknown_books_duplicate_menus_and_overlapping_roles() {
 }
 
 #[test]
-fn menu_recipe_book_accepts_served_content_namespace_only_for_its_host() {
+fn menu_recipe_book_attribution_and_book_reuse_do_not_depend_on_served_namespaces() {
     let packages = vec![
         crate::PackageInfo::new(
             "horizon_java".into(),
@@ -132,21 +132,30 @@ fn menu_recipe_book_accepts_served_content_namespace_only_for_its_host() {
             host.menu_recipe_book("runes:altar", &book, "runes:crafting", roles())
                 .is_ok()
         );
-        assert!(
-            host.menu_recipe_book("plain:table", &book, "runes:crafting", roles())
-                .is_err()
-        );
-        assert!(
-            host.menu_recipe_book("minecraft:crafting", &book, "runes:crafting", roles())
-                .is_err()
-        );
+        host.menu_recipe_book("plain:table", &book, "runes:crafting", roles())
+            .unwrap();
+        let error = host
+            .menu_recipe_book("minecraft:crafting", &book, "runes:crafting", roles())
+            .unwrap_err();
+        assert!(error.contains("built-in menu"), "{error}");
 
-        let mut third = PartRegistrar::new("third");
-        let third_book = third.recipe_book_type("third:book").unwrap();
-        assert!(
-            third
-                .menu_recipe_book("runes:altar", &third_book, "runes:crafting", roles())
-                .is_err()
-        );
+        host.mod_id = "third";
+        host.menu_recipe_book("runes:forge", &book, "runes:crafting", roles())
+            .unwrap();
+        let error = host
+            .menu_recipe_book("runes:altar", &book, "runes:crafting", roles())
+            .unwrap_err();
+        assert!(error.contains("duplicate menu recipe book"), "{error}");
+
+        assert_eq!(host.recipe_book_types["runes:book"], "horizon_java");
+        for (menu, owner) in [
+            ("runes:altar", "horizon_java"),
+            ("plain:table", "horizon_java"),
+            ("runes:forge", "third"),
+        ] {
+            let declaration = &host.menu_recipe_books[menu];
+            assert_eq!(declaration.owner, owner);
+            assert_eq!(declaration.book, book);
+        }
     });
 }

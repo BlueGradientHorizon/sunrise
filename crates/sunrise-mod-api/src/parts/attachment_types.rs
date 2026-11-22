@@ -451,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn served_by_attachment_delegates_and_enforces_supplier_side() {
+    fn attachment_keys_are_independent_of_namespaces_but_enforce_supplier_side() {
         let packages = vec![
             package("host", crate::Side::Both),
             package("other", crate::Side::Both),
@@ -481,10 +481,11 @@ mod tests {
                 .unwrap();
             let errors = super::super::install_registrar(bad, &crate::parts::tests::rule_schema())
                 .unwrap_err();
-            assert_eq!(errors.len(), 1);
-            assert!(
-                errors[0].contains("srv_runes:synced") && errors[0].contains("side = \"server\""),
-                "{errors:?}"
+            assert_eq!(
+                errors,
+                [
+                    r#"package host attachment srv_runes:synced: a side = "server" package (srv_runes) cannot supply a synced attachment"#
+                ]
             );
             assert!(!mod_vocab::__private::parts_installation::parts_installed());
 
@@ -493,33 +494,49 @@ mod tests {
             good.register_attachment_type("srv_runes:internal", false)
                 .unwrap();
             good.mod_id = "other";
-            assert!(good.register_attachment_type("runes:other", false).is_err());
+            good.register_attachment_type("runes:other", false).unwrap();
+            assert_eq!(good.attachment_types["runes"]["other"].owner, "other");
+
+            let mut duplicate = PartRegistrar::new("host");
+            duplicate
+                .register_attachment_type("runes:charge", true)
+                .unwrap();
+            duplicate.mod_id = "other";
+            let duplicate_error =
+                "package other attachment runes:charge: already declared by package host";
             assert_eq!(
-                good.register_attachment_type("runes:charge", false),
-                Err(
-                    "package other attachment runes:charge: already declared by package host"
-                        .into()
-                )
+                duplicate.register_attachment_type("runes:charge", false),
+                Err(duplicate_error.into())
             );
-            good.refused.clear();
-            super::super::install_registrar(good, &crate::parts::tests::rule_schema()).unwrap();
             assert_eq!(
-                crate::__private::client_requirement("host"),
-                Some("declares the synced attachment runes:charge".into())
+                super::super::install_registrar(duplicate, &crate::parts::tests::rule_schema()),
+                Err(vec![duplicate_error.into()])
             );
-            let _caller = crate::content::crash::enter_native_mod(crate::content::crash::ModCall {
-                id: "other",
-                hook: "test",
-                part: None,
+
+            crate::testing::with_mods(Vec::new().into(), || {
+                super::super::install_registrar(good, &crate::parts::tests::rule_schema()).unwrap();
+                assert_eq!(
+                    crate::__private::client_requirement("host"),
+                    Some("declares the synced attachment runes:charge".into())
+                );
+                assert_eq!(crate::__private::client_requirement("other"), None);
+                let _caller =
+                    crate::content::crash::enter_native_mod(crate::content::crash::ModCall {
+                        id: "other",
+                        hook: "test",
+                        part: None,
+                    });
+                for (namespace, name, synced) in [
+                    ("runes", "charge", true),
+                    ("srv_runes", "internal", false),
+                    ("runes", "other", false),
+                ] {
+                    assert_eq!(
+                        mod_vocab::__private::validate_attachment_use(namespace, name, synced),
+                        Ok(())
+                    );
+                }
             });
-            assert_eq!(
-                mod_vocab::__private::validate_attachment_use("runes", "charge", true),
-                Ok(())
-            );
-            assert_eq!(
-                mod_vocab::__private::validate_attachment_use("srv_runes", "internal", false),
-                Ok(())
-            );
         });
     }
 }

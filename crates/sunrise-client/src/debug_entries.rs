@@ -803,8 +803,8 @@ mod tests {
             Some(DebugGroup::Memory)
         );
         let mut selection = DebugEntries::default();
-        selection.set_status("minecraft:custom_metric", Status::AlwaysOn);
-        assert!(selection.enabled(&kept, "minecraft:custom_metric", false, false));
+        selection.set_status("minecraft:custom_stat", Status::AlwaysOn);
+        assert!(selection.enabled(&kept, "minecraft:custom_stat", false, false));
         assert!(selection.any_enabled(&kept, false, false));
     }
 

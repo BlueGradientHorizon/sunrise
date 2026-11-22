@@ -123,20 +123,38 @@ fn cross_namespace_declarations_do_not_replace_existing_block_or_item_keys() {
         template: "minecraft:stone".into(),
         ..Item::default()
     };
+    let conflict = |kind, id: &str, reason: &str| {
+        DeclarationRefusal::new(
+            "other",
+            kind,
+            DeclarationError::Rejected {
+                id: id.into(),
+                reason: reason.into(),
+            },
+        )
+    };
     for (batch, expected) in [
         (
             DeclaredContent {
                 blocks: vec![block.validate_local().unwrap()],
                 ..Default::default()
             },
-            "other: test:a is already a block",
+            Ok(conflict(
+                DeclarationKind::Block,
+                "test:a",
+                "declared twice (already declared by mod test)",
+            )),
         ),
         (
             DeclaredContent {
                 items: vec![item.clone().validate_local().unwrap()],
                 ..Default::default()
             },
-            "other: test:b is already an item",
+            Ok(conflict(
+                DeclarationKind::Item,
+                "test:b",
+                "declared twice, or is also a block's item (already declared by mod test)",
+            )),
         ),
         (
             DeclaredContent {
@@ -150,7 +168,7 @@ fn cross_namespace_declarations_do_not_replace_existing_block_or_item_keys() {
                 ],
                 ..Default::default()
             },
-            "other: minecraft:stone is already an item",
+            Err("other: minecraft:stone is already an item"),
         ),
     ] {
         let mut mods = vec![declared_mod()];
@@ -163,8 +181,19 @@ fn cross_namespace_declarations_do_not_replace_existing_block_or_item_keys() {
             &mut refusals,
         )
         .unwrap();
-        assert!(refusals.is_empty(), "{refusals:?}");
-        assert_eq!(Plan::new(&base, &mods).err().unwrap().to_string(), expected);
+        match expected {
+            Ok(refusal) => {
+                // A second package's duplicate is caught while joining the batch.
+                assert_eq!(refusals, [refusal]);
+                assert_eq!(mods.len(), 1);
+                assert_eq!(mods[0].id, "test");
+            }
+            Err(expected) => {
+                // The prepared base item registry is first consulted by the plan.
+                assert!(refusals.is_empty(), "{refusals:?}");
+                assert_eq!(Plan::new(&base, &mods).err().unwrap().to_string(), expected);
+            }
+        }
     }
     fs::remove_dir_all(base).unwrap();
 }
