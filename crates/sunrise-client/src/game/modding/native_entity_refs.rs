@@ -143,10 +143,7 @@ impl Game<'_> {
             return Some(part);
         }
         remote.tracked(id)?;
-        match self.level_entity(id)? {
-            Target::Mob(mob) if !self.mobs.iter().any(|m| m.id == mob && !m.removed) => None,
-            target => Some(target),
-        }
+        self.level_entity(id)
     }
     /// What a handle names for a read that works on both sides: the server's
     /// entity (`native_entity_target`) or, on a client, its own copy of it.
