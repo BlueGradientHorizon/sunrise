@@ -130,6 +130,17 @@ impl<'a> DirectHit<'a> {
         }
     }
 }
+
+/// `EnderDragon.recreateFromPacket`: signed wrapping `i32` id of part `part` (`i + dragonId + 1`).
+pub(in crate::game) fn dragon_part_wire_id(dragon_id: u32, part: usize) -> i32 {
+    (dragon_id as i32).wrapping_add(1).wrapping_add(part as i32)
+}
+
+/// Inverse of [`dragon_part_wire_id`] for the 8 `EnderDragonPart` sub-entities.
+pub(in crate::game) fn dragon_part_index(dragon_id: u32, wire_id: i32) -> Option<usize> {
+    let offset = wire_id.wrapping_sub(dragon_id as i32).wrapping_sub(1);
+    (0..8).contains(&offset).then_some(offset as usize)
+}
 const FIGHT_FILE: &str = "data/minecraft/ender_dragon_fight.dat";
 pub(super) const MAX_HEALTH: f32 = 200.0;
 /// `Mob.getAmbientSoundInterval`.
@@ -2140,18 +2151,25 @@ impl Game<'_> {
         &self,
         pick: &mut crate::game::pick_accumulator::PickAccumulator,
     ) -> Option<(u32, f64)> {
+        use crate::game::pick_accumulator::PickTarget;
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
+            let id = entity.id();
+            if let Some(d) = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)
+                && let Some(part) = dragon_part_index(d.id, id as i32)
+            {
+                return Some((SPECIAL + part as u32, distance));
+            }
             return self
                 .special_targets()
                 .into_iter()
-                .any(|(id, _)| id == entity.id())
-                .then_some((entity.id(), distance));
+                .any(|(special, _)| special == id)
+                .then_some((id, distance));
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
         let mut best: Option<(u32, f64)> = None;
-        for (id, b) in self.special_targets() {
+        let mut consider = |target: PickTarget, special: u32, b: Aabb| {
             let (lo, hi) = (b.min_position(), b.max_position());
             let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
             let (mut t0, mut t1) = (0.0f64, reach);
@@ -2168,9 +2186,17 @@ impl Game<'_> {
                 t0 = t0.max(ta);
                 t1 = t1.min(tb);
             }
-            if hit && t0 <= t1 && pick.consider(self, id, t0) {
-                best = Some((id, t0));
+            if hit && t0 <= t1 && pick.consider_target(self, target, t0) {
+                best = Some((special, t0));
             }
+        };
+        if let Some(boxes) = self.dragon_part_boxes() {
+            for (i, part) in boxes.into_iter().enumerate() {
+                consider(PickTarget::DragonPart(i), SPECIAL + i as u32, part);
+            }
+        }
+        for c in self.crystals.iter() {
+            consider(PickTarget::Crystal(c.id), c.id, c.bounds());
         }
         best
     }
@@ -3909,12 +3935,10 @@ impl Game<'_> {
         };
         // DragonFireballRenderer.submit: turned by the camera's orientation.
         let [right, up] = super::billboard_axes(self.camera_orientation());
-        for b in self
-            .creatures
-            .projectiles
-            .iter()
-            .filter(|p| p.kind == sunrise_client::projectiles::ProjectileKind::DragonFireball)
-        {
+        for b in self.creatures.projectiles.iter().filter(|p| {
+            p.kind == sunrise_client::projectiles::ProjectileKind::DragonFireball
+                && !self.hides_as_camera(p.id)
+        }) {
             let p = glam::DVec3::new(
                 b.previous.x + (b.position.x - b.previous.x) * alpha,
                 b.previous.y + (b.position.y - b.previous.y) * alpha,
@@ -5197,11 +5221,18 @@ impl Game<'_> {
         let d = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)?;
         (0..8)
             .filter_map(|i| {
+                let part_id = dragon_part_wire_id(d.id, i);
                 let b = d.part_box(i);
                 let p = d.parts[i].0;
                 super::ray_box(eye, dir, reach, b)
-                    .filter(|&t| pick.consider(self, d.id + 1 + i as u32, t))
-                    .map(|t| ((d.id + 1 + i as u32) as i32, t, [p.x, p.y, p.z]))
+                    .filter(|&t| {
+                        pick.consider_target(
+                            self,
+                            crate::game::pick_accumulator::PickTarget::DragonPart(i),
+                            t,
+                        )
+                    })
+                    .map(|t| (part_id, t, [p.x, p.y, p.z]))
             })
             .last()
     }
@@ -5213,6 +5244,24 @@ mod crystal;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dragon_part_wire_ids_wrap_like_vanilla_i32() {
+        let neg_one = (-1i32) as u32;
+        for part in 0..8 {
+            let wire = dragon_part_wire_id(neg_one, part);
+            assert_eq!(wire, part as i32);
+            assert_eq!(dragon_part_index(neg_one, wire), Some(part));
+        }
+        assert_eq!(dragon_part_index(neg_one, -1), None);
+        assert_eq!(dragon_part_index(neg_one, 8), None);
+
+        let max = i32::MAX as u32;
+        assert_eq!(dragon_part_wire_id(max, 0), i32::MIN);
+        assert_eq!(dragon_part_index(max, i32::MIN), Some(0));
+        assert_eq!(dragon_part_wire_id(max, 7), i32::MIN + 7);
+        assert_eq!(dragon_part_index(max, i32::MIN + 7), Some(7));
+    }
 
     #[test]
     fn dragon_search_preserves_equal_cost_heap_order() {

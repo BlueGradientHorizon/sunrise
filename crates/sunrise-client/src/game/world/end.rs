@@ -282,6 +282,10 @@ impl EndState {
     }
     /// A server's move: an eye has no interpolation handler, so
     /// `moveOrInterpolateTo` puts it there at once. False when `id` isn't one.
+    pub(in crate::game) fn remote_eye_pose(&self, id: u32) -> Option<([f64; 3], [f64; 3])> {
+        let e = self.eyes.iter().find(|e| e.id == id)?;
+        Some((e.position.to_array(), e.previous.to_array()))
+    }
     pub(super) fn move_remote_eye(&mut self, id: u32, at: [f64; 3]) -> bool {
         let Some(e) = self.eyes.iter_mut().find(|e| e.id == id) else {
             return false;
@@ -1268,6 +1272,9 @@ impl Game<'_> {
         camera: glam::DVec3,
         out: &mut Vec<Vertex>,
     ) {
+        if self.hides_as_camera(crystal.id) {
+            return;
+        }
         let feet = glam::DVec3::new(crystal.position.x, crystal.position.y, crystal.position.z);
         let rel = feet - camera;
         if rel.length_squared() > 256.0 * 256.0 {
@@ -1514,6 +1521,9 @@ impl Game<'_> {
             yaw.cos() * pitch.sin(),
         ) * 0.25;
         for eye in &self.end.eyes {
+            if self.hides_as_camera(eye.id) {
+                continue;
+            }
             let p = eye.previous + (eye.position - eye.previous) * alpha - camera;
             out.extend(eye_quad(p.as_vec3(), right, up, r));
         }

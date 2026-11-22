@@ -228,7 +228,12 @@ impl Game<'_> {
             .is_some_and(|stack| self.stack_adventure_predicate(stack, component, pos))
     }
     /// `adventure_predicate` for any `stack`, not only the main hand's.
-    fn stack_adventure_predicate(&self, stack: &ItemStack, component: &str, pos: [i32; 3]) -> bool {
+    pub(in crate::game) fn stack_adventure_predicate(
+        &self,
+        stack: &ItemStack,
+        component: &str,
+        pos: [i32; 3],
+    ) -> bool {
         let Some(tag) = stack.data().and_then(|d| d.other(component)) else {
             return false;
         };

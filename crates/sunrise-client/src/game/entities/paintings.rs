@@ -376,6 +376,9 @@ impl Game<'_> {
         let sprites = &self.gui.atlas.sprites;
         let partial = alpha as f32;
         for p in &self.paintings {
+            if self.hides_as_camera(p.id) {
+                continue;
+            }
             // EntityRenderer.shouldRender: the default range and its box,
             // measured from the box's centre (HangingEntity's position).
             let (lo, hi) = p.bounds();

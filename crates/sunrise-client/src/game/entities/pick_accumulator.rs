@@ -1,10 +1,28 @@
 //! The running state of `ProjectileUtil.getEntityHitResult`.
 use super::Game;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PickTarget {
+    Entity(u32),
+    DragonPart(usize),
+    Crystal(u32),
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PickCandidate {
-    pub id: u32,
+    pub target: PickTarget,
     pub distance: f64,
+}
+
+impl PickCandidate {
+    /// Wire entity id for `CrosshairTarget::Entity`, falling back to synthetic ids for unnumbered server tests.
+    pub(super) fn entity_id(self, game: &Game<'_>) -> u32 {
+        game.pick_target_wire_id(self.target)
+            .unwrap_or(match self.target {
+                PickTarget::Entity(id) | PickTarget::Crystal(id) => id,
+                PickTarget::DragonPart(part) => super::dragon::SPECIAL + part as u32,
+            })
+    }
 }
 
 pub(super) struct PickAccumulator {
@@ -23,22 +41,31 @@ impl PickAccumulator {
     }
 
     pub(super) fn consider(&mut self, game: &Game<'_>, id: u32, distance: f64) -> bool {
-        if game.pick_camera_id() == Some(id) {
+        self.consider_target(game, PickTarget::Entity(id), distance)
+    }
+
+    pub(super) fn consider_target(
+        &mut self,
+        game: &Game<'_>,
+        target: PickTarget,
+        distance: f64,
+    ) -> bool {
+        if game.is_pick_camera_target(target) {
             return false;
         }
         // A ray that starts inside the box picks it only when `canBePickedFromInside`.
-        if distance == 0.0 && !game.pickable_from_inside(id) {
+        if distance == 0.0
+            && let PickTarget::Entity(id) = target
+            && !game.pickable_from_inside(id)
+        {
             return false;
         }
+        let candidate = PickCandidate { target, distance };
         if let Some(candidates) = &mut self.candidates {
-            candidates.push(PickCandidate { id, distance });
+            candidates.push(candidate);
             return false;
         }
-        self.accept(
-            PickCandidate { id, distance },
-            game.pick_shares_vehicle(id),
-            false,
-        )
+        self.accept(candidate, game.pick_target_shares_vehicle(target), false)
     }
 
     /// Candidate geometry is copied while the family lists are borrowed; only a
@@ -55,17 +82,18 @@ impl PickAccumulator {
         let candidates = self.candidates.take().unwrap_or_default();
         let camera = game.pick_camera_id();
         for &candidate in &candidates {
-            if game.pick_camera_id() == Some(candidate.id) {
+            if game.is_pick_camera_target(candidate.target) {
                 continue;
             }
-            let same_vehicle = game.pick_shares_vehicle(candidate.id);
+            let same_vehicle = game.pick_target_shares_vehicle(candidate.target);
             let mut allowed = false;
             if candidate.distance != 0.0
                 && (candidate.distance < self.nearest || self.nearest == 0.0)
                 && same_vehicle
                 && let Some(epoch) = game.native_lifecycle.epoch()
+                && let Some(wire_id) = game.pick_target_wire_id(candidate.target)
             {
-                let entity = mod_api::EntityRef::new(epoch, candidate.id);
+                let entity = mod_api::EntityRef::new(epoch, wire_id);
                 game.ask_can_rider_interact(entity, &mut allowed);
                 if game.pick_camera_id() != camera {
                     // The captured ray and vehicle decision no longer belong
@@ -114,8 +142,33 @@ impl Game<'_> {
     }
 
     pub(super) fn pick_camera_id(&self) -> Option<u32> {
-        self.remote_camera_id()
-            .or_else(|| self.remote.as_ref().map(|r| r.entity_id as u32))
+        let remote = self.remote.as_ref()?;
+        if let Some(id) = remote.camera {
+            remote.detached_camera.is_none().then_some(id as u32)
+        } else {
+            Some(remote.entity_id as u32)
+        }
+    }
+
+    /// Wire entity id of a pick target, without confusing real ids with synthetic special ranges.
+    pub(super) fn pick_target_wire_id(&self, target: PickTarget) -> Option<u32> {
+        match target {
+            PickTarget::Entity(id) => Some(id),
+            PickTarget::DragonPart(part) => self
+                .dragon
+                .as_ref()
+                .filter(|d| d.id != 0)
+                .map(|d| super::dragon::dragon_part_wire_id(d.id, part) as u32),
+            PickTarget::Crystal(id) => (id != 0).then_some(id),
+        }
+    }
+
+    /// True if `target` is the live camera entity.
+    pub(super) fn is_pick_camera_target(&self, target: PickTarget) -> bool {
+        let Some(camera) = self.pick_camera_id() else {
+            return false;
+        };
+        self.pick_target_wire_id(target) == Some(camera)
     }
 
     fn pick_vehicle_root(&self, id: u32) -> Option<u32> {
@@ -141,13 +194,17 @@ impl Game<'_> {
         None
     }
 
-    pub(super) fn pick_shares_vehicle(&self, id: u32) -> bool {
+    pub(super) fn pick_target_shares_vehicle(&self, target: PickTarget) -> bool {
+        let Some(id) = self.pick_target_wire_id(target) else {
+            return false;
+        };
         let camera_root = self
             .pick_camera_id()
             .and_then(|camera| self.pick_vehicle_root(camera))
             .or_else(|| {
-                self.riding
-                    .and_then(|vehicle| self.pick_vehicle_root(vehicle))
+                self.controls_camera()
+                    .then(|| self.riding.and_then(|v| self.pick_vehicle_root(v)))
+                    .flatten()
             });
         camera_root.is_some() && self.pick_vehicle_root(id) == camera_root
     }
@@ -219,7 +276,7 @@ mod tests {
         let mut pick = PickAccumulator::new(5.0);
         assert!(!pick.accept(
             PickCandidate {
-                id: 2,
+                target: PickTarget::Entity(2),
                 distance: 1.0
             },
             true,
@@ -227,7 +284,7 @@ mod tests {
         ));
         assert!(pick.accept(
             PickCandidate {
-                id: 1,
+                target: PickTarget::Entity(1),
                 distance: 0.0
             },
             true,
@@ -235,17 +292,17 @@ mod tests {
         ));
         assert!(pick.accept(
             PickCandidate {
-                id: 2,
+                target: PickTarget::Entity(2),
                 distance: 3.0
             },
             true,
             false
         ));
-        assert_eq!(pick.hovered.unwrap().id, 2);
+        assert_eq!(pick.hovered.unwrap().target, PickTarget::Entity(2));
         assert_eq!(pick.nearest, 0.0);
         assert!(pick.accept(
             PickCandidate {
-                id: 3,
+                target: PickTarget::Entity(3),
                 distance: 4.0
             },
             false,
@@ -254,7 +311,7 @@ mod tests {
         assert_eq!(pick.nearest, 4.0);
         assert!(!pick.accept(
             PickCandidate {
-                id: 4,
+                target: PickTarget::Entity(4),
                 distance: 4.5
             },
             false,
