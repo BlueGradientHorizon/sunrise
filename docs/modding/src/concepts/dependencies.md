@@ -23,12 +23,13 @@ for more libraries. A local copy takes precedence over the registry and still ha
 declared version. Otherwise the tool resolves the required libraries through the Sunrise mod
 registry for the project's Minecraft version, including their own requirements. To include an
 optional library, supply it with `--with`; an optional declaration alone never fetches one from the
-registry. A library pinned to another Sunrise build must
-carry a uses list that shows it fits the project's SDK. The tool does not change the library's pin.
+registry. The tool tries in-range registry versions newest first. A library pinned to another Sunrise
+build must carry a uses list that shows it fits the project's SDK. The tool does not change its pin.
 
 `check` type-checks the wired code without producing mod binaries, and `build` packages only the
-project itself. `run` puts the resolved native libraries alongside the project in the development game.
-Content-only dependencies don't generate Rust links; install them separately when running the mod.
+project itself. `run` puts the resolved native libraries and local content packages supplied with
+`--with` alongside the project in the development game. Content-only dependencies don't generate
+Rust links.
 
 The [registry index and installers](../reference/registry-index.md#planning-installs-and-removals) use these
 same manifest declarations. A new submission must resolve with the listed dependencies on its Minecraft release.

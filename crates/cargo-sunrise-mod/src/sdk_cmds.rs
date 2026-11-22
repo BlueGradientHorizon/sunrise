@@ -9,7 +9,7 @@ use mod_surface::child::ChildEntry;
 use mod_surface::uses::{Change, Fit, FitReport, PLAIN_SCHEMA, USES_FILE, UsesTable};
 use mod_surface::{Surface, leaf};
 use std::path::Path;
-use std::process::{Command, ExitCode};
+use std::process::ExitCode;
 use sunrise_mod_package::{
     Manifest, Package,
     manifest::MAX_USES,
@@ -791,19 +791,7 @@ pub(crate) fn check_mod(entry: ChildEntry, show_uses: bool, with: &[&Path]) -> R
     // The mod's `sunrise-mod-api` is a path into `.sunrise/sdk/`: fetch it before Cargo looks.
     let sdk = fetch_pinned(root, &native.sunrise)?;
     let surface = surface_of(&sdk)?;
-    if with.is_empty() && package.manifest.dependencies.is_empty() {
-        let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-        let status = Command::new(cargo)
-            .arg("check")
-            .current_dir(root)
-            .status()
-            .map_err(|e| format!("cargo check: {e}"))?;
-        if !status.success() {
-            return Err(format!("cargo check failed: {status}"));
-        }
-    } else {
-        crate::dev::check(root, &package, with)?;
-    }
+    crate::dev::check(root, &package, with)?;
     match uses_table::scan(entry, root, &package.manifest, &surface)? {
         Scanned::Uses(uses) => {
             print!(

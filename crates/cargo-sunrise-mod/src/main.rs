@@ -289,9 +289,13 @@ fn build_command(
                 &package,
                 &with,
                 update_lock,
+                archive.as_ref().map_or(
+                    sunrise_native_build::contract::TargetName::Client,
+                    |(_, _, target, _)| *target,
+                ),
                 archive
                     .as_ref()
-                    .map(|(_, tag, target, version)| (*target, *tag, version.as_str())),
+                    .map(|(_, tag, _, version)| (*tag, version.as_str())),
             )
         })
         .transpose()?;
@@ -898,8 +902,9 @@ fn run(args: &[String]) -> Result<(), RunError> {
             "run --resources is for a native mod: for a content mod, give the game its own option after `--` (`run -- --resources <folder>`)".into(),
         ));
     }
+    let launch = jar::launch_arguments(project, extra).map_err(RunError::Build)?;
     let home =
-        jar::stage_for_run(&package.manifest, project, jars, extra).map_err(RunError::Build)?;
+        jar::stage_for_run([&package.manifest], project, jars, &launch).map_err(RunError::Build)?;
     // A content mod carries no uses table.
     let path = build_in(project, &package.manifest).map_err(RunError::Build)?;
     let game = game

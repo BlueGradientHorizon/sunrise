@@ -16,7 +16,7 @@ folder.
 | `keygen [--out <dir>] [--no-password]` | Makes a Minisign pair in the [mod’s per-user key folder](../../how-to/publish.md#signing) or the named folder. Prints the public key; the private key is passphrase-encrypted by default and always on Windows. Refuses to overwrite either file. |
 | `sign <file> [--key <path>] [--no-password]` or `sign <file> --key-env` | Writes the detached `<file>.minisig`, without overwriting an existing signature. Uses the current mod’s per-user signing key by default. For CI, `--key-env` reads `SUNRISE_MOD_SIGNING_KEY` and optional `SUNRISE_MOD_SIGNING_PASSPHRASE` with no prompt; see [Signing](../../how-to/publish.md#signing). |
 | `run [--resources <folder>] [--jars <dir>] [--with <path>]… [-- <game args>]` | For a native mod, builds, stages the game with the mod and its libraries in `target/sunrise-mod/run/` and starts it. |
-| `check [--uses] [--with <path>]…` | Checks the package rules and each [render pipeline shader](../../how-to/client/render-pipelines.md). For a native mod it then runs `cargo check` with the same libraries as `build`, without packaging or linking mod binaries, and reports what the project uses of its pinned build. `--uses` lists each item with the line that brought it in, and how the mod builds each struct it builds with a literal. |
+| `check [--uses] [--with <path>]…` | Checks the package rules and each [render pipeline shader](../../how-to/client/render-pipelines.md). For a native mod it then type-checks through the same SDK route and with the same libraries as `build`, without packaging or linking mod binaries, and reports what the project uses of its pinned build. `--uses` lists each item with the line that brought it in, and how the mod builds each struct it builds with a literal. |
 | `hooks <text> [--all]` | Searches the pinned build's hooks offline, by id, doc and their NeoForge, Fabric and Paper names; every word must match. `--all` searches every record. Matches in the id come first, then in a counterpart, then in the doc. |
 | `sdk diff <build> <build>` | What changed in the surface from the first build to the second, [classified](02-surface.md#what-a-change-is), with the second build's change notes (why, and what a mod does now) under the changes they name: the notes of the changes since the SDK published before it. It reads only the builds' small files, so it works for builds whose compiled files are pruned. |
 | `fits [<file.smod>] [--build <build>]…` | Whether the mod, or a package, fits the current Nightly or each build named: one line per build, `made for`, `fits`, or `does not fit` with the changed items. |
@@ -24,8 +24,8 @@ folder.
 
 ## `build` for a native mod
 
-Before compiling, `build` fetches the build's `runtime`, `api` and `engine` slices for this computer once, checks the
-signed sums and each slice as the SDK fetch does, and unpacks them into the tool's cache, shared by every project:
+Before compiling, `build` fetches the build's `runtime` and `api` slices for this computer, plus `engine` for mods
+that need it. It verifies the signed sums and unpacks the slices into the tool's cache, shared by every project:
 `$XDG_CACHE_HOME/sunrise-mod` (else `~/.cache/sunrise-mod`) on Linux, `~/Library/Caches/sunrise-mod` on macOS,
 `%LOCALAPPDATA%\sunrise-mod` on Windows; `SUNRISE_MOD_CACHE` names another folder. Deleting the folder clears it.
 The Rust is the one `sdk.json` names: `rustup`'s, installed with `--profile minimal` when missing, or the `rustc` on
@@ -35,7 +35,7 @@ a content mod. The compile
 is [`native-build`'s](08-native-build.md), in process, with registry crates approved (the mod's own `Cargo.toml`),
 for the `client` side. It prints `Built <library>` and the build log's path, and exits non-zero with the error on failure.
 
-In `build`, `run` and project `check`, repeat `--with <path>` for local native library projects or `.smod` files.
+In `build`, `run` and project `check`, repeat `--with <path>` for local mod projects or `.smod` files.
 Optional libraries must be supplied with `--with`. For required dependencies not supplied locally, the tool
 reads the Sunrise mod registry, verifies the selected
 files against the index and caches their unpacked source in `registry/<id>/<version>/<sha256>/` in the tool's
@@ -51,6 +51,8 @@ for the selected host. It refuses mod dependencies and routes other than the sta
 --prepare --output <folder>`). It copies the built game program, its libraries, the `native-mods.json` record naming
 the mod libraries and their package files into `target/sunrise-mod/run/app/`, keeps the game folder and `SUNRISE_HOME`
 in `run/game/` and `run/home/`, and starts the program with `--game-dir`, `--resources` and the arguments after `--`.
+`run -- --dedicated` uses the server SDK and server-side dependency declarations. `--jars` supplies exact
+originals for both the project and its staged dependencies.
 When the pinned game supports `SUNRISE_LOG_STDERR`, `run` shows the native mod's own log records (INFO and above)
 live in the terminal. The full client log is normally in `target/sunrise-mod/run/home/logs/latest.log`.
 For a mod with `[[jar]]` entries, `run` verifies and stages the originals before building. See [Java jars as external

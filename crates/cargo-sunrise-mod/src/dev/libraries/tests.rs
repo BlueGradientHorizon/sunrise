@@ -52,7 +52,7 @@ fn a_missing_requirement_names_the_mod_range_and_both_sources() {
         index: Index::default(),
         side: Side::Client,
     };
-    let error = libraries.plan(&addon, "26.3").err().unwrap();
+    let error = libraries.plan(&addon, "26.3", |_, _| true).err().unwrap();
     for required in [
         "addon",
         "missing_library",
@@ -62,6 +62,56 @@ fn a_missing_requirement_names_the_mod_range_and_both_sources() {
     ] {
         assert!(error.contains(required), "{error}");
     }
+}
+
+#[test]
+fn fit_is_checked_newest_first_and_only_as_far_as_the_range_needs() {
+    let addon = manifest("addon", "1.0.0", "library='^1'");
+    let mut index = indexed(&[("library", serde_json::json!([]))]);
+    let project = &mut index.projects[0];
+    let row = project.versions[0].clone();
+    project.versions = ["1.0.0", "2.0.0", "1.1.0"]
+        .map(|version| Version {
+            version: version.into(),
+            ..row.clone()
+        })
+        .into();
+    for (unfit, expected, probes) in [
+        (Some("1.1.0"), "1.0.0", &["1.1.0", "1.0.0"][..]),
+        (None, "1.1.0", &["1.1.0"][..]),
+    ] {
+        let calls = RefCell::new(Vec::new());
+        let selected =
+            resolve::for_manifest(&index, &addon, &[], "26.3", Side::Client, |_, row| {
+                calls.borrow_mut().push(row.version.clone());
+                Some(row.version.as_str()) != unfit
+            })
+            .unwrap();
+        assert_eq!(selected.registry[0].1.version, expected);
+        assert_eq!(calls.into_inner(), probes);
+    }
+}
+
+#[test]
+fn a_local_content_package_satisfies_a_required_edge_without_the_index() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("content");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::write(
+        dir.join(sunrise_mod_package::manifest::MANIFEST),
+        "id='content'\nname='Content'\nversion='1.0.0'\napi='0.2'\ncapabilities=['registries']\n",
+    )
+    .unwrap();
+    let path = root.path().join("content.smod");
+    std::fs::write(&path, Package::pack_directory(&dir).unwrap()).unwrap();
+    let addon = manifest("addon", "1.0.0", "content='^1'");
+    let libraries = Libraries::read(&addon, &[&path], Side::Client).unwrap();
+    assert!(libraries.index.projects.is_empty());
+    let selected = libraries
+        .plan(&addon, "26.3", |_, _| panic!("no native candidate"))
+        .unwrap();
+    assert_eq!(selected.local, ["content"]);
+    assert!(selected.registry.is_empty());
 }
 
 #[test]

@@ -19,7 +19,7 @@ fn builds_and_checks_a_native_addon_with_local_and_registry_libraries() {
     fs::create_dir_all(target).unwrap();
     let scratch = tempfile::tempdir_in(target).unwrap();
     let root = scratch.path().canonicalize().unwrap();
-    let library = root.join("test_library");
+    let library = root.join("native");
     let addon = root.join("test_addon");
     let tool = |dir: &Path, args: &[&str], registry: Option<&str>| {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_cargo-sunrise-mod"));
@@ -50,7 +50,7 @@ fn builds_and_checks_a_native_addon_with_local_and_registry_libraries() {
     };
     passed(tool(
         &root,
-        &["new", "test_library", "--template", "native"],
+        &["new", "native", "--template", "native"],
         None,
     ));
     passed(tool(
@@ -77,7 +77,8 @@ struct Addon;
 #[mod_api::sunrise_mod]
 impl mod_api::Hooks for Addon {
     fn register(&self, _: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        assert_eq!(test_library::magic(), 1729);
+        assert_eq!(native::magic(), 1729);
+        println!("addon registered with server library");
         std::process::exit(0);
     }
 }
@@ -87,24 +88,57 @@ impl mod_api::Hooks for Addon {
     // The alias must be the mod ID, not the Cargo package's name.
     let cargo = library.join("Cargo.toml");
     let text = fs::read_to_string(&cargo).unwrap();
-    fs::write(&cargo, text.replace("test_library", "check-library-crate")).unwrap();
-    writeln!(
-        fs::OpenOptions::new()
-            .append(true)
-            .open(addon.join("sunrise-mod.toml"))
-            .unwrap(),
-        "\n[dependencies]\ntest_library = '=0.1.0'"
+    fs::write(&cargo, text.replace("native", "check-library-crate")).unwrap();
+    let library_manifest = library.join("sunrise-mod.toml");
+    let original = fs::read_to_string(&library_manifest)
+        .unwrap()
+        .replace("0.1.0", "1.0.0");
+    fs::write(&library_manifest, &original).unwrap();
+    let addon_manifest = addon.join("sunrise-mod.toml");
+    let base_manifest = fs::read_to_string(&addon_manifest).unwrap();
+    let dependencies = |rows: &str| {
+        fs::write(
+            &addon_manifest,
+            format!("{base_manifest}\n[dependencies]\n{rows}\n"),
+        )
+        .unwrap()
+    };
+    dependencies("native = '^1'");
+    let path = library.to_str().unwrap();
+    // A missing registry cannot stop a complete local build. Check first: the API route should
+    // type-check the linkage without either linking mod libraries or fetching an engine slice.
+    let offline = Some("http://127.0.0.1:1");
+    let stdout = passed(tool(&addon, &["check", "--with", path], offline));
+    assert!(
+        stdout.contains("Downloading api-") && !stdout.contains("Downloading engine-"),
+        "{stdout}"
+    );
+    passed(tool(&addon, &["build", "--with", path], offline));
+
+    let content = root.join("content");
+    fs::create_dir(&content).unwrap();
+    fs::write(
+        content.join("sunrise-mod.toml"),
+        "id='content'\nname='Content'\nversion='1.0.0'\napi='0.2'\ncapabilities=['registries']\n",
     )
     .unwrap();
-    let path = library.to_str().unwrap();
+    let content_package = root.join("content.smod");
+    fs::write(&content_package, Package::pack_directory(&content).unwrap()).unwrap();
+    dependencies("native = '^1'\ncontent = '^1'");
+    let content_path = content_package.to_str().unwrap();
     for command in ["build", "check"] {
-        passed(tool(&addon, &[command, "--with", path], None));
+        passed(tool(
+            &addon,
+            &[command, "--with", path, "--with", content_path],
+            offline,
+        ));
     }
+    dependencies("native = '^1'");
     let source = addon.join("src/lib.rs");
     let code = fs::read_to_string(&source).unwrap();
     fs::write(
         &source,
-        format!("{code}\nfn wrong() -> &'static str {{ test_library::magic() }}"),
+        format!("{code}\nfn wrong() -> &'static str {{ native::magic() }}"),
     )
     .unwrap();
     let refused = tool(&addon, &["check", "--with", path], None);
@@ -117,8 +151,6 @@ impl mod_api::Hooks for Addon {
     );
     fs::write(&source, code).unwrap();
 
-    let manifest = library.join("sunrise-mod.toml");
-    let original = fs::read_to_string(&manifest).unwrap();
     let pin = Package::read(&library)
         .unwrap()
         .manifest
@@ -126,30 +158,44 @@ impl mod_api::Hooks for Addon {
         .unwrap()
         .sunrise;
     let other_pin = "a".repeat(40);
-    fs::write(&manifest, original.replace(&pin, &other_pin)).unwrap();
+    fs::write(&library_manifest, original.replace(&pin, &other_pin)).unwrap();
     let refused = tool(&addon, &["check", "--with", path], None);
     let error = String::from_utf8_lossy(&refused.stderr);
     assert!(
         !refused.status.success()
-            && error.contains("test_library")
+            && error.contains("native")
             && error.contains(&other_pin)
             && error.contains("uses list"),
         "{error}"
     );
-    fs::write(&manifest, original).unwrap();
-
+    let newest = root.join("native-newest.smod");
+    fs::write(
+        &library_manifest,
+        original.replace(&pin, &other_pin).replace("1.0.0", "1.1.0"),
+    )
+    .unwrap();
+    let newest_bytes = Package::pack_directory(&library).unwrap();
+    fs::write(&newest, &newest_bytes).unwrap();
+    fs::write(&library_manifest, original).unwrap();
     let bytes = Package::pack_directory(&library).unwrap();
-    let package = root.join("test_library.smod");
+    let package = root.join("native.smod");
     fs::write(&package, &bytes).unwrap();
-    let facts = index::inspect(&Kind::NativeMod, &package).unwrap();
+    let rows: Vec<_> = [(&package, &bytes), (&newest, &newest_bytes)]
+        .into_iter()
+        .map(|(path, bytes)| {
+            let facts = index::inspect(&Kind::NativeMod, path).unwrap();
+            let name = path.file_name().unwrap().to_str().unwrap();
+            serde_json::json!({"version": facts.version, "api": facts.api, "game": facts.game,
+            "dependencies": facts.dependencies, "file": {"name": name, "size": bytes.len(),
+                "sha256": index::sha256(bytes), "url": format!("https://example.org/{name}")}})
+        })
+        .collect();
     let payload = serde_json::to_vec(&serde_json::json!({
         "schema": index::SCHEMA,
         "projects": [{
-            "id": "test_library", "kind": "native-mod", "name": "Test Library", "summary": "Fixture library",
+            "id": "native", "kind": "native-mod", "name": "Test Library", "summary": "Fixture library",
             "license": "MIT", "source": "https://example.org/source",
-            "versions": [{"version": facts.version, "api": facts.api, "game": facts.game,
-                "dependencies": facts.dependencies, "file": {"name": "test_library.smod", "size": bytes.len(),
-                    "sha256": index::sha256(&bytes), "url": "https://example.org/test_library.smod"}}]
+            "versions": rows
         }]
     })).unwrap();
     let parsed = index::Index::parse(std::str::from_utf8(&payload).unwrap()).unwrap();
@@ -157,10 +203,12 @@ impl mod_api::Hooks for Addon {
     let http = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
     let base = format!("http://{}", http.local_addr().unwrap());
     let registry = thread::spawn(move || {
-        // Both commands read the current index; only build downloads the package.
+        // Both commands read the current index. Build fetches the newest in-range release
+        // first, rejects its pin, then fetches 1.0.0. Check reuses both verified downloads.
         for (expected, body) in [
             ("/index.json", &payload),
-            ("/files/test_library/test_library.smod", &bytes),
+            ("/files/native/native-newest.smod", &newest_bytes),
+            ("/files/native/native.smod", &bytes),
             ("/index.json", &payload),
         ] {
             let (mut stream, _) = http.accept().unwrap();
@@ -187,7 +235,7 @@ impl mod_api::Hooks for Addon {
     for command in ["build", "check"] {
         let stdout = passed(tool(&addon, &[command], Some(&base)));
         assert!(
-            stdout.contains("Using library test_library 0.1.0 from the Sunrise mod registry"),
+            stdout.contains("Using library native 1.0.0 from the Sunrise mod registry"),
             "{stdout}"
         );
     }
@@ -195,7 +243,7 @@ impl mod_api::Hooks for Addon {
     let output = addon.join("target/sunrise-mod/test_addon.smod");
     assert_eq!(Package::read(&output).unwrap().manifest.id, "test_addon");
     assert_eq!(
-        Package::entry(&output, "test_library/src/lib.rs", 4096).unwrap(),
+        Package::entry(&output, "native/src/lib.rs", 4096).unwrap(),
         None
     );
 
@@ -209,7 +257,8 @@ impl mod_api::Hooks for Addon {
     let run = addon.join("target/sunrise-mod/run");
     fs::create_dir_all(run.join("game")).unwrap();
     fs::write(run.join("game/eula.txt"), "eula=true\n").unwrap();
-    passed(tool(
+    dependencies("native = { version = '^1', side = 'server' }");
+    let stdout = passed(tool(
         &addon,
         &[
             "run",
@@ -220,11 +269,15 @@ impl mod_api::Hooks for Addon {
             "--",
             "--dedicated",
         ],
-        None,
+        offline,
     ));
+    assert!(
+        stdout.contains("addon registered with server library"),
+        "{stdout}"
+    );
     let records = fs::read_to_string(run.join("app/native-mods.json")).unwrap();
     assert!(
-        records.contains("test_addon") && records.contains("test_library"),
+        records.contains("test_addon") && records.contains("native"),
         "{records}"
     );
 }

@@ -26,7 +26,7 @@ const COMMANDS: &[Command] = &[
         name: "run",
         everyday: true,
         usage: "run [--game <sunrise-client>] [--resources <folder>] [--jars <dir>] [--with <path>]… [-- <game args>]",
-        summary: "Builds the mod and starts the game with its declared native libraries; repeat --with for local library folders or .smod files. --game names the game for a content mod, --resources names prepared resources for the native mod's pinned SDK, and --jars names a folder of original Java jars by SHA-512.",
+        summary: "Builds the mod and starts the game with its declared libraries; repeat --with for local mod folders or .smod files. --game names the game for a content mod, --resources names prepared resources for the native mod's pinned SDK, and --jars names a folder of original Java jars by SHA-512.",
     },
     Command {
         name: "check",

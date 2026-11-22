@@ -216,6 +216,7 @@ impl NativeSdk {
     fn slices(
         &self,
         side: sdk::Side,
+        route: Route,
         release: bool,
     ) -> Result<sunrise_native_build::prebuilt::Package, String> {
         sdk_fetch::fetch_slices(
@@ -223,6 +224,7 @@ impl NativeSdk {
             &self.index,
             &self.rust.target,
             side,
+            route,
             release,
             &self.dir,
             &self.stamp,
@@ -311,7 +313,7 @@ impl Prepared {
             error.replace(
                 &format!(
                     "{}{sep}",
-                    self.plan.mods.join(id).display(),
+                    self.plan.mods.join(stage_name(id)).display(),
                     sep = std::path::MAIN_SEPARATOR
                 ),
                 &format!("{}{sep}", author.display(), sep = std::path::MAIN_SEPARATOR),
@@ -333,12 +335,18 @@ fn build_error(error: String) -> String {
     )
 }
 
+/// Avoid names reserved by package discovery at the input root (such as `native` and `rust`).
+fn stage_name(id: &str) -> String {
+    format!("mod-{id}")
+}
+
 fn prepare(
     project: &Path,
     package: &Package,
     with: &[&Path],
     update_lock: bool,
-    release_target: Option<(contract::TargetName, &str, &str)>,
+    target: contract::TargetName,
+    release_identity: Option<(&str, &str)>,
 ) -> Result<Prepared, String> {
     let project =
         dunce::canonicalize(project).map_err(|e| format!("{}: {e}", project.display()))?;
@@ -349,13 +357,12 @@ fn prepare(
     let build = bundle.native().sunrise.clone();
     let id = bundle.manifest.id.clone();
     let cargo = sunrise_native_build::api::Project::read(&bundle).map_err(|e| e.to_string())?;
-    let release = release_target.is_some();
+    let release = release_identity.is_some();
     if release {
         sunrise_native_build::prebuilt::release_project(&cargo)?;
     }
     let crate_name = cargo.crate_name();
     let registry = matches!(Route::of(&[cargo]), Route::Registry);
-    let target = release_target.map_or(contract::TargetName::Client, |(target, _, _)| target);
     let side = sunrise_native_build::prebuilt::side(target.into());
     let dependencies = libraries::Libraries::read(
         &bundle.manifest,
@@ -389,15 +396,9 @@ fn prepare(
         .lock()
         .map_err(|e| format!("{}: {e}", lock_path.display()))?;
     let input = tempfile::tempdir_in(&work).map_err(|e| format!("{}: {e}", work.display()))?;
-    let mut origins = dependencies.stage(
-        &bundle.manifest,
-        &bundle.native().game,
-        &cache,
-        input.path(),
-    )?;
-    origins.insert(id.clone(), project.clone());
     let sdk = native_sdk(&cache, &build)?;
-    libraries::check_fit(project.as_path(), &sdk, input.path())?;
+    let mut origins = dependencies.stage(&bundle, &sdk, &cache, input.path())?;
+    origins.insert(id.clone(), project.clone());
     let mixins = if bundle.needs_mixins() {
         sunrise_native_build::MixinsIdentity::resolve([&bundle], Some(&sdk.index.mixins))?
             .revision()
@@ -409,16 +410,14 @@ fn prepare(
             .unwrap_or(&sdk.index.mixins.rev)
     }
     .to_owned();
-    let release_host = release_target
-        .map(|(_, tag, version)| {
+    let release_host = release_identity
+        .map(|(tag, version)| {
             let host = sdk::Asset::host_name(&sdk.rust.target, side);
             let name = crate::release::AssetName::archive(&id, version, tag, &host)?;
             Ok::<_, String>((host, name))
         })
         .transpose()?;
-    let slices = sdk.slices(side, release)?;
-    let rust_release = sdk.index.toolchain.rust;
-    let rust = sdk.rust;
+    let rust = &sdk.rust;
     crate::native_build::install_host(&work);
     sunrise_native_build::clear_log()?;
 
@@ -444,9 +443,18 @@ fn prepare(
         .map_err(build_error)?;
     }
     crate::registry_source::write_files(
-        &input.path().join(&id),
+        &input.path().join(stage_name(&id)),
         package.directory_files(&project)?,
     )?;
+    let staged = sunrise_native_build::scan_bundles(input.path())?;
+    let projects = staged
+        .iter()
+        .map(sunrise_native_build::api::Project::read)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let slices = sdk.slices(side, Route::of(&projects), release)?;
+    let rust_release = sdk.index.toolchain.rust;
+    let rust = sdk.rust;
     // A stable source path keeps the native builder's Cargo stage and fingerprints reusable.
     let mods = work.join("input");
     match fs::remove_dir_all(&mods) {
@@ -478,7 +486,14 @@ fn prepare(
 }
 
 pub(crate) fn check(project: &Path, package: &Package, with: &[&Path]) -> Result<(), String> {
-    let prepared = prepare(project, package, with, false, None)?;
+    let prepared = prepare(
+        project,
+        package,
+        with,
+        false,
+        contract::TargetName::Client,
+        None,
+    )?;
     contract::check_rust(&prepared.plan).map_err(|error| prepared.failed(error))
 }
 
@@ -488,9 +503,17 @@ pub(crate) fn build(
     package: &Package,
     with: &[&Path],
     update_lock: bool,
-    release_target: Option<(contract::TargetName, &str, &str)>,
+    target: contract::TargetName,
+    release_identity: Option<(&str, &str)>,
 ) -> Result<Built, String> {
-    let mut prepared = prepare(project, package, with, update_lock, release_target)?;
+    let mut prepared = prepare(
+        project,
+        package,
+        with,
+        update_lock,
+        target,
+        release_identity,
+    )?;
     let id = &prepared.id;
     let failed = |error| prepared.failed(error);
     let mut events = Events {
@@ -595,9 +618,29 @@ pub(crate) fn run(
         ));
     }
     let stage = project.join(crate::RUN_DIR);
-    let home = crate::jar::stage_for_run(&mod_package.manifest, project, jars, args)?
-        .unwrap_or_else(|| stage.join("home"));
-    let built = build(project, mod_package, with, false, None)?;
+    let launch = crate::jar::launch_arguments(project, args)?;
+    let target = if launch.installation_side() == sunrise_mod_package::manifest::Side::Server {
+        contract::TargetName::Server
+    } else {
+        contract::TargetName::Client
+    };
+    let built = build(project, mod_package, with, false, target, None)?;
+    let mut staged = fs::read_dir(&built.prepared.plan.mods)
+        .map_err(|e| e.to_string())?
+        .map(|entry| {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            let package = Package::read(&path)?;
+            Ok::<_, String>((path, package))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    staged.sort_by(|(_, a), (_, b)| a.manifest.id.cmp(&b.manifest.id));
+    let home = crate::jar::stage_for_run(
+        staged.iter().map(|(_, package)| &package.manifest),
+        project,
+        jars,
+        &launch,
+    )?
+    .unwrap_or_else(|| stage.join("home"));
     let app = stage.join("app");
     match std::fs::remove_dir_all(&app) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
@@ -627,12 +670,16 @@ pub(crate) fn run(
     let record_path = app.join("native-mods.json");
     std::fs::write(&record_path, record(&built.records)?)
         .map_err(|e| format!("{}: {e}", record_path.display()))?;
-    for bundle in sunrise_native_build::scan_bundles(&built.prepared.plan.mods)? {
-        let source = Package::read(&bundle.dir)?;
-        crate::registry_source::write_files(
-            &package.join(&bundle.manifest.id),
-            source.directory_files(&bundle.dir)?,
-        )?;
+    let mut content = Vec::new();
+    for (path, source) in staged {
+        let id = &source.manifest.id;
+        if source.is_native() {
+            crate::registry_source::write_files(&package.join(id), source.directory_files(&path)?)?;
+        } else {
+            let installed = app.join(format!("{id}.smod"));
+            copy(&path, &installed)?;
+            content.push(installed);
+        }
     }
     let Built {
         crate_name,
@@ -642,6 +689,9 @@ pub(crate) fn run(
     drop(prepared);
     println!("Starting {} with {id}", executable.display());
     let mut command = Command::new(&executable);
+    for path in content {
+        command.arg("--dev-mod").arg(path);
+    }
     command
         .arg("--game-dir")
         .arg(&game)
