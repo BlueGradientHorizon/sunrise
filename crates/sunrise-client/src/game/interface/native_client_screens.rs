@@ -102,9 +102,12 @@ impl Game<'_> {
         {
             return false;
         }
-        let vehicle = self.riding_mount_with_menu() || self.riding_chest_boat();
-        let _ = self.key_pressed(KeyCode::KeyE, KeyCode::KeyE);
-        vehicle || self.screen != Screen::Playing
+        if self.remote.is_some() && (self.riding_mount_with_menu() || self.riding_chest_boat()) {
+            self.queue_mapping_click("key.inventory");
+            return true;
+        }
+        self.open_inventory_key_action();
+        self.screen != Screen::Playing
     }
     /// `AbstractSignEditScreen`'s sign: its block position and the side the
     /// editor is on. None when no sign editor is open, or outside a world.

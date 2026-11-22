@@ -1,4 +1,3 @@
-// game-module-visibility: pub
 //! Mod block entities drawn on the client: `native_block_entity_submit`
 //! (vanilla's `BlockEntityRenderer.submit`) gets a [`BlockEntityDraw`], whose
 //! pose stack (`PoseStack`) places what the helpers here add to the entity
@@ -2396,13 +2395,7 @@ mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let id = Identifier::parse("minecraft:block/grass_block").unwrap();
             let model = game.render_assets().model(&id).unwrap();
-            for phase in [
-                mod_api::__private::ModPhase::Setup,
-                mod_api::__private::ModPhase::Reloading,
-            ] {
-                let _scope = mod_api::__private::PhaseOwner::scope(phase);
-                assert_eq!(game.render_assets().model(&id), Ok(model));
-            }
+            assert_eq!(game.render_assets().model(&id), Ok(model));
             assert_eq!(
                 game.render_assets()
                     .model(&Identifier::parse("mymod:block/absent").unwrap()),
@@ -2932,10 +2925,15 @@ mod tests {
                 game,
                 surface: &mut surface,
             };
-            assert_eq!(drawn.text_width(&mod_api::Text::literal("A")), Ok(6.0));
-            assert_eq!(drawn.text_width(&plain), Ok(12.0));
+            assert_eq!(drawn.text_width(&mod_api::Text::literal("A")), 6.0);
+            assert_eq!(drawn.text_width(&plain), 12.0);
             // Font.width: bold adds a pixel a glyph.
-            assert_eq!(drawn.text_width(&bold), Ok(7.0));
+            assert_eq!(drawn.text_width(&bold), 7.0);
+            let mut deep = mod_api::Text::literal("A");
+            for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                deep = mod_api::Text::literal("").append(deep);
+            }
+            assert_eq!(drawn.text_width(&deep), 6.0);
             assert_eq!(
                 drawn.text(&plain, [0.0, 0.0], 0xFF0000, false, None),
                 Ok(12.0)
@@ -3022,7 +3020,7 @@ mod tests {
                 surface: &mut surface,
             };
             let text = mod_api::Text::literal("XX");
-            assert_eq!(drawn.text_width(&text), Ok(5.0));
+            assert_eq!(drawn.text_width(&text), 5.0);
             assert_eq!(drawn.text(&text, [0.0; 2], 0xFFFFFF, false, None), Ok(5.0));
             assert_eq!(
                 drawn.text(&text, [0.0; 2], 0xFFFFFF, true, Some(0)),
@@ -3246,18 +3244,21 @@ mod tests {
                 _: &mod_api::RegistrationContext,
                 event: &mut mod_api::RegisterLayerDefinitionsEvent<'_>,
             ) {
-                let mut mesh = MeshDefinition::new();
-                let root = mesh.root();
-                mesh.add_or_replace_child(
-                    root,
-                    "body",
-                    CubeListBuilder::create().add_box_faces([0.0; 3], [16.0; 3], &[Face::South]),
-                    PartPose::offset(16.0, 0.0, 0.0),
-                );
-                event.layers.push((
-                    "golem_mod:golem#main".into(),
-                    LayerDefinition::create(mesh, 64, 64),
-                ));
+                event.register("golem_mod:golem#main", || {
+                    let mut mesh = MeshDefinition::new();
+                    let root = mesh.root();
+                    mesh.add_or_replace_child(
+                        root,
+                        "body",
+                        CubeListBuilder::create().add_box_faces(
+                            [0.0; 3],
+                            [16.0; 3],
+                            &[Face::South],
+                        ),
+                        PartPose::offset(16.0, 0.0, 0.0),
+                    );
+                    LayerDefinition::create(mesh, 64, 64)
+                });
             }
         }
         let drawn = |game: &Game<'_>| {
@@ -3279,8 +3280,9 @@ mod tests {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 crate::game::mods::register_layer_definitions(
                     crate::game::execution_role::ExecutionRole::Client,
-                    std::path::Path::new("."),
-                );
+                    &game.vanilla_root(),
+                )
+                .unwrap();
                 assert_eq!(drawn(game), face);
                 assert!(game.bake_layer("golem_mod:other#main").is_none());
                 assert!(game.bake_layer("minecraft:zombie#main").is_some());

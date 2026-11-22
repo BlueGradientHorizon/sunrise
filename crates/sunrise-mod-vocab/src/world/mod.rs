@@ -40,7 +40,6 @@ pub(crate) mod package_details;
 pub(crate) mod package_files;
 pub(crate) mod passage;
 pub(crate) mod phase;
-pub(crate) mod phase_refusal;
 pub(crate) mod portal;
 pub(crate) mod random;
 pub(crate) mod read_error;

@@ -204,8 +204,6 @@ fn native_process_environment_in_registration_and_game_hosts() {
             crate::game::native_entity_refs::tests::fixture_root(),
             role,
             |game: &mut Game<'_>| {
-                let _phase =
-                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                 if role.is_client() {
                     game.native_client_tick_pre();
                     // A client process's integrated logical server must read that same snapshot.

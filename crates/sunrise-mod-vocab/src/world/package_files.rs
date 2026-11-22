@@ -192,11 +192,11 @@ mod tests {
 
     /// `f`, run as a call into mod `reader`'s registration.
     fn in_dispatch<T>(f: impl FnOnce() -> T) -> T {
-        let outer = crate::content::crash::push(crate::content::crash::ModCall {
+        let outer = crate::content::crash::push(Some(crate::content::crash::ModCall {
             id: "reader",
             hook: "register",
             part: None,
-        });
+        }));
         let out = f();
         crate::content::crash::pop(outer.0, outer.1);
         out
