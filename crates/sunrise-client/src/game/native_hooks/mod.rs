@@ -35,7 +35,7 @@ use mod_api::__private::game::{
 };
 use mod_api::GameMode;
 use mod_api::GameTests;
-pub use mod_api::game::{PhantomSpawnResult, Shake, SleepProblem};
+pub use mod_api::game::{PhantomSpawnResult, SleepProblem};
 use mod_api::{
     self, Answered, BlockPlacement, BlockTintSources, CauldronFluidContents, CauldronInteractions,
     ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
@@ -165,8 +165,7 @@ mod bounce_restitution;
 mod break_progress_positions;
 mod build_creative_mode_tab_contents;
 mod calculate_player_turn;
-mod camera_pose;
-mod camera_pose_tests;
+mod camera_position;
 mod camera_read;
 mod camera_submersion;
 mod camera_type;
@@ -221,6 +220,7 @@ mod client_tick_pre;
 mod client_visual_text;
 mod clone_item_stack;
 mod component_hover;
+mod compute_camera_angles;
 mod compute_fov_modifier;
 mod connects_to;
 mod console_line;
@@ -488,6 +488,7 @@ mod render_player_pre;
 mod render_tooltip_gather_components;
 mod render_tooltip_pre;
 mod render_tooltip_texture;
+mod render_view_transform;
 mod resolve_player_skin;
 mod respawn_position;
 mod right_click_empty;
