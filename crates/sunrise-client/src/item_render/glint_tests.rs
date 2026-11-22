@@ -1446,22 +1446,77 @@ fn gui_special_foil_projects_in_slot_and_oversized_target_pose_before_screen_pla
         let shifted = make_state(eps, oversized);
         let centered = make_state(0.0, oversized);
         for scale in [1.0_f32, 2.0, 3.0] {
+            // Fresh slot `(0, 0)` (or oversized target `(0, 0)`): `2^-20` survives.
             let at_origin = draw_glint_bits(&shifted, scale, 0.0, 0.0);
-            let at_centered = draw_glint_bits(&centered, scale, 0.0, 0.0);
-            assert!(!at_origin.is_empty());
-            assert_ne!(
-                at_origin, at_centered,
-                "oversized={oversized} scale={scale}: 2^-20 offset from slot center must survive"
-            );
             for (x, y) in [(8.0, 8.0), (512.0, 256.0), (520.0, 300.0)] {
                 let at_pos = draw_glint_bits(&shifted, scale, x, y);
                 assert_eq!(
                     at_pos, at_origin,
-                    "oversized={oversized} scale={scale} at ({x}, {y}) must keep identical decal UVs"
+                    "oversized={oversized} scale={scale} at ({x}, {y}) must reuse the same physical slot"
                 );
             }
+            renderer.end_gui_frame();
+            let at_centered = draw_glint_bits(&centered, scale, 0.0, 0.0);
+            renderer.end_gui_frame();
+            assert!(!at_origin.is_empty());
+            assert_ne!(
+                at_origin, at_centered,
+                "oversized={oversized} scale={scale}: 2^-20 offset from slot (0, 0) center must survive"
+            );
         }
     }
+
+    // Nonzero physical atlas slot `(16, 0)` at scale 1 (`left = 256`, center `264`, ulp `2^-15`):
+    // drawing 16 distinct static items occupies slots `(0, 0)..(15, 0)`; the next item lands in
+    // `(16, 0)`, where `264.0 + 16.0 * 2^-20 = 264.0 + 2^-16` rounds away to `264.0`.
+    let mut fill_batch = crate::hud::HudBatch::scratch([1024, 1024]);
+    fill_batch.scale = 1.0;
+    let statics: Vec<ItemRenderState> = (0..16)
+        .map(|_| {
+            state(
+                "minecraft:item/enchanted_book",
+                FoilType::None,
+                DisplayContext::Gui,
+            )
+        })
+        .collect();
+    for (i, st) in statics.iter().enumerate() {
+        gui::draw_with_frame(
+            st,
+            &renderer,
+            &sprites,
+            &NoHost,
+            &mut fill_batch,
+            i as f32 * 16.0,
+            0.0,
+            frame,
+        );
+    }
+    let shifted_slot16 = make_state(eps, false);
+    let centered_slot16 = make_state(0.0, false);
+    assert_eq!(renderer.gui_item_slot(&shifted_slot16, 1.0), (16, 0));
+    let slot16_shifted_a = draw_glint_bits(&shifted_slot16, 1.0, 0.0, 0.0);
+    let slot16_shifted_b = draw_glint_bits(&shifted_slot16, 1.0, 512.0, 256.0);
+    assert_eq!(
+        slot16_shifted_a, slot16_shifted_b,
+        "same item at different screen positions in one frame reuses physical slot (16, 0)"
+    );
+    // `end_gui_frame` frees animated slot `(16, 0)` while keeping the 16 static slots.
+    renderer.end_gui_frame();
+    assert_eq!(renderer.gui_item_slot(&centered_slot16, 1.0), (16, 0));
+    let slot16_centered = draw_glint_bits(&centered_slot16, 1.0, 0.0, 0.0);
+    assert_eq!(
+        slot16_shifted_a, slot16_centered,
+        "at physical atlas slot (16, 0) scale 1, 2^-20 offset must round away to match offset 0.0"
+    );
+    // Oversized item bypasses `GuiItemAtlas` (origin `(0, 0)`), so `2^-20` still survives.
+    let shifted_over = make_state(eps, true);
+    let centered_over = make_state(0.0, true);
+    assert_ne!(
+        draw_glint_bits(&shifted_over, 1.0, 0.0, 0.0),
+        draw_glint_bits(&centered_over, 1.0, 0.0, 0.0),
+        "oversized item must not inherit GuiItemAtlas slot (16, 0)"
+    );
 
     fs::remove_dir_all(root).ok();
 }
@@ -2017,6 +2072,10 @@ fn compass_special_foil_uses_decal_uv_26_3() {
         * Mat4::from_scale(Vec3::new(32.0, -32.0, 32.0));
     let gui_slot_scale_3 = Mat4::from_translation(Vec3::new(24.0, 24.0, 0.0))
         * Mat4::from_scale(Vec3::new(48.0, -48.0, 48.0));
+    let gui_slot_16_0_scale_1 = Mat4::from_translation(Vec3::new(256.0 + 8.0, 8.0, 0.0))
+        * Mat4::from_scale(Vec3::new(16.0, -16.0, 16.0));
+    let gui_slot_3_2_scale_2 = Mat4::from_translation(Vec3::new(96.0 + 16.0, 64.0 + 16.0, 0.0))
+        * Mat4::from_scale(Vec3::new(32.0, -32.0, 32.0));
     // Match `VanillaItemGlintOracle.java`'s JOML `PoseStack` (`Quaternionf().rotationY(0.7F)`).
     let mut gp = crate::camera::joml::Mat4::IDENTITY;
     gp.translate(1.5, 2.0, -3.5);
@@ -2024,7 +2083,7 @@ fn compass_special_foil_uses_decal_uv_26_3() {
     gp.scale(0.5, 0.5, 0.5);
     let ground_posed = gp.to_glam();
 
-    let cases: [(&str, DisplayContext, Mat4); 11] = [
+    let cases: [(&str, DisplayContext, Mat4); 13] = [
         ("gui", DisplayContext::Gui, Mat4::IDENTITY),
         (
             "firstperson_righthand",
@@ -2047,6 +2106,16 @@ fn compass_special_foil_uses_decal_uv_26_3() {
         ("gui_slot_pose", DisplayContext::Gui, gui_slot_pose),
         ("gui_slot_scale_2", DisplayContext::Gui, gui_slot_scale_2),
         ("gui_slot_scale_3", DisplayContext::Gui, gui_slot_scale_3),
+        (
+            "gui_slot_16_0_scale_1",
+            DisplayContext::Gui,
+            gui_slot_16_0_scale_1,
+        ),
+        (
+            "gui_slot_3_2_scale_2",
+            DisplayContext::Gui,
+            gui_slot_3_2_scale_2,
+        ),
         ("ground_posed", DisplayContext::Ground, ground_posed),
     ];
 
@@ -2207,6 +2276,228 @@ fn compass_special_foil_uses_decal_uv_26_3() {
                 want_quad["facing"]
             );
         }
+    }
+
+    // Physical `GuiItemAtlas` / `DynamicAtlasAllocator` slot assignment parity across scales 1, 2, 3.
+    let gui_atlas = &witness["gui_item_atlas"];
+    let pair = |v: &Value| {
+        let a = v.as_array().unwrap();
+        (a[0].as_u64().unwrap() as u32, a[1].as_u64().unwrap() as u32)
+    };
+    for gui_scale in [1_u32, 2, 3] {
+        let want = &gui_atlas["allocator"][format!("scale_{gui_scale}")];
+        let scale_f = gui_scale as f32;
+        let statics: Vec<ItemRenderState> = (0..16)
+            .map(|_| {
+                state(
+                    "minecraft:item/compass_16",
+                    FoilType::None,
+                    DisplayContext::Gui,
+                )
+            })
+            .collect();
+        for st in &statics {
+            renderer.gui_item_slot(st, scale_f);
+        }
+        let foil_a = state(
+            "minecraft:item/compass_16",
+            FoilType::Special,
+            DisplayContext::Gui,
+        );
+        let foil_b = state(
+            "minecraft:item/compass_00",
+            FoilType::Special,
+            DisplayContext::Gui,
+        );
+        assert_eq!(
+            renderer.gui_item_slot(&foil_a, scale_f),
+            pair(&want["foil_a"]),
+            "scale {gui_scale} foil_a slot"
+        );
+        assert_eq!(
+            renderer.gui_item_slot(&foil_a, scale_f),
+            pair(&want["foil_a_reuse"]),
+            "scale {gui_scale} foil_a reuse slot"
+        );
+        renderer.end_gui_frame();
+        assert_eq!(
+            renderer.gui_item_slot(&statics[0], scale_f),
+            pair(&want["static_0_after_end_frame"]),
+            "scale {gui_scale} static_0 stays allocated across frames"
+        );
+        assert_eq!(
+            renderer.gui_item_slot(&foil_b, scale_f),
+            pair(&want["foil_b_after_end_frame"]),
+            "scale {gui_scale} foil_b reuses freed animated slot"
+        );
+    }
+
+    // Oracle-backed tiny vertex offset (`2^-20`) rounding parity in slot `(0, 0)` vs `(16, 0)`.
+    let frame = GlintFrame {
+        millis: 123_456,
+        speed: 0.5,
+        alpha: 0.75,
+        sprite: true,
+    };
+    let make_tiny_quad = |offset: f32| {
+        let mut st = state(
+            "minecraft:item/compass_16",
+            FoilType::Special,
+            DisplayContext::Gui,
+        );
+        let LayerGeometry::Quads(baked) = &mut st.layers[0].geometry else {
+            unreachable!();
+        };
+        let mut b = (**baked).clone();
+        b.quads[0].positions = [
+            [offset, 0.25, 0.0],
+            [offset, -0.25, 0.0],
+            [0.25, -0.25, 0.0],
+            [0.25, 0.25, 0.0],
+        ];
+        *baked = Arc::new(b);
+        st
+    };
+    let assert_quad_gui_glint_bits = |batch: &crate::hud::HudBatch,
+                                      corner_xy: [[f32; 2]; 4],
+                                      want_bits: [[u32; 2]; 4],
+                                      label: &str| {
+        let verts: Vec<_> = batch.vertices.iter().filter(|v| v.uv[0] >= 2.0).collect();
+        assert!(!verts.is_empty(), "{label}: no GUI glint vertices");
+        let mut seen = [false; 4];
+        for v in verts {
+            let k = (0..4)
+                .find(|&i| {
+                    (v.pos[0] - corner_xy[i][0]).abs() <= 1e-3
+                        && (v.pos[1] - corner_xy[i][1]).abs() <= 1e-3
+                })
+                .unwrap_or_else(|| panic!("{label}: unexpected vertex pos {:?}", v.pos));
+            assert_eq!(
+                v.glint_uv.map(f32::to_bits),
+                want_bits[k],
+                "{label}: corner {k} glint UV bits mismatch"
+            );
+            seen[k] = true;
+        }
+        assert_eq!(seen, [true; 4], "{label}: all 4 corners must be emitted");
+    };
+    let eps = 2.0_f32.powi(-20);
+    let tiny_corners = [[8.0, 4.0], [8.0, 12.0], [12.0, 12.0], [12.0, 4.0]];
+    let tor = &gui_atlas["tiny_offset_rounding"];
+    // Switching back to scale 1.0 resets the atlas to empty (slot `(0, 0)`).
+    for (offset, key) in [(eps, "slot_0_0_eps"), (0.0, "slot_0_0_zero")] {
+        let st = make_tiny_quad(offset);
+        let mut batch = crate::hud::HudBatch::scratch([1024, 1024]);
+        batch.scale = 1.0;
+        gui::draw_with_frame(
+            &st, &renderer, &sprites, &NoHost, &mut batch, 0.0, 0.0, frame,
+        );
+        assert_quad_gui_glint_bits(
+            &batch,
+            tiny_corners,
+            parse_quad_uv_bits(&tor[key]["glint_uv_t123456_bits"]),
+            key,
+        );
+        renderer.end_gui_frame();
+    }
+    // Occupy slots `(0, 0)..(15, 0)` at scale 1 with 16 static items -> next item gets `(16, 0)`.
+    let mut fill = crate::hud::HudBatch::scratch([1024, 1024]);
+    fill.scale = 1.0;
+    let statics16: Vec<ItemRenderState> = (0..16)
+        .map(|_| {
+            state(
+                "minecraft:item/compass_16",
+                FoilType::None,
+                DisplayContext::Gui,
+            )
+        })
+        .collect();
+    for st in &statics16 {
+        gui::draw_with_frame(st, &renderer, &sprites, &NoHost, &mut fill, 0.0, 0.0, frame);
+    }
+    for (offset, key) in [(eps, "slot_16_0_eps"), (0.0, "slot_16_0_zero")] {
+        let st = make_tiny_quad(offset);
+        let mut batch = crate::hud::HudBatch::scratch([1024, 1024]);
+        batch.scale = 1.0;
+        gui::draw_with_frame(
+            &st, &renderer, &sprites, &NoHost, &mut batch, 0.0, 0.0, frame,
+        );
+        assert_quad_gui_glint_bits(
+            &batch,
+            tiny_corners,
+            parse_quad_uv_bits(&tor[key]["glint_uv_t123456_bits"]),
+            key,
+        );
+        renderer.end_gui_frame();
+    }
+
+    // Real `minecraft:compass` drawn via `gui::draw_with_frame` in physical slots `(16, 0)` (scale 1)
+    // and `(3, 2)` (scale 2, after 35 static items).
+    let compass_gui = renderer.resolve(&stack, DisplayContext::Gui, None, None, 0, &NoEnv);
+    let compass_corners = [[0.0, 0.0], [0.0, 16.0], [16.0, 16.0], [16.0, 0.0]];
+    {
+        let mut batch = crate::hud::HudBatch::scratch([1024, 1024]);
+        batch.scale = 1.0;
+        gui::draw_with_frame(
+            &compass_gui,
+            &renderer,
+            &sprites,
+            &NoHost,
+            &mut batch,
+            0.0,
+            0.0,
+            frame,
+        );
+        let want = parse_quad_uv_bits(
+            &witness["special_foil"]["gui_slot_16_0_scale_1"]["quads"][0]["glint_uv_t123456_bits"],
+        );
+        assert_quad_gui_glint_bits(
+            &batch,
+            compass_corners,
+            want,
+            "compass gui::draw_with_frame slot (16, 0) scale 1",
+        );
+        renderer.end_gui_frame();
+    }
+    {
+        let mut fill2 = crate::hud::HudBatch::scratch([1024, 1024]);
+        fill2.scale = 2.0;
+        let statics35: Vec<ItemRenderState> = (0..35)
+            .map(|_| {
+                state(
+                    "minecraft:item/compass_16",
+                    FoilType::None,
+                    DisplayContext::Gui,
+                )
+            })
+            .collect();
+        for st in &statics35 {
+            gui::draw_with_frame(
+                st, &renderer, &sprites, &NoHost, &mut fill2, 0.0, 0.0, frame,
+            );
+        }
+        let mut batch = crate::hud::HudBatch::scratch([1024, 1024]);
+        batch.scale = 2.0;
+        gui::draw_with_frame(
+            &compass_gui,
+            &renderer,
+            &sprites,
+            &NoHost,
+            &mut batch,
+            0.0,
+            0.0,
+            frame,
+        );
+        let want = parse_quad_uv_bits(
+            &witness["special_foil"]["gui_slot_3_2_scale_2"]["quads"][0]["glint_uv_t123456_bits"],
+        );
+        assert_quad_gui_glint_bits(
+            &batch,
+            compass_corners,
+            want,
+            "compass gui::draw_with_frame slot (3, 2) scale 2",
+        );
+        renderer.end_gui_frame();
     }
 }
 

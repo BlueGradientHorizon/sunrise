@@ -7239,6 +7239,7 @@ impl Game<'_> {
             );
             self.cursor = pointer.subpixel();
         }
+        self.pack.item_renderer.end_gui_frame();
         batch
     }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {

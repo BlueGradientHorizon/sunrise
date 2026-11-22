@@ -49,7 +49,10 @@ use std::{
     num::NonZeroU32,
     ops::ControlFlow,
     panic::{AssertUnwindSafe, catch_unwind},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU32, Ordering},
+    },
 };
 use sunrise_assets::{
     item_bake::{BakedItemModel, SpriteLookup, SpriteMask, bake_item_model, bake_sprite_layer},
@@ -1134,6 +1137,9 @@ pub struct ItemRenderer {
     /// GUI items already drawn: the HUD vertices of a static item at a GUI position
     /// (`gui::draw`), which are the same every frame it stays there.
     pub(crate) gui_drawn: Mutex<HashMap<gui::DrawnKey, Arc<[crate::hud::HudVertex]>>>,
+    /// Vanilla 26.3's `GuiItemAtlas` / `DynamicAtlasAllocator` physical slot assignment.
+    pub(crate) gui_item_atlas: Mutex<gui::GuiItemAtlasSlots>,
+    max_texture_size: AtomicU32,
     /// Entity model layers of the special renderers, with the head of each skull type a native
     /// mod registered, under its kind.
     parts: HashMap<String, ModelPart>,
@@ -1221,6 +1227,8 @@ impl ItemRenderer {
         filtering: (i32, i32),
         mipmap_levels: i32,
     ) -> crate::Result<()> {
+        self.max_texture_size
+            .store(maximum.max(512), Ordering::Relaxed);
         let aniso_shift = glint_padding(filtering.0, filtering.1) as u32;
         let max_mip = mipmap_levels.clamp(0, 4) as u32;
         let listing = crate::atlas_sources::listing(&self.sprites.root);
@@ -1398,6 +1406,8 @@ impl ItemRenderer {
             extents: Mutex::default(),
             special_generation: Arc::new(()),
             gui_drawn: Mutex::default(),
+            gui_item_atlas: Mutex::default(),
+            max_texture_size: AtomicU32::new(16384),
             parts,
             skull_textures,
             grass,
@@ -1410,6 +1420,22 @@ impl ItemRenderer {
         }
         Ok(renderer)
     }
+    /// `GuiItemAtlas.endFrame`: frees animated GUI item slots at frame end while retaining static ones.
+    pub fn end_gui_frame(&self) {
+        self.gui_item_atlas
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .end_frame();
+    }
+
+    pub(crate) fn gui_item_slot(&self, state: &ItemRenderState, gui_scale: f32) -> (u32, u32) {
+        let max_tex = self.max_texture_size.load(Ordering::Relaxed);
+        self.gui_item_atlas
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .slot_for(state, gui_scale, max_tex)
+    }
+
     /// `ModelBakery` item baking, cached per model.
     pub fn bake(&self, model: &str) -> Arc<BakedItemModel> {
         self.baked_with(model, || {
