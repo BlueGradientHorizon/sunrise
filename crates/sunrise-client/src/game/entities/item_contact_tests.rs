@@ -1056,6 +1056,7 @@ impl Hooks for HeatedBlocks {
         for (block, damage_type) in [
             ("minecraft:stone", "minecraft:hot_floor"),
             ("minecraft:glass", "test:stove_burn"),
+            ("minecraft:terracotta", "minecraft:fall"),
         ] {
             let block = r.block_key(block);
             let damage_type = r.damage_type_key(damage_type);
@@ -1064,77 +1065,226 @@ impl Hooks for HeatedBlocks {
     }
 }
 
+fn with_heated_game(test: impl FnOnce(&mut Game<'_>)) {
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("heat", Box::new(HeatedBlocks))].into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        crate::game::native_hooks::install_block_contact_hooks();
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            test(game);
+        });
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn contact_hurt_uses_the_world_damage_type_tags_and_death_message() {
     crate::game::in_own_process(
         "game::item_contact_tests::contact_hurt_uses_the_world_damage_type_tags_and_death_message",
         || {
-            use crate::game::native_entity_refs::tests::{fixture_root, with_game};
-            let mods: mod_api::Mods =
-                vec![mod_api::ModEntry::new("heat", Box::new(HeatedBlocks))].into();
-            mod_platform::testing::with_mods(mods.clone(), || {
-                crate::game::api_values::install_parts(&mods).unwrap();
-                crate::game::native_hooks::install_block_contact_hooks();
-                with_game(|game| {
-                    game.world
-                        .chunks
-                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                    for (id, x, kind, block) in [
-                        (71, 4, "minecraft:blaze", "minecraft:stone"),
-                        (72, 7, "minecraft:pig", "minecraft:stone"),
-                        (73, 10, "minecraft:pig", "minecraft:glass"),
-                    ] {
-                        let support = game.pack.assets.registry.default_state(block).unwrap();
-                        game.world.set(x, 63, 4, support).unwrap();
-                        let mut mob = sunrise_client::mobs::Mob::new(
-                            id,
-                            game.res.mob_types().get(kind).unwrap().clone(),
-                            Vec3::new(f64::from(x) + 0.5, 64.0, 4.5),
-                            0.0,
-                        );
-                        mob.no_ai = true;
-                        mob.on_ground = true;
-                        mob.velocity.y = -0.08;
-                        game.mobs.push(mob);
-                    }
-                    let health = |game: &Game<'_>, id| {
-                        game.mobs.iter().find(|mob| mob.id == id).unwrap().health
-                    };
-                    let blaze_before = health(game, 71);
-                    let custom_before = health(game, 73);
-                    game.tick_mobs().unwrap();
-                    assert_eq!(health(game, 71), blaze_before, "hot floor is fire damage");
-                    assert_eq!(health(game, 72), 0.0, "the same hit kills a non-immune pig");
-                    assert_eq!(
-                        health(game, 73),
-                        custom_before,
-                        "no generic fallback for a missing type"
+            use crate::game::native_entity_refs::tests::fixture_root;
+            with_heated_game(|game| {
+                for (id, x, kind, block) in [
+                    (71, 4, "minecraft:blaze", "minecraft:stone"),
+                    (72, 7, "minecraft:pig", "minecraft:stone"),
+                    (73, 10, "minecraft:pig", "minecraft:glass"),
+                    (74, 4, "minecraft:zombie", "minecraft:stone"),
+                    (75, 7, "minecraft:cat", "minecraft:terracotta"),
+                    (76, 10, "minecraft:pig", "minecraft:terracotta"),
+                ] {
+                    let z = if id <= 73 { 4 } else { 8 };
+                    let support = game.pack.assets.registry.default_state(block).unwrap();
+                    game.world.set(x, 63, z, support).unwrap();
+                    let mut mob = sunrise_client::mobs::Mob::new(
+                        id,
+                        game.res.mob_types().get(kind).unwrap().clone(),
+                        Vec3::new(f64::from(x) + 0.5, 64.0, f64::from(z) + 0.5),
+                        0.0,
                     );
+                    mob.no_ai = true;
+                    mob.on_ground = true;
+                    mob.velocity.y = -0.08;
+                    if id == 74 {
+                        let mut boots = ItemStack::new("minecraft:leather_boots", 1);
+                        boots.enchant("minecraft:frost_walker", 1);
+                        assert!(
+                            mob.set_equipment_stack(sunrise_items::equipment::FEET, Some(boots))
+                        );
+                    }
+                    game.mobs.push(mob);
+                }
+                let health =
+                    |game: &Game<'_>, id| game.mobs.iter().find(|mob| mob.id == id).unwrap().health;
+                game.tick_mobs().unwrap();
+                assert_eq!(health(game, 71), 20.0, "hot floor is fire damage");
+                assert_eq!(health(game, 72), 0.0, "the same hit kills a non-immune pig");
+                assert_eq!(
+                    health(game, 73),
+                    10.0,
+                    "no generic fallback for a missing type"
+                );
+                assert_eq!(health(game, 74), 20.0, "Frost Walker stops hot floor");
+                assert_eq!(health(game, 75), 10.0, "cats are immune to fall damage");
+                assert_eq!(health(game, 76), 0.0, "fall damage kills the untagged pig");
 
-                    let files = [(
-                        "damage_type/test:stove_burn".into(),
-                        vec![
-                            br#"{"message_id":"stove_burn","scaling":"never","exhaustion":0.0}"#
-                                .to_vec(),
-                        ],
-                    )];
+                let files = [(
+                    "damage_type/test:stove_burn".into(),
+                    vec![
+                        br#"{"message_id":"stove_burn","scaling":"never","exhaustion":0.0}"#
+                            .to_vec(),
+                    ],
+                )];
+                game.health_resources = game
+                    .health_resources
+                    .with_packs(
+                        &fixture_root(),
+                        &sunrise_world::loot::PackOverlay::new(&files),
+                        false,
+                    )
+                    .unwrap();
+                game.tick_mobs().unwrap();
+                let dead = game.mobs.iter().find(|mob| mob.id == 73).unwrap().clone();
+                assert_eq!(dead.health, 0.0);
+                assert_eq!(
+                    game.mob_death_message(&dead, None).component()["translate"],
+                    "death.attack.stove_burn"
+                );
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
+    crate::game::in_own_process(
+        "game::item_contact_tests::contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag",
+        || {
+            use crate::game::native_entity_refs::tests::fixture_root;
+            use sunrise_client::motion::{MotionWorld, PlayerMotion};
+            use sunrise_world::loot::PackOverlay;
+
+            with_heated_game(|game| {
+                let registry = game.pack.assets.registry;
+                game.world
+                    .set(4, 63, 4, registry.default_state("minecraft:glass").unwrap())
+                    .unwrap();
+                let at = Vec3::new(4.5, 64.0, 4.5);
+                let mut boots = ItemStack::new("minecraft:leather_boots", 1);
+                boots.enchant("minecraft:frost_walker", 1);
+                game.armor[3] = Some(boots);
+                for (bypass, creative, health) in [(false, false, 20.0), (true, true, 0.0)] {
+                    let mut files = vec![
+                        (
+                            "damage_type/test:stove_burn".into(),
+                            vec![br#"{"message_id":"stove_burn","scaling":"never","exhaustion":0.0}"#.to_vec()],
+                        ),
+                        (
+                            "tags/minecraft:damage_type/burn_from_stepping".into(),
+                            vec![br#"{"values":["test:stove_burn"]}"#.to_vec()],
+                        ),
+                    ];
+                    if bypass {
+                        files.push((
+                            "tags/minecraft:damage_type/bypasses_invulnerability".into(),
+                            vec![br#"{"values":["test:stove_burn"]}"#.to_vec()],
+                        ));
+                    }
                     game.health_resources = game
                         .health_resources
-                        .with_packs(
-                            &fixture_root(),
-                            &sunrise_world::loot::PackOverlay::new(&files),
-                            false,
-                        )
+                        .with_packs(&fixture_root(), &PackOverlay::new(&files), false)
                         .unwrap();
-                    game.tick_mobs().unwrap();
-                    let dead = game.mobs.iter().find(|mob| mob.id == 73).unwrap().clone();
-                    assert_eq!(dead.health, 0.0);
-                    assert_eq!(
-                        game.mob_death_message(&dead, None).component()["translate"],
-                        "death.attack.stove_burn"
+                    let mut items = world_items!(game).clone();
+                    Arc::make_mut(&mut items.enchantments)
+                        .bind_damage_catalog(&game.health_resources.damage);
+                    game.server_items = Some(Arc::new(items));
+                    let mut player = PlayerMotion::new(game.motion, at).unwrap();
+                    player.ground.on_ground = true;
+                    player.invulnerable = creative;
+                    game.player = Some(player);
+                    game.refresh_player_damage_immunities();
+                    let items = world_items!(game);
+                    let mut world = MotionWorld {
+                        player: game.player.as_mut().unwrap(),
+                        scene: &mut game.world,
+                        assets: &game.pack.assets,
+                        collision_binding: game.collision,
+                        resources: game.motion,
+                        health: &game.health_resources,
+                        tag_items: Some(items),
+                        loop_context: &game.loop_context,
+                        side: sunrise_client::motion::dry_side(),
+                        damage_hooks: &game.damage_hooks,
+                        block_registries: Some(&game.pack.block_registries),
+                        entities: &[],
+                    };
+                    sunrise_client::block_contact::in_level(
+                        game.tick,
+                        Some("minecraft:overworld"),
+                        || {
+                            world.apply_effects_from_blocks().unwrap();
+                        },
                     );
-                });
+                    assert_eq!(world.player.health.health(), health, "bypass tag: {bypass}");
+                }
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
+    crate::game::in_own_process(
+        "game::item_contact_tests::contact_hurt_uses_the_orbs_level_fall_immunity_tag",
+        || {
+            use sunrise_client::{entities::ExperienceOrb, join_seq::JoinSeq};
+            with_heated_game(|game| {
+                let block = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:terracotta")
+                    .unwrap();
+                game.world.set(4, 63, 4, block).unwrap();
+                game.tickets.update(None);
+                for tagged in [false, true] {
+                    let mut items = world_items!(game).clone();
+                    let members = Arc::make_mut(&mut items.enchantments)
+                        .entity_tags
+                        .entry("minecraft:fall_damage_immune".into())
+                        .or_default();
+                    members.remove("minecraft:experience_orb");
+                    if tagged {
+                        members.insert("minecraft:experience_orb".into());
+                    }
+                    game.server_items = Some(Arc::new(items));
+                    game.orbs.push(ExperienceOrb::new(
+                        17,
+                        Vec3::new(4.5, 64.25, 4.5),
+                        Vec3::new(0.0, -0.5, 0.0),
+                        1,
+                    ));
+                    game.ordered.announced = JoinSeq::MAX;
+                    game.begin_ordered_ticks();
+                    sunrise_client::block_contact::in_level(
+                        game.tick,
+                        Some("minecraft:overworld"),
+                        || {
+                            game.run_ordered_ticks(JoinSeq::MAX, false).unwrap();
+                        },
+                    );
+                    if tagged {
+                        assert_eq!(game.orbs.len(), 1);
+                        assert_eq!(game.orbs[0].position.y.to_bits(), 64.0_f64.to_bits());
+                        assert_eq!(game.orbs[0].health, 5);
+                    } else {
+                        assert!(game.orbs.is_empty());
+                    }
+                }
             });
         },
     );

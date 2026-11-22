@@ -104,7 +104,7 @@ impl PlayerMotion {
             ticks_frozen: 0,
             leather_boots: false,
             freeze_immune: false,
-            burn_from_stepping_immune: false,
+            damage_immunities: Vec::new(),
             old_position: position,
             server_copy: false,
             replaying: false,

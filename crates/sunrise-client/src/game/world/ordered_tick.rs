@@ -323,20 +323,17 @@ impl Game<'_> {
                                     else {
                                         continue;
                                     };
-                                    if self.health_resources.damage.id(name).is_none() {
+                                    let Some(kind) = self.health_resources.damage.id(name) else {
                                         continue;
-                                    }
+                                    };
                                     let source = sunrise_client::health::HurtSource {
                                         damage_type: name,
                                         causing: 0,
                                         direct: 0,
                                         position: None,
                                     };
-                                    let vanilla = self.saved_refuses_damage(
-                                        orb_id,
-                                        source.damage_type,
-                                        false,
-                                    );
+                                    let vanilla = self
+                                        .resident_item_or_orb_immune(orb_id, entity.1, kind, false);
                                     let invulnerable = self.native_nonliving_invulnerable(
                                         orb_id, entity.1, source, vanilla,
                                     );

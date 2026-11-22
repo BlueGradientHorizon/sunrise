@@ -85,7 +85,12 @@ impl Game<'_> {
     ) -> Option<DamageTypeId> {
         let damage_type = source.damage_type;
         let kind = self.health_resources.damage.id(damage_type)?;
-        let vanilla = self.saved_refuses_damage(id, damage_type, self.creative_source_of(causing));
+        let vanilla = self.resident_item_or_orb_immune(
+            id,
+            "minecraft:item",
+            kind,
+            self.creative_source_of(causing),
+        );
         if crate::game::entity::damage_level_of!(self, self.combat.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_client::health::Hurting::Entity(id as i32, "minecraft:item", source),
@@ -96,11 +101,6 @@ impl Game<'_> {
                 .rules
                 .bool_at(sunrise_client::gamerules::vanilla::MOB_GRIEFING)
                 && matches!(causing, Some(Target::Mob(_)))
-            || self
-                .health_resources
-                .damage
-                .in_tag(kind, "minecraft:is_fall")
-                && self.entity_tag_matches("minecraft:fall_damage_immune", "minecraft:item")
         {
             return None;
         }

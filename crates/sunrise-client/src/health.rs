@@ -11,7 +11,7 @@ use sunrise_world::{
     attributes::live::LiveAttributes,
     block_landing::LandingDamage,
     combat_rules::ArmorWorld,
-    damage_immunity::{self, DamageRule, ImmunityTag, ImmunityWorld},
+    damage_immunity::{self, DamageRule, EntityImmunityWorld, ImmunityTag, ImmunityWorld},
     damage_reduction::Bypass,
     damage_source::{Catalog, DamageSource, DamageTypeId, Scaling},
     food::{Difficulty, FoodData},
@@ -262,6 +262,51 @@ impl<'a> HitEffects<'a> {
         ))
     }
 }
+/// Inputs to `Entity.isInvulnerableToBase` for a mob or a nonliving body.
+pub struct BodyImmunity<T> {
+    pub removed: bool,
+    pub invulnerable: bool,
+    pub creative_source: bool,
+    pub fire_immune: bool,
+    pub fall_immune: bool,
+    pub source_has_tag: T,
+}
+
+impl<T: FnMut(ImmunityTag) -> bool> BodyImmunity<T> {
+    pub fn vanilla(mut self) -> bool {
+        match damage_immunity::vanilla_base_immunity(&mut self) {
+            Ok(answer) => answer,
+            Err(never) => match never {},
+        }
+    }
+}
+
+impl<T: FnMut(ImmunityTag) -> bool> EntityImmunityWorld for BodyImmunity<T> {
+    type Error = std::convert::Infallible;
+
+    fn removed(&self) -> bool {
+        self.removed
+    }
+    fn permanently_invulnerable(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.invulnerable)
+    }
+    fn temporarily_invulnerable(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(false)
+    }
+    fn tag(&mut self, tag: ImmunityTag) -> std::result::Result<bool, Self::Error> {
+        Ok((self.source_has_tag)(tag))
+    }
+    fn creative_source(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.creative_source)
+    }
+    fn fire_immune(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.fire_immune)
+    }
+    fn fall_immune(&mut self) -> std::result::Result<bool, Self::Error> {
+        Ok(self.fall_immune)
+    }
+}
+
 /// The level a hit lands in, as damage code sees it: its blocks, its random
 /// (`Level.random`) and its own attachments, lent to the damage hooks as their level host.
 /// Built from the level's world, or, in the mob tick, which reads the world while mobs
@@ -507,7 +552,7 @@ impl<'a> DamageLevel<'a> {
         self.attack
     }
     /// The authoritative world's merged tag tables, if available.
-    pub fn tags(&self) -> Option<&crate::items::Items> {
+    pub fn tags(&self) -> Option<&'a crate::items::Items> {
         self.tags
     }
     /// The cached block parser context, if available.
@@ -1485,6 +1530,7 @@ impl PlayerMotion {
             permanently_invulnerable: hit.permanently_invulnerable,
             invulnerable_time: hit.invulnerable_time,
             fire_immune: self.mod_fire_immune,
+            damage_immunities: &self.damage_immunities,
             creative_source: hit.creative_source,
             client_loaded: self.client_loaded,
             rules,
@@ -1570,6 +1616,7 @@ pub(crate) struct Environment<'a> {
     /// `Entity.invulnerableTime > 0` (#916): the entity-level window.
     pub(crate) invulnerable_time: bool,
     pub(crate) fire_immune: bool,
+    pub(crate) damage_immunities: &'a [(std::sync::Arc<str>, u32)],
     /// The hit is a creative player's (`DamageSource.isCreativePlayer`,
     /// #916): it passes the invulnerability below.
     pub(crate) creative_source: bool,
@@ -1911,7 +1958,7 @@ impl CombatEnvironment<Attributes> for Environment<'_> {
         *self.dead
     }
 }
-impl ImmunityWorld for Environment<'_> {
+impl EntityImmunityWorld for Environment<'_> {
     type Error = io::Error;
     fn removed(&self) -> bool {
         false
@@ -1932,10 +1979,43 @@ impl ImmunityWorld for Environment<'_> {
         Ok(self.fire_immune)
     }
     fn fall_immune(&mut self) -> io::Result<bool> {
-        Ok(false)
+        Ok(self.level.tags().is_some_and(|items| {
+            items
+                .enchantments
+                .entity_in_tag("minecraft:player", "minecraft:fall_damage_immune")
+        }))
     }
+    fn invulnerability_check(&mut self, vanilla: bool) -> io::Result<bool> {
+        Ok(self.observe_hit_invulnerability(vanilla))
+    }
+}
+impl ImmunityWorld for Environment<'_> {
     fn enchantment_immunity(&mut self) -> io::Result<bool> {
-        Ok(false)
+        let Some(items) = self
+            .level
+            .tags()
+            .filter(|_| !self.damage_immunities.is_empty())
+        else {
+            return Ok(false);
+        };
+        let source = self
+            .level
+            .attack()
+            .player_source(&self.source.definition().name, self.causing);
+        let context = crate::enchant::EffectContext {
+            items: Some(items),
+            damage_type: Some(source.damage_type),
+            is_direct: source.causing == source.direct,
+            this: Some("minecraft:player"),
+            ..Default::default()
+        };
+        Ok(items.enchantments.is_damage_immune(
+            self.damage_immunities
+                .iter()
+                .map(|(id, level)| (id, *level)),
+            &context,
+            self.level.random(),
+        ))
     }
     fn damage_rule(&mut self, rule: DamageRule) -> io::Result<bool> {
         Ok(match rule {
@@ -1953,9 +2033,6 @@ impl ImmunityWorld for Environment<'_> {
     }
     fn client_loaded(&mut self) -> io::Result<bool> {
         Ok(self.client_loaded)
-    }
-    fn invulnerability_check(&mut self, vanilla: bool) -> io::Result<bool> {
-        Ok(self.observe_hit_invulnerability(vanilla))
     }
 }
 impl HurtWorld for Environment<'_> {

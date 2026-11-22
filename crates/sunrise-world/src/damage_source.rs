@@ -147,6 +147,19 @@ impl Catalog {
     pub fn in_tag(&self, id: DamageTypeId, tag: &str) -> bool {
         self.tags.get(tag).is_some_and(|v| v.contains(&id))
     }
+    pub fn immunity_tag(&self, id: DamageTypeId, tag: crate::damage_immunity::ImmunityTag) -> bool {
+        use crate::damage_immunity::ImmunityTag;
+        self.in_tag(
+            id,
+            match tag {
+                ImmunityTag::BypassesInvulnerability => "minecraft:bypasses_invulnerability",
+                ImmunityTag::Fire => "minecraft:is_fire",
+                ImmunityTag::Fall => "minecraft:is_fall",
+                ImmunityTag::Drowning => "minecraft:is_drowning",
+                ImmunityTag::Freezing => "minecraft:is_freezing",
+            },
+        )
+    }
     pub fn source<E: Copy + Eq>(
         &self,
         id: DamageTypeId,
@@ -227,14 +240,7 @@ impl<E: Copy + Eq> DamageSource<'_, E> {
         })
     }
     pub fn immunity_tag(&self, tag: crate::damage_immunity::ImmunityTag) -> bool {
-        use crate::damage_immunity::ImmunityTag;
-        self.in_tag(match tag {
-            ImmunityTag::BypassesInvulnerability => "minecraft:bypasses_invulnerability",
-            ImmunityTag::Fire => "minecraft:is_fire",
-            ImmunityTag::Fall => "minecraft:is_fall",
-            ImmunityTag::Drowning => "minecraft:is_drowning",
-            ImmunityTag::Freezing => "minecraft:is_freezing",
-        })
+        self.catalog.immunity_tag(self.id, tag)
     }
     pub fn direct_entity(&self) -> Option<E> {
         self.direct

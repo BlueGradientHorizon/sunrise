@@ -2745,7 +2745,7 @@ impl Game<'_> {
             .map_or(0, |s| s.enchantment_level("minecraft:respiration") as i32);
         let leather_boots = worn_boots::leather_boots(&self.armor);
         let freeze_immune = self.wears_freeze_immune();
-        let burn_immune = self.wears_burn_from_stepping_immunity();
+        self.refresh_player_damage_immunities();
         let nudge = self.closest_space_nudge();
         let fast_lava = self.dimension_type().fast_lava;
         let blind = self.potions.effects.get("blindness").is_some();
@@ -2769,7 +2769,6 @@ impl Game<'_> {
         let _ = player.set_sleeping(sleeping);
         player.leather_boots = leather_boots;
         player.freeze_immune = freeze_immune;
-        player.burn_from_stepping_immune = burn_immune;
         player.fluids.fast_lava = fast_lava;
     }
     /// Joins an item only after drop hooks have seen its constructor's motion.

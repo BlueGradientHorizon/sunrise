@@ -1448,26 +1448,30 @@ impl Game<'_> {
             _ => false,
         }
     }
-    /// Whether a worn enchantment gives immunity to `#burn_from_stepping`
-    /// damage (frost walker's `minecraft:damage_immunity`).
-    pub(crate) fn wears_burn_from_stepping_immunity(&self) -> bool {
-        self.armor
-            .iter()
-            .zip(["head", "chest", "legs", "feet"])
-            .any(|(stack, slot)| {
-                stack
-                    .iter()
-                    .flat_map(ItemStack::enchantments)
-                    .any(|(id, _)| {
-                        self.stations().enchantments.get(id).is_some_and(|def| {
-                            def.effects.get("minecraft:damage_immunity").is_some()
-                                && def
-                                    .slots
-                                    .iter()
-                                    .any(|s| s == slot || s == "armor" || s == "any")
-                        })
-                    })
-            })
+    /// Keep the acting body's active enchantments; the hurt path checks their
+    /// requirements against the selected damage source, not a cached answer.
+    pub(crate) fn refresh_player_damage_immunities(&mut self) {
+        use sunrise_items::equipment::{BODY, SADDLE, SLOT_NAMES};
+
+        let Some(player) = self.player.as_mut() else {
+            return;
+        };
+        let equipment = [
+            self.inventory[self.selected].as_ref(),
+            self.offhand.as_ref(),
+        ]
+        .into_iter()
+        .chain(self.armor.iter().rev().map(Option::as_ref))
+        .chain([self.equipment.get(BODY), self.equipment.get(SADDLE)])
+        .map(|stack| stack.map_or(&[][..], ItemStack::enchantments))
+        .zip(SLOT_NAMES);
+        player.damage_immunities.clear();
+        player.damage_immunities.extend(
+            world_items!(self)
+                .enchantments
+                .damage_immunities(equipment)
+                .map(|(id, level)| (id.clone(), level)),
+        );
     }
     /// Enchantment attribute modifiers of active equipment, including held Efficiency.
     /// Each piece's modifier id ends with its slot (`EnchantmentAttributeEffect.idForSlot`),

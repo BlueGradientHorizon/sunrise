@@ -21,18 +21,6 @@ impl MotionWorld<'_, '_, '_> {
         id: sunrise_world::damage_source::DamageTypeId,
         damage: f32,
     ) -> Result<()> {
-        if self.player.invulnerable || self.player.spectator {
-            return Ok(());
-        }
-        // Frost walker's damage_immunity uses the level's #burn_from_stepping tag.
-        if self.player.burn_from_stepping_immune
-            && self
-                .health
-                .damage
-                .in_tag(id, "minecraft:burn_from_stepping")
-        {
-            return Ok(());
-        }
         let rules = self.scene.health_rules;
         self.player.hurt(
             &mut crate::health::DamageLevel::of(

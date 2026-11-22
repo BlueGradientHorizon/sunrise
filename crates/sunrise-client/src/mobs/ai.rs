@@ -220,9 +220,9 @@ mod inside_walk_tests {
         if !in_contact_test_process("a_killing_write_stops_the_mobs_flush") {
             return;
         }
-        reset(0, usize::MAX, true);
         let ran = crate::mobs::world::with_built_contact_test_world(
             |world, registry| {
+                reset(0, usize::MAX, true);
                 world.chunks.insert(
                     (0, 0),
                     std::sync::Arc::new(crate::chunk::Chunk::empty(0, 0)),
@@ -1941,10 +1941,9 @@ fn apply_contact_writes(
     None
 }
 
-/// A typed entity write an `entity_inside` part queued for a mob, applied in
-/// its own tick. `Hurt` uses the generic damage kind: the block's own hurts
-/// keep their named kinds in the walk's arms above. Generic contact damage
-/// has no attacker. The hurt's own teleport is settled before the write returns.
+/// Apply a contact Part's queued write in the mob's own tick. Hurt uses the
+/// level's registered type without an attacker and settles any resulting
+/// teleport before the next write.
 fn apply_entity_write(
     m: &mut Mob,
     w: &MobWorld,
