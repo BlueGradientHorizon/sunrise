@@ -86,10 +86,7 @@ impl super::Containers<'_> {
         let entity = if entity_removed {
             None
         } else {
-            self.world
-                .block_entities
-                .get(&(x, y, z))
-                .filter(|entity| !save::block_entity_placeholder(entity))
+            self.world.block_entities.get(&(x, y, z))
         };
         let resident = entity.and_then(|entity| {
             let handle = block_entity_handle(self.world, at.level, at.pos)?;
@@ -114,11 +111,7 @@ impl super::Containers<'_> {
         let [x, y, z] = at.pos;
         let pos = (x, y, z);
         let state = self.world.block(x, y, z);
-        let entity = self
-            .world
-            .block_entities
-            .get(&pos)
-            .filter(|entity| !save::block_entity_placeholder(entity));
+        let entity = self.world.block_entities.get(&pos);
         match self.item_target(state, at.side, entity)? {
             ItemTarget::Composter(level) => Some(View {
                 parts: vec![(pos, 1)],
