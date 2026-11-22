@@ -1346,15 +1346,30 @@ impl Game<'_> {
         self.lan_disconnect(announce);
     }
 
+    /// `ServerConnectionListener.stop`: stop accepting new connections and
+    /// refuse incoming logins before player and world shutdown saves run,
+    /// while keeping connected guest entries alive for `save_leaving_guests`
+    /// and `lan_disconnect`.
+    pub(super) fn stop_network_transport(&mut self) {
+        if let Some(host) = self.lan.as_mut() {
+            host.hub.lan.shared.refuse_logins();
+            host.hub.lan.stop();
+            let _ = host.hub.lan.poll();
+        }
+    }
+
     /// The transport close, separate from player callbacks and saves so that
     /// server shutdown can still disconnect after one of those unwinds.
     pub(super) fn lan_disconnect(&mut self, announce: bool) {
         let Some(mut host) = self.lan.take() else {
             return;
         };
+        let had_guests = !host.hub.guests.is_empty();
         host.hub.disconnect_all();
-        // Give the network threads a moment to flush the disconnect packets.
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        if had_guests {
+            // Give the network threads a moment to flush the disconnect packets.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
         self.world.block_log = None;
         self.world.connection_group_log = None;
         self.world.light_log = None;
@@ -1424,7 +1439,7 @@ impl Game<'_> {
     }
     /// Save a guest when they leave or the world closes (after
     /// `take_parent_vehicle`, `PlayerList.save`): an integrated server's owner
-    /// into the level (`/data`) and both its files (`playerdata::save_owner`),
+    /// into the level (`/data`) and the file it names (`playerdata::save_owner`),
     /// anyone else into their own file.
     pub(super) fn save_guest(&mut self, guest: &mut sunrise_client::lan::guest::Guest) {
         if !guest.participates_in_player_simulation() {
@@ -1684,14 +1699,17 @@ impl Game<'_> {
         stats.mark_all_dirty();
         host.play.entry(conn).or_default().stats = stats;
     }
-    /// The integrated server's owner into the world's player, for `Level::write`.
+    /// Copy the placed integrated owner's player state for the player-save phase.
     /// Returns the owner's uuid and name when they were stored.
     pub(super) fn store_owner(&mut self) -> Option<(u128, String)> {
         let uuid = self.lan.as_ref().and_then(|h| h.owner.as_ref())?.uuid;
-        let (riding, dim, others) = self.lan.as_ref().and_then(|h| {
-            let g = h.hub.online_players().find(|g| g.uuid == uuid)?;
+        let (conn, riding, dim, others) = self.lan.as_ref().and_then(|h| {
+            let g = h
+                .hub
+                .online_players()
+                .find(|g| g.uuid == uuid && !g.released && !self.crash_save.excludes(g.conn))?;
             let others = self.ridden_by_others(&h.hub.guests, &g.dimension, Some(uuid), true);
-            Some((g.vehicle, g.dimension.clone(), others))
+            Some((g.conn, g.vehicle, g.dimension.clone(), others))
         })?;
         // The vehicle the owner rides (`ServerPlayer.saveParentVehicle`).
         let vehicle = self
@@ -1699,12 +1717,7 @@ impl Game<'_> {
             .map(|(tag, _)| tag);
         let mut host = self.lan.take()?;
         let mut stored = None;
-        if let Some(i) = host
-            .hub
-            .guests
-            .iter()
-            .position(|g| g.uuid == uuid && g.placed && !self.crash_save.excludes(g.conn))
-        {
+        if let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) {
             let live = Some(self.player_state.attachments.clone());
             host.hub.guests.update(i, |g| {
                 let held = live.map(|a| std::mem::replace(&mut g.attachments, a));
@@ -1716,8 +1729,6 @@ impl Game<'_> {
             let g = &host.hub.guests[i];
             self.save_guest_records(&host, g);
             stored = Some(g.name.clone());
-        } else if let Some(saved) = host.owner.as_ref().and_then(|o| o.saved.as_ref()) {
-            self.level.position = saved.position;
         }
         self.lan = Some(host);
         stored.map(|name| (uuid, name))
@@ -2982,7 +2993,13 @@ impl Game<'_> {
         entities: &[EntityState],
         spawn: [f64; 3],
     ) {
+        let loaded = self.loaded_level_order();
         let spawn_level = self.world_spawn_level();
+        let spawn_level = if loaded.contains(&spawn_level) {
+            spawn_level
+        } else {
+            super::Dim::Overworld
+        };
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -2990,7 +3007,6 @@ impl Game<'_> {
         let force = host.hub.config.force_game_mode;
         let root = self.world_root.clone();
         let in_place = host.hub.config.dimension.clone();
-        let levels = host.hub.config.levels;
         let owner = host.owner.as_mut();
         let Some((known, uuid, name)) = host.hub.update_guest(conn, |g| {
             // PlayerList.loadPlayerData: the owner gets the world's player file,
@@ -3002,7 +3018,7 @@ impl Game<'_> {
             // `PrepareSpawnTask.start`: a saved level the world no longer has is the world
             // spawn's (the Overworld when that one is gone too); the saved position and
             // rotation stay.
-            if !levels.has(&g.dimension) {
+            if !loaded.iter().any(|dim| dim.id() == g.dimension) {
                 g.dimension = spawn_level.id().to_owned();
             }
             // PlayerEvent.LoadFromFile: the player's data is read and applied,
@@ -5441,6 +5457,8 @@ mod world_spawn_join_tests {
     fn a_returning_player_from_a_missing_level_joins_in_the_world_spawn_level() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.world_root = game.save.root.clone();
+            game.enter_level(super::super::Dim::Nether).unwrap();
+            game.enter_level(super::super::Dim::Overworld).unwrap();
             game.level.world_spawn_dimension = Some("minecraft:the_nether".into());
             let guests = &mut game.lan.as_mut().unwrap().hub.guests;
             guests.update(0, |g| {

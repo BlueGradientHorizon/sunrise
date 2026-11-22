@@ -96,7 +96,7 @@ connection, input, render or ordinary tick callbacks. If pack selection fails du
 the recovery options screen opens only after config loading. A title-screen listener may receive a
 `ClientHost`; world-handle queries then return `None` because no world is open. A dedicated server
 loads Common configs once before its first world. Server configs load before `server_about_to_start`
-and unload after `server_stopping` for each world. A second world does not repeat startup registration
+and unload after `server_stopped` for each world. A second world does not repeat startup registration
 or client setup.
 
 Attribute bounds are registration data too. `Registrar::widen_attribute_bounds` asks, from a both-side package's

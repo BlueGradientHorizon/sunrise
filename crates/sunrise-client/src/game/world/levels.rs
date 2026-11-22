@@ -46,8 +46,6 @@ use sunrise_client::{
 };
 use sunrise_world::level::{LevelEvent, Ticks};
 
-const BUILTIN_LEVEL_ORDER: [Dim; 3] = [Dim::Overworld, Dim::Nether, Dim::End];
-
 /// A borrowed counting view: no resident-table scans and no allocation for gauges.
 pub(super) struct EntityCountView<'a> {
     pub(super) fixed: [(&'static str, usize); 19],
@@ -139,69 +137,11 @@ pub(super) use entity_count_view;
 /// stay open until server shutdown and only unload unticketed chunks while idle.
 pub(super) const IDLE_TICKS: u32 = 300;
 
-/// What one server tick's idle check asks for a parked level.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum IdleAction {
-    /// Still active, or already drained and retained (built-in), or below the
-    /// custom-level close threshold, or saving is disabled (`/save-off`).
-    Keep,
-    /// Built-in level with no players or tickets that still holds unticketed
-    /// chunks or streaming work to unload while the level itself stays open.
-    UnloadChunks,
-    /// Custom level that has been idle for at least [`IDLE_TICKS`]: save and close.
-    Close,
-}
-
 /// Vanilla 26.3 only services connections while the server is paused (escape
-/// pause or `pause-when-empty-seconds`), so parked-level draining and idle
-/// closes are skipped then, but still run during `/tick freeze` (`paused == false`).
+/// pause or `pause-when-empty-seconds`), so parked-level eviction is skipped
+/// then, while still running during `/tick freeze` (`paused == false`).
 fn should_run_idle_maintenance(paused: bool) -> bool {
     !paused
-}
-
-fn step_parked_idle(
-    dim: Dim,
-    idle: &mut u32,
-    active: bool,
-    has_unloadable_chunks: bool,
-    saving_enabled: bool,
-) -> IdleAction {
-    if active {
-        *idle = 0;
-        return IdleAction::Keep;
-    }
-    *idle = idle.saturating_add(1);
-    if !saving_enabled {
-        return IdleAction::Keep;
-    }
-    if dim.is_builtin() {
-        if has_unloadable_chunks {
-            IdleAction::UnloadChunks
-        } else {
-            IdleAction::Keep
-        }
-    } else if *idle >= IDLE_TICKS {
-        IdleAction::Close
-    } else {
-        IdleAction::Keep
-    }
-}
-
-/// Recheck a parked custom level right before closing it: a listener during an
-/// earlier built-in drain or custom close can force a chunk in this level or
-/// disable saving (`/save-off`).
-fn custom_close_still_eligible(
-    dim: Dim,
-    idle: &mut u32,
-    active: bool,
-    saving_enabled: bool,
-) -> bool {
-    debug_assert!(!dim.is_builtin());
-    if active {
-        *idle = 0;
-        return false;
-    }
-    saving_enabled && *idle >= IDLE_TICKS
 }
 
 /// A level that is not in place: every per-level field of `Game`.
@@ -546,9 +486,13 @@ pub(super) struct TickTiming {
 #[derive(Default)]
 pub(super) struct Levels {
     pub(super) parked: HashMap<Dim, Parked>,
-    /// The levels whose open the mods heard (`native_level_load`), each to
-    /// be told closed once.
-    heard_open: Vec<Dim>,
+    /// Loaded server levels in creation order (`MinecraftServer.levels`'s
+    /// insertion-ordered `LinkedHashMap`), shared by tick, save, close and Host
+    /// enumeration regardless of which level is swapped into `Game`.
+    order: Vec<Dim>,
+    /// Whether the level held in `Game`'s own fields has been closed by server
+    /// shutdown (`close_loaded_levels_for_stop`).
+    pub(in crate::game) active_closed: bool,
     /// The levels a mod asked to have saved (`level_request_save`), each once, saved at the start
     /// of the next server tick.
     requested_saves: Vec<Dim>,
@@ -592,85 +536,15 @@ impl Levels {
         self.requested_saves.retain(|saved| *saved != dim);
     }
 
-    /// Whether mods have already been notified of `dim` opening.
-    fn has_heard_open(&self, dim: Dim) -> bool {
-        self.heard_open.contains(&dim)
-    }
-
-    /// Record `dim` as announced open; returns `true` iff it was not already open.
-    fn note_opened(&mut self, dim: Dim) -> bool {
-        if self.heard_open.contains(&dim) {
-            return false;
-        }
-        self.heard_open.push(dim);
-        true
-    }
-
-    /// Record `dim` as announced closed; returns `true` iff it was open.
-    fn note_closed(&mut self, dim: Dim) -> bool {
-        if let Some(i) = self.heard_open.iter().position(|d| *d == dim) {
-            self.heard_open.remove(i);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Advance parked built-in levels' idle state and return those that still
-    /// hold unticketed chunks or streaming work to drain while saving is enabled.
-    fn plan_builtin_drains(
-        &mut self,
-        is_active: impl Fn(Dim) -> bool,
-        saving_enabled: bool,
-    ) -> Vec<Dim> {
-        let mut unload_chunks = Vec::new();
-        for (&dim, p) in &mut self.parked {
-            if !dim.is_builtin() {
-                continue;
-            }
-            let active = is_active(dim);
-            let has_unloadable_chunks =
-                !p.streaming.paused && (!p.world.chunks.is_empty() || p.streaming.has_idle_work());
-            if step_parked_idle(
-                dim,
-                &mut p.idle,
-                active,
-                has_unloadable_chunks,
-                saving_enabled,
-            ) == IdleAction::UnloadChunks
-            {
-                unload_chunks.push(dim);
-            }
-        }
-        unload_chunks
-    }
-
-    /// Advance parked custom levels' idle state and return those eligible to
-    /// save and close after [`IDLE_TICKS`].
-    fn plan_custom_closes(
-        &mut self,
-        is_active: impl Fn(Dim) -> bool,
-        saving_enabled: bool,
-    ) -> Vec<Dim> {
-        let mut close = Vec::new();
-        for (&dim, p) in &mut self.parked {
-            if dim.is_builtin() {
-                continue;
-            }
-            let active = is_active(dim);
-            if step_parked_idle(dim, &mut p.idle, active, false, saving_enabled)
-                == IdleAction::Close
-            {
-                close.push(dim);
-            }
-        }
-        close
+    pub(in crate::game) fn has_loaded_levels(&self) -> bool {
+        !self.order.is_empty()
     }
 
     /// Clear every parked level and dimensions recorded as heard open.
     pub(super) fn clear(&mut self) {
         self.parked.clear();
-        self.heard_open.clear();
+        self.order.clear();
+        self.active_closed = false;
         self.requested_saves.clear();
         self.runtime.clear();
     }
@@ -882,7 +756,7 @@ impl Levels {
 
 impl Game<'_> {
     /// A new level for `dim`, opened from the save (`MinecraftServer.createLevels`).
-    fn open_level(&self, dim: Dim) -> Result<Parked> {
+    pub(super) fn open_level(&self, dim: Dim) -> Result<Parked> {
         // A level a mod opened has the seed and generator it asked for.
         let (generate, seed) = match self.runtime_terrain(dim) {
             Some((generate, seed)) => (Some(generate), seed),
@@ -972,9 +846,31 @@ impl Game<'_> {
         })
     }
 
-    /// `MinecraftServer.createLevels`: open the built-in levels in registry
-    /// order before `prepare_levels`, which waits for their saved tickets.
-    pub(super) fn open_builtin_levels(&mut self) -> Result<()> {
+    /// Every loaded server level in `MinecraftServer.levels` creation order.
+    pub(in crate::game) fn loaded_level_order(&self) -> Vec<Dim> {
+        #[cfg(test)]
+        if self.levels.order.len()
+            != self.levels.parked.len() + usize::from(!self.levels.active_closed)
+        {
+            // Isolated Game fixtures can populate level storage without running createLevels.
+            let mut dims = self.levels.order.clone();
+            let mut unannounced: Vec<_> = (!self.levels.active_closed)
+                .then_some(self.dim)
+                .into_iter()
+                .chain(self.levels.parked.keys().copied())
+                .filter(|dim| !dims.contains(dim))
+                .collect();
+            unannounced.sort_by_key(|dim| dim_fallback_key(*dim));
+            dims.extend(unannounced);
+            return dims;
+        }
+        self.levels.order.clone()
+    }
+
+    /// `MinecraftServer.createLevels`: open every configured level from the
+    /// `LEVEL_STEM` registry in order before `prepare_levels`, which restores
+    /// and waits for their saved tickets.
+    pub(super) fn open_configured_levels(&mut self, configured: &[Dim]) -> Result<()> {
         if self.options.execution_role.is_client() {
             return Ok(());
         }
@@ -992,7 +888,12 @@ impl Game<'_> {
             None
         };
         self.native_level_opened(Dim::Overworld);
-        for dim in BUILTIN_LEVEL_ORDER.into_iter().skip(1) {
+        self.initialize_overworld_spawn()?;
+        for dim in configured
+            .iter()
+            .copied()
+            .filter(|&dim| dim != Dim::Overworld)
+        {
             if dim == starting_dim
                 && let Some(level) = starting_level.take()
             {
@@ -1007,22 +908,15 @@ impl Game<'_> {
             }
             self.native_level_opened(dim);
         }
-        // Switching back to the owner's level is separate from publishing the
-        // built-ins. A saved custom starting level, if any, is published here.
-        let publish_starting_level = starting_level.is_some();
-        if let Some(level) = starting_level {
-            self.levels.parked.insert(starting_dim, level);
-        }
+        // Preparing the owner's level does not add it to createLevels. The
+        // player dimension was resolved against the configured stems before loading.
         self.enter_level(starting_dim)?;
-        if publish_starting_level {
-            self.native_level_opened(starting_dim);
-        }
         Ok(())
     }
 
-    /// `MinecraftServer.prepareLevels`: after all built-ins are published,
-    /// activate their saved tickets, then wait for the chunks they hold
-    /// (`ChunkLoadCounter`). The first tick finds them ticking and unpacks
+    /// `MinecraftServer.prepareLevels`: after all configured levels are
+    /// published, activate their saved tickets, then wait for the chunks they
+    /// hold (`ChunkLoadCounter`). The first tick finds them ticking and unpacks
     /// their saved block and fluid ticks at the saved game time
     /// (`startTickingChunk`), not at whichever tick they finish streaming in.
     pub(super) fn prepare_levels(&mut self) -> Result<()> {
@@ -1030,10 +924,8 @@ impl Game<'_> {
             return Ok(());
         }
         let back = self.dim;
-        let dims = BUILTIN_LEVEL_ORDER
-            .into_iter()
-            .chain(matches!(back, Dim::Extra(_)).then_some(back));
-        for dim in dims.clone() {
+        let dims = self.loaded_level_order();
+        for &dim in &dims {
             self.enter_level(dim)?;
             Self::load_saved_level_tickets(&self.save, &mut self.streaming, &mut self.tickets);
             self.validate_mod_chunk_tickets(dim);
@@ -1591,17 +1483,17 @@ impl Game<'_> {
         result?;
         // The levels mods asked to open or close: now that no level is in the middle of a tick.
         self.apply_runtime_levels();
-        let closed = if should_run_idle_maintenance(paused) {
-            let _span = sunrise_client::spans::guard("close_idle_levels");
-            self.close_idle_levels()
+        let evicted = if should_run_idle_maintenance(paused) {
+            let _span = sunrise_client::spans::guard("evict_idle_levels");
+            self.evict_idle_levels()
         } else {
             Ok(())
         };
-        if let Err(error) = closed {
+        if let Err(error) = evicted {
             self.native_lifecycle.cancel_server_tick();
             return Err(error);
         }
-        // `ServerTickEnd`: an errored tick or an idle-close failure (at
+        // `ServerTickEnd`: an errored tick or an idle-eviction failure (at
         // the `?` above) never reaches this site.
         {
             let _span = sunrise_client::spans::guard("mods_server_tick_end");
@@ -1697,28 +1589,27 @@ impl Game<'_> {
         None
     }
 
-    /// The levels this server tick runs, in `MinecraftServer.levels` order
-    /// (the Overworld, the Nether, the End): every level with a player in
-    /// it, forced chunks or a `/pregen` task, or the Overworld while idle.
+    /// The loaded levels this server tick runs, in `MinecraftServer.levels`
+    /// creation order. A level with no work can be skipped; the Overworld
+    /// supplies the idle pass when none qualify.
     pub(super) fn levels_to_tick(&self) -> Vec<Dim> {
         let guests = self
             .lan
             .as_ref()
             .map_or(&[][..], |h| h.hub.guests.as_slice());
-        let mut dims: Vec<Dim> = Dim::all()
-            .into_iter()
-            .filter(|d| {
-                // `/forceload`ed chunks, or a native mod's tickets.
-                let held = |s: &Streaming| !s.forced.is_empty();
-                let forced = if *d == self.dim {
-                    held(&self.streaming)
-                } else {
-                    self.levels
-                        .parked
-                        .get(d)
-                        .is_some_and(|p| held(&p.streaming))
-                };
-                guests.iter().any(|g| g.dimension == d.id() && g.participates_in_player_simulation())
+        let mut dims = self.loaded_level_order();
+        dims.retain(|d| {
+            // `/forceload`ed chunks, or a native mod's tickets.
+            let held = |s: &Streaming| !s.forced.is_empty();
+            let forced = if *d == self.dim {
+                held(&self.streaming)
+            } else {
+                self.levels
+                    .parked
+                    .get(d)
+                    .is_some_and(|p| held(&p.streaming))
+            };
+            guests.iter().any(|g| g.dimension == d.id() && g.participates_in_player_simulation())
                     // A viewer count not yet told to 0 (`tick_mod_container_viewers`).
                     || self.mod_container_viewers.keys().any(|(k, _)| *k == d.id())
                     || self.player_bed_levels().any(|b| b == *d)
@@ -1735,8 +1626,7 @@ impl Game<'_> {
                     || !self.portal_tickets_in(*d).is_empty()
                     // So does a viewed `Ticking` area (#3716), for its chunks only.
                     || self.viewed_level(*d) == Some(true)
-            })
-            .collect();
+        });
         if dims.is_empty() {
             dims.push(Dim::Overworld);
         }
@@ -1776,93 +1666,84 @@ impl Game<'_> {
             .is_some_and(|lists| !lists.lock().unwrap().autosave)
     }
 
-    /// Levels currently kept active by players, tickets, viewed areas or a
-    /// waiting vehicle.
-    fn active_levels(&self) -> Vec<Dim> {
-        let mut active = self.levels_to_tick();
+    /// Count the parked levels' empty ticks, and evict chunks and entities from
+    /// idle non-Overworld levels without closing or unloading the level itself.
+    /// In vanilla (`MinecraftServer.levels`), levels stay open until server
+    /// shutdown (or explicit runtime-level unload), so idle eviction must not
+    /// fire `level_unload`, `level_save`, or a second `level_load` on revisit.
+    pub(super) fn evict_idle_levels(&mut self) -> Result<()> {
+        let mut occupied = self.levels_to_tick();
         // A level a viewed area names, ticked or not, or one a client still holds chunks of.
-        active.extend(Dim::all().into_iter().filter(|d| self.needs_view_pass(*d)));
-        // A vehicle waiting there for its rider's arrival in another level.
-        active.extend(
+        occupied.extend(
             self.levels
                 .parked
                 .keys()
                 .copied()
-                .filter(|d| self.vehicle_waits_in(*d)),
+                .filter(|d| self.needs_view_pass(*d)),
         );
-        active
-    }
-
-    /// Count the parked levels' empty ticks: unload unticketed chunks from
-    /// idle built-in levels while keeping them open until server shutdown, and
-    /// save and close idle custom levels after [`IDLE_TICKS`].
-    pub(super) fn close_idle_levels(&mut self) -> Result<()> {
-        let saving_enabled = !self.saving_disabled();
-        let active = self.active_levels();
-        let unload_chunks = self
+        // A vehicle waiting there for its rider's arrival in another level.
+        let waiting: Vec<Dim> = self
             .levels
-            .plan_builtin_drains(|dim| active.contains(&dim), saving_enabled);
-        let drained = !unload_chunks.is_empty();
-        for dim in unload_chunks {
+            .parked
+            .keys()
+            .copied()
+            .filter(|d| self.vehicle_waits_in(*d))
+            .collect();
+        let saving_enabled = !self.saving_disabled();
+        let mut evicting = Vec::new();
+        for (dim, p) in &mut self.levels.parked {
+            if occupied.contains(dim) || waiting.contains(dim) {
+                p.idle = 0;
+                continue;
+            }
+            p.idle = p.idle.saturating_add(1);
+            if saving_enabled && *dim != Dim::Overworld && p.idle >= IDLE_TICKS {
+                if !p.world.chunks.is_empty() || !p.persist.uuids.is_empty() {
+                    evicting.push(*dim);
+                } else {
+                    p.idle = 0;
+                }
+            }
+        }
+        if evicting.is_empty() {
+            return Ok(());
+        }
+        for dim in evicting {
             if self.saving_disabled() {
                 break;
             }
-            // A chunk-unload listener in an earlier built-in level can force a
-            // chunk or otherwise activate this level before its turn.
-            if !self.levels.parked.contains_key(&dim) || self.active_levels().contains(&dim) {
-                if let Some(p) = self.levels.parked.get_mut(&dim) {
-                    p.idle = 0;
-                }
-                continue;
-            }
-            self.unload_parked_level_chunks(dim)?;
-        }
-        // Recompute active levels and save state after built-in chunk drains:
-        // listeners invoked during a drain can force a chunk in a custom level
-        // or disable saving.
-        let (saving_enabled, active) = if drained {
-            (!self.saving_disabled(), self.active_levels())
-        } else {
-            (saving_enabled, active)
-        };
-        let closing = self
-            .levels
-            .plan_custom_closes(|dim| active.contains(&dim), saving_enabled);
-        for dim in closing {
-            let saving_enabled = !self.saving_disabled();
-            let now_active = self.active_levels().contains(&dim);
-            let eligible = self.levels.parked.get_mut(&dim).is_some_and(|p| {
-                custom_close_still_eligible(dim, &mut p.idle, now_active, saving_enabled)
-            });
-            if eligible {
-                self.close_parked_level(dim)?;
-            }
+            self.evict_idle_level_chunks(dim)?;
         }
         Ok(())
     }
 
-    /// Unload unticketed chunks from an idle parked built-in level while
-    /// keeping the level itself open (`ChunkMap.processUnloads` while the
-    /// `ServerLevel` stays registered until server shutdown).
-    fn unload_parked_level_chunks(&mut self, dim: Dim) -> Result<()> {
-        debug_assert!(dim.is_builtin());
+    /// Evict non-forced chunks and entities from an idle parked level while
+    /// keeping the level open in `self.levels.parked`.
+    pub(super) fn evict_idle_level_chunks(&mut self, dim: Dim) -> Result<()> {
         if self.saving_disabled() {
             return Ok(());
         }
         let back = self.dim;
         self.enter_level(dim)?;
-        let spawn_wait = std::mem::take(&mut self.spawn_wait);
+        let prev_radius = self.streaming.radius;
+        let prev_paused = self.streaming.paused;
+        let prev_extra = std::mem::take(&mut self.streaming.extra);
         self.streaming.radius = -1;
-        self.streaming.extra.clear();
-        self.update_world();
-        self.spawn_wait = spawn_wait;
+        self.streaming.paused = false;
+        self.streaming.force_unload_sweep();
+        let evicted = self.update_world_with_eviction(true);
+        self.streaming.radius = prev_radius;
+        self.streaming.paused = prev_paused;
+        self.streaming.extra = prev_extra;
         self.enter_level(back)?;
-        Ok(())
+        if let Some(parked) = self.levels.parked.get_mut(&dim) {
+            parked.idle = 0;
+        }
+        evicted
     }
 
-    /// Save the parked custom level `dim` and drop it: the mods hear its chunks
-    /// and the level unload. A level a mod opened at run time stays known, and
-    /// opens again when entered, as any other custom level.
+    /// Save the parked level `dim` and drop it on explicit runtime-level
+    /// unload: the mods hear its chunks and the level unload.
     pub(super) fn close_parked_level(&mut self, dim: Dim) -> Result<()> {
         debug_assert!(
             !dim.is_builtin(),
@@ -1885,16 +1766,19 @@ impl Game<'_> {
             self.entity_attachments.remove_collider(*id);
         }
         self.enter_level(back)?;
-        self.levels.parked.remove(&dim);
         self.native_level_closed(dim);
+        self.levels.parked.remove(&dim);
         Ok(())
     }
 
     /// The mods hear `dim`'s level open (`LevelEvent.Load`), on a server.
     pub(super) fn native_level_opened(&mut self, dim: Dim) {
+        if dim == self.dim {
+            self.levels.active_closed = false;
+        }
         if self.remote.is_some()
             || self.options.execution_role.is_client()
-            || self.levels.has_heard_open(dim)
+            || self.levels.order.contains(&dim)
         {
             return;
         }
@@ -1905,17 +1789,17 @@ impl Game<'_> {
             parked.bind_resident_owners(&journal, dim.key(), true);
         }
         self.bind_dimension_attachments(dim);
-        if self.levels.note_opened(dim) {
-            self.native_level_load(dim.id());
-        }
+        self.levels.order.push(dim);
+        self.native_level_load(dim.id());
     }
 
     /// The mods hear `dim`'s level close (`LevelEvent.Unload`), once for
     /// each open they heard.
     fn native_level_closed(&mut self, dim: Dim) {
         self.remove_level_fake_players(dim.id());
-        if self.levels.note_closed(dim) {
+        if let Some(i) = self.levels.order.iter().position(|d| *d == dim) {
             self.native_level_unload(dim.id());
+            self.levels.order.remove(i);
         }
         if dim == self.dim {
             self.world.water_tickets.clear();
@@ -1926,12 +1810,40 @@ impl Game<'_> {
         self.passages.retire_level(dim.key());
     }
 
-    /// Every level still open closes with the server, however it ends
-    /// (`MinecraftServer.stopServer`'s `level.close()` loop), in vanilla's
-    /// order of its levels: the Overworld, the Nether, the End.
-    pub(super) fn native_levels_closing(&mut self) {
-        for dim in Dim::all() {
-            self.native_level_closed(dim);
+    /// `MinecraftServer.stopServer`'s `level.close()` loop: close every loaded
+    /// level in creation order, firing `LevelEvent.Unload` only after that
+    /// level's own close (`save.flush()`) completes without error. A failure
+    /// closing one level is logged and skips its unload event while continuing
+    /// to close the remaining levels.
+    pub(in crate::game) fn close_loaded_levels_for_stop(&mut self) {
+        let dims = self.loaded_level_order();
+        for dim in dims {
+            if dim == self.dim {
+                if self.levels.active_closed {
+                    continue;
+                }
+                match self.save.flush() {
+                    Ok(()) => {
+                        self.streaming.abort_generation();
+                        self.native_level_closed(dim);
+                        self.levels.active_closed = true;
+                    }
+                    Err(error) => {
+                        log::error!("Exception closing the level {}: {error}", dim.id());
+                    }
+                }
+            } else if let Some(parked) = self.levels.parked.get_mut(&dim) {
+                match parked.save.flush() {
+                    Ok(()) => {
+                        parked.streaming.abort_generation();
+                        self.native_level_closed(dim);
+                        self.levels.parked.remove(&dim);
+                    }
+                    Err(error) => {
+                        log::error!("Exception closing the level {}: {error}", dim.id());
+                    }
+                }
+            }
         }
     }
 
@@ -1960,23 +1872,34 @@ impl Game<'_> {
         }
     }
 
-    /// Save every parked level (`MinecraftServer.saveAllChunks`); the level
-    /// in place is the caller's to save.
-    pub(super) fn save_parked_levels(&mut self, wait: bool) -> Result<()> {
-        if self.levels.parked.is_empty() {
-            return Ok(());
-        }
+    /// Save every loaded level in creation order (`MinecraftServer.saveAllChunks`),
+    /// restoring whichever level was in place afterwards.
+    pub(super) fn save_all_levels(&mut self, wait: bool) -> Result<()> {
         let back = self.dim;
-        let parked = self.levels.parked_dims();
-        let saved = (|| {
-            for dim in parked {
-                self.enter_level(dim)?;
-                self.save_level(wait)?;
+        let dims = self.loaded_level_order();
+        let mut saved = Ok(());
+        for dim in dims {
+            if let Err(error) = self.enter_level(dim).and_then(|()| self.save_level(wait)) {
+                saved = Err(error);
+                break;
             }
+        }
+        let restored = if self.dim != back {
+            self.enter_level(back)
+        } else {
             Ok(())
-        })();
-        let restored = self.enter_level(back);
+        };
         saved.and(restored)
+    }
+}
+
+#[cfg(test)]
+fn dim_fallback_key(dim: Dim) -> (u8, &'static str) {
+    match dim {
+        Dim::Overworld => (0, ""),
+        Dim::Nether => (1, ""),
+        Dim::End => (2, ""),
+        Dim::Extra(_) => (3, dim.id()),
     }
 }
 
@@ -2113,8 +2036,7 @@ mod tests {
                         queue_unencodable_entity_record(&game.save);
                         let disk = SaveDir::new(game.save.root.clone(), game.save.shape, None);
                         game.enter_level(Dim::Overworld).unwrap();
-                        game.levels.parked.get_mut(&custom).unwrap().idle = IDLE_TICKS - 1;
-                        game.close_idle_levels().unwrap();
+                        game.close_parked_level(custom).unwrap();
                         assert_eq!(game.dim, Dim::Overworld);
                         assert!(!game.levels.parked.contains_key(&custom));
                         assert_eq!(game.save.record_save_failures(), 1);
@@ -2126,185 +2048,21 @@ mod tests {
     }
 
     #[test]
-    fn levels_clear_empties_parked_and_heard_open() {
+    fn levels_clear_retires_the_level_order() {
         let mut levels = Levels::default();
-        levels.heard_open.push(Dim::Nether);
-        assert!(!levels.heard_open.is_empty());
+        levels.order.push(Dim::Nether);
+        assert!(!levels.order.is_empty());
         levels.clear();
-        assert!(levels.heard_open.is_empty());
+        assert!(levels.order.is_empty());
         assert!(levels.parked.is_empty());
     }
 
     #[test]
-    fn built_in_levels_stay_open_while_unloading_chunks_and_custom_levels_idle_close() {
-        use sunrise_client::chunk::Chunk;
-        use sunrise_world::registry::BlockStateId;
-
-        let custom = Dim::Extra(mod_api::__private::dimension_key("test_idle:custom"));
-        assert!(Dim::Overworld.is_builtin());
-        assert!(Dim::Nether.is_builtin());
-        assert!(Dim::End.is_builtin());
-        assert!(!custom.is_builtin());
-
-        // Startup opens all three built-in levels once in registry order.
-        let mut levels = Levels::default();
-        let mut loads = Vec::new();
-        let mut unloads = Vec::new();
-        for dim in BUILTIN_LEVEL_ORDER {
-            if levels.note_opened(dim) {
-                loads.push(dim);
-            }
-        }
-        assert_eq!(loads, [Dim::Overworld, Dim::Nether, Dim::End]);
-
-        // Also open a custom level to verify custom idle-close still applies.
-        assert!(levels.note_opened(custom));
-        loads.push(custom);
-
-        let mut overworld_world = World::new(BlockStateId(0), 0);
-        overworld_world
-            .chunks
-            .insert((2, 3), Arc::new(Chunk::empty(2, 3)));
-        let mut nether_world = World::new(BlockStateId(0), 0);
-        nether_world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        let end_world = World::new(BlockStateId(0), 0);
-
-        let mut overworld_idle = 0u32;
-        let mut nether_idle = 0u32;
-        let mut end_idle = 0u32;
-        let mut custom_idle = 0u32;
-        let mut custom_open = true;
-
-        // Idle past IDLE_TICKS: built-ins unload unticketed chunks and stay open;
-        // the custom level stays open until IDLE_TICKS and then closes.
-        let mut overworld_unload_requests = 0u32;
-        let mut nether_unload_requests = 0u32;
-        for tick in 1..=IDLE_TICKS + 50 {
-            match step_parked_idle(
-                Dim::Overworld,
-                &mut overworld_idle,
-                false,
-                !overworld_world.chunks.is_empty(),
-                true,
-            ) {
-                IdleAction::UnloadChunks => {
-                    overworld_unload_requests += 1;
-                    assert!(overworld_world.unload_chunk((2, 3)).is_some());
-                }
-                IdleAction::Keep => {}
-                IdleAction::Close => panic!("Overworld must not idle-close"),
-            }
-            match step_parked_idle(
-                Dim::Nether,
-                &mut nether_idle,
-                false,
-                !nether_world.chunks.is_empty(),
-                true,
-            ) {
-                IdleAction::UnloadChunks => {
-                    nether_unload_requests += 1;
-                    assert!(nether_world.unload_chunk((0, 0)).is_some());
-                }
-                IdleAction::Keep => {}
-                IdleAction::Close => panic!("Nether must not idle-close"),
-            }
-            assert_eq!(
-                step_parked_idle(
-                    Dim::End,
-                    &mut end_idle,
-                    false,
-                    !end_world.chunks.is_empty(),
-                    true,
-                ),
-                IdleAction::Keep,
-                "empty parked End stays open with no work"
-            );
-            if custom_open {
-                let action = step_parked_idle(custom, &mut custom_idle, false, false, true);
-                if tick < IDLE_TICKS {
-                    assert_eq!(action, IdleAction::Keep);
-                } else {
-                    assert_eq!(action, IdleAction::Close);
-                    custom_open = false;
-                    if levels.note_closed(custom) {
-                        unloads.push(custom);
-                    }
-                }
-            }
-        }
-
-        // Unticketed chunks unloaded once; idle ticks afterwards did no extra work.
-        assert_eq!(overworld_unload_requests, 1);
-        assert_eq!(nether_unload_requests, 1);
-        assert!(overworld_world.chunks.is_empty());
-        assert!(nether_world.chunks.is_empty());
-        // Built-ins never unloaded; only the custom level idle-closed.
-        assert_eq!(unloads, [custom]);
-        assert!(levels.has_heard_open(Dim::Overworld));
-        assert!(levels.has_heard_open(Dim::Nether));
-        assert!(levels.has_heard_open(Dim::End));
-        assert!(!levels.has_heard_open(custom));
-
-        // An active custom level resets its idle counter and does not close.
-        let mut active_custom_idle = IDLE_TICKS - 1;
-        assert_eq!(
-            step_parked_idle(custom, &mut active_custom_idle, true, false, true),
-            IdleAction::Keep
-        );
-        assert_eq!(active_custom_idle, 0);
-
-        // Visiting Nether or End after the idle period does not fire a second level_load.
-        for dim in [Dim::Nether, Dim::End] {
-            if levels.note_opened(dim) {
-                loads.push(dim);
-            }
-        }
-        assert_eq!(loads, [Dim::Overworld, Dim::Nether, Dim::End, custom]);
-
-        // Shutdown closes every still-open built-in level once (and not the already-closed custom level).
-        for dim in BUILTIN_LEVEL_ORDER.into_iter().chain([custom]) {
-            if levels.note_closed(dim) {
-                unloads.push(dim);
-            }
-        }
-        assert_eq!(unloads, [custom, Dim::Overworld, Dim::Nether, Dim::End]);
-        // Repeating close at shutdown never fires a duplicate unload.
-        for dim in BUILTIN_LEVEL_ORDER {
-            assert!(!levels.note_closed(dim));
-        }
-    }
-
-    #[test]
-    fn idle_drain_respects_pause_and_save_off() {
-        let custom = Dim::Extra(mod_api::__private::dimension_key("test_idle:guarded"));
-
+    fn idle_maintenance_respects_pause() {
         // Server pause skips parked-level maintenance; unpaused ticks (including
         // `/tick freeze`, where `paused == false`) still run it.
         assert!(!should_run_idle_maintenance(true));
         assert!(should_run_idle_maintenance(false));
-
-        // `/save-off` (`saving_enabled == false`) keeps parked built-in chunks
-        // resident and defers custom idle-close until `/save-on` resumes saving.
-        let mut nether_idle = 0u32;
-        let mut custom_idle = IDLE_TICKS - 1;
-        assert_eq!(
-            step_parked_idle(Dim::Nether, &mut nether_idle, false, true, false),
-            IdleAction::Keep
-        );
-        assert_eq!(
-            step_parked_idle(custom, &mut custom_idle, false, false, false),
-            IdleAction::Keep
-        );
-        assert_eq!(
-            step_parked_idle(Dim::Nether, &mut nether_idle, false, true, true),
-            IdleAction::UnloadChunks
-        );
-        assert_eq!(
-            step_parked_idle(custom, &mut custom_idle, false, false, true),
-            IdleAction::Close
-        );
     }
 
     /// A game on the prepared resources in `SUNRISE_TEST_RESOURCES`, with no
@@ -2614,7 +2372,7 @@ mod tests {
             assert!(game.levels.parked[&end].streaming.commanded().is_empty());
             // An early final save can run after the world is adopted but
             // before ticket activation. The originals on disk must survive.
-            game.save_parked_levels(false).unwrap();
+            game.save_all_levels(false).unwrap();
             game.prepare_levels().unwrap();
             assert!(
                 saw_end.load(Ordering::Relaxed),
@@ -2961,9 +2719,8 @@ mod tests {
             assert!(unloads.lock().unwrap().is_empty());
 
             // Normal server shutdown saves worlds and fires `level_unload` once each.
-            game.run_server_lifecycle(true, |_, began| {
-                *began = true;
-                Ok(())
+            game.run_server_lifecycle(true, |_| {
+                Ok(super::server_lifecycle::ServerRunOutcome::Orderly)
             })
             .unwrap();
             assert_eq!(*unloads.lock().unwrap(), BUILT_INS);

@@ -988,6 +988,52 @@ mod tests {
     }
 
     #[test]
+    fn update_report_shows_migration_for_a_removed_world_lifecycle_member() {
+        use mod_surface::uses::{Entry, Origin, Used, Uses};
+        let id = "type:WorldPhase.WorldCloseFailed";
+        let uses = Uses {
+            items: vec![Used {
+                entry: Entry::plain(id.into(), "old-version".into()),
+                origin: Origin::Source {
+                    file: "src/lib.rs".into(),
+                    line: 19,
+                },
+                note: None,
+            }],
+        };
+        let note: ChangeNote = toml::from_str(include_str!(
+            "../../sunrise-mod-vocab/changes/debt-re-wl-re-wl.toml"
+        ))
+        .unwrap();
+        let notes = migrate_notes(&[note]);
+        for handle in [
+            "handle:LevelRef::datapack_entries",
+            "handle:LevelRef::datapack_handle",
+            "handle:LevelRef::datapack_read",
+        ] {
+            assert!(notes.contains_key(handle), "missing migration for {handle}");
+        }
+        let pinned = |name: &str, build: &str| PinnedSdk {
+            name: name.into(),
+            build: build.into(),
+            dir: Default::default(),
+            surface: Default::default(),
+        };
+        let text = report(
+            "greeter",
+            &pinned("old", BUILD),
+            &pinned("new", OTHER_BUILD),
+            &uses,
+            &surface(vec![]),
+            &surface(vec![]),
+            &notes,
+        );
+        assert!(text.contains(id), "{text}");
+        assert!(text.contains("note from the change:"), "{text}");
+        assert!(text.contains("WorldPhase::WorldOpenFailed and WorldPhase::WorldCloseFailed -> delete the failure-only branches"), "{text}");
+    }
+
+    #[test]
     fn sdk_diff_prints_the_newer_builds_notes_under_the_changes_they_name() {
         let old = surface(vec![hook("hook:gone", "", &[])]);
         let new = surface(vec![]);

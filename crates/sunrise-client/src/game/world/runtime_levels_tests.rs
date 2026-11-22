@@ -385,8 +385,9 @@ fn a_handle_from_before_an_unload_never_names_the_reopened_level() {
     });
 }
 
-/// The idle close drops a runtime level from memory as any level, but it stays open: entering
-/// it opens it again with the same handle, and only `unload` closes it for good.
+/// Idle non-Overworld eviction drops chunks from memory without closing the level: `is_open`
+/// stays true, `level_unload` does not fire, re-entering does not fire `level_load` again, and
+/// only explicit `unload` closes it for good.
 #[test]
 #[ignore = "daily"]
 fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
@@ -395,19 +396,56 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
         game.apply_runtime_levels();
         let handle = seen.answers.lock().unwrap()[0].unwrap();
         let dim = super::Dim::extra("idle:a").unwrap();
-        // What the idle close does to a level nobody is in.
-        game.close_parked_level(dim).unwrap();
-        assert_eq!(*seen.unloads.lock().unwrap(), ["idle:a"]);
+        game.enter_level(dim).unwrap();
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        let registry = game.pack.assets.registry;
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        game.world.set(1, 64, 1, stone).unwrap();
+        game.summon_with_nbt("minecraft:pig", [2.0, 64.0, 2.0], "{}")
+            .unwrap()
+            .unwrap();
+        let save = game.save.clone();
+        // Encoding is refused before the batch can enter the writer.
+        game.save = Arc::new(sunrise_client::save::SaveDir::new(
+            game.world_root.join("no-item-catalog"),
+            game.world.shape,
+            None,
+        ));
+        game.enter_level(super::Dim::Overworld).unwrap();
+        let error = game.evict_idle_level_chunks(dim).unwrap_err();
+        assert!(error.to_string().contains("without a loaded item catalog"));
+        assert_eq!(game.dim, super::Dim::Overworld);
+        game.enter_level(dim).unwrap();
+        assert_eq!(game.world.block(1, 64, 1), stone);
+        assert!(game.world.modified.contains(&(0, 0)));
+        assert_eq!(game.mobs.len(), 1);
+        game.save = save.clone();
+        game.enter_level(super::Dim::Overworld).unwrap();
+
+        // After a successful submission, only the chunks and entities leave.
+        game.evict_idle_level_chunks(dim).unwrap();
+        assert_eq!(
+            save.load(0, 0, registry, world_biomes!(game))
+                .unwrap()
+                .block(1, 64, 1),
+            stone
+        );
+        assert_eq!(save.load_entities(0, 0).len(), 1);
+        assert!(game.levels.parked[&dim].world.chunks.is_empty());
+        assert!(seen.unloads.lock().unwrap().is_empty());
         assert!(game.runtime_level_is_open("idle:a"));
         assert!(game.level_handle_current(handle));
+        assert!(game.levels.parked.contains_key(&dim));
         game.enter_level(dim).unwrap();
-        assert_eq!(*seen.loads.lock().unwrap(), ["idle:a", "idle:a"]);
+        assert_eq!(*seen.loads.lock().unwrap(), ["idle:a"]);
         game.enter_level(super::Dim::Overworld).unwrap();
         assert_eq!(unload_as(game, "idle", "idle:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("idle:a"));
         assert!(super::Dim::extra("idle:a").is_none());
-        assert_eq!(*seen.unloads.lock().unwrap(), ["idle:a", "idle:a"]);
+        assert_eq!(*seen.unloads.lock().unwrap(), ["idle:a"]);
     });
 }
 

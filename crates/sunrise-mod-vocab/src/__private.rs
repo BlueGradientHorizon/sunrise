@@ -4,6 +4,7 @@
 use crate::*;
 #[path = "__private/registry_installation.rs"]
 mod registry_installation;
+pub use crate::world::datapack_registry_set::queued_datapack_set_bytes;
 
 /// The argument of a handler trait's hidden marks method. Its field is private, so no mod can
 /// make one: nothing outside this crate can call the method.

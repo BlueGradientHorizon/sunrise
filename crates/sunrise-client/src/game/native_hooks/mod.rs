@@ -46,7 +46,7 @@ use mod_api::{
     NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
     PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenWidgets,
     ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers,
-    TicketController, ToolUse, VillagerProfessions, WorldPhase,
+    TicketController, ToolUse, VillagerProfessions,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,

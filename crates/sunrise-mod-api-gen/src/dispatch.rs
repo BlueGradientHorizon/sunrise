@@ -1276,7 +1276,21 @@ pub(super) fn emit<'a>(
                 )
             } else if matches!(
                 name,
-                "contents_changed" | "farmland_trample" | "register_configuration_tasks"
+                "contents_changed"
+                    | "farmland_trample"
+                    | "register_configuration_tasks"
+                    | "server_about_to_start"
+                    | "server_starting"
+                    | "server_started"
+                    | "server_stopping"
+                    | "server_stopped"
+                    | "config_unloading"
+                    | "level_load"
+                    | "level_save"
+                    | "level_unload"
+                    | "create_spawn_position"
+                    | "player_save_to_file"
+                    | "world_saved"
             ) {
                 // Let the existing journal see the unwind before invoke catches it.
                 let (host, _) = host.as_ref().unwrap();
@@ -1297,6 +1311,28 @@ pub(super) fn emit<'a>(
                              }}\
                          }}\
                      }}"
+                )
+            } else if matches!(name, "level_tick_pre" | "level_tick_post") {
+                // Only the server Host owns a journal. The client side still uses invoke
+                // for panic/phase refusal handling, as do the client Load and Unload hooks.
+                let (host, _) = host.as_ref().unwrap();
+                format!(
+                    "match {host}.reborrow() {{\
+                        HostSide::Server({host}) => {{\
+                            use super::item::transaction::{{HostTransaction, TransactionError}};\
+                            match HostTransaction::transaction({host}, |{host}, _| -> Result<(), core::convert::Infallible> {{\
+                                let mut {host} = HostSide::Server({host});\
+                                {expression}; Ok(())\
+                            }}) {{\
+                                Ok(()) => {{}}\
+                                Err(TransactionError::Aborted(never)) => match never {{}},\
+                                Err(TransactionError::Unavailable) => {{\
+                                    log::warn!(\"mod {{}}: {name} callback refused: transaction unavailable\", {mod_id_expr});\
+                                }}\
+                            }}\
+                        }}\
+                        mut {host} => {expression},\
+                    }}"
                 )
             } else {
                 expression

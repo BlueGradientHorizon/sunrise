@@ -393,11 +393,9 @@ mod tests {
     #[ignore = "daily"]
     fn an_unload_save_ejects_a_mob_riding_a_player() {
         ejected(|game, _| {
-            let chunk =
-                game.world.chunks.get(&(0, 0)).cloned().unwrap_or_else(|| {
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0))
-                });
-            game.unload_entities(&[chunk]);
+            let keys = [(0, 0)].into_iter().collect();
+            game.save_unloading_entities(&keys).unwrap();
+            game.remove_unloading_entities(&keys);
         });
     }
 

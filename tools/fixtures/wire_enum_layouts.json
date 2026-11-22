@@ -796,12 +796,6 @@
       "path": "crate::client::world_draw::WorldDepth",
       "hash": "4409bd351ad1b1df",
       "canonical_path": "crate::client::world_draw::WorldDepth"
-    },
-    {
-      "name": "WorldPhase",
-      "path": "crate::world::types::WorldPhase",
-      "hash": "1322c39e2b688618",
-      "canonical_path": "crate::world::types::WorldPhase"
     }
   ],
   "retired_identities": [

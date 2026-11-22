@@ -1079,7 +1079,11 @@ unavailable registries, stale or unloaded levels, and a missing published set gi
 `UnknownRegistry`; a registry without the entry gives `MissingEntry`. A host without a backend
 returns `Unavailable`. Listing returns `None` for an unavailable level or registry, not for a
 known empty registry. Once a client receives a valid snapshot at join or reload, it reads those
-entries; any of its declared registries omitted from the snapshot have no entries there.
+entries; any of its declared registries omitted from the snapshot have no entries there. Resolve
+`host.level(event.dimension)` in `client_level_load` or `client_level_unload` to read the
+available synchronized registries through the entering or retiring level. Unload still sees its
+old configuration during a server reconfiguration; the next Load sees the new set. A retiring
+`LevelRef` is stale after Unload.
 
 A code mod can also use `Registrar::declare_entity_attributes(path, template, attributes)` during registration.
 That declaration starts from the vanilla template's attribute row, replacing the content row's overrides.

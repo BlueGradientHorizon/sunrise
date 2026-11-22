@@ -611,7 +611,7 @@ fn an_item_write_commits_in_its_own_level_despite_an_unrelated_transaction() {
                 .contains(&chunk)
         );
 
-        game.save_parked_levels(true).unwrap();
+        game.save_all_levels(true).unwrap();
         game.enter_level(Dim::Nether).unwrap();
         let reloaded = game
             .save

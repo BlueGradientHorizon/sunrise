@@ -257,7 +257,7 @@ mod tests {
                 &game.attachment_indexes[&Dim::Overworld]
             ));
             assert_eq!(overworld.lock().unwrap().snapshot(&key).len(), 1);
-            game.native_levels_closing();
+            game.close_loaded_levels_for_stop();
             assert!(game.attachment_indexes.is_empty());
             assert_eq!(old.len(), 1);
             game.native_lifecycle_open_started();
