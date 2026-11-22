@@ -699,6 +699,41 @@ class ParityWorkflowTests(unittest.TestCase):
         self.env.update([line.split("=", 1) for line in (self.root / "env").read_text().splitlines()])
         self.assertEqual(Path(self.env["PARITY_LOG_DIR"]), self.slot)
 
+    def test_a_failed_probe_build_shows_its_error_headings_not_its_text(self):
+        step = self.steps["Show a failed probe build's compiler errors"]
+        self.assertEqual(self.steps["Build the daily harnesses' game probes"]["id"], "game-probes")
+        self.assertEqual(self.steps["Build parity probes"]["id"], "probes")
+        self.assertIn("steps.game-probes.outcome == 'failure'", step["if"])
+        self.initialise()
+        (self.slot / "game-probes.log").write_text(
+            "   Compiling sunrise-client-lib\nerror[E0425]: cannot find value `PRIVATE` in this scope\n"
+            "  --> crates/sunrise-client/src/lib.rs:1:1\nprivate source excerpt\nerror: could not compile\n")
+        result = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, capture_output=True, text=True,
+                                env=dict(self.env, FAILED="game-probes"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("game-probes failed:", result.stdout)
+        self.assertIn("compiler: error[E0425]: custom diagnostic payload withheld", result.stdout)
+        self.assertIn("compiler:   --> crates/sunrise-client/src/lib.rs:1:1", result.stdout)
+        for private in ("PRIVATE", "private source excerpt", "Compiling"):
+            self.assertNotIn(private, result.stdout)
+
+    def test_a_failed_shares_logs_are_kept_beyond_the_slot(self):
+        step = self.steps["Keep a failed share's logs beyond this slot"]
+        self.assertEqual(step["if"], "failure()")
+        self.initialise()
+        (self.slot / "parity.log").write_text("private mismatch")
+        keep = self.root / "keep"
+        stale = keep / "parity-failed-logs/70-1-bucket-0"
+        stale.mkdir(parents=True)
+        os.utime(stale, (0, 0))
+        self.env["DYNA_CI_KEEP"] = str(keep)
+        result = self.step("Keep a failed share's logs beyond this slot")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((keep / "parity-failed-logs/77-2-bucket-0/parity.log").read_text(), "private mismatch")
+        self.assertFalse(stale.exists())
+        self.assertEqual([path.name for path in (keep / "parity-failed-logs").iterdir()], ["77-2-bucket-0"])
+        self.assertNotIn("private", result.stdout)
+
     def test_an_early_failure_cannot_report_a_previous_slots_result(self):
         # Both an older attempt and stale state in the current directory survive until the first workflow step.
         for path in (self.slot.with_name("77-1-bucket-0"), self.slot):
