@@ -85,6 +85,10 @@ pub struct Parts {
     pub(crate) block_capabilities: Capabilities<NativeCapabilityProvider>,
     /// Canonical bindings by domain, retained independently of provider availability.
     pub(crate) block_capability_metadata: HashMap<&'static str, CapabilityMetadata>,
+    #[expect(
+        dead_code,
+        reason = "the mirrored authoring input consumes only the item bindings during registration"
+    )]
     pub(crate) item_capability_metadata: HashMap<&'static str, CapabilityMetadata>,
     pub(crate) entity_capability_metadata: HashMap<&'static str, CapabilityMetadata>,
     /// Built-in declaration order followed by the order mods first mention a capability.
