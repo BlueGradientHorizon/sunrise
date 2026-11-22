@@ -310,15 +310,7 @@ impl Game<'_> {
                         .iter_mut()
                         .find(|m| m.id == id && m.alive() && !m.removed)
                     {
-                        mob.apply_consume_effect(
-                            crate::game::entity::damage_level_of!(
-                                self,
-                                &sunrise_client::health::NO_ATTACK,
-                                no_push,
-                                None
-                            ),
-                            effect,
-                        );
+                        mob.apply_consume_effect(effect);
                     }
                 }
             }
@@ -1251,7 +1243,7 @@ mod fox_consumption_hook_tests {
                     let id = 60 + u32::from(action);
                     let from = Vec3::new(8.5, 64.0, 8.5);
                     let mut actor = Mob::new(id, ty.clone(), from, 0.0);
-                    actor.on_ground = true;
+                    actor.ground.on_ground = true;
                     actor.fall_distance = 9.0;
                     actor.extra.ints[1] = 600;
                     let mut stack = ItemStack::new("minecraft:chorus_fruit", 7);
@@ -1371,7 +1363,7 @@ mod fox_consumption_hook_tests {
                 for (id, x) in [(200, 8.5), (201, 11.5), (202, 13.5), (204, 6.5)] {
                     let mut actor = Mob::new(id, ty.clone(), Vec3::new(x, 64.0, 8.5), 0.0);
                     actor.persistent = true;
-                    actor.on_ground = true;
+                    actor.ground.on_ground = true;
                     actor.extra.ints[1] = 600;
                     actor
                         .extra

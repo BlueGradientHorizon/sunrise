@@ -856,7 +856,13 @@ impl Game<'_> {
                     .ok_or("the target is gone")?;
                 let kind = self.mobs[index].kind.id.clone();
                 let bonus = self.smash_damage_bonus(&kind);
-                let hurt = self.hurt_by_player(index, base + bonus, source);
+                let join = self.mobs[index].join;
+                let (hurt, _) = self.hurt_by_player(index, base + bonus, source);
+                let index = self
+                    .mob_index
+                    .find(&self.mobs, id)
+                    .filter(|&i| self.mobs[i].join == join && !self.mobs[i].removed)
+                    .ok_or("the target is gone")?;
                 // The hurt sound the mob raised, where it stands.
                 for event in std::mem::take(&mut self.mobs[index].outbox) {
                     if let sunrise_client::mobs::MobEvent::Sound(s, at, volume, pitch) = event {
@@ -1226,7 +1232,7 @@ impl Game<'_> {
         if kind == "minecraft:armor_stand" {
             let mut stand = sunrise_client::entities::ArmorStand::new(id, at, yaw);
             stand.marker = e["marker"].as_bool().unwrap_or(false);
-            stand.on_ground = e["ground"].as_bool().unwrap_or(false);
+            stand.ground.on_ground = e["ground"].as_bool().unwrap_or(false);
             stand.show_arms = e["arms"].as_bool().unwrap_or(false);
             stand.disabled_slots = e["disabled"].as_i64().unwrap_or(0) as i32;
             if let Some(last_hit) = e["last_hit"].as_i64() {
@@ -1275,7 +1281,7 @@ impl Game<'_> {
         if flag("loot") {
             mob.extra.pick_up_loot = true;
         }
-        mob.on_ground = flag("ground");
+        mob.ground.on_ground = flag("ground");
         if let Some(health) = e["health"].as_f64() {
             mob.attrs.max_health = health as f32;
             mob.health = health as f32;

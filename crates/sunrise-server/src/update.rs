@@ -1296,13 +1296,11 @@ mod tests {
             "{line}"
         );
         assert!(line.contains("nightly-2026-11-21-0c02067"), "{line}");
-        // Without --version, the update the server's own channel offers.
+        // Without --version, the update the server's own channel offers, and none once it runs it.
         let line = check_line(None, "26.3-0.2.0", "26.3-0.1.0");
-        assert!(
-            line.contains("`sunrise-server update` installs it"),
-            "{line}"
-        );
-        assert!(check_line(None, "26.3-0.1.0", "26.3-0.1.0").starts_with("Up to date"));
+        assert!(line.contains("`sunrise-server update`"), "{line}");
+        assert!(line.contains("26.3-0.2.0"), "{line}");
+        assert!(!check_line(None, "26.3-0.1.0", "26.3-0.1.0").contains("`sunrise-server update"));
     }
 
     #[test]

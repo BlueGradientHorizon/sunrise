@@ -431,8 +431,6 @@
   "sunrise.extras.chat_animation.tooltip": "A new chat line slides in from the left while it fades in, instead of appearing whole.",
   "sunrise.extras.chat_indicator": "Message indicator",
   "sunrise.extras.chat_indicator.tooltip": "The coloured bar at the left of a chat line.",
-  "sunrise.extras.discord_presence": "Discord Rich Presence",
-  "sunrise.extras.discord_presence.tooltip": "Shows Playing Sunrise on your Discord profile while Discord runs: menus, single player or multiplayer, the dimension and the time played. Never a world's name or a server's address.",
   "sunrise.extras.dynamic_lights": "Dynamic lights",
   "sunrise.extras.dynamic_lights.tooltip": "Torches and other light sources held, dropped or on fire light the blocks around them.",
   "sunrise.extras.fullbright": "Fullbright",

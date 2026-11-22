@@ -36,13 +36,15 @@ impl Game<'_> {
     /// modifier's own mouse button applies the hovered mode and closes the
     /// screen, as the modifier key's release does (`keyReleased`). A modifier
     /// bound to a keyboard key matches no mouse button.
-    pub(super) fn switcher_release(&mut self, button: winit::event::MouseButton) {
+    pub(super) fn switcher_release(&mut self, button: winit::event::MouseButton) -> bool {
         if sunrise_client::game_mode_switcher::release_applies(
             &keybinds::mouse_name(button),
             self.settings.keys.get("key.debug.modifier"),
         ) {
             self.close_gamemode_switcher(true);
+            return true;
         }
+        false
     }
 
     pub(super) fn draw_gamemode_switcher(&mut self, batch: &mut HudBatch) {

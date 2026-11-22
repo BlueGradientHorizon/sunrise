@@ -51,6 +51,10 @@ impl Game<'_> {
                 self.settings.file.int("mipmapLevels"),
             ),
         )
+        .and_then(|(renderer, clouds)| {
+            clouds?;
+            Ok(renderer)
+        })
     }
     /// Under `SUNRISE_HDR_FRAME=float` the frame follows what draws the picture
     /// (docs/design/hdr-linear-light.md, "When it changes"): when HDR, Smooth Gradients or the

@@ -269,7 +269,7 @@ impl Game<'_> {
     /// A click on `ConnectScreen`: Cancel aborts the connection
     /// (`connect.aborted`) and goes back. Escape does nothing there
     /// (`shouldCloseOnEsc` is false).
-    pub(in crate::game) fn connect_screen_click(&mut self) -> Result<()> {
+    pub(in crate::game) fn connect_screen_click(&mut self) -> Result<bool> {
         // ServerReconfigScreen's Disconnect, once it is active.
         if let Some(since) = self.remote.as_ref().and_then(|r| r.reconfiguring) {
             let (_, (x, y)) = self.reconfigure_layout(self.gui_size());
@@ -278,16 +278,18 @@ impl Game<'_> {
             {
                 self.audio.play_button_click();
                 self.leave_server(None)?;
+                return Ok(true);
             }
-            return Ok(());
+            return Ok(false);
         }
         let Some((x, y)) = self.connect_cancel(self.gui_size()) else {
-            return Ok(());
+            return Ok(false);
         };
         if sunrise_client::ui::hovered(self.cursor, x, y, 200.0, 20.0) {
             self.audio.play_button_click();
             self.leave_server(None)?;
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 }

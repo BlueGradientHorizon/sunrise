@@ -64,17 +64,17 @@ struct CacheBench;
 impl Hooks for CacheBench {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
         let kind = r.block_entity_type("holder").blocks(&[]).build();
-        r.block_entity_capability(&COUNTED, &kind, |_, _| {
+        r.block_entity_capability(&COUNTED, &kind, |_, _, _, _, offer| {
             ASKED.fetch_add(1, Ordering::Relaxed);
-            Some(Box::new(Empty(SLOTS.load(Ordering::Relaxed))))
+            offer.offer(|| Box::new(Empty(SLOTS.load(Ordering::Relaxed))));
         });
         // A block with no block entity, whose provider counts in the same way.
         let lodestone = r.block_key("minecraft:lodestone");
-        r.block_capability(&COUNTED, &lodestone, |_, _, _, entity| {
+        r.block_capability(&COUNTED, &lodestone, |_, _, _, entity, offer| {
             ASKED.fetch_add(1, Ordering::Relaxed);
-            entity
-                .is_none()
-                .then(|| Box::new(Empty(SLOTS.load(Ordering::Relaxed))) as _)
+            if entity.is_none() {
+                offer.offer(|| Box::new(Empty(SLOTS.load(Ordering::Relaxed))));
+            }
         });
     }
 }

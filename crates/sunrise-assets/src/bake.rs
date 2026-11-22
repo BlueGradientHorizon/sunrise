@@ -2,6 +2,7 @@
 use crate::{
     json::*,
     model::*,
+    model_loaders::{LoaderQuad, LoaderTexture},
     obj::{MtlTexture, ObjFace, ObjModel},
     resolve::{ResolvedCuboidModel, ResolvedLoader},
 };
@@ -287,7 +288,7 @@ fn bake_into(
         Some(ResolvedLoader::Obj { model: None, .. }) | None => {}
         Some(ResolvedLoader::Registered(quads)) => {
             for quad in quads.iter() {
-                if let Some(quad) = loader_quad(model, quad, transform, render_type)? {
+                if let Some(quad) = loader_quad(model, quad, transform, render_type) {
                     output.push(quad);
                 }
             }
@@ -299,19 +300,25 @@ fn bake_into(
 /// texture key the model doesn't define skips the quad with a reason.
 fn loader_quad(
     model: &ResolvedCuboidModel,
-    quad: &crate::model_loaders::LoaderQuad,
+    quad: &LoaderQuad,
     transform: BlockModelTransform,
     render_type: Option<RenderType>,
-) -> Result<Option<ModelQuad>> {
-    let Some(material) = model.material(&quad.texture)?.cloned() else {
-        log::warn!(
-            "model loader quad skipped: the model has no texture {:?}",
-            quad.texture
-        );
-        return Ok(None);
+) -> Option<ModelQuad> {
+    let material = match &quad.texture {
+        LoaderTexture::Sprite(sprite) => Material {
+            sprite: sprite.clone(),
+            force_translucent: false,
+        },
+        LoaderTexture::Slot(slot) => {
+            let Some(material) = model.material(slot).ok().flatten().cloned() else {
+                log::warn!("model loader quad skipped: the model has no texture {slot:?}");
+                return None;
+            };
+            material
+        }
     };
     let positions = quad.positions.map(|p| transform.position(p));
-    Ok(Some(ModelQuad {
+    Some(ModelQuad {
         positions,
         uv: quad.uvs,
         facing: facing(&positions).unwrap_or(Direction::Up),
@@ -325,7 +332,7 @@ fn loader_quad(
         ambient_occlusion: None,
         render_type,
         shade: quad.shade,
-    }))
+    })
 }
 /// Obj faces are unculled quads in block units; the blockstate transform moves them whole.
 fn bake_obj(
@@ -615,13 +622,22 @@ mod loader_tests {
         );
     }
     #[test]
-    fn own_loader_wins_and_unknown_loader_adds_nothing() {
-        let other = r#"{"parent":"t:comp","loader":"somemod:thing"}"#;
+    fn an_unknown_optional_loader_inherits() {
         let library = library(
-            &[("t:cube", CUBE), ("t:comp", COMPOSITE), ("t:other", other)],
+            &[
+                ("t:cube", CUBE),
+                ("t:comp", COMPOSITE),
+                (
+                    "t:optional",
+                    r#"{"parent":"t:comp","loader":{"id":"somemod:thing","optional":true}}"#,
+                ),
+            ],
             &[],
         );
-        assert!(bake(&library, "t:other").is_empty());
+        assert_eq!(
+            sprites(&bake(&library, "t:optional")),
+            ["minecraft:block/own", "minecraft:block/shared"]
+        );
     }
     #[test]
     fn composites_that_nest_through_themselves_are_an_error() {

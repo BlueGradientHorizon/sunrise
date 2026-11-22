@@ -297,6 +297,8 @@ jobs:
             actual=$(lipo -archs "$BIN/$binary")
             [[ "$actual" == "$EXPECTED_ARCH" ]] || { echo "::error::$binary is $actual, expected $EXPECTED_ARCH"; exit 1; }
           done
+          otool -P "$BIN/sunrise-client" | grep -q 'NSMicrophoneUsageDescription' \
+            || { echo "::error::sunrise-client is missing embedded NSMicrophoneUsageDescription"; exit 1; }
       - name: The signing keychain, unlocked
         if: runner.os == 'macOS' && vars.MACOS_SIGN_IDENTITY != '' && inputs.developer_id
         env:
@@ -309,10 +311,17 @@ jobs:
           MACOS_SIGN_IDENTITY: ${{ vars.MACOS_SIGN_IDENTITY }}
         run: |
           for binary in sunrise-client sunrise-ctl sunrise-perf sunrise-prepare sunrise-server sunrise-port-pack; do
+            entitlements=()
+            if [[ "$binary" == sunrise-client ]]; then
+              entitlements=(--entitlements packaging/macos/game-entitlements.plist)
+            fi
             codesign --force --options runtime --timestamp --keychain "$MACOS_SIGN_KEYCHAIN" \
+              "${entitlements[@]}" \
               --identifier "dev.sunrise.${binary#sunrise-}" --sign "$MACOS_SIGN_IDENTITY" "$BIN/$binary"
             codesign --verify --strict --verbose=2 "$BIN/$binary"
           done
+          codesign -d --entitlements - --xml "$BIN/sunrise-client" | grep -q 'com.apple.security.device.audio-input' \
+            || { echo "::error::sunrise-client is missing com.apple.security.device.audio-input entitlement"; exit 1; }
       - name: Only system libraries
         if: ${{ !matrix.musl }}
         # Windows: no non-system DLL (a "DLL not found" dialog on some players' machines). Linux: the standard
