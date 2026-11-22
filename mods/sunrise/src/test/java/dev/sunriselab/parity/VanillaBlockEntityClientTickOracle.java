@@ -23,7 +23,17 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.entity.BeaconBlockEntity;
+import net.minecraft.world.level.block.entity.BellBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.entity.BlockEntityTypes;
+import net.minecraft.world.level.block.entity.CampfireBlockEntity;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.block.entity.ConduitBlockEntity;
+import net.minecraft.world.level.block.entity.EnchantingTableBlockEntity;
+import net.minecraft.world.level.block.entity.PotentSulfurBlockEntity;
+import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.block.entity.TrialSpawnerBlockEntity;
 import net.minecraft.world.level.block.entity.vault.VaultBlockEntity;
@@ -36,10 +46,10 @@ import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.LevelEventHandler;
 
 /**
- * Original oracle for the client ticks of spawners, trial spawners and vaults
- * (BaseSpawner.clientTick, TrialSpawner.tickClient, VaultBlockEntity.Client.tick) as
- * ClientLevel.tickBlockEntities runs them: every loaded one, each client tick, in the level's
- * ticker order, all drawing from the one level random. A case's columns arrive as chunk packets:
+ * Original oracle for spawners, trial spawners, vaults, campfires, beacons, potent sulfur
+ * and animated block entities as ClientLevel.tickBlockEntities runs them: every loaded one,
+ * each client tick, in the level's ticker order, all drawing from the one level random.
+ * A case's columns arrive as chunk packets:
  * LevelChunk.replaceWithPacketData drops the column's block entities and makes those the packet
  * lists, each loading the update tag the server's copy gives, in its order (forEachBlockEntityTag, getBlockEntity(IMMEDIATE), addAndRegisterBlockEntity),
  * so their tickers join the level's list in packet order; a forgotten column's tickers go.
@@ -50,7 +60,7 @@ import net.minecraft.client.renderer.LevelEventHandler;
  * display entity first, as SpawnerRenderer makes one (BaseSpawner.clientTick does nothing
  * without it).
  *
- * Input lines: case JSON. Output lines: {ticks: [{events, random, spins}]} or {error}. Doubles,
+ * Input lines: case JSON. Output lines: {ticks: [{events, random, spins, states}]} or {error}. Doubles,
  * floats and sound seeds are their raw bits, as hex strings.
  */
 public final class VanillaBlockEntityClientTickOracle {
@@ -234,12 +244,24 @@ public final class VanillaBlockEntityClientTickOracle {
         } else if (be instanceof VaultBlockEntity v) {
             VaultBlockEntity.Client.tick(level, p, state, v.getClientData(), v.getSharedData());
         } else {
-            // BlockState.getTicker with the client level: campfire particles, conduit, beacon, geyser.
-            @SuppressWarnings({"unchecked", "rawtypes"})
-            net.minecraft.world.level.block.entity.BlockEntityTicker<BlockEntity> ticker =
-                (net.minecraft.world.level.block.entity.BlockEntityTicker) ((EntityBlock) state.getBlock()).getTicker(level, state, be.getType());
-            if (ticker != null) ticker.tick(level, p, state, be);
+            switch (be) {
+                case CampfireBlockEntity c -> tickRegistered(level, BlockEntityTypes.CAMPFIRE, c);
+                case ConduitBlockEntity c -> tickRegistered(level, BlockEntityTypes.CONDUIT, c);
+                case BeaconBlockEntity b -> tickRegistered(level, BlockEntityTypes.BEACON, b);
+                case PotentSulfurBlockEntity s -> tickRegistered(level, BlockEntityTypes.POTENT_SULFUR, s);
+                case BellBlockEntity b -> tickRegistered(level, BlockEntityTypes.BELL, b);
+                case ChestBlockEntity c -> tickRegistered(level, BlockEntityTypes.CHEST, c);
+                case EnchantingTableBlockEntity e -> tickRegistered(level, BlockEntityTypes.ENCHANTING_TABLE, e);
+                case ShulkerBoxBlockEntity s -> tickRegistered(level, BlockEntityTypes.SHULKER_BOX, s);
+                default -> throw new IllegalArgumentException("No ticker fixture for " + be.getType());
+            }
         }
+    }
+
+    private static <T extends BlockEntity> void tickRegistered(CaseLevel level, BlockEntityType<T> type, T entity) {
+        BlockState state = entity.getBlockState();
+        var ticker = ((EntityBlock) state.getBlock()).getTicker(level, state, type);
+        if (ticker != null) ticker.tick(level, entity.getBlockPos(), state, entity);
     }
 
     static boolean spins(BlockEntity be) {

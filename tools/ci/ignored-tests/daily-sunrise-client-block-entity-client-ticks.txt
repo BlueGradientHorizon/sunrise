@@ -1,4 +1,5 @@
-# The client ticks of spawners, trial spawners and vaults against vanilla 26.3's committed logs (docs/parity/block-entity-client-ticks.jsonl); tools/test_block_entity_client_tick_parity.py runs it with its own cases.
+# Vanilla 26.3 ticker order, events, spins, animation and beacon beams (docs/parity/block-entity-client-ticks.jsonl; tools/test_block_entity_client_tick_parity.py).
+# Prepared-resource cases also exercise ticker enabling, unload/resend, pot events, and particle-engine timing.
 sunrise-client game::spawner_client_tick_tests::a_book_after_a_shulker_lid_reads_the_pushed_player lib daily child-process
 sunrise-client game::spawner_client_tick_tests::a_campfire_lit_before_the_first_ticker_pass_ticks_behind_the_spawner lib daily child-process
 sunrise-client game::spawner_client_tick_tests::a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it lib daily child-process
