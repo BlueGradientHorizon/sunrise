@@ -405,8 +405,7 @@ fn anon_key(kind: &str, p: Vec3) -> (String, [u64; 3]) {
 pub(super) fn with_raw(modelled: Tag, raw: Option<&Tag>) -> Tag {
     with_raw_over(modelled, raw, &[])
 }
-/// The `Entity` fields an experience orb simulates (`remainingFireTicks`,
-/// `airSupply`), which its writer saves live over the loaded compound.
+/// The orb saves ticked Fire and stored (not ticked) Air over the loaded compound.
 pub(in crate::game) const ORB_LIVE: &[&str] = &["Fire", "Air"];
 /// [`with_raw`] for a writer that simulates some of the fields Sunrise
 /// otherwise invents: the keys in `live` keep the writer's value.
