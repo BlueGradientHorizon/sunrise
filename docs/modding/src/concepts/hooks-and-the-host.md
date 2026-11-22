@@ -485,11 +485,10 @@ abort, matching vanilla `Level.getRandom()` ([Randomness](randomness.md#borrow-t
 
 `LevelTicksHost` adds scheduling through `schedule_block_tick` and `schedule_fluid_tick`, while
 `LevelWriteHost` adds random access, block writes, sounds, particles and level events. `set_block`
-and `set_block_property` take `BlockUpdateFlags`, for example `BlockUpdateFlags::CLIENTS`. A full
-`ServerHost` also takes these flags in `set_block_property_with`; its three-argument
-`set_block_property` still notifies both neighbors and clients. `play_sound` takes a `SoundSource`,
-such as `SoundSource::Blocks`. `level_event` (`levelEvent`) queues events in order with the write's
-own events.
+and `set_block_property` take `BlockUpdateFlags`, for example `BlockUpdateFlags::CLIENTS`. With a
+full `ServerHost`, call `level.set_block_property(host, pos, key, value, flags)` on a `LevelRef`.
+`play_sound` takes a `SoundSource`, such as `SoundSource::Blocks`. `level_event` (`levelEvent`)
+queues events in order with the write's own events.
 A damage hit's listeners (`living_incoming_damage`, `living_damage_pre`, `living_damage_post`,
 `living_shield_block`, `living_use_totem`) are given a `HitHost`: a `LevelRandomHost` that also plays level
 sounds and draws from an entity's own random, and writes no block. `host.play_sound_at(sound, at, source,

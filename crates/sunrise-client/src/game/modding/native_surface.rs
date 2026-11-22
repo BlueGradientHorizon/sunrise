@@ -793,7 +793,10 @@ mod tests {
                 Ok(Some(0.9)),
             );
             assert_eq!(calls.load(Ordering::SeqCst), 2);
-            let stale = EntityRef::new(WorldEpoch::new(player.epoch().get() + 1), player.id());
+            let stale = mod_api::EntityRef::new(
+                mod_api::WorldEpoch::new(player.epoch().get() + 1),
+                player.id(),
+            );
             assert_eq!(
                 level.friction(game, [5, 64, 5], lime.try_into_api().unwrap(), Some(stale)),
                 Err(mod_api::LevelReadError::Stale),

@@ -778,7 +778,7 @@ impl crate::prelude::PlayerWorldBackend for FakeHost {
         crate::Identifier::parse(level.dimension_id()).ok()
     }
 }
-impl crate::prelude::BlockStatesBackend for FakeHost {
+crate::block::block_states::impl_block_states_without_tables!(FakeHost {
     fn fluid_pickup_sound(
         &self,
         fluid: crate::FluidKey,
@@ -791,7 +791,7 @@ impl crate::prelude::BlockStatesBackend for FakeHost {
     ) -> Result<Option<&'static str>, crate::LevelReadError> {
         Ok(self.registries.fluid_sound(fluid, false))
     }
-}
+});
 crate::impl_backend_areas!(
     FakeHost,
     except(
