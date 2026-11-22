@@ -28,6 +28,10 @@ def install_pack(world, jar):
     for key, requirements in [
         ('source_guard', {'type': 'minecraft:entity_properties', 'entity': 'attacker',
                           'predicate': {'minecraft:entity_type': 'minecraft:zombie'}}),
+        ('direct_guard', {'type': 'minecraft:entity_properties', 'entity': 'direct_attacker',
+                          'predicate': {'minecraft:entity_type': 'minecraft:zombie'}}),
+        ('arrow_guard', {'type': 'minecraft:entity_properties', 'entity': 'direct_attacker',
+                         'predicate': {'minecraft:entity_type': 'minecraft:arrow'}}),
         ('inner_guard', {'type': 'minecraft:random_chance', 'chance': 0.5}),
     ]:
         (enchantments / f'{key}.json').write_text(json.dumps({
@@ -103,6 +107,21 @@ def scene():
     command('summon arrow 14.5 100 5.5 {UUID:[I;203,0,0,16],NoGravity:1b}', 'projectile/summon', True)
     other = '000000cb-0000-0000-0000-000000000011'
     command('summon pig 14.5 100 8.5 {UUID:[I;203,0,0,17],NoAI:1b}', 'non_player/summon', True)
+    for n, (name, enchantment, damage, direct, cause, accepts) in enumerate([
+        ('direct_matches', 'direct_guard', 'mob_attack', zombie, other, False),
+        ('cause_only_matches', 'direct_guard', 'mob_attack', other, zombie, True),
+        ('arrow_matches', 'arrow_guard', 'arrow', arrow, '@s', False),
+    ], 25):
+        uuid = f'000000cb-0000-0000-0000-{n:012x}'
+        guard_boot = boot.replace('minecraft:frost_walker', f'combat_probe:{enchantment}')
+        command(f'summon pig 10.5 100 {n - 20}.5 {{UUID:[I;203,0,0,{n}],NoAI:1b,NoGravity:1b,'
+                f'Health:10f,equipment:{{feet:{guard_boot}}}}}', f'{name}/summon', True)
+        command(f'execute if data entity {uuid} equipment.feet.components."minecraft:enchantments".'
+                f'"combat_probe:{enchantment}"', f'{name}/equipped', True)
+        command(f'damage {uuid} 2 minecraft:{damage} by {direct} from {cause}', f'{name}/hit', accepts)
+        for key in ['Health', 'HurtTime']:
+            command(f'data get entity {uuid} {key}', f'{name}/{key}', True)
+
     for n, (name, damage, source) in enumerate([
         ('melee', 'player_attack', 'by @s'),
         ('projectile', 'arrow', f'by {arrow} from @s'),
@@ -123,13 +142,17 @@ def scene():
         command('scoreboard players get @s resisted', f'{name}/stat', True)
 
     villager = '000000cb-0000-0000-0000-000000000040'
-    command('setblock 8 100 8 red_bed[part=head,facing=north,occupied=true] strict')
-    command('setblock 8 100 9 red_bed[part=foot,facing=north,occupied=true] strict')
+    command('setblock 8 100 8 red_bed[part=head,facing=north,occupied=false] strict')
+    command('setblock 8 100 9 red_bed[part=foot,facing=north,occupied=false] strict')
     command('setblock 9 100 8 stone strict')
-    command('summon villager 8.5 100 8.5 {UUID:[I;203,0,0,64],NoAI:1b,NoGravity:1b}', 'wake/summon', True)
+    command('summon villager 8.5 100 8.5 {UUID:[I;203,0,0,64],NoAI:1b,NoGravity:1b,Rotation:[0f,0f]}',
+            'wake/summon', True)
     command(f'damage {villager} 4 minecraft:generic at 10.5 100 8.5', 'wake/seed_hit', True)
-    command(f'data merge entity {villager} {{sleeping_pos:[I;8,100,8]}}', 'wake/sleep', True)
     command('time set 14000')
+    ops.append({'op': 'mob_damage_state', 'uuid': villager, 'start_sleeping': [8, 100, 8],
+                'label': 'wake/sleep'})
+    fields.append(('wake/sleep', 'wake/sleep', None))
+    command('execute if block 8 100 8 red_bed[part=head,facing=north,occupied=true]', 'wake/occupied', True)
     # LAST_WOKEN is stamped with the current game time. The two servers may
     # have spent a different number of ticks loading chunks before the scene.
     command('time query gametime', 'wake/clock', True)
@@ -151,12 +174,7 @@ def observed(path, fields):
     observations = {}
     for row, (_, field, expected_success) in zip(records, fields, strict=True):
         if 'state' in row:
-            state = row['state']
-            if field == 'wake/before':
-                # A just-loaded sleeper refreshes its bed position on its first tick;
-                # this fixture deliberately does not tick between loading and the hit.
-                state = {k: v for k, v in state.items() if k not in ('position', 'rotation')}
-            observations.update((f'{field}/{k}', v) for k, v in state.items())
+            observations.update((f'{field}/{k}', v) for k, v in row['state'].items())
             continue
         result, = row['results']
         value = result

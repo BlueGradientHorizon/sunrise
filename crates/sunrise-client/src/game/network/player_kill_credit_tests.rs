@@ -4,7 +4,7 @@
 //! wither's kill leaves where they fell.
 use super::{chat::PLAYER_NAME, native_entity_refs::tests::run_fresh_cases, *};
 use mod_api::{Flow, Hooks, PlayerStatAwardEvent, ServerHost, StatType};
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
+use std::sync::{Arc, Mutex, atomic::AtomicI32, mpsc};
 use sunrise_client::{
     chunk::Chunk,
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
@@ -426,6 +426,89 @@ fn a_displaced_archer_receives_resistance_credit() {
     .unwrap();
     assert_eq!(guest_stats(&game, KILLER_CONN).get("custom", stat), 11);
     assert_eq!(guest_stats(&game, CONN).get("custom", stat), 0);
+}
+
+struct ResistanceOrder(Arc<Mutex<Vec<&'static str>>>);
+
+#[mod_api::__subscriptions]
+impl Hooks for ResistanceOrder {
+    fn player_stat_award(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut PlayerStatAwardEvent<'_>,
+    ) -> Flow {
+        if event.stat.as_str() == "minecraft:damage_dealt_resisted" {
+            self.0.lock().unwrap().push("award");
+        }
+        Flow::Continue
+    }
+
+    fn living_damage_pre(
+        &self,
+        _: &mut dyn mod_api::HitHost,
+        _: &mut mod_api::LivingDamagePreEvent<'_>,
+    ) {
+        self.0.lock().unwrap().push("pre");
+    }
+
+    fn living_damage_post(
+        &self,
+        _: &mut dyn mod_api::HitHost,
+        _: &mut mod_api::LivingDamagePostEvent<'_>,
+    ) {
+        self.0.lock().unwrap().push("post");
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn surviving_mob_hit_awards_resistance_before_pre_and_post() {
+    use sunrise_client::mobs::Damage;
+
+    if fresh(
+        "surviving_mob_hit_awards_resistance_before_pre_and_post",
+        &["native"],
+    ) {
+        return;
+    }
+    let order = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "resistance_order",
+        Box::new(ResistanceOrder(Arc::clone(&order))),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        let mut resources = None;
+        let mut game = game(&mut resources);
+        assert!(game.run_command("summon pig 7.5 100 6.5 {NoAI:1b,NoGravity:1b}"));
+        let pig = game.mobs.last().unwrap().id;
+        for command in [false, true] {
+            assert!(game.run_command(
+                "effect give @e[type=pig,limit=1] minecraft:resistance infinite 0 true"
+            ));
+            let index = game.mob_index.find(&game.mobs, pig).unwrap();
+            game.mobs[index].invulnerable = 0;
+            game.as_guest(CONN, |game| {
+                if command {
+                    assert!(game.run_command(
+                        "damage @e[type=pig,limit=1] 2.5 minecraft:player_attack by @s"
+                    ));
+                } else {
+                    assert!(game.mob_hits_mob(pig, 2.5, Damage::player([5.5, 100.0, 6.5])));
+                }
+                let victim = game.mob_object(pig).unwrap();
+                assert!(victim.alive());
+                assert_eq!(victim.health, if command { 6.0 } else { 8.0 });
+            })
+            .unwrap();
+            assert_eq!(&*order.lock().unwrap(), &["award", "pre", "post"]);
+            order.lock().unwrap().clear();
+        }
+        assert_eq!(
+            guest_stats(&game, CONN).get("custom", "minecraft:damage_dealt_resisted"),
+            10
+        );
+    });
 }
 
 struct ReadKillerBeforeAward;

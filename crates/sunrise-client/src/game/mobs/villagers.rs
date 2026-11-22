@@ -526,12 +526,8 @@ impl Game<'_> {
             ext.pending_hurt_player.take(),
             ext.pending_hurt_damage.take(),
         );
-        let bed = ext.pending_hurt_bed.take();
         let sounds = std::mem::take(&mut ext.pending_hurt_sounds);
         let (id, at) = (mob.id, mob.position.components());
-        if let Some(pos) = bed {
-            self.set_bed_occupied(pos, false);
-        }
         if let Some(player) = player {
             self.villager_prices_changed(
                 id,
@@ -739,16 +735,26 @@ impl Game<'_> {
         let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
             return;
         };
-        let mut mobs = self.mobs.lift();
-        #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
-        let mut events = Vec::new();
-        villager::stop_sleeping(&mut mobs[i], &self.mob_world_base(&[]), &mut events);
-        self.mobs
-            .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
-        if let Err(e) = self.handle_mob_events(events) {
-            log::warn!("waking villager {id}: {e}");
+        let join = self.mobs[i].join;
+        if let Some(bed) = villager::sleeping_pos(&self.mobs[i]) {
+            self.set_bed_occupied(bed, false);
         }
+        let Some(i) = self
+            .mob_index
+            .find(&self.mobs, id)
+            .filter(|&i| self.mobs[i].join == join && !self.mobs[i].removed)
+        else {
+            return;
+        };
+        let level = sunrise_client::stand_up::StandUpLevel {
+            world: &self.world,
+            registry: self.pack.assets.registry,
+            facts: self.res.facts(),
+            collision: self.collision,
+            block_tags: &world_items!(self).block_tags,
+            border: Some(self.border.geometry()),
+        };
+        villager::wake(&mut self.mobs[i], self.world.game_time, Some(&level), None);
     }
 }
 

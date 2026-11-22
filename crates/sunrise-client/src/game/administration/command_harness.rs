@@ -335,6 +335,17 @@ impl Game<'_> {
                     let Some(super::commands::Target::Mob(id)) = self.target_by_uuid(uuid) else {
                         return Err("mob damage state: missing loaded mob".into());
                     };
+                    if !op["start_sleeping"].is_null() {
+                        let bed: [i32; 3] = serde_json::from_value(op["start_sleeping"].clone())?;
+                        let epoch = self
+                            .native_lifecycle
+                            .epoch()
+                            .ok_or("sleep fixture: no level")?;
+                        let mob = mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, id));
+                        if !self.living_start_sleeping(mob, bed) {
+                            return Err("sleep fixture: villager did not start sleeping".into());
+                        }
+                    }
                     let index = self
                         .mob_index
                         .find(&self.mobs, id)

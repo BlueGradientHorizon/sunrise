@@ -1532,6 +1532,7 @@ impl Game<'_> {
                 self.drives(mob)
             };
             if authoritative || wanted.y.abs() > 0.0 {
+                let mut paused_hurt = None;
                 let mut mobs = self.mobs.lift();
                 let mut lent = sunrise_client::health::LentLevel::take(&mut self.world);
                 // Restitution may call a block Part. Return both loans, including
@@ -1546,11 +1547,7 @@ impl Game<'_> {
                         Some(&self.pack.block_registries),
                         &self.damage_hooks,
                     )
-                    .with_bed_collisions(
-                        self.res.facts(),
-                        self.collision,
-                        self.border.geometry(),
-                    );
+                    .with_mob_hurt_handoff(&mut paused_hurt);
                     mobs[i].update_pushed_support(&world, wanted, moved);
                     if authoritative {
                         mobs[i].restitute_movement(&world, &mut level, wanted, moved);
@@ -1561,6 +1558,12 @@ impl Game<'_> {
                     .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
                 if let Err(payload) = result {
                     std::panic::resume_unwind(payload);
+                }
+                if let Some(hit) = paused_hurt
+                    && let Some(index) = self.mob_index.find(&self.mobs, hit.victim)
+                {
+                    self.paused_mob_hurt = Some(hit);
+                    self.finish_mob_damage_at(index);
                 }
             }
             return self.resolve_push_target(selected);

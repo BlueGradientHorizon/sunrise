@@ -198,29 +198,29 @@ pub fn stop_sleeping(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     }
 }
 
-pub(crate) fn wake<W: crate::collisions::CollisionRead>(
+pub fn wake(
     m: &mut Mob,
     game_time: i64,
-    level: Option<&crate::stand_up::StandUpLevel<'_, '_, W>>,
+    level: Option<&crate::stand_up::StandUpLevel<'_, '_>>,
     observer: Option<super::living::section_writes::Observer>,
 ) -> Option<[i32; 3]> {
-    m.extra.ints[1] = 0;
-    let bed = m
-        .extra
-        .villager
-        .as_deref_mut()
-        .and_then(|e| e.sleeping_pos.take());
-    super::villager_brain::woken(m, game_time);
-    let (level, p) = level.zip(bed)?;
-    if !level.name(p).ends_with("_bed") {
-        return None;
+    let bed = level
+        .zip(sleeping_pos(m))
+        .filter(|(level, p)| level.name(*p).ends_with("_bed"));
+    if let Some((level, p)) = bed {
+        let state = level.world.block(p[0], p[1], p[2]);
+        let forward = crate::stand_up::bed_forward(level.prop(state, "facing"));
+        let stand = level
+            .bed_stand_up(crate::stand_up::StandUpType::VILLAGER, p, forward, m.yaw)
+            .unwrap_or_else(|| crate::stand_up::stand_up_fallback(p));
+        set_wake_pose(m, p, stand, observer);
     }
-    let forward = crate::stand_up::bed_forward(level.prop(level.block(p), "facing"));
-    let stand = level
-        .bed_stand_up(crate::stand_up::StandUpType::VILLAGER, p, forward, m.yaw)
-        .unwrap_or_else(|| crate::stand_up::stand_up_fallback(p));
-    set_wake_pose(m, p, stand, observer);
-    Some(p)
+    m.extra.ints[1] = 0;
+    if let Some(extra) = m.extra.villager.as_deref_mut() {
+        extra.sleeping_pos = None;
+    }
+    super::villager_brain::woken(m, game_time);
+    bed.map(|(_, p)| p)
 }
 /// Rotation part of `LivingEntity.stopSleeping`, after choosing where to stand.
 fn set_wake_pose(
@@ -371,7 +371,6 @@ pub struct Ext {
     /// `LivingEntity.hurtServer`'s damage broadcast for a full, unblocked hit.
     pub pending_hurt_damage: Option<(super::Damage, Option<i32>)>,
     /// The bed vacated inside hurtServer; the world owner clears its occupied flag.
-    pub pending_hurt_bed: Option<[i32; 3]>,
     pub pending_hurt_sounds: [Option<HurtSound>; 2],
     /// `Villager.lastTradedPlayer`: the most recent trader, consumed by the
     /// next customServerAiStep. This is runtime state, not saved gossip.

@@ -984,6 +984,7 @@ impl Game<'_> {
         let mut attack = self.attack_of_who(attacker);
         attack.projectile = Some(rocket_id as i32);
         attack.projectile_kind = sunrise_client::health::DirectEntity::Projectile;
+        attack.projectile_type = Some("minecraft:firework_rocket");
         for &(id, amount) in hits {
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
             let mut credit = plan.lend(&mut self.last_hurt_by_player);
@@ -993,6 +994,9 @@ impl Game<'_> {
                     amount,
                     Damage::fireworks(attacker, at),
                 );
+                let Some((index, hurt)) = self.complete_mob_hurt(index, hurt) else {
+                    continue;
+                };
                 // LivingEntity.hurtServer: a player's rocket makes them the
                 // last player to hurt it (`setLastHurtByPlayer`), so its death
                 // message names them and their item.

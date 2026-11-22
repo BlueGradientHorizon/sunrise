@@ -452,19 +452,22 @@ fn make_brain(m: &mut Mob, packed: Memories, shuffle_seed: i64, w_times: (i64, i
     b
 }
 
+fn initial_memories(m: &Mob) -> Memories {
+    let mut memories = Memories::default();
+    memories.job_site.set_opt(m.extra.home);
+    memories.home.set_opt(m.extra.bed);
+    memories.meeting_point.set_opt(m.extra.meeting);
+    memories
+        .last_slept
+        .set_opt(super::villager::ext(m).and_then(|e| e.last_slept));
+    memories
+}
+
 /// Builds the villager's brain as its constructor does, at this game time:
 /// the memories it remembers (job site, bed, bell) come from the mob.
 pub fn init(m: &mut Mob, game_time: i64, day_time: i64, shuffle_seed: i64) {
     let saved = super::villager::ext_mut(m).saved_memories.take();
-    let mut packed = saved.as_deref().cloned().unwrap_or_default();
-    if saved.is_none() {
-        packed.job_site.set_opt(m.extra.home);
-        packed.home.set_opt(m.extra.bed);
-        packed.meeting_point.set_opt(m.extra.meeting);
-        if let Some(t) = super::villager::ext(m).and_then(|e| e.last_slept) {
-            packed.last_slept.set(t);
-        }
-    }
+    let packed = saved.map_or_else(|| initial_memories(m), |saved| *saved);
     let b = make_brain(m, packed, shuffle_seed, (game_time, day_time));
     super::villager::ext_mut(m).brain = Some(Box::new(b));
 }
@@ -4520,12 +4523,16 @@ pub(super) fn woken(m: &mut Mob, now: i64) {
         return;
     }
     let extra = super::villager::ext_mut(m);
-    // A loaded villager can be woken before its first brain tick.
-    let memories = match extra.brain.as_deref_mut() {
-        Some(brain) => &mut brain.mem,
-        None => extra.saved_memories.get_or_insert_with(Default::default),
-    };
-    memories.last_woken.set(now);
+    if let Some(brain) = extra.brain.as_deref_mut() {
+        brain.mem.last_woken.set(now);
+    } else {
+        // A villager can sleep and wake before it has ever ticked. Seed the same
+        // memories initialization would have used, without initializing its sensors.
+        let saved = extra.saved_memories.take();
+        let mut memories = saved.unwrap_or_else(|| Box::new(initial_memories(m)));
+        memories.last_woken.set(now);
+        super::villager::ext_mut(m).saved_memories = Some(memories);
+    }
 }
 /// `BellBlockEntity.updateEntities`: a bell rung within 32 blocks sets
 /// `HEARD_BELL_TIME` to the game time.

@@ -61,9 +61,15 @@ pub fn published_shapes<'w>(
     state: BlockStateId,
     [x, y, z]: [i32; 3],
 ) -> Option<&'w crate::chunk::block_entity::published_shapes::PublishedShapes> {
-    world
-        .collision_terrain()
-        .published_shapes(registry, state, [x, y, z])
+    let crate::chunk::block_entity::BlockEntity::Mod(entity) =
+        world.block_entities.get(&(x, y, z))?
+    else {
+        return None;
+    };
+    let shapes = entity.shapes()?;
+    let resident = world.block(x, y, z);
+    (state == resident || registry.state(state)?.name == registry.state(resident)?.name)
+        .then_some(shapes)
 }
 
 /// What powder snow's and liquids' contextual collisions ask of the colliding
@@ -108,65 +114,8 @@ pub fn with_piston_noclip<T>(
     f()
 }
 
-/// Block access for collision queries while the level's mutable services are lent out.
-#[derive(Clone, Copy)]
-pub struct CollisionTerrain<'a> {
-    pub chunks: &'a crate::chunk_map::ChunkMap,
-    pub shulkers: &'a crate::fast_hash::FxHashMap<[i32; 3], crate::block_entity_anim::Shulker>,
-    pub moving_pistons: &'a [([i32; 3], sunrise_world::piston_shape::MovingPistonState)],
-    pub block_entities: &'a crate::block_entities::BlockEntities,
-    pub air: BlockStateId,
-}
-
-impl<'w> CollisionTerrain<'w> {
-    fn published_shapes(
-        self,
-        registry: &BlockRegistry,
-        state: BlockStateId,
-        [x, y, z]: [i32; 3],
-    ) -> Option<&'w crate::chunk::block_entity::published_shapes::PublishedShapes> {
-        let crate::chunk::block_entity::BlockEntity::Mod(entity) =
-            self.block_entities.get(&(x, y, z))?
-        else {
-            return None;
-        };
-        let shapes = entity.shapes()?;
-        let resident = self.block(x, y, z);
-        (state == resident || registry.state(state)?.name == registry.state(resident)?.name)
-            .then_some(shapes)
-    }
-
-    pub fn block(&self, x: i32, y: i32, z: i32) -> BlockStateId {
-        self.chunks
-            .get(&(x >> 4, z >> 4))
-            .map_or(self.air, |chunk| chunk.block(x & 15, y, z & 15))
-    }
-}
-
-pub trait CollisionRead {
-    fn collision_terrain(&self) -> CollisionTerrain<'_>;
-}
-
-impl CollisionRead for World {
-    fn collision_terrain(&self) -> CollisionTerrain<'_> {
-        CollisionTerrain {
-            chunks: &self.chunks,
-            shulkers: &self.shulkers,
-            moving_pistons: &self.moving_pistons,
-            block_entities: &self.block_entities,
-            air: self.air,
-        }
-    }
-}
-
-impl CollisionRead for CollisionTerrain<'_> {
-    fn collision_terrain(&self) -> CollisionTerrain<'_> {
-        *self
-    }
-}
-
-pub struct SceneCollisions<'w, 'r, W = World> {
-    pub world: &'w W,
+pub struct SceneCollisions<'w, 'r> {
+    pub world: &'w World,
     pub binding: &'w BlockCollisionRegistry<'r>,
     /// The entity colliding, for powder snow; None: no fall, no boots.
     pub subject: Option<PowderSnowSubject<'w>>,
@@ -517,7 +466,7 @@ where
     )
     .unwrap_or(false)
 }
-impl<W: CollisionRead> SceneCollisions<'_, '_, W> {
+impl SceneCollisions<'_, '_> {
     /// Whether a `BlockCollisionScan` of `bounds` would find no shape, told without
     /// building one: no block that can collide in its inner cells, and no block that
     /// reaches out of its cell in the sections of its outer ones (where unsure, false:
@@ -545,13 +494,7 @@ impl<W: CollisionRead> SceneCollisions<'_, '_, W> {
         for cz in (lo.z >> 4)..=(hi.z >> 4) {
             for cx in (lo.x >> 4)..=(hi.x >> 4) {
                 // The scan passes the cells of a column that is not resident.
-                let Some(chunk) = self
-                    .world
-                    .collision_terrain()
-                    .chunks
-                    .get(&(cx, cz))
-                    .map(|c| &**c)
-                else {
+                let Some(chunk) = self.world.chunks.get(&(cx, cz)).map(|c| &**c) else {
                     continue;
                 };
                 let (x0, x1) = (lo.x.max(cx << 4), hi.x.min((cx << 4) + 15));
@@ -632,17 +575,12 @@ impl<W: CollisionRead> SceneCollisions<'_, '_, W> {
         })
     }
 }
-impl<'w, W: CollisionRead> BlockCollisionWorld for SceneCollisions<'w, '_, W> {
+impl<'w> BlockCollisionWorld for SceneCollisions<'w, '_> {
     type Error = io::Error;
     /// The resident column, looked up once per chunk the scan enters.
     type Chunk = &'w crate::chunk::Chunk;
     fn collision_chunk(&mut self, p: ChunkPos) -> io::Result<Option<Self::Chunk>> {
-        Ok(self
-            .world
-            .collision_terrain()
-            .chunks
-            .get(&(p.x, p.z))
-            .map(|chunk| &**chunk))
+        Ok(self.world.chunks.get(&(p.x, p.z)).map(|chunk| &**chunk))
     }
     fn collision_block(&mut self, chunk: Self::Chunk, p: BlockPos) -> io::Result<CollisionBlock> {
         self.binding.collision_block(chunk.block(p.x, p.y, p.z))
@@ -680,7 +618,7 @@ impl<'w, W: CollisionRead> BlockCollisionWorld for SceneCollisions<'w, '_, W> {
             .map_err(io::Error::other)
     }
 }
-impl<W> EntityMovementWorld for SceneCollisions<'_, '_, W> {
+impl EntityMovementWorld for SceneCollisions<'_, '_> {
     type Error = io::Error;
     fn entity_collisions(&mut self, _: EntityIdentity, _: Aabb) -> io::Result<Vec<VoxelShape>> {
         Ok(Vec::new())
@@ -699,7 +637,7 @@ impl<W> EntityMovementWorld for SceneCollisions<'_, '_, W> {
         Ok(())
     }
 }
-impl<W: CollisionRead> DynamicSupportWorld for SceneCollisions<'_, '_, W> {
+impl DynamicSupportWorld for SceneCollisions<'_, '_> {
     type Error = io::Error;
     /// `ShulkerBoxBlockEntity.isClosed`: whether the lid is still shut. A
     /// closed box collides as its plain block (`ShulkerBoxBlock.getShape`
@@ -707,7 +645,6 @@ impl<W: CollisionRead> DynamicSupportWorld for SceneCollisions<'_, '_, W> {
     fn shulker_is_closed(&mut self, p: [i32; 3]) -> io::Result<Option<bool>> {
         Ok(self
             .world
-            .collision_terrain()
             .shulkers
             .get(&p)
             .map(|s| s.status == crate::block_entity_anim::ShulkerStatus::Closed))
@@ -715,13 +652,7 @@ impl<W: CollisionRead> DynamicSupportWorld for SceneCollisions<'_, '_, W> {
     /// `MovingPistonBlock.getCollisionShape`: the block entity's moving shape
     /// (`PistonMovingBlockEntity.getCollisionShape`), outside any push.
     fn moving_piston_shape(&mut self, p: [i32; 3]) -> io::Result<Option<VoxelShape>> {
-        let Some(&(_, piston)) = self
-            .world
-            .collision_terrain()
-            .moving_pistons
-            .iter()
-            .find(|(q, _)| *q == p)
-        else {
+        let Some(&(_, piston)) = self.world.moving_pistons.iter().find(|(q, _)| *q == p) else {
             return Ok(None);
         };
         let binding = self.binding;
@@ -740,14 +671,13 @@ impl<W: CollisionRead> DynamicSupportWorld for SceneCollisions<'_, '_, W> {
         p: [i32; 3],
         state: BlockStateId,
     ) -> io::Result<Option<VoxelShape>> {
-        Ok(self
-            .world
-            .collision_terrain()
-            .published_shapes(self.binding.registry(), state, p)
-            .map(|shapes| shapes.collision().clone()))
+        Ok(
+            published_shapes(self.world, self.binding.registry(), state, p)
+                .map(|shapes| shapes.collision().clone()),
+        )
     }
 }
-impl<W: CollisionRead> PistonCollisionWorld for SceneCollisions<'_, '_, W> {
+impl PistonCollisionWorld for SceneCollisions<'_, '_> {
     type Error = io::Error;
     /// `BlockState.getCollisionShape(level, pos)` of the moved state.
     fn collision_shape(&mut self, state: BlockStateId, p: [i32; 3]) -> io::Result<VoxelShape> {
@@ -757,7 +687,7 @@ impl<W: CollisionRead> PistonCollisionWorld for SceneCollisions<'_, '_, W> {
             .map_err(io::Error::other)
     }
 }
-impl<W: CollisionRead> DynamicCollisionWorld for SceneCollisions<'_, '_, W> {
+impl DynamicCollisionWorld for SceneCollisions<'_, '_> {
     /// `ShulkerBoxBlockEntity.getBoundingBox`: the box's collision shape
     /// (`getShape`) is the free shape grown by the lid's progress, which is
     /// what lets an entity sink into an opening box. None: no such box here.
@@ -765,18 +695,13 @@ impl<W: CollisionRead> DynamicCollisionWorld for SceneCollisions<'_, '_, W> {
         &mut self,
         p: [i32; 3],
     ) -> io::Result<Option<ShulkerCollisionState>> {
-        Ok(self
-            .world
-            .collision_terrain()
-            .shulkers
-            .get(&p)
-            .map(|s| ShulkerCollisionState {
-                previous_progress: s.progress_old,
-                progress: s.progress,
-            }))
+        Ok(self.world.shulkers.get(&p).map(|s| ShulkerCollisionState {
+            previous_progress: s.progress_old,
+            progress: s.progress,
+        }))
     }
 }
-impl<W: CollisionRead> LiquidCollisionWorld for SceneCollisions<'_, '_, W> {
+impl LiquidCollisionWorld for SceneCollisions<'_, '_> {
     type Error = io::Error;
     /// Only striders stand on fluids.
     fn entity_liquid_shape(&mut self, _: EntityIdentity) -> io::Result<VoxelShape> {
@@ -790,7 +715,7 @@ impl<W: CollisionRead> LiquidCollisionWorld for SceneCollisions<'_, '_, W> {
         FluidState::from_block(
             self.binding
                 .registry()
-                .state(self.world.collision_terrain().block(p.x, p.y, p.z))
+                .state(self.world.block(p.x, p.y, p.z))
                 .ok_or_else(|| io::Error::other("scene fluid state outside registry"))?,
         )
     }
@@ -800,7 +725,7 @@ impl<W: CollisionRead> LiquidCollisionWorld for SceneCollisions<'_, '_, W> {
             && matches!(fluid.kind(), FluidKind::Lava | FluidKind::FlowingLava))
     }
 }
-impl<W: CollisionRead> PowderSnowWorld for SceneCollisions<'_, '_, W> {
+impl PowderSnowWorld for SceneCollisions<'_, '_> {
     type Error = io::Error;
     fn powder_snow_entity(&mut self, _: EntityIdentity) -> io::Result<PowderSnowEntity> {
         let subject = self.subject.unwrap_or_default();

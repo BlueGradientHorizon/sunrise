@@ -427,6 +427,9 @@ impl Game<'_> {
                     1.0,
                     source,
                 );
+                let Some((index, hurt)) = self.complete_mob_hurt(index, hurt) else {
+                    return;
+                };
                 if p.owner == Some(Who::Player) {
                     self.remember_mob_player_credit(id);
                 }

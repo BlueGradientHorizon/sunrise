@@ -867,6 +867,7 @@ impl Game<'_> {
                         let mut attack = self.attack_of(attacker as i32);
                         attack.projectile = Some(t.id as i32);
                         attack.projectile_kind = sunrise_client::health::DirectEntity::Arrow;
+                        attack.projectile_type = Some("minecraft:trident");
                         Self::set_projectile_weapon(&mut attack, Some(&t.stack));
                         let trident_source = DamageKind::Named(
                             sunrise_client::mobs::NamedDamage::registered(
@@ -901,9 +902,11 @@ impl Game<'_> {
                                 aim,
                                 [t.velocity.x, t.velocity.z],
                             );
-                            self.finish_mob_damage_at(i);
-                            if hurt {
-                                hurt_mob = Some(join);
+                            if let Some((i, hurt)) = self.complete_mob_hurt(i, hurt) {
+                                self.finish_mob_damage_at(i);
+                                if hurt {
+                                    hurt_mob = Some(join);
+                                }
                             }
                         }
                         self.thrower_dealt_absorbed(t.guest);

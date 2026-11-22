@@ -664,6 +664,11 @@ public final class VanillaCommandExecOracle {
                     case "mob_damage_state" -> {
                         if (op.has("level_seed")) level.getRandom().setSeed(op.get("level_seed").getAsLong());
                         var mob = (net.minecraft.world.entity.Mob) level.getEntity(UUID.fromString(op.get("uuid").getAsString()));
+                        if (op.has("start_sleeping")) {
+                            var p = op.getAsJsonArray("start_sleeping");
+                            if (!mob.startSleeping(new BlockPos(p.get(0).getAsInt(), p.get(1).getAsInt(), p.get(2).getAsInt())))
+                                throw new IllegalStateException("sleep fixture: villager did not start sleeping");
+                        }
                         if (op.has("no_action_time")) mob.setNoActionTime(op.get("no_action_time").getAsInt());
                         var state = new JsonObject();
                         state.addProperty("no_action_time", mob.getNoActionTime());

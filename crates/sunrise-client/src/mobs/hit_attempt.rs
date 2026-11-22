@@ -1,4 +1,4 @@
-//! Observe the complete species invulnerability predicate once per living hit attempt.
+//! Observe base/species invulnerability once per living hit attempt, before equipment.
 use super::*;
 
 impl Mob {
@@ -26,14 +26,14 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         source: &Damage,
     ) -> (bool, bool) {
-        let vanilla = self.damage_immune(level, source);
+        let vanilla = self.base_damage_immune(level, source);
         let immune =
             level.invulnerability_check(crate::health::Hurting::Mob(self, source), vanilla);
         (immune, vanilla && !immune)
     }
 
-    /// `LivingEntity.isInvulnerableTo`, with the species' short-circuit rules.
-    pub(super) fn damage_immune(&self, level: &mut DamageLevel<'_>, source: &Damage) -> bool {
+    /// `Entity.isInvulnerableToBase`, with the species' short-circuit rules.
+    pub(super) fn base_damage_immune(&self, level: &DamageLevel<'_>, source: &Damage) -> bool {
         use sunrise_world::damage_immunity::ImmunityTag;
 
         let bypasses = source.kind.bypasses_invulnerability();
@@ -68,12 +68,11 @@ impl Mob {
                     },
                 }
                 .vanilla()
-                    || self.enchantment_immune(level, source)
             }
     }
 
     /// `EnchantmentHelper.isImmuneToDamage`: evaluate active enchantments in worn slots.
-    fn enchantment_immune(&self, level: &mut DamageLevel<'_>, source: &Damage) -> bool {
+    pub(super) fn enchantment_immune(&self, level: &mut DamageLevel<'_>, source: &Damage) -> bool {
         use sunrise_items::equipment::{HEAD, SLOT_NAMES};
 
         let Some(items) = level.tags() else {
@@ -86,13 +85,7 @@ impl Mob {
             Some(Who::Mob(_)) => source.attacker_species.map(species::vanilla_id),
             None => None,
         };
-        let direct_attacker = if is_direct {
-            attacker
-        } else if attack.direct_is_large_fireball(source) {
-            Some("minecraft:fireball")
-        } else {
-            None
-        };
+        let direct_attacker = attack.mob_direct_type(source, attacker);
         let context = crate::enchant::EffectContext {
             items: Some(items),
             damage_type: Some(crate::health::source_damage_type(*source)),

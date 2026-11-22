@@ -321,9 +321,10 @@ pub type PlayerEquipment<'a> = [Option<&'a ItemStack>; sunrise_items::equipment:
 /// draw, from a [`LentLevel`] taken out of it for the tick.
 pub struct DamageLevel<'a> {
     shape: crate::chunk::LevelShape,
-    terrain: crate::collisions::CollisionTerrain<'a>,
+    chunks: &'a crate::chunk_map::ChunkMap,
+    air: sunrise_world::registry::BlockStateId,
     game_time: i64,
-    bed_collisions: Option<BedCollisions<'a>>,
+    paused_mob_hurt: Option<&'a mut Option<Box<crate::mobs::PausedMobHurt>>>,
     registry: &'a sunrise_world::registry::BlockRegistry,
     tags: Option<&'a crate::items::Items>,
     block_registries: Option<&'a crate::command::args::Registries>,
@@ -352,13 +353,6 @@ pub struct DamageLevel<'a> {
     effects: Option<HitEffects<'a>>,
     player_equipment: PlayerEquipment<'a>,
 }
-#[derive(Clone, Copy)]
-struct BedCollisions<'a> {
-    facts: &'a crate::blocks::BlockFacts,
-    collision: &'a sunrise_world::block_collision::BlockCollisionRegistry<'a>,
-    border: &'a sunrise_core::geometry::border::BorderGeometry,
-}
-
 impl<'a> DamageLevel<'a> {
     /// The level of `world`, whose blocks `registry` names.
     pub fn of(
@@ -372,9 +366,6 @@ impl<'a> DamageLevel<'a> {
             chunks,
             shape,
             air,
-            shulkers,
-            moving_pistons,
-            block_entities,
             game_time,
             random,
             attachments,
@@ -383,15 +374,10 @@ impl<'a> DamageLevel<'a> {
         } = world;
         Self {
             shape: *shape,
-            terrain: crate::collisions::CollisionTerrain {
-                chunks,
-                shulkers,
-                moving_pistons,
-                block_entities,
-                air: *air,
-            },
+            chunks,
+            air: *air,
             game_time: *game_time,
-            bed_collisions: None,
+            paused_mob_hurt: None,
             registry,
             tags,
             block_registries,
@@ -420,9 +406,10 @@ impl<'a> DamageLevel<'a> {
     ) -> Self {
         Self {
             shape: world.shape,
-            terrain: crate::collisions::CollisionRead::collision_terrain(world),
+            chunks: &world.chunks,
+            air: world.air,
             game_time: world.game_time,
-            bed_collisions: None,
+            paused_mob_hurt: None,
             registry,
             tags,
             block_registries,
@@ -452,9 +439,10 @@ impl<'a> DamageLevel<'a> {
     pub fn reborrow(&mut self) -> DamageLevel<'_> {
         DamageLevel {
             shape: self.shape,
-            terrain: self.terrain,
+            chunks: self.chunks,
+            air: self.air,
             game_time: self.game_time,
-            bed_collisions: self.bed_collisions,
+            paused_mob_hurt: self.paused_mob_hurt.as_deref_mut(),
             registry: self.registry,
             tags: self.tags,
             block_registries: self.block_registries,
@@ -475,36 +463,42 @@ impl<'a> DamageLevel<'a> {
             player_equipment: self.player_equipment,
         }
     }
-    /// Lend the collision data needed by sleeping mobs' `LivingEntity.stopSleeping`.
-    pub fn with_bed_collisions(
+    /// The owner's slot for a hit that must release its borrows before resuming.
+    pub fn with_mob_hurt_handoff(
         mut self,
-        facts: &'a crate::blocks::BlockFacts,
-        collision: &'a sunrise_world::block_collision::BlockCollisionRegistry<'a>,
-        border: &'a sunrise_core::geometry::border::BorderGeometry,
+        paused: &'a mut Option<Box<crate::mobs::PausedMobHurt>>,
     ) -> Self {
-        self.bed_collisions = Some(BedCollisions {
-            facts,
-            collision,
-            border,
-        });
+        self.paused_mob_hurt = Some(paused);
         self
     }
 
+    pub(crate) fn can_pause_mob_hurt(&self) -> bool {
+        self.paused_mob_hurt.is_some()
+    }
+
+    pub(crate) fn pause_mob_hurt(&mut self, hit: crate::mobs::PausedMobHurt) {
+        let slot = self
+            .paused_mob_hurt
+            .as_deref_mut()
+            .expect("owning hit slot");
+        debug_assert!(slot.is_none());
+        *slot = Some(Box::new(hit));
+    }
+
+    pub(crate) fn paused_mob_hurt(&mut self) -> &mut crate::mobs::PausedMobHurt {
+        self.paused_mob_hurt
+            .as_deref_mut()
+            .and_then(Option::as_deref_mut)
+            .expect("paused hit")
+    }
+
+    pub(crate) fn lent_attacker(&self) -> Option<i32> {
+        self.effects.as_ref()?.lent.as_ref().map(|lent| lent.id)
+    }
+
     pub(crate) fn wake_mob(&self, mob: &mut crate::mobs::Mob) {
-        let level =
-            self.bed_collisions
-                .zip(self.tags)
-                .map(|(bed, items)| crate::stand_up::StandUpLevel {
-                    world: &self.terrain,
-                    registry: self.registry,
-                    facts: bed.facts,
-                    collision: bed.collision,
-                    block_tags: &items.block_tags,
-                    border: Some(bed.border),
-                });
-        if let Some(pos) = crate::mobs::villager::wake(mob, self.game_time, level.as_ref(), None) {
-            crate::mobs::villager::ext_mut(mob).pending_hurt_bed = Some(pos);
-        }
+        // Standalone hit simulations have no live bed to update.
+        crate::mobs::villager::wake(mob, self.game_time, None, None);
     }
 
     /// Lend the stacks worn by this hit's player victim for enchantment immunity.
@@ -667,7 +661,11 @@ impl<'a> DamageLevel<'a> {
     }
     /// The block state at `pos`: air where no chunk is loaded, as `World::block`.
     pub fn block(&self, pos: [i32; 3]) -> sunrise_world::registry::BlockStateId {
-        self.terrain.block(pos[0], pos[1], pos[2])
+        self.chunks
+            .get(&(pos[0] >> 4, pos[2] >> 4))
+            .map_or(self.air, |chunk| {
+                chunk.block(pos[0] & 15, pos[1], pos[2] & 15)
+            })
     }
     /// The registry naming the level's block states.
     pub fn registry(&self) -> &'a sunrise_world::registry::BlockRegistry {
@@ -991,12 +989,16 @@ pub struct Attack {
     pub projectile: Option<i32>,
     /// The class family of [`Self::projectile`] (`AbstractArrow`, `LargeFireball`, or another `Projectile`).
     pub projectile_kind: DirectEntity,
+    /// The projectile's entity type, independent of its damage source and class family.
+    pub projectile_type: Option<&'static str>,
     /// An explicitly supplied direct entity, including 0 for no direct entity.
     /// None uses the normal melee/projectile factory rules.
     pub direct: Option<i32>,
     /// The class family of an explicitly supplied [`Self::direct`] entity (`Some(id)` with `id != 0`).
     /// Ignored when [`Self::direct`] is `None` or `Some(0)`.
     pub direct_kind: Option<DirectEntity>,
+    /// The entity type of an explicitly supplied direct entity.
+    pub direct_type: Option<String>,
     /// `DamageSource.getSourcePosition`, as supplied by the hit's factory.
     pub position: Option<[f64; 3]>,
     /// An arrow's fired-from weapon or a thrown trident's complete stack.
@@ -1014,8 +1016,10 @@ pub static NO_ATTACK: Attack = Attack {
     attacker: 0,
     projectile: None,
     projectile_kind: DirectEntity::Other,
+    projectile_type: None,
     direct: None,
     direct_kind: None,
+    direct_type: None,
     position: None,
     projectile_weapon: None,
     player_uuid: None,
