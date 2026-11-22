@@ -707,14 +707,17 @@ class ParityWorkflowTests(unittest.TestCase):
         self.initialise()
         (self.slot / "game-probes.log").write_text(
             "   Compiling sunrise-client-lib\nerror[E0425]: cannot find value `PRIVATE` in this scope\n"
-            "  --> crates/sunrise-client/src/lib.rs:1:1\nprivate source excerpt\nerror: could not compile\n")
+            "  --> crates/sunrise-client/src/lib.rs:1:1\nprivate source excerpt\n"
+            "error[E0609]: no field `PRIVATE`\n  --> crates/sunrise-client/src/untracked_generated_probe.rs:3:9\n"
+            "error: could not compile\n")
         result = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, capture_output=True, text=True,
                                 env=dict(self.env, FAILED="game-probes"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("game-probes failed:", result.stdout)
         self.assertIn("compiler: error[E0425]: custom diagnostic payload withheld", result.stdout)
         self.assertIn("compiler:   --> crates/sunrise-client/src/lib.rs:1:1", result.stdout)
-        for private in ("PRIVATE", "private source excerpt", "Compiling"):
+        self.assertIn("compiler:   --> location withheld (not a tracked Rust source)", result.stdout)
+        for private in ("PRIVATE", "private source excerpt", "Compiling", "untracked_generated_probe"):
             self.assertNotIn(private, result.stdout)
 
     def test_a_failed_shares_logs_are_kept_beyond_the_slot(self):

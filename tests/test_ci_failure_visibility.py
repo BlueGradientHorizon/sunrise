@@ -50,6 +50,15 @@ class Visibility(unittest.TestCase):
             self.assertIn(heading, text)
         self.assertNotIn("PRIVATE", text)
 
+    def test_locations_past_the_output_budget_are_not_looked_up(self):
+        output = "".join(f"error[E0425]: PRIVATE\n  --> crates/example/src/f{i}.rs:1:1\n" for i in range(15))
+        with patch.object(ignored_tests, 'source_lines', return_value=None) as lookup, \
+                contextlib.redirect_stdout(io.StringIO()) as log:
+            ignored_tests.compile_diagnostics(output)
+        # 30 headings: the first 20 are shown, ten of them locations; the other ten are only counted.
+        self.assertEqual(lookup.call_count, 10)
+        self.assertIn("compiler diagnostics truncated: 10 more headings", log.getvalue())
+
     def test_codeless_build_failures_keep_category_not_payload(self):
         for message, expected in (
             ('error: linking with `cc` failed: exit status: 1 PRIVATE_LINK_ARGS',

@@ -288,11 +288,12 @@ jobs:
       - name: Delete this job's vanilla-derived scratch
         if: always()
         run: |
+          if [ -n "${DYNA_CI_BUILD:-}" ]; then
+            rm -rf -- "$DYNA_CI_BUILD/parity-out" "$DYNA_CI_BUILD/parity-tmp" "$DYNA_CI_BUILD/vanilla/job"
+          fi
           if [ -n "${DYNA_CI_KEEP:-}" ] && [ -d "$DYNA_CI_KEEP/parity-failed-logs" ]; then
             find "$DYNA_CI_KEEP/parity-failed-logs" -mindepth 1 -maxdepth 1 -type d -mmin +4320 -exec rm -rf {} +
           fi
-          [ -n "${DYNA_CI_BUILD:-}" ] || exit 0
-          rm -rf -- "$DYNA_CI_BUILD/parity-out" "$DYNA_CI_BUILD/parity-tmp" "$DYNA_CI_BUILD/vanilla/job"
   # The one verdict the daily summary reads: the shares' verdicts merged, complete only when they cover the
   # plan. It is the job that fails for a harness failure, so a share that finished clean still marks the run
   # red through this one file.

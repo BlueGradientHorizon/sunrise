@@ -144,13 +144,15 @@ def compile_diagnostics(output):
             elif reason.startswith("failed to run custom build command for "):
                 safe = "custom build command failure; command/output withheld"
             headings.append(f"error{code}: {safe}")
-        elif location := re.match(r"^\s*--> ([\w./-]+):\d+:\d+$", line):
-            # A location is published only when it is a tracked source: a generated file's path is the runner's own.
-            headings.append(line if source_lines(location[1]) is not None else
-                            "  --> location withheld (not a tracked Rust source)")
+        elif re.match(r"^\s*--> [\w./-]+:\d+:\d+$", line):
+            headings.append(line)
     for line in headings[:20]:
+        location = re.match(r"^\s*--> ([\w./-]+):\d+:\d+$", line)
+        # A location is published only when it is a tracked source: a generated file's path is the runner's own.
+        if location and source_lines(location[1]) is None:
+            line, location = "  --> location withheld (not a tracked Rust source)", None
         print("  compiler: " + line[:300] + (" [shortened]" if len(line) > 300 else ""))
-        if line.strip().startswith("--> ") and not line.strip().startswith("--> location withheld"):
+        if location:
             panic_source(line.strip()[4:], kind="compiler")
     if len(headings) > 20:
         print(f"  compiler diagnostics truncated: {len(headings) - 20} more headings")
