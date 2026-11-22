@@ -533,8 +533,8 @@ fn run_extra_case(
             assert!(game.run_command("summon minecraft:breeze 3.5 64.0 4.5 {NoAI:1b,Silent:1b}"));
             spawn_test_hook(
                 game,
-                Vec3::new(1.5, 65.4, 4.5),
-                Vec3::new(1.3, 0.0, 0.0),
+                Vec3::new(1.8, 65.4, 4.5),
+                Vec3::new(1.0, 0.0, 0.0),
                 hook_seed,
             );
             (Some(game.own_entity_id() as u32), None)
