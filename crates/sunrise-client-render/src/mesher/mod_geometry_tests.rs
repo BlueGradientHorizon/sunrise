@@ -210,7 +210,7 @@ pub(super) struct World {
     pub(super) render: RenderAssets,
     facts: BlockFacts,
     biomes: Biomes,
-    root: std::path::PathBuf,
+    pub(super) root: std::path::PathBuf,
 }
 
 impl World {
@@ -246,7 +246,9 @@ impl World {
         )
         .unwrap();
         tables.section_geometry = renderers.into_iter().map(Renderer::new).collect();
-        tables.mod_tints.values = Some(tint_values(self.assets.registry));
+        if !tables.section_geometry.is_empty() {
+            tables.mod_tints.values = Some(tint_values(self.assets.registry));
+        }
         tables
     }
 

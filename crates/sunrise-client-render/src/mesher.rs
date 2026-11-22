@@ -6,6 +6,7 @@
 pub use crate::render_geometry::Vertex;
 pub use mod_api::client::mesher::TintSource;
 mod extra_models;
+pub(crate) use extra_models::AttachedTintScratch;
 mod fluid;
 mod leaf_culling;
 mod lighting;
@@ -25,7 +26,7 @@ pub use visibility_plan::{
 #[cfg(test)]
 #[path = "mesher/source_tests.rs"]
 mod source_tests;
-use crate::connected::{FaceNeighbours, Pick, TileLayer};
+use crate::connected::{FaceNeighbours, Overlay, Pick, TileLayer};
 use crate::{
     assets::{Assets, RenderAssets},
     biome::{Biomes, GrassModifier},
@@ -736,6 +737,8 @@ enum Tint {
 /// Per-state data the mesher needs on every block, flattened for speed.
 #[derive(Clone, Copy)]
 struct Info {
+    /// `BlockState.isAir`: ordinary, cave and void air all skip attachment models.
+    air: bool,
     /// `isSolidRender`.
     solid: bool,
     /// `isCollisionShapeFullBlock`: AO faces flush with a full block sample outside it.
@@ -1070,6 +1073,7 @@ impl MeshTables {
                     .or_insert_with(|| fluid::coverage(shape, d));
             }
             info.push(Info {
+                air: facts.is_air(BlockStateId(id as u32)),
                 solid: s.solid_render,
                 full: s.full_collision,
                 permeable: !s.solid_render || s.dampening == 0,
@@ -1355,6 +1359,20 @@ impl MeshTables {
                 .and_then(|i| colors.get(i).copied().flatten())
         }
     }
+    fn overlay_tint_state<'a>(
+        &'a self,
+        own: (u32, &'a Info),
+        block: Option<u32>,
+    ) -> (u32, &'a Info) {
+        block
+            .and_then(|id| self.info.get(id as usize).map(|info| (id, info)))
+            .unwrap_or(own)
+    }
+    /// Whether the mesh tables have custom callbacks, rather than only built-in tint layers.
+    pub(crate) fn has_custom_tint_sources(&self) -> bool {
+        self.mod_tints.has_sources
+    }
+
     /// Tint source `index` of a state (its id and info) at section-local `pos` of `tints`'
     /// section: its `colorInWorld`, or with `particle` its `colorAsTerrainParticle`; `None` for
     /// an untinted (-1) layer. `nether` is the level's `CardinalLighting.NETHER`.
@@ -1367,7 +1385,10 @@ impl MeshTables {
         nether: bool,
         particle: bool,
     ) -> Option<u32> {
-        if index < 0 || index >= i32::from(info.tint_count) {
+        if index < 0
+            || index >= i32::from(info.tint_count)
+            || tints.preparing.is_some() && !tints.drawing_extras
+        {
             return None;
         }
         if let Some(colormap) = info.colormap
@@ -1388,23 +1409,37 @@ impl MeshTables {
             ModLayer::Split { world, .. } => Some(*world),
             ModLayer::WaterParticles if particle => Some(tints.get(Resolver::Water, x, y, z)),
             ModLayer::WaterParticles => None,
-            // An extra model's face: the colour prepared before the mesh was scheduled, white
-            // where none was; the mesh workers call no mod code for it.
-            ModLayer::Source(_) if let Some(attached) = &tints.attached => Some(
-                attached
-                    .as_ref()
-                    .and_then(|a| a.get(pos, id, index))
-                    .unwrap_or(0xFF_FFFF),
-            ),
-            ModLayer::Source(source) => Some(mod_tint::ask(
-                self,
-                &**source,
-                (id, index),
-                tints,
-                pos,
-                nether,
-                particle,
-            )),
+            ModLayer::Source(source) => {
+                let key = (pos, id, index);
+                if let Some(preparing) = &tints.preparing {
+                    if let Some(&color) = preparing.colors.get(&key) {
+                        return Some(color);
+                    }
+                    let color =
+                        mod_tint::ask(self, &**source, (id, index), tints, pos, nether, particle);
+                    tints
+                        .preparing
+                        .as_mut()
+                        .expect("tint preparation is active")
+                        .colors
+                        .insert(key, color);
+                    return Some(color);
+                }
+                if let Some(prepared) = &tints.attached {
+                    if let Some(&color) = prepared.colors.get(&key) {
+                        return Some(color);
+                    }
+                    if prepared.failed {
+                        return Some(0xFF_FFFF);
+                    }
+                }
+                // An attachment without a prepared answer never calls a source on the worker.
+                Some(if tints.drawing_extras {
+                    0xFF_FFFF
+                } else {
+                    mod_tint::ask(self, &**source, (id, index), tints, pos, nether, particle)
+                })
+            }
         }
     }
     /// `ModelBlockRenderer.tesselateFlat`'s light coords (`LightCoordsUtil`
@@ -1610,7 +1645,11 @@ pub struct MeshScratch {
     /// Per padded row (`pi(-B, y, z) / P`), bit `x + B` set where the block
     /// is `isSolidRender` (`MeshTables::solid`).
     solid_rows: Vec<u32>,
-    /// The next section's extra-model tints (`MeshTables::prepare_attached_tints`), taken by
+    /// The catalog's selected models for the current cell, by slot.
+    model_slots: Vec<u32>,
+    /// Faces of cells with attachments, with their dynamic cell keys in the chunk.
+    extras: Vec<(CellFaces, u32)>,
+    /// The next section's extra-model tints (`Mesher::prepare_attached_tints`), taken by
     /// its mesh.
     pub(crate) attached_tints: Option<Arc<extra_models::AttachedTints>>,
 }
@@ -1845,9 +1884,12 @@ struct Tints<'a> {
     /// (`ModelBlockRenderer.computeTintColor`).
     asked: Option<([i32; 3], u32)>,
     asked_colors: Vec<(i32, u32)>,
-    /// While extra models draw (`extra_models::add`): the colours mods' sources gave them before
-    /// the mesh was scheduled, read in place of asking a source.
-    attached: Option<Option<Arc<extra_models::AttachedTints>>>,
+    /// Colours of attachment faces and overlays resolved before scheduling the mesh.
+    attached: Option<Arc<extra_models::AttachedTints>>,
+    /// While measuring the mesh on the scheduler, record rather than consume attachment tints.
+    preparing: Option<extra_models::AttachedTints>,
+    /// The attachment pass uses white for a missing answer rather than calling a source.
+    drawing_extras: bool,
     /// The packs' colormaps (`MeshTables::colormaps`), the water's, and their colours so far
     /// by colormap and section-local block.
     colormaps: &'a [Arc<crate::environment::Colormap>],
@@ -1876,6 +1918,8 @@ impl<'a> Tints<'a> {
             asked: None,
             asked_colors: Vec::new(),
             attached: None,
+            preparing: None,
+            drawing_extras: false,
             colormaps: &[],
             water_colormap: None,
             sampled: Default::default(),
@@ -2270,7 +2314,7 @@ impl Mesher<'_> {
         out: SectionMesh,
         scratch: &mut MeshScratch,
     ) -> SectionMesh {
-        self.mesh_masked::<_, false>(region, sy, out, scratch, &visibility_plan::NoMasks, 0)
+        self.mesh_masked::<_, false, false>(region, sy, out, scratch, &visibility_plan::NoMasks, 0)
     }
     /// Mesh a section prepared for `section_visibility`. The raw snapshot's missing neighbours
     /// are nonoccluding air, whether the listeners returned a mask or abstained. `visibility_bytes`
@@ -2285,7 +2329,7 @@ impl Mesher<'_> {
         visibility_bytes: usize,
     ) -> SectionMesh {
         match plan {
-            None => self.mesh_masked::<_, true>(
+            None => self.mesh_masked::<_, true, false>(
                 region,
                 sy,
                 out,
@@ -2297,13 +2341,17 @@ impl Mesher<'_> {
                 visibility_plan::hidden_terrain(self, region, sy, out)
             }
             Some(plan) => {
-                self.mesh_masked::<_, true>(region, sy, out, scratch, plan, visibility_bytes)
+                self.mesh_masked::<_, true, false>(region, sy, out, scratch, plan, visibility_bytes)
             }
         }
     }
     /// The mesher's one body: `M` is `NoMasks` on the no-mod path, a constant that compiles
     /// every visibility step out of it.
-    fn mesh_masked<M: visibility_plan::CellMasks, const MISSING_AS_AIR: bool>(
+    fn mesh_masked<
+        M: visibility_plan::CellMasks,
+        const MISSING_AS_AIR: bool,
+        const PREPARE_TINTS: bool,
+    >(
         &mut self,
         region: &[[Option<&Chunk>; 3]; 3],
         sy: i32,
@@ -2318,7 +2366,7 @@ impl Mesher<'_> {
         let section = &center.sections[sy as usize];
         let base_y = center.min_y() + sy * 16;
         if section.is_uniform(0) {
-            if !self.tables.section_geometry.is_empty() {
+            if !PREPARE_TINTS && !self.tables.section_geometry.is_empty() {
                 let mut tints = Tints::new(
                     region,
                     self.biomes,
@@ -2333,18 +2381,8 @@ impl Mesher<'_> {
         }
         let own = scratch.own.get_or_insert_with(|| Box::new([0; 4096]));
         scratch.padded.fill::<MISSING_AS_AIR>(region, sy, own);
-        if !self.hidden_states.is_empty() {
-            for id in &mut scratch.padded.blocks {
-                if self.hidden_states[*id as usize] {
-                    *id = 0;
-                }
-            }
-        }
+        self.prepare_rows(&mut scratch.padded, &mut scratch.solid_rows, masks);
         let pad = &scratch.padded;
-        solid_rows(pad, &self.tables.solid, &mut scratch.solid_rows);
-        if M::ACTIVE {
-            visibility_plan::open_masked(masks, &mut scratch.solid_rows);
-        }
         let opaque = &scratch.solid_rows;
         let (open, hidden) = row_masks(opaque);
         out.visibility = visibility_rows(&open);
@@ -2361,26 +2399,15 @@ impl Mesher<'_> {
             [center.x, center.z, base_y],
         )
         .with_colormaps(self.tables);
+        tints.attached = attached;
+        tints.preparing = PREPARE_TINTS.then(extra_models::AttachedTints::default);
         let info = &self.tables.info;
-        let full_faces = &self.tables.full_faces;
         let catalog = &self.render.model_catalog;
-        let groups = if self.render.connected.has_group_rules()
-            && region
-                .iter()
-                .flatten()
-                .flatten()
-                .any(|c| !c.connection_groups.is_empty())
-        {
-            let groups = scratch.groups.get_or_insert_with(GroupCells::new);
-            groups.fill(region, base_y);
-            Some(&*groups)
-        } else {
-            None
-        };
-        let mut models = Vec::new();
+        let groups = self.group_cells(region, base_y, &mut scratch.groups);
+        let slots = &mut scratch.model_slots;
+        let extras = &mut scratch.extras;
+        extras.clear();
         let extra_models = (!center.extra_models.is_empty()).then_some(&center.extra_models);
-        // The cells with extra models, in cell order, and what their faces are drawn with.
-        let mut extras = Vec::new();
         for y in 0..16 {
             for z in 0..16 {
                 // The padded index of the row's x = 0 cell: `pi(x, y, z)` is
@@ -2393,11 +2420,11 @@ impl Mesher<'_> {
                         continue;
                     }
                     let state = &info[id as usize];
-                    if state.block_entity {
+                    if !PREPARE_TINTS && state.block_entity {
                         out.block_entities
                             .push(([center.x * 16 + x, base_y + y, center.z * 16 + z], id));
                     }
-                    if state.emission > 0 {
+                    if !PREPARE_TINTS && state.emission > 0 {
                         out.lights
                             .push(([center.x * 16 + x, base_y + y, center.z * 16 + z], id));
                     }
@@ -2408,7 +2435,11 @@ impl Mesher<'_> {
                     if state.fluid.kind() != FluidKind::Empty && kept & visibility_plan::FLUID != 0
                     {
                         let start = [out.solid.len(), out.translucent.len()];
-                        let water = tints.water(x, y, z);
+                        let water = if PREPARE_TINTS {
+                            0xFF_FFFF
+                        } else {
+                            tints.water(x, y, z)
+                        };
                         let shade = (
                             self.nether_shading,
                             self.shader_pack_lighting,
@@ -2438,25 +2469,29 @@ impl Mesher<'_> {
                     }
                     // The models a client mod draws as part of this block: after the section's
                     // own geometry and within its budget (`extra_models::add`).
-                    let extra = extra_models.and_then(|extra| {
-                        extra.get(&((sy as u32) << 12 | crate::chunk::index(x, y, z) as u32))
+                    let extra = extra_models.filter(|_| !state.air).and_then(|extra| {
+                        let key = (sy as u32) << 12 | crate::chunk::index(x, y, z) as u32;
+                        extra.get(&key).map(|models| (key, models))
                     });
                     if !state.model && extra.is_none() {
                         continue;
                     }
                     let world = BlockPos::new(center.x * 16 + x, base_y + y, center.z * 16 + z);
-                    if !state.model
-                        || catalog
-                            .models_at(BlockStateId(id), world, &mut models)
-                            .is_err()
-                    {
-                        models.clear();
+                    if !state.model || catalog.slots_at(BlockStateId(id), world, slots).is_err() {
+                        slots.clear();
                     }
+                    let mut models = slots.iter().map(|&slot| {
+                        catalog
+                            .model_by_slot(slot)
+                            .expect("catalog chose a valid model slot")
+                    });
                     // ModelBlockRenderer: the first part decides smooth lighting
                     // for all, the block's own before a mod's (a handle a resource reload made
                     // stale draws nothing); light-emitting blocks are always lit flat.
-                    let first = models.first().copied().or_else(|| {
-                        extra?
+                    let base_first = models.next();
+                    let first = base_first.or_else(|| {
+                        let (_, models) = extra?;
+                        models
                             .iter()
                             .find_map(|&model| self.render.resolve_model(model).ok())
                     });
@@ -2472,76 +2507,37 @@ impl Mesher<'_> {
                         ],
                         None => [x as f32, y as f32, z as f32],
                     };
-                    let mut visible = [false; 6];
-                    let interior_leaf = state.leaves
-                        && self.leaf_culling.is_interior()
-                        && scratch.leaf.interior(self.leaf_culling, x, y, z);
-                    for (d, [dx, dy, dz], opposite) in DIRECTIONS {
-                        let next = (cell as isize + OFFSETS[d as usize]) as usize;
-                        let neighbor = pad.blocks[next];
-                        // A neighbour a mod took this face's occluder from hides nothing here.
-                        if M::ACTIVE && !visibility_plan::occludes(masks.at(next), opposite) {
-                            visible[d as usize] = true;
-                            continue;
-                        }
-                        // `should_render_face`'s first test, without its lookups: a
-                        // full occlusion face toward this block hides the face.
-                        if full_faces[neighbor as usize] >> opposite & 1 != 0 {
-                            continue;
-                        }
-                        let other = &info[neighbor as usize];
-                        // LeavesBlock.skipRendering with opaque leaves.
-                        let opaque_leaves = !self.cutout_leaves && state.leaves && other.leaves;
-                        // Opaque Ice: faces between two ice blocks are hidden, as they are
-                        // between two opaque blocks.
-                        let opaque_ice = self.opaque_ice && state.opaque_ice && other.opaque_ice;
-                        let culled_leaf = match self.leaf_culling {
-                            LeafCullingMode::Hollow | LeafCullingMode::Hidden => {
-                                state.leaves
-                                    && other.leaves
-                                    && leaf_culling::in_section(x + dx, y + dy, z + dz)
-                                    && (self.leaf_culling == LeafCullingMode::Hollow
-                                        || leaf_culling::backed(
-                                            pad,
-                                            info,
-                                            region,
-                                            base_y,
-                                            [x + 2 * dx, y + 2 * dy, z + 2 * dz],
-                                        ))
-                            }
-                            _ => false,
-                        };
-                        visible[d as usize] = !opaque_leaves
-                            && !opaque_ice
-                            && !culled_leaf
-                            && self
-                                .visibility
-                                .should_render_face(
-                                    BlockStateId(id),
-                                    BlockStateId(neighbor),
-                                    d,
-                                    true,
-                                )
-                                .unwrap_or(true);
-                    }
-                    if M::ACTIVE {
-                        visibility_plan::keep_faces(kept, &mut visible);
-                    }
+                    // Options for the base block don't change an attached model's pass.
+                    let force_solid = state.leaves
+                        && (!self.cutout_leaves
+                            || self.leaf_culling.is_interior()
+                                && scratch.leaf.interior(self.leaf_culling, x, y, z))
+                        || self.opaque_ice && state.opaque_ice;
+                    let visible = self.visible_faces(region, pad, base_y, [x, y, z], masks);
                     let at = CellFaces {
-                        pos: [x, y, z],
-                        cell,
+                        sample: FaceCell {
+                            pos: [x, y, z],
+                            cell,
+                            id,
+                            world,
+                            visible,
+                        },
                         origin,
                         ao,
-                        id,
-                        state,
-                        world,
-                        visible,
-                        interior_leaf,
                     };
                     let start = [out.solid.len(), out.translucent.len()];
-                    for model in &models {
+                    for model in base_first.into_iter().chain(models) {
                         for face in &model.faces {
-                            self.model_face(pad, groups, &mut tints, &mut out, &at, face);
+                            self.model_face(
+                                pad,
+                                groups,
+                                &mut tints,
+                                &mut out,
+                                &at,
+                                state,
+                                face,
+                                force_solid,
+                            );
                         }
                     }
                     if self.shader_pack {
@@ -2550,8 +2546,8 @@ impl Mesher<'_> {
                             TerrainSource::new(id, [x, y, z], state.emission, false),
                         );
                     }
-                    if let Some(extra) = extra {
-                        extras.push((at, extra));
+                    if let Some((key, _)) = extra {
+                        extras.push((at, key));
                     }
                 }
             }
@@ -2563,19 +2559,214 @@ impl Mesher<'_> {
                 groups,
                 &mut tints,
                 &mut out,
-                &extras,
+                extras,
+                &center.extra_models,
                 visibility_bytes,
-                attached,
             );
         }
-        if !self.tables.section_geometry.is_empty() {
-            mod_geometry::add(self, &mut tints, &mut out, visibility_bytes);
+        if PREPARE_TINTS {
+            scratch.attached_tints = tints
+                .preparing
+                .filter(|prepared| !prepared.colors.is_empty())
+                .map(Arc::new);
+        } else {
+            if !self.tables.section_geometry.is_empty() {
+                mod_geometry::add(self, &mut tints, &mut out, visibility_bytes);
+            }
+            out.finish_sprite_layers();
         }
-        out.finish_sprite_layers();
         out
     }
+    fn prepare_rows<M: visibility_plan::CellMasks>(
+        &self,
+        pad: &mut Padded,
+        rows: &mut Vec<u32>,
+        masks: &M,
+    ) {
+        if !self.hidden_states.is_empty() {
+            for id in &mut pad.blocks {
+                if self.hidden_states[*id as usize] {
+                    *id = 0;
+                }
+            }
+        }
+        solid_rows(pad, &self.tables.solid, rows);
+        if M::ACTIVE {
+            visibility_plan::open_masked(masks, rows);
+        }
+    }
+
+    fn group_cells<'a>(
+        &self,
+        region: &[[Option<&Chunk>; 3]; 3],
+        base_y: i32,
+        cache: &'a mut Option<GroupCells>,
+    ) -> Option<&'a GroupCells> {
+        if self.render.connected.has_group_rules()
+            && region
+                .iter()
+                .flatten()
+                .flatten()
+                .any(|c| !c.connection_groups.is_empty())
+        {
+            let groups = cache.get_or_insert_with(GroupCells::new);
+            groups.fill(region, base_y);
+            Some(&*groups)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn visible_faces<M: visibility_plan::CellMasks>(
+        &mut self,
+        region: &[[Option<&Chunk>; 3]; 3],
+        pad: &Padded,
+        base_y: i32,
+        [x, y, z]: [i32; 3],
+        masks: &M,
+    ) -> [bool; 6] {
+        let cell = pi(x, y, z);
+        let id = pad.blocks[cell];
+        let info = &self.tables.info;
+        let state = &info[id as usize];
+        let full_faces = &self.tables.full_faces;
+        let mut visible = [false; 6];
+        for (d, [dx, dy, dz], opposite) in DIRECTIONS {
+            let next = (cell as isize + OFFSETS[d as usize]) as usize;
+            let neighbor = pad.blocks[next];
+            // A neighbour a mod took this face's occluder from hides nothing here.
+            if M::ACTIVE && !visibility_plan::occludes(masks.at(next), opposite) {
+                visible[d as usize] = true;
+                continue;
+            }
+            // `should_render_face`'s first test, without its lookups: a
+            // full occlusion face toward this block hides the face.
+            if full_faces[neighbor as usize] >> opposite & 1 != 0 {
+                continue;
+            }
+            let other = &info[neighbor as usize];
+            // LeavesBlock.skipRendering with opaque leaves.
+            let opaque_leaves = !self.cutout_leaves && state.leaves && other.leaves;
+            // Opaque Ice: faces between two ice blocks are hidden, as they are
+            // between two opaque blocks.
+            let opaque_ice = self.opaque_ice && state.opaque_ice && other.opaque_ice;
+            let culled_leaf = match self.leaf_culling {
+                LeafCullingMode::Hollow | LeafCullingMode::Hidden => {
+                    state.leaves
+                        && other.leaves
+                        && leaf_culling::in_section(x + dx, y + dy, z + dz)
+                        && (self.leaf_culling == LeafCullingMode::Hollow
+                            || leaf_culling::backed(
+                                pad,
+                                info,
+                                region,
+                                base_y,
+                                [x + 2 * dx, y + 2 * dy, z + 2 * dz],
+                            ))
+                }
+                _ => false,
+            };
+            visible[d as usize] = !opaque_leaves
+                && !opaque_ice
+                && !culled_leaf
+                && self
+                    .visibility
+                    .should_render_face(BlockStateId(id), BlockStateId(neighbor), d, true)
+                    .unwrap_or(true);
+        }
+        if M::ACTIVE {
+            visibility_plan::keep_faces(masks.at(cell), &mut visible);
+        }
+        visible
+    }
+
+    #[inline]
+    fn face_tiles(
+        &self,
+        pad: &Padded,
+        groups: Option<&GroupCells>,
+        tints: &Tints<'_>,
+        at: &FaceCell,
+        state: &Info,
+        face: &BakedFace,
+    ) -> (Pick, [Option<Overlay>; MAX_OVERLAYS]) {
+        let FaceCell {
+            pos,
+            cell,
+            id,
+            world,
+            ..
+        } = *at;
+        let q = &face.quad;
+        // Fusion's and then OptiFine's connected textures: another sprite, or one per quarter,
+        // and the overlays drawn over it (a few per face at most; more are dropped).
+        let (fusion, connected) = (&self.render.fusion, &self.render.connected);
+        let mut overlays = [None; MAX_OVERLAYS];
+        let mut count = 0;
+        let mut push = |overlay| {
+            if let Some(slot) = overlays.get_mut(count) {
+                *slot = Some(overlay);
+                count += 1;
+            }
+        };
+        let neighbour = |n: [i32; 3]| pad.blocks[(cell as isize + step_index(n)) as usize];
+        let fused = face.fusion.and_then(|rule| {
+            let ctm_face = CtmFace::from_direction_index(q.facing as u8)
+                .expect("a model quad faces one of the six directions");
+            fusion.pick(
+                rule,
+                id,
+                ctm_face,
+                q.tint_index,
+                neighbour,
+                |s| {
+                    self.tables
+                        .info
+                        .get(s as usize)
+                        .is_some_and(|i| i.opaque_cube)
+                },
+                &mut push,
+            )
+        });
+        let pick = if let Some(pick) = fused {
+            pick
+        } else if connected.is_empty() {
+            Pick::Keep
+        } else {
+            let ctm_face = CtmFace::from_direction_index(q.facing as u8)
+                .expect("a model quad faces one of the six directions");
+            connected.pick(
+                id,
+                face.layer as u16,
+                ctm_face,
+                [world.x, world.y, world.z],
+                FaceNeighbours {
+                    state: neighbour,
+                    group: |n| {
+                        groups
+                            .and_then(|groups| groups.at((cell as isize + step_index(n)) as usize))
+                    },
+                    full_faces: |s| self.tables.full_faces[s as usize],
+                    biome: || Some(tints.biome(pos[0], pos[1], pos[2])),
+                    // A pane's tiles are drawn with the cube's UVs (below), so that is its texture.
+                    texture: || {
+                        if state.pane {
+                            Some(CtmAxes::cube(ctm_face))
+                        } else {
+                            CtmAxes::texture(&q.positions, &q.uv)
+                        }
+                    },
+                },
+                &mut push,
+            )
+        };
+        (pick, overlays)
+    }
+
     /// One face of a model the block `at` draws, unless the neighbour on its cull side hides it
     /// or, on a pane with connected textures, the pane stacked there does.
+    #[allow(clippy::too_many_arguments)]
     fn model_face(
         &self,
         pad: &Padded,
@@ -2583,12 +2774,26 @@ impl Mesher<'_> {
         tints: &mut Tints,
         out: &mut SectionMesh,
         at: &CellFaces,
+        state: &Info,
         face: &BakedFace,
+        force_solid: bool,
     ) {
-        if face.quad.cull.is_some_and(|d| !at.visible[d as usize]) {
+        if !self.draws_model_face(pad, &at.sample, state, face) {
             return;
         }
-        let state = at.state;
+        self.face(pad, groups, tints, out, at, state, face, force_solid);
+    }
+
+    fn draws_model_face(
+        &self,
+        pad: &Padded,
+        at: &FaceCell,
+        state: &Info,
+        face: &BakedFace,
+    ) -> bool {
+        if face.quad.cull.is_some_and(|d| !at.visible[d as usize]) {
+            return false;
+        }
         let connected = &self.render.connected;
         // A pane's top and bottom strips between stacked panes, with
         // connected textures.
@@ -2608,24 +2813,12 @@ impl Mesher<'_> {
             let centre = [0, 2].map(|k| p.iter().map(|v| v[k]).sum::<f32>() / 4.0);
             let other = pad.blocks[(at.cell as isize + step_index([0, dy, 0])) as usize];
             if on_edge && connected.stacked_pane_hides(at.id, other, centre) {
-                return;
+                return false;
             }
         }
-        self.face(
-            pad,
-            groups,
-            tints,
-            out,
-            at.pos,
-            at.cell,
-            at.origin,
-            face,
-            at.ao,
-            (at.id, state),
-            at.world,
-            at.interior_leaf,
-        );
+        true
     }
+
     #[allow(clippy::too_many_arguments)]
     fn face(
         &self,
@@ -2633,15 +2826,13 @@ impl Mesher<'_> {
         groups: Option<&GroupCells>,
         tints: &mut Tints,
         out: &mut SectionMesh,
-        pos: [i32; 3],
-        cell: usize,
-        origin: [f32; 3],
+        at: &CellFaces,
+        state: &Info,
         face: &BakedFace,
-        ao: bool,
-        (id, state): (u32, &Info),
-        world: BlockPos,
-        interior_leaf: bool,
+        force_solid: bool,
     ) {
+        let FaceCell { pos, id, .. } = at.sample;
+        let CellFaces { origin, ao, .. } = *at;
         let q = &face.quad;
         // A quad's own light (a model's glowing part) may raise the tier; whether it
         // shines all over stays the block's.
@@ -2680,14 +2871,19 @@ impl Mesher<'_> {
             };
             ([lighting::gray(directional); 4], [coords; 4], [1.0f32; 4])
         };
-        let tint = self.tables.tint_at(
-            (id, state),
-            q.tint_index,
-            tints,
-            pos,
-            self.nether_shading,
-            false,
-        );
+        let (pick, overlays) = self.face_tiles(pad, groups, tints, &at.sample, state, face);
+        let tint = if tints.drawing_extras && matches!(pick, Pick::Nothing) {
+            None
+        } else {
+            self.tables.tint_at(
+                (id, state),
+                q.tint_index,
+                tints,
+                pos,
+                self.nether_shading,
+                false,
+            )
+        };
         let tint = match q.color {
             Some(c) => {
                 let t = tint.unwrap_or(0xFF_FFFF);
@@ -2695,69 +2891,6 @@ impl Mesher<'_> {
                 Some(channel(16) << 16 | channel(8) << 8 | channel(0))
             }
             None => tint,
-        };
-        // Fusion's and then OptiFine's connected textures: another sprite, or one per quarter,
-        // and the overlays drawn over it (a few per face at most; more are dropped).
-        let (fusion, connected) = (&self.render.fusion, &self.render.connected);
-        let mut overlays = [None; MAX_OVERLAYS];
-        let mut count = 0;
-        let mut push = |overlay| {
-            if let Some(slot) = overlays.get_mut(count) {
-                *slot = Some(overlay);
-                count += 1;
-            }
-        };
-        let neighbour = |n: [i32; 3]| pad.blocks[(cell as isize + step_index(n)) as usize];
-        let fused = face.fusion.and_then(|rule| {
-            let ctm_face = CtmFace::from_direction_index(q.facing as u8)
-                .expect("a model quad faces one of the six directions");
-            fusion.pick(
-                rule,
-                id,
-                ctm_face,
-                q.tint_index,
-                neighbour,
-                |s| {
-                    self.tables
-                        .info
-                        .get(s as usize)
-                        .is_some_and(|i| i.opaque_cube)
-                },
-                &mut push,
-            )
-        });
-        let pick = if let Some(pick) = fused {
-            pick
-        } else if connected.is_empty() {
-            Pick::Keep
-        } else {
-            let ctm_face = CtmFace::from_direction_index(q.facing as u8)
-                .expect("a model quad faces one of the six directions");
-            let tints = &*tints;
-            connected.pick(
-                id,
-                face.layer as u16,
-                ctm_face,
-                [world.x, world.y, world.z],
-                FaceNeighbours {
-                    state: neighbour,
-                    group: |n| {
-                        groups
-                            .and_then(|groups| groups.at((cell as isize + step_index(n)) as usize))
-                    },
-                    full_faces: |s| self.tables.full_faces[s as usize],
-                    biome: || Some(tints.biome(pos[0], pos[1], pos[2])),
-                    // A pane's tiles are drawn with the cube's UVs (below), so that is its texture.
-                    texture: || {
-                        if state.pane {
-                            Some(CtmAxes::cube(ctm_face))
-                        } else {
-                            CtmAxes::texture(&q.positions, &q.uv)
-                        }
-                    },
-                },
-                &mut push,
-            )
         };
         let vertex = |tint: Option<u32>, i: usize, uv: [u16; 2]| {
             let g = gray[i] as u32;
@@ -2794,11 +2927,6 @@ impl Mesher<'_> {
             // The face's own UVs, already packed: no per-vertex rounding.
             std::array::from_fn(|i| (vertex(tint, i, face.uv_fixed[i]), q.uv[i]))
         };
-        // Opaque leaves (forceOpaque), leaves a leaf-culling mode proved internal and Opaque
-        // Ice draw in the solid layer whatever their sprite.
-        let force_solid = !self.cutout_leaves && state.leaves
-            || interior_leaf
-            || self.opaque_ice && state.opaque_ice;
         let own = TileLayer::Layer {
             layer: face.layer as u16,
             translucent: face.translucent,
@@ -2830,7 +2958,7 @@ impl Mesher<'_> {
         // `layer=cutout` is an alpha cutout whatever the tile's alpha, but over a translucent
         // face it must be in the translucent pass too, or the face would draw over it.
         // Most faces have none: nothing below runs for them.
-        if count == 0 {
+        if overlays[0].is_none() {
             return;
         }
         let face_translucent = !matches!(pick, Pick::Nothing) && own_translucent;
@@ -2842,11 +2970,9 @@ impl Mesher<'_> {
             Pick::Quarters(_) => cuts(&corners),
             _ => Cuts([0.0, 1.0, 1.0, 1.0], 2),
         };
-        for overlay in overlays[..count].iter().flatten().copied() {
+        for overlay in overlays.into_iter().flatten() {
             let tint = overlay.tint.and_then(|(index, block)| {
-                let tinted = block
-                    .and_then(|b| self.tables.info.get(b as usize).map(|info| (b, info)))
-                    .unwrap_or((id, state));
+                let tinted = self.tables.overlay_tint_state((id, state), block);
                 self.tables
                     .tint_at(tinted, index, tints, pos, self.nether_shading, false)
             });
@@ -2949,22 +3075,24 @@ impl Mesher<'_> {
 }
 /// The most connected-texture overlays one face draws over itself; more are dropped.
 const MAX_OVERLAYS: usize = 8;
-/// What the faces of the models a block draws are drawn with: its cell, place, lighting choice
-/// and the sides its neighbours leave open.
-struct CellFaces<'a> {
+/// The part of a model face's context shared by tint preparation and drawing.
+#[derive(Clone, Copy)]
+struct FaceCell {
     /// Section-local position.
     pos: [i32; 3],
     /// Padded index.
     cell: usize,
-    /// The block's lower north-west corner with its offset.
-    origin: [f32; 3],
-    ao: bool,
     id: u32,
-    state: &'a Info,
     world: BlockPos,
     /// By `Direction`: whether a face culled toward that side is drawn.
     visible: [bool; 6],
-    interior_leaf: bool,
+}
+/// The cell and placement and lighting needed to draw its faces.
+struct CellFaces {
+    sample: FaceCell,
+    /// The block's lower north-west corner with its offset.
+    origin: [f32; 3],
+    ao: bool,
 }
 /// The cuts of a `ctm_compact` face, in quad parameters, without allocating: the first `.1`
 /// of `.0`.

@@ -209,21 +209,6 @@ impl Streaming {
         visibility: Option<Lease>,
     ) {
         let mut settings = self.mesh_settings();
-        // A mod's tint source colouring an extra model is asked here, not on the worker.
-        if region[1][1]
-            .as_ref()
-            .is_some_and(|centre| !centre.extra_models.is_empty())
-        {
-            let context = self.shared.context.read().unwrap().clone();
-            settings.attached_tints = context.tables.prepare_attached_tints(
-                &crate::mesher::borrow(region),
-                key.1,
-                &context.biomes,
-                settings.zoom,
-                settings.blend_radius,
-                settings.nether,
-            );
-        }
         if let Some(lease) = visibility {
             let context = self.shared.context.read().unwrap().clone();
             self.section_visibility.pending.push(VisibilityRequest {
@@ -238,6 +223,14 @@ impl Streaming {
             return;
         }
         let (x, sy, z) = key;
+        if region[1][1]
+            .as_ref()
+            .is_some_and(|c| !c.extra_models.is_empty())
+        {
+            let context = self.shared.context.read().unwrap().clone();
+            self.attached_tint_preparation
+                .prepare(&context, &mut settings, region, sy);
+        }
         let job = Job::Mesh(x, sy, z, region.clone(), self.sequence, settings);
         self.submit(Some((x, z)), if first { 2 } else { 0 }, job);
     }
@@ -293,10 +286,12 @@ impl Streaming {
         });
         settings.visibility = Some(Arc::new(FrozenPlan {
             plan,
-            context,
+            context: context.clone(),
             halo,
             _lease: lease.split(WORKER_BYTES),
         }));
+        self.attached_tint_preparation
+            .prepare(&context, &mut settings, &region, sy);
         let job = Job::Mesh(x, sy, z, region, seq, settings);
         self.submit(Some((x, z)), if first { 2 } else { 0 }, job);
     }

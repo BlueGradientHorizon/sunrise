@@ -1022,6 +1022,8 @@ mod native_block_entity_transform;
 #[cfg(test)]
 #[path = "game/modding/native_block_entity_transform_tests.rs"]
 mod native_block_entity_transform_tests;
+#[path = "game/modding/native_block_extra_models.rs"]
+mod native_block_extra_models;
 #[path = "game/modding/native_block_sounds.rs"]
 pub(crate) mod native_block_sounds;
 #[path = "game/modding/native_block_sprites.rs"]

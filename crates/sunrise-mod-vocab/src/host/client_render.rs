@@ -128,23 +128,22 @@ pub trait ClientRenderClientHost {
     ///
     /// `models` replaces the list the position had; an empty list clears it. The section is
     /// meshed again when the list changes. The list is the client's own, never saved or sent:
-    /// it is cleared when the block state at `pos` changes, when its column unloads (a column
-    /// the server sends again comes without it) and when the player's level changes. A block
-    /// entity is not needed. The mesher reads the list on its workers and calls no mod code.
-    /// A section's extra models are held to its quad and byte limits, after the blocks' own
-    /// geometry: past them, the rest of the section's extra models, in block order and then list
-    /// order, are not drawn, and the blocks' own always are.
+    /// it is cleared when the block state at `pos` or the player's level changes. A resend of
+    /// a resident column preserves attachments at unchanged cells; unloading the column clears
+    /// them. A block entity is not needed. The attachment pass reads prepared mod tint colours
+    /// instead of calling providers on its workers.
+    /// After the block geometry, extra faces are drawn in block and list order. Drawing stops
+    /// before the next face whose worst-case expansion cannot fit the section's upload budget,
+    /// so the last model may be partially drawn.
     ///
     /// A handle a resource reload made stale draws nothing until the list is set again from the
-    /// new handles. The call is World-only, so not in `client_resources_reloaded` (Reloading):
-    /// resolve the new handles there with [`RenderAssets::model`] and set the lists again from
-    /// the next World-phase callback, such as `client_tick_pre`.
+    /// new handles. The reload and setup contexts do not expose this setter. Resolve new handles
+    /// in `client_resources_reloaded` with [`RenderAssets::model`] and set the lists again from a
+    /// live client callback, such as `client_tick_pre`.
     ///
-    /// Refused with nothing changed: `NotLoaded` when the client holds no column at `pos` or it
-    /// is outside the level's height, `TooMany` past [`BLOCK_EXTRA_MODELS_MAX`] models, `Model`
-    /// for a stale or unknown handle, and `Unavailable` outside the World phase (a resource
-    /// reload, setup, config loading), on native and wasm alike.
-    #[access(WorldOnly)]
+    /// A refused call changes nothing: `NotLoaded` means the position is outside a resident
+    /// column or the level height; `Model` means the handle is stale or is not a registered
+    /// standalone model.
     fn set_block_extra_models(
         &mut self,
         pos: [i32; 3],
