@@ -882,7 +882,7 @@ mod tests {
             glint: &glint,
             textures: &textures,
             rules: &rules,
-            millis: 0.0,
+            millis: 0,
         };
         let mut batch = HudBatch::scratch([320, 240]);
         batch.glint_alpha = 0.5;

@@ -1140,12 +1140,12 @@ mod tests {
         s.mipmap_levels = 0;
         assert_eq!(s.file.int("mipmapLevels"), 4);
         assert_eq!(s.texture_atlas_settings(), (0, 2, 0));
-        // Out-of-range values are clamped to vanilla's option domains.
-        s.mipmap_levels = 99;
+        // Out-of-range stored values fail `OptionInstance` validation and keep the defaults.
+        s.mipmap_levels = 4;
         s.file
             .set("textureFiltering", crate::options_file::V::Int(9));
         s.file
             .set("maxAnisotropyBit", crate::options_file::V::Int(0));
-        assert_eq!(s.texture_atlas_settings(), (2, 1, 4));
+        assert_eq!(s.texture_atlas_settings(), (0, 2, 4));
     }
 }
