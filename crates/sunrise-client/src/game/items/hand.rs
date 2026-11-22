@@ -309,13 +309,34 @@ impl Game<'_> {
         if self.native_window() {
             return;
         }
-        self.tick_hit.set(Some(self.pick()));
+        self.tick_hit.set(None);
         self.tick_mob = None;
-        let mob = match self.active_attack_range() {
-            Some(range) => self.attack_range_pick(&range),
-            None => None,
-        };
-        self.tick_mob = Some(mob.unwrap_or_else(|| self.mob_hit()));
+        match self.compute_crosshair_decision() {
+            super::pick_entity::CrosshairDecision::Block(hit) => {
+                self.tick_hit.set(Some(Some(hit)));
+                self.tick_mob = Some(None);
+            }
+            super::pick_entity::CrosshairDecision::Entity(hit) => {
+                self.tick_hit.set(Some(None));
+                let mob = self.mob_index.find(&self.mobs, hit.id).map(|i| {
+                    let feet = self.mobs[i].position;
+                    (
+                        i,
+                        hit.distance_sq.sqrt(),
+                        [
+                            hit.point[0] - feet.x,
+                            hit.point[1] - feet.y,
+                            hit.point[2] - feet.z,
+                        ],
+                    )
+                });
+                self.tick_mob = Some(mob);
+            }
+            super::pick_entity::CrosshairDecision::Miss => {
+                self.tick_hit.set(Some(None));
+                self.tick_mob = Some(None);
+            }
+        }
     }
     /// `handleKeybinds`' number keys: keys 1 to 9 in that order, one click of each
     /// (`keyHotbarSlots[i].consumeClick`), so the highest key clicked this tick wins and a
@@ -364,31 +385,12 @@ impl Game<'_> {
     }
     /// `LocalPlayer.raycastHitResult`'s item (`getActiveItem`: the one in
     /// use, else the main hand's) `attack_range` component.
-    fn active_attack_range(&self) -> Option<serde_json::Value> {
+    pub(in crate::game) fn active_attack_range(&self) -> Option<serde_json::Value> {
         let active = self
             .using
             .and_then(|(slot, _)| self.inventory.get(slot).and_then(Option::as_ref))
             .or_else(|| self.held())?;
         self.attack_range_component(active)
-    }
-    /// `AttackRange.getClosesetHit` against the mobs `mob_hit` can pick
-    /// (`EntitySelector.CAN_BE_PICKED`), as `raycastHitResult` reads it: the
-    /// nearest mob hit within the item's reach; no mob when the clip met a
-    /// block within the block reach (`getHitEntitiesAlong`'s block result,
-    /// kept by `filterHitResult`); `None` on a miss, where the plain pick
-    /// decides.
-    pub(super) fn attack_range_pick_entity(&self) -> Option<mod_api::CrosshairTarget> {
-        let range = self.active_attack_range()?;
-        let (i, _, location) = self.attack_range_pick(&range)??;
-        let mob = &self.mobs[i];
-        Some(mod_api::CrosshairTarget::Entity {
-            entity: mod_api::EntityRef::new(self.native_lifecycle.epoch()?, mob.id),
-            point: [
-                mob.position.x + location[0],
-                mob.position.y + location[1],
-                mob.position.z + location[2],
-            ],
-        })
     }
 
     pub(super) fn client_pick_entity_reach(&self, direction: [f64; 3]) -> f64 {
@@ -400,55 +402,105 @@ impl Game<'_> {
             })
     }
 
-    fn attack_range_pick(
+    /// `AttackRange.getClosesetHit` plus `LocalPlayer.filterHitResult` on block hits:
+    /// preserves entity hits, in-range block hits, and misses separately so block hits
+    /// do not fall back to the plain `LocalPlayer.pick` ray.
+    pub(in crate::game) fn attack_range_pick_result(
         &self,
         range: &serde_json::Value,
-    ) -> Option<Option<(usize, f64, [f64; 3])>> {
-        let (eye, look) = match self.client_pick.ray {
-            Some((origin, direction)) => (v3(origin), v3(direction)),
-            None => (
-                v3(self.eye_position()?),
-                v3(super::view_vector(self.yaw, self.pitch)),
-            ),
+    ) -> super::pick_entity::AttackRangePickResult {
+        use super::pick_accumulator::PickCandidate;
+        use super::pick_entity::AttackRangePickResult;
+
+        let Some((partial_eye_arr, look_arr)) = self.aim() else {
+            return AttackRangePickResult::Miss;
         };
-        let reach = attack_reach(range, self.creative);
-        let camera = self.remote_camera_id();
-        // AttackRange uses getManyEntityHitResult, which does not exclude
-        // entities sharing the camera's root vehicle.
-        let boxes = (self.mobs.iter().enumerate())
-            .filter(|(_, m)| !m.removed && Some(m.id) != camera)
-            .map(|(i, m)| (i, m.bounds()));
-        let clip = |from: Vec3, to: Vec3| {
-            let length = from.distance_squared(to).sqrt();
-            let d = to.subtract(from).scale(1.0 / length);
-            (length > 0.0)
-                .then(|| self.clip_ray([from.x, from.y, from.z], [d.x, d.y, d.z], length))
-                .flatten()
+        let partial_eye = v3(partial_eye_arr);
+        let look = v3(look_arr);
+        let eye = self.camera_eye_position().map(v3).unwrap_or(partial_eye);
+        let (min, max, margin) = attack_reach(range, self.creative);
+        let movement = self.known_player_movement();
+        let from = eye.add_vector(look.scale(f64::from(min)));
+        let max_len = f64::from(max) + movement.dot(look).max(0.0);
+        let mut to = eye.add_vector(look.scale(max_len));
+
+        let filter_block = |hit: super::Hit| {
+            let d2 =
+                partial_eye.distance_squared(Vec3::new(hit.point[0], hit.point[1], hit.point[2]));
+            if d2 < self.block_reach * self.block_reach {
+                AttackRangePickResult::Block(hit)
+            } else {
+                AttackRangePickResult::Miss
+            }
+        };
+
+        let block_hit = (max_len > 0.0)
+            .then(|| self.clip_ray([eye.x, eye.y, eye.z], [look.x, look.y, look.z], max_len))
+            .flatten();
+        if let Some(hit) = block_hit {
+            to = Vec3::new(hit.point[0], hit.point[1], hit.point[2]);
+            if eye.distance_squared(to) < eye.distance_squared(from) {
+                return filter_block(hit);
+            }
+        }
+
+        let clip = |a: Vec3, b: Vec3| {
+            let length = a.distance_squared(b).sqrt();
+            if length <= 0.0 {
+                return None;
+            }
+            let d = b.subtract(a).scale(1.0 / length);
+            self.clip_ray([a.x, a.y, a.z], [d.x, d.y, d.z], length)
                 .map(|hit| Vec3::new(hit.point[0], hit.point[1], hit.point[2]))
         };
-        let movement = self.known_player_movement();
-        let mut nearest: Option<(usize, f64, [f64; 3])> = None;
-        sunrise_client::spear::for_each_hit_in_reach(
-            boxes,
-            eye,
-            look,
-            movement,
-            reach,
-            clip,
-            |i, at| {
-                let distance = eye.distance_squared(at).sqrt();
-                if nearest.is_none_or(|best| distance < best.1) {
-                    nearest = Some((i, distance, interact_location(at, self.mobs[i].position)));
+
+        let half = f64::from(margin) * 0.5;
+        let search_area = Aabb::new(
+            Vec3::new(from.x - half, from.y - half, from.z - half),
+            Vec3::new(from.x + half, from.y + half, from.z + half),
+        )
+        .expand_towards(to.subtract(from))
+        .inflate(Vec3::new(1.0, 1.0, 1.0));
+        let grow = Vec3::new(f64::from(margin), f64::from(margin), f64::from(margin));
+
+        let mut nearest: Option<PickCandidate> = None;
+        // AttackRange uses ProjectileUtil.getManyEntityHitResult over CAN_BE_PICKED:
+        // full pickable population, no entity pickRadius inflation, no root-vehicle exclusion.
+        self.for_each_pickable_in_bounds(search_area, |id, raw_bb, _radius| {
+            let inside = raw_bb.contains(from);
+            let hit_point = if inside {
+                Some(from)
+            } else if let Some(at) = raw_bb.clip(from, to) {
+                Some(at)
+            } else if margin > 0.0 {
+                raw_bb.inflate(grow).clip(from, to).and_then(|outside| {
+                    let centre = raw_bb.center();
+                    let toward = clip(outside, centre).unwrap_or(centre);
+                    raw_bb.clip(outside, toward)
+                })
+            } else {
+                None
+            };
+            if let Some(at) = hit_point {
+                let distance_sq = partial_eye.distance_squared(at);
+                if nearest.is_none_or(|best| distance_sq < best.distance_sq) {
+                    nearest = Some(PickCandidate {
+                        id,
+                        point: [at.x, at.y, at.z],
+                        distance_sq,
+                        inside,
+                    });
                 }
-            },
-        );
-        if nearest.is_some() {
-            return Some(nearest);
+            }
+        });
+
+        if let Some(hit) = nearest {
+            AttackRangePickResult::Entity(hit)
+        } else if let Some(hit) = block_hit {
+            filter_block(hit)
+        } else {
+            AttackRangePickResult::Miss
         }
-        let to = eye.add_vector(look.scale(f64::from(reach.1) + movement.dot(look).max(0.0)));
-        clip(eye, to)
-            .is_some_and(|block| eye.distance_squared(block) <= self.block_reach.powi(2))
-            .then_some(None)
     }
     /// The attack and use part of `Minecraft.tick` for the local player:
     /// attack clicks since the last tick and the held attack button.

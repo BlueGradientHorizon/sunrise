@@ -4939,15 +4939,10 @@ impl Game<'_> {
         if let Some(hit) = self.tick_hit.get() {
             return hit;
         }
-        let (origin, dir) = self.aim()?;
-        // GameRenderer.pick: the block ray runs out to the larger of the two
-        // interaction ranges; filterHitResult then drops a hit past the
-        // block's.
-        self.clip_ray(origin, dir, self.block_reach.max(self.entity_reach))
-            .filter(|hit| {
-                let distance: [f64; 3] = std::array::from_fn(|i| hit.point[i] - origin[i]);
-                distance.iter().map(|v| v * v).sum::<f64>() <= self.block_reach.powi(2)
-            })
+        match self.compute_crosshair_decision() {
+            pick_entity::CrosshairDecision::Block(hit) => Some(hit),
+            _ => None,
+        }
     }
     /// An item-specific POV outline ray at the current rotation and block reach.
     pub(super) fn item_pick(&self) -> Option<Hit> {
@@ -8918,26 +8913,16 @@ impl Game<'_> {
         if let Some(hit) = self.tick_mob {
             return hit;
         }
-        let (eye, dir) = self.aim()?;
-        let reach = self.entity_reach;
-        let (from, to) = pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = pick_accumulator::PickAccumulator::new(reach * reach);
-        let mut best: Option<(usize, f64, [f64; 3])> = None;
-        for (i, m) in self.mobs.iter().enumerate() {
-            if m.removed {
-                continue;
-            }
-            if pick.consider_box(self, m.id, from, to, m.bounds()) {
-                let hit = pick.hovered.unwrap();
-                let point = Vec3::new(hit.point[0], hit.point[1], hit.point[2]);
-                best = Some((
-                    i,
-                    hit.distance_sq.sqrt(),
-                    interact_location(point, m.position),
-                ));
-            }
-        }
-        best
+        let pick_entity::CrosshairDecision::Entity(hit) = self.compute_crosshair_decision() else {
+            return None;
+        };
+        let i = self.mob_index.find(&self.mobs, hit.id)?;
+        let point = Vec3::new(hit.point[0], hit.point[1], hit.point[2]);
+        Some((
+            i,
+            hit.distance_sq.sqrt(),
+            interact_location(point, self.mobs[i].position),
+        ))
     }
     /// The brush's `ProjectileUtil.getHitResultOnViewVector` excludes only the source entity.
     pub(super) fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {

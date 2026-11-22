@@ -8,6 +8,20 @@ use mod_api::{BlockPos, CrosshairTarget, EntityRef};
 use sunrise_client::{items::ItemStack, save::uuid_text};
 use sunrise_core::geometry::{Aabb, Vec3};
 
+#[derive(Clone, Copy, Debug)]
+pub(in crate::game) enum AttackRangePickResult {
+    Entity(PickCandidate),
+    Block(super::Hit),
+    Miss,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(in crate::game) enum CrosshairDecision {
+    Entity(PickCandidate),
+    Block(super::Hit),
+    Miss,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct CrosshairEntityHit {
     pub id: i32,
@@ -63,27 +77,11 @@ impl Game<'_> {
         })
     }
 
-    /// The stored frame decision on a window; original during dispatch.
-    pub(super) fn crosshair_target(&self) -> Option<CrosshairTarget> {
+    pub(in crate::game) fn crosshair_block_target(
+        &self,
+        hit: super::Hit,
+    ) -> Option<CrosshairTarget> {
         use crate::game::api_values::TryIntoApi;
-        if !self.native_window() || self.title.is_some() {
-            return None;
-        }
-        self.player.as_ref()?;
-        if self.uses_stored_pick() {
-            return self.stored_client_pick();
-        }
-        let (hit, occluded_block) = self.pick_entity_pass_unified();
-        if let Some(hit) = hit {
-            return Some(CrosshairTarget::Entity {
-                entity: EntityRef::new(self.native_lifecycle.epoch()?, hit.id),
-                point: hit.point,
-            });
-        }
-        if occluded_block {
-            return None;
-        }
-        let hit = self.pick()?;
         Some(CrosshairTarget::Block {
             pos: BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]),
             state: self
@@ -93,6 +91,25 @@ impl Game<'_> {
                 .ok()?,
             hit: hit.native(),
         })
+    }
+
+    /// The stored frame decision on a window; original during dispatch.
+    pub(super) fn crosshair_target(&self) -> Option<CrosshairTarget> {
+        if !self.native_window() || self.title.is_some() {
+            return None;
+        }
+        self.player.as_ref()?;
+        if self.uses_stored_pick() {
+            return self.stored_client_pick();
+        }
+        match self.compute_crosshair_decision() {
+            CrosshairDecision::Entity(hit) => Some(CrosshairTarget::Entity {
+                entity: EntityRef::new(self.native_lifecycle.epoch()?, hit.id),
+                point: hit.point,
+            }),
+            CrosshairDecision::Block(hit) => self.crosshair_block_target(hit),
+            CrosshairDecision::Miss => None,
+        }
     }
 
     pub(super) fn pick_entity_candidate_within(
@@ -122,48 +139,70 @@ impl Game<'_> {
         })
     }
 
-    /// Runs the unified `LocalPlayer.pick` entity pass for unstored consumers.
+    /// Runs the unified `LocalPlayer.raycastHitResult` entity result for unstored consumers.
     pub(super) fn pick_entity_hit_unified(&self) -> Option<PickCandidate> {
-        self.pick_entity_pass_unified().0
+        match self.compute_crosshair_decision() {
+            CrosshairDecision::Entity(hit) => Some(hit),
+            _ => None,
+        }
     }
 
-    fn pick_entity_pass_unified(&self) -> (Option<PickCandidate>, bool) {
+    /// Full unstored `LocalPlayer.raycastHitResult`: active `AttackRange` (keeping both entity and
+    /// in-range block results), then `LocalPlayer.pick` with nominal miss search bound and strict
+    /// `<` reach filters so an out-of-reach entity occluding a block resolves to `Miss`.
+    pub(in crate::game) fn compute_crosshair_decision(&self) -> CrosshairDecision {
+        if let Some(range) = self.active_attack_range() {
+            match self.attack_range_pick_result(&range) {
+                AttackRangePickResult::Entity(hit) => return CrosshairDecision::Entity(hit),
+                AttackRangePickResult::Block(hit) => return CrosshairDecision::Block(hit),
+                AttackRangePickResult::Miss => {}
+            }
+        }
         let Some((eye, dir)) = self.aim() else {
-            return (None, false);
+            return CrosshairDecision::Miss;
         };
         let from = Vec3::new(eye[0], eye[1], eye[2]);
         let max_distance = self.block_reach.max(self.entity_reach);
-        let (entity_max_distance, block_distance_sq) = if self.client_pick.ray.is_some() {
-            (
-                max_distance,
-                pick_ray_segment(eye, dir, max_distance)
-                    .1
-                    .distance_squared(from),
-            )
-        } else if let Some(block) = self.pick_unfiltered() {
-            let d2 =
-                from.distance_squared(Vec3::new(block.point[0], block.point[1], block.point[2]));
-            (d2.sqrt(), d2)
+        let block_hit = if self.client_pick.ray.is_some() {
+            None
         } else {
-            (
+            self.pick_unfiltered()
+        };
+        let (entity_max_distance, search_max_distance_sq, block_distance_sq) = match block_hit {
+            Some(block) => {
+                let d2 = from.distance_squared(Vec3::new(
+                    block.point[0],
+                    block.point[1],
+                    block.point[2],
+                ));
+                (d2.sqrt(), d2, d2)
+            }
+            None => (
                 max_distance,
+                max_distance * max_distance,
                 pick_ray_segment(eye, dir, max_distance)
                     .1
                     .distance_squared(from),
-            )
+            ),
         };
-        let mut pick = PickAccumulator::new(block_distance_sq);
+        let mut pick = PickAccumulator::new(search_max_distance_sq);
         self.collect_pick_candidates_within(entity_max_distance, &mut pick);
-        let Some(hit) = pick.hovered else {
-            return (None, false);
-        };
-        if hit.distance_sq >= block_distance_sq {
-            return (None, false);
+        if let Some(hit) = pick.hovered
+            && hit.distance_sq < block_distance_sq
+        {
+            return if hit.distance_sq < self.entity_reach * self.entity_reach {
+                CrosshairDecision::Entity(hit)
+            } else {
+                CrosshairDecision::Miss
+            };
         }
-        if hit.distance_sq < self.entity_reach * self.entity_reach {
-            (Some(hit), false)
+        if let Some(block) = block_hit
+            && from.distance_squared(Vec3::new(block.point[0], block.point[1], block.point[2]))
+                < self.block_reach * self.block_reach
+        {
+            CrosshairDecision::Block(block)
         } else {
-            (None, true)
+            CrosshairDecision::Miss
         }
     }
 

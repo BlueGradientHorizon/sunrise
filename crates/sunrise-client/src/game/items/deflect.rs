@@ -59,6 +59,7 @@ pub(super) fn attackable(p: &Projectile) -> bool {
 }
 
 /// Its box for the crosshair: the entity's box inflated by `Projectile.getPickRadius` (1.0 when pickable).
+#[cfg(test)]
 fn pick_box(p: &Projectile) -> Aabb {
     let radius = pick_radius(p);
     p.bounds().inflate(Vec3::new(radius, radius, radius))
@@ -115,7 +116,7 @@ impl Game<'_> {
     pub(in crate::game) fn rocket_is_pickable(&self) -> bool {
         self.is_redirectable_projectile_type("minecraft:firework_rocket")
     }
-    /// The redirectable projectile under the crosshair within entity reach.
+    /// The pickable projectile under the crosshair within entity reach.
     pub(super) fn redirectable_hit(&self) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
@@ -123,26 +124,19 @@ impl Game<'_> {
                 .creatures
                 .projectiles
                 .iter()
-                .position(|f| f.id == entity.id())?;
+                .position(|f| f.id == entity.id() && self.projectile_is_pickable(f))?;
             return Some((index, distance));
         }
-        let (eye, dir) = self.aim()?;
-        let reach: f64 = self.entity_reach;
-        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
-        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
-        let mut best = None;
-        for (i, p) in self
+        let super::pick_entity::CrosshairDecision::Entity(hit) = self.compute_crosshair_decision()
+        else {
+            return None;
+        };
+        let index = self
             .creatures
             .projectiles
             .iter()
-            .enumerate()
-            .filter(|(_, p)| attackable(p))
-        {
-            if pick.consider_box(self, p.id, from, to, pick_box(p)) {
-                best = Some((i, pick.hovered.unwrap().distance_sq.sqrt()));
-            }
-        }
-        best
+            .position(|f| f.id == hit.id && self.projectile_is_pickable(f))?;
+        Some((index, hit.distance_sq.sqrt()))
     }
 
     /// `Player.attack` on a redirectable projectile nearer than any mob or
