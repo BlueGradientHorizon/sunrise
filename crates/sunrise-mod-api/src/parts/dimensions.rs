@@ -197,8 +197,8 @@ mod tests {
 
     struct Plains;
     impl crate::BiomeSource for Plains {
-        fn possible_biomes(&self) -> Vec<String> {
-            vec!["minecraft:plains".into()]
+        fn possible_biomes(&self) -> Vec<crate::BiomeKey> {
+            vec![crate::BiomeKey::parse("minecraft:plains").unwrap()]
         }
         fn noise_biome(&self, _: [i32; 3], _: i64) -> u16 {
             0
