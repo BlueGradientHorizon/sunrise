@@ -280,31 +280,43 @@ impl Game<'_> {
                     .iter()
                     .all(|member| channel(member, sunrise_protocol::viewed_levels::CHANNEL)))
         {
-            let group_packets: Vec<C> = packets
+            let Some(group_packets) = packets
                 .into_iter()
                 .map(|member| match member {
-                    BundleMember::Packet(packet) => packet,
+                    BundleMember::Packet(packet) => Some(packet),
                     BundleMember::AttachmentSync(staged) => {
-                        C::CustomPayload(staged.into_message().1)
+                        Some(C::CustomPayload(staged.into_message().1))
                     }
+                    BundleMember::OversizedDebugSample => None,
                 })
-                .collect();
+                .collect::<Option<Vec<_>>>()
+            else {
+                return self.refuse_play_payload("connection groups: unexpected packet in bundle");
+            };
             self.route_connection_group_bundle(&group_packets, negotiated)?;
             return Ok(());
         }
+        // One PacketProcessor task: a handler failure leaves the prefix applied,
+        // skips the suffix, and disconnects via onPacketError.
+        let stop_on_packet_error = |game: &Self, turn: &mut ListenerTurn| {
+            if let Some(remote) = &game.remote {
+                remote.session.close_after_pending();
+            }
+            turn.end.get_or_insert_with(|| io.packet_error());
+        };
         for packet in packets {
             match io.bundle_member(packet) {
                 BundleStep::Event(event) => {
-                    // The bundle is one PacketProcessor task. A handler failure leaves its
-                    // prefix applied, skips its suffix, and disconnects via onPacketError.
                     if let Err(error) = self.handle_remote_event(event, turn) {
                         log::warn!("Sunrise: bundle packet handler failed: {error}");
-                        if let Some(remote) = &self.remote {
-                            remote.session.close_after_pending();
-                        }
-                        turn.end.get_or_insert_with(|| io.packet_error());
+                        stop_on_packet_error(self, turn);
                         break;
                     }
+                }
+                BundleStep::HandlerFailed => {
+                    log::warn!("Sunrise: oversized debug sample in play bundle");
+                    stop_on_packet_error(self, turn);
+                    break;
                 }
                 BundleStep::Payload(payload) => {
                     match Incoming::classify(endpoint.transport(), Phase::Play, payload) {
@@ -664,6 +676,15 @@ mod tests {
             let Some(Received::Event(Event::Bundle(bundle), _credit)) = backlog.remove(pos) else {
                 panic!("the receiver closed before handing the completed bundle to main");
             };
+            use sunrise_client::net::BundleMember;
+            assert!(matches!(
+                bundle.packets.as_slice(),
+                [
+                    BundleMember::Packet(C::SetHeldSlot(_)),
+                    BundleMember::OversizedDebugSample,
+                    BundleMember::Packet(C::SetHeldSlot(_)),
+                ]
+            ));
             assert_eq!(game.selected, 0, "no member applied on the reader");
             let mut turn = ListenerTurn::default();
             game.handle_play_bundle(*bundle, &mut turn).unwrap();

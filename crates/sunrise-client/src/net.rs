@@ -1584,6 +1584,7 @@ fn receive_play(
             rec.received(&packet, id, &payload);
         }
         let member = match packet {
+            _ if oversized_sample.is_some() => BundleMember::OversizedDebugSample,
             play::Clientbound::CustomPayload(payload)
                 if payload.channel == sunrise_protocol::attachment_sync::CHANNEL =>
             {
@@ -1615,6 +1616,9 @@ fn receive_play(
                 continue;
             }
             Some(PlayTurn::Single(BundleMember::Packet(packet))) => packet,
+            Some(PlayTurn::Single(BundleMember::OversizedDebugSample)) => {
+                unreachable!("an oversized standalone sample was refused before packing")
+            }
             Some(PlayTurn::Bundle(packets)) => {
                 if io.accepts_bundle() {
                     send.send_wait(Event::Bundle(Box::new(CompletedBundle {
