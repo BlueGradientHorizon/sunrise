@@ -591,11 +591,11 @@ mod tests {
             }
         });
         // The client only installs tag tables for Host reads when there is a mod.
-        struct Reader;
+        struct TagReader;
         #[mod_api::__subscriptions]
-        impl Hooks for Reader {}
+        impl Hooks for TagReader {}
         mod_platform::testing::with_mods(
-            vec![ModEntry::new("tag_reload", Box::new(Reader))].into(),
+            vec![ModEntry::new("tag_reload", Box::new(TagReader))].into(),
             || {
                 with_client_game(|game| {
                     let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
