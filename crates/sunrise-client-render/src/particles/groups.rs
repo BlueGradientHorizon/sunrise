@@ -108,9 +108,9 @@ mod tests {
     use super::{Group, ParticleGroup, freeze};
     use mod_api::{
         __private::game::RegistrationContextNew, Identifier, ParticleBatch, ParticleLevelView,
-        RegistrationContext,
+        ParticleProvider, RegistrationContext,
     };
-    use std::sync::Mutex;
+    use std::{collections::BTreeMap, sync::Mutex};
     use sunrise_assets::resource_source::Resource;
 
     fn group(id: &str, blend: ParticleBlend, particles: &[&str]) -> Group {
