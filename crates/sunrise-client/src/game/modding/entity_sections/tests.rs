@@ -1279,3 +1279,31 @@ fn borrowed_tick_tells_nested_passenger_and_vehicle_writes_before_resuming() {
         })
     });
 }
+
+#[test]
+fn live_section_host_builds_play_packets_and_refuses_container_click() {
+    use mod_api::{
+        ContainerClickRequest, PacketBuildError, PlayPacketRequest, prelude::NetworkClientHost,
+    };
+    use sunrise_protocol::{
+        ids::play::serverbound as sb,
+        packets::play::{Attack, Serverbound},
+    };
+
+    let host = LiveSectionHost(None);
+    let packet = host
+        .build_play_packet(&PlayPacketRequest::Attack { entity: 9 })
+        .unwrap();
+    assert_eq!(packet.id.to_string(), "minecraft:attack");
+    assert_eq!(
+        Serverbound::decode(sb::ATTACK, &packet.body).unwrap(),
+        Serverbound::Attack(Attack { id: 9 })
+    );
+    assert_eq!(
+        host.container_click(&ContainerClickRequest::default()),
+        Err(PacketBuildError::Unavailable {
+            packet: "container_click".into(),
+            field: "host".into(),
+        })
+    );
+}

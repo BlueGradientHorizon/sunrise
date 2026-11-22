@@ -204,7 +204,10 @@ struct LiveSectionHost(Option<SectionWriter>);
 
 mod_api::impl_host_areas!(LiveSectionHost);
 mod_api::impl_server_host_areas!(LiveSectionHost);
-mod_api::impl_client_host_areas!(LiveSectionHost, except(client_render, menus, services));
+mod_api::impl_client_host_areas!(
+    LiveSectionHost,
+    except(client_render, menus, network, services)
+);
 mod_api::impl_backend_areas!(
     LiveSectionHost,
     partial(
@@ -214,6 +217,22 @@ mod_api::impl_backend_areas!(
         entity_velocity
     )
 );
+
+impl mod_api::prelude::NetworkClientHost for LiveSectionHost {
+    fn build_play_packet(
+        &self,
+        request: &mod_api::PlayPacketRequest,
+    ) -> Result<mod_api::ServerboundPlayPacket, mod_api::PacketBuildError> {
+        Game::build_play_packet(request)
+    }
+
+    fn container_click(
+        &self,
+        _: &mod_api::ContainerClickRequest,
+    ) -> Result<mod_api::ServerboundPlayPacket, mod_api::PacketBuildError> {
+        Err(mod_api::NoBackend::no_backend())
+    }
+}
 
 impl mod_api::prelude::ClientRenderClientHost for LiveSectionHost {
     fn biome_tint(
