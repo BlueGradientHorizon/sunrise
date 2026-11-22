@@ -318,21 +318,23 @@ impl Game<'_> {
                 let _ = p.set_modifier(attribute, id, amount, "add_value", creative);
             }
         }
-        let attribute = "minecraft:waypoint_transmit_range";
-        let id = "minecraft:waypoint_transmit_range_crouch";
-        if let Some(key) = p.attributes.key(attribute)
-            && let Ok(Some(_)) = p.attributes.get_instance(Some(key.clone()))
+        use sunrise_world::attributes::{Modifier, Operation};
+        const CROUCH_ID: &str = "minecraft:waypoint_transmit_range_crouch";
+        static CROUCH: std::sync::LazyLock<Modifier> = std::sync::LazyLock::new(|| {
+            Modifier::new(CROUCH_ID, -1.0, Operation::AddMultipliedTotal)
+                .expect("vanilla crouch modifier id")
+        });
+        if let Some(key) = p.attributes.key("minecraft:waypoint_transmit_range")
+            && let Ok(Some(handle)) = p.attributes.get_instance(Some(key))
         {
             let crouching = p.pose == sunrise_client::pose::Pose::Crouching;
-            if p.attributes.has_modifier(Some(key), id).unwrap_or(false) != crouching {
-                let _ = p.set_modifier_unclamped(
-                    attribute,
-                    id,
-                    -1.0,
-                    "add_multiplied_total",
-                    crouching,
-                );
-            }
+            let _ = p.attributes.edit(&handle, |value, observer| {
+                if crouching {
+                    value.add_or_update_transient(CROUCH.clone(), observer)
+                } else {
+                    value.remove(CROUCH_ID, observer).map(|_| ())
+                }
+            });
         }
     }
 }

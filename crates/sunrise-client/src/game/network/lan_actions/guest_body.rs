@@ -377,18 +377,7 @@ impl Game<'_> {
             }
             let _ = w.apply_fire_contact();
             let _ = w.server_hazards_tick(in_wall);
-            // LivingEntity.aiStep: a Riptide spin counts down on the server's
-            // copy too, or it would stay in the spin pose (eye 0.4) for good.
-            // LivingEntity.tick: a changed scale rebuilds the box. Player.tick
-            // ends with updatePlayerPose — or, for a passenger, the rideTick
-            // path that clears a swim (#4509 / #3308).
-            let _ = if riding {
-                w.passenger_pose_tick()
-            } else {
-                w.server_player_pose_tick()
-            };
-            game.apply_player_waypoint_updates();
-            let mut events = std::mem::take(&mut game.player.as_mut().unwrap().events);
+            let mut events = std::mem::take(&mut w.player.events);
             // Powder snow and cauldrons put the fire out along those moves.
             game.block_extinguish_player(&events);
             // Entity.baseTick: rain puts out a burning player.
@@ -414,6 +403,21 @@ impl Game<'_> {
             // LivingEntity.baseTick: outside the world border, then tickEffects.
             game.border_damage();
             game.tick_mob_effects();
+            // `LivingEntity.baseTick` ran effects before the remaining dirty
+            // attributes refresh in `LivingEntity.tick`. `Player.tick` then
+            // chooses its pose, including for a passenger (#4509 / #3308).
+            let Some(player) = game.player.as_mut() else {
+                return (events, None, ServerTravel::Continue);
+            };
+            let side = game_side!(game);
+            let mut w = motion_world!(game, side, player);
+            if riding {
+                let _ = w.player.refresh_attributes();
+                let _ = w.passenger_pose_tick();
+            } else {
+                let _ = w.server_player_pose_tick();
+            }
+            game.apply_player_waypoint_updates();
             // Soul Speed's effects (LivingEntity.baseTick's location_changed
             // and tick effects); its particle goes to the players around.
             soul = game.tick_soul_speed();
