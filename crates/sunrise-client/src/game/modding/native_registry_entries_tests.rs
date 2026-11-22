@@ -136,6 +136,10 @@ fn generic_entries_follow_real_server_tables_and_atomic_reload() {
         r#"{"values":["minecraft:village_plains"]}"#,
     );
     write(
+        &pack.join("data/registry_entry_test/tags/worldgen/structure/rejected.json"),
+        r#"{"values":["minecraft:village_plains","registry_entry_test:missing"]}"#,
+    );
+    write(
         &pack.join("data/registry_entry_test/tags/mob_effect/rejected.json"),
         r#"{"values":["minecraft:speed","registry_entry_test:missing"]}"#,
     );
@@ -226,6 +230,11 @@ fn generic_entries_follow_real_server_tables_and_atomic_reload() {
                     host(game).registry_entry_in_tag(&village, "registry_entry_test:towns"),
                     Some(true),
                     "an accepted structure in a loaded structure tag"
+                );
+                assert_eq!(
+                    host(game).registry_entry_in_tag(&village, "registry_entry_test:rejected"),
+                    Some(false),
+                    "a required missing holder rejects the whole tag"
                 );
                 assert_eq!(
                     host(game).registry_entry_in_tag(&village, "registry_entry_test:absent"),

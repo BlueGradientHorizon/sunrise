@@ -101,7 +101,7 @@ impl Game<'_> {
             })
     }
 
-    fn registry_generator_data(
+    pub(super) fn registry_generator_data(
         &self,
     ) -> Option<Arc<sunrise_world::worldgen::generator::GeneratorData>> {
         self.end

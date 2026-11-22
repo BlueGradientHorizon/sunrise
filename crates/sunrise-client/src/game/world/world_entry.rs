@@ -471,6 +471,36 @@ impl Game<'_> {
         for registry in fixed.chain([BIOME_REGISTRY]) {
             bind_tags(registry, &mut view)?;
         }
+        // WORLD_REGISTRIES owns the structures; its raw definitions are not holders.
+        // First open uses the same cached data as live features. Reload binds new tags
+        // to the frozen owner, just as TagLoader does before server resource reload.
+        let generator = if reload {
+            self.registry_generator_data()
+        } else {
+            // This bundle can be unavailable independently of the resource tables.
+            // Terrain preparation owns the existing diagnostics for it.
+            sunrise_client::vanillagen::shared_data_from(
+                &root.join("worldgen"),
+                &biomes.overrides,
+                self.pack.assets.registry,
+                stack.content.source(),
+            )
+            .ok()
+        };
+        if let Some(generator) = generator {
+            const STRUCTURES: &str = "minecraft:worldgen/structure";
+            let mut holders = std::collections::BTreeSet::new();
+            if generator
+                .visit_registry_ids(STRUCTURES, &mut |id| {
+                    holders.insert(id.to_owned());
+                    std::ops::ControlFlow::Continue(())
+                })
+                .is_some()
+            {
+                view.ids.insert(STRUCTURES.to_owned(), holders);
+                bind_tags(STRUCTURES, &mut view)?;
+            }
+        }
         let damage_tags: HashMap<_, HashSet<_>> = health
             .damage
             .tags()
@@ -554,7 +584,8 @@ impl Game<'_> {
         // failures here even when a condition rejected the referenced entry.
         let loot = loot.and_then(|loot| {
             let context = lan::sync::server_data_load(root, &self.res.core.item_data)?;
-            let data = loot.prepare((!mod_api::__private::mods().is_empty()).then_some(&context))?;
+            let data =
+                loot.prepare((!mod_api::__private::mods().is_empty()).then_some(&context))?;
             Ok((data, context))
         });
         // A rejected early registry must not hide independent late load errors.
