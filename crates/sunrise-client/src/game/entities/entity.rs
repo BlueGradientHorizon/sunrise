@@ -331,10 +331,14 @@ pub(super) trait Entity: EntityRules {
         None
     }
     fn release_after_piston(&mut self, _no_block_collision: bool) {}
-    /// `setOnGroundWithMovement` at the end of a piston's or shulker lid's
-    /// `Entity.move`, for the kinds that keep the flag: on a server it runs
-    /// for every push, sideways ones and those the collision turned away included.
-    fn set_piston_on_ground(&mut self, _on_ground: bool) {}
+    /// Set the ground flag for a push, or for the carry pass's collider contact.
+    /// Terrain support still comes from `Entity.checkSupportingBlock`; a collider
+    /// is not `mainSupportingBlockPos`.
+    fn set_piston_on_ground(&mut self, on_ground: bool) {
+        if let Some(ground) = self.ground_state_mut() {
+            ground.on_ground = on_ground;
+        }
+    }
     /// `Entity.setOnGround` from outside the entity's own move (`/tp`'s
     /// `TeleportCommand.performTeleport`); kinds that keep no ground flag ignore it.
     fn set_on_ground(&mut self, _on_ground: bool) {}
@@ -2980,13 +2984,6 @@ impl Entity for ThrownTrident {
         let pitch = if pitch.is_nan() { previous[1] } else { pitch };
         self.yaw = yaw;
         self.pitch = pitch.clamp(-90.0, 90.0);
-    }
-    fn on_ground(&self) -> bool {
-        self.ground.on_ground
-    }
-    /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.ground.on_ground = on_ground;
     }
     fn set_on_ground(&mut self, on_ground: bool) {
         self.ground.on_ground = on_ground;
