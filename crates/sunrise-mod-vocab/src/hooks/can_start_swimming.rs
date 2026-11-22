@@ -13,6 +13,8 @@ pub trait Hooks {
     /// install the mod on both sides. Base the answer on facts available to
     /// both sides that tick; the server remains authoritative for position.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "both",
         version = 1,
         contract = "replace",
@@ -21,5 +23,10 @@ pub trait Hooks {
         host = "read",
         neoforge = "IEntityExtension.canStartSwimming"
     )]
-    fn can_start_swimming();
+    fn can_start_swimming(
+        player: PlayerRef,
+        side: LogicalSide,
+        check: mod_api::SwimmingCheck,
+        can_start_swimming: &mut Option<bool>,
+    );
 }
