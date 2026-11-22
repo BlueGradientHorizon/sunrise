@@ -99,6 +99,13 @@ pub(super) fn emit<'a>(
             .map_err(|e| format!("{name}: {e}"))?;
         let carried: Vec<_> = declared.iter().map(|(arg, ty)| (arg.clone(), ty)).collect();
         let mut args = carried.clone();
+        if hook.isolate_listener
+            && (is_render || declaration_only || hook.context == Some(PhaseContext::ChunkDisk))
+        {
+            return Err(format!(
+                "{name}: isolate_listener requires a hook with global listener dispatch"
+            ));
+        }
         let carrier = format!("{}Call", hook_id(name));
         let uses_carrier = !declared.is_empty()
             && (name == "apply_effect_tick" && declaration_only
@@ -444,7 +451,7 @@ pub(super) fn emit<'a>(
             }
             syn::visit_mut::VisitMut::visit_type_mut(&mut OwnedLootContext, &mut owned_ty);
             let ty = &owned_ty;
-            if isolated_collect {
+            if isolated_collect || hook.isolate_listener {
                 struct MutableBorrow(bool);
                 impl<'ast> syn::visit::Visit<'ast> for MutableBorrow {
                     fn visit_type_reference(&mut self, reference: &'ast syn::TypeReference) {
@@ -455,8 +462,13 @@ pub(super) fn emit<'a>(
                 let mut mutable = MutableBorrow(false);
                 syn::visit::Visit::visit_type(&mut mutable, ty);
                 if mutable.0 {
+                    let kind = if isolated_collect {
+                        "collector"
+                    } else {
+                        "listener"
+                    };
                     return Err(format!(
-                        "{}: an isolated collector cannot also write to {name}",
+                        "{}: an isolated {kind} cannot also write to {name}",
                         hook.name
                     ));
                 }
@@ -1238,15 +1250,20 @@ pub(super) fn emit<'a>(
                     call(&mod_item, "break"),
                 ),
             ),
-            None if name == "consume_effect" => (
-                format!(
-                    "let Some(owner) = super::runtime::listening_kind_owner(HookId::{hook_id}, kind) else {{ return; }};"
-                ),
-                format!(
-                    "let mut {entered} = super::runtime::ListenerScope::new(); let {mod_item} = {entered}.enter(owner, \"{name}\"); {}",
-                    call(&mod_item, ""),
-                ),
-            ),
+            None if name == "consume_effect" => {
+                if hook.isolate_listener {
+                    return Err(format!("{name}: isolate_listener requires a global hook"));
+                }
+                (
+                    format!(
+                        "let Some(owner) = super::runtime::listening_kind_owner(HookId::{hook_id}, kind) else {{ return; }};"
+                    ),
+                    format!(
+                        "let mut {entered} = super::runtime::ListenerScope::new(); let {mod_item} = {entered}.enter(owner, \"{name}\"); {}",
+                        call(&mod_item, ""),
+                    ),
+                )
+            }
             None if hook.owner.is_some() => (
                 String::new(),
                 format!(
@@ -1271,11 +1288,44 @@ pub(super) fn emit<'a>(
                     o = out.unwrap()
                 ),
             ),
+            None if mod_cancel && hook.isolate_listener => {
+                let accepted = fresh_name("accepted_cancelled", &mut used);
+                (
+                    String::new(),
+                    format!(
+                        "let mut {accepted} = {event}.cancelled;\n\
+                         for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{\n\
+                             if {accepted} && !{receives} {{ continue; }}\n\
+                             {event}.cancelled = {accepted};\n\
+                             if let Some(flow) = super::runtime::isolated_listener(\n\
+                                 HookId::{hook_id}, \"{name}\", {mod_entry}, contained,\n\
+                                 |{mod_item}| {mod_item}.{name}({invoke}),\n\
+                             ) {{\n\
+                                 {accepted} = {event}.cancelled || matches!(flow, Flow::Cancel);\n\
+                             }}\n\
+                         }}\n\
+                         *{o} = {accepted};",
+                        o = cancel_out.unwrap(),
+                    ),
+                )
+            }
             None if mod_cancel => (
                 String::new(),
                 format!(
                     "{{ let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if {event}.cancelled && !{receives} {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {cancel_step} }} }} *{o} = {event}.cancelled;",
                     o = cancel_out.unwrap()
+                ),
+            ),
+            None if contract == Contract::Listen && hook.isolate_listener => (
+                String::new(),
+                format!(
+                    "for (_, {mod_entry}) in super::listening(HookId::{hook_id}) {{\n\
+                         {local_event}\n\
+                         let _ = super::runtime::isolated_listener(\n\
+                             HookId::{hook_id}, \"{name}\", {mod_entry}, contained,\n\
+                             |{mod_item}| {mod_item}.{name}({invoke}),\n\
+                         );\n\
+                     }}"
                 ),
             ),
             None => (
@@ -1347,7 +1397,7 @@ pub(super) fn emit<'a>(
             format!("if !super::listened(HookId::{hook_id}) {{ return; }}")
         };
         // One thread-local read per dispatch, not per listener.
-        let early_return = if body.contains("refusable(") {
+        let early_return = if hook.isolate_listener || body.contains("refusable(") {
             format!("{early_return} let contained = super::runtime::outside_world();")
         } else {
             early_return

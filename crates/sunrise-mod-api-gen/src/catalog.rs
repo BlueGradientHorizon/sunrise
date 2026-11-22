@@ -181,6 +181,9 @@ pub struct Hook {
     /// A collector receives at most one returned value per registration, and later listeners
     /// still run after a failure.
     pub isolate: bool,
+    /// Contain a global listener's fault without stopping other listeners. Notifications
+    /// have no dispatch output; a cancel hook only accepts cancellation on normal return.
+    pub isolate_listener: bool,
     /// An isolated cancel hook's per-listener check of the outputs it wrote: a path to
     /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
     /// vector/scalar outputs in declaration order and naming the first refused one. A refused
@@ -359,6 +362,8 @@ struct ModApiEntry {
     collect_validator: Option<String>,
     registration_append: Option<RegistrationAppend>,
     isolate: Option<bool>,
+    #[serde(default)]
+    isolate_listener: bool,
     output_validator: Option<String>,
 }
 
@@ -527,6 +532,17 @@ impl Hook {
                         .into(),
             });
         }
+        if api.isolate_listener
+            && (isolate
+                || scope.is_some()
+                || api.owner.is_some()
+                || !matches!(api.contract, Contract::Listen | Contract::Cancel))
+        {
+            return Err(CatalogError::InvalidHook {
+                hook: name.clone(),
+                error: "isolate_listener requires a global notification or cancel-only hook without isolate".into(),
+            });
+        }
         if let Some(validator) = &api.output_validator
             && (!isolate
                 || api.contract != Contract::Cancel
@@ -557,6 +573,7 @@ impl Hook {
             registration_append: api.registration_append,
             inert: entry.inert,
             isolate,
+            isolate_listener: api.isolate_listener,
             output_validator: api.output_validator,
             scope,
             host: entry.host,
@@ -845,6 +862,7 @@ impl Declared {
                             "collect_validator",
                             "registration_append",
                             "isolate",
+                            "isolate_listener",
                             "output_validator",
                         ] {
                             if let Some(value) = entry.remove(key) {
@@ -1020,6 +1038,7 @@ impl Hook {
             registration_append: None,
             inert: None,
             isolate: false,
+            isolate_listener: false,
             output_validator: None,
             scope: None,
             host: None,

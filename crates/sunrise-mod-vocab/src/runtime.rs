@@ -165,13 +165,15 @@ pub fn isolated_failures() -> u64 {
     LISTENER_SERIAL.get().1
 }
 
-/// Mark `id`'s listener of `hook` poisoned for the session (#2414 ruling):
-/// it is skipped by that one hook alone — its other hooks and Parts are
-/// untouched, unlike a whole-mod disable. Called only from a listener's
-/// `catch_unwind` handler, so an installation is always in place.
+/// Poison a listener and signal the owning action's rollback checkpoint (#2414).
 pub(crate) fn poison(hook: generated::HookId, id: &'static str) {
     let (entered, trapped) = LISTENER_SERIAL.get();
     LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+    disable_listener(hook, id);
+}
+
+/// Record a fault against this hook alone, not the mod's other hooks or Parts.
+fn disable_listener(hook: HookId, id: &'static str) {
     let installed = installed().expect("a poison lands inside a dispatch");
     let mut poisons = installed.poisons.lock().unwrap();
     let sets =
@@ -556,7 +558,7 @@ pub(crate) fn receives_cancelled(hook: generated::HookId) -> bool {
     installed().is_some_and(|installed| installed.subscribers.receives_cancelled(hook as usize))
 }
 
-/// A cancel hook's enabled subscribers in dispatch order, each with whether it is still told
+/// A hook's enabled subscribers in dispatch order, each with whether it is still told
 /// once the event is cancelled. Unlike [`entered`], nothing is marked: the dispatch enters only
 /// the mods it calls, through [`ListenerScope::enter`].
 pub(crate) fn listening(
@@ -641,8 +643,68 @@ impl ListenerScope {
     }
 }
 
+/// Call one isolated listener. Re-entry refuses only the callback already on this thread,
+/// and a panic disables only this `(hook, mod)` pair. Neither undoes Host writes.
+pub(crate) fn isolated_listener<T>(
+    hook: HookId,
+    name: &'static str,
+    entry: &'static ModEntry,
+    contained: bool,
+    call: impl FnOnce(&dyn Hooks) -> T,
+) -> Option<T> {
+    let id = entry.id;
+    if poisoned(hook, id) {
+        return None;
+    }
+    let key = (hook as usize, id);
+    let entered = ACTIVE_ISOLATED_LISTENERS.with_borrow_mut(|active| {
+        if active.contains(&key) {
+            return false;
+        }
+        active.push(key);
+        true
+    });
+    if !entered {
+        log::warn!("native refusal: {id} hook {name}: this callback is already running");
+        return None;
+    }
+
+    struct ActiveListener;
+    impl Drop for ActiveListener {
+        fn drop(&mut self) {
+            ACTIVE_ISOLATED_LISTENERS.with_borrow_mut(|active| {
+                active.pop();
+            });
+        }
+    }
+    let _active = ActiveListener;
+    let mut scope = ListenerScope::new();
+    let hooks = scope.enter(entry, name);
+    match crate::callback_owner::contain_unwind(|| refusable(contained, || call(hooks))) {
+        Ok(Ok(value)) => Some(value),
+        Ok(Err(refusal)) => {
+            refusal.report_each();
+            None
+        }
+        Err(message) => {
+            // Unlike the rollback policy, this must not trigger an owning action's
+            // rollback checkpoint, even if the listener failed in a nested notification.
+            disable_listener(hook, id);
+            log::error!(
+                "mod {id}: hook {name} callback panicked and is disabled for this session: {message}"
+            );
+            crate::callback_owner::record_callback_panic(id, "hook", name, message);
+            None
+        }
+    }
+}
+
 thread_local! {
-    /// Listener entries (including nested hooks) and poisoned traps on this thread.
+    /// Only isolated notifications use this stack; ordinary hook dispatch does not touch it.
+    static ACTIVE_ISOLATED_LISTENERS: std::cell::RefCell<Vec<(usize, &'static str)>> = const {
+        std::cell::RefCell::new(Vec::new())
+    };
+    /// Listener entries (including nested hooks) and rollback-triggering traps on this thread.
     static LISTENER_SERIAL: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
 }
 

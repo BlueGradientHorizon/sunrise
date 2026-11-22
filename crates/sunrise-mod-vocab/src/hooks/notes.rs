@@ -2641,7 +2641,7 @@ registration path.
 
 - `vault_change_state(dimension, pos, state)` is called after a vault at `pos` changes to `state` (`inactive`, `active`, `unlocking`, or `ejecting`).
 
-- The server's `/weather` command is about to change its rain and thunder parameters: `weather_change(dimension, raining, thundering, cancel)`. Set `cancel` and the prior weather and timers remain.
+- `weather_change` hears the server's proposed rain and thunder parameters. Return `Flow::Cancel` to keep the prior weather and timers. A panicking listener's cancellation is ignored and its earlier Host writes stand. The game logs the panic, shows an error toast and disables only that mod's `weather_change` listener for the session. A phase refusal is logged each time and does not disable the listener. Nested dispatch skips each listener already running on that thread; other eligible listeners still run.
 
 - The dedicated server's whitelist changed state: `whitelist_state_update(enabled)` reports its final on/off state, after `/whitelist on` or `/whitelist off` from a player or console.
 
