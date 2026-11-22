@@ -11,7 +11,8 @@ result means queued, not necessarily drawn. The ordinary particle packet carries
 the item stack, not server-selected sprite names. Each client resolves its ground
 item model with seed 0, through the same path as
 `ClientHost::item_particle_options`, so its resource pack and stack model
-components determine the layer particle sprites.
+components determine the layer particle sprites. Inside an open transaction, accepted particles
+follow the [deferred effect rules](../../concepts/transactions.md#deferred-level-entity-and-player-effects).
 
 The resolved `ParticleOptions::item` sprite list is for local rendering; it is
 not a substitute for the stack on server sends. Block, block-marker, falling-dust,
