@@ -39,9 +39,11 @@
 //! | `dispatch` | a game target takes the generated engine carrier by default; existing flat, already-converted (`"api_carrier"`), and direct bindings name their shape explicitly |
 //!
 //! Every hook needs `///` lines: they are the rustdoc of its trait method, and a hook without them
-//! is refused. `HookId` values are process-local dispatch indexes, not persistent API identities.
-//! Native mods compile for the selected revision. The generator discovers declarations in
-//! file-name order, without a shared list.
+//! is refused. `HookId` values are process-local dispatch indexes, not serialized or persistent
+//! API identities (SDK records identify hooks by name as `hook:<name>`).
+//! Native binaries rebuild for the selected game build. The generator discovers `*.rs` declaration
+//! files (other than `mod.rs`) in lexical file-name order, and each file's declarations in in-file
+//! order, without a shared list or ordinal pins.
 //! Each new hook goes in a file of its own.
 //!
 //! A new game hook takes its generated `fire::<Name>Call` carrier, built from these declarations

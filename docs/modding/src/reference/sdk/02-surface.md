@@ -16,6 +16,13 @@ public, so a re-export added later never changes its id; otherwise its shortest 
 lists every public path a mod can name it by. Types inside signatures are normalised Rust, with paths relative to
 `mod_api` and lifetimes kept.
 
+Hooks are named `hook:<name>` in SDK records. Hidden `HookId` discriminants are process-local dispatch indexes,
+never serialized or stable across builds, and native binaries must rebuild for the selected build. Normal named
+`Hooks` subscriptions with `#[sunrise_mod]` need no change when discriminants move; code that cast or compared a
+`HookId` ordinal across builds should use the hook name (`hook:<name>`) outside dispatch and the named `Hooks`
+method with `#[sunrise_mod]` for listening. Defaulted trait methods also need no marker attribute: omit the
+retired `#[computed_in_mod]` attribute and leave the default body.
+
 `cargo sunrise-mod hooks <text>` searches the API records offline ([Commands](05-commands.md)).
 
 ## What a hash covers
