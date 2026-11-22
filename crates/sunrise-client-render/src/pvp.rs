@@ -674,8 +674,19 @@ impl Hud {
 fn world_label() -> String {
     crate::lang::get_or("sunrise.pvp.view.world", "World's")
 }
+fn corner_english(c: Corner) -> &'static str {
+    match c {
+        Corner::TopLeft => "Top left",
+        Corner::TopRight => "Top right",
+        Corner::BottomLeft => "Bottom left",
+        Corner::BottomRight => "Bottom right",
+    }
+}
 fn corner_label(c: Corner) -> String {
-    crate::lang::get_or(&format!("sunrise.pvp.corner.{}", c.name()), c.label())
+    crate::lang::get_or(
+        &format!("sunrise.pvp.corner.{}", c.name()),
+        corner_english(c),
+    )
 }
 
 /// Smaller changes to what vanilla shows.
@@ -1787,7 +1798,7 @@ mod tests {
         }
         for c in Corner::ALL {
             let key = format!("sunrise.pvp.corner.{}", c.name());
-            assert_eq!(en.get(&key), Some(c.label()), "{key}");
+            assert_eq!(en.get(&key), Some(corner_english(c)), "{key}");
         }
         let names = Colour::ALL.map(|c| (format!("sunrise.pvp.colour.{}", c.name()), c.english()));
         let shapes = Shape::ALL.map(|c| (format!("sunrise.pvp.shape.{}", c.name()), c.english()));

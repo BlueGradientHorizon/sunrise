@@ -26,14 +26,6 @@ impl Corner {
             Corner::BottomRight => "bottom_right",
         }
     }
-    pub fn label(self) -> &'static str {
-        match self {
-            Corner::TopLeft => "Top left",
-            Corner::TopRight => "Top right",
-            Corner::BottomLeft => "Bottom left",
-            Corner::BottomRight => "Bottom right",
-        }
-    }
     // hidden: a game-side helper, not part of the mod surface
     #[doc(hidden)]
     pub fn parse(s: &str, default: Corner) -> Corner {
