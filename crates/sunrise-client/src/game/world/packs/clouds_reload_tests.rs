@@ -197,27 +197,32 @@ fn a_reload_fails_and_drops_the_selection(refused: &str) {
     });
 }
 
-/// The `refused` pack selected when the game starts: the load fails over to the game's own
-/// resources, with the error the pack screen shows, starting with `error` (`clearResourcePacksOnError`
-/// then clears the saved selection, `loading_window`).
+/// A `refused` pack selected at startup: `clearResourcePacksOnError` saves the cleared
+/// selection before loading the game's own resources and reporting the original `error`.
 fn a_startup_load_fails_back_to_the_games_resources(refused: &str, error: &str) {
     use crate::game::*;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-    let selected = [refused.to_owned()];
-    let resolved = super::startup_root(&root, &selected, &[], &Default::default()).unwrap();
-    let loaded = load_resources(
-        resolved,
+    let mut settings = Settings {
+        resource_packs: vec![refused.to_owned()],
+        ..Settings::default()
+    };
+    let sources = mods::ModsState::default();
+    let roots = super::startup_root(&root, &settings.resource_packs, &[], &sources).unwrap();
+    let loaded = load_resources_sync(
+        roots,
         Vec::new(),
-        None,
-        &root,
-        &Settings::default(),
-        std::time::Instant::now(),
-        false,
+        StartupLoadContext {
+            vanilla_root: &root,
+            launch_world: None,
+            started: std::time::Instant::now(),
+        },
+        &mut settings,
         execution_role::ExecutionRole::Client,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
+        &sources,
     )
     .unwrap();
+    assert!(settings.resource_packs.is_empty());
     let pack_error = loaded.pack_error.unwrap();
     assert!(pack_error.starts_with(error), "{pack_error}");
     let gui = loaded.gui.unwrap();
@@ -228,4 +233,181 @@ fn a_startup_load_fails_back_to_the_games_resources(refused: &str, error: &str) 
         *loaded.pack.clouds,
         sunrise_client::clouds::load(&vanilla).unwrap()
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn content_entity_stays_registered_after_startup_pack_rollback() {
+    use crate::game::*;
+
+    if run_fresh_cases(
+        "game::packs::clouds_reload_tests::content_entity_stays_registered_after_startup_pack_rollback",
+        "SUNRISE_CONTENT_ENTITY_PACK_ROLLBACK_CASE",
+        &["startup"],
+    ) {
+        return;
+    }
+    mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
+    const ENTITY: &str = "rollback_entity:moss_zombie";
+    let game_dir = std::env::current_dir().unwrap();
+    let mod_dir = game_dir.join(sunrise_mod_package::mod_list::DIR);
+    std::fs::create_dir(&mod_dir).unwrap();
+    let package = sunrise_mod_package::Package::write_files(
+        "id = 'rollback_entity'\nname = 'Rollback entity'\nversion = '1'\napi = '0.2'\ncapabilities = ['registries']\n",
+        &[(
+            "data/rollback_entity/sunrise/entity_type/moss_zombie.json",
+            br#"{"template":"minecraft:zombie"}"#,
+        )],
+    )
+    .unwrap();
+    std::fs::write(mod_dir.join("rollback_entity.smod"), package).unwrap();
+    let mut sources = mods::ModsState::default();
+    sources.select(&game_dir, &["rollback_entity".to_owned()].into());
+    write_pack("past", PAST);
+
+    let vanilla = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+    let load = |selected: &[String]| {
+        let roots = super::startup_root(&vanilla, selected, &[], &sources).unwrap();
+        load_resources_sync(
+            roots,
+            Vec::new(),
+            StartupLoadContext {
+                vanilla_root: &vanilla,
+                launch_world: None,
+                started: std::time::Instant::now(),
+            },
+            &mut Settings::default(),
+            execution_role::ExecutionRole::Client,
+            &Progress::new(),
+            &sources,
+        )
+        .expect("selecting or removing client packs must not change the entity registry")
+    };
+    let rolled_back = load(&["file/past".into()]);
+    assert!(
+        rolled_back
+            .pack_error
+            .as_deref()
+            .unwrap()
+            .contains("clouds.png")
+    );
+    let first_key = mod_api::__private::resolved_entity_type_key(ENTITY);
+    let first_spawn_type = rolled_back
+        .resources
+        .rest()
+        .spawner_types
+        .contains_key(ENTITY);
+    drop(rolled_back);
+
+    std::fs::remove_dir_all(super::packs_dir().join("past")).unwrap();
+    let reloaded = load(&[]);
+    assert!(reloaded.pack_error.is_none());
+    let key = mod_api::__private::resolved_entity_type_key(ENTITY).expect("content entity API key");
+    assert_eq!(first_key, Some(key));
+    assert!(
+        first_spawn_type,
+        "spawners must see the registered entity after rollback"
+    );
+    assert!(reloaded.resources.rest().spawner_types.contains_key(ENTITY));
+}
+
+#[test]
+#[ignore = "daily"]
+fn startup_saves_the_cleared_selection_even_when_a_required_pack_fails() {
+    use crate::game::{
+        Game, Progress, Settings, StartupLoadContext, execution_role::ExecutionRole,
+        load_resources_sync, mods,
+    };
+    use std::{path::PathBuf, time::Instant};
+    use sunrise_assets::resource_source::ResourceRoot;
+    use sunrise_client::{
+        clouds,
+        options_file::{OptionsFile, V},
+        packs::{self, Source},
+    };
+
+    const CASE: &str = "SUNRISE_FAILED_STARTUP_PACK_RECOVERY_CASE";
+    const REQUIRED_FAILURE: &str =
+        "assets/minecraft/textures/environment/clouds.png: (5, 2) outside of image bounds (4, 6)";
+    if run_fresh_cases(
+        "game::packs::clouds_reload_tests::startup_saves_the_cleared_selection_even_when_a_required_pack_fails",
+        CASE,
+        &["open", "load"],
+    ) {
+        return;
+    }
+
+    let fails_opening = std::env::var(CASE).unwrap() == "open";
+    let vanilla = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+    let dir = super::packs_dir();
+    write_pack("required", PAST);
+    write_pack("optional", PAST);
+    std::fs::write(
+        dir.join("optional").join(clouds::TEXTURE),
+        png(3, 5, &[[0, 2]]),
+    )
+    .unwrap();
+    let mut all = packs::folder(&dir, packs::RESOURCE_FORMAT);
+    let required = all.iter_mut().find(|p| p.id == "file/required").unwrap();
+    let mut info = super::info(required);
+    info.required = true;
+    info.position = packs::Position::Bottom;
+    required.selection = Some(info);
+    if fails_opening {
+        // The selected ZIP disappeared between discovery and opening its layer.
+        all.iter_mut()
+            .find(|p| p.id == "file/optional")
+            .unwrap()
+            .source = Source::Zip(dir.join("removed.zip"));
+    }
+    let mut settings = Settings {
+        resource_packs: vec!["file/optional".into()],
+        ..Settings::default()
+    };
+    settings.file.set(
+        "incompatibleResourcePacks",
+        V::List(settings.resource_packs.clone()),
+    );
+    let path = Game::options_path();
+    let saved = || OptionsFile::parse(&std::fs::read_to_string(&path).unwrap());
+    settings.save(&path);
+    assert_eq!(saved().list("resourcePacks"), ["file/optional"]);
+    assert_eq!(saved().list("incompatibleResourcePacks"), ["file/optional"]);
+    let roots = super::PackRoots::for_selection(
+        ResourceRoot::directory(vanilla.clone()),
+        &all,
+        &settings.resource_packs,
+        &[],
+    );
+    if fails_opening {
+        assert_eq!(
+            roots.selected.as_ref().unwrap_err().kind(),
+            std::io::ErrorKind::NotFound
+        );
+    } else {
+        let source = roots.selected.as_ref().unwrap().source();
+        assert_eq!(
+            clouds::load(source).unwrap_err().to_string(),
+            "assets/minecraft/textures/environment/clouds.png: (4, 2) outside of image bounds (3, 5)",
+        );
+    }
+    let error = load_resources_sync(
+        roots,
+        Vec::new(),
+        StartupLoadContext {
+            vanilla_root: &vanilla,
+            launch_world: None,
+            started: Instant::now(),
+        },
+        &mut settings,
+        ExecutionRole::Client,
+        &Progress::new(),
+        &mods::ModsState::default(),
+    )
+    .err()
+    .expect("the required pack still fails after the optional selection is cleared");
+    assert_eq!(error.to_string(), REQUIRED_FAILURE);
+    assert!(settings.resource_packs.is_empty());
+    assert!(saved().list("resourcePacks").is_empty());
+    assert!(saved().list("incompatibleResourcePacks").is_empty());
 }

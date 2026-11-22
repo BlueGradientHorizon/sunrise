@@ -290,7 +290,7 @@ pub struct DamageLevel<'a> {
     /// resolution where the level was built without one.
     credit: Credit<'a>,
     /// Resolves a mob's remembered player where no loan does ([`Self::resolve_player_responsible`]).
-    players: Option<PlayerResolver<'a>>,
+    players: Option<(PlayerResolver<'a>, &'a mut dyn PlayerMemory)>,
     /// What the hit's listeners may queue and draw ([`HitEffects`]); none for a level built
     /// outside a game's hit.
     effects: Option<HitEffects<'a>>,
@@ -377,7 +377,10 @@ impl<'a> DamageLevel<'a> {
             client_side: self.client_side,
             knock_entry: self.knock_entry,
             credit: self.credit.reborrow(),
-            players: self.players,
+            players: self
+                .players
+                .as_mut()
+                .map(|(resolver, memory)| (*resolver, &mut **memory as &mut dyn PlayerMemory)),
             effects: self.effects.as_mut().map(HitEffects::reborrow),
         }
     }
@@ -403,10 +406,23 @@ impl<'a> DamageLevel<'a> {
         self.credit = Credit::NoPush;
         self
     }
-    /// The same level, resolving remembered players through `players` where no loan does.
-    pub fn with_player_resolver(mut self, players: PlayerResolver<'a>) -> Self {
-        self.players = Some(players);
+    /// Lend the borrowed tick's remembered player references and their live resolver.
+    pub fn with_player_resolver(
+        mut self,
+        players: PlayerResolver<'a>,
+        memory: &'a mut dyn PlayerMemory,
+    ) -> Self {
+        self.players = Some((players, memory));
         self
+    }
+    /// `LivingEntity.baseTick`: the last tick with a positive clock still keeps the
+    /// reference. Clear it at this point only if the clock was already zero.
+    pub(crate) fn tick_player_memory(&mut self, mob: &mut crate::mobs::Mob) {
+        if mob.ai.last_hurt_by_player > 0 {
+            mob.ai.last_hurt_by_player -= 1;
+        } else if let Some((_, memory)) = &mut self.players {
+            memory.forget(mob.id);
+        }
     }
     /// Commit this accepted hit's responsibility at vanilla's pre-push memory point.
     pub fn accepted_mob_hit(&mut self, mob: &mut crate::mobs::Mob) {
@@ -417,7 +433,7 @@ impl<'a> DamageLevel<'a> {
     /// `LivingEntity.resolvePlayerResponsibleForDamage` for a mob: a player's
     /// hit refreshes the 100-tick timer, a tame wolf's refreshes or clears it
     /// through the credit loan, and any other source keeps the remembered player,
-    /// who counts only while the timer runs and the player still resolves.
+    /// whose reference must still resolve.
     pub fn resolve_player_responsible(
         &mut self,
         mob: &mut crate::mobs::Mob,
@@ -430,11 +446,12 @@ impl<'a> DamageLevel<'a> {
         match &mut self.credit {
             Credit::Loan(credit) => credit.resolve_player_responsible(mob),
             Credit::Memory | Credit::NoPush => {
-                mob.ai.last_hurt_by_player > 0
-                    && (by_player
-                        || self
-                            .players
-                            .is_some_and(|players| players.remembered_resolves(mob.id)))
+                by_player
+                    || self.players.as_ref().is_some_and(|(resolver, memory)| {
+                        memory
+                            .remembered(mob.id)
+                            .is_some_and(|uuid| resolver.resolve(uuid).is_some())
+                    })
             }
         }
     }
@@ -2759,7 +2776,7 @@ mod tests {
                 Default::default(),
                 0.0,
             );
-            m.on_ground = true;
+            m.ground.on_ground = true;
             m.attrs.knockback_resistance = own;
             m.gear_knockback_resistance = gear;
             m.knockback(level, 0.4, 3.0, 0.0, &hit, 0.0);
@@ -2791,7 +2808,7 @@ mod tests {
                 Default::default(),
                 0.0,
             );
-            m.on_ground = true;
+            m.ground.on_ground = true;
             m.attrs.knockback_resistance = resistance;
             m
         };

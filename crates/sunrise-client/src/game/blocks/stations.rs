@@ -36,7 +36,7 @@ fn tooltip_position(
     (x.round(), y.round())
 }
 
-use super::api_values::{TryIntoApi, TryIntoEngine};
+use super::api_values::TryIntoApi;
 use super::{Game, Screen};
 use mod_api::{TooltipElement, TooltipImage};
 use std::cell::Cell;
@@ -318,9 +318,6 @@ pub(super) struct Station {
     anvil_last: Option<ItemStack>,
     /// Anvil on a server: the name last sent (the client menu's `itemName`).
     pub(super) anvil_sent: Option<String>,
-    /// Anvil on a server: the inputs and name the client's
-    /// `AnvilUpdateEvent` was last asked about, and the result it left.
-    anvil_answer: Option<(Vec<Option<ItemStack>>, String, AnvilResult)>,
     pub(super) last_sound: u64,
     /// Villager trading state.
     pub(super) merchant: Option<Box<super::trading::MerchantState>>,
@@ -354,7 +351,6 @@ impl Station {
             scrolling: false,
             anvil_last: None,
             anvil_sent: None,
-            anvil_answer: None,
             last_sound: 0,
             merchant: None,
             beacon: [None; 2],
@@ -646,7 +642,10 @@ impl Game<'_> {
         match &s.inputs[0] {
             Some(input)
                 if input.custom_name().is_none()
-                    && s.name == self.pack.names.display_item(&input.item) =>
+                    && s.name
+                        == sunrise_client::lang::returned_to_server(|| {
+                            self.stack_hover_name_text(input).plain()
+                        }) =>
             {
                 String::new()
             }
@@ -654,32 +653,21 @@ impl Game<'_> {
             None => String::new(),
         }
     }
-    /// Apply the client anvil hook once for each input and name combination.
-    fn update_anvil_answer(&mut self, s: &mut Station, name: String) {
+    /// Apply the client anvil hook after vanilla `createResult`.
+    fn update_anvil_answer(&mut self, s: &mut Station, name: &str) {
         if !mod_api::__private::listened(mod_api::HookId::AnvilUpdate) {
             return;
         }
-        let Some(left) = s.inputs[0].clone() else {
+        let Some(left) = s.inputs.first().and_then(Option::as_ref) else {
             return;
         };
-        match &s.anvil_answer {
-            Some((inputs, asked, answer)) if *inputs == s.inputs && *asked == name => {
-                s.anvil = answer.clone();
-            }
-            _ => {
-                let mut update = crate::menu::AnvilUpdate::new(
-                    left,
-                    s.inputs[1].clone(),
-                    Some(name.clone()),
-                    &s.anvil,
-                );
-                let mut cancel = false;
-                let (player, entity_id) = (self.own_uuid(), self.own_entity_id());
-                self.api_anvil_update(player, entity_id, s.pos, &mut update, &mut cancel);
-                update.answer(cancel, &mut s.anvil);
-                s.anvil_answer = Some((s.inputs.clone(), name, s.anvil.clone()));
-            }
-        }
+        let inputs = crate::menu::AnvilUpdateInputs {
+            left,
+            right: s.inputs.get(1).and_then(Option::as_ref),
+            name: Some(name),
+        };
+        let (player, entity_id) = (self.own_uuid(), self.own_entity_id());
+        self.api_anvil_update(player, entity_id, s.pos, inputs, &mut s.anvil);
     }
     /// `slotsChanged` / `createResult` for the open station.
     pub(super) fn station_changed(&mut self) {
@@ -720,7 +708,7 @@ impl Game<'_> {
                     .as_ref()
                     .map(|i| {
                         sunrise_client::lang::returned_to_server(|| {
-                            stations::hover_name(&self.pack.names, i)
+                            self.stack_hover_name_text(i).plain()
                         })
                     })
                     .unwrap_or_default();
@@ -733,14 +721,10 @@ impl Game<'_> {
                     &hover,
                     creative,
                 );
-                // AnvilUpdateEvent on a server's client menu, as on the
-                // server: asked when an input or the name changed (this
-                // recomputes on every click), its answer kept until then.
-                // An empty left slot has no result and forgets the answer.
-                if s.inputs[0].is_none() {
-                    s.anvil_answer = None;
-                } else if self.remote.is_some() {
-                    self.update_anvil_answer(&mut s, name);
+                // AnvilUpdateEvent on a server's client menu, as on the server,
+                // whenever createResult ran with a left input.
+                if s.inputs.first().is_some_and(Option::is_some) && self.remote.is_some() {
+                    self.update_anvil_answer(&mut s, &name);
                 }
                 s.result = s.anvil.result.clone();
             }
@@ -779,7 +763,9 @@ impl Game<'_> {
     }
     /// `Slot.mayPlace` and `getMaxStackSize` for station slots.
     fn slot_rules(&self, slot: usize, stack: &ItemStack) -> (bool, u32) {
-        if slot >= super::mount_menu::SADDLE {
+        if (super::mount_menu::SADDLE..crate::game::inventory_slots::MOD_MENU_SLOT_BASE)
+            .contains(&slot)
+        {
             return self.mount_slot_rules(slot, stack);
         }
         if let Some(BlockEntity::Crafter(c)) = self.container_kind()
@@ -900,6 +886,33 @@ impl Game<'_> {
         }
         stack.count != start
     }
+    /// After a live client anvil session (`anvil_menu_session`): copy the final anvil state
+    /// from `menu` into `self.station` and sync the rename box without re-running `createResult`
+    /// or `anvil_update` a second time.
+    pub(super) fn anvil_session_end(&mut self, menu: &sunrise_client::menu::Menu) {
+        let Some(s) = self.station.as_mut() else {
+            return;
+        };
+        if s.kind != Kind::Anvil {
+            return;
+        }
+        s.anvil.cost = menu.data[0];
+        s.anvil.repair_item_count_cost = menu.anvil.repair_count;
+        s.anvil.only_renaming = menu.anvil.only_renaming;
+        s.anvil.result = s.result.clone();
+        if s.inputs[0] != s.anvil_last {
+            s.anvil_last = s.inputs[0].clone();
+            let name = s.inputs[0]
+                .as_ref()
+                .map(|i| {
+                    sunrise_client::lang::returned_to_server(|| {
+                        stations::hover_name(&self.pack.names, i)
+                    })
+                })
+                .unwrap_or_default();
+            anvil::input_changed(s, name);
+        }
+    }
     /// After an anvil or smithing click on the menu engine: the anvil's cost
     /// and state back into the station and the rename box following the
     /// input (`AnvilScreen.slotChanged`), then the rest of a taken result's
@@ -908,6 +921,7 @@ impl Game<'_> {
     pub(super) fn combiner_session_end(
         &mut self,
         menu: &sunrise_client::menu::Menu,
+        anvil_created: bool,
         predicting: bool,
     ) {
         let Some(s) = self.station.as_mut() else {
@@ -915,12 +929,16 @@ impl Game<'_> {
         };
         let (pos, kind) = (s.pos, s.kind);
         if kind == Kind::Anvil {
-            s.anvil.cost = menu.data[0];
-            s.anvil.repair_item_count_cost = menu.anvil.repair_count;
-            s.anvil.only_renaming = menu.anvil.only_renaming;
-            s.anvil.result = s.result.clone();
+            if anvil_created {
+                s.anvil.cost = menu.data[0];
+                s.anvil.repair_item_count_cost = menu.anvil.repair_count;
+                s.anvil.only_renaming = menu.anvil.only_renaming;
+                s.anvil.result = s.result.clone();
+                self.station_after_input();
+            }
+        } else {
+            self.station_after_input();
         }
-        self.station_after_input();
         if !menu.combined || predicting {
             return;
         }
@@ -972,7 +990,6 @@ impl Game<'_> {
     /// (`ExperienceOrb.award`), then level event 1042, the grindstone's sound
     /// for everyone around.
     pub(super) fn grindstone_taken(&mut self, pos: [i32; 3], amount: i32) {
-        self.journal_level_random();
         let xp = stations::grindstone_xp_roll(amount, &mut self.world.random);
         self.grindstone_award(pos, xp);
     }
@@ -1200,22 +1217,25 @@ impl Game<'_> {
     }
     /// Recompute after slot changes; the anvil box follows its input item.
     fn station_after_input(&mut self) {
-        let Some(s) = self.station.as_mut() else {
+        let Some(s) = self.station.as_ref() else {
             return;
         };
         if s.kind == Kind::Anvil && s.inputs[0] != s.anvil_last {
             // AnvilScreen.slotChanged: the box follows its input item, named as vanilla's
             // client names it (the box's text goes back to a server).
-            s.anvil_last = s.inputs[0].clone();
-            let name = s.inputs[0]
+            let input = s.inputs[0].clone();
+            let name = input
                 .as_ref()
                 .map(|i| {
                     sunrise_client::lang::returned_to_server(|| {
-                        stations::hover_name(&self.pack.names, i)
+                        self.stack_hover_name_text(i).plain()
                     })
                 })
                 .unwrap_or_default();
-            anvil::input_changed(s, name);
+            if let Some(s) = self.station.as_mut() {
+                s.anvil_last = input;
+                anvil::input_changed(s, name);
+            }
         }
         self.station_changed();
     }
@@ -1346,6 +1366,11 @@ impl Game<'_> {
             self.recipe_text(text, backspace);
             return;
         }
+        let before = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
         let Some(s) = self.station.as_mut() else {
             return;
         };
@@ -1355,12 +1380,24 @@ impl Game<'_> {
             s.rename.insert_text(t);
         }
         s.name.clone_from(&s.rename.value);
-        self.station_changed();
+        let after = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
+        if before.is_none() || after != before {
+            self.station_changed();
+        }
         self.remote_anvil_rename();
     }
     /// `AnvilScreen.keyPressed`: the rename box handles the key.
     pub(super) fn station_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
+        let before = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
         let Some(s) = self.station.as_mut() else {
             return false;
         };
@@ -1368,7 +1405,14 @@ impl Game<'_> {
             return false;
         }
         s.name.clone_from(&s.rename.value);
-        self.station_changed();
+        let after = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
+        if before.is_none() || after != before {
+            self.station_changed();
+        }
         self.remote_anvil_rename();
         true
     }
@@ -1379,12 +1423,24 @@ impl Game<'_> {
             self.recipe_shortcut(shortcut);
             return;
         }
+        let before = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
         let Some(s) = self.station.as_mut() else {
             return;
         };
         if s.rename.shortcut(shortcut, &mut self.clipboard) {
             s.name.clone_from(&s.rename.value);
-            self.station_changed();
+            let after = self
+                .station
+                .as_ref()
+                .filter(|s| s.kind == Kind::Anvil)
+                .map(|s| self.anvil_item_name(s));
+            if before.is_none() || after != before {
+                self.station_changed();
+            }
             self.remote_anvil_rename();
         }
     }
@@ -1516,47 +1572,28 @@ impl Game<'_> {
     ) -> Vec<(sunrise_client::text::Text, u32)> {
         self.stack_tooltip_lines(stack, false, false)
     }
-    /// `ItemStack.getRarity`'s colour for the name line and a `[name]` link.
-    fn rarity_color(&self, stack: &ItemStack) -> u32 {
+    /// `ItemStack.getRarity().color()` in text's RGB format.
+    pub(in crate::game) fn stack_rarity_color(&self, stack: &ItemStack) -> u32 {
+        use sunrise_client::text;
         let props = self.stations().enchantments.props(&stack.item);
-        let rarity = sunrise_client::item_tooltip::rarity(
+        match sunrise_client::item_tooltip::rarity(
             stack,
             props.map_or("common", |p| p.rarity.as_str()),
-        );
-        match rarity {
-            "uncommon" => rgba(255, 255, 85, 255),
-            "rare" => rgba(85, 255, 255, 255),
-            "epic" => rgba(255, 85, 255, 255),
-            _ => u32::MAX,
+        ) {
+            "uncommon" => text::YELLOW,
+            "rare" => text::AQUA,
+            "epic" => text::LIGHT_PURPLE,
+            _ => text::WHITE,
         }
     }
-    /// `ItemStack.getHoverName`: the custom name, a potion's or tipped
-    /// arrow's contents, a written book's title, the item name component,
-    /// else the item's name.
-    fn stack_hover_name(&self, stack: &ItemStack) -> String {
-        if let Some(n) = stack.custom_name() {
-            n.to_owned()
-        } else if let Some(key) = brewing::contents_name_key(stack) {
-            self.pack
-                .names
-                .display_get(&key)
-                .unwrap_or_else(|| self.pack.names.display_item(&stack.item))
-        } else if let Some(title) = stack
-            .data()
-            .and_then(|d| d.written.as_ref())
-            .map(|w| w.title.as_str())
-            .filter(|t| !t.trim().is_empty())
-        {
-            title.to_owned()
-        } else if let Some(n) = stack.item_name() {
-            n
-        } else if stack.data().is_some_and(|d| d.ominous_banner) {
-            self.translate_with_fallback("block.minecraft.ominous_banner", "Ominous Banner")
-        } else if let Some(head) = sunrise_client::item_tooltip::player_head_name(stack) {
-            head.title(&|key| self.pack.names.display_get(key))
-        } else {
-            self.pack.names.display_item(&stack.item)
-        }
+    /// The same rarity colour in the GUI batch's packed RGBA format.
+    fn rarity_color(&self, stack: &ItemStack) -> u32 {
+        let c = self.stack_rarity_color(stack);
+        rgba((c >> 16) as u8, (c >> 8) as u8, c as u8, 255)
+    }
+    /// The resolved `ItemStack.getHoverName` rendered as plain text.
+    pub(in crate::game) fn stack_hover_name(&self, stack: &ItemStack) -> String {
+        self.stack_hover_name_text(stack).plain()
     }
     /// `ItemStack.getTooltipLines`. A `nested` stack is a crossbow's
     /// projectile: `ChargedProjectiles.addProjectileTooltip` takes its details
@@ -1626,8 +1663,7 @@ impl Game<'_> {
         // `getTooltipLines`' own branch: a tooltip the stack doesn't hide.
         let shown = !nested && display.name_visible(creative);
         if shown {
-            let name =
-                sunrise_client::item_tooltip::styled_name(stack, || self.stack_hover_name(stack));
+            let name = self.styled_stack_name(stack);
             lines.push((name, color));
         }
         let translate = |k: &str| self.pack.names.display_get(k);
@@ -1725,15 +1761,12 @@ impl Game<'_> {
         }
         details.start("minecraft:container", lines.len());
         // ItemContainerContents.addToTooltip.
-        let hover_name = |s: &ItemStack| {
-            s.custom_name()
-                .or_else(|| s.item_name())
-                .unwrap_or_else(|| self.pack.names.display_item(&s.item))
-        };
         if display.shows("minecraft:container") {
-            for text in
-                sunrise_client::item_tooltip::container_lines(stack, &hover_name, &translate)
-            {
+            for text in sunrise_client::item_tooltip::container_lines(
+                stack,
+                &|s| self.stack_hover_name(s),
+                &translate,
+            ) {
                 push(&mut lines, text, u32::MAX);
             }
         }
@@ -1761,20 +1794,13 @@ impl Game<'_> {
             let charged = stack.data().map_or(&[][..], |d| &d.charged[..]);
             for run in charged.chunk_by(|a, b| a.same_item_same_components(b)) {
                 let projectile = &run[0];
-                let name = self.stack_hover_name(projectile);
                 let line = if run.len() == 1 {
-                    // `getDisplayName`: `[name]` in the rarity colour.
-                    let mut shown = sunrise_client::text::Text::literal(format!("[{name}]"))
-                        .with_color(rgb_of(self.rarity_color(projectile)));
-                    if projectile.custom_name().is_some() {
-                        shown = shown.italic();
-                    }
                     sunrise_client::text::format_translation(
                         &self.translate_with_fallback(
                             "item.minecraft.crossbow.projectile.single",
                             "Projectile: %s",
                         ),
-                        &[shown],
+                        &[self.stack_display_name(projectile)],
                     )
                 } else {
                     sunrise_client::text::format_translation(
@@ -1784,7 +1810,7 @@ impl Game<'_> {
                         ),
                         &[
                             sunrise_client::text::Text::literal(run.len().to_string()),
-                            sunrise_client::text::Text::literal(name),
+                            self.stack_hover_name_text(projectile),
                         ],
                     )
                 };
@@ -2077,13 +2103,12 @@ impl Game<'_> {
                     if let Ok(stack) = stack.try_into_api() {
                         let mut added = Vec::new();
                         appender.append(self, &stack, &context, &mut added);
-                        let converted: Result<Vec<_>, mod_api::text::TextFormError> = added
-                            .into_iter()
-                            .map(|(text, color)| Ok((text.try_into_engine(&())?, color)))
-                            .collect();
-                        if let Ok(converted) = converted {
-                            out.extend(converted);
-                        }
+                        out.extend(added.into_iter().map(|(text, color)| {
+                            (
+                                sunrise_client_lib::api_text::to_engine_inprocess(&text),
+                                color,
+                            )
+                        }));
                     }
                 },
                 appenders
@@ -2110,9 +2135,15 @@ impl Game<'_> {
                 creative,
                 lines: &mut api_lines,
             });
-            if let Ok(converted) = api_lines.try_into_engine(&()) {
-                lines = converted;
-            }
+            lines = api_lines
+                .into_iter()
+                .map(|(text, color)| {
+                    (
+                        sunrise_client_lib::api_text::to_engine_inprocess(&text),
+                        color,
+                    )
+                })
+                .collect();
         }
         lines
     }
@@ -2284,8 +2315,7 @@ impl Game<'_> {
         let Some((_, stack)) = layout.selected.and_then(|i| layout.slots.get(i)) else {
             return;
         };
-        let name =
-            sunrise_client::item_tooltip::styled_name(stack, || self.stack_hover_name(stack));
+        let name = self.styled_stack_name(stack);
         let lines = Self::resolved(&[(name, self.rarity_color(stack))]);
         let atlas = &self.gui.atlas;
         let tw = atlas.font.width_text(&lines[0].0);
@@ -2600,7 +2630,7 @@ mod tests {
         impl Hooks for Listener {
             fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
                 self.0.fetch_add(1, Ordering::Relaxed);
-                event.update.xp_cost = -7;
+                event.edits.xp_cost = -7;
                 Flow::Continue
             }
         }
@@ -2609,11 +2639,12 @@ mod tests {
             super::super::native_entity_refs::tests::with_game(|game| {
                 let mut station = super::Station::new(super::Kind::Anvil, [0; 3]);
                 station.inputs[0] = Some(super::ItemStack::new("minecraft:iron_sword", 1));
+                station.anvil.cost = 5;
                 assert!(!mod_api::__private::listened(HookId::AnvilUpdate));
-                game.update_anvil_answer(&mut station, "first".into());
-                assert!(station.anvil_answer.is_none());
-                game.update_anvil_answer(&mut station, "second".into());
-                assert!(station.anvil_answer.is_none());
+                game.update_anvil_answer(&mut station, "first");
+                assert_eq!(station.anvil.cost, 5);
+                game.update_anvil_answer(&mut station, "second");
+                assert_eq!(station.anvil.cost, 5);
             });
         });
         let calls = Arc::new(AtomicUsize::new(0));
@@ -2622,18 +2653,249 @@ mod tests {
             super::super::native_entity_refs::tests::with_game(|game| {
                 let mut station = super::Station::new(super::Kind::Anvil, [0; 3]);
                 station.inputs[0] = Some(super::ItemStack::new("minecraft:iron_sword", 1));
-                game.update_anvil_answer(&mut station, "first".into());
-                assert_eq!(station.anvil.cost, -7);
+                station.anvil.cost = 5;
+                game.update_anvil_answer(&mut station, "first");
+                assert_eq!(station.anvil.cost, 0, "negative xp_cost clamps to zero");
                 station.anvil.cost = 1;
-                game.update_anvil_answer(&mut station, "first".into());
-                assert_eq!(station.anvil.cost, -7, "cached listener answer is signed");
-                game.update_anvil_answer(&mut station, "second".into());
-                assert_eq!(station.anvil.cost, -7);
-                assert_eq!(calls.load(Ordering::Relaxed), 2);
+                game.update_anvil_answer(&mut station, "first");
+                assert_eq!(station.anvil.cost, 0);
+                game.update_anvil_answer(&mut station, "second");
+                assert_eq!(station.anvil.cost, 0);
+                assert_eq!(calls.load(Ordering::Relaxed), 3);
                 assert!(mod_api::__private::listened(HookId::AnvilUpdate));
+
+                // Editing the rename box without changing the effective anvil_item_name
+                // does not fire anvil_update (matching vanilla AnvilMenu.setItemName).
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(client, "AnvilTest").unwrap();
+                let display = game.pack.names.display_item("minecraft:iron_sword");
+                super::anvil::input_changed(&mut station, display);
+                game.station = Some(station);
+                let before = calls.load(Ordering::Relaxed);
+                game.station_text(None, false);
+                assert_eq!(calls.load(Ordering::Relaxed), before);
+                assert!(game.station_key(winit::keyboard::KeyCode::ArrowLeft));
+                assert_eq!(calls.load(Ordering::Relaxed), before);
+                game.station_text(Some("x"), false);
+                assert_eq!(calls.load(Ordering::Relaxed), before + 1);
+                game.station_text(None, true);
+                assert_eq!(calls.load(Ordering::Relaxed), before + 2);
             });
         });
     }
+    #[test]
+    #[ignore = "daily"]
+    fn anvil_update_fires_at_each_create_result_in_multi_slot_drag() {
+        use super::{ItemStack, Kind, Station};
+        use mod_api::{
+            AnvilUpdateEvent, Flow, Hooks, HostSide, ItemStack as ApiStack, ModEntry, StackResult,
+        };
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::menu::Input;
+
+        struct DragListener(Arc<Mutex<Vec<(u32, Option<u32>)>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for DragListener {
+            fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
+                self.0.lock().unwrap().push((
+                    event.inputs.left.count(),
+                    event.inputs.right.map(ApiStack::count),
+                ));
+                if event.inputs.right.is_some() {
+                    let dirt = mod_api::__private::item_key("minecraft:dirt").unwrap();
+                    event.edits.output = StackResult::Set(Some(ApiStack::of(dirt)));
+                    event.edits.xp_cost = 3;
+                }
+                Flow::Continue
+            }
+        }
+
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![ModEntry::new(
+            "drag-listener",
+            Box::new(DragListener(observed.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(client, "AnvilDrag").unwrap();
+                game.remote
+                    .as_mut()
+                    .unwrap()
+                    .menu
+                    .set(Some((1, "minecraft:anvil".to_owned())));
+                game.station = Some(Station::new(Kind::Anvil, [0; 3]));
+                game.carried = Some(ItemStack::new("minecraft:iron_ingot", 2));
+
+                assert!(game.remote_menu_ops(&[
+                    (None, 0, Input::QuickCraft),
+                    (Some(super::INPUT), 1, Input::QuickCraft),
+                    (Some(super::INPUT + 1), 1, Input::QuickCraft),
+                    (None, 2, Input::QuickCraft),
+                ]));
+
+                assert_eq!(
+                    *observed.lock().unwrap(),
+                    vec![(1, None), (1, None), (1, None), (1, Some(1)), (1, Some(1))]
+                );
+                let station = game.station.as_ref().unwrap();
+                assert_eq!(station.result, Some(ItemStack::new("minecraft:dirt", 1)));
+                assert_eq!(station.anvil.cost, 3);
+                assert_eq!(game.carried, None);
+            });
+        });
+    }
+    #[test]
+    #[ignore = "daily"]
+    fn anvil_prediction_updates_between_material_consumption_and_left_input_clear() {
+        use super::{ItemStack, Kind, Station};
+        use mod_api::{AnvilUpdateEvent, Flow, Hooks, HostSide, ModEntry};
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::menu::Input;
+
+        struct Observe(Arc<Mutex<Vec<Option<u32>>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Observe {
+            fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push(event.inputs.right.map(mod_api::ItemStack::count));
+                Flow::Continue
+            }
+        }
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![ModEntry::new(
+            "take-observer",
+            Box::new(Observe(calls.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(client, "AnvilTake").unwrap();
+                game.remote
+                    .as_mut()
+                    .unwrap()
+                    .menu
+                    .set(Some((1, "minecraft:anvil".into())));
+                let mut station = Station::new(Kind::Anvil, [0; 3]);
+                let repaired = ItemStack::new("minecraft:iron_sword", 1);
+                let mut worn = repaired.clone();
+                worn.damage = 80;
+                station.inputs[0] = Some(worn);
+                station.inputs[1] = Some(ItemStack::new("minecraft:iron_ingot", 2));
+                station.result = Some(repaired.clone());
+                station.anvil.cost = 2;
+                station.anvil.repair_item_count_cost = 2;
+                game.station = Some(station);
+                game.experience.level = 10;
+
+                assert!(game.remote_menu_ops(&[(Some(super::RESULT), 0, Input::Pickup)]));
+                assert_eq!(
+                    *calls.lock().unwrap(),
+                    [None],
+                    "only the intermediate update still has the left input"
+                );
+                let station = game.station.as_ref().unwrap();
+                assert!(station.inputs[..2].iter().all(Option::is_none));
+                assert_eq!(station.result, None);
+                assert_eq!(game.carried, Some(repaired));
+            });
+        });
+    }
+    #[test]
+    #[ignore = "daily"]
+    fn anvil_update_validates_only_a_changed_output() {
+        use super::{AnvilResult, ItemStack, Kind, Station};
+        use mod_api::{
+            AnvilUpdateEvent, Flow, Hooks, HostSide, ItemStack as ApiStack, ModEntry, StackResult,
+        };
+
+        struct Listener;
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
+                assert_eq!(event.inputs.left.count(), 2, "captured an over-limit stack");
+                assert_eq!(event.edits.output, StackResult::Keep);
+                assert_eq!((event.edits.xp_cost, event.edits.material_cost), (1, 1));
+                event.edits.xp_cost = -7;
+                event.edits.material_cost = -2;
+                let item = event.inputs.left.item();
+                match event.inputs.name {
+                    Some("same") => {
+                        event.edits.output = StackResult::Set(event.inputs.vanilla_output.cloned());
+                    }
+                    Some("replace") => {
+                        event.edits.output = StackResult::Set(Some(ApiStack::of(item)));
+                    }
+                    Some("clear") => event.edits.output = StackResult::Set(None),
+                    Some("invalid") => {
+                        let invalid = ApiStack::new(item, 3).unwrap();
+                        event.edits.output = StackResult::Set(Some(invalid));
+                        event.edits.material_cost = 4;
+                    }
+                    Some("cancel") => return Flow::Cancel,
+                    _ => {}
+                }
+                Flow::Continue
+            }
+        }
+
+        let mods = vec![ModEntry::new("listener", Box::new(Listener))].into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                let mut station = Station::new(Kind::Anvil, [0; 3]);
+                let sword = |count| ItemStack::new("minecraft:iron_sword", count);
+                station.inputs[0] = Some(sword(2));
+                let vanilla = AnvilResult {
+                    result: Some(sword(2)),
+                    cost: 1,
+                    repair_item_count_cost: 1,
+                    only_renaming: true,
+                };
+                for (name, output, only_renaming) in [
+                    ("keep", Some(2), true),
+                    ("same", Some(2), true),
+                    ("replace", Some(1), false),
+                    ("clear", None, false),
+                ] {
+                    station.anvil = vanilla.clone();
+                    game.update_anvil_answer(&mut station, name);
+                    assert_eq!(
+                        station.anvil,
+                        AnvilResult {
+                            result: output.map(sword),
+                            cost: 0,
+                            repair_item_count_cost: 0,
+                            only_renaming,
+                        },
+                        "{name}",
+                    );
+                }
+                station.anvil = vanilla.clone();
+                game.update_anvil_answer(&mut station, "invalid");
+                assert_eq!(
+                    station.anvil,
+                    AnvilResult {
+                        result: Some(sword(2)),
+                        cost: 0,
+                        repair_item_count_cost: 4,
+                        only_renaming: true,
+                    },
+                    "invalid",
+                );
+                station.anvil = vanilla.clone();
+                game.update_anvil_answer(&mut station, "cancel");
+                assert_eq!(station.anvil, AnvilResult::default(), "cancel");
+            });
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn resource_tooltip_uses_inventory_lines_and_explicit_flags() {
@@ -3028,9 +3290,16 @@ mod tests {
                 event: &mut AddAttributeTooltipsEvent<'_>,
             ) {
                 assert!(event.shown);
-                event
-                    .lines
-                    .push((mod_api::Text::literal("Rune: warding"), u32::MAX));
+                event.lines.push((
+                    {
+                        let mut line = mod_api::Text::literal("Rune: warding");
+                        for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                            line = mod_api::Text::literal("").append(line);
+                        }
+                        line
+                    },
+                    u32::MAX,
+                ));
             }
         }
         let mods: Mods = vec![ModEntry::new("runes", Box::new(Mod))].into();
@@ -3103,8 +3372,12 @@ mod tests {
                         }));
                     }
                     3 => {
+                        let mut name = mod_api::Text::literal("Name");
+                        for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                            name = mod_api::Text::literal("").append(name);
+                        }
                         *event.elements = vec![
-                            TooltipElement::Text(mod_api::Text::literal("Name"), u32::MAX),
+                            TooltipElement::Text(name, u32::MAX),
                             TooltipElement::Image(TooltipImage {
                                 source: mod_api::TooltipImageSource::ItemPart(event.stack.clone()),
                                 size: [12.0, 16.0],
@@ -3169,7 +3442,9 @@ mod tests {
                 MODE.store(3, Ordering::Relaxed);
                 let mixed = gather(game).unwrap();
                 assert_eq!(mixed.len(), 4);
-                assert!(matches!(mixed[0], tooltip::Element::Text(_, _)));
+                assert!(
+                    matches!(&mixed[0], tooltip::Element::Text(text, _) if text.plain() == "Name")
+                );
                 assert!(matches!(mixed[1], tooltip::Element::Image(_)));
                 assert!(matches!(mixed[2], tooltip::Element::Text(_, _)));
                 assert!(matches!(mixed[3], tooltip::Element::Text(_, _)));

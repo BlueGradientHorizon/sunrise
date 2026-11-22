@@ -102,9 +102,7 @@ impl Game<'_> {
         let (entity, block, face, at) = self.pearl_hit(hit);
         let entity_kind = entity
             .and_then(|id| self.entity(id))
-            .and_then(|entity| self.entity_kind(entity))
-            .map(|kind| kind.id(self))
-            .unwrap_or_default();
+            .and_then(|entity| self.entity_kind(entity)?.id(self));
         let mut canceled = false;
         self.native_projectile_impact(mod_api::__private::ProjectileImpactCall {
             dimension: self.dim.id(),
@@ -112,7 +110,7 @@ impl Game<'_> {
             kind,
             owner,
             entity,
-            entity_kind: &entity_kind,
+            entity_kind: entity_kind.as_deref().unwrap_or_default(),
             block,
             face,
             at,
@@ -716,8 +714,6 @@ mod pearl_hit_tests {
         let mods: mod_api::Mods = vec![ModEntry::new("hear", Box::new(Hear(heard.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
-                let _phase =
-                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                 let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
                 dragon.id = 225009;
                 game.dragon.replace(dragon);

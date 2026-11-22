@@ -18,7 +18,9 @@ Use biome content, region declarations and level handles to control biome genera
 
 Code and file modifiers support features, spawns, spawn costs, carvers, climate and effects. They apply additions,
 then removals, then modifications when the world loads, after its data packs. Mods cannot choose explicit phases
-or supply custom biome-modifier serializers ([content mods](../content-mods.md)).
+or supply custom biome-modifier serializers ([content mods](../content-mods.md)). Colour-resolver handles
+refer to the slots of [successfully registered resolvers](../../concepts/load-phases.md#registration-and-setup);
+a failed callback does not consume a slot.
 
 ## Adopt installed biome regions
 

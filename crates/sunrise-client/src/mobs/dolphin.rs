@@ -234,7 +234,7 @@ impl Goal for Jump {
             || m.head_pitch == 0.0
             || m.head_pitch.abs() >= 10.0
             || !m.fluids.in_water)
-            && !m.on_ground
+            && !m.ground.on_ground
     }
     fn start(&mut self, m: &mut Mob, _: &mut Cx) {
         let [sx, sz] = motion_step(m.yaw);
@@ -359,7 +359,7 @@ impl Goal for FollowPlayerRidden {
         &mut self,
         m: &mut Mob,
         cx: &mut Cx,
-    ) -> Option<super::living::TravelTrample> {
+    ) -> Option<super::living::TravelPause> {
         self.move_to_rider(m, cx, true)
     }
 
@@ -379,7 +379,7 @@ impl FollowPlayerRidden {
         m: &mut Mob,
         cx: &mut Cx,
         pause: bool,
-    ) -> Option<super::living::TravelTrample> {
+    ) -> Option<super::living::TravelPause> {
         let p = self.rider(cx)?;
         let (position, yaw) = (p.position, p.yaw);
         let speed = if self.leading { 0.01 } else { 0.015 };

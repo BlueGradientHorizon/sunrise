@@ -279,7 +279,6 @@ fn a_call_into_another_level_reads_that_levels_colliders_and_restores_the_caller
 /// A game that simulates its overworld, with the chunk the tests build on loaded.
 fn with_world(test: impl FnOnce(&mut Game<'_>)) {
     super::native_entity_refs::tests::with_game(|game| {
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         game.world
@@ -921,7 +920,7 @@ fn a_carried_vehicle_takes_its_passengers_and_theirs_with_it() {
             let at = game.mobs.iter().position(|m| m.id == id).expect("a pig");
             game.mobs.update(at, |m| f(m));
         };
-        update(game, vehicle, &|m| m.on_ground = true);
+        update(game, vehicle, &|m| m.ground.on_ground = true);
         update(game, middle, &|m| m.extra.mount = Some(vehicle));
         update(game, top, &|m| m.extra.mount = Some(middle));
         game.position_riders();

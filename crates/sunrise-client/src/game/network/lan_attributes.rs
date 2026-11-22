@@ -280,8 +280,8 @@ impl Game<'_> {
     /// The instances a server player's tick creates, and
     /// `ServerPlayer.updatePlayerAttributes`: a creative player reaches 0.5
     /// further to blocks and 2 to entities. Its client reads the reach from
-    /// these synced modifiers. (The crouching player's waypoint range is
-    /// server-side only: lan_waypoints.rs hides it.)
+    /// these synced modifiers. The crouch modifier belongs to the server's
+    /// effective transmit range, like the item's equipment modifier.
     pub(in crate::game) fn update_player_attributes(&mut self) {
         let creative = self.mode_id() == 1;
         let Some(p) = self.player.as_mut() else {
@@ -317,6 +317,24 @@ impl Game<'_> {
             if has != creative {
                 let _ = p.set_modifier(attribute, id, amount, "add_value", creative);
             }
+        }
+        use sunrise_world::attributes::{Modifier, Operation};
+        const CROUCH_ID: &str = "minecraft:waypoint_transmit_range_crouch";
+        static CROUCH: std::sync::LazyLock<Modifier> = std::sync::LazyLock::new(|| {
+            Modifier::new(CROUCH_ID, -1.0, Operation::AddMultipliedTotal)
+                .expect("vanilla crouch modifier id")
+        });
+        if let Some(key) = p.attributes.key("minecraft:waypoint_transmit_range")
+            && let Ok(Some(handle)) = p.attributes.get_instance(Some(key))
+        {
+            let crouching = p.pose == sunrise_client::pose::Pose::Crouching;
+            let _ = p.attributes.edit(&handle, |value, observer| {
+                if crouching {
+                    value.add_or_update_transient(CROUCH.clone(), observer)
+                } else {
+                    value.remove(CROUCH_ID, observer).map(|_| ())
+                }
+            });
         }
     }
 }

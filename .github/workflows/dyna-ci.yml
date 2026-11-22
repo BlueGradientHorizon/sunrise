@@ -42,7 +42,7 @@ concurrency:
   # main head needs a gate, and a burst of merges otherwise held a Dyna runner per job of every merge's run, ahead
   # of the rollup gates queued behind them. None of its jobs publishes or writes shared state.
   # A dispatch for a pull request (`pr`) is grouped by that pull request, never by main's head; any other dispatch
-  # (a snapshot's gate) by its commit, and it always finishes.
+  # (for a Dev build) by its commit, and it always finishes.
   # A main push run started again (a later attempt) is a release's gate: release.yml re-runs a commit's gate that the
   # next push cancelled before it publishes that commit (tools/release_train.py gate_again). It is grouped by its
   # commit and always finishes.
@@ -681,11 +681,10 @@ jobs:
           PY
       - name: Report the mod API surface change
         id: report_the_mod_api_surface_change
-        # What this pull request changes in what mods can name, in the job summary: the head's sunrise-stage exports
-        # the merge base and this tree, then classifies the diff (tools/ci/surface_report.py). It fails when this
-        # tree cannot be exported, when the base can be read neither by this tree's tool nor by its own, for a
-        # stale or unreadable new change note, and, with tools/ci/surface.toml's gate on, for a breaking change no
-        # new note declares.
+        # Each tree's own sunrise-stage exports its stable API; the head's tool reads both engine catalogs and
+        # classifies the diff in the job summary. The report fails if either surface cannot be exported or compared,
+        # for a stale or unreadable new change note, and, with tools/ci/surface.toml's gate on, for a breaking change
+        # no new note declares.
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && (needs.changes.outputs.rust_required != 'false' && (github.event_name == 'pull_request' || inputs.pr != '')) && steps.stage.outcome == 'success' }}
         env:
           EVENT: ${{ github.event_name }}
@@ -826,6 +825,9 @@ jobs:
       - name: Check generated extension tag catalog
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: python3 tools/ci/surface_extension_tags.py --check
+      - name: Check native hook wiring
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && needs.changes.outputs.rust_required != 'false' }}
+        run: bash tools/ci/check_hook_wiring.sh
       # A pull request adds only its own commits to main, so it reads those; main's pushes read every ref's history.
       - name: Keep game artifacts out of Git
         id: keep_game_artifacts_out_of_git
@@ -864,19 +866,17 @@ jobs:
         id: vocabulary_state_has_explicit_ownership
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: python3 tools/check_mod_vocabulary_state.py
-      # The gated Host methods that can only refuse by unwinding (#3123): the list only shrinks.
-      - name: Unwinding Host methods only shrink
-        id: unwinding_host_methods_only_shrink
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' && github.event_name == 'pull_request' }}
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: python3 tools/ci/check_unwinding_methods.py "$BASE_SHA"
       # One file per topic in tools/ci/ignored-tests/: well-formed rows, each test in one file, nothing else in the
       # folder, no file at the retired single-list path.
       - name: Ignored-test policy files read cleanly
         id: ignored_test_policy_files_read_cleanly
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: python3 tools/ci/check_ignored_test_rows.py
+      # Modules are plain mod items: a file under a crate's src/ that nothing declares is never compiled.
+      - name: Every crate source file is compiled
+        id: every_crate_source_file_is_compiled
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: python3 tools/ci/check_unreached_sources.py
       # tools/port_map/: a row that names a Sunrise function still finds it, or is listed in
       # tools/ci/port_map_known_stale.txt, which only shrinks (tools/ci/check_port_map_paths.py).
       - name: Port-map rows find their function

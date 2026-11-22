@@ -737,7 +737,7 @@ impl Game<'_> {
             }
             if !query.is_empty()
                 && !book.collection_matches(&c.entries, &query, &|stack| {
-                    sunrise_client::item_tooltip::lines(
+                    let mut lines = sunrise_client::item_tooltip::lines(
                         stack,
                         self.items().get(&stack.item),
                         &crate::game::native_hooks::HookedAttributeTooltips::new(self, None),
@@ -747,7 +747,12 @@ impl Game<'_> {
                         false,
                         &|k| self.pack.names.display_get(k),
                         &|attribute| self.attribute_style(attribute, false),
-                    )
+                    );
+                    // The resolved name (a mod item's Part included) is the name line.
+                    if let Some(first) = lines.first_mut() {
+                        *first = self.stack_hover_name_text(stack).plain();
+                    }
+                    lines
                 })
             {
                 continue;
@@ -1478,7 +1483,7 @@ impl Game<'_> {
             self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
             return;
         }
-        let mut request = sunrise_protocol::buf::Writer::new();
+        let mut request = ::sunrise_core::vanilla_bytes::Writer::new();
         request.varint(self.remote_menu_id());
         request.string(recipe);
         request.u8(u8::from(max));
@@ -1539,7 +1544,7 @@ impl Game<'_> {
             return;
         };
         if self.remote.is_some() {
-            let mut request = sunrise_protocol::buf::Writer::new();
+            let mut request = ::sunrise_core::vanilla_bytes::Writer::new();
             request.varint(self.remote_menu_id());
             request.string(&id);
             self.send(sunrise_protocol::packets::play::Serverbound::CustomPayload(
@@ -1671,7 +1676,7 @@ impl Game<'_> {
         let (answer, request_due) = checks.lookup(recipe, now);
         let answer = answer.cloned();
         if request_due {
-            let mut request = sunrise_protocol::buf::Writer::new();
+            let mut request = ::sunrise_core::vanilla_bytes::Writer::new();
             request.varint(self.remote_menu_id());
             let Some(tag) = self.recipe_ui.checks.ask(recipe, now) else {
                 return answer;
@@ -1910,6 +1915,8 @@ impl Game<'_> {
 
     /// The book button, ghost recipe and open book, returning its deferred tooltip.
     pub(super) fn draw_recipe_book(&mut self, batch: &mut HudBatch) -> Option<Vec<(Text, u32)>> {
+        // No column until this frame draws one: a closed book draws none.
+        self.screen_state.drawn_book_tabs.set(None);
         if self.native_screen_shown() {
             return self.draw_mod_book(batch);
         }
@@ -1975,7 +1982,7 @@ impl Game<'_> {
                         .map(|e| vec![book.entries[e.0].result.clone()])
                         .collect();
                     let stack = screen::display_stack(&results, self.swap_index());
-                    let item = sunrise_client::stations::hover_name(&self.pack.names, &stack);
+                    let item = self.stack_hover_name(&stack);
                     let (x, y) = Self::button_pos(xo, yo, n);
                     in_book(
                         Narratable::recipe(item, b.entries.len() > 1, [x, y, 25.0, 25.0]),
@@ -2071,7 +2078,7 @@ impl Game<'_> {
             if !self.mod_book_open() {
                 return None;
             }
-            self.native_screen_slot(slot.checked_sub(300)?)?;
+            self.native_screen_slot(crate::game::inventory_slots::container_slot_index(slot)?)?;
         } else if !self.book_open(self.active_book()?) {
             return None;
         }
@@ -2192,6 +2199,14 @@ impl Game<'_> {
             text_width: &text_width,
         };
         let calls = screen::draw(&layout);
+        // The tabs as painted are the region `ScreenView::regions` reports (with a subscriber).
+        if self.screen_view_listened() {
+            self.screen_state
+                .drawn_book_tabs
+                .set(screen::sprite_bounds(&calls, |_, id| {
+                    screen::is_tab_sprite(id)
+                }));
+        }
         let tooltip = self.paint_book(batch, &calls);
         // The squeeze animations run down with the frames.
         let frame = self.frame_ticks;

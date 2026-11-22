@@ -70,7 +70,7 @@ pub trait Goal: std::fmt::Debug + Send + Sync {
         &mut self,
         mob: &mut Mob,
         cx: &mut Cx,
-    ) -> Option<super::living::TravelTrample> {
+    ) -> Option<super::living::TravelPause> {
         self.tick(mob, cx);
         None
     }
@@ -123,7 +123,7 @@ pub struct GoalSelector {
 }
 #[derive(Debug)]
 pub(super) struct GoalTrample {
-    pub(super) movement: super::living::TravelTrample,
+    pub(super) movement: super::living::TravelPause,
     slot: usize,
     force: bool,
 }
@@ -273,7 +273,9 @@ impl GoalSelector {
         cx: &mut Cx,
         paused: GoalTrample,
     ) -> Option<GoalTrample> {
-        paused.movement.resume(m, cx.w, cx.level, cx.events);
+        if let Err(movement) = paused.movement.resume(m, cx.w, cx.level, cx.events) {
+            return Some(GoalTrample { movement, ..paused });
+        }
         // An owning-host listener can remove or shift the running goal. Only
         // the still-resident goal holding this pause can finish its path update.
         let next = self
@@ -1800,14 +1802,14 @@ impl Goal for LeapAtTarget {
             return false;
         };
         let d = m.distance_sqr(t.position);
-        if !(4.0..=16.0).contains(&d) || !m.on_ground {
+        if !(4.0..=16.0).contains(&d) || !m.ground.on_ground {
             return false;
         }
         self.target = [t.position.x, t.position.y, t.position.z];
         m.random.next_int_bound(reduced(5)).unwrap_or(1) == 0
     }
     fn can_continue(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
-        !m.on_ground
+        !m.ground.on_ground
     }
     fn start(&mut self, m: &mut Mob, _: &mut Cx) {
         let mut d = [
@@ -3083,7 +3085,7 @@ impl Goal for TryFindWater {
         MOVE
     }
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        if !m.on_ground || m.fluids.in_water {
+        if !m.ground.on_ground || m.fluids.in_water {
             return false;
         }
         let (bx, by, bz) = (
