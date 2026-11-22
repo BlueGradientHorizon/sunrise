@@ -191,7 +191,7 @@ def retire_files(edits):
         edits,
         tests,
         "#[test]\nfn a_mod_writes_reads_lists_and_stats_its_own_files()",
-        "/// The service through a real game and the hooks' own dispatch:",
+        "/// The service through a real game and the owner-bound config listener:",
     )
     remove_between(
         edits,
