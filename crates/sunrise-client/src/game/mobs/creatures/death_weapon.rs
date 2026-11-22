@@ -33,6 +33,11 @@ impl Game<'_> {
     /// The actual direct projectile's family and saved weapon, also for explicit damage sources.
     pub(in crate::game) fn set_projectile_attack(attack: &mut Attack, shot: &Projectile) {
         attack.projectile = Some(shot.id as i32);
+        attack.enchantment_direct = Some(sunrise_client::health::EnchantmentActor {
+            id: shot.id as i32,
+            kind: shot.entity_type().into(),
+            motion: None,
+        });
         attack.projectile_kind = Self::projectile_direct_entity(&shot.kind);
         let weapon = shot.arrow.as_ref().and_then(|arrow| {
             if matches!(shot.kind, ProjectileKind::Trident) {
@@ -131,41 +136,30 @@ impl Game<'_> {
                 shot.arrow_damage() + shot.bonus.damage
             };
         };
-        let attacker_kind = match shot.owner {
-            Some(Who::Player) => Some("minecraft:player".to_owned()),
-            Some(Who::Mob(id)) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == id)
-                .map(|m| m.kind.id.clone()),
-            None => None,
-        };
-        let ctx = sunrise_client::enchant::EffectContext {
-            this: victim,
-            attacker: attacker_kind.as_deref(),
-            direct_attacker: Some(if trident {
-                "minecraft:trident"
-            } else if shot.is_spectral_arrow() {
-                "minecraft:spectral_arrow"
-            } else {
-                "minecraft:arrow"
-            }),
-            damage_type: Some(if trident {
-                "minecraft:trident"
-            } else {
-                "minecraft:arrow"
-            }),
-            ..Default::default()
-        };
         let player = self.own_entity_id() as u32;
-        let attacker = shot.owner.map(|owner| match owner {
-            Who::Player => self
-                .combat
-                .enchantment_projectile_attacker
-                .or_else(|| self.player_attacker(shot.guest).map(|s| s.0))
-                .unwrap_or(player),
-            Who::Mob(id) => id,
-        });
+        let mut attack = self.projectile_attack(shot);
+        if shot.owner == Some(Who::Player)
+            && let Some(id) = self.combat.enchantment_projectile_attacker
+        {
+            attack.attacker = id as i32;
+            attack.enchantment_attacker = self.enchantment_actor(id as i32);
+        }
+        let causing = if attack.attacker != 0 {
+            attack.attacker
+        } else {
+            shot.id as i32
+        };
+        let source = attack.player_source(
+            if trident {
+                "minecraft:trident"
+            } else {
+                "minecraft:arrow"
+            },
+            causing,
+        );
+        let mut ctx = attack.enchantment_context(source, victim.unwrap_or(""));
+        ctx.this = victim;
+        let attacker = (causing != 0).then_some(causing as u32);
         let victim = match who {
             Who::Player => player,
             Who::Mob(id) => id,

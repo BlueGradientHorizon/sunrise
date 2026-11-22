@@ -9,7 +9,6 @@ use mod_api::{SoundSource, TransactionSeal};
 use sunrise_client::{
     arrows::{Pickup, back_off, clip_block_hit},
     collisions::SceneCollisions,
-    enchant::EffectContext,
     items::ItemStack,
     join_seq::JoinSeq,
     mesher::Vertex,
@@ -843,18 +842,23 @@ impl Game<'_> {
                                     .find(|c| c.id == id)
                                     .map(|c| c.kind.id().to_owned())
                             });
-                        let ctx = EffectContext {
-                            this: victim.as_deref(),
-                            attacker: Some("minecraft:player"),
-                            direct_attacker: Some("minecraft:trident"),
-                            is_direct: true,
-                            damage_type: Some("minecraft:trident"),
-                            items: None,
-                            ..Default::default()
-                        };
                         let attacker = self
                             .player_attacker(t.guest)
                             .map_or(self.own_entity_id() as u32, |s| s.0);
+                        let mut attack = self.attack_of(attacker as i32);
+                        attack.projectile = Some(t.id as i32);
+                        attack.projectile_kind = sunrise_client::health::DirectEntity::Arrow;
+                        attack.enchantment_direct =
+                            Some(sunrise_client::health::EnchantmentActor {
+                                id: t.id as i32,
+                                kind: "minecraft:trident".into(),
+                                motion: None,
+                            });
+                        Self::set_projectile_weapon(&mut attack, Some(&t.stack));
+                        let source = attack.player_source("minecraft:trident", attacker as i32);
+                        let mut ctx =
+                            attack.enchantment_context(source, victim.as_deref().unwrap_or(""));
+                        ctx.this = victim.as_deref();
                         let damage = self.evaluate_weapon_damage(
                             &t.stack,
                             Some(attacker),
@@ -865,10 +869,6 @@ impl Game<'_> {
                         t.dealt_damage = true;
                         let mut hurt_mob = None;
                         let aim = self.attacker_aim(Some(Who::Player));
-                        let mut attack = self.attack_of(attacker as i32);
-                        attack.projectile = Some(t.id as i32);
-                        attack.projectile_kind = sunrise_client::health::DirectEntity::Arrow;
-                        Self::set_projectile_weapon(&mut attack, Some(&t.stack));
                         let trident_source = DamageKind::Named(
                             sunrise_client::mobs::NamedDamage::registered(
                                 &self.health_resources.damage,

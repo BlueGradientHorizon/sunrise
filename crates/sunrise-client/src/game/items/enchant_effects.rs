@@ -297,6 +297,7 @@ impl Game<'_> {
             is_direct: true,
             damage_type: Some(damage_type),
             direct_motion,
+            attacker_motion: direct_motion,
             items: None,
             ..Default::default()
         };
@@ -383,6 +384,38 @@ impl Game<'_> {
             *rng = victim_random;
         }
         value
+    }
+
+    pub(super) fn enchantment_actor(
+        &self,
+        id: i32,
+    ) -> Option<sunrise_client::health::EnchantmentActor> {
+        use super::lan_actions::CombatPlayer;
+        use sunrise_client::health::EnchantmentActor;
+        use sunrise_client::join_seq::residency::table::EntityLookup;
+        if id == 0 {
+            return None;
+        }
+        if let Some(player) = self.combat_player(id as u32) {
+            let motion = match player {
+                CombatPlayer::InPlace => self.player.as_ref(),
+                CombatPlayer::Displaced(_, body) => Some(body),
+                CombatPlayer::Parked(guest) => guest.motion.as_deref(),
+            };
+            return Some(EnchantmentActor {
+                id,
+                kind: "minecraft:player".into(),
+                motion: motion.map(|p| (p.fall_distance, p.fall_flying || p.flying)),
+            });
+        }
+        let EntityLookup::Found { value, .. } = self.server_resident_entity(id as u32) else {
+            return None;
+        };
+        Some(EnchantmentActor {
+            id,
+            kind: self.target_type(value).into(),
+            motion: None,
+        })
     }
 
     /// `Entity.getRandom` for the body that the damage effect is about.

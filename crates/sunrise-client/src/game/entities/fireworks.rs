@@ -982,6 +982,11 @@ impl Game<'_> {
     ) {
         let mut attack = self.attack_of_who(attacker);
         attack.projectile = Some(rocket_id as i32);
+        attack.enchantment_direct = Some(sunrise_client::health::EnchantmentActor {
+            id: rocket_id as i32,
+            kind: "minecraft:firework_rocket".into(),
+            motion: None,
+        });
         attack.projectile_kind = sunrise_client::health::DirectEntity::Projectile;
         for &(id, amount) in hits {
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);

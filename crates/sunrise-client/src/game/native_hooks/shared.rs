@@ -2027,6 +2027,8 @@ impl Game<'_> {
                 .then(|| self.known_attacker_uuid(attacker as u32))
                 .flatten(),
             player_uuid,
+            enchantment_attacker: self.enchantment_actor(attacker),
+            enchantment_direct: None,
         }
     }
     /// [`Self::attack_of`] for the attacker a damage source names: the player, a mob, or (none)

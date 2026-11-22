@@ -288,6 +288,13 @@ impl Game<'_> {
                 .and_then(|target| self.network_entity_id(target))
                 .unwrap_or(0),
         );
+        attack.enchantment_direct = direct.zip(attack.direct).map(|(target, id)| {
+            sunrise_client::health::EnchantmentActor {
+                id,
+                kind: self.target_type(target).into(),
+                motion: None,
+            }
+        });
         match direct {
             Some(Target::Projectile(id)) => {
                 if let Some(shot) = self.creatures.projectiles.iter().find(|shot| shot.id == id) {

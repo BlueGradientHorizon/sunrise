@@ -816,21 +816,15 @@ pub struct Knock {
 }
 /// `CombatRules.getDamageAfterAbsorb`'s weapon: the stack
 /// `DamageSource.getWeaponItem` names, the registry its `armor_effectiveness`
-/// enchantments (Breach) are read from, and the entity that swung it.
+/// enchantments (Breach) are read from.
 pub struct ArmorWeapon {
     pub stack: crate::items::ItemStack,
     pub enchantments: std::sync::Arc<crate::enchant::Enchantments>,
-    /// The causing and direct entity's type id: one entity swung.
-    pub attacker: String,
-    /// `DamageSource.isDirect`: the causing entity swung itself.
-    pub is_direct: bool,
 }
 impl std::fmt::Debug for ArmorWeapon {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ArmorWeapon")
             .field("stack", &self.stack)
-            .field("attacker", &self.attacker)
-            .field("is_direct", &self.is_direct)
             .finish_non_exhaustive()
     }
 }
@@ -946,10 +940,22 @@ pub struct Attack {
     pub player_uuid: Option<[i32; 4]>,
     /// The causing mob's UUID for `Villager.setLastHurtByMob`'s gossip.
     pub attacker_uuid: Option<[i32; 4]>,
+    /// Type and movement of the causing entity, bound before the hit borrows its victim.
+    pub enchantment_attacker: Option<EnchantmentActor>,
+    /// The explicit direct entity or projectile, distinct from the causing entity.
+    pub enchantment_direct: Option<EnchantmentActor>,
     /// What it holds, or none when it is not known (no native mod listens: the game only
     /// records it then).
     pub held: Held,
 }
+/// The identity and predicate view of one entity named by a damage source.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EnchantmentActor {
+    pub id: i32,
+    pub kind: std::borrow::Cow<'static, str>,
+    pub motion: Option<(f64, bool)>,
+}
+
 /// The attack of a hit nobody started: environment damage, falls, a level built outside a hit.
 pub static NO_ATTACK: Attack = Attack {
     attacker: 0,
@@ -1958,18 +1964,9 @@ impl<'a> ArmorWorld for Environment<'a> {
         weapon: &'a ArmorWeapon,
         value: f32,
     ) -> io::Result<f32> {
-        let ctx = crate::enchant::EffectContext {
-            // `Enchantment.damageContext` carries no tool, so `match_tool`
-            // matches nothing and never reads the item tables.
-            items: None,
-            tool: None,
-            damage_type: Some(&self.source.definition().name),
-            is_direct: weapon.is_direct,
-            this: Some("minecraft:player"),
-            attacker: Some(&weapon.attacker),
-            direct_attacker: Some(&weapon.attacker),
-            direct_motion: None,
-        };
+        let attack = self.level.attack();
+        let source = attack.player_source(&self.source.definition().name, self.causing);
+        let ctx = attack.enchantment_context(source, "minecraft:player");
         Ok(weapon.enchantments.modify_value(
             Some(&weapon.stack),
             "minecraft:armor_effectiveness",
@@ -2115,13 +2112,10 @@ impl ImmunityWorld for Environment<'_> {
             .level
             .attack()
             .player_source(&self.source.definition().name, self.causing);
-        let context = crate::enchant::EffectContext {
-            items: Some(items),
-            damage_type: Some(source.damage_type),
-            is_direct: source.causing == source.direct,
-            this: Some("minecraft:player"),
-            ..Default::default()
-        };
+        let context = self
+            .level
+            .attack()
+            .enchantment_context(source, "minecraft:player");
         Ok(items.enchantments.is_damage_immune(
             items.enchantments.damage_immunities(equipment),
             &context,

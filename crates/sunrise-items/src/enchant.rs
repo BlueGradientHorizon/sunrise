@@ -1200,6 +1200,20 @@ impl Enchantments {
             None => string_list(spec).iter().any(|s| s == entity),
         }
     }
+    fn entity_predicate_matches(
+        &self,
+        predicate: &Value,
+        entity: Option<&str>,
+        motion: Option<(f64, bool)>,
+    ) -> bool {
+        let spec = predicate
+            .get("minecraft:entity_type")
+            .unwrap_or(&predicate["type"]);
+        entity.is_some()
+            && (spec.is_null() || self.entity_matches(spec, entity))
+            && movement_matches(predicate, motion)
+    }
+
     /// The loot-condition subset enchantment `requirements` use.
     pub fn condition(
         &self,
@@ -1236,35 +1250,33 @@ impl Enchantments {
                     })
             }
             "minecraft:damage_source_properties" => {
-                let p = &c["predicate"];
-                if let Some(direct) = p["is_direct"].as_bool()
-                    && direct != ctx.is_direct
-                {
+                let Some(damage_type) = ctx.damage_type else {
                     return false;
-                }
+                };
+                let p = &c["predicate"];
                 p["tags"].as_array().into_iter().flatten().all(|t| {
                     let tag = t["id"].as_str().unwrap_or("").trim_start_matches('#');
-                    let has = ctx
-                        .damage_type
-                        .is_some_and(|d| self.damage_tags.get(tag).is_some_and(|s| s.contains(d)));
+                    let has = self
+                        .damage_tags
+                        .get(tag)
+                        .is_some_and(|s| s.contains(damage_type));
                     has == t["expected"].as_bool().unwrap_or(true)
-                })
+                }) && p.get("direct_entity").is_none_or(|predicate| {
+                    self.entity_predicate_matches(predicate, ctx.direct_attacker, ctx.direct_motion)
+                }) && p.get("source_entity").is_none_or(|predicate| {
+                    self.entity_predicate_matches(predicate, ctx.attacker, ctx.attacker_motion)
+                }) && p["is_direct"]
+                    .as_bool()
+                    .is_none_or(|direct| direct == ctx.is_direct)
             }
             "minecraft:entity_properties" => {
-                let entity = match c["entity"].as_str().unwrap_or("this") {
-                    "this" => ctx.this,
-                    "attacker" => ctx.attacker,
-                    "direct_attacker" => ctx.direct_attacker,
-                    _ => None,
+                let (entity, motion) = match c["entity"].as_str().unwrap_or("this") {
+                    "this" => (ctx.this, ctx.this_motion),
+                    "attacker" => (ctx.attacker, ctx.attacker_motion),
+                    "direct_attacker" => (ctx.direct_attacker, ctx.direct_motion),
+                    _ => (None, None),
                 };
-                let spec = &c["predicate"]["minecraft:entity_type"];
-                let spec = if spec.is_null() {
-                    &c["predicate"]["type"]
-                } else {
-                    spec
-                };
-                (spec.is_null() && entity.is_some() || self.entity_matches(spec, entity))
-                    && movement_matches(&c["predicate"], role_state(c, ctx))
+                self.entity_predicate_matches(&c["predicate"], entity, motion)
             }
             "minecraft:random_chance" => {
                 let chance = match &c["chance"] {
@@ -1297,16 +1309,10 @@ pub struct EffectContext<'a> {
     pub this: Option<&'a str>,
     pub attacker: Option<&'a str>,
     pub direct_attacker: Option<&'a str>,
-    /// The direct attacker's fall distance and whether it flies (elytra or
-    /// abilities), for `movement` and `flags` predicates.
+    /// The roles' fall distance and flying state, where the game knows them.
+    pub this_motion: Option<(f64, bool)>,
+    pub attacker_motion: Option<(f64, bool)>,
     pub direct_motion: Option<(f64, bool)>,
-}
-/// The fall distance and flying flag known for an `entity_properties` role.
-fn role_state(c: &Value, ctx: &EffectContext<'_>) -> Option<(f64, bool)> {
-    match c["entity"].as_str().unwrap_or("this") {
-        "direct_attacker" => ctx.direct_motion,
-        _ => None,
-    }
 }
 /// `EntityPredicate`'s `minecraft:movement` fall distance and
 /// `minecraft:flags` is_flying (the parts enchantment requirements use); an
@@ -2256,6 +2262,84 @@ pub mod tests {
             )
             .is_empty()
         );
+    }
+
+    #[test]
+    fn damage_source_requirements_match_each_entity_role_and_refuse_absent_entities() {
+        let mut enchantments = sample();
+        let id: Arc<str> = "minecraft:sharpness".into();
+        let requirements = json!({"condition":"minecraft:damage_source_properties","predicate":{
+            "source_entity":{"minecraft:entity_type":"minecraft:skeleton"},
+            "direct_entity":{"minecraft:entity_type":"minecraft:arrow"},
+            "is_direct":false
+        }});
+        let index = enchantments.index[id.as_ref()];
+        enchantments.list[index].slots = vec!["hand".into()];
+        enchantments.list[index].effects = json!({
+            "minecraft:damage_immunity":[{"requirements":requirements}],
+            "minecraft:damage":[{"requirements":requirements,"effect":{"type":"minecraft:add","value":3}}]
+        });
+        let levels = [(id, 1)];
+        let arrow = EffectContext {
+            damage_type: Some("minecraft:arrow"),
+            attacker: Some("minecraft:skeleton"),
+            direct_attacker: Some("minecraft:arrow"),
+            ..Default::default()
+        };
+        for (ctx, matches) in [
+            (arrow, true),
+            (
+                EffectContext {
+                    attacker: None,
+                    ..arrow
+                },
+                false,
+            ),
+            (
+                EffectContext {
+                    direct_attacker: None,
+                    ..arrow
+                },
+                false,
+            ),
+            (
+                EffectContext {
+                    attacker: arrow.direct_attacker,
+                    direct_attacker: arrow.attacker,
+                    ..arrow
+                },
+                false,
+            ),
+            (
+                EffectContext {
+                    damage_type: Some("minecraft:cactus"),
+                    is_direct: true,
+                    ..Default::default()
+                },
+                false,
+            ),
+        ] {
+            let mut random = LegacyRandom::new(0);
+            assert_eq!(
+                enchantments.is_damage_immune(
+                    enchantments.damage_immunities([(&levels[..], "mainhand")]),
+                    &ctx,
+                    &mut random,
+                ),
+                matches
+            );
+            assert_eq!(
+                enchantments.modify_damage(
+                    &levels,
+                    &ctx,
+                    &mut random,
+                    &mut LegacyRandom::new(0),
+                    2.0,
+                    &mut |_, _, _, _| unreachable!(),
+                ),
+                if matches { 5.0 } else { 2.0 }
+            );
+        }
     }
 
     #[test]

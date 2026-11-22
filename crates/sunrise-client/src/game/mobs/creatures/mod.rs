@@ -4570,6 +4570,7 @@ impl Game<'_> {
         };
         attack.projectile = self.combat.attack().projectile;
         attack.projectile_kind = self.combat.attack().projectile_kind;
+        attack.enchantment_direct = self.combat.attack().enchantment_direct.clone();
         attack.direct = self.combat.attack().direct;
         attack.direct_kind = self.combat.attack().direct_kind;
         attack.position = from;

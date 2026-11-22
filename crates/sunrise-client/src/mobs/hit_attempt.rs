@@ -67,17 +67,9 @@ impl Mob {
         // A ghast skips the living predicate for its reflected fireball.
         !reflected
             && items.is_some_and(|items| {
-                let attacker = (source.attacker == Some(Who::Player)).then_some("minecraft:player");
-                let is_direct = level.attack().is_direct(source);
-                let context = crate::enchant::EffectContext {
-                    items: Some(items),
-                    damage_type: Some(crate::health::source_damage_type(*source)),
-                    is_direct,
-                    this: Some(&self.kind.id),
-                    attacker,
-                    direct_attacker: attacker.filter(|_| is_direct),
-                    ..Default::default()
-                };
+                let attack = level.attack();
+                let source = crate::health::mob_source(source, attack);
+                let context = attack.enchantment_context(source, &self.kind.id);
                 use sunrise_items::equipment::{BODY, SADDLE, SLOT_NAMES};
                 // Mob hands and armor keep their effective levels in Gear;
                 // body and saddle use their retained stacks.

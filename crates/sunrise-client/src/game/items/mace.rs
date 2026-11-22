@@ -275,9 +275,6 @@ impl Game<'_> {
         Some(ArmorWeapon {
             stack: stack.clone(),
             enchantments,
-            attacker: mob.kind.id.clone(),
-            // `DamageSource.isDirect`: the mob swung itself.
-            is_direct: true,
         })
     }
     /// `LivingEntity.hurtServer` of the mob at `index` by the player's hit:
@@ -295,20 +292,8 @@ impl Game<'_> {
         let held = self.held().cloned();
         let aim = self.attacker_aim(source.attacker);
         let kind = self.mobs[index].kind.id.clone();
-        let ctx = EffectContext {
-            this: Some(&kind),
-            attacker: Some("minecraft:player"),
-            direct_attacker: Some("minecraft:player"),
-            is_direct: true,
-            damage_type: Some(match source.kind {
-                sunrise_client::mobs::DamageKind::MaceSmash => "minecraft:mace_smash",
-                sunrise_client::mobs::DamageKind::Spear => "minecraft:spear",
-                sunrise_client::mobs::DamageKind::Thorns => "minecraft:thorns",
-                _ => "minecraft:player_attack",
-            }),
-            items: Some(world_items!(self)),
-            ..Default::default()
-        };
+        let ctx =
+            attack.enchantment_context(sunrise_client::health::mob_source(&source, &attack), &kind);
         let enchantments = &world_stations!(self).enchantments;
         // CombatRules.getDamageAfterAbsorb: EnchantmentHelper.modifyArmorEffectiveness.
         let mut breach = |fraction: f32, random: &mut sunrise_core::random::LegacyRandom| {

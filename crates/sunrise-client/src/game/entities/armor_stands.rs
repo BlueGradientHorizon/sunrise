@@ -1572,7 +1572,6 @@ impl Game<'_> {
         damage_type: &str,
         causing: Option<super::commands::Target>,
     ) -> bool {
-        use super::commands::Target;
         let mut checks = Vec::new();
         let equipment = &self.armor_stands[i].equipment;
         for (stack, slot) in equipment.iter().zip(ArmorStand::SLOTS) {
@@ -1597,30 +1596,12 @@ impl Game<'_> {
         if checks.is_empty() {
             return false;
         }
-        let attacker = match causing {
-            Some(Target::Player | Target::Guest(_)) => Some("minecraft:player".to_owned()),
-            Some(Target::Mob(m_id)) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == m_id)
-                .map(|m| m.kind.id.clone()),
-            Some(Target::Stand(_)) => Some("minecraft:armor_stand".to_owned()),
-            _ => None,
-        };
-        let canonical = if damage_type.contains(':') {
-            damage_type.to_owned()
-        } else {
-            format!("minecraft:{damage_type}")
-        };
-        let ctx = sunrise_client::enchant::EffectContext {
-            items: Some(self.res.items()),
-            damage_type: Some(&canonical),
-            is_direct: attacker.is_some(),
-            this: Some("minecraft:armor_stand"),
-            attacker: attacker.as_deref(),
-            direct_attacker: attacker.as_deref(),
-            ..Default::default()
-        };
+        let attack = self.current_attack();
+        let causing = causing
+            .and_then(|target| self.network_entity_id(target))
+            .unwrap_or(0);
+        let source = attack.player_source(damage_type, causing);
+        let ctx = attack.enchantment_context(source, "minecraft:armor_stand");
         let ench = &self.res.stations().enchantments;
         let rng = &mut self.world.random;
         for (req, level) in checks {
