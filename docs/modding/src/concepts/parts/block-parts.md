@@ -216,6 +216,8 @@ Use `event.run_before` or `event.run_after` to schedule an `EntityWrite` around 
 for example `r.damage_type_key("minecraft:hot_floor")`. The level supplies the
 registered damage type, including data-pack types and tags, without a causing
 or direct entity. If the type is absent in that world, the hurt does not apply.
+These writes use the hurt paths for players, mobs, dropped items and experience
+orbs; they do not add one for armor stands, projectiles or vehicles.
 
 ## Storage changes
 

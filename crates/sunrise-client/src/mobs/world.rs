@@ -993,7 +993,8 @@ pub(crate) fn with_built_contact_test_world(
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Contact {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            self.0.set(r.damage_type_key("minecraft:generic")).unwrap();
+            let requested = r.damage_type_key("minecraft:generic");
+            assert_eq!(*self.0.get_or_init(|| requested), requested);
         }
     }
     let key = std::sync::Arc::new(std::sync::OnceLock::new());
