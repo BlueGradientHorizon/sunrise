@@ -58,6 +58,79 @@ fn a_block_placed_as_a_player_runs_set_placed_by() {
 
 #[test]
 #[ignore = "daily"]
+fn a_plain_write_before_placement_preserves_the_staged_chest_transfer() {
+    use super::api_values::TryIntoApi;
+    use mod_api::{BlockUpdateFlags, ITEMS, ItemResource, run_transaction};
+    use sunrise_client::items::ItemStack;
+
+    const SOURCE: [i32; 3] = [5, 70, 2];
+    const DEST: [i32; 3] = [2, 70, 2];
+    with_guests(|game| {
+        loaded(game);
+        let level = game.level(game.dim.id()).unwrap();
+        let player = game.player(12).unwrap();
+        let source = api_state(game, "minecraft:barrel");
+        assert_eq!(
+            level.set_block(game, SOURCE, source, BlockUpdateFlags::NONE),
+            Ok(true)
+        );
+        let mut stored = ItemStack::new("minecraft:iron_ingot", 17);
+        game.world
+            .block_entities
+            .get_mut(&(5, 70, 2))
+            .unwrap()
+            .slots_mut()[0] = Some(stored.clone());
+        let resource = ItemResource::of(&stored.clone().try_into_api().unwrap());
+        let from = level.capability(game, &ITEMS, SOURCE, None).unwrap();
+        let registry = game.pack.assets.registry;
+        let chest = registry.default_state("minecraft:chest").unwrap();
+        let north = crate::game::native_hooks::with_property(registry, chest, "facing", "north")
+            .unwrap()
+            .try_into_api()
+            .unwrap();
+        let south = crate::game::native_hooks::with_property(registry, chest, "facing", "south")
+            .unwrap()
+            .try_into_api()
+            .unwrap();
+
+        let staged = run_transaction(game, |game, tx| {
+            assert_eq!(
+                level.set_block(game, DEST, north, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
+            assert!(
+                game.block_entity(level, DEST).is_none(),
+                "the plain write does not stage a row"
+            );
+            player.place_block(game, level, DEST, south, BlockFace::Up, false)?;
+            let staged = game.block_entity(level, DEST).unwrap();
+            let to = level.capability(game, &ITEMS, DEST, None).unwrap();
+            assert_eq!(from.extract_at(game, tx, 0, &resource, 12), 12);
+            assert_eq!(to.insert_at(game, tx, 0, &resource, 12), 12);
+            Ok::<_, Refusal>(staged)
+        })
+        .unwrap();
+
+        assert_eq!(level.block_state(game, DEST), Some(south));
+        assert_eq!(
+            game.world.block_entities.get(&(2, 70, 2)).unwrap().slots()[0],
+            Some(ItemStack::new("minecraft:iron_ingot", 12))
+        );
+        stored.count = 5;
+        assert_eq!(
+            game.world.block_entities.get(&(5, 70, 2)).unwrap().slots()[0],
+            Some(stored)
+        );
+        assert_eq!(
+            game.block_entity(level, DEST),
+            Some(staged),
+            "commit keeps the generation named by the staged handle"
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn chosen_placement_attributes_the_player_and_rolls_back_on_refusal() {
     use super::native_entity_refs::tests::{fixture_root, run_fresh_cases};
     use super::native_guest_turn_tests::with_guests_at;

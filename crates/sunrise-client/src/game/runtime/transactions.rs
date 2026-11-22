@@ -274,9 +274,15 @@ impl ReplayEntity {
     }
 }
 
-struct StagedCreation {
-    generation: Option<u64>,
-    entity: ReplayEntity,
+pub(super) enum BlockEntityCreation {
+    Live,
+    /// A later write owns the factory result for this same resident lifetime.
+    Deferred,
+    /// A factory was evaluated while staging; no generation records an explicit absence.
+    Staged {
+        generation: Option<u64>,
+        entity: ReplayEntity,
+    },
 }
 
 pub(super) struct BlockStep {
@@ -286,8 +292,7 @@ pub(super) struct BlockStep {
     placement: bool,
     // Some means staging took the resident row out (even if it was already absent).
     removed: Option<ReplayEntity>,
-    // None means no factory was evaluated; Some with no generation means it answered absent.
-    created: Option<StagedCreation>,
+    creation: BlockEntityCreation,
 }
 
 pub(super) struct StrictBlockStep {
@@ -1850,7 +1855,7 @@ impl Game<'_> {
             replay: step,
             placement,
             removed: None,
-            created: None,
+            creation: BlockEntityCreation::Live,
         }));
         true
     }
@@ -1896,10 +1901,10 @@ impl Game<'_> {
             unreachable!("factory staging follows the captured block write");
         };
         debug_assert_eq!(step.pos, pos);
-        step.created = Some(StagedCreation {
+        step.creation = BlockEntityCreation::Staged {
             generation: self.world.block_entities.generation(&pos),
             entity: ReplayEntity::default(),
-        });
+        };
     }
 
     pub(super) fn begin_placement_capture(&mut self) {
@@ -1939,7 +1944,8 @@ impl Game<'_> {
         self.transactions.iter().any(|frame| {
             frame.dimension == Some(self.dim) && frame.blocks.contains_key(&pos)
                 && frame.after.iter().rev().any(|after| {
-                    matches!(after, After::Block(step) if step.pos == pos && step.created.as_ref().and_then(|creation| creation.generation) == Some(generation))
+                    matches!(after, After::Block(step) if step.pos == pos && matches!(step.creation,
+                        BlockEntityCreation::Staged { generation: Some(created), .. } if created == generation))
                 })
         })
     }
@@ -2320,24 +2326,38 @@ impl Game<'_> {
                 *ordered.entry(step.pos).or_default() |= step.placement;
             }
         }
-        let mut rows = HashMap::new();
+        // Each row also remembers whether a later write owns its factory. A plain write
+        // before that factory must not fill the slot during replay if staging left it empty.
+        let mut rows = HashMap::<Pos, (ReplayEntity, bool)>::new();
         for after in level.after.iter_mut().rev() {
             match after {
                 After::Block(step) if ordered.contains_key(&step.pos) => {
-                    if step.created.is_some() || step.removed.is_some() {
-                        let slot = rows
-                            .entry(step.pos)
-                            .or_insert_with(|| ReplayEntity::take(&mut self.world, step.pos));
-                        if let Some(created) = &mut step.created
-                            && created.generation.is_some()
-                            && slot.row.as_ref().map(|(_, generation)| *generation)
-                                == created.generation
+                    use std::collections::hash_map::Entry;
+                    let (row, later_factory) = match rows.entry(step.pos) {
+                        Entry::Occupied(entry) => entry.into_mut(),
+                        Entry::Vacant(entry)
+                            if matches!(step.creation, BlockEntityCreation::Staged { .. })
+                                || step.removed.is_some() =>
                         {
-                            created.entity = std::mem::take(slot);
+                            entry.insert((ReplayEntity::take(&mut self.world, step.pos), false))
                         }
-                        if let Some(removed) = &mut step.removed {
-                            *slot = std::mem::take(removed);
+                        Entry::Vacant(_) => continue,
+                    };
+                    if let BlockEntityCreation::Staged { generation, entity } = &mut step.creation {
+                        if generation.is_some()
+                            && row.row.as_ref().map(|(_, generation)| *generation) == *generation
+                        {
+                            *entity = std::mem::take(row);
                         }
+                        *later_factory = true;
+                    } else if *later_factory {
+                        step.creation = BlockEntityCreation::Deferred;
+                    }
+                    if let Some(removed) = &mut step.removed {
+                        *row = std::mem::take(removed);
+                    }
+                    if step.removed.is_some() || step.replay.clear_connection_group {
+                        *later_factory = false;
                     }
                 }
                 After::BulkBlocks(_, _, _, writes) if !ordered.is_empty() => {
@@ -2345,10 +2365,11 @@ impl Game<'_> {
                         if ordered.contains_key(&pos)
                             && let Some(removed) = &mut step.row
                         {
-                            let slot = rows
-                                .entry(pos)
-                                .or_insert_with(|| ReplayEntity::take(&mut self.world, pos));
-                            std::mem::swap(removed, slot);
+                            let (row, later_factory) = rows.entry(pos).or_insert_with(|| {
+                                (ReplayEntity::take(&mut self.world, pos), false)
+                            });
+                            std::mem::swap(removed, row);
+                            *later_factory = false;
                         }
                     }
                 }
@@ -2358,7 +2379,7 @@ impl Game<'_> {
         for (&pos, &placement) in &ordered {
             let (x, y, z) = pos;
             self.world.set_stored(x, y, z, level.blocks[&pos].state);
-            if let Some(row) = rows.remove(&pos) {
+            if let Some((row, _)) = rows.remove(&pos) {
                 row.install(&mut self.world, pos, placement);
             }
         }
@@ -2401,7 +2422,7 @@ impl Game<'_> {
                         step.to,
                         step.replay.flags,
                         step.replay.level_host,
-                        step.created.map(|creation| creation.entity),
+                        step.creation,
                     );
                     let _ = self.process_level_events();
                 }

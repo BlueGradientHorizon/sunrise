@@ -5532,7 +5532,13 @@ impl Game<'_> {
         flags: i32,
         create_entity: bool,
     ) -> bool {
-        self.set_block_live_with_entity(pos, state, flags, create_entity, None)
+        self.set_block_live_with_entity(
+            pos,
+            state,
+            flags,
+            create_entity,
+            transactions::BlockEntityCreation::Live,
+        )
     }
 
     fn set_block_live_with_entity(
@@ -5541,8 +5547,10 @@ impl Game<'_> {
         state: BlockStateId,
         flags: i32,
         create_entity: bool,
-        staged: Option<transactions::ReplayEntity>,
+        creation: transactions::BlockEntityCreation,
     ) -> bool {
+        use transactions::BlockEntityCreation::{Deferred, Live, Staged};
+        let live_factory = matches!(creation, Live);
         let [x, y, z] = pos;
         let at = BlockPos::new(x, y, z);
         let previous = self.world.block(x, y, z);
@@ -5554,7 +5562,7 @@ impl Game<'_> {
             && (self.res.facts().get(previous).block_entity
                 || self.world.block_entities.stateful_entity(previous.0)
                 || self.world.block_entities.get(&(x, y, z)).is_some());
-        if !server_removal && staged.is_none() {
+        if !server_removal && live_factory {
             return self.with_level(|b, level, ticks| {
                 let changed = b.set_block(level, ticks, at, state, flags);
                 if create_entity {
@@ -5587,16 +5595,17 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| {
             let removal_updates =
                 removal.map(|removal| level.finish_remove_entity(at, previous, removal));
-            let already_made = staged.is_some();
             let changed =
                 b.finish_block_write(level, ticks, write, removal_updates, |level, at, state| {
-                    if let Some(staged) = staged {
-                        staged.install(level.world, (at.x, at.y, at.z), true);
-                    } else {
-                        level.ensure_block_entity(at, state);
+                    match creation {
+                        Live => level.ensure_block_entity(at, state),
+                        Deferred => {}
+                        Staged { entity, .. } => {
+                            entity.install(level.world, (at.x, at.y, at.z), true)
+                        }
                     }
                 });
-            if create_entity && !already_made {
+            if create_entity && live_factory {
                 level.finish_native_block(pos, previous, state, changed);
             }
             changed
