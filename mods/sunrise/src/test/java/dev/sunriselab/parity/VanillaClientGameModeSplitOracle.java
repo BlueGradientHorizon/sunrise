@@ -54,6 +54,7 @@ import net.minecraft.network.protocol.game.ClientboundPlayerAbilitiesPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerAbilitiesPacket;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.RandomSource;
 import net.minecraft.util.TickThrottler;
@@ -175,6 +176,7 @@ public final class VanillaClientGameModeSplitOracle {
         AttributeMap attrs;
         byte sharedFlags;
         ClientAvatarState avState;
+        boolean eyeInWater;
 
         RealLocalPlayer() {
             super(null, null, null, null, null, Input.EMPTY, false, null, null);
@@ -203,7 +205,8 @@ public final class VanillaClientGameModeSplitOracle {
         @Override public boolean isSleeping() { return false; }
         @Override public boolean onClimbable() { return false; }
         @Override public boolean tryToStartFallFlying() { return false; }
-        @Override public boolean isEyeInFluid(TagKey<Fluid> tag) { return false; }
+        @Override public boolean isEyeInFluid(TagKey<Fluid> tag) { return eyeInWater && tag == FluidTags.WATER; }
+        @Override protected boolean updateIsUnderwater() { return this.wasUnderwater = this.isEyeInFluid(FluidTags.WATER); }
         @Override public float getEffectBlendFactor(Holder<MobEffect> effect, float partial) { return 0; }
         @Override public boolean isInWater() { return false; }
         @Override public boolean isInLava() { return false; }
@@ -702,6 +705,46 @@ public final class VanillaClientGameModeSplitOracle {
         h.handleRespawn(GameType.ADVENTURE, null);
         h.player.tick();
         steps.add(h.snapshot("after_respawn_resolves_adventure"));
+
+        h.handleRespawn(GameType.SURVIVAL, null);
+        h.handlePlayerInfoRemove(SELF_UUID);
+        h.player.tick();
+        steps.add(h.snapshot("after_respawn_and_remove_stays_unresolved"));
+
+        h.handlePlayerInfoAddAndMode(GameType.CREATIVE);
+        h.player.tick();
+        steps.add(h.snapshot("after_respawn_readd_resolves_creative"));
+        return steps;
+    }
+
+    static List<Map<String, Object>> scenarioWaterVisionTick() throws Exception {
+        Field waterVisionTime = field(LocalPlayer.class, "waterVisionTime");
+        Harness h = new Harness();
+        List<Map<String, Object>> steps = new ArrayList<>();
+        h.handleLogin(GameType.SPECTATOR, null);
+        h.handlePlayerInfoAddAndMode(GameType.ADVENTURE);
+        h.handlePlayerAbilities(0x06, 0.05F, 0.10F);
+
+        record Case(String step, GameType local, GameType info, boolean eyeInWater) {}
+        List<Case> cases = List.of(
+            new Case("local_spectator_info_adventure_eye_water", GameType.SPECTATOR, GameType.ADVENTURE, true),
+            new Case("local_adventure_info_spectator_eye_water", GameType.ADVENTURE, GameType.SPECTATOR, true),
+            new Case("local_adventure_info_spectator_eye_air", GameType.ADVENTURE, GameType.SPECTATOR, false),
+            new Case("local_spectator_info_spectator_eye_air_clamps_zero", GameType.SPECTATOR, GameType.SPECTATOR, false)
+        );
+        for (Case tc : cases) {
+            h.handleChangeGameMode((float) tc.local().getId());
+            h.handlePlayerInfoMode(tc.info());
+            h.player.eyeInWater = tc.eyeInWater();
+            h.player.tick();
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("step", tc.step());
+            row.put("local_game_mode", modeName(h.gameMode.getPlayerMode()));
+            row.put("player_game_mode", modeName(h.player.gameMode()));
+            row.put("eye_in_water", tc.eyeInWater());
+            row.put("water_vision_time", waterVisionTime.getInt(h.player));
+            steps.add(row);
+        }
         return steps;
     }
 
@@ -828,6 +871,7 @@ public final class VanillaClientGameModeSplitOracle {
         scenarios.put("live_player_info_transitions", scenarioLivePlayerInfoTransitions());
         scenarios.put("login_and_respawn_previous_mode", scenarioLoginAndRespawnPreviousMode());
         scenarios.put("resolved_player_info_retention", scenarioResolvedPlayerInfoRetention());
+        scenarios.put("water_vision_tick", scenarioWaterVisionTick());
         scenarios.put("respawn_keep_data_spectator_clears_y", scenarioRespawnKeepDataSpectatorClearsY());
         scenarios.put("retained_player_login_keeps_speeds", scenarioRetainedPlayerLoginKeepsSpeeds());
         scenarios.put("hud_camera_mounts", scenarioHudCameraMounts());

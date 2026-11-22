@@ -459,7 +459,6 @@ impl Game<'_> {
                 }
             }
         }
-        self.sync_remote_player_game_mode();
     }
 
     /// `C::PlayerInfoRemove`: its arms of `apply_packet`, guard and order kept.
@@ -476,7 +475,6 @@ impl Game<'_> {
                 r.attachments.remove(&Holder::Player(u));
             }
         }
-        self.sync_remote_player_game_mode();
     }
 
     /// `C::TabList`: its arms of `apply_packet`, guard and order kept.

@@ -28,6 +28,7 @@ TESTS = [
     'game::remote::abilities::gamemode_split_tests::respawn_keep_data_spectator_info_clears_pending_y_26_3',
     'game::remote::abilities::gamemode_split_tests::retained_player_login_preserves_custom_ability_speeds_26_3',
     'game::remote::abilities::gamemode_split_tests::split_local_and_player_info_physics_matrix_26_3',
+    'game::remote::abilities::gamemode_split_tests::split_mode_hud_rendering_reach_miss_inventory_and_input_rules',
 ]
 
 
