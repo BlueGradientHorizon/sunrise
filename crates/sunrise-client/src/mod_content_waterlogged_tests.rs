@@ -134,6 +134,10 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
                 "data/wet/sunrise/block/stairs.json",
                 r#"{"template":"minecraft:oak_stairs","default_state":{"waterlogged":"true"}}"#,
             ),
+            (
+                "data/wet/sunrise/item/tools/chisel.json",
+                r#"{"template":"minecraft:stick"}"#,
+            ),
         ],
     );
     let root = resource_root_fixture(&base, Path::new(""), &[m], &scratch.join("cache")).unwrap();
@@ -183,6 +187,7 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
     for (item, key) in [
         ("wet:stone", "block.wet.stone"),
         ("wet:plain_item", "item.wet.plain_item"),
+        ("wet:tools/chisel", "item.wet.tools.chisel"),
     ] {
         let name = crate::stations::hover_name_text(&names, &crate::items::ItemStack::new(item, 1));
         assert_eq!(name.component()["translate"], key, "{item}");

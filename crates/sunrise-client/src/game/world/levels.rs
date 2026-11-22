@@ -854,13 +854,6 @@ impl Levels {
     }
 
     /// The levels that are not in place, by dimension.
-    /// The forced chunks of every level not in place, released.
-    pub(super) fn release_parked_forced_chunks(&mut self) {
-        for level in self.parked.values_mut() {
-            level.streaming.clear_forced();
-        }
-    }
-
     pub(super) fn parked_dims(&self) -> Vec<Dim> {
         self.parked.keys().copied().collect()
     }
@@ -889,13 +882,15 @@ impl Game<'_> {
                 .unwrap_or_else(|| self.res.biomes())
                 .clone(),
             generate.as_ref(),
+            self.save.chunk_reports().clone(),
+            self.save.save_failure_reporter().clone(),
         )?;
         self.bind_chunk_disk_worker(&save, dim);
         save.install_profession_snapshot(self.stations().professions.clone());
         if let Some(terrain) = &locator {
             terrain.set_mob_maps(self.mob_map_snapshot());
         }
-        let mut world = Game::world_for_mods(self.res.facts().air, seed);
+        let mut world = Game::authoritative_world_for_mods(&self.res, seed);
         world.attachments = save.load_attachments();
         world.shape = self.level_shapes.get(dim.id());
         world.fast_lava = self.dimension_type_of(dim).fast_lava;
@@ -1395,7 +1390,6 @@ impl Game<'_> {
     }
 
     fn tick_server_body(&mut self, paused: bool) -> Result<()> {
-        mod_api::__private::reset_output_refusals();
         // A panic something caught left a game that carried on: its record ends with the tick.
         self.interrupted_turns.clear();
         // `tickRateManager.tick()` once per server tick, before any level
@@ -1714,6 +1708,7 @@ impl Game<'_> {
                     // A pending portal arrival keeps its destination level
                     // running so it can land and tick (the portal ticket).
                     || !self.arrival_chunks(*d).is_empty()
+                    || self.server_trips.iter().any(|trip| trip.spawn_destination_areas(*d).next().is_some())
                     // A portal ticket keeps its dimension active
                     // (`TicketType.shouldKeepDimensionActive`).
                     || !self.portal_tickets_in(*d).is_empty()
@@ -1856,6 +1851,7 @@ impl Game<'_> {
         self.enter_level(dim)?;
         // Vanilla saves the level's chunks before their unload hooks.
         self.native_chunks_loaded();
+        self.abort_abandoned_transactions(0);
         if let Err(why) = self.save_level(true) {
             // Not saved: the level stays parked, and the level in place is the one before.
             self.enter_level(back)?;
@@ -1863,6 +1859,8 @@ impl Game<'_> {
         }
         let chunks: Vec<_> = self.world.chunks.values().cloned().collect();
         self.native_chunks_unloaded(&chunks);
+        // Save and unload listeners can leave frames open; undo them before dropping the level.
+        self.abort_abandoned_transactions(0);
         // Its entities' attachments are saved with them; they leave memory too.
         for id in self.persist.uuids.keys() {
             self.entity_attachments.remove(id);
@@ -1919,10 +1917,9 @@ impl Game<'_> {
         }
     }
 
-    /// Save the levels mods asked for since the last tick, each as an autosave does but with its
-    /// chunks on disk when it ends: `level_save` fires for each that was written, and one that
-    /// could not be is logged. A level not open any more is opened to be saved, like a parked one.
-    /// The level in place is put back.
+    /// Run the requested level save passes. `level_save` fires after a pass even if an
+    /// individual record failed and was reported. A failed awaited flush ends the pass with
+    /// an error and no hook. Reopen levels as needed, then restore the active one.
     pub(super) fn run_requested_saves(&mut self) {
         if Self::admit_entity_save().is_err() {
             return;
@@ -1952,12 +1949,16 @@ impl Game<'_> {
             return Ok(());
         }
         let back = self.dim;
-        let dims: Vec<Dim> = self.levels.parked.keys().copied().collect();
-        for dim in dims {
-            self.enter_level(dim)?;
-            self.save_level(wait)?;
-        }
-        self.enter_level(back)
+        let parked = self.levels.parked_dims();
+        let saved = (|| {
+            for dim in parked {
+                self.enter_level(dim)?;
+                self.save_level(wait)?;
+            }
+            Ok(())
+        })();
+        let restored = self.enter_level(back);
+        saved.and(restored)
     }
 }
 
@@ -1999,6 +2000,112 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dirty_test_chunk(game: &mut Game<'_>) {
+        let chunk = sunrise_client::chunk::Chunk::with_layout(0, 0, game.world.layout());
+        game.world.chunks.insert((0, 0), Arc::new(chunk));
+        game.world.modified.insert((0, 0));
+    }
+
+    fn queue_unencodable_entity_record(save: &SaveDir) {
+        use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
+        let invalid =
+            (0..=DISK_WRITE_NESTING_GUARD).fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
+        save.save_entities_later(vec![((2, 0), vec![invalid])])
+            .unwrap();
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn save_all_succeeds_after_reported_failures_in_multiple_levels() {
+        use crate::game::native_entity_refs::tests::with_game;
+        use sunrise_client::save::{Level, LevelShape};
+        mod_platform::testing::with_mods(Vec::new().into(), || {
+            with_game(|game| {
+                let root = tempfile::tempdir().unwrap();
+                game.world_root = root.path().to_path_buf();
+                game.save = Arc::new(SaveDir::new(
+                    game.world_root.clone(),
+                    LevelShape::OVERWORLD,
+                    Some(Default::default()),
+                ));
+                game.level.name = "saved despite two refused records".into();
+                let mut folders = Vec::new();
+                for dim in [Dim::Nether, Dim::End, Dim::Overworld] {
+                    game.enter_level(dim).unwrap();
+                    dirty_test_chunk(game);
+                    folders.push((dim, game.save.root.clone(), game.save.shape));
+                    if dim != Dim::End {
+                        queue_unencodable_entity_record(&game.save);
+                    }
+                }
+                assert_eq!(
+                    game.save_all_reply().translation_key(),
+                    Some("commands.save.success")
+                );
+                assert_eq!(game.save.record_save_failures(), 2);
+                assert_eq!(game.dim, Dim::Overworld);
+                assert_eq!(
+                    Level::read(root.path()).unwrap().name,
+                    "saved despite two refused records"
+                );
+                for (_, folder, shape) in folders {
+                    assert!(
+                        SaveDir::new(folder.clone(), shape, None)
+                            .raw_chunk(0, 0)
+                            .is_some(),
+                        "{} was not written",
+                        folder.display()
+                    );
+                }
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn an_idle_level_closes_after_reporting_a_record_failure() {
+        use crate::game::native_entity_refs::tests::with_game;
+        use mod_api::{RuntimeGenerator, RuntimeLevel};
+        use sunrise_client::save::LevelShape;
+        crate::game::in_own_process(
+            "game::levels::tests::an_idle_level_closes_after_reporting_a_record_failure",
+            || {
+                mod_platform::testing::with_mods(Vec::new().into(), || {
+                    with_game(|game| {
+                        let root = tempfile::tempdir().unwrap();
+                        game.world_root = root.path().to_path_buf();
+                        game.save = Arc::new(SaveDir::new(
+                            game.world_root.clone(),
+                            LevelShape::OVERWORLD,
+                            Some(Default::default()),
+                        ));
+                        // Built-in levels unload chunks without closing; exercise the save
+                        // on close of a custom level instead.
+                        let id = "test_idle:record_failure";
+                        let custom = Dim::Extra(mod_api::__private::dimension_key(id));
+                        let flat =
+                            RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, 1);
+                        game.levels
+                            .runtime
+                            .queue_open("test_idle", id, flat)
+                            .unwrap();
+                        game.enter_level(custom).unwrap();
+                        dirty_test_chunk(game);
+                        queue_unencodable_entity_record(&game.save);
+                        let disk = SaveDir::new(game.save.root.clone(), game.save.shape, None);
+                        game.enter_level(Dim::Overworld).unwrap();
+                        game.levels.parked.get_mut(&custom).unwrap().idle = IDLE_TICKS - 1;
+                        game.close_idle_levels().unwrap();
+                        assert_eq!(game.dim, Dim::Overworld);
+                        assert!(!game.levels.parked.contains_key(&custom));
+                        assert_eq!(game.save.record_save_failures(), 1);
+                        assert!(disk.raw_chunk(0, 0).is_some());
+                    });
+                });
+            },
+        );
+    }
 
     #[test]
     fn levels_clear_empties_parked_and_heard_open() {
@@ -2457,7 +2564,6 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             {
                 let mut resources = None;
                 let mut game = open_game(&mut resources, &root, home.path(), &world);
@@ -2567,7 +2673,6 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let mut resources = None;
             let game = open_game(&mut resources, &root, home.path(), &world);
             assert_eq!(game.dim, Dim::Nether);
@@ -2636,7 +2741,6 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let mut resources = None;
             let mut game = open_game(&mut resources, &root, home.path(), &world);
             assert_eq!(*loads.lock().unwrap(), BUILT_INS);
@@ -3288,7 +3392,6 @@ impl Game<'_> {
             // `ServerLevel.tickTime`, once the clock has moved on.
             span("scheduled_functions", || self.run_scheduled_functions());
         }
-        self.tick_totem();
         self.update_totem_ready();
         span("tick_command_extras", || self.tick_command_extras());
         self.tick_world(running)

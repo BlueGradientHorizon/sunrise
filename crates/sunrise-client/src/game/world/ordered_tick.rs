@@ -170,7 +170,7 @@ impl Game<'_> {
         // run and again after an explosion, which can move or remove them.
         let mut obstacles: Option<sunrise_client::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
-        for (join, kind) in pending.drain(..) {
+        'entity: for (join, kind) in pending.drain(..) {
             self.ordered.done = Some(join);
             // ServerLevel.tick: only entities in entity-ticking chunks tick.
             match kind {
@@ -264,39 +264,130 @@ impl Game<'_> {
                         .near(area.inflate(Vec3::new(1.0, 1.0, 1.0)), &mut nearby);
                     let orb_id = self.orbs[i].id;
                     let vanilla = self.saved_refuses_damage(orb_id, "minecraft:lava", false);
+                    let server = self.remote.is_none();
+                    let lava_random = &mut self.ordered.lava_random;
+                    // ExperienceOrb's lava section uses the orb tick's own random, not level random.
+                    let mut next_float = || {
+                        lava_random
+                            .get_or_insert_with(random_source::entity)
+                            .next_float()
+                    };
+                    let side = game_side!(self);
+                    let motion = sunrise_client::motion::BodyMotion {
+                        world: &self.world,
+                        collision: self.collision,
+                        facts: self.res.facts(),
+                        blocks: Some(&self.res.motion().blocks),
+                        context: &self.loop_context,
+                        side: Some(&side),
+                    };
+                    let tick = self.orbs[i].move_before_fall(
+                        motion,
+                        target,
+                        server,
+                        &mut next_float,
+                        Some(self.border.geometry()),
+                        &self.res.motion().fluids,
+                        &nearby,
+                    );
+                    if server {
+                        self.orb_fall(i, tick.step, tick.movement.effect);
+                    }
+                    let Some(i) = self.orbs.locate(join) else {
+                        continue;
+                    };
+                    let response =
+                        self.orbs[i].move_restitution(self.body_motion(&game_side!(self)), tick);
+                    let entity = (orb_id, "minecraft:experience_orb");
+                    let mut velocity =
+                        self.finish_body_restitution(entity, self.orbs[i].position, response);
+                    let Some(mut i) = self.orbs.locate(join) else {
+                        continue;
+                    };
+                    let orb = &self.orbs[i];
+                    let (footprint, ground) = ((orb.position, orb.bounds()), orb.ground);
+                    self.body_motion(&game_side!(self))
+                        .apply_block_speed(orb.position, &mut velocity);
+                    if !tick.burnt_out {
+                        let writes = self.body_step_on(entity, footprint, &ground, &mut velocity);
+                        for write in writes {
+                            match write {
+                                mod_api::EntityWrite::Hurt {
+                                    damage_type,
+                                    amount,
+                                } => {
+                                    let Some(name) =
+                                        mod_api::__private::parts_installation::damage_type_name(
+                                            damage_type,
+                                        )
+                                    else {
+                                        continue;
+                                    };
+                                    let Some(kind) = self.health_resources.damage.id(name) else {
+                                        continue;
+                                    };
+                                    let source = sunrise_client::health::HurtSource {
+                                        damage_type: name,
+                                        causing: 0,
+                                        direct: 0,
+                                        position: None,
+                                    };
+                                    let vanilla = self
+                                        .resident_item_or_orb_immune(orb_id, entity.1, kind, false);
+                                    let invulnerable = self.native_nonliving_invulnerable(
+                                        orb_id, entity.1, source, vanilla,
+                                    );
+                                    let Some(current) = self.orbs.locate(join) else {
+                                        continue 'entity;
+                                    };
+                                    i = current;
+                                    if !invulnerable && self.orbs[i].hurt(amount) {
+                                        self.orbs.remove(i);
+                                        continue 'entity;
+                                    }
+                                }
+                                mod_api::EntityWrite::Push([x, y, z]) => {
+                                    velocity = velocity.add_vector(Vec3::new(x, y, z))
+                                }
+                                mod_api::EntityWrite::SetMovement([x, y, z]) => {
+                                    velocity = Vec3::new(x, y, z)
+                                }
+                                mod_api::EntityWrite::ResetFallDistance => {
+                                    self.orbs[i].fall_distance = 0.0
+                                }
+                                mod_api::EntityWrite::SetFireTicks(ticks) => {
+                                    self.orbs[i].fire_ticks = ticks
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
                     let registry = self.pack.assets.registry;
                     let tags = world_items!(self);
                     let block_registries = &self.pack.block_registries;
                     let hooks = &self.damage_hooks;
                     let side = game_side!(self);
                     let o = &mut self.orbs[i];
-                    // An orb has no random of its own here: lava draws from one
-                    // made on first use, apart from the level stream.
-                    let random = &mut self.ordered.lava_random;
+                    o.velocity = velocity;
+                    let audio = &mut self.audio;
+                    let lava_random = &mut self.ordered.lava_random;
                     let mut next_float = || {
-                        random
+                        lava_random
                             .get_or_insert_with(random_source::entity)
                             .next_float()
                     };
-                    let (stays, step) = {
-                        let audio = &mut self.audio;
-                        let mut on_sound = |pos: [f64; 3], pitch: f32| {
-                            audio.play("minecraft:entity.generic.burn", Some(pos), 0.4, pitch);
-                        };
-                        o.tick_among_with_hook(
-                            &mut self.world,
-                            self.res.facts(),
-                            self.collision,
-                            target,
-                            self.remote.is_none(),
-                            &mut next_float,
-                            Some(self.border.geometry()),
-                            &self.res.motion().fluids,
-                            &self.loop_context,
-                            &side,
-                            &mut on_sound,
-                            &nearby,
-                            &mut |world| {
+                    let stays = o.finish_tick(
+                        &mut &mut self.world,
+                        (self.collision, self.res.facts(), &self.loop_context, &side),
+                        &self.res.motion().fluids,
+                        tick,
+                        server,
+                        sunrise_client::entities::OrbLavaEffects {
+                            next_float: &mut next_float,
+                            on_sound: &mut |pos, pitch| {
+                                audio.play("minecraft:entity.generic.burn", Some(pos), 0.4, pitch)
+                            },
+                            invulnerable: &mut |world| {
                                 let source = sunrise_client::health::HurtSource {
                                     damage_type: "minecraft:lava",
                                     causing: 0,
@@ -320,8 +411,8 @@ impl Game<'_> {
                                     vanilla,
                                 )
                             },
-                        )
-                    };
+                        },
+                    );
                     // PowderSnowBlock.entityInside during the move, before an
                     // orb that is done is removed.
                     let snow = (o.previous, o.position, o.bounds(), o.velocity);
@@ -329,7 +420,6 @@ impl Game<'_> {
                     // Its move is filed at once, also for an orb about to go.
                     let (from, to) = (snow.0, snow.1);
                     self.entity_section_step(orb_id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
-                    self.orb_moved(i, step);
                     if !stays {
                         self.orbs.remove(i);
                     }
@@ -356,26 +446,37 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// `Entity.move`'s fall bookkeeping after orb `i`'s move: a move of a
-    /// block or more casts for a reset block or water, `checkFallDamage` adds
-    /// the drop outside water and, on the ground after a fall, posts
-    /// HIT_GROUND, then forgets it. `Block.fallOn` (farmland's random draw,
-    /// honey's slide) is not run for an orb yet, nor for the other entities
-    /// that are not living.
+    #[cfg(test)]
     pub(super) fn orb_moved(&mut self, i: usize, step: sunrise_client::entities::OrbMove) {
+        let o = &self.orbs[i];
+        let effect = self
+            .body_motion(&game_side!(self))
+            .legacy_contact(o.position, &o.ground);
+        self.orb_fall(i, step, effect);
+    }
+
+    /// The authoritative impact is part of the move, before the captured state's restitution.
+    fn orb_fall(
+        &mut self,
+        i: usize,
+        step: sunrise_client::entities::OrbMove,
+        effect: sunrise_client::motion::BodyContact,
+    ) {
         let o = &self.orbs[i];
         let mut fall = self.vehicle_fall_reset(o.fall_distance, step.from, step.moved);
         if !step.in_water && step.moved.y < 0.0 {
             fall -= f64::from(step.moved.y as f32);
         }
-        if o.on_ground {
+        if o.ground.on_ground {
+            let (id, position, bounds) = (o.id, o.position, o.bounds());
+            self.orbs[i].fall_distance = 0.0;
             if fall > 0.0 {
-                let (position, bounds) = (o.position, o.bounds());
+                self.nonliving_fall_on(id, position, effect);
                 self.post_landing_event(position, bounds, false);
             }
-            fall = 0.0;
+        } else {
+            self.orbs[i].fall_distance = fall;
         }
-        self.orbs[i].fall_distance = fall;
     }
 }
 

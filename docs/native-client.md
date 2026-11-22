@@ -37,7 +37,7 @@ cargo run --locked -p sunrise-release-sign -- verify --tag "$version" \
   --signature SHA256SUMS-musl.v2.sig --only sunrise-linux-musl-x86_64.tar.gz /path/to/musl-download
 ```
 
-For a snapshot, use `snapshot-<date>-<commit>` as the tag in the verification command. The verifier checks
+For a Dev build, use `dev-<date>-<commit>` as the tag in the verification command. The verifier checks
 both the signature against Sunrise's release key and the archive's checksum. Do not extract the archive if
 verification fails.
 

@@ -5,7 +5,7 @@
 //! (tools/test_rust_parity.py's `verify_artifacts`).
 
 use crate::pyjson::{self, Value};
-use crate::{digest, read_json, relative_display, write_json, Log};
+use crate::{Log, digest, read_json, relative_display, write_json};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -2233,9 +2233,11 @@ mod tests {
             "libraries/net/minecraft/client/9.9/client-9.9.jar",
             b"other",
         );
-        assert!(prepare(&atlauncher)
-            .unwrap_err()
-            .contains("is not the pinned file"));
+        assert!(
+            prepare(&atlauncher)
+                .unwrap_err()
+                .contains("is not the pinned file")
+        );
         put("libraries/net/minecraft/client/9.9/client-9.9.jar", &client);
         // A copy that differs only in its layout is the pinned file by its content; one with other
         // libraries is refused.
@@ -2250,9 +2252,11 @@ mod tests {
                 .replace("\"path\":\"client.jar\"", "\"path\":\"other.jar\"")
                 .as_bytes(),
         );
-        assert!(prepare(&atlauncher)
-            .unwrap_err()
-            .contains("may have rewritten it"));
+        assert!(
+            prepare(&atlauncher)
+                .unwrap_err()
+                .contains("may have rewritten it")
+        );
     }
 
     /// A launcher with a layout of its own names each file (`--version-json`, `--client-jar`,
@@ -2310,13 +2314,17 @@ mod tests {
             1
         );
         // Without them the empty folder has nothing; a wrong jar fails its pin.
-        assert!(prepare(&Inputs::default())
-            .unwrap_err()
-            .starts_with("Missing "));
+        assert!(
+            prepare(&Inputs::default())
+                .unwrap_err()
+                .starts_with("Missing ")
+        );
         put("instance/minecraft.jar", b"other");
-        assert!(prepare(&inputs)
-            .unwrap_err()
-            .contains("is not the pinned file"));
+        assert!(
+            prepare(&inputs)
+                .unwrap_err()
+                .contains("is not the pinned file")
+        );
     }
 
     /// With no launcher's files in the chosen folder, the error names where Sunrise looked and

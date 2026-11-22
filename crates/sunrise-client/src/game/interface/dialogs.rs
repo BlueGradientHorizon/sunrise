@@ -287,10 +287,10 @@ impl Game<'_> {
                 selecting: None,
             });
             game.dialogs.waiting = None;
-            game.keys.clear();
+            game.clear_device_keys();
             game.physical_keys.clear();
-            game.left = false;
-            game.right = false;
+            game.set_mapping_held("key.attack", false);
+            game.set_mapping_held("key.use", false);
             game.capture(false);
         });
     }
@@ -831,7 +831,7 @@ impl Game<'_> {
     }
 
     /// A left click on a dialog screen.
-    pub(super) fn dialog_click(&mut self) -> Result<()> {
+    pub(super) fn dialog_click(&mut self) -> Result<bool> {
         let cursor = self.cursor;
         if self.dialogs.warning {
             let (title, message, _) = warning_texts();
@@ -841,7 +841,8 @@ impl Game<'_> {
                 Some(true) => {
                     self.audio.play_button_click();
                     let reason = Text::translate("menu.custom_screen_info.disconnect", &[]);
-                    return self.leave_server(Some(reason));
+                    self.leave_server(Some(reason))?;
+                    return Ok(true);
                 }
                 Some(false) => {
                     self.audio.play_button_click();
@@ -852,7 +853,7 @@ impl Game<'_> {
                 }
                 None => {}
             }
-            return Ok(());
+            return Ok(answer.is_some());
         }
         if let Some(since) = self.dialogs.waiting {
             let (w, h) = self.gui_size();
@@ -865,21 +866,22 @@ impl Game<'_> {
                 self.audio.play_button_click();
                 self.dialogs.waiting = None;
                 self.dialog_closed();
+                return Ok(true);
             }
-            return Ok(());
+            return Ok(false);
         }
         let Some(layout) = self.dialog_layout() else {
-            return Ok(());
+            return Ok(false);
         };
         let [wx, wy, ww, wh] = layout.warning;
         if ui::hovered(cursor, wx, wy, ww, wh) {
             self.audio.play_button_click();
             self.dialogs.warning = true;
-            return Ok(());
+            return Ok(true);
         }
         let shift = self.modifiers.shift_key();
         let Some(open) = self.dialogs.open.as_mut() else {
-            return Ok(());
+            return Ok(false);
         };
         let [_, ay, _, ah] = layout.area;
         let mut action = None;
@@ -985,17 +987,20 @@ impl Game<'_> {
                     id,
                     payload: payload.map(std::sync::Arc::unwrap_or_clone),
                 },
-                Some(ClickEvent::OpenFile(_) | ClickEvent::Profiler(_)) | None => return Ok(()),
+                Some(ClickEvent::OpenFile(_) | ClickEvent::Profiler(_)) | None => {
+                    return Ok(open.focus.is_some());
+                }
             };
             let after = open.dialog.after_action;
-            return self.run_dialog_action(Some(click), after);
+            self.run_dialog_action(Some(click), after)?;
+            return Ok(true);
         };
         self.audio.play_button_click();
         let Some(index) = action else {
-            return Ok(());
+            return Ok(true);
         };
         let Some(open) = self.dialogs.open.as_mut() else {
-            return Ok(());
+            return Ok(false);
         };
         Self::dialog_values(open);
         let d = &open.dialog;
@@ -1004,7 +1009,8 @@ impl Game<'_> {
             .as_ref()
             .and_then(|a| a.click(&d.inputs, &open.values));
         let after = d.after_action;
-        self.run_dialog_action(click, after)
+        self.run_dialog_action(click, after)?;
+        Ok(true)
     }
 
     /// The mouse wheel over a dialog: a cycle button under it takes the
@@ -1097,17 +1103,19 @@ impl Game<'_> {
     }
 
     /// The left button released: a held slider lets go and clicks.
-    pub(super) fn dialog_release(&mut self) {
+    pub(super) fn dialog_release(&mut self) -> bool {
         if let Some(open) = self.dialogs.open.as_mut() {
-            if let Some(Some(Field::Multi(edit))) =
-                open.selecting.take().and_then(|i| open.fields.get_mut(i))
-            {
+            let selecting = open.selecting.take();
+            if let Some(Some(Field::Multi(edit))) = selecting.and_then(|i| open.fields.get_mut(i)) {
                 edit.release();
             }
             if open.dragging.take().is_some() {
                 self.audio.play_button_click();
+                return true;
             }
+            return selecting.is_some();
         }
+        false
     }
 
     /// A key pressed on a dialog screen: Escape closes what allows it, Tab

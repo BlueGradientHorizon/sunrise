@@ -31,6 +31,9 @@ my_mod.smod
 - **Runtime files:** a native package may carry a `runtime/` folder of data its code opens beside
   itself, listed in a top-level `[runtime]` table (below). A content mod has none.
 - Inconsistent code declarations or executable files in the archive refuse the package.
+- The full native layout is in [Package contents](../how-to/native-mods/03-data-files.md#package-contents). Packing
+  a project folder takes those files and leaves every other file out; in an archive, a file outside the layout
+  refuses the package.
 
 There is no mod-id directory level inside the archive. `sunrise-mod.toml` is the only manifest and the only
 source of the mod's id and version; Cargo's package name and version are not mod identity. IDs are plain
@@ -55,6 +58,7 @@ manifest, naming the nearest valid key when one is close. Native mods may declar
 | `game` | string | not empty, the Minecraft version (`"26.3"`) |
 | `sunrise` | string | the exact Sunrise commit, 40 lowercase hex characters |
 | `mixins` | string, optional | a horizon-mixins commit, 40 lowercase hex characters; when mixins are used it must match the pinned SDK. If omitted, `build` writes the SDK's revision into the package. See [The pin](sdk/03-in-a-project.md#the-pin). |
+| `serves_content` | bool, optional | default `false`; opts this native runtime mod in to serving content packages that name it in top-level `served_by` |
 | `module` | array of tables | optional support modules, written as `[[native.module]]` |
 
 A module has a unique, nonempty `id` (shared across `[[native.*]]` rows), a `file` naming the game source
@@ -85,9 +89,6 @@ Runtime files are not pack data: no datapack or resource pack can replace them a
 | Every file of `runtime/` is listed | `runtime/<name>: not listed in [runtime]` |
 | Every listed file exists | `[runtime] lists <name>, but the package has no runtime/<name>` |
 | Each file matches its SHA-512 | `runtime/<name> doesn't match its [runtime] sha512` |
-| At most 256 files | `…over the 256-file runtime cap` |
-| At most 64 MiB a file | `runtime/<name> is over 64 MiB, the per-file runtime cap` |
-| At most 256 MiB in all | `runtime/ is over 256 MiB, the package's runtime total cap` |
 | A content mod has none | `a content mod has no code, so no [runtime]` |
 
 The hashes are checked once, when the package opens: at install, at a dedicated server's or a game's start
@@ -104,9 +105,9 @@ base = { version = "^1", optional = false, side = "both", order = "after", reaso
 Versions refer to `sunrise-mod.toml`, not Cargo metadata. `optional` defaults to false;
 `side` defaults to `"both"`; `order` is `"after"` (default), `"before"` or `"none"`.
 After means the dependency's listeners/content precede the owner's; before reverses that
-**dispatch** edge; none removes it. Reason is at most 512 bytes and URL must start with
-`https://`. Unknown fields and malformed values refuse the manifest; there is no `kind`
-key or alternate optional spelling.
+**dispatch** edge; none removes it. `reason` is a string, and `url` must start with
+`https://`. Unknown fields and malformed values are reported when the manifest is parsed;
+there is no `kind` key or alternate optional spelling.
 
 Side is the **installation**, not the logical side executing a hook: an integrated server
 belongs to the client installation, a dedicated server to the server installation.
@@ -121,16 +122,28 @@ inventory enforce physical requirements. Dispatch order, side filters and instan
 remove those requirements or bypass ABI and build identity checks.
 See [Dependencies between mods](../concepts/dependencies.md).
 
-Top-level `[properties]` holds free-form values other mods read: strings, integers, floats and booleans only,
-at most 64 keys and 8 KiB (keys and strings by length, 8 bytes per number, 1 per boolean); a table, an array
-or a larger table refuses the package. A mod reads any loaded package's manifest through
+Top-level `served_by = "<native_mod_id>"` lets a content package delegate code-side namespace authority to an opting-in native runtime mod (for example a bytecode or script host that compiles once and serves generated `.smod` packages). Both sides opt in:
+
+- The content package sets top-level `served_by = "<native_mod_id>"` (refused on `[native]` packages, self-references, invalid IDs, and reserved namespaces or mod-site IDs).
+- The native host sets `serves_content = true` under `[native]`.
+- At load, the target must be an installed `[native]` mod with `serves_content = true`, its `side` must cover the content package's `side` (`side = "both"` content requires a `side = "both"` host), and the content layer orders after its host. `dependency-overrides.toml` cannot drop this requirement.
+- `PackageInfo::namespaces()` stays each package's own namespaces (keeping namespace collision checks intact), while `PackageInfo::served_by()` exposes the host ID. Every namespace-owned native registration—blocks and items, block entity types, fluids, general entity types, attributes, custom stats, game rules, recipe types and serializers, recipe book types, menu recipe books, menu screen dispatch, recipe property sets, render pipelines, armour models, arm poses, attachment types, biome modifiers, datapack registries, client dynamic textures (still bounded by the calling host's per-mod budget), and runtime levels—together with mob-effect tick ownership (`MobEffectPart`), delegates uniformly to the serving host through the pre-resolved namespace authority. Only filesystem paths keyed strictly by package ID (such as `config/<mod_id>.toml`) stay keyed to the host's own ID. Client-required declarations (blocks, items, block entity types, world fluids, general entity types, attributes, custom stats, synced attachments, datapack registries, or required client-bound payload channels) into a `side = "server"` served package's namespace are refused even when the host itself is `side = "both"`. Reserved namespaces (`minecraft`, `c`, `sunrise`) stay unclaimable, and ordinary mods see no change.
+- **Host-runtime trust contract:** setting `serves_content = true` allows any installed content package to name the host in `served_by`. The loader verifies package syntax, opt-in, side coverage, and load order, not provenance; the host runtime is responsible for checking which `served_by` packages in `context.mods()` it actually generated or understands before registering parts or declarations for their namespaces.
+- A served content package failing to load (missing jar, unreadable file, or content refusal) refuses startup so host code never runs without its served data. Toggling either the served package or its serving host on the Mods screen requires a restart; when a serving host is disabled at startup, its served packages are withheld (with a Mods-screen note naming the disabled host) rather than loaded without it.
+
+Top-level `[properties]` holds free-form values other mods read: strings, integers, floats and booleans only.
+Unsupported values, such as arrays or tables, are refused when the manifest is parsed. The complete
+`sunrise-mod.toml` is limited to 32 MiB; there is no separate limit on property count, property size or
+reason length. A mod reads any loaded package's manifest through
 `context.mods().get(id)`: `PackageInfo` gives `name`, `description`, `authors`, `license`, `homepage`,
-`issues`, `icon_path`, `runtime` (`Native` or `None` for content), `dependencies` and
-`property(key)`. Each readonly `PackageDependency` exposes `id()`, `version()`, `kind()`,
-`order()`, `side()`, `reason()` and `url()`. `DependencyKind` is `Required`, `Optional`,
-`Incompatible`, `Discouraged` or `LoadBefore`; `DependencyOrder` is `After`, `Before` or `None`.
-These are all original declarations, including inactive sides, not the effective override-rewritten
-graph. `LoadBefore` is ordering-only: its version `*` is a marker, order is `Before` and side
+`issues`, `icon_path`, `kind`, `served_by`, `dependencies` and `property(key)`. Each read-only
+`PackageDependency` exposes `id()`, `version()`, `kind()`, `order()`, `side()`, `reason()` and
+`url()`. `DependencyKind` is `Required`, `Optional`, `Incompatible`, `Discouraged` or `LoadBefore`;
+`DependencyOrder` is `After`, `Before` or `None` and still reads and writes the lowercase manifest
+strings through Serde. The package metadata has no Wire encoding of its own. To send a fact from
+it, copy just the fields your protocol needs into your own Wire record. The declarations include
+inactive sides and do not reflect the effective override-rewritten graph. `LoadBefore` is
+ordering-only: its version `*` is a marker, order is `Before` and side
 is `Both`, not an API library declaration. The metadata is the same on client and server (NeoForge's
 `ModContainer.getModInfo`, `IModInfo` and `getModProperties`).
 
@@ -148,7 +161,7 @@ shaders = { version = "*", reason = "Flickers with the water shader", url = "htt
 ```
 
 An `[incompatible]` or `[discouraged]` entry is a semver requirement on the other mod's version, or a
-table with `version` (every version when left out), `reason` (at most 512 bytes), `url` (`https://`
+table with `version` (every version when left out), `reason` (a string), `url` (`https://`
 only) and `side` (`"both"`, the default, `"client"` or `"server"`, the dedicated server). A rule
 about a mod that isn't loaded holds nothing. A matching incompatible mod refuses startup with the
 owner's reason and link; a matching discouraged mod loads with a warning in the log and on

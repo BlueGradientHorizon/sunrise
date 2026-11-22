@@ -1,12 +1,13 @@
 //! The dedicated preparation's only downloads: Mojang's pinned server jar and its Java runtime.
 
 use crate::{
-    artifacts::{safe_relative, Lock},
+    Log,
+    artifacts::{Lock, safe_relative},
     digest,
     java::{self, Jdk},
     mkdir,
     pyjson::{self, Value},
-    read_json, Log,
+    read_json,
 };
 use std::{
     fs, io,

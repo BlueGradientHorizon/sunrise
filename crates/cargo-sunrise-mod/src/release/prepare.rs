@@ -1,6 +1,6 @@
 //! Open only the exact reviewed source in a rebuild plan. Never run Cargo here.
 use super::{output_dir, plan::ReviewedSource};
-use crate::{bounded, options::Options};
+use crate::{bounded, options::Options, registry_source::write_files};
 use serde::Deserialize;
 use std::{fs, io::Write, path::Path};
 use sunrise_mod_package::{
@@ -128,49 +128,13 @@ fn prepare(plan: &Rebuild, package: &Path, out: &Path, build: bool) -> Result<()
         bundle.files.insert(MANIFEST.to_owned(), text.into_bytes());
     }
     let stage = tempfile::tempdir_in(parent).map_err(|error| error.to_string())?;
-    for (name, bytes) in bundle.files {
-        if name == USES_FILE || (!build && name != MANIFEST) {
-            continue;
-        }
-        #[cfg(windows)]
-        if name.split('/').any(|part| {
-            // Win32 strips trailing spaces/dots and can treat DOS device names as files.
-            let stem = part
-                .split('.')
-                .next()
-                .unwrap_or(part)
-                .trim_end()
-                .to_ascii_uppercase();
-            part.ends_with([' ', '.'])
-                || matches!(
-                    stem.as_str(),
-                    "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
-                )
-                || ["COM", "LPT"].into_iter().any(|prefix| {
-                    stem.strip_prefix(prefix).is_some_and(|number| {
-                        matches!(
-                            number,
-                            "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
-                        )
-                    })
-                })
-        }) {
-            return Err(format!(
-                "{name}: a rebuild cannot write a Windows-aliased path"
-            ));
-        }
-        let file = stage.path().join(&name);
-        let write = || -> std::io::Result<()> {
-            fs::create_dir_all(file.parent().expect("file in the staging directory"))?;
-            // Also detects case-folding collisions on case-insensitive hosts.
-            fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&file)?
-                .write_all(&bytes)
-        };
-        write().map_err(|error| format!("{name}: {error}"))?;
-    }
+    write_files(
+        stage.path(),
+        bundle
+            .files
+            .into_iter()
+            .filter(|(name, _)| name != USES_FILE && (build || name == MANIFEST)),
+    )?;
     fs::rename(stage.path(), &out).map_err(|error| format!("{}: {error}", out.display()))
 }
 

@@ -4,7 +4,7 @@ use mod_api::{
     BlockEntityItemError as Error, Host, HostTransaction, ITEMS, ItemResource, ServerHost,
     Transaction,
 };
-use std::sync::Arc;
+use std::{ops::ControlFlow, sync::Arc};
 use sunrise_client::containers::{BlockEntity, ModBlockEntity, ModContainer};
 use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::Tag;
@@ -788,10 +788,18 @@ fn storage_asks_a_game_container_by_kind_and_rolls_back_with_its_transaction() {
                 [64, 36, 5],
                 "slots back as they were, in their order"
             );
-            let mut page = mod_api::StoragePage::new(64).unwrap();
-            assert_eq!(storage.page(game, 0, &mut page), Ok(None));
-            assert_eq!(page.entries().len(), 3);
-            // A furnace's top takes only into its input, and its bottom gives only its result.
+            let mut visited = Vec::new();
+            storage
+                .visit_entries(game, &mut |kind, amount| {
+                    visited.push((kind.clone(), amount));
+                    ControlFlow::Continue(())
+                })
+                .unwrap();
+            assert_eq!(
+                visited,
+                [(stone.clone(), 64), (stone.clone(), 36), (dirt, 5)]
+            );
+            // A furnace exposes only its input from above, and its output then fuel from below.
             let furnace = game
                 .pack
                 .assets
@@ -799,10 +807,11 @@ fn storage_asks_a_game_container_by_kind_and_rolls_back_with_its_transaction() {
                 .default_state("minecraft:furnace")
                 .unwrap();
             game.world.set(5, 64, 1, furnace).unwrap();
-            game.world.block_entities.insert(
-                (5, 64, 1),
-                BlockEntity::for_block("minecraft:furnace").unwrap(),
-            );
+            let (fuel, output) = ("minecraft:coal", "minecraft:iron_ingot");
+            let mut furnace_entity = BlockEntity::for_block("minecraft:furnace").unwrap();
+            furnace_entity.slots_mut()[1] = Some(ItemStack::new(fuel, 7));
+            furnace_entity.slots_mut()[2] = Some(ItemStack::new(output, 11));
+            game.world.block_entities.insert((5, 64, 1), furnace_entity);
             let top = level
                 .capability(
                     game,
@@ -823,6 +832,15 @@ fn storage_asks_a_game_container_by_kind_and_rolls_back_with_its_transaction() {
                 assert_eq!(top.insert(host, tx, &stone, 200), 64, "the input slot only");
                 assert_eq!(bottom.extract(host, tx, &stone, 64), 0, "not the input");
             });
+            assert_eq!(top.amount(game, &stone), Ok(64), "input is still occupied");
+            let mut bottom_entries = Vec::new();
+            bottom
+                .visit_entries(game, &mut |kind, amount| {
+                    bottom_entries.push((kind.clone(), amount));
+                    ControlFlow::Continue(())
+                })
+                .unwrap();
+            assert_eq!(bottom_entries, [(of(output), 11), (of(fuel), 7)]);
             assert!(game.transactions.is_empty());
         });
     });
@@ -869,7 +887,6 @@ fn storage_writes_abort_to_the_exact_state_of_every_container_kind() {
                 // Blaze powder goes to its fuel slot, the one slot it takes.
                 ("minecraft:brewing_stand", None, "minecraft:blaze_powder"),
             ];
-            let mut answered = Vec::new();
             for (block, side, item) in kinds {
                 // Placed as the game places it, so each gets its own block entity.
                 for name in ["minecraft:air", block] {
@@ -878,10 +895,9 @@ fn storage_writes_abort_to_the_exact_state_of_every_container_kind() {
                         .unwrap();
                 }
                 game.hoppers.remove(&pos);
-                let Some(storage) = level.capability(game, &mod_api::STORAGE, [3, 64, 1], side)
-                else {
-                    continue;
-                };
+                let storage = level
+                    .capability(game, &mod_api::STORAGE, [3, 64, 1], side)
+                    .unwrap_or_else(|| panic!("{block} must answer STORAGE"));
                 let resource = of(item);
                 let before = whole_state(game, pos);
                 let aborted: Result<(), ()> =
@@ -906,25 +922,7 @@ fn storage_writes_abort_to_the_exact_state_of_every_container_kind() {
                     assert_eq!(storage.insert(host, tx, &resource, 1), 1, "{block}")
                 });
                 assert_eq!(storage.amount(game, &resource), Ok(1), "{block}");
-                answered.push(block);
             }
-            eprintln!("STORAGE answered for: {answered:?}");
-            for block in [
-                "minecraft:chest",
-                "minecraft:barrel",
-                "minecraft:shulker_box",
-                "minecraft:dispenser",
-                "minecraft:hopper",
-                "minecraft:furnace",
-                "minecraft:jukebox",
-                "minecraft:brewing_stand",
-            ] {
-                assert!(answered.contains(&block), "{block} answers STORAGE");
-            }
-            assert!(
-                !answered.contains(&"minecraft:decorated_pot"),
-                "a pot takes items from hoppers only, never through the capability"
-            );
             assert!(game.transactions.is_empty());
         });
     });
@@ -961,13 +959,12 @@ fn an_aborted_bulk_transfer_conserves_every_item() {
             };
             let (before_a, before_b) = (slots_at(game, a), slots_at(game, b));
             let before = total(game);
-            let aborted: Result<u64, mod_api::StorageError> = (game as &mut dyn ServerHost)
-                .transaction(|host, tx| {
-                    let moved =
-                        mod_api::transfer_matching(host, &from, &to, |_| true, u64::MAX, tx)?;
-                    assert!(moved > 0);
-                    Err(mod_api::StorageError::ZeroPage)
-                });
+            let aborted: Result<(), ()> = (game as &mut dyn ServerHost).transaction(|host, tx| {
+                let moved = mod_api::transfer_matching(host, &from, &to, |_| true, u64::MAX, tx)
+                    .expect("test transfer succeeds");
+                assert!(moved > 0);
+                Err(())
+            });
             assert!(aborted.is_err());
             assert_eq!((slots_at(game, a), slots_at(game, b)), (before_a, before_b));
             let moved = (game as &mut dyn ServerHost)
@@ -1136,7 +1133,6 @@ fn timing_storage_against_items_across_barrel_cells() {
                 })
                 .collect();
             let mut awake = vec![true; pipes.len()];
-            let mut page = mod_api::StoragePage::new(mod_api::MAX_STORAGE_PAGE).unwrap();
             let mut moves = 0u32;
             let mut run_storage = |game: &mut super::Game<'_>| {
                 let mut moved = 0;
@@ -1144,8 +1140,13 @@ fn timing_storage_against_items_across_barrel_cells() {
                     if !awake[cell] {
                         continue;
                     }
-                    from.page(game, 0, &mut page).unwrap();
-                    let Some((kind, _)) = page.entries().first().cloned() else {
+                    let mut first = None;
+                    from.visit_entries(game, &mut |kind, _| {
+                        first = Some(kind.clone());
+                        ControlFlow::Break(())
+                    })
+                    .unwrap();
+                    let Some(kind) = first else {
                         awake[cell] = false;
                         continue;
                     };

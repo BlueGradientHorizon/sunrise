@@ -1,6 +1,6 @@
 //! The game's shared read-only tables: `Resources` (blocks, items, recipes, mob types, biomes),
 //! `UiResources` and `PackResources`.
-use super::*;
+use super::{api_values::TryIntoApi, *};
 use std::path::Path;
 
 pub(super) fn load_animate_tables(
@@ -311,6 +311,12 @@ impl PackResources {
         light: Arc<LightTables>,
         draws: bool,
     ) -> Result<Self> {
+        let water_overlay_state = assets
+            .registry
+            .default_state("minecraft:water")
+            .ok_or("block registry is missing the default minecraft:water state")?
+            .try_into_api()
+            .map_err(|e| format!("cannot bind the default minecraft:water state: {e:?}"))?;
         // These pack-local resources do not depend on one another. Decode the
         // images and language map together so a custom-sky pack cannot put all
         // of the pack assembly on the critical path behind its own files.
@@ -384,6 +390,7 @@ impl PackResources {
             }),
             block_registries: native_block_states::block_registries(assets.registry),
             assets,
+            water_overlay_state,
             render,
             item_renderer: Arc::new(item_renderer),
             source: root.source().clone(),

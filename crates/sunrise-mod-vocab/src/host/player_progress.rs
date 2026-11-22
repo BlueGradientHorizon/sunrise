@@ -9,8 +9,8 @@ pub trait PlayerProgressBackend {
     /// Side: server.
     /// The value of statistic `stat_type` for `key` (`minecraft:stone`,
     /// `minecraft:jump`...), as `ServerStatsCounter.getValue`: 0 when never
-    /// counted.
-    #[access(WorldOnly)]
+    /// counted. Reads the player's own counter even during a nested turn that
+    /// displaces them. In `player_stat_award` the award has not been applied yet.
     fn player_stat(&self, player: PlayerRef, stat_type: StatType, key: &str) -> Option<i32>;
 }
 /// The handles' writes of the `player_progress` area, implemented by the game and reached through [`BackendMut`].
@@ -36,7 +36,6 @@ pub trait PlayerProgressBackendMut {
     ///
     /// `test` is lent to this call only. A failed test stops further testing
     /// and reports `Test`; earlier matching criteria may already be granted.
-    #[access(WorldOnly)]
     fn player_trigger_criterion(
         &mut self,
         player: PlayerRef,
@@ -50,7 +49,6 @@ pub trait PlayerProgressBackendMut {
     /// `Ok(())` means reached, even if no criterion matched. Refuses remote clients
     /// (`NotServer`), stale/offline/displaced players (`PlayerUnavailable`), and
     /// unloaded positions (`UnloadedChunk`).
-    #[access(WorldOnly)]
     fn player_trigger_block_use(
         &mut self,
         player: PlayerRef,
@@ -66,7 +64,6 @@ pub trait PlayerProgressBackendMut {
     /// `Ok(())` means reached, even if nothing matched. Refuses remote clients
     /// (`NotServer`), stale/offline/displaced players (`PlayerUnavailable`), and
     /// unloaded positions (`UnloadedChunk`).
-    #[access(WorldOnly)]
     fn player_trigger_item_used_on_block(
         &mut self,
         player: PlayerRef,
@@ -81,7 +78,6 @@ pub trait PlayerProgressBackendMut {
     /// even if nothing matched. Refuses clients (`NotServer`), stale/offline/displaced
     /// players (`PlayerUnavailable`) and invalid stacks (`Stack(StackWriteError)`)
     /// before firing.
-    #[access(WorldOnly)]
     fn player_trigger_consume_item(
         &mut self,
         player: PlayerRef,
@@ -92,7 +88,6 @@ pub trait PlayerProgressBackendMut {
     /// for its own counts, so `player_stat_award` hears it and may rewrite or cancel
     /// it, and scoreboard criteria follow. False for a player it can't
     /// reach.
-    #[access(WorldOnly)]
     fn player_award_stat(
         &mut self,
         player: PlayerRef,
@@ -103,6 +98,5 @@ pub trait PlayerProgressBackendMut {
     /// Side: server.
     /// `Player.resetStat`: sets the statistic back to 0, which scoreboard
     /// criteria follow. False for a player it can't reach.
-    #[access(WorldOnly)]
     fn player_reset_stat(&mut self, player: PlayerRef, stat_type: StatType, key: &str) -> bool;
 }

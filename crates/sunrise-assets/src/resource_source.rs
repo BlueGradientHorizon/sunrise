@@ -55,6 +55,9 @@ fn copy_resource_bytes(
     out.write_all(bytes)
 }
 
+type ReadFixed = dyn Fn(&str, Option<u64>) -> io::Result<Vec<u8>> + Send + Sync;
+type FingerprintFixed = dyn Fn(&str) -> Option<u64> + Send + Sync;
+
 enum Storage {
     Directory(PathBuf),
     ServerProfile(ResourceSource),
@@ -62,6 +65,11 @@ enum Storage {
     Prefix {
         source: ResourceSource,
         prefix: String,
+    },
+    Fixed {
+        names: Arc<[String]>,
+        read: Box<ReadFixed>,
+        fingerprint: Box<FingerprintFixed>,
     },
     /// Winning files and any retained file or named source stacks, lowest layer first.
     Index(
@@ -137,6 +145,7 @@ impl std::fmt::Debug for ResourceSource {
             Storage::Archive(_) => "Archive",
             Storage::Prefix { .. } => "Prefix",
             Storage::Index(..) => "Index",
+            Storage::Fixed { .. } => "Fixed",
         };
         f.debug_tuple("ResourceSource").field(&kind).finish()
     }
@@ -336,6 +345,21 @@ impl ResourceSource {
     fn from(storage: Storage) -> Self {
         Self(Arc::new(storage), Arc::default())
     }
+    /// A fixed, sorted list with lazy reads from an already opened source.
+    /// The reader receives a listed name and either no limit or a maximum prefix length.
+    /// The fingerprint identifies that file's current version for derived resource caches.
+    pub fn fixed(
+        names: Arc<[String]>,
+        read: impl Fn(&str, Option<u64>) -> io::Result<Vec<u8>> + Send + Sync + 'static,
+        fingerprint: impl Fn(&str) -> Option<u64> + Send + Sync + 'static,
+    ) -> Self {
+        Self::from(Storage::Fixed {
+            names,
+            read: Box::new(read),
+            fingerprint: Box::new(fingerprint),
+        })
+    }
+
     pub fn indexed(files: BTreeMap<String, Resource>) -> Self {
         Self::from(Storage::Index(files, BTreeMap::new(), Arc::from([])))
     }
@@ -467,6 +491,7 @@ impl ResourceSource {
             }
             Storage::Archive(archive) => archive.read(name),
             Storage::Prefix { source, prefix } => source.read(&format!("{prefix}{name}")),
+            Storage::Fixed { names, read, .. } => read_fixed(names, read.as_ref(), name, None),
             Storage::Index(files, ..) => files
                 .get(name)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, name.to_owned()))?
@@ -484,7 +509,7 @@ impl ResourceSource {
             Storage::ServerProfile(source) => server_resource(name)
                 .then(|| source.folder_of(name))
                 .flatten(),
-            Storage::Archive(_) => None,
+            Storage::Archive(_) | Storage::Fixed { .. } => None,
             Storage::Prefix { source, prefix } => source.folder_of(&format!("{prefix}{name}")),
             Storage::Index(files, ..) => match &files.get(name)?.0 {
                 ResourceStorage::File { source, name } => source.folder_of(name),
@@ -522,6 +547,9 @@ impl ResourceSource {
                 ResourceStorage::File { source, name } => source.copy_to(name, out, budget),
                 ResourceStorage::Bytes(bytes) => copy_resource_bytes(bytes, out, budget),
             },
+            Storage::Fixed { names, read, .. } => {
+                copy_resource_bytes(&read_fixed(names, read.as_ref(), name, None)?, out, budget)
+            }
             Storage::Directory(root) => copy_resource_bytes(
                 &sunrise_core::prepared_files::read(&root.join(name))?,
                 out,
@@ -551,6 +579,7 @@ impl ResourceSource {
             }
             Storage::Archive(archive) => archive.read_head(name, max),
             Storage::Prefix { source, prefix } => source.read_head(&format!("{prefix}{name}"), max),
+            Storage::Fixed { names, read, .. } => read_fixed(names, read.as_ref(), name, Some(max)),
             Storage::Index(files, ..) => match &files
                 .get(name)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, name.to_owned()))?
@@ -581,6 +610,9 @@ impl ResourceSource {
             Storage::Archive(archive) => archive.contains(name),
             Storage::Prefix { source, prefix } => source.contains(&format!("{prefix}{name}")),
             Storage::Index(files, ..) => files.contains_key(name),
+            Storage::Fixed { names, .. } => {
+                names.binary_search_by(|n| n.as_str().cmp(name)).is_ok()
+            }
         }
     }
     /// Read only when the complete resource fits the limit. Bounds actual bytes
@@ -603,6 +635,9 @@ impl ResourceSource {
             Storage::Archive(archive) => return archive.read_limited(name, max),
             Storage::Prefix { source, prefix } => {
                 return source.read_limited(&format!("{prefix}{name}"), max);
+            }
+            Storage::Fixed { names, read, .. } => {
+                read_fixed(names, read.as_ref(), name, Some(max.saturating_add(1)))?
             }
             Storage::Index(files, ..) => match &files
                 .get(name)
@@ -663,6 +698,11 @@ impl ResourceSource {
                 .list(&format!("{base}{prefix}"))
                 .into_iter()
                 .filter_map(|name| name.strip_prefix(base).map(str::to_owned))
+                .collect(),
+            Storage::Fixed { names, .. } => names[names.partition_point(|n| n.as_str() < prefix)..]
+                .iter()
+                .take_while(|name| name.starts_with(prefix))
+                .cloned()
                 .collect(),
             Storage::Index(files, ..) => files
                 .range(prefix.to_owned()..)
@@ -754,6 +794,7 @@ impl ResourceSource {
             Storage::Prefix { source, prefix } => {
                 source.file_fingerprint(&format!("{prefix}{name}"), archives)
             }
+            Storage::Fixed { fingerprint, .. } => fingerprint(name),
             Storage::Index(files, ..) => match &files.get(name)?.0 {
                 ResourceStorage::File { source, name } => source.file_fingerprint(name, archives),
                 ResourceStorage::Bytes(bytes) => {
@@ -764,6 +805,18 @@ impl ResourceSource {
             },
         }
     }
+}
+
+fn read_fixed(
+    names: &[String],
+    read: &ReadFixed,
+    name: &str,
+    limit: Option<u64>,
+) -> io::Result<Vec<u8>> {
+    names
+        .binary_search_by(|listed| listed.as_str().cmp(name))
+        .map_err(|_| io::Error::new(io::ErrorKind::NotFound, name.to_owned()))?;
+    read(name, limit)
 }
 
 #[cfg(test)]

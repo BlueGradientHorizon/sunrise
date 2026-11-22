@@ -153,7 +153,7 @@ gh() {
             self.assertNotIn("--target", command)
             self.assertNotIn("--prerelease", command)
 
-    def test_a_snapshot_is_signed_for_its_channel_and_published_under_its_own_tag(self):
+    def test_a_dev_build_is_signed_for_its_channel_and_published_under_its_own_tag(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             dist = root / "dist"
@@ -164,8 +164,8 @@ gh() {
             (root / "tools/ci").mkdir(parents=True)
             shutil.copy(ROOT / "tools/ci/sign_release.sh", root / "tools/ci")
             env = dict(os.environ, GITHUB_REPOSITORY="horizon-rust/horizon", EPHEMERAL="yes", SHA="0123456789abcdef",
-                       SHORT="0123456", DATE="2026-11-13", KIND="snapshot", SIGN_FOR="snapshot", ALSO_FOR="snapshot-2026-11-13-0123456",
-                       TAG="snapshot-2026-11-13-0123456", RELEASE_SIGNING_KEY="", RELEASE_SIGNING_KEY_NEXT="")
+                       SHORT="0123456", DATE="2026-11-13", KIND="dev", SIGN_FOR="dev", ALSO_FOR="dev-2026-11-13-0123456",
+                       TAG="dev-2026-11-13-0123456", RELEASE_SIGNING_KEY="", RELEASE_SIGNING_KEY_NEXT="")
             signed = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')],
                                     cwd=root, env=env, text=True, capture_output=True)
             self.assertEqual(signed.returncode, 0, signed.stderr)
@@ -179,14 +179,14 @@ gh() { printf '%s\\n' "$@" > gh-args; for arg in "$@"; do case "$arg" in dist/*)
                                        cwd=root, env=env, text=True, capture_output=True)
             self.assertEqual(published.returncode, 0, published.stderr)
             args = (root / "gh-args").read_text().splitlines()
-            self.assertEqual(args[:3], ["release", "create", "snapshot-2026-11-13-0123456"])
-            self.assertIn("Snapshot 2026-11-13 · 0123456", args)
+            self.assertEqual(args[:3], ["release", "create", "dev-2026-11-13-0123456"])
+            self.assertIn("Dev 2026-11-13 · 0123456", args)
             self.assertIn("--prerelease", args)
             self.assertNotIn("nightly", args)
             files = {Path(arg).name for arg in args if arg.startswith("dist/")}
             self.assertEqual(files, present | {"SHA256SUMS", "SHA256SUMS.sig", "SHA256SUMS.v2.sig", "smoke-test.json",
                                                "nightly-notes.md"})
-            # A snapshot's version signed beside the nightly channel is refused before anything is signed.
+            # A Dev build's version signed beside the nightly channel is refused before anything is signed.
             refused = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')], cwd=root,
                                      env=dict(env, KIND="nightly", SIGN_FOR="nightly"), text=True, capture_output=True)
             self.assertNotEqual(refused.returncode, 0)

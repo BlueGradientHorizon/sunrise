@@ -712,10 +712,64 @@ pub fn game_terrain(
     }
 }
 
+/// The geometry a pack draws with, as the game gives it (`Renderer::pack_inputs`): `terrain`
+/// from the pack's block atlas ([`PackAtlas::terrain_inputs`], none without an atlas), `flat` when
+/// terrain draws pull their own vertices, and the sprite layers of lava (`game_terrain`).
+pub fn game_inputs(
+    terrain: Option<sunrise_shaders::GbuffersInputs>,
+    flat: bool,
+    lava: &[u16],
+) -> sunrise_shaders::GameInputs {
+    // A geometry stage reads flat draws' vertices itself, through their index buffer.
+    let terrain_geometry = terrain.clone().filter(|_| flat).map(|mut inputs| {
+        inputs.declarations.push_str(
+            "layout(set = 5, binding = 0) readonly buffer HzIndices { uint hz_indices[]; };\n",
+        );
+        sunrise_shaders::GeometryInputs {
+            inputs,
+            // Flat terrain inputs pull their own vertex (`PULL_FLAT`, `gl_VertexIndex` → `hz_vertex_index`).
+            pull: String::new(),
+            index: "hz_indices[@]".to_owned(),
+        }
+    });
+    sunrise_shaders::GameInputs {
+        terrain_geometry,
+        entity_geometry: Some(crate::pack_entities::geometry_inputs()),
+        sky: Some(crate::pack_sky::inputs()),
+        celestial: Some(crate::pack_sky::celestial_inputs()),
+        entities: Some(crate::pack_entities::inputs()),
+        clouds: Some(crate::pack_entities::cloud_inputs()),
+        weather: Some(crate::pack_weather::inputs()),
+        lines: Some(crate::pack_lines::inputs()),
+        hand: Some(crate::pack_hand::adapt_hand_inputs(
+            crate::pack_entities::inputs(),
+        )),
+        ..game_terrain(terrain, lava)
+    }
+}
+
 impl PackAtlas {
     /// The vertex inputs of a gbuffers program drawing terrain (`TerrainVertex`, terrain.wgsl's
     /// `vs_terrain` or, for `flat` draws, `vs_terrain_flat`), in atlas coordinates.
     pub fn terrain_inputs(&self, flat: bool) -> sunrise_shaders::GbuffersInputs {
+        Self::terrain_inputs_sized(
+            self.size(),
+            self.columns,
+            self.sprite,
+            self.separate_ao,
+            flat,
+        )
+    }
+
+    /// [`Self::terrain_inputs`] of an atlas of `size` pixels, `columns` sprites of `sprite` pixels
+    /// a row (in grid draws) and `separate_ao`, without the atlas: only these reach the GLSL.
+    pub fn terrain_inputs_sized(
+        size: [u32; 2],
+        columns: u32,
+        sprite: u32,
+        separate_ao: bool,
+        flat: bool,
+    ) -> sunrise_shaders::GbuffersInputs {
         // Flat draws pull their vertices from the arena page (`PULL_FLAT`), which may hold
         // solid quads in the compact layout; others read them as vertex attributes.
         let mut declarations = if flat {
@@ -747,10 +801,9 @@ impl PackAtlas {
             declarations.push_str("layout(location = 5) in vec4 hz_v_origin;\n");
             "hz_v_origin"
         };
-        let [width, height] = self.size();
+        let [width, height] = size;
         // A sprite's cell in its own sides, and the share of the atlas a side is: from the table
         // in flat draws (`rects_table`), from the grid in others.
-        let columns = self.columns;
         let (cell, side, scale) = if flat {
             (
                 "uvec2 hz_rect = uvec2(0u, 1u);\n    \
@@ -766,19 +819,12 @@ impl PackAtlas {
                     "hz_cell = vec2(float(hz_layer % {columns}u), float(hz_layer / {columns}u));\n    "
                 ),
                 "1.0",
-                [
-                    self.sprite as f32 / width as f32,
-                    self.sprite as f32 / height as f32,
-                ],
+                [sprite as f32 / width as f32, sprite as f32 / height as f32],
             )
         };
         // UVs past a sprite (models up to 2, distant tiles) cannot repeat in an atlas: clamped.
         // The colour's alpha holds HDR's emission level (`mesher::EMISSION_BITS`): packs get 1 unless separate_ao.
-        let color_a = if self.separate_ao {
-            "hz_v_color.a"
-        } else {
-            "1.0"
-        };
+        let color_a = if separate_ao { "hz_v_color.a" } else { "1.0" };
         // A vertex's place in its section goes down to the 32768th of a block below it: read back
         // with a probe pack of ours, Iris 1.11.7's terrain `gl_Vertex` has that for every position
         // we read (water tops at 8/9 - 0.001, plants' offsets), on all three axes (#8464). A fit,
@@ -888,10 +934,10 @@ mod tests {
 
     /// Two arrays of 2x2 sprites, one layer split; each layer a colour of its own.
     #[test]
+    #[ignore = "daily"]
     fn layers_land_in_their_cells() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::test_gpu::adapter() else {
             return;
         };
         let (device, queue) =
@@ -1014,10 +1060,10 @@ mod tests {
     /// vanilla's `Stitcher` by hand: holders of 6, 4 and 3 px at (0, 0), (8, 0) and (8, 4) in a 16
     /// by 8 atlas. Each sprite has its own pixels, and its padding repeats its edge.
     #[test]
+    #[ignore = "daily"]
     fn stitched_sprites_keep_their_own_size_and_padding() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::test_gpu::adapter() else {
             return;
         };
         let (device, queue) =
@@ -1084,9 +1130,7 @@ mod tests {
     }
 
     fn material_fixture(animated: bool) {
-        let instance = crate::test_gpu::instance();
-        // No adapter (a CI runner without a GPU): skip, as the module's other readback tests do.
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::test_gpu::adapter() else {
             return;
         };
         let (device, queue) =
@@ -1212,22 +1256,24 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn stitched_material_maps_share_colour_rectangles() {
         let _gpu = crate::test_gpu::lock();
         material_fixture(false);
     }
 
     #[test]
+    #[ignore = "daily"]
     fn animated_stitched_material_updates_only_its_rectangle() {
         let _gpu = crate::test_gpu::lock();
         material_fixture(true);
     }
 
     #[test]
+    #[ignore = "daily"]
     fn terrain_inputs_respects_separate_ao() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::test_gpu::adapter() else {
             return;
         };
         let (device, _) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
