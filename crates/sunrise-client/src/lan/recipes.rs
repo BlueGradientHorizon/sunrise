@@ -167,7 +167,7 @@ fn normalize_ingredients(recipe: &ResolvedRecipe, items: &Items) -> Option<Value
     let mut projection = file.clone();
     if !file["type"]
         .as_str()
-        .is_some_and(|t| t.starts_with("minecraft:"))
+        .is_some_and(|t| crate::crafting::VANILLA_RECIPE_SERIALIZERS.contains(&t))
     {
         return Some(projection);
     }
@@ -1219,4 +1219,49 @@ fn empty_ingredient_network_consumers_exclude_whole_unplaceable_recipes() {
         assert_eq!(buttons.recipe("minecraft:stone", 1), None);
         assert!(packet.properties.iter().all(|(_, ids)| ids.is_empty()));
     }
+}
+
+#[cfg(test)]
+#[test]
+fn native_minecraft_serializer_preserves_opaque_ingredient_through_projection_and_decode() {
+    use serde_json::json;
+    use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
+
+    const KIND: &str = "minecraft:grinding_opaque";
+    mod_platform::testing::with_recipe_types(&[KIND], || {
+        let recipe = json!({
+            "type": KIND,
+            "ingredient": {"opaque_step": 3, "catalyst": "powder"},
+            "result": "minecraft:iron_ingot",
+        });
+        let catalog = Items::for_tests(Default::default());
+        let resolved = crate::crafting::ResolvedSources::resolve(
+            vec![("test:ore".into(), recipe.clone())],
+            &crate::test_resources::server_load(),
+        )
+        .unwrap();
+        let projected = normalize_ingredients(&resolved.recipes[0], &catalog)
+            .expect("native minecraft: serializer must not normalize opaque ingredient fields");
+        assert_eq!(projected, recipe);
+
+        let payloads = encode_content(&[KIND.into()], &[("test:ore".into(), projected)], false);
+        assert_eq!(payloads.len(), 1);
+        let part = ContentPart::decode(&payloads[0]).unwrap();
+        let client_context = LoadContext::new(
+            DataLoadOrigin::ClientPreload,
+            Arc::new(LoadInputs::new(Default::default(), Default::default())),
+            [],
+        );
+        let decoded = crate::crafting::Recipes::from_sources(
+            Path::new(""),
+            &catalog,
+            &sunrise_world::loot::PackOverlay::NONE,
+            part.recipes,
+            &client_context,
+        )
+        .unwrap();
+        assert_eq!(decoded.mod_read_only.len(), 1);
+        assert_eq!(decoded.mod_read_only[0].1.serializer, KIND);
+        assert_eq!(&*decoded.by_type[KIND][0].json, &recipe);
+    });
 }

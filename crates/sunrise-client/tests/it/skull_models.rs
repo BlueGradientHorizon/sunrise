@@ -8,7 +8,10 @@ use mod_api::{
     SkullModel,
 };
 use sunrise_assets::item_model::{SpecialKind, SpecialModel, is_skull_kind};
-use sunrise_client::{mobs::model_layers, skull_models};
+use sunrise_client::{
+    mobs::{EntityModelDocument, model_layers},
+    skull_models,
+};
 
 fn skull(kind: &str, layer: &str, texture: &str) -> SkullModel {
     SkullModel {
@@ -52,12 +55,13 @@ fn skull_types_keep_a_known_layer_and_leave_out_the_rest() {
             {"head": {"pose": [0,2,0,0,0,0,1,1,1], "polygons": [[[0,0,0,0,0],[1,0,0,1,0],[1,1,0,1,1],[0,1,0,0,1]]]}}}}"#,
     )
     .unwrap();
+    let document = EntityModelDocument::load(&vanilla_root).unwrap();
     mod_platform::testing::with_mods(
         vec![ModEntry::new("skulltest", Box::new(Goblin))].into(),
         || {
             let mut layers = Vec::new();
             mod_api::dispatch_register_layer_definitions(&RegistrationContext::new(), &mut layers);
-            model_layers::register(layers, Some(&vanilla_root));
+            model_layers::register(layers, &document);
         },
     );
     let kept = skull_models::register(
@@ -108,7 +112,7 @@ fn skull_types_keep_a_known_layer_and_leave_out_the_rest() {
                 "entity/zombie/zombie",
             ),
         ],
-        &vanilla_root,
+        &document,
     );
     assert_eq!(
         kept,
@@ -192,7 +196,7 @@ fn skull_types_keep_a_known_layer_and_leave_out_the_rest() {
         "skulltest:goblin_head#main",
         "skulltest:entity/late",
     );
-    assert!(skull_models::register(vec![late], std::path::Path::new(".")).is_empty());
+    assert!(skull_models::register(vec![late], &document).is_empty());
     assert!(skull_models::part("skulltest:late").is_none());
     assert!(!is_skull_kind("skulltest:late"));
 }

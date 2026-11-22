@@ -232,24 +232,47 @@ pub mod tests {
         #[mod_api::__subscriptions]
         impl Hooks for Collides {
             fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-                r.game_rule_category("minecraft:drops").unwrap();
-                r.game_rule_bool("minecraft:keep_inventory", "minecraft:drops", true)
-                    .unwrap();
+                assert_eq!(
+                    r.game_rule_category("minecraft:drops"),
+                    Err(crate::GameRuleError::Duplicate)
+                );
+                assert_eq!(
+                    r.game_rule_bool("minecraft:keep_inventory", "minecraft:drops", true),
+                    Err(crate::GameRuleError::Duplicate)
+                );
+                assert_eq!(
+                    r.game_rule_int("minecraft:random_tick_speed", "minecraft:drops", 3, 0, 100),
+                    Err(crate::GameRuleError::Duplicate)
+                );
             }
         }
         let schema = mod_vocab::__private::RuleSchema {
             category: &|id| id == "minecraft:drops",
-            position: &|id| (id == "minecraft:keep_inventory").then_some(0),
-            rule_count: 1,
+            position: &|id| match id {
+                "minecraft:keep_inventory" => Some(0),
+                "minecraft:random_tick_speed" => Some(1),
+                _ => None,
+            },
+            rule_count: 2,
         };
         let mods = [ModEntry::new("porter", Box::new(Collides))];
-        let errors = super::install_parts(&mods, &schema, |_| false).unwrap_err();
-        assert_eq!(errors.len(), 2);
-        assert_eq!(errors[0], "mod porter: Duplicate(\"minecraft:drops\")");
-        assert_eq!(
-            errors[1],
-            "mod porter: Duplicate(\"minecraft:keep_inventory\")"
+        let registrar =
+            super::with_active_rule_schema(&schema, || super::register_all(&mods, |_| false));
+        assert!(registrar.game_rule_categories.is_empty());
+        assert!(registrar.game_rules.is_empty());
+        assert!(
+            registrar
+                .registry_keys
+                .borrow()
+                .game_rules
+                .entries
+                .is_empty()
         );
+        let errors = super::install_registrar(registrar, &schema).unwrap_err();
+        assert_eq!(errors.len(), 3);
+        assert!(errors[0].contains("mod porter") && errors[0].contains("Duplicate"));
+        assert!(errors[1].contains("mod porter") && errors[1].contains("Duplicate"));
+        assert!(errors[2].contains("mod porter") && errors[2].contains("Duplicate"));
     }
 
     #[test]
@@ -294,10 +317,11 @@ impl GameRulesRegistrar for PartRegistrar {
     fn game_rule_category(&mut self, id: &str) -> Result<(), crate::GameRuleError> {
         let result = (|| {
             let (id, _) = self.game_rule_id(id)?;
-            if self
-                .game_rule_categories
-                .iter()
-                .any(|(_, existing)| existing == &id)
+            if super::active_rule_schema_has_category(&id)
+                || self
+                    .game_rule_categories
+                    .iter()
+                    .any(|(_, existing)| existing == &id)
             {
                 return Err(crate::GameRuleError::Duplicate);
             }
@@ -319,7 +343,9 @@ impl GameRulesRegistrar for PartRegistrar {
     ) -> Result<crate::BoolGameRuleKey, crate::GameRuleError> {
         let result = (|| {
             let (id, parsed) = self.game_rule_id(id)?;
-            if self.game_rules.iter().any(|(_, r)| r.name == id) {
+            if super::active_rule_schema_has_rule(&id)
+                || self.game_rules.iter().any(|(_, r)| r.name == id)
+            {
                 return Err(crate::GameRuleError::Duplicate);
             }
             let slot = self
@@ -355,7 +381,9 @@ impl GameRulesRegistrar for PartRegistrar {
     ) -> Result<crate::IntGameRuleKey, crate::GameRuleError> {
         let result = (|| {
             let (id, parsed) = self.game_rule_id(id)?;
-            if self.game_rules.iter().any(|(_, r)| r.name == id) {
+            if super::active_rule_schema_has_rule(&id)
+                || self.game_rules.iter().any(|(_, r)| r.name == id)
+            {
                 return Err(crate::GameRuleError::Duplicate);
             }
             if !(min..=max).contains(&default) {

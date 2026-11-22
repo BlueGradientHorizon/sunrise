@@ -220,8 +220,221 @@ pub enum PipelineDrawError {
     CapacityExceeded,
 }
 
+/// Built-in required vanilla 26.3 render pipelines (`RenderPipelines.PIPELINES_BY_LOCATION`,
+/// `minecraft:` namespace, sorted for binary search).
+const BUILTIN_REQUIRED_RENDER_PIPELINES: &[&str] = &[
+    "pipeline/animate_sprite_blit",
+    "pipeline/animate_sprite_interpolate",
+    "pipeline/armor_cutout_no_cull",
+    "pipeline/armor_cutout_no_cull_glint",
+    "pipeline/armor_decal_cutout_no_cull",
+    "pipeline/armor_translucent",
+    "pipeline/banner_pattern",
+    "pipeline/beacon_beam_opaque",
+    "pipeline/beacon_beam_translucent",
+    "pipeline/blit_depth",
+    "pipeline/blit_depth_bounds",
+    "pipeline/blit_depth_during_depth_bounds",
+    "pipeline/block_screen_effect",
+    "pipeline/breeze_wind",
+    "pipeline/celestial",
+    "pipeline/clouds",
+    "pipeline/crosshair",
+    "pipeline/crumbling",
+    "pipeline/cutout_block",
+    "pipeline/cutout_terrain",
+    "pipeline/cutout_terrain_multidraw",
+    "pipeline/debug_filled_box",
+    "pipeline/debug_points",
+    "pipeline/debug_quads",
+    "pipeline/debug_triangle_fan",
+    "pipeline/dragon_rays",
+    "pipeline/end_crystal_beam",
+    "pipeline/end_gateway",
+    "pipeline/end_portal",
+    "pipeline/end_sky",
+    "pipeline/energy_swirl",
+    "pipeline/entity_cutout",
+    "pipeline/entity_cutout_cull",
+    "pipeline/entity_cutout_dissolve",
+    "pipeline/entity_cutout_z_offset",
+    "pipeline/entity_outline_blit",
+    "pipeline/entity_shadow",
+    "pipeline/entity_solid",
+    "pipeline/entity_solid_glint",
+    "pipeline/entity_solid_offset_forward",
+    "pipeline/entity_translucent",
+    "pipeline/entity_translucent_cull",
+    "pipeline/entity_translucent_emissive",
+    "pipeline/eyes",
+    "pipeline/fire_screen_effect",
+    "pipeline/flat_clouds",
+    "pipeline/glint",
+    "pipeline/gui",
+    "pipeline/gui_invert",
+    "pipeline/gui_nausea_overlay",
+    "pipeline/gui_opaque_textured_background",
+    "pipeline/gui_text",
+    "pipeline/gui_text_grayscale",
+    "pipeline/gui_text_highlight",
+    "pipeline/gui_textured",
+    "pipeline/gui_textured_premultiplied_alpha",
+    "pipeline/integrate_depth",
+    "pipeline/item_cutout",
+    "pipeline/item_translucent",
+    "pipeline/item_translucent_glint",
+    "pipeline/leash",
+    "pipeline/lightmap",
+    "pipeline/lightning",
+    "pipeline/lines",
+    "pipeline/lines_depth_bias",
+    "pipeline/lines_translucent",
+    "pipeline/lines_translucent_no_depth_write",
+    "pipeline/mojang_logo",
+    "pipeline/oit_accumulate_beacon_beam",
+    "pipeline/oit_accumulate_breeze_wind",
+    "pipeline/oit_accumulate_clouds",
+    "pipeline/oit_accumulate_crumbling",
+    "pipeline/oit_accumulate_debug_filled_box",
+    "pipeline/oit_accumulate_debug_points",
+    "pipeline/oit_accumulate_debug_quads",
+    "pipeline/oit_accumulate_debug_triangle_fan",
+    "pipeline/oit_accumulate_dragon_rays",
+    "pipeline/oit_accumulate_energy_swirl",
+    "pipeline/oit_accumulate_entity",
+    "pipeline/oit_accumulate_entity_cull",
+    "pipeline/oit_accumulate_entity_emissive",
+    "pipeline/oit_accumulate_entity_shadow",
+    "pipeline/oit_accumulate_eyes",
+    "pipeline/oit_accumulate_flat_clouds",
+    "pipeline/oit_accumulate_item",
+    "pipeline/oit_accumulate_item_glint",
+    "pipeline/oit_accumulate_item_glint_special",
+    "pipeline/oit_accumulate_lightning",
+    "pipeline/oit_accumulate_lines_translucent",
+    "pipeline/oit_accumulate_particle",
+    "pipeline/oit_accumulate_terrain",
+    "pipeline/oit_accumulate_terrain_multidraw",
+    "pipeline/oit_accumulate_text",
+    "pipeline/oit_accumulate_text_grayscale",
+    "pipeline/oit_accumulate_text_grayscale_polygon_offset",
+    "pipeline/oit_accumulate_text_polygon_offset",
+    "pipeline/oit_accumulate_translucent_block",
+    "pipeline/oit_accumulate_weather",
+    "pipeline/oit_accumulate_world_border",
+    "pipeline/oit_composite",
+    "pipeline/oit_depth_bounds_beacon_beam",
+    "pipeline/oit_depth_bounds_breeze_wind",
+    "pipeline/oit_depth_bounds_clouds",
+    "pipeline/oit_depth_bounds_crumbling",
+    "pipeline/oit_depth_bounds_cull",
+    "pipeline/oit_depth_bounds_debug_filled_box",
+    "pipeline/oit_depth_bounds_debug_points",
+    "pipeline/oit_depth_bounds_debug_quads",
+    "pipeline/oit_depth_bounds_debug_triangle_fan",
+    "pipeline/oit_depth_bounds_dragon_rays",
+    "pipeline/oit_depth_bounds_energy_swirl",
+    "pipeline/oit_depth_bounds_entity",
+    "pipeline/oit_depth_bounds_entity_cull",
+    "pipeline/oit_depth_bounds_entity_emissive",
+    "pipeline/oit_depth_bounds_entity_shadow",
+    "pipeline/oit_depth_bounds_eyes",
+    "pipeline/oit_depth_bounds_flat_clouds",
+    "pipeline/oit_depth_bounds_item",
+    "pipeline/oit_depth_bounds_item_glint",
+    "pipeline/oit_depth_bounds_item_glint_special",
+    "pipeline/oit_depth_bounds_lightning",
+    "pipeline/oit_depth_bounds_lines_translucent",
+    "pipeline/oit_depth_bounds_particle",
+    "pipeline/oit_depth_bounds_terrain",
+    "pipeline/oit_depth_bounds_terrain_multidraw",
+    "pipeline/oit_depth_bounds_text",
+    "pipeline/oit_depth_bounds_text_grayscale",
+    "pipeline/oit_depth_bounds_text_grayscale_polygon_offset",
+    "pipeline/oit_depth_bounds_text_polygon_offset",
+    "pipeline/oit_depth_bounds_translucent_block",
+    "pipeline/oit_depth_bounds_weather",
+    "pipeline/oit_depth_bounds_world_border",
+    "pipeline/oit_transmittance_beacon_beam",
+    "pipeline/oit_transmittance_breeze_wind",
+    "pipeline/oit_transmittance_clouds",
+    "pipeline/oit_transmittance_crumbling",
+    "pipeline/oit_transmittance_debug_filled_box",
+    "pipeline/oit_transmittance_debug_points",
+    "pipeline/oit_transmittance_debug_quads",
+    "pipeline/oit_transmittance_debug_triangle_fan",
+    "pipeline/oit_transmittance_dragon_rays",
+    "pipeline/oit_transmittance_energy_swirl",
+    "pipeline/oit_transmittance_entity",
+    "pipeline/oit_transmittance_entity_cull",
+    "pipeline/oit_transmittance_entity_emissive",
+    "pipeline/oit_transmittance_entity_shadow",
+    "pipeline/oit_transmittance_eyes",
+    "pipeline/oit_transmittance_flat_clouds",
+    "pipeline/oit_transmittance_item",
+    "pipeline/oit_transmittance_item_glint",
+    "pipeline/oit_transmittance_item_glint_special",
+    "pipeline/oit_transmittance_lightning",
+    "pipeline/oit_transmittance_lines_translucent",
+    "pipeline/oit_transmittance_particle",
+    "pipeline/oit_transmittance_terrain",
+    "pipeline/oit_transmittance_terrain_multidraw",
+    "pipeline/oit_transmittance_text",
+    "pipeline/oit_transmittance_text_grayscale",
+    "pipeline/oit_transmittance_text_grayscale_polygon_offset",
+    "pipeline/oit_transmittance_text_polygon_offset",
+    "pipeline/oit_transmittance_translucent_block",
+    "pipeline/oit_transmittance_weather",
+    "pipeline/oit_transmittance_world_border",
+    "pipeline/oit_water_mask",
+    "pipeline/opaque_particle",
+    "pipeline/outline_cull",
+    "pipeline/outline_no_cull",
+    "pipeline/panorama",
+    "pipeline/secondary_block_outline",
+    "pipeline/sky",
+    "pipeline/solid_block",
+    "pipeline/solid_terrain",
+    "pipeline/solid_terrain_multidraw",
+    "pipeline/stars",
+    "pipeline/sunrise_sunset",
+    "pipeline/text",
+    "pipeline/text_grayscale",
+    "pipeline/text_grayscale_polygon_offset",
+    "pipeline/text_grayscale_see_through",
+    "pipeline/text_polygon_offset",
+    "pipeline/text_see_through",
+    "pipeline/tracy_blit",
+    "pipeline/translucent_block",
+    "pipeline/translucent_particle",
+    "pipeline/translucent_terrain",
+    "pipeline/translucent_terrain_multidraw",
+    "pipeline/vignette",
+    "pipeline/water_mask",
+    "pipeline/weather",
+    "pipeline/world_border",
+];
+
+/// Built-in optional vanilla 26.3 render pipelines (`RenderPipelines.OPTIONAL_PIPELINES_BY_LOCATION`,
+/// `minecraft:` namespace, sorted for binary search).
+const BUILTIN_OPTIONAL_RENDER_PIPELINES: &[&str] =
+    &["pipeline/wireframe", "pipeline/wireframe_multidraw"];
+
+fn is_builtin_render_pipeline(pipeline: &RenderPipeline) -> bool {
+    if pipeline.id.namespace() != "minecraft" {
+        return false;
+    }
+    let table = if pipeline.optional {
+        BUILTIN_OPTIONAL_RENDER_PIPELINES
+    } else {
+        BUILTIN_REQUIRED_RENDER_PIPELINES
+    };
+    table.binary_search(&pipeline.id.path()).is_ok()
+}
+
 /// What `owner` added to `pipelines` in `register_render_pipelines`, checked as it returns: a
-/// pipeline whose id an earlier registration took is logged with the mod and dropped.
+/// pipeline whose id a built-in vanilla pipeline or an earlier registration took is logged with
+/// the mod and dropped.
 pub(crate) fn validate_render_pipelines(
     owner: &str,
     previous: &[RenderPipeline],
@@ -229,7 +442,12 @@ pub(crate) fn validate_render_pipelines(
 ) {
     let added = pipelines.split_off(previous.len().min(pipelines.len()));
     for mut pipeline in added {
-        if pipelines.iter().any(|kept| kept.id == pipeline.id) {
+        if is_builtin_render_pipeline(&pipeline) {
+            log::warn!(
+                "register_render_pipelines: mod {owner}: pipeline {} refused: collides with a built-in vanilla pipeline",
+                pipeline.id
+            );
+        } else if pipelines.iter().any(|kept| kept.id == pipeline.id) {
             log::warn!(
                 "register_render_pipelines: mod {owner}: pipeline {} refused: an earlier registration has that id",
                 pipeline.id
@@ -292,6 +510,29 @@ mod tests {
         pipelines.push(pipeline("shared:glow"));
         validate_render_pipelines("late", &previous, &mut pipelines);
         assert_eq!(pipelines, previous);
+    }
+
+    #[test]
+    fn a_mod_cannot_take_a_builtin_vanilla_pipeline_id() {
+        assert!(
+            BUILTIN_REQUIRED_RENDER_PIPELINES
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+        );
+        assert!(
+            BUILTIN_OPTIONAL_RENDER_PIPELINES
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+        );
+        let mut pipelines = vec![
+            pipeline("minecraft:pipeline/gui"),
+            pipeline("minecraft:pipeline/wireframe").optional(),
+            pipeline("minecraft:pipeline/custom_beam"),
+            pipeline("minecraft:pipeline/custom_beam"),
+        ];
+        validate_render_pipelines("maker", &[], &mut pipelines);
+        assert_eq!(ids(&pipelines), ["minecraft:pipeline/custom_beam"]);
+        assert_eq!(pipelines[0].owner(), "maker");
     }
 
     #[test]

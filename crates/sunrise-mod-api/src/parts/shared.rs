@@ -24,6 +24,51 @@ thread_local! {
     // A reference to the registrar's canonical requests while Hooks::register is in flight.
     // The table is moved, not copied, into Installed when registration finishes.
     pub(crate) static REGISTERING_KEYS: RefCell<Option<Rc<RefCell<sunrise_mod_runtime::registry_keys::Requests>>>> = const { RefCell::new(None) };
+    // The authoritative built-in game rule schema active for the synchronous registration call.
+    static ACTIVE_RULE_SCHEMA: std::cell::Cell<*const ()> = const { std::cell::Cell::new(std::ptr::null()) };
+}
+
+pub(crate) fn with_active_rule_schema<T>(
+    schema: &mod_vocab::__private::RuleSchema<'_>,
+    f: impl FnOnce() -> T,
+) -> T {
+    struct Restore(*const ());
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            ACTIVE_RULE_SCHEMA.set(self.0);
+        }
+    }
+    let ptr: *const mod_vocab::__private::RuleSchema<'_> = schema;
+    let _guard = Restore(ACTIVE_RULE_SCHEMA.replace(ptr.cast()));
+    f()
+}
+
+pub(crate) fn active_rule_schema_has_category(id: &str) -> bool {
+    ACTIVE_RULE_SCHEMA.with(|cell| {
+        let ptr = cell.get();
+        if ptr.is_null() {
+            return false;
+        }
+        #[allow(unsafe_code)]
+        // SAFETY: `with_active_rule_schema` stores a live `&RuleSchema` pointer for the
+        // duration of its synchronous call frame and restores the prior pointer on drop.
+        let schema = unsafe { &*ptr.cast::<mod_vocab::__private::RuleSchema<'_>>() };
+        (schema.category)(id)
+    })
+}
+
+pub(crate) fn active_rule_schema_has_rule(id: &str) -> bool {
+    ACTIVE_RULE_SCHEMA.with(|cell| {
+        let ptr = cell.get();
+        if ptr.is_null() {
+            return false;
+        }
+        #[allow(unsafe_code)]
+        // SAFETY: `with_active_rule_schema` stores a live `&RuleSchema` pointer for the
+        // duration of its synchronous call frame and restores the prior pointer on drop.
+        let schema = unsafe { &*ptr.cast::<mod_vocab::__private::RuleSchema<'_>>() };
+        (schema.position)(id).is_some()
+    })
 }
 
 pub(crate) fn with_registering_keys<T>(
@@ -281,7 +326,8 @@ pub fn install_parts(
     schema: &mod_vocab::__private::RuleSchema<'_>,
     dimension_shape: fn(&crate::DimensionSettings) -> bool,
 ) -> Result<(), Vec<String>> {
-    install_registrar(register_all(mods, dimension_shape), schema)
+    let registrar = with_active_rule_schema(schema, || register_all(mods, dimension_shape));
+    install_registrar(registrar, schema)
 }
 
 pub(crate) fn install_registrar(

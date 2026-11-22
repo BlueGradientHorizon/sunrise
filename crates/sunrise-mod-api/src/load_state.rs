@@ -568,13 +568,30 @@ mod tests {
             ),
             ModEntry::new("m_last", Box::new(Component("m_last:component", false))),
         ];
-        let mut types = vec!["game:seeded".to_owned()];
+        let mut types = Vec::new();
+        crate::testing::with_dispatch(
+            vec![ModEntry::new(
+                "seed",
+                Box::new(Component("game:seeded", false)),
+            )]
+            .into(),
+            || {
+                dispatch_component_types(&RegistrationContext::new(), &mut types);
+            },
+        );
         crate::testing::with_dispatch(mods.into(), || {
             dispatch_component_types(&RegistrationContext::new(), &mut types);
         });
         assert_eq!(
-            types,
-            ["game:seeded", "z_first:component", "m_last:component"]
+            types
+                .iter()
+                .map(|entry| (entry.mod_id, entry.answer.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("seed", "game:seeded"),
+                ("z_first", "z_first:component"),
+                ("m_last", "m_last:component"),
+            ]
         );
     }
 
@@ -711,7 +728,17 @@ mod tests {
                 assert_eq!(*registered.lock().unwrap(), expected);
                 let mut types = Vec::new();
                 dispatch_component_types(&RegistrationContext::new(), &mut types);
-                assert_eq!(types, expected, "a later step reads the same snapshot");
+                assert_eq!(
+                    types
+                        .iter()
+                        .map(|entry| (entry.mod_id, entry.answer.as_str()))
+                        .collect::<Vec<_>>(),
+                    expected
+                        .iter()
+                        .map(|value| ("reader", value.as_str()))
+                        .collect::<Vec<_>>(),
+                    "a later step reads the same snapshot"
+                );
             });
             // No engine view: every read is refused, and a bad name or key still says so.
             crate::__private::install_parts(

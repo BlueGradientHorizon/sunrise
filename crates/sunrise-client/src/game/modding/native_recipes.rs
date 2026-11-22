@@ -761,12 +761,12 @@ mod tests {
         use sunrise_client::{crafting::Recipes, items::Items, lan::recipes};
         use sunrise_world::{
             loot::PackOverlay,
-            native_load_context::{LoadContext, LoadInputs},
+            native_load_context::{DataLoadOrigin, LoadContext, LoadInputs},
         };
         const KIND: &str = "minecraft:grinding_json";
         mod_platform::testing::with_recipe_types(&[KIND], || {
             let context = LoadContext::new(
-                mod_api::DataLoadOrigin::ServerDataLoad,
+                DataLoadOrigin::ServerDataLoad,
                 std::sync::Arc::new(LoadInputs::new(Default::default(), Default::default())),
                 [],
             );

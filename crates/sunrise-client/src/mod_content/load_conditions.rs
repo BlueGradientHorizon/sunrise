@@ -187,6 +187,11 @@ pub fn build_with_conditions(
     let mut warnings = Vec::new();
     let mut worldgen: BTreeMap<&str, Vec<(String, String)>> = BTreeMap::new();
     let mut additions: BTreeMap<&str, Vec<Addition>> = BTreeMap::new();
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    enum ModifierKey {
+        Structure(String),
+        Biome(String, String),
+    }
     let mut modifier_files = BTreeMap::new();
     let mut modifier_order = 0;
     let mut namespaces: std::collections::BTreeSet<String> = mods
@@ -220,10 +225,19 @@ pub fn build_with_conditions(
                     if file.starts_with(&declarations) {
                         continue;
                     }
-                    let structure = structures::is_modifier(&file);
-                    if structure || biomes::modifier_key(&file).is_some() {
+                    let key = if structures::is_modifier(&file) {
+                        Some((ModifierKey::Structure(file.clone()), true))
+                    } else {
+                        biomes::modifier_key(&file).map(|(namespace, path)| {
+                            (
+                                ModifierKey::Biome(namespace.to_owned(), path.to_owned()),
+                                false,
+                            )
+                        })
+                    };
+                    if let Some((key, structure)) = key {
                         // Registry JSON has one winning source; don't even read a loser.
-                        modifier_files.insert(file, (modifier_order, &m.id, layer, structure));
+                        modifier_files.insert(key, (modifier_order, file, &m.id, layer, structure));
                         modifier_order += 1;
                         continue;
                     }
@@ -262,10 +276,10 @@ pub fn build_with_conditions(
             }
         }
     }
-    let mut winners: Vec<_> = modifier_files.into_iter().collect();
-    winners.sort_by_key(|(_, (order, ..))| *order);
+    let mut winners: Vec<_> = modifier_files.into_values().collect();
+    winners.sort_by_key(|(order, ..)| *order);
     let mut accepted = Vec::new();
-    for (file, (_, owner, layer, structure)) in winners {
+    for (_, file, owner, layer, structure) in winners {
         let bytes = layer
             .data
             .read(&file)

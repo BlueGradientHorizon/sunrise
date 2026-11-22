@@ -22,7 +22,19 @@ fn registration_context_reaches_collectors_in_order_without_a_game_host() {
     );
     let mut types = Vec::new();
     dispatch_component_types(&RegistrationContext("bootstrap"), &mut types);
-    assert_eq!(types, ["first:component", "second:component"]);
+    assert_eq!(
+        types,
+        [
+            Answered {
+                answer: "first:component".to_owned(),
+                mod_id: "first",
+            },
+            Answered {
+                answer: "second:component".to_owned(),
+                mod_id: "second",
+            },
+        ]
+    );
 }
 
 #[test]

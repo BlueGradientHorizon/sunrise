@@ -1221,7 +1221,7 @@ pub fn recipe_result(v: &Value) -> Option<ItemStack> {
     template.item.is_some().then(|| template.create())
 }
 /// Recipe serializers registered by the engine for pinned vanilla and brewing data.
-const VANILLA_RECIPE_SERIALIZERS: [&str; 22] = [
+pub(crate) const VANILLA_RECIPE_SERIALIZERS: [&str; 22] = [
     "minecraft:blasting",
     "minecraft:brewing",
     "minecraft:campfire_cooking",

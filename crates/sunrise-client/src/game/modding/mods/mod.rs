@@ -256,23 +256,36 @@ fn builtin_registries(root: &Path) -> sunrise_client::Result<sunrise_protocol::r
 /// With no mod registering any, nothing is installed, which every reader
 /// treats as no custom components, and `registries.json` isn't read.
 pub(super) fn register_components(root: &std::path::Path) -> sunrise_client::Result<()> {
-    let mut names = Vec::new();
-    Game::native_component_types(&RegistrationContext::new(), &mut names);
-    if names.is_empty() {
+    let mut entries = Vec::new();
+    Game::native_component_types(&RegistrationContext::new(), &mut entries);
+    if entries.is_empty() {
         return Ok(());
     }
     let builtin = builtin_registries(root)?;
     let types = builtin
         .get("minecraft:data_component_type")
         .ok_or("missing data component registry")?;
-    if let Some(name) = names
-        .iter()
-        .find(|name| !name.is_empty() && types.names.contains(name))
-    {
-        return Err(format!(
-            "native component {name} conflicts with a built-in data component type"
-        )
-        .into());
+    let mut seen = std::collections::HashMap::<String, &'static str>::with_capacity(entries.len());
+    let mut names = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let id = entry.answer;
+        let mod_id = entry.mod_id;
+        if sunrise_core::identifier::Identifier::parse_namespaced(&id).is_none() {
+            return Err(format!("mod {mod_id}: invalid native component name {id:?}").into());
+        }
+        if types.names.contains(&id) {
+            return Err(format!(
+                "mod {mod_id}: native component {id} conflicts with a built-in data component type"
+            )
+            .into());
+        }
+        if let Some(first) = seen.insert(id.clone(), mod_id) {
+            return Err(format!(
+                "mod {mod_id}: duplicate native component {id} (already registered by mod {first})"
+            )
+            .into());
+        }
+        names.push(id);
     }
     let first = i32::try_from(types.names.len())?;
     sunrise_protocol::item::custom::install(first, names)
@@ -894,7 +907,7 @@ pub(super) fn content_overlay(
         })
         .collect();
     let read = read_contents(&requests);
-    for (index, content) in order.into_iter().zip(read) {
+    for (&index, content) in order.iter().zip(read) {
         let source = &packages[index];
         let m = source.manifest;
         let content = match content {
@@ -923,23 +936,8 @@ pub(super) fn content_overlay(
             content,
             jars: m.jar.clone(),
         };
-        match mod_content::accept_mod(&mut mods, candidate, known) {
-            Ok(_) if source.content_only => {
-                content_mods.push(sunrise_client::save::level_mods::ModRecord {
-                    id: m.id.clone(),
-                    version: m.version.to_string(),
-                });
-                if announce {
-                    announced.push(announced_entry(
-                        &m.id,
-                        &m.version.to_string(),
-                        m.side,
-                        m.runtime.as_ref(),
-                    ));
-                }
-            }
-            Ok(_) => {}
-            Err(e) => log::warn!("Sunrise: mod {} content not loaded: {e}", m.id),
+        if let Err(e) = mod_content::accept_mod(&mut mods, candidate, known) {
+            log::warn!("Sunrise: mod {} content not loaded: {e}", m.id);
         }
     }
     let mut refusals = declared.refusals.clone();
@@ -1013,6 +1011,25 @@ pub(super) fn content_overlay(
         &overrides,
     )
     .map_err(|error| error.to_string())?;
+    for &index in &order {
+        let source = &packages[index];
+        if !source.content_only || !mods.iter().any(|loaded| loaded.id == source.manifest.id) {
+            continue;
+        }
+        let m = source.manifest;
+        content_mods.push(sunrise_client::save::level_mods::ModRecord {
+            id: m.id.clone(),
+            version: m.version.to_string(),
+        });
+        if announce {
+            announced.push(announced_entry(
+                &m.id,
+                &m.version.to_string(),
+                m.side,
+                m.runtime.as_ref(),
+            ));
+        }
+    }
     let cache = sunrise_client::logging::cache_dir();
     // Content admission and the live code-dispatch boundary jointly determine
     // what loaded. Namespaces and raw startup metadata cannot answer this.
@@ -2373,7 +2390,63 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
         assert_eq!(
             result.unwrap_err().to_string(),
-            "native component minecraft:damage conflicts with a built-in data component type"
+            "mod maker: native component minecraft:damage conflicts with a built-in data component type"
+        );
+    }
+
+    #[test]
+    fn native_component_registration_names_submitting_and_earlier_mods_on_duplicate() {
+        struct Declares(&'static str);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Declares {
+            fn component_types(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::ComponentTypesEvent<'_>,
+            ) {
+                event.register(self.0.into());
+            }
+        }
+        let root = std::env::temp_dir().join(format!(
+            "sunrise-component-duplicate-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("registries.json"),
+            r#"{"minecraft:data_component_type":{"entries":{"minecraft:damage":{"protocol_id":0}}}}"#,
+        )
+        .unwrap();
+        let duplicate = mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new("first", Box::new(Declares("shared:charge"))),
+                mod_api::ModEntry::new("second", Box::new(Declares("shared:charge"))),
+            ]
+            .into(),
+            || {
+                let _registration = mod_api::__private::PhaseOwner::scope(
+                    mod_api::__private::ModPhase::Registration,
+                );
+                register_components(&root)
+            },
+        );
+        let invalid = mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("broken", Box::new(Declares("bare")))].into(),
+            || {
+                let _registration = mod_api::__private::PhaseOwner::scope(
+                    mod_api::__private::ModPhase::Registration,
+                );
+                register_components(&root)
+            },
+        );
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(
+            duplicate.unwrap_err().to_string(),
+            "mod second: duplicate native component shared:charge (already registered by mod first)"
+        );
+        assert_eq!(
+            invalid.unwrap_err().to_string(),
+            "mod broken: invalid native component name \"bare\""
         );
     }
 

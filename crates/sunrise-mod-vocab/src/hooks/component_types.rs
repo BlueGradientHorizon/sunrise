@@ -13,10 +13,11 @@ pub trait Hooks {
         side = "both",
         contract = "collect",
         out = "types",
+        answered_by = "mod",
         registration_append = "register",
         context = "registration",
         neoforge = "RegisterEvent",
         version = 3
     )]
-    fn component_types(types: &mut Vec<String>);
+    fn component_types(types: &mut Vec<Answered<String>>);
 }

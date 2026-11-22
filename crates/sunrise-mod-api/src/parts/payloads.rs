@@ -11,33 +11,6 @@ mod tests;
 #[path = "payloads/typed_tests.rs"]
 mod typed_tests;
 
-/// Engine-owned `sunrise:` custom-payload channels (transport control and engine services).
-const RESERVED_ENGINE_CHANNELS: &[&str] = &[
-    "sunrise:payloads",
-    "sunrise:quiet_commands",
-    "sunrise:mod_list",
-    "sunrise:attachment_sync",
-    "sunrise:collider_sync",
-    "sunrise:general_entity",
-    "sunrise:menu_extra",
-    "sunrise:menu_data",
-    "sunrise:anvil_cost",
-    "sunrise:passage_sync",
-    "sunrise:passage_cross",
-    "sunrise:carry_age",
-    "sunrise:lod",
-    "sunrise:block_registry",
-    "sunrise:recipe_content",
-    "sunrise:recipe_transfer",
-    "sunrise:recipe_check",
-    "sunrise:recipe_book_settings",
-    "sunrise:selector_tokens",
-    "sunrise:levels",
-    "sunrise:datapack_registries",
-    "sunrise:datapack_offer",
-    "sunrise:perf",
-];
-
 /// Validate an explicit namespaced payload channel ID once and refuse the `minecraft`
 /// namespace (NeoForge `NetworkRegistry`) and built-in engine `sunrise:` channels.
 fn validate_payload_id(id: &str) -> Result<(), String> {
@@ -52,7 +25,7 @@ fn validate_payload_id(id: &str) -> Result<(), String> {
             "the \"minecraft\" namespace is reserved for vanilla protocol channels".to_owned(),
         );
     }
-    if RESERVED_ENGINE_CHANNELS.contains(&id) {
+    if sunrise_mod_runtime::engine_channels::is_reserved_engine_channel(id) {
         return Err("channel is reserved for an engine service or transport control".to_owned());
     }
     Ok(())
