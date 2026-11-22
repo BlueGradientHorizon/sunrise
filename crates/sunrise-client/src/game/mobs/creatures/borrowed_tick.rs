@@ -61,6 +61,22 @@ fn route_player_events(
     }
 }
 
+/// Commit departures in the borrowed list, not when a tick merely proposes retention.
+/// In particular an interrupted pass keeps the credit of every row it gives back.
+fn retain_mob_rows(
+    mobs: &mut sunrise_client::join_seq::JoinList<Mob>,
+    player_credit: &mut std::collections::HashMap<u32, super::super::combat::PlayerCredit>,
+    mut keep: impl FnMut(&Mob) -> bool,
+) {
+    mobs.retain(|mob| {
+        let kept = keep(mob);
+        if !kept {
+            player_credit.remove(&mob.id);
+        }
+        kept
+    });
+}
+
 pub(super) struct BorrowedMobTick<'a> {
     pub(super) mobs: &'a mut sunrise_client::join_seq::JoinList<Mob>,
     pub(super) snapshot: &'a mut Vec<Seen>,
@@ -947,7 +963,7 @@ impl Game<'_> {
             // change the list. Keep the same slots unless rows have left or joined.
             let same_rows = !settle && !gone_rows && pending_effects.is_empty();
             if !same_rows {
-                mobs.retain(|m| {
+                retain_mob_rows(&mut mobs, &mut player_credit, |m| {
                     // Give the departing vehicle back for its pre-removal effects
                     // and for marking it removed before the dismount hooks.
                     removing_vehicle == Some(m.id)
@@ -1077,7 +1093,7 @@ impl Game<'_> {
                     let animation = gone.pop_if(|death| death.0 == id);
                     let animate = |game: &mut Self| {
                         if let Some((_, at, width, height, split)) = animation {
-                            game.finish_mob_death_animation(id, at, width, height, split);
+                            game.animate_mob_removal(id, at, width, height, split);
                         }
                     };
                     let killed_effects = corpses.pop_if(|mob| mob.id == id).is_some();
@@ -1194,9 +1210,11 @@ impl Game<'_> {
         if dispatch_panic.is_none() {
             if positions.is_empty() {
                 let mut flags = keep.into_iter();
-                mobs.retain(|_| flags.next().unwrap_or(true));
+                retain_mob_rows(&mut mobs, &mut player_credit, |_| {
+                    flags.next().unwrap_or(true)
+                });
             } else {
-                mobs.retain(|m| {
+                retain_mob_rows(&mut mobs, &mut player_credit, |m| {
                     index
                         .get(&m.id)
                         .and_then(|&slot| keep.get(slot as usize))

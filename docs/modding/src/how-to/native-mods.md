@@ -49,6 +49,12 @@ health a listener leaves, suppresses loot, experience and death messages, and do
 not heal the body. An unhealed cancelled body is removed at tick 20 without loot
 or another death dispatch.
 
+`LivingRef::kill_credit` can still resolve a mob's remembered player after the
+lethal hit while the mob remains in the level. As in `LivingEntity.baseTick`,
+the player reference survives the tick that decrements its timer to zero and
+expires on the next tick. Death loot and experience still use the positive timer
+to determine whether a player hit the mob recently.
+
 ### Custom statistics
 
 Declare custom statistic identities in `Hooks::register`, using `Registrar`:
