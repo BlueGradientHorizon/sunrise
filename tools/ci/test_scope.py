@@ -48,6 +48,8 @@ READERS = {
     "cargo-sunrise-mod": [
         "Cargo.lock", "crates/sunrise-mod-api", "crates/sunrise-mod-package/src/sdk/fixture.tar.xz",
         "crates/sunrise-mod-package/tests/index", "docs/modding/src/how-to/native-mods.md", "tools/ci/rust-version",
+        # The installed-client daily builds and installs the fn-replace-check `lower` fixture.
+        "tools/ci/fn-replace-check/lower",
     ],
     # The pinned Rust, and the mods library's template its tests render.
     "sunrise-native-build": ["crates/sunrise-client/src/native_mod_entry.rs.template", "tools/ci/rust-version"],
