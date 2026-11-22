@@ -1144,6 +1144,26 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
     ) {
         return;
     }
+    let assert_unwrapped = |game: &mut Game<'_>| {
+        // This one line is 198 pixels wide. Neither side of x=145 on a 160-pixel screen
+        // can fit it, but vanilla's item tooltip still passes it to the positioner intact.
+        let original_font = std::mem::replace(
+            &mut game.gui.atlas.font,
+            synthetic_ascii_fonts([("default", 6)]),
+        );
+        let text = "long item name near a screen edge";
+        let gathered = game
+            .gather_tooltip_components(
+                &ItemStack::new("minecraft:stick", 1),
+                vec![(sunrise_client::text::Text::literal(text), u32::MAX)],
+                145,
+                (160.0, 240.0),
+            )
+            .unwrap_ready();
+        assert_eq!(text_lines(&gathered), [text]);
+        game.gui.atlas.font = original_font;
+    };
+
     // Part 1: no listeners at all — an unconvertible stack still gathers and renders its lines.
     let empty_mods: Mods = Vec::<ModEntry>::new().into();
     with_mod_factories(empty_mods, |game| {
@@ -1169,6 +1189,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
         );
         game.draw_stack_tooltip_lines(&mut batch, &unconvertible, lines, 10.0, 20.0);
         assert!(!batch.vertices.is_empty());
+        assert_unwrapped(game);
     });
 
     // Part 2: listeners active — unconvertible stack skips Pre without cancelling, and a
@@ -1246,6 +1267,10 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
     .into();
 
     with_mod_factories(mods, |game| {
+        assert!(mod_api::__private::set_mod_enabled("deep_text_mod", false));
+        assert_unwrapped(game);
+        assert!(mod_api::__private::set_mod_enabled("deep_text_mod", true));
+
         let unconvertible = ItemStack::new("missing:unregistered_item", 1);
         let mut one_line = vec![PreparedTooltipItem::Text {
             text: sunrise_client::text::Text::literal("Keep"),

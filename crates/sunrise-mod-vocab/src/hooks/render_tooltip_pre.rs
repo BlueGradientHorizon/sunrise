@@ -20,7 +20,8 @@ pub trait Hooks {
     /// aborts the whole tooltip. `draw` is the tooltip's GUI drawing context; paint
     /// from Pre stays visible on cancellation or failure. Return `Flow::Cancel` and the
     /// tooltip box and components are not drawn and `render_tooltip_texture` is not asked.
-    /// Asked each frame a tooltip shows, only while a mod listens. Client-side.
+    /// Asked each frame a tooltip shows, only while a mod listens. An input conversion
+    /// refusal skips Pre and leaves the prepared tooltip intact. Client-side.
     #[hook(
         receiver = "read",
         dispatch = "api_carrier",
