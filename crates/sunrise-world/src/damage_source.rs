@@ -127,6 +127,7 @@ impl Catalog {
                 .collect(),
         })
     }
+    #[inline]
     pub fn id(&self, name: &str) -> Option<DamageTypeId> {
         self.ids.get(name).copied()
     }
