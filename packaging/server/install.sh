@@ -59,8 +59,6 @@ MACHINE=$(uname -m)
 case "$(uname -s)-$MACHINE" in
   Linux-x86_64) PLATFORM=linux-x86_64; ASSETS="sunrise-server-linux-x86_64.tar.gz sunrise-linux-x86_64.tar.gz" ;;
   Darwin-arm64) PLATFORM=macos-arm64; ASSETS=sunrise-macos-arm64.zip ;;
-  # Intel Macs: the Nightlies built since #1161.
-  Darwin-x86_64) PLATFORM=macos-x64; ASSETS=sunrise-macos-x64.zip ;;
   *) die "no Sunrise release for $(uname -s) $(uname -m) yet: build it from source (docs/server.md)" ;;
 esac
 
@@ -139,7 +137,6 @@ else
     case "$PLATFORM" in
       linux-x86_64) PIN=$VERIFIER_SHA256_linux_x86_64 ;;
       macos-arm64) PIN=$VERIFIER_SHA256_macos_arm64 ;;
-      macos-x64) PIN=$VERIFIER_SHA256_macos_x64 ;;
     esac
     VERIFIER_FROM=$VERIFIER_VERSION
     [ "$VERIFIER_FROM" != unpinned ] && [ -n "$VERIFIER_FROM" ] || die "this script has no pinned sunrise-verify yet, so it can't check the release signature: not installed. Use the install.sh from Sunrise's main branch."
