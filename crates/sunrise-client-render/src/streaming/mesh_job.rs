@@ -24,7 +24,32 @@ pub(super) fn mesh_section(
         Some((tables, visibility)) if Arc::ptr_eq(&tables, &context.tables) => visibility,
         _ => context.tables.visibility.clone(),
     };
-    let mut mesher = Mesher {
+    let mut mesher = section_mesher(context, settings, visibility);
+    let region = borrow(region);
+    scratch.attached_tints = settings.attached_tints.clone();
+    let mut mesh = if let Some(prepared) = &settings.visibility {
+        mesher.mesh_planned(
+            &region,
+            sy,
+            recycled,
+            scratch,
+            prepared.plan.as_ref(),
+            super::section_visibility::REQUEST_BYTES,
+        )
+    } else {
+        mesher.mesh_reusing(&region, sy, recycled, scratch)
+    };
+    mesh.sort_solid();
+    *faces = Some((context.tables.clone(), mesher.visibility));
+    mesh
+}
+
+fn section_mesher<'a>(
+    context: &'a WorkerContext,
+    settings: &'a MeshSettings,
+    visibility: FaceVisibility,
+) -> Mesher<'a> {
+    Mesher {
         nether_shading: settings.nether,
         shader_pack_lighting: settings.shader_pack_lighting,
         separate_ao: settings.separate_ao,
@@ -43,24 +68,25 @@ pub(super) fn mesh_section(
         tables: &context.tables,
         biomes: &context.biomes,
         visibility,
-    };
-    let region = borrow(region);
-    scratch.attached_tints = settings.attached_tints.clone();
-    let mut mesh = if let Some(prepared) = &settings.visibility {
-        mesher.mesh_planned(
-            &region,
-            sy,
-            recycled,
-            scratch,
-            prepared.plan.as_ref(),
-            super::section_visibility::REQUEST_BYTES,
-        )
-    } else {
-        mesher.mesh_reusing(&region, sy, recycled, scratch)
-    };
-    mesh.sort_solid();
-    *faces = Some((context.tables.clone(), mesher.visibility));
-    mesh
+    }
+}
+
+pub(super) fn prepare_attached_tints(
+    context: &WorkerContext,
+    settings: &MeshSettings,
+    region: &Region,
+    sy: i32,
+) -> Option<Arc<crate::mesher::AttachedTints>> {
+    if region[1][1].as_ref()?.extra_models.is_empty() {
+        return None;
+    }
+    let mut mesher = section_mesher(context, settings, context.tables.visibility.clone());
+    mesher.prepare_attached_tints(
+        &borrow(region),
+        sy,
+        settings.visibility.is_some(),
+        settings.visibility.as_ref().and_then(|v| v.plan.as_ref()),
+    )
 }
 
 impl Streaming {

@@ -79,18 +79,30 @@ pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
             f,
         )
     }));
-    CONTAINED.with(|c| c.set(c.get() - 1));
-    match result {
+    let result = match result {
         Ok(Ok(value)) => Ok(value),
         // A mod's Host call the load phase does not admit: named, not a panic, and no crash report.
         Ok(Err(refusal)) => {
             refusal.report();
             Err(refusal.to_string())
         }
-        Err(payload) => Err(CAUGHT
-            .with(|c| c.borrow_mut().take())
-            .unwrap_or_else(|| payload_text(&*payload))),
-    }
+        Err(payload) => {
+            let message = CAUGHT
+                .with(|c| c.borrow_mut().take())
+                .unwrap_or_else(|| payload_text(&*payload));
+            // `panic_any` can carry a mod-owned value with a panicking destructor. Keep
+            // disposal recoverable too; the second payload might have the same destructor.
+            if let Err(secondary) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                drop(payload);
+            })) {
+                CAUGHT.with(|c| c.borrow_mut().take());
+                std::mem::forget(secondary);
+            }
+            Err(message)
+        }
+    };
+    CONTAINED.with(|c| c.set(c.get() - 1));
+    result
 }
 
 /// For the hook: a panic inside `contain` is logged with its stack and kept for `contain` to
