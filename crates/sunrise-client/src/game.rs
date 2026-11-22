@@ -4908,7 +4908,7 @@ impl Game<'_> {
             }
             // The early return skips the match below: the hooks still see the
             // screen, after its own drawing.
-            self.draw_screen_with_post_hook(&mut batch);
+            self.draw_screen_with_post_hook(&mut batch, drawn);
             return batch;
         }
         if self.screen == Screen::Options {
@@ -4922,7 +4922,7 @@ impl Game<'_> {
             } else {
                 self.ui.options.discard_draw();
             }
-            self.draw_screen_with_post_hook(&mut batch);
+            self.draw_screen_with_post_hook(&mut batch, drawn);
             self.draw_controller_notice(&mut batch);
             return batch;
         }
@@ -4955,7 +4955,7 @@ impl Game<'_> {
             } else if drawn {
                 self.draw_mod_screen(&mut batch);
             }
-            self.draw_screen_with_post_hook(&mut batch);
+            self.draw_screen_with_post_hook(&mut batch, drawn);
             self.draw_toasts(&mut batch, false);
             self.draw_tutorial_toasts(&mut batch, false);
             self.draw_pack_toasts(&mut batch, false);
@@ -5343,7 +5343,7 @@ impl Game<'_> {
         // tooltips, so a native mod draws over it here. Never `Playing`: the
         // prompts, books and sign editors drawn over gameplay keep it, draw
         // after this point and so over what a mod drew.
-        self.draw_screen_with_post_hook(&mut batch);
+        self.draw_screen_with_post_hook(&mut batch, drawn);
         self.draw_saving_indicator(&mut batch);
         self.draw_every_toast(&mut batch, !show_hud);
         if self.server_packs.prompt.is_none() {

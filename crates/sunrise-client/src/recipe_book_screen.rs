@@ -461,6 +461,34 @@ pub fn ghost(index: usize, left: i32, top: i32, big: bool, ghosts: &[GhostView])
 }
 
 /// `1 + 0.1 sin(t / 15 * PI)`, the squeeze of new recipes' buttons and tabs.
+/// The box the tabs `draw` puts beside a book at `origin` make (`updateTabs`): each 35 x 27 at
+/// `xPosTab`, 30 left of the book and 3 down, 27 apart; the selected one 2 further left; an
+/// animating one squeezed about its middle as it is drawn. None for no tab.
+pub fn tab_column(origin: (f32, f32), tabs: &[TabView]) -> Option<[f32; 4]> {
+    let (xo, yo) = origin;
+    let mut bounds: Option<[f32; 4]> = None;
+    for (n, tab) in tabs.iter().enumerate() {
+        let (x, y) = (xo - 30.0, yo + 3.0 + 27.0 * n as f32);
+        let left = if tab.selected { x - 2.0 } else { x };
+        let (mut top, mut bottom) = (y, y + 27.0);
+        if tab.anim > 0.0 {
+            let (s, cy) = (squeeze(tab.anim), y + 12.0);
+            (top, bottom) = (cy + (top - cy) * s, cy + (bottom - cy) * s);
+        }
+        let rect = [left, top.min(bottom), left + 35.0, top.max(bottom)];
+        bounds = Some(match bounds {
+            None => rect,
+            Some(b) => [
+                b[0].min(rect[0]),
+                b[1].min(rect[1]),
+                b[2].max(rect[2]),
+                b[3].max(rect[3]),
+            ],
+        });
+    }
+    bounds.map(|b| [b[0], b[1], b[2] - b[0], b[3] - b[1]])
+}
+
 fn squeeze(time: f32) -> f32 {
     1.0 + 0.1 * f64::from(time / 15.0 * std::f32::consts::PI).sin() as f32
 }
@@ -753,3 +781,42 @@ pub fn overlay_cells(book: &Book, entry: &Entry) -> Vec<(i32, i32, Vec<ItemStack
 #[cfg(test)]
 #[path = "recipe_book_screen/overlay_tests.rs"]
 mod overlay_tests;
+
+#[cfg(test)]
+mod tab_column_tests {
+    use super::{TabView, tab_column};
+
+    fn tab(selected: bool, anim: f32) -> TabView {
+        TabView {
+            icons: ("minecraft:compass".into(), None),
+            selected,
+            anim,
+        }
+    }
+
+    /// `updateTabs` beside a book at (54, 37): x 24, from y 40, 35 x 27 each, 27 apart; the
+    /// selected tab 2 further left; an animating one squeezed about its middle, past its slot.
+    #[test]
+    fn the_column_is_the_box_of_the_tabs_drawn() {
+        assert_eq!(tab_column((54.0, 37.0), &[]), None);
+        assert_eq!(
+            tab_column((54.0, 37.0), &[tab(false, 0.0)]),
+            Some([24.0, 40.0, 35.0, 27.0])
+        );
+        assert_eq!(
+            tab_column((54.0, 37.0), &[tab(true, 0.0)]),
+            Some([22.0, 40.0, 35.0, 27.0])
+        );
+        assert_eq!(
+            tab_column(
+                (54.0, 37.0),
+                &[tab(true, 0.0), tab(false, 0.0), tab(false, 0.0)]
+            ),
+            Some([22.0, 40.0, 37.0, 81.0])
+        );
+        // 7.5 ticks in, the squeeze is 1.1: a 27 tall tab draws 29.7 tall about y + 12.
+        let [_, y, _, h] = tab_column((54.0, 37.0), &[tab(false, 7.5)]).unwrap();
+        assert!((y - (52.0 - 12.0 * 1.1)).abs() < 1e-3, "{y}");
+        assert!((h - 27.0 * 1.1).abs() < 1e-3, "{h}");
+    }
+}

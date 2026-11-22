@@ -169,8 +169,11 @@ impl Game<'_> {
 impl Game<'_> {
     /// `ScreenEvent.Render.Post`, after the screen's drawing and tooltips,
     /// including when Pre cancelled. Gameplay overlays keep their exclusions.
-    pub(super) fn draw_screen_with_post_hook(&self, batch: &mut HudBatch) {
+    /// `drawn` is false when Pre cancelled the drawing: nothing was drawn
+    /// outside the panel, so the view's `regions` is empty.
+    pub(super) fn draw_screen_with_post_hook(&self, batch: &mut HudBatch, drawn: bool) {
         if let Some(view) = self.screen_render_view(batch) {
+            let view = if drawn { view } else { without_regions(&view) };
             self.screen_render_end(batch, &view);
         }
     }
@@ -267,4 +270,18 @@ impl Game<'_> {
             }
         }
     }
+}
+
+/// `view` with no regions: a cancelled render drew nothing beside the panel.
+pub(super) fn without_regions<'a>(view: &mod_api::ScreenView<'a>) -> mod_api::ScreenView<'a> {
+    mod_api::ScreenView::from(mod_api::__private::built::ScreenView {
+        id: view.id,
+        menu: view.menu,
+        title: view.title,
+        rect: view.rect,
+        slots: view.slots,
+        mouse: view.mouse,
+        partial_tick: view.partial_tick,
+        regions: &[],
+    })
 }

@@ -2715,7 +2715,9 @@ impl Game<'_> {
         {
             return answer;
         }
-        let view = self.screen_view_at(self.screen, rect);
+        // Asked while the screen is laid out: nothing is drawn beside it yet.
+        let view =
+            super::screen_backgrounds::without_regions(&self.screen_view_at(self.screen, rect));
         let mut canceled = false;
         self.native_screen_render_inventory_mob_effects(
             &view,

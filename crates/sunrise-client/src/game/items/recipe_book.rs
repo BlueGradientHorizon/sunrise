@@ -811,13 +811,6 @@ impl Game<'_> {
         let (x, y) = self.book_origin(batch);
         Some([x, y, WIDTH, HEIGHT])
     }
-    /// The open book's column of category tabs (`RecipeBookTabButton`s at
-    /// `xPosTab`, `tab_pos`), from its panel `book`: 35 x 27 each, 27 apart,
-    /// the selected one 2 pixels further left, as tall as the tabs the book
-    /// shows. None while it shows none.
-    pub(in crate::game) fn recipe_book_tabs_rect(&self, book: [f32; 4]) -> Option<[f32; 4]> {
-        tab_column(book, self.recipe_ui.view.tabs.len())
-    }
     /// The green book button's top-left corner.
     fn book_button_pos(&self, book: BookType, ox: f32, batch: &HudBatch) -> (f32, f32) {
         let mid = (batch.height / 2.0).floor();
@@ -1917,8 +1910,12 @@ impl Game<'_> {
 
     /// The book button, ghost recipe and open book, returning its deferred tooltip.
     pub(super) fn draw_recipe_book(&mut self, batch: &mut HudBatch) -> Option<Vec<(Text, u32)>> {
+        // No column until this frame draws one: a closed book draws none.
+        self.screen_state.drawn_book_tabs.set(None);
         if self.native_screen_shown() {
-            return self.draw_mod_book(batch);
+            let tooltip = self.draw_mod_book(batch);
+            self.apply_drawn_book_tabs();
+            return tooltip;
         }
         let book_type = self.active_book()?;
         self.ensure_book();
@@ -1946,6 +1943,7 @@ impl Game<'_> {
         } else {
             None
         };
+        self.apply_drawn_book_tabs();
         self.narrate_recipe_book(batch, book_type, [bx, by, 20.0, 18.0]);
         tooltip
     }
@@ -2138,6 +2136,13 @@ impl Game<'_> {
                 }
             })
             .collect();
+        // The tabs this frame draws are the region `ScreenView::regions` reports.
+        self.screen_state
+            .drawn_book_tabs
+            .set(sunrise_client::recipe_book_screen::tab_column(
+                (xo, yo),
+                &tabs,
+            ));
         let pages = ui.view.buttons.len().div_ceil(20);
         let first = ui.page * 20;
         let (buttons, overlay) = match ui.book.as_ref() {
@@ -2483,25 +2488,5 @@ mod screen_room_tests {
                 assert_eq!(game.inventory_origin(&batch), (194.0, 37.0));
             });
         });
-    }
-}
-
-/// The column `shown` category tabs make beside the book's panel `book`
-/// (`RecipeBookComponent.updateTabs`: `xPosTab` 30 left of the book, 3 down,
-/// 35 x 27 a tab, 27 apart; the selected tab 2 further left). None for none.
-fn tab_column(book: [f32; 4], shown: usize) -> Option<[f32; 4]> {
-    (shown > 0).then(|| [book[0] - 32.0, book[1] + 3.0, 37.0, 27.0 * shown as f32])
-}
-
-#[cfg(test)]
-mod tab_column_tests {
-    /// Vanilla's tab column for a book at (54, 37): from x 24 (22 with the
-    /// selected tab out) to the book's x + 5, from y 40, 27 a tab.
-    #[test]
-    fn the_tab_column_is_where_update_tabs_puts_the_tabs() {
-        let book = [54.0, 37.0, 147.0, 166.0];
-        assert_eq!(super::tab_column(book, 0), None);
-        assert_eq!(super::tab_column(book, 1), Some([22.0, 40.0, 37.0, 27.0]));
-        assert_eq!(super::tab_column(book, 5), Some([22.0, 40.0, 37.0, 135.0]));
     }
 }
