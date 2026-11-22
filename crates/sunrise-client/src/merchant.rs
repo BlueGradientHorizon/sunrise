@@ -83,21 +83,23 @@ impl RestockStep {
 impl Trader {
     /// `Villager.shouldRestock`.
     pub fn should_restock(&mut self, game_time: i64, day: i64) -> bool {
-        self.catch_up(game_time, day);
+        let _ = self.catch_up(game_time, day);
         self.restock_due(game_time)
     }
     /// The new-day half of `Villager.shouldRestock` (`resetNumberOfRestocks` /
-    /// `catchUpDemand`). True on a new day.
-    pub fn catch_up(&mut self, game_time: i64, day: i64) -> bool {
+    /// `catchUpDemand`). Returns the step applied to the offers on a new day.
+    pub fn catch_up(&mut self, game_time: i64, day: i64) -> Option<RestockStep> {
         let mut new_day = game_time > self.last_restock + 12000;
         new_day |= self.check_day > 0 && day > self.check_day;
         self.check_day = day;
-        if new_day {
-            self.last_restock = game_time;
-            RestockStep::CatchUp(2 - self.restocks_today).apply(&mut self.offers);
-            self.restocks_today = 0;
+        if !new_day {
+            return None;
         }
-        new_day
+        self.last_restock = game_time;
+        let step = RestockStep::CatchUp(2_i32.wrapping_sub(self.restocks_today));
+        step.apply(&mut self.offers);
+        self.restocks_today = 0;
+        Some(step)
     }
     /// `allowedToRestock && needsToRestock`.
     pub fn restock_due(&self, game_time: i64) -> bool {

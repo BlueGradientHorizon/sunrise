@@ -552,7 +552,7 @@ fn trade(
                 if let Some(sess) = menu.merchant.as_mut() {
                     m.trader.offers.clone_from(&sess.offers);
                 }
-                let caught = m.trader.catch_up(time, day);
+                let caught = m.trader.catch_up(time, day).is_some();
                 let due = m.trader.restock_due(time);
                 if due {
                     m.trader.restock(time);
