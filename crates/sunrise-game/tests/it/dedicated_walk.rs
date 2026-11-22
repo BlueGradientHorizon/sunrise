@@ -20,7 +20,7 @@ use sunrise_protocol::{
 };
 
 /// Reap the server on assertion failures as well as successful test completion.
-struct Server(std::process::Child);
+pub(crate) struct Server(std::process::Child);
 impl Drop for Server {
     fn drop(&mut self) {
         let _ = self.0.kill();
@@ -28,15 +28,20 @@ impl Drop for Server {
     }
 }
 
-fn resources() -> Option<PathBuf> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.local/sunrise-client")
-        .join(sunrise_core::VANILLA_VERSION);
+pub(crate) fn resources() -> Option<PathBuf> {
+    let root = std::env::var_os("SUNRISE_TEST_RESOURCES").map_or_else(
+        || {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../.local/sunrise-client")
+                .join(sunrise_core::VANILLA_VERSION)
+        },
+        PathBuf::from,
+    );
     root.join("items.json").exists().then_some(root)
 }
 
 /// Log in offline and finish configuration as a vanilla client that knows the core pack.
-fn join(port: u16, name: &str) -> sunrise_protocol::Result<Connection> {
+pub(crate) fn join(port: u16, name: &str) -> sunrise_protocol::Result<Connection> {
     let mut c = Connection::connect("127.0.0.1", port, Duration::from_secs(5))?;
     c.reader.set_read_timeout(Some(Duration::from_secs(60)))?;
     c.send(
@@ -140,6 +145,48 @@ fn wait_for_log(
     }
 }
 
+/// Start the dedicated server in `scratch` and return it once it logs `Done (`: the process, its
+/// port, the log lines still to read, those read so far and its console.
+pub(crate) fn boot(
+    scratch: &Path,
+    resources: &Path,
+) -> (
+    Server,
+    u16,
+    std::sync::mpsc::Receiver<String>,
+    Vec<String>,
+    std::process::ChildStdin,
+) {
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let game = scratch.join("server");
+    std::fs::create_dir_all(&game).unwrap();
+    std::fs::write(
+        game.join("server.properties"),
+        format!(
+            "server-ip=127.0.0.1\nserver-port={port}\nonline-mode=false\nwhite-list=false\nlevel-seed=12345\n\
+             view-distance=3\nsimulation-distance=3\ngamemode=creative\nforce-gamemode=true\n\
+             spawn-protection=0\npause-when-empty-seconds=-1\n"
+        ),
+    )
+    .unwrap();
+    std::fs::write(game.join("eula.txt"), "eula=true\n").unwrap();
+    let (mut server, read) = start_server(resources, &game, scratch);
+    let mut log = Vec::new();
+    let started = Instant::now();
+    while !log.iter().any(|line: &String| line.contains("Done (")) {
+        let line = read
+            .recv_timeout(Duration::from_secs(300).saturating_sub(started.elapsed()))
+            .unwrap_or_else(|_| panic!("the server never finished starting:\n{}", log.join("\n")));
+        log.push(line);
+    }
+    let console = server.0.stdin.take().unwrap();
+    (server, port, read, log, console)
+}
+
 /// The dedicated server keeps running while a player walks through freshly generated terrain and
 /// sand falls and lands near it:
 /// the whole level tick (entities, falling blocks, the entity residency pass) runs every tick
@@ -152,27 +199,7 @@ fn a_dedicated_server_keeps_ticking_while_a_player_walks() {
         return;
     };
     let scratch = tempfile::tempdir().unwrap();
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
-    let game = scratch.path().join("server");
-    std::fs::create_dir(&game).unwrap();
-    std::fs::write(
-        game.join("server.properties"),
-        format!(
-            "server-ip=127.0.0.1\nserver-port={port}\nonline-mode=false\nwhite-list=false\nlevel-seed=12345\n\
-             view-distance=3\nsimulation-distance=3\ngamemode=creative\nforce-gamemode=true\n\
-             spawn-protection=0\npause-when-empty-seconds=-1\n"
-        ),
-    )
-    .unwrap();
-    std::fs::write(game.join("eula.txt"), "eula=true\n").unwrap();
-    let (mut server, read) = start_server(&resources, &game, scratch.path());
-    let mut log = Vec::new();
-    wait_for_log(&read, &mut log, Duration::from_secs(300), "Done (");
-    let mut console = server.0.stdin.take().unwrap();
+    let (mut server, port, read, mut log, mut console) = boot(scratch.path(), &resources);
     let walked = (|| {
         let mut bot = join(port, "Walker").map_err(|e| e.to_string())?;
         bot.reader
