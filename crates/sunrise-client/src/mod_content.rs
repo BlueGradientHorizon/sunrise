@@ -57,13 +57,11 @@ pub struct ContentMod {
     pub jars: Vec<JarRef>,
 }
 
-/// Remove packages whose remainder is not a genuine vanilla item or an admitted item
-/// of the package or its `served_by` partner. Iterate because a refused layer can
-/// invalidate the references of a layer that delegates to or serves it.
+/// Refuse a package whose crafting remainder does not resolve to an admitted item.
+/// A refusal can invalidate a reference in another package, so repeat until no package is dropped.
 pub fn drop_dangling_remainders(
     base: &Path,
     mods: &mut Vec<ContentMod>,
-    manifests: &[&sunrise_mod_package::Manifest],
 ) -> Result<Vec<(String, String)>> {
     if !mods
         .iter()
@@ -73,26 +71,19 @@ pub fn drop_dangling_remainders(
         return Ok(Vec::new());
     }
     let vanilla = builtin_item_keys(base)?;
-    let hosts: BTreeMap<_, _> = manifests
-        .iter()
-        .filter_map(|m| Some((m.id.as_str(), m.served_by.as_deref()?)))
-        .collect();
     let mut dropped = Vec::new();
     loop {
-        let owners: BTreeMap<String, String> = mods
+        let admitted: BTreeSet<_> = mods
             .iter()
-            .flat_map(|layer| declared_item_ids(layer).map(|id| (id.to_owned(), layer.id.clone())))
+            .flat_map(declared_item_ids)
+            .map(str::to_owned)
             .collect();
         let before = mods.len();
         mods.retain(|layer| {
-            let package = layer.id.as_str();
             let invalid = layer.content.items.iter().find_map(|item| {
                 let rest = item.crafting_remainder.as_deref()?;
-                let allowed = rest != "minecraft:air" && (vanilla.contains(rest) || owners.get(rest).is_some_and(|owner| {
-                    let owner = owner.as_str();
-                    owner == package || hosts.get(owner) == Some(&package) || hosts.get(package) == Some(&owner)
-                }));
-                (!allowed).then(|| format!("{}: crafting_remainder {rest:?} is not a vanilla item or an item of this package or its served_by partner", item.id))
+                (rest == "minecraft:air" || !(vanilla.contains(rest) || admitted.contains(rest)))
+                    .then(|| format!("{}: crafting_remainder {rest:?} is not an item", item.id))
             });
             if let Some(error) = invalid {
                 dropped.push((layer.id.clone(), error));
@@ -947,27 +938,7 @@ pub fn accept_declared(
             content.blocks.clone_from(&mods[i].content.blocks);
             content.items.clone_from(&mods[i].content.items);
         }
-        let served_item_ids: Vec<&str> = mods
-            .iter()
-            .filter(|m| {
-                m.id != id
-                    && manifests.iter().any(|manifest| {
-                        manifest.id == m.id && manifest.served_by.as_deref() == Some(id)
-                    })
-            })
-            .flat_map(|m| {
-                m.content.items.iter().map(|i| i.id.as_str()).chain(
-                    m.content
-                        .blocks
-                        .iter()
-                        .filter(|b| b.item)
-                        .map(|b| b.id.as_str()),
-                )
-            })
-            .collect();
-        if let Err(refusals) =
-            content.declare_validated(&batch.blocks, &batch.items, &served_item_ids)
-        {
+        if let Err(refusals) = content.declare_validated(&batch.blocks, &batch.items) {
             errors.extend(
                 refusals
                     .into_iter()

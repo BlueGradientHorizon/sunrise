@@ -371,21 +371,19 @@ fn content_mod_dropped_for_foreign_minecraft_remainder_is_absent_from_save_and_j
             consumer_manifest,
             &[(
                 "data/consumer/sunrise/item/filled.json",
-                br#"{"template":"minecraft:bucket","crafting_remainder":"minecraft:foreign_bucket"}"#,
+                br#"{"template":"minecraft:bucket","crafting_remainder":"minecraft:missing_bucket"}"#,
             )],
         )
         .unwrap(),
     )
     .unwrap();
     let consumer = sunrise_mod_package::Package::read(&consumer_path).unwrap();
-    let read =
-        sunrise_mod_package::Content::read_declaring(&consumer_path, &consumer.manifest, &[])
-            .unwrap();
+    let read = sunrise_mod_package::Content::read(&consumer_path, &consumer.manifest).unwrap();
     assert_eq!(read.items.len(), 1);
     assert_eq!(read.items[0].id, "consumer:filled");
     assert_eq!(
         read.items[0].crafting_remainder.as_deref(),
-        Some("minecraft:foreign_bucket")
+        Some("minecraft:missing_bucket")
     );
 
     struct DropLog;
@@ -396,7 +394,7 @@ fn content_mod_dropped_for_foreign_minecraft_remainder_is_absent_from_save_and_j
         }
         fn log(&self, record: &log::Record<'_>) {
             if record.level() == log::Level::Warn && record.args().to_string().contains(
-                "mod consumer content not loaded: consumer:filled: crafting_remainder \"minecraft:foreign_bucket\" is not a vanilla item",
+                "mod consumer content not loaded: consumer:filled: crafting_remainder \"minecraft:missing_bucket\" is not an item",
             ) {
                 DROPPED.store(true, Ordering::Relaxed);
             }

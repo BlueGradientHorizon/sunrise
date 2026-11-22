@@ -12,13 +12,15 @@ impl PartRegistrar {
         use mod_vocab::__private::game::RegistrationContextNew;
         crate::RegistrationContext::new()
             .registry(registry)
-            .is_ok_and(|names| names.iter().any(|known| known == id))
+            .is_some_and(|names| names.iter().any(|known| known == id))
     }
 
     /// Whether the startup snapshot already has a built-in registry keyed by `registry`.
     pub(crate) fn has_builtin_registry(&self, registry: &str) -> bool {
         use mod_vocab::__private::game::RegistrationContextNew;
-        crate::RegistrationContext::new().registry(registry).is_ok()
+        crate::RegistrationContext::new()
+            .registry(registry)
+            .is_some()
     }
 
     /// Whether the declaring package or any package supplying `id`'s namespace in

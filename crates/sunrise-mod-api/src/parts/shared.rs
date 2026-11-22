@@ -453,5 +453,20 @@ pub mod tests {
 
     use std::sync::Arc;
 
+    #[cfg(test)]
+    pub(crate) fn with_builtin_part_registry<T>(
+        registry: &str,
+        id: &str,
+        f: impl FnOnce() -> T,
+    ) -> T {
+        let data = mod_vocab::__private::RegistrationData::new(
+            [(registry.to_owned(), vec![id.to_owned()])].into(),
+            Default::default(),
+            InstanceDirectory::from_path(std::path::Path::new(".")).unwrap(),
+            RuntimeEnvironment::new(Dist::Client, "26.3".into(), "test".into(), false),
+        );
+        crate::load_state::with_test_registration_data(data, f)
+    }
+
     include!(concat!(env!("OUT_DIR"), "/shared_fixtures.rs"));
 }
