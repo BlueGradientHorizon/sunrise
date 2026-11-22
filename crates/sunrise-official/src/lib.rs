@@ -191,6 +191,23 @@ mod tests {
     }
 
     #[test]
+    fn the_launcher_page_text_is_in_the_registered_lang_file() {
+        let (_, json) = LANG.iter().find(|(code, _)| *code == "en_us").unwrap();
+        for key in [
+            "sunrise.get_the_game.title",
+            "sunrise.get_the_game.about",
+            "sunrise.get_the_game.minecraft",
+            "sunrise.get_the_game.download",
+            "sunrise.get_the_game.button",
+        ] {
+            assert!(
+                json.contains(&format!("\"{key}\"")),
+                "{key} is missing from the registered en_us lang file"
+            );
+        }
+    }
+
+    #[test]
     fn the_sunrise_row_links_the_shipped_licence_site_and_issues() {
         assert_eq!(
             (
