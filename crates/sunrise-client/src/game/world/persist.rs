@@ -5403,7 +5403,7 @@ mod restored_vehicle_transfer_tests {
                 default: || 0,
                 codec: None,
                 copy_on_death: false,
-                sync: false,
+                sync_codec: None,
             };
             let saved = AttachmentType {
                 namespace: "test",
@@ -5423,7 +5423,7 @@ mod restored_vehicle_transfer_tests {
                     },
                 }),
                 copy_on_death: false,
-                sync: false,
+                sync_codec: None,
             };
             let tag = |kind: &str, n: i32| {
                 Tag::compound([

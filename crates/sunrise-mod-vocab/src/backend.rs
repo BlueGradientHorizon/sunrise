@@ -242,7 +242,7 @@ pub fn client_backend_mut_of(host: &mut dyn ClientHost) -> Option<&mut dyn Clien
     host.client_backend_mut().map(|wrapper| wrapper.open())
 }
 
-/// A host is the store of its holders' attachments, so `TYPE.get(host, holder)` reads one.
+/// A host is the store of its holders' attachments, so `key.get(host, holder)` reads one.
 macro_rules! host_attachment_store {
     ($($host:ident),+) => { $(
         impl AttachmentStore for dyn $host + '_ {
@@ -258,8 +258,11 @@ macro_rules! host_attachment_store {
             fn saved(&mut self, holder: Holder, namespace: &str, name: &str) -> AttachmentResult<Option<Compound>> {
                 self.attachments().saved(holder, namespace, name)
             }
-            fn store(&mut self, holder: Holder, namespace: &str, name: &str, value: AttachmentValue, form: AttachmentForm) -> AttachmentResult<()> {
-                self.attachments().store(holder, namespace, name, value, form)
+            fn synced_raw(&mut self, holder: Holder, namespace: &str, name: &str) -> AttachmentResult<Option<Compound>> {
+                self.attachments().synced_raw(holder, namespace, name)
+            }
+            fn store(&mut self, holder: Holder, write: AttachmentStoreWrite<'_>) -> AttachmentResult<()> {
+                self.attachments().store(holder, write)
             }
             fn discard(&mut self, holder: Holder, namespace: &str, name: &str, sync: bool) -> AttachmentResult<()> {
                 self.attachments().discard(holder, namespace, name, sync)

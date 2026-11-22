@@ -103,7 +103,7 @@ mod tests {
             },
         }),
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
     fn key() -> super::super::index::AttachmentKey {
         ("observer".into(), "value".into())
@@ -137,7 +137,7 @@ mod tests {
         assert_eq!(batch[0].entry.read(&VALUE), Ok(&42));
         assert_eq!(DECODES.load(Ordering::Relaxed), 1);
         assert_eq!(map.to_nbt(), saved);
-        assert!(map.take_sync_changes().is_empty());
+        assert!(map.take_sync_changes(|_, _, _| None).is_empty());
         assert!(registration.unregister());
     }
 
@@ -233,7 +233,7 @@ mod tests {
             default: || unreachable!(),
             codec: None,
             copy_on_death: false,
-            sync: false,
+            sync_codec: None,
         };
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let events = Arc::new(Events::default());

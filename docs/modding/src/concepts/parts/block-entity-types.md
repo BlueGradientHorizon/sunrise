@@ -58,13 +58,14 @@ Block entity types can only be declared by a package's code, not by content file
 A `side = "server"` package whose Part on such a type listens to a client hook is refused like any other
 client-side Part.
 
-The Part's state (`block_entity_part_with_state`) is a key the attaching package declared with
-`register_attachment_type`, which accepts any namespace that package owns (its manifest namespaces
-or a content package it serves via `served_by`). It is saved in the block entity's
-attachment compound under that package's id, not under the owner's. A Part reaches the owner's state only through an
-attachment the owner declared (the public attachment API); a key nobody declared is refused at load, naming the
-package. When the attaching package is removed, what it saved stays in the block entity, unread (the saved
-attachment compound keeps entries it does not know on save), and is read again if the package comes back.
+The Part's state (`block_entity_part_with_state`) is an issued `AttachmentKey<T>` registered with
+`register_attachment_type` (or looked up from another package via `attachment_key`). Any valid
+lowercase `namespace:name` not already registered is accepted, and the value is saved in the block
+entity's attachment compound under that key's `(namespace, name)`. A Part reaches the owner's state
+through an attachment the owner declared (the public attachment API); a key not issued in the active
+registration pass is refused at load with `PartStateRefusal::StaleKey`. When the attaching package
+is removed, what it saved stays in the block entity, unread (the saved attachment compound keeps
+entries it does not know on save), and is read again if the package comes back.
 
 ## Removal side effects
 
@@ -96,15 +97,21 @@ table. The game owns the values: one per block entity, in its attachment map, sa
 chunk through the attachment codec and kept by transactions.
 
 ```rust,ignore
-static PROGRESS: AttachmentType<u32> = AttachmentType {
-    namespace: "mymod", name: "press_progress", default: || 0,
-    codec: Some(PROGRESS_CODEC), copy_on_death: false, sync: false,
-};
+struct Press {
+    progress: AttachmentKey<u32>,
+}
 impl BlockEntityPartState for Press {
     type Data = u32;
-    const DATA: &'static AttachmentType<u32> = &PROGRESS;
+    fn state_key(&self) -> &AttachmentKey<u32> {
+        &self.progress
+    }
 }
-r.block_entity_part_with_state(&press, Press)?;
+// Inside Hooks::register(&self, r: &mut dyn Registrar, _) (returns `()`):
+if let Ok(progress) = r.register_attachment_type(
+    AttachmentDescriptor::new("mymod:press_progress", || 0).serialize(PROGRESS_CODEC),
+) {
+    let _ = r.block_entity_part_with_state(&press, Press { progress });
+}
 
 // In its tick (or a menu hook), get the live handle from the view, then edit through the Host:
 let Some(entity) = event.subject.with_view(|view| view.handle()) else {
@@ -116,13 +123,14 @@ let done = Press::edit_state(event.subject.host(), entity, |_, progress| {
 });
 ```
 
-- `Press::state(host, entity)` and `state_existing` read a snapshot through `&dyn Host` and never
+- `self.state(host, entity)` and `state_existing` read a snapshot through `&dyn Host` and never
   insert the default. `edit_state` takes `&mut dyn ServerHost` and runs in a nested transaction
   of its own. The closure gets a copy and the host, and no store borrow is held while it runs. The
   result is stored when the closure returns.
-- Every call checks the handle first. A handle from another level gives `PartStateError::OtherLevel`.
-  A removed, replaced or unloaded block entity gives `Stale`. After a reload the saved value is read
-  under the new handle.
+- Every call checks the key and handle first. A stale key from a prior installation gives
+  `PartStateError::Attachment { error: AttachmentError::StaleKey, .. }`. A handle from another
+  level gives `PartStateError::OtherLevel`. A removed, replaced or unloaded block entity gives
+  `Stale`. After a reload the saved value is read under the new handle.
 - An edit stores nothing, and its transaction aborts with everything the closure wrote, in these
   cases:
   - the closure panics and the panic unwinds. A panic that aborts
@@ -141,9 +149,11 @@ let done = Press::edit_state(event.subject.host(), entity, |_, progress| {
   vanilla 26.3 reads region files with `NbtAccounter.unlimitedHeap`, an unbounded byte budget and
   depth 512. The 2 MiB quota of a chunk packet's block entity data is a network limit and does not
   cap saved state.
-- Registration refuses a declaration that syncs, copies on death, lies outside the mod's namespaces
-  or reuses a key with a type of another Rust type name. The refusal names the Part, the key,
-  the type and the reason.
+- Registration refuses a declaration whose key syncs, copies on death, or was not issued in the
+  active registration pass (`PartStateRefusal::StaleKey`). Because each attachment ID is registered
+  once with a single Rust type, another package using the same state looks up the owner's issued
+  `AttachmentKey<T>` with `r.attachment_key::<T>(id)`. The refusal names the Part, the key, the
+  type and the reason.
 - Values without a codec last for the session. Part state is server-side for now. A client reads the
   default, because nothing is sent to it yet.
 - Part registration and state errors are local values, not `Wire` records.

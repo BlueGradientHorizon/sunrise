@@ -5952,7 +5952,7 @@ mod tests {
                 },
             }),
             copy_on_death: false,
-            sync: false,
+            sync_codec: None,
         };
         let mut map = Attachments::default();
         key.set(&mut map, sunrise_mod_runtime::attachments::Holder::Level, 7)
@@ -6183,7 +6183,7 @@ mod tests {
                 },
             }),
             copy_on_death: false,
-            sync: false,
+            sync_codec: None,
         };
         let mut chunk = Chunk::empty(2, 3);
         let mut extras = ChunkExtras::default();

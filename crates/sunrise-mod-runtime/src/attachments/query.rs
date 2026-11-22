@@ -12,7 +12,7 @@ use std::{
 };
 
 use super::{
-    AttachmentError, AttachmentType,
+    AttachmentError, AttachmentType, CheckedAttachmentType,
     index::{AttachmentIndex, AttachmentOwner, AttachmentRow, AttachmentSnapshot},
 };
 
@@ -154,7 +154,25 @@ impl<H> AttachmentBatch<H> {
         key: &AttachmentType<T>,
     ) -> Result<AttachmentQuery<'_, H, T>, AttachmentError> {
         key.validate_policy()?;
-        Ok(AttachmentQuery { batch: self, key })
+        Ok(AttachmentQuery {
+            batch: self,
+            key,
+            epoch: None,
+        })
+    }
+
+    /// Bind a pre-validated key without re-running policy checks.
+    /// The query borrows only the key, never the index or host.
+    pub fn query_checked<'key, T: Send + Sync + 'static>(
+        self,
+        key: &'key CheckedAttachmentType<T>,
+        epoch: u64,
+    ) -> AttachmentQuery<'key, H, T> {
+        AttachmentQuery {
+            batch: self,
+            key: key.as_type(),
+            epoch: Some(epoch),
+        }
     }
 }
 
@@ -165,6 +183,7 @@ impl<H> AttachmentBatch<H> {
 pub struct AttachmentQuery<'key, H, T: 'static> {
     batch: AttachmentBatch<H>,
     key: &'key AttachmentType<T>,
+    epoch: Option<u64>,
 }
 
 impl<H: Copy, T: Send + Sync + 'static> AttachmentQuery<'_, H, T> {
@@ -180,6 +199,7 @@ impl<H: Copy, T: Send + Sync + 'static> AttachmentQuery<'_, H, T> {
                 .iter(),
             key: self.key,
             scope: self.batch.scope.as_ref(),
+            epoch: self.epoch,
         }
     }
 }
@@ -209,7 +229,7 @@ impl<H: Copy + Eq + Hash, T: Clone + Send + Sync + 'static> AttachmentQuery<'_, 
         };
         rows[slot]
             .entry
-            .read_validated(self.key)
+            .read_in_installation(self.key, self.epoch)
             .map(|value| Some(value.clone()))
             .map_err(AttachmentRowError::Value)
     }
@@ -220,6 +240,7 @@ impl<H: Copy + Eq + Hash, T: Clone + Send + Sync + 'static> AttachmentQuery<'_, 
 pub struct AttachmentIter<'q, H, T: 'static> {
     rows: slice::Iter<'q, AttachmentRow<H>>,
     key: &'q AttachmentType<T>,
+    epoch: Option<u64>,
     scope: Option<&'q AttachmentQueryScope>,
 }
 
@@ -236,7 +257,7 @@ impl<'q, H: Copy, T: Send + Sync + 'static> AttachmentIter<'q, H, T> {
         };
         let value = row
             .entry
-            .read_validated(self.key)
+            .read_in_installation(self.key, self.epoch)
             .map_err(AttachmentRowError::Value)?;
         Ok(Some(AttachmentRowRef {
             holder: row.holder,
@@ -351,7 +372,7 @@ mod tests {
             },
         }),
         copy_on_death: false,
-        sync: false,
+        sync_codec: None,
     };
     pub(super) fn key() -> super::super::index::AttachmentKey {
         ("query".into(), "value".into())
@@ -361,6 +382,7 @@ mod tests {
             state: super::super::Entry::Decoded(Decoded {
                 value: Arc::new(value),
                 encoded: None,
+                synced: None,
                 policy: AttachmentPolicy {
                     copy_on_death: false,
                     sync: false,
@@ -595,7 +617,7 @@ mod tests {
             default: || unreachable!(),
             codec: None,
             copy_on_death: false,
-            sync: false,
+            sync_codec: None,
         };
         let batch = AttachmentBatch::new(index.lock().unwrap().snapshot(&key()))
             .query::<Probe>(&probe_key)

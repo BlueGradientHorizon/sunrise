@@ -1,7 +1,10 @@
-//! Engine attachment declaration validation.
-// hidden: the engine's registry lookup; authors bind typed keys and snapshots.
-#[doc(hidden)]
-pub use crate::parts::AttachmentDeclarations;
+//! Typed attachment descriptors, registration records, issued keys, and declaration validation.
+pub use crate::parts::{
+    AttachmentDescriptor, AttachmentKey, ErasedAttachmentDescriptor, RegisteredAttachment,
+};
 mod __private {
-    pub use crate::parts::{validate_attachment_use, validate_declared_attachment};
+    pub use crate::parts::{
+        attachment_sync_projection, check_attachment_descriptor, registered_copy_on_death,
+        validate_attachment_use, validate_attachment_write, validate_declared_attachment,
+    };
 }

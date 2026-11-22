@@ -65,7 +65,7 @@ impl ChunkDiskContext {
 }
 
 // no wire: local refusal of an in-process chunk disk job.
-/// Why a chunk disk job refused, with the failing mod and attachment when known.
+/// A refused chunk attachment operation or invalid job input, naming its mod and key when known.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ChunkDiskFailure {
@@ -159,13 +159,3 @@ pub use job::ChunkDiskJob;
 #[cfg(test)]
 #[path = "chunk_disk/tests.rs"]
 mod tests;
-
-/// Build the job refusal recorded when a chunk-disk listener unwinds through
-/// [`crate::runtime::invoke`].
-pub(crate) fn unwound_failure(mod_id: &'static str) -> ChunkDiskFailure {
-    ChunkDiskFailure {
-        mod_id: mod_id.into(),
-        key: String::new(),
-        reason: "native listener unwound".into(),
-    }
-}

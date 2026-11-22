@@ -1,0 +1,141 @@
+# Consolidated 1.0 change note for debt item 3r (Register typed attachment descriptors once).
+# Call-only traits (AttachmentStore, AttachmentTypesRegistrar, AttachmentQueries,
+# AttachmentQueriesMut) and opaque structs with only private field changes
+# (AttachmentQueryMut, AttachmentRowMut) have unchanged container records in the
+# surface export, so only their changed method records are listed here.
+# AttachmentDeclarations and AttachmentEntry were #[doc(hidden)] and unnamed in
+# public signatures, so they have no exported surface IDs.
+ids = [
+    # Decoupled sync codec and AttachmentStore
+    "type:AttachmentCodec",
+    "type:AttachmentForm.synced",
+    "method:AttachmentStore::synced_raw",
+    "method:AttachmentStore::store",
+    "type:AttachmentStoreWrite",
+    "handle:AttachmentStoreWrite::id",
+    "handle:AttachmentStoreWrite::into_parts",
+    # Retired AttachmentType
+    "type:AttachmentType",
+    "type:AttachmentType.namespace",
+    "type:AttachmentType.name",
+    "type:AttachmentType.default",
+    "type:AttachmentType.codec",
+    "type:AttachmentType.copy_on_death",
+    "type:AttachmentType.sync",
+    "handle:AttachmentType::get",
+    "handle:AttachmentType::has",
+    "handle:AttachmentType::get_existing",
+    "handle:AttachmentType::with_decoded",
+    "handle:AttachmentType::set",
+    "handle:AttachmentType::remove",
+    "handle:AttachmentType::sync_data",
+    # Typed attachment descriptors, registration records, issued keys, and errors
+    "method:AttachmentTypesRegistrar::register_attachment_type",
+    "method:AttachmentTypesRegistrar::submit_attachment",
+    "method:AttachmentTypesRegistrar::lookup_attachment",
+    "handle:Registrar::register_attachment_type",
+    "handle:Registrar::attachment_key",
+    "type:AttachmentDescriptor",
+    "handle:AttachmentDescriptor::new",
+    "handle:AttachmentDescriptor::serialize",
+    "handle:AttachmentDescriptor::sync",
+    "handle:AttachmentDescriptor::copy_on_death",
+    "handle:AttachmentDescriptor::id",
+    "handle:AttachmentDescriptor::has_codec",
+    "handle:AttachmentDescriptor::is_synced",
+    "handle:AttachmentDescriptor::copy_on_death_enabled",
+    "type:ErasedAttachmentDescriptor",
+    "handle:ErasedAttachmentDescriptor::id",
+    "handle:ErasedAttachmentDescriptor::has_codec",
+    "handle:ErasedAttachmentDescriptor::is_synced",
+    "handle:ErasedAttachmentDescriptor::copy_on_death_enabled",
+    "type:RegisteredAttachment",
+    "handle:RegisteredAttachment::id",
+    "handle:RegisteredAttachment::namespace",
+    "handle:RegisteredAttachment::name",
+    "handle:RegisteredAttachment::owner",
+    "handle:RegisteredAttachment::has_codec",
+    "handle:RegisteredAttachment::is_synced",
+    "handle:RegisteredAttachment::policy",
+    "type:AttachmentKey",
+    "handle:AttachmentKey::id",
+    "handle:AttachmentKey::namespace",
+    "handle:AttachmentKey::name",
+    "handle:AttachmentKey::owner",
+    "handle:AttachmentKey::has_codec",
+    "handle:AttachmentKey::is_synced",
+    "handle:AttachmentKey::policy",
+    "handle:AttachmentKey::is_live",
+    "handle:AttachmentKey::get",
+    "handle:AttachmentKey::has",
+    "handle:AttachmentKey::get_existing",
+    "handle:AttachmentKey::set",
+    "handle:AttachmentKey::remove",
+    "handle:AttachmentKey::sync_data",
+    "handle:AttachmentKey::get_in",
+    "handle:AttachmentKey::has_in",
+    "handle:AttachmentKey::get_existing_in",
+    "handle:AttachmentKey::set_in",
+    "handle:AttachmentKey::remove_in",
+    "handle:AttachmentKey::sync_data_in",
+    "type:AttachmentError.StaleKey",
+    # Block-entity and entity Part state
+    "trait:BlockEntityPartState",
+    "assoc:BlockEntityPartState::DATA",
+    "method:BlockEntityPartState::state_key",
+    "method:BlockEntityPartState::state",
+    "method:BlockEntityPartState::state_existing",
+    "method:BlockEntityPartState::state_in",
+    "method:BlockEntityPartState::state_existing_in",
+    "method:BlockEntityPartState::edit_state",
+    "trait:EntityPartState",
+    "assoc:EntityPartState::DATA",
+    "method:EntityPartState::state_key",
+    "method:EntityPartState::state",
+    "method:EntityPartState::state_existing",
+    "method:EntityPartState::edit_state",
+    "type:PartStateRefusal.Incompatible",
+    "type:PartStateRefusal.StaleKey",
+    "type:PartStateDeclaration",
+    "handle:PartStateDeclaration::of",
+    "fn:read_state",
+    "fn:edit_part_state",
+    # Worldless and attached-storage consumers
+    "handle:EntityRenderAttachments::get",
+    "handle:ChunkDiskData::get",
+    "handle:ChunkDiskData::set",
+    "handle:ChunkDiskData::remove",
+    "handle:ChunkDiskData::failure",
+    "handle:ChunkDiskData::finish",
+    "handle:ChunkDiskData::from_nbt",
+    "hook:chunk_data_load",
+    "hook:chunk_data_save",
+    "handle:OriginalPlayer::attachment",
+    "handle:OriginalPlayer::existing_attachment",
+    "handle:OriginalPlayer::has_attachment",
+    "handle:OriginalPlayer::remove_attachment",
+    "handle:OriginalPlayer::set_attachment",
+    "handle:OriginalPlayer::with_decoded_attachment",
+    "handle:AttachedStacks::new",
+    "handle:AttachedStacks::single",
+    "handle:AttachedEnergy::new",
+    # Attachment queries
+    "method:AttachmentQueries::query",
+    "method:AttachmentQueriesMut::query_mut",
+    "handle:AttachmentBatch::query",
+]
+why = "Register typed attachment descriptors once during Hooks::register and operate through the issued AttachmentKey<T> everywhere, retiring AttachmentType, AttachmentEntry, and the doc-hidden AttachmentDeclarations trait. Mirrors NeoForge's AttachmentType.Builder (net.neoforged.neoforge.attachment.AttachmentType), RegisterEvent.register for NeoForgeRegistries.Keys.ATTACHMENT_TYPES, ChunkDataEvent, PlayerEvent.Clone, ResourceStacksResourceHandler, and SimpleEnergyHandler. Client synchronization (.sync(sync_codec)) is decoupled from disk persistence (.serialize(codec)) via AttachmentCodec: Copy, AttachmentForm.synced, and AttachmentStore::synced_raw; only .copy_on_death() requires .serialize(codec). Disk envelopes store persistence NBT only. The sync codec runs only when sending, following NeoForge's AttachmentSync.syncInitialAttachments on pairing and Entity.syncData -> AttachmentSync.syncEntityUpdate -> syncUpdate for changes. This is distinct from vanilla ServerEntity.sendDirtyEntityData's entity metadata. If a sync codec or network NBT writer refuses an attachment, report its holder and key and still send other valid changes (and any required empty replace marker). Player respawn follows vanilla ServerPlayer.restoreFrom and NeoForge AttachmentInternals.copyEntityAttachments: the installed descriptor decides whether saved data is copied. For NeoForge ChunkDataEvent.Load and Save at ChunkMap and vanilla SerializableChunkData.read/write, only the failing callback's edits are discarded on unwind; other edits reach the ordinary NBT reader/writer, and both hooks move to version 4. Attachment IDs use the registering package's owned or served namespaces. The registering package is recorded as owner for dependency lookups; synced declarations are refused for server-only owners or namespaces. Issued keys carry active-installation identity so keys from prior installations are refused with AttachmentError::StaleKey (and PartStateRefusal::StaleKey at Part registration), making incompatible Rust types on the same ID impossible at key issuance. Host stores accept only a write prepared by the installed descriptor and only a received replica supplies sync bytes. Snapshot reads, including Part state, cache each raw binding against the installation that supplied its decoder. At vanilla EntityRenderer.createRenderState and NeoForge RenderStateExtensions.onUpdateEntityRenderState, render values belong to the capture, not a later live lookup. EntityRenderAttachments binds its shared, lazily decoded capture to its installation."
+migrate = '''
+- Replace `static KEY: AttachmentType<T>` and `r.register_attachment_type("ns:name", sync)` with a single registration in `Hooks::register` (which returns `()`, so do not use `?`; the registrar records any registration refusal on the load even if you only bind the `Ok` branch):
+  `if let Ok(key) = r.register_attachment_type(AttachmentDescriptor::new("ns:name", default)) { *self.key.write().unwrap() = Some(key); }`
+  Chain `.serialize(codec)`, `.sync(sync_codec)` (independent of `.serialize`; `AttachmentCodec` is `Copy`), and `.copy_on_death()` (requires `.serialize`) as needed.
+- To read or write another package's attachment, declare a dependency on its owner and call `if let Ok(key) = r.attachment_key::<T>("ns:name") { ... }` during `Hooks::register` (returning `AttachmentError::Undeclared` if missing or `AttachmentError::TypeMismatch` if the Rust type differs).
+- Store the issued `AttachmentKey<T>` on your mod, hook listener, renderer, or Part (cloning is cheap) and pass `&key` to `key.{get,has,get_existing,set,remove,sync_data}(host, holder)` (or `*_in(level, holder)` on `LevelRandomHost`), `host.query(&key)`, `host.query_mut(&key)`, `AttachmentBatch::query(&key)`, `EntityRenderAttachments::get(&key)`, `ChunkDiskData::{get,set,remove}(&key, ...)`, `event.original.{attachment,existing_attachment,has_attachment,remove_attachment,set_attachment,with_decoded_attachment}(&key, ...)`, `AttachedStacks::{new,single}(&key, ...)`, `AttachedEnergy::new(&key, ...)`, `read_state`, `edit_part_state`, and `PartStateDeclaration::of`.
+- `AttachmentType::with_decoded` was removed: read a single holder as an owned value with `key.get_existing(host, holder)` (or `key.get_existing_in(level, holder)`), or borrow values without cloning through `host.query(&key)` rows.
+- `PartStateDeclaration` is no longer `Copy`: clone it or rebuild it with `PartStateDeclaration::of(&key)` instead of copying by value.
+- On `BlockEntityPartState` and `EntityPartState`, replace `const DATA: &'static AttachmentType<Self::Data>` with `fn state_key(&self) -> &AttachmentKey<Self::Data>` and call `self.state(...)`, `self.state_existing(...)`, `self.state_in(...)`, `self.state_existing_in(...)`, and `self.edit_state(...)` on `&self`. Replace matches on `PartStateRefusal::Incompatible { .. }` with `PartStateRefusal::StaleKey`.
+- Handle `AttachmentError::StaleKey` if a key or retained `AttachmentRowMut` can outlive a registration reinstall. `EntityRenderAttachments::get` also refuses captures from another installation, even with a current key, and returns `AttachmentError::InvalidSyncPolicy` for unsynced keys. Take a fresh capture/key instead of carrying render data across a reinstall.
+- `key.set(...)` can refuse persistence encoding but no longer calls the sync encoder. `key.sync_data(...)` queues the current value; encoding happens in the send pass and its refusals are logged. To retain an attachment through player death, opt in on its current descriptor with `.copy_on_death()`; the flag in old saves only applies to absent mods.
+- Rebuild `chunk_data_load` and `chunk_data_save` listeners against hook version 4. Pass `&key` to `data.get/set/remove` and handle each returned error. A refusal changes no envelope. If several operations must succeed together, return the error from `data.transaction(...)` to undo that group. There is no sticky `data.failure()` job veto. `ChunkDiskData::from_nbt` is now engine-only; use the store lent to the hook. `data.finish()` returns the accepted `Compound`, not a `Result`. A panic discards only that listener's edits, disables its callback for the session and does not cancel publication.
+- In a custom `AttachmentStore`, make `saved(...)` return only undecoded disk NBT. Implement `fn synced_raw(&mut self, holder: Holder, namespace: &str, name: &str) -> Result<Option<Compound>, AttachmentError>` for undecoded client replica bytes. In `AttachmentForm` literals, set `synced: None` for local writes and saved promotions, and keep the original bytes in `synced: Some(bytes)` only when decoding a replica. Change `store(holder, namespace, name, value, form)` to `store(holder, write: AttachmentStoreWrite<'_>)`; consume `let ((namespace, name), value, form) = write.into_parts();` inside a custom store. Ordinary callers replace raw `host.attachments().store(...)` with `key.set(host, holder, value)`. Custom `AttachmentTypesRegistrar` implementations must implement `submit_attachment` and `lookup_attachment` in place of `register_attachment_type`.
+'''

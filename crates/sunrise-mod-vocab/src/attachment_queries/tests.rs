@@ -6,14 +6,6 @@ use std::{
 };
 use sunrise_mod_runtime::attachments::{self as runtime, index::AttachmentIndex};
 
-static VALUE: AttachmentType<u32> = AttachmentType {
-    namespace: "mapping",
-    name: "value",
-    default: || 0,
-    codec: None,
-    copy_on_death: false,
-    sync: false,
-};
 #[derive(Default)]
 struct Store {
     index: Arc<Mutex<AttachmentIndex<AttachmentHolder>>>,
@@ -56,6 +48,12 @@ impl AttachmentHost for Store {
         let _ = (namespace, name, sync);
         Ok(())
     }
+    fn validate_attachment_write(
+        &self,
+        write: &AttachmentStoreWrite<'_>,
+    ) -> Result<(), AttachmentError> {
+        crate::__private::validate_attachment_write(write)
+    }
     fn attachments(
         &mut self,
         holder: Holder,
@@ -97,17 +95,14 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
         ),
         (AttachmentHolder::Level(level), Holder::Level),
     ];
-    crate::parts::install_input(crate::parts::installation::InstalledInput {
-        attachment_types: HashMap::from([(
-            "mapping".into(),
-            HashMap::from([("value".into(), false)]),
-        )]),
-        ..Default::default()
-    });
+    let key = crate::parts::install_attachment_fixture(
+        "mapping",
+        crate::AttachmentDescriptor::new("mapping:value", || 0u32),
+    );
     let mut host = Store::default();
     for (scoped, target) in cases {
         let mut map = Attachments::default();
-        VALUE.set(&mut map, target, 10).unwrap();
+        key.descriptor().set(&mut map, target, 10).unwrap();
         map.bind_index(&host.index, scoped);
         host.maps.insert(target, map);
     }
@@ -121,10 +116,10 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
     ];
     for target in decoys {
         let mut map = Attachments::default();
-        VALUE.set(&mut map, target, 99).unwrap();
+        key.descriptor().set(&mut map, target, 99).unwrap();
         host.maps.insert(target, map);
     }
-    let batch = host.query_mut(&VALUE).unwrap();
+    let batch = host.query_mut(&key).unwrap();
     let captured = || {
         let mut rows = batch.iter();
         std::iter::from_fn(|| rows.try_next().unwrap())
@@ -149,7 +144,7 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
                 .entry("mapping", "value")
                 .unwrap()
                 .unwrap()
-                .read(&VALUE),
+                .read_checked(key.descriptor()),
             Ok(&23)
         );
         assert_eq!(row.with_value(Default::default(), |value| *value), Ok(10));
@@ -172,16 +167,177 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
                 .entry("mapping", "value")
                 .unwrap()
                 .unwrap()
-                .read(&VALUE),
+                .read_checked(key.descriptor()),
             Ok(&99)
         );
     }
-    assert!(
-        host.query(&VALUE)
+    assert_eq!(
+        host.query(&key)
             .unwrap()
             .iter()
             .try_next()
             .unwrap()
-            .is_none()
+            .is_none(),
+        true
+    );
+}
+
+#[test]
+fn stale_key_is_refused_by_query_query_mut_and_retained_row_writes() {
+    let epoch = WorldEpoch::new(19);
+    let level = LevelRef::new(epoch, DimensionKey::OVERWORLD);
+    let scoped = AttachmentHolder::Level(level);
+    let first = crate::parts::install_attachment_fixture(
+        "mapping",
+        crate::AttachmentDescriptor::new("mapping:stale", || 0u32),
+    );
+    let mut host = Store::default();
+    let mut map = Attachments::default();
+    first.descriptor().set(&mut map, Holder::Level, 17).unwrap();
+    map.bind_index(&host.index, scoped);
+    host.maps.insert(Holder::Level, map);
+
+    let retained = host.query_mut(&first).unwrap();
+    let row = retained.iter().try_next().unwrap().unwrap();
+    assert_eq!(
+        row.with_value(Default::default(), |value| *value).unwrap(),
+        17
+    );
+
+    // Reinstall the same ID and Rust type: the prior key becomes stale for fresh queries
+    // and retained row writes, while the freshly issued key keeps working.
+    let second = crate::parts::install_attachment_fixture(
+        "mapping",
+        crate::AttachmentDescriptor::new("mapping:stale", || 0u32),
+    );
+    assert_eq!(host.query(&first).err(), Some(AttachmentError::StaleKey));
+    assert_eq!(
+        host.query_mut(&first).err(),
+        Some(AttachmentError::StaleKey)
+    );
+    assert_eq!(
+        host.attachment_query("mapping", "stale")
+            .unwrap()
+            .query(&first)
+            .err(),
+        Some(AttachmentError::StaleKey)
+    );
+    assert_eq!(
+        row.set(&mut host, 99),
+        Err(AttachmentRowError::Value(AttachmentError::StaleKey))
+    );
+    assert_eq!(
+        row.remove(&mut host),
+        Err(AttachmentRowError::Value(AttachmentError::StaleKey))
+    );
+    assert_eq!(
+        host.query(&second).unwrap().get(Default::default(), scoped),
+        Ok(Some(17))
+    );
+}
+
+#[test]
+fn retained_raw_query_uses_the_current_installations_decoder() {
+    let first_codec = AttachmentCodec {
+        encode: |_| Err(AttachmentError::Encode),
+        decode: |_| Ok(17u32),
+    };
+    let first = crate::parts::install_attachment_fixture(
+        "mapping",
+        AttachmentDescriptor::new("mapping:raw", || 0u32).sync(first_codec),
+    );
+    let scoped =
+        AttachmentHolder::Level(LevelRef::new(WorldEpoch::new(19), DimensionKey::OVERWORLD));
+    let host = Store::default();
+    let mut map = Attachments::default();
+    map.apply_sync(runtime::AttachmentSync {
+        namespace: "mapping".into(),
+        name: "raw".into(),
+        value: Some(Compound::new()),
+    });
+    map.bind_index(&host.index, scoped);
+    let retained = host.attachment_query("mapping", "raw").unwrap();
+    assert_eq!(
+        retained
+            .clone()
+            .query(&first)
+            .unwrap()
+            .get(Default::default(), scoped),
+        Ok(Some(17))
+    );
+
+    let second = crate::parts::install_attachment_fixture(
+        "mapping",
+        AttachmentDescriptor::new("mapping:raw", || 0u32).sync(AttachmentCodec {
+            decode: |_| Ok(38),
+            ..first_codec
+        }),
+    );
+    assert_eq!(
+        host.query(&second).unwrap().get(Default::default(), scoped),
+        Ok(Some(38))
+    );
+    assert_eq!(
+        retained
+            .query(&second)
+            .unwrap()
+            .iter()
+            .try_next()
+            .unwrap()
+            .unwrap()
+            .with_value(Default::default(), |value| *value)
+            .unwrap(),
+        38
+    );
+}
+
+#[test]
+fn public_store_only_writes_the_issued_descriptor_type_and_policy() {
+    const CODEC: AttachmentCodec<u32> = AttachmentCodec {
+        encode: |value| Ok([("projection".into(), Tag::Int(*value as i32 + 100))].into()),
+        decode: |_| Err(AttachmentError::Decode),
+    };
+    let key = crate::parts::install_attachment_fixture(
+        "mapping",
+        AttachmentDescriptor::new("mapping:sync", || 0u32).sync(CODEC),
+    );
+    let mut host = Store::default();
+    host.maps.insert(Holder::Level, Attachments::default());
+    let imposter = runtime::AttachmentType {
+        namespace: "mapping",
+        name: "sync",
+        default: || 0u32,
+        codec: Some(CODEC),
+        copy_on_death: false,
+        sync_codec: Some(CODEC),
+    };
+    assert_eq!(
+        imposter.set(ModStateHost::attachments(&mut host), Holder::Level, 8),
+        Err(AttachmentError::StaleKey)
+    );
+    let wrong_type = runtime::AttachmentType {
+        namespace: "mapping",
+        name: "sync",
+        default: || false,
+        codec: None,
+        copy_on_death: false,
+        sync_codec: None,
+    };
+    assert_eq!(
+        wrong_type.set(ModStateHost::attachments(&mut host), Holder::Level, true),
+        Err(AttachmentError::StaleKey)
+    );
+    assert_eq!(key.get_existing(&mut host, Holder::Level), Ok(None));
+
+    key.set(&mut host, Holder::Level, 9).unwrap();
+    let map = host.maps.get_mut(&Holder::Level).unwrap();
+    assert!(map.to_nbt().is_empty());
+    let changes = map.take_sync_changes(|namespace, name, input| {
+        crate::__private::attachment_sync_projection()(namespace, name, input).unwrap()
+    });
+    assert_eq!(changes.len(), 1);
+    assert_eq!(
+        changes[0].value,
+        Some([("projection".into(), Tag::Int(109))].into())
     );
 }

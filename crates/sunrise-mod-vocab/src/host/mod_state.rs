@@ -21,11 +21,9 @@ pub trait ModStateHost {
     /// result to `row.with_value` or `query.get`; it does not open a transaction.
     fn attachment_read_scope(&self) -> Result<AttachmentReadScope<'_>, AttachmentRowError>;
     /// Side: both.
-    /// The server-owned holders' attachments; `TYPE.get(host, holder)` reads
-    /// one. On a client it is the copy of what the server synced: `set` and
-    /// `remove` change only the copy. While held during a proxy handoff, the
-    /// client can already read updates or removals for entities and other
-    /// players it tracks, without waiting for placement or requesting a resync.
+    /// The server-owned holders' attachments; `key.get(host, holder)` reads
+    /// one through an issued [`AttachmentKey`]. On a client it is the copy of
+    /// what the server synced: `set` and `remove` change only the copy.
     fn attachments(&mut self) -> &mut dyn AttachmentStore;
 }
 /// The server host's methods of the `mod_state` area, implemented by the game and reached through [`ServerHost`].

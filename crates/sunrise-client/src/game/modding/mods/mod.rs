@@ -3573,8 +3573,11 @@ mod tests {
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for DeclaresUnsynced {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &RegistrationContext) {
-                r.register_attachment_type("srv_runes:internal", false)
-                    .unwrap();
+                r.register_attachment_type(mod_api::AttachmentDescriptor::new(
+                    "srv_runes:internal",
+                    || (),
+                ))
+                .unwrap();
             }
         }
         let unsynced_mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -3608,7 +3611,15 @@ mod tests {
                 )
                 .unwrap();
                 r.register_custom_stat("runes:casts").unwrap();
-                r.register_attachment_type("runes:charge", true).unwrap();
+                r.register_attachment_type(
+                    mod_api::AttachmentDescriptor::new("runes:charge", || ()).sync(
+                        mod_api::AttachmentCodec {
+                            encode: |_| Ok(Default::default()),
+                            decode: |_| Ok(()),
+                        },
+                    ),
+                )
+                .unwrap();
                 r.declare_datapack_registry(
                     "runes:spell",
                     mod_api::DatapackRegistrySync::Required,

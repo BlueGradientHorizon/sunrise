@@ -35,14 +35,23 @@ impl From<runtime::AttachmentBatch<AttachmentHolder>> for AttachmentBatch {
     }
 }
 impl AttachmentBatch {
-    /// Bind a type without eagerly decoding or cloning any value.
+    /// Bind an issued attachment key without eagerly decoding or cloning any value.
     /// This view borrows only the key, never the host.
-    pub fn query<T: Send + Sync + 'static>(
+    /// Refuses keys from an earlier installation with [`AttachmentError::StaleKey`].
+    pub fn query<'key, T: Send + Sync + 'static>(
         self,
-        key: &AttachmentType<T>,
-    ) -> Result<AttachmentQuery<'_, T>, AttachmentError> {
-        crate::parts::validate_attachment_use(key.namespace, key.name, key.sync)?;
-        self.0.query(key).map(AttachmentQuery)
+        key: &'key AttachmentKey<T>,
+    ) -> Result<AttachmentQuery<'key, T>, AttachmentError> {
+        let (checked, epoch) = key.live_with_epoch()?;
+        Ok(self.query_checked(checked, epoch))
+    }
+
+    pub(crate) fn query_checked<'key, T: Send + Sync + 'static>(
+        self,
+        checked: &'key runtime::CheckedAttachmentType<T>,
+        epoch: u64,
+    ) -> AttachmentQuery<'key, T> {
+        AttachmentQuery(self.0.query_checked(checked, epoch))
     }
 }
 
@@ -169,26 +178,23 @@ pub fn validate_attachment_write(
 #[cfg(test)]
 mod tests {
     use super::*;
-    static KEY: AttachmentType<u32> = AttachmentType {
-        namespace: "test",
-        name: "value",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync: false,
-    };
-
     #[test]
     fn write_tokens_go_stale_with_their_residency() {
+        let key = crate::parts::install_attachment_fixture(
+            "test",
+            AttachmentDescriptor::new("test:value", || 0u32),
+        );
         let holder = AttachmentHolder::Entity(EntityRef::new(WorldEpoch::new(1), 42));
         let index = Arc::new(std::sync::Mutex::new(index::AttachmentIndex::default()));
         let mut values = runtime::Attachments::default();
-        KEY.set(&mut values, runtime::Holder::Level, 7).unwrap();
+        key.descriptor()
+            .set(&mut values, runtime::Holder::Level, 7)
+            .unwrap();
         values.bind_index(&index, holder);
         let batch = AttachmentBatch::from(runtime::AttachmentBatch::new(
             index.lock().unwrap().snapshot_named("test", "value"),
         ));
-        let query = batch.query(&KEY).unwrap();
+        let query = batch.query(&key).unwrap();
         let row = query.iter().try_next().unwrap().unwrap();
         assert_eq!(row.holder, holder);
         assert_eq!(row.with_value(Default::default(), |value| *value), Ok(7));
@@ -204,7 +210,9 @@ mod tests {
             Err(AttachmentRowError::StaleHolder)
         );
         let mut again = runtime::Attachments::default();
-        KEY.set(&mut again, runtime::Holder::Level, 7).unwrap();
+        key.descriptor()
+            .set(&mut again, runtime::Holder::Level, 7)
+            .unwrap();
         again.bind_index(&index, holder);
         assert_eq!(
             validate_attachment_write(&token, Some(&index)),

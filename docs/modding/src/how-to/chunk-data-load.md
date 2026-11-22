@@ -14,23 +14,16 @@ retained by the worker. `None` means that generation has no such registry. Use t
 the callback, or copy it if it must outlive the callback. Neither metadata getter reads files;
 `ConfigHost::setting` still returns an owned `Option<String>` from the same snapshot.
 The host has no live backend and is not a `ServerHost`. Typed values need a
-persistence codec, not `Wire`. Unknown bounded attachment entries are preserved opaquely.
+persistence codec, not `Wire`, and disk operations never invoke `sync_codec`.
+Unknown attachment entries are preserved opaquely.
 
-Codec errors, invalid or over-budget disk NBT, and panics refuse publication of
-the job's edits. Later listeners still see the last accepted envelopes;
-`event.data.failure()` does not expose an earlier listener's error to them. Within
-one callback, each operation runs and reports its own refusal even when another
-operation already failed. `failure()` is the first failure of this callback, not
-its latest operation. The job reports its first terminal failure.
-A phase refusal drops only that listener's proposal and is reported each time;
-only a panic disables a callback for this hook for the session. If the job fails,
-the chunk still loads with the
-attachments exactly as they were stored. No
-`chunk_data_save` listener runs for that chunk for the rest of the session, so
-half-initialised state never replaces the stored record, and the chunk's later
-saves write its stored attachments back unchanged. The load diagnostic names the
-chunk and the mod. Fix the mod and restart before retrying a disabled callback.
+A codec error, missing persistence codec, or stale key on `event.data` returns
+`Err` for that operation without modifying its stored envelope. If a listener
+panics, only its edits are discarded, and its load callback is disabled for the
+session. The log and local error toast name the mod. Edits from listeners before
+and after it still publish; a load callback cannot suppress the save hook.
+To undo a group of edits when an operation returns an error, return that error
+from `event.data.transaction(...)`.
 
 The load runs on the thread that decodes the record, never with access to live
-world state. The [disk NBT budgets](chunk-data-save.md#disk-nbt-budgets)
-are the same on load and save.
+world state. The ordinary disk reader decodes the input before this hook.

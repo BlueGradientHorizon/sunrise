@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 pub struct ChunkDiskJob {
     context: ChunkDiskContext,
     captured: Compound,
-    completed: OnceLock<Result<Compound, ChunkDiskFailure>>,
+    completed: OnceLock<Compound>,
     #[cfg(any(test, feature = "testing"))]
     installed: Option<&'static crate::runtime::Installed>,
     #[cfg(any(test, feature = "testing"))]
@@ -42,14 +42,14 @@ impl ChunkDiskJob {
 
     /// Run once on the owning chunk worker. Repeated encoding or recovery
     /// reads borrow the cached outcome and cannot invoke listeners again.
-    pub fn run(&self, resources: &dyn WorldgenHost) -> &Result<Compound, ChunkDiskFailure> {
+    pub fn run(&self, resources: &dyn WorldgenHost) -> &Compound {
         self.completed.get_or_init(|| {
             #[cfg(any(test, feature = "testing"))]
             let _scope = TestScope(
                 crate::TEST_MODS.replace(self.installed),
                 crate::parts::TEST_PARTS.replace(self.parts),
             );
-            let mut data = ChunkDiskData::from_nbt(self.captured.clone())?;
+            let mut data = ChunkDiskData::from_nbt(self.captured.clone());
             let context = OwningChunkDisk::new(&self.context, resources);
             match self.context.phase {
                 ChunkDiskPhase::Load => native_chunk_data_load(&context, &mut data),
@@ -59,14 +59,13 @@ impl ChunkDiskJob {
         })
     }
 
-    /// Original encoded envelopes for explicit recovery after callback or IO
-    /// failure. Reading these bytes never runs mod code or repeats callbacks.
+    /// The captured envelopes, before any listener ran.
     pub fn captured(&self) -> &Compound {
         &self.captured
     }
 
     /// Inspect completion without starting work on a reader or server thread.
-    pub fn completed(&self) -> Option<&Result<Compound, ChunkDiskFailure>> {
+    pub fn completed(&self) -> Option<&Compound> {
         self.completed.get()
     }
 }

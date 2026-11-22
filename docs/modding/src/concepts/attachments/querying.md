@@ -1,13 +1,15 @@
 # Query attachment holders
 
-Use `AttachmentQueries` to find loaded holders of an `AttachmentType<T>` without
-checking every entity, chunk or block entity. Declare your key as described in
+Use `AttachmentQueries` to find loaded holders of an `AttachmentKey<T>` without
+checking every entity, chunk or block entity. Register your descriptor during
+`Hooks::register` to obtain an `AttachmentKey<T>`, or look up a dependency's key
+with `Registrar::attachment_key`, as described in
 [server attachments](../attachments.md). Import `AttachmentQueriesMut` for server
 writes.
 
 ## Read a snapshot
 
-Call `host.query(&TYPE)` on `&dyn Host`, then create a fallible cursor with
+Call `host.query(key)` on `&dyn Host`, then create a fallible cursor with
 `query.iter()`. Advance with `rows.try_next()?`; `Ok(None)` means the cursor is
 in scope and has reached the end. Each row contains a copyable `holder` and lends
 its value through `row.with_value(scope, |value| ...)`. Get `scope` from
@@ -18,21 +20,16 @@ Match `AttachmentHolder` to obtain an `EntityRef`, `PlayerRef`, `BlockEntityRef`
 use the [attachment codec](../attachments.md#synchronization) for values that
 need to be saved or synced.
 
-For example, sum a counter across its holders:
+For example, register a counter descriptor and sum it across its holders:
 
 ```rust,ignore
 use mod_api::*;
 
-static VALUE: AttachmentType<u32> = AttachmentType {
-    namespace: "example",
-    name: "value",
-    default: || 0,
-    codec: None,
-    copy_on_death: false,
-    sync: false,
-};
+fn register_counter(registrar: &mut dyn Registrar) -> Result<AttachmentKey<u32>, String> {
+    registrar.register_attachment_type(AttachmentDescriptor::new("example:value", || 0u32))
+}
 
-fn total(host: &dyn Host) -> Result<u32, AttachmentRowError> {
+fn total(host: &dyn Host, key: &AttachmentKey<u32>) -> Result<u32, AttachmentRowError> {
     let query = host.query(&VALUE).map_err(AttachmentRowError::Value)?;
     let scope = host.attachment_read_scope()?;
     let mut rows = query.iter();
@@ -47,6 +44,7 @@ fn total(host: &dyn Host) -> Result<u32, AttachmentRowError> {
 | Rule | Behaviour |
 |---|---|
 | Value bounds | Iteration requires `T: Send + Sync + 'static`, not `Clone`. |
+| Key liveness | `host.query(&key)` and `AttachmentBatch::query(&key)` reject keys from an earlier installation with `AttachmentError::StaleKey`. |
 | Snapshot | Membership and stored value bindings are captured at query creation. Create a fresh query to see later sets, removals, loads or unloads. |
 | Borrowing | Rows borrow from the batch. Reading a captured value borrows the original host through its read scope, so you can mutate the host between reads, but not during a read loan. |
 | Defaults | Queries never initialize defaults, dirty holders or queue synchronization. An absent key produces an empty batch. |
@@ -141,10 +139,13 @@ row metadata and shared pointers, without cloning each typed value. Retaining
 many batches or interleaving snapshots and writes increases storage and copying
 costs. No index sweep runs without an attachment or residency change.
 
-A decoded value requires matching Rust type identity. An incompatible type
-produces `AttachmentError::TypeMismatch`, without falling back to saved decoding.
-Share types through your mod dependencies rather than declaring a different
-type with the same attachment key.
+A decoded value requires matching Rust type identity. Registering an attachment
+once via `Registrar::register_attachment_type` and looking it up from other mods
+via `Registrar::attachment_key` checks the Rust type at registration time; an
+incompatible stored value still produces `AttachmentError::TypeMismatch`,
+without falling back to saved decoding. Share types through your mod
+dependencies rather than declaring a different type with the same attachment
+key.
 
 ## Store errors
 

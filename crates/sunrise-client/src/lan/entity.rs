@@ -1251,12 +1251,47 @@ struct EncodedAttachmentSnapshot {
     body: Result<Vec<u8>, String>,
 }
 
+pub fn report_attachment_sync_refusal(
+    holder: sunrise_mod_runtime::attachments::Holder,
+    error: impl std::fmt::Display,
+) {
+    log::warn!("Sunrise: attachment sync for {holder:?} not sent: {error}");
+}
+
+use sunrise_mod_runtime::attachments::{AttachmentSyncInput, Holder as AttachmentHolder};
+
+fn capture_attachment_projection()
+-> impl Fn(AttachmentHolder, &str, &str, AttachmentSyncInput<'_>) -> Option<mod_api::Compound> + Sync
+{
+    let project = mod_api::__private::attachment_sync_projection();
+    move |holder, namespace, name, input| match project(namespace, name, input) {
+        Ok(value) => value,
+        Err(error) => {
+            report_attachment_sync_refusal(holder, format_args!("{namespace}:{name}: {error}"));
+            None
+        }
+    }
+}
+
+pub fn project_attachment_sync(
+    holder: AttachmentHolder,
+) -> impl FnMut(&str, &str, AttachmentSyncInput<'_>) -> Option<mod_api::Compound> {
+    let project = capture_attachment_projection();
+    move |namespace, name, input| project(holder, namespace, name, input)
+}
+
 fn encode_initial_attachment_snapshot(
     entity: &EntityState,
     attachments: Option<&InitialAttachmentLookup<'_>>,
+    project: &impl Fn(
+        AttachmentHolder,
+        &str,
+        &str,
+        AttachmentSyncInput<'_>,
+    ) -> Option<mod_api::Compound>,
 ) -> Option<EncodedAttachmentSnapshot> {
     let (holder, map) = attachments?(entity)?;
-    let changes = map.synced();
+    let changes = map.synced(|namespace, name, input| project(holder, namespace, name, input));
     if changes.is_empty() {
         return None;
     }
@@ -1265,7 +1300,21 @@ fn encode_initial_attachment_snapshot(
         replace: true,
         changes,
     };
-    let body = sunrise_protocol::attachment_sync::encode(&message).map_err(|e| e.to_string());
+    let body =
+        match sunrise_protocol::attachment_sync::encode_retaining(&message, |change, error| {
+            report_attachment_sync_refusal(
+                holder,
+                format_args!(
+                    "{}:{}: {error}",
+                    change.namespace.to_string_lossy(),
+                    change.name.to_string_lossy()
+                ),
+            );
+        }) {
+            Ok(Some(body)) => Ok(body),
+            Ok(None) => return None,
+            Err(error) => Err(error.to_string()),
+        };
     Some(EncodedAttachmentSnapshot { holder, body })
 }
 
@@ -1340,13 +1389,19 @@ impl PairingBodies {
         viewer: &mut Viewer,
         entity: &EntityState,
         attachments: Option<&InitialAttachmentLookup<'_>>,
+        project: &impl Fn(
+            AttachmentHolder,
+            &str,
+            &str,
+            AttachmentSyncInput<'_>,
+        ) -> Option<mod_api::Compound>,
     ) {
         let delimiter = bundle_delimiter();
         let base = self.base.to(viewer);
         let prepared_sync = viewer.attachment_sender.as_ref().and_then(|sender| {
             let snapshot = self
                 .attachment_sync
-                .get_or_init(|| encode_initial_attachment_snapshot(entity, attachments))
+                .get_or_init(|| encode_initial_attachment_snapshot(entity, attachments, project))
                 .as_ref()?;
             prepare_pairing_attachment_sync(sender, snapshot)
         });
@@ -1371,6 +1426,7 @@ impl Entities {
         attachments: Option<&InitialAttachmentLookup<'_>>,
         mut kind: impl FnMut(&str) -> Option<i32>,
     ) {
+        let project = capture_attachment_projection();
         for e in entities {
             if self.states.contains_key(&e.id) {
                 continue;
@@ -1426,7 +1482,7 @@ impl Entities {
                 let Some(bodies) = built else {
                     continue;
                 };
-                bodies.write_to(v, e, attachments);
+                bodies.write_to(v, e, attachments, &project);
                 v.tracker.seen.insert(e.id, Arc::clone(&s.tracked));
                 v.tracker.events.push(TrackEvent {
                     start: true,
@@ -1828,6 +1884,7 @@ impl Entities {
         active: &[usize],
         attachments: Option<&InitialAttachmentLookup<'_>>,
     ) {
+        let project = capture_attachment_projection();
         for &index in active {
             let e = entities[self.probes[index].input as usize];
             let s = self.states.at_mut(self.states.slot_of_index(index));
@@ -1880,7 +1937,7 @@ impl Entities {
                             .then(|| PairingBodies::of(&packets))
                     })
                 {
-                    bodies.write_to(v, e, attachments);
+                    bodies.write_to(v, e, attachments, &project);
                     // The bundle ends here: its changes follow (sendChanges), after
                     // what a mod sends for the pairing.
                     let at = v.out.len();
@@ -1987,6 +2044,7 @@ impl Entities {
         made.retain(|m| !m.changes.all.is_empty() || m.pairing.is_some());
         let made = &made;
         let mut clients: Vec<(&mut Viewer, &Vec<u8>)> = viewers.iter_mut().zip(&*flags).collect();
+        let project = capture_attachment_projection();
         sunrise_threads::par_chunks_mut(&mut clients, 4, |part| {
             for (v, flags) in part {
                 for m in made {
@@ -1997,7 +2055,7 @@ impl Entities {
                         && let Some(pairing) = &m.pairing
                         && m.state.kind.is_some_and(|kind| v.pairs_with(kind))
                     {
-                        pairing.write_to(v, entities[m.index], attachments);
+                        pairing.write_to(v, entities[m.index], attachments, &project);
                         // As `send_in_order`: the bundle ends before its changes.
                         let at = v.out.len();
                         if m.synced {
@@ -3507,6 +3565,31 @@ mod tests {
 
     #[test]
     fn pairing_prepares_attachment_sync_lazily_and_keeps_bundle_intact_on_tcp_oversize() {
+        struct Declare;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Declare {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let codec = mod_api::AttachmentCodec {
+                    encode: |value: &mod_api::Compound| Ok(value.clone()),
+                    decode: |value| Ok(value.clone()),
+                };
+                for name in ["test:fuel", "test:blob"] {
+                    r.register_attachment_type(
+                        mod_api::AttachmentDescriptor::new(name, mod_api::Compound::default)
+                            .sync(codec),
+                    )
+                    .unwrap();
+                }
+            }
+        }
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(Declare))].into();
+        mod_platform::testing::with_mods(mods.clone(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+            assert_pairing_attachment_sync();
+        });
+    }
+
+    fn assert_pairing_attachment_sync() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         use sunrise_core::nbt::Tag;
         use sunrise_mod_runtime::attachments::{AttachmentSync, Attachments, Holder};
@@ -3549,7 +3632,7 @@ mod tests {
         let expected_entity_payload = attachment_sync::encode(&attachment_sync::Message {
             holder: Holder::Entity(7),
             replace: true,
-            changes: small_map.synced(),
+            changes: small_map.synced(project_attachment_sync(Holder::Entity(7))),
         })
         .unwrap();
 
