@@ -174,7 +174,9 @@ pub fn main() -> ExitCode {
             }
             None => Err("restore needs a backup (`sunrise-server backups` lists them)".into()),
         },
-        Some("import-resources") => import_resources::command(&dir, &args[1..]),
+        Some("import-resources") => {
+            import_resources::command(&dir, &args[1..], &mut std::io::stdout().lock())
+        }
         Some("import") => import(&dir, &args[1..]),
         Some("config") => settings::command(&dir, &args[1..]),
         Some("update") => update::command(&dir, &args[1..]),

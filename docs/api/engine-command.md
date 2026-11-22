@@ -32,7 +32,8 @@ One JSON object on stdout:
   "args": ["--resources", "/srv/mc/resources", "--control-socket", "/srv/mc/.sunrise/engine.json", "--dedicated", "--nogui"],
   "cwd": "/srv/mc",
   "env": {"SUNRISE_NO_AUDIO": "1", "MIMALLOC_ALLOW_THP": "0"},
-  "resources": "/srv/mc/resources"
+  "resources": "/srv/mc/resources",
+  "resources_pending": false
 }
 ```
 
@@ -41,7 +42,11 @@ One JSON object on stdout:
 - `args`: its arguments, in order.
 - `cwd`: the folder it runs in, absolute.
 - `env`: the variables it sets on top of the inherited environment. A `null` value means the variable is removed.
-- `resources`: the prepared game files it reads (`--resources`), absolute.
+- `resources`: the game-files folder the supervisor selects (`--resources`), absolute. Startup, this
+  description and `import-resources` all use the same version and profile checks.
+- `resources_pending`: `true` if `run` needs to prepare its managed server profile at `resources`
+  before starting; otherwise `false`. The probe does not prepare it. Forward Start to the
+  supervisor rather than launching the engine yourself when preparation is pending.
 - Every path is a string. A path that isn't valid Unicode is an `io` error, not a lossy string.
 
 ### Errors
@@ -49,12 +54,12 @@ One JSON object on stdout:
 One JSON object on stdout, with the message for a person:
 
 ```json
-{"format": 1, "error": {"kind": "resources", "message": "no prepared game files. …"}}
+{"format": 1, "error": {"kind": "resources", "message": "the prepared game files in /srv/mc/custom are incomplete or damaged: …"}}
 ```
 
 | `kind` | Means | Exit |
 | --- | --- | --- |
-| `resources` | no prepared game files in any place `run` looks: preparing them is the fix | 3 |
+| `resources` | the selected folder cannot be used or prepared by `run`, for example an explicit `engine.resources` folder that is not ready | 3 |
 | `configuration` | `server.toml` doesn't parse or fails its checks | 1 |
 | `program` | no game program beside `sunrise-server`, on the `PATH` or at `engine.path` | 1 |
 | `io` | a file couldn't be read, or a path isn't valid Unicode | 1 |
@@ -92,4 +97,5 @@ pin the reply's shape.
 
 ## Changelog
 
-- format 1: `engine-command [--json]`, the error kinds above and exit code 3 for missing game files.
+- format 1: `engine-command [--json]`, the error kinds above and exit code 3 for unusable game files.
+  The additive `resources_pending` field distinguishes preparation by the supervisor from a resource error.

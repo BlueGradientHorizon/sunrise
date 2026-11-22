@@ -14,7 +14,8 @@ use sunrise_platform::server_files::{
     eula,
     user_lists::{OpEntry, OpList, WhiteEntry, WhiteList},
 };
-use sunrise_server_launch::prepared_profile::{MANIFEST, Manifest, Profile};
+use sunrise_server_launch::prepared_profile::Profile;
+use sunrise_server_launch::resources::{self, Selection};
 use sunrise_server_launch::{
     self as launch,
     config::{self, Config},
@@ -274,9 +275,7 @@ pub(crate) fn ensure_resources(
     program: Option<&Path>,
     jar: Option<&Path>,
 ) -> Result<PathBuf, String> {
-    let install = program
-        .and_then(launch::Install::around)
-        .or_else(launch::Install::find);
+    let install = launch::Install::find();
     ensure_resources_with(
         cfg,
         dir,
@@ -302,54 +301,14 @@ fn ensure_resources_with(
     install: Option<&Path>,
     prepare: impl FnOnce(&Path, Option<&Path>) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
-    let managed = install
-        .unwrap_or(dir)
-        .join("game-files/sunrise-client")
-        .join(format!("{}-server", launch::GAME_VERSION));
-    let mut candidates = launch::resource_candidates(cfg, dir, program);
-    // The manager itself may be installed separately from a configured engine binary.
-    if !candidates.contains(&managed) {
-        candidates.push(managed.clone());
-    }
-    let output = if !cfg.engine.resources.is_empty() {
-        let path = dir.join(&cfg.engine.resources);
-        if jar.is_none() {
-            engine::check_prepared(&path)?;
-            return Ok(path);
+    match resources::select(cfg, dir, program, install, jar.is_some())? {
+        Selection::Ready(path) => Ok(path),
+        Selection::NeedsPreparation(path) => {
+            prepare(&path, jar)?;
+            resources::check_prepared(&path)?;
+            Ok(path)
         }
-        path
-    } else {
-        let prepared = candidates
-            .iter()
-            .filter(|path| path.join(MANIFEST).is_file());
-        let mut server = None;
-        for (i, path) in prepared.enumerate() {
-            let Ok(manifest) = Manifest::read(path) else {
-                continue;
-            };
-            if manifest.profile() == Profile::Server {
-                if jar.is_none() && engine::check_prepared_manifest(path, &manifest).is_ok() {
-                    return Ok(path.clone());
-                }
-                server.get_or_insert_with(|| path.clone());
-                break;
-            }
-            if i == 0 && jar.is_none() && engine::check_prepared_manifest(path, &manifest).is_ok() {
-                return Ok(path.clone());
-            }
-        }
-        server.unwrap_or(managed)
-    };
-    // Missing metadata allows a fresh preparation. Damaged metadata cannot establish which
-    // profile owns an existing folder, so leave it alone and report where to prepare instead.
-    if !std::fs::symlink_metadata(output.join(MANIFEST))
-        .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-    {
-        engine::read_prepared_manifest(&output)?;
     }
-    prepare(&output, jar)?;
-    engine::check_prepared(&output)?;
-    Ok(output)
 }
 
 fn prepare_server_files(
@@ -446,6 +405,7 @@ fn add_players(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_server_launch::prepared_profile::MANIFEST;
 
     #[test]
     fn a_whitelist_init_cannot_read_is_left_alone() {
