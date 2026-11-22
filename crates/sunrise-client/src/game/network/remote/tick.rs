@@ -136,8 +136,8 @@ impl Game<'_> {
     pub(in crate::game) fn tick_remote_entities(&mut self, running: bool) {
         use crate::game::native_ticks::{PLAYER, TickKind};
 
+        self.tick_text_displays(running);
         if running {
-            self.tick_text_displays();
             self.tick_remote_ominous_item_spawners();
         }
         // EntityTickEvent.Pre for the mobs and players this client ticks, once for the family
