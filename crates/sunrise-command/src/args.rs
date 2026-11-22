@@ -18,6 +18,8 @@ pub enum CustomArgumentKind {
     Word,
     /// The rest of the line, spaces included.
     Greedy,
+    /// An identifier as vanilla reads it, preserving the spelling for the custom parser.
+    Id,
 }
 
 /// One completion a registered custom argument offers.
@@ -578,13 +580,19 @@ pub fn read_id(reader: &mut Reader) -> CmdResult<String> {
 }
 /// Identifier.read.
 pub fn read_identifier(reader: &mut Reader) -> CmdResult<String> {
+    let (_, (namespace, path)) = read_identifier_token(reader)?;
+    Ok(format!("{namespace}:{path}"))
+}
+
+/// Read the original token and its canonical namespace and path without allocating.
+fn read_identifier_token<'a>(reader: &mut Reader<'a>) -> CmdResult<(&'a str, (&'a str, &'a str))> {
     let start = reader.cursor;
     while reader.can_read() && is_id_char(reader.peek()) {
         reader.skip();
     }
     let raw = &reader.string[start..reader.cursor];
-    match parse_identifier(raw) {
-        Some(id) => Ok(id),
+    match sunrise_client_core::identifier::parse_identifier_parts(raw) {
+        Some(parts) => Ok((raw, parts)),
         None => {
             reader.cursor = start;
             Err(CommandError::tr_at("argument.id.invalid", &[], reader))
@@ -1820,14 +1828,15 @@ impl ArgType {
             }
             ArgType::Custom(custom) => {
                 let text = match custom.kind {
-                    CustomArgumentKind::Word => reader.read_unquoted_string().to_owned(),
+                    CustomArgumentKind::Word => reader.read_unquoted_string(),
                     CustomArgumentKind::Greedy => {
-                        let text = reader.remaining().to_owned();
+                        let text = reader.remaining();
                         reader.cursor = reader.string.len();
                         text
                     }
+                    CustomArgumentKind::Id => read_identifier_token(reader)?.0,
                 };
-                match (custom.parse)(&text) {
+                match (custom.parse)(text) {
                     Ok(value) => Arg::Custom {
                         kind: custom.id.clone(),
                         value,

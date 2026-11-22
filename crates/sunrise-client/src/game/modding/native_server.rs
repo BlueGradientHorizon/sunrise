@@ -123,20 +123,27 @@ fn usage_nodes(
                          only a server command can offer; a client command completes without one"
                     ));
                 }
-                let (properties, greedy) = match std::panic::catch_unwind(
+                let (parser, properties, greedy) = match std::panic::catch_unwind(
                     std::panic::AssertUnwindSafe(|| argument.kind()),
                 )
                 .map_err(|_| format!("`{usage}`: argument type `{kind}` panicked"))?
                 {
-                    mod_api::CommandArgumentKind::Word => (json!({"type": "word"}), false),
-                    mod_api::CommandArgumentKind::Greedy => (json!({"type": "greedy"}), true),
+                    mod_api::CommandArgumentKind::Word => {
+                        ("brigadier:string", json!({"type": "word"}), false)
+                    }
+                    mod_api::CommandArgumentKind::Greedy => {
+                        ("brigadier:string", json!({"type": "greedy"}), true)
+                    }
+                    mod_api::CommandArgumentKind::Id => {
+                        ("minecraft:resource_location", Value::Null, false)
+                    }
                     _ => {
                         return Err(format!(
                             "`{usage}`: argument type `{kind}` uses a kind this build cannot read"
                         ));
                     }
                 };
-                ("brigadier:string", properties, greedy, Some(kind))
+                (parser, properties, greedy, Some(kind))
             }
         };
         optional_seen |= optional;
@@ -148,8 +155,8 @@ fn usage_nodes(
         if kind == "vec3_uncentered" {
             node[UNCENTERED] = true.into();
         }
-        // A registered type goes out as a Brigadier string an unmodded client can read; it and
-        // the free `id`, which has no list of its own, ask the server (the mods' `tab_complete`).
+        // A registered type goes out as a vanilla parser; it and the free `id` ask the server
+        // for completions.
         if custom.is_some() || kind == "id" {
             if let Some(id) = custom {
                 node["custom_argument"] = id.into();

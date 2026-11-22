@@ -8,8 +8,8 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 use sunrise_client::command::{
-    CommandError, Dispatcher, MAX_SUGGESTION_TEXT, MAX_SUGGESTION_TOOLTIP, NodeKind, Range, Reader,
-    args::Coordinates, snbt,
+    CommandError, CustomArgumentKind, Dispatcher, MAX_SUGGESTION_TEXT, MAX_SUGGESTION_TOOLTIP,
+    NodeKind, Range, Reader, args::Coordinates, snbt,
 };
 
 /// The argument kinds a native usage may name, each with a [`parser`]; `resource:<registry>`
@@ -368,10 +368,12 @@ pub(super) fn argument_type(node: &Value, arguments: &CommandArguments) -> ArgTy
             }
         };
         // Use the validated tree property rather than calling mod code again.
-        let kind = if node["properties"]["type"] == "greedy" {
-            sunrise_client::command::CustomArgumentKind::Greedy
+        let kind = if node["parser"] == "minecraft:resource_location" {
+            CustomArgumentKind::Id
+        } else if node["properties"]["type"] == "greedy" {
+            CustomArgumentKind::Greedy
         } else {
-            sunrise_client::command::CustomArgumentKind::Word
+            CustomArgumentKind::Word
         };
         let custom = sunrise_client::command::CustomArgument::new(
             id,

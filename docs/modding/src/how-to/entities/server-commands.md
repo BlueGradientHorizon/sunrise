@@ -305,13 +305,20 @@ provider: the argument's node carries `minecraft:ask_server`, so the client asks
 server, exactly as for a `suggest`-only type, and a client command that names a type
 declaring one is refused by name.
 
-`CommandArgumentKind::Word` takes one word of ASCII letters, digits and `_ - . +`; the
-word ends at the first other character, a space included, so a value with `:` or `/`
-needs `Greedy`, which takes the rest of the line. `suggest` receives that text as typed so
-far: one word, or the whole tail of the line up to the cursor. Players whose client does not know
-the type parse and complete the command: the server sends the argument as a Brigadier string
-of that shape with `minecraft:ask_server`, and their chat asks the server for the
-suggestions.
+Choose a `CommandArgumentKind` for how much of the input the type reads:
+
+- `Word` takes one word of ASCII letters, digits and `_ - . +`.
+- `Id` reads a vanilla identifier using `a-z 0-9 _ - . : /` and stops at the first other
+  character. For example, `<modifier:mymod:modifier> <level:integer>` can read
+  `mymod:haste 2`. The type's `parse` receives the original spelling: it decides what
+  value to return and whether the identifier belongs to its own list. `#` is not part
+  of an identifier; this kind doesn't read tags.
+- `Greedy` takes the rest of the line and can only be the last argument.
+
+The type's `suggest` or `suggestion_provider` still provides completions. The tree sends
+`Id` as vanilla's `minecraft:resource_location`, and the other kinds as Brigadier strings,
+all with `minecraft:ask_server`. Players don't need the mod's code to parse the tree or ask
+for suggestions.
 
 The namespaced id is in the registering mod's namespace; an id registered twice, a
 name in another namespace or an empty name refuses the mods at startup, naming the

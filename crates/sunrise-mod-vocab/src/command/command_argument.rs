@@ -2,9 +2,8 @@
 //! tab-completion for one kind of value in a `Command` usage.
 //!
 //! A client that does not know the type still parses the command: the wire tree sends the
-//! argument as a Brigadier string (one word, or the rest of the line) and asks the server for its
-//! completions. Fabric instead registers the type in the command-argument registry, whose id an
-//! unmodded client cannot read and whose node it drops; the string keeps a vanilla tree valid.
+//! argument as a vanilla parser of the declared shape and asks the server for its completions.
+//! The tree never exposes the mod's parser or provider to the client.
 
 use crate::{PermissionLevel, Text};
 use std::sync::Arc;
@@ -18,12 +17,15 @@ use std::sync::Arc;
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum CommandArgumentKind {
     /// One word, as Brigadier's `word` string: ASCII letters and digits, and `_ - . +`. The word
-    /// ends at the first other character, a space included, so a value containing `:` or `/`
-    /// needs [`Greedy`](Self::Greedy) as the usage's last argument.
+    /// ends at the first other character, a space included. Use [`Id`](Self::Id) for identifiers.
     #[default]
     Word,
     /// The rest of the line, spaces included: the argument must be the usage's last.
     Greedy,
+    /// A vanilla identifier (`minecraft:resource_location`), reading `a-z`, `0-9`, `_`, `-`,
+    /// `.`, `:` and `/` through the first other character. It can precede other arguments.
+    /// The parser receives the original text, not the canonical identifier. `#` tags are not read.
+    Id,
 }
 
 /// Why a custom argument's parser refused the text a player wrote.
@@ -169,17 +171,16 @@ pub trait CommandArgumentType: Send + Sync + 'static {
 
     /// Validate the text a client wrote and return the value the command executor receives.
     ///
-    /// `input` is one word (see [`CommandArgumentKind::Word`] for its characters), or the rest
-    /// of the line for [`CommandArgumentKind::Greedy`]. Return the canonical text to deliver (an
-    /// id, a lower-cased name, `"3"` for `"03"`), or the message shown to the player when the
-    /// input is not valid.
+    /// `input` is the raw text read by [`Word`](CommandArgumentKind::Word),
+    /// [`Id`](CommandArgumentKind::Id), or [`Greedy`](CommandArgumentKind::Greedy). Return the
+    /// canonical text to deliver (an id, a lower-cased name, `"3"` for `"03"`), or the message
+    /// shown to the player when the input is not valid.
     fn parse(&self, input: &str) -> Result<String, CommandArgumentError>;
 
     /// The completions for the text `prefix` being typed at this argument, for `sender`.
     ///
-    /// `prefix` is the text the argument holds so far: one word's worth for
-    /// [`Word`](CommandArgumentKind::Word), and the whole tail of the line up to the cursor for
-    /// [`Greedy`](CommandArgumentKind::Greedy). Return the values that match, in the order the
+    /// `prefix` is the text the argument holds so far, up to the cursor. Return the values
+    /// that match, in the order the
     /// chat should show them; the game keeps each suggestion's replacement range and tooltip. A
     /// suggestion replaces the whole prefix unless it names a
     /// [`replace_start`](CommandSuggestion::replace_start), which is how a type completes the
