@@ -58,7 +58,7 @@ impl Game<'_> {
                 Ok(())
             })();
             if let Err(error) = result {
-                self.refuse_play_payload(error)?;
+                self.refuse_remote_input(error)?;
             }
             return Ok(true);
         }
@@ -73,7 +73,7 @@ impl Game<'_> {
                 .collect::<Option<Vec<_>>>()
         {
             if let Err(error) = self.route_viewed_bundle(&runs, negotiated) {
-                self.refuse_play_payload(error)?;
+                self.refuse_remote_input(error)?;
             }
             return Ok(true);
         }
