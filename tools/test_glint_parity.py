@@ -3,7 +3,7 @@
 
 Compiles and runs VanillaItemGlintOracle against the pinned 26.3 client jar on JDK 25,
 writing the witness and meta.json into .local/witness/<version>/glint/, then runs the
-6 sunrise-client-lib tests and 1 sunrise-client test against it via SUNRISE_ITEM_GLINT_WITNESS."""
+8 sunrise-client-lib tests and 1 sunrise-client test against it via SUNRISE_ITEM_GLINT_WITNESS."""
 import argparse
 import json
 import os

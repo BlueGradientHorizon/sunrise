@@ -2670,88 +2670,202 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
             sprite: true,
         },
     ));
-    // Check every emitted shield GUI glint triangle against the exact matching vanilla face and
-    // corner (or exact planar interpolation if `depth::sort` split a quad across an edge).
+    // Check every emitted shield GUI glint triangle against exact zero-tolerance UV bits
+    // (including exact split vertices where `depth::sort` cuts plate faces against the handle)
+    // and full face/corner/area coverage across every expected visible face.
     let expected_gui_quads = witness["special_models"]["shield_plain"]["gui_slot_pose"]["models"]
         [0]["quads"]
         .as_array()
         .unwrap();
-    let quad_corners: Vec<([[f32; 2]; 4], [[u32; 2]; 4])> = expected_gui_quads
+    let entity_glint_cols: [f32; 16] = witness["transforms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| {
+            t["name"].as_str() == Some("entity_glint_texturing")
+                && t["millis"].as_i64() == Some(123_456)
+                && t["speed"].as_f64() == Some(0.5)
+        })
+        .expect("entity_glint_texturing matrix at t=123456 speed=0.5")["matrix_cols_bits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| f32::from_bits(v.as_u64().unwrap() as u32))
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    let xform_entity_glint_uv_bits = |uv: [f32; 2]| -> [u32; 2] {
+        // JOML `Matrix4f.transform(Vector4f(u, v, 0, 1))` right-to-left unfused sums.
+        let x =
+            entity_glint_cols[0] * uv[0] + (entity_glint_cols[4] * uv[1] + entity_glint_cols[12]);
+        let y =
+            entity_glint_cols[1] * uv[0] + (entity_glint_cols[5] * uv[1] + entity_glint_cols[13]);
+        [x.to_bits(), y.to_bits()]
+    };
+    let parsed_quads: Vec<([Vec3; 4], [[f32; 2]; 4], [[u32; 2]; 4])> = expected_gui_quads
         .iter()
         .map(|q| {
-            let p = parse_quad_pos_bits(&q["pos_bits"]);
-            let xy = std::array::from_fn(|i| [f32::from_bits(p[i][0]), f32::from_bits(p[i][1])]);
-            (xy, parse_quad_uv_bits(&q["glint_uv_t123456_bits"]))
+            let pb = parse_quad_pos_bits(&q["pos_bits"]);
+            let pos = std::array::from_fn(|i| {
+                Vec3::new(
+                    f32::from_bits(pb[i][0]),
+                    f32::from_bits(pb[i][1]),
+                    f32::from_bits(pb[i][2]),
+                )
+            });
+            let uv0b = parse_quad_uv_bits(&q["uv0_bits"]);
+            let uv0 =
+                std::array::from_fn(|i| [f32::from_bits(uv0b[i][0]), f32::from_bits(uv0b[i][1])]);
+            let glint = parse_quad_uv_bits(&q["glint_uv_t123456_bits"]);
+            (pos, uv0, glint)
         })
         .collect();
-    let vert_matches_quad = |v: &crate::hud::HudVertex,
-                             xy: &[[f32; 2]; 4],
-                             uv_bits: &[[u32; 2]; 4]|
-     -> bool {
-        let guv_bits = v.glint_uv.map(f32::to_bits);
-        for k in 0..4 {
-            if (v.pos[0] - xy[k][0]).abs() <= 1e-4 && (v.pos[1] - xy[k][1]).abs() <= 1e-4 {
-                return guv_bits == uv_bits[k];
-            }
-        }
-        // Check planar barycentric match in either triangle `(0, 1, 2)` or `(0, 2, 3)` for split vertices.
-        for [i0, i1, i2] in [[0, 1, 2], [0, 2, 3]] {
-            let (a, b, c) = (xy[i0], xy[i1], xy[i2]);
-            let det = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
-            if det.abs() <= 1e-8 {
-                continue;
-            }
-            let u = ((v.pos[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (v.pos[1] - a[1])) / det;
-            let w = ((b[0] - a[0]) * (v.pos[1] - a[1]) - (v.pos[0] - a[0]) * (b[1] - a[1])) / det;
-            let s = 1.0 - u - w;
-            if s >= -1e-4 && u >= -1e-4 && w >= -1e-4 {
-                let uvf = |k: usize| [f32::from_bits(uv_bits[k][0]), f32::from_bits(uv_bits[k][1])];
-                let (ua, ub, uc) = (uvf(i0), uvf(i1), uvf(i2));
-                let want = [
-                    s * ua[0] + u * ub[0] + w * uc[0],
-                    s * ua[1] + u * ub[1] + w * uc[1],
-                ];
-                return (v.glint_uv[0] - want[0]).abs() <= 1e-5
-                    && (v.glint_uv[1] - want[1]).abs() <= 1e-5;
-            }
-        }
-        false
+    // Handle top plane (`quad[6]`) splits the straddling front and right plate faces (`quad[3]`, `quad[4]`).
+    let (p6, _, _) = &parsed_quads[6];
+    let cut_n = (p6[1] - p6[0]).cross(p6[2] - p6[0]);
+    let cut_d = cut_n.dot(p6[0]);
+    let quad_area_2d = |p: &[Vec3; 4]| -> f32 {
+        let tri_area = |a: Vec3, b: Vec3, c: Vec3| {
+            0.5 * ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs()
+        };
+        tri_area(p[0], p[1], p[2]) + tri_area(p[0], p[2], p[3])
     };
-    let gui_glint_verts: Vec<&crate::hud::HudVertex> =
-        batch.vertices.iter().filter(|v| v.uv[0] >= 2.0).collect();
-    assert!(
-        !gui_glint_verts.is_empty() && gui_glint_verts.len().is_multiple_of(3),
-        "shield_plain gui emitted unexpected glint vertex count {}",
-        gui_glint_verts.len()
-    );
-    let mut front_plate_corners_matched = [false; 4];
-    let (front_xy, front_uv) = &quad_corners[3];
-    for tri in gui_glint_verts.as_chunks::<3>().0 {
-        let matched = quad_corners
-            .iter()
-            .any(|(xy, uv_bits)| tri.iter().all(|v| vert_matches_quad(v, xy, uv_bits)));
-        assert!(
-            matched,
-            "26.3 shield_plain gui glint triangle did not match any vanilla face's exact UVs: {:?}",
-            tri.iter()
-                .map(|v| (v.pos, v.glint_uv.map(f32::to_bits)))
-                .collect::<Vec<_>>()
-        );
-        for v in tri {
-            for k in 0..4 {
-                if (v.pos[0] - front_xy[k][0]).abs() <= 1e-4
-                    && (v.pos[1] - front_xy[k][1]).abs() <= 1e-4
-                    && v.glint_uv.map(f32::to_bits) == front_uv[k]
-                {
-                    front_plate_corners_matched[k] = true;
+    struct ExpectedShieldFace {
+        quad_index: usize,
+        /// Indices `0..4` are original corners; `4..` are exact split vertices on cut edges.
+        verts: Vec<([f32; 2], [u32; 2])>,
+        expected_tris: usize,
+        expected_area: f32,
+        matched_verts: Vec<bool>,
+        matched_tris: usize,
+        matched_area: f32,
+    }
+    let mut visible_faces: Vec<ExpectedShieldFace> = Vec::new();
+    for (qi, (pos, uv0, glint_bits)) in parsed_quads.iter().enumerate() {
+        let face_n = (pos[1] - pos[0]).cross(pos[2] - pos[0]);
+        if face_n.z >= 0.0 {
+            continue;
+        }
+        let mut verts: Vec<([f32; 2], [u32; 2])> = (0..4)
+            .map(|k| {
+                assert_eq!(
+                    xform_entity_glint_uv_bits(uv0[k]),
+                    glint_bits[k],
+                    "oracle transform matrix must reproduce quad[{qi}] corner[{k}] exact bits"
+                );
+                ([pos[k].x, pos[k].y], glint_bits[k])
+            })
+            .collect();
+        let ds: [f32; 4] = std::array::from_fn(|k| cut_n.dot(pos[k]) - cut_d);
+        let splits = ds.iter().any(|&d| d > 1e-4) && ds.iter().any(|&d| d < -1e-4);
+        if splits {
+            for a in 0..4 {
+                let b = (a + 1) % 4;
+                if (ds[a] > 1e-4 && ds[b] < -1e-4) || (ds[a] < -1e-4 && ds[b] > 1e-4) {
+                    let t = ds[a] / (ds[a] - ds[b]);
+                    let sp = pos[a] + (pos[b] - pos[a]) * t;
+                    let suv = [
+                        uv0[a][0] + (uv0[b][0] - uv0[a][0]) * t,
+                        uv0[a][1] + (uv0[b][1] - uv0[a][1]) * t,
+                    ];
+                    verts.push(([sp.x, sp.y], xform_entity_glint_uv_bits(suv)));
                 }
             }
+            assert_eq!(
+                verts.len(),
+                6,
+                "split shield face quad[{qi}] must have 4 corners + 2 split vertices"
+            );
+        }
+        let count = verts.len();
+        visible_faces.push(ExpectedShieldFace {
+            quad_index: qi,
+            verts,
+            expected_tris: if splits { 4 } else { 2 },
+            expected_area: quad_area_2d(pos),
+            matched_verts: vec![false; count],
+            matched_tris: 0,
+            matched_area: 0.0,
+        });
+    }
+    let visible_indices: Vec<usize> = visible_faces.iter().map(|f| f.quad_index).collect();
+    assert_eq!(
+        visible_indices,
+        [0, 3, 4, 6, 9, 10],
+        "26.3 shield_plain gui must have exactly the 6 front-facing faces"
+    );
+
+    let gui_glint_verts: Vec<&crate::hud::HudVertex> =
+        batch.vertices.iter().filter(|v| v.uv[0] >= 2.0).collect();
+    let expected_total_tris: usize = visible_faces.iter().map(|f| f.expected_tris).sum();
+    assert_eq!(
+        gui_glint_verts.len(),
+        expected_total_tris * 3,
+        "26.3 shield_plain gui must emit exact glint vertex count across all 6 visible faces"
+    );
+    let vert_index_in_face =
+        |face: &ExpectedShieldFace, v: &crate::hud::HudVertex| -> Option<usize> {
+            let guv_bits = v.glint_uv.map(f32::to_bits);
+            face.verts.iter().position(|&(xy, uv_bits)| {
+                (v.pos[0] - xy[0]).abs() <= 1e-4
+                    && (v.pos[1] - xy[1]).abs() <= 1e-4
+                    && guv_bits == uv_bits
+            })
+        };
+    for tri in gui_glint_verts.as_chunks::<3>().0 {
+        let mut matched_face: Option<(usize, [usize; 3])> = None;
+        for (fi, face) in visible_faces.iter().enumerate() {
+            if let (Some(i0), Some(i1), Some(i2)) = (
+                vert_index_in_face(face, tri[0]),
+                vert_index_in_face(face, tri[1]),
+                vert_index_in_face(face, tri[2]),
+            ) {
+                assert!(
+                    matched_face.is_none(),
+                    "shield gui glint triangle ambiguously matched multiple faces"
+                );
+                matched_face = Some((fi, [i0, i1, i2]));
+            }
+        }
+        let (fi, idxs) = matched_face.unwrap_or_else(|| {
+            panic!(
+                "26.3 shield_plain gui glint triangle did not match any visible vanilla face with exact UV bits: {:?}",
+                tri.iter()
+                    .map(|v| (v.pos, v.glint_uv.map(f32::to_bits)))
+                    .collect::<Vec<_>>()
+            )
+        });
+        let face = &mut visible_faces[fi];
+        face.matched_tris += 1;
+        let area = 0.5
+            * ((tri[1].pos[0] - tri[0].pos[0]) * (tri[2].pos[1] - tri[0].pos[1])
+                - (tri[1].pos[1] - tri[0].pos[1]) * (tri[2].pos[0] - tri[0].pos[0]))
+                .abs();
+        face.matched_area += area;
+        for idx in idxs {
+            face.matched_verts[idx] = true;
         }
     }
-    assert_eq!(
-        front_plate_corners_matched, [true; 4],
-        "26.3 shield_plain gui must match all 4 front-plate corners at their exact positions"
-    );
+    for face in &visible_faces {
+        assert_eq!(
+            face.matched_tris, face.expected_tris,
+            "26.3 shield_plain gui face quad[{}] triangle count",
+            face.quad_index
+        );
+        assert!(
+            face.matched_verts.iter().all(|&m| m),
+            "26.3 shield_plain gui face quad[{}] missed corner or split vertices: {:?}",
+            face.quad_index,
+            face.matched_verts
+        );
+        assert!(
+            (face.matched_area - face.expected_area).abs() <= 1e-3,
+            "26.3 shield_plain gui face quad[{}] area {} != expected {}",
+            face.quad_index,
+            face.matched_area,
+            face.expected_area
+        );
+    }
 
     let mut shield_red = enchanted("minecraft:shield");
     shield_red.patch.insert(
