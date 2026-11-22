@@ -384,6 +384,18 @@ impl Game<'_> {
                     mode,
                 );
             }
+            // LocalPlayer.onGameModeChanged(SPECTATOR) clears vertical motion on a mode transition.
+            if let Some(mode) = e.game_mode
+                && mode == 3
+                && let Some(r) = self.remote.as_ref()
+                && r.profile == e.uuid
+                && r.tab_players
+                    .get(&e.uuid)
+                    .is_some_and(|t| t.game_mode != mode)
+                && let Some(player) = self.player.as_mut()
+            {
+                player.velocity.y = 0.0;
+            }
             if let Some(r) = self.remote.as_mut() {
                 if let Some(t) = r.tab_players.get_mut(&e.uuid) {
                     if let Some(mode) = e.game_mode {
