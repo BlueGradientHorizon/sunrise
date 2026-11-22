@@ -49,7 +49,9 @@ mod tests {
     use super::super::super::{
         Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
     };
-    use std::collections::HashSet;
+    use std::{collections::HashSet, sync::Arc};
+    use sunrise_client::{items::ItemStack, mobs::equip::equippable_in_slot};
+    use sunrise_core::nbt::Tag;
     use sunrise_protocol::{
         connection::Pipe,
         packets::configuration::{RegistryTags, TagEntry, UpdateTags},
@@ -93,6 +95,56 @@ mod tests {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "TagTest").unwrap();
         game
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn default_and_patched_equippables_follow_the_servers_entity_tags() {
+        crate::game::in_own_process(
+            "game::remote::tables::tests::default_and_patched_equippables_follow_the_servers_entity_tags",
+            || {
+                let mut resources = None;
+                let mut game = client(&mut resources);
+                let builtin = game.remote.as_ref().unwrap().builtin.clone();
+                let registry = "minecraft:entity_type";
+                let tag = "minecraft:can_equip_saddle";
+                let update = |entity: &str| UpdateTags {
+                    registries: vec![RegistryTags {
+                        registry: registry.into(),
+                        tags: vec![TagEntry {
+                            name: tag.into(),
+                            ids: vec![builtin.get(registry).unwrap().id(entity).unwrap()],
+                        }],
+                    }],
+                };
+                let horse = "minecraft:horse";
+                let camel = "minecraft:camel";
+                let saddle = ItemStack::new("minecraft:saddle", 1);
+                let mut patched = ItemStack::new("minecraft:stick", 1);
+                patched.data_mut().set_other(
+                    "minecraft:equippable",
+                    Some(Tag::compound([
+                        ("slot", Tag::String("saddle".into())),
+                        ("allowed_entities", Tag::String("#can_equip_saddle".into())),
+                    ])),
+                );
+                let assert_equips = |game: &Game<'_>, allowed, denied| {
+                    for stack in [&saddle, &patched] {
+                        assert!(equippable_in_slot(game.items(), stack, "saddle", allowed));
+                        assert!(!equippable_in_slot(game.items(), stack, "saddle", denied));
+                    }
+                };
+
+                // Configuration stores the tags before the client installs the server tables.
+                Arc::make_mut(&mut game.remote.as_mut().unwrap().registries)
+                    .add_tags(&update(horse));
+                game.install_server_items();
+                assert_equips(&game, horse, camel);
+
+                game.remote_update_tags(&update(camel));
+                assert_equips(&game, camel, horse);
+            },
+        );
     }
 
     /// A server whose data pack makes stone climbable and sticks planks: the

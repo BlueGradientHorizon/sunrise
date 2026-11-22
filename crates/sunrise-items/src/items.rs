@@ -354,8 +354,6 @@ pub struct ItemInfo {
     /// `equippable.damage_on_hurt`: the item wears when its wearer is hurt
     /// (false for the elytra).
     pub equip_damage_on_hurt: bool,
-    /// `equippable.allowed_entities` resolved to entity type ids; None allows all.
-    pub equip_allowed: Option<HashSet<String>>,
     pub equip_sound: Option<String>,
     /// `jukebox_playable`: the jukebox song it plays.
     pub jukebox_song: Option<String>,
@@ -1335,16 +1333,6 @@ impl Items {
                     equip_damage_on_hurt: c["minecraft:equippable"]["damage_on_hurt"]
                         .as_bool()
                         .unwrap_or(true),
-                    equip_allowed: match &c["minecraft:equippable"]["allowed_entities"] {
-                        Value::String(spec) => Some(entity_spec(entity_tags, spec)),
-                        Value::Array(list) => Some(
-                            list.iter()
-                                .filter_map(Value::as_str)
-                                .flat_map(|spec| entity_spec(entity_tags, spec))
-                                .collect(),
-                        ),
-                        _ => None,
-                    },
                     equip_sound: c["minecraft:equippable"]["equip_sound"]
                         .as_str()
                         .map(str::to_owned),

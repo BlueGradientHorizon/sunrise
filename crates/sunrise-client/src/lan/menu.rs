@@ -736,9 +736,8 @@ impl View<'_> {
             // `ArmorSlot.mayPlace`: `LivingEntity.isEquippableInSlot` for the guest, from the
             // stack's `equippable` component. (The game clicks a guest's inventory menu through
             // `crate::menu`, which also asks the parts of the item.)
-            let tags = &rules.enchantments().entity_tags;
             let player = "minecraft:player";
-            return equippable_in_slot(rules.items(), tags, stack, ARMOR_SLOTS[i - 5], player);
+            return equippable_in_slot(rules.items(), stack, ARMOR_SLOTS[i - 5], player);
         }
         !(self.shulker
             && self.container.as_ref().is_some_and(|c| i < c.len())
