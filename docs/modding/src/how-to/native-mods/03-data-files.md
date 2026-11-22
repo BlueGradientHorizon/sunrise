@@ -89,9 +89,9 @@ participate in resource reloads.
 ## Package contents
 
 A native package holds the manifest, an optional `icon.png`, the root `Cargo.toml`, `Cargo.lock` and `build.rs`,
-the `.rs` and `.toml` files under `src/`, `assets/` and `data/`, a `runtime/` folder listed in `[runtime]`, root text
-files (`README*`, `LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*`), and the `uses.json` table `cargo sunrise-mod build`
-writes. Source and resource size limits are checked separately.
+the `.rs` and `.toml` files under `src/`, `assets/` and `data/`, a `runtime/` folder listed in `[runtime]`, and root
+text files (`README*`, `LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*`). Source and resource size limits are checked
+separately.
 
 Packing a project folder takes only these files. Any other file in it (a `module.toml`, `tools/generate.rs`,
 `.cargo/config.toml`, `rust-toolchain.toml`) is left out unread, and the native build, which works on the packed
@@ -99,6 +99,11 @@ files, never sees it. `cargo sunrise-mod check` runs Cargo in the folder itself,
 and toolchain file apply there as they do to plain `cargo`. A few old input paths still refuse a folder:
 `sunrise-native.json`, `horizon-mixin.toml`, and a root `native/` or `rust/`. In an archive, a file outside this
 layout refuses the package ([the manifest](../../reference/manifest.md)).
+
+A package may also carry `uses.json`, generated metadata that `cargo sunrise-mod build` writes from a scan of the
+same source files it packs. It is never read from the folder. The build leaves it out for a mod made for exactly one
+build, when the scan cannot determine which API items the source uses, and for a mod built inside a game
+checkout. A file I/O or manifest parse error still stops the build.
 
 `runtime/` holds the data files your code opens beside itself: each is listed in `[runtime]` with its SHA-512, any
 file type. They are not pack data and no reload touches them;
