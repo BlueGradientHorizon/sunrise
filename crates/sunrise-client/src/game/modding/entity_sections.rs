@@ -40,7 +40,7 @@ pub(super) use player::PlayerSectionObserver;
 use super::Game;
 use crate::mobs::living::section_writes::PositionWrite;
 use mod_api::__private::game::BackendRefOf;
-use mod_api::{DimensionKey, EntityRef, WorldEpoch};
+use mod_api::{DimensionKey, EntityRef, EntityResidency, WorldEpoch};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 
@@ -186,6 +186,7 @@ impl EntitySections {
 #[derive(Clone, Copy)]
 struct SectionWriter {
     entity: EntityRef,
+    residency: EntityResidency,
     position: [f64; 3],
     player: Option<PlayerMoveState>,
 }
@@ -206,7 +207,12 @@ mod_api::impl_server_host_areas!(LiveSectionHost);
 mod_api::impl_client_host_areas!(LiveSectionHost, except(client_render, menus, services));
 mod_api::impl_backend_areas!(
     LiveSectionHost,
-    partial(entity_position, entity_on_ground, entity_velocity)
+    partial(
+        entity_position,
+        entity_residency,
+        entity_on_ground,
+        entity_velocity
+    )
 );
 
 impl mod_api::prelude::ClientRenderClientHost for LiveSectionHost {
@@ -237,6 +243,12 @@ impl LiveSectionHost {
     fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let writer = self.0.filter(|writer| writer.entity == entity)?;
         Some(writer.position)
+    }
+
+    fn entity_residency(&self, entity: EntityRef) -> EntityResidency {
+        self.0
+            .filter(|writer| writer.entity == entity)
+            .map_or(EntityResidency::Gone, |writer| writer.residency)
     }
 
     fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
@@ -290,6 +302,7 @@ fn tell_live(sections: &std::cell::RefCell<EntitySections>, writer: SectionWrite
 pub(crate) struct LiveSectionObserver {
     sections: std::rc::Rc<std::cell::RefCell<EntitySections>>,
     scope: Scope,
+    current: Option<(u32, EntityResidency)>,
 }
 
 impl LiveSectionObserver {
@@ -297,7 +310,19 @@ impl LiveSectionObserver {
         sections: std::rc::Rc<std::cell::RefCell<EntitySections>>,
         scope: Scope,
     ) -> Self {
-        Self { sections, scope }
+        Self {
+            sections,
+            scope,
+            current: None,
+        }
+    }
+
+    pub(in crate::game) fn epoch(&self) -> WorldEpoch {
+        self.scope.epoch
+    }
+
+    pub(in crate::game) fn set_residency(&mut self, id: u32, residency: EntityResidency) {
+        self.current = Some((id, residency));
     }
 }
 
@@ -308,6 +333,19 @@ impl crate::mobs::living::section_writes::WriteObserver for LiveSectionObserver 
         from: sunrise_core::geometry::Vec3,
         to: sunrise_core::geometry::Vec3,
     ) {
+        let residency = self
+            .current
+            .filter(|(current_id, _)| *current_id == id)
+            .map_or_else(
+                || {
+                    if id == 0 {
+                        EntityResidency::Gone
+                    } else {
+                        EntityResidency::Busy
+                    }
+                },
+                |(_, residency)| residency,
+            );
         self.sections
             .borrow_mut()
             .moved(self.scope, id, Some(from.components()), to.components());
@@ -315,6 +353,7 @@ impl crate::mobs::living::section_writes::WriteObserver for LiveSectionObserver 
             &self.sections,
             SectionWriter {
                 entity: EntityRef::new(self.scope.epoch, id),
+                residency,
                 position: to.components(),
                 player: None,
             },
