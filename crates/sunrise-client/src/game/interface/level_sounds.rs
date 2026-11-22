@@ -211,7 +211,8 @@ impl Game<'_> {
     /// `ServerLevel.playSeededSound`'s `EventHooks.onPlaySoundAtEntity` or
     /// `onPlaySoundAtPosition`: `play_level_sound_at_entity` when the sound's
     /// emitter is an entity a mod can name, `play_level_sound_at_position`
-    /// otherwise. None when a mod cancels it. With no listener, the sound as asked, borrowed.
+    /// otherwise. The hook can cancel playback; the sound engine interprets the
+    /// returned volume and pitch. With no listener, the sound as asked, borrowed.
     pub(super) fn ask_level_sound<'a>(
         &mut self,
         dimension: &str,
