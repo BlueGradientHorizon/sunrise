@@ -15,6 +15,8 @@ use sunrise_core::{geometry::Vec3, position::ChunkPos};
 #[derive(Clone, Copy)]
 pub(in crate::game) enum Action {
     Allow,
+    SaveOnImpact,
+    ReadSectionPosition,
     ClearBlockOnImpact,
     ClearBlockOnShoot([i32; 3]),
     Cancel,
@@ -52,6 +54,7 @@ pub(in crate::game) struct Observed {
     pub bursts: AtomicUsize,
     pub game_events: Mutex<Vec<(&'static str, [f64; 3])>>,
     pub sections: Mutex<Vec<SectionCrossing>>,
+    pub section_positions: Mutex<Vec<Option<[f64; 3]>>>,
     pub deaths: AtomicUsize,
     pub leaves: Mutex<Vec<u32>>,
 }
@@ -93,7 +96,13 @@ impl Hooks for Probe {
             projectile_pos: projectile.position(host).unwrap(),
         });
         match self.action {
-            Action::Allow | Action::ClearBlockOnShoot(_) => Flow::Continue,
+            Action::Allow | Action::ReadSectionPosition | Action::ClearBlockOnShoot(_) => {
+                Flow::Continue
+            }
+            Action::SaveOnImpact => {
+                assert!(host.commands().run_command("save-all flush"));
+                Flow::Cancel
+            }
             Action::ClearBlockOnImpact => {
                 let level = host.level(event.dimension).unwrap();
                 assert!(level.remove_block(host, event.block, false));
@@ -175,9 +184,20 @@ impl Hooks for Probe {
 
     fn entity_entering_section(
         &self,
-        _: mod_api::HostSide<'_>,
+        host: mod_api::HostSide<'_>,
         event: &mut mod_api::EntityEnteringSectionEvent,
     ) {
+        if matches!(self.action, Action::ReadSectionPosition) && event.entity.id() == 71 {
+            let position = match host {
+                mod_api::HostSide::Server(host) => event.entity.position(host),
+                mod_api::HostSide::Client(host) => event.entity.position(host),
+            };
+            self.observed
+                .section_positions
+                .lock()
+                .unwrap()
+                .push(position);
+        }
         self.observed.sections.lock().unwrap().push((
             event.entity.id(),
             event.old_section,
@@ -216,7 +236,7 @@ pub(in crate::game) fn with_probe(
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        with_game(|game| {
+        let check = |game: &mut Game<'_>| {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
@@ -233,7 +253,13 @@ pub(in crate::game) fn with_probe(
             game.inventory[0] = Some(ItemStack::new("minecraft:fishing_rod", 1));
             game.next_entity = 100;
             test(game, &observed);
-        })
+        };
+        if matches!(action, Action::SaveOnImpact) {
+            let save = tempfile::tempdir().unwrap();
+            crate::game::visibility_unwind_tests::with_save_game(save.path(), check);
+        } else {
+            with_game(check);
+        }
     });
 }
 
