@@ -3443,7 +3443,7 @@ pub(super) mod tests {
                     .set(
                         game,
                         Holder::Entity(entity.id()),
-                        vec![Some((ItemResource::of(&map), 1))],
+                        StackList::from([(0, (ItemResource::of(&map), 1))]),
                     )
                     .unwrap();
                 let player = game.player(12).unwrap();
