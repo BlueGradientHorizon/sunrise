@@ -21,8 +21,9 @@ use sunrise_core::{
     nbt::{Compound, Tag},
 };
 
-/// A piece's placement failed; the generation of that piece stops there, as a
-/// piece's own `Result` does in the engine.
+/// A structure piece load, placement or `after_place` callback failed; only
+/// that invocation stops, without undoing completed writes or random draws or
+/// disabling later pieces or placements.
 // no wire: retains the native source chain for this in-process callback.
 #[derive(Debug)]
 // exhaustive: its field is private, so mods cannot build or destructure it
@@ -83,7 +84,10 @@ pub trait StructureType: Send + Sync + 'static {
     ) -> Result<Arc<dyn StructurePiece>, StructureError>;
     /// `Structure.afterPlace`, run once per chunk after all pieces were
     /// placed, with every piece's current box. Optional: most types place
-    /// nothing here.
+    /// nothing here. Returning an error reports its cause and ends only this
+    /// invocation without undoing completed writes or random draws; a panic
+    /// disables only `after_place` for this registration with a log and error
+    /// toast.
     fn after_place(
         &self,
         _context: &mut dyn PieceContext,
@@ -150,7 +154,11 @@ pub trait StructurePiece: std::fmt::Debug + Send + Sync {
     }
     /// `StructurePiece.postProcess`: place the piece's blocks and entities
     /// that fall in the chunk `context` clips to. Writes outside it are
-    /// dropped silently, as vanilla's `placeBlock` skips them.
+    /// dropped silently, as vanilla's `placeBlock` skips them. Returning an
+    /// error reports its cause and ends only this piece's placement without
+    /// undoing completed writes or random draws, so later pieces and
+    /// `after_place` still run; a panic disables only `post_process` for this
+    /// registration with a log and error toast.
     fn post_process(&self, context: &mut dyn PieceContext) -> Result<(), StructureError>;
     /// `StructurePiece.addAdditionalSaveData`: the piece's own fields, saved
     /// beside `BB`/`O`/`GD` and read back by the type's `load_piece`.

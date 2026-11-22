@@ -475,7 +475,7 @@ fn a_write_outside_the_chunk_box_is_dropped_silently() {
             chunk: ChunkPos::new(0, 0),
             reference: [8, 64, 8],
         };
-        let mut context = Placing::new(&mut engine).unwrap();
+        let mut context = Placing::new(&mut engine, "testmod", "testmod:boxes").unwrap();
         let stone = context.state(mod_api::__private::block_key("minecraft:stone").unwrap());
         // Outside on every axis: dropped, silently, nothing recorded.
         for outside in [[16, 64, 0], [0, 64, 16], [-1, 64, 0], [0, 64, -1]] {
@@ -1297,4 +1297,874 @@ fn piece_metadata_and_save_panics_stay_local_and_debug_skips_mod_fmt() {
         )
         .unwrap();
     assert!(other_pieces[0].save().is_some());
+}
+
+struct NoSolid;
+impl sunrise_world::worldgen::structure::legacy::SolidRender for NoSolid {
+    fn solid_render(&self, _: sunrise_world::registry::BlockStateId) -> bool {
+        false
+    }
+}
+
+struct ChunkWorld {
+    air: sunrise_world::registry::BlockStateId,
+    writes: Vec<([i32; 3], sunrise_world::registry::BlockStateId)>,
+}
+impl sunrise_world::worldgen::feature::FeatureWorld for ChunkWorld {
+    type Error = PlacementQueryError;
+    fn block(&mut self, _: [i32; 3]) -> Result<sunrise_world::registry::BlockStateId, Self::Error> {
+        Ok(self.air)
+    }
+    fn set_block(
+        &mut self,
+        pos: [i32; 3],
+        state: sunrise_world::registry::BlockStateId,
+        _: i32,
+    ) -> Result<bool, Self::Error> {
+        self.writes.push((pos, state));
+        Ok(true)
+    }
+}
+impl sunrise_world::worldgen::placement::PlacementContext for ChunkWorld {
+    fn generation(&self) -> sunrise_world::worldgen::anchor::WorldGenerationContext {
+        sunrise_world::worldgen::anchor::WorldGenerationContext::new(-64, 384, 63)
+    }
+    fn min_y(&mut self) -> Result<i32, PlacementQueryError> {
+        Ok(-64)
+    }
+    fn max_y(&mut self) -> Result<i32, PlacementQueryError> {
+        Ok(319)
+    }
+    fn height(
+        &mut self,
+        _: sunrise_world::heightmap::HeightmapType,
+        _: i32,
+        _: i32,
+    ) -> Result<i32, PlacementQueryError> {
+        Ok(64)
+    }
+    fn block_state(
+        &mut self,
+        _: [i32; 3],
+    ) -> Result<sunrise_world::registry::BlockStateId, PlacementQueryError> {
+        Ok(self.air)
+    }
+    fn fluid_state(
+        &mut self,
+        _: [i32; 3],
+    ) -> Result<sunrise_world::fluid::FluidState, PlacementQueryError> {
+        Ok(sunrise_world::fluid::FluidState::EMPTY)
+    }
+    fn mark_postprocessing(&mut self, _: [i32; 3]) -> Result<(), PlacementQueryError> {
+        Ok(())
+    }
+    fn schedule_fluid_tick(
+        &mut self,
+        _: [i32; 3],
+        _: sunrise_world::fluid::FluidKind,
+        _: i32,
+    ) -> Result<(), PlacementQueryError> {
+        Ok(())
+    }
+}
+
+fn test_structure_registry(
+    name: &str,
+) -> sunrise_world::worldgen::structure::start::StructureRegistry {
+    use std::collections::{BTreeMap, BTreeSet};
+    sunrise_world::worldgen::structure::start::StructureRegistry::new(
+        &BTreeMap::from([(
+            name.to_owned(),
+            serde_json::json!({
+                "type": name,
+                "biomes": [],
+                "terrain_adaptation": "none"
+            })
+            .to_string(),
+        )]),
+        &BTreeMap::new(),
+        BTreeMap::new(),
+        &|_| Ok(BTreeSet::new()),
+        &BTreeMap::new(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn failing_mod_piece_preserves_writes_draws_and_continues_via_place_in_chunk() {
+    use sunrise_world::worldgen::structure::start::{Piece, StructureStart, place_in_chunk};
+
+    #[derive(Debug)]
+    struct InnerCause;
+    impl std::fmt::Display for InnerCause {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("corrupt piece payload")
+        }
+    }
+    impl std::error::Error for InnerCause {}
+
+    #[derive(Debug)]
+    struct OuterCause(InnerCause);
+    impl std::fmt::Display for OuterCause {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("piece placement failed")
+        }
+    }
+    impl std::error::Error for OuterCause {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
+    }
+
+    type Log = Arc<std::sync::Mutex<Vec<(&'static str, ChunkPos, i32)>>>;
+
+    #[derive(Debug)]
+    struct OrderedPiece {
+        label: &'static str,
+        x_offset: i32,
+        fail: bool,
+        stone: BlockKey,
+        log: Log,
+    }
+    impl StructurePiece for OrderedPiece {
+        fn bounding_box(&self) -> BoundingBox {
+            BoundingBox::new([0, 64, 0], [24, 66, 4])
+        }
+        fn post_process(&self, context: &mut dyn PieceContext) -> Result<(), StructureError> {
+            let chunk = context.chunk();
+            let stone = context.state(self.stone);
+            assert!(!context.set_block([chunk.x * 16 - 1, 64, 1], stone));
+            assert!(context.set_block([chunk.x * 16 + self.x_offset, 64, 1], stone));
+            let draw = context.random().next_int();
+            self.log.lock().unwrap().push((self.label, chunk, draw));
+            if self.fail {
+                return Err(StructureError::new(OuterCause(InnerCause)));
+            }
+            Ok(())
+        }
+        fn add_additional_save_data(&self, _: &mut Compound) {}
+    }
+
+    struct OrderedType {
+        stone: BlockKey,
+        log: Log,
+    }
+    impl StructureType for OrderedType {
+        fn find_generation_point(&self, _: &mut dyn GenerationContext) -> Option<FoundStructure> {
+            Some(FoundStructure {
+                position: [0, 64, 0],
+                pieces: vec![
+                    Arc::new(OrderedPiece {
+                        label: "piece0",
+                        x_offset: 1,
+                        fail: true,
+                        stone: self.stone,
+                        log: self.log.clone(),
+                    }),
+                    Arc::new(OrderedPiece {
+                        label: "piece1",
+                        x_offset: 2,
+                        fail: false,
+                        stone: self.stone,
+                        log: self.log.clone(),
+                    }),
+                ],
+            })
+        }
+        fn load_piece(
+            &self,
+            _: &dyn BlockMetadata,
+            _: &Compound,
+        ) -> Result<Arc<dyn StructurePiece>, StructureError> {
+            Err(StructureError::new(std::io::Error::other(
+                "fixture has no saved pieces",
+            )))
+        }
+        fn after_place(
+            &self,
+            context: &mut dyn PieceContext,
+            pieces: &[BoundingBox],
+        ) -> Result<(), StructureError> {
+            assert_eq!(pieces.len(), 2);
+            let chunk = context.chunk();
+            let stone = context.state(self.stone);
+            assert!(context.set_block([chunk.x * 16 + 3, 64, 1], stone));
+            let draw = context.random().next_int();
+            self.log.lock().unwrap().push(("after_place", chunk, draw));
+            if chunk == ChunkPos::new(0, 0) {
+                return Err(StructureError::new(std::io::Error::other(
+                    "after_place failed on chunk 0",
+                )));
+            }
+            Ok(())
+        }
+    }
+
+    let resources = test_resources();
+    let stone_key = mod_api::__private::block_key("minecraft:stone").unwrap();
+    let stone_id = resources.registry.default_state("minecraft:stone").unwrap();
+    let air_id = resources.registry.default_state("minecraft:air").unwrap();
+    let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let adapter = Adapter::new(
+        "testmod:ordered",
+        "testmod",
+        Arc::new(OrderedType {
+            stone: stone_key,
+            log: log.clone(),
+        }),
+    );
+    let mut start_random = WorldgenRandom::new(LegacyRandom::new(0));
+    let (_, pieces) = adapter
+        .find_generation_point(
+            &mut StubContext,
+            resources,
+            ChunkPos::new(0, 0),
+            &Arc::new(Tag::Compound(Compound::new())),
+            &mut start_random,
+        )
+        .unwrap();
+    let registry = test_structure_registry("testmod:ordered");
+    let start = StructureStart::new(
+        0,
+        &registry.structures[0],
+        ChunkPos::new(0, 0),
+        pieces.into_iter().map(Piece::Legacy).collect(),
+    );
+
+    let mut world = ChunkWorld {
+        air: air_id,
+        writes: Vec::new(),
+    };
+    let mut piece_random = LegacyRandom::new(0);
+    let mut place_feature =
+        |_: &mut ChunkWorld, _: &mut LegacyRandom, _: &str, _: [i32; 3]| Ok(false);
+    for cx in [0, 1] {
+        let chunk_box = BoundingBox::new([cx * 16, -64, 0], [cx * 16 + 15, 319, 15]);
+        place_in_chunk(
+            &start,
+            &mut world,
+            resources,
+            &NoSolid,
+            &mut piece_random,
+            chunk_box,
+            &mut place_feature,
+        )
+        .unwrap();
+    }
+
+    let mut expected_rng = LegacyRandom::new(0);
+    let expected_draws: Vec<i32> = (0..6)
+        .map(|_| sunrise_core::random::RandomSource::next_int(&mut expected_rng))
+        .collect();
+    assert_eq!(
+        *log.lock().unwrap(),
+        vec![
+            ("piece0", ChunkPos::new(0, 0), expected_draws[0]),
+            ("piece1", ChunkPos::new(0, 0), expected_draws[1]),
+            ("after_place", ChunkPos::new(0, 0), expected_draws[2]),
+            ("piece0", ChunkPos::new(1, 0), expected_draws[3]),
+            ("piece1", ChunkPos::new(1, 0), expected_draws[4]),
+            ("after_place", ChunkPos::new(1, 0), expected_draws[5]),
+        ]
+    );
+    assert_eq!(
+        world.writes,
+        vec![
+            ([1, 64, 1], stone_id),
+            ([2, 64, 1], stone_id),
+            ([3, 64, 1], stone_id),
+            ([17, 64, 1], stone_id),
+            ([18, 64, 1], stone_id),
+            ([19, 64, 1], stone_id),
+        ]
+    );
+    assert_eq!(
+        sunrise_core::random::RandomSource::next_int(&mut piece_random),
+        sunrise_core::random::RandomSource::next_int(&mut expected_rng),
+    );
+
+    // Real infrastructure failures still surface from place_in_chunk.
+    let uninitialized_registry = sunrise_world::registry::BlockRegistry::from_facts_json(
+        br#"{"defaults":{"minecraft:air":0,"minecraft:stone":1},"states":[["air",true,false,"",{"id":"minecraft:air","properties":{}}],["stone",false,false,"",{"id":"minecraft:stone","properties":{}}]]}"#
+            .as_slice(),
+    )
+    .unwrap();
+    let bare_resources = resources_for_registry(uninitialized_registry);
+    let err = place_in_chunk(
+        &start,
+        &mut world,
+        bare_resources,
+        &NoSolid,
+        &mut piece_random,
+        BoundingBox::new([0, -64, 0], [15, 319, 15]),
+        &mut place_feature,
+    )
+    .unwrap_err();
+    assert_eq!(err, PlacementQueryError::Unavailable);
+}
+
+#[test]
+fn placing_propagates_unwritten_and_contains_real_world_errors() {
+    use sunrise_world::worldgen::structure::legacy::{PieceContext as EngineContext, PieceWorld};
+
+    struct FaultyWorld {
+        air: sunrise_world::registry::BlockStateId,
+        set_result: PieceResult<bool>,
+        be_error: bool,
+        entity_error: bool,
+    }
+    impl PieceWorld for FaultyWorld {
+        fn block(&mut self, _: [i32; 3]) -> PieceResult<sunrise_world::registry::BlockStateId> {
+            Ok(self.air)
+        }
+        fn set(
+            &mut self,
+            _: [i32; 3],
+            _: sunrise_world::registry::BlockStateId,
+            _: i32,
+        ) -> PieceResult<bool> {
+            self.set_result.clone()
+        }
+        fn fluid(&mut self, _: [i32; 3]) -> PieceResult<sunrise_world::fluid::FluidState> {
+            Ok(sunrise_world::fluid::FluidState::EMPTY)
+        }
+        fn height(
+            &mut self,
+            _: sunrise_world::heightmap::HeightmapType,
+            _: i32,
+            _: i32,
+        ) -> PieceResult<i32> {
+            Ok(64)
+        }
+        fn min_y(&mut self) -> PieceResult<i32> {
+            Ok(-64)
+        }
+        fn max_y(&mut self) -> PieceResult<i32> {
+            Ok(320)
+        }
+        fn block_entity(&mut self, _: [i32; 3], _: Compound) -> PieceResult<()> {
+            if self.be_error {
+                Err(PlacementQueryError::Failed(
+                    "block entity storage failed".into(),
+                ))
+            } else {
+                Ok(())
+            }
+        }
+        fn entity(&mut self, _: Compound) -> PieceResult<()> {
+            if self.entity_error {
+                Err(PlacementQueryError::Failed("entity storage failed".into()))
+            } else {
+                Ok(())
+            }
+        }
+        fn post_process(&mut self, _: [i32; 3]) -> PieceResult<()> {
+            Ok(())
+        }
+        fn fluid_tick(
+            &mut self,
+            _: [i32; 3],
+            _: sunrise_world::fluid::FluidKind,
+            _: i32,
+        ) -> PieceResult<()> {
+            Ok(())
+        }
+        fn seed(&mut self) -> PieceResult<i64> {
+            Ok(0)
+        }
+        fn level_boolean(&mut self) -> PieceResult<bool> {
+            Ok(false)
+        }
+        fn level_float(&mut self) -> PieceResult<f32> {
+            Ok(0.0)
+        }
+        fn level_int(&mut self, _: i32) -> PieceResult<i32> {
+            Ok(0)
+        }
+        fn sea_level(&mut self) -> PieceResult<i32> {
+            Ok(63)
+        }
+        fn face_full(
+            &mut self,
+            _: [i32; 3],
+            _: sunrise_core::geometry::Direction,
+        ) -> PieceResult<bool> {
+            Ok(false)
+        }
+        fn face_sturdy(
+            &mut self,
+            _: [i32; 3],
+            _: sunrise_core::geometry::Direction,
+        ) -> PieceResult<bool> {
+            Ok(false)
+        }
+        fn center_sturdy(
+            &mut self,
+            _: [i32; 3],
+            _: sunrise_core::geometry::Direction,
+        ) -> PieceResult<bool> {
+            Ok(false)
+        }
+        fn biome(&mut self, _: [i32; 3]) -> PieceResult<sunrise_world::worldgen::biome::BiomeId> {
+            Err(PlacementQueryError::Unavailable)
+        }
+        fn place_template(
+            &mut self,
+            _: &sunrise_world::worldgen::structure::StructureResources,
+            _: &sunrise_world::worldgen::structure::StructureTemplate,
+            _: [i32; 3],
+            _: [i32; 3],
+            _: &mut sunrise_world::worldgen::structure::processor::PlaceSettings<'_>,
+            _: &mut dyn sunrise_world::worldgen::structure::processor::ProcessorRandom,
+            _: i32,
+        ) -> PieceResult<bool> {
+            Ok(false)
+        }
+    }
+
+    let resources = test_resources();
+    let air = resources.registry.default_state("minecraft:air").unwrap();
+    let stone_key = mod_api::__private::block_key("minecraft:stone").unwrap();
+
+    // Same-state / vanilla clip (Ok(false)) returns false without failing.
+    let mut same_state = FaultyWorld {
+        air,
+        set_result: Ok(false),
+        be_error: false,
+        entity_error: false,
+    };
+    let mut random = LegacyRandom::new(7);
+    {
+        let mut engine = EngineContext {
+            world: &mut same_state,
+            resources,
+            blocks: &NoSolid,
+            random: &mut random,
+            chunk_box: BoundingBox::new([0, -64, 0], [15, 319, 15]),
+            chunk: ChunkPos::new(0, 0),
+            reference: [8, 64, 8],
+        };
+        let mut context = Placing::new(&mut engine, "testmod", "testmod:boxes").unwrap();
+        let stone = context.state(stone_key);
+        assert!(!context.set_block([4, 64, 4], stone));
+    }
+
+    // Real errors on set_block, block_entity, and entity are reported and contained.
+    let mut broken = FaultyWorld {
+        air,
+        set_result: Err(PlacementQueryError::Failed(
+            "piece write: region fault".into(),
+        )),
+        be_error: true,
+        entity_error: true,
+    };
+    {
+        let mut engine = EngineContext {
+            world: &mut broken,
+            resources,
+            blocks: &NoSolid,
+            random: &mut random,
+            chunk_box: BoundingBox::new([0, -64, 0], [15, 319, 15]),
+            chunk: ChunkPos::new(0, 0),
+            reference: [8, 64, 8],
+        };
+        let mut context = Placing::new(&mut engine, "testmod", "testmod:boxes").unwrap();
+        let stone = context.state(stone_key);
+        assert!(!context.set_block([4, 64, 4], stone));
+        context.block_entity([4, 64, 4], Compound::new());
+        let with_pos = Compound::from([(
+            "Pos".into(),
+            Tag::List(vec![
+                Tag::Double(4.5_f64.to_bits()),
+                Tag::Double(64.0_f64.to_bits()),
+                Tag::Double(4.5_f64.to_bits()),
+            ]),
+        )]);
+        context.entity(with_pos);
+        context.entity(Compound::new());
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices() {
+    use mod_api::__private::game::take_callback_panic_notices;
+    use mod_api::{
+        Hooks, ModEntry, PackageInfo, PackageKind, Registrar, RegistrationContext, Side,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use sunrise_world::worldgen::structure::start::{Piece, StructureStart, place_in_chunk};
+
+    // The real error-toast queue is process-wide. Run in a child process so no concurrent
+    // test observes or drains this test's notices.
+    const CHILD: &str = "SUNRISE_STRUCTURE_PANIC_TEST_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--ignored",
+                "--exact",
+                "game::native_structure_types::tests::piece_and_after_place_panics_poison_only_their_operation_with_toast_notices",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("test result: ok. 1 passed;"),
+            "{stdout}{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+
+    const OWNER: &str = "test_structure_placer";
+    const PIECE_PANIC: &str = "test post_process panicked after writing";
+    const AFTER_PANIC: &str = "test after_place panicked after writing";
+
+    #[derive(Debug)]
+    struct TestPiece {
+        x_offset: i32,
+        panic_on_place: bool,
+        stone: BlockKey,
+        calls: Arc<AtomicUsize>,
+    }
+    impl StructurePiece for TestPiece {
+        fn bounding_box(&self) -> BoundingBox {
+            BoundingBox::new([0, 64, 0], [24, 66, 4])
+        }
+        fn post_process(&self, context: &mut dyn PieceContext) -> Result<(), StructureError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let chunk = context.chunk();
+            let stone = context.state(self.stone);
+            assert!(context.set_block([chunk.x * 16 + self.x_offset, 64, 1], stone));
+            context.random().next_int();
+            assert!(!self.panic_on_place, "{PIECE_PANIC}");
+            Ok(())
+        }
+        fn add_additional_save_data(&self, _: &mut Compound) {}
+    }
+
+    struct ProbeType {
+        piece_x: i32,
+        second_piece_x: Option<i32>,
+        after_x: i32,
+        panic_first_piece: bool,
+        panic_after: bool,
+        error_after_chunk0: bool,
+        stone: BlockKey,
+        piece_calls: Arc<AtomicUsize>,
+        after_calls: Arc<AtomicUsize>,
+    }
+    impl StructureType for ProbeType {
+        fn find_generation_point(&self, _: &mut dyn GenerationContext) -> Option<FoundStructure> {
+            let mut pieces: Vec<Arc<dyn StructurePiece>> = vec![Arc::new(TestPiece {
+                x_offset: self.piece_x,
+                panic_on_place: self.panic_first_piece,
+                stone: self.stone,
+                calls: self.piece_calls.clone(),
+            })];
+            if let Some(x_offset) = self.second_piece_x {
+                pieces.push(Arc::new(TestPiece {
+                    x_offset,
+                    panic_on_place: false,
+                    stone: self.stone,
+                    calls: self.piece_calls.clone(),
+                }));
+            }
+            Some(FoundStructure {
+                position: [0, 64, 0],
+                pieces,
+            })
+        }
+        fn load_piece(
+            &self,
+            _: &dyn BlockMetadata,
+            _: &Compound,
+        ) -> Result<Arc<dyn StructurePiece>, StructureError> {
+            Ok(Arc::new(TestPiece {
+                x_offset: self.piece_x,
+                panic_on_place: false,
+                stone: self.stone,
+                calls: self.piece_calls.clone(),
+            }))
+        }
+        fn after_place(
+            &self,
+            context: &mut dyn PieceContext,
+            _: &[BoundingBox],
+        ) -> Result<(), StructureError> {
+            self.after_calls.fetch_add(1, Ordering::SeqCst);
+            let chunk = context.chunk();
+            let stone = context.state(self.stone);
+            assert!(context.set_block([chunk.x * 16 + self.after_x, 64, 1], stone));
+            context.random().next_int();
+            assert!(!self.panic_after, "{AFTER_PANIC}");
+            if self.error_after_chunk0 && chunk == ChunkPos::new(0, 0) {
+                return Err(StructureError::new(std::io::Error::other(
+                    "after_place returned error on chunk 0",
+                )));
+            }
+            Ok(())
+        }
+    }
+
+    struct StructureMod {
+        broken_piece_calls: Arc<AtomicUsize>,
+        broken_piece_after_calls: Arc<AtomicUsize>,
+        broken_after_piece_calls: Arc<AtomicUsize>,
+        broken_after_calls: Arc<AtomicUsize>,
+        healthy_piece_calls: Arc<AtomicUsize>,
+        healthy_after_calls: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for StructureMod {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let stone = r.block_key("minecraft:stone");
+            r.register_structure_type(
+                "extra:broken_piece",
+                ProbeType {
+                    piece_x: 1,
+                    second_piece_x: Some(2),
+                    after_x: 3,
+                    panic_first_piece: true,
+                    panic_after: false,
+                    error_after_chunk0: true,
+                    stone,
+                    piece_calls: self.broken_piece_calls.clone(),
+                    after_calls: self.broken_piece_after_calls.clone(),
+                },
+            );
+            r.register_structure_type(
+                "extra:broken_after",
+                ProbeType {
+                    piece_x: 4,
+                    second_piece_x: None,
+                    after_x: 5,
+                    panic_first_piece: false,
+                    panic_after: true,
+                    error_after_chunk0: false,
+                    stone,
+                    piece_calls: self.broken_after_piece_calls.clone(),
+                    after_calls: self.broken_after_calls.clone(),
+                },
+            );
+            r.register_structure_type(
+                "healthy",
+                ProbeType {
+                    piece_x: 6,
+                    second_piece_x: None,
+                    after_x: 7,
+                    panic_first_piece: false,
+                    panic_after: false,
+                    error_after_chunk0: false,
+                    stone,
+                    piece_calls: self.healthy_piece_calls.clone(),
+                    after_calls: self.healthy_after_calls.clone(),
+                },
+            );
+        }
+    }
+
+    let broken_piece_calls = Arc::new(AtomicUsize::new(0));
+    let broken_piece_after_calls = Arc::new(AtomicUsize::new(0));
+    let broken_after_piece_calls = Arc::new(AtomicUsize::new(0));
+    let broken_after_calls = Arc::new(AtomicUsize::new(0));
+    let healthy_piece_calls = Arc::new(AtomicUsize::new(0));
+    let healthy_after_calls = Arc::new(AtomicUsize::new(0));
+
+    let package = PackageInfo::new(
+        OWNER.into(),
+        "1.0.0".into(),
+        PackageKind::Code,
+        Side::Both,
+        vec![OWNER.into(), "extra".into()],
+        vec![],
+    );
+    let mods: mod_api::Mods = vec![ModEntry::new(
+        OWNER,
+        Box::new(StructureMod {
+            broken_piece_calls: broken_piece_calls.clone(),
+            broken_piece_after_calls: broken_piece_after_calls.clone(),
+            broken_after_piece_calls: broken_after_piece_calls.clone(),
+            broken_after_calls: broken_after_calls.clone(),
+            healthy_piece_calls: healthy_piece_calls.clone(),
+            healthy_after_calls: healthy_after_calls.clone(),
+        }),
+    )]
+    .into();
+
+    mod_platform::__private::with_test_package_inventory(vec![package], || {
+        mod_platform::testing::with_mods(mods.clone(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+            let facts = serde_json::json!({
+                "states": [
+                    ["air", true, false, "", {"id":"minecraft:air","properties":{}}],
+                    ["stone", false, false, "", {"id":"minecraft:stone","properties":{}}]
+                ],
+                "defaults":{"minecraft:air":0,"minecraft:stone":1}
+            });
+            let block_registry = sunrise_world::registry::BlockRegistry::from_facts_json(
+                facts.to_string().as_bytes(),
+            )
+            .unwrap();
+            crate::game::api_values::resolve_block_definitions(&block_registry).unwrap();
+            let resources = resources_for_registry(block_registry);
+            let air_id = resources.registry.default_state("minecraft:air").unwrap();
+            let stone_id = resources.registry.default_state("minecraft:stone").unwrap();
+
+            let types = installed_structure_types();
+            let empty = Arc::new(Tag::Compound(Compound::new()));
+            let mut start_random = WorldgenRandom::new(LegacyRandom::new(0));
+            let build_start = |id: &str, start_random: &mut WorldgenRandom<LegacyRandom>| {
+                let (_, pieces) = types[id]
+                    .find_generation_point(
+                        &mut StubContext,
+                        resources,
+                        ChunkPos::new(0, 0),
+                        &empty,
+                        start_random,
+                    )
+                    .unwrap();
+                let structure_registry = test_structure_registry(id);
+                StructureStart::new(
+                    0,
+                    &structure_registry.structures[0],
+                    ChunkPos::new(0, 0),
+                    pieces.into_iter().map(Piece::Legacy).collect(),
+                )
+            };
+
+            let broken_piece_start = build_start("extra:broken_piece", &mut start_random);
+            let broken_after_start = build_start("extra:broken_after", &mut start_random);
+            let healthy_start = build_start("test_structure_placer:healthy", &mut start_random);
+
+            let mut world = ChunkWorld {
+                air: air_id,
+                writes: Vec::new(),
+            };
+            let mut piece_random = LegacyRandom::new(0);
+            let mut place_feature =
+                |_: &mut ChunkWorld, _: &mut LegacyRandom, _: &str, _: [i32; 3]| Ok(false);
+            let chunk0 = BoundingBox::new([0, -64, 0], [15, 319, 15]);
+            let chunk1 = BoundingBox::new([16, -64, 0], [31, 319, 15]);
+
+            // 1. Piece panic disables only post_process on extra:broken_piece; sibling piece is
+            // skipped, while after_place still runs and returns an error without latching.
+            place_in_chunk(
+                &broken_piece_start,
+                &mut world,
+                resources,
+                &NoSolid,
+                &mut piece_random,
+                chunk0,
+                &mut place_feature,
+            )
+            .unwrap();
+            assert_eq!(broken_piece_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(broken_piece_after_calls.load(Ordering::SeqCst), 1);
+            let notices = take_callback_panic_notices();
+            let [notice] = notices.as_slice() else {
+                panic!("expected one post_process panic notice, got {notices:?}");
+            };
+            assert_eq!(notice.mod_id, OWNER);
+            assert_eq!(notice.kind, "structure piece");
+            assert_eq!(notice.operation, "StructurePiece::post_process");
+            assert!(notice.message.contains(PIECE_PANIC), "{notice:?}");
+
+            // Next chunk: post_process stays disabled with no second toast; after_place runs again.
+            place_in_chunk(
+                &broken_piece_start,
+                &mut world,
+                resources,
+                &NoSolid,
+                &mut piece_random,
+                chunk1,
+                &mut place_feature,
+            )
+            .unwrap();
+            assert_eq!(broken_piece_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(broken_piece_after_calls.load(Ordering::SeqCst), 2);
+            assert!(take_callback_panic_notices().is_empty());
+            // Other operations on the same registration (load_piece) remain active.
+            assert!(
+                types["extra:broken_piece"]
+                    .load_piece(resources.registry, &Compound::new())
+                    .is_some()
+            );
+
+            // 2. after_place panic disables only after_place on extra:broken_after; post_process
+            // still runs on subsequent chunks.
+            place_in_chunk(
+                &broken_after_start,
+                &mut world,
+                resources,
+                &NoSolid,
+                &mut piece_random,
+                chunk0,
+                &mut place_feature,
+            )
+            .unwrap();
+            assert_eq!(broken_after_piece_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(broken_after_calls.load(Ordering::SeqCst), 1);
+            let notices = take_callback_panic_notices();
+            let [notice] = notices.as_slice() else {
+                panic!("expected one after_place panic notice, got {notices:?}");
+            };
+            assert_eq!(notice.mod_id, OWNER);
+            assert_eq!(notice.kind, "structure type");
+            assert_eq!(notice.operation, "StructureType::after_place");
+            assert!(notice.message.contains(AFTER_PANIC), "{notice:?}");
+
+            place_in_chunk(
+                &broken_after_start,
+                &mut world,
+                resources,
+                &NoSolid,
+                &mut piece_random,
+                chunk1,
+                &mut place_feature,
+            )
+            .unwrap();
+            assert_eq!(broken_after_piece_calls.load(Ordering::SeqCst), 2);
+            assert_eq!(broken_after_calls.load(Ordering::SeqCst), 1);
+            assert!(take_callback_panic_notices().is_empty());
+
+            // 3. Another structure type registered by the same mod remains unaffected.
+            place_in_chunk(
+                &healthy_start,
+                &mut world,
+                resources,
+                &NoSolid,
+                &mut piece_random,
+                chunk0,
+                &mut place_feature,
+            )
+            .unwrap();
+            assert_eq!(healthy_piece_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(healthy_after_calls.load(Ordering::SeqCst), 1);
+            assert!(take_callback_panic_notices().is_empty());
+
+            assert_eq!(
+                world.writes,
+                vec![
+                    ([1, 64, 1], stone_id),
+                    ([3, 64, 1], stone_id),
+                    ([19, 64, 1], stone_id),
+                    ([4, 64, 1], stone_id),
+                    ([5, 64, 1], stone_id),
+                    ([20, 64, 1], stone_id),
+                    ([6, 64, 1], stone_id),
+                    ([7, 64, 1], stone_id),
+                ]
+            );
+            let mut expected_rng = LegacyRandom::new(0);
+            for _ in 0..8 {
+                sunrise_core::random::RandomSource::next_int(&mut expected_rng);
+            }
+            assert_eq!(
+                sunrise_core::random::RandomSource::next_int(&mut piece_random),
+                sunrise_core::random::RandomSource::next_int(&mut expected_rng),
+            );
+        });
+    });
 }

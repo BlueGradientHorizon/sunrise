@@ -46,6 +46,16 @@ disables only that operation for that registration, leaving other operations and
 active. Returned `load_piece` errors report the registering mod, type and full native source chain
 each time and omit only that piece without latching. Piece bounding boxes are captured once at
 generation or load like `StructurePiece`, and failed saves yield no partial tag.
+
+Piece placement and `after_place` follow `StructureStart.placeInChunk` and
+`StructurePiece.placeBlock`. Separate `post_process` and `after_place` callback owners on each
+registered structure type contain panics independently with a log and error toast while leaving
+other operations and structure types active. Returned `StructureError`s report the registering
+mod, structure type, chunk and full native source chain at the callback boundary and end only that
+invocation without undoing writes or draws or preventing subsequent intersecting pieces,
+`after_place` or later chunks from running; infrastructure failures still propagate to the engine.
+Real write, block-entity and entity errors report position and cause while keeping vanilla
+chunk-box clipping and unchanged-state results quiet.
 """
 migrate = """
 Replace `FeatureError(message)` with `FeatureError::new(std::io::Error::other(message))` and
