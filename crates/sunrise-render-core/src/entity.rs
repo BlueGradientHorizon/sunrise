@@ -33,7 +33,7 @@ pub const TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY: u32 = 44;
 /// terrain sprite arrays; alpha blended, depth written, quads sorted far to near.
 pub const TERRAIN_MODEL_TRANSLUCENT_OVERLAY: u32 = 46;
 /// `RenderTypes.patternedShieldGlint`: equal-depth, no-depth-write glint-only overlay pass.
-pub const GLINT_ONLY_OVERLAY: u32 = 47;
+pub const GLINT_ONLY_OVERLAY: u32 = 48;
 pub const WATER_MASK_OVERLAY: u32 = 13;
 pub const TRANSLUCENT_PARTICLE_OVERLAY: u32 = 15;
 pub const OIT_ENTITY: u32 = 1 << 24;

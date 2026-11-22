@@ -24,7 +24,7 @@ pub const TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY: u32 = 44;
 /// terrain sprite arrays; alpha blended, depth written, quads sorted far to near.
 pub const TERRAIN_MODEL_TRANSLUCENT_OVERLAY: u32 = 46;
 /// `RenderTypes.patternedShieldGlint`: equal-depth, no-depth-write glint-only overlay pass.
-pub const GLINT_ONLY_OVERLAY: u32 = 47;
+pub const GLINT_ONLY_OVERLAY: u32 = 48;
 /// The overlay of a resource pack's Polytone custom particle drawn additively
 /// (`additive_translucent`): fog tints its colour as vanilla's particle shader does, which the
 /// other additive geometry does not take.
