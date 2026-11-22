@@ -31,18 +31,23 @@ fn update(host: &mut dyn ServerHost) -> Result<(), ()> {
 - Closing a transaction aborts any transactions left open inside it before closing
   the parent.
 
-The journal covers writes through capability handlers to these storages:
+The journal covers these storages, including writes through capability handlers:
 
 | Storage | Recorded state |
 |---|---|
-| Block entity | Item slots, saved compound, custom name and attachments |
+| Block entity | Item slots, transient `data_slots`, saved compound, queued one-shot client update fields, custom name and attachments |
 | Hopper | Cooldown |
 | Cauldron | Block state |
 | Composter | Block state and composter-local random stream; fill feedback, game events and maturation scheduling wait for outer commit |
-| World block set, removal, and fluid pickup and placement | Block state, and a block entity the new block removes |
+| World block set, removal, bulk edits, and fluid pickup and placement | Block state, and a block entity the new block removes |
 | Player | Inventory slots, armour, offhand, body, saddle, cursor, ender chest and persistent data, for host and guest players |
 | Entity inventory | Chest or hopper minecart, chest boat, chested donkey, mule or llama inventory |
 | Item entity | Stack; an emptied entity remains until the outermost commit removes it |
+
+An abort restores recorded player storage even if the player died, is in another level, or
+is no longer the acting player when the transaction closes. This includes fake players.
+The player need not be available through a mod's handle at that point. Restoring these
+writes does not itself undo the death or move the player between levels.
 
 At the outermost commit, default `ITEMS` and item `STORAGE` writes to vanilla containers
 and engine-managed mod slots publish their implicit change notifications.
@@ -58,15 +63,59 @@ unlike `trigger_sound_and_game_event`, which acts at once. The `block_drops` lis
 replaced block see it as it was, and a cancelled drop keeps the replacement.
 
 `LevelRef::set_block` and `LevelRef::remove_block` expose the tentative block state
-right away; block updates and replacement effects wait for the outermost commit.
-`LevelRef::destroy_block` returns `Ok(None)` while a transaction is open, before
-running loot, experience or break effects.
+right away; block updates and replacement effects wait for the outermost commit
+in that level. Removal uses the block entity as it stood at replacement, including
+any edits made before the replacement. For a direct write, the resident row's drops
+join before it is removed and before neighbor notifications. The drops already own
+the stacks they carry: a join listener that replaces the same position again does
+not spill those stacks a second time. The first write only removes the original
+block entity. A replacement installed by the listener does not inherit the
+original entity's saved tag or lock. The replacement keeps its own items and
+saved data, including a lock set on its new handle, even if the position returns
+to the state the first write requested. On abort, the journal restores the
+original entity and undoes those edits. `host.edit_blocks` also restores the
+original blocks and block entities on abort; it publishes whole chunks on commit
+without drops or neighbor updates. If both kinds of write touch one position,
+they replay in call order; a later bulk edit cannot substitute its new block
+entity for the ordinary removal's old one. `LevelRef::destroy_block` returns
+`Ok(None)` while a transaction is open, before running loot, experience or break
+effects.
 
-Other direct writes are not journaled: direct item-entity stack writes,
-`LivingRef::set_equipment`, and the armor-stand `slot_set` paths take
-effect immediately, even inside a transaction. Equipment sounds and equip/unequip
-events from `LivingRef::set_equipment` also happen immediately. An abort does not
-undo these writes or effects. Use journaled capability handlers when you need rollback.
+`ItemEntityRef::set_stack` writes the replacement stack immediately and joins the
+innermost transaction in the item's level, if one is open. An abort restores the old
+stack. A command run in another level (`execute in`) does not share the original
+level's journal; open a transaction in the other level to stage writes there. A block-entity
+tick does not open a transaction for you. Use `event.subject.transaction` to make
+a subject edit and a dropped-item write atomic:
+
+```rust,ignore
+use mod_api::{BlockEntityTickScope, ItemEntityRef, ItemStack};
+
+fn update(
+    tick: &mut BlockEntityTickScope<'_>,
+    item: ItemEntityRef,
+    replacement: ItemStack,
+    progress: i32,
+) -> Result<(), &'static str> {
+    tick.transaction(|tick, _| {
+        if !item.set_stack(tick.host(), replacement).map_err(|_| "invalid stack")? {
+            return Err("dropped-item write was refused");
+        }
+        let changed = tick.with_view(|mut view| view.set_data_slot(0, progress))
+            .ok_or("subject is unavailable")?;
+        if !changed {
+            return Err("progress was not updated");
+        }
+        Ok(())
+    })
+}
+```
+
+Other direct writes are not journaled: `LivingRef::set_equipment` and the armor-stand
+`slot_set` paths take effect immediately, even inside a transaction. Equipment sounds
+and equip/unequip events from `LivingRef::set_equipment` also happen immediately.
+An abort does not undo these writes or effects. Use journaled capability handlers
+when you need rollback.
 
 ## Spawning and removing entities
 
@@ -140,11 +189,13 @@ whose commit triggered them. Explicit mod notices issued during a transaction ru
 
 `ItemPlace::EntitySlot { entity, slot }` addresses an entity inventory slot, like
 NeoForge's `Capabilities.Item.ENTITY`. Read and write it like any other item place.
-Reading or writing a minecart's slots unpacks its loot table without a player,
-as vanilla's `getChestVehicleItem` does.
+Reading or writing a chest minecart's or chest boat's slot unpacks its pending loot table
+without a player (`ContainerEntity.getChestVehicleItem` / `setChestVehicleItem`), without
+loading chunks. The fill preserves occupied slots. Reads and writes use the vehicle's live
+menu slots if open.
 
 The player `set_inventory_slot`, `set_ender_chest_slot`, `give_stack` and
-`set_persistent_data` writes use the open transaction journal. Aborting restores
+`set_persistent_data_key` writes use the open transaction journal. Aborting restores
 the old values; equipment effects and given-stack overflow wait for root commit.
 
 These writes reach a player in another level than the hook's: their inventory and data

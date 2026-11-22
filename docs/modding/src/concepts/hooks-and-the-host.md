@@ -17,17 +17,39 @@ depends on. When a mod cancels an event, the mods after it are skipped, unless t
 What a hook's return value means depends on its kind:
 
 - **Listen** hooks are notices: every subscribed mod is called.
-- **Cancellable** hooks return `Flow`: `Flow::Cancel` stops the game's action and skips later mods.
+- **Cancellable** hooks return `Flow`: `Flow::Cancel` stops the game's action and skips later listeners unless they receive cancelled events.
 - **Replacement** hooks return an `Option`: the first mod to answer `Some` wins.
 - **Collection** hooks call every mod, each adding to a list in the event.
 
 A hook with no receiver gets no `Host`.
 
+## Failures and panics
+
+The dispatcher catches panics in hook callbacks, including chunk-disk callbacks and startup
+`Hooks::register`. A panic disables only that mod's callback for that hook for the session. The game
+names the mod and hook in the error log and in a [client diagnostic toast](../how-to/client/toast-notifications.md#admission-rules)
+that mods cannot cancel or rewrite. A dedicated server logs the error without showing a toast.
+Ordinary refusals, such as an unavailable phase operation or a rejected output, are reported every
+time they occur and do not disable the callback.
+
+A failed proposal is not a cancel or replacement. Its changes to the event, including the cancel
+flag, do not publish. Later eligible listeners start from the last accepted result, not from the
+original request. An accepted cancellation still skips listeners that don't receive cancelled
+events; a successful replacement still ends a first-answer-wins hook.
+
+[Staged registration](load-phases.md#registration-and-setup) discards the failed callback's pending
+entries and replacements. For a journaled action such as `farmland_trample`, a failed callback's
+writes do not join the action. A successful veto or stale landing state still aborts the whole
+trample action, and fall damage still runs. For [chunk-disk jobs](../how-to/chunk-data-load.md), later
+listeners can run after a panic or codec failure, but the failed job's changes cannot publish.
+
 ## Player tick hooks
 
 `player_tick_pre` and `player_tick_post` bracket the player's body tick on both
-logical sides. On the server, neither hook fires for a spectator whose bounds
-touch an unloaded chunk: that player's body tick is skipped. Connection and
+logical sides. On the client, both fire through death tick 20, but neither fires
+for the removed local player while the death screen remains open. On the server,
+neither hook fires for a spectator whose bounds touch an unloaded chunk: that
+player's body tick is skipped. Connection and
 level upkeep and outgoing state updates still run. The server resolves whether
 the body runs before the pre hook; a listener changing the player's position
 does not change that decision for the current tick.
@@ -199,12 +221,13 @@ Part methods run elsewhere, and each one's own documentation says where:
   worker threads, several chunks at once. Feature placement also runs on the server thread when the game places a
   feature there: a sapling growing, a command, `LevelRef::place_feature`. A query asked once at start, such as
   `BiomeSource::possible_biomes`, is not a worker call. They get a `WorldgenHost` or no host at all, never a `Host`.
-- **Meshing workers.** `add_section_geometry` itself runs once at client start, to register renderers; each
-  renderer's `SectionGeometry::add` then runs on the renderer's meshing workers every time a section is meshed. A
+- **Meshing workers.** `add_section_geometry` itself runs once at client start, to register renderers. A panic or
+  phase refusal in registration discards only that callback's renderers. Each renderer's `SectionGeometry::add` then runs on the renderer's meshing workers every time a section is meshed. A
   block tint source is asked there too, and also outside meshing, for example for terrain particles and blocks a
   piston moves. Both get no host.
 - **Chunk workers.** `chunk_data_load` and `chunk_data_save` run where a chunk's record is decoded or encoded, with a
-  restricted host.
+  restricted host. `host.job()` borrows the captured `ChunkDiskContext`; the callback edits only its job-local
+  [attachment store](../how-to/chunk-data-save.md), never the live chunk.
 - **Loading threads.** Data-load hooks run on whichever thread loads the data.
 
 What follows for a mod's state:
@@ -279,7 +302,17 @@ Both reads return `None` in callbacks without the corresponding view. A `LevelRe
 name an open server level or the current client level. Neither read loads chunks or opens loot
 containers. Both require the owning game thread, not a worker-thread hook body.
 
-`block_entity(pos)` reads this level's block entity without loading a chunk; it returns `None` when absent, unloaded or out for its tick. On a client it returns only the local block entity handle. `container_size(at)` and `container_stack(at, slot)` are the same side-local capability snapshots as `ItemsHost` supplies; neither generates unopened loot, and both refuse clients and unloaded positions. `BlockEntityPartState::state_in(level, entity)` and `state_existing_in` read the same attachment snapshots as their `Host` equivalents, without inserting a default, generating loot or loading chunks. Unloaded or stale holders fail; clients have no server Part state. All are owning-game-thread reads, never available in worker hook bodies.
+`block_entity(pos)` reads this level's block entity without loading a chunk; it returns `None`
+when absent, unloaded or out for its tick. On a client it returns only the local block entity
+handle. `container_size(at)` and `container_stack(at, slot)` are the same side-local capability
+snapshots as `ItemsHost` supplies; neither generates unopened loot, and both refuse clients and
+unloaded positions.
+
+`BlockEntityPartState::state_in(level, entity)` and `state_existing_in` read the same attachment
+snapshots as their `Host` equivalents, without inserting a default, generating loot or loading
+chunks. A level view in an open transaction sees tentative Part-state writes in that frame.
+Unloaded or stale holders fail; clients have no server Part state. All of these reads require the
+owning game thread and are never available in worker hook bodies.
 
 `LevelRandomHost::container_signal(pos)` is the engine comparator container read. Unlike the immutable slot snapshot, it generates unopened loot once, as vanilla's `getItem` does, then calculates 0 to 15 using each stack's maximum size. It returns `None` on clients and unloaded positions, never loads a chunk, and runs only on the owning game thread. `analog_output` version 2 receives this mutable host so the loot generation and random draws happen in vanilla order; it permits no other world edit.
 
@@ -352,10 +385,16 @@ both the saved point and the block above. This includes a bed or anchor at which
 set. `Some(true)` accepts that state, `Some(false)` rejects it, and `None` keeps vanilla's predicate.
 It does not select a bed or anchor's stand-up position; `respawn_position` handles those.
 
-`LevelHost` has no random access: a draw from a read-only hook inside a level write would shift the level's random sequence away from vanilla's order. A hook that may draw is given a `LevelRandomHost`.
-`LevelRandomHost` provides vanilla's `Level.random` so
-mod draws come in vanilla's order. `LevelTicksHost` adds scheduling through
-`schedule_block_tick` and `schedule_fluid_tick`, while
+`LevelHost` has no random access: a draw from a read-only hook inside a level write would shift
+the level's random sequence away from vanilla's order. A hook that may draw is given a
+`LevelRandomHost`. Use `host.with_random(|rng| rng.next_int_bound(bound))` to borrow its level's
+live stream for that closure only. With a mutable `ServerHost`, use
+`level.with_random(host, |rng| rng.next_int_bound(bound))` to select a resident server level,
+even a parked one. If the stream can't be lent, the call returns `None` without running the closure.
+Draws advance the live stream directly and are not rolled back on panic/unwind or transaction
+abort, matching vanilla `Level.getRandom()` ([Randomness](randomness.md#borrow-the-live-level-stream)).
+
+`LevelTicksHost` adds scheduling through `schedule_block_tick` and `schedule_fluid_tick`, while
 `LevelWriteHost` adds random access, `set_block`, `set_block_property`, `play_sound` and
 `send_particles` and `level_event` (`levelEvent`, queued in order with the write's own events).
 A damage hit's listeners (`living_incoming_damage`, `living_damage_pre`, `living_damage_post`,

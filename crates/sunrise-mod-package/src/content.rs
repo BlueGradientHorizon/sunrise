@@ -726,8 +726,7 @@ struct CreativeTabFile {
     items: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, PartialEq, sunrise_mod_api_macros::Wire)]
-#[wire(crate = ::mod_vocab::wire)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FluidFile {
     sprite: Option<String>,
@@ -738,8 +737,7 @@ struct FluidFile {
 /// What makes a fluid exist in the world: a block holding it, as `minecraft:water`'s does, and
 /// how it flows. Each value defaults to water's, in `data/<id>/sunrise/fluid/` as in code
 /// (`Registrar::declare_world_fluid`).
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
-#[wire(crate = ::mod_vocab::wire)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct WorldFluid {
     /// Game ticks between two flow steps (`Fluid.getTickDelay`), 1 or more.
@@ -784,8 +782,7 @@ impl WorldFluid {
 /// How a fluid the mod names looks on the client (`data/<id>/sunrise/fluid/`), as
 /// NeoForge's `IClientFluidTypeExtensions`: `getStillTexture` and `getTintColor`.
 /// The fluid needs no block, so it can be a fluid only a tank holds.
-#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
-#[wire(crate = ::mod_vocab::wire)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FluidLook {
     /// `<mod id>:<path>`.
     pub id: String,
@@ -1016,9 +1013,9 @@ pub struct MenuType {
     /// Append the 36 player inventory slots (default: true).
     #[serde(default = "yes")]
     pub player_inventory: bool,
-    /// 0 to [`MAX_MENU_SLOTS`].
+    /// Number of integer data slots synced by the menu (`ContainerData`), 0 by default.
     #[serde(default)]
-    pub data_slots: u16,
+    pub data_slots: usize,
     /// Per-slot maxima for transient slots when the menu is opened with no backing block.
     /// When present, supplies one maximum (1–99) for each container slot. Cannot be combined
     /// with take-only `results` or a `crafting` layout.
@@ -1084,9 +1081,18 @@ impl MenuCrafting {
     }
 }
 
-/// the most container or data slots a mod menu type has, as many as a mod
-/// container (`native_block_entity_container`) may.
-pub const MAX_MENU_SLOTS: u16 = 256;
+/// The most total item slots a mod menu type may carry (container backing slots plus
+/// the 36 appended player inventory slots when `player_inventory` is true): `32,768`,
+/// matching vanilla's signed 16-bit slot index range `0..=32,767` (`i16::MAX`).
+pub const MAX_MENU_SLOTS: u16 = (i16::MAX as u16) + 1;
+
+/// The most data slots carried over vanilla's signed 16-bit `ClientboundContainerSetDataPacket`
+/// (`0..=32,767`, count `32,768`).
+pub const MAX_SIGNED_DATA_SLOTS: u16 = (i16::MAX as u16) + 1;
+
+/// The most data slots carried over the unsigned 16-bit `sunrise:menu_data` payload
+/// (`0..=65,535`, count `65,536`).
+pub const MAX_BLOCKLESS_DATA_SLOTS: usize = u16::MAX as usize + 1;
 
 #[derive(Debug, Clone)]
 enum Source {
@@ -1806,10 +1812,10 @@ impl Content {
             let source = format!("{name} ({menu})");
             let file: MenuType =
                 serde_json::from_slice(&bytes).map_err(|e| format!("{source}: {e}"))?;
-            if file.slots > MAX_MENU_SLOTS || file.data_slots > MAX_MENU_SLOTS {
+            let total_slots = usize::from(file.slots) + if file.player_inventory { 36 } else { 0 };
+            if total_slots > usize::from(MAX_MENU_SLOTS) {
                 return Err(format!(
-                    "{source}: slots ({}) and data_slots ({}) are each 0 to {MAX_MENU_SLOTS}",
-                    file.slots, file.data_slots
+                    "{source}: total menu slots ({total_slots}) exceed {MAX_MENU_SLOTS}"
                 ));
             }
             if let Some(limits) = &file.owned_slots
@@ -2297,7 +2303,7 @@ fn open_zip(path: &Path) -> Result<zip::ZipArchive<std::fs::File>, String> {
 pub(crate) fn folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
     let mut out = Vec::new();
     for top in ["assets", "data"] {
-        walk(root, &root.join(top), &mut out)?;
+        walk(root, &root.join(top), &mut out, Some(MAX_FILES))?;
     }
     Ok(out)
 }
@@ -2305,16 +2311,18 @@ pub(crate) fn folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
 /// The files under a package folder's `runtime/`, as `(name below it, bytes)`. Symbolic links and
 /// other non-files are refused, not followed.
 pub(crate) fn runtime_folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
+    let runtime_root = root.join(crate::manifest::RUNTIME_DIR);
     let mut out = Vec::new();
-    walk(root, &root.join(crate::manifest::RUNTIME_DIR), &mut out)?;
-    let prefix = format!("{}/", crate::manifest::RUNTIME_DIR);
-    for (name, _) in &mut out {
-        *name = name.strip_prefix(&prefix).unwrap_or(name).to_owned();
-    }
+    walk(&runtime_root, &runtime_root, &mut out, None)?;
     Ok(out)
 }
 
-fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), String> {
+fn walk(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<(String, u64)>,
+    max_files: Option<usize>,
+) -> Result<(), String> {
     match std::fs::symlink_metadata(dir) {
         Ok(m) if !m.is_dir() => {
             return Err(format!(
@@ -2331,7 +2339,7 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), Str
         let path = entry.map_err(|e| e.to_string())?.path();
         let meta = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
         if meta.is_dir() {
-            walk(root, &path, out)?;
+            walk(root, &path, out, max_files)?;
         } else if meta.is_file() {
             let rel = path.strip_prefix(root).map_err(|e| e.to_string())?;
             let parts: Option<Vec<&str>> = rel.iter().map(|p| p.to_str()).collect();
@@ -2343,8 +2351,10 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), Str
                 path.display()
             ));
         }
-        if out.len() > MAX_FILES {
-            return Err(format!("more than {MAX_FILES} content files"));
+        if let Some(max) = max_files
+            && out.len() > max
+        {
+            return Err(format!("more than {max} content files"));
         }
     }
     Ok(())
@@ -3082,12 +3092,33 @@ capabilities = ["registries"]
                 None,
             ]
         );
+        let wide = smod(
+            "menu-wide-data",
+            MANIFEST_TEXT,
+            &[
+                (
+                    "data/ruby/sunrise/menu/wide.json",
+                    br#"{"slots": 1, "data_slots": 300}"#,
+                ),
+                (
+                    "data/ruby/sunrise/menu/huge.json",
+                    br#"{"slots": 1, "data_slots": 70000}"#,
+                ),
+            ],
+        )
+        .unwrap();
+        let wide_counts: Vec<_> = wide
+            .menu_types
+            .iter()
+            .map(|m| (m.id.as_str(), m.data_slots))
+            .collect();
+        assert_eq!(wide_counts, [("ruby:huge", 70_000), ("ruby:wide", 300)]);
         for (case, file, details) in [
-            ("menu-large", r#"{"slots": 257}"#, &["257"][..]),
+            ("menu-large-with-inv", r#"{"slots": 32733}"#, &["32769"][..]),
             (
-                "menu-data",
-                r#"{"slots": 1, "data_slots": 257}"#,
-                &["257"][..],
+                "menu-large-no-inv",
+                r#"{"slots": 32769, "player_inventory": false}"#,
+                &["32769"][..],
             ),
             (
                 "menu-result",
@@ -4545,7 +4576,3 @@ mod context_shape_tests {
         assert!(check_block(&block).is_err());
     }
 }
-
-#[cfg(test)]
-#[path = "fluid_wire_tests.rs"]
-mod fluid_wire_tests;
