@@ -1019,7 +1019,7 @@ impl Game<'_> {
                     let animation = gone.pop_if(|death| death.0 == id);
                     let animate = |game: &mut Self| {
                         if let Some((_, at, width, height, split)) = animation {
-                            game.animate_mob_removal(id, at, width, height, split);
+                            game.finish_mob_death_animation(id, at, width, height, split);
                         }
                     };
                     let killed_effects = corpses.pop_if(|mob| mob.id == id).is_some();

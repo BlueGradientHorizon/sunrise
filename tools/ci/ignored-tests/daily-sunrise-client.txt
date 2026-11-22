@@ -93,7 +93,6 @@ sunrise-client game::native_explosions_tests::a_mod_damage_type_names_the_death_
 sunrise-client game::native_explosions_tests::a_non_finite_radius_is_refused_and_one_of_zero_finds_no_blocks lib daily resources
 sunrise-client game::native_explosions_tests::a_passed_calculator_replaces_a_wind_charges_entity_rules lib daily resources
 sunrise-client game::native_explosions_tests::a_player_as_the_source_is_credited_as_a_player lib daily child-process
-sunrise-client game::native_explosions_tests::a_player_hit_expires_on_a_living_mob_after_the_last_memory_tick lib daily child-process
 sunrise-client game::native_explosions_tests::a_players_firework_rocket_credits_the_player lib daily child-process
 sunrise-client game::native_explosions_tests::a_players_fishing_bobber_credits_the_player lib daily child-process
 sunrise-client game::native_explosions_tests::a_players_thrown_trident_credits_the_player lib daily child-process
