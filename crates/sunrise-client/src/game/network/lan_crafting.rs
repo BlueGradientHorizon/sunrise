@@ -158,11 +158,10 @@ pub(in crate::game) struct GuestMenuEffects {
 
 pub(in crate::game) struct FurnaceMenuEffects {
     uuid: u128,
-    entity_id: i32,
     pos: (i32, i32, i32),
     at: [f64; 3],
-    smelted: Vec<(Option<ItemStack>, u32)>,
-    extracted: Option<(ItemStack, u32)>,
+    award_recipes: bool,
+    smelted: Vec<(ItemStack, u32)>,
 }
 
 impl GuestMenuEffects {
@@ -291,7 +290,7 @@ impl Game<'_> {
             ..self.load_guest_menu(menu, host, gi)
         };
         menu.brewed_potion_hook = !mod_api::__private::mods().is_empty();
-        menu.item_smelted_hook = menu.brewed_potion_hook;
+        menu.item_smelted_hook = mod_api::__private::listened(mod_api::HookId::ItemSmelted);
         let result = op(menu, &env);
         if let Some(maps) = maps {
             self.register_made_maps(maps);
@@ -304,31 +303,41 @@ impl Game<'_> {
         Some(result)
     }
 
+    pub(in crate::game) fn dispatch_item_smelted(
+        &mut self,
+        player: mod_api::PlayerRef,
+        smelted: &[(ItemStack, u32)],
+    ) {
+        for (stack, amount_removed) in smelted {
+            let Ok(metadata) = crate::game::api_values::stack_read_metadata(stack) else {
+                continue;
+            };
+            let project = |metadata| crate::game::api_values::project_stack(stack, metadata).ok();
+            let stack = mod_api::ItemStackView::resident(metadata, &project);
+            self.native_item_smelted(mod_api::__private::ItemSmeltedCall {
+                player,
+                stack,
+                amount_removed: *amount_removed,
+            });
+        }
+    }
+
     pub(super) fn publish_furnace_menu_effects(&mut self, effects: FurnaceMenuEffects) {
         let FurnaceMenuEffects {
             uuid,
-            entity_id,
             pos,
             at,
+            award_recipes,
             smelted,
-            extracted,
         } = effects;
-        for (stack, removed) in smelted {
-            self.native_item_smelted(uuid, entity_id, stack.as_ref(), removed);
-        }
-        if let Some((stack, taken)) = extracted {
-            if mod_api::__private::listened(mod_api::HookId::FurnaceExtract)
-                && let Some(name) = self.lan.as_ref().and_then(|host| {
-                    host.hub
-                        .guests
-                        .iter()
-                        .find(|g| g.uuid == uuid)
-                        .map(|g| g.name.clone())
-                })
-            {
-                self.native_furnace_extract(uuid, &name, [pos.0, pos.1, pos.2], &stack.item, taken);
-            }
+        if award_recipes {
             self.award_furnace_recipes(pos, at);
+        }
+        if !smelted.is_empty()
+            && mod_api::__private::listened(mod_api::HookId::ItemSmelted)
+            && let Some(player) = self.player(uuid)
+        {
+            self.dispatch_item_smelted(player, &smelted);
         }
     }
 
@@ -654,7 +663,6 @@ impl Game<'_> {
             }
         };
         overlay_links(&self.world, &mut items);
-        let furnace = matches!(kind, Kind::Furnace(_));
         // CrafterBlockEntity.containerData: the disabled slots, then triggered.
         let crafter_data = match self.world.block_entities.get(&pos) {
             Some(BlockEntity::Crafter(c)) => Some((c.disabled, c.is_triggered())),
@@ -844,27 +852,17 @@ impl Game<'_> {
             }
             // FurnaceResultSlot.checkTakeAchievements and its observable effects may run
             // only after the click, including any outer menu decision, is committed.
+            let award_recipes = std::mem::take(&mut menu.furnace_awarded);
             let smelted = std::mem::take(&mut menu.item_smelted);
-            let extracted = if furnace {
-                items[2].as_ref().and_then(|output| {
-                    let taken = output
-                        .count
-                        .saturating_sub(menu.slot(2).map_or(0, |stack| stack.count));
-                    (taken > 0).then(|| (output.clone(), taken))
-                })
-            } else {
-                None
-            };
-            if (!smelted.is_empty() || extracted.is_some())
+            if (award_recipes || !smelted.is_empty())
                 && let Some(guest) = game.lan.as_ref().and_then(|host| host.hub.guest(conn))
             {
                 let effects = FurnaceMenuEffects {
                     uuid: guest.uuid,
-                    entity_id: guest.entity_id,
                     pos,
                     at: guest.position,
+                    award_recipes,
                     smelted,
-                    extracted,
                 };
                 game.after_commit(After::FurnaceMenu(Box::new(effects)));
             }
@@ -2669,6 +2667,10 @@ mod lending_tests;
 #[cfg(test)]
 #[path = "lan_crafting/stonecutter_stat_tests.rs"]
 mod stonecutter_stat_tests;
+
+#[cfg(test)]
+#[path = "lan_crafting/furnace_take_tests.rs"]
+mod furnace_take_tests;
 
 #[cfg(test)]
 mod empty_ingredient_placement_tests {
