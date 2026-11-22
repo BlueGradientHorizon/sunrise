@@ -338,6 +338,19 @@ pub mod game {
     pub fn chunk_ref(level: LevelRef, pos: [i32; 2]) -> ChunkRef {
         ChunkRef { level, pos }
     }
+    /// A live watered-area handle issued by the level's runtime ticket index.
+    pub fn water_ticket(
+        level: LevelRef,
+        id: sunrise_mod_runtime::water_tickets::WaterTicketId,
+    ) -> WaterTicket {
+        WaterTicket { level, id }
+    }
+    /// The runtime-issued identity of a live watered-area handle.
+    pub fn water_ticket_id(
+        ticket: WaterTicket,
+    ) -> sunrise_mod_runtime::water_tickets::WaterTicketId {
+        ticket.id
+    }
     /// An open menu's handle the game names.
     pub fn menu_ref(player: PlayerRef, window: i32, generation: u64) -> MenuRef {
         MenuRef {

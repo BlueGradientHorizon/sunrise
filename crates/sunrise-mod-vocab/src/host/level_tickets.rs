@@ -44,11 +44,13 @@ pub trait LevelTicketsBackendMut {
     /// Mark the half-open box `min <= pos < max` as watered (`FarmlandWaterManager.addAABBTicket`).
     /// For 5x1x5 farmland starting at [0, 64, 0], use min [0, 64, 0], max [5, 65, 5].
     /// Farmland checks tickets before its vanilla water scan; rain and water still hydrate it.
-    /// The calling mod owns this ticket; overlaps are independent. Remove it when the sprinkler
-    /// stops. It is also removed on owner disable and level unload, never saved: re-add in
-    /// `level_load` or the block entity's load listener. Reads/writes reach parked server levels.
-    /// None outside an enabled mod call, on clients, for stale/unavailable levels, empty or
-    /// reversed bounds, or a box spanning more than 65,536 x/z chunks. Does not load chunks.
+    /// Any holder of the returned [`WaterTicket`] can remove it; overlaps are independent.
+    /// Remove it when the sprinkler stops. When added during an enabled mod call, the ticket
+    /// is also attributed to that mod for cleanup on disable; level unload invalidates all
+    /// tickets in the level. Never saved: re-add in `level_load` or the block entity's load
+    /// listener. Reads/writes reach parked server levels.
+    /// None on clients, for stale/unavailable levels, empty or reversed bounds, or a box
+    /// spanning more than 65,536 x/z chunks. Does not load chunks.
     #[access(WorldOnly)]
     fn level_add_water_ticket(
         &mut self,
@@ -57,8 +59,9 @@ pub trait LevelTicketsBackendMut {
         max: [i32; 3],
     ) -> Option<WaterTicket>;
     /// Side: server.
-    /// Remove this watered area, leaving overlapping tickets intact. Only the owning enabled
-    /// mod can remove it. False if already removed, stale, unloaded, or called on a client.
+    /// Remove this watered area by its handle identity, leaving overlapping tickets intact.
+    /// Any holder with the [`WaterTicket`] handle can remove it without caller attribution.
+    /// False if already removed, stale, unloaded, or called on a client.
     #[access(WorldOnly)]
     fn water_ticket_remove(&mut self, water_ticket: WaterTicket) -> bool;
     /// Side: server.

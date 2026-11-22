@@ -231,15 +231,16 @@ Empty or reversed boxes and boxes covering more than 65,536 x/z chunks are refus
 
 Keep the handle, then call `ticket.remove(host)` when the sprinkler stops or breaks.
 Removal returns whether that ticket was removed; overlapping tickets remain independent.
-Only the mod that added a ticket can remove it. `level.has_water_ticket(host, pos)` tests
-whether any ticket covers a block. Both calls reach active or parked server levels without
-loading chunks; unavailable/stale handles and clients answer `false` (adding answers `None`).
-Adding requires an enabled mod call.
+Any holder with the `WaterTicket` handle can remove it without consulting the current
+caller. `level.has_water_ticket(host, pos)` tests whether any ticket covers a block. Both
+calls reach active or parked server levels without loading chunks; unavailable/stale
+handles and clients answer `false` (adding answers `None`).
 
 Tickets are chunk-indexed, in memory only, and never force chunks to load. They are removed
-on explicit removal, level unload, or their owner's disable; re-enabling does not restore
-them. A reopened world starts empty: re-add from `level_load` or a block entity's load
-listener. Several boxes can describe a shape without a per-position mod predicate.
+on explicit removal or level unload; when added during an enabled mod call, the ticket is
+also attributed to that mod and cleared if that mod is disabled (re-enabling does not
+restore it). A reopened world starts empty: re-add from `level_load` or a block entity's
+load listener. Several boxes can describe a shape without a per-position mod predicate.
 Farmland checks the ticket before its vanilla water scan, so dry farmland inside moistens
 to 7. Removing the last covering ticket restores normal drying, while nearby water and
 rain continue working normally and the moisture-change veto still applies. Empty levels

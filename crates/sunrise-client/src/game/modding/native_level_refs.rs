@@ -71,12 +71,9 @@ impl Game<'_> {
         min: [i32; 3],
         max: [i32; 3],
     ) -> Option<mod_api::WaterTicket> {
-        let owner = mod_api::content::crash::current_native_mod()?;
-        let owner_index = mod_api::__private::mod_index(owner)?;
-        if !mod_api::__private::mod_index_on(owner_index) {
-            return None;
-        }
         self.native_level_world(level)?;
+        let owner = mod_api::content::crash::current_native_mod()
+            .and_then(|id| mod_api::__private::mod_index(id).map(|index| (id, index)));
         let world = if level.dimension() == self.dim.key() {
             &mut self.world
         } else {
@@ -84,22 +81,13 @@ impl Game<'_> {
         };
         world
             .water_tickets
-            .add(owner, min, max, || {
-                mod_api::__private::mod_index_on(owner_index)
+            .add(min, max, || {
+                owner.and_then(|(id, index)| mod_api::__private::mod_index_on(index).then_some(id))
             })
-            .map(|id| mod_api::WaterTicket::new(level, id))
+            .map(|id| mod_api::__private::game::water_ticket(level, id))
     }
 
     pub(super) fn water_ticket_remove(&mut self, ticket: mod_api::WaterTicket) -> bool {
-        let Some(owner) = mod_api::content::crash::current_native_mod() else {
-            return false;
-        };
-        let Some(owner_index) = mod_api::__private::mod_index(owner) else {
-            return false;
-        };
-        if !mod_api::__private::mod_index_on(owner_index) {
-            return false;
-        }
         let level = ticket.level();
         if self.native_level_world(level).is_none() {
             return false;
@@ -111,7 +99,9 @@ impl Game<'_> {
         } else {
             return false;
         };
-        world.water_tickets.remove(owner, ticket.id())
+        world
+            .water_tickets
+            .remove(mod_api::__private::game::water_ticket_id(ticket))
     }
 
     pub(super) fn level_has_water_ticket(&self, level: LevelRef, pos: [i32; 3]) -> bool {
@@ -2272,7 +2262,6 @@ mod tests {
             }
             game.world.set(9, 64, 4, dry).unwrap();
             game.world.set(9, 65, 4, wheat).unwrap();
-            let guard = in_mod("machines");
             let ticket = level
                 .add_water_ticket(game, [4, 64, 4], [9, 65, 9])
                 .unwrap();
@@ -2312,7 +2301,6 @@ mod tests {
             assert_eq!(level.is_raining_at(game, [4, 65, 4]), Some(false));
             assert!(level.block_random_tick(game, [4, 64, 4]));
             assert_eq!(moisture(game, [4, 64, 4]), 6);
-            drop(guard);
         });
     }
 
@@ -2321,15 +2309,11 @@ mod tests {
     fn water_ticket_handles_isolate_dimensions_owners_and_unload_lifetimes() {
         with_machines(|game| {
             let overworld = game.level(game.dim.id()).unwrap();
-            assert!(
-                overworld
-                    .add_water_ticket(game, [0, 64, 0], [5, 65, 5])
-                    .is_none()
-            );
-            let guard = in_mod("machines");
-            let a = overworld
-                .add_water_ticket(game, [-17, 64, -1], [18, 65, 2])
+            // Unattributed addition is admitted without TLS caller context.
+            let anon = overworld
+                .add_water_ticket(game, [0, 64, 0], [5, 65, 5])
                 .unwrap();
+            assert!(overworld.has_water_ticket(game, [0, 64, 0]));
             let stale = LevelRef::new(
                 WorldEpoch::new(overworld.epoch().get() + 1),
                 overworld.dimension(),
@@ -2340,6 +2324,11 @@ mod tests {
                     .add_water_ticket(game, [0, 64, 0], [5, 65, 5])
                     .is_none()
             );
+            let guard = in_mod("machines");
+            let a = overworld
+                .add_water_ticket(game, [-17, 64, -1], [18, 65, 2])
+                .unwrap();
+            drop(guard);
             for pos in [[-17, 64, -1], [17, 64, 1]] {
                 assert!(overworld.has_water_ticket(game, pos));
             }
@@ -2353,36 +2342,55 @@ mod tests {
             ] {
                 assert!(!overworld.has_water_ticket(game, pos), "{pos:?}");
             }
+            // A handed-over handle can be removed from another mod without disturbing overlaps.
+            let guard = in_mod("other");
+            assert!(a.remove(game), "any holder with the handle can remove it");
+            drop(guard);
+            assert!(!a.remove(game));
+            assert!(!overworld.has_water_ticket(game, [-17, 64, -1]));
+            assert!(overworld.has_water_ticket(game, [0, 64, 0]));
             game.enter_level(Dim::Nether).unwrap();
             let nether = game.level(game.dim.id()).unwrap();
             assert!(!nether.has_water_ticket(game, [0, 64, 0]));
             assert!(overworld.has_water_ticket(game, [0, 64, 0]));
+            let guard = in_mod("machines");
             let b = nether
                 .add_water_ticket(game, [0, 64, 0], [5, 65, 5])
                 .unwrap();
-            assert!(
-                overworld
-                    .add_water_ticket(game, [0, 64, 0], [5, 65, 5])
-                    .is_some()
-            );
+            let parked_owned = overworld
+                .add_water_ticket(game, [10, 64, 0], [15, 65, 5])
+                .unwrap();
             drop(guard);
             let guard = in_mod("other");
-            assert!(!a.remove(game), "only its owner removes a ticket");
             let overlap = nether
                 .add_water_ticket(game, [3, 64, 3], [4, 65, 4])
                 .unwrap();
             drop(guard);
             assert!(mod_api::__private::set_mod_enabled("machines", false));
-            assert!(!overworld.has_water_ticket(game, [0, 64, 0]));
+            assert!(!overworld.has_water_ticket(game, [10, 64, 0]));
+            assert!(overworld.has_water_ticket(game, [0, 64, 0]));
             assert!(!nether.has_water_ticket(game, [0, 64, 0]));
             assert!(nether.has_water_ticket(game, [3, 64, 3]));
+            // Observing a disabled mod still admits a fresh unattributed ticket without reviving old ones.
+            let guard = in_mod("machines");
+            let during_disable = nether
+                .add_water_ticket(game, [6, 64, 6], [7, 65, 7])
+                .unwrap();
+            drop(guard);
+            assert!(nether.has_water_ticket(game, [6, 64, 6]));
+            assert!(!nether.has_water_ticket(game, [0, 64, 0]));
+            assert!(during_disable.remove(game));
+            assert!(!nether.has_water_ticket(game, [6, 64, 6]));
             assert!(mod_api::__private::set_mod_enabled("machines", true));
             assert!(
-                !overworld.has_water_ticket(game, [0, 64, 0]),
+                !overworld.has_water_ticket(game, [10, 64, 0]),
                 "re-enable never restores old tickets"
             );
-            let guard = in_mod("machines");
             assert!(!b.remove(game));
+            assert!(!parked_owned.remove(game));
+            // Unattributed removal works on parked levels.
+            assert!(anon.remove(game));
+            assert!(!overworld.has_water_ticket(game, [0, 64, 0]));
             let fresh = overworld
                 .add_water_ticket(game, [0, 64, 0], [5, 65, 5])
                 .unwrap();
@@ -2390,13 +2398,9 @@ mod tests {
             assert!(!overworld.has_water_ticket(game, [0, 64, 0]));
             assert!(!nether.has_water_ticket(game, [3, 64, 3]));
             assert!(!fresh.remove(game));
-            drop(guard);
-            let guard = in_mod("other");
             assert!(!overlap.remove(game));
-            drop(guard);
             // The client cannot query or mutate the server's in-memory marks.
             game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
-            let guard = in_mod("machines");
             assert!(!nether.has_water_ticket(game, [0, 64, 0]));
             assert!(
                 nether
@@ -2404,7 +2408,6 @@ mod tests {
                     .is_none()
             );
             assert!(!b.remove(game));
-            drop(guard);
         });
     }
 
@@ -2425,7 +2428,6 @@ mod tests {
                 .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
                 .unwrap();
             game.world.set(4, 64, 4, dry).unwrap();
-            let guard = in_mod("machines");
             let old = level
                 .add_water_ticket(game, [4, 64, 4], [9, 65, 9])
                 .unwrap();
@@ -2470,7 +2472,6 @@ mod tests {
                     .as_deref(),
                 Some("6")
             );
-            drop(guard);
         });
     }
 
