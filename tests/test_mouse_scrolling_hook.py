@@ -49,7 +49,8 @@ impl Game {
         cursor: (10.0, 20.0), modifiers: 5, spectator: false, spectator_gui: SpectatorGui { active: false },
         menu_scrolls: vec![], calls: vec![] } }
     fn screen_over_playing(&self) -> bool { self.overlay }
-    fn spectator(&self) -> bool { self.spectator }
+    fn own_player_is_spectator(&self) -> bool { self.spectator }
+    fn set_remote_flying_speed(&mut self, _speed: f32) {}
     fn spectator_scroll(&mut self, steps: i32) { self.menu_scrolls.push(steps); }
     fn native_mouse_scrolling(&mut self, scroll: [f64;2], accumulated: [i32;2], buttons: [bool;3],
         cursor: [f32;2], modifiers: u32, canceled: &mut bool) {

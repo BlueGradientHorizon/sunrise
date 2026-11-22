@@ -68,12 +68,24 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
     boat.previous_yaw = 45.0;
     let frame = frame(11, [2, 64, -5], 3);
     let tnt = tnt(13);
+    let interactions = std::collections::HashMap::from([(
+        15,
+        crate::game::interactions::RemoteInteraction {
+            position: Vec3::new(0.5, 300.0, 0.5),
+            width: 0.1,
+            height: 1.9059,
+            response: false,
+            vehicle: None,
+        },
+    )]);
     let entities = CameraEntities {
         mobs: &[],
         stands: &[],
         boats: std::slice::from_ref(&boat),
         frames: std::slice::from_ref(&frame),
         tnts: std::slice::from_ref(&tnt),
+        interactions: &interactions,
+        tracked: None,
     };
 
     let view = entities.view(9).expect("a boat is a camera");
@@ -93,6 +105,11 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
     assert_eq!(view.position, [4.5, 64.0, 7.5]);
     assert_eq!((view.eye_height, view.y_rot), (0.15, 135.0));
 
+    let view = entities.view(15).expect("an interaction is a camera");
+    assert_eq!(view.position, [0.5, 300.0, 0.5]);
+    assert_eq!(view.eye_height.to_bits(), (1.9059_f32 * 0.85_f32).to_bits());
+    assert!(view.living.is_none());
+
     // An id the level does not hold changes nothing.
     assert!(!entities.holds(10));
     assert!(entities.view(10).is_none());
@@ -105,12 +122,15 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
 fn a_frame_camera_turns_with_its_facing() {
     let view = |facing| {
         let frame = frame(1, [0; 3], facing);
+        let interactions = std::collections::HashMap::new();
         let entities = CameraEntities {
             mobs: &[],
             stands: &[],
             boats: &[],
             frames: std::slice::from_ref(&frame),
             tnts: &[],
+            interactions: &interactions,
+            tracked: None,
         };
         let view = entities.view(1).unwrap();
         (view.y_rot, view.x_rot)
