@@ -4,7 +4,7 @@ use mod_api::text::{TextClick, TextHover, TextProfile};
 fn codec(registries: &Registries) -> Codec<'_> {
     Codec {
         registries,
-        defer_dialogs: false,
+        defer_holders: false,
     }
 }
 
@@ -42,6 +42,46 @@ fn custom_click_retains_typed_nbt_even_when_unrelated_fields_are_non_finite() {
     assert_eq!(codec.read(&supplied), Ok(Some(written.clone())));
     let expected = Tag::compound([("text", s("Example")), ("click_event", click)]);
     assert_eq!(codec.write(&written), Ok(expected));
+}
+
+#[test]
+fn hover_item_components_use_the_persistent_text_codec() {
+    let reg = Registries::default();
+    let codec = codec(&reg);
+    let components = snbt("{'minecraft:custom_name':{player:{name:'Alex',texture:'skin'}}}");
+    let expected_patch =
+        snbt("{'minecraft:custom_name':{player:{name:'Alex',texture:'minecraft:skin'}}}");
+    let hover_tag = |components| {
+        Tag::compound([
+            ("text", s("Item")),
+            (
+                "hover_event",
+                Tag::compound([
+                    ("action", s("show_item")),
+                    ("id", s("minecraft:stone")),
+                    ("components", components),
+                ]),
+            ),
+        ])
+    };
+    let mut text = Text::literal("Item");
+    text.style.hover = Some(TextHover::Item {
+        id: "minecraft:stone".into(),
+        count: 1,
+        components: Some(components.clone()),
+    });
+    assert_eq!(codec.write(&text), Ok(hover_tag(expected_patch.clone())));
+    let decoded = codec.read(&hover_tag(components)).unwrap().unwrap();
+    assert_eq!(
+        decoded.style.hover,
+        Some(TextHover::Item {
+            id: "minecraft:stone".into(),
+            count: 1,
+            components: Some(expected_patch),
+        })
+    );
+    let invalid = snbt("{'minecraft:custom_name':{selector:'@'}}");
+    assert_eq!(codec.read(&hover_tag(invalid)), Ok(None));
 }
 
 #[test]

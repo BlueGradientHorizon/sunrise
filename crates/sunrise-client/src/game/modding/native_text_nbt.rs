@@ -23,7 +23,7 @@ impl Game<'_> {
     pub(super) fn text_from_nbt(&self, tag: &Tag) -> Result<Option<Text>, Error> {
         Codec {
             registries: &self.ui.registries,
-            defer_dialogs: false,
+            defer_holders: false,
         }
         .read(tag)
     }
@@ -31,7 +31,7 @@ impl Game<'_> {
     pub(super) fn text_to_nbt(&self, text: &Text) -> Result<Tag, Error> {
         Codec {
             registries: &self.ui.registries,
-            defer_dialogs: false,
+            defer_holders: false,
         }
         .write(text)
     }
@@ -39,7 +39,7 @@ impl Game<'_> {
 
 struct Codec<'a> {
     registries: &'a Registries,
-    defer_dialogs: bool,
+    defer_holders: bool,
 }
 
 impl Codec<'_> {

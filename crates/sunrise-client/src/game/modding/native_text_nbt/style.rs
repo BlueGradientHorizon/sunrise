@@ -117,7 +117,7 @@ impl Codec<'_> {
             "copy_to_clipboard" => TextClick::CopyToClipboard(field("value")?),
             "show_dialog" => {
                 let raw = tag.get("dialog")?;
-                TextClick::ShowDialog(if self.defer_dialogs {
+                TextClick::ShowDialog(if self.defer_holders {
                     nbt::clone_tag(raw)
                 } else {
                     self.dialog_holder(raw)?
@@ -175,16 +175,7 @@ impl Codec<'_> {
             tag,
             self.registries,
             &|id| self.item_exists(id),
-            &|tag| {
-                // Re-encoding validates nested dialog holders; do not traverse them
-                // once during decode and a second time during encode at each level.
-                let codec = Codec {
-                    registries: self.registries,
-                    defer_dialogs: true,
-                };
-                let text = codec.decode(tag)?;
-                codec.encode(&text, 0).ok()
-            },
+            &|tag| self.canonical_text_tag(tag),
         )
     }
 
@@ -195,10 +186,23 @@ impl Codec<'_> {
     }
 
     fn item_patch(&self, tag: &Tag) -> Result<Option<Tag>, Error> {
-        normalize_template_patch(tag, &|id| self.item_exists(id), |id| {
-            sunrise_protocol::item::custom::id(id).is_some()
-        })
+        normalize_template_patch(
+            tag,
+            &|id| self.item_exists(id),
+            |id| sunrise_protocol::item::custom::id(id).is_some(),
+            &|tag| self.canonical_text_tag(tag),
+        )
         .map_err(|_| Error::Malformed)
+    }
+
+    fn canonical_text_tag(&self, tag: &Tag) -> Option<Tag> {
+        // Encode validates opaque holders. Leave them raw during this intermediate
+        // decode so nested holders don't get projected twice at every level.
+        let codec = Codec {
+            registries: self.registries,
+            defer_holders: true,
+        };
+        codec.encode(&codec.decode(tag)?, 0).ok()
     }
 
     fn entity_exists(&self, id: &str) -> bool {
@@ -212,7 +216,14 @@ impl Codec<'_> {
             "show_item" => TextHover::Item {
                 id: id(tag.get("id")?).filter(|id| self.item_exists(id))?,
                 count: optional(tag, "count", hover_count)?.unwrap_or(1) as u32,
-                components: optional(tag, "components", |v| self.item_patch(v).ok())?.flatten(),
+                components: optional(tag, "components", |patch| {
+                    if self.defer_holders {
+                        Some(Some(nbt::clone_tag(patch)))
+                    } else {
+                        self.item_patch(patch).ok()
+                    }
+                })?
+                .flatten(),
             },
             "show_entity" => {
                 let raw = tag.get("uuid")?;

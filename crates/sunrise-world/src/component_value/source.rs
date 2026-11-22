@@ -83,6 +83,12 @@ fn boolean(t: &Tag) -> Result<Value> {
 /// `ComponentSerialization.CODEC`: normalize the decoded contents and style before
 /// projection or hashing. A component list appends its tail to the first component.
 fn text(t: &Tag, source: Source) -> Result<Value> {
+    if let Some(project) = source.project_text {
+        let tag = project(t).ok_or("invalid text component")?;
+        let value = Value::from_nbt(&tag, &[]);
+        sunrise_core::nbt::discard_tag(tag);
+        return Ok(value);
+    }
     if let Tag::String(s) = t {
         return Ok(Value::String(s.0.clone()));
     }
@@ -781,12 +787,15 @@ fn resolvable(t: &Tag, f: impl Fn(&Tag) -> Result<Value>) -> Result<Value> {
     }
 }
 
+type TextProjection<'a> = dyn Fn(&Tag) -> Option<Tag> + 'a;
+
 #[derive(Clone, Copy)]
 struct Source<'a> {
     upgraded: bool,
     is_native: fn(&str) -> bool,
     has_item: Option<&'a dyn Fn(&str) -> bool>,
     effects: Option<EffectProjection<'a>>,
+    project_text: Option<&'a TextProjection<'a>>,
     deferred_template: bool,
 }
 impl Source<'_> {
@@ -795,6 +804,7 @@ impl Source<'_> {
         is_native: |_| false,
         has_item: None,
         effects: None,
+        project_text: None,
         deferred_template: false,
     };
 
@@ -869,17 +879,20 @@ fn template_tag(t: &Tag, source: Source) -> Result<Template> {
 }
 
 /// Decode a `DataComponentPatch` and encode its persistent form, as carried by `HoverEvent.ShowItem`.
-/// Resolve inner item and native component IDs against the caller's registries.
+/// Resolve inner item and native component IDs against the caller's registries,
+/// and project embedded text through the caller's registry-aware component codec.
 pub fn normalize_template_patch(
     tag: &Tag,
     has_item: &dyn Fn(&str) -> bool,
     is_native: fn(&str) -> bool,
+    project_text: &TextProjection<'_>,
 ) -> Result<Option<Tag>> {
     let patch = template_patch(
         tag,
         Source {
             has_item: Some(has_item),
             is_native,
+            project_text: Some(project_text),
             ..Source::SAVED
         },
     )?;

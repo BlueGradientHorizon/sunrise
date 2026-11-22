@@ -536,6 +536,22 @@ mod tests {
                 );
 
                 let before = stack.clone();
+                let components = Tag::compound([(
+                    "minecraft:custom_name",
+                    Tag::compound([("selector", Tag::String("@".into()))]),
+                )]);
+                let mut malformed_hover = Text::literal("Malformed hover item");
+                malformed_hover.style.hover = Some(TextHover::Item {
+                    id: "minecraft:stone".into(),
+                    count: 1,
+                    components: Some(components),
+                });
+                assert_eq!(
+                    stack.set_custom_name(host, Some(&malformed_hover)),
+                    Err(TextFormError::Malformed)
+                );
+                assert_eq!(stack, before);
+
                 let mut malformed = Text::literal("Malformed");
                 malformed.style.color = Some("not_a_color".into());
                 assert_eq!(
