@@ -994,7 +994,12 @@ pub mod tests {
             }
         }
         let mods: crate::Mods = vec![
-            ModEntry::new("doubler", Box::new(Doubler { mock_robot: true })),
+            ModEntry::new(
+                "doubler",
+                Box::new(Doubler {
+                    mock_subjects: true,
+                }),
+            ),
             ModEntry::new("later", Box::new(Later)),
         ]
         .into();

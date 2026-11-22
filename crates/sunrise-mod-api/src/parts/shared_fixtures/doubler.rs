@@ -1,8 +1,8 @@
 /// Doubles every comparator reading, and attaches `Gauge` to `test:gauge`, `TagGauge` to
 /// tag `test:gauged` and `Press` to `test:press`.
 pub(crate) struct Doubler {
-    /// Only the isolated capability host admits `test:robot`.
-    pub(crate) mock_robot: bool,
+    /// The fake host admits test items and an entity the prepared game does not own.
+    pub(crate) mock_subjects: bool,
 }
 #[mod_api::__subscriptions]
 impl Hooks for Doubler {
@@ -35,11 +35,6 @@ impl Hooks for Doubler {
         r.block_entity_capability_before_game(&ITEMS, &item_overstates, |_, _, _, _, offer| {
             offer.offer(|| Box::new(ItemOverstates))
         });
-        if self.mock_robot {
-            r.entity_capability(&ENTITY_ITEMS, "test:robot", |_, _, ()| {
-                Some(Box::new(Cargo))
-            });
-        }
         // A battery reached from any side but below, as a mod's sided entity storage.
         r.entity_capability(
             &ENTITY_ENERGY,
@@ -50,23 +45,6 @@ impl Hooks for Doubler {
         );
         r.entity_capability(&ENTITY_FLUIDS, "minecraft:armor_stand", |_, entity, _| {
             Some(Box::new(EntityTank(entity)))
-        });
-        r.item_capability_before_game(&ITEM_ITEMS, "test:pouch", |_, place| {
-            Some(Box::new(Pouch(place.clone())))
-        });
-        r.item_capability(&ITEM_ENERGY, "test:cell", |_, place| {
-            Some(Box::new(Cell(place.clone())))
-        });
-        r.item_capability_before_game(&ITEM_ITEMS, "test:bag", |_, place| {
-            Some(Box::new(Bag(place.clone())))
-        });
-        r.item_capability_before_game(&ITEM_ITEMS, "test:case", |_, place| {
-            Some(Box::new(Case(place.clone())))
-        });
-        r.place_provider("test:charms", Arc::new(Charms));
-        r.place_provider("test:lying-place", Arc::new(deep_places::LyingPlace));
-        r.item_capability_before_game(&ITEM_ITEMS, "test:outer", |_, place| {
-            Some(Box::new(deep_places::Wrap(place.clone())))
         });
         // The `test:ordered` block's first providers, registered ahead of its block entity
         // type's: one after the game answering at x = 5, one ahead of it at x = 12.
@@ -101,18 +79,40 @@ impl Hooks for Doubler {
                 offer.offer(|| Box::new(Marked(4)));
             }
         });
-        // `test:ordered_item` the same, the one ahead of the game answering for two items.
-        r.item_capability(&ITEM_ITEMS, "test:ordered_item", |_, _| None);
-        r.item_capability(&ITEM_ITEMS, "test:ordered_item", |_, _| {
-            Some(Box::new(Marked(1)))
-        });
-        r.item_capability(&ITEM_ITEMS, "test:ordered_item", |_, _| {
-            Some(Box::new(Marked(2)))
-        });
-        r.item_capability_before_game(&ITEM_ITEMS, "test:ordered_item", |host, place| {
-            let two = place.amount(host) == 2;
-            two.then(|| Box::new(Marked(3)) as _)
-        });
+        if self.mock_subjects {
+            r.entity_capability(&ENTITY_ITEMS, "test:robot", |_, _, ()| {
+                Some(Box::new(Cargo))
+            });
+            r.item_capability_before_game(&ITEM_ITEMS, "test:pouch", |_, place| {
+                Some(Box::new(Pouch(place.clone())))
+            });
+            r.item_capability(&ITEM_ENERGY, "test:cell", |_, place| {
+                Some(Box::new(Cell(place.clone())))
+            });
+            r.item_capability_before_game(&ITEM_ITEMS, "test:bag", |_, place| {
+                Some(Box::new(Bag(place.clone())))
+            });
+            r.item_capability_before_game(&ITEM_ITEMS, "test:case", |_, place| {
+                Some(Box::new(Case(place.clone())))
+            });
+            r.place_provider("test:charms", Arc::new(Charms));
+            r.place_provider("test:lying-place", Arc::new(deep_places::LyingPlace));
+            r.item_capability_before_game(&ITEM_ITEMS, "test:outer", |_, place| {
+                Some(Box::new(deep_places::Wrap(place.clone())))
+            });
+            // `test:ordered_item` the same, the one ahead of the game answering for two items.
+            r.item_capability(&ITEM_ITEMS, "test:ordered_item", |_, _| None);
+            r.item_capability(&ITEM_ITEMS, "test:ordered_item", |_, _| {
+                Some(Box::new(Marked(1)))
+            });
+            r.item_capability(&ITEM_ITEMS, "test:ordered_item", |_, _| {
+                Some(Box::new(Marked(2)))
+            });
+            r.item_capability_before_game(&ITEM_ITEMS, "test:ordered_item", |host, place| {
+                let two = place.amount(host) == 2;
+                two.then(|| Box::new(Marked(3)) as _)
+            });
+        }
         for (id, lie) in [
             ("test:tank", None),
             ("test:gives_more", Some(Lie::GivesMore)),

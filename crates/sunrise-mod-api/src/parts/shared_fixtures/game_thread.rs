@@ -3,9 +3,9 @@ pub fn game_thread() -> crate::Mods {
     install_shared_parts(false)
 }
 
-pub(crate) fn install_shared_parts(mock_robot: bool) -> crate::Mods {
+pub(crate) fn install_shared_parts(mock_subjects: bool) -> crate::Mods {
     let mods: crate::Mods = vec![
-        ModEntry::new("doubler", Box::new(Doubler { mock_robot })),
+        ModEntry::new("doubler", Box::new(Doubler { mock_subjects })),
         ModEntry::new("chemist", Box::new(Chemist)),
         ModEntry::new("test", Box::new(FixtureContent)),
     ]
