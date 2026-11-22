@@ -811,12 +811,13 @@ impl Game<'_> {
     /// many as the weapon's `projectile_count` says, fanned by its
     /// `projectile_spread`.
     pub(super) fn release_bow(&mut self, stack: &ItemStack, ticks: u32) {
-        let ammo = self.get_projectile(stack);
+        let Some(ammo) = self.get_projectile(stack) else {
+            return;
+        };
         let mut charge = i32::try_from(ticks).unwrap_or(i32::MAX);
         let mut canceled = false;
-        self.native_arrow_loose(stack, ammo.is_some(), &mut charge, &mut canceled);
-        let power = item_use::bow_release_power(ammo.is_some(), charge, canceled);
-        let (Some(power), Some(ammo)) = (power, ammo) else {
+        self.native_arrow_loose(stack, true, &mut charge, &mut canceled);
+        let Some(power) = item_use::bow_release_power(true, charge, canceled) else {
             return;
         };
         let arrow_slot = ammo.slot;

@@ -3205,14 +3205,10 @@ impl Game<'_> {
     ) {
         self.fire_living_entity_use_item_stop(stack, entity, hand, duration, canceled);
     }
-    /// NeoForge's `ArrowLooseEvent`: the player releases a bow `stack` with
-    /// `has_ammo` and `charge` ticks held. Change `charge` or set `canceled`
-    /// to prevent the shot; negative charge also prevents it. Unlike
-    /// `native_living_entity_use_item_stop`, this does not skip the whole item
-    /// release; `native_entity_shoot_bow` reports a spawned arrow afterward
-    /// with read-only force. Fires on the Game running the bow release, including
-    /// LAN guests; a remote client's own release path is not covered. Crossbows
-    /// are not covered; `native_arrow_nock` is the bow's start.
+    /// NeoForge's `ArrowLooseEvent`: an armed bow is released or a player fires
+    /// a loaded crossbow. Cancel or set `charge` negative to prevent the shot;
+    /// a crossbow starts at `1` and other non-negative values do not change its
+    /// shot. A bow uses the edited held-tick charge. `has_ammo` is always true.
     pub(in crate::game) fn native_arrow_loose(
         &mut self,
         stack: &ItemStack,

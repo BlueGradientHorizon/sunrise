@@ -314,7 +314,22 @@ impl Game<'_> {
         let Some(eye) = self.eye_position() else {
             return;
         };
-        let Some(bow) = self.held_mut().as_mut() else {
+        let slot = self.held_slot();
+        let Some(loaded) = self.stack_in(slot).cloned() else {
+            return;
+        };
+        // NeoForge runs this for players before removing the charged projectiles.
+        let mut charge = 1;
+        let mut canceled = false;
+        self.native_arrow_loose(&loaded, true, &mut charge, &mut canceled);
+        if canceled || charge < 0 {
+            return;
+        }
+        let Some(bow) = self
+            .stack_in_mut(slot)
+            .as_mut()
+            .filter(|bow| **bow == loaded)
+        else {
             return;
         };
         let charged = std::mem::take(&mut bow.data_mut().charged);
@@ -515,6 +530,40 @@ mod tests {
             .map(|s| s.position)
             .collect();
         assert_eq!(at, vec![feet]);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_refused_crossbow_shot_keeps_its_loaded_projectiles() {
+        struct Refuse;
+
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Refuse {
+            fn arrow_loose(
+                &self,
+                _: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::ArrowLooseEvent<'_>,
+            ) -> mod_api::Flow {
+                assert_eq!(event.charge, 1);
+                assert!(event.has_ammo);
+                event.charge = -1;
+                mod_api::Flow::Continue
+            }
+        }
+
+        let mods = vec![mod_api::ModEntry::new("refuse", Box::new(Refuse))].into();
+        mod_platform::testing::with_mods(mods, || {
+            let root =
+                std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+            let mut resources = None;
+            let (mut game, _) = game_with_player(&mut resources, &root);
+            let mut crossbow = ItemStack::new(CROSSBOW, 1);
+            crossbow.data_mut().charged = vec![ItemStack::new(ARROW, 1)];
+            *game.held_mut() = Some(crossbow.clone());
+            game.shoot_crossbow();
+            assert_eq!(game.held(), Some(&crossbow));
+            assert!(game.creatures.projectiles.is_empty());
+        });
     }
 
     /// `Projectile.applyOnProjectileSpawned` runs `EnchantmentHelper.onProjectileSpawned`
