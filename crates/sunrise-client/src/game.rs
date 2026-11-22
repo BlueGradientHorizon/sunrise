@@ -3761,7 +3761,7 @@ struct Game<'a> {
     /// Players a command sends to another level, once it has run.
     level_teleports: Vec<server_travel::LevelTeleport>,
     /// Teleports a command made inside a level, for `native_player_teleported`
-    /// once the player's move has reached their client (`leave_guest`).
+    /// once the player's move has reached their client (the put-back at the end of `guest_turn`).
     teleport_notes: Vec<server_travel::TeleportNote>,
     /// A server's levels other than the one in place (game/world/levels.rs).
     levels: levels::Levels,
@@ -3880,7 +3880,7 @@ struct Game<'a> {
     /// not fired yet (`game/entities/boarding.rs`), for a guest's turn.
     started_riding: Vec<u32>,
     /// A rotation-only write (`/rotate`, `Entity.forceSetRotation`) to the player of this
-    /// turn: `leave_guest` sends it as `ClientboundPlayerRotationPacket`, not a teleport.
+    /// turn: the put-back at the end of `guest_turn` sends it as `ClientboundPlayerRotationPacket`, not a teleport.
     rotation_forced: bool,
     /// The mount the last `position_rider` put the player on, to tell the tick
     /// a seat is taken (`Entity.moveTo`, no camera sweep) from the ones that
@@ -4222,7 +4222,7 @@ struct Game<'a> {
     /// the next server tick asks every mod for its commands and resends them.
     native_commands: native_server::NativeCommandState,
     /// The abilities of the server player whose turn it is (`as_guest`): their record's
-    /// copy, which the turn reads and writes and `leave_guest` stores. None outside a turn.
+    /// copy, which the turn reads and writes and the put-back at the end of `guest_turn` stores. None outside a turn.
     acting_abilities: Option<sunrise_client::lan::abilities::PlayerAbilities>,
     /// Other players in the current guest turn, including borrowed ancestor bodies.
     lan_building_boxes: building_players::BuildingPlayers,
@@ -10483,7 +10483,7 @@ impl Game<'_> {
         // level.dat holds the Overworld clock's total, whichever level is in place.
         self.level.day_time = self.command_clock_time("minecraft:overworld");
         self.level.end_clock = Some(self.world.end_clock);
-        // A server has no player of its own; `enter_guest` puts one in
+        // A server has no player of its own; the entry of `guest_turn` puts one in
         // `self.player` only while a command reads it.
         if self.player.is_none() && self.options.dedicated.is_some() {
             return;

@@ -1788,7 +1788,7 @@ impl Game<'_> {
             MoveWho::Guest(conn) => self.lan.as_mut().and_then(|host| {
                 host.hub.update_guest(conn, |g| {
                     // The body and the hub's copy of its position move together:
-                    // `leave_guest` writes the body back over the hub's.
+                    // the put-back at the end of `guest_turn` writes the body back over the hub's.
                     for (slot, delta) in g.position.iter_mut().zip(movement.components()) {
                         *slot += delta;
                     }
