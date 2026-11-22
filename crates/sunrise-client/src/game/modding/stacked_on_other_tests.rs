@@ -945,25 +945,47 @@ mod item_part_tests {
         cancel_carried: bool,
         cancel_clicked: bool,
         handled: bool,
+        carried_handled: Option<bool>,
+        clicked_handled: Option<bool>,
         set_carried: Option<Option<(&'static str, u32)>>,
         set_clicked: Option<Option<(&'static str, u32)>>,
+        carried_phase_set_carried: Option<Option<(&'static str, u32)>>,
+        carried_phase_set_clicked: Option<Option<(&'static str, u32)>>,
+        clicked_phase_set_carried: Option<Option<(&'static str, u32)>>,
+        clicked_phase_set_clicked: Option<Option<(&'static str, u32)>>,
         panic_on_carried: bool,
         write_scoreboard: bool,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct PartObservation {
+        tag: &'static str,
+        direction: StackedOnOtherDirection,
+        is_server: bool,
+        primary: bool,
+        carried: Option<(String, u32)>,
+        clicked: Option<(String, u32)>,
     }
 
     thread_local! {
         static PART_SCRIPT: RefCell<PartScript> = RefCell::new(PartScript::default());
         static TRACE: RefCell<Vec<(&'static str, StackedOnOtherDirection)>> =
             const { RefCell::new(Vec::new()) };
+        static OBSERVATIONS: RefCell<Vec<PartObservation>> = const { RefCell::new(Vec::new()) };
     }
 
     fn set_part_script(script: PartScript) {
         TRACE.with(|t| t.borrow_mut().clear());
+        OBSERVATIONS.with(|o| o.borrow_mut().clear());
         PART_SCRIPT.with(|s| *s.borrow_mut() = script);
     }
 
     fn trace() -> Vec<(&'static str, StackedOnOtherDirection)> {
         TRACE.with(|t| t.borrow().clone())
+    }
+
+    fn observations() -> Vec<PartObservation> {
+        OBSERVATIONS.with(|o| o.borrow().clone())
     }
 
     struct TaggedPart(&'static str);
@@ -976,6 +998,31 @@ mod item_part_tests {
             event: &mut ItemStackedOnOtherEvent<'_>,
         ) -> Flow {
             TRACE.with(|t| t.borrow_mut().push((self.0, event.event.direction)));
+            let is_server = matches!(host, HostSide::Server(_));
+            OBSERVATIONS.with(|o| {
+                o.borrow_mut().push(PartObservation {
+                    tag: self.0,
+                    direction: event.event.direction,
+                    is_server,
+                    primary: event.event.primary,
+                    carried: event.event.carried.as_ref().map(|s| {
+                        (
+                            mod_api::__private::item_key_id(s.item())
+                                .unwrap_or_default()
+                                .to_owned(),
+                            s.count(),
+                        )
+                    }),
+                    clicked: event.event.clicked.as_ref().map(|s| {
+                        (
+                            mod_api::__private::item_key_id(s.item())
+                                .unwrap_or_default()
+                                .to_owned(),
+                            s.count(),
+                        )
+                    }),
+                });
+            });
             let s = PART_SCRIPT.with(|s| s.borrow().clone());
             if s.write_scoreboard
                 && let HostSide::Server(host) = &mut host
@@ -994,23 +1041,51 @@ mod item_part_tests {
             {
                 panic!("item part panicked");
             }
-            let should_cancel = match event.event.direction {
-                StackedOnOtherDirection::CarriedOnOther => s.cancel_carried,
-                StackedOnOtherDirection::OtherStackedOnMe => s.cancel_clicked,
-                StackedOnOtherDirection::Event => false,
+            let set = |r: Option<Option<(&str, u32)>>| match r {
+                None => StackResult::Keep,
+                Some(None) => StackResult::Set(None),
+                Some(Some((item, count))) => StackResult::Set(Some(api_stack(item, count))),
             };
-            if should_cancel {
-                let set = |r: Option<Option<(&str, u32)>>| match r {
-                    None => StackResult::Keep,
-                    Some(None) => StackResult::Set(None),
-                    Some(Some((item, count))) => StackResult::Set(Some(api_stack(item, count))),
+            let (should_cancel, phase_handled, phase_carried, phase_clicked) =
+                match event.event.direction {
+                    StackedOnOtherDirection::CarriedOnOther => (
+                        s.cancel_carried,
+                        s.carried_handled.unwrap_or(s.cancel_carried && s.handled),
+                        s.carried_phase_set_carried.or(if s.cancel_carried {
+                            s.set_carried
+                        } else {
+                            None
+                        }),
+                        s.carried_phase_set_clicked.or(if s.cancel_carried {
+                            s.set_clicked
+                        } else {
+                            None
+                        }),
+                    ),
+                    StackedOnOtherDirection::OtherStackedOnMe => (
+                        s.cancel_clicked,
+                        s.clicked_handled.unwrap_or(s.cancel_clicked && s.handled),
+                        s.clicked_phase_set_carried.or(if s.cancel_clicked {
+                            s.set_carried
+                        } else {
+                            None
+                        }),
+                        s.clicked_phase_set_clicked.or(if s.cancel_clicked {
+                            s.set_clicked
+                        } else {
+                            None
+                        }),
+                    ),
+                    StackedOnOtherDirection::Event => (false, false, None, None),
                 };
-                event.result.handled = s.handled;
-                event.result.carried = set(s.set_carried);
-                event.result.clicked = set(s.set_clicked);
-                return Flow::Cancel;
+            event.result.handled = phase_handled;
+            event.result.carried = set(phase_carried);
+            event.result.clicked = set(phase_clicked);
+            if should_cancel {
+                Flow::Cancel
+            } else {
+                Flow::Continue
             }
-            Flow::Continue
         }
     }
 
@@ -1302,6 +1377,876 @@ mod item_part_tests {
                     Some(("minecraft:diamond", 2))
                 );
                 assert!(guest.inventory[9].is_none());
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn item_part_client_prediction_reconciliation_and_creative_pickups() {
+        use crate::game::Screen;
+        use sunrise_client::creative::Creative;
+        use sunrise_protocol::{
+            item::Stack,
+            packets::play::{self, Clientbound as C, Serverbound as S},
+        };
+        // Install BOTH a cancelling global listener AND ItemParts so we prove client prediction
+        // and creative pickups run ItemParts with HostSide::Client while keeping the global
+        // listener authoritative-server-only.
+        let mods: Mods = vec![ModEntry::new(
+            "client_part_pred",
+            Box::new(GlobalAndPartMod(true)),
+        )]
+        .into();
+        crate::game::api_values::install_parts(&mods).unwrap();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let (mut reader, _writer) = crate::game::remote::tests::connect_menu_test(game);
+                crate::game::remote::tests::spawn_menu_test(game);
+                let mut body = sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::new(0.0, 64.0, 0.0),
+                )
+                .unwrap();
+                body.entity_id = 7;
+                game.player = Some(body);
+                reader
+                    .set_read_timeout(Some(std::time::Duration::from_millis(200)))
+                    .unwrap();
+                let drain_packets = |reader: &mut sunrise_protocol::connection::ConnReader| {
+                    let mut out = Vec::new();
+                    while let Ok((id, body)) = reader.recv() {
+                        if let Ok(pkt) = S::decode(id, &body) {
+                            out.push(pkt);
+                        }
+                    }
+                    out
+                };
+                let _ = drain_packets(&mut reader);
+
+                // 1. Ordinary client prediction on Screen::Inventory dispatches ItemPart with
+                //    HostSide::Client (never global listener), predicts the edit locally, and
+                //    sends ContainerClick with the predicted slots/carried.
+                game.creative = false;
+                game.screen = Screen::Inventory;
+                game.inventory = vec![None; game.inventory.len()];
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(None),
+                    set_clicked: Some(Some(("minecraft:diamond", 2))),
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                assert!(
+                    !observations()[0].is_server,
+                    "client prediction must pass HostSide::Client"
+                );
+                assert!(game.carried.is_none());
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 2))
+                );
+                let packets = drain_packets(&mut reader);
+                let click_pkt = packets
+                    .iter()
+                    .find_map(|p| match p {
+                        S::ContainerClick(c) => Some(c),
+                        _ => None,
+                    })
+                    .expect("expected ContainerClick for client prediction");
+                assert_eq!(
+                    (click_pkt.container, click_pkt.slot, click_pkt.input),
+                    (0, 9, 0)
+                );
+                assert!(click_pkt.carried.is_none());
+                assert_eq!(click_pkt.changed.len(), 1);
+                assert_eq!(click_pkt.changed[0].0, 9);
+                assert_eq!(click_pkt.changed[0].1.as_ref().map(|h| h.count), Some(2));
+
+                // Server reconciliation stays authoritative over client prediction.
+                let item_id = |game: &crate::game::Game<'_>, name: &str| {
+                    game.remote
+                        .as_ref()
+                        .unwrap()
+                        .builtin
+                        .get("minecraft:item")
+                        .and_then(|r| r.id(name))
+                        .unwrap()
+                };
+                let emerald = item_id(game, "minecraft:emerald");
+                let stone = item_id(game, "minecraft:stone");
+                game.handle_packet(C::ContainerSetSlot(play::ContainerSetSlot {
+                    container: 0,
+                    state: 5,
+                    slot: 9,
+                    item: Some(Stack::new(emerald, 1)),
+                }))
+                .unwrap();
+                game.handle_packet(C::SetCursorItem(play::SetCursorItem {
+                    item: Some(Stack::new(stone, 3)),
+                }))
+                .unwrap();
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:emerald", 1))
+                );
+                assert_eq!(
+                    game.carried.as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:stone", 3))
+                );
+
+                // 2. Client prediction for a 1-slot left drag resolves to a pickup and runs Part.
+                game.inventory[10] = None;
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(None),
+                    set_clicked: Some(Some(("minecraft:diamond", 1))),
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[
+                    (None, 0, Input::QuickCraft),
+                    (Some(10), 1, Input::QuickCraft),
+                    (None, 2, Input::QuickCraft),
+                ]));
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                assert!(!observations()[0].is_server);
+                assert_eq!(
+                    game.inventory[10].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 1))
+                );
+                let drag_clicks = drain_packets(&mut reader)
+                    .into_iter()
+                    .filter(|p| matches!(p, S::ContainerClick(_)))
+                    .count();
+                assert_eq!(drag_clicks, 3);
+
+                // 3. Creative Survival Inventory tab pickup runs ItemPart on HostSide::Client and
+                //    sends SetCreativeModeSlot (never ContainerClick).
+                game.creative = true;
+                game.screen = Screen::Creative;
+                game.refresh_creative_tabs();
+                let inv_tab = game
+                    .creative_screen
+                    .tabs
+                    .iter()
+                    .position(|t| t.inventory)
+                    .expect("creative inventory tab");
+                game.creative_screen.select(inv_tab);
+                assert!(game.creative_inventory_open());
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(None),
+                    set_clicked: Some(Some(("minecraft:diamond", 4))),
+                    ..PartScript::default()
+                });
+                assert!(game.click_open_inventory(Some(9), 0, Input::Pickup));
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                assert!(!observations()[0].is_server);
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 4))
+                );
+                let creative_pkts = drain_packets(&mut reader);
+                assert!(
+                    creative_pkts
+                        .iter()
+                        .any(|p| matches!(p, S::SetCreativeModeSlot(_))),
+                    "creative inventory tab pickup must sync changed slots via SetCreativeModeSlot"
+                );
+                assert!(
+                    !creative_pkts
+                        .iter()
+                        .any(|p| matches!(p, S::ContainerClick(_))),
+                    "creative inventory tab pickup must not send ContainerClick"
+                );
+
+                // 4. Creative item-tab hotbar pickup runs ItemPart on HostSide::Client and sends
+                //    SetCreativeModeSlot; creative catalogue display slots do NOT dispatch Parts.
+                let item_tab = game
+                    .creative_screen
+                    .tabs
+                    .iter()
+                    .position(|t| !t.inventory && !t.search && !t.items.is_empty())
+                    .expect("creative item tab");
+                game.creative_screen.select(item_tab);
+                assert!(game.creative_tab_open());
+                game.inventory[0] = Some(ItemStack::new("minecraft:flint", 1));
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(None),
+                    set_clicked: Some(Some(("minecraft:emerald", 2))),
+                    ..PartScript::default()
+                });
+                assert!(game.click_open_inventory(Some(0), 0, Input::Pickup));
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                assert!(!observations()[0].is_server);
+                assert_eq!(
+                    game.inventory[0].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:emerald", 2))
+                );
+                let hotbar_pkts = drain_packets(&mut reader);
+                assert!(
+                    hotbar_pkts
+                        .iter()
+                        .any(|p| matches!(p, S::SetCreativeModeSlot(_)))
+                );
+                assert!(
+                    !hotbar_pkts
+                        .iter()
+                        .any(|p| matches!(p, S::ContainerClick(_)))
+                );
+
+                // Creative catalogue display slot must NEVER fire pickup overrides.
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    ..PartScript::default()
+                });
+                assert!(game.click_open_inventory(Some(Creative::DISPLAY), 0, Input::Pickup));
+                assert!(
+                    trace().is_empty(),
+                    "creative catalogue display slots must not dispatch pickup overrides"
+                );
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn item_part_dispatches_on_resolved_pickup_and_ignores_other_drags() {
+        use sunrise_client::lan::menu::Slots;
+        use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+        with_part_only_mod(|| {
+            // 1. Local menu: 1-slot left and right drags dispatch Parts; multi-slot and
+            //    middle-button drags do not.
+            with_local(|game| {
+                // 1-slot left drag (ty = 0) onto empty slot 9.
+                game.creative = false;
+                game.inventory[9] = None;
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(None),
+                    set_clicked: Some(Some(("minecraft:diamond", 2))),
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[
+                    (None, 0, Input::QuickCraft),
+                    (Some(9), 1, Input::QuickCraft),
+                    (None, 2, Input::QuickCraft),
+                ]));
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                assert!(observations()[0].primary);
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 2))
+                );
+
+                // 1-slot right drag (ty = 1) onto empty slot 10.
+                game.inventory[10] = None;
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(None),
+                    set_clicked: Some(Some(("minecraft:emerald", 1))),
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[
+                    (None, 4, Input::QuickCraft),
+                    (Some(10), 5, Input::QuickCraft),
+                    (None, 6, Input::QuickCraft),
+                ]));
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                assert!(!observations()[0].primary);
+                assert_eq!(
+                    game.inventory[10].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:emerald", 1))
+                );
+
+                // 2-slot left drag must NOT dispatch Parts.
+                game.inventory[11] = None;
+                game.inventory[12] = None;
+                game.carried = Some(ItemStack::new("minecraft:stick", 2));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[
+                    (None, 0, Input::QuickCraft),
+                    (Some(11), 1, Input::QuickCraft),
+                    (Some(12), 1, Input::QuickCraft),
+                    (None, 2, Input::QuickCraft),
+                ]));
+                assert!(
+                    trace().is_empty(),
+                    "multi-slot drag must not dispatch Parts"
+                );
+                assert_eq!(game.inventory[11].as_ref().map(|s| s.count), Some(1));
+                assert_eq!(game.inventory[12].as_ref().map(|s| s.count), Some(1));
+
+                // 1-slot middle-button creative drag (ty = 2) must NOT dispatch Parts.
+                game.creative = true;
+                game.inventory[13] = None;
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[
+                    (None, 8, Input::QuickCraft),
+                    (Some(13), 9, Input::QuickCraft),
+                    (None, 10, Input::QuickCraft),
+                ]));
+                assert!(
+                    trace().is_empty(),
+                    "middle-button drag must not dispatch Parts"
+                );
+            });
+
+            // 2. LAN hub container and LAN inventory: 1-slot drag dispatches transactionally,
+            //    direct Pickup during an active drag ONLY resets the drag without firing Parts,
+            //    and multi-slot / middle-button drags do not dispatch.
+            with_guests(|game| {
+                PLAYER.set(12);
+                let pos = (1, 64, 1);
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                );
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
+                game.world.block_entities.insert(
+                    pos,
+                    sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
+                );
+                let host = game.lan.as_mut().unwrap();
+                host.hub.open_container(
+                    12,
+                    "minecraft:generic_9x3",
+                    sunrise_core::nbt::Tag::String("test".into()),
+                    pos,
+                    Slots::Block(pos),
+                    vec![None; 27],
+                    None,
+                );
+                let window = host.hub.guests[0].menu.as_ref().unwrap().window;
+                let pkt = |container, slot, button, input| {
+                    Serverbound::ContainerClick(ContainerClick {
+                        container,
+                        state: 0,
+                        slot,
+                        button,
+                        input,
+                        changed: Vec::new(),
+                        carried: None,
+                    })
+                };
+
+                // LAN hub 1-slot left drag dispatches CarriedOnOther and rolls back on abort.
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                });
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(None),
+                    set_clicked: Some(Some(("minecraft:diamond", 3))),
+                    ..PartScript::default()
+                });
+                let seal = game.transaction_open();
+                game.lan_guest_packet(12, pkt(window, -999, 0, 5));
+                game.lan_guest_packet(12, pkt(window, 0, 1, 5));
+                assert!(trace().is_empty());
+                game.lan_guest_packet(12, pkt(window, -999, 2, 5));
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[0]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 3))
+                );
+                game.transaction_close(&seal, false);
+                assert!(game.world.block_entities.get(&pos).unwrap().slots()[0].is_none());
+                assert_eq!(
+                    game.lan.as_ref().unwrap().hub.guests[0]
+                        .carried
+                        .as_ref()
+                        .map(|s| &*s.item),
+                    Some("minecraft:stick")
+                );
+
+                // LAN hub: direct PICKUP packet DURING an active drag ONLY resets the drag and
+                // MUST NOT dispatch any Part or mutate slots.
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(None),
+                    set_clicked: Some(Some(("minecraft:diamond", 1))),
+                    ..PartScript::default()
+                });
+                game.lan_guest_packet(12, pkt(window, -999, 0, 5));
+                game.lan_guest_packet(12, pkt(window, 0, 1, 5));
+                game.lan_guest_packet(12, pkt(window, 0, 0, 0));
+                assert!(
+                    trace().is_empty(),
+                    "direct pickup during active hub drag must only reset drag"
+                );
+                assert!(game.world.block_entities.get(&pos).unwrap().slots()[0].is_none());
+                assert_eq!(
+                    game.lan.as_ref().unwrap().hub.guests[0]
+                        .carried
+                        .as_ref()
+                        .map(|s| &*s.item),
+                    Some("minecraft:stick")
+                );
+                // Drag was reset: a stray drag-end packet now does nothing either.
+                game.lan_guest_packet(12, pkt(window, -999, 2, 5));
+                assert!(trace().is_empty());
+
+                // LAN hub: 2-slot drag and creative middle-button 1-slot drag do NOT dispatch.
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 2));
+                    guest.game_mode = 1;
+                });
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    ..PartScript::default()
+                });
+                game.lan_guest_packet(12, pkt(window, -999, 0, 5));
+                game.lan_guest_packet(12, pkt(window, 1, 1, 5));
+                game.lan_guest_packet(12, pkt(window, 2, 1, 5));
+                game.lan_guest_packet(12, pkt(window, -999, 2, 5));
+                assert!(
+                    trace().is_empty(),
+                    "hub 2-slot drag must not dispatch Parts"
+                );
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                });
+                game.lan_guest_packet(12, pkt(window, -999, 8, 5));
+                game.lan_guest_packet(12, pkt(window, 3, 9, 5));
+                game.lan_guest_packet(12, pkt(window, -999, 10, 5));
+                assert!(
+                    trace().is_empty(),
+                    "hub middle-button drag must not dispatch Parts"
+                );
+
+                // LAN inventory (window 0): 1-slot right drag dispatches; direct PICKUP during
+                // active drag resets drag without dispatching.
+                game.guest_close_all(12);
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.game_mode = 0;
+                    guest.inventory = vec![None; guest.inventory.len()];
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                });
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(None),
+                    set_clicked: Some(Some(("minecraft:emerald", 2))),
+                    ..PartScript::default()
+                });
+                game.lan_guest_packet(12, pkt(0, -999, 4, 5));
+                game.lan_guest_packet(12, pkt(0, 9, 5, 5));
+                game.lan_guest_packet(12, pkt(0, -999, 6, 5));
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                assert!(!observations()[0].primary);
+                assert_eq!(
+                    game.lan.as_ref().unwrap().hub.guests[0].inventory[9]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:emerald", 2))
+                );
+
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.inventory[10] = None;
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                });
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    ..PartScript::default()
+                });
+                game.lan_guest_packet(12, pkt(0, -999, 0, 5));
+                game.lan_guest_packet(12, pkt(0, 10, 1, 5));
+                game.lan_guest_packet(12, pkt(0, 10, 0, 0));
+                assert!(
+                    trace().is_empty(),
+                    "direct pickup during active inventory drag must only reset drag"
+                );
+                assert!(game.lan.as_ref().unwrap().hub.guests[0].inventory[10].is_none());
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn item_part_override_contract_supports_decline_edits_and_output_slots() {
+        use sunrise_client::containers::{BlockEntity, Furnace, FurnaceKind};
+        with_part_only_mod(|| {
+            with_local(|game| {
+                // 1. Declining with edits (`Flow::Continue` + `StackResult::Set`) passes edited
+                //    stacks from CarriedOnOther -> OtherStackedOnMe -> plain pickup.
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    carried_phase_set_carried: Some(Some(("minecraft:stick", 2))),
+                    carried_phase_set_clicked: Some(Some(("minecraft:flint", 3))),
+                    clicked_phase_set_clicked: Some(Some(("minecraft:flint", 5))),
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(
+                    trace(),
+                    [
+                        ("stick", StackedOnOtherDirection::CarriedOnOther),
+                        ("flint", StackedOnOtherDirection::OtherStackedOnMe),
+                    ]
+                );
+                // OtherStackedOnMe saw the stacks edited by the declining CarriedOnOther override.
+                assert_eq!(
+                    observations()[1].carried,
+                    Some(("minecraft:stick".to_owned(), 2))
+                );
+                assert_eq!(
+                    observations()[1].clicked,
+                    Some(("minecraft:flint".to_owned(), 3))
+                );
+                // Plain pickup then swapped the final edited stacks (stick x2 <-> flint x5).
+                assert_eq!(
+                    game.carried.as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:flint", 5))
+                );
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:stick", 2))
+                );
+
+                // 2. Contradictory Part answers (`Flow::Cancel` with `handled = false`, or
+                //    `Flow::Continue` with `handled = true`) refuse the click and roll back.
+                for (cancel_carried, carried_handled) in [(true, Some(false)), (false, Some(true))]
+                {
+                    game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                    game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    set_part_script(PartScript {
+                        cancel_carried,
+                        carried_handled,
+                        write_scoreboard: true,
+                        ..PartScript::default()
+                    });
+                    assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                    assert_eq!(
+                        game.carried.as_ref().map(|s| (&*s.item, s.count)),
+                        Some(("minecraft:stick", 1))
+                    );
+                    assert_eq!(
+                        game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
+                        Some(("minecraft:flint", 1))
+                    );
+                    assert!(game.score.board.objective("part_pickup").is_none());
+                }
+
+                // 3. Handled direct edit and full take on a Furnace output slot (`Role::Output`)
+                //    succeed inside the transaction and roll back on outer abort.
+                let pos = (1, 64, 1);
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                );
+                let furnace = Furnace {
+                    kind: FurnaceKind::Furnace,
+                    items: [None, None, Some(ItemStack::new("minecraft:flint", 4))],
+                    lit_remaining: 0,
+                    lit_total: 0,
+                    cooking_timer: 0,
+                    cooking_total: 0,
+                    speed: 1.0,
+                    recipes_used: std::collections::HashMap::new(),
+                };
+                game.world
+                    .block_entities
+                    .insert(pos, BlockEntity::Furnace(furnace));
+                game.container = Some(pos);
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:stick", 2))),
+                    set_clicked: Some(Some(("minecraft:diamond", 2))),
+                    ..PartScript::default()
+                });
+                let seal = game.transaction_open();
+                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert_eq!(
+                    game.carried.as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:stick", 2))
+                );
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[2]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 2))
+                );
+                game.transaction_close(&seal, false);
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[2]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:flint", 4))
+                );
+
+                // Full take from Furnace output slot via ItemPart succeeds too.
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:stick", 5))),
+                    set_clicked: Some(None),
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert_eq!(
+                    game.carried.as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:stick", 5))
+                );
+                assert!(game.world.block_entities.get(&pos).unwrap().slots()[2].is_none());
+                game.container = None;
+            });
+        });
+
+        // 4. Documented global listener contract is preserved: setting a stack without canceling
+        //    or directly editing a Furnace output slot is STILL refused for Hooks::item_stacked_on_other.
+        with_mod(|| {
+            with_local(|game| {
+                let pos = (2, 64, 2);
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                );
+                game.world.block_entities.insert(
+                    pos,
+                    BlockEntity::Furnace(Furnace {
+                        kind: FurnaceKind::Furnace,
+                        items: [None, None, Some(ItemStack::new("minecraft:flint", 4))],
+                        lit_remaining: 0,
+                        lit_total: 0,
+                        cooking_timer: 0,
+                        cooking_total: 0,
+                        speed: 1.0,
+                        recipes_used: std::collections::HashMap::new(),
+                    }),
+                );
+                game.container = Some(pos);
+                game.carried = Some(ItemStack::new("minecraft:stone", 1));
+                script(Script {
+                    cancel: true,
+                    handled: true,
+                    set_clicked: Some(Some(("minecraft:diamond", 2))),
+                    ..Script::default()
+                });
+                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[2]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:flint", 4)),
+                    "global listener output-slot write must remain refused"
+                );
+                game.container = None;
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn item_part_uses_real_carried_override_outcome_for_non_bundle_items() {
+        use sunrise_client::lan::menu::Slots;
+        use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+        let paper_with_bundle_contents = || {
+            let mut paper = ItemStack::new("minecraft:paper", 1);
+            paper.data_mut().bundle_contents = vec![ItemStack::new("minecraft:stone", 1)];
+            paper
+        };
+        let bundle_without_contents = || {
+            let mut bundle = ItemStack::new("minecraft:bundle", 1);
+            bundle.data_mut().set_other(
+                "!minecraft:bundle_contents",
+                Some(sunrise_core::nbt::Tag::Compound(Default::default())),
+            );
+            bundle
+        };
+        with_part_only_mod(|| {
+            // 1. Local menu: non-bundle item carrying `bundle_contents` on the cursor does NOT
+            //    suppress the clicked item's `OtherStackedOnMe` Part on a primary click.
+            with_local(|game| {
+                set_part_script(PartScript {
+                    cancel_clicked: true,
+                    handled: true,
+                    set_clicked: Some(Some(("minecraft:diamond", 1))),
+                    ..PartScript::default()
+                });
+                game.carried = Some(paper_with_bundle_contents());
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(
+                    trace(),
+                    [("flint", StackedOnOtherDirection::OtherStackedOnMe)],
+                    "non-bundle with bundle_contents must not suppress clicked ItemPart"
+                );
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 1))
+                );
+
+                // A real bundle with `bundle_contents` removed also returns false from
+                // `BundleItem.overrideStackedOnOther`, letting clicked ItemPart run.
+                set_part_script(PartScript {
+                    cancel_clicked: true,
+                    handled: true,
+                    set_clicked: Some(Some(("minecraft:emerald", 1))),
+                    ..PartScript::default()
+                });
+                game.carried = Some(bundle_without_contents());
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(
+                    trace(),
+                    [("flint", StackedOnOtherDirection::OtherStackedOnMe)]
+                );
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:emerald", 1))
+                );
+            });
+
+            // 2. LAN hub container: same shared carried override behavior.
+            with_guests(|game| {
+                PLAYER.set(12);
+                let pos = (1, 64, 1);
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                );
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
+                let mut chest = vec![None; 27];
+                chest[0] = Some(ItemStack::new("minecraft:flint", 1));
+                game.world.block_entities.insert(
+                    pos,
+                    sunrise_client::containers::BlockEntity::Chest(chest.clone()),
+                );
+                let host = game.lan.as_mut().unwrap();
+                host.hub.open_container(
+                    12,
+                    "minecraft:generic_9x3",
+                    sunrise_core::nbt::Tag::String("test".into()),
+                    pos,
+                    Slots::Block(pos),
+                    chest,
+                    None,
+                );
+                let window = host.hub.guests[0].menu.as_ref().unwrap().window;
+                let click_pkt = Serverbound::ContainerClick(ContainerClick {
+                    container: window,
+                    state: 0,
+                    slot: 0,
+                    button: 0,
+                    input: 0,
+                    changed: Vec::new(),
+                    carried: None,
+                });
+
+                // Non-bundle carrying `bundle_contents` does NOT suppress clicked Part on LAN hub.
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(paper_with_bundle_contents());
+                });
+                set_part_script(PartScript {
+                    cancel_clicked: true,
+                    handled: true,
+                    set_clicked: Some(Some(("minecraft:diamond", 2))),
+                    ..PartScript::default()
+                });
+                game.lan_guest_packet(12, click_pkt.clone());
+                assert_eq!(
+                    trace(),
+                    [("flint", StackedOnOtherDirection::OtherStackedOnMe)],
+                    "LAN hub must share real carried override outcome"
+                );
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[0]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 2))
+                );
+
+                // Real `minecraft:bundle` DOES suppress clicked Part on LAN hub primary click.
+                game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] =
+                    Some(ItemStack::new("minecraft:flint", 1));
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:bundle", 1));
+                });
+                set_part_script(PartScript {
+                    cancel_clicked: true,
+                    handled: true,
+                    set_clicked: Some(Some(("minecraft:diamond", 2))),
+                    ..PartScript::default()
+                });
+                game.lan_guest_packet(12, click_pkt);
+                assert!(
+                    trace().is_empty(),
+                    "real carried bundle must win before clicked ItemPart on LAN hub"
+                );
+                assert!(game.world.block_entities.get(&pos).unwrap().slots()[0].is_none());
             });
         });
     }

@@ -14,6 +14,4 @@ sunrise-client game::stacked_on_other_tests::families::the_crafting_table_menu_d
 sunrise-client game::stacked_on_other_tests::families::the_furnace_menu_decides_the_pickup lib daily resources
 sunrise-client game::stacked_on_other_tests::families::the_mount_menu_decides_the_pickup lib daily resources
 sunrise-client game::stacked_on_other_tests::families::the_trading_menu_decides_the_pickup lib daily resources
-sunrise-client game::stacked_on_other_tests::item_part_tests::item_part_overrides_run_in_vanilla_order_and_apply_transactionally lib daily resources
-sunrise-client game::stacked_on_other_tests::item_part_tests::item_part_stacked_on_other_runs_on_lan_hub_and_inventory_clicks lib daily resources
 sunrise-client game::stacked_on_other_tests::without_a_listener_the_click_is_plain_and_nothing_is_decided lib daily resources

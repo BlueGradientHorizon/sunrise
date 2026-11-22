@@ -128,6 +128,10 @@ impl Game<'_> {
             self.crafter_slot_clicked(*slot, *button, *input);
         }
         if let Some(done) = self.stacked_menu_ops(ops) {
+            // CreativeModeInventoryScreen.slotClicked: the changed slots go out with the click.
+            if done && self.remote.is_some() && self.screen == Screen::Creative {
+                self.send_creative_slots();
+            }
             return done;
         }
         let ops = ops.to_vec();

@@ -25,21 +25,72 @@ pub struct StackedClick {
     pub carried: Option<ItemStack>,
     pub clicked: Option<ItemStack>,
 }
+/// Which policy governs applying edits from [`StackedOutcome`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StackedEditPolicy {
+    /// Global `Hooks::item_stacked_on_other` event: edits are allowed only when `canceled &&
+    /// handled`, and result/potion slots cannot be directly modified.
+    #[default]
+    Global,
+    /// `ItemPart::item_stacked_on_other` override phases (`CarriedOnOther` / `OtherStackedOnMe`):
+    /// edits may occur on both handled ("stop") and declined ("continue with edits") outcomes, and
+    /// taking from or directly editing an occupied output/result slot is allowed inside the
+    /// transaction.
+    Part,
+}
+
+/// Where `pickup` should resume after applying any [`StackedOutcome`] edits.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StackedResume {
+    /// Run vanilla carried override, then vanilla clicked override, then plain pickup.
+    #[default]
+    VanillaAll,
+    /// Vanilla carried override won the carried phase: run it on the live menu now (skipping
+    /// vanilla clicked override and plain pickup when it takes the click).
+    VanillaCarried,
+    /// The carried phase (carried Part + vanilla carried override) declined: run vanilla clicked
+    /// override, then plain pickup.
+    VanillaClicked,
+    /// Global listener canceled without handling: skip both vanilla overrides and run plain pickup.
+    Plain,
+    /// Click was handled: stop without running vanilla overrides or plain pickup.
+    Done,
+}
+
 /// What the mods decided about a pickup click (`item_stacked_on_other`), validated by the game
-/// before the click: `canceled` skips the bundle override, and a cancelled click that is also
-/// `handled` is done, leaving the cursor and the slot as the `Some` stacks say.
+/// before the click.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StackedOutcome {
     pub canceled: bool,
     pub handled: bool,
-    /// The cursor after a cancelled, handled click.
+    pub policy: StackedEditPolicy,
+    pub resume: StackedResume,
+    /// The cursor replacement to apply before resuming (if `Some`).
     pub carried: Option<Option<ItemStack>>,
-    /// The clicked slot after a cancelled, handled click.
+    /// The clicked slot replacement to apply before resuming (if `Some`).
     pub clicked: Option<Option<ItemStack>>,
-    /// Set by the click when the clicked slot's own rules refuse `clicked` (it changes a slot
-    /// whose `onTake` would not run, takes what `mayPickup` keeps, or puts in what `mayPlace` or
-    /// the slot's size refuses): the click changed nothing and its decision is undone.
+    /// Set by the click when the clicked slot's own rules refuse `clicked`: the click changed
+    /// nothing and its decision is undone.
     pub refused: std::cell::Cell<bool>,
+}
+
+impl StackedOutcome {
+    /// Resolve where `pickup` should resume after applying any edits.
+    ///
+    /// Preserves compatibility with callers that construct a global outcome using only
+    /// `canceled` / `handled` with `resume: StackedResume::VanillaAll`.
+    pub fn effective_resume(&self) -> StackedResume {
+        match (self.policy, self.resume) {
+            (StackedEditPolicy::Global, StackedResume::VanillaAll) if self.canceled => {
+                if self.handled {
+                    StackedResume::Done
+                } else {
+                    StackedResume::Plain
+                }
+            }
+            (_, resume) => resume,
+        }
+    }
 }
 /// Who and where a `menu_slot_rules` ask is about: the player whose menu it is, the menu's
 /// block, the container the asked slot indexes, and the menu's own containers' slots as they

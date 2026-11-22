@@ -224,7 +224,7 @@ impl Game<'_> {
                 let stamp = host.menus[&conn].merchant.stamp();
                 let hub_generation = host.hub.guest(conn).expect("planned guest").menu_generation;
                 // The shared pickup decision checks its journal epoch as well as these stacks.
-                let same = frozen.clone();
+                let (same, resolved_slot, primary) = (frozen.clone(), frozen.slot, frozen.primary);
                 if self.stacked_pickup(
                     route,
                     frozen,
@@ -241,6 +241,25 @@ impl Game<'_> {
                             && guest.carried == same.carried)
                             .then(|| same.clone())
                     },
+                    |game, carried, clicked| {
+                        let mut took = false;
+                        let _ = game.lan_merchant_op_with(
+                            conn,
+                            Some(p.container),
+                            false,
+                            MerchantRun::Probe,
+                            |menu, env| {
+                                took = menu.probe_carried_vanilla_override(
+                                    env,
+                                    resolved_slot,
+                                    primary,
+                                    carried,
+                                    clicked,
+                                );
+                            },
+                        );
+                        took
+                    },
                     |game, answer| {
                         if !game.lan_merchant_op_with(
                             conn,
@@ -249,7 +268,7 @@ impl Game<'_> {
                             MerchantRun::Probe,
                             |menu, env| {
                                 super::stacked_on_other::plan_click(
-                                    menu, env, 2, button, &answers, answer,
+                                    menu, env, 2, button, input, &answers, answer,
                                 );
                             },
                         ) {

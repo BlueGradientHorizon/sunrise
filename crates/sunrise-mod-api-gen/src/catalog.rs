@@ -328,8 +328,25 @@ impl Hook {
             (Some(kind), Some(key)) => Some(PartScope { kind, key }),
             _ => return Err(CatalogError::ScopeNeedsKey(name)),
         };
-        if api.part.is_some()
-            && (scope.is_some()
+        if let Some(part_kind) = api.part {
+            if part_kind != PartKind::Item {
+                let kind_name = match part_kind {
+                    PartKind::Block => "block",
+                    PartKind::BlockEntity => "block_entity",
+                    PartKind::Item => "item",
+                    PartKind::Menu => "menu",
+                    PartKind::Effect => "effect",
+                    PartKind::Fluid => "fluid",
+                    PartKind::Entity => "entity",
+                };
+                return Err(CatalogError::InvalidHook {
+                    hook: name,
+                    error: format!(
+                        "part = \"{kind_name}\" is not supported; only part = \"item\" is implemented"
+                    ),
+                });
+            }
+            if scope.is_some()
                 || api.contract != Contract::Cancel
                 || api.answered_by.is_some()
                 || api.owner.is_some()
@@ -337,13 +354,15 @@ impl Hook {
                 || api.isolate == Some(true)
                 || api.output_validator.is_some()
                 || entry.context.is_some()
-                || entry.event_per_listener)
-        {
-            return Err(CatalogError::InvalidHook {
-                hook: name,
-                error: "part requires a plain global cancel hook without scope or phase context"
-                    .into(),
-            });
+                || entry.event_per_listener
+            {
+                return Err(CatalogError::InvalidHook {
+                    hook: name,
+                    error:
+                        "part requires a plain global cancel hook without scope or phase context"
+                            .into(),
+                });
+            }
         }
         if matches!(
             (api.contract, &api.out),
@@ -1356,6 +1375,18 @@ mod tests {
             json!({"mod_api": {"contract": "cancel", "out": "canceled", "part": "item", "isolate": true}}),
         ] {
             assert!(Hook::parse(hook("bad", bad)).is_err());
+        }
+        for kind in ["block", "block_entity", "menu", "effect", "fluid", "entity"] {
+            let err = Hook::parse(hook(
+                "bad_part_kind",
+                json!({"mod_api": {"contract": "cancel", "out": "canceled", "part": kind}}),
+            ))
+            .unwrap_err()
+            .to_string();
+            assert!(
+                err.contains(kind),
+                "expected unsupported part kind {kind:?} to be named in error: {err}"
+            );
         }
     }
 }

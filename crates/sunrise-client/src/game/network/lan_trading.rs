@@ -495,7 +495,7 @@ impl Game<'_> {
         let op = move |menu: &mut Menu, env: &Env| {
             let _ = menu.click(env, slot, button, input);
         };
-        if !Self::stacked_listened() || input != Input::Pickup {
+        if !Self::stacked_listened() || !matches!(input, Input::Pickup | Input::QuickCraft) {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         }
         // Freeze what the click finds as the guest's trade state makes it, without a write.
@@ -521,7 +521,12 @@ impl Game<'_> {
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn));
-        let (carried, same) = (frozen.carried.clone(), frozen.clone());
+        let (carried, same, resolved_slot, primary) = (
+            frozen.carried.clone(),
+            frozen.clone(),
+            frozen.slot,
+            frozen.primary,
+        );
         let mut handled = true;
         let pickup = self.stacked_pickup(
             route,
@@ -529,6 +534,25 @@ impl Game<'_> {
             move |game| {
                 let now = game.lan.as_ref()?.hub.guests.get(gi?)?.carried.clone();
                 (now == carried).then(|| same.clone())
+            },
+            |game, carried, clicked| {
+                let mut took = false;
+                let _ = game.lan_merchant_op_with(
+                    conn,
+                    Some(p.container),
+                    false,
+                    MerchantRun::Probe,
+                    |menu, env| {
+                        took = menu.probe_carried_vanilla_override(
+                            env,
+                            resolved_slot,
+                            primary,
+                            carried,
+                            clicked,
+                        );
+                    },
+                );
+                took
             },
             |game, answer| {
                 if !game.lan_merchant_op_with(
@@ -538,7 +562,7 @@ impl Game<'_> {
                     MerchantRun::Probe,
                     |menu, env| {
                         super::stacked_on_other::plan_click(
-                            menu, env, slot, button, &answers, answer,
+                            menu, env, slot, button, input, &answers, answer,
                         );
                     },
                 ) {

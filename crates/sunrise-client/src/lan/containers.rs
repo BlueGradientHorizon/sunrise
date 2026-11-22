@@ -961,16 +961,40 @@ impl Hub {
         ))
     }
 
-    /// The pickup click `p` as `item_stacked_on_other` is asked about it, on the container the
-    /// first step read: the stacks it finds. `None` for a click that never asks.
+    /// The resolved pickup click `p` as `item_stacked_on_other` is asked about it, on the
+    /// container the first step read: the stacks it finds.
+    ///
+    /// Resolves both a direct left/right `PICKUP` when no drag is active (`prepared.drag.is_none()`)
+    /// and a one-slot left/right `QUICK_CRAFT` drag release (`stage == 2`, `slots.len() == 1`,
+    /// `kind <= 1`, carried stack present), matching vanilla 26.3 `AbstractContainerMenu.doClick`.
+    /// Returns `None` for direct pickups arriving during an active drag (which only reset the drag),
+    /// multi-slot drags, middle-button drags (`kind == 2`), and other inputs.
     pub fn stacked_click(
         &mut self,
         prepared: &mut PreparedClick,
         p: &play::ContainerClick,
     ) -> Option<crate::menu::StackedClick> {
-        if p.input != menu::input::PICKUP {
-            return None;
-        }
+        let (slot, button) = match p.input {
+            menu::input::PICKUP => {
+                if prepared.drag.is_some() {
+                    return None;
+                }
+                (i32::from(p.slot), i32::from(p.button))
+            }
+            menu::input::QUICK_CRAFT => {
+                let stage = i32::from(p.button) & 3;
+                if stage != 2 {
+                    return None;
+                }
+                let (kind, slots) = prepared.drag.as_ref()?;
+                if slots.len() != 1 || *kind > 1 {
+                    return None;
+                }
+                self.guests[prepared.i].carried.as_ref()?;
+                (slots[0] as i32, i32::from(*kind))
+            }
+            _ => return None,
+        };
         let loop_context = &self.loop_context;
         self.guests.update(prepared.i, |guest| {
             View {
@@ -982,7 +1006,49 @@ impl Hub {
                 loop_context,
                 slot_snapshot: Default::default(),
             }
-            .stacked_click(i32::from(p.slot), i32::from(p.button))
+            .stacked_click(slot, button)
+        })
+    }
+
+    /// Probe the shared vanilla carried override (`vanilla_carried_override`) on the prepared hub
+    /// menu state with `(carried, clicked)` staged into the cursor and menu `slot`, restoring all
+    /// state before returning whether the carried item's vanilla override handled the click.
+    pub fn probe_carried_vanilla_override(
+        &mut self,
+        prepared: &mut PreparedClick,
+        slot: usize,
+        primary: bool,
+        carried: Option<ItemStack>,
+        clicked: Option<ItemStack>,
+        rules: &dyn Rules,
+    ) -> bool {
+        let loop_context = &self.loop_context;
+        self.guests.update(prepared.i, |guest| {
+            let kept = (
+                guest.inventory.clone(),
+                guest.armor.clone(),
+                guest.offhand.clone(),
+                guest.carried.clone(),
+                guest.craft_grid.clone(),
+                guest.craft_result.clone(),
+            );
+            let items = prepared.items.clone();
+            let mut view = View {
+                guest,
+                container: prepared.items.as_deref_mut(),
+                shulker: prepared.shulker,
+                container_limits: prepared.container_limits.clone(),
+                hidden: &prepared.hidden,
+                loop_context,
+                slot_snapshot: Default::default(),
+            };
+            let took = menu::probe_carried_vanilla_override(
+                &mut view, slot, primary, carried, clicked, rules,
+            );
+            (guest.inventory, guest.armor, guest.offhand) = (kept.0, kept.1, kept.2);
+            (guest.carried, guest.craft_grid, guest.craft_result) = (kept.3, kept.4, kept.5);
+            prepared.items = items;
+            took
         })
     }
 

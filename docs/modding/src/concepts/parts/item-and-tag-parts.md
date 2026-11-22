@@ -222,26 +222,45 @@ commits.
 
 `ItemPart::item_stacked_on_other` shares the `item_stacked_on_other` hook, event and
 decide/fire/apply transaction with `Hooks::item_stacked_on_other` (NeoForge's
-`ItemStackedOnOtherEvent`), covering vanilla's `Item.overrideStackedOnOther` and
-`Item.overrideOtherStackedOnMe` on the authoritative side (single-player server, LAN host and
-dedicated server).
+`ItemStackedOnOtherEvent`), covering vanilla 26.3's `Item.overrideStackedOnOther` and
+`Item.overrideOtherStackedOnMe` on both sides:
 
-On each pickup click, dispatch follows vanilla `AbstractContainerMenu.tryItemClickBehaviourOverride`
-order inside one transaction:
+- **Server (authoritative)**: single-player integrated server, LAN host and dedicated server
+  receive `HostSide::Server`.
+- **Client**: ordinary container/inventory click prediction and creative Survival Inventory tab or
+  Item Tab hotbar pickups receive `HostSide::Client`. During client prediction, server
+  reconciliation remains authoritative. Creative catalogue display slots are not pickup overrides.
 
-1. Global `Hooks::item_stacked_on_other` listeners (`event.event.direction == StackedOnOtherDirection::Event`).
+Dispatch runs at the resolved pickup moment: both a direct left/right `Pickup` when no drag is
+active and a one-slot left/right `QuickCraft` drag release (matching vanilla
+`AbstractContainerMenu.doClick`). Multi-slot drags, middle-button drags and direct pickups that
+only reset an active drag do not dispatch.
+
+On each resolved pickup, dispatch follows vanilla
+`AbstractContainerMenu.tryItemClickBehaviourOverride` order inside one transaction:
+
+1. Global `Hooks::item_stacked_on_other` listeners (`event.event.direction == StackedOnOtherDirection::Event`),
+   authoritative server side only.
 2. The carried (cursor) stack's `ItemPart::item_stacked_on_other` (`StackedOnOtherDirection::CarriedOnOther`).
-3. Vanilla's carried-bundle override when the carried stack holds `minecraft:bundle_contents` and
-   matches the click (`(primary && clicked.is_some()) || (!primary && clicked.is_none())`), which
-   handles the click before the clicked item's part runs.
+3. Vanilla's carried override (`BundleItem.overrideStackedOnOther`, dispatched by item type rather
+   than mere `bundle_contents` component presence), using its real outcome to decide whether to
+   stop before step 4.
 4. The clicked slot stack's `ItemPart::item_stacked_on_other` (`StackedOnOtherDirection::OtherStackedOnMe`).
-5. Vanilla's clicked-bundle override, then the plain pickup click.
+5. Vanilla's clicked override (`BundleItem.overrideOtherStackedOnMe`), then the plain pickup click.
 
-To handle the click, set `event.result.handled = true`, set `event.result.carried` and/or
-`event.result.clicked` via `StackResult::Set(...)`, and return `Flow::Cancel`. Return
-`Flow::Continue` (leaving `result` untouched) to defer to the next phase or vanilla pickup.
-Returning `Flow::Cancel` with `handled = false` skips later overrides and vanilla's bundle
-override and falls through to the plain pickup. Setting a stack without cancelling with
-`handled = true`, writing through the host to what the click read, returning an invalid stack,
-failing the slot's placement/pickup rules, or panicking refuses the click and rolls back every
-host write.
+`ItemPart` overrides represent both vanilla outcomes inside the transaction:
+
+- **Handled (stop)**: set `event.result.handled = true`, set `event.result.carried` and/or
+  `event.result.clicked` via `StackResult::Set(...)`, and return `Flow::Cancel`. Stops later
+  overrides and plain pickup. Taking from or directly editing an occupied output slot (such as a
+  furnace output) is permitted inside the transaction; taking runs the slot's take effects.
+- **Not handled (continue, optionally with edits)**: leave `event.result.handled = false`,
+  optionally set `event.result.carried` and/or `event.result.clicked`, and return `Flow::Continue`.
+  Later overrides and plain pickup observe the edited stacks.
+
+Contradictory `ItemPart` answers (`Flow::Cancel` with `handled = false`, or `Flow::Continue` with
+`handled = true`), writing through the host to what the click read, returning an invalid stack,
+failing slot placement/pickup rules, or panicking refuses the click and rolls back every write.
+Global `Hooks::item_stacked_on_other` listeners preserve their separate contract (stacks may only
+be set on `Flow::Cancel` + `handled = true`, result/potion slots cannot be edited directly, and
+`Flow::Cancel` with `handled = false` skips vanilla bundle overrides and runs plain pickup).

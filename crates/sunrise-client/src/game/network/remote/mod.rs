@@ -20,7 +20,7 @@ mod interaction_actions;
 mod interaction_prediction;
 use inventory::{
     CREATIVE_SYNCED, Predicted, changed_slots, creative_sync_slot, creative_sync_stacks,
-    mark_synced, menu_items, predict_clicks,
+    mark_synced, menu_items, predict_clicks, predict_clicks_with,
 };
 mod level_format;
 mod raw_ingress;
@@ -2468,7 +2468,9 @@ pub(crate) mod tests {
     }
 
     /// Spawns the connected client in the overworld as entity 7, profile 42.
-    fn spawn_menu_test(game: &mut super::Game<'_>) -> sunrise_protocol::packets::play::SpawnInfo {
+    pub(crate) fn spawn_menu_test(
+        game: &mut super::Game<'_>,
+    ) -> sunrise_protocol::packets::play::SpawnInfo {
         use sunrise_client::level_loading::Reason;
         use sunrise_protocol::packets::play::SpawnInfo;
         let spawn = SpawnInfo {

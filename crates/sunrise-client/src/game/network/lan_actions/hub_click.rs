@@ -66,7 +66,7 @@ impl Game<'_> {
             let shared = &prepared;
             let outcome_ref = &outcome;
             let stored = &answers;
-            let (stacks, slot) = (frozen.clone(), frozen.slot);
+            let (stacks, slot, primary) = (frozen.clone(), frozen.slot, frozen.primary);
             let picked = self.stacked_pickup(
                 route,
                 frozen,
@@ -77,6 +77,25 @@ impl Game<'_> {
                             .hub
                             .click_stacks(conn, slot, &game.world)?;
                     (carried == stacks.carried && clicked == stacks.clicked).then(|| stacks.clone())
+                },
+                |game, carried, clicked| {
+                    game.with_lan_lifted(|game, host| {
+                        let mut prepared = prepared.borrow_mut();
+                        let Some(prepared) = prepared.as_mut() else {
+                            return false;
+                        };
+                        let rules = ItemRules(
+                            world_items!(game),
+                            &world_stations!(game).enchantments,
+                            Some(&*game),
+                            None,
+                            prepared.container_insert_rules().to_vec(),
+                        );
+                        host.hub.probe_carried_vanilla_override(
+                            prepared, slot, primary, carried, clicked, &rules,
+                        )
+                    })
+                    .unwrap_or(false)
                 },
                 |game, answer| {
                     game.with_lan_lifted(|game, host| {

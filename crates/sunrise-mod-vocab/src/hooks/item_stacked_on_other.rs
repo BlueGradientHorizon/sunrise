@@ -2,28 +2,38 @@
 
 pub trait Hooks {
     /// NeoForge's `ItemStackedOnOtherEvent` and vanilla's `Item.overrideStackedOnOther` /
-    /// `Item.overrideOtherStackedOnMe`, fired inside a pickup click on the authoritative side
-    /// only (a client predicts vanilla and the server corrects it), with the cursor and both
-    /// stacks frozen in `event`.
+    /// `Item.overrideOtherStackedOnMe`, fired inside a resolved pickup click (a direct left/right
+    /// `Pickup` when no drag is active, or a one-slot left/right `QuickCraft` drag release; never
+    /// on multi-slot or middle-button drags, active-drag resets, or creative catalogue slots), with
+    /// the cursor and both stacks frozen in `event`.
     ///
     /// Dispatch runs inside one decide/fire/apply transaction in vanilla
     /// `AbstractContainerMenu.tryItemClickBehaviourOverride` order:
-    /// 1. Global `Hooks::item_stacked_on_other` listeners (`event.direction == Event`).
-    /// 2. The carried stack's `ItemPart::item_stacked_on_other` (`CarriedOnOther`).
-    /// 3. Vanilla's carried-bundle override when the carried stack holds
-    ///    `minecraft:bundle_contents` and takes the click (skipping step 4).
-    /// 4. The clicked stack's `ItemPart::item_stacked_on_other` (`OtherStackedOnMe`).
-    /// 5. Vanilla's clicked-bundle override, then the plain pickup click.
+    /// 1. Global `Hooks::item_stacked_on_other` listeners (`event.direction == Event`),
+    ///    authoritative server side only.
+    /// 2. The carried stack's `ItemPart::item_stacked_on_other` (`CarriedOnOther`), both sides
+    ///    (server clicks, client prediction, and creative inventory-tab/hotbar pickups).
+    /// 3. Vanilla's carried override (`BundleItem.overrideStackedOnOther`, dispatched by item type)
+    ///    using the real carried outcome (skipping step 4 when handled).
+    /// 4. The clicked stack's `ItemPart::item_stacked_on_other` (`OtherStackedOnMe`), both sides.
+    /// 5. Vanilla's clicked override (`BundleItem.overrideOtherStackedOnMe`), then plain pickup.
     ///
-    /// Answer in `result`: `canceled` skips later override phases and vanilla's bundle override,
-    /// and a cancelled click that is also `handled` is done, with the stacks `result` sets (a
-    /// cancelled click not `handled` goes on to the plain pickup; setting a stack on any other
-    /// answer refuses the click). A stack set for the clicked slot goes through its pickup,
-    /// placement and size rules using the actual replacement stack. A replacement cannot change a
-    /// result slot or take a stack from a brewing potion slot: it would skip the slot's take
-    /// effects. A write through the `Host` to what the click read makes it stale: the click is
-    /// refused and every write is undone. An invalid answer or a panic also refuses the click
-    /// without falling back to the plain pickup.
+    /// Global listener contract (`Hooks::item_stacked_on_other`): `canceled` skips later override
+    /// phases and vanilla's bundle override, and a cancelled click that is also `handled` is done
+    /// with the stacks `result` sets (a cancelled click not `handled` runs plain pickup; setting a
+    /// stack on any other answer refuses the click). A global replacement cannot change a result
+    /// slot or take a stack from a filled brewing potion slot.
+    ///
+    /// `ItemPart` override contract (`CarriedOnOther` / `OtherStackedOnMe`): represents both
+    /// vanilla outcomes inside the transaction:
+    /// - Handled (stop): set `result.handled = true` and return `Flow::Cancel` (with optional
+    ///   `carried`/`clicked` edits). Stops later overrides and plain pickup.
+    /// - Not handled (continue): leave `result.handled = false` and return `Flow::Continue` (with
+    ///   optional `carried`/`clicked` edits, which are passed to later overrides and plain pickup).
+    ///
+    /// Contradictory `ItemPart` answers (`canceled != result.handled`), invalid stacks, writes
+    /// through `Host` to what the click read, or panics refuse the click and roll back every
+    /// write. During client prediction, server reconciliation remains authoritative.
     #[hook(
         side = "both",
         contract = "cancel",
