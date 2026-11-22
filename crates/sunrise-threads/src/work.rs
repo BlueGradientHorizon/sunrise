@@ -98,7 +98,7 @@ fn id_of(space: Space, name: &str, verify: bool) -> u16 {
         return 0;
     }
     let (names, key) = (&NAMES[space as usize], name.as_ptr() as usize);
-    let slot = (key >> 3).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> (usize::BITS - 10);
+    let slot = key.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> (usize::BITS - 10);
     let found = |hit: (usize, u16)| {
         (hit.0 == key && hit.1 != 0 && (!verify || names.name(hit.1) == Some(name)))
             .then_some(hit.1)
