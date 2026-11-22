@@ -1222,8 +1222,6 @@ def run(selected, state, hasher, environment_digest, executors, reuse_oracles, r
                       f"reused oracle results", flush=True)
                 continue
             fresh_rerun = label in retried and not reused
-            # A harness that only passes fresh no longer reuses oracle results.
-            record["oracle_reuse"] = records.get(name, {}).get("oracle_reuse", True) and not (passed and fresh_rerun)
             hashes = record.pop("hashes", None)
             if record["dependencies"]:
                 record["key"] = key_from(record, hashes, environment_digest) if hashes is not None else \
@@ -1243,7 +1241,10 @@ def run(selected, state, hasher, environment_digest, executors, reuse_oracles, r
             record = dict(runs[0], status="pass" if all(status == "pass" for status in statuses) else "fail",
                           rounds=len(runs))
             record.pop("fresh_rerun", None)
-            if fresh := next((run["fresh_rerun"] for run in runs if "fresh_rerun" in run), None):
+            fresh = next((run["fresh_rerun"] for run in runs if "fresh_rerun" in run), None)
+            # A harness that only passes fresh no longer reuses oracle results, whichever round finished first.
+            record["oracle_reuse"] = records.get(name, {}).get("oracle_reuse", True) and fresh != "pass"
+            if fresh:
                 record["retried"], record["fresh_rerun"] = "reused oracle results", fresh
             if len(set(statuses)) > 1:
                 record["flaky"] = statuses
