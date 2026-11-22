@@ -2715,7 +2715,10 @@ capabilities = ["registries"]
 
     #[test]
     fn place_block_checks_files_and_native_declarations() {
-        for (i, target) in ["ruby:frame", "minecraft:stone"].iter().enumerate() {
+        for (i, target) in ["ruby:frame", "minecraft:stone", "other:frame"]
+            .into_iter()
+            .enumerate()
+        {
             let text = format!(r#"{{"template":"minecraft:stick","block":"{target}"}}"#);
             let content = smod(
                 &format!("place-block-{i}"),
@@ -2723,37 +2726,62 @@ capabilities = ["registries"]
                 &[("data/ruby/sunrise/item/empty_frame.json", text.as_bytes())],
             )
             .unwrap();
-            assert_eq!(content.items[0].block.as_deref(), Some(*target));
+            assert_eq!(content.items[0].block.as_deref(), Some(target));
+            let mut declared = Content::declared("ruby");
+            declared.declare(&[], &content.items).unwrap();
+            assert_eq!(declared.items[0].block.as_deref(), Some(target));
         }
-        for (i, target) in ["stone", "other:frame", "ruby:Bad", "ruby:"]
-            .iter()
-            .enumerate()
-        {
+        for (i, target) in ["stone", "ruby:Bad", "ruby:"].into_iter().enumerate() {
             let text = format!(r#"{{"template":"minecraft:stick","block":"{target}"}}"#);
+            let error = smod(
+                &format!("bad-place-block-{i}"),
+                MANIFEST_TEXT,
+                &[("data/ruby/sunrise/item/empty_frame.json", text.as_bytes())],
+            )
+            .err()
+            .unwrap();
             assert!(
-                smod(
-                    &format!("bad-place-block-{i}"),
-                    MANIFEST_TEXT,
-                    &[("data/ruby/sunrise/item/empty_frame.json", text.as_bytes())]
-                )
-                .is_err()
+                error.contains("block must be a namespaced block id"),
+                "{error}"
             );
             let mut content = Content::declared("ruby");
+            let errors = content
+                .declare(
+                    &[],
+                    &[Item {
+                        id: "ruby:empty_frame".into(),
+                        template: "minecraft:stick".into(),
+                        block: Some(target.into()),
+                        ..Default::default()
+                    }],
+                )
+                .unwrap_err();
+            assert_eq!(errors.len(), 1);
             assert!(
-                content
-                    .declare(
-                        &[],
-                        &[Item {
-                            id: "ruby:empty_frame".into(),
-                            template: "minecraft:stick".into(),
-                            block: Some((*target).into()),
-                            ..Default::default()
-                        }]
-                    )
-                    .is_err()
+                errors[0]
+                    .1
+                    .to_string()
+                    .contains("block must be a namespaced block id")
             );
             assert!(content.items.is_empty());
         }
+
+        // Referencing another namespace does not let this package write its files there.
+        let foreign_path = "data/other/sunrise/item/empty_frame.json";
+        let error = smod(
+            "foreign-place-block-file",
+            MANIFEST_TEXT,
+            &[(
+                foreign_path,
+                br#"{"template":"minecraft:stick","block":"other:frame"}"#,
+            )],
+        )
+        .err()
+        .unwrap();
+        assert!(
+            error.contains(foreign_path) && error.contains("own namespaces"),
+            "{error}"
+        );
     }
 
     #[test]
