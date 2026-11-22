@@ -438,7 +438,9 @@ pub trait ClientSetupContext:
     fn translate(&self, _key: &str) -> Option<String> {
         None
     }
-    /// Registered enchantments, in registry order.
+    /// Registered enchantments in registry order, including selection `weight` and `anvil_cost`
+    /// (the base anvil fee per enchantment level). This and the other enchantment reads use the
+    /// table built from the server's synced entries when available, and the local table otherwise.
     fn enchantments(&self) -> Vec<crate::EnchantmentInfo> {
         Vec::new()
     }
@@ -450,7 +452,8 @@ pub trait ClientSetupContext:
     fn enchantment_min_cost(&self, _id: &str, _level: u32) -> Option<i32> {
         None
     }
-    /// Whether enchantment `id` supports `item`.
+    /// Whether `item` is in enchantment `id`'s `supported_items` (`Enchantment.isSupportedItem`).
+    /// Does not consult Item Part overrides.
     fn enchantment_supports(&self, _id: &str, _item: crate::ItemKey) -> bool {
         false
     }

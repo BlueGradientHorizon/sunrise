@@ -664,7 +664,7 @@ const BACKLOG_LIMIT: Duration = Duration::from_millis(50);
 const TICK_DECODE_WAIT: Duration = Duration::from_millis(250);
 /// The open menu name of a server's horse inventory, then its chest's
 /// columns (the packet names no `MenuType`).
-const MOUNT_MENU: &str = "sunrise:mount";
+pub(in crate::game) const MOUNT_MENU: &str = "sunrise:mount";
 /// ServerboundPlayerInputPacket's shift bit.
 const SHIFT_INPUT: u8 = 1 << 5;
 
