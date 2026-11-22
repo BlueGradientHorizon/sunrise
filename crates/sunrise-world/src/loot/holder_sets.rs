@@ -421,9 +421,16 @@ mod tests {
     fn unavailable_universes_refuse_and_opaque_mod_payloads_remain_untouched() {
         let binding = Binding::default();
         let tags = HashMap::new();
+        let types = types::Types::default();
         let mut location = json!({"type": "minecraft:location_check", "predicate": {"biomes": {"type": "neoforge:any"}}});
         let error = binding
-            .walk("predicate test:where", &mut location, &tags)
+            .walk(
+                "predicate test:where",
+                &mut location,
+                &tags,
+                &types,
+                Some(false),
+            )
             .unwrap_err()
             .to_string();
         assert!(
@@ -435,7 +442,7 @@ mod tests {
         let expected = custom.clone();
         assert!(
             !binding
-                .walk("loot_table test:opaque", &mut custom, &tags)
+                .walk("loot_table test:opaque", &mut custom, &tags, &types, None)
                 .unwrap()
         );
         assert_eq!(custom, expected);

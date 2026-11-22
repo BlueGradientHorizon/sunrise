@@ -839,7 +839,7 @@ impl LootData {
     ) -> io::Result<Self> {
         let types = types::Types::capture();
         let mut loaded = Self::load_table_candidate(root, overlay, defaults, &types, None, &[])?;
-        loaded.prepare_types(&types, None, &[])?;
+        loaded.prepare_types(&types, None)?;
         Ok(loaded)
     }
 
