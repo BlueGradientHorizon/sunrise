@@ -252,6 +252,7 @@ impl Game<'_> {
                     Some(&self.pack.block_registries),
                     &self.damage_hooks,
                 )
+                .with_bed_collisions(self.res.facts(), self.collision, self.border.geometry())
                 .with_mob_uuids(&self.persist.uuids)
                 .with_player_resolver(
                     crate::game::entity::player_resolver!(self),

@@ -1545,6 +1545,11 @@ impl Game<'_> {
                         Some(world_items!(self)),
                         Some(&self.pack.block_registries),
                         &self.damage_hooks,
+                    )
+                    .with_bed_collisions(
+                        self.res.facts(),
+                        self.collision,
+                        self.border.geometry(),
                     );
                     mobs[i].update_pushed_support(&world, wanted, moved);
                     if authoritative {

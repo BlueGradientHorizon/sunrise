@@ -635,6 +635,11 @@ impl Game<'_> {
                         Some(self.items()),
                         Some(&self.pack.block_registries),
                         &self.damage_hooks,
+                    )
+                    .with_bed_collisions(
+                        self.res.facts(),
+                        self.collision,
+                        self.border.geometry(),
                     );
                     if let Some(pause) = resume.take() {
                         m.resume_client_moved_fall(&w, &mut level, &mut events, pause)

@@ -1,0 +1,1 @@
+sunrise-client game::player_kill_credit_tests::a_displaced_archer_receives_resistance_credit lib daily child-process

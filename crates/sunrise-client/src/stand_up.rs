@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     blocks::BlockFacts,
-    collisions::{SceneCollisions, no_collision_empty},
+    collisions::{CollisionRead, SceneCollisions, no_collision_empty},
     world::World,
 };
 use sunrise_core::{
@@ -47,8 +47,8 @@ impl StandUpType {
 }
 
 /// The level as the stand-up search reads it (a `CollisionGetter`).
-pub struct StandUpLevel<'a, 'r> {
-    pub world: &'a World,
+pub struct StandUpLevel<'a, 'r, W = World> {
+    pub world: &'a W,
     pub registry: &'a BlockRegistry,
     pub facts: &'a BlockFacts,
     pub collision: &'a BlockCollisionRegistry<'r>,
@@ -57,14 +57,17 @@ pub struct StandUpLevel<'a, 'r> {
     pub border: Option<&'a BorderGeometry>,
 }
 
-impl StandUpLevel<'_, '_> {
-    fn name(&self, p: [i32; 3]) -> &str {
-        &self.facts.get(self.world.block(p[0], p[1], p[2])).name
+impl<W: CollisionRead> StandUpLevel<'_, '_, W> {
+    pub(crate) fn block(&self, p: [i32; 3]) -> BlockStateId {
+        self.world.collision_terrain().block(p[0], p[1], p[2])
+    }
+    pub(crate) fn name(&self, p: [i32; 3]) -> &str {
+        &self.facts.get(self.block(p)).name
     }
     fn tagged(&self, tag: &str, block: &str) -> bool {
         self.block_tags.get(tag).is_some_and(|s| s.contains(block))
     }
-    fn prop(&self, state: BlockStateId, key: &str) -> Option<&str> {
+    pub(crate) fn prop(&self, state: BlockStateId, key: &str) -> Option<&str> {
         self.registry
             .state(state)
             .and_then(|s| s.properties.get(key))
@@ -80,7 +83,7 @@ impl StandUpLevel<'_, '_> {
         self.collision
             .collision_shape_with_context(
                 &mut scene,
-                self.world.block(p[0], p[1], p[2]),
+                self.block(p),
                 BlockPos::new(p[0], p[1], p[2]),
                 &CollisionContext::empty(false),
             )
@@ -89,7 +92,7 @@ impl StandUpLevel<'_, '_> {
     /// `DismountHelper.nonClimbableShape`: no shape for climbable blocks
     /// and open trapdoors.
     pub fn non_climbable_shape(&self, p: [i32; 3]) -> VoxelShape {
-        let state = self.world.block(p[0], p[1], p[2]);
+        let state = self.block(p);
         let name = self.name(p);
         let open_trapdoor = name.ends_with("_trapdoor") && self.prop(state, "open") == Some("true");
         if self.tagged("minecraft:climbable", name) || open_trapdoor {
@@ -100,7 +103,7 @@ impl StandUpLevel<'_, '_> {
     /// `EntityType.isBlockDangerous`: `NodeEvaluator.isBurningBlock` unless
     /// fire immune, then the hurting plants and powder snow.
     pub fn dangerous(&self, ty: StandUpType, p: [i32; 3]) -> bool {
-        let state = self.world.block(p[0], p[1], p[2]);
+        let state = self.block(p);
         let name = self.name(p);
         let burning = self.tagged("minecraft:fire", name)
             || matches!(

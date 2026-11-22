@@ -526,8 +526,12 @@ impl Game<'_> {
             ext.pending_hurt_player.take(),
             ext.pending_hurt_damage.take(),
         );
+        let bed = ext.pending_hurt_bed.take();
         let sounds = std::mem::take(&mut ext.pending_hurt_sounds);
         let (id, at) = (mob.id, mob.position.components());
+        if let Some(pos) = bed {
+            self.set_bed_occupied(pos, false);
+        }
         if let Some(player) = player {
             self.villager_prices_changed(
                 id,
@@ -740,7 +744,6 @@ impl Game<'_> {
         super::entity::taken_pass_tests::after_take(self);
         let mut events = Vec::new();
         villager::stop_sleeping(&mut mobs[i], &self.mob_world_base(&[]), &mut events);
-        villager_brain::woken(&mut mobs[i], self.world.game_time);
         self.mobs
             .restore(mobs, sunrise_client::join_seq::RestoreOrder::SurvivorsFirst);
         if let Err(e) = self.handle_mob_events(events) {

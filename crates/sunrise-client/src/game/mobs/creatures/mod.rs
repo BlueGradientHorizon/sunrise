@@ -1733,6 +1733,7 @@ impl Game<'_> {
     }
     /// Settle a hit while its damage owner still has the level in place.
     pub(in crate::game) fn finish_mob_damage_at(&mut self, index: usize) {
+        self.flush_mob_hurt_events(index);
         self.settle_villager_hurt(index);
         let Some(mob) = self.mobs.get_mut(index) else {
             return;
@@ -2185,6 +2186,21 @@ impl Game<'_> {
         self.settle_mob_hurt(target);
         hurt
     }
+    /// Apply the hit's writes to the server level and player before it returns.
+    fn flush_mob_hurt_events(&mut self, index: usize) {
+        let Some(mob) = self.mobs.get_mut(index) else {
+            return;
+        };
+        let events = mob
+            .outbox
+            .extract_if(.., |event| {
+                matches!(event, MobEvent::DamageDealtResisted { .. })
+            })
+            .collect::<Vec<_>>();
+        // These events write only to the owning level and player's stats.
+        let _ = self.handle_mob_events(events);
+    }
+
     /// Apply reactions that need the game in `hurtServer`, without waiting for
     /// a mob tick: a Creaking's heart response or a Warden's anger and targeting.
     /// Wardens can react even when the base hurt call returned false.
@@ -3325,6 +3341,9 @@ impl Game<'_> {
                 }
                 MobEvent::CrackTurtleEgg { pos } => self.crack_turtle_egg(pos)?,
                 MobEvent::BedOccupied { pos, occupied } => self.set_bed_occupied(pos, occupied),
+                MobEvent::DamageDealtResisted { player, tenths } => {
+                    self.award_custom_stat_for(player, "damage_dealt_resisted", tenths);
+                }
                 MobEvent::SetDoorOpen { pos, open } => {
                     let pos = BlockPos::new(pos[0], pos[1], pos[2]);
                     self.with_level(|b, level, ticks| b.set_door_open(level, ticks, pos, open));

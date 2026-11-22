@@ -1515,7 +1515,6 @@ fn after_base_tick(
         })
     {
         super::villager::stop_sleeping(m, w, events);
-        super::villager_brain::woken(m, w.game_time);
     }
     // Fox.aiStep consumes before its super.aiStep, so the hook and its RNG
     // precede goals, travel and block effects at the resumed position.
@@ -4093,9 +4092,9 @@ fn species_ai_step(
         Species::Breeze => super::breeze::ai_step(m),
         Species::Sniffer => super::sniffer::ai_step(m, events),
         Species::HappyGhast => super::happy_ghast::ai_step(m, w),
-        Species::Villager => super::villager::ai_step(m, w, events),
+        Species::Villager => super::villager::ai_step(m, w),
         Species::WanderingTrader => {
-            super::villager::ai_step(m, w, events);
+            super::villager::ai_step(m, w);
             super::trader::ai_step(m, w);
         }
         Species::Shulker => {
@@ -4663,7 +4662,6 @@ pub fn accepts_damage(
 }
 /// Reactions after taking damage (sounds, anger).
 pub fn after_hurt(m: &mut Mob, source: &Damage) {
-    m.ai.no_action_time = 0;
     match m.species() {
         Species::Armadillo => super::armadillo::after_hurt(m, source),
         Species::Nautilus | Species::ZombieNautilus => super::nautilus::after_hurt(m, source),

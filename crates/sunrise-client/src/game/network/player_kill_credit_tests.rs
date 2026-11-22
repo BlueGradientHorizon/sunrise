@@ -373,6 +373,61 @@ fn a_guest_killing_another_guest_while_displaced_credits_the_kill() {
     });
 }
 
+/// The arrow's causal player is displaced when the mob resists the shot.
+#[test]
+#[ignore = "daily"]
+fn a_displaced_archer_receives_resistance_credit() {
+    use sunrise_client::{
+        mobs::{Damage, Who},
+        projectiles::{Projectile, ProjectileKind},
+    };
+
+    if fresh("a_displaced_archer_receives_resistance_credit", &["nested"]) {
+        return;
+    }
+    let mut resources = None;
+    let mut game = game(&mut resources);
+    add_guest_killer(&mut game);
+    assert!(game.run_command("summon pig 7.5 100 6.5 {NoAI:1b,NoGravity:1b}"));
+    assert!(
+        game.run_command("effect give @e[type=pig,limit=1] minecraft:resistance infinite 0 true")
+    );
+    let pig = game.mobs.last().unwrap().id;
+    let mut arrow = Projectile::new(
+        ProjectileKind::Arrow {
+            base_damage: 2.0,
+            critical: false,
+            effect: None,
+        },
+        Vec3::new(5.5, 100.0, 6.5),
+        Some(Who::Player),
+    );
+    arrow.id = game.take_entity_id();
+    arrow.guest = Some(KILLER_CONN);
+    let source = Damage {
+        kind: game.projectile_damage_kind(&arrow),
+        attacker: arrow.owner,
+        from: Some(arrow.position.components()),
+        attacker_species: None,
+    };
+    let stat = "minecraft:damage_dealt_resisted";
+    game.as_guest(KILLER_CONN, |g| {
+        g.as_guest(CONN, |g| {
+            assert!(matches!(
+                g.combat_player(KILLER_ID),
+                Some(super::lan_actions::CombatPlayer::Displaced(..))
+            ));
+            assert!(g.damage_projectile_with_weapon(&arrow, pig, 5.25, source, None));
+            assert_eq!(g.stats.get("custom", stat), 0);
+        })
+        .unwrap();
+        assert_eq!(g.stats.get("custom", stat), 11);
+    })
+    .unwrap();
+    assert_eq!(guest_stats(&game, KILLER_CONN).get("custom", stat), 11);
+    assert_eq!(guest_stats(&game, CONN).get("custom", stat), 0);
+}
+
 struct ReadKillerBeforeAward;
 
 #[mod_api::__subscriptions]

@@ -321,8 +321,9 @@ pub type PlayerEquipment<'a> = [Option<&'a ItemStack>; sunrise_items::equipment:
 /// draw, from a [`LentLevel`] taken out of it for the tick.
 pub struct DamageLevel<'a> {
     shape: crate::chunk::LevelShape,
-    chunks: &'a crate::chunk_map::ChunkMap,
-    air: sunrise_world::registry::BlockStateId,
+    terrain: crate::collisions::CollisionTerrain<'a>,
+    game_time: i64,
+    bed_collisions: Option<BedCollisions<'a>>,
     registry: &'a sunrise_world::registry::BlockRegistry,
     tags: Option<&'a crate::items::Items>,
     block_registries: Option<&'a crate::command::args::Registries>,
@@ -351,6 +352,13 @@ pub struct DamageLevel<'a> {
     effects: Option<HitEffects<'a>>,
     player_equipment: PlayerEquipment<'a>,
 }
+#[derive(Clone, Copy)]
+struct BedCollisions<'a> {
+    facts: &'a crate::blocks::BlockFacts,
+    collision: &'a sunrise_world::block_collision::BlockCollisionRegistry<'a>,
+    border: &'a sunrise_core::geometry::border::BorderGeometry,
+}
+
 impl<'a> DamageLevel<'a> {
     /// The level of `world`, whose blocks `registry` names.
     pub fn of(
@@ -364,6 +372,10 @@ impl<'a> DamageLevel<'a> {
             chunks,
             shape,
             air,
+            shulkers,
+            moving_pistons,
+            block_entities,
+            game_time,
             random,
             attachments,
             attachment_syncs,
@@ -371,8 +383,15 @@ impl<'a> DamageLevel<'a> {
         } = world;
         Self {
             shape: *shape,
-            chunks,
-            air: *air,
+            terrain: crate::collisions::CollisionTerrain {
+                chunks,
+                shulkers,
+                moving_pistons,
+                block_entities,
+                air: *air,
+            },
+            game_time: *game_time,
+            bed_collisions: None,
             registry,
             tags,
             block_registries,
@@ -401,8 +420,9 @@ impl<'a> DamageLevel<'a> {
     ) -> Self {
         Self {
             shape: world.shape,
-            chunks: &world.chunks,
-            air: world.air,
+            terrain: crate::collisions::CollisionRead::collision_terrain(world),
+            game_time: world.game_time,
+            bed_collisions: None,
             registry,
             tags,
             block_registries,
@@ -432,8 +452,9 @@ impl<'a> DamageLevel<'a> {
     pub fn reborrow(&mut self) -> DamageLevel<'_> {
         DamageLevel {
             shape: self.shape,
-            chunks: self.chunks,
-            air: self.air,
+            terrain: self.terrain,
+            game_time: self.game_time,
+            bed_collisions: self.bed_collisions,
             registry: self.registry,
             tags: self.tags,
             block_registries: self.block_registries,
@@ -454,6 +475,38 @@ impl<'a> DamageLevel<'a> {
             player_equipment: self.player_equipment,
         }
     }
+    /// Lend the collision data needed by sleeping mobs' `LivingEntity.stopSleeping`.
+    pub fn with_bed_collisions(
+        mut self,
+        facts: &'a crate::blocks::BlockFacts,
+        collision: &'a sunrise_world::block_collision::BlockCollisionRegistry<'a>,
+        border: &'a sunrise_core::geometry::border::BorderGeometry,
+    ) -> Self {
+        self.bed_collisions = Some(BedCollisions {
+            facts,
+            collision,
+            border,
+        });
+        self
+    }
+
+    pub(crate) fn wake_mob(&self, mob: &mut crate::mobs::Mob) {
+        let level =
+            self.bed_collisions
+                .zip(self.tags)
+                .map(|(bed, items)| crate::stand_up::StandUpLevel {
+                    world: &self.terrain,
+                    registry: self.registry,
+                    facts: bed.facts,
+                    collision: bed.collision,
+                    block_tags: &items.block_tags,
+                    border: Some(bed.border),
+                });
+        if let Some(pos) = crate::mobs::villager::wake(mob, self.game_time, level.as_ref(), None) {
+            crate::mobs::villager::ext_mut(mob).pending_hurt_bed = Some(pos);
+        }
+    }
+
     /// Lend the stacks worn by this hit's player victim for enchantment immunity.
     pub fn with_player_equipment(self, player_equipment: PlayerEquipment<'a>) -> Self {
         Self {
@@ -614,11 +667,7 @@ impl<'a> DamageLevel<'a> {
     }
     /// The block state at `pos`: air where no chunk is loaded, as `World::block`.
     pub fn block(&self, pos: [i32; 3]) -> sunrise_world::registry::BlockStateId {
-        self.chunks
-            .get(&(pos[0] >> 4, pos[2] >> 4))
-            .map_or(self.air, |chunk| {
-                chunk.block(pos[0] & 15, pos[1], pos[2] & 15)
-            })
+        self.terrain.block(pos[0], pos[1], pos[2])
     }
     /// The registry naming the level's block states.
     pub fn registry(&self) -> &'a sunrise_world::registry::BlockRegistry {

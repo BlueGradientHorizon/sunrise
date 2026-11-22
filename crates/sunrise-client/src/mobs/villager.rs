@@ -182,20 +182,6 @@ pub(super) fn refresh_sleeping_position(m: &mut Mob, w: &MobWorld) {
 /// sleeper stands at `AbstractBedBlock.findStandUpPosition` for its yaw,
 /// else 0.1 above the block over the bed.
 pub fn stop_sleeping(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    m.extra.ints[1] = 0;
-    let bed = m
-        .extra
-        .villager
-        .as_deref_mut()
-        .and_then(|e| e.sleeping_pos.take());
-    let Some(p) = bed else { return };
-    if !w.block_name(p[0], p[1], p[2]).ends_with("_bed") {
-        return;
-    }
-    events.push(MobEvent::BedOccupied {
-        pos: p,
-        occupied: false,
-    });
     let level = crate::stand_up::StandUpLevel {
         world: w.world,
         registry: w.registry,
@@ -204,11 +190,37 @@ pub fn stop_sleeping(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         block_tags: w.block_tags,
         border: w.border,
     };
-    let forward = crate::stand_up::bed_forward(w.prop(p[0], p[1], p[2], "facing"));
+    if let Some(pos) = wake(m, w.game_time, Some(&level), w.section_writer.clone()) {
+        events.push(MobEvent::BedOccupied {
+            pos,
+            occupied: false,
+        });
+    }
+}
+
+pub(crate) fn wake<W: crate::collisions::CollisionRead>(
+    m: &mut Mob,
+    game_time: i64,
+    level: Option<&crate::stand_up::StandUpLevel<'_, '_, W>>,
+    observer: Option<super::living::section_writes::Observer>,
+) -> Option<[i32; 3]> {
+    m.extra.ints[1] = 0;
+    let bed = m
+        .extra
+        .villager
+        .as_deref_mut()
+        .and_then(|e| e.sleeping_pos.take());
+    super::villager_brain::woken(m, game_time);
+    let (level, p) = level.zip(bed)?;
+    if !level.name(p).ends_with("_bed") {
+        return None;
+    }
+    let forward = crate::stand_up::bed_forward(level.prop(level.block(p), "facing"));
     let stand = level
         .bed_stand_up(crate::stand_up::StandUpType::VILLAGER, p, forward, m.yaw)
         .unwrap_or_else(|| crate::stand_up::stand_up_fallback(p));
-    set_wake_pose(m, p, stand, w.section_writer.clone());
+    set_wake_pose(m, p, stand, observer);
+    Some(p)
 }
 /// Rotation part of `LivingEntity.stopSleeping`, after choosing where to stand.
 fn set_wake_pose(
@@ -278,18 +290,12 @@ pub fn tick(m: &mut Mob, now: i64) {
     }
     ext_mut(m).maybe_decay(now);
 }
-/// A hurt sleeper wakes up (`LivingEntity.hurtServer`; the `checkBedExists`
-/// wake runs earlier in `LivingEntity.tick`, for AI-less mobs too), and lies
-/// the way its bed faces (`getBedOrientation`). The brain does the rest.
-pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
+/// A sleeper lies the way its bed faces (`getBedOrientation`).
+pub fn ai_step(m: &mut Mob, w: &MobWorld) {
     if sleeping(m) {
         let bed = sleeping_pos(m).filter(|p| w.block_name(p[0], p[1], p[2]).ends_with("_bed"));
         if let Some(p) = bed {
             m.extra.ints[1] = bed_facing_code(w.prop(p[0], p[1], p[2], "facing"));
-        }
-        if m.hurt_time > 0 {
-            stop_sleeping(m, w, events);
-            super::villager_brain::woken(m, w.game_time);
         }
     }
 }
@@ -364,6 +370,8 @@ pub struct Ext {
     pub pending_hurt_player: Option<PlayerHurt>,
     /// `LivingEntity.hurtServer`'s damage broadcast for a full, unblocked hit.
     pub pending_hurt_damage: Option<(super::Damage, Option<i32>)>,
+    /// The bed vacated inside hurtServer; the world owner clears its occupied flag.
+    pub pending_hurt_bed: Option<[i32; 3]>,
     pub pending_hurt_sounds: [Option<HurtSound>; 2],
     /// `Villager.lastTradedPlayer`: the most recent trader, consumed by the
     /// next customServerAiStep. This is runtime state, not saved gossip.

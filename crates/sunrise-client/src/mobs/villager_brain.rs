@@ -1777,7 +1777,6 @@ impl B {
                 || {
                     if !brain_mut(m).is_active(Act::Rest) && super::villager::sleeping(m) {
                         super::villager::stop_sleeping(m, cx.w, cx.events);
-                        mem(m).last_woken.set(now);
                         true
                     } else {
                         false
@@ -3101,7 +3100,6 @@ impl B {
                 t.running = false;
                 if super::villager::sleeping(m) {
                     super::villager::stop_sleeping(m, cx.w, cx.events);
-                    mem(m).last_woken.set(now);
                     *next_ok = now + 40;
                 }
             }
@@ -4517,10 +4515,17 @@ pub fn describe(m: &Mob) -> Option<(String, String)> {
     Some((acts.join("|"), out.join(" ")))
 }
 /// `Villager.stopSleeping`: remember waking.
-pub fn woken(m: &mut Mob, now: i64) {
-    if brain(m).is_some() {
-        mem(m).last_woken.set(now);
+pub(super) fn woken(m: &mut Mob, now: i64) {
+    if m.species() != Species::Villager {
+        return;
     }
+    let extra = super::villager::ext_mut(m);
+    // A loaded villager can be woken before its first brain tick.
+    let memories = match extra.brain.as_deref_mut() {
+        Some(brain) => &mut brain.mem,
+        None => extra.saved_memories.get_or_insert_with(Default::default),
+    };
+    memories.last_woken.set(now);
 }
 /// `BellBlockEntity.updateEntities`: a bell rung within 32 blocks sets
 /// `HEARD_BELL_TIME` to the game time.

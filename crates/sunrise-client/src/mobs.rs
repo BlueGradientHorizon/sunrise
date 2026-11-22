@@ -1820,6 +1820,12 @@ pub enum MobEvent {
         conn: Option<u32>,
         event: Box<MobEvent>,
     },
+    /// `LivingEntity.getDamageAfterMagicAbsorb`: award the causal player,
+    /// not the direct entity or the victim's remembered player.
+    DamageDealtResisted {
+        player: u32,
+        tenths: i32,
+    },
     /// A finished drink whose item effects still need the world's living Host.
     DrinkFinished {
         mob: u32,
@@ -2760,7 +2766,9 @@ impl Mob {
         self.damage_completion.is_some()
             || creaking::has_pending_hurt(self)
             || villager::ext(self).is_some_and(|ext| {
-                ext.pending_hurt_player.is_some() || ext.pending_hurt_damage.is_some()
+                ext.pending_hurt_player.is_some()
+                    || ext.pending_hurt_damage.is_some()
+                    || ext.pending_hurt_bed.is_some()
             })
     }
 
@@ -4154,6 +4162,7 @@ impl Mob {
         }
         hurt
     }
+    /// `LivingEntity.hurtServer`: receive a hit, then run the accepted damage and reactions.
     fn hurt_server(
         &mut self,
         level: &mut DamageLevel<'_>,
@@ -4180,7 +4189,8 @@ impl Mob {
             return false;
         }
         let reflected = self.reflected_fireball(&source, level.attack());
-        if self.invulnerable_to_attempt(level, &source) {
+        let (immune, forced_allow) = self.invulnerable_to_attempt(level, &source);
+        if immune {
             return reflected;
         }
         *passed_invulnerability = true;
@@ -4224,6 +4234,12 @@ impl Mob {
             // super.hurtServer did.
             return reflected;
         }
+        // LivingEntity.hurtServer wakes and resets inactivity after the incoming
+        // event, even if blocking or the cooldown below will refuse the hit.
+        if villager::sleeping(self) {
+            level.wake_mob(self);
+        }
+        self.ai.no_action_time = 0;
         amount = container.new_damage();
         if amount < 0.0 {
             amount = 0.0;
@@ -4296,12 +4312,15 @@ impl Mob {
         // Wolf.actuallyHurt wears armor using the outer argument, not the container's
         // live damage, and skips LivingEntity.actuallyHurt entirely.
         let absorbed = self.wolf_armor_absorbs(&source);
+        // LivingEntity.actuallyHurt asks the current predicate again, without
+        // reporting a new attempt. Only the inner damage is skipped on refusal.
+        let actually_hurt = !absorbed && (forced_allow || !self.damage_immune(level, &source));
         let mut armor_hit = None;
-        let mut dealt = amount;
+        let mut dealt = 0.0;
         let mut through = 0.0;
         if absorbed {
             self.hurt_wolf_armor(actually_hurt_argument);
-        } else {
+        } else if actually_hurt {
             // LivingEntity.getDamageAfterArmorAbsorb asks `hurtArmor` *before*
             // `CombatRules.getDamageAfterAbsorb`, so a worn piece wears by the
             // damage the armour, toughness and enchantment reductions have not
@@ -4353,6 +4372,12 @@ impl Mob {
                     if resisted > 0.0 && resisted < sunrise_world::living_damage::STAT_LIMIT {
                         amount =
                             container.reduce(Reduction::MobEffects, amount, resisted, local_magic);
+                        if source.attacker == Some(Who::Player) && level.attack().attacker != 0 {
+                            self.outbox.push(MobEvent::DamageDealtResisted {
+                                player: level.attack().attacker as u32,
+                                tenths: sunrise_core::jmath::round_f32(resisted * 10.0),
+                            });
+                        }
                     }
                 }
                 if local_magic <= 0.0 {
