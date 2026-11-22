@@ -14,8 +14,9 @@ pub(in crate::game) fn draw_input<'a>(
     stack: &StackView,
     context: &Context<'_>,
 ) -> Option<SpecialModelInput<'a>> {
+    // Match vanilla's `ItemModelResolver.updateForTopItem`: empty stacks are skipped cleanly.
+    let count = u32::try_from(stack.count).ok().and_then(NonZeroU32::new)?;
     let item = mod_api::__private::item_key(&stack.item)?;
-    let count = NonZeroU32::new(u32::try_from(stack.count).ok()?)?;
     let Ok(display) = context.display.try_into_api();
     Some(SpecialModelInput {
         host: game,

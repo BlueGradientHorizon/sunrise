@@ -14,6 +14,8 @@ pub trait RecipeSerializer: Send + Sync + 'static {
     fn decode(&self, json: &str) -> Result<Self::Value, String>;
     /// Write an equivalent JSON object for Sunrise client synchronization.
     /// The game supplies the registered serializer ID as `type` and applies the packet limits.
+    /// Return `Err` to omit this recipe without disabling the writer. A panic disables this
+    /// serializer's writer for the session and reports the mod by name.
     fn write(&self, value: &Self::Value) -> Result<String, String>;
 }
 struct ReadOnly<S>(S);
@@ -41,14 +43,6 @@ struct Raw;
 impl RecipeSerializer for Raw {
     type Value = String;
     fn decode(&self, json: &str) -> Result<String, String> {
-        // The loader supplies a compact object with `type` removed. Keep the old
-        // string limit: 1 MiB minus the four bytes of its former length prefix.
-        const MAX_RAW_RECIPE_JSON_BYTES: usize = 1024 * 1024 - 4;
-        if json.len() > MAX_RAW_RECIPE_JSON_BYTES {
-            return Err(format!(
-                "raw recipe JSON exceeds {MAX_RAW_RECIPE_JSON_BYTES} bytes"
-            ));
-        }
         Ok(json.to_owned())
     }
     fn write(&self, value: &String) -> Result<String, String> {
@@ -68,7 +62,6 @@ impl dyn Registrar + '_ {
         self.add_recipe_serializer(name, recipe_type, handler);
     }
     /// Register an object-preserving JSON serializer for a mod-read machine recipe type.
-    /// The compact JSON object without `type` is limited to 1 MiB minus four bytes.
     /// Declare `recipe_type` with `register_recipe_type` at startup, in either order.
     pub fn register_raw_recipe_serializer(&mut self, name: &str, recipe_type: &str) {
         self.register_read_only_recipe_serializer(name, recipe_type, Raw);
@@ -80,11 +73,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn raw_recipe_accepts_the_previous_json_limit_but_not_one_byte_more() {
-        let padding = "x".repeat(1_048_572 - r#"{"value":""}"#.len());
-        let at_limit = format!(r#"{{"value":"{padding}"}}"#);
-        assert_eq!(Raw.decode(&at_limit).unwrap(), at_limit);
-        let over_limit = format!(r#"{{"value":"{padding}x"}}"#);
-        assert!(Raw.decode(&over_limit).is_err());
+    fn raw_recipe_accepts_json_larger_than_one_mib() {
+        let padding = "x".repeat(1024 * 1024 + 64);
+        let large = format!(r#"{{"value":"{padding}"}}"#);
+        assert_eq!(Raw.decode(&large).unwrap(), large);
     }
 }

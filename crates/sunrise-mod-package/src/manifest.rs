@@ -12,9 +12,7 @@ pub use jar::{
     JarConflict, JarInputsError, JarRef, JarRequirement, MissingJar, collect_jar_requirements,
     missing_jars,
 };
-pub use runtime_files::{
-    MAX_RUNTIME_FILE, MAX_RUNTIME_FILES, MAX_RUNTIME_TOTAL, RUNTIME_DIR, RuntimeData, RuntimeTable,
-};
+pub use runtime_files::{RUNTIME_DIR, RuntimeData, RuntimeTable};
 
 use mod_surface::uses::USES_FILE;
 use serde::{Deserialize, Serialize};
@@ -1115,18 +1113,15 @@ impl Package {
             let entry = format!("{RUNTIME_DIR}/{name}");
             let mut bytes = Vec::new();
             let path = runtime_dir.as_ref().map(|dir| dir.join(name));
-            // At most one byte past the cap, so an oversized file is refused unread.
             let read = if let Some(path) = &path {
                 std::fs::File::open(path)
                     .map_err(|e| format!("{entry}: {e}"))?
-                    .take(MAX_RUNTIME_FILE + 1)
                     .read_to_end(&mut bytes)
             } else {
                 zip.as_mut()
                     .expect("an archive")
                     .by_name(&entry)
                     .map_err(|e| format!("{entry}: {e}"))?
-                    .take(MAX_RUNTIME_FILE + 1)
                     .read_to_end(&mut bytes)
             };
             read.map_err(|e| format!("{entry}: {e}"))?;

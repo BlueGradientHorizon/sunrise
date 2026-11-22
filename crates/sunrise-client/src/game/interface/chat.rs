@@ -263,8 +263,10 @@ pub struct UiState {
     pub timelines: BTreeMap<String, Option<i64>>,
     /// 0 peaceful .. 3 hard.
     pub difficulty: u8,
-    /// F1: hide the HUD.
+    /// Effective HUD visibility, which native mods can change.
     pub hide_gui: bool,
+    /// The player's F1 preference, independent of native HUD mode changes.
+    pub(super) player_hides_gui: bool,
     /// Native HUD mode: keep hands visible while the HUD is hidden.
     pub show_hand_when_hidden: bool,
     /// Death message key set by the cause of death (e.g. /kill).
@@ -323,10 +325,11 @@ impl UiState {
 
     fn toggle_hide_gui(&mut self) {
         use mod_api::HudMode;
-        self.set_hud_mode(if self.hide_gui {
-            HudMode::AllVisible
-        } else {
+        self.player_hides_gui = !self.player_hides_gui;
+        self.set_hud_mode(if self.player_hides_gui {
             HudMode::AllHidden
+        } else {
+            HudMode::AllVisible
         });
     }
 
@@ -379,9 +382,9 @@ mod hud_mode_tests {
         assert_eq!(ui.hud_mode(), HudMode::AllVisible);
         ui.set_hud_mode(HudMode::NoHud);
         ui.toggle_hide_gui();
-        assert_eq!(ui.hud_mode(), HudMode::AllVisible);
-        ui.toggle_hide_gui();
         assert_eq!(ui.hud_mode(), HudMode::AllHidden);
+        ui.toggle_hide_gui();
+        assert_eq!(ui.hud_mode(), HudMode::AllVisible);
         // Existing hidden state also hides hands without a separate setting.
         let ui = UiState {
             hide_gui: true,
@@ -947,8 +950,6 @@ impl Game<'_> {
     /// last time, when this method can restore it (a command draft only for
     /// /), else with its prefix.
     pub(super) fn open_chat_method(&mut self, prefix: &str) {
-        // handleKeybinds: the number keys select before key.chat and key.command.
-        self.select_queued_hotbar();
         let command = prefix == "/";
         let draft = self
             .ui
@@ -992,9 +993,6 @@ impl Game<'_> {
         self.ui.chat_screen = Some(screen);
         self.ui.chat_opened = Some(std::time::Instant::now());
         self.set_screen(Screen::Chat);
-        self.keys.clear();
-        self.left = false;
-        self.right = false;
         self.capture(false);
     }
     pub(super) fn close_chat(&mut self, reason: ChatExit) {

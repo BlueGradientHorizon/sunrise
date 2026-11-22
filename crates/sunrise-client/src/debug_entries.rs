@@ -3,13 +3,13 @@
 //! only in the overlay or never, the two built-in profiles, and
 //! `debug-profile.json` beside `options.txt`, which keeps them.
 use mod_api::{
-    __private::game::CallbackOwner, Answered, ClientHost, DebugEntry, DebugGroup, DebugRenderer,
-    Identifier,
+    __private::game::{CallbackOwner, debug_renderer_callback_type},
+    Answered, ClientHost, DebugEntry, DebugGroup, DebugRenderer, Identifier,
 };
-use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
+use std::{any::TypeId, borrow::Cow};
 
 /// `DebugScreenEntryStatus`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -195,15 +195,44 @@ pub struct RegisteredDebugEntry {
 /// A selected world renderer and the mod scope of its retained draw callback.
 pub struct ActiveDebugRenderer {
     pub owner: CallbackOwner,
-    pub renderer: DebugRenderer,
+    renderer: Option<DebugRenderer>,
+}
+
+impl ActiveDebugRenderer {
+    pub fn draw(
+        &self,
+        host: &dyn ClientHost,
+        view: &mod_api::WorldRenderView,
+        draw: &mut dyn mod_api::WorldDrawContext,
+    ) {
+        if self.owner.is_enabled() {
+            let _ = self
+                .owner
+                .call("debug renderer", "debug_renderer_draw", || {
+                    self.renderer
+                        .as_ref()
+                        .expect("active debug renderer")
+                        .draw(host, view, draw);
+                });
+        }
+    }
+}
+
+impl Drop for ActiveDebugRenderer {
+    fn drop(&mut self) {
+        self.owner.dispose(
+            "debug renderer",
+            "debug_renderer_drop",
+            self.renderer.take(),
+        );
+    }
 }
 
 /// The entries native mods registered (`register_debug_entries`), kept once at start.
 static REGISTERED: OnceLock<Arc<[RegisteredDebugEntry]>> = OnceLock::new();
 
 /// Keeps the entries native mods registered, once at start. One whose id is not
-/// `<namespace>:<path>` in a namespace other than vanilla's, or that another entry has
-/// already, is logged and left out.
+/// `<namespace>:<path>` or duplicates a built-in or earlier entry is logged and left out.
 pub fn register(entries: Vec<Answered<DebugEntry>>) {
     if REGISTERED.set(collect_registrations(entries)).is_err() {
         log::warn!("debug entries were registered already; these are left out");
@@ -228,12 +257,16 @@ fn checked(entries: impl IntoIterator<Item = RegisteredDebugEntry>) -> Vec<Regis
     let mut kept: Vec<RegisteredDebugEntry> = Vec::new();
     for registered in entries {
         let id = registered.entry.id();
-        if Identifier::parse_namespaced(id).is_none_or(|id| id.namespace() == "minecraft") {
+        if Identifier::parse_namespaced(id).is_none() {
             log::warn!(
-                "{}: debug entry {id:?} must be <namespace>:<path> outside the minecraft namespace",
+                "{}: debug entry {id:?} must be <namespace>:<path>",
                 registered.owner.id()
             );
-        } else if kept.iter().any(|k| k.entry.id() == id) {
+        } else if ENTRIES
+            .iter()
+            .any(|entry| id.strip_prefix("minecraft:") == Some(entry.path))
+            || kept.iter().any(|k| k.entry.id() == id)
+        {
             log::warn!(
                 "{}: debug entry {id} is registered twice; the first is kept",
                 registered.owner.id()
@@ -255,7 +288,7 @@ fn as_entry(registered: &RegisteredDebugEntry) -> Entry<'_> {
         } else {
             Category::Renderer
         },
-        reduced: false,
+        reduced: entry.allowed_in_reduced_debug_info(),
     }
 }
 
@@ -270,7 +303,11 @@ fn all<'a>(registered: &'a [RegisteredDebugEntry]) -> impl Iterator<Item = Entry
 
 /// `DebugScreenEntries.getEntry` by path.
 fn entry<'a>(registered: &'a [RegisteredDebugEntry], path: &str) -> Option<Entry<'a>> {
-    all(registered).find(|e| e.path == path)
+    let bare = path.strip_prefix("minecraft:").unwrap_or(path);
+    all(registered).find(|e| {
+        let entry = e.path.strip_prefix("minecraft:").unwrap_or(e.path);
+        entry == bare
+    })
 }
 
 /// `DebugOptionsScreen.OptionList.updateSearch`: the entries whose path
@@ -305,15 +342,15 @@ pub fn mod_lines<'a>(
     overlay: bool,
     reduced: bool,
 ) -> impl Iterator<Item = (DebugGroup, Vec<String>)> + 'a {
-    let entries = if reduced { &[] } else { entries };
     entries.iter().filter_map(move |registered| {
         let entry = &registered.entry;
         let (group, append_lines) = entry.text_lines()?;
         // The startup registry already validated the full ID; no catalog lookup is needed.
-        if !selection
-            .statuses
-            .get(entry.id())
-            .is_some_and(|status| status.shown(overlay))
+        if !entry.is_allowed(reduced)
+            || !selection
+                .statuses
+                .get(entry.id())
+                .is_some_and(|status| status.shown(overlay))
         {
             return None;
         }
@@ -341,7 +378,7 @@ pub struct DebugEntries {
     file: Option<PathBuf>,
     /// Monotonic `rebuildCurrentList` revision, including unchanged selections.
     version: u64,
-    renderer_owners: BTreeMap<(&'static str, String), CallbackOwner>,
+    renderer_owners: HashMap<(&'static str, TypeId, usize), CallbackOwner>,
 }
 
 impl Default for DebugEntries {
@@ -351,7 +388,7 @@ impl Default for DebugEntries {
             profile: None,
             file: None,
             version: 0,
-            renderer_owners: BTreeMap::new(),
+            renderer_owners: HashMap::new(),
         };
         entries.reset_to_profile(Profile::Default);
         entries
@@ -513,46 +550,30 @@ impl DebugEntries {
     pub fn enabled_version(&self) -> u64 {
         self.version
     }
-    /// `DebugRenderer.refreshRendererList`: keep the owned renderers whose switches are on, in
-    /// registration order. A missing renderer switch is logged; the first active renderer for
-    /// an ID wins.
+    /// `DebugRenderer.refreshRendererList`: retain submitted callbacks in dispatch order.
+    /// A refresh does not re-enable a callback that already panicked in this session.
     pub fn active_renderers(
         &mut self,
-        entries: &[RegisteredDebugEntry],
         renderers: Vec<Answered<DebugRenderer>>,
-        overlay: bool,
-        reduced: bool,
     ) -> Vec<ActiveDebugRenderer> {
-        let mut active: Vec<ActiveDebugRenderer> = Vec::new();
-        for renderer in renderers {
-            let id = renderer.answer.id();
-            if !entries
-                .iter()
-                .any(|entry| entry.entry.id() == id && entry.entry.text_lines().is_none())
-            {
-                log::warn!(
-                    "{}: debug renderer {id} has no renderer entry; it is left out",
-                    renderer.mod_id
-                );
-                continue;
-            }
-            if !reduced
-                && self.status(id).shown(overlay)
-                && !active.iter().any(|kept| kept.renderer.id() == id)
-            {
-                // Refreshing the selection does not clear this renderer's session poison.
+        let mut seen = HashMap::<(&'static str, TypeId), usize>::new();
+        renderers
+            .into_iter()
+            .map(|renderer| {
+                let kind = debug_renderer_callback_type(&renderer.answer);
+                let ordinal = seen.entry((renderer.mod_id, kind)).or_default();
                 let owner = self
                     .renderer_owners
-                    .entry((renderer.mod_id, id.to_owned()))
+                    .entry((renderer.mod_id, kind, *ordinal))
                     .or_insert_with(|| CallbackOwner::for_mod(renderer.mod_id))
                     .clone();
-                active.push(ActiveDebugRenderer {
+                *ordinal += 1;
+                ActiveDebugRenderer {
                     owner,
-                    renderer: renderer.answer,
-                });
-            }
-        }
-        active
+                    renderer: Some(renderer.answer),
+                }
+            })
+            .collect()
     }
     /// `getCurrentlyEnabled().isEmpty()` negated: something to draw. Asked every frame, F3 closed
     /// or not, so it walks the few statuses kept rather than every entry.
@@ -564,7 +585,6 @@ impl DebugEntries {
     ) -> bool {
         self.statuses
             .keys()
-            .map(|id| id.strip_prefix("minecraft:").unwrap_or(id))
             .any(|path| self.enabled(registered, path, overlay, reduced))
     }
 }
@@ -732,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn a_native_mods_entries_need_their_own_namespace_and_a_free_id() {
+    fn a_native_mods_entries_allow_custom_minecraft_ids_and_reject_malformed_or_duplicates() {
         let kept = checked([
             RegisteredDebugEntry {
                 owner: CallbackOwner::for_mod("mymod"),
@@ -741,6 +761,18 @@ mod tests {
             RegisteredDebugEntry {
                 owner: CallbackOwner::for_mod("mymod"),
                 entry: DebugEntry::renderer("minecraft:fps".into()),
+            },
+            RegisteredDebugEntry {
+                owner: CallbackOwner::for_mod("mymod"),
+                entry: DebugEntry::text(
+                    "minecraft:custom_stat".into(),
+                    DebugGroup::Memory,
+                    |_, _| {},
+                ),
+            },
+            RegisteredDebugEntry {
+                owner: CallbackOwner::for_mod("other"),
+                entry: DebugEntry::renderer("minecraft:custom_stat".into()),
             },
             RegisteredDebugEntry {
                 owner: CallbackOwner::for_mod("mymod"),
@@ -760,12 +792,58 @@ mod tests {
             },
         ]);
         let ids: Vec<&str> = kept.iter().map(|e| e.entry.id()).collect();
-        assert_eq!(ids, ["mymod:tick_cost", "other:queue"]);
+        assert_eq!(
+            ids,
+            ["mymod:tick_cost", "minecraft:custom_stat", "other:queue"]
+        );
         assert_eq!(kept[0].owner.id(), "mymod");
         assert_eq!(
             kept[0].entry.text_lines().map(|(group, _)| group),
             Some(DebugGroup::Memory)
         );
+    }
+
+    #[test]
+    fn custom_minecraft_entries_and_reduced_debug_info_opt_in_resolve() {
+        let extra = [
+            RegisteredDebugEntry {
+                owner: CallbackOwner::for_mod("mymod"),
+                entry: DebugEntry::text(
+                    "minecraft:custom_stat".into(),
+                    DebugGroup::Memory,
+                    |_, _| {},
+                )
+                .with_reduced_debug_info(true),
+            },
+            RegisteredDebugEntry {
+                owner: CallbackOwner::for_mod("mymod"),
+                entry: DebugEntry::renderer("mymod:hidden_when_reduced".into()),
+            },
+        ];
+
+        // Vanilla entries resolve by both bare path and full minecraft: ID.
+        assert_eq!(entry(&extra, "fps").map(|e| e.path), Some("fps"));
+        assert_eq!(entry(&extra, "minecraft:fps").map(|e| e.path), Some("fps"));
+        // Custom minecraft:* mod entry resolves by full ID and bare path, with reduced = true.
+        let custom = entry(&extra, "minecraft:custom_stat").unwrap();
+        assert_eq!(custom.path, "minecraft:custom_stat");
+        assert!(custom.reduced);
+        assert_eq!(
+            entry(&extra, "custom_stat").map(|e| e.path),
+            Some("minecraft:custom_stat")
+        );
+
+        let mut selection = DebugEntries::default();
+        selection.set_status("minecraft:custom_stat", Status::AlwaysOn);
+        selection.set_status("mymod:hidden_when_reduced", Status::AlwaysOn);
+
+        // Under reducedDebugInfo, the opted-in custom minecraft:* entry stays enabled while the
+        // default mod entry is hidden.
+        assert!(selection.enabled(&extra, "minecraft:custom_stat", false, true));
+        assert!(selection.enabled(&extra, "custom_stat", false, true));
+        assert!(selection.any_enabled(&extra, false, true));
+        assert!(selection.enabled(&extra, "mymod:hidden_when_reduced", false, false));
+        assert!(!selection.enabled(&extra, "mymod:hidden_when_reduced", false, true));
     }
 
     #[test]

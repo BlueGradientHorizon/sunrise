@@ -1,5 +1,4 @@
 ids = [
-    "handle:LevelRef::datapack_read",
     "fn:data_map_value",
     "fn:data_map_entries",
 ]

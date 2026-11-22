@@ -1025,6 +1025,8 @@ fn the_list_does_not_depend_on_the_order_of_sources() {
 fn a_table_reads_back_and_judges_like_the_list() {
     let uses = scan(MOD);
     let table = UsesTable::read(uses.table("afe471c").to_json().as_bytes()).unwrap();
+    // No split game-code fingerprint: the schema published tools read.
+    assert_eq!(table.schema, 3);
     assert_eq!(table.made_for, "afe471c");
     assert_eq!(table.entries, uses.entries().cloned().collect::<Vec<_>>());
     let mut target = base();
@@ -1083,9 +1085,10 @@ fn an_older_list_cannot_tell_a_literal_from_a_doubt_so_a_new_field_is_left_to_th
 #[test]
 fn bad_tables_are_refused_by_kind() {
     let refused = |text: &[u8]| UsesTable::read(text).unwrap_err();
+    let future = USES_SCHEMA + 1;
     assert_eq!(
-        refused(br#"{"schema":4,"made_for":"x","entries":[]}"#),
-        UsesError::Schema(4)
+        refused(format!(r#"{{"schema":{future},"made_for":"x","entries":[]}}"#).as_bytes()),
+        UsesError::Schema(future)
     );
     assert!(matches!(refused(b"not json"), UsesError::Json(_)));
     assert!(matches!(

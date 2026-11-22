@@ -17,6 +17,7 @@ pub trait Hooks {
     /// the published generation of synced attachments through `EntityRenderState::attachments`.
     /// Other entity families keep their own drawing, including the dragon and end crystals. General, living,
     /// primed TNT and experience orb renderers submit at each entity's slot in level join order.
+    /// If this listener panics, none of its registrations take effect.
     #[notes = r#"## Entity renderers
 
 An entity renderer (NeoForge's `EntityRenderersEvent.RegisterRenderers` and `EntityRenderer`) gives an
@@ -62,9 +63,8 @@ type's model and its vanilla layers, held items and worn blocks included); the g
 draws around it. Entities of a type share the one
 renderer, whose `submit` has no `Host` and no level: a renderer that needs the world reads it in a
 hook. A general entity type (`declare_general_entity`) draws only through its renderer. Its
-`EntityRenderState::attachments` holds the last published immutable generation, even if empty.
-The game logs each over-budget generation and does not publish it. If none has been published yet,
-the general entity does not draw. Later sync updates can publish a complete generation that fits.
+`EntityRenderState::attachments` holds the immutable generation captured before submission, and is
+`None` only for other entity families.
 
 A later registration for a type replaces the earlier one, whichever mod made it, as in NeoForge. When
 resources load, a registration for a type the game does not know is logged with the type's id and left
@@ -94,6 +94,7 @@ dropped, and until then its type draws as it would without one."#]
         side = "client",
         version = 4,
         contract = "listen",
+        staged_surface = "renderers",
         context = "registration",
         neoforge = "EntityRenderersEvent.RegisterRenderers"
     )]

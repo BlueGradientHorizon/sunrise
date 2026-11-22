@@ -16,9 +16,11 @@ pub trait LevelEntitiesBackend {
     /// the visit returns `Ok(ControlFlow::Break(()))`. Returning `Continue(())` for every
     /// member gives `Ok(ControlFlow::Continue(()))`, including when there are no members.
     ///
-    /// This does not build a result list. It first checks that **every** eligible
-    /// lookup member resolves. An unavailable member returns [`LevelReadError::Unavailable`]
-    /// before the first callback, even if the callback would have stopped on the first member.
+    /// This does not build a result list. It walks eligible lookup members lazily in
+    /// admission order, skipping any member that cannot resolve (matching
+    /// `ServerLevel.getAllEntities` and [`LevelRef::visit_entities_in`]), and stops
+    /// immediately when `visit` returns `ControlFlow::Break(())` without touching later
+    /// members.
     ///
     /// A stale level returns [`LevelReadError::Stale`]. A parked level or a call
     /// outside server world access returns [`LevelReadError::Unavailable`]. Neither
@@ -40,7 +42,6 @@ pub trait LevelEntitiesBackend {
     /// `entity_entering_section`. Entities kept outside the residency families
     /// (lingering potion clouds, lightning bolts, eyes of ender) are not
     /// members.
-    #[access(WorldOnly)]
     fn level_visit_all_entities(
         &self,
         level: LevelRef,
@@ -76,7 +77,6 @@ pub trait LevelEntitiesBackend {
     /// that do not resolve, eyes of ender and leash knots are not visited. The projectile
     /// list is temporarily absent during `hears_projectile_impacts`; it is visible again
     /// during `projectile_impact`.
-    #[access(WorldOnly)]
     fn level_visit_entities_in(
         &self,
         level: LevelRef,
@@ -98,7 +98,6 @@ pub trait LevelEntitiesBackend {
     /// [`LevelReadError::Stale`]; a client or unavailable world access returns
     /// [`LevelReadError::Unavailable`]. Neither error calls the visitor. Collect
     /// the players you need up front if you need mutable host access afterwards.
-    #[access(WorldOnly)]
     fn level_visit_online_players(
         &self,
         level: LevelRef,
@@ -106,18 +105,18 @@ pub trait LevelEntitiesBackend {
     ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
     /// Side: server.
     /// Every entity the segment from `from` to `to` passes through, nearest first: the test
-    /// `ProjectileUtil.getEntityHitResult` makes on each candidate, each entity's box grown by
-    /// `margin` on every side and clipped against the segment. A ray that starts inside a box
-    /// does not hit that entity, as in vanilla. `exclude` (the shooter) is skipped. Hits
-    /// at equal returned distances keep spatial traversal order. Candidates are those
-    /// [`LevelRef::visit_entities_in`] finds, so the same kinds are left out. Returns
-    /// an empty list on a valid miss and `None` for invalid ray geometry or a refused
-    /// spatial query.
+    /// `ProjectileUtil.getEntityHitResult` makes on each candidate, each entity's box
+    /// inflated by `margin` on every side (`AABB.inflate`: positive grows, negative shrinks)
+    /// and clipped against the segment. A ray that starts inside the adjusted box does not
+    /// hit that entity, as in vanilla. `exclude` (the shooter) is skipped. Hits at equal
+    /// returned distances keep spatial traversal order. Candidates are those
+    /// [`LevelRef::visit_entities_in`] finds, so the same kinds are left out. Returns an
+    /// empty list on a valid miss and `None` for non-finite geometry or a refused spatial
+    /// query.
     ///
     /// Use this when you need every hit or must process hits in nearest-first order.
     /// If you just need the nearest hit matching a filter (such as `canHitEntity` or
     /// `isPickable`), use [`LevelRef::ray_trace_nearest_entity`] instead.
-    #[access(WorldOnly)]
     fn level_ray_trace_entities(
         &self,
         level: LevelRef,
@@ -129,20 +128,24 @@ pub trait LevelEntitiesBackend {
     /// Side: both.
     /// The nearest accepted hit on the segment from `from` to `to`, without collecting hits.
     /// Uses the candidates of [`LevelRef::visit_entities_in`] in the segment's bounds padded
-    /// by `margin`. Each candidate's box is grown by `margin` before clipping. A ray starting
-    /// inside a grown box does not hit it, and `exclude` (for example, the shooter) is skipped.
+    /// by `margin.abs()`. Matching `ProjectileUtil.getEntityHitResult`, each non-excluded
+    /// candidate is passed to `accept(entity)` in spatial traversal order **before** reading
+    /// its bounding box and clipping against the segment. Accepted candidates have their box
+    /// inflated by `margin` (`AABB.inflate`: positive grows, negative shrinks; any finite
+    /// value is accepted) and clipped against the segment. A ray starting inside the
+    /// adjusted box does not hit it, and `exclude` (for example, the shooter) is skipped
+    /// before calling `accept`.
     ///
-    /// `accept` runs once per geometric hit in spatial traversal order, not distance order.
-    /// It can make shared reads on the same host; no residency guard is held. Among the hits
-    /// for which it returns `true`, the smallest squared distance from `from` wins. An exact
-    /// tie in squared distance keeps the first visited hit. Use [`LevelRef::ray_trace_entities`]
-    /// if you need an ordered list or your filter depends on testing nearer hits first.
+    /// `accept` can make shared reads on the same host; no residency guard is held. Among
+    /// accepted candidates that the segment clips, the smallest squared distance from `from`
+    /// wins. An exact tie in squared distance keeps the first visited hit. Use
+    /// [`LevelRef::ray_trace_entities`] if you need an ordered list or must process hits
+    /// nearest first.
     ///
-    /// Returns `Ok(Some(hit))` on a match or `Ok(None)` when no hit is accepted. A stale
-    /// level returns [`LevelReadError::Stale`]. A negative or non-finite margin, non-finite
+    /// Returns `Ok(Some(hit))` on a match or `Ok(None)` when no accepted candidate is hit.
+    /// A stale level returns [`LevelReadError::Stale`]. A non-finite margin, non-finite
     /// endpoints or padded bounds, a parked or undisplayed level, or unavailable world
     /// access return [`LevelReadError::Unavailable`]. A refusal does not call `accept`.
-    #[access(WorldOnly)]
     fn level_ray_trace_nearest_entity(
         &self,
         level: LevelRef,
@@ -150,7 +153,7 @@ pub trait LevelEntitiesBackend {
         to: [f64; 3],
         margin: f64,
         exclude: Option<EntityRef>,
-        accept: &mut dyn FnMut(EntityRayHit) -> bool,
+        accept: &mut dyn FnMut(EntityRef) -> bool,
     ) -> Result<Option<EntityRayHit>, LevelReadError>;
 }
 /// The handles' writes of the `level_entities` area, implemented by the game and reached through [`BackendMut`].
@@ -169,7 +172,6 @@ pub trait LevelEntitiesBackendMut {
     /// item a mod kept out (`entity_join_level`).
     /// Inside a transaction its join waits for the root commit, so a mod keeping the item out is not
     /// known at the call: the handle is returned and reads stale from the commit on.
-    #[access(WorldOnly)]
     fn level_pop_resource(
         &mut self,
         level: LevelRef,
@@ -188,7 +190,6 @@ pub trait LevelEntitiesBackendMut {
     /// item a mod kept out (`entity_join_level`).
     /// Inside a transaction its join waits for the root commit, so a mod keeping the item out is not
     /// known at the call: the handle is returned and reads stale from the commit on.
-    #[access(WorldOnly)]
     fn level_spawn_item(
         &mut self,
         level: LevelRef,
@@ -204,7 +205,6 @@ pub trait LevelEntitiesBackendMut {
     /// deltaX, deltaY, deltaZ)`, and the same `pickup_delay` ticks before it
     /// can be picked up (`ItemEntity.setPickupDelay`). None in the same
     /// cases, and for a motion that isn't finite.
-    #[access(WorldOnly)]
     fn level_spawn_item_with_motion(
         &mut self,
         level: LevelRef,
@@ -226,7 +226,6 @@ pub trait LevelEntitiesBackendMut {
     /// one out (`entity_join_level`). False, with no orbs, for 0, a
     /// value that isn't finite, on a client, for a stale handle or a level
     /// not in place.
-    #[access(WorldOnly)]
     fn level_award_experience(
         &mut self,
         level: LevelRef,

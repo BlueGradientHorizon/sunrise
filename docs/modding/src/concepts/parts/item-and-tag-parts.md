@@ -134,17 +134,23 @@ player use or block with the item. For ordinary behavior on both sides, use
 `ItemPart::use_item` and `ItemPart::release_using` instead. To track this local interception,
 use the callbacks, not `local_item_use`, `living_used_item_hand` or `living_is_blocking`.
 
-Every callback sees the original `&ItemStack` and its hotbar slot (`u32`, 0–8), even if the
-current stack has changed. `stack.item()` gives the `ItemKey` and `stack.count()` gives the
+Each callback sees a typed `&ItemStack` and its hotbar slot (`u32`, 0–8). While the same item
+kind remains in that slot, each tick and release rebinds the stack to the live slot contents
+(matching vanilla `LivingEntity.updatingUsingItem` and `LivingEntity.releaseUsingItem`), so
+`release_using` and `on_stop_using` observe live count and component updates. If the slot is
+emptied or replaced with a different item kind, `on_stop_using` receives the last valid stack
+of the captured item kind. `stack.item()` gives the `ItemKey` and `stack.count()` gives the
 count. Read `minecraft:custom_name` or `minecraft:custom_data` as typed `Tag` entries in the
 component patch, as above, or decode a component with `stack.get(&descriptor)`.
 
 Both optional end methods also receive the elapsed held ticks. The game clears the capture
-before calling either. An input release while the same item kind is still selected in the
-original slot and the player can still use it calls `release_using` followed by
-`on_stop_using`. A reset, such as a slot or item kind change, focus loss, death or disconnect,
-only calls `on_stop_using`. Put actions that require a release in `release_using` and cleanup
-that should also run on resets in `on_stop_using`. A disabled owner receives no callbacks.
+before calling either. Releasing the use input—including when a keybind opens a screen and
+releases key mappings (matching `Minecraft.handleKeybinds`) or when focus is lost and the next
+tick observes the use key up—while the same item kind is still selected in the active slot and
+the player can still use it calls `release_using` followed by `on_stop_using`. A reset, such as
+a slot or item kind change, death or disconnect, only calls `on_stop_using`. Put actions that
+require a release in `release_using` and cleanup that should also run on resets in
+`on_stop_using`. A disabled owner receives no callbacks.
 
 ## Item use on a block
 
@@ -289,44 +295,51 @@ A client without this mod predicts vanilla here; the server corrects it.
   contents) and the item slots a mod gives an item. A hopper filling a shulker box doesn't ask. A `true` for a
   shulker box lets shulker boxes nest: that is the mod's choice, bounded by the NBT readers' depth limit.
 
-When the grindstone inputs change, `grindstone_place` lends the top and bottom stacks and
-vanilla's result through `event.inputs`. Set `event.edits.output = Some(stack)` with a valid
-stack to replace the result. Only a replacement uses `event.edits.xp`: leave it at `-1` for
-vanilla experience or set a nonnegative award. Leaving the override at `None` keeps vanilla's
-result and award. Only the replacement stack is checked as a write; the borrowed stacks are not.
-An invalid replacement or an uncancelled XP below `-1` refuses the answer. Either cancellation
-or refusal leaves no result and rolls back the listener's writes.
+When the grindstone inputs change, `grindstone_place` runs inline and lends the top and bottom
+stacks and vanilla's result through `event.inputs` (matching NeoForge
+`CommonHooks.onGrindstoneChange`). Cancellation is checked first and clears the result slot
+without rolling back listener writes. Otherwise leave `event.edits.output` at `None` to keep
+vanilla's result and award, or set `Some(stack)` with a valid stack to replace the result. Only
+a replacement uses `event.edits.xp`: any negative value falls through to vanilla experience, and
+nonnegative values set the award. Only the replacement stack is checked as a write; the borrowed
+stacks are not. An invalid replacement is logged and ignored, keeping vanilla's result.
 
-`grindstone_take` lends the pre-take stacks as `event.inputs.top` and `event.inputs.bottom`.
-These optional references do not change when listeners edit the answer. Set a valid
-`event.edits.new_top` or `event.edits.new_bottom` to leave a stack in that slot; both start
-at `None` (empty the slot). `event.edits.xp` starts with the award set on place or `-1`
-for vanilla's award from the pre-take stacks. Set a nonnegative value to give that much
-experience. The game resolves the default award only on an accepted take.
+`grindstone_take` runs inline after the click takes the result and lends the pre-take stacks as
+`event.inputs.top` and `event.inputs.bottom` (matching NeoForge `CommonHooks.onGrindstoneTake`).
+These optional references do not change when listeners edit the answer. `event.edits.xp` starts
+at the resolved experience (`>= 0`, from `grindstone_place` or vanilla's pre-rolled award);
+non-positive values (`<= 0`) spawn 0 orbs while still firing level event 1042 and replacing the
+inputs. The two input writes and the final input-container notification each run
+`grindstone_place` before the click drops the taken stack or checks for a repeat. Set `event.edits.new_top` or `event.edits.new_bottom` to leave a stack in that slot;
+both start at `None` (empty the slot), and an invalid remainder is logged and ignored as an
+empty slot.
 
-Cancelling a take keeps the click that took the result but skips input replacement,
-experience and sound. An invalid remainder refuses the click even if the listener cancels;
-XP below `-1` refuses an uncancelled answer. A refusal, including a stale read or a failing
-listener, restores the result, inputs, cursor, inventory and any dropped item. Both cancel and
-refusal undo the listener's writes. An accepted take is still tentative until the enclosing
-transaction commits.
+Cancelling `grindstone_take` is checked before converting remainders: it keeps the taken result
+and any listener writes while skipping experience, level event 1042 and input replacement. A
+panicking listener is caught so it cannot unwind across the turn and leaves vanilla/initial
+behavior.
 
-After the anvil calculates a result with a left input, `anvil_update` lends
-`event.inputs` on both sides: the left and optional right stacks, the optional rename text
-and vanilla's output and costs. Read those values without cloning; they don't change as
-listeners edit `event.edits`. Leave `edits.output` at `StackResult::Keep` to use vanilla's
-output, use `StackResult::Set(Some(stack))` to replace it, or use `StackResult::Set(None)`
-to clear it. To read the current answer, match on `&event.edits.output`: use
-`event.inputs.vanilla_output` for `Keep` and `stack.as_ref()` for `Set(stack)`. The level
-and material costs start at vanilla's values. Changing only the costs doesn't revalidate
-vanilla's stack. Cancellation or an invalid replacement clears the output and both costs.
+After the anvil calculates a result with a left input, `anvil_update` fires live on both
+sides for each result calculation (with no answer cache), including a take consuming material
+while its left input is still present. On the server the take has already charged the player
+at that point. The hook lends `event.inputs`: the left and optional right stacks,
+the optional rename text and vanilla's output and costs. Read those values without cloning;
+they don't change as listeners edit `event.edits`. Leave `edits.output` at
+`StackResult::Keep` to use vanilla's output, use `StackResult::Set(Some(stack))` to replace
+it, or use `StackResult::Set(None)` to clear it. To read the current answer, match on
+`&event.edits.output`: use `event.inputs.vanilla_output` for `Keep` and `stack.as_ref()` for
+`Set(stack)`. The level and material costs start at vanilla's values (`xp_cost` stays signed
+across listeners and clamps to `0` when applied, matching NeoForge `AnvilMenu.setCost`).
+Changing only the costs doesn't revalidate vanilla's stack. Cancellation clears the output
+and both costs; an invalid replacement output is logged and ignored, keeping vanilla's
+output while still applying the cost edits.
 
 The server's `anvil_craft_pre` and `anvil_craft_post` both borrow the same pre-take snapshot
 through `event.inputs` (`AnvilCraftInputs<'_>`). Read the optional stacks through `inputs.left`
 and `inputs.right`, and the taken result through `inputs.output`. Set `event.cancelled` or
-return `Flow::Cancel` in Pre to veto the whole take: the result stays in the slot, the inputs,
-cursor, inventory and levels do not change, and Post is skipped. Post runs after the inputs
-are consumed, levels are charged and anvil wear is applied.
+return `Flow::Cancel` in Pre to return early before charging levels, consuming inputs,
+applying anvil wear and firing Post, without undoing the click's item move (matching
+NeoForge `AnvilMenu.onTake`). Post runs after those effects.
 
 These input views are valid only during the callback. Clone an individual stack only if you
 need to keep it afterwards. The input views and staged edits are not Wire records.

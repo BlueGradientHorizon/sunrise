@@ -83,8 +83,10 @@ The `camera_submersion` hook answers which fluid the camera is in, as vanilla's
 `Camera.getFluidInCamera` does, given as the fog type at the camera: `Atmospheric`, `Water`, `Lava` or
 `PowderSnow`. It comes in as the game's answer, after the `state_at_viewpoint` parts of the blocks it reads,
 with the camera's position. Set it to `Atmospheric` to clear underwater, lava and powder snow submersion,
-or to a fluid to force it; listeners run in the usual hook order, each seeing the previous one's value. A
-free camera that passes through water, for one, keeps the air's fog:
+or to a fluid to force it. A failed listener leaves the last successful value in place for the next
+listener. A panic disables that mod's `camera_submersion` listener for the session and names the mod
+in the log and client error toast.
+A free camera that passes through water, for one, keeps the air's fog:
 
 ```rust,ignore
 fn camera_submersion(&self, _host: &dyn ClientHost, event: &mut CameraSubmersionEvent<'_>) {
@@ -94,13 +96,17 @@ fn camera_submersion(&self, _host: &dyn ClientHost, event: &mut CameraSubmersion
 }
 ```
 
-Every client reader of the camera's fluid reads the answer: the field of view in a fluid, the frame's
-fog, the sky pass and the overworld sky's dark disc (skipped under water), the screen overlays, water
-vision and conduit power's underwater vision, and a shader pack's `isEyeInWater`. The hook fires once per
-reader, several times a frame, and not always at the same point: the fog asks at the camera, the overlays
-at the eye. Nothing keeps the first answer, so answer from the event alone, the same way for the same
-position. The position can't be changed. Server and gameplay fluid checks (an entity in water, drowning,
-swimming, the sculk vibrations' water test) don't read it.
+Camera fluid readers include the field of view in a fluid, the frame's fog, the sky pass and the
+sky's dark disc, water and conduit vision, and a shader pack's `isEyeInWater`. The first-person water
+overlay also lets this hook override whether it appears, but it asks at the player's eye and starts
+with the player's tick sample: `Water` if the eye was in water, `Atmospheric` otherwise. After the
+local player is removed on death tick 20, the overlay keeps using that last sample until respawn.
+The overlay uses `Water` to show and any other answer to hide. `state_at_viewpoint` affects camera
+geometry reads, not the overlay's tick sample.
+
+The hook fires once per reader, several times a frame. The position and the input can differ between
+reads, even at the same point. The position can't be changed. Server and gameplay fluid checks (an
+entity in water, drowning, swimming, the sculk vibrations' water test) don't read it.
 
 ## Block changes in the client level
 
@@ -177,15 +183,17 @@ not blocks, and uses the segment and exclusions you supply, not vanilla's pick p
 For example, filter the ray using a shared read from the same client host:
 
 ```rust,ignore
-let hit = level.ray_trace_nearest_entity(host, from, to, margin, exclude, &mut |hit| {
-    hit.entity.kind(host) == Some(wanted_kind)
+let hit = level.ray_trace_nearest_entity(host, from, to, margin, exclude, &mut |entity| {
+    entity.kind(host) == Some(wanted_kind)
 })?;
 ```
 
-`Ok(None)` means no hit passed the predicate, not that the read was refused. The
-predicate sees all geometric hits in spatial traversal order; on an exact
-squared-distance tie the first visited wins. See [entity rays](../world/spawning.md#finding-the-nearest-entity-hit)
-for the geometry and when to keep the ordered all-hit query.
+`Ok(None)` means no accepted candidate was hit, not that the read was refused. The
+predicate runs on each non-excluded candidate `EntityRef` in spatial traversal order
+before its box is read and clipped (`ProjectileUtil.getEntityHitResult`); on an exact
+squared-distance tie the first visited hit wins. See
+[entity rays](../world/spawning.md#finding-the-nearest-entity-hit) for the geometry
+and when to keep the ordered all-hit query.
 
 A client `EntityRef` supports `bounding_box(host)`, `eye_height(host)` and
 `eye_position(host)`. For the local player these use the current predicted body and pose;

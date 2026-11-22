@@ -40,12 +40,12 @@ use mod_api::{
     ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
     ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
-    EntityRenderers, GameRuleActor, HandDrawContext, HandRender, InsideEffects, InteractionAttempt,
-    InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
-    ParticleProviders, PathComputationType, Placement, PlayerRef, PoiTypeExtensions,
-    RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
-    ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse,
-    VillagerProfessions, WorldPhase,
+    EntityRenderers, GameRuleActor, HandDrawContext, HandRender, InsideEffects,
+    InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext,
+    LivingRef, LoadConditions, NoteBlockChange, ParticleProviders, PathComputationType, Placement,
+    PlayerRef, PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget,
+    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers,
+    TicketController, ToolUse, VillagerProfessions, WorldPhase,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -53,8 +53,8 @@ use mod_api::{
     UsePhase,
 };
 use mod_api::{
-    BlockKey, DebugEntry, DebugRenderer, EffectKey, FrameModel, FrameModelEdit, GuiLayerRegistrar,
-    MapDecorationType, SkullModel, TextureAtlasRegistration,
+    BlockKey, DebugEntry, DebugRenderer, EffectKey, FrameModel, FrameModelEdit, MapDecorationType,
+    SkullModel, TextureAtlasRegistration,
 };
 pub(crate) use mod_api::{
     BlockRim, ClientPacket, ClientPayload, ColoredLight, ContainerLootFilled, ExplosionStart,
@@ -90,7 +90,6 @@ use sunrise_client::{
         Victim,
     },
     hud::{HudBatch, rgba},
-    hud_layout::GuiDraw,
     items::ItemStack,
     keybinds,
     merchant::MerchantOffer,

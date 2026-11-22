@@ -9,6 +9,7 @@ pub trait Hooks {
     /// earlier one; a name no sprite set matches is logged and draws nothing. Asked once at start
     /// on the client, before resources load; the game resolves each type's provider when the
     /// sprite sets load, on every resource load as well.
+    /// If this listener panics or a phase call is refused, none of its registrations take effect.
     #[notes = r#"## Particle providers
 
 A particle provider (NeoForge's `RegisterParticleProvidersEvent` and `ParticleProvider`) gives a mod's own
@@ -71,7 +72,9 @@ controller's are."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "listen",
+        staged_surface = "providers",
         context = "registration",
         neoforge = "RegisterParticleProvidersEvent"
     )]

@@ -1,146 +1,166 @@
 use super::*;
 
 #[test]
-fn a_second_factory_for_the_same_menu_and_owner_is_refused() {
+fn menu_screen_factories_key_by_menu_type_and_refuse_builtins_and_duplicates() {
     const CUSTOM: &str = "alpha:pack";
-    const STOCK: &str = "minecraft:hopper";
+    const CROSS_MOD: &str = "alpha:shared";
+    const MINECRAFT_CUSTOM: &str = "minecraft:custom_pack";
     let factory = || -> Arc<dyn crate::MenuScreenFactory> {
         Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
     };
     let mut registrar = PartRegistrar::new("alpha");
     assert!(registrar.register_menu_screen(CUSTOM, factory()).is_ok());
-    assert!(registrar.register_menu_screen(STOCK, factory()).is_ok());
+    assert!(
+        registrar
+            .register_menu_screen("pack", factory())
+            .unwrap_err()
+            .contains("namespaced")
+    );
     assert!(
         registrar
             .register_menu_screen(CUSTOM, factory())
             .unwrap_err()
             .contains("duplicate")
     );
+    for builtin in BUILTIN_MENU_SCREENS {
+        let error = registrar
+            .register_menu_screen(builtin, factory())
+            .unwrap_err();
+        assert!(
+            error.contains("duplicate") && error.contains(builtin),
+            "{error}"
+        );
+    }
+
+    // Another mod may register a screen for another mod's custom menu or a
+    // non-built-in `minecraft:*` menu type, while duplicates still fail.
     registrar.mod_id = "beta";
     registrar.mod_index = 1;
+    let error = registrar
+        .register_menu_screen(CUSTOM, factory())
+        .unwrap_err();
+    assert!(error.contains("duplicate") && error.contains("beta") && error.contains(CUSTOM));
+    assert!(registrar.register_menu_screen(CROSS_MOD, factory()).is_ok());
     assert!(
         registrar
-            .register_menu_screen(CUSTOM, factory())
-            .unwrap_err()
-            .contains("owned")
+            .register_menu_screen(MINECRAFT_CUSTOM, factory())
+            .is_ok()
     );
-    assert!(registrar.register_menu_screen(STOCK, factory()).is_ok());
-    let error = registrar
-        .register_menu_screen(STOCK, factory())
-        .unwrap_err();
-    assert!(error.contains("duplicate") && error.contains("beta") && error.contains(STOCK));
-    assert_eq!(registrar.menu_screen_factories[CUSTOM].len(), 1);
-    let stock = &registrar.menu_screen_factories[STOCK];
-    assert_eq!((stock[&0].owner, stock[&1].owner), ("alpha", "beta"));
-    assert_eq!(registrar.refused.len(), 3);
+    assert!(
+        registrar
+            .register_menu_screen(MINECRAFT_CUSTOM, factory())
+            .unwrap_err()
+            .contains("duplicate")
+    );
+    assert_eq!(registrar.menu_screen_factories[CUSTOM].owner, "alpha");
+    assert_eq!(registrar.menu_screen_factories[CROSS_MOD].owner, "beta");
+    assert_eq!(
+        registrar.menu_screen_factories[MINECRAFT_CUSTOM].owner,
+        "beta"
+    );
+    assert_eq!(registrar.refused.len(), 4 + BUILTIN_MENU_SCREENS.len());
+
+    // Checkpoint rollback restores `menu_screen_factories` on refusal.
+    let mut clean = PartRegistrar::new("alpha");
+    clean.register_menu_screen(CUSTOM, factory()).unwrap();
+    let rollback = clean.registration_checkpoint();
+    clean.mod_id = "beta";
+    clean.mod_index = 1;
+    clean.register_menu_screen(CROSS_MOD, factory()).unwrap();
+    rollback(&mut clean);
+    crate::testing::with_mods(Vec::new().into(), || {
+        let schema = super::super::tests::rule_schema();
+        install_registrar(clean, &schema).unwrap();
+        assert!(has_menu_screen_factory(CUSTOM));
+        assert!(!has_menu_screen_factory(CROSS_MOD));
+    });
 }
 
 #[test]
-fn constructing_or_requiring_a_menu_screen_requires_the_client() {
+fn constructing_a_menu_screen_requires_the_client() {
+    use std::sync::Mutex;
+
     enum ScreenPolicy {
-        Factory,
-        Mask,
+        Factory(Arc<Mutex<Vec<Option<String>>>>),
         NoScreen,
     }
     #[mod_api::__subscriptions]
     impl Hooks for ScreenPolicy {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-            match self {
-                Self::Factory => r
-                    .register_menu_screen(
-                        "minecraft:hopper",
-                        Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None),
-                    )
-                    .unwrap(),
-                Self::Mask => r
-                    .menu_slot_exclusions("minecraft:hopper", Some("masked:machine"), &[4])
-                    .unwrap(),
-                Self::NoScreen => {}
+            if let Self::Factory(openers) = self {
+                let openers = openers.clone();
+                r.register_menu_screen(
+                    "runes:altar",
+                    Arc::new(move |_: &dyn ClientHost, open: crate::MenuScreenOpen<'_>| {
+                        openers.lock().unwrap().push(open.block.map(str::to_owned));
+                        None
+                    }),
+                )
+                .unwrap();
             }
         }
     }
+    let openers = Arc::new(Mutex::new(Vec::new()));
     let mods: crate::Mods = vec![
-        ModEntry::new("factory", Box::new(ScreenPolicy::Factory)),
-        ModEntry::new("masked", Box::new(ScreenPolicy::Mask)),
+        ModEntry::new("factory", Box::new(ScreenPolicy::Factory(openers.clone()))),
         ModEntry::new("unrelated", Box::new(ScreenPolicy::NoScreen)),
     ]
     .into();
-    crate::testing::with_mods(mods.clone(), || {
-        crate::__private::part_tests::install_parts_fixture(&mods).unwrap();
-        assert_eq!(
-            crate::__private::client_requirement("factory").as_deref(),
-            Some("registers a client menu screen factory")
-        );
-        assert_eq!(
-            crate::__private::client_requirement("masked").as_deref(),
-            Some("excludes menu slots that require a client menu screen")
-        );
-        assert_eq!(crate::__private::client_requirement("unrelated"), None);
+    let served = crate::PackageInfo::new(
+        "runes".into(),
+        "1".into(),
+        crate::PackageKind::Content,
+        crate::Side::Both,
+        vec!["runes".into()],
+        vec![],
+    )
+    .with_served_by(Some("unrelated".into()));
+    crate::load_state::with_test_package_inventory(vec![served], || {
+        crate::testing::with_mods(mods.clone(), || {
+            crate::__private::part_tests::install_parts_fixture(&mods).unwrap();
+            assert_eq!(
+                crate::__private::client_requirement("factory").as_deref(),
+                Some("registers a client menu screen factory")
+            );
+            assert_eq!(crate::__private::client_requirement("unrelated"), None);
+
+            let host = crate::testing::FakeHost::new();
+            let open = |menu, block| {
+                crate::__private::create_menu_screen(
+                    &host,
+                    crate::MenuScreenOpen {
+                        window: 1,
+                        menu,
+                        block,
+                        pos: None,
+                        title: None,
+                        backing_slots: 1,
+                        player_slots: 36,
+                        data_slots: 0,
+                        extra: &[],
+                    },
+                )
+            };
+            // The factory owner differs from the serving package. The opener is context,
+            // not a dispatch key: both openings select the same registered factory.
+            for block in [Some("runes:altar"), Some("other:table"), None] {
+                assert!(matches!(
+                    open("runes:altar", block),
+                    Some(("factory", Ok(None)))
+                ));
+            }
+            assert!(open("minecraft:hopper", Some("runes:altar")).is_none());
+            assert!(open("runes:unregistered", Some("runes:altar")).is_none());
+            assert_eq!(
+                *openers.lock().unwrap(),
+                [Some("runes:altar".into()), Some("other:table".into()), None]
+            );
+        });
     });
 }
 
 #[test]
-fn refused_slot_exclusions_cannot_replace_a_scoped_mask() {
-    const MENU: &str = "alpha:pack";
-    const STOCK: &str = "minecraft:hopper";
-    const BLOCK: &str = "alpha:machine";
-    let declare = || {
-        let mut registrar = PartRegistrar::new("alpha");
-        registrar
-            .menu_slot_exclusions(MENU, None, &[3, 1, 3])
-            .unwrap();
-        registrar
-            .menu_slot_exclusions(MENU, Some(BLOCK), &[])
-            .unwrap();
-        registrar
-            .menu_slot_exclusions(STOCK, Some(BLOCK), &[4])
-            .unwrap();
-        registrar
-    };
-    let mut registrar = declare();
-    let good = registrar.menu_slot_exclusions.clone();
-    assert!(registrar.menu_slot_exclusions(MENU, None, &[2]).is_err());
-    assert!(registrar.menu_slot_exclusions(STOCK, None, &[2]).is_err());
-    assert!(
-        registrar
-            .menu_slot_exclusions(STOCK, Some("beta:machine"), &[2])
-            .is_err()
-    );
-    assert!(
-        registrar
-            .menu_slot_exclusions(MENU, Some("alpha:"), &[2])
-            .is_err()
-    );
-    registrar.mod_id = "beta";
-    assert!(
-        registrar
-            .menu_slot_exclusions(MENU, Some("beta:machine"), &[2])
-            .is_err()
-    );
-    assert_eq!(registrar.menu_slot_exclusions, good);
-
-    let schema = super::super::tests::rule_schema();
-    let errors = install_registrar(registrar, &schema).unwrap_err();
-    assert_eq!(errors.len(), 5);
-    assert!(menu_slot_exclusions(MENU, None).is_empty());
-
-    let mut registrar = declare();
-    let rollback = registrar.registration_checkpoint();
-    registrar
-        .menu_slot_exclusions(MENU, Some("beta:machine"), &[2])
-        .unwrap();
-    rollback(&mut registrar);
-    install_registrar(registrar, &schema).unwrap();
-    assert_eq!(menu_slot_exclusions(MENU, None), &[1, 3]);
-    assert!(menu_slot_exclusions(MENU, Some(BLOCK)).is_empty());
-    assert_eq!(menu_slot_exclusions(MENU, Some("beta:machine")), &[1, 3]);
-    assert_eq!(menu_slot_exclusions(STOCK, Some(BLOCK)), &[4]);
-    assert!(menu_slot_exclusions(STOCK, Some("alpha:other")).is_empty());
-    assert!(menu_slot_exclusions(STOCK, None).is_empty());
-}
-
-#[test]
-fn served_content_menu_screen_dispatches_to_serving_host_only() {
+fn served_content_menu_buttons_dispatch_to_serving_host_only() {
     use std::sync::{Arc, Mutex};
 
     struct HostPart(Arc<Mutex<Option<&'static str>>>);
@@ -176,12 +196,6 @@ fn served_content_menu_screen_dispatches_to_serving_host_only() {
             r.menu_part("runes:altar", HostPart(self.seen.clone()));
             r.menu_part("runes_extra:forge", HostPart(self.seen.clone()));
             r.menu_part("minecraft:hopper", HostPart(self.seen.clone()));
-            let f = || -> Arc<dyn crate::MenuScreenFactory> {
-                Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
-            };
-            r.register_menu_screen("runes:altar", f()).unwrap();
-            r.register_menu_screen("runes_extra:forge", f()).unwrap();
-            r.register_menu_screen("minecraft:hopper", f()).unwrap();
         }
     }
     struct ThirdMod {
@@ -190,25 +204,9 @@ fn served_content_menu_screen_dispatches_to_serving_host_only() {
     #[mod_api::__subscriptions]
     impl crate::Hooks for ThirdMod {
         fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
+            r.menu_part("runes:altar", ThirdPart(self.seen.clone()));
             r.menu_part("plain:table", ThirdPart(self.seen.clone()));
             r.menu_part("minecraft:hopper", ThirdPart(self.seen.clone()));
-            let f = || -> Arc<dyn crate::MenuScreenFactory> {
-                Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
-            };
-            r.register_menu_screen("minecraft:hopper", f()).unwrap();
-        }
-    }
-    struct ThirdHijack {
-        seen: Arc<Mutex<Option<&'static str>>>,
-    }
-    #[mod_api::__subscriptions]
-    impl crate::Hooks for ThirdHijack {
-        fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
-            r.menu_part("runes:altar", ThirdPart(self.seen.clone()));
-            let f = || -> Arc<dyn crate::MenuScreenFactory> {
-                Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
-            };
-            assert!(r.register_menu_screen("runes:altar", f()).is_err());
         }
     }
 
@@ -253,9 +251,11 @@ fn served_content_menu_screen_dispatches_to_serving_host_only() {
         ]
     };
 
+    let third = || crate::ModEntry::new("third", Box::new(ThirdMod { seen: seen.clone() }));
+    // Registration order cannot let the unrelated Part claim the hosted menu's buttons.
     let mods: crate::Mods = vec![
+        third(),
         crate::ModEntry::new("horizon_java", Box::new(HostMod { seen: seen.clone() })),
-        crate::ModEntry::new("third", Box::new(ThirdMod { seen: seen.clone() })),
     ]
     .into();
     crate::load_state::with_test_package_inventory(packages(), || {
@@ -281,7 +281,11 @@ fn served_content_menu_screen_dispatches_to_serving_host_only() {
                 None
             );
             assert_eq!(menu_opener_owner("plain:table", None), None);
-            // Per-frame opener dispatch reads the pre-indexed table without querying the package
+            assert_eq!(
+                menu_opener_owner("minecraft:hopper", Some("third:block")),
+                Some("third")
+            );
+            // Opener dispatch reads the pre-indexed table without querying the package
             // inventory again: clearing the test package inventory leaves the resolved owners
             // intact.
             crate::load_state::with_test_package_inventory(Vec::new(), || {
@@ -307,18 +311,17 @@ fn served_content_menu_screen_dispatches_to_serving_host_only() {
         });
     });
 
-    let hijack_mods: crate::Mods = vec![crate::ModEntry::new(
-        "third",
-        Box::new(ThirdHijack { seen: seen.clone() }),
-    )]
-    .into();
+    let hijack_mods: crate::Mods = vec![third()].into();
     crate::load_state::with_test_package_inventory(packages(), || {
         crate::testing::with_mods(hijack_mods.clone(), || {
-            let errors = crate::parts::tests::install_parts_fixture(&hijack_mods).unwrap_err();
-            assert!(
-                errors.iter().any(|e| e.contains("runes:altar")),
-                "{errors:?}"
-            );
+            crate::parts::tests::install_parts_fixture(&hijack_mods).unwrap();
+            // A Part attached by a non-owner cannot become the button handler even
+            // when the serving mod itself did not register a Part.
+            *seen.lock().unwrap() = None;
+            let mut accepted = false;
+            crate::dispatch_menu_button_valid(&host, "runes:altar", None, 1, &mut accepted);
+            assert_eq!(*seen.lock().unwrap(), None);
+            assert!(!accepted);
         });
     });
 }

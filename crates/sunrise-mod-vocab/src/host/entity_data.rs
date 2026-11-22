@@ -12,7 +12,6 @@ pub trait EntityDataBackend {
     /// or unavailable context returns `None`. Use [`EntityTags::contains`] for an exact
     /// match, or [`EntityTags::iter_utf16`] to read tags in saved order and choose how
     /// to convert them to UTF-8.
-    #[access(WorldOnly)]
     fn entity_tags(&self, entity: EntityRef) -> Option<EntityTags<'_>>;
 }
 /// The handles' writes of the `entity_data` area, implemented by the game and reached through [`BackendMut`].
@@ -24,7 +23,6 @@ pub trait EntityDataBackendMut {
     /// The entity's data as `/data get entity` shows it
     /// (`Entity.saveWithoutId`): its compound without `id`. An entity with no
     /// UUID yet gets the one it will be saved with. API 386.
-    #[access(WorldOnly)]
     fn entity_nbt(&mut self, entity: EntityRef) -> Option<Compound>;
     /// Side: server.
     /// Merges `nbt` into the entity's data and loads the entity from it, as
@@ -33,16 +31,13 @@ pub trait EntityDataBackendMut {
     /// cannot reload (only mobs, dropped items, armor stands and item
     /// frames), data nested too deep, or data that changes nothing. API
     /// 386.
-    #[access(WorldOnly)]
     fn entity_merge_nbt(&mut self, entity: EntityRef, nbt: Compound) -> bool;
     /// Side: server.
     /// Adds tag `tag` (`Entity.addTag`): false when it has it already, holds
     /// 1024, its kind cannot store tags, or the handle is stale. API 386.
-    #[access(WorldOnly)]
     fn entity_add_tag(&mut self, entity: EntityRef, tag: &str) -> bool;
     /// Side: server.
     /// Removes tag `tag` (`Entity.removeTag`): false when it didn't have it.
     /// API 386.
-    #[access(WorldOnly)]
     fn entity_remove_tag(&mut self, entity: EntityRef, tag: &str) -> bool;
 }

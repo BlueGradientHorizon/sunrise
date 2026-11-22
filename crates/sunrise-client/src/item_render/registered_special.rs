@@ -31,10 +31,10 @@ use sunrise_assets::{
         StackView, TintSourceLoader, identifier,
     },
     math::Mat4 as AssetMatrix,
-    model::Material,
+    model::{Direction, Material},
 };
 
-pub type SpecialModelFactories = BTreeMap<String, OwnedSpecialModelFactory>;
+pub type SpecialModelFactories = BTreeMap<mod_api::Identifier, OwnedSpecialModelFactory>;
 
 /// One winning type, with the owner of its factory and retained renderer callbacks.
 pub struct OwnedSpecialModelFactory {
@@ -56,22 +56,15 @@ impl OwnedSpecialModelFactory {
 pub(super) static FACTORIES: OnceLock<SpecialModelFactories> = OnceLock::new();
 
 /// Install the winning factories before the first client resource load. A type may replace a
-/// builtin, but must be a fully qualified resource identifier.
-pub fn install_special_model_factories(mut factories: SpecialModelFactories) -> bool {
-    factories.retain(|kind, _| {
-        let valid = identifier(kind).is_ok_and(|canonical| canonical == kind.as_str());
-        if !valid {
-            log::warn!("special model type {kind:?} is not <namespace>:<path>");
-        }
-        valid
-    });
+/// builtin.
+pub fn install_special_model_factories(factories: SpecialModelFactories) -> bool {
     FACTORIES.set(factories).is_ok()
 }
 
 /// One baked `minecraft:special` node. The draw owner is shared by all bakes of the same
 /// winning registration, including across resource reloads.
-struct BakedSpecialModel {
-    kind: Box<str>,
+pub struct BakedSpecialModel {
+    pub kind: Box<str>,
     renderer: BakedSpecialModelRenderer,
     base: SpecialLayerBase,
     owner: CallbackOwner,
@@ -116,10 +109,9 @@ impl SpecialModelBakeContext for SpecialBaker<'_> {
             if quad.positions.iter().flatten().any(|v| !v.is_finite()) {
                 return Err(format!("quad {index}: non-finite position"));
             }
-            let facing =
-                facing(&quad.positions).ok_or_else(|| format!("quad {index}: invalid facing"))?;
-            if quad.uv.iter().flatten().any(|v| !(0.0..=1.0).contains(v)) {
-                return Err(format!("quad {index}: UV is outside [0, 1]"));
+            let facing = facing(&quad.positions).unwrap_or(Direction::Up);
+            if quad.uv.iter().flatten().any(|v| !v.is_finite()) {
+                return Err(format!("quad {index}: non-finite UV"));
             }
             if quad.light_emission > 15 {
                 return Err(format!("quad {index}: light emission is over 15"));
@@ -130,9 +122,14 @@ impl SpecialModelBakeContext for SpecialBaker<'_> {
                 .map_err(|_| format!("quad {index}: tint index is out of range"))?;
             let sprite =
                 identifier(&quad.sprite).map_err(|error| format!("quad {index}: {error}"))?;
-            if sprite != MISSING_SPRITE && self.0.sprites.mask(&sprite).is_none() {
-                return Err(format!("quad {index}: sprite {sprite} is missing"));
-            }
+            let sprite = if sprite != MISSING_SPRITE && self.0.sprites.mask(&sprite).is_none() {
+                log::warn!(
+                    "Sunrise: special model quad {index} references missing sprite {sprite}; using missing texture"
+                );
+                MISSING_SPRITE.to_owned()
+            } else {
+                sprite
+            };
             baked.push(ModelQuad {
                 positions: quad.positions,
                 uv: quad.uv,
@@ -197,7 +194,7 @@ impl ItemRenderer {
             let base = self.bake(base);
             let particle = Arc::from(sprite_name(&base.particle.sprite));
             Ok(Some(RegisteredSpecialModel(Arc::new(BakedSpecialModel {
-                kind: kind.into(),
+                kind: kind.to_string().into(),
                 renderer,
                 base: SpecialLayerBase {
                     model: base,
@@ -248,7 +245,7 @@ impl ItemRenderer {
     /// Append one registered layer, with no committed writes until its callback succeeds.
     pub(super) fn append_registered_special(
         &self,
-        output: &mut ItemLayerOutput,
+        layers: &mut Vec<LayerRender>,
         model: &RegisteredSpecialModel,
         (foil, outer_transform, display_transform): (FoilType, AssetMatrix, LayerTransform),
         ctx: &Context<'_>,
@@ -277,8 +274,8 @@ impl ItemRenderer {
         let read_component = |id: &str| components.get(id).map(crate::scoreboard::json_to_tag);
         let stack = SpecialModelStack::new(input.item, input.count, &read_component);
         let mut writer = LayerWriter {
-            checkpoint: output.layers.len(),
-            output,
+            checkpoint: layers.len(),
+            layers,
             renderer: self,
             base: &model.base,
             ctx,
@@ -305,19 +302,25 @@ impl ItemRenderer {
                 )
             });
         let Ok(result) = result else {
-            // The owner already reported a phase refusal or a panic.
+            // The owner already reported a panic or disabled state.
             return ControlFlow::Break(());
         };
-        if let Some(error) = writer
-            .failure
-            .as_deref()
-            .or_else(|| result.as_ref().err().map(String::as_str))
+        if let Err(error) = result
+            && writer.failure.is_none()
         {
-            report_refusal(error);
-            return ControlFlow::Break(());
+            writer.failure = Some(SubmissionFailure::Fault(error));
         }
-        writer.committed = true;
-        ControlFlow::Continue(())
+        match writer.failure.as_ref() {
+            Some(SubmissionFailure::Fault(error)) => {
+                report_refusal(error);
+                ControlFlow::Break(())
+            }
+            Some(SubmissionFailure::Nested) => ControlFlow::Break(()),
+            None => {
+                writer.committed = true;
+                ControlFlow::Continue(())
+            }
+        }
     }
 }
 
@@ -327,17 +330,30 @@ struct SpecialLayerBase {
     particle: Arc<str>,
 }
 
-/// The active stack path, borrowed from the resolvers and their callers, with no stack copies.
+/// The active `(stack, display)` path, borrowed from the resolvers and their callers, with no
+/// stack copies.
 pub(super) struct StackAncestor<'a> {
     pub(super) stack: &'a StackView,
+    pub(super) display: DisplayContext,
     pub(super) parent: Option<&'a StackAncestor<'a>>,
 }
 
+impl StackAncestor<'_> {
+    fn contains(&self, stack: &StackView, display: DisplayContext) -> bool {
+        std::iter::successors(Some(self), |entry| entry.parent)
+            .any(|entry| entry.display == display && *entry.stack == *stack)
+    }
+}
+
+enum SubmissionFailure {
+    Nested,
+    Fault(String),
+}
+
 /// Writes one special layer into the item state. Dropping without a commit rolls back every
-/// write, including the geometry of any children already submitted. The budget still counts
-/// the work spent expanding those children.
+/// write, including the geometry of any children already submitted.
 struct LayerWriter<'out, 'draw> {
-    output: &'out mut ItemLayerOutput,
+    layers: &'out mut Vec<LayerRender>,
     checkpoint: usize,
     renderer: &'draw ItemRenderer,
     base: &'draw SpecialLayerBase,
@@ -347,14 +363,14 @@ struct LayerWriter<'out, 'draw> {
     foil: FoilType,
     outer_transform: AssetMatrix,
     display_transform: LayerTransform,
-    failure: Option<String>,
+    failure: Option<SubmissionFailure>,
     committed: bool,
 }
 
 impl Drop for LayerWriter<'_, '_> {
     fn drop(&mut self) {
         if !self.committed {
-            self.output.layers.truncate(self.checkpoint);
+            self.layers.truncate(self.checkpoint);
         }
     }
 }
@@ -391,7 +407,7 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
         let local_pose = self.local_pose.mul(&pose);
         if !local_pose.is_finite() {
             let error = "the composed special model pose is not finite";
-            self.layer.failure = Some(error.into());
+            self.layer.failure = Some(SubmissionFailure::Fault(error.into()));
             return Err(error.into());
         }
         let mut child = PoseWriter {
@@ -402,7 +418,7 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
         if let Err(error) = &result
             && self.layer.failure.is_none()
         {
-            self.layer.failure = Some(error.clone());
+            self.layer.failure = Some(SubmissionFailure::Fault(error.clone()));
         }
         result
     }
@@ -425,11 +441,11 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
             })
         else {
             let error = "the special model geometry was not baked for this resource generation";
-            self.layer.failure = Some(error.into());
+            self.layer.failure = Some(SubmissionFailure::Fault(error.into()));
             return Err(error.into());
         };
         let matrix = self.matrix();
-        self.layer.output.layers.push(LayerRender {
+        self.layer.layers.push(LayerRender {
             geometry: LayerGeometry::Quads(geometry.model.clone()),
             tints: LayerTints::Special(tints),
             foil: self.layer.foil,
@@ -451,42 +467,48 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
         if layer.failure.is_some() {
             return Err("the special layer was already refused".into());
         }
-        let Some((stack, display)) = layer.env.special_model_stack(stack, display) else {
-            let error = "the nested special model stack or display context is unreadable";
-            layer.failure = Some(error.into());
-            return Err(error.into());
-        };
-        if layer.output.remaining == 0
-            || std::iter::successors(Some(layer.ancestor), |entry| entry.parent)
-                .any(|entry| *entry.stack == stack)
-        {
-            let error = "the nested special model stack is a cycle or past the budget";
-            layer.failure = Some(error.into());
+        // Leave room to resolve one child and unwind its renderer. A cyclic renderer can
+        // make every key distinct, so the active path check alone cannot protect Rust's stack.
+        if stacker::remaining_stack().is_some_and(|bytes| bytes < 64 * 1024) {
+            let error = "too little native stack space to resolve a nested item model";
+            layer.failure = Some(SubmissionFailure::Fault(error.into()));
             return Err(error.into());
         }
-        layer.output.remaining -= 1;
+        let Some((stack, display)) = layer.env.special_model_stack(stack, display) else {
+            layer.failure = Some(SubmissionFailure::Nested);
+            return Err("the nested special model stack or display context is unreadable".into());
+        };
+        if layer.ancestor.contains(&stack, display) {
+            log::warn!(
+                "Sunrise: a special model renderer's nested stack of {} in {:?} is a cycle; the special layer draws the missing model",
+                stack.item,
+                display,
+            );
+            layer.failure = Some(SubmissionFailure::Nested);
+            return Err("the nested special model stack is a cycle".into());
+        }
         let ancestor = StackAncestor {
             stack: &stack,
+            display,
             parent: Some(layer.ancestor),
         };
         let ctx = Context {
             display,
             ..*layer.ctx
         };
-        let start = layer.output.layers.len();
+        let start = layer.layers.len();
         if layer
             .renderer
-            .append_render_layers(layer.output, &ancestor, &ctx, layer.env, None)
+            .append_render_layers(layer.layers, &ancestor, &ctx, layer.env, None)
             .is_break()
         {
-            let error = "the nested special model refused its draw";
-            layer.failure = Some(error.into());
-            return Err(error.into());
+            layer.failure = Some(SubmissionFailure::Nested);
+            return Err("the nested special model refused its draw".into());
         }
         // Compose after resolving the child: preserve parent * (child * grandchild) order
         // as well as the child's own display, foil and tint state.
         let matrix = self.matrix();
-        for layer in &mut self.layer.output.layers[start..] {
+        for layer in &mut self.layer.layers[start..] {
             layer.matrix = matrix * layer.matrix;
         }
         Ok(())

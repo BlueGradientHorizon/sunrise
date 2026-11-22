@@ -264,9 +264,9 @@ fn matrix(mods: mod_api::Mods) {
                         } else {
                             (other, held)
                         };
-                        game.keys.clear();
+                        game.clear_device_keys();
                         if case.sneak {
-                            game.keys.insert(winit::keyboard::KeyCode::ShiftLeft);
+                            game.insert_device_key(winit::keyboard::KeyCode::ShiftLeft);
                         }
                         if let Some(remote) = game.remote.as_mut() {
                             remote.last_input = if case.sneak {

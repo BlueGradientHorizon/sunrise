@@ -1,5 +1,6 @@
 use super::*;
 use crate::game::{
+    Dim,
     api_values::{TryIntoApi, TryIntoEngine},
     transactions::OpenTransactions,
 };
@@ -49,6 +50,7 @@ impl Game<'_> {
         let mut access = TickAccess {
             game: self,
             subject,
+            checked: Some(live_state),
         };
         Self::native_block_entity_tick(kind, BlockEntityTickScope::new(&mut access));
         self.world
@@ -73,6 +75,10 @@ fn valid_tick_subject(block: &str, entity: &EngineBlockEntity) -> bool {
 struct TickAccess<'g, 'w> {
     game: &'g mut Game<'w>,
     subject: BlockEntityRef,
+    /// The live state this instance was last found valid on. Validity depends only on the
+    /// state's block and the instance's fixed type, and the loan already pins the instance,
+    /// so a borrow over the same state needs no second `BlockEntityType.isValid`.
+    checked: Option<BlockStateId>,
 }
 
 impl BlockEntityTickAccess for TickAccess<'_, '_> {
@@ -102,10 +108,14 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
         else {
             return;
         };
-        if !valid_tick_subject(&self.game.res.facts().get(live_state).name, loan.entity) {
-            return;
+        if self.checked != Some(live_state) {
+            if !valid_tick_subject(&self.game.res.facts().get(live_state).name, loan.entity) {
+                return;
+            }
+            self.checked = Some(live_state);
         }
         let mut data = ServerBlockEntityData {
+            dim: self.game.dim,
             pos,
             loan,
             slot_count,
@@ -124,6 +134,7 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
 }
 
 pub(super) struct ServerBlockEntityData<'a> {
+    pub(super) dim: Dim,
     pub(super) pos: Pos,
     pub(super) loan: BlockEntityLoan<'a>,
     pub(super) slot_count: usize,
@@ -141,6 +152,7 @@ impl ServerBlockEntityData<'_> {
 
     fn edit(&mut self) -> &mut EngineBlockEntity {
         self.journal.journal_block_entity_loan(
+            self.dim,
             self.pos,
             &self.loan,
             self.chunks,

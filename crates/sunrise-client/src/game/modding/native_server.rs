@@ -167,7 +167,8 @@ fn usage_nodes(
 /// Native mods' commands as a root in the commands report's format
 /// (`lan::commands`, which sends each player what their level allows), and
 /// each command's traversal level: the lowest of its usages. A node is runnable where
-/// only optional arguments follow it, at the lowest level of those executable usages.
+/// only optional arguments follow it; like Brigadier's `CommandNode.addChild`, each
+/// later accepted runnable registration overwrites the node's executor and execution level.
 /// A command vanilla has (`vanilla`
 /// answers) or a usage that doesn't parse is left out, with why.
 #[cfg(test)]
@@ -271,13 +272,9 @@ fn command_tree_for(
                 n["level"] = 4.into();
                 n
             });
-            // Permission and identity belong to the same usage. Keep the first
-            // accepted registration at this level; only a lower one replaces it.
-            if runnable
-                && entry["execution_level"]
-                    .as_u64()
-                    .is_none_or(|old| execution_level < old)
-            {
+            // Like Brigadier's `CommandNode.addChild`, each later accepted runnable
+            // registration overwrites the node's executor and execution level.
+            if runnable {
                 entry["executable"] = true.into();
                 entry["execution_level"] = execution_level.into();
                 if let Some(executors) = executors.as_deref_mut() {
@@ -2275,6 +2272,7 @@ impl Game<'_> {
     /// The shared command-node executor, also reached by functions and `execute`.
     pub(super) fn run_native_command(&mut self, context: Context) -> super::commands::R<i32> {
         use super::commands::err;
+        use mod_api::__private::RetainedFailure;
         // Argument resolution uses node IDs from the parse. Never use them against a
         // replacement tree, even if the new tree has the same command at the same ID.
         let executor = context
@@ -2287,14 +2285,29 @@ impl Game<'_> {
                     .executors
                     .get(key.slot())
             })
-            .filter(|executor| mod_api::__private::mod_index_on(executor.mod_index))
+            .filter(|executor| executor.callback.enabled())
             .ok_or_else(|| err("command.unknown.command", &[]))?;
-        let owner = executor.owner;
+        let callback = executor.callback.clone();
         let call = Arc::clone(&executor.call);
         let command = self.resolve_native_command(context)?;
         let origin = self.native_command_origin(self.ui.registries.permission)?;
-        let _scope = mod_api::__private::enter(owner, "command_executor");
-        call(self, &origin, &command).ok_or_else(|| err("command.unknown.command", &[]))
+        // Isolate journaled writes when the caller already has a transaction. An ordinary
+        // command is not implicitly transactional, and writes outside the journal stay put.
+        let savepoint = self.transaction_current().map(|_| self.transaction_open());
+        let result = callback.call(|| call(self, &origin, &command));
+        if let Some(seal) = savepoint {
+            self.transaction_close(&seal, result.is_ok());
+        } else if !matches!(result, Ok(Some(_))) && !self.transactions.is_empty() {
+            // No caller-owned frame existed: every open frame belongs to this invocation.
+            self.abort_open_transactions();
+        }
+        match result {
+            Ok(Some(value)) => Ok(value),
+            Ok(None) | Err(RetainedFailure::Disabled) => Err(err("command.unknown.command", &[])),
+            Err(RetainedFailure::Panicked) => {
+                Err(sunrise_client::command::CommandError::unexpected())
+            }
+        }
     }
 
     fn native_command_player_target(&self, target: super::commands::Target) -> Option<PlayerRef> {
@@ -2644,7 +2657,7 @@ mod tests {
             velocity: sunrise_core::geometry::Vec3::ZERO,
             value: 3,
             age: 0,
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             count: 1,
             fire_ticks: 0,
             ticks: 0,
@@ -3686,6 +3699,146 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn panicking_command_executors_keep_other_usages_and_only_undo_journaled_writes() {
+        use std::sync::atomic::AtomicUsize;
+        const JOURNALED: [i32; 3] = [2, 70, 2];
+        const UNJOURNALED: [i32; 3] = [3, 70, 2];
+        const ABANDONED: [i32; 3] = [4, 70, 2];
+        const REFUSED: [i32; 3] = [5, 70, 2];
+        struct Executors(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Executors {
+            fn register_commands(
+                &self,
+                _: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::RegisterCommandsEvent<'_>,
+            ) {
+                for (usage, pos, opens_root) in [
+                    ("journalboom", JOURNALED, false),
+                    ("plainboom", UNJOURNALED, false),
+                    ("rootboom", ABANDONED, true),
+                    ("ordinaryfailure", REFUSED, true),
+                ] {
+                    let refuses = self.0.clone();
+                    event.commands.push(mod_api::Command::new(usage).executes(
+                        move |host, _, _| {
+                            if opens_root {
+                                let _root = host.transaction_open();
+                                let _child = host.transaction_open();
+                            }
+                            let level = host.level("minecraft:overworld").unwrap();
+                            let state = host.block_state_id("minecraft:stone").unwrap();
+                            if level.set_block(host, pos, state, mod_api::BlockUpdateFlags::NONE)
+                                != Ok(true)
+                            {
+                                return None;
+                            }
+                            if usage == "ordinaryfailure" {
+                                refuses.fetch_add(1, Ordering::Relaxed);
+                                return None;
+                            }
+                            panic!("executor regression panic");
+                        },
+                    ));
+                }
+                event
+                    .commands
+                    .push(mod_api::Command::new("worksagain").executes(|_, _, _| Some(7)));
+            }
+        }
+        let refuses = Arc::new(AtomicUsize::new(0));
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new(
+                "executor_owner",
+                Box::new(Executors(refuses.clone())),
+            )]
+            .into(),
+            || {
+                super::super::native_entity_refs::tests::with_game(|game| {
+                    game.options.dedicated = Some(Vec::new());
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                    let air = game.world.block(JOURNALED[0], JOURNALED[1], JOURNALED[2]);
+                    let stone = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:stone")
+                        .unwrap();
+                    game.build_registries();
+                    game.build_native_commands(&[]);
+
+                    let seal = game.transaction_open();
+                    let (failure, outcome) = game.recording_command_outcome(|game| {
+                        game.execute_line("journalboom", game.server_source())
+                    });
+                    assert_eq!(failure.unwrap_err().key, "command.failed");
+                    assert_eq!(outcome, None);
+                    assert_eq!(
+                        game.world.block(JOURNALED[0], JOURNALED[1], JOURNALED[2]),
+                        air
+                    );
+                    assert_eq!(
+                        game.transaction_current().as_ref(),
+                        Some(seal.transaction())
+                    );
+                    game.transaction_close(&seal, true);
+                    let failure = game
+                        .execute_line("plainboom", game.server_source())
+                        .unwrap_err();
+                    assert!(failure.unexpected);
+                    assert_eq!(
+                        game.world
+                            .block(UNJOURNALED[0], UNJOURNALED[1], UNJOURNALED[2]),
+                        stone
+                    );
+
+                    let failure = game
+                        .execute_line("rootboom", game.server_source())
+                        .unwrap_err();
+                    assert!(failure.unexpected);
+                    assert!(game.transaction_current().is_none());
+                    assert_eq!(
+                        game.world.block(ABANDONED[0], ABANDONED[1], ABANDONED[2]),
+                        air
+                    );
+
+                    game.build_native_commands(&[]);
+                    for usage in ["journalboom", "rootboom"] {
+                        assert_eq!(
+                            game.execute_line(usage, game.server_source())
+                                .unwrap_err()
+                                .key,
+                            "command.unknown.command"
+                        );
+                    }
+                    assert_eq!(game.execute_line("worksagain", game.server_source()), Ok(7));
+                    for _ in 0..2 {
+                        assert_eq!(
+                            game.execute_line("ordinaryfailure", game.server_source())
+                                .unwrap_err()
+                                .key,
+                            "command.unknown.command"
+                        );
+                        assert!(game.transaction_current().is_none());
+                        assert_eq!(game.world.block(REFUSED[0], REFUSED[1], REFUSED[2]), air);
+                    }
+                    assert_eq!(refuses.load(Ordering::Relaxed), 2);
+                    assert_eq!(
+                        mod_api::__private::take_hook_panics(),
+                        [mod_api::__private::HookPanicReport {
+                            mod_id: "executor_owner",
+                            hook: "command_executor",
+                        }; 3]
+                    );
+                })
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn command_refresh_rebuilds_the_typed_dispatcher_only_on_request() {
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
         struct ChangingCommands {
@@ -4131,9 +4284,9 @@ mod tests {
                 event.commands.extend([
                     mod_api::Command::new("origin").executes(execute.clone()),
                     mod_api::Command::op("denied", 4).executes(execute),
-                    mod_api::Command::new("unhandled").executes(|_, _, _| None),
-                    // The selected executor's failure must not fall back to this usage.
+                    // Replaced by the later accepted registration; failure must not fall back here.
                     mod_api::Command::new("unhandled").executes(|_, _, _| Some(99)),
+                    mod_api::Command::new("unhandled").executes(|_, _, _| None),
                 ]);
             }
         }
@@ -4371,22 +4524,29 @@ mod tests {
     }
 
     #[test]
-    fn native_shared_executable_prefix_takes_its_lowest_usage_level() {
-        for reverse in [false, true] {
-            let mut commands = vec![
-                mod_api::Command::op("foo [value:integer]", 4),
-                mod_api::Command::op("foo", 2),
-            ];
-            let (prefix_slot, argument_slot) = if reverse {
-                commands.reverse();
-                (0, 1)
-            } else {
-                (1, 0)
-            };
-            commands.extend([
-                mod_api::Command::op("foo", 2), // The first accepted level-2 registration wins.
-                mod_api::Command::new("foo [value:word]"), // Rejected: parser conflict.
-            ]);
+    fn native_shared_executable_prefix_uses_last_accepted_registration() {
+        let cases = [
+            (
+                vec![
+                    mod_api::Command::op("foo [value:integer]", 4),
+                    mod_api::Command::op("foo", 2),
+                    mod_api::Command::op("foo", 2), // Later registration wins on ties.
+                    mod_api::Command::new("foo [value:word]"), // Rejected: parser conflict.
+                ],
+                (2, 2),
+                (4, 0),
+            ),
+            (
+                vec![
+                    mod_api::Command::op("foo", 2),
+                    mod_api::Command::op("foo [value:integer]", 4), // Later runnable overwrites earlier lower level.
+                    mod_api::Command::new("foo [value:word]"),      // Rejected: parser conflict.
+                ],
+                (4, 1),
+                (4, 1),
+            ),
+        ];
+        for (commands, (prefix_level, prefix_slot), (argument_level, argument_slot)) in cases {
             let arguments = HashMap::new();
             let mut executors = HashMap::new();
             let (tree, _, problems) = command_tree_for(
@@ -4410,13 +4570,23 @@ mod tests {
                     permission,
                     ..Default::default()
                 };
-                for (input, level, slot) in [("foo", 2, prefix_slot), ("foo 7", 4, argument_slot)] {
+                for (input, level, slot) in [
+                    ("foo", prefix_level, prefix_slot),
+                    ("foo 7", argument_level, argument_slot),
+                ] {
                     let parsed = dispatcher.parse(input, &registries);
                     if permission >= level {
                         let (context, _) = parsed.executable().unwrap();
-                        assert_eq!(context.executor.unwrap().slot(), slot);
+                        assert_eq!(
+                            context.executor.unwrap().slot(),
+                            slot,
+                            "{commands:?}, level {permission}, {input}"
+                        );
                     } else {
-                        assert!(parsed.executable().is_err());
+                        assert!(
+                            parsed.executable().is_err(),
+                            "{commands:?}, level {permission}, {input}"
+                        );
                     }
                 }
             }

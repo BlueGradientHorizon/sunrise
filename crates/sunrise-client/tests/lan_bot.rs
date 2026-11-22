@@ -217,6 +217,12 @@ fn server(resources: &Path) -> Server {
 
 fn server_with(resources: &Path, net: NetConfig) -> Server {
     let defaults = sunrise_world::item_defaults::read(resources).expect("item defaults");
+    let items = sunrise_client::items::Items::catalog(
+        resources,
+        &sunrise_world::loot::PackOverlay::NONE,
+        &defaults,
+    )
+    .expect("items");
     server_sync(
         Arc::new(
             SyncData::load(
@@ -225,6 +231,7 @@ fn server_with(resources: &Path, net: NetConfig) -> Server {
                 &defaults,
                 &sunrise_client::crafting::ResolvedSources::load(
                     resources,
+                    &items,
                     &sunrise_world::loot::PackOverlay::NONE,
                     &server_load(),
                 )
@@ -498,14 +505,18 @@ fn neoforge_shapes_items_reach_two_guests() {
         ),
     ];
     let defaults = sunrise_world::item_defaults::read(&resources).expect("item defaults");
+    let overlay = sunrise_world::loot::PackOverlay::new(&packs);
+    let items =
+        sunrise_client::items::Items::catalog(&resources, &overlay, &defaults).expect("items");
     let sync = Arc::new(
         SyncData::load(
             &resources,
-            &sunrise_world::loot::PackOverlay::new(&packs),
+            &overlay,
             &defaults,
             &sunrise_client::crafting::ResolvedSources::load(
                 &resources,
-                &sunrise_world::loot::PackOverlay::new(&packs),
+                &items,
+                &overlay,
                 &server_load(),
             )
             .expect("recipe sources"),
@@ -769,6 +780,12 @@ fn a_signed_in_hosts_lan_authenticates_guests_but_not_its_own_player() {
         return;
     };
     let defaults = sunrise_world::item_defaults::read(&resources).expect("item defaults");
+    let items = sunrise_client::items::Items::catalog(
+        &resources,
+        &sunrise_world::loot::PackOverlay::NONE,
+        &defaults,
+    )
+    .expect("items");
     let sync = Arc::new(
         SyncData::load(
             &resources,
@@ -776,6 +793,7 @@ fn a_signed_in_hosts_lan_authenticates_guests_but_not_its_own_player() {
             &defaults,
             &sunrise_client::crafting::ResolvedSources::load(
                 &resources,
+                &items,
                 &sunrise_world::loot::PackOverlay::NONE,
                 &server_load(),
             )

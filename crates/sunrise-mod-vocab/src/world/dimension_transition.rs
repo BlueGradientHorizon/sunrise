@@ -12,21 +12,17 @@ type TransitionFactory = dyn Fn(&dyn ClientHost, DimensionTransitionReason) -> B
 /// Only travel that opens a new loading screen can select it; login and death never select one.
 // exhaustive: private storage keeps the travel key and its per-load factory together.
 pub struct DimensionTransitionScreen {
-    screen: String,
     transition: DimensionTransition,
     factory: Box<TransitionFactory>,
 }
 
 impl DimensionTransitionScreen {
-    /// Register a factory for `transition` under a namespaced, non-vanilla screen ID.
-    /// The ID is only used for validation and diagnostics. On a matching new load, the
-    /// client calls the factory once as the registering mod and owns the returned presentation
-    /// until the loading screen closes, even if the tracker restarts for another level.
-    /// Capture per-load state in the returned presentation, not in the registration itself.
-    /// A disabled or refused factory leaves the vanilla screen. A failed draw or panicking
-    /// presentation destructor does not disable the factory for a later matching load.
+    /// Register a factory for `transition` (NeoForge's `RegisterDimensionTransitionScreenEvent`).
+    /// On a matching new load, the client calls the factory once as the registering mod and owns
+    /// the returned presentation until the loading screen closes, even if the tracker restarts
+    /// for another level. Capture per-load state in the returned presentation, not in the
+    /// registration itself.
     pub fn new(
-        screen: String,
         transition: DimensionTransition,
         factory: impl Fn(
             &dyn ClientHost,
@@ -37,15 +33,9 @@ impl DimensionTransitionScreen {
         + 'static,
     ) -> Self {
         Self {
-            screen,
             transition,
             factory: Box::new(factory),
         }
-    }
-
-    /// The namespaced ID used for validation and diagnostics.
-    pub fn screen(&self) -> &str {
-        &self.screen
     }
 
     /// Which travel selects this factory.
@@ -65,17 +55,11 @@ impl DimensionTransitionScreen {
 
 // no wire: each presentation is a process-local callback or object retained by one load.
 /// The complete presentation of one loading screen, either an object or a draw closure.
-/// It controls what is painted, not when the client finishes loading. Its destructor runs
-/// as the registering mod when the screen closes, including on disconnect. A destructor
-/// panic is reported against that mod and disables the registration's draw callback,
-/// without interrupting the close.
+/// It controls what is painted, not when the client finishes loading.
 pub trait DimensionTransitionPresentation: Send + Sync + 'static {
     /// Draw under the registering mod's identity using this frame's reason and optional
     /// smoothed integrated-server progress. The tracker, not the presentation, decides when
     /// the screen closes. The reason can change while the same presentation remains active.
-    /// A disabled, refused or panicking draw leaves the vanilla loading screen. Failed draws
-    /// leave no paint or pending blur, local sound, particle clear or camera changes from that
-    /// invocation. A draw panic disables the registration's draw callback for the session.
     fn draw(
         &self,
         host: &dyn ClientHost,
@@ -164,7 +148,6 @@ mod dimension_transition_tests {
             event: &mut RegisterDimensionTransitionScreenEvent<'_>,
         ) {
             event.screens.push(DimensionTransitionScreen::new(
-                "test:arrival".into(),
                 DimensionTransition::Conditional {
                     to: "test:b".into(),
                     from: "test:a".into(),
@@ -200,7 +183,6 @@ mod dimension_transition_tests {
                     panic!("expected one registration");
                 };
                 assert_eq!(screen.mod_id, "test_registrant");
-                assert_eq!(screen.answer.screen(), "test:arrival");
                 assert_eq!(
                     screen.answer.transition(),
                     &DimensionTransition::Conditional {

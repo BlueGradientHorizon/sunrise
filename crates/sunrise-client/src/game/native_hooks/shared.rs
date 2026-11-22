@@ -290,6 +290,7 @@ impl Game<'_> {
                 if let (Some(title), Some(id)) = (self.title.as_mut(), title_target_id(target)) {
                     title.open_by_id(id);
                 }
+                self.release_mappings_on_screen_open();
                 self.build_screen();
             }
         }
@@ -316,10 +317,13 @@ impl Game<'_> {
         if let Some(owner) = owner {
             self.native_mod_screen = Some(owner.to_owned());
         }
+        if screen != Screen::Playing {
+            self.release_mappings_on_screen_open();
+        }
         if screen == Screen::Mod {
-            self.keys.clear();
-            self.left = false;
-            self.right = false;
+            self.clear_device_keys();
+            self.set_mapping_held("key.attack", false);
+            self.set_mapping_held("key.use", false);
             self.mining = None;
             self.capture(false);
         }
@@ -403,6 +407,7 @@ impl Game<'_> {
     ) -> bool {
         if !self.screen_hooks_heard() {
             open(self);
+            self.release_mappings_on_screen_open();
             self.screen_state.build.reopened();
             self.build_screen();
             return true;
@@ -437,6 +442,7 @@ impl Game<'_> {
             ScreenDecision::Open => {}
         }
         open(self);
+        self.release_mappings_on_screen_open();
         self.screen_state.build.reopened();
         self.build_screen();
         // Told here, so the frame's `observe_screen` sees no change to announce.
@@ -505,6 +511,7 @@ impl Game<'_> {
                 if let Some(title) = self.title.as_mut() {
                     title.activate_mode(mode);
                 }
+                self.release_mappings_on_screen_open();
                 self.build_screen();
             }
         }
@@ -735,27 +742,26 @@ pub(super) struct SlotMoves {
 impl SlotMoves {
     /// Slot `slot`'s position this frame: where the last build committed it
     /// (None once hidden), else `declared`.
-    fn position(&self, slot: usize, declared: [f32; 2]) -> Option<[f32; 2]> {
+    fn position(&self, slot: usize, declared: Option<[f32; 2]>) -> Option<[f32; 2]> {
         self.committed
             .borrow()
             .get(&slot)
             .copied()
-            .unwrap_or(Some(declared))
+            .unwrap_or(declared)
     }
     /// Where slot `slot` of a screen that declared `slots` will be from the
     /// next build: the last move, pending or committed, else its declaration.
     fn latest(&self, slots: &[Option<mod_api::ScreenSlot>], slot: usize) -> Option<[f32; 2]> {
-        let declared = slots.get(slot)?.as_ref()?.position;
+        let declared = slots.get(slot)?.as_ref().map(|slot| slot.position);
         let pending = self.pending.borrow().get(&slot).copied();
         match pending {
             Some(pending) => pending,
             None => self.position(slot, declared),
         }
     }
-    /// Moves slot `slot` of a screen that declared `slots` to `pos`, or hides
-    /// it with None, from the next build. A permanently excluded slot is
-    /// never shown. A refusal or a repeat changes nothing, not even the
-    /// move count.
+    /// Moves or activates slot `slot` of a screen that declared `slots` to `pos`,
+    /// or hides it with None, from the next build (`Slot.isActive()`). A refusal
+    /// or a repeat changes nothing, not even the move count.
     fn set(
         &self,
         slots: &[Option<mod_api::ScreenSlot>],
@@ -763,11 +769,8 @@ impl SlotMoves {
         pos: Option<[f32; 2]>,
     ) -> Result<(), mod_api::ScreenSlotRefusal> {
         use mod_api::ScreenSlotRefusal;
-        match slots.get(slot) {
-            None => return Err(ScreenSlotRefusal::NoSuchSlot),
-            Some(None) if pos.is_some() => return Err(ScreenSlotRefusal::HiddenAtOpen),
-            Some(None) => return Ok(()),
-            Some(Some(_)) => {}
+        if slot >= slots.len() {
+            return Err(ScreenSlotRefusal::NoSuchSlot);
         }
         if pos.is_some_and(|[x, y]| !x.is_finite() || !y.is_finite()) {
             return Err(ScreenSlotRefusal::BadPosition);
@@ -849,17 +852,24 @@ impl OpenNativeScreen {
         if window != self.menu.window {
             return false;
         }
-        if self
-            .menu
-            .mod_type
-            .is_none_or(|kind| index < kind.data_slots)
-        {
+        if self.menu.mod_type.map_or(
+            index < usize::from(sunrise_mod_package::content::MAX_SIGNED_DATA_SLOTS),
+            |kind| index < kind.data_slots,
+        ) {
             if self.menu.data.len() <= index {
                 self.menu.data.resize(index + 1, 0);
             }
             self.menu.data[index] = value;
         }
         true
+    }
+
+    pub(super) fn container_slot_base(&self) -> usize {
+        if self.menu.mod_type.is_some() {
+            super::inventory_slots::MOD_MENU_SLOT_BASE
+        } else {
+            300
+        }
     }
 
     fn player_slots(&self) -> usize {
@@ -869,13 +879,15 @@ impl OpenNativeScreen {
     }
 
     fn visible_container_slots(&self) -> impl Iterator<Item = usize> + '_ {
+        let base = self.container_slot_base();
         self.layout()
             .slots
             .iter()
             .enumerate()
-            .filter_map(|(i, slot)| {
-                self.slot_moves.position(i, slot.as_ref()?.position)?;
-                Some(300 + i)
+            .filter_map(move |(i, slot)| {
+                self.slot_moves
+                    .position(i, slot.as_ref().map(|slot| slot.position))?;
+                Some(base + i)
             })
     }
 
@@ -1099,8 +1111,8 @@ fn screen_text_hooked(text: &str, mut canceled: impl FnMut(char) -> bool) -> Opt
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
-    /// The single admission point for all toast families. Producers decide the
-    /// candidate first; only an accepted candidate is applied to its queue.
+    /// Admission for ordinary toasts. Only an accepted candidate enters its
+    /// queue; mandatory callback-panic diagnostics bypass mod admission.
     pub(super) fn add_toast(
         &self,
         kind: mod_api::ToastKind,
@@ -1171,14 +1183,7 @@ impl Game<'_> {
             vanilla
         }
     }
-    /// The player-health HUD rows, once a frame the HUD draws them
-    /// (`HealthHud::layout`, not under F1): `inputs` carries the health,
-    /// food, air and vehicle state the layout reads, `wi`/`hi` the screen's
-    /// GUI size. A mod that sets `draws` replaces every row — armour,
-    /// hearts, food and air are the answer's to give; `bubble_pop_sound`
-    /// too.
-    /// Nothing set draws Sunrise's own.
-    /// The hearts the local player's health bar draws (`Gui.HeartType.forPlayer`, then
+    /// The hearts the local player's health bar draws (`Hud.HeartType.forPlayer`, then
     /// NeoForge's `PlayerHeartTypeEvent`): poisoned, else withered, else frozen when fully
     /// frozen, else normal, as a mod's `player_heart_type` leaves it. None without a player.
     pub(super) fn player_heart_kind(&mut self) -> Option<mod_api::client::hud_layout::HeartKind> {
@@ -2651,7 +2656,9 @@ impl Game<'_> {
                 let mut container = None;
                 self.native_block_entity_container(&state.name, &mut container);
                 container.map(|mut c| {
-                    c.slots = c.slots.min(256);
+                    c.slots = c
+                        .slots
+                        .min(usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS));
                     let n = c.slots;
                     for list in c.faces.iter_mut().chain([&mut c.inputs, &mut c.outputs]) {
                         list.retain(|&s| s < n);
@@ -2775,11 +2782,16 @@ impl Game<'_> {
             .is_some_and(|s| s.set_data(window, index, value))
     }
     /// Where the open mod screen puts container slot `slot` this frame: where
-    /// a mod last moved it, else where the screen declared it; None once a mod
-    /// hid it.
+    /// a mod last moved it, else where the screen declared it; None when
+    /// inactive/hidden.
     pub(super) fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
         let s = self.shown_native_screen()?;
-        let declared = s.layout().slots.get(slot)?.as_ref()?.position;
+        let declared = s
+            .layout()
+            .slots
+            .get(slot)?
+            .as_ref()
+            .map(|slot| slot.position);
         let [x, y] = s.slot_moves.position(slot, declared)?;
         Some((x, y))
     }
@@ -2794,22 +2806,14 @@ impl Game<'_> {
     }
     /// Where the open screen of mod menu type `menu` puts container slot
     /// `slot` from the next frame: the mod's last move, else the screen's
-    /// declaration; None for a hidden slot, another menu type's screen or none.
+    /// declaration; None for an inactive/hidden slot, another menu type's screen or none.
     pub(in crate::game) fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]> {
-        let s = self.owned_native_screen(menu)?;
+        let s = self.shown_native_screen().filter(|s| s.menu.name == menu)?;
         s.slot_moves.latest(&s.layout().slots, slot)
     }
-    /// The open screen of menu type `menu`, when the mod calling (if one is)
-    /// owns it: another mod sharing the vanilla menu type cannot move its slots.
-    fn owned_native_screen(&self, menu: &str) -> Option<&OpenNativeScreen> {
-        let s = self.shown_native_screen().filter(|s| s.menu.name == menu)?;
-        mod_api::content::crash::current_native_mod()
-            .is_none_or(|calling| s.screen.owner() == calling)
-            .then_some(s)
-    }
-    /// Moves container slot `slot` of the open screen of menu type `menu` to `pos`
-    /// (relative to the screen's origin), or hides it with None, from the
-    /// next frame (`SlotMoves::set`).
+    /// Moves or activates container slot `slot` of the open screen of menu type
+    /// `menu` to `pos` (relative to the screen's origin), or hides it with None,
+    /// from the next frame (`SlotMoves::set`).
     pub(in crate::game) fn set_screen_slot(
         &self,
         menu: &str,
@@ -2817,11 +2821,18 @@ impl Game<'_> {
         pos: Option<[f32; 2]>,
     ) -> Result<(), mod_api::ScreenSlotRefusal> {
         let s = self
-            .owned_native_screen(menu)
+            .shown_native_screen()
+            .filter(|s| s.menu.name == menu)
             .ok_or(mod_api::ScreenSlotRefusal::NoScreen)?;
         s.slot_moves.set(&s.layout().slots, slot, pos)
     }
-    /// The container slots the open mod screen shows this frame (300.. ids).
+    /// The internal container slot base of the open mod screen (`MOD_MENU_SLOT_BASE`
+    /// for a `ModMenuType`, `300` for a stock menu).
+    pub(in crate::game) fn native_screen_container_slot_base(&self) -> usize {
+        self.shown_native_screen()
+            .map_or(300, OpenNativeScreen::container_slot_base)
+    }
+    /// The container slots the open mod screen shows this frame.
     pub(super) fn native_screen_slots(&self) -> Option<Vec<usize>> {
         Some(
             self.shown_native_screen()?

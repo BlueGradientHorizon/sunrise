@@ -600,7 +600,7 @@ impl Game<'_> {
             owner_uuid: None,
             dampening_state: self.state_dampens(state),
             spectator: self.spectator(),
-            stepping_carefully: self.keys.held(Action::Sneak),
+            stepping_carefully: self.held_mapping(Action::Sneak),
             dampens: false,
             targetable: !dead && !creative && !self.spectator(),
             living: true,
@@ -2052,7 +2052,8 @@ impl Game<'_> {
             .dropped
             .iter()
             .filter(|i| {
-                i.on_ground && ticking(i.position.x.floor() as i32, i.position.z.floor() as i32)
+                i.ground.on_ground
+                    && ticking(i.position.x.floor() as i32, i.position.z.floor() as i32)
             })
             .map(|i| [i.position.x, i.position.y, i.position.z])
             .collect();
@@ -2121,7 +2122,7 @@ impl Game<'_> {
             )
         });
         if let Some((at, on_ground, health, flying)) = player {
-            let crouch = self.keys.held(Action::Sneak);
+            let crouch = self.held_mapping(Action::Sneak);
             if on_ground && !self.spectator() {
                 self.step_on_redstone_ore(at, crouch, true);
             }

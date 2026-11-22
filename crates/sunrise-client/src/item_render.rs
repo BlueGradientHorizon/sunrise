@@ -297,12 +297,6 @@ pub struct ItemRenderState {
     held_tint: Option<u32>,
 }
 
-/// The layers and remaining nested-stack work budget for one item resolution.
-struct ItemLayerOutput {
-    layers: Vec<LayerRender>,
-    remaining: usize,
-}
-
 #[derive(Default)]
 struct RenderLayerFlags {
     oversized_in_gui: bool,
@@ -1081,15 +1075,13 @@ impl ItemRenderer {
             level,
             seed,
         };
-        let mut output = ItemLayerOutput {
-            layers: Vec::new(),
-            remaining: mod_api::MAX_NESTED_STACK_PARTS,
-        };
+        let mut layers = Vec::new();
         let flags = self
             .append_render_layers(
-                &mut output,
+                &mut layers,
                 &StackAncestor {
                     stack,
+                    display,
                     parent: None,
                 },
                 &ctx,
@@ -1100,7 +1092,7 @@ impl ItemRenderer {
             .unwrap_or_default();
         ItemRenderState {
             display,
-            layers: output.layers,
+            layers,
             oversized_in_gui: flags.oversized_in_gui,
             animated: flags.animated,
             cit_glint: None,
@@ -1114,7 +1106,7 @@ impl ItemRenderer {
     /// unwind to the outer special layer's checkpoint; only that layer emits a missing model.
     fn append_render_layers(
         &self,
-        output: &mut ItemLayerOutput,
+        layers: &mut Vec<LayerRender>,
         ancestor: &StackAncestor<'_>,
         ctx: &Context<'_>,
         env: &dyn ItemDrawEnv,
@@ -1167,6 +1159,7 @@ impl ItemRenderer {
                     // Vanilla's bundle model can produce a layer for its selected stack.
                     let selected = StackAncestor {
                         stack: layer_stack,
+                        display,
                         parent: Some(ancestor),
                     };
                     let source = if std::ptr::eq(stack, layer_stack) {
@@ -1176,7 +1169,7 @@ impl ItemRenderer {
                     };
                     if self
                         .append_registered_special(
-                            output,
+                            layers,
                             &model,
                             (layer.foil, layer.transform, layer.display_transform),
                             ctx,
@@ -1194,7 +1187,7 @@ impl ItemRenderer {
                 }
             };
             flags.animated |= layer.foil != FoilType::None;
-            output.layers.push(LayerRender {
+            layers.push(LayerRender {
                 geometry,
                 tints: LayerTints::Owned(layer.tints),
                 foil: layer.foil,

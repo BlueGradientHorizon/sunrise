@@ -33,19 +33,22 @@ for later callbacks. `mapping.binding(host)` returns the current key name and mo
 host operation such as `set_binding`, or before returning from the callback. To display the binding,
 call `mapping.translated_key_message(host)` for the label Controls shows now, including modifiers.
 
-Use `mapping.is_down(host)` for held state and `mapping.consume_click(host)` to take one pending click
-(`KeyMapping.consumeClick`). `Ok(false)` means the mapping is not held or no click remains, respectively;
-an error is not an input state. Each press, auto-repeat and mouse press counts while no screen is open and
-the mapping's conflict context and modifiers are active. Opening a screen or overlay drops the count.
-Control-socket input counts like window input, and a key fires `input_key` once per press, repeat and release.
+Use `mapping.is_down(host)` for held state (`KeyMapping.isDown`, checking raw held state plus the
+mapping's conflict context and modifiers) and `mapping.consume_click(host)` to take one pending click
+(`KeyMapping.consumeClick`, decrementing the raw click count). `Ok(false)` means the mapping is not held
+or no click remains, respectively; an error is not an input state. Each press, auto-repeat and mouse
+press counts while no screen is open and the mapping's conflict context and modifiers are active. Opening
+a screen or overlay drops held state and pending clicks via `KeyMapping.releaseAll`; reading `is_down` or
+`consume_click` does not add an extra screen-open suppression or clear unrelated clicks. Control-socket
+input counts like window input, and a key fires `input_key` once per press, repeat and release.
 
-A mod's own screen can change its bindings as the player does in Controls. Call
+A mod can change any registered mapping's binding as the player does in Controls. Call
 `mapping.set_binding(host, key, modifiers)` with a key or mouse button name (`key.keyboard.x`,
 `key.mouse.left`, `key.keyboard.unknown` for none) and shift (1), control (2) or alt (4).
 `mapping.reset_binding(host)` restores the declared default key and modifiers. Changes take effect
-from the next input and are saved to `sunrise-mods.txt`. You can resolve and read another mod's mapping,
-but attempts to set or reset it return `ModKeyRefusal::NotOwner`, even with a valid handle. An invalid key
-or modifier word returns `UnknownKey` or `UnknownModifiers`. A refused write changes nothing.
+from the next input and are saved to `sunrise-mods.txt`. Any mod with a resolved handle can read,
+rebind or reset another mod's mapping. An invalid key or modifier word returns `UnknownKey` or
+`UnknownModifiers`. A refused write changes nothing.
 
 `ModKeyRefusal::NotRegistered` means resolution found no such owner and id. `Stale` means a retained
 handle no longer belongs to the current client or ordered registration roster. Discard it and resolve the

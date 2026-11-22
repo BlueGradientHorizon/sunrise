@@ -34,7 +34,7 @@ client through the item's component, not through that packet."#]
         registration_append = "register",
         context = "registration",
         neoforge = "RegisterEvent",
-        version = 2
+        version = 3
     )]
     fn map_decoration_types(types: &mut Vec<MapDecorationType>);
 }

@@ -123,6 +123,36 @@ fn a_control_socket_key_counts_as_a_window_key() {
         game.link_prompt = None;
         assert!(!zoom.consume_click(game).unwrap());
 
+        // Reading is_down / consume_click while a screen is open observes live KeyMapping state
+        // without suppressing Universal mappings or side-effecting release_all().
+        // Opening a screen releases mappings at the transition, while a subsequent unchanged
+        // build_screen/observe_screen leaves live mappings intact.
+        game.set_screen(Screen::Inventory);
+        game.mod_keys.input(
+            "key.keyboard.z",
+            sunrise_client::keymapping::KeyAction::Press,
+            false,
+            false,
+            0,
+        );
+        game.mod_keys.input(
+            "key.mouse.left",
+            sunrise_client::keymapping::KeyAction::Press,
+            true,
+            false,
+            0,
+        );
+        game.build_screen();
+        game.observe_screen();
+        assert!(zoom.is_down(game).unwrap());
+        assert!(zoom.consume_click(game).unwrap());
+        assert!(!zoom.consume_click(game).unwrap());
+        assert!(zoom.is_down(game).unwrap());
+        assert!(grab.consume_click(game).unwrap());
+        assert!(!grab.consume_click(game).unwrap());
+        game.mod_keys.release_all();
+        game.set_screen(Screen::Playing);
+
         // Shift + Z counts only with shift held; Z alone counts with it too.
         line(game, "key z tap");
         assert!(!boost.consume_click(game).unwrap());
@@ -252,7 +282,16 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
                 zoom.set_binding(game, "key.keyboard.x", ClientModifiers::new(8)),
                 Err(ModKeyRefusal::UnknownModifiers)
             );
-            // A handle to another mod's mapping can read but does not grant write access.
+            assert_eq!(
+                zoom.binding(game),
+                Ok(("key.keyboard.z", ClientModifiers::default()))
+            );
+            assert_eq!(
+                boost.binding(game),
+                Ok(("key.keyboard.left.shift", ClientModifiers::default()))
+            );
+            assert_eq!(file(), file_before);
+            // Another mod can read, rebind and reset a registered mapping without an ownership gate.
             {
                 let _other = mod_platform::content::crash::enter_native_mod(
                     mod_api::content::crash::ModCall {
@@ -267,19 +306,38 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
                 );
                 assert_eq!(
                     zoom.set_binding(game, "key.keyboard.x", ClientModifiers::default()),
-                    Err(ModKeyRefusal::NotOwner)
+                    Ok(())
                 );
-                assert_eq!(boost.reset_binding(game), Err(ModKeyRefusal::NotOwner));
+                assert_eq!(
+                    zoom.binding(game),
+                    Ok(("key.keyboard.x", ClientModifiers::default()))
+                );
+                game.mod_keys.input(
+                    "key.keyboard.x",
+                    sunrise_client::keymapping::KeyAction::Press,
+                    false,
+                    false,
+                    0,
+                );
+                assert_eq!(zoom.is_down(game), Ok(true));
+                game.mod_keys.input(
+                    "key.keyboard.x",
+                    sunrise_client::keymapping::KeyAction::Release,
+                    false,
+                    false,
+                    0,
+                );
+                assert_eq!(zoom.is_down(game), Ok(false));
+                assert_eq!(zoom.consume_click(game), Ok(true));
+                assert_eq!(zoom.consume_click(game), Ok(false));
+                assert_eq!(boost.reset_binding(game), Ok(()));
+                assert_eq!(
+                    boost.binding(game),
+                    Ok(("key.keyboard.z", ClientModifiers::new(1)))
+                );
             }
-            assert_eq!(
-                zoom.binding(game),
-                Ok(("key.keyboard.z", ClientModifiers::default()))
-            );
-            assert_eq!(
-                boost.binding(game),
-                Ok(("key.keyboard.left.shift", ClientModifiers::default()))
-            );
-            assert_eq!(file(), file_before);
+            assert_eq!(saved("zoom"), ("key.keyboard.x".to_owned(), 0));
+            assert_eq!(saved("boost"), ("default".to_owned(), 99));
             // Inside `keys`'s own hook, the same call goes through.
             {
                 let _own = mod_platform::content::crash::enter_native_mod(

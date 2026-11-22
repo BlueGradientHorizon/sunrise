@@ -13,13 +13,15 @@ use super::api_values::TryIntoEngine;
 use super::native_menus::native_menu_inventory_slot;
 use mod_api::__private::game::*;
 use mod_api::{
-    Hand, HostTransaction, ItemPlace, MenuRef, MenuSlotBackRefusal, MenuSlotPlace, ServerHost,
+    Hand, HostTransaction, ItemPlace, ItemResource, MenuContainer, MenuRef, MenuSlotBackRefusal,
+    MenuSlotPlace, ServerHost,
 };
 use sunrise_client::items::ItemStack;
 use sunrise_client::lan::{
     guest::Guest,
     menu::{NativeMenuEvent, Slots},
 };
+use sunrise_client::menu::{SlotContext, SlotRules, apply_menu_slot_rules, item_max_stack};
 
 /// The places backing one guest's open mod menu.
 #[derive(Clone)]
@@ -398,9 +400,9 @@ impl Game<'_> {
         use super::lan_menus::ClickReply;
         let conn = self.native_conn(uuid)?;
         let (backed_window, count, locked) = self.menu_places_of(conn)?;
-        let (size, total, hidden) = self.lan.as_ref().and_then(|lan| {
+        let (size, total) = self.lan.as_ref().and_then(|lan| {
             let open = lan.hub.guest(conn)?.menu.as_ref()?;
-            Some((open.size, open.slot_count(), open.hidden.clone()))
+            Some((open.size, open.slot_count()))
         })?;
         if backed_window != window {
             return None;
@@ -417,12 +419,48 @@ impl Game<'_> {
         }
         let inventory = native_menu_inventory_slot(size, slot);
         // The held backpack's own slot takes no click, so it can't go into itself.
-        let applied = if !hidden.contains(&at) && (inventory.is_none() || inventory != locked) {
-            let host: &mut dyn ServerHost = self;
+        let applied = if inventory.is_none() || inventory != locked {
+            let accepts = |game: &Game<'_>, slot, resource: &ItemResource, amount| {
+                if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
+                    return (false, false, 0);
+                }
+                let Some(guest) = game.lan.as_ref().and_then(|lan| lan.hub.guest(conn)) else {
+                    return (false, false, 0);
+                };
+                let Some(open) = guest.menu.as_ref() else {
+                    return (false, false, 0);
+                };
+                if !game.listens(&open.registry_id) {
+                    return (true, true, u32::MAX);
+                }
+                let Some(stack) = resource
+                    .to_stack(amount)
+                    .and_then(|stack| stack.try_into_engine(game.items()).ok())
+                else {
+                    return (true, true, u32::MAX);
+                };
+                apply_menu_slot_rules(
+                    Some(game),
+                    &open.registry_id,
+                    native_menu_inventory_slot(size, slot as i32).unwrap_or(slot),
+                    &stack,
+                    SlotContext::blockless(
+                        guest,
+                        open.pos.map(|(x, y, z)| [x, y, z]),
+                        if slot < size {
+                            MenuContainer::Main
+                        } else {
+                            MenuContainer::Player
+                        },
+                    ),
+                    (true, true, u32::MAX),
+                    item_max_stack(game.items(), &stack),
+                )
+            };
             if pickup {
-                click_pickup(host, menu, at, button == 1)
+                click_pickup(self, menu, at, button == 1, accepts)
             } else {
-                click_quick_move(host, menu, at, size, total - size, count, &hidden)
+                click_quick_move(self, menu, at, size, total - size, count, accepts)
             }
         } else {
             true
@@ -454,15 +492,27 @@ impl Game<'_> {
 
 /// `PICKUP` on menu slot `at`: an empty cursor takes all (or half, `right`) of the slot; a
 /// full one puts all (or one) in, or swaps with a slot of another item. All or nothing.
-fn click_pickup(host: &mut dyn ServerHost, menu: MenuRef, at: usize, right: bool) -> bool {
+fn click_pickup(
+    game: &mut Game<'_>,
+    menu: MenuRef,
+    slot: usize,
+    right: bool,
+    accepts: impl Fn(&Game<'_>, usize, &ItemResource, u32) -> (bool, bool, u32),
+) -> bool {
     let cursor = menu.cursor();
-    let at = ItemPlace::MenuSlot { menu, slot: at };
-    host.transaction(|host, tx| {
+    let at = ItemPlace::MenuSlot { menu, slot };
+    game.transaction(|host, tx| {
+        let here = at.resource(host);
+        let have = at.amount(host);
+        if let Some(here) = &here
+            && !accepts(host, slot, here, have).1
+        {
+            return Ok(());
+        }
         let Some(held) = cursor.resource(host) else {
-            let Some(here) = at.resource(host) else {
+            let Some(here) = here else {
                 return Ok(());
             };
-            let have = at.amount(host);
             let want = if right { have.div_ceil(2) } else { have };
             let out = at.extract(host, tx, &here, want);
             return match cursor.insert(host, tx, &here, out) == out {
@@ -471,17 +521,25 @@ fn click_pickup(host: &mut dyn ServerHost, menu: MenuRef, at: usize, right: bool
             };
         };
         let carried = cursor.amount(host);
-        let put = at.insert(host, tx, &held, if right { 1 } else { carried });
+        let (place, _, max) = accepts(host, slot, &held, carried);
+        if !place {
+            return Ok(());
+        }
+        let room = if here.as_ref() == Some(&held) {
+            max.saturating_sub(have)
+        } else {
+            max
+        };
+        let put = at.insert(host, tx, &held, (if right { 1 } else { carried }).min(room));
         if put > 0 {
             return match cursor.extract(host, tx, &held, put) == put {
                 true => Ok(()),
                 false => Err(()),
             };
         }
-        let Some(here) = at.resource(host).filter(|here| *here != held) else {
+        let Some(here) = here.filter(|here| *here != held && carried <= max) else {
             return Ok(());
         };
-        let have = at.amount(host);
         let swapped = at.extract(host, tx, &here, have) == have
             && cursor.extract(host, tx, &held, carried) == carried
             && at.insert(host, tx, &held, carried) == carried
@@ -496,28 +554,32 @@ fn click_pickup(host: &mut dyn ServerHost, menu: MenuRef, at: usize, right: bool
 
 /// `QUICK_MOVE` on menu slot `at` of a menu of `size` container slots, `count` of them backed
 /// (`ChestMenu.quickMoveStack`): a container slot's stack goes to the inventory, hotbar end
-/// first; an inventory slot's into the backed slots in order, past the `hidden` ones its screen
-/// does not show. Onto matching stacks first, then into empty slots (`moveItemStackTo`), all or
+/// first; an inventory slot's into the backed slots in order, as allowed by the menu's slot rules.
+/// Onto matching stacks first, then into empty slots (`moveItemStackTo`), all or
 /// nothing.
 fn click_quick_move(
-    host: &mut dyn ServerHost,
+    game: &mut Game<'_>,
     menu: MenuRef,
     at: usize,
     size: usize,
     player_slots: usize,
     count: usize,
-    hidden: &[usize],
+    accepts: impl Fn(&Game<'_>, usize, &ItemResource, u32) -> (bool, bool, u32),
 ) -> bool {
     let from = ItemPlace::MenuSlot { menu, slot: at };
-    let Some(resource) = from.resource(host) else {
+    let Some(resource) = from.resource(game) else {
         return true;
     };
+    let amount = from.amount(game);
+    if !accepts(game, at, &resource, amount).1 {
+        return true;
+    }
     let (first, len, reverse) = match at < size {
         true => (size, player_slots, true),
         false => (0, count, false),
     };
-    host.transaction(|host, tx| {
-        let mut left = from.amount(host);
+    game.transaction(|host, tx| {
+        let mut left = amount;
         for merge in [true, false] {
             for i in 0..len {
                 if left == 0 {
@@ -528,16 +590,18 @@ fn click_quick_move(
                 } else {
                     first + i
                 };
-                if hidden.contains(&slot) {
-                    continue;
-                }
                 let to = ItemPlace::MenuSlot { menu, slot };
                 match to.resource(host) {
                     Some(here) if merge && here == resource => {}
                     None if !merge => {}
                     _ => continue,
                 }
-                let moved = to.insert(host, tx, &resource, left);
+                let (place, _, max) = accepts(host, slot, &resource, left);
+                if !place {
+                    continue;
+                }
+                let room = max.saturating_sub(to.amount(host));
+                let moved = to.insert(host, tx, &resource, left.min(room));
                 if moved > 0 {
                     if from.extract(host, tx, &resource, moved) != moved {
                         return Err(());
@@ -780,8 +844,6 @@ mod tests {
                 back(game, places),
                 Err(MenuSlotBackRefusal::PlaceUnresolved { index: 1 })
             );
-            // Hiding one slot leaves the menu handle live for its visible slots.
-            edit_guest(game, |g| g.menu.as_mut().unwrap().hidden.push(1));
             assert_eq!(back(game, held_places(Hand::Main, 0..1)), Ok(()));
             let host: &mut dyn ServerHost = game;
             let menu = host.menu(123, window).unwrap();
@@ -789,7 +851,6 @@ mod tests {
                 menu.slot_backing(host, 0),
                 Some(MenuSlotBacking::Place(_))
             ));
-            assert_eq!(menu.slot_backing(host, 1), None);
             assert_eq!(
                 game.as_guest(1, |game| back(game, held_places(Hand::Main, 0..1))),
                 Some(Ok(()))
@@ -804,9 +865,6 @@ mod tests {
             );
             assert_eq!(game.menu_places_of(1), None);
             edit_guest(game, |g| g.menu.as_mut().unwrap().slots = Slots::Native);
-            // A native window's hidden slots only keep the game's shift-clicks out: its handle
-            // stays live, in its own turn too.
-            edit_guest(game, |g| g.menu.as_mut().unwrap().hidden.push(0));
             assert_eq!(back(game, held_places(Hand::Main, 0..1)), Ok(()));
             assert_eq!(
                 game.as_guest(1, |game| back(game, held_places(Hand::Main, 0..1))),
@@ -1045,7 +1103,7 @@ mod tests {
     }
 
     /// A held box's menu, opened from code at the mod block whose container
-    /// opens its type, with backing slot 0 excluded for that opener.
+    /// opens its type, with backing slot 0 display-only under the menu rules.
     struct Satchel;
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Satchel {
@@ -1061,8 +1119,7 @@ mod tests {
                     ..Default::default()
                 },
             );
-            r.menu_slot_exclusions(SATCHEL_MENU, Some("satchel:stand"), &[0])
-                .unwrap();
+            r.menu_part(SATCHEL_MENU, SatchelSlotRules);
         }
         fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
             event
@@ -1070,19 +1127,34 @@ mod tests {
                 .unwrap();
         }
     }
+    struct SatchelSlotRules;
+    #[mod_api::__subscriptions]
+    impl mod_api::MenuPart for SatchelSlotRules {
+        fn menu_slot_rules(
+            &self,
+            _: &dyn mod_api::Host,
+            event: &mut mod_api::MenuSlotRulesEvent<'_>,
+        ) {
+            if event.container == MenuContainer::Main && event.slot == 0 {
+                event.may_place = false;
+                event.may_pickup = false;
+            }
+        }
+    }
+
     /// The content mod menu type the satchel opens: a prepared registry slot for a synthetic
     /// definition, as `native_menus`' tests use.
-    const SATCHEL_MENU: &str = "minecraft:generic_9x1";
+    const SATCHEL_MENU: &str = "satchel:menu";
 
     /// #1172: a menu `player_open_mod_menu` opens keeps its handle and backing, and a
-    /// shift-click on the server passes over the slot its opener excludes.
-    /// Neither pickup nor shift-click can move an item out of the hidden slot.
+    /// shift-click on the server passes over the slot its menu declares display-only.
+    /// Neither pickup nor shift-click can move an item out of the display-only slot.
     #[test]
     #[ignore = "daily"]
-    fn a_code_opened_menus_shift_click_skips_the_slots_its_screen_hides() {
+    fn a_code_opened_backed_menu_respects_its_display_only_slot() {
         // Content registries are process-global.
         if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::native_menu_places::tests::a_code_opened_menus_shift_click_skips_the_slots_its_screen_hides",
+            "game::native_menu_places::tests::a_code_opened_backed_menu_respects_its_display_only_slot",
             "SUNRISE_MENU_PLACES_HIDDEN_CHILD",
             &["hidden"],
         ) {
@@ -1098,7 +1170,7 @@ mod tests {
             sunrise_client::containers::with_mod_menu_types(
                 [(
                     SATCHEL_MENU.into(),
-                    "test".into(),
+                    "satchel".into(),
                     9,
                     0,
                     Vec::new(),
@@ -1140,10 +1212,7 @@ mod tests {
         player.inventory[0] = Some(ItemStack::new("minecraft:shulker_box", 1));
         player.inventory[9] = Some(ItemStack::new("minecraft:stone", 64));
         game.lan.as_mut().unwrap().hub.guests.push(player);
-        let key = mod_api::__private::menu_keys()
-            .into_iter()
-            .find(|key| mod_api::__private::menu_key_id(*key).as_deref() == Some(SATCHEL_MENU))
-            .unwrap();
+        let key = super::super::native_guest_turn_tests::register_test_menu(game, SATCHEL_MENU);
         let player = game.player(123).unwrap();
         let window = game
             .player_open_mod_menu(player, {
@@ -1160,23 +1229,32 @@ mod tests {
             game.player_back_mod_menu_slots(player, window, held_places(Hand::Main, 0..9)),
             Ok(())
         );
-        // Inventory slot 9 is menu slot 9: the stone passes over hidden slot 0.
+        // Inventory slot 9 is menu slot 9: the stone passes over display-only slot 0.
         assert_eq!(game.place_menu_click(123, window, 9, 0, 1), Some(true));
         let host: &mut dyn ServerHost = game;
         assert_eq!(held_slot(0).amount(host), 0);
         assert_eq!(held_slot(1).amount(host), 64);
         assert_eq!(ItemPlace::MenuSlot { menu, slot: 1 }.amount(host), 64);
 
-        // A deliberate write through the menu handle still reaches its hidden backing.
+        // The menu slot obeys its rules even when addressed through a handle.
+        // The storage itself can still be stocked directly for display.
         let hidden = ItemPlace::MenuSlot { menu, slot: 0 };
         let stone = ItemPlace::MenuSlot { menu, slot: 1 }
             .resource(host)
             .unwrap();
         assert_eq!(
             host.transaction(|host, tx| Ok::<_, ()>(hidden.insert(host, tx, &stone, 5))),
+            Ok(0)
+        );
+        assert_eq!(
+            host.transaction(|host, tx| Ok::<_, ()>(held_slot(0).insert(host, tx, &stone, 5))),
             Ok(5)
         );
-        assert_eq!(held_slot(0).amount(host), 5);
+        assert_eq!(hidden.amount(host), 5);
+        assert_eq!(
+            host.transaction(|host, tx| Ok::<_, ()>(hidden.extract(host, tx, &stone, 5))),
+            Ok(0)
+        );
         let contents = |game: &mut Game<'_>| {
             (0..45)
                 .map(|slot| {

@@ -5,8 +5,8 @@
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 // exhaustive: the engine samples the independent vector and key fields together by literal.
 pub struct MovementInput {
-    /// `[left, forward]` movement before item-use and crouching multipliers. A vector whose
-    /// squared length is not finite is ignored at the end of dispatch; key edits still apply.
+    /// `[left, forward]` movement before item-use and crouching multipliers, applied directly
+    /// as in vanilla `ClientInput` and NeoForge `MovementInputUpdateEvent`.
     pub move_vector: [f32; 2],
     /// The input flags; auto-jump can add a jump press after listeners run.
     pub key_presses: MovementKeys,

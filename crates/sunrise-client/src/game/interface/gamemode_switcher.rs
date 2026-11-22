@@ -11,9 +11,9 @@ impl Game<'_> {
     pub(super) fn open_gamemode_switcher(&mut self) {
         self.gamemode_switcher = Some(GameModeSwitcher::new(self.mode, self.previous_mode));
         self.set_screen(Screen::GameModeSwitcher);
-        self.keys.clear();
-        self.left = false;
-        self.right = false;
+        self.clear_device_keys();
+        self.set_mapping_held("key.attack", false);
+        self.set_mapping_held("key.use", false);
         self.mining = None;
         self.capture(false);
     }

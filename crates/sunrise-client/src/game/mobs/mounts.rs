@@ -7,7 +7,6 @@ use sunrise_client::actions::Action;
 use sunrise_client::{
     blocks::Fluid,
     first_person::Hand,
-    gui_layers::VanillaGuiLayer,
     hud::HudBatch,
     items::ItemStack,
     mobs::{Mob, MobEvent, Species, Who, equine},
@@ -170,7 +169,7 @@ impl Game<'_> {
             // second rider and a horse or nautilus opens its inventory.
             return matches!(m.species(), Species::Pig | Species::Strider).then_some(false);
         }
-        if self.keys.held(Action::Sneak) {
+        if self.held_mapping(Action::Sneak) {
             return None;
         }
         // attemptToShearEquipment takes the body slot before the saddle: horse
@@ -210,6 +209,7 @@ impl Game<'_> {
     /// `Pig` / `Strider.mobInteract`: saddle an adult, or ride a saddled one.
     fn interact_steerable(&mut self, index: usize, item: &str) -> bool {
         let held = self.inventory[self.selected].clone();
+        let sneaking = self.held_mapping(Action::Sneak);
         let m = &mut self.mobs[index];
         if m.is_baby() || !m.alive() || Some(m.id) == self.riding {
             return false;
@@ -234,7 +234,7 @@ impl Game<'_> {
         }
         // Pig.mobInteract: held food goes to Animal.mobInteract, not a ride.
         let food = m.kind.food.iter().any(|f| f.as_str() == item);
-        if !m.extra.saddled() || food || self.keys.held(Action::Sneak) {
+        if !m.extra.saddled() || food || sneaking {
             return false;
         }
         // `Strider.canAddPassenger`: a strider whose eyes are in lava has no
@@ -329,8 +329,8 @@ impl Game<'_> {
         if species == Species::SkeletonHorse && !m.extra.tame {
             return false;
         }
-        let sneaking =
-            self.keys.held(Action::Sneak) || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
+        let sneaking = self.held_mapping(Action::Sneak)
+            || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
         // Horse / ZombieHorse.mobInteract: food is fed, and anything else in
         // hand makes an untamed one mad instead of seating the player.
         let dandelion = [self.held(), self.offhand.as_ref()]
@@ -622,6 +622,7 @@ impl Game<'_> {
                 self.audio.play(&sound, Some(at), 0.4, 1.0);
             }
         }
+        let sprint = keys.sprint || self.held_mapping(Action::Sprint);
         let m = &mut self.mobs[i];
         let pending = m.rider.map_or(0.0, |r| r.jump);
         m.rider = Some(equine::Rider {
@@ -631,7 +632,7 @@ impl Game<'_> {
             pitch: self.pitch,
             jump: if jump > 0.0 { jump } else { pending },
             steer,
-            sprint: keys.sprint || self.keys.held(Action::Sprint),
+            sprint,
             jumping: keys.jump,
             sneak: keys.shift,
             // A server's player (a LAN guest, single player's window) drives
@@ -1010,28 +1011,6 @@ impl Game<'_> {
     /// `willPrioritizeJumpInfo`: charging a jump or recharging.
     pub(super) fn mount_jumping(&self) -> bool {
         self.mount.jump_scale > 0.0 || self.mount.jump_ticks < 0
-    }
-    /// `Hud.extractVehicleHealth` (a native mod's `minecraft:vehicle_health`
-    /// layer, only while riding a mount). Returns the mount's heart count
-    /// (`getVehicleMaxHearts`).
-    pub(super) fn draw_mount_hud(
-        &mut self,
-        batch: &mut HudBatch,
-        w: i32,
-        h: i32,
-        heights: &mut sunrise_client::hud_layout::StatusBarHeights,
-    ) -> i32 {
-        let Some(i) = self.mount_index() else {
-            return 0;
-        };
-        let m = &self.mobs[i];
-        let hearts = sunrise_client::hud_layout::vehicle_max_hearts(m.attrs.max_health);
-        let draws = sunrise_client::hud_layout::vehicle_health(w, h, hearts, m.health, heights);
-        self.keep_status_rows(&draws, w, h);
-        self.gui_layer(VanillaGuiLayer::VehicleHealth, batch, &mut |g, batch| {
-            sunrise_client::hud_layout::paint(batch, &g.gui.atlas, &draws);
-        });
-        hearts
     }
     /// The jump bar when it is the contextual bar.
     pub(super) fn draw_jump_bar(&self, batch: &mut HudBatch, w: i32, h: i32) {

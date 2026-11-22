@@ -1014,6 +1014,40 @@ mod tests {
                 );
             }
         }
+        fixture(
+            root.path(),
+            "sunrise-mod-vocab/src/lib.rs",
+            "mod parts { mod effects; } mod runtime;",
+        );
+        fixture(
+            root.path(),
+            EFFECTS,
+            "fn dispatch_mob_effect_tick() {
+                part.should_apply_effect_tick_this_tick();
+                crate::runtime::invoke(|| part.apply_effect_tick());
+            }",
+        );
+        for (fence, expected) in [
+            (
+                "std::panic::catch_unwind(std::panic::AssertUnwindSafe(call));",
+                true,
+            ),
+            ("drop(std::panic::AssertUnwindSafe(call));", false),
+            ("invoke(call);", false),
+        ] {
+            fixture(
+                root.path(),
+                "sunrise-mod-vocab/src/runtime.rs",
+                &format!(
+                    "
+                pub(crate) fn invoke(call: impl FnOnce()) {{ contain(call); }}
+                fn contain(call: impl FnOnce()) {{ {fence} }}
+            "
+                ),
+            );
+            let result = check(root.path(), &hooks);
+            assert_eq!(result.is_ok(), expected, "{fence}: {result:?}");
+        }
     }
 
     #[test]

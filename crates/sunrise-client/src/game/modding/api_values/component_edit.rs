@@ -1,6 +1,6 @@
 //! Admit only the staged component patch before a resolved slot is journaled or changed.
 use super::content_declarations::validate_decoded_components;
-use super::stack_count::{stack_item_definition, validate_stack_limits};
+use super::stack_count::{admit_stack_limits, stack_item_definition};
 use super::{
     ApiStack, EngineStack, Items, decode_stack_record, projected_stack, stack_read_metadata,
 };
@@ -129,17 +129,159 @@ pub(in crate::game) fn prepare_component_edit(
             .set_components(patch)
             .map_err(|reason| StackWriteError::InvalidComponents { reason })?;
     }
-    let (fields, _) = decode_stack_record(&record, id.clone());
+    let mut fields = decode_stack_record(&record, id.clone());
     validate_decoded_components(|name| match edits.component(name) {
         Some(ComponentEdit::Value(_)) => Some(&fields),
-        Some(ComponentEdit::Remove | ComponentEdit::Inherit) => None,
-        None => resident.carries_component(None, name).then_some(resident),
+        _ => None,
     })?;
-    validate_stack_limits(&fields, definition, record.damage_component())?;
+    admit_stack_limits(&mut fields, definition, record.damage_component())?;
 
     let gear = GearEdits {
         enchantments: edits.component(ENCHANTMENTS).is_some(),
         trim: edits.component(TRIM).is_some(),
     };
     Ok(Some((PreparedComponentEdit { fields, edits }, gear)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolved_edit_canonicalizes_positive_short_max_damage() {
+        let items = super::super::stack_limit_tests::catalog();
+        let definition = items.items.get("minecraft:iron_sword").unwrap();
+        let mut resident = EngineStack::new("minecraft:iron_sword", 1);
+        let (prepared, _) =
+            prepare_component_edit(EquipmentRead::resident(&resident), &items, &mut |editor| {
+                editor
+                    .apply_components(
+                        &[(JavaString::from("minecraft:max_damage"), Tag::Short(20))].into(),
+                    )
+                    .unwrap();
+            })
+            .unwrap()
+            .expect("max_damage edit should be staged");
+        prepared.apply(&mut resident);
+        assert_eq!(resident.max_damage(Some(definition)), 20);
+        assert_eq!(
+            resident
+                .data()
+                .and_then(|data| data.other("minecraft:max_damage")),
+            Some(&Tag::Int(20)),
+        );
+
+        let zero =
+            prepare_component_edit(EquipmentRead::resident(&resident), &items, &mut |editor| {
+                editor
+                    .apply_components(
+                        &[(JavaString::from("minecraft:max_damage"), Tag::Short(0))].into(),
+                    )
+                    .unwrap();
+            });
+        assert!(matches!(
+            zero,
+            Err(ItemPlaceEditError::Stack(StackWriteError::InvalidMaximum))
+        ));
+    }
+
+    #[test]
+    fn refused_registered_effect_edit_keeps_the_resident_component() {
+        use std::sync::Arc;
+        use sunrise_world::component_value::consume_effects::{self, Type};
+
+        consume_effects::with_test_registry(|| {
+            consume_effects::install(
+                [(
+                    Arc::from("effect_edit:charge"),
+                    Type {
+                        schema: 0,
+                        load: Box::new(|fields| {
+                            if !matches!(fields.get(&"points".into()), Some(Tag::Int(_))) {
+                                return Err("points must be an int".into());
+                            }
+                            Ok((fields.clone(), Vec::new()))
+                        }),
+                        read: Box::new(|_, _| unreachable!("no stream used in this test")),
+                    },
+                )]
+                .into(),
+            )
+            .unwrap();
+            let items = super::super::stack_limit_tests::catalog();
+            let component = |list, points| {
+                Tag::compound([(
+                    list,
+                    Tag::List(vec![
+                        Tag::compound([
+                            ("type", Tag::String("effect_edit:charge".into())),
+                            ("points", points),
+                        ]),
+                        Tag::compound([(
+                            "type",
+                            Tag::String("minecraft:clear_all_effects".into()),
+                        )]),
+                    ]),
+                )])
+            };
+            let edit = |resident: &EngineStack, id: &str, value: Tag| {
+                prepare_component_edit(EquipmentRead::resident(resident), &items, &mut |editor| {
+                    editor
+                        .apply_components(&[(JavaString::from(id), value.clone())].into())
+                        .unwrap();
+                })
+            };
+            for id in [
+                "minecraft:consumable",
+                "minecraft:bundle_contents",
+                "minecraft:charged_projectiles",
+                "minecraft:container",
+                "minecraft:pot_decorations",
+            ] {
+                let value = |points| {
+                    if id == "minecraft:consumable" {
+                        return component("on_consume_effects", points);
+                    }
+                    let template = Tag::compound([
+                        ("id", Tag::String("minecraft:stone".into())),
+                        (
+                            "components",
+                            Tag::compound([(
+                                "minecraft:death_protection",
+                                component("death_effects", points),
+                            )]),
+                        ),
+                    ]);
+                    match id {
+                        "minecraft:bundle_contents" | "minecraft:charged_projectiles" => {
+                            Tag::List(vec![template])
+                        }
+                        "minecraft:container" => Tag::List(vec![Tag::compound([
+                            ("slot", Tag::Int(0)),
+                            ("item", template),
+                        ])]),
+                        _ => Tag::compound([("back", template)]),
+                    }
+                };
+                let mut resident = EngineStack::new("minecraft:stick", 1);
+                let (prepared, _) = edit(&resident, id, value(Tag::Int(7))).unwrap().unwrap();
+                prepared.apply(&mut resident);
+                let original = sunrise_client::item_data::component_snapshot(&resident).unwrap();
+                assert_eq!(original.get(id), Some(&value(Tag::Int(7))), "{id}");
+                assert!(
+                    matches!(
+                        edit(&resident, id, value(Tag::String("bad".into()))),
+                        Err(ItemPlaceEditError::Stack(
+                            StackWriteError::InvalidEffectPayload
+                        ))
+                    ),
+                    "{id}"
+                );
+                assert_eq!(
+                    sunrise_client::item_data::component_snapshot(&resident),
+                    Some(original)
+                );
+            }
+        });
+    }
 }

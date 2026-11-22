@@ -464,11 +464,7 @@ impl Game<'_> {
     /// Selection/F3+T and server-pack reloads share this point; initial startup does not
     /// (`client_setup` is the once-only moment after the initial load).
     pub(in crate::game) fn native_client_resources_reloaded(&mut self) {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("client reload notice on its owning thread");
-        self.fire_client_resources_reloaded();
+        Self::fire_client_resources_reloaded(self);
     }
     /// The client made a new level for `dimension` (NeoForge's
     /// `LevelEvent.Load` from the `ClientLevel` constructor): on joining a
@@ -515,8 +511,10 @@ impl Game<'_> {
         self.fire_emissive(layers);
     }
     /// The world's phases, read-only; `error_text` carries the engine's
-    /// own open-failure text, empty otherwise. Server-side. A server loop or final
-    /// save failure fires `WorldCloseFailed` with the error text.
+    /// error text for `WorldOpenFailed` and `WorldCloseFailed`, empty otherwise.
+    /// Server-side. A server loop or final save failure fires `WorldCloseFailed`.
+    /// A normal stop with only individually reported record failures still fires
+    /// `WorldCloseFinal`.
     pub(in crate::game) fn native_world_lifecycle(
         &mut self,
         context: &LifecycleContext,
@@ -641,7 +639,7 @@ impl Game<'_> {
     }
     /// Before a vanilla or registered HUD slot draws (`RenderGuiLayerEvent.Pre`).
     /// Paint into `draw` below the layer, or set `canceled` to skip the installed body
-    /// and `native_gui_layer_post`, without skipping the layer's game logic. Replacing
+    /// (including its render bookkeeping) and `native_gui_layer_post`. Replacing
     /// or wrapping a slot keeps its ID, position and paint conditions. Focused chat still
     /// draws from the chat screen, and a layer F1 hides fires neither hook.
     pub(in crate::game) fn native_gui_layer_pre(
@@ -700,15 +698,6 @@ impl Game<'_> {
         call: mod_api::__private::PlayerTickPostCall,
     ) {
         self.fire_player_tick_post(call);
-    }
-    pub(in crate::game) fn native_health_hud(
-        &mut self,
-        inputs: &mod_api::client::hud_layout::HealthInputs,
-        wi: i32,
-        hi: i32,
-        draws: &mut Option<Vec<GuiDraw>>,
-    ) {
-        self.fire_health_hud(inputs, wi, hi, draws);
     }
     /// Raw mouse button input on any screen, before dispatch; cancel skips dispatch and Post.
     /// Button/modifiers use the same GLFW encoding as screen hooks. Synthetic clicks skip it.
@@ -873,12 +862,11 @@ impl Game<'_> {
     /// Collect blocks from native mods once at startup on each side, before resources load.
     /// Each declaration belongs to the submitting package and joins the content declarations
     /// used by saves and the join check. The event's `register` call returns a typed error for
-    /// invalid IDs or fields. Refusals stop startup even if the caller ignores the error.
+    /// invalid IDs or fields. A completed listener's refusals stop startup even if ignored;
+    /// a panicking listener's batch and diagnostics are discarded.
     pub(in crate::game) fn native_blocks(
         context: &mod_api::RegistrationContext,
-        blocks: &mut dyn FnMut(
-            mod_api::Answered<mod_api::Block>,
-        ) -> Result<(), mod_api::DeclarationError>,
+        blocks: &mut mod_api::__private::DeclarationStage<'_, mod_api::Block>,
     ) {
         Self::fire_blocks(context, blocks);
     }
@@ -887,9 +875,7 @@ impl Game<'_> {
     /// not here.
     pub(in crate::game) fn native_items(
         context: &mod_api::RegistrationContext,
-        items: &mut dyn FnMut(
-            mod_api::Answered<mod_api::Item>,
-        ) -> Result<(), mod_api::DeclarationError>,
+        items: &mut mod_api::__private::DeclarationStage<'_, mod_api::Item>,
     ) {
         Self::fire_items(context, items);
     }
@@ -1310,16 +1296,12 @@ impl Game<'_> {
     /// entity at `pos` (`AbstractContainerMenu.quickMoveStack`, the method a
     /// Java menu overrides), on the server, before the game's own routing:
     /// move the stack where your block wants it. `slot` is the menu's index:
-    /// below `container_slots` it is the block's own slot (`entity.items`),
-    /// from there on the player's inventory (27 main slots, then the hotbar).
-    /// `stack` is a copy of what the slot holds; take what you move out of
-    /// it (put it in `entity.items`, or in another block through its
-    /// `ITEMS` capability) and set `handled`: the slot then holds what is
-    /// left of `stack` (whatever you wrote to that slot of `entity.items`),
-    /// the game's routing is skipped, and the player's client gets the menu
-    /// again. Left unhandled, `entity.items` goes back to what it held and
-    /// the game moves the stack as for any container; a later mod sees what
-    /// an earlier one did to `stack`.
+    /// below `container_slots` it is a container slot (the block's own, a linked slot,
+    /// or a crafting result), from there on the player's inventory (27 main slots,
+    /// then the hotbar). After the live slot allows pickup, `stack` is a copy of what
+    /// it holds. If the handler takes the move, the actual source keeps the remainder
+    /// and the player's client gets the menu again. If it declines, its writes are
+    /// rolled back and the same menu routes the move without rechecking pickup.
     ///
     /// For a mod container on a vanilla menu type and on a mod menu type,
     /// the left or right button, a slot that holds something and that the
@@ -2545,7 +2527,7 @@ impl Game<'_> {
     ) {
         self.fire_prepare_item_enchant(player, name, pos, costs);
     }
-    /// A player took an anvil's result at `pos` (`AnvilCraftEvent.Pre`), before the levels are charged, the inputs used up and the anvil worn. `inputs` borrows the input stacks and result from before the take. Set `cancel` to refuse the take: the result stays in its slot and the inputs, levels, inventory and cursor are as before the click.
+    /// A player took an anvil's result at `pos` (`AnvilCraftEvent.Pre`), before the levels are charged, the inputs used up and the anvil worn. `inputs` borrows the input stacks and result from before the take. Set `cancel` to return early before charging levels, consuming inputs, damaging the anvil or firing `anvil_craft_post`, without undoing the click's item move (matching NeoForge `AnvilMenu.onTake`).
     pub(in crate::game) fn native_anvil_craft_pre(
         &mut self,
         player: u128,
@@ -4541,6 +4523,12 @@ impl Game<'_> {
         }
         self.stored_setting(mod_id, key)
     }
+    pub(in crate::game) fn startup_setting(mod_id: &str, key: &str) -> Option<String> {
+        if Self::another_mods(mod_id) {
+            return None;
+        }
+        mod_settings::read_raw(&Self::mod_data_root().join(mod_id), mod_id, key)
+    }
     pub(super) fn stored_setting(&self, mod_id: &str, key: &str) -> Option<String> {
         mod_settings::read_raw(&self.native_data_dir(mod_id), mod_id, key)
     }
@@ -4625,11 +4613,10 @@ impl Game<'_> {
             _ => return Ok(None),
         };
         let items = self.items();
-        let Some(ingredient) = sunrise_client::crafting::Ingredient::parse(&json, items) else {
+        let Some(mut ingredient) = sunrise_client::crafting::Ingredient::parse(&json, items) else {
             return Ok(None);
         };
-        let known: Vec<String> = ingredient
-            .order
+        let known: Vec<String> = std::mem::take(&mut ingredient.order)
             .into_iter()
             .filter(|item| items.get(item).is_some())
             .collect();

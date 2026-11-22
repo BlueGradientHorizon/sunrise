@@ -200,7 +200,7 @@ struct LiveSectionHost(Option<SectionWriter>);
 
 mod_api::impl_host_areas!(LiveSectionHost);
 mod_api::impl_server_host_areas!(LiveSectionHost);
-mod_api::impl_client_host_areas!(LiveSectionHost, except(client_render, menus));
+mod_api::impl_client_host_areas!(LiveSectionHost, except(client_render, menus, services));
 mod_api::impl_backend_areas!(
     LiveSectionHost,
     partial(entity_position, entity_on_ground, entity_velocity)
@@ -219,6 +219,12 @@ impl mod_api::prelude::ClientRenderClientHost for LiveSectionHost {
 impl mod_api::prelude::MenusClientHost for LiveSectionHost {
     fn local_player(&self) -> Option<mod_api::PlayerRef> {
         self.0?.player?.local_player
+    }
+}
+
+impl mod_api::prelude::ServicesClientHost for LiveSectionHost {
+    fn client_executor(&self) -> Option<mod_api::ClientExecutor> {
+        None
     }
 }
 

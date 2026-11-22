@@ -71,7 +71,6 @@ it may read the `ClientHost`; it changes when the section meshes again, which a 
         contract = "collect",
         out = "answers",
         answered_by = "mod",
-        isolate = true,
         version = 2,
         neoforge = "none verified"
     )]

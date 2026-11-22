@@ -14,9 +14,7 @@ pub use registrar::{
 mod typed;
 pub use typed::{PayloadToken, ToClient, ToServer};
 
-use crate::{
-    ClientHost, ConfigurationTaskError, ConfigurationTaskRef, PlayerRef, ServerHost, Text,
-};
+use crate::{ClientHost, ConfigurationTaskError, PlayerRef, ServerHost, Text};
 use std::sync::Arc;
 
 /// Opaque application bytes. The transport never prepends a mod envelope.
@@ -247,7 +245,7 @@ pub enum PayloadWorkStatus {
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: native callback failure.
 pub enum PayloadHandleError {
-    /// Application decoding, callback execution, or owner availability failed.
+    /// The mod refuses this delivery, such as when application decoding fails.
     Failed(String),
 }
 
@@ -257,7 +255,10 @@ pub enum PayloadHandleError {
 /// channel (`PayloadRegistrar::play_raw`) a failure logs the owner and the
 /// channel, drops only that delivery and rolls back its staged effects (a staged disconnect
 /// included); the other owners' copies still run. A successful handler's explicit disconnect
-/// and a main-queue refusal disconnect either way.
+/// and a main-queue refusal disconnect either way. A panic is not `Failed`: it disables this
+/// callback for the session, reports the owning mod, and discards the current journal or staged
+/// sends without disconnecting or skipping other handlers. Later packets for this callback
+/// still undergo framing and channel checks but do not reserve callback queue capacity.
 pub trait IPayloadHandler: Send + Sync + 'static {
     /// Handle exact application bytes using connection-derived context.
     fn handle(
@@ -267,7 +268,10 @@ pub trait IPayloadHandler: Send + Sync + 'static {
     ) -> Result<(), PayloadHandleError>;
 }
 
-/// Work scheduled on the logical receiving main thread.
+/// Work scheduled on the logical receiving main thread. It retains the handler's owner and
+/// disablement guard: a panic aborts the work's transaction and disables that receiving callback
+/// for the session, without disconnecting the peer. Later deliveries to that callback
+/// follow the same rules as a panic in [`IPayloadHandler::handle`].
 pub trait PayloadWork: Send + Sync + 'static {
     /// Execute with the same connection-derived context and transaction rules.
     fn run(&self, context: &mut dyn IPayloadContext) -> Result<(), String>;
@@ -310,24 +314,32 @@ pub trait IPayloadContext {
         id: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<u32, PayloadSendError>;
-    /// In a server main-thread configuration handler, request completion of the exact
-    /// running task for this receiving peer. Pass the server-local instance captured
-    /// when sending the original challenge: never take an instance from the wire or
-    /// substitute the task running when the reply arrives.
+    /// In a server configuration payload handler (on either the main thread or the
+    /// network thread), complete the running configuration task matching `task_type`
+    /// on this receiving connection (matching NeoForge's
+    /// `ServerPayloadContext.finishCurrentTask(ConfigurationTask.Type)` and vanilla's
+    /// `ServerConfigurationPacketListenerImpl.finishCurrentTask`).
     ///
-    /// A different live peer's instance returns `WrongConnection`; a no-longer-current
-    /// task on this connection returns `StaleTask`. `WrongContext` means this is not a
-    /// server main-thread configuration handler with a transaction; `Disconnected`
-    /// means the connection or its configuration epoch has ended. No refusal advances a task.
-    /// Completion takes effect only after the outermost transaction commits and
-    /// publishes its deferred sends. Abort, handler failure, or explicitly disconnecting
-    /// this peer discards the request.
+    /// Returns `WrongType` if the currently running task on this connection has a
+    /// different type, `NotRunning` if no configuration task is currently running or
+    /// completion was already requested, `WrongContext` if called on the client or
+    /// outside the configuration phase, and `Disconnected` if the connection or its
+    /// configuration epoch has ended or a disconnect was already requested. No refusal
+    /// advances a task.
+    ///
+    /// On the main thread, completion takes effect immediately in the configuration
+    /// session (without transaction staging; the server advances to the next task or
+    /// `FinishConfiguration` on the next tick, after this handler's replies commit).
+    /// On the network thread, completion is bound to the currently running task turn
+    /// and publishes inside the same active-epoch gate as staged replies after they
+    /// succeed; handler failure, an explicit disconnect, or epoch invalidation discards
+    /// that staged completion.
     fn finish_configuration_task(
         &mut self,
-        instance: ConfigurationTaskRef,
+        task_type: &crate::Identifier,
     ) -> Result<(), ConfigurationTaskError>;
-    /// Disconnect this session with the supplied component. This discards any configuration
-    /// task completion staged by the handler.
+    /// Disconnect this session with the supplied component. On the network thread this
+    /// also discards any staged configuration task completion from this handler.
     fn disconnect(&mut self, reason: Text);
     /// Run now on the main thread or schedule there from the network executor.
     /// Failure of the work is reported as a named session failure.

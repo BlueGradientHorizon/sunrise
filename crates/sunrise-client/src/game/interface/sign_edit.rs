@@ -503,8 +503,8 @@ impl Game<'_> {
                 lines,
             });
             game.sign_load();
-            game.keys.clear();
-            game.right = false;
+            game.clear_device_keys();
+            game.set_mapping_held("key.use", false);
             game.capture(false);
         });
         if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {

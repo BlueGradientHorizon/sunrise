@@ -125,14 +125,18 @@ pub trait Notes {
 
 - Block entities for a mod's blocks (`block_entity`, `block_entity_ticks`,
   `block_entity_tick`): made when the block is placed, ticked on the server and saved with the chunk.
-  `entity.id()` reads its type identity, fixed at construction; mutable events give a `ModBlockEntityView` whose
-  payload contains `nbt`, `items` and `data`. A mod cannot replace the view or access its private entity handle.
+  `block_entity_tick` receives `&mut BlockEntityTickEvent<'_>` without a separate Host.
+  `event.subject.with_view` lends the resident type ID, saved data, item slots, and transient
+  data slots for the closure; it returns `None` if the subject is no longer available. To edit
+  Part state, return the handle from `event.subject.with_view(|view| view.handle())`. After the
+  view borrow ends, borrow `event.subject.host()` separately for `edit_state`.
+  Use `event.subject.transaction` to commit edits to the subject and other objects together.
 
 - Item slots for those block entities (`r.block_container(&block, container)`): hoppers, comparators and breaking the
-  block use them as they use vanilla's containers, and `block_entity_tick` also gets the slots.
+  block use them as they use vanilla's containers, and the tick's resident view lends the slots.
 
-- Menus for mod containers: the container names one of vanilla's slot-grid or furnace menus, which opens when the block is used,
-  and `block_entity_tick` takes the whole block entity, with the data slots the menu shows.
+- Menus for mod containers: the container names one of vanilla's slot-grid or furnace menus, which opens when the block is used.
+  The tick's resident view lends the data slots the menu shows.
 
 - A machine reaches neighbouring storage through the block's Parts and capabilities, not a raw mutable
   block-entity callback. `block_entity.data_slots(host)` reads a mod entity's menu data on the server or
@@ -140,9 +144,9 @@ pub trait Notes {
   the current transaction, rolls back on abort, and uses the normal menu broadcast to viewers.
   `level.set_block` uses the level's normal update path.
 
-- Screens a mod draws for its menu types: `r.register_menu_screen(menu, factory)` registers the constructor. It returns a fresh `MenuScreen::new(layout)` for each client opening. Decode `MenuScreenOpen::extra` during this call; the bytes are not available afterwards. Draw GUI textures (`assets/<namespace>/textures/gui`) with `MenuScreen::with_draw` and read live values from `MenuScreenFrame::data`.
-  The factory goes with the menu type, as a `RegisterMenuScreensEvent` constructor does, whatever opened the menu: a block's use or `player_open_mod_menu` from an item, an entity or a command. For a stock menu, only the verified mod opener's owner supplies a factory. `open.block` is `None` without a verified opener.
-  Slots excluded by `r.menu_slot_exclusions(menu, block, indices)` keep their physical indices. Layout holes match that mask. Only the factory's owner may move or hide slots locally, and those changes neither reach the server nor survive a replacement. A bound book needs a factory from its declaring mod: set the book in the layout and give every mapped slot geometry.
+- Screens a mod draws for menu types: `r.register_menu_screen(menu, factory)` registers the constructor directly by menu type, matching NeoForge's `RegisterMenuScreensEvent` and vanilla's `MenuScreens.SCREENS`. It returns a fresh `MenuScreen::new(layout)` for each client opening. Decode `MenuScreenOpen::extra` during this call; the bytes are not available afterwards. Draw GUI textures (`assets/<namespace>/textures/gui`) with `MenuScreen::with_draw` and read live values from `MenuScreenFrame::data`.
+  The factory goes with the menu type whatever opened the menu: a block's use or `player_open_mod_menu` from an item, an entity or a command. Built-in vanilla menu types that already have a screen in `MenuScreens.SCREENS` and duplicate registrations are refused; any mod may register a factory for a custom menu type. `open.block` is `None` without a verified opener.
+  `None` entries in `MenuScreenLayout::slots` (including omitted trailing entries) start inactive/hidden (`Slot.isActive()`) and can be activated or deactivated locally with `set_screen_slot` by any mod; local slot changes neither reach the server nor survive a replacement. A bound book needs a registered factory for its menu: set the book in the layout.
 
 - Buttons and tooltips on mod screens: install client callbacks with `MenuScreen::with_click` and `MenuScreen::with_tooltip`. A button returned by the client is a request: the server still checks its window, menu validity and the owning part's `menu_button_valid` before calling `menu_button`, with the backing block entity if present. A mod inserts items through the block's item capability, `level.capability(host, &ITEMS, pos, side)`.
 - `menu.click_button(host, button)`, on a client `MenuRef`, presses button `button` of the open menu as a click on one of its buttons does
@@ -186,15 +190,15 @@ pub trait Notes {
   `list(&folder, after, limit)` returns lexicographically ordered names strictly after the cursor, at most `limit` entries; start with `None`, continue with the last name, and stop on an empty page.
   `ConfigPath::root()` lists the mod's own root; `limit` must be 1 through `CONFIG_LIST_MAX` (1024), otherwise `InvalidPage` ([config and bulk storage](../how-to/mod-settings.md)).
 
-- The player-health HUD rows through `health_hud`: every frame the HUD draws them, the
-  hook hears the layout's inputs (`HealthInputs`) and the screen's GUI size, and a mod that answers with
-  draws replaces all the rows — armour, hearts, food, air and the heights above the hotbar — for that
-  frame. Nothing answered draws Sunrise's own.
+- To draw custom status rows, replace or wrap `minecraft:player_health` (hearts), `minecraft:armor_level`,
+  `minecraft:food_level` or `minecraft:air_level` in `register_gui_layers`. Use the installed body's
+  `DrawContext` (`gui_paint` accepts a `GuiDraw` list). `gui_layer_pre` can veto a slot without vetoing
+  the other rows. Heart bookkeeping belongs to the vanilla heart body; bubble sounds belong to the
+  vanilla air body.
 
 - Which hearts the player's health bar draws through `player_heart_type` (NeoForge's `PlayerHeartTypeEvent`):
-  each frame the HUD draws the hearts, `kind` comes in as vanilla's pick (poisoned, withered, frozen or normal) and a mod
-  may set another. It runs before `health_hud`, whose `inputs.kind` carries the answer; only the heart sprites
-  change.
+  when the vanilla player-health body draws its hearts, `kind` comes in as vanilla's pick (poisoned, withered,
+  frozen or normal) and a mod may set another. Only the heart sprites change.
 
 - Where each boss bar is drawn through `customize_boss_event_progress` (NeoForge's
   `CustomizeGuiOverlayEvent.BossEventProgress`): once a frame per bar, in the order the server added them, `x` and
@@ -279,8 +283,8 @@ pub trait Notes {
   Resolve a `ModKeyMappingRef` once with `host.mod_key_mapping(owner, id)` during `client_setup`. Retain
   it for `binding(host)` (current name borrowed from the host, plus modifiers), `translated_key_message(host)`
   (current Controls label on demand), `is_down(host)` and `consume_click(host)` (`KeyMapping.isDown`,
-  `consumeClick`). Only the owning mod can `set_binding(host, key, modifiers)` or `reset_binding(host)`,
-  which take effect from the next input and save by owner and id. `NotRegistered` is a missing owner/id at
+  `consumeClick`). Any mod can `set_binding(host, key, modifiers)` or `reset_binding(host)` on a
+  resolved mapping, which take effect from the next input and save by owner and id. `NotRegistered` is a missing owner/id at
   resolution; `Unavailable` means this host or phase has no client input access. `Stale` means a retained ref
   belongs to a replaced client or registration roster: resolve again there. Binding edits alone do not
   invalidate the ref. Persist names, not refs.

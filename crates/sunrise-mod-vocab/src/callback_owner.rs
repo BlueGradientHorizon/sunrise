@@ -1,5 +1,4 @@
 //! Owner enablement, attribution and panic containment for retained resources.
-use crate::world::phase_refusal::{self, PhaseRefusal, contain_refusal};
 use std::{
     any::Any,
     cell::{Cell, RefCell},
@@ -146,7 +145,6 @@ fn drop_contained<T>(value: T) {
 #[derive(PartialEq, Eq)]
 enum Invocation {
     Isolated,
-    Listener,
     Dispose,
 }
 
@@ -184,15 +182,18 @@ fn record_callback_panic(
     operation: &'static str,
     message: String,
 ) {
-    PANIC_NOTICES
+    let mut queue = PANIC_NOTICES
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .push_back(CallbackPanicNotice {
-            mod_id: owner,
-            kind,
-            operation,
-            message,
-        });
+        .unwrap_or_else(|error| error.into_inner());
+    if queue.len() >= 32 {
+        queue.pop_front();
+    }
+    queue.push_back(CallbackPanicNotice {
+        mod_id: owner,
+        kind,
+        operation,
+        message,
+    });
 }
 
 /// Owner identity and poison state for one retained mod callback.
@@ -201,54 +202,117 @@ fn record_callback_panic(
 #[derive(Clone, Debug)]
 pub struct CallbackOwner {
     id: &'static str,
-    index: Option<usize>,
+    binding: OwnerBinding,
     poisoned: Arc<AtomicBool>,
+}
+
+// Retained work can run on a worker, outside the thread which issued its owner.
+#[derive(Clone, Copy)]
+struct OwnerBinding {
+    index: Option<usize>,
+    installed: Option<&'static crate::runtime::Installed>,
+}
+
+impl std::fmt::Debug for OwnerBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OwnerBinding")
+            .field("index", &self.index)
+            .finish_non_exhaustive()
+    }
+}
+
+impl OwnerBinding {
+    fn current(index: Option<usize>) -> Self {
+        Self {
+            index,
+            installed: crate::runtime::installed(),
+        }
+    }
+
+    fn installed(self) -> Option<&'static crate::runtime::Installed> {
+        self.installed.or_else(crate::runtime::installed)
+    }
+
+    fn enabled(self, poisoned: &AtomicBool) -> bool {
+        !poisoned.load(Ordering::Acquire)
+            && self
+                .index
+                .zip(self.installed())
+                .is_none_or(|(index, installed)| !installed.disabled[index].load(Ordering::Relaxed))
+    }
 }
 
 impl CallbackOwner {
     /// Bind a dispatch-attributed registration to its installed mod slot once, at freeze time.
     pub fn new(id: &'static str) -> Option<Self> {
-        Some(Self::for_index(id, crate::__private::mod_index(id)?))
+        let index = crate::__private::mod_index(id)?;
+        Some(Self {
+            id,
+            binding: OwnerBinding::current(Some(index)),
+            poisoned: Arc::new(AtomicBool::new(false)),
+        })
     }
 
     pub(crate) fn for_index(id: &'static str, index: usize) -> Self {
         Self {
             id,
-            index: Some(index),
+            binding: OwnerBinding {
+                index: Some(index),
+                installed: None,
+            },
             poisoned: Arc::new(AtomicBool::new(false)),
         }
     }
 
-    /// Run a delayed task using its installed owner's shared state. A refusal is logged and
-    /// aborts just the transaction; only a panic returns a diagnostic for the server to relay.
+    fn scheduled(id: &str) -> Option<&'static Self> {
+        let installed = crate::runtime::installed()?;
+        let &index = installed.by_id.get(id)?;
+        Some(&installed.scheduled_tasks[index])
+    }
+
+    /// Run a delayed task using its installed owner's shared state. A panic returns a diagnostic
+    /// for the server to relay after rolling back the task's transaction.
     pub fn call_scheduled_task<H: crate::ServerHost>(
         id: &'static str,
         host: &mut H,
         invoke: impl FnOnce(&mut H),
     ) -> Result<(), String> {
-        let state = crate::runtime::installed()
-            .and_then(|installed| {
-                installed
-                    .by_id
-                    .get(id)
-                    .map(|&i| &installed.scheduled_tasks[i])
-            })
-            .map(|owner| (owner.index, owner.poisoned.as_ref()));
-        // A real panic unwinds the transaction before `run_scheduled` catches it. A refusal stays
-        // inside the transaction as an Err, including one the callback caught internally.
+        let state = Self::scheduled(id).map(|owner| (owner.binding.index, owner.poisoned.as_ref()));
         match run_scheduled(id, state, "schedule_task", || {
-            crate::run_transaction(host, |host, _| contain_refusal(id, || invoke(host)))
+            crate::run_transaction(host, |host, _| {
+                invoke(host);
+                Ok::<(), ()>(())
+            })
+            .ok();
         }) {
             Err(ScheduledFailure::Panicked(diagnostic)) => Err(diagnostic),
             _ => Ok(()),
         }
     }
 
+    /// Drop a withdrawn task, using the same session poison state as due tasks. An attributed
+    /// task without an installed owner still needs containment, but has no state to disable.
+    pub fn dispose_scheduled_task<T>(id: &'static str, task: T) {
+        let uninstalled = AtomicBool::new(false);
+        let (index, poisoned) = Self::scheduled(id).map_or((None, &uninstalled), |owner| {
+            (owner.binding.index, owner.poisoned.as_ref())
+        });
+        let _ = call_opt(
+            id,
+            OwnerBinding::current(index),
+            poisoned,
+            "scheduled task",
+            "schedule_task_drop",
+            Invocation::Dispose,
+            || drop(task),
+        );
+    }
+
     /// Bind a callback owner by mod id, resolving its installed slot when present.
     pub fn for_mod(id: &'static str) -> Self {
         Self {
             id,
-            index: crate::__private::mod_index(id),
+            binding: OwnerBinding::current(crate::__private::mod_index(id)),
             poisoned: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -260,7 +324,7 @@ impl CallbackOwner {
 
     /// Whether this callback is still enabled for this session.
     pub fn is_enabled(&self) -> bool {
-        enabled_opt(self.index, &self.poisoned)
+        self.binding.enabled(&self.poisoned)
     }
 
     /// Invoke retained code with its owner's enablement, attribution and panic policy.
@@ -275,7 +339,7 @@ impl CallbackOwner {
     }
 
     /// Invoke a callback on live state, restoring the state only if this call panics.
-    /// A normal answer (including a veto) or a phase refusal keeps the current state.
+    /// A normal answer (including a veto) keeps the current state.
     pub fn call_with_panic_rollback<T, S: Clone>(
         &self,
         kind: &'static str,
@@ -304,7 +368,7 @@ impl CallbackOwner {
     ) -> Result<T, CallFailure> {
         call_opt(
             self.id,
-            self.index,
+            self.binding,
             &self.poisoned,
             kind,
             operation,
@@ -313,31 +377,11 @@ impl CallbackOwner {
         )
     }
 
-    /// A retained callback invoked by a generated registration listener shares that
-    /// listener's phase scope so a phase refusal can roll back its staged registrations.
-    pub(crate) fn call_in_listener<T>(
-        &self,
-        kind: &'static str,
-        operation: &'static str,
-        invoke: impl FnOnce() -> T,
-    ) -> Result<T, String> {
-        call_opt(
-            self.id,
-            self.index,
-            &self.poisoned,
-            kind,
-            operation,
-            Invocation::Listener,
-            invoke,
-        )
-        .map_err(|why| format!("mod {}: {}", self.id, why.into_message()))
-    }
-
     /// Dispose of an owned mod value under its panic policy, even if ordinary calls are disabled.
     pub fn dispose<T>(&self, kind: &'static str, operation: &'static str, value: T) {
         let _ = call_opt(
             self.id,
-            self.index,
+            self.binding,
             &self.poisoned,
             kind,
             operation,
@@ -357,9 +401,8 @@ impl CallbackOwner {
         let _contained = RetainedCallbackScope(RETAINED_CALLBACK.replace(false));
         let _suspended = SuspendedPanicScope::enter();
         let _guard = crate::dispatch_scope::ModGuard::unattributed();
-        let outer = phase_refusal::suspend_scope();
-        let result = catch_unwind(AssertUnwindSafe(invoke));
-        let _ = phase_refusal::leave_scope(outer);
+        let result =
+            crate::runtime::without_callback_scope(|| catch_unwind(AssertUnwindSafe(invoke)));
         result.unwrap_or_else(|payload| {
             DELEGATED_ENGINE_PANIC.set(Some(payload));
             unwind_through_wrapper();
@@ -430,7 +473,7 @@ pub(crate) fn call<T>(
 ) -> Result<T, String> {
     call_opt(
         owner,
-        Some(index),
+        OwnerBinding::current(Some(index)),
         poisoned,
         kind,
         operation,
@@ -440,9 +483,56 @@ pub(crate) fn call<T>(
     .map_err(CallFailure::into_message)
 }
 
+/// Failure of a retained callback, distinct from the result returned by the mod itself.
+// no wire: an in-process dispatch outcome; never sent to the peer.
+// exhaustive: engine-only dispatch result.
+#[derive(Debug)]
+pub enum CallbackFailure {
+    /// A refusal, not a panic.
+    Refused(String),
+    /// The callback just panicked and the shared boundary reported it.
+    Panicked,
+    /// A previous panic disabled the callback; it did not run.
+    Poisoned,
+}
+
+pub(crate) fn call_typed<T>(
+    owner: &'static str,
+    index: usize,
+    poisoned: &AtomicBool,
+    kind: &'static str,
+    operation: &'static str,
+    invoke: impl FnOnce() -> T,
+) -> Result<T, CallbackFailure> {
+    if poisoned.load(Ordering::Acquire) {
+        let _guard = crate::mark_mod(owner, operation);
+        let _ = contain_unwind(|| drop(invoke));
+        return Err(CallbackFailure::Poisoned);
+    }
+    if !crate::mod_index_on(index) {
+        let _guard = crate::mark_mod(owner, operation);
+        let _ = contain_unwind(|| drop(invoke));
+        return Err(CallbackFailure::Refused(format!(
+            "{kind} owner is disabled"
+        )));
+    }
+    call_opt(
+        owner,
+        OwnerBinding::current(Some(index)),
+        poisoned,
+        kind,
+        operation,
+        Invocation::Isolated,
+        invoke,
+    )
+    .map_err(|failure| match failure {
+        CallFailure::Unavailable(reason) => CallbackFailure::Refused(reason),
+        CallFailure::Panicked(_) => CallbackFailure::Panicked,
+    })
+}
+
 enum ScheduledFailure {
     Disabled,
-    Refused,
     Panicked(String),
 }
 
@@ -450,24 +540,20 @@ fn run_scheduled<T>(
     owner: &'static str,
     state: Option<(Option<usize>, &AtomicBool)>,
     operation: &'static str,
-    invoke: impl FnOnce() -> Result<T, PhaseRefusal>,
+    invoke: impl FnOnce() -> T,
 ) -> Result<T, ScheduledFailure> {
     let _guard = crate::mark_mod(owner, operation);
     match contain_unwind(|| {
         if state.is_some_and(|(index, poisoned)| enabled_opt(index, poisoned)) {
-            invoke().map(Some)
+            Some(invoke())
         } else {
             // Captures also belong to the owner if the callable is discarded without running.
             drop(invoke);
-            Ok(None)
+            None
         }
     }) {
-        Ok(Ok(Some(value))) => Ok(value),
-        Ok(Ok(None)) => Err(ScheduledFailure::Disabled),
-        Ok(Err(refusal)) => {
-            refusal.report_each();
-            Err(ScheduledFailure::Refused)
-        }
+        Ok(Some(value)) => Ok(value),
+        Ok(None) => Err(ScheduledFailure::Disabled),
         Err(diagnostic) => {
             if let Some((_, poisoned)) = state {
                 poisoned.store(true, Ordering::Release);
@@ -479,14 +565,14 @@ fn run_scheduled<T>(
 
 fn call_opt<T>(
     owner: &'static str,
-    index: Option<usize>,
+    binding: OwnerBinding,
     poisoned: &AtomicBool,
     kind: &'static str,
     operation: &'static str,
     invocation: Invocation,
     invoke: impl FnOnce() -> T,
 ) -> Result<T, CallFailure> {
-    if invocation != Invocation::Dispose && !enabled_opt(index, poisoned) {
+    if invocation != Invocation::Dispose && !binding.enabled(poisoned) {
         let _guard = crate::mark_mod(owner, operation);
         let _ = contain_unwind(|| drop(invoke));
         return Err(CallFailure::Unavailable(format!(
@@ -496,15 +582,29 @@ fn call_opt<T>(
     let _guard = crate::mark_mod(owner, operation);
     let contained = RetainedCallbackScope(RETAINED_CALLBACK.replace(true));
     let scope = PanicScope::enter();
-    // A refusal by the phase gate refuses this call and nothing more; a real panic disables
-    // this callback for the session, logs loudly and notifies the client error toast queue.
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        if invocation == Invocation::Listener {
-            Ok(invoke())
-        } else {
-            contain_refusal(owner, invoke)
+    let mut failure = None;
+    let result = crate::runtime::contain_callback(invoke, |payload| {
+        if engine_panic_pending() {
+            return;
         }
-    }));
+        let first = !poisoned.swap(true, Ordering::AcqRel);
+        let msg = scope
+            .take_message()
+            .unwrap_or_else(|| panic_payload_text(payload));
+        if first || invocation == Invocation::Dispose {
+            crate::runtime::log_and_queue_named_panic(
+                binding.installed(),
+                operation,
+                owner,
+                None,
+                payload,
+            );
+            record_callback_panic(owner, kind, operation, msg.clone());
+            failure = Some(format!("{kind} callback panicked; it is disabled: {msg}"));
+        } else {
+            failure = Some(format!("{kind} callback panicked; it is disabled"));
+        }
+    });
     if engine_panic_pending() {
         // Ignore the wrapper's outcome, even if it caught the unwind and returned normally.
         drop_contained(result);
@@ -516,87 +616,16 @@ fn call_opt<T>(
         let payload = DELEGATED_ENGINE_PANIC.take().expect("pending engine panic");
         std::panic::resume_unwind(payload);
     }
-    match result {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(refusal)) => {
-            refusal.report_each();
-            Err(CallFailure::Unavailable(format!(
-                "{kind} callback refused: {refusal}"
-            )))
-        }
-        Err(payload) => {
-            if invocation == Invocation::Listener && payload.is::<PhaseRefusal>() {
-                // The enclosing listener's scope already latched this refusal.
-                drop(scope);
-                drop(contained);
-                std::panic::resume_unwind(payload);
-            }
-            let first = !poisoned.swap(true, Ordering::AcqRel);
-            let msg = scope
-                .take_message()
-                .unwrap_or_else(|| panic_payload_text(payload.as_ref()));
-            drop_contained(payload);
-            // Disposal is mandatory. Each instance's destructor is run at most once,
-            // but even an already disabled implementation can panic again while dropping.
-            if !first && invocation != Invocation::Dispose {
-                return Err(CallFailure::Panicked(format!(
-                    "{kind} callback panicked; it is disabled"
-                )));
-            }
-            log::error!(
-                "mod {owner}: {kind} callback ({operation}) panicked and is disabled for this session: {msg}"
-            );
-            record_callback_panic(owner, kind, operation, msg.clone());
-            Err(CallFailure::Panicked(format!(
-                "{kind} callback panicked; it is disabled: {msg}"
-            )))
-        }
-    }
+    result.ok_or_else(|| {
+        CallFailure::Panicked(
+            failure.unwrap_or_else(|| format!("{kind} callback panicked; it is disabled")),
+        )
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::phase::ModPhase;
-    use std::sync::atomic::AtomicUsize;
-
-    #[test]
-    fn identical_phase_refusals_are_each_reported_without_disabling_the_callback() {
-        const OWNER: &str = "test_repeated_retained_refusal";
-        const OPERATION: &str = "test_retained_phase_gate";
-        struct RefusalLog(AtomicUsize);
-        impl log::Log for RefusalLog {
-            fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
-                metadata.level() == log::Level::Warn
-            }
-            fn log(&self, record: &log::Record<'_>) {
-                if self.enabled(record.metadata()) {
-                    let message = record.args().to_string();
-                    if message.contains(OWNER) && message.contains(OPERATION) {
-                        self.0.fetch_add(1, Ordering::Relaxed);
-                    }
-                }
-            }
-            fn flush(&self) {}
-        }
-        static LOG: RefusalLog = RefusalLog(AtomicUsize::new(0));
-        log::set_logger(&LOG).unwrap();
-        log::set_max_level(log::LevelFilter::Warn);
-
-        let owner = CallbackOwner::for_mod(OWNER);
-        for reports in [1, 2] {
-            assert!(
-                owner
-                    .call::<()>("test", "retained_test", || {
-                        phase_refusal::refuse(OPERATION, ModPhase::Setup);
-                    })
-                    .is_err()
-            );
-            assert_eq!(LOG.0.load(Ordering::Relaxed), reports);
-            assert!(owner.is_enabled());
-        }
-        assert_eq!(owner.call("test", "retained_test", || 17), Ok(17));
-    }
 
     #[test]
     #[ignore = "daily"]

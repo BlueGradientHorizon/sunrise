@@ -1,28 +1,33 @@
 //! Startup registration and native values for mod crafting recipe kinds.
 use super::*;
+use crate::runtime::RetainedCallback;
 
 /// An owned, untrimmed crafting grid. Cells are row-major; empty cells are None.
 #[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub struct CraftingGrid {
-    /// Grid width, from one through three.
+    /// Grid width in cells.
     pub width: u32,
-    /// Grid height, from one through three.
+    /// Grid height in cells.
     pub height: u32,
     /// Exactly width times height cells.
     pub cells: Vec<Option<crate::ItemStack>>,
 }
 impl CraftingGrid {
-    /// Validate dimensions and retain an owned snapshot.
+    /// Retain the row-major cells when their count equals the checked area. A zero
+    /// area keeps the supplied dimensions and has no cells.
     pub fn new(
         width: u32,
         height: u32,
         cells: Vec<Option<crate::ItemStack>>,
     ) -> Result<Self, String> {
-        if !(1..=3).contains(&width)
-            || !(1..=3).contains(&height)
-            || cells.len() != (width * height) as usize
-        {
+        let Some(expected) = width
+            .checked_mul(height)
+            .and_then(|n| usize::try_from(n).ok())
+        else {
+            return Err("invalid crafting grid dimensions".into());
+        };
+        if cells.len() != expected {
             return Err("invalid crafting grid dimensions".into());
         }
         Ok(Self {
@@ -61,6 +66,8 @@ pub trait CraftingRecipeKind: Send + Sync + 'static {
     fn decode(&self, json: &str) -> Result<Self::Value, String>;
     /// Write an equivalent JSON object for Sunrise client synchronization.
     /// The game supplies the registered serializer ID as `type` and applies the packet limits.
+    /// Return `Err` to omit this recipe without disabling the writer. A panic disables this
+    /// serializer's writer for the session and reports the mod by name.
     fn write(&self, value: &Self::Value) -> Result<String, String>;
     /// Whether this value matches the owned grid snapshot. The context reads the
     /// owning frozen resource generation; unavailable tags should not match.
@@ -99,23 +106,42 @@ pub trait CraftingRecipeKind: Send + Sync + 'static {
 pub struct RegisteredRecipeSerializer(Arc<dyn RecipeDecoder>);
 
 impl RegisteredRecipeSerializer {
+    /// Bind the native serializer to the declaring mod and the registry's validated ID.
+    pub fn bind(self, owner: &'static str, index: usize, id: &str) -> InstalledRecipeSerializer {
+        InstalledRecipeSerializer {
+            decoder: self.0,
+            writer: RetainedCallback::new(owner, index, "recipe_serializer_write", id),
+        }
+    }
+}
+
+// no wire: a registered serializer retains process-local code and the owning mod's dispatch slot.
+// exhaustive: only the registry binds a serializer to its owner.
+/// Engine-owned serializer and its bound write callback.
+#[derive(Clone)]
+pub struct InstalledRecipeSerializer {
+    decoder: Arc<dyn RecipeDecoder>,
+    writer: RetainedCallback,
+}
+
+impl InstalledRecipeSerializer {
     /// Decode a compact JSON object whose type field the loader has removed.
     pub fn decode(&self, json: &str) -> Result<LoadedCraftingRecipe, String> {
-        Arc::clone(&self.0).load(json)
+        Ok(LoadedCraftingRecipe {
+            recipe: Arc::clone(&self.decoder).load(json)?,
+            writer: self.writer.clone(),
+        })
     }
 }
 
 trait RecipeDecoder: Send + Sync {
-    fn load(self: Arc<Self>, json: &str) -> Result<LoadedCraftingRecipe, String>;
+    fn load(self: Arc<Self>, json: &str) -> Result<Arc<dyn RecipeDispatch>, String>;
 }
 
 impl<K: CraftingRecipeKind> RecipeDecoder for K {
-    fn load(self: Arc<Self>, json: &str) -> Result<LoadedCraftingRecipe, String> {
+    fn load(self: Arc<Self>, json: &str) -> Result<Arc<dyn RecipeDispatch>, String> {
         let value = self.decode(json)?;
-        Ok(LoadedCraftingRecipe(Arc::new(TypedRecipe {
-            kind: self,
-            value,
-        })))
+        Ok(Arc::new(TypedRecipe { kind: self, value }))
     }
 }
 
@@ -123,17 +149,21 @@ impl<K: CraftingRecipeKind> RecipeDecoder for K {
 // exhaustive: only decoding constructs the opaque serializer and retained value pair.
 /// Engine-owned dispatch to one loaded recipe and its owning serializer.
 #[derive(Clone)]
-pub struct LoadedCraftingRecipe(Arc<dyn RecipeDispatch>);
+pub struct LoadedCraftingRecipe {
+    recipe: Arc<dyn RecipeDispatch>,
+    writer: RetainedCallback,
+}
 
 impl LoadedCraftingRecipe {
-    /// Write the retained value for synchronization.
-    pub fn write(&self) -> Result<String, String> {
-        self.0.write()
+    /// Write the retained value for synchronization, or skip it when shared dispatch refused
+    /// the invocation, reported a panic or already disabled the writer.
+    pub fn write(&self) -> Result<Option<String>, String> {
+        self.writer.call(|| self.recipe.write()).ok().transpose()
     }
 
     /// Test the retained value against the grid snapshot.
     pub fn matches(&self, context: &dyn crate::LoopContext, grid: CraftingGrid) -> bool {
-        self.0.matches(context, grid)
+        self.recipe.matches(context, grid)
     }
 
     /// Assemble the result for this recipe.
@@ -142,7 +172,7 @@ impl LoadedCraftingRecipe {
         context: &dyn crate::LoopContext,
         grid: CraftingGrid,
     ) -> Option<crate::ItemStack> {
-        self.0.assemble(context, grid)
+        self.recipe.assemble(context, grid)
     }
 
     /// Return custom remainders for the pre-take grid, or request defaults.
@@ -151,7 +181,7 @@ impl LoadedCraftingRecipe {
         context: &dyn CraftingRemainders,
         grid: CraftingGrid,
     ) -> Option<Vec<Option<crate::ItemStack>>> {
-        self.0.remaining_items(context, grid)
+        self.recipe.remaining_items(context, grid)
     }
 }
 
@@ -249,7 +279,7 @@ pub(crate) fn installed_crafting_recipe_kinds() -> Vec<String> {
 /// Resolve a serializer and its separately registered recipe type.
 pub(crate) fn installed_recipe_serializer(
     name: &str,
-) -> Option<(String, RegisteredRecipeSerializer)> {
+) -> Option<(String, InstalledRecipeSerializer)> {
     let (owner, recipe_type, handler) = installed()?.keys.recipe_serializers.get(name)?;
     (crate::mod_index_on(*owner)
         && (recipe_type == "minecraft:crafting"
@@ -274,4 +304,23 @@ pub(crate) fn installed_recipe_serializers() -> Vec<(String, String)> {
             .map(|(id, (_, kind, _))| (id.to_string(), kind.clone()))
             .collect()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crafting_grid_accepts_empty_and_larger_dimensions_and_rejects_mismatches() {
+        for (w, h) in [(0, 0), (0, u32::MAX), (u32::MAX, 0)] {
+            let empty = CraftingGrid::new(w, h, Vec::new()).unwrap();
+            assert_eq!((empty.width, empty.height, empty.cells.len()), (w, h, 0));
+        }
+
+        let large = CraftingGrid::new(4, 4, vec![None; 16]).unwrap();
+        assert_eq!((large.width, large.height, large.cells.len()), (4, 4, 16));
+
+        assert!(CraftingGrid::new(2, 2, vec![None; 3]).is_err());
+        assert!(CraftingGrid::new(u32::MAX, u32::MAX, Vec::new()).is_err());
+    }
 }

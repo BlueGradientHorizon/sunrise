@@ -48,16 +48,16 @@ fn run(job: &ChunkDiskJob) -> Result<Compound, ChunkDiskFailure> {
 }
 struct Listener {
     calls: Arc<AtomicUsize>,
-    mode: u8,
+    panics: bool,
 }
 #[crate::__subscriptions]
 impl Hooks for Listener {
     fn chunk_data_save(&self, host: &dyn ChunkDiskHost, event: &mut ChunkDataSaveEvent<'_>) {
-        self.calls.fetch_add(1, Ordering::Relaxed);
         assert!(host.backend().is_none());
         assert_eq!(event.data.get(&VALUE).unwrap(), 7);
         event.data.set(&VALUE, 8).unwrap();
-        if self.mode == 1 {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        if self.panics {
             panic!("fixture unwind after tentative write");
         }
     }
@@ -67,14 +67,14 @@ impl Hooks for Listener {
         event.data.set(&VALUE, value + 1).unwrap();
     }
 }
-fn with_listener(mode: u8, apply: impl FnOnce(Arc<AtomicUsize>)) {
+fn with_listener(apply: impl FnOnce(Arc<AtomicUsize>)) {
     let calls = Arc::new(AtomicUsize::new(0));
     testing::with_dispatch(
         vec![ModEntry::new(
             "disk_fixture",
             Box::new(Listener {
                 calls: calls.clone(),
-                mode,
+                panics: false,
             }),
         )]
         .into(),
@@ -93,7 +93,7 @@ fn host_borrows_the_captured_context() {
 
 #[test]
 fn capture_7_callback_8_live_9() {
-    with_listener(0, |calls| {
+    with_listener(|calls| {
         let mut live = store(7);
         let job = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &live).unwrap();
         VALUE.set(&mut live, Holder::Level, 9).unwrap();
@@ -107,7 +107,7 @@ fn capture_7_callback_8_live_9() {
 
 #[test]
 fn load_disk_8_callback_increment_publishes_9_once() {
-    with_listener(0, |calls| {
+    with_listener(|calls| {
         let job = ChunkDiskJob::capture(&context(ChunkDiskPhase::Load), &store(8)).unwrap();
         assert_eq!(read(&run(&job).unwrap()), 9);
         assert_eq!(read(&run(&job).unwrap()), 9);
@@ -116,26 +116,131 @@ fn load_disk_8_callback_increment_publishes_9_once() {
 }
 
 #[test]
-fn codec_error_or_unwind_after_setting_8_refuses_partial_publication() {
-    with_listener(1, |calls| {
-        let job = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &store(7)).unwrap();
-        let refusal = run(&job).unwrap_err();
-        assert_eq!(refusal.mod_id, "disk_fixture");
-        assert_eq!(refusal.reason, "native listener unwound");
-        assert_eq!(read(job.captured()), 7);
-        assert_eq!(run(&job).unwrap_err(), refusal);
-        assert_eq!(calls.load(Ordering::Relaxed), 1);
-    });
-    let broken = AttachmentType {
-        codec: Some(sunrise_mod_runtime::attachments::AttachmentCodec {
-            encode: |_| Err(AttachmentError::Encode),
-            decode: |_| Ok(7),
-        }),
-        ..VALUE
-    };
-    let mut data = ChunkDiskData::from_nbt(store(7).to_nbt()).unwrap();
-    assert!(data.set(&broken, 8).is_err());
-    assert!(data.finish().is_err());
+fn an_unwinding_disk_listener_refuses_publication_but_does_not_stop_the_walk() {
+    let a = Arc::new(AtomicUsize::new(0));
+    let b = Arc::new(AtomicUsize::new(0));
+    testing::with_dispatch(
+        vec![
+            ModEntry::new(
+                "disk_a",
+                Box::new(Listener {
+                    calls: a.clone(),
+                    panics: true,
+                }),
+            ),
+            ModEntry::new(
+                "disk_b",
+                Box::new(Listener {
+                    calls: b.clone(),
+                    panics: false,
+                }),
+            ),
+        ]
+        .into(),
+        || {
+            let failed = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &store(7)).unwrap();
+            let refusal = run(&failed).unwrap_err();
+            assert_eq!(refusal.mod_id, "disk_a");
+            assert_eq!(refusal.reason, "native listener unwound");
+            assert_eq!(read(failed.captured()), 7);
+            assert_eq!(b.load(Ordering::Relaxed), 1, "B runs on the failed job");
+            assert_eq!(run(&failed).unwrap_err(), refusal);
+            assert_eq!(b.load(Ordering::Relaxed), 1, "the failed job is complete");
+            let next = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &store(7)).unwrap();
+            assert_eq!(read(&run(&next).unwrap()), 8, "only B runs and publishes");
+            assert_eq!(a.load(Ordering::Relaxed), 1);
+            assert_eq!(b.load(Ordering::Relaxed), 2);
+            assert_eq!(
+                crate::__private::take_hook_panics(),
+                [crate::__private::HookPanicReport {
+                    mod_id: "disk_a",
+                    hook: "chunk_data_save",
+                }]
+            );
+        },
+    );
+}
+
+#[test]
+fn a_disk_codec_failure_remains_structured_and_does_not_disable_the_listener() {
+    struct BrokenCodec;
+    #[crate::__subscriptions]
+    impl Hooks for BrokenCodec {
+        fn chunk_data_save(&self, _: &dyn ChunkDiskHost, event: &mut ChunkDataSaveEvent<'_>) {
+            let broken = AttachmentType {
+                codec: Some(sunrise_mod_runtime::attachments::AttachmentCodec {
+                    encode: |_| Err(AttachmentError::Encode),
+                    decode: |_| Ok(7),
+                }),
+                ..VALUE
+            };
+            let _ = event.data.set(&broken, 8);
+        }
+    }
+    testing::with_dispatch(
+        vec![ModEntry::new("broken_codec", Box::new(BrokenCodec))].into(),
+        || {
+            for _ in 0..2 {
+                let job = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &store(7)).unwrap();
+                let refusal = run(&job).unwrap_err();
+                assert_eq!(refusal.mod_id, "broken_codec");
+                assert_eq!(refusal.key, "disk_fixture:value");
+                assert_eq!(refusal.reason, "Encode");
+            }
+            assert!(crate::__private::take_hook_panics().is_empty());
+        },
+    );
+}
+
+#[test]
+fn disk_operations_report_their_own_error_without_latching_and_later_mods_run() {
+    struct Refuses;
+    #[crate::__subscriptions]
+    impl Hooks for Refuses {
+        fn chunk_data_save(&self, _: &dyn ChunkDiskHost, event: &mut ChunkDataSaveEvent<'_>) {
+            let first = AttachmentType {
+                name: "first",
+                codec: None,
+                ..VALUE
+            };
+            let second = AttachmentType {
+                name: "second",
+                codec: None,
+                ..VALUE
+            };
+            let first = event.data.get(&first).unwrap_err();
+            assert_eq!(first.key, "disk_fixture:first");
+            assert_eq!(first.mod_id, "refuses");
+            let second = event.data.remove(&second).unwrap_err();
+            assert_eq!(second.key, "disk_fixture:second");
+            assert_eq!(second.mod_id, "refuses");
+            assert_eq!(event.data.failure(), Some(&first));
+            event.data.set(&VALUE, 99).unwrap();
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    testing::with_dispatch(
+        vec![
+            ModEntry::new("refuses", Box::new(Refuses)),
+            ModEntry::new(
+                "later",
+                Box::new(Listener {
+                    calls: calls.clone(),
+                    panics: false,
+                }),
+            ),
+        ]
+        .into(),
+        || {
+            let job = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &store(7)).unwrap();
+            let failure = run(&job).unwrap_err();
+            assert_eq!(failure.key, "disk_fixture:first");
+            assert_eq!(failure.mod_id, "refuses");
+            assert_eq!(calls.load(Ordering::Relaxed), 1);
+            assert!(crate::__private::take_hook_panics().is_empty());
+        },
+    );
 }
 
 fn opaque(value: Tag) -> Compound {

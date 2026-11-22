@@ -2,8 +2,8 @@
 //! ([`ItemResource`]), and a [`ResourceHandler`] is the indexed contents of one holder, written
 //! only inside a transaction.
 use crate::{
-    Capability, Host, HostTransaction, ItemStack, ItemStackView, ServerHost, Tag, Transaction,
-    backend_of,
+    Backend, BackendRef, Capability, Host, HostTransaction, ItemStack, ItemStackView, ServerHost,
+    Tag, Transaction, backend_of,
 };
 use std::fmt;
 use sunrise_core::nbt::JavaString;
@@ -137,6 +137,27 @@ pub struct ItemDamageSource {
     pub position: Option<[f64; 3]>,
 }
 
+/// A context that can supply item resource metadata without lending a world.
+pub trait HostItemResourceMetadata {
+    /// The item resource queries available to an [`ItemResource`].
+    fn item_resource_metadata(&self) -> ItemResourceMetadata<'_>;
+}
+
+/// Borrow of the item tables used by [`ItemResource`]'s metadata reads.
+// no wire: lends the current item metadata for a scoped callback.
+#[non_exhaustive]
+pub struct ItemResourceMetadata<'a> {
+    backend: Option<&'a dyn Backend>,
+}
+
+impl<H: Host + ?Sized> HostItemResourceMetadata for H {
+    fn item_resource_metadata(&self) -> ItemResourceMetadata<'_> {
+        ItemResourceMetadata {
+            backend: self.backend().map(BackendRef::open),
+        }
+    }
+}
+
 /// An item and its components, without a count, as NeoForge's `ItemResource`: what a slot holds.
 /// An empty slot holds none.
 // no wire: decoding calls ItemResource::of to normalize the incoming stack count to one; a structural derive would preserve a non-unit wire count.
@@ -214,16 +235,20 @@ impl ItemResource {
     }
     /// `ItemStack.isDamageableItem`: maximum damage and damage components are
     /// present, and the unbreakable component is absent, after this stack's patch.
-    pub fn damageable(&self, host: &dyn Host) -> bool {
-        backend_of(host).is_some_and(|backend| backend.item_resource_damageable(&self.0))
+    pub fn damageable(&self, host: &(impl HostItemResourceMetadata + ?Sized)) -> bool {
+        host.item_resource_metadata()
+            .backend
+            .is_some_and(|backend| backend.item_resource_damageable(&self.0))
     }
     fn enchanted(&self, host: &dyn Host) -> bool {
         matches!(self.value_id(host, "minecraft:enchantments"), Some(Tag::Compound(levels)) if !levels.is_empty())
     }
     /// `ItemStack.hasFoil`: the effective glint override wins, otherwise a
     /// item-specific foil applies (lodestone compass or nonempty enchantments).
-    pub fn foil(&self, host: &dyn Host) -> bool {
-        backend_of(host).is_some_and(|backend| backend.item_resource_foil(&self.0))
+    pub fn foil(&self, host: &(impl HostItemResourceMetadata + ?Sized)) -> bool {
+        host.item_resource_metadata()
+            .backend
+            .is_some_and(|backend| backend.item_resource_foil(&self.0))
     }
     /// `ItemStack.getRarity`: the effective rarity, upgraded for a nonempty
     /// enchantments component; removing rarity restores common before the upgrade.
@@ -243,8 +268,13 @@ impl ItemResource {
     /// `ItemStack.isValidRepairItem`: whether `material` belongs to the
     /// effective repairable component's item holder set. The comparison is by
     /// item identity/tag, not its count, damage or components.
-    pub fn repairable(&self, host: &dyn Host, material: &ItemResource) -> bool {
-        backend_of(host)
+    pub fn repairable(
+        &self,
+        host: &(impl HostItemResourceMetadata + ?Sized),
+        material: &ItemResource,
+    ) -> bool {
+        host.item_resource_metadata()
+            .backend
             .is_some_and(|backend| backend.item_resource_repairable(&self.0, material.item()))
     }
     /// `Item.getUseDuration` and its item overrides, in ticks, including the
@@ -357,7 +387,7 @@ impl ItemResource {
     /// where `value` is the item's default (`host.item_default_component`), so the stack is
     /// the plain item again. A stack changes where it lives by an exchange of one of it for
     /// this: `place.exchange(host, tx, &changed, 1)`, which splits it off a bigger stack, in the
-    /// transaction.
+    /// transaction. Raw `minecraft:damage` follows the same codec as [ItemStack::set].
     pub fn with_component(
         &self,
         host: &dyn Host,

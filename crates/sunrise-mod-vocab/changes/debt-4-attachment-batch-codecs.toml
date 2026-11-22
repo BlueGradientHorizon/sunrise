@@ -3,7 +3,6 @@ ids = [
     "type:AttachmentHolder",
     "type:Holder",
     "type:AttachmentError",
-    "type:AttachmentRowError",
     "type:AttachmentForm",
     "type:AttachmentPolicy",
     "type:AttachmentWrite",

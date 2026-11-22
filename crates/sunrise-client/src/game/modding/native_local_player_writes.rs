@@ -56,7 +56,7 @@ impl Game<'_> {
     ) -> Result<Option<[f64; 3]>, LevelWriteError> {
         if self.player.is_none()
             || !self.can_move_local_player()
-            || !sunrise_client::move_gate::valid_mod_move_delta(delta)
+            || !mod_api::__private::valid_mod_move_delta(delta)
         {
             return Ok(None);
         }
@@ -374,6 +374,7 @@ mod tests {
                         player.reset_fall_distance(host),
                         Err(mod_api::LevelWriteError::Unavailable),
                     );
+                    assert!(host.client_executor().is_none());
                     self.0.lock().unwrap().push((
                         event.old_section,
                         event.new_section,

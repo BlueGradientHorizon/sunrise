@@ -8,7 +8,7 @@ use super::{
 mod menu_books;
 pub(in crate::game) mod runtime_files;
 mod standalone;
-use mod_api::__private::{DeclarationKind, DeclarationRefusal, game::*};
+use mod_api::__private::{DeclarationKind, DeclarationRefusal, DeclarationSink, game::*};
 use mod_api::{Answered, DeclarationError, LoadingMessage, RegistrationContext};
 use standalone::collect_standalone_models;
 use std::{
@@ -312,7 +312,8 @@ pub(super) fn install_registration_data(
     runtime_files: BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>>,
 ) -> sunrise_client::Result<()> {
     let packages = mod_api::__private::loaded_mods();
-    let directory = Game::game_dir();
+    let directory = mod_api::InstanceDirectory::from_path(&Game::game_dir())
+        .expect("the host path has an encoding the mod API carries");
     (mod_api::__private::platform::platform()?.install_registration_data)(
         mod_api::__private::RegistrationData::new(
             builtin_registry_names(root)?,
@@ -433,38 +434,60 @@ struct NativeDeclared {
     batches: BTreeMap<&'static str, DeclaredContent>,
 }
 
+impl NativeDeclared {
+    fn stage<D, T>(
+        &mut self,
+        listen: &mut dyn FnMut(&mut DeclarationSink<'_, D>) -> bool,
+        mut validate: impl FnMut(D) -> Result<T, DeclarationError>,
+        mut publish: impl FnMut(&mut DeclaredContent, T),
+    ) {
+        let mut entries = Vec::new();
+        if listen(&mut |Answered { mod_id, answer, .. }| {
+            entries.push((mod_id, validate(answer)?));
+            Ok(())
+        }) {
+            for (owner, value) in entries {
+                publish(self.batches.entry(owner).or_default(), value);
+            }
+        }
+    }
+}
+
 /// The same native declarations serve startup and every pack reload.
 fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
     let collect = || {
         use super::api_values::TryIntoEngine;
         let mut declared = NativeDeclared::default();
         let context = RegistrationContext::new();
-        Game::native_blocks(&context, &mut |Answered { mod_id, answer, .. }| {
-            let block = answer
-                .try_into_engine(&())
-                .and_then(|b| b.validate_local())
-                .map_err(|reason| DeclarationError::Rejected {
-                    id: answer.id,
-                    reason,
-                })?;
-            declared
-                .batches
-                .entry(mod_id)
-                .or_default()
-                .blocks
-                .push(block);
-            Ok(())
+        Game::native_blocks(&context, &mut |listen| {
+            declared.stage(
+                listen,
+                |answer| {
+                    answer
+                        .try_into_engine(&())
+                        .and_then(|b| b.validate_local())
+                        .map_err(|reason| DeclarationError::Rejected {
+                            id: answer.id,
+                            reason,
+                        })
+                },
+                |batch, block| batch.blocks.push(block),
+            );
         });
-        Game::native_items(&context, &mut |Answered { mod_id, answer, .. }| {
-            let item = answer
-                .try_into_engine(&())
-                .and_then(|i| i.validate_local())
-                .map_err(|reason| DeclarationError::Rejected {
-                    id: answer.id,
-                    reason,
-                })?;
-            declared.batches.entry(mod_id).or_default().items.push(item);
-            Ok(())
+        Game::native_items(&context, &mut |listen| {
+            declared.stage(
+                listen,
+                |answer| {
+                    answer
+                        .try_into_engine(&())
+                        .and_then(|i| i.validate_local())
+                        .map_err(|reason| DeclarationError::Rejected {
+                            id: answer.id,
+                            reason,
+                        })
+                },
+                |batch, item| batch.items.push(item),
+            );
         });
         declared.refusals = mod_api::__private::take_declaration_refusals(&context);
         for (owner, kind) in super::api_values::block_entity_declarations() {
@@ -494,9 +517,8 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
     }
     #[cfg(test)]
     {
-        // Test fixtures bypass startup; collect with the same thread phase as startup.
-        let _registration =
-            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+        // Test fixtures bypass startup; collect with registration open as startup does.
+        let _registration = mod_platform::__private::RegistrationGuard::open();
         std::borrow::Cow::Owned(collect())
     }
 }
@@ -546,16 +568,20 @@ pub(super) fn collect_key_mappings<'declared>(
 
 /// Freeze the native mods' entity model layer definitions at startup, then bake their skull
 /// types (`native_create_skull_models`) from those definitions or vanilla's under `vanilla_root`.
-pub(super) fn register_layer_definitions(role: ExecutionRole, vanilla_root: &std::path::Path) {
+pub(super) fn register_layer_definitions(
+    role: ExecutionRole,
+    vanilla_root: &std::path::Path,
+) -> sunrise_client::Result<()> {
     if !role.is_client() {
-        return;
+        return Ok(());
     }
     let mut suppliers = Vec::new();
     Game::native_register_layer_definitions(&RegistrationContext::new(), &mut suppliers);
-    sunrise_client::mobs::model_layers::register(suppliers);
+    sunrise_client::mobs::model_layers::register(suppliers, vanilla_root)?;
     let mut models = Vec::new();
     Game::native_create_skull_models(&RegistrationContext::new(), &mut models);
     sunrise_client::skull_models::register(models, vanilla_root);
+    Ok(())
 }
 /// Freeze the native mods' F3 text callbacks and renderer toggles at client startup.
 pub(super) fn register_debug_entries(role: ExecutionRole) {
@@ -585,10 +611,11 @@ pub(super) fn register_gui_layers(role: ExecutionRole) {
 /// Collect the native mods' owned debug renderers and their owners on each list refresh.
 pub(super) fn debug_renderers(
     role: ExecutionRole,
+    entries: &dyn mod_api::__private::DebugEntryStates,
 ) -> Vec<mod_api::Answered<mod_api::DebugRenderer>> {
     let mut renderers = Vec::new();
     if role.is_client() {
-        Game::native_register_debug_renderers(&RegistrationContext::new(), &mut renderers);
+        Game::native_register_debug_renderers(&RegistrationContext::new(), entries, &mut renderers);
     }
     renderers
 }
@@ -662,7 +689,7 @@ fn register_special_model_renderers() {
     let mut registry = mod_api::SpecialModelRendererRegistry::default();
     Game::native_register_special_model_renderer(&RegistrationContext::new(), &mut registry);
     for (kind, owner) in registry.initial_owners() {
-        if sunrise_assets::item_model::SpecialModel::is_builtin_type(kind) {
+        if sunrise_assets::item_model::SpecialModel::is_builtin_type(&kind.to_string()) {
             log::warn!(
                 "Sunrise: special model type {kind} registered by the game is replaced by {}'s registration",
                 owner.unwrap_or("the game")
@@ -695,12 +722,13 @@ fn register_special_model_renderers() {
 /// The client presentation registrations, kept once at start, before resources load: the
 /// dimension transition screens, the entity spectator shaders, the render pipelines and the entity
 /// renderers.
-pub(super) fn register_client_presentations(role: ExecutionRole) {
+pub(super) fn register_client_presentations(role: ExecutionRole) -> sunrise_client::Result<()> {
     register_preset_editors(role);
     register_dimension_transition_screens(role);
     register_entity_spectator_shaders(role);
-    register_render_pipelines(role);
+    register_render_pipelines(role)?;
     register_entity_renderers(role);
+    Ok(())
 }
 
 /// Resolve client dimension-transition registrations once, before the first level opens.
@@ -734,13 +762,14 @@ pub(super) fn register_preset_editors(role: ExecutionRole) {
 
 /// Keep the mods' render pipeline registrations once at startup, before resources load: every
 /// load builds them from its own shader files.
-pub(super) fn register_render_pipelines(role: ExecutionRole) {
+pub(super) fn register_render_pipelines(role: ExecutionRole) -> sunrise_client::Result<()> {
     if !role.is_client() {
-        return;
+        return Ok(());
     }
     let mut pipelines = Vec::new();
     Game::native_register_render_pipelines(&RegistrationContext::new(), &mut pipelines);
-    sunrise_client_render::mod_pipelines::register(pipelines);
+    sunrise_client_render::mod_pipelines::register(pipelines)?;
+    Ok(())
 }
 
 /// The native mods' meshing registrations, kept once at start, before resources load: colour
@@ -795,16 +824,17 @@ pub(super) fn register_entity_renderers(role: ExecutionRole) {
 /// The native mods' particle providers (`native_register_particle_providers`) and render groups
 /// (`native_register_particle_groups`) are registered once at startup. Each particle engine
 /// constructs its groups once; sprite-set loads associate types with those groups and providers.
-pub(super) fn register_particles(role: ExecutionRole) {
+pub(super) fn register_particles(role: ExecutionRole) -> sunrise_client::Result<()> {
     if !role.is_client() {
-        return;
+        return Ok(());
     }
     let mut registry = mod_api::ParticleProviderRegistry::default();
     Game::native_register_particle_providers(&RegistrationContext::new(), &mut registry);
     sunrise_client::particles::register_particle_providers(registry.into_providers());
     let mut group_factories = Vec::new();
     Game::native_register_particle_groups(&RegistrationContext::new(), &mut group_factories);
-    sunrise_client::particles::register_particle_groups(group_factories);
+    sunrise_client::particles::register_particle_groups(group_factories)?;
+    Ok(())
 }
 
 /// `root` with the content mods that are on layered over it
@@ -1868,13 +1898,6 @@ pub(super) struct ModsReload {
 }
 
 impl Game<'_> {
-    /// Observe the platform phase at construction, after bootstrapping the real test runtime.
-    pub(super) fn mod_phase_for_construction() -> mod_api::__private::ModPhase {
-        #[cfg(test)]
-        Self::initialize_mod_runtime_for_tests();
-        mod_api::__private::current_phase()
-    }
-
     #[cfg(test)]
     pub(super) fn initialize_mod_runtime_for_tests() {
         static INITIALIZED: std::sync::Once = std::sync::Once::new();
@@ -2156,7 +2179,10 @@ impl Game<'_> {
             return;
         }
         if let Err(error) = self.reload_datapacks(true, &self.level.enabled_features.clone()) {
-            log::warn!("Sunrise: content mods data reload failed: {error}");
+            log::warn!(
+                "Sunrise: content mods data reload failed: {}",
+                error.diagnostic()
+            );
             return;
         }
         log::info!(
@@ -2602,6 +2628,54 @@ mod tests {
                         "{record:?}"
                     );
                 }
+            },
+        );
+    }
+
+    #[test]
+    fn panicking_native_declarations_publish_neither_prefixes_nor_diagnostics() {
+        struct Declares {
+            panics: bool,
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Declares {
+            fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
+                event
+                    .register(mod_api::Block::new("pot", "minecraft:stone"))
+                    .unwrap();
+                if self.panics {
+                    let _ = event.register(mod_api::Block::new("Bad Block", "minecraft:stone"));
+                    panic!("failed after an invalid block declaration");
+                }
+            }
+            fn items(&self, _: &RegistrationContext, event: &mut mod_api::ItemsEvent<'_>) {
+                event
+                    .register(mod_api::Item::new("tool", "minecraft:stick"))
+                    .unwrap();
+                if self.panics {
+                    let _ = event.register(mod_api::Item::new("Bad Item", "minecraft:stick"));
+                    panic!("failed after an invalid item declaration");
+                }
+            }
+        }
+
+        mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new("failed", Box::new(Declares { panics: true })),
+                mod_api::ModEntry::new("healthy", Box::new(Declares { panics: false })),
+            ]
+            .into(),
+            || {
+                let declared = native_declared();
+                assert!(declared.refusals.is_empty());
+                assert_eq!(
+                    declared.batches.keys().copied().collect::<Vec<_>>(),
+                    ["healthy"]
+                );
+                let batch = &declared.batches["healthy"];
+                assert_eq!(batch.blocks[0].get().id, "healthy:pot");
+                assert_eq!(batch.items[0].get().id, "healthy:tool");
+                assert_eq!(mod_api::__private::take_hook_panics().len(), 2);
             },
         );
     }
@@ -5383,7 +5457,7 @@ mod server_side_tests {
     impl Hooks for Reloads {
         fn add_client_reload_listeners(
             &self,
-            _: &dyn ClientHost,
+            _: &dyn ClientReloadListenerContext,
             _: &mut AddClientReloadListenersEvent<'_>,
         ) {
         }

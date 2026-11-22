@@ -77,6 +77,14 @@ impl Hooks for StateMod {
             .blocks(&["part_state:press"])
             .build();
         r.block_entity_part_with_state(&kind, Press).unwrap();
+        let press = r.block_key("part_state:press");
+        r.block_container(
+            &press,
+            mod_api::ModContainer {
+                slots: 1,
+                ..Default::default()
+            },
+        );
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, e: &mut mod_api::BlocksEvent<'_>) {
         e.register(mod_api::Block::new("part_state:press", "minecraft:barrel").with_item(false))
@@ -129,22 +137,10 @@ fn press(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
 }
 
 fn press_with_item_slot(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
-    use sunrise_client::containers::ModContainer;
-
-    let entity = press(game, pos);
-    let state = game.world.block(pos.0, pos.1, pos.2);
-    game.world.block_entities.set_mod_containers(
-        [(
-            state.0,
-            Arc::new(ModContainer {
-                slots: 1,
-                ..Default::default()
-            }),
-        )]
-        .into_iter()
-        .collect(),
-    );
-    entity
+    // The save fixture never runs the block-entity tick that binds these declarations.
+    let containers = game.native_containers();
+    game.world.block_entities.set_mod_containers(containers);
+    press(game, pos)
 }
 
 fn stored(game: &mut Game<'_>, entity: BlockEntityRef) -> Option<i32> {

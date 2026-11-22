@@ -151,22 +151,27 @@ visit returns.
 ## Finding the nearest entity hit
 
 Use `level.ray_trace_nearest_entity(host, from, to, margin, exclude, &mut accept)`
-when you need just one hit. It visits the same kinds of entities as the box query,
-grows their boxes by `margin`, and clips them to the segment. It skips `exclude`
-(such as the shooter) and boxes the ray starts inside.
+when you need just one hit. It visits the same kinds of entities as the box query
+within the segment's bounds padded by `margin.abs()`. It skips `exclude` (such as
+the shooter) before calling `accept`.
 
-The predicate runs once per geometric hit, in spatial traversal order rather than
-nearest-first order, even if a nearer hit has already been accepted. It can read
-`hit.entity` through the same host. Return `true` to consider a hit. The smallest
-squared distance from `from` wins; exact squared-distance ties keep the first
-visited hit. The query doesn't allocate a hit list. It returns `Ok(Some(hit))` on
-success and `Ok(None)` if nothing is accepted. A stale level returns
-`Err(LevelReadError::Stale)`; invalid ray geometry or unavailable world access
-returns `Err(LevelReadError::Unavailable)`. Neither refusal runs the predicate.
+Matching vanilla's `ProjectileUtil.getEntityHitResult`, `accept` receives each
+non-excluded candidate `EntityRef` in spatial traversal order (not nearest-first
+order) **before** its bounding box is read and clipped, and can make shared reads
+through the same host. Accepted candidates have their box inflated by `margin`
+(`AABB.inflate`: positive grows, negative shrinks; any finite value is accepted)
+and clipped against the segment, skipping boxes the ray starts inside. Among
+accepted hits, the smallest squared distance from `from` wins; exact
+squared-distance ties keep the first visited hit. The query doesn't allocate a hit
+list. It returns `Ok(Some(hit))` on success and `Ok(None)` if no accepted
+candidate is hit. A stale level returns `Err(LevelReadError::Stale)`; non-finite
+ray geometry or unavailable world access returns `Err(LevelReadError::Unavailable)`.
+Neither refusal runs the predicate.
 
 Keep using `level.ray_trace_entities(host, from, to, margin, exclude)` when you need
-all hits or depend on processing them nearest first. That call returns `Some` with
-an empty list on a valid miss and `None` if refused.
+all hits, depend on processing them nearest first, or must filter on the clipped
+hit location or distance. That call returns `Some` with an empty list on a valid
+miss and `None` if refused.
 
 ## Walking every entity in a level
 
@@ -177,14 +182,13 @@ parts: vanilla's `ServerLevel.getAllEntities` iterates the entity lookup, not
 multipart hit boxes. The visitor can read the entity through the same host.
 
 Return `ControlFlow::Continue(())` to visit the next entity or
-`ControlFlow::Break(())` to stop. The call returns `Ok(ControlFlow::Continue(()))`
-on completion (including an empty level), or `Ok(ControlFlow::Break(()))` if the
-visitor stopped it. A stale handle returns `LevelReadError::Stale`. A remote client,
-a parked level, or an unavailable lookup member returns `LevelReadError::Unavailable`
-before the visitor runs. The walk checks that every eligible lookup member resolves
-before calling the visitor. This preserves the all-or-nothing read even if the visitor
-would stop at the first entity. An early stop saves the rest of the second pass, not
-that preflight.
+`ControlFlow::Break(())` to stop. The walk resolves each eligible lookup member
+lazily in admission order, skipping any member that cannot resolve cleanly, and
+stops immediately on `ControlFlow::Break(())` without touching later members. The
+call returns `Ok(ControlFlow::Continue(()))` on completion (including an empty
+level), or `Ok(ControlFlow::Break(()))` if the visitor stopped it. A stale handle
+returns `LevelReadError::Stale`. A remote client, a parked level, or unavailable
+world access returns `LevelReadError::Unavailable` before the visitor runs.
 
 The walk preserves lookup admission order across storage families, including
 removal and re-admission at the end. An entity spawned during play, such as a
@@ -395,13 +399,14 @@ A general row can move to another position in its level through `EntityRef::tele
 
 In `declare_general_entity`, pass `pickable` after `summonable`. Pass `false` for
 vanilla's plain `Entity.isPickable` default. With `true`, the crosshair can hit
-the declared box once the row is shown. The ordinary use and attack packets name
-that row, and the existing `entity_interact` and `attack_entity` hooks receive
-its id and declared kind. Without a listener's response, use on the row passes
-and the row declines damage. This does not make the box solid or give it a
-middle-click item. The next argument declares how the row reacts to pistons:
-pass `None` for `PushReaction::PushPull`, or `Some(PushReaction::IgnoreEntity)`
-to leave the row in place. The declared reaction is readable on either side.
+the declared box as soon as the row spawns on the client. The ordinary use and
+attack packets name that row, and the existing `entity_interact` and
+`attack_entity` hooks receive its id and declared kind. Without a listener's
+response, use on the row passes and the row declines damage. This does not make
+the box solid or give it a middle-click item. The next argument declares how the
+row reacts to pistons: pass `None` for `PushReaction::PushPull`, or
+`Some(PushReaction::IgnoreEntity)` to leave the row in place. The declared
+reaction is readable on either side.
 
 `EntityRef::owner(host)` reads the owner back (`TraceableEntity.getOwner`) for a projectile or a general row (`ProjectileRef::owner` answers the same for a projectile): a general type's own tick uses it to skip its shooter and to name the attacker of the damage it deals. A spawn is refused for a kind of another family than its body, a position, velocity or rotation that isn't finite, a position outside `Level.isInSpawnableBounds` or in an unloaded chunk, an owner that is stale, in another level, or without a collision identity for a thrown spawn, a level not in place, a client, or a mod that cancelled the spawn or kept the entity out.
 Inside a transaction the join waits for the root commit, so a spawn a mod then keeps out still returns a handle, which reads stale from the commit on. The level's spawn limits, flags and spawn rules don't apply, as they don't to `/summon`; nor does a general type's `summonable`, which is `/summon`'s alone. Items, experience and block drops have their own calls (`spawn_item`, `award_experience`, `pop_resource`), and any other entity `summon`.

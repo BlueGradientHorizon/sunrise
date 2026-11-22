@@ -73,8 +73,8 @@ in Controls, and adding one would put a non-vanilla mapping into `options.txt`.
   nothing measurable (numbers in the pull request, #814).
 
 ### Mod audio streams (`modAudioStreams`, default on)
-- Mods can play audio by supplying a native source to `ClientHost::open_audio_stream` or pushing PCM into
-  a stream opened with `ClientHost::open_push_audio_stream` ([the how-to](modding/src/how-to/client/audio-streams.md)).
+- Mods can play audio by supplying a native source to `ClientHost::open_audio_stream`
+  ([the how-to](modding/src/how-to/client/audio-streams.md)).
   Off, the mixer still consumes each stream's audio at its own pace, but none of it is heard.
 - The one extra that is on by default; its line is written to `sunrise-extras.txt` only while it is off. It lives in
   `crates/sunrise-official/src/mod_audio.rs` and sets the engine's mod-stream gain (`sunrise_platform::sound`).

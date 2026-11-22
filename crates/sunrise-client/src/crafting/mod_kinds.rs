@@ -80,7 +80,12 @@ fn snapshot_dimensions(
     width: usize,
     height: usize,
 ) -> Option<CraftingGrid> {
-    if !(1..=3).contains(&width) || !(1..=3).contains(&height) {
+    let width_u32 = u32::try_from(width).ok()?;
+    let height_u32 = u32::try_from(height).ok()?;
+    if width.checked_mul(height)? == 0 {
+        return CraftingGrid::new(width_u32, height_u32, Vec::new()).ok();
+    }
+    if size < width || height.checked_mul(size).is_none_or(|n| n > grid.len()) {
         return None;
     }
     let cells = (0..height)
@@ -90,7 +95,7 @@ fn snapshot_dimensions(
             None => Some(None),
         })
         .collect::<Option<Vec<_>>>()?;
-    CraftingGrid::new(width as u32, height as u32, cells).ok()
+    CraftingGrid::new(width_u32, height_u32, cells).ok()
 }
 
 fn to_api(stack: &ItemStack) -> Option<mod_api::ItemStack> {
@@ -159,7 +164,11 @@ impl mod_api::LoopContext for CraftingRemainderView<'_> {
 impl mod_api::CraftingRemainders for CraftingRemainderView<'_> {
     fn default_remainder(&self, cell: u32) -> Option<mod_api::ItemStack> {
         let cell = usize::try_from(cell).ok()?;
-        if cell >= self.width * self.height {
+        if self
+            .width
+            .checked_mul(self.height)
+            .is_none_or(|n| cell >= n)
+        {
             return None;
         }
         let stack = self
@@ -194,15 +203,8 @@ impl ModRecipe {
         .ok()
         .flatten()
     }
-    pub fn written(&self) -> Result<String, String> {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.loaded.write()))
-            .unwrap_or_else(|_| Err("serializer panicked".into()))
-    }
-}
-
-impl Recipes {
-    pub fn has_mod_crafting(&self) -> bool {
-        self.mod_crafting
+    pub fn written(&self) -> Result<Option<String>, String> {
+        self.loaded.write()
     }
 }
 
@@ -221,7 +223,7 @@ impl Recipes {
         height: usize,
         map_scale: &dyn Fn(i32) -> Option<u8>,
     ) -> Option<(&str, ItemStack)> {
-        let vanilla = Input::of(grid, size);
+        let vanilla = Input::of_rect(grid, size, width, height);
         if vanilla.is_none() && !self.mod_crafting {
             return None;
         }
@@ -285,10 +287,13 @@ impl Recipes {
         }))
         .ok()
         .flatten();
-        let Some(result) = result.filter(|r| r.len() == width * height) else {
+        let Some(expected) = width.checked_mul(height) else {
             return fallback();
         };
-        let mut placed = vec![None; size * size];
+        let Some(result) = result.filter(|r| r.len() == expected) else {
+            return fallback();
+        };
+        let mut placed = vec![None; grid.len()];
         for (i, cell) in result.into_iter().enumerate() {
             placed[i / width * size + i % width] = match cell {
                 Some(stack) => match from_api(stack) {
@@ -311,11 +316,4 @@ pub fn sync_recipe_types(requested: &[String]) -> Vec<String> {
     types.sort();
     types.dedup();
     types
-}
-/// Resolve file serializers to recipe types at the content transport boundary.
-pub fn file_has_type(file: &Value, types: &[String]) -> bool {
-    file["type"]
-        .as_str()
-        .and_then(|id| recipe_type("sync", id).ok())
-        .is_some_and(|kind| types.contains(&kind))
 }

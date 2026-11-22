@@ -9,24 +9,20 @@ pub trait EntitySightBackend {
     /// Side: both.
     /// The height of the entity's eyes above its feet (`Entity.getEyeHeight`).
     /// On a client, the local player's predicted dimensions or a tracked entity's own copy.
-    #[access(WorldOnly)]
     fn entity_eye_height(&self, entity: EntityRef) -> Option<f64>;
     /// Side: both.
     /// Where the entity's eyes are (`Entity.getEyePosition`). On a client, the local player's
     /// predicted position and dimensions or a tracked entity's own copy.
-    #[access(WorldOnly)]
     fn entity_eye_position(&self, entity: EntityRef) -> Option<[f64; 3]>;
     /// Side: server.
     /// The unit vector the entity looks along (`Entity.getViewVector`, from
     /// its pitch and yaw). API 379.
-    #[access(WorldOnly)]
     fn entity_view_vector(&self, entity: EntityRef) -> Option<[f64; 3]>;
     /// Side: both.
     /// The unit vector that points up out of the entity's head
     /// (`Entity.getUpVector`): its view vector turned a quarter of a turn
     /// toward the zenith, so a level look gives straight up and a look down
     /// leans it forward. From the entity's pitch and yaw.
-    #[access(WorldOnly)]
     fn entity_up_vector(&self, entity: EntityRef) -> Option<[f64; 3]>;
     /// Side: server.
     /// A ray from the entity's eyes along its view vector, `distance` blocks
@@ -37,6 +33,5 @@ pub trait EntitySightBackend {
     /// [`LevelRef::ray_trace_entities`] for all hits in order. Returns `None` for a
     /// stale handle, a negative or non-finite `distance`, or when `LevelRef::clip`
     /// returns `None`.
-    #[access(WorldOnly)]
     fn entity_pick(&self, entity: EntityRef, distance: f64) -> Option<ClipHit>;
 }

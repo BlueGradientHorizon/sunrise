@@ -114,5 +114,5 @@ objective's are.
 `ClientHost::client_scoreboard()` is what this client has been sent: the objectives shown in a
 display slot, with their slots and scores, and every team, as plain values. The server does not
 send a team's death message visibility, so a client has none to read. A client has no handles and
-cannot write. A text the API cannot hold (nested deeper than 512 component nodes) refuses the
-whole snapshot with `TextFormError::TooDeep`; nothing is flattened or skipped.
+cannot write. A text with unrepresentable opaque metadata refuses the whole snapshot with its
+`TextFormError`; nothing is flattened or skipped.

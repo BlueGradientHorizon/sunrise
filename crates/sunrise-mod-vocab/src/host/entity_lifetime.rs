@@ -13,18 +13,15 @@ pub trait EntityLifetimeBackend {
     /// tell (displays, markers, interactions, evoker fangs, area effect
     /// clouds, ominous item spawners), are in it while the handle names them.
     /// False for a stale handle or on a client.
-    #[access(WorldOnly)]
     fn entity_added_to_level(&self, entity: EntityRef) -> bool;
     /// Side: server.
     /// `Entity.getPortalCooldown`: a player's own portal state, the falling
     /// block's, a pearl's End gateway state, or the level's for the other
     /// kinds its portal walk carries (zero when it keeps no state for one).
-    #[access(WorldOnly)]
     fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32>;
     /// Side: server.
     /// Ticks the entity has lived (`Entity.tickCount`): players, mobs, item
     /// entities, experience orbs and minecarts. Wraps as vanilla's `int` does.
-    #[access(WorldOnly)]
     fn entity_tick_count(&self, entity: EntityRef) -> Option<i32>;
 }
 /// The handles' writes of the `entity_lifetime` area, implemented by the game and reached through [`BackendMut`].
@@ -42,7 +39,6 @@ pub trait EntityLifetimeBackendMut {
     /// transaction the removal is journaled; abort restores the item and
     /// commit delivers its removal notice. Non-item removal is immediate and
     /// is not rolled back by this operation.
-    #[access(WorldOnly)]
     fn entity_discard(&mut self, entity: EntityRef) -> bool;
     /// Side: server.
     /// Removes the entity for `reason` (`Entity.remove`): `Discarded`, as
@@ -54,7 +50,6 @@ pub trait EntityLifetimeBackendMut {
     /// Removing a general entity dismounts its passengers without removing them.
     /// For dropped items, the same transaction rules apply as for
     /// `entity_discard`.
-    #[access(WorldOnly)]
     fn entity_remove(&mut self, entity: EntityRef, reason: RemovalReason) -> bool;
     /// Side: server.
     /// Sets whether this entity may be written as a root in future world saves,
@@ -72,7 +67,6 @@ pub trait EntityLifetimeBackendMut {
     /// resolve in the current level, or a client-side call. Returns
     /// `Err(LevelWriteError::Unavailable)` outside the world phase or without
     /// a world backend.
-    #[access(WorldOnly)]
     fn entity_set_persistent(
         &mut self,
         entity: EntityRef,
@@ -92,6 +86,5 @@ pub trait EntityLifetimeBackendMut {
     /// falling block and an ender pearl, whose cooldown lives in a store of
     /// its own that this write does not own. False for a kind the read
     /// refuses, a stale handle, or on a client.
-    #[access(WorldOnly)]
     fn entity_set_portal_cooldown(&mut self, entity: EntityRef, ticks: i32) -> bool;
 }

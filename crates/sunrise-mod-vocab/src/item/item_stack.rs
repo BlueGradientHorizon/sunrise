@@ -258,7 +258,8 @@ impl<'a> ItemComponentEditor<'a> {
         }
     }
 
-    /// Stage a component value. An invalid damage value leaves earlier edits intact.
+    /// Stage a component value. Raw `minecraft:damage` uses vanilla's numeric-to-int
+    /// codec; a negative result or nonnumeric value leaves earlier edits intact.
     pub fn set<C: Component>(&mut self, component: &C, value: C::Value) -> Result<(), StackError> {
         let id = component.id();
         let value = component.encode(value);
@@ -267,9 +268,6 @@ impl<'a> ItemComponentEditor<'a> {
         } else if let Some(id) = id.strip_prefix('!') {
             if id == "minecraft:damage" {
                 validate_damage_removal(&value)?;
-                if self.damage_component().is_some() {
-                    return Err(StackError::ConflictingDamage);
-                }
                 self.clear_damage();
             } else {
                 self.edits
@@ -296,7 +294,7 @@ impl<'a> ItemComponentEditor<'a> {
         }
     }
 
-    /// Stage an explicit numeric damage override. The game checks the effective maximum.
+    /// Stage an explicit numeric damage override. The game validates that damage fits `0..=i32::MAX`.
     pub fn set_damage(&mut self, damage: u32) {
         self.edits.damage = Some(ComponentEdit::Value(damage));
     }
@@ -307,9 +305,10 @@ impl<'a> ItemComponentEditor<'a> {
     }
 
     /// Merge values and explicit `!id` removals into the staged edits, leaving other
-    /// components alone. For components other than damage, a removal wins over a value in
-    /// the same patch. Malformed or conflicting damage refuses the entire patch without
-    /// disturbing earlier edits.
+    /// components alone. Use full component keys: the write does not add a namespace.
+    /// A removal wins over a value in the same patch, including for damage.
+    /// Raw `minecraft:damage` uses the same codec as [Self::set]; invalid damage
+    /// refuses the entire patch without disturbing earlier edits.
     pub fn apply_components(&mut self, patch: &Compound) -> Result<(), StackError> {
         visit_component_patch(patch, |edit| match edit {
             PatchEdit::Component(id, edit) => {
@@ -510,8 +509,6 @@ pub enum StackError {
     CountOverflow,
     /// Damage must be a nonnegative integer representable by u32.
     InvalidDamage,
-    /// A patch and the damage field (or a patch value and removal) disagree.
-    ConflictingDamage,
     /// The supplied value for a component is not admitted by its codec.
     InvalidComponent {
         /// The component whose value was refused.
@@ -524,7 +521,6 @@ impl std::fmt::Display for StackError {
             Self::Empty => f.write_str("an item stack must be nonempty"),
             Self::CountOverflow => f.write_str("item stack count overflow"),
             Self::InvalidDamage => f.write_str("invalid item damage"),
-            Self::ConflictingDamage => f.write_str("conflicting item damage"),
             Self::InvalidComponent { id } => {
                 write!(f, "invalid value for component {}", id.as_str())
             }
@@ -549,21 +545,18 @@ pub enum StackWriteError {
         /// Effective maximum, including component overrides.
         maximum: u32,
     },
-    /// The damage is above the effective durability limit.
-    DamageExceeded {
-        /// Effective maximum, including component overrides.
-        maximum: u32,
-    },
-    /// A maximum is malformed or negative, or a stack limit lies outside 1..=99.
+    /// A maximum is malformed or out of range (`max_stack_size` outside `1..=99`, `max_damage` outside `1..=i32::MAX`).
     InvalidMaximum,
     /// An engine result contained a zero-count stack instead of an empty slot.
     EmptyEngineStack,
-    /// A stack's component patch was malformed or conflicted with its damage.
+    /// A stack's component patch was malformed or carried an out-of-range damage value.
     InvalidComponents {
         /// The record-level normalization refusal.
         reason: StackError,
     },
-    /// A consume or death-protection component could not decode its opaque effect payload.
+    /// A decoded `minecraft:consumable` or `minecraft:death_protection` component
+    /// refused its opaque effect payload. `minecraft:use_remainder` and
+    /// `minecraft:sulfur_cube_content` defer effect decoding until materialization.
     InvalidEffectPayload,
     /// A stack carries both maximum durability and a stack limit above one.
     StackableDamageable,
@@ -656,7 +649,7 @@ impl ItemStack {
     pub fn damage_component(&self) -> Option<u32> {
         self.damage
     }
-    /// Set damage. The game checks the effective maximum when accepting this value.
+    /// Set damage. The game validates that damage fits `0..=i32::MAX` when accepting this value.
     pub fn set_damage(&mut self, damage: u32) {
         self.damage = Some(damage);
         self.remove_patch_entries(&[JavaString::from("!minecraft:damage")]);
@@ -731,6 +724,8 @@ impl ItemStack {
         self.components()?.patch.get(&JavaString::from(id))
     }
     /// Replace a component value. Only stacks with a patch allocate component storage.
+    /// Raw `minecraft:damage` uses vanilla's numeric-to-int codec and rejects negative
+    /// results and nonnumeric values.
     pub fn set<C: Component>(&mut self, component: &C, value: C::Value) -> Result<(), StackError> {
         self.set_component_value(component.id(), component.encode(value))
     }
@@ -741,9 +736,8 @@ impl ItemStack {
         }
         if id == "!minecraft:damage" {
             validate_damage_removal(&value)?;
-            if self.damage.is_some() {
-                return Err(StackError::ConflictingDamage);
-            }
+            self.clear_damage();
+            return Ok(());
         }
         self.put_component_value(id, value);
         Ok(())
@@ -807,9 +801,10 @@ impl ItemStack {
         self.components.as_deref()
     }
     /// `ItemStack.applyComponents`: merge a patch without discarding other overrides.
-    /// Incoming values replace removals and incoming removals replace values. If both
-    /// are supplied for one component, removal wins (conflicting damage is refused).
-    /// Damage is normalized before any write; a malformed patch leaves this stack unchanged.
+    /// Use full component keys, as in [Self::set_components]. Incoming values replace
+    /// removals and incoming removals replace values. If both are supplied for one
+    /// component, removal wins, including for damage. Raw `minecraft:damage` uses
+    /// the same codec as [Self::set]; invalid damage leaves the stack unchanged.
     pub fn apply_components(&mut self, patch: &Compound) -> Result<(), StackError> {
         visit_component_patch(patch, |edit| match edit {
             PatchEdit::Component(id, edit) => self.apply_component_edit(id, edit.map(Tag::clone)),
@@ -848,26 +843,26 @@ impl ItemStack {
             ComponentEdit::Inherit
         }
     }
-    /// Replace the component patch at an NBT conversion boundary.
-    /// Damage is normalized into the scalar field. Malformed or conflicting values
-    /// refuse the entire replacement and leave the stack unchanged.
+    /// Replace the component patch at an NBT conversion boundary. Use full component keys:
+    /// a bare `damage` entry stays opaque rather than becoming a damage override.
+    /// `minecraft:damage` uses the same codec as [Self::set] and replaces prior damage.
+    /// `!minecraft:damage` clears any prior or incoming damage value. Invalid damage
+    /// refuses the entire replacement and leaves the stack unchanged.
     pub fn set_components(&mut self, mut patch: Compound) -> Result<(), StackError> {
         let damage = patch_damage(&patch)?;
         let removed = patch.contains_key(&JavaString::from("!minecraft:damage"));
-        if damage.is_some_and(|value| self.damage.is_some_and(|damage| damage != value))
-            || (removed && self.damage.is_some())
-        {
-            return Err(StackError::ConflictingDamage);
-        }
-        let next = damage.or(self.damage);
         patch.remove(&JavaString::from("minecraft:damage"));
-        self.damage = next;
+        self.damage = if removed {
+            None
+        } else {
+            damage.or(self.damage)
+        };
         self.components = (!patch.is_empty()).then(|| Arc::new(Components::from(patch)));
         Ok(())
     }
     /// Decode the item NBT escape using this host's load-resolved item ids.
-    /// Unknown ids, zero counts and malformed/conflicting damage return None.
-    /// Effective maxima remain the game's write-boundary responsibility.
+    /// Unknown ids, zero counts and invalid damage return None. Raw damage uses the same
+    /// codec as [Self::set]. Effective maxima remain the game's write-boundary responsibility.
     pub fn from_nbt(host: &dyn crate::Host, value: &Compound) -> Option<Self> {
         let Tag::String(id) = value.get(&JavaString::from("id"))? else {
             return None;
@@ -876,7 +871,14 @@ impl ItemStack {
         let item = host.item_key(&id)?;
         let count = match value.get(&JavaString::from("count")) {
             None => 1,
-            Some(value) => damage_value(value).ok()?,
+            Some(value) => u32::try_from(match value {
+                Tag::Byte(value) => i64::from(*value),
+                Tag::Short(value) => i64::from(*value),
+                Tag::Int(value) => i64::from(*value),
+                Tag::Long(value) => *value,
+                _ => return None,
+            })
+            .ok()?,
         };
         let mut stack = Self::new(item, count)?;
         match value.get(&JavaString::from("components")) {
@@ -913,14 +915,9 @@ pub(crate) fn unsigned_tag(value: u32) -> Tag {
 }
 
 fn damage_value(value: &Tag) -> Result<u32, StackError> {
-    let value = match value {
-        Tag::Byte(value) => i64::from(*value),
-        Tag::Short(value) => i64::from(*value),
-        Tag::Int(value) => i64::from(*value),
-        Tag::Long(value) => *value,
-        _ => return Err(StackError::InvalidDamage),
-    };
-    u32::try_from(value).map_err(|_| StackError::InvalidDamage)
+    sunrise_core::nbt::numeric_int(value)
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or(StackError::InvalidDamage)
 }
 
 enum PatchEdit<'a> {
@@ -928,7 +925,7 @@ enum PatchEdit<'a> {
     Damage(ComponentEdit<u32>),
 }
 
-/// Walk normalized edits in patch order once damage has been admitted. Ordinary removals
+/// Walk normalized edits in patch order once damage has been admitted. Removals
 /// win over values. Numeric damage lives outside the patch and is set at the end.
 fn visit_component_patch(
     patch: &Compound,
@@ -964,6 +961,7 @@ fn validate_damage_removal(value: &Tag) -> Result<(), StackError> {
 }
 
 /// Validate the raw damage entries before either a replacement or a merge mutates a stack.
+/// Explicit removal (`!minecraft:damage`) wins over a numeric `minecraft:damage` entry.
 fn patch_damage(patch: &Compound) -> Result<Option<u32>, StackError> {
     let damage = patch.get(&JavaString::from("minecraft:damage"));
     let removal = patch.get(&JavaString::from("!minecraft:damage"));
@@ -971,8 +969,8 @@ fn patch_damage(patch: &Compound) -> Result<Option<u32>, StackError> {
         validate_damage_removal(removal)?;
     }
     let damage = damage.map(damage_value).transpose()?;
-    if damage.is_some() && removal.is_some() {
-        return Err(StackError::ConflictingDamage);
+    if removal.is_some() {
+        return Ok(None);
     }
     Ok(damage)
 }
@@ -1153,12 +1151,11 @@ mod tests {
             (StackError::Empty, &b"\x00\x00\x00\x00"[..]),
             (StackError::CountOverflow, &b"\x01\x00\x00\x00"[..]),
             (StackError::InvalidDamage, &b"\x02\x00\x00\x00"[..]),
-            (StackError::ConflictingDamage, &b"\x03\x00\x00\x00"[..]),
             (
                 StackError::InvalidComponent {
                     id: crate::ComponentId::new("minecraft:villager_food").unwrap(),
                 },
-                &b"\x04\x00\x00\x00\x17\x00\x00\x00minecraft:villager_food"[..],
+                &b"\x03\x00\x00\x00\x17\x00\x00\x00minecraft:villager_food"[..],
             ),
         ] {
             let mut out = Writer::new();

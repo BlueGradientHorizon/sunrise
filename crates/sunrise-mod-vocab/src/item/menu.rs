@@ -211,17 +211,20 @@ pub struct AnvilUpdateInputs<'a> {
 }
 
 /// The shared answer to `anvil_update`. It starts at `Keep` and vanilla's costs.
-/// The game applies the final edits after dispatch; cancellation or an invalid
-/// replacement leaves no output and zero costs.
+/// The game applies the final edits after dispatch; cancellation leaves no output
+/// and zero costs, while an invalid replacement output is logged and ignored
+/// (keeping vanilla's output).
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal
 // no wire: staged edits are applied in-process at the end of the hook call.
 pub struct AnvilUpdateEdits {
     /// Keep vanilla's output, or set a replacement. `Set(None)` clears it.
-    /// A replacement differing from vanilla must be a valid stack.
+    /// A replacement differing from vanilla must be a valid stack; an invalid
+    /// stack is logged and ignored, leaving vanilla's output intact.
     pub output: StackResult,
-    /// Signed level cost. Zero or a negative value prevents taking the result,
-    /// even in creative, and never refunds levels.
+    /// Signed level cost during listener dispatch (`AnvilUpdateEvent.setXpCost`).
+    /// Negative values clamp to `0` when applied (`AnvilMenu.setCost`), and a
+    /// zero cost prevents taking the result (`AnvilMenu.mayPickup`).
     pub xp_cost: i32,
     /// Units consumed from the right slot. Negative values clamp to zero;
     /// zero or a value exceeding the stack consumes all of it on take.
@@ -242,7 +245,8 @@ pub struct GrindstonePlaceInputs<'a> {
 }
 
 /// The shared answer to `grindstone_place`, initially no override and `-1` XP.
-/// The game validates the final answer before applying it.
+/// Cancellation is checked before converting `output`; an invalid replacement is logged
+/// and ignored so vanilla's result stays intact.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal
 // no wire: staged edits are applied in-process at the end of the hook call.
@@ -250,8 +254,8 @@ pub struct GrindstonePlaceEdits {
     /// Leave vanilla's result and experience with `None`, or replace the result with a
     /// valid stack. To clear the result, cancel the hook instead.
     pub output: Option<ItemStack>,
-    /// Experience to award when the replacement is taken. `-1` uses vanilla's award;
-    /// values below `-1` are refused unless cancelled.
+    /// Experience to award when the replacement is taken. Any negative value falls
+    /// through to vanilla's award; nonnegative values set the award.
     pub xp: i32,
 }
 /// The input stacks before the grindstone result was taken, borrowed for the
@@ -266,15 +270,15 @@ pub struct GrindstoneTakeInputs<'a> {
     pub bottom: Option<&'a ItemStack>,
 }
 
-/// The shared answer to `grindstone_take`. Both remainders start at `None`
-/// and the game validates the final answer before applying any of it.
+/// The shared answer to `grindstone_take`. Both remainders start at `None`;
+/// cancellation is checked before converting remainders, and an invalid remainder is
+/// logged and ignored as an empty slot.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal
 // no wire: staged edits are applied in-process at the end of the hook call.
 pub struct GrindstoneTakeEdits {
-    /// Experience to award, initially what `grindstone_place` set or `-1` for
-    /// vanilla's award. Set a nonnegative amount to override it. Values below
-    /// `-1` are refused unless the take is cancelled.
+    /// Experience to award, initially the resolved award (`>= 0`, from `grindstone_place`
+    /// or vanilla's pre-rolled award). Non-positive values (`<= 0`) spawn no experience orbs.
     pub xp: i32,
     /// A valid replacement for the top input, or `None` to empty the slot.
     pub new_top: Option<ItemStack>,
@@ -295,11 +299,10 @@ pub struct AnvilCraftInputs<'a> {
     pub output: &'a ItemStack,
 }
 
-/// One of a menu's own (non-player) containers: the key a `menu_slot_rules` ask names its slot's
-/// container by (`event.container`, with `event.slot` indexing inside it) and
-/// [`MenuSlotContext::slot`] reads by. A plain menu has `Main` only; a mod menu type with a
-/// crafting grid keeps its grid slots in `Grid` and its crafted result in `Result` (slot 0);
-/// a slot of the player's inventory is `Player`'s.
+/// One of a menu's containers: the key a `menu_slot_rules` ask names its slot's container by
+/// (`event.container`, with `event.slot` indexing inside it) and [`MenuSlotContext::slot`] reads
+/// by. A plain menu has `Main` and `Player`; a mod menu type with a crafting grid keeps its grid
+/// slots in `Grid` and its crafted result in `Result` (slot 0).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -311,14 +314,14 @@ pub enum MenuContainer {
     Grid,
     /// A crafting grid's result slot.
     Result,
-    /// The player's inventory. A rule can be asked about one of its slots, but
-    /// [`MenuSlotContext::slot`] does not read them.
+    /// The player's inventory, using vanilla `Inventory` indices: `0..36` inventory, `36..40`
+    /// armor (feet, legs, chest, head) and `40` offhand.
     Player,
 }
-/// The menu's player, its block entity and a read-only view of its staged slots for one
+/// The menu's player, its block entity and a read-only view of its live slots for one
 /// `menu_slot_rules` ask, on either the server or the predicting client. Read only the slots
 /// needed to answer the rule; the view cannot outlive the ask.
-// no wire: this view borrows the click planner's staged slots.
+// no wire: this view borrows the menu's live slots during a click.
 #[non_exhaustive]
 pub struct MenuSlotContext<'a> {
     /// The UUID of the player whose menu it is; None where no player is known.
@@ -329,9 +332,8 @@ pub struct MenuSlotContext<'a> {
     read: &'a dyn Fn(MenuContainer, usize) -> Option<ItemStack>,
 }
 impl<'a> MenuSlotContext<'a> {
-    /// Lend a read of the menu's staged slots, with the player and block position of this ask.
-    /// The reader returns `None` for empty, absent or unrepresentable slots, including every
-    /// player inventory slot.
+    /// Lend a read of the menu's live slots, with the player and block position of this ask.
+    /// The reader returns `None` for empty, absent or unrepresentable slots.
     pub fn new(
         player: Option<u128>,
         pos: Option<[i32; 3]>,
@@ -341,7 +343,8 @@ impl<'a> MenuSlotContext<'a> {
     }
 
     /// Read one slot at its backing index, converting just that stack to an API value.
-    /// Returns `None` if it is empty, absent, cannot be represented, or belongs to `Player`.
+    /// Returns `None` if it is empty, absent or cannot be represented. For `Player`, indices follow
+    /// vanilla `Inventory`: `0..36` inventory, `36..40` armor (feet-to-head) and `40` offhand.
     pub fn slot(&self, container: MenuContainer, index: usize) -> Option<ItemStack> {
         (self.read)(container, index)
     }

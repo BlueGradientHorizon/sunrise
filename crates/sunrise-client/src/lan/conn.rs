@@ -415,6 +415,12 @@ impl PlayerSender {
         };
         (sender, move || inspect.queued_contents())
     }
+    /// Override framing on a test sender (e.g. `Framing::Network(None)` for TCP frame limits).
+    #[cfg(test)]
+    pub fn with_framing(mut self, framing: sunrise_protocol::connection::Framing) -> Self {
+        self.framing = framing;
+        self
+    }
     /// A connectionless actor has no writer, queue or packet delivery.
     pub fn disabled() -> Self {
         Self {
@@ -620,6 +626,59 @@ impl PlayerSender {
             }
         }
     }
+
+    /// Tracking output is cut only at complete bundles or individual non-bundled
+    /// packets. In particular, a late pairing is a single publication even when
+    /// the tick no longer holds output: reliable publishers cannot split it.
+    pub(super) fn send_tracking_bodies(&self, bodies: &mut Vec<Body>) {
+        if matches!(self.to, To::Disabled) {
+            bodies.clear();
+            return;
+        }
+        if bodies.is_empty() {
+            return;
+        }
+        let prepared = bodies.iter().any(Body::is_prepared);
+        let cost = bodies.iter().map(io_pool::body_charge).sum();
+        if HOLDING.get() && !prepared {
+            let mut held = self.held();
+            if self.reserve_queued(cost) {
+                held.append(bodies);
+            } else {
+                drop(held);
+                bodies.clear();
+                self.close();
+            }
+            return;
+        }
+        self.flush();
+        let mut bodies = std::mem::take(bodies);
+        let To::Pool(outbox, _) = &self.to else {
+            if let To::Channel(tx) = &self.to {
+                drop(tx.send(unshared(bodies)));
+            }
+            return;
+        };
+        if !self.reserve_queued(cost) {
+            self.close();
+            return;
+        }
+        // A pass can be deferred until tracking callbacks. Check the current epoch
+        // at publication, not only when the attachment bytes were prepared.
+        if prepared {
+            if let Some(epoch) = self.payload_transport.epoch() {
+                bodies.retain(|body| body.pairing_epoch().is_none_or(|e| Arc::ptr_eq(e, &epoch)));
+                let published =
+                    epoch.with_active(|| outbox.send(std::mem::take(&mut bodies), None));
+                if published.is_some() {
+                    return;
+                }
+            }
+            // Expiring mod attachments never suppress vanilla pairing packets.
+            bodies.retain(|body| !body.is_prepared());
+        }
+        outbox.send(bodies, None);
+    }
     /// Hand the held packets to the network thread.
     pub fn flush(&self) {
         let held = std::mem::take(&mut *self.held());
@@ -676,6 +735,19 @@ impl PreparedPayload {
         } else {
             Err(PayloadSendError::Disconnected)
         }
+    }
+    /// Transfer the existing reservation with the framed body into its pairing bundle.
+    pub(crate) fn into_prepared_body(
+        mut self,
+        epoch: Arc<crate::raw_payloads::connection::Epoch>,
+    ) -> Body {
+        let bytes = self.bytes.take().expect("prepared bytes");
+        Body::Prepared(Arc::new(super::body::PairingPayload {
+            bytes,
+            epoch,
+            pending: self.sender.pending.clone(),
+            cost: self.cost,
+        }))
     }
 }
 impl Drop for PreparedPayload {
@@ -1159,6 +1231,7 @@ fn serve_login(
 }
 
 struct Parts {
+    sync: Arc<SyncData>,
     payload_transport: Arc<Transport>,
     uuid: u128,
     name: String,
@@ -1570,6 +1643,7 @@ fn login_and_configure(
     let channels = std::mem::take(&mut c.channels);
     c.finish()?;
     Ok(Some(Parts {
+        sync: sync_data,
         channels,
         payload_transport,
         uuid,
@@ -2018,6 +2092,7 @@ fn play(
         .as_ref()
         .is_some_and(|p| p.required);
     let session = PlayConn {
+        sync: parts.sync,
         payload_sender: sender.clone(),
         payload_transport: parts.payload_transport,
         conn,
@@ -2061,6 +2136,7 @@ fn play(
 
 /// A player's play state on its network thread.
 struct PlayConn {
+    sync: Arc<SyncData>,
     payload_sender: PlayerSender,
     payload_transport: Arc<Transport>,
     conn: u32,
@@ -2108,10 +2184,13 @@ impl io_pool::Session for PlayConn {
         if let Some(average) = self.rate.as_mut().and_then(|r| r.received(now)) {
             return kick(rate_exceeded(&self.shared, average));
         }
-        match play::Serverbound::decode_with_payload_codecs(
+        match play::Serverbound::decode_reader(
             id,
-            &payload,
-            &self.payload_transport.local.codecs,
+            sunrise_protocol::buf::Reader::with_payload_codecs(
+                &payload,
+                &self.payload_transport.local.codecs,
+            )
+            .with_names(&self.sync.dynamic),
         )
         .and_then(checked_play)
         {
@@ -2193,6 +2272,7 @@ impl io_pool::Session for PlayConn {
                                 }
                                 return Verdict::Go;
                             }
+                            Ok(crate::raw_payloads::Classified::Skipped) => return Verdict::Go,
                             Ok(crate::raw_payloads::Classified::Other(payload))
                                 if self
                                     .payload_sender
@@ -3494,6 +3574,7 @@ mod tests {
         };
         let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
         let mut c = PlayConn {
+            sync: Arc::new(SyncData::empty()),
             payload_sender: PlayerSender::disabled(),
             payload_transport: Transport::empty(),
             conn: 1,
@@ -3632,6 +3713,7 @@ mod tests {
         };
         let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
         let conn = |uuid: u128, pending: Option<i64>| PlayConn {
+            sync: Arc::new(SyncData::empty()),
             payload_sender: PlayerSender::disabled(),
             payload_transport: Transport::empty(),
             conn: 1,
@@ -3685,6 +3767,7 @@ mod tests {
         };
         let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
         let conn = |uuid: u128| PlayConn {
+            sync: Arc::new(SyncData::empty()),
             payload_sender: PlayerSender::disabled(),
             payload_transport: Transport::empty(),
             conn: 1,
@@ -3827,6 +3910,42 @@ mod outgoing_budget_tests {
         assert!(s.pending.load(Ordering::Relaxed) > before + 20000);
         drop(reserved);
     }
+    #[test]
+    fn a_pairing_attachment_keeps_its_prepaid_credit_and_play_epoch() {
+        for stale in [false, true] {
+            let transport = Transport::capture(crate::raw_payloads::Side::Server).unwrap();
+            transport
+                .accept(transport.local.manifest.entries())
+                .unwrap();
+            transport.finish_configuration().unwrap();
+            let (sender, inspect) = PlayerSender::payload_executor_test_sender(transport.clone());
+            let prepared = sender
+                .prepare_payload(vec![2], &PayloadId("test:attachment".into()))
+                .unwrap();
+            let prepaid = sender.pending.load(Ordering::Relaxed);
+            assert!(prepaid > 0);
+            let mut out = vec![
+                vec![0].into(),
+                prepared.into_prepared_body(transport.epoch().unwrap()),
+                vec![0].into(),
+            ];
+            assert_eq!(sender.pending.load(Ordering::Relaxed), prepaid);
+            if stale {
+                transport.begin_configuration();
+            }
+            sender.send_tracking_bodies(&mut out);
+            assert!(out.is_empty());
+            let expected = if stale {
+                vec![vec![0], vec![0]]
+            } else {
+                vec![vec![0], vec![2], vec![0]]
+            };
+            assert_eq!(inspect(), expected);
+            let expected_charge = 2 * io_pool::charge(1) + if stale { 0 } else { prepaid };
+            assert_eq!(sender.pending.load(Ordering::Relaxed), expected_charge);
+        }
+    }
+
     /// #3423: a join's first view can queue more than the limit in one burst; a memory
     /// connection (single player) outlasts it, a network client past it is closed.
     #[test]

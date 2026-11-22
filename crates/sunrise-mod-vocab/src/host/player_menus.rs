@@ -11,11 +11,10 @@ pub trait PlayerMenusBackend {
     /// On a client, only the local player's menu is available: its slots and carried stack
     /// are the client's view (server updates plus local prediction), not server authority.
     /// On a server, refuses crafting tables, merchants, workstations, lecterns, mounts,
-    /// stale players and players held out by another active turn. Permanently excluded
-    /// slots retain their indices but cannot be accessed through the menu handle.
+    /// stale players and players held out by another active turn. Client screen visibility
+    /// does not change the menu's backing indices.
     /// Reads for the acting player use their current inventory, equipment, cursor and ender
     /// contents. On a client, refuses stale players and unsupported menu layouts.
-    #[access(WorldOnly)]
     fn player_container_menu(&self, player: PlayerRef) -> Option<MenuRef>;
 }
 /// The handles' writes of the `player_menus` area, implemented by the game and reached through [`BackendMut`].
@@ -28,7 +27,6 @@ pub trait PlayerMenusBackendMut {
     /// Returns Stale for an invalidated entity; Ok(false) for a wrong-level player,
     /// non-provider, cancelled open, active menu click, an out-of-range slot exclusion, or an
     /// unconnected player such as a fake player.
-    #[access(WorldOnly)]
     fn player_open_menu(
         &mut self,
         player: PlayerRef,
@@ -59,7 +57,7 @@ pub trait PlayerMenusBackendMut {
     /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
     /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open
     /// does not close the old menu.
-    #[access(WorldOnly)]
+    #[serialize_text]
     fn player_open_mod_menu(
         &mut self,
         player: PlayerRef,
@@ -84,7 +82,7 @@ pub trait PlayerMenusBackendMut {
     /// not online or a window that is not their open menu, a menu that is not a blockless mod
     /// menu, a menu that declares `owned_slots`, more places than its container slots, or a
     /// place that doesn't resolve now.
-    #[access(WorldOnly)]
+
     fn player_back_mod_menu_slots(
         &mut self,
         player: PlayerRef,
@@ -107,7 +105,7 @@ pub trait PlayerMenusBackendMut {
     /// immediate cancellation by a mod. Errors:
     /// `PlayerUnavailable` (stale, dead, fake, or on a client), or `Title` for a title that
     /// could not cross; nothing opens then.
-    #[access(WorldOnly)]
+    #[serialize_text]
     fn player_open_ender_chest(
         &mut self,
         player: PlayerRef,

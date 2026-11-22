@@ -131,10 +131,10 @@ fn built_in_scenes_cost_nothing_more_without_a_listener_isolated() {
     let mut unregistered = None;
     crate::game::native_entity_refs::tests::with_game(|game| unregistered = Some(scene(game)));
     assert!(install_special_model_factories(BTreeMap::from([(
-        "test:unmatched".into(),
+        mod_api::Identifier::parse("test:unmatched").unwrap(),
         OwnedSpecialModelFactory::new(
             "test",
-            SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Unmatched))
+            SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Unmatched)),
         ),
     )])));
     crate::game::native_entity_refs::tests::with_game(|game| {
@@ -170,7 +170,7 @@ fn special_item_draw_cost() {
     const WARM: usize = 1_000;
     const SAMPLES: usize = 10_000;
     let factories = BTreeMap::from([(
-        "test:stone".into(),
+        mod_api::Identifier::parse("test:stone").unwrap(),
         OwnedSpecialModelFactory::new(
             "test",
             SpecialModelFactory::new(

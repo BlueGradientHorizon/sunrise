@@ -3,11 +3,11 @@ pub struct ConfigurationTaskRegistration {
 }
 
 impl ConfigurationTaskRegistration {
-    pub fn checkpoint(&self) -> usize {
-        self.tasks.len()
+    pub fn checkpoint(&self) -> (usize, bool) {
+        (self.tasks.len(), false)
     }
 
-    pub fn rollback(&mut self, len: usize) {
+    pub fn rollback(&mut self, (len, _): (usize, bool)) {
         self.tasks.truncate(len);
     }
 }

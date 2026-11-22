@@ -21,7 +21,8 @@ pub trait Hooks {
         out = "answer",
         scope = "item",
         key = "stack",
-        neoforge = "none (vanilla DispenserBlock.getDispenseMethod; NeoForge adds no event or extension for it)"
+        neoforge = "none (vanilla DispenserBlock.getDispenseMethod; NeoForge adds no event or extension for it)",
+        version = 2
     )]
     fn dispense_item(
         dimension: &str,

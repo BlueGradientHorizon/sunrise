@@ -11,8 +11,10 @@ impl Game<'_> {
     /// sprite sets load, on every resource load as well.
     pub(in crate::game) fn native_register_particle_providers(
         context: &mod_api::RegistrationContext,
-        providers: &mut dyn ParticleProviders,
+        providers: &mut mod_api::ParticleProviderRegistry,
     ) {
-        Self::fire_register_particle_providers(context, providers);
+        Self::fire_register_particle_providers(context, |listen| {
+            providers.register_listener(listen)
+        });
     }
 }

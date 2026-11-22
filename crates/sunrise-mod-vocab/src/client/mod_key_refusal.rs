@@ -11,8 +11,6 @@
 pub enum ModKeyRefusal {
     /// Resolution found no registered mapping for the given owner and id.
     NotRegistered,
-    /// A native mod asked for another mod's mapping: a mod rebinds only its own.
-    NotOwner,
     /// The key is not a key or mouse button name Controls knows (`key.keyboard.z`,
     /// `key.mouse.left`, `key.keyboard.unknown` for none).
     UnknownKey,
@@ -29,7 +27,6 @@ impl std::fmt::Display for ModKeyRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::NotRegistered => "the mod registered no key mapping of that name",
-            Self::NotOwner => "a mod rebinds only its own key mappings",
             Self::UnknownKey => "the key is not a key or mouse button name",
             Self::UnknownModifiers => "modifiers are shift (1), control (2) and alt (4) only",
             Self::Unavailable => "client key bindings are unavailable",
@@ -39,12 +36,6 @@ impl std::fmt::Display for ModKeyRefusal {
 }
 
 impl std::error::Error for ModKeyRefusal {}
-
-impl crate::AccessRefusal for ModKeyRefusal {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
-}
 
 impl crate::NoBackend for ModKeyRefusal {
     fn no_backend() -> Self {

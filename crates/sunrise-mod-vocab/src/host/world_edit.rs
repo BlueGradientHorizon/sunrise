@@ -8,12 +8,15 @@ pub trait WorldEditServerHost {
     /// For a server mod: the runs made at once, straight into the chunks of the authoritative level `dimension`
     /// (the one being ticked, as for `native_set_block`), with what `fill ... strict` does for block entities (a
     /// block replaced by another loses its block entity, and a new block gets the one `native_set_block` would
-    /// give it, a mod block's included); no neighbour is told, and the chunks changed go to the players whole.
+    /// give it, a mod block's included); no neighbour is told and the replaced block entity's contents do not
+    /// drop. Inside a transaction in this level, the new blocks and entities are visible at once; abort restores
+    /// both. The changed chunks go to the players whole, only after the level's outermost commit.
+    /// At positions also written with `LevelRef::set_block`, strict and ordinary edits commit in
+    /// call order; the strict edit never spills a container or requests neighbor updates.
     /// Runs in chunks not loaded, and the parts of runs outside the column, are left out. The blocks changed, or
     /// why the edit was left out, with nothing changed: another dimension, a client of a server, a palette entry
     /// or predicate that fails typed validation, a run naming a palette entry or filter past the end,
     /// or more than 65536 filters.
-    #[access(WorldOnly)]
     fn edit_blocks(&mut self, dimension: &str, edit: &BlockEdit) -> Result<u64, String>;
     /// Side: server.
     /// A block entity's data saved at `data_version` (a schematic's, a structure file's, an older world's), upgraded
@@ -26,7 +29,6 @@ pub trait WorldEditServerHost {
     /// encoded with the wrapper compound of each mixed-list element as a level ([`NbtUpgradeError::TooDeep`], the
     /// depth cap of every NBT read). After the fixes: upgraded data that deep ([`NbtUpgradeError::UpgradedTooDeep`]),
     /// as no NBT read could take it back. There is no size refusal.
-    #[access(WorldOnly)]
     fn upgrade_block_entity_nbt(
         &self,
         data_version: i32,
@@ -37,7 +39,6 @@ pub trait WorldEditServerHost {
     /// of that version: its type's datafixes, its passengers' included, up to the game's DataVersion. Data of exactly
     /// the game's version, or data the fixes can't read, comes back unchanged. Pure: nothing in the world changes.
     /// Refused by name as `upgrade_block_entity_nbt` refuses.
-    #[access(WorldOnly)]
     fn upgrade_entity_nbt(
         &self,
         data_version: i32,
@@ -47,7 +48,6 @@ pub trait WorldEditServerHost {
     /// For a server mod: each column's height by `heightmap` in the authoritative level `dimension` (the one being
     /// ticked), none for a column not loaded. `Err` says why nothing was read: another dimension or a client of a
     /// server, or more than 65,536 columns (`MAX_COLUMNS`).
-    #[access(WorldOnly)]
     fn surface_heights(
         &self,
         dimension: &str,
@@ -63,7 +63,6 @@ pub trait WorldEditServerHost {
     /// Refuses before reading on a client, for a dimension other than the one being ticked,
     /// or for more than [`MAX_TERRAIN_COLUMNS`] inputs. One noise sample per column on the server
     /// tick; slow calls log the column count when the slow-call threshold is enabled.
-    #[access(WorldOnly)]
     fn terrain_surface(
         &self,
         dimension: &str,
@@ -97,7 +96,6 @@ pub trait WorldEditServerHost {
     /// entities are left out. None for an id that doesn't parse or has a `.`
     /// or `..` part, a template the game doesn't have, and on a client.
     /// API @API:structure_template@.
-    #[access(WorldOnly)]
     fn structure_template(
         &mut self,
         id: &str,
@@ -123,7 +121,6 @@ pub trait WorldEditServerHost {
     /// limits, a template that places nothing, a client of a server, a chunk of
     /// the template's box not loaded, or the game's structure resources missing.
     /// API @API:structure_template@.
-    #[access(WorldOnly)]
     fn place_template(
         &mut self,
         source: &StructureTemplateSource,

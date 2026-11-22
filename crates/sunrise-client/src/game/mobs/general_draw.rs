@@ -1,8 +1,8 @@
-//! A mod's general entity rows on the window (#792, stage 5): each row the server shows, with its
-//! first synced fields here (`game/network/remote/general.rs`), drawn by the renderer a mod
-//! registered for its type (`register_entity_renderers`), with the row's shared, frozen synced
-//! attachments. A general type has no look of its own: without a renderer, or
-//! with one that failed until the next resource load, its rows draw nothing.
+//! A mod's general entity rows on the window (#792, stage 5): each row the server shows
+//! (`game/network/remote/general.rs`), drawn by the renderer a mod registered for its type
+//! (`register_entity_renderers`), with the row's shared, frozen synced attachments. A general
+//! type has no look of its own: without a renderer, or with one that failed until the next
+//! resource load, its rows draw nothing.
 use super::native_entity_renderers::EntityRendererTable;
 use super::remote::general::RemoteGeneral;
 use super::{Game, entity_culling};
@@ -26,7 +26,7 @@ fn render_state(id: u32, row: &RemoteGeneral, partial: f32) -> mod_api::EntityRe
         orb_value: None,
         painting: None,
         item_frame: None,
-        attachments: row.render_attachments.clone(),
+        attachments: Some(row.render_attachments.clone()),
     }
     .into()
 }
@@ -148,7 +148,13 @@ mod tests {
     /// family's fields.
     #[test]
     fn a_rows_state_is_interpolated_to_the_frame() {
-        let mut row = super::RemoteGeneral::new(0, 1, [0.0; 3], [90.0, 20.0]);
+        let mut row = super::RemoteGeneral::new(
+            0,
+            1,
+            [0.0; 3],
+            [90.0, 20.0],
+            mod_api::EntityRenderAttachments::default(),
+        );
         row.previous_rotation = [0.0, -20.0];
         row.age = 40;
         let state = render_state(9, &row, 0.25);

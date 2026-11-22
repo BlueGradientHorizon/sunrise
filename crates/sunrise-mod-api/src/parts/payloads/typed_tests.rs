@@ -1,4 +1,5 @@
 use super::*;
+use crate::__private::game::CallbackFailure;
 use crate::{
     IPayloadContext, PayloadAccepted, PayloadBytes, PayloadContextError, PayloadHandleError,
     PayloadSendError, PayloadToken, PayloadWork, PayloadWorkStatus, PlayerRef, Text, Wire,
@@ -177,7 +178,7 @@ impl IPayloadContext for Unreached {
     }
     fn finish_configuration_task(
         &mut self,
-        _: crate::ConfigurationTaskRef,
+        _: &crate::Identifier,
     ) -> Result<(), crate::ConfigurationTaskError> {
         Err(crate::ConfigurationTaskError::WrongContext)
     }
@@ -249,9 +250,12 @@ fn valid_and_malformed_wire_bodies_are_handled_in_both_directions() {
             [valid.as_slice(), &[0xaa]].concat(),
             valid[..5].to_vec(),
         ] {
-            let PayloadHandleError::Failed(refused) = receiver
+            let CallbackFailure::Refused(refused) = receiver
                 .handle(PayloadBytes(body), &mut Unreached)
-                .unwrap_err();
+                .unwrap_err()
+            else {
+                panic!("malformed typed payload did not produce a codec refusal");
+            };
             assert!(refused.contains("test:labelled"), "{refused}");
         }
         assert!(seen.lock().unwrap().is_empty());
@@ -286,7 +290,6 @@ fn ordinary_only_wire_forms_refuse_registration_before_a_channel_exists() {
     let mut view = payloads.registrar("1");
     let ids = [
         refused::<crate::ModelPart>(&mut view, "test:model"),
-        refused::<crate::Text>(&mut view, "test:text"),
         refused::<Option<&'static str>>(&mut view, "test:interned"),
         refused::<Option<serde_json::Value>>(&mut view, "test:json"),
         refused::<crate::LegacyRandomSource>(&mut view, "test:converted"),
@@ -302,6 +305,18 @@ fn ordinary_only_wire_forms_refuse_registration_before_a_channel_exists() {
     for (refused, id) in registrar.refused.iter().zip(ids) {
         assert!(refused.contains(id), "{refused}");
     }
+}
+
+#[test]
+fn text_is_admitted_in_typed_payload_registration() {
+    let mut registrar = PartRegistrar::new("test");
+    let mut payloads = (&mut registrar as &mut dyn Registrar).payload_handlers();
+    let mut view = payloads.registrar("1");
+    let channel = view.play_to_server_typed::<crate::Text>(PayloadId("test:text".into()), ignore);
+    assert_ne!(channel.token().load, 0);
+    drop(view);
+    assert!(registrar.refused.is_empty());
+    assert!(registrar.parts.payloads.is_some());
 }
 
 #[test]
@@ -368,20 +383,17 @@ fn a_callback_that_panicked_is_never_invoked_again() {
     };
     let first = receiver();
     assert!(first.enabled());
-    let error = first
-        .handle(PayloadBytes(vec![7]), &mut Unreached)
-        .unwrap_err();
-    let PayloadHandleError::Failed(error) = error;
-    assert!(error.contains("panicked"), "{error}");
+    assert!(matches!(
+        first.handle(PayloadBytes(vec![7]), &mut Unreached),
+        Err(CallbackFailure::Panicked)
+    ));
     // Disabled for this connection and for one that resolves the callback later.
     for receiver in [first, receiver()] {
         assert!(!receiver.enabled());
-        assert_eq!(
+        assert!(matches!(
             receiver.handle(PayloadBytes(vec![7]), &mut Unreached),
-            Err(PayloadHandleError::Failed(
-                "payload owner is disabled".into()
-            ))
-        );
+            Err(CallbackFailure::Poisoned)
+        ));
     }
     assert_eq!(*CALLS.lock().unwrap(), 1);
 }

@@ -9,6 +9,7 @@ pub trait Hooks {
     /// block replaces the earlier one, vanilla's own colours included. Asked once at start on the
     /// client, before resources load; every resource load, a pack reload included, applies the
     /// registrations again. An id no block has is logged and skipped.
+    /// If this listener panics or a phase call is refused, none of its registrations take effect.
     #[notes = r#"## Block tint sources
 
 A block tint source (NeoForge's `RegisterColorHandlersEvent.BlockTintSources`) colours a greyscale block model,
@@ -58,7 +59,9 @@ a pack change or F3+T. Fluids take their colour from their fluid model, not from
         receiver = "associated",
         dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "listen",
+        staged_surface = "sources",
         context = "registration",
         neoforge = "RegisterColorHandlersEvent.BlockTintSources"
     )]

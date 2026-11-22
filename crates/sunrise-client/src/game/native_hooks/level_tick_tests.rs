@@ -45,8 +45,6 @@ mod tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
-                let _phase =
-                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                 let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 game.mobs
                     .push(Mob::new(91, kind.clone(), Vec3::new(3.5, 70.0, 5.5), 0.0));

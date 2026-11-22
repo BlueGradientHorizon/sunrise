@@ -385,8 +385,6 @@ impl Game<'_> {
             is_destroying: false,
             interaction_swing: [true; 2],
             destroy_delay: 0,
-            input: Default::default(),
-            pending_keys: InputQueue::new(queued_keys::PENDING_KEYS),
             swap_answer: [false; 2],
             stop_mining: false,
             flat: false,
@@ -645,8 +643,6 @@ impl Game<'_> {
             is_destroying: false,
             interaction_swing: [true; 2],
             destroy_delay: 0,
-            input: Default::default(),
-            pending_keys: InputQueue::new(queued_keys::PENDING_KEYS),
             swap_answer: [false; 2],
             stop_mining: false,
             flat: false,
@@ -713,14 +709,6 @@ impl Game<'_> {
         self.kept_block_entities.get_mut().clear();
         self.mod_view_distances.take();
         self.clear_narrator();
-        // updateLevelInEngines(null): every sound stops and the music manager
-        // lets go of its track. Leaving a server comes straight here, not
-        // through finish_close_world, so the biome's ambient loop would
-        // otherwise play on over the title screen until the next world.
-        self.ambience.clear(&mut self.audio);
-        self.music.stop_playing(None, &mut self.audio);
-        self.audio.leave_level();
-        self.mod_sounds.clear();
         // A world is leaving either way: its icon attempt goes with it.
         self.world_icon = None;
         // Minecraft.disconnect: the client level goes.
@@ -739,7 +727,12 @@ impl Game<'_> {
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
-        // Minecraft.disconnect's updateLevelInEngines: the title changes with the screen, not a frame later.
+        // Minecraft.disconnect -> updateLevelInEngines(null), after logout and level
+        // unload: stop even the sounds a listener started during teardown.
+        self.ambience.clear(&mut self.audio);
+        self.music.stop_playing(None, &mut self.audio);
+        self.audio.leave_level();
+        self.mod_sounds.clear();
         self.update_window_title();
         self.gui.atlas.clear_object_skins();
         self.server_packs_disconnect();
@@ -749,9 +742,9 @@ impl Game<'_> {
         // Gui.setScreen -> KeyMapping.releaseAll: the title or disconnect
         // screen releases every held key. Its release goes to that screen,
         // so a key kept here would still be down in the next world (#3246).
-        self.keys.clear();
-        self.left = false;
-        self.right = false;
+        self.clear_device_keys();
+        self.set_mapping_held("key.attack", false);
+        self.set_mapping_held("key.use", false);
         // The shared world is closing: its invite code ends with it.
         self.friends_lan_closed();
         // Minecraft.disconnect waits for the integrated server before showing the title.
@@ -892,7 +885,6 @@ impl Game<'_> {
         self.set_mode_id(spawn.game_type);
         self.dim = Dim::from_id(&spawn.dimension);
         self.build_level_environments();
-        self.audio.set_world(&spawn.dimension);
         // ClientPacketListener.handleLogin / handleRespawn: the server's
         // Player.getLastDeathLocation, for the recovery compass.
         self.level.last_death = spawn
@@ -901,8 +893,6 @@ impl Game<'_> {
             .map(|d| (d.dimension.clone(), d.pos));
         if !same {
             self.clock.reset_client_level_tick_state();
-            // A new ClientLevel: Minecraft.setLevel stops every sound.
-            self.stop_sounds_for_new_level();
             let mut streaming = Streaming::new(
                 Arc::new(NoTerrain),
                 self.worker_context(),
@@ -966,7 +956,10 @@ impl Game<'_> {
             if let Some(old) = old {
                 self.native_client_level_unload(&old);
             }
+            // Minecraft.setLevel -> updateLevelInEngines, after the old-level unload.
+            self.stop_sounds_for_new_level();
         }
+        self.audio.set_world(&spawn.dimension);
         self.streaming.relight_resent = relight_resent;
         let has_sky = self
             .remote

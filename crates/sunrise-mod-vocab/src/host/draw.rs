@@ -7,7 +7,6 @@ pub trait DrawClientHost {
     /// Side: client.
     /// Fluid `fluid`'s name as the lang names it (`fluid_type.<mod>.<name>`, vanilla's by its block),
     /// else its path in words.
-    #[access(ClientSetup)]
     fn fluid_name(&self, fluid: &str) -> String;
     /// Side: client.
     /// Entity model layer `layer` baked into its `ModelPart` tree, each part
@@ -19,7 +18,6 @@ pub trait DrawClientHost {
     /// for a layer neither has. A vanilla layer no mob has (a player's, a
     /// chest's) is read from the resources each call, so slow. API
     /// @API:model_layers@.
-    #[access(ClientSetup)]
     fn bake_layer(&self, layer: &str) -> Option<ModelPart>;
 }
 /// What the HUD, screen and tooltip hooks draw with, in GUI pixels: one per hook call.
@@ -89,8 +87,8 @@ pub trait DrawContext {
     /// Paint GUI extraction calls through this window's atlas, including player faces, under
     /// their poses: every op, an `Item` as vanilla's `item` then `itemDecorations` (the stack of
     /// the local player's hotbar slot, scaled about its pivot, then its decorations unscaled) and
-    /// a `Blit` of every [`Blend`](crate::client::hud_layout::Blend). An op it cannot draw (text
-    /// deeper than 512 component nodes, an unknown slot, texture or sprite) refuses the whole
+    /// a `Blit` of every [`Blend`](crate::client::hud_layout::Blend). An op it cannot draw (invalid
+    /// text metadata, an unknown slot, texture or sprite) refuses the whole
     /// buffer with a [`GuiPaintError`] naming the op, and nothing of it is drawn.
     fn gui_paint(&mut self, draws: &[GuiDraw]) -> Result<(), GuiPaintError> {
         unimplemented!("DrawContext::gui_paint")
@@ -99,8 +97,8 @@ pub trait DrawContext {
     fn gui_nine_slice(&mut self, sprite: &str, rect: [f32; 4], color: u32) {
         unimplemented!("DrawContext::gui_nine_slice")
     }
-    /// A vanilla tooltip at the cursor, in GUI pixels.
-    /// Refuses text deeper than 512 component nodes before applying any changes.
+    /// A vanilla tooltip at the cursor, in GUI pixels. This local draw has no serialization
+    /// depth cap, but unrepresentable component metadata refuses the tooltip before drawing.
     fn gui_tooltip(&mut self, lines: &[Text], at: [f32; 2]) -> Result<(), TextFormError> {
         unimplemented!("DrawContext::gui_tooltip")
     }
@@ -148,8 +146,8 @@ pub trait DrawContext {
     ///
     /// Refuses, answering no line at all (a [`TextLinesRefusal`], never a partial layout):
     /// a `max_width` that is not finite or that dividing by `scale` overflows, a `scale` that is
-    /// not finite or is zero or less, text that wraps into more than 512 lines, lines holding more
-    /// than 8192 characters together, and text deeper than 512 component nodes.
+    /// not finite or is zero or less, text that wraps into more than 512 lines, and lines holding
+    /// more than 8192 characters together. Component depth is not a layout limit.
     fn text_lines(
         &self,
         text: &Text,
@@ -245,7 +243,10 @@ pub trait DrawContext {
     ///   `fill` is.
     ///
     /// A client's call, available with [`crate::MenuScreen::with_draw`] or
-    /// `gui_render_post`. Per call it draws the subject's baked quads, the cached
+    /// `gui_render_post`. A `minecraft:air` stack returns `Ok(())` without using the view or
+    /// converting components.
+    /// A non-air item with an unreadable component override returns [`Gui3dError::InvalidStack`].
+    /// Per call it draws the subject's baked quads, the cached
     /// model a slot's item uses, with nothing on the tick path.
     fn model_3d(&mut self, subject: Gui3dSubject<'_>, view: Gui3dView) -> Result<(), Gui3dError> {
         Err(Gui3dError::Unavailable)
@@ -276,7 +277,6 @@ pub trait DrawContext {
     /// full custom sprite stretches into `rect`, and the label moves by `label_offset`. Inactive
     /// takes precedence over highlighted. An omitted or unknown state id falls back to the custom
     /// normal sprite, then to the vanilla nine-slice for the current state.
-    /// Refuses text deeper than 512 component nodes before applying any changes.
     fn widget_button(
         &mut self,
         rect: [f32; 4],
@@ -482,8 +482,8 @@ pub trait BlockEntityDrawContext {
     /// drawn, in font pixels (`Font.width`): centre a line by starting it at minus half its
     /// width. Obfuscated glyphs change only when the block is drawn again: kept text stands
     /// still. Clamp text read from NBT, and widen `block_entity_render_bounding_box`
-    /// for a long line. API @API:draw_text@.
-    /// Refuses text deeper than 512 component nodes before applying any changes.
+    /// for a long line. Unrepresentable component metadata returns `TextFormError` before
+    /// drawing; the local component has no serialization depth cap. API @API:draw_text@.
     fn text(
         &mut self,
         text: &Text,
@@ -496,8 +496,7 @@ pub trait BlockEntityDrawContext {
     }
     /// The width of `text` in font pixels, as `text` draws it, styles included
     /// (`Font.width`), to lay a line out before drawing it.
-    /// Refuses text deeper than 512 component nodes.
-    fn text_width(&self, text: &Text) -> Result<f32, TextFormError> {
+    fn text_width(&self, text: &Text) -> f32 {
         unimplemented!("BlockEntityDrawContext::draw_text_width")
     }
     /// Draws model part `part` and the parts under it under `draw`'s pose, as
@@ -599,8 +598,8 @@ pub trait WorldDrawContext {
     /// world's name tags, far to near, whatever the stage. Each glyph and backdrop quad, both
     /// copies counted, takes one of the view's 4,096 quads shared with
     /// [`quads`](Self::quads) ([`usage`](Self::usage)).
-    /// Refuses a non-finite `at` ([`DrawError::NonFinite`]), text deeper than 512 component
-    /// nodes ([`DrawError::TextTooDeep`]) or otherwise refused ([`DrawError::TextRefused`]),
+    /// Refuses a non-finite `at` ([`DrawError::NonFinite`]), unrepresentable component metadata
+    /// ([`DrawError::TextRefused`]),
     /// and a label past the quads left ([`DrawError::CapacityExceeded`]); on `Err` nothing
     /// is drawn.
     fn name_tag(

@@ -293,17 +293,29 @@ fn standalone_missing_dependency_drops_entire_model_and_logs_registering_mod() {
 }
 
 #[test]
-fn standalone_ignored_undeclared_append_discards_only_its_assembly() {
+fn standalone_failed_append_does_not_latch_and_propagated_error_discards_only_its_assembly() {
     let fixture = Fixture::new();
     fixture.write("base", &cube([0, 0, 0], [8, 8, 8], "source:base"));
     fixture.write("other", &cube([8, 8, 8], [16, 16, 16], "source:other"));
     let (models, logs) = crate::test_log::capture(|| {
         with_test_registrations(
             |event| {
-                event.register("result:invalid", ["source:base"], |bake| {
+                event.register("result:handled", ["source:base"], |bake| {
                     bake.append_dependency("source:base", [0; 3], false)?;
-                    let _ = bake.append_dependency("source:other", [0; 3], false);
+                    let err = bake.append_dependency("source:other", [0; 3], false);
+                    assert_eq!(
+                        err,
+                        Err(StandaloneModelBakeError::UndeclaredDependency(
+                            "source:other".into()
+                        ))
+                    );
+                    // A failed append leaves the assembly intact and does not poison later appends.
+                    bake.append_dependency("source:base", [0, 1, 0], false)?;
                     Ok(())
+                });
+                event.register("result:propagated", ["source:base"], |bake| {
+                    bake.append_dependency("source:base", [0; 3], false)?;
+                    bake.append_dependency("source:other", [0; 3], false)
                 });
                 event.register("result:valid", ["source:other"], |bake| {
                     bake.append_dependency("source:other", [0; 3], false)
@@ -312,20 +324,77 @@ fn standalone_ignored_undeclared_append_discards_only_its_assembly() {
             |staged| fixture.bake(&freeze_standalone(staged)),
         )
     });
-    assert!(models.standalone_slot("result:invalid").is_none());
+    let handled = models.standalone("result:handled").unwrap();
+    assert_eq!(handled.faces.len(), 12);
+    assert!(
+        handled
+            .faces
+            .iter()
+            .all(|face| face.quad.material.sprite == "source:base")
+    );
+    assert!(models.standalone_slot("result:propagated").is_none());
     let valid = models.standalone("result:valid").unwrap();
     assert_eq!(valid.faces.len(), 6);
     assert_eq!(
         models.model_count(),
-        1,
+        2,
         "the failed baker must not consume a slot"
     );
     assert!(
         logs.iter().any(|line| line
-            .contains("mod registering_mod standalone model result:invalid")
+            .contains("mod registering_mod standalone model result:propagated")
             && line.contains("undeclared dependency source:other")),
         "{logs:?}"
     );
+    assert!(
+        !logs.iter().any(|line| line.contains("result:handled")),
+        "{logs:?}"
+    );
+}
+
+#[test]
+fn standalone_non_panic_failure_retries_on_next_reload() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    let fixture = Fixture::new();
+    fixture.write("base", &cube([0, 0, 0], [8, 8, 8], "source:base"));
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let calls = attempts.clone();
+    let (first, second) = with_test_registrations(
+        move |event| {
+            let calls = calls.clone();
+            event.register("result:recoverable", ["source:base"], move |bake| {
+                if calls.fetch_add(1, Ordering::Relaxed) == 0 {
+                    return Err(StandaloneModelBakeError::Rejected("not ready".into()));
+                }
+                bake.append_dependency("source:base", [0; 3], false)
+            });
+            event.register("result:late_file", ["source:late"], |bake| {
+                bake.append_dependency("source:late", [0; 3], false)
+            });
+        },
+        |staged| {
+            let standalone = freeze_standalone(staged);
+            let first = fixture.bake(&standalone);
+            fixture.write("late", &cube([0, 0, 0], [16, 16, 16], "source:late"));
+            let second = fixture.bake(&standalone);
+            (first, second)
+        },
+    );
+    assert!(first.standalone("result:recoverable").is_none());
+    assert!(first.standalone("result:late_file").is_none());
+    assert_eq!(
+        second.standalone("result:recoverable").unwrap().faces.len(),
+        6
+    );
+    assert_eq!(
+        second.standalone("result:late_file").unwrap().faces.len(),
+        6
+    );
+    assert_eq!(attempts.load(Ordering::Relaxed), 2);
 }
 
 #[test]

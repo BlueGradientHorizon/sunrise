@@ -9,27 +9,6 @@ use crate::mobs::equip::equippable_in_slot;
 pub(super) const ARMOR_SLOTS: [&str; 4] = ["feet", "legs", "chest", "head"];
 
 impl Menu {
-    /// Whether `stack` may be placed into `slot`, and the slot's effective maximum count.
-    pub(super) fn placement_rules(&self, env: &Env, slot: usize, stack: &ItemStack) -> (bool, u32) {
-        self.placement_rules_with(env, env.can_equip, slot, stack)
-    }
-
-    /// [`Self::placement_rules`] with a call-scoped `can_equip` override (for synchronous
-    /// unchanged-stack candidate loops).
-    pub(super) fn placement_rules_with(
-        &self,
-        env: &Env,
-        can_equip: Option<&dyn crate::mobs::equip::CanEquip>,
-        slot: usize,
-        stack: &ItemStack,
-    ) -> (bool, u32) {
-        if self.state.slots[slot].role == super::Role::Hidden {
-            (false, 0)
-        } else {
-            let (place, _, maximum) = self.slot_rules_with(env, can_equip, slot, stack);
-            (place, self.limit_slot_max(slot, maximum))
-        }
-    }
     /// Apply the backing container's bound without asking placement again.
     pub(super) fn limit_slot_max(&self, s: usize, max: u32) -> u32 {
         if let super::Kind::Mod(layout) = self.state.kind

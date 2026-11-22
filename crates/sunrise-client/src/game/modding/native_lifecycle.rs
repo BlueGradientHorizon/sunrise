@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use super::{
     Game,
     execution_role::ExecutionRole,
-    scheduled_tasks::{ScheduledTasks, ServerTask, run_all},
+    scheduled_tasks::{ScheduledTasks, ServerTask, dispose_pending_task, report_failure, run_all},
 };
 use mod_api::{ScheduleError, TaskId};
 // Their old home, for mixin code that names them here.
@@ -117,6 +117,12 @@ impl NativeLifecycle {
         }
         attempt.session = OpenState::Ready;
         attempt.server_context()
+    }
+
+    pub(super) fn is_opening(&self) -> bool {
+        self.attempt
+            .as_ref()
+            .is_some_and(|attempt| attempt.session == OpenState::Opening)
     }
 
     /// `WorldOpenFailed`: only while opening; the attempt is invalidated.
@@ -308,9 +314,7 @@ impl Game<'_> {
                 if let Err(panic) =
                     CallbackOwner::call_scheduled_task(mod_id, game, |game| task(game))
                 {
-                    log::error!(
-                        "mod `{mod_id}` panicked in a scheduled task; its tasks are disabled for this session: {panic}"
-                    );
+                    report_failure(mod_id, &panic);
                     if let Some(serving) = &game.serving {
                         serving.reports().report_scheduled_task_failure(mod_id);
                     }
@@ -351,14 +355,13 @@ impl Game<'_> {
             .schedule(owner, delay_ticks, task)
     }
 
-    /// `cancel_task`: withdraws a waiting task by its opaque `TaskId`, dropping its captures
-    /// under the scheduling owner's attribution when attributed.
+    /// `cancel_task`: withdraws a waiting task by its opaque `TaskId`, disposing of its captures
+    /// under the scheduling owner's panic policy when attributed.
     pub(in crate::game) fn cancel_task(&mut self, id: TaskId) -> bool {
-        let Some((owner, task)) = self.native_lifecycle.tasks.cancel(id) else {
+        let Some(task) = self.native_lifecycle.tasks.cancel(id) else {
             return false;
         };
-        let _call = owner.map(|mod_id| mod_api::__private::enter(mod_id, "schedule_task"));
-        drop(task);
+        dispose_pending_task(task);
         true
     }
 
@@ -721,95 +724,184 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn a_scheduled_phase_refusal_rolls_back_without_disabling_later_tasks() {
+    fn a_scheduled_transaction_refusal_rolls_back_without_disabling_later_tasks() {
         use crate::game::native_entity_refs::tests::run_fresh_cases;
         use mod_api::{
-            __private::{ModPhase, PhaseOwner, enter},
-            ObjectiveRenderType, Text,
-        };
-        use std::{
-            cell::Cell,
-            panic::{AssertUnwindSafe, catch_unwind},
-            rc::Rc,
-            sync::Mutex,
+            __private::enter, HostTransaction, ObjectiveError, ObjectiveRenderType, Text,
         };
 
         if run_fresh_cases(
-            "game::native_lifecycle::tests::a_scheduled_phase_refusal_rolls_back_without_disabling_later_tasks",
-            "SUNRISE_SCHEDULED_PHASE_REFUSAL_CHILD",
-            &["repeated"],
+            "game::native_lifecycle::tests::a_scheduled_transaction_refusal_rolls_back_without_disabling_later_tasks",
+            "SUNRISE_SCHEDULED_TRANSACTION_REFUSAL_CHILD",
+            &["refused"],
         ) {
             return;
         }
 
         const OWNER: &str = "task_owner";
-        struct RefusalLog(Mutex<Vec<String>>);
-        impl log::Log for RefusalLog {
-            fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
-                metadata.level() == log::Level::Warn
-            }
-            fn log(&self, record: &log::Record<'_>) {
-                if !self.enabled(record.metadata()) {
-                    return;
-                }
-                let message = record.args().to_string();
-                if message.contains("mod API objective is unavailable during Setup") {
-                    self.0.lock().unwrap().push(message);
-                }
-            }
-            fn flush(&self) {}
-        }
-        static LOG: RefusalLog = RefusalLog(Mutex::new(Vec::new()));
-        log::set_logger(&LOG).unwrap();
-        log::set_max_level(log::LevelFilter::Warn);
-
         let mods = vec![ModEntry::new(OWNER, Box::new(TaskOwner))];
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
                 game.native_lifecycle.world_open_ready().unwrap();
                 game.native_lifecycle_server_tick_start(true);
-                let refused = Rc::new(Cell::new(0));
-                let later = Rc::new(Cell::new(false));
                 {
                     let host: &mut dyn ServerHost = game;
                     let _owner = enter(OWNER, "schedule fixture");
-                    for (name, swallows_refusal) in
-                        [("refused_first", false), ("refused_second", true)]
-                    {
-                        let refused = Rc::clone(&refused);
-                        host.schedule_task(
-                            0,
-                            Box::new(move |host| {
-                                host.add_objective(
-                                    name,
-                                    "dummy",
-                                    Text::literal("Refused"),
-                                    ObjectiveRenderType::Integer,
-                                )
-                                .unwrap();
-                                refused.set(refused.get() + 1);
-                                let _setup = PhaseOwner::scope(ModPhase::Setup);
-                                if swallows_refusal {
-                                    let _ = catch_unwind(AssertUnwindSafe(|| host.objective(name)));
-                                } else {
-                                    let _ = host.objective(name);
+                    host.schedule_task(
+                        0,
+                        Box::new(|host| {
+                            let result: Result<(), ObjectiveError> = host.transaction(|host, _| {
+                                // The second write refuses the duplicate, rolling back the first.
+                                for _ in 0..2 {
+                                    host.add_objective(
+                                        "discarded",
+                                        "dummy",
+                                        Text::literal("Discarded"),
+                                        ObjectiveRenderType::Integer,
+                                    )?;
                                 }
-                            }),
-                        )
-                        .unwrap();
-                    }
-                    let later = Rc::clone(&later);
-                    host.schedule_task(0, Box::new(move |_| later.set(true)))
-                        .unwrap();
+                                Ok(())
+                            });
+                            assert_eq!(result, Err(ObjectiveError::NameTaken));
+                        }),
+                    )
+                    .unwrap();
+                    host.schedule_task(
+                        0,
+                        Box::new(|host| {
+                            assert!(host.objective("discarded").is_none());
+                            host.add_objective(
+                                "kept",
+                                "dummy",
+                                Text::literal("Kept"),
+                                ObjectiveRenderType::Integer,
+                            )
+                            .unwrap();
+                        }),
+                    )
+                    .unwrap();
                 }
                 game.native_lifecycle_server_tick_end(false);
-                assert_eq!(refused.get(), 2, "both calls reached the refusal");
-                assert!(game.objective("refused_first").is_none());
-                assert!(game.objective("refused_second").is_none());
-                assert!(later.get(), "a refusal disabled the owner's next task");
-                let log = LOG.0.lock().unwrap();
-                assert_eq!(log.len(), 2, "each refusal must be reported: {log:?}");
-                assert!(log.iter().all(|line| line.contains(OWNER)), "{log:?}");
+                assert!(game.objective("discarded").is_none());
+                assert!(
+                    game.objective("kept").is_some(),
+                    "the owner's next task did not commit"
+                );
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn panicking_scheduled_task_captures_do_not_interrupt_cancellation_or_close() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        use mod_api::{
+            __private::{enter, game::take_callback_panic_notices},
+            content::crash::current_native_mod,
+        };
+        use std::{cell::RefCell, rc::Rc};
+        use sunrise_client::{join_seq::residency::table::EntityLookup, mobs::Mob};
+
+        if run_fresh_cases(
+            "game::native_lifecycle::tests::panicking_scheduled_task_captures_do_not_interrupt_cancellation_or_close",
+            "SUNRISE_SCHEDULED_TASK_DROP_CHILD",
+            &["dispose"],
+        ) {
+            return;
+        }
+        let home = std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap());
+        sunrise_client::logging::init(&home, "Server thread");
+        sunrise_client::crash::install(home, "server", || None);
+
+        const CANCELLED: &str = "cancelled_task_owner";
+        const CLOSED: &str = "closed_task_owner";
+        const HEALTHY: &str = "healthy_task_owner";
+        struct PanickingCapture(&'static str);
+        impl Drop for PanickingCapture {
+            fn drop(&mut self) {
+                panic!("{}", self.0);
+            }
+        }
+
+        let mods: Vec<_> = [CANCELLED, CLOSED, HEALTHY]
+            .into_iter()
+            .map(|id| ModEntry::new(id, Box::new(TaskOwner)))
+            .collect();
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_game(|game| {
+                game.native_lifecycle.world_open_ready().unwrap();
+                let cancelled = {
+                    let _owner = enter(CANCELLED, "schedule fixture");
+                    let capture = PanickingCapture("cancelled capture panicked");
+                    game.schedule_task(20, Box::new(move |_| drop(capture)))
+                        .unwrap()
+                };
+                {
+                    let _caller = enter(HEALTHY, "cancel fixture");
+                    assert!(game.cancel_task(cancelled));
+                    assert_eq!(current_native_mod(), Some(HEALTHY));
+                    assert!(!game.cancel_task(cancelled));
+                }
+                let closed = {
+                    let _owner = enter(CLOSED, "schedule fixture");
+                    let capture = PanickingCapture("closing capture panicked");
+                    game.schedule_task(20, Box::new(move |_| drop(capture)))
+                        .unwrap()
+                };
+                let healthy_capture = Rc::new(());
+                let pending = Rc::clone(&healthy_capture);
+                let later = game
+                    .schedule_task(20, Box::new(move |_| drop(pending)))
+                    .unwrap();
+
+                let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                game.mobs.push(Mob::new(410, pig, Default::default(), 0.0));
+                assert!(matches!(
+                    game.server_resident_entity(410),
+                    EntityLookup::Found { .. }
+                ));
+                game.native_lifecycle.begin_close();
+                game.native_lifecycle_world_closed();
+                assert!(game.native_lifecycle.epoch().is_none());
+                assert!(matches!(
+                    game.server_resident_entity(410),
+                    EntityLookup::Missing
+                ));
+                assert_eq!(Rc::strong_count(&healthy_capture), 1);
+
+                let notices = take_callback_panic_notices();
+                let logs = sunrise_client::logging::recent_lines();
+                assert_eq!(notices.len(), 2, "{notices:?}");
+                for (notice, (owner, message)) in notices.iter().zip([
+                    (CANCELLED, "cancelled capture panicked"),
+                    (CLOSED, "closing capture panicked"),
+                ]) {
+                    assert_eq!(notice.mod_id, owner);
+                    assert!(notice.message.contains(message), "{notice:?}");
+                    assert!(
+                        logs.iter()
+                            .any(|line| line.contains(owner) && line.contains(message))
+                    );
+                }
+
+                game.native_lifecycle
+                    .begin_open(Authority::IntegratedServer);
+                game.native_lifecycle.world_open_ready().unwrap();
+                let ran = Rc::new(RefCell::new(Vec::new()));
+                for owner in [CANCELLED, CLOSED, HEALTHY] {
+                    let _owner = enter(owner, "schedule fixture");
+                    let ran = Rc::clone(&ran);
+                    let fresh = game
+                        .schedule_task(0, Box::new(move |_| ran.borrow_mut().push(owner)))
+                        .unwrap();
+                    assert!(![cancelled, closed, later].contains(&fresh));
+                }
+                for stale in [cancelled, closed, later] {
+                    assert!(!game.cancel_task(stale));
+                }
+                game.native_lifecycle_server_tick_start(true);
+                game.native_lifecycle_server_tick_end(false);
+                assert_eq!(*ran.borrow(), [HEALTHY]);
             });
         });
     }

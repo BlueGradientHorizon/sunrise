@@ -22,7 +22,7 @@ pub trait Hooks {
         out = "offer",
         neoforge = "TradeWithVillagerEvent",
         cancellable = false,
-        version = 3
+        version = 4
     )]
     fn trade_with_villager(merchant: u32, kind: &str, offer: &mut MerchantOffer);
 }

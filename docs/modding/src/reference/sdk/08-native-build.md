@@ -112,7 +112,8 @@ A `change` is `"removed"`, `"changed"`, `{"lost-impl": trait}`, `{"fields": {gai
 `{"not-buildable": {at}}`, `{"path": path}` or `{"route": {from, owner}}`. On a mod's own build, an indexed
 mixin refusal appears in `refusal`. When checking its fit on another build, the result remains
 `does-not-fit`: the misfit's `id` is display text with the full target, error code and reason, and its
-`change` is `"changed"`.
+`change` is `"changed"`. A known change to a declared game function is also `does-not-fit` with `change: "changed"`;
+its `id` names the full function path and says `body changed` or `declaration changed`.
 
 ## `native-discover` and `native-lock`
 

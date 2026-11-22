@@ -35,6 +35,11 @@ pub mod native {
     }
 }
 
+/// The finite, per-axis range shared by mod move requests and hook replacements.
+pub fn valid_mod_move_delta(delta: [f64; 3]) -> bool {
+    delta.iter().all(|v| v.is_finite() && v.abs() <= 64.0)
+}
+
 /// Switch an installed mod's dispatches on or off, returning whether it was found.
 pub fn set_mod_enabled(id: &str, on: bool) -> bool {
     crate::set_mod_enabled(id, on)
@@ -92,16 +97,40 @@ pub fn install(mods: Mods) {
     crate::install(mods);
 }
 
+// no wire: process-local diagnostic report, never crosses the wire.
+// exhaustive: internal two-field report for the game client's toast queue.
+/// One mod callback panic queued for the game client's error toast.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HookPanicReport {
+    /// The `[mod] id` of the panicking mod.
+    pub mod_id: &'static str,
+    /// The hook or retained callback operation that panicked.
+    pub hook: &'static str,
+}
+
+/// Drain queued mod callback panic reports for the game client's error toast.
+pub fn take_hook_panics() -> Vec<HookPanicReport> {
+    crate::runtime::take_hook_panics()
+}
+
+/// Active hook-dispatch panic-containment nesting depth on this thread.
+pub fn hook_dispatch_depth() -> u32 {
+    crate::runtime::hook_dispatch_depth()
+}
+
+/// Run one mod's startup `Hooks::register` callback under the unified hook-dispatch failure rule.
+pub fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
+    crate::runtime::invoke_registration(mod_id, call)
+}
+
+/// Discard one startup batch's values independently under the owning `register` callback's policy.
+pub fn discard_startup_registrations<T>(mod_id: &'static str, values: impl IntoIterator<Item = T>) {
+    crate::runtime::discard_startup_registrations(mod_id, values);
+}
+
 /// Revision of the enabled mod set, for engine caches of hook answers.
 pub fn mods_switched() -> u64 {
     crate::runtime::mods_switched()
-}
-
-/// Start a new tick's output diagnostics on the authoritative game thread.
-pub fn reset_output_refusals() {
-    if let Some(backend) = crate::dispatch_scope::backend() {
-        (backend.diagnostics.reset_output_refusals)();
-    }
 }
 
 /// Whether an installed mod subscribes to `hook`.
@@ -174,7 +203,7 @@ pub fn client_requirement(id: &str) -> Option<String> {
         && installed
             .menu_screen_factories
             .values()
-            .any(|rows| rows.contains_key(&index))
+            .any(|reg| reg.index == index)
     {
         return Some("registers a client menu screen factory".into());
     }
@@ -184,23 +213,6 @@ pub fn client_requirement(id: &str) -> Option<String> {
         .any(|book| book.owner == id)
     {
         return Some("binds a recipe book that requires a client menu screen".into());
-    }
-    if installed.menu_slot_exclusions.iter().any(|(menu, scopes)| {
-        scopes.iter().any(|(opener, slots)| {
-            if slots.is_empty() {
-                return false;
-            }
-            let scope = if menu.starts_with("minecraft:") {
-                opener
-            } else {
-                menu
-            };
-            scope
-                .split_once(':')
-                .is_some_and(|(namespace, _)| crate::parts::owns_namespace(id, namespace))
-        })
-    }) {
-        return Some("excludes menu slots that require a client menu screen".into());
     }
     if let Some((part, hook)) = installed.client_part(id) {
         return Some(format!(
@@ -584,6 +596,19 @@ pub mod game {
         }
     }
 
+    /// Engine-only per-listener checked declaration staging.
+    // no wire: lends one registration sink for the duration of a callback.
+    pub type DeclarationListener<'a, D> = dyn FnMut(&mut dyn FnMut(crate::Answered<D>) -> Result<(), crate::DeclarationError>) -> bool
+        + 'a;
+
+    /// Lend a registration snapshot to the named listener, including on scoped workers.
+    pub fn bind_registration_context(
+        context: &RegistrationContext,
+        mod_id: &'static str,
+    ) -> RegistrationContext {
+        context.for_mod(mod_id)
+    }
+
     pub trait ReloadContextNew {
         fn new(files: crate::world::reload::ReloadFiles) -> Self;
     }
@@ -618,16 +643,11 @@ pub mod game {
     }
     pub trait ServerReloadListenersOrder {
         fn new() -> Self;
-        /// The engine has registered this builtin and linked the preceding anchor.
-        fn set_last_vanilla_listener(&mut self, id: Identifier);
         fn finish(
             self,
         ) -> Result<crate::world::server_reload::OrderedServerReload, ReloadOrderError>;
     }
     impl ServerReloadListenersOrder for crate::world::server_reload::ServerListenerRegistry {
-        fn set_last_vanilla_listener(&mut self, id: Identifier) {
-            self.default_anchor = id;
-        }
         fn new() -> Self {
             crate::world::server_reload::ServerListenerRegistry::new()
         }
@@ -663,11 +683,19 @@ pub mod game {
     }
 
     pub trait ServerReloadResourcesInstall {
-        fn install(&mut self, retained: Vec<crate::world::server_reload::RetainedEntry>);
+        fn install(
+            &mut self,
+            retained: Vec<crate::world::server_reload::RetainedEntry>,
+            skipped: &std::collections::BTreeSet<Identifier>,
+        );
     }
     impl ServerReloadResourcesInstall for crate::world::server_reload::RetainedListeners {
-        fn install(&mut self, retained: Vec<crate::world::server_reload::RetainedEntry>) {
-            crate::world::server_reload::RetainedListeners::install(self, retained)
+        fn install(
+            &mut self,
+            retained: Vec<crate::world::server_reload::RetainedEntry>,
+            skipped: &std::collections::BTreeSet<Identifier>,
+        ) {
+            crate::world::server_reload::RetainedListeners::install(self, retained, skipped)
         }
     }
 

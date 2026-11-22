@@ -10,8 +10,12 @@ pub enum BlockScreenEffect {
     Fire,
     /// The camera is inside a view-blocking block: its particle texture.
     Block,
-    /// The eye is under water: the underwater texture.
+    /// The eye is under water in first person: the underwater texture.
     Water,
+}
+
+impl BlockScreenEffect {
+    pub(crate) const COUNT: usize = Self::Water as usize + 1;
 }
 
 // no wire: the renderer is an in-process callback.
@@ -19,8 +23,12 @@ pub enum BlockScreenEffect {
 /// Reuse a static renderer rather than allocating one at every extraction.
 pub trait BlockScreenEffectRenderer: Sync {
     /// Submit this overlay with read-only access to the client. Return `true` to suppress
-    /// its vanilla quads, or `false` to leave them after yours unless extraction canceled them.
-    /// Neither the host nor the drawing context can outlive the call.
+    /// its vanilla quads, or `false` to leave them after yours. For block and water,
+    /// cancellation at extraction still suppresses vanilla quads. For fire, only this
+    /// return value decides once a renderer was selected. A failed submission contributes
+    /// no quads and leaves extraction's vanilla drawing decision unchanged. A panic disables
+    /// this mod's submissions for this overlay kind for the session; its extractor and
+    /// submissions for other overlays still run. Neither borrow outlives the call.
     fn submit(&self, host: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool;
 }
 
@@ -66,12 +74,20 @@ impl ExtractBlockScreenEffectEvent<'_> {
     /// Select a renderer for this overlay. The last eligible listener to select one wins;
     /// listeners that do not select one leave the previous choice in place. Cancellation
     /// skips subsequent listeners unless they opt into `#[listener(receive_cancelled)]`.
-    /// The selected renderer still submits even if the overlay is canceled.
+    /// The selected renderer still submits even if the overlay is canceled. In particular,
+    /// it replaces the no-op that would otherwise suppress canceled fire. A failed listener
+    /// leaves the preceding selection and cancellation in place.
     pub fn set_custom_renderer(&mut self, renderer: &'static dyn BlockScreenEffectRenderer) {
-        *self.renderer = Some(SelectedBlockScreenEffectRenderer {
-            owner: crate::content::crash::current_native_mod(),
-            renderer,
+        // The event can only borrow the selection slot inside a subscribed listener.
+        let owners = crate::runtime::installed().and_then(|installed| {
+            let id = crate::content::crash::current_native_mod()?;
+            installed.overlay_owners.get(id)
         });
+        if let Some(owners) = owners {
+            *self.renderer = Some(SelectedBlockScreenEffectRenderer { owners, renderer });
+        } else {
+            log::error!("extract_block_screen_effect: renderer selection has no listener owner");
+        }
     }
 }
 
@@ -82,24 +98,28 @@ impl ExtractBlockScreenEffectEvent<'_> {
 #[derive(Clone, Copy)]
 // exhaustive: only the extraction event can construct this private-field selection.
 pub struct SelectedBlockScreenEffectRenderer {
-    owner: Option<&'static str>,
+    owners: &'static [crate::callback_owner::CallbackOwner; BlockScreenEffect::COUNT],
     renderer: &'static dyn BlockScreenEffectRenderer,
 }
 
 impl SelectedBlockScreenEffectRenderer {
-    /// Submit the selected overlay under the selecting listener's mod scope.
-    pub fn submit(self, host: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool {
-        let _scope = self
-            .owner
-            .map(|id| crate::mark_mod(id, "block_screen_effect_renderer::submit"));
-        match crate::runtime::refusable(crate::runtime::outside_world(), || {
-            self.renderer.submit(host, render)
-        }) {
-            Ok(replace) => replace,
-            Err(refusal) => {
-                refusal.report();
-                false
-            }
+    /// Submit under the selecting listener's mod scope, returning no answer on failure.
+    pub fn submit(
+        self,
+        host: &dyn ClientHost,
+        render: BlockScreenEffectRender<'_>,
+    ) -> Option<bool> {
+        let owner = &self.owners[render.effect as usize];
+        // A poisoned submission is skipped on later frames, without building a disabled error.
+        if !owner.is_enabled() {
+            return None;
         }
+        owner
+            .call(
+                "block screen effect renderer",
+                "block_screen_effect_renderer::submit",
+                || self.renderer.submit(host, render),
+            )
+            .ok()
     }
 }

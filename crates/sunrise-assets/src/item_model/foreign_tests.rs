@@ -159,6 +159,8 @@ fn a_special_type_draws_by_its_renderer_or_fails_by_name() {
     assert!(matches!(shield, ItemModelNode::Special { .. }));
     let overridden = decode(r#"{"model":{"type":"special","base":"a:b","model":{"type":"bell"}}}"#);
     assert!(matches!(overridden, ItemModelNode::RegisteredSpecial { model, .. } if model == bell));
+    let empty = decode(r#"{"model":{"type":"special","base":"a:b","model":{"type":"example:"}}}"#);
+    assert!(matches!(empty, ItemModelNode::RegisteredSpecial { model, .. } if model == empty_path));
 }
 
 #[test]

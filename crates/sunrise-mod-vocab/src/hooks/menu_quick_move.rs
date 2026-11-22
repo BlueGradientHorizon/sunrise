@@ -6,22 +6,29 @@ pub trait Hooks {
     /// entity at `pos` (`AbstractContainerMenu.quickMoveStack`, the method a
     /// Java menu overrides), on the server, before the game's own routing:
     /// move the stack where your block wants it. `slot` is the menu's index:
-    /// below `container_slots` it is the block's own slot (`entity.items`),
-    /// from there on the player's inventory (27 main slots, then the hotbar).
-    /// `stack` is a copy of what the slot holds; take what you move out of
-    /// it (put it in `entity.items`, or in another block through its
-    /// `ITEMS` capability) and set `handled`: the slot then holds what is
-    /// left of `stack` (`None` empties it, overriding that slot of `entity.items`),
-    /// the game's routing is skipped, and the player's client gets the menu
-    /// again. Left unhandled, `entity.items` goes back to what it held and
-    /// the game moves the stack as for any container; a later mod sees what
-    /// an earlier one did to `stack`.
+    /// below `container_slots` it is a container slot, from there on the
+    /// player's inventory (27 main slots, then the hotbar). A container slot
+    /// can belong to `entity.items`, a linked container, or the menu's crafting result.
+    /// `stack` copies what the live slot holds, after `Slot.mayPickup` allows the click.
+    /// Take what you move out of `stack` and return `Flow::Cancel` to handle the move.
+    /// The same source keeps the remainder (`None` empties it), the game's routing is skipped, and the
+    /// player's client gets the menu again. For a linked or crafting-result source,
+    /// the remainder does not replace any slot in `entity.items`. A crafting result
+    /// is not a craft by itself: the handler is responsible for consuming any inputs.
+    /// The remainder is the shown result for the inputs the handler leaves, until
+    /// the grid next changes and prepares a new result. Pickup uses that shown result,
+    /// not a fresh recipe assembly.
+    /// Left unhandled, listener writes are undone and the same menu routes the move
+    /// without asking `Slot.mayPickup` again. A later listener sees earlier edits to `stack`.
     ///
-    /// The move is one action: the answer is validated once and applied once,
-    /// and a refused move changes nothing, with every write the listener made
-    /// undone and the client given the menu again. It is refused when a
-    /// listener fails (panics or traps), when the answer is invalid (a stack
-    /// past its item's maximum in `entity.items` or `stack`), or when a
+    /// The move is one action: the answer is validated once and applied once.
+    /// A refusal undoes journaled writes and resends the menu. A panicking
+    /// callback is reported and disabled for this hook for the session; the move
+    /// publishes neither the detached entity (including its queued update fields)
+    /// nor the proposed `stack` and `handled` outputs. If the owner or clicked
+    /// stack cannot be read by the API, the move is refused and the cause is
+    /// reported each time without calling the handler. An invalid answer (a stack
+    /// past its item's maximum in `entity.items` or `stack`) also refuses the move, as does a
     /// listener wrote through the `Host` to a player's inventory, cursor or
     /// menu storage (the move read its own player's; a write to any player's
     /// counts). Writes to another block, as a move into its `ITEMS`
@@ -45,7 +52,7 @@ pub trait Hooks {
         key = "entity",
         neoforge = "none (a Java menu overrides AbstractContainerMenu.quickMoveStack; no event)",
         cancellable = true,
-        version = 3
+        version = 4
     )]
     fn menu_quick_move(
         pos: [i32; 3],

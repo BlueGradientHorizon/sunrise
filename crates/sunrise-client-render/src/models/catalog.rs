@@ -205,8 +205,7 @@ fn bake_resolved(
     })
 }
 
-/// Assemble one slot from this generation's declared model files. Both the
-/// callback and every append must succeed before the catalog can publish it.
+/// Assemble one slot from this generation's declared model files.
 fn bake_standalone_model(
     root: &crate::resource_source::ResourceSource,
     sprites: &mut Sprites,
@@ -223,47 +222,32 @@ fn bake_standalone_model(
         faces: Vec::new(),
         cube: None,
     };
-    let mut failure: Option<StandaloneModelBakeError> = None;
     let mut append = |id: &str, quarter_turns, uvlock| {
-        if let Some(error) = &failure {
-            return Err(error.clone());
+        if !dependencies.iter().any(|dependency| dependency == id) {
+            return Err(StandaloneModelBakeError::UndeclaredDependency(
+                id.to_owned(),
+            ));
         }
-        let baked = if dependencies.iter().any(|dependency| dependency == id) {
-            // Use the same centered geometry and inverse face UV transform as a blockstate variant.
+        // Use the same centered geometry and inverse face UV transform as a blockstate variant.
+        let baked =
             bake_variant(sprites, &library, id, quarter_turns, uvlock).map_err(|error| {
                 StandaloneModelBakeError::DependencyBake {
                     id: id.to_owned(),
                     reason: error.to_string(),
                 }
-            })
-        } else {
-            Err(StandaloneModelBakeError::UndeclaredDependency(
-                id.to_owned(),
-            ))
-        };
-        match baked {
-            Ok(baked) => {
-                if combined.particle.is_none() {
-                    combined.particle = baked.particle;
-                }
-                combined.ambient_occlusion &= baked.ambient_occlusion;
-                combined.faces.extend(baked.faces);
-                Ok(())
-            }
-            Err(error) => {
-                failure = Some(error.clone());
-                Err(error)
-            }
+            })?;
+        if combined.particle.is_none() {
+            combined.particle = baked.particle;
         }
+        combined.ambient_occlusion &= baked.ambient_occlusion;
+        combined.faces.extend(baked.faces);
+        Ok(())
     };
     let result = entry
         .owner
         .call("standalone model baker", "bake_standalone_model", || {
             (entry.registration.bake)(&mut standalone_model_bake_context(&mut append))
         })?;
-    if let Some(error) = failure {
-        return Err(error.to_string());
-    }
     result.map_err(|error| error.to_string())?;
     combined.cube = super::cube::cube_styles(&combined.faces);
     Ok(combined)

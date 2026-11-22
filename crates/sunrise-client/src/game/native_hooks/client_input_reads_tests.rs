@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use crate::game::{Screen, native_entity_refs::tests::with_client_game};
-    use mod_api::__private::{ModPhase, PhaseOwner};
     use mod_api::MappingError;
     use sunrise_client::motion::PlayerMotion;
     use sunrise_core::geometry::Vec3;
@@ -11,7 +10,6 @@ mod tests {
     #[ignore = "daily"]
     fn mapping_physical_down_follows_the_binding_and_ignores_the_logical_state() {
         with_client_game(|game| {
-            let _phase = PhaseOwner::scope(ModPhase::World);
             let forward_mapping = game.vanilla_key_mapping("key.forward").unwrap();
             let attack_mapping = game.vanilla_key_mapping("key.attack").unwrap();
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -25,7 +23,7 @@ mod tests {
             game.physical_keys.insert(KeyCode::KeyW);
             assert_eq!(forward_mapping.physical_down(game), Ok(true));
             // A write to the logical mapping does not move the physical read.
-            game.keys.insert(KeyCode::KeyW);
+            game.insert_device_key(KeyCode::KeyW);
             assert_eq!(forward_mapping.is_down(game), Ok(true));
             forward_mapping.set_down(game, false).unwrap();
             assert!(!forward_mapping.is_down(game).unwrap());
@@ -48,11 +46,26 @@ mod tests {
             game.physical_buttons.insert(MouseButton::Left);
             assert_eq!(attack_mapping.physical_down(game), Ok(false));
 
-            // The physical read is available even for a key with no tracked logical state.
+            // Logical state is tracked uniformly for every resolved vanilla mapping,
+            // independent of its physical key state.
+            game.screen = Screen::Playing;
+            game.title = None;
             let chat = game.vanilla_key_mapping("key.chat").unwrap();
             game.physical_keys.insert(KeyCode::KeyT);
             assert_eq!(chat.physical_down(game), Ok(true));
-            assert_eq!(chat.is_down(game), Err(MappingError::NoLogicalState));
+            assert_eq!(chat.is_down(game), Ok(false));
+            assert_eq!(chat.set_down(game, true), Ok(()));
+            assert_eq!(chat.is_down(game), Ok(true));
+            assert_eq!(chat.set_down(game, false), Ok(()));
+            assert_eq!(chat.is_down(game), Ok(false));
+            assert_eq!(chat.physical_down(game), Ok(true));
+
+            let pick = game.vanilla_key_mapping("key.pickItem").unwrap();
+            assert_eq!(pick.is_down(game), Ok(false));
+            assert_eq!(pick.set_down(game, true), Ok(()));
+            assert_eq!(pick.is_down(game), Ok(true));
+            assert_eq!(pick.set_down(game, false), Ok(()));
+            assert_eq!(pick.is_down(game), Ok(false));
         });
     }
 
@@ -60,7 +73,6 @@ mod tests {
     #[ignore = "daily"]
     fn stale_vanilla_mapping_ref_refuses_foreign_client() {
         with_client_game(|game| {
-            let _phase = PhaseOwner::scope(ModPhase::World);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.screen = Screen::Playing;
             game.title = None;
@@ -80,12 +92,12 @@ mod tests {
             let current = game.vanilla_key_mapping("key.attack").unwrap();
             assert_eq!(current.binding(game), Ok("key.keyboard.r"));
             assert_eq!(current.is_down(game), Ok(false));
-            assert_eq!(game.attack_clicks.count(), 0);
-            // A live handle can still write with the same player and phase.
+            assert_eq!(game.pending_mapping_clicks("key.attack"), 0);
+            // A live handle can still write with the same player.
             current.set_down(game, true).unwrap();
             current.click(game).unwrap();
             assert_eq!(current.is_down(game), Ok(true));
-            assert_eq!(game.attack_clicks.count(), 1);
+            assert_eq!(game.pending_mapping_clicks("key.attack"), 1);
         });
     }
 }

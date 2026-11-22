@@ -26,8 +26,7 @@ pub(super) struct JournalLevelWrite<'g, 'a> {
 
 impl<'g, 'a> JournalLevelWrite<'g, 'a> {
     pub(super) fn new(game: &'g mut Game<'a>, level: LevelRef) -> Option<Self> {
-        (game.level_in_place(level) && game.transaction_current().is_some())
-            .then_some(Self { game, level })
+        (game.level_in_place(level) && game.has_level_transaction()).then_some(Self { game, level })
     }
 
     fn read(&self) -> ReadLevel<'_, 'a> {
@@ -189,18 +188,7 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         if !self.is_loaded(pos) {
             return false;
         }
-        let [x, y, z] = pos;
-        let at = BlockPos::new(x, y, z);
-        let state = self.game.world.block(x, y, z);
-        let replacement = self.game.with_level(|b, level, _| {
-            level.adjust_remove_block(at, state, moved, b.legacy_block(b.fluid(state)))
-        });
-        let flags = flags::UPDATE_ALL
-            | if moved {
-                flags::UPDATE_MOVE_BY_PISTON
-            } else {
-                0
-            };
+        let (replacement, flags) = self.game.level_removal_write(pos, moved);
         self.write_block(pos, replacement, flags)
     }
     fn set_block_property(&mut self, pos: [i32; 3], key: &str, value: &str, flags: i32) -> bool {
@@ -293,6 +281,26 @@ pub(super) enum PendingWrite {
 }
 
 impl Game<'_> {
+    pub(super) fn level_removal_write(
+        &mut self,
+        pos: [i32; 3],
+        moved: bool,
+    ) -> (BlockStateId, i32) {
+        let [x, y, z] = pos;
+        let at = BlockPos::new(x, y, z);
+        let state = self.world.block(x, y, z);
+        let replacement = self.with_level(|b, level, _| {
+            level.adjust_remove_block(at, state, moved, b.legacy_block(b.fluid(state)))
+        });
+        let flags = flags::UPDATE_ALL
+            | if moved {
+                flags::UPDATE_MOVE_BY_PISTON
+            } else {
+                0
+            };
+        (replacement, flags)
+    }
+
     pub(super) fn commit_level_write(&mut self, write: PendingWrite) {
         match write {
             PendingWrite::BlockTick(pos, block, delay) => {
@@ -340,12 +348,22 @@ impl Game<'_> {
         let mut answer = None;
         mod_api::dispatch_place_liquid_with(write.pos, state, fluid, &mut answer, |part, event| {
             // For a player bucket this can be the root scope; the fluid
-            // utility already has an outer transaction.
-            let seal = self.transaction_open();
-            let reply = JournalLevelWrite::new(self, level)
-                .and_then(|mut host| part.place_liquid(&mut host, event));
-            self.transaction_close(&seal, reply == Some(true));
-            reply
+            // utility already has an outer transaction. `run_transaction`
+            // guarantees rollback if `part.place_liquid` unwinds before the
+            // dispatcher catches the panic.
+            let answer: Result<Option<bool>, Option<bool>> =
+                mod_api::run_transaction(self, |game, _| {
+                    let reply = JournalLevelWrite::new(game, level)
+                        .and_then(|mut host| part.place_liquid(&mut host, event));
+                    if reply == Some(true) {
+                        Ok(reply)
+                    } else {
+                        Err(reply)
+                    }
+                });
+            match answer {
+                Ok(reply) | Err(reply) => reply,
+            }
         });
         answer
     }

@@ -36,7 +36,7 @@ impl mod_api::Hooks for Declare {
 fn with_types(test: impl FnOnce()) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
     // A general type is declared only while the registration phase is current.
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_platform::__private::RegistrationGuard::open();
     let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
     mod_platform::testing::with_mods(declare().into(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
@@ -175,6 +175,7 @@ fn pass(level: &mut Entities, clients: &mut [Client], at: &[[f64; 3]], states: &
             permission: 0,
             sunrise: true,
             general_entity: c.general_entity,
+            attachment_sender: None,
             moved: true,
             position,
             view_distance: c.view_distance,
@@ -185,7 +186,7 @@ fn pass(level: &mut Entities, clients: &mut [Client], at: &[[f64; 3]], states: &
         })
         .collect();
     let refs: Vec<&EntityState> = states.iter().collect();
-    level.tick(&refs, &Riding::default(), &mut viewers, |kind| {
+    level.tick(&refs, &Riding::default(), &mut viewers, None, |kind| {
         kind.starts_with("minecraft:").then_some(5)
     });
     drop(viewers);

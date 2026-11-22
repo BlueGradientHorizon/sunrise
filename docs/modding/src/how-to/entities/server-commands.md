@@ -16,6 +16,15 @@ Return `Some(n)` for success with integer result `n` (zero is also success), or
 An executor can capture owned or shared state, such as an `Arc`, but it cannot
 borrow values from the registration call.
 
+A panic fails the command, is logged with the mod's name and queues an error toast
+on a local client. That mod's executor for the registered usage is disabled for the
+session, even if the tree is rebuilt. Other usages still run. If the caller already
+had a transaction, the panicking invocation's journaled writes are undone. A failed
+invocation also aborts any transactions the executor opened and left unfinished.
+The game does not implicitly open a transaction for an ordinary command, and
+unjournaled effects are not undone. Like a vanilla command throwing an unexpected
+exception, a panicking executor does not run the command's `execute store` callbacks.
+
 The server asks for commands when it builds the session command tree: at world open before
 functions compile, and again on every `/reload` and data pack change. No player or network hub
 needs to exist yet. Register the complete current set on each call. Plain function lines and
@@ -25,13 +34,14 @@ grammar rather than asking again. Clients receive only display and completion da
 never executors. A parsed invocation belongs to the server dispatcher that parsed it;
 if the tree is rebuilt, the server must parse the command again before it can run.
 
-When accepted usages execute at the same node, the usage with the lowest operator
-level supplies both permission and executor; the first registration at that level
-wins. A usage with optional arguments also executes where those arguments begin,
-so `status` and `status [player:player]` overlap at `status`. By contrast, a public
-`status detail` allows traversal through `status`, but does not make an operator-only
-`status` executable. Use distinct paths to keep distinct executors. A root vanilla
-already owns is not registered.
+When accepted usages execute at the same node, each later accepted registration
+overwrites that node's executor (matching Brigadier's `CommandNode.addChild`, which
+replaces `child.command`) together with Sunrise's paired execution permission level
+for that node. A usage with optional arguments also executes where those
+arguments begin, so `status` and `status [player:player]` overlap at `status`. By
+contrast, a public `status detail` allows traversal through `status`, but does not
+make an operator-only `status` executable. Use distinct paths to keep distinct
+executors. A root vanilla already owns is not registered.
 
 Literal words use lowercase letters, digits, `_` and `-`. Only the first word may
 additionally begin with one `/`: register `/set <x:word>` and type `//set stone` in chat.

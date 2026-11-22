@@ -81,26 +81,32 @@ distinguishes self movement, player packets, pistons, shulker boxes, shulkers an
 moving collider carrying a body (`Carried`, version 2 of the hook);
 boats and minecarts use self movement.
 
-A replacement must have finite components, each within ±64 blocks. Invalid
-output is refused whole, retaining the requested delta rather than clamping it.
-Cancellation skips the invocation: no position, velocity, collision-flag or fall
+A replacement must have finite components, each within ±64 blocks. Each invalid
+proposal is reported with its mod and discarded whole, including its cancellation,
+without disabling the listener. Later listeners see the preceding accepted delta.
+An unchanged game delta is not subject to the replacement budget. Cancellation
+skips the invocation: no position, velocity, collision-flag or fall
 change, and no displacement notice. An overridden player or vehicle packet move
 sends a correction even below the normal distance threshold, for creative players
 and from obstructed starts too. A replacement equal to the request retains the
 normal vanilla distance rules.
 
-A listener panic restores the originally requested
-delta, not an earlier listener's replacement. Later listeners do not run on that
-invocation, and the failed listener is disabled for this hook for the session;
-its other hooks remain enabled.
+If a listener panics or incurs a phase refusal, its proposed delta and any
+change to the cancel flag are discarded. Later eligible listeners see the last
+accepted result; a failed callback neither vetoes movement nor clears an earlier
+veto. Only a panic disables that mod's callback for this hook for the session.
 
 A mod moves an entity through the same moment with `EntityRef::move_by(host, delta, cause)`
 (`Entity.move(cause, delta)`, server only): the collision scan stops it at blocks, the world border and
-entities, it steps up, and its ground flag follows; its velocity is left as it is, and it is no teleport. The
-`entity_move` hook fires once for it with `cause`, and a cancelled move returns `[0.0; 3]`. It returns how
-far the entity moved, and None for a stale handle, on a client, for a player (teleport it), for an entity
-outside the game's entity walk (a display, a painting, a frame, an End crystal, a dragon part) and for a delta
-that is not finite or beyond 64 blocks on an axis. Fall damage and block effects stay with the entity's tick.
+entities, it steps up, and its ground flag follows. This is not a teleport or a velocity setter, but
+collision response can change the body's velocity through block restitution. If the base fall handling
+removes the body, no restitution query runs. The `entity_move` hook fires once with `cause`, and a
+cancelled move returns `[0.0; 3]`. See the generated reference for which bodies the handle can move
+and for the relative-teleport semantics of player moves.
+
+`EntityRef::on_block(host)` uses the supporting block retained by the last move for players and the
+nonliving bodies that keep ground support, including items, boats and minecarts. It does not rerun
+collision detection. If there is no retained support, it reads the block at vanilla's feet offset.
 
 `living_travel` runs on the server, after the player's swim steering or at a
 mob's travel entry. It receives the loop context, not a `Host`, and lets a
@@ -114,12 +120,12 @@ Replacement input components must be finite and within [-1, 1]; replacement
 velocity components within ±64 blocks per tick. Untouched vectors are exempt.
 One malformed vector drops that listener's entire result, including its cancel
 flag. The preceding accepted result stands, and the log names the mod and field
-once per tick. An accepted cancellation cannot be cleared. It skips the branch,
+on every refusal. An accepted cancellation cannot be cleared. It skips the branch,
 its nested moves and flying vertical damping, without undoing earlier work such
 as swim steering. If the branch runs and calls `entity_move`, that move can
-still be vetoed. A listener panic restores the originally resolved values, ends
-the dispatch and disables the failed listener for this hook for the session;
-its other hooks remain enabled.
+still be vetoed. A listener panic or phase refusal also leaves earlier proposals
+standing and later eligible listeners running. Only a panic disables the failed
+callback for this hook for the session.
 
 For a player, a veto holds the position accepted at the server's travel boundary;
 it does not rewind reports already accepted before that tick. While the veto

@@ -3,14 +3,11 @@ use super::config_payloads::ConfigSender;
 use crate::raw_payloads::{Endpoint, Transport, connection::Epoch};
 use mod_api::{
     __private::RegisteredConfigurationTask, ConfigurationConnection, ConfigurationTaskError,
-    PayloadId,
+    PayloadId, PayloadSendError,
 };
 use std::{
     collections::BTreeMap,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{Arc, Mutex},
 };
 use sunrise_protocol::payload_negotiation::Phase;
 
@@ -20,26 +17,32 @@ pub struct ConfigurationRequest {
     pub name: String,
     pub session: Arc<Session>,
 }
-/// Process-unique identities keep a capability stale even after a server restarts.
-pub(super) fn next_connection() -> Option<ConfigurationConnection> {
-    static NEXT: AtomicU64 = AtomicU64::new(1);
-    NEXT.try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-        .ok()
-        .map(mod_api::__private::configuration_connection)
-}
 struct Entry {
     session: Arc<Session>,
     queue: Vec<Option<RegisteredConfigurationTask>>,
 }
 
-#[derive(Default)]
 pub struct Tasks {
+    incarnation: u64,
     sessions: BTreeMap<u64, Entry>,
 }
 impl Tasks {
+    pub fn new(incarnation: u64) -> Self {
+        Self {
+            incarnation,
+            sessions: BTreeMap::new(),
+        }
+    }
+    fn local_id(&self, connection: ConfigurationConnection) -> Option<u64> {
+        let (incarnation, id) = mod_api::__private::configuration_connection_parts(connection);
+        (incarnation == self.incarnation).then_some(id)
+    }
     pub fn insert(&mut self, request: &ConfigurationRequest) {
+        let Some(id) = self.local_id(request.connection) else {
+            return;
+        };
         self.sessions.insert(
-            mod_api::__private::configuration_connection_id(request.connection),
+            id,
             Entry {
                 session: request.session.clone(),
                 queue: Vec::new(),
@@ -52,19 +55,19 @@ impl Tasks {
         connection: ConfigurationConnection,
         tasks: Vec<RegisteredConfigurationTask>,
     ) {
-        let Some(entry) = self
-            .sessions
-            .get_mut(&mod_api::__private::configuration_connection_id(connection))
-        else {
+        let Some(id) = self.local_id(connection) else {
             return;
         };
+        let Some(entry) = self.sessions.get_mut(&id) else {
+            return;
+        };
+        let task_types = tasks.iter().map(|task| task.task_type().clone()).collect();
         entry.queue = tasks.into_iter().map(Some).collect();
-        entry.session.register(entry.queue.len());
+        entry.session.register(task_types);
     }
     pub fn get(&self, connection: ConfigurationConnection) -> Option<&Arc<Session>> {
-        self.sessions
-            .get(&mod_api::__private::configuration_connection_id(connection))
-            .map(|entry| &entry.session)
+        let id = self.local_id(connection)?;
+        self.sessions.get(&id).map(|entry| &entry.session)
     }
     /// Take the object out of its slot before running or retiring it.
     pub fn take_task(
@@ -72,11 +75,8 @@ impl Tasks {
         connection: ConfigurationConnection,
         ordinal: usize,
     ) -> Option<RegisteredConfigurationTask> {
-        self.sessions
-            .get_mut(&mod_api::__private::configuration_connection_id(connection))?
-            .queue
-            .get_mut(ordinal)?
-            .take()
+        let id = self.local_id(connection)?;
+        self.sessions.get_mut(&id)?.queue.get_mut(ordinal)?.take()
     }
     /// Put back a pending object only while its original session and turn are live.
     /// On refusal the caller still owns the object and retires it unlocked.
@@ -87,16 +87,21 @@ impl Tasks {
         ordinal: usize,
         task: &mut Option<RegisteredConfigurationTask>,
     ) {
+        let Some(id) = self.local_id(connection) else {
+            return;
+        };
         let Some(entry) = self
             .sessions
-            .get_mut(&mod_api::__private::configuration_connection_id(connection))
+            .get_mut(&id)
             .filter(|entry| Arc::ptr_eq(&entry.session, session))
         else {
             return;
         };
+        if session.transport().closed() {
+            return;
+        }
         let state = session.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.running(ordinal)
-            && !session.transport().closed()
             && let Some(slot) = entry.queue.get_mut(ordinal).filter(|slot| slot.is_none())
         {
             *slot = task.take();
@@ -107,8 +112,11 @@ impl Tasks {
         &mut self,
         connection: ConfigurationConnection,
     ) -> Vec<Option<RegisteredConfigurationTask>> {
+        let Some(id) = self.local_id(connection) else {
+            return Vec::new();
+        };
         self.sessions
-            .remove(&mod_api::__private::configuration_connection_id(connection))
+            .remove(&id)
             .map_or_else(Vec::new, |entry| entry.queue)
     }
     /// Visit the next session without retaining a borrow across a task callback.
@@ -117,15 +125,16 @@ impl Tasks {
         after: Option<ConfigurationConnection>,
     ) -> Option<(ConfigurationConnection, Arc<Session>)> {
         use std::ops::Bound::{Excluded, Unbounded};
-        let lower = after.map_or(Unbounded, |connection| {
-            Excluded(mod_api::__private::configuration_connection_id(connection))
-        });
+        let lower = match after {
+            None => Unbounded,
+            Some(connection) => Excluded(self.local_id(connection)?),
+        };
         self.sessions
             .range((lower, Unbounded))
             .next()
             .map(|(&id, entry)| {
                 (
-                    mod_api::__private::configuration_connection(id),
+                    mod_api::__private::configuration_connection(self.incarnation, id),
                     entry.session.clone(),
                 )
             })
@@ -133,7 +142,7 @@ impl Tasks {
 }
 #[derive(Default)]
 struct State {
-    task_count: Option<usize>,
+    task_types: Option<Vec<mod_api::Identifier>>,
     at: usize,
     started: bool,
     finished: bool,
@@ -142,7 +151,10 @@ struct State {
 }
 impl State {
     fn running(&self, ordinal: usize) -> bool {
-        self.at == ordinal
+        self.task_types
+            .as_ref()
+            .is_some_and(|types| ordinal < types.len())
+            && self.at == ordinal
             && self.started
             && !self.finished
             && !self.closed
@@ -152,24 +164,6 @@ impl State {
 pub struct Turn {
     pub ordinal: usize,
     pub start: bool,
-}
-
-/// A completion held until commit, bound to exactly one session and queue entry.
-pub struct ConfigurationCompletion {
-    session: Arc<Session>,
-    ordinal: usize,
-    ingress: Option<Arc<Epoch>>,
-}
-impl ConfigurationCompletion {
-    pub fn publish(self) {
-        let mut state = self.session.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.running(self.ordinal)
-            && !self.session.transport().closed()
-            && self.ingress.as_ref().is_none_or(|epoch| epoch.active())
-        {
-            state.finished = true;
-        }
-    }
 }
 
 pub struct Session {
@@ -183,20 +177,23 @@ impl Session {
             sender,
         })
     }
-    fn register(&self, task_count: usize) {
+    pub(crate) fn register(&self, task_types: Vec<mod_api::Identifier>) {
         self.state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .task_count = Some(task_count);
+            .task_types = Some(task_types);
     }
     /// Advance past a published completion, returning its ordinal for retirement
     /// even when it was the final task. Then take the next eligible turn, if any.
     pub fn turn(&self) -> (Option<usize>, Option<Turn>) {
+        if self.transport().closed() {
+            return (None, None);
+        }
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(task_count) = state.task_count else {
+        let Some(task_count) = state.task_types.as_ref().map(Vec::len) else {
             return (None, None);
         };
-        if state.closed || state.failure.is_some() || self.transport().closed() {
+        if state.closed || state.failure.is_some() {
             return (None, None);
         }
         let completed = state.finished.then_some(state.at);
@@ -221,29 +218,73 @@ impl Session {
             .unwrap_or_else(|e| e.into_inner())
             .finished
     }
-    /// Resolve an issued ordinal without mutating or failing any other turn.
-    pub fn require_running(&self, ordinal: usize) -> Result<(), ConfigurationTaskError> {
-        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.closed || state.failure.is_some() || self.transport().closed() {
+    /// Verify that the currently running task on this session matches `task_type`
+    /// and return its internal turn ordinal so deferred network publication can
+    /// only finish that exact turn.
+    pub fn running_ordinal_for_type(
+        &self,
+        task_type: &mod_api::Identifier,
+    ) -> Result<usize, ConfigurationTaskError> {
+        if self.transport().closed() {
             return Err(ConfigurationTaskError::Disconnected);
         }
-        if !state.running(ordinal) {
-            return Err(ConfigurationTaskError::StaleTask);
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.closed || state.failure.is_some() {
+            return Err(ConfigurationTaskError::Disconnected);
         }
+        let Some(types) = &state.task_types else {
+            return Err(ConfigurationTaskError::NotRunning);
+        };
+        if !(state.started && !state.finished && state.at < types.len()) {
+            return Err(ConfigurationTaskError::NotRunning);
+        }
+        if &types[state.at] != task_type {
+            return Err(ConfigurationTaskError::WrongType);
+        }
+        Ok(state.at)
+    }
+    /// Mark the currently running task finished immediately if its type matches `task_type`.
+    pub fn finish_type(
+        &self,
+        task_type: &mod_api::Identifier,
+    ) -> Result<(), ConfigurationTaskError> {
+        if self.transport().closed() {
+            return Err(ConfigurationTaskError::Disconnected);
+        }
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.closed || state.failure.is_some() {
+            return Err(ConfigurationTaskError::Disconnected);
+        }
+        let Some(types) = &state.task_types else {
+            return Err(ConfigurationTaskError::NotRunning);
+        };
+        if !(state.started && !state.finished && state.at < types.len()) {
+            return Err(ConfigurationTaskError::NotRunning);
+        }
+        if &types[state.at] != task_type {
+            return Err(ConfigurationTaskError::WrongType);
+        }
+        state.finished = true;
         Ok(())
     }
-    /// Validate before staging; a delayed ingress also needs its epoch alive at publication.
-    pub fn prepare_finish(
-        self: &Arc<Self>,
-        ordinal: usize,
-        ingress: Option<Arc<Epoch>>,
-    ) -> Result<ConfigurationCompletion, ConfigurationTaskError> {
-        self.require_running(ordinal)?;
-        Ok(ConfigurationCompletion {
-            session: self.clone(),
-            ordinal,
-            ingress,
-        })
+    /// Mark `ordinal` finished while the caller holds an active `Epoch::with_active`
+    /// publication gate. Never acquires `transport()` (whose connection-state lock is
+    /// ordered outside epoch invalidation).
+    pub fn finish_ordinal_under_epoch(&self, ordinal: usize) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.running(ordinal) {
+            state.finished = true;
+        }
+    }
+    /// Mark the currently running task finished if this ordinal is still active.
+    pub fn finish_current(&self, ordinal: usize) {
+        if self.transport().closed() {
+            return;
+        }
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.running(ordinal) {
+            state.finished = true;
+        }
     }
     pub fn fail(&self, reason: impl Into<String>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -256,8 +297,19 @@ impl Session {
                 .epoch()
                 .is_some_and(|epoch| epoch.peer.can_send(Phase::Configuration, channel).is_ok())
     }
-    pub fn endpoint(&self) -> Endpoint {
-        Endpoint::configuration(self.sender.clone())
+    pub fn payload_target(&self) -> Result<(Endpoint, Arc<Epoch>), ConfigurationTaskError> {
+        // The retained session may still be in the game thread's task map
+        // after I/O publishes Play. Bind the send to this exact Configuration epoch.
+        let epoch = self
+            .transport()
+            .epoch()
+            .ok_or(ConfigurationTaskError::Payload(
+                PayloadSendError::NotNegotiated,
+            ))?;
+        if epoch.phase != Phase::Configuration {
+            return Err(ConfigurationTaskError::Disconnected);
+        }
+        Ok((Endpoint::configuration(self.sender.clone(), None), epoch))
     }
     pub fn transport(&self) -> &Arc<Transport> {
         self.sender.payload_transport()
@@ -267,13 +319,13 @@ impl Session {
         if let Some(error) = &state.failure {
             return Some(Err(error.clone()));
         }
-        (state.task_count == Some(state.at)).then_some(Ok(()))
+        (state.task_types.as_ref().map(Vec::len) == Some(state.at)).then_some(Ok(()))
     }
     pub fn close(&self) {
         self.state.lock().unwrap_or_else(|e| e.into_inner()).closed = true;
     }
     pub fn closed(&self) -> bool {
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).closed || self.transport().closed()
+        self.transport().closed() || self.state.lock().unwrap_or_else(|e| e.into_inner()).closed
     }
 }
 
@@ -282,18 +334,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn phase_refusal_drops_only_the_current_listeners_task_registrations() {
+    fn panic_drops_only_the_current_listeners_task_registrations() {
         use mod_api::{
-            __private::{ConfigurationTaskRegistration, ModPhase, PhaseOwner},
-            ConfigurationTask, ConfigurationTaskContext, Identifier,
-            RegisterConfigurationTasksEvent, ServerHost,
+            __private::ConfigurationTaskRegistration, ConfigurationTask, ConfigurationTaskContext,
+            Identifier, RegisterConfigurationTasksEvent, ServerHost,
         };
 
         struct Task(Identifier, bool);
         impl ConfigurationTask for Task {
             fn task_type(&self) -> &Identifier {
                 if self.1 {
-                    mod_api::__private::refuse("test gated operation", ModPhase::Setup);
+                    panic!("test task_type fault");
                 }
                 &self.0
             }
@@ -310,12 +361,11 @@ mod tests {
                 event: &mut RegisterConfigurationTasksEvent<'_>,
             ) {
                 let task = |refuse| Task(Identifier::parse(self.0).unwrap(), refuse);
-                event.register(task(false)).unwrap();
+                event.register(task(false));
                 if self.1 {
-                    // Both the reservation and this validation error belong to the refused listener.
-                    assert!(event.register(task(false)).is_err());
-                    let _ = event.register(task(true));
-                    panic!("task_type must unwind to the listener's checkpoint");
+                    // Both the staged task and callback failure belong to this listener.
+                    event.register(task(true));
+                    panic!("the listener unwinds to its checkpoint");
                 }
             }
         }
@@ -328,17 +378,16 @@ mod tests {
             ]
             .into(),
             || {
-                let _phase = PhaseOwner::scope(ModPhase::Setup);
                 let mut host = mod_api::testing::FakeHost::new();
                 let mut registration = ConfigurationTaskRegistration::default();
                 mod_api::dispatch_register_configuration_tasks(
                     &mut host,
-                    mod_api::__private::configuration_connection(1),
+                    mod_api::__private::configuration_connection(1, 1),
                     0,
                     "Test",
                     &mut registration,
                 );
-                assert_eq!(registration.refusal(), None);
+                assert_eq!(registration.failure(), None);
                 let tasks = registration.into_tasks();
                 assert_eq!(
                     tasks.iter().map(|task| task.owner.id()).collect::<Vec<_>>(),
@@ -351,8 +400,7 @@ mod tests {
     #[test]
     fn a_panicking_task_type_refuses_one_registration_and_disables_only_its_owner() {
         use mod_api::{
-            __private::{ConfigurationTaskRegistration, ModPhase, PhaseOwner},
-            ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskRegistrationError,
+            __private::ConfigurationTaskRegistration, ConfigurationTask, ConfigurationTaskContext,
             Identifier, RegisterConfigurationTasksEvent, ServerHost,
             content::crash::current_native_call,
         };
@@ -407,8 +455,8 @@ mod tests {
                 _: &mut dyn ServerHost,
                 event: &mut RegisterConfigurationTasksEvent<'_>,
             ) {
-                // Do not propagate the registration error: the engine must still refuse admission.
-                let _ = event.register(Task {
+                // A task callback failure still refuses admission.
+                event.register(Task {
                     owner: self.0,
                     kind: Identifier::parse("config:task").unwrap(),
                     panic: self.1,
@@ -425,25 +473,24 @@ mod tests {
             ]
             .into(),
             || {
-                let _phase = PhaseOwner::scope(ModPhase::Setup);
                 let mut host = mod_api::testing::FakeHost::new();
                 for peer in [1, 2] {
                     let mut registration = ConfigurationTaskRegistration::default();
                     mod_api::dispatch_register_configuration_tasks(
                         &mut host,
-                        mod_api::__private::configuration_connection(peer),
+                        mod_api::__private::configuration_connection(1, peer),
                         0,
                         "Test",
                         &mut registration,
                     );
                     if peer == 1 {
                         assert!(matches!(
-                            registration.refusal(),
-                            Some(ConfigurationTaskRegistrationError::CallbackFailed(reason))
+                            registration.failure(),
+                            Some(reason)
                                 if reason.contains(BROKEN) && reason.contains("test task type panic")
                         ));
                     } else {
-                        assert_eq!(registration.refusal(), None);
+                        assert_eq!(registration.failure(), None);
                     }
                     let tasks = registration.into_tasks();
                     assert_eq!(tasks.len(), 1);
@@ -451,10 +498,10 @@ mod tests {
                 }
                 assert_eq!(BROKEN_LOOKUPS.load(Ordering::Relaxed), 1);
                 assert_eq!(BROKEN_DISPOSALS_IN_SCOPE.load(Ordering::Relaxed), 2);
-                let notices = mod_api::__private::game::take_callback_panic_notices()
+                let notices = mod_api::__private::take_hook_panics()
                     .into_iter()
                     .filter(|notice| notice.mod_id == BROKEN)
-                    .map(|notice| notice.operation)
+                    .map(|notice| notice.hook)
                     .collect::<Vec<_>>();
                 assert_eq!(
                     notices,
@@ -469,7 +516,7 @@ mod tests {
     }
 
     #[test]
-    fn completion_only_takes_effect_on_publication_for_its_own_turn() {
+    fn finish_type_and_finish_current_match_only_the_active_task() {
         use crate::lan::config_payloads::ConfigIo;
         use sunrise_protocol::connection::{Connection, Pipe};
 
@@ -479,14 +526,32 @@ mod tests {
         let (events, _receiver) = crate::lan::event_channel_with_capacity(1 << 20);
         let mut io = ConfigIo::new(&mut server, transport.clone(), events).unwrap();
         let session = Session::new(io.task_sender(transport).unwrap());
-        session.register(2);
+        let first = mod_api::Identifier::parse("demo:first").unwrap();
+        let second = mod_api::Identifier::parse("demo:second").unwrap();
+        assert_eq!(
+            session.running_ordinal_for_type(&first),
+            Err(ConfigurationTaskError::NotRunning)
+        );
+
+        session.register(vec![first.clone(), second.clone()]);
+        assert_eq!(
+            session.running_ordinal_for_type(&first),
+            Err(ConfigurationTaskError::NotRunning)
+        );
         let (completed, turn) = session.turn();
         assert_eq!(completed, None);
         let turn = turn.unwrap();
         assert!(turn.start);
         assert_eq!(turn.ordinal, 0);
-        let completion = session.prepare_finish(turn.ordinal, None).unwrap();
-        let delayed = session.prepare_finish(turn.ordinal, None).unwrap();
+        assert_eq!(session.running_ordinal_for_type(&first), Ok(0));
+        assert_eq!(
+            session.running_ordinal_for_type(&second),
+            Err(ConfigurationTaskError::WrongType)
+        );
+        assert_eq!(
+            session.finish_type(&second),
+            Err(ConfigurationTaskError::WrongType)
+        );
         assert!(!session.finished());
         let (completed, tick) = session.turn();
         assert_eq!(completed, None);
@@ -494,24 +559,30 @@ mod tests {
         assert!(!tick.start);
         assert_eq!(tick.ordinal, 0);
 
-        completion.publish();
+        assert!(session.finish_type(&first).is_ok());
         assert!(session.finished());
+        assert_eq!(
+            session.running_ordinal_for_type(&first),
+            Err(ConfigurationTaskError::NotRunning)
+        );
+        assert_eq!(
+            session.finish_type(&first),
+            Err(ConfigurationTaskError::NotRunning)
+        );
+
         let (completed, next) = session.turn();
         assert_eq!(completed, Some(0));
         let next = next.unwrap();
         assert!(next.start);
         assert_eq!(next.ordinal, 1);
-        delayed.publish();
+        session.finish_ordinal_under_epoch(turn.ordinal);
         assert!(!session.finished());
-        assert!(matches!(
-            session.prepare_finish(turn.ordinal, None),
-            Err(ConfigurationTaskError::StaleTask)
-        ));
-
-        session
-            .prepare_finish(next.ordinal, None)
-            .unwrap()
-            .publish();
+        assert_eq!(
+            session.running_ordinal_for_type(&first),
+            Err(ConfigurationTaskError::WrongType)
+        );
+        assert_eq!(session.running_ordinal_for_type(&second), Ok(1));
+        session.finish_ordinal_under_epoch(next.ordinal);
         let (completed, turn) = session.turn();
         assert_eq!(completed, Some(1));
         assert!(turn.is_none());

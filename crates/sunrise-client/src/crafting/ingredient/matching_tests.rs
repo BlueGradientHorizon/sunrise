@@ -109,7 +109,7 @@ fn empty_ingredient_recipes_retain_predicates_but_not_placement() {
     sources.retain(|(name, _)| {
         !name.starts_with("empty_fixture:direct") && !name.starts_with("empty_fixture:missing")
     });
-    let resolved = ResolvedSources::resolve(sources, &load).unwrap();
+    let resolved = ResolvedSources::resolve(sources, &items, &load).unwrap();
     let root = std::env::temp_dir();
     let recipes = Recipes::from_resolved(&root, &items, &PackOverlay::NONE, &resolved).unwrap();
     let stations = crate::stations::StationRecipes::from_sources(&root, &items, &resolved);
@@ -268,6 +268,108 @@ impl mod_api::Hooks for ListenerIngredient {
             },
         ))
     }
+}
+
+#[test]
+fn panicking_ingredient_predicate_disables_only_its_definition_across_recipe_loads() {
+    use crate::crafting::Recipes;
+    use serde_json::json;
+    use sunrise_world::loot::PackOverlay;
+
+    struct Predicates;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Predicates {
+        fn ingredient(
+            &self,
+            _: &dyn mod_api::DataLoadContext,
+            event: &mut mod_api::IngredientEvent<'_>,
+        ) -> Option<mod_api::IngredientDefinition> {
+            if event.kind != "fixture:predicate" {
+                return None;
+            }
+            let panics = matches!(
+                event.data.get(&mod_api::JavaString::from("panics")),
+                Some(mod_api::Tag::Byte(1))
+            );
+            Some(mod_api::IngredientDefinition::new(
+                vec!["minecraft:stone".into()],
+                move |_, stack| {
+                    if panics && stack.count() == 3 {
+                        CALLS.set(CALLS.get() + 1);
+                        panic!("ingredient regression panic");
+                    }
+                    stack.count() == 2
+                },
+            ))
+        }
+    }
+
+    crate::test_log::install();
+    mod_platform::testing::with_mods(
+        vec![mod_api::ModEntry::new(
+            "predicate_owner",
+            Box::new(Predicates),
+        )]
+        .into(),
+        || {
+            let data = crate::test_resources::server_load();
+            let context = data.loop_context(LoopSide::Server, []);
+            let items = Items::for_tests(Default::default());
+            let load = |panics| {
+                Recipes::from_sources(
+                    &std::env::temp_dir(),
+                    &items,
+                    &PackOverlay::NONE,
+                    [("fixture:panicking", panics), ("fixture:healthy", true)]
+                        .map(|(recipe, panics)| {
+                            (
+                                recipe.into(),
+                                json!({"type":"minecraft:crafting_shapeless",
+                                "ingredients":[{"type":"fixture:predicate", "panics":panics}],
+                                "result":{"id":"minecraft:stick"}}),
+                            )
+                        })
+                        .into(),
+                    &data,
+                )
+                .unwrap()
+            };
+            let one = [Some(ItemStack::new("minecraft:stone", 1))];
+            let two = [Some(ItemStack::new("minecraft:stone", 2))];
+            let three = [Some(ItemStack::new("minecraft:stone", 3))];
+            let recipes = load(true);
+            crate::test_log::clear();
+            CALLS.set(0);
+            assert!(!recipes.recipe_matches(&context, "fixture:panicking", &three, 1));
+            assert!(!recipes.recipe_matches(&context, "fixture:panicking", &two, 1));
+            // The second recipe decoded exactly the same ingredient JSON into its own callback.
+            assert!(recipes.recipe_matches(&context, "fixture:healthy", &two, 1));
+            let recipes = load(true);
+            assert!(!recipes.recipe_matches(&context, "fixture:panicking", &three, 1));
+            assert!(!recipes.recipe_matches(&context, "fixture:panicking", &two, 1));
+            assert!(!recipes.recipe_matches(&context, "fixture:healthy", &one, 1));
+            assert!(recipes.recipe_matches(&context, "fixture:healthy", &two, 1));
+            let recipes = load(false);
+            assert!(recipes.recipe_matches(&context, "fixture:panicking", &two, 1));
+            assert_eq!(CALLS.get(), 1);
+            let logs = crate::test_log::records();
+            assert_eq!(
+                logs.iter()
+                    .filter(|(level, text)| *level == log::Level::Error
+                        && text.contains("predicate_owner")
+                        && text.contains("ingredient regression panic"))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "predicate_owner",
+                    hook: "ingredient_predicate",
+                }]
+            );
+        },
+    );
 }
 
 #[test]

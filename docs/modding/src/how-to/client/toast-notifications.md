@@ -30,5 +30,8 @@ also offers a system toast there, only in the owning client's window. Editing or
 it does not change the server's error log. Candidates produced during the initial resource
 loading screen wait until the game can invoke the hook with a `ClientHost`. The pause screen's
 persistent song label is HUD content, not a queued toast, and is not filtered by this hook.
-Audio stream panic notices use the same toast slots but cannot be vetoed by `toast_add` or
-`render_gui_pre`. The player's hide-GUI setting still hides them.
+
+A [panic diagnostic](../../concepts/hooks-and-the-host.md#failures-and-panics) uses ordinary
+toast slots and animation timing and names the mod and callback. It bypasses `toast_add`, so
+mods cannot cancel it or rewrite its text. A `render_gui_pre` veto and a mod's
+`ClientHost::set_hud_mode` cannot hide it. The player's F1 setting still hides it. A dedicated server reports it in the log.

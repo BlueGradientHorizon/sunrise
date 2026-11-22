@@ -36,12 +36,14 @@ pub trait GuiLayerWrapContext {
 
 // no wire: the registrar borrows the live HUD registration for one hook call.
 /// The HUD layer registrar handed to `register_gui_layers` once at client startup.
-/// Registrations are applied in call order; the registrar is only available during that hook.
+/// Edits are visible in call order to the current listener and publish together when it
+/// returns successfully. The registrar is borrowed only for that listener.
 pub trait GuiLayerRegistrar {
-    /// Install `draw` at `placement` under a namespaced ID such as `mymod:compass`.
-    /// Returns false and logs a warning if the ID is malformed, in the `minecraft` namespace,
-    /// already registered, or relative to a layer that is not registered yet. A rejected
-    /// registration does not reserve the ID; use `replace_layer` or `wrap_layer` to edit one.
+    /// Stage `draw` at `placement` under a namespaced ID such as `mymod:compass`.
+    /// Returns false and logs a warning if the ID is malformed, already registered
+    /// (including built-in vanilla layer IDs), or relative to a layer that is not
+    /// registered yet. A rejected registration does not reserve the ID; use
+    /// `replace_layer` or `wrap_layer` to edit an existing layer.
     fn register(
         &mut self,
         id: String,
@@ -50,13 +52,20 @@ pub trait GuiLayerRegistrar {
     ) -> bool;
 
     /// Replace an already registered layer (including a vanilla layer) with `draw`.
-    /// Discards the entire previous body, including any wrappers, but keeps the layer's ID,
-    /// position and draw conditions.
+    /// Keeps the layer's ID, order and which frames dispatch the slot. Discards the entire
+    /// previous body, including wrappers and eligibility checks. For example, a replaced
+    /// status slot still runs under F1, even though its original body would not draw.
+    /// Superseded callbacks from this listener are dropped before this call returns. A panic
+    /// there rejects this listener's batch. Bodies from earlier listeners retire after publication,
+    /// in the order this listener first replaced their layers. A panic in retirement is attributed
+    /// to the earlier owner and leaves the replacement installed.
     /// Returns false and logs a warning if `id` is not registered.
     fn replace_layer(&mut self, id: &str, draw: Box<GuiLayerDraw>) -> bool;
 
-    /// Wrap an already registered layer in place, keeping its ID, position and draw conditions.
-    /// The newest wrapper runs first and can draw the previous body through its context.
+    /// Wrap an already registered layer in place, keeping its ID, order and slot dispatch.
+    /// The newest wrapper runs first. A wrapper's own paint need not follow the original
+    /// body's eligibility checks. Those checks apply only when
+    /// [`GuiLayerWrapContext::draw_previous`] reaches the original body.
     /// Returns false and logs a warning if `id` is not registered.
     fn wrap_layer(&mut self, id: &str, wrap: Box<GuiLayerWrapper>) -> bool;
 }

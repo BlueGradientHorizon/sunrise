@@ -13,9 +13,8 @@ impl Game<'_> {
         if !mod_api::__private::enabled_listened(mod_api::HookId::MovementInputUpdate) {
             return keys;
         }
-        let sampled_vector = keys.direction();
         let mut input = MovementInput {
-            move_vector: sampled_vector,
+            move_vector: keys.direction(),
             key_presses: MovementKeys {
                 forward: keys.forward,
                 backward: keys.backward,
@@ -29,13 +28,6 @@ impl Game<'_> {
         self.native_movement_input_update(mod_api::__private::MovementInputUpdateCall {
             input: &mut input,
         });
-        let [left, forward] = input.move_vector;
-        // Do not feed invalid (or overflowing) vectors into vanilla input normalization.
-        let move_vector = if (left * left + forward * forward).is_finite() {
-            input.move_vector
-        } else {
-            sampled_vector
-        };
         Keys {
             forward: input.key_presses.forward,
             backward: input.key_presses.backward,
@@ -44,7 +36,7 @@ impl Game<'_> {
             jump: input.key_presses.jump,
             shift: input.key_presses.sneak,
             sprint: input.key_presses.sprint,
-            analog: Some(move_vector),
+            analog: Some(input.move_vector),
         }
     }
 

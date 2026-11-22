@@ -56,8 +56,14 @@ public static class FakeEnvironment {
 "@
 
 # The fakes: the API answers with the case's release, the verifier only at its pinned release's address (the
-# case's VerifierVersion), any other download with the case's file of that name.
-function Invoke-RestMethod { param($Uri, $Headers) $global:SunriseTestRel.Release }
+# case's VerifierVersion), any other download with the case's file of that name. A case that names its tag
+# (OnlyTag) answers only that exact by-tag lookup, as GitHub would.
+function Invoke-RestMethod {
+    param($Uri, $Headers)
+    $Only = $global:SunriseTestRel.OnlyTag
+    if ($Only -and $Uri -cne "https://api.github.com/repos/sunrise-org/sunrise/releases/tags/$Only") { throw "404 $Uri" }
+    $global:SunriseTestRel.Release
+}
 function Invoke-WebRequest {
     param($Uri, $OutFile, [switch]$UseBasicParsing)
     $Name = ($Uri -split "/")[-1]
@@ -119,6 +125,7 @@ function Set-Release([string]$Dir, [string]$Tag, [bool]$Sums, [string]$Title = $
     $script:Releases[$Dir] = [pscustomobject]@{ tag_name = $Tag; name = $Title; assets = $Assets }
 }
 $script:Releases = @{}
+$script:OnlyTag = @{}
 
 # Replaces the one line of Text that Pattern matches with Line, and fails unless exactly one does.
 function Set-OneLine([string]$Text, [string]$Pattern, [string]$Line) {
@@ -148,6 +155,7 @@ function Invoke-Case([string]$Dir, [hashtable]$Arguments = @{}, [string]$Key = "
     Set-Installer $Dir $VerifierVersion $Pin
     $global:SunriseTestRel = [pscustomobject]@{
         Release = $script:Releases[$Dir]; Files = Join-Path $Dir "files"; VerifierVersion = $Served
+        OnlyTag = $script:OnlyTag[$Dir]
     }
     $env:SUNRISE_VERIFY_TEST_KEY = if ($Key) { $Key } else { $script:Keys[$Dir] }
     $Ok = $true
@@ -182,9 +190,12 @@ try {
     Test-That "nothing installed" (Test-Path (Join-Path $d "inst\current\sunrise-server.exe"))
     Test-That "not installed as $Nightly" ($r.Out.Contains("Downloading Sunrise $Nightly "))
 
-    # 2. Good signature, a normal tag.
-    $d = Join-Path $W "tag"; New-Release $d "v1.2.3"
-    $r = Invoke-Case $d $v; Test-Case "good release installs (release tag)" $true "Release signature OK" $r
+    # 2. Good signature, a stable release by its tag: looked up by exactly that tag, installed under it.
+    $d = Join-Path $W "tag"; New-Release $d "26.3-0.1.0"; $script:OnlyTag[$d] = "26.3-0.1.0"
+    $r = Invoke-Case $d @{ Version = "26.3-0.1.0" }; Test-Case "good release installs (stable release tag)" $true "" $r
+    Test-That "not installed as 26.3-0.1.0" (Test-Path (Join-Path $d "inst\releases\26.3-0.1.0\sunrise-server.exe"))
+    $Current = (Get-Item (Join-Path $d "inst\current") -ErrorAction SilentlyContinue).Target
+    Test-That "current isn't 26.3-0.1.0" ("$Current" -like "*\releases\26.3-0.1.0")
 
     # 3. -InsecureChecksumOnly: installs on GitHub's SHA-256 with a loud warning, and needs no verifier at all.
     $d = Join-Path $W "insecure"; New-Release $d "v1.2.3"

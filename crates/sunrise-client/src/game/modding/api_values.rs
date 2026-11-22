@@ -2,7 +2,6 @@
 //! Rust's orphan rule prevents foreign From/TryFrom implementations here.
 #[path = "api_values/ingredient.rs"]
 mod ingredient_values;
-use crate::game::transactions::decision::InvalidReason;
 use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -922,19 +921,21 @@ pub(in crate::game) fn stack_value(value: &ApiStack) -> Result<EngineStack, Stac
     encode_stack(value, id.into())
 }
 
-fn encode_stack(value: &ApiStack, item: Arc<str>) -> Result<EngineStack, StackWriteError> {
-    let (stack, patch) = decode_stack_record(value, item);
+pub(in crate::game) fn encode_stack(
+    value: &ApiStack,
+    item: Arc<str>,
+) -> Result<EngineStack, StackWriteError> {
+    let stack = decode_stack_record(value, item);
+    // Check the original override even if its value failed to decode.
+    let patch = value.components().map(|patch| patch.as_nbt());
     content_declarations::validate_decoded_components(|name| {
-        patch
-            .as_ref()
-            .and_then(|patch| patch.get(name))
-            .map(|_| &stack)
+        patch?.get(&JavaString::from(name)).map(|_| &stack)
     })?;
     Ok(stack)
 }
 
-/// Decode the record and retain its incoming patch for admission checks by the caller.
-fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> (EngineStack, Option<Tag>) {
+/// Decode the record's component overrides without changing their saved keys.
+fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> EngineStack {
     let mut patch = value.components().map(|patch| patch.as_nbt().clone());
     // Let the existing component codec preserve explicit zero versus prototype inheritance.
     if value.damage_component() == Some(0) {
@@ -944,13 +945,12 @@ fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> (EngineStack, Option
     }
     let patch = patch.map(Tag::Compound);
     let (_, extra) = sunrise_items::item_data::decode_components(patch.as_ref());
-    let stack = EngineStack {
+    EngineStack {
         item,
         count: value.count(),
         damage: value.damage(),
         extra,
-    };
-    (stack, patch)
+    }
 }
 
 impl TryIntoApi for crate::crafting::RecipeRule {
@@ -1277,14 +1277,19 @@ impl super::Game<'_> {
         if let StackResult::Set(output) = edits.output
             && output != vanilla_output
         {
-            let Ok(output) = output.try_into_engine(self.items()) else {
-                *result = Default::default();
-                return;
-            };
-            result.only_renaming &= result.result == output;
-            result.result = output;
+            match output.try_into_engine(self.items()) {
+                Ok(output) => {
+                    result.only_renaming &= result.result == output;
+                    result.result = output;
+                }
+                Err(err) => {
+                    log::warn!(
+                        "anvil_update: ignoring invalid output replacement at {pos:?}: {err:?}"
+                    );
+                }
+            }
         }
-        result.cost = edits.xp_cost;
+        result.cost = edits.xp_cost.max(0);
         result.repair_item_count_cost = edits.material_cost.max(0) as u32;
     }
     pub(in crate::game) fn api_grindstone_place(
@@ -1294,11 +1299,11 @@ impl super::Game<'_> {
         pos: [i32; 3],
         inputs: [Option<&EngineStack>; 3],
         cancel: &mut bool,
-    ) -> Result<crate::menu::GrindstonePlaceEdits, InvalidReason> {
+    ) -> crate::menu::GrindstonePlaceEdits {
         use mod_api::item::menu::{GrindstonePlaceEdits, GrindstonePlaceInputs};
 
         let Ok([top, bottom, vanilla_output]) = inputs.try_into_api() else {
-            return Ok(Default::default());
+            return Default::default();
         };
         let inputs = GrindstonePlaceInputs {
             top: top.as_ref(),
@@ -1309,23 +1314,31 @@ impl super::Game<'_> {
             output: None,
             xp: -1,
         };
-        self.native_grindstone_place(player, entity, pos, &inputs, &mut edits, cancel);
-
-        // Refuse an invalid replacement before considering cancellation or experience.
-        let output = edits
-            .output
-            .try_into_engine(self.items())
-            .map_err(|_| InvalidReason::Count)?;
+        let tx_depth = self.transactions.len();
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.native_grindstone_place(player, entity, pos, &inputs, &mut edits, cancel);
+        }))
+        .is_err();
+        self.abort_abandoned_transactions(tx_depth);
+        if panicked {
+            log::error!("grindstone_place: listener panicked at {pos:?}");
+            *cancel = false;
+            return Default::default();
+        }
         if *cancel {
-            return Ok(Default::default());
+            return Default::default();
         }
-        if edits.xp < -1 {
-            return Err(InvalidReason::Plan);
-        }
-        Ok(crate::menu::GrindstonePlaceEdits {
-            output,
-            xp: edits.xp,
-        })
+        let xp = edits.xp.max(-1);
+        let output = match edits.output.try_into_engine(self.items()) {
+            Ok(output) => output,
+            Err(err) => {
+                log::warn!(
+                    "grindstone_place: ignoring invalid output replacement at {pos:?}: {err:?}"
+                );
+                None
+            }
+        };
+        crate::menu::GrindstonePlaceEdits { output, xp }
     }
     pub(in crate::game) fn api_grindstone_take(
         &mut self,
@@ -1334,38 +1347,63 @@ impl super::Game<'_> {
         pos: [i32; 3],
         take: &crate::menu::PendingGrindstoneTake,
         cancel: &mut bool,
-    ) -> Result<crate::menu::GrindstoneTakeEdits, InvalidReason> {
+    ) -> crate::menu::GrindstoneTakeEdits {
         use mod_api::item::menu::{GrindstoneTakeEdits, GrindstoneTakeInputs};
 
+        let initial_xp = if take.xp >= 0 {
+            take.xp
+        } else {
+            let amount = take.vanilla_amount(&self.menu_env());
+            self.journal_level_random();
+            crate::stations::grindstone_xp_roll(amount, &mut self.world.random) as i32
+        };
         let Ok([top, bottom]) = [take.top.as_ref(), take.bottom.as_ref()].try_into_api() else {
-            return Ok(crate::menu::GrindstoneTakeEdits::initial(take.xp));
+            return crate::menu::GrindstoneTakeEdits::initial(initial_xp);
         };
         let inputs = GrindstoneTakeInputs {
             top: top.as_ref(),
             bottom: bottom.as_ref(),
         };
         let mut edits = GrindstoneTakeEdits {
-            xp: take.xp,
+            xp: initial_xp,
             new_top: None,
             new_bottom: None,
         };
-        self.native_grindstone_take(player, entity, pos, &inputs, &mut edits, cancel);
-
-        // Invalid replacements refuse the click, even if the listener also cancelled.
-        let [new_top, new_bottom] = [edits.new_top, edits.new_bottom]
-            .try_into_engine(self.items())
-            .map_err(|_| InvalidReason::Count)?;
+        let tx_depth = self.transactions.len();
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.native_grindstone_take(player, entity, pos, &inputs, &mut edits, cancel);
+        }))
+        .is_err();
+        self.abort_abandoned_transactions(tx_depth);
+        if panicked {
+            log::error!("grindstone_take: listener panicked at {pos:?}");
+            *cancel = false;
+            return crate::menu::GrindstoneTakeEdits::initial(initial_xp);
+        }
         if *cancel {
-            return Ok(crate::menu::GrindstoneTakeEdits::initial(take.xp));
+            return crate::menu::GrindstoneTakeEdits::initial(initial_xp);
         }
-        if edits.xp < -1 {
-            return Err(InvalidReason::Plan);
-        }
-        Ok(crate::menu::GrindstoneTakeEdits {
+        let new_top = match edits.new_top.try_into_engine(self.items()) {
+            Ok(stack) => stack,
+            Err(err) => {
+                log::warn!("grindstone_take: ignoring invalid top remainder at {pos:?}: {err:?}");
+                None
+            }
+        };
+        let new_bottom = match edits.new_bottom.try_into_engine(self.items()) {
+            Ok(stack) => stack,
+            Err(err) => {
+                log::warn!(
+                    "grindstone_take: ignoring invalid bottom remainder at {pos:?}: {err:?}"
+                );
+                None
+            }
+        };
+        crate::menu::GrindstoneTakeEdits {
             xp: edits.xp,
             new_top,
             new_bottom,
-        })
+        }
     }
 }
 
@@ -1853,7 +1891,11 @@ impl super::Game<'_> {
         };
         let revision = api_entity.as_ref().map(|entity| entity.revision());
         let original = cursor.clone();
+        let failures = mod_api::runtime::isolated_failures();
         self.native_menu_button(menu, block, context, api_entity.as_mut(), &mut cursor);
+        if mod_api::runtime::isolated_failures() != failures {
+            return;
+        }
         // The outer Option means whether the callback changed the cursor; the inner one is its
         // new value. `Some(None)` is an explicit consume, while `None` leaves it untouched.
         let cursor: Result<Option<Option<EngineStack>>, BlockEntitySnapshotError> =
@@ -2083,6 +2125,10 @@ mod stack_limit_tests {
 
     pub(super) fn catalog() -> Items {
         prepare_stack_boundary_tests();
+        fixture_catalog()
+    }
+
+    fn fixture_catalog() -> Items {
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
             "sunrise-api-limits-{}-{}",
@@ -2102,25 +2148,29 @@ mod stack_limit_tests {
         items
     }
 
-    /// Vanilla stores damage above the maximum; only writes refuse it. Reads see the stack.
+    /// Vanilla `DataComponents.DAMAGE` validates non-negative ints without capping by `max_damage`.
     #[test]
-    fn a_write_refuses_damage_over_the_maximum_a_read_takes() {
+    fn a_write_preserves_damage_above_max_damage() {
         let items = catalog();
         let mut over = ApiStack::of(mod_api::__private::item_key("minecraft:iron_sword").unwrap());
         over.set_damage(1000);
-        assert_eq!(
-            over.try_into_engine(&items),
-            Err(StackWriteError::DamageExceeded { maximum: 10 })
-        );
-        let read = stack_value(&over).unwrap();
         let definition = items.items.get("minecraft:iron_sword");
+        let written = over.try_into_engine(&items).unwrap();
+        assert_eq!(written.effective_damage(definition), 1000);
+        assert!(sunrise_client::stations::is_damageable(&items, &written));
+        let read = stack_value(&over).unwrap();
         assert_eq!(read.effective_damage(definition), 1000);
-        assert!(sunrise_client::stations::is_damageable(&items, &read));
     }
 
     #[test]
-    fn strict_damage_limits_include_zero_inheritance_removal_and_nbt_int_range() {
-        let mut items = catalog();
+    fn damage_and_max_damage_follow_vanilla_int_ranges() {
+        use sunrise_core::vanilla_bytes::Writer;
+        use sunrise_protocol::{
+            buf::{Codec, Reader},
+            item::{Component, Slot, component},
+        };
+
+        let items = catalog();
         let key = |id| mod_api::__private::item_key(id).unwrap();
         let plain = ApiStack::of(key("minecraft:stick"));
         assert!(plain.try_into_engine(&items).is_ok());
@@ -2134,10 +2184,15 @@ mod stack_limit_tests {
                 .get("minecraft:damage"),
             Some(&Tag::Int(0))
         );
+        explicit.set_damage(5);
+        let engine = explicit.try_into_engine(&items).unwrap();
+        assert_eq!(engine.damage, 5);
         explicit.set_damage(u32::MAX);
         assert_eq!(
             explicit.try_into_engine(&items),
-            Err(StackWriteError::DamageExceeded { maximum: 0 })
+            Err(StackWriteError::InvalidComponents {
+                reason: mod_api::StackError::InvalidDamage
+            })
         );
 
         let inherited = ApiStack::of(key("minecraft:iron_sword"));
@@ -2153,10 +2208,40 @@ mod stack_limit_tests {
         lower
             .set_components([(JavaString::from("minecraft:max_damage"), Tag::Int(5))].into())
             .unwrap();
+        let engine = lower.try_into_engine(&items).unwrap();
+        assert_eq!(engine.max_damage(Some(definition)), 5);
+        assert_eq!(engine.effective_damage(Some(definition)), 7);
+
+        let mut short_max = inherited.clone();
+        short_max
+            .set_components([(JavaString::from("minecraft:max_damage"), Tag::Short(20))].into())
+            .unwrap();
+        let engine = short_max.try_into_engine(&items).unwrap();
+        assert_eq!(engine.max_damage(Some(definition)), 20);
+        let packet_stack = crate::lan::guest::stack_to_network(|_| 1, |_, _| None, &Some(engine));
+        let mut writer = Writer::new();
+        Slot::write(&packet_stack, &mut writer);
+        let mut reader = Reader::new(&writer.data);
+        let decoded = Slot::read(&mut reader).unwrap().unwrap();
         assert_eq!(
-            lower.try_into_engine(&items),
-            Err(StackWriteError::DamageExceeded { maximum: 5 })
+            decoded.component(component::MAX_DAMAGE),
+            Some(&Component::Int(20))
         );
+
+        for invalid in [Tag::Int(0), Tag::Int(-1), Tag::Short(0), Tag::Short(-1)] {
+            let mut bad_max = inherited.clone();
+            bad_max
+                .set_components(
+                    [(JavaString::from("minecraft:max_damage"), invalid.clone())].into(),
+                )
+                .unwrap();
+            assert_eq!(
+                bad_max.try_into_engine(&items),
+                Err(StackWriteError::InvalidMaximum),
+                "max_damage {invalid:?}"
+            );
+        }
+
         let mut removed = inherited;
         removed
             .set_components(
@@ -2167,10 +2252,9 @@ mod stack_limit_tests {
                 .into(),
             )
             .unwrap();
-        assert_eq!(
-            removed.try_into_engine(&items),
-            Err(StackWriteError::DamageExceeded { maximum: 0 })
-        );
+        let engine = removed.try_into_engine(&items).unwrap();
+        assert_eq!(engine.max_damage(Some(definition)), 0);
+        assert_eq!(engine.effective_damage(Some(definition)), 7);
         removed.clear_damage();
         let engine = removed.try_into_engine(&items).unwrap();
         assert_eq!(engine.max_damage(Some(definition)), 0);
@@ -2178,12 +2262,12 @@ mod stack_limit_tests {
         removed.set_damage(0);
         assert!(removed.try_into_engine(&items).is_ok());
 
-        items
-            .items
-            .get_mut("minecraft:diamond_sword")
-            .unwrap()
-            .max_damage = u32::MAX;
         let mut oversized = ApiStack::of(key("minecraft:diamond_sword"));
+        oversized.set_damage(i32::MAX as u32);
+        assert_eq!(
+            oversized.try_into_engine(&items).unwrap().damage,
+            i32::MAX as u32
+        );
         oversized.set_damage(u32::MAX);
         assert_eq!(
             oversized.try_into_engine(&items),
@@ -2214,6 +2298,14 @@ mod stack_limit_tests {
                 "maximum {maximum}"
             );
         }
+        let mut short_max = ApiStack::of(key);
+        short_max
+            .set_components([("minecraft:max_stack_size".into(), Tag::Short(1))].into())
+            .unwrap();
+        assert_eq!(
+            short_max.try_into_engine(&items),
+            Err(StackWriteError::InvalidMaximum)
+        );
         for maximum in [1, 99] {
             let mut stack = ApiStack::new(key, maximum).unwrap();
             stack
@@ -2399,6 +2491,30 @@ mod stack_limit_tests {
             items.items.get("minecraft:stick"),
             "minecraft:max_stack_size"
         ));
+    }
+
+    #[test]
+    fn full_stack_write_round_trips_bare_damage() {
+        mod_api::testing::with_parts_registration_probe(
+            Default::default(),
+            |_| (),
+            |_, ()| {
+                let mut registries = mod_api::testing::FakeRegistries::default();
+                registries
+                    .resolve_items([mod_api::Identifier::parse("minecraft:iron_sword").unwrap()])
+                    .unwrap();
+                let key = mod_api::__private::item_key("minecraft:iron_sword").unwrap();
+                let items = fixture_catalog();
+                let patch: Compound = [(JavaString::from("damage"), Tag::Int(4))].into();
+                let mut draft = ApiStack::of(key);
+                draft.set_components(patch.clone()).unwrap();
+
+                let written = draft.try_into_engine(&items).unwrap();
+                let round_trip = written.try_into_api().unwrap();
+                assert_eq!(round_trip.damage_component(), None);
+                assert_eq!(round_trip.components().unwrap().as_nbt(), &patch);
+            },
+        );
     }
 
     #[test]

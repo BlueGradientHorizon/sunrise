@@ -63,17 +63,21 @@ fn custom_ingredient_tags_reach_the_bound_predicate() {
                             "result": "minecraft:emerald"
                         }),
                     )],
+                    &items,
                     &context,
                 )
             };
             let sources = load(source.clone()).unwrap();
-            let recipe = &sources.recipes[0];
-            let parsed = recipe
-                .parse_ingredient(&recipe.file()["ingredient"], &items)
-                .unwrap();
+            let crate::crafting::DecodedRecipe::Station {
+                recipe: crate::stations::ParsedStationRecipe::Stonecutting(cut),
+                ..
+            } = sources.recipes[0].decoded()
+            else {
+                panic!("expected decoded stonecutting recipe");
+            };
             let loop_context =
                 context.loop_context(sunrise_world::native_load_context::LoopSide::Server, []);
-            assert!(parsed.test_in(
+            assert!(cut.input.test_in(
                 &loop_context,
                 &super::ItemStack::new("minecraft:emerald", 1)
             ));
@@ -144,14 +148,18 @@ fn custom_ingredient_scalars_reach_hook_with_narrowest_width() {
                         "result": "minecraft:emerald"
                     }),
                 )],
+                &items,
                 &context,
             )
             .unwrap();
-            let recipe = &sources.recipes[0];
-            let parsed = recipe
-                .parse_ingredient(&recipe.file()["ingredient"], &items)
-                .unwrap();
-            assert_eq!(parsed.order, ["minecraft:emerald"]);
+            let crate::crafting::DecodedRecipe::Station {
+                recipe: crate::stations::ParsedStationRecipe::Stonecutting(cut),
+                ..
+            } = sources.recipes[0].decoded()
+            else {
+                panic!("expected decoded stonecutting recipe");
+            };
+            assert_eq!(cut.input.order, ["minecraft:emerald"]);
         },
     );
 }

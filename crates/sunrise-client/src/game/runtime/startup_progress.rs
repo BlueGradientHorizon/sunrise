@@ -11,11 +11,11 @@ const LINE_TIME: Duration = Duration::from_secs(5);
 const SHOWN_BARS: usize = 4;
 /// The most lines drawn, newest last.
 const SHOWN_LINES: usize = 3;
-/// Bars open at once: past this, opening a bar returns `TooManyBars`.
-const MAX_BARS: usize = 64;
+/// Bars open at once per mod: past this, opening another bar for that mod returns `TooManyBars`.
+const MAX_BARS_PER_MOD: usize = 64;
 /// Lines kept for drawing.
 const MAX_LINES: usize = 32;
-/// A label or line is cut to this many bytes when it is kept.
+/// A startup message line is cut to this many bytes when it is kept.
 const MAX_TEXT: usize = 256;
 
 struct Bar {
@@ -31,9 +31,14 @@ struct Meter {
     bar: Arc<Mutex<Bar>>,
 }
 
+struct TrackedBar {
+    owner: &'static str,
+    bar: Arc<Mutex<Bar>>,
+}
+
 #[derive(Default)]
 struct State {
-    bars: Vec<Arc<Mutex<Bar>>>,
+    bars: Vec<TrackedBar>,
     lines: VecDeque<(String, Instant)>,
 }
 
@@ -97,8 +102,8 @@ impl ModProgress {
             .iter()
             .rev()
             .take(SHOWN_BARS)
-            .map(|bar| {
-                let bar = bar.lock().unwrap_or_else(|p| p.into_inner());
+            .map(|entry| {
+                let bar = entry.bar.lock().unwrap_or_else(|p| p.into_inner());
                 let done = if bar.steps == 0 {
                     0.0
                 } else {
@@ -121,24 +126,36 @@ impl ModProgress {
 impl mod_api::StartupScreen for ModProgress {
     fn open(
         self: Arc<Self>,
+        owner: &'static str,
         label: &str,
         steps: u32,
     ) -> Result<Box<dyn mod_api::ProgressMeter>, mod_api::StartupProgressError> {
         let mut state = self.state();
-        if state.bars.len() >= MAX_BARS {
+        let open_for_owner = state
+            .bars
+            .iter()
+            .filter(|entry| entry.owner == owner)
+            .count();
+        if open_for_owner >= MAX_BARS_PER_MOD {
+            drop(state);
+            log::warn!(
+                "Sunrise: mod {owner} exceeded the {MAX_BARS_PER_MOD}-bar startup progress limit"
+            );
             return Err(mod_api::StartupProgressError::TooManyBars);
         }
-        let label = one_line(label);
         let bar = Arc::new(Mutex::new(Bar {
-            label: label.clone().collect(),
+            label: label.to_owned(),
             done: 0,
             steps,
             logged: 0,
         }));
-        state.bars.push(bar.clone());
+        state.bars.push(TrackedBar {
+            owner,
+            bar: bar.clone(),
+        });
         drop(state);
         if self.dedicated {
-            log_line(label);
+            log::info!("{label}");
         }
         Ok(Box::new(Meter { screen: self, bar }))
     }
@@ -184,16 +201,15 @@ impl mod_api::ProgressMeter for Meter {
     }
 
     fn label(&self, text: &str) {
-        let label = one_line(text);
         let mut bar = self.bar.lock().unwrap_or_else(|p| p.into_inner());
-        if label.clone().eq(bar.label.chars()) {
+        if bar.label == text {
             return;
         }
         bar.label.clear();
-        bar.label.extend(label.clone());
+        bar.label.push_str(text);
         drop(bar);
         if self.screen.dedicated {
-            log_line(label);
+            log::info!("{text}");
         }
     }
 
@@ -207,7 +223,7 @@ impl Drop for Meter {
         self.screen
             .state()
             .bars
-            .retain(|kept| !Arc::ptr_eq(kept, &self.bar));
+            .retain(|kept| !Arc::ptr_eq(&kept.bar, &self.bar));
     }
 }
 
@@ -217,41 +233,97 @@ mod tests {
     use mod_api::StartupScreen;
 
     #[test]
-    fn multibyte_labels_stop_at_the_last_complete_character() {
+    fn multibyte_labels_are_stored_verbatim_and_messages_stop_at_char_boundary() {
         let screen = Arc::new(ModProgress::new(false));
-        let bar = screen
-            .clone()
-            .open(&format!("{}界", "é".repeat(127)), 1)
-            .unwrap();
-        assert_eq!(screen.shown(Instant::now()).0[0].0, "é".repeat(127));
-        bar.label(&"é".repeat(129));
-        assert_eq!(screen.shown(Instant::now()).0[0].0, "é".repeat(128));
-        bar.message(&"é".repeat(128));
-        assert_eq!(screen.shown(Instant::now()).1, ["é".repeat(128)]);
+        let initial = format!("{}界", "é".repeat(127));
+        let bar = screen.clone().open("test", &initial, 1).unwrap();
+        assert_eq!(screen.shown(Instant::now()).0[0].0, initial);
+        let updated = "é".repeat(129);
+        bar.label(&updated);
+        assert_eq!(screen.shown(Instant::now()).0[0].0, updated);
+        bar.message(&initial);
+        assert_eq!(screen.shown(Instant::now()).1, ["é".repeat(127)]);
     }
 
     #[test]
-    fn sixty_fifth_bar_is_refused_until_a_meter_is_dropped() {
+    fn sixty_fifth_bar_is_refused_per_mod_even_from_a_scoped_worker() {
+        use mod_api::__private::game::RegistrationContextNew;
+        use mod_api::{
+            BlocksEvent, ComponentTypesEvent, Hooks, ModEntry, Registrar, RegistrationContext,
+            StartupProgress, StartupProgressError,
+        };
+
+        struct OpensBars(&'static str, Arc<Mutex<Vec<StartupProgress>>>);
+        impl OpensBars {
+            fn open_batch(&self, context: &RegistrationContext) {
+                self.1
+                    .lock()
+                    .unwrap()
+                    .extend((0..16).map(|_| context.progress(self.0, 1).unwrap()));
+            }
+        }
+        #[mod_api::__subscriptions]
+        impl Hooks for OpensBars {
+            fn register(&self, _: &mut dyn Registrar, context: &RegistrationContext) {
+                self.open_batch(context);
+            }
+
+            fn blocks(&self, context: &RegistrationContext, _: &mut BlocksEvent<'_>) {
+                self.open_batch(context);
+            }
+
+            fn component_types(
+                &self,
+                context: &RegistrationContext,
+                _: &mut ComponentTypesEvent<'_>,
+            ) {
+                self.open_batch(context);
+                std::thread::scope(|scope| {
+                    scope
+                        .spawn(|| {
+                            self.open_batch(context);
+                            assert!(matches!(
+                                context.progress("worker refused", 1),
+                                Err(StartupProgressError::TooManyBars)
+                            ));
+                        })
+                        .join()
+                        .unwrap();
+                });
+                assert!(matches!(
+                    context.progress("listener refused", 1),
+                    Err(StartupProgressError::TooManyBars)
+                ));
+                let mut bars = self.1.lock().unwrap();
+                drop(bars.pop());
+                bars.push(context.progress(self.0, 1).unwrap());
+            }
+        }
+
         let screen = Arc::new(ModProgress::new(false));
-        let mut meters: Vec<_> = (0..64)
-            .map(|_| screen.clone().open("kept", 1).unwrap())
-            .collect();
-        assert!(matches!(
-            screen.clone().open("refused", 1),
-            Err(mod_api::StartupProgressError::TooManyBars)
-        ));
-        drop(meters.pop());
-        meters.push(screen.clone().open("replacement", 1).unwrap());
-        assert!(matches!(
-            screen.clone().open("refused", 1),
-            Err(mod_api::StartupProgressError::TooManyBars)
-        ));
+        let opened = Arc::new(Mutex::new(Vec::new()));
+        let mods =
+            ["alpha", "beta"].map(|id| ModEntry::new(id, Box::new(OpensBars(id, opened.clone()))));
+        mod_api::testing::with_startup_screen(screen.clone(), || {
+            // This fixture runs the real Registrar path before starting generated dispatch.
+            mod_platform::testing::with_mods(Vec::from(mods).into(), || {
+                let _registration = mod_platform::__private::RegistrationGuard::open();
+                let context = <RegistrationContext as RegistrationContextNew>::new();
+                mod_api::dispatch_blocks(&context, &mut |listen| {
+                    assert!(listen(&mut |_| panic!("no blocks declared")));
+                });
+                mod_api::dispatch_component_types(&context, &mut Vec::new());
+            });
+        });
+        assert_eq!(screen.state().bars.len(), 128);
+        opened.lock().unwrap().clear();
+        assert!(screen.shown(Instant::now()).0.is_empty());
     }
 
     #[test]
     fn zero_step_bar_remains_finite_and_clamped() {
         let screen = Arc::new(ModProgress::new(false));
-        let bar = screen.clone().open("empty", 0).unwrap();
+        let bar = screen.clone().open("test", "empty", 0).unwrap();
         bar.step();
         bar.set(u32::MAX);
         assert_eq!(screen.shown(Instant::now()).0, [("empty".into(), 0.0)]);
@@ -275,7 +347,7 @@ mod tests {
     #[test]
     fn bars_read_their_steps_newest_first_and_leave_when_dropped() {
         let screen = Arc::new(ModProgress::new(false));
-        let first = screen.clone().open("Baking\nmodels", 10).unwrap();
+        let first = screen.clone().open("test", "Baking\nmodels", 10).unwrap();
         std::thread::scope(|scope| {
             for _ in 0..2 {
                 scope.spawn(|| {
@@ -287,13 +359,13 @@ mod tests {
         let now = Instant::now;
         assert_eq!(
             screen.shown(now()).0,
-            [("Baking models".to_owned(), 0.4_f32)]
+            [("Baking\nmodels".to_owned(), 0.4_f32)]
         );
         first.set(99);
         assert_eq!(screen.shown(now()).0[0].1, 1.0);
         // Other bars with the same label still refer to distinct meters.
         let mut more: Vec<_> = (0..4)
-            .map(|_| screen.clone().open("Models", 2).unwrap())
+            .map(|_| screen.clone().open("test", "Models", 2).unwrap())
             .collect();
         more[2].step();
         assert_eq!(
@@ -313,7 +385,7 @@ mod tests {
                 ("Models".to_owned(), 0.0),
                 ("Models".to_owned(), 0.0),
                 ("Models".to_owned(), 0.0),
-                ("Baking models".to_owned(), 1.0),
+                ("Baking\nmodels".to_owned(), 1.0),
             ]
         );
         drop(more);

@@ -20,6 +20,7 @@ pub trait Hooks {
     /// the earlier `Item.appendHoverText` position, before component lines.
     /// Parts' lines therefore come first; this event sees the finished list
     /// including them, for any item, even one with no attached parts.
+    /// Replacements are used in memory; they are not subject to serialized component limits.
     #[hook(
         receiver = "read",
         dispatch = "api_carrier",

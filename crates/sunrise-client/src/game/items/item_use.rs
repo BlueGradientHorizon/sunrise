@@ -272,9 +272,7 @@ impl Game<'_> {
         if left.count > 0 {
             return Some(left);
         }
-        info.use_remainder
-            .as_deref()
-            .map(|remainder| ItemStack::new(remainder, 1))
+        sunrise_client::item_sync::use_remainder(stack, Some(info))
     }
     /// `LivingEntityUseItemEvent.Tick` for `stack` in use `ticks` so far, as
     /// `updatingUsingItem` starts: a mod may change the ticks left, which

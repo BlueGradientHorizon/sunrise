@@ -39,7 +39,8 @@ impl StationData {
         defaults: &sunrise_world::item_defaults::ItemDefaults,
         context: &sunrise_world::native_load_context::LoadContext,
     ) -> crate::Result<Self> {
-        let sources = crate::crafting::ResolvedSources::load_collecting(root, overlay, context)?;
+        let sources =
+            crate::crafting::ResolvedSources::load_collecting(root, items, overlay, context)?;
         let recipes = crate::crafting::Recipes::from_resolved(root, items, overlay, &sources)?;
         Ok(Self::from_sources(
             root,
@@ -61,7 +62,9 @@ impl StationData {
             enchantments: std::sync::Arc::clone(&items.enchantments),
             recipes: StationRecipes::from_sources(root, items, sources),
             brewing: {
-                let mut brewing = crate::brewing::Brewing::load(root, items, overlay);
+                let mut brewing = crate::brewing::Brewing::from_recipes(
+                    sources.brewing_recipes().cloned().collect(),
+                );
                 let added = |key| sources.property_additions.get(key).into_iter().flatten();
                 brewing.reagents.extend(added("brewing_reagent").cloned());
                 brewing.inputs.extend(added("brewing_input").cloned());
@@ -833,7 +836,8 @@ impl StationRecipes {
         overlay: &PackOverlay,
         context: &sunrise_world::native_load_context::LoadContext,
     ) -> crate::Result<Self> {
-        let sources = crate::crafting::ResolvedSources::load_collecting(root, overlay, context)?;
+        let sources =
+            crate::crafting::ResolvedSources::load_collecting(root, items, overlay, context)?;
         crate::crafting::Recipes::from_resolved(root, items, overlay, &sources)?;
         Ok(Self::from_sources(root, items, &sources))
     }
@@ -845,7 +849,7 @@ impl StationRecipes {
     ) -> Self {
         let mut smithing = Vec::new();
         let mut stonecutting = Vec::new();
-        for recipe in sources.station_recipes(items).iter().flatten() {
+        for recipe in sources.station_recipes() {
             match recipe {
                 ParsedStationRecipe::Smithing(recipe) => smithing.push(recipe.clone()),
                 ParsedStationRecipe::Stonecutting(recipe) if !recipe.input.items.is_empty() => {
@@ -2580,10 +2584,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert!(error.contains("data/test/recipe/invalid.json"), "{error}");
-            assert!(
-                error.contains("invalid ingredients or required fields"),
-                "{error}"
-            );
+            assert!(error.contains("invalid ingredient: null"), "{error}");
         }
         fs::remove_dir_all(root).unwrap();
     }

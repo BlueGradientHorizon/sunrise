@@ -2,6 +2,38 @@
 
 Call `host.disconnect(reason)` through `ClientHost` to leave the joined server or world at the end of the frame, outside hooks. Pass `Some(Text)` to show a disconnect reason or `None` for the normal leave flow. The disconnect screen renders the reason in the player's language, like other translatable text: a translatable component shows its translated text and a plain-text reason is unchanged. The call returns `Result<(), DisconnectError>`: `Unavailable` means no world is joined, it is closing, or a save is pending, and `Text` reports an invalid reason (a malformed or too-deep component is refused by that name and nothing changes). A pending request belongs to its current world epoch and cannot leave a later world. Server code continues to use the separate player disconnect operation.
 
+## Moving work to the client thread
+
+In `client_setup`, get the `ClientExecutor` and clone it into a network handler or another
+worker. Handle `None`: restricted hosts such as the client-side `entity_entering_section`
+host cannot issue an executor, and neither can a closing client or a client in which this mod's
+executor already panicked.
+
+```rust,ignore
+// In client_setup:
+let Some(executor) = host.client_executor() else { return; };
+let worker_executor = executor.clone();
+// In the worker, move owned data into the closure:
+worker_executor.execute(Box::new(move |host| { /* use the client host here */ }));
+```
+
+The executor does not run the closure inline. Each client drain handles packets and queued
+payload work first, then runs executor tasks in submission order with a live
+`&mut dyn ClientHost`. The packet phase includes packets and queued payload work published
+while earlier packets are being handled, even when a task was submitted first. If any packet
+work is deferred, executor tasks wait for the packet phase to finish. When the client starts
+quitting, including from the title screen, pending and new tasks are dropped. There is no extra
+transaction around the task: effects already applied to the live client, such as audio placement,
+are not undone on panic. The shared error log and toast name the panicking mod. Its executor is
+disabled for the rest of the client session: already queued tasks for the same mod are skipped and
+retained executors discard later submissions. Other mods' tasks still run. A phase refusal is
+reported but does not disable the executor.
+
+The executor belongs to the client application, not to a connection or level. Keep using
+`IPayloadContext::enqueue_work` if the work needs the payload's original epoch, player, reply or
+configuration controls. A `ClientExecutor` task receives no payload context. Check any retained
+entity or level handle when the task runs; a disconnect or dimension change may have made it stale.
+
 ## Holding outgoing play packets
 
 Call `host.hold_packets()` to start an ordered hold and receive its opaque `HoldId`.
@@ -45,8 +77,10 @@ Implement `ConfigurationTask` for a `Send + 'static` struct and pass an instance
 it must be nonempty and unique across all listeners for that connection. `register`
 returns `EmptyType` or `DuplicateType(id)` for an invalid type and `CallbackFailed(reason)`
 if reading the type panics. The first error refuses admission and supplies the disconnect
-diagnostic even if the listener ignores it. A phase refusal in the listener or in `task_type`
-instead discards only that listener's staged tasks, reservations and diagnostic. Rejected task
+diagnostic even if the listener ignores it. If a listener panics or hits a phase refusal in
+the listener or in `task_type`, only that listener's staged tasks, reservations, diagnostic
+and journaled writes are discarded; other listeners still configure the same peer, and only
+a panicking registration callback is skipped on later peers. Rejected task
 instances are dropped under the registering mod's panic policy, including when the implementation
 was already disabled and `task_type` was skipped. Keep `Drop` non-panicking: a destructor panic
 is logged and shown in an error toast with the mod's name; it does not replace the first diagnostic.
@@ -63,33 +97,49 @@ server tick while pending, in registration order and without holding the connect
 | Complete the task | `context.finish()` |
 | Abort admission with a reason | `context.fail(reason)` |
 
-For delayed completion, capture `context.instance()` in server-local state when
-you send the **original challenge**. Match the reply to that challenge and pass
-its saved instance to `cx.finish_configuration_task(instance)` in a server
-main-thread configuration payload handler. Never look up whichever task happens
-to be running when the reply arrives, and never send the instance over the wire.
-Use `cx.reply(&channel, bytes)` for a final reply on the same connection. For a
-network-thread handler, use `enqueue_work` and complete from the main-thread work.
+For delayed completion, call `cx.finish_configuration_task(&task_type)` in a
+server configuration payload handler — on either the main thread or the network
+thread — passing the `Identifier` returned by `ConfigurationTask::task_type`
+(matching NeoForge's `ServerPayloadContext.finishCurrentTask(ConfigurationTask.Type)`
+and vanilla's `ServerConfigurationPacketListenerImpl.finishCurrentTask`).
+Completion always targets the receiving connection of that payload handler.
+Use `cx.reply(&channel, bytes)` for a final reply on the same connection; any
+staged replies publish before task completion advances the queue or sends
+`FinishConfiguration`.
 
-A different live connection's instance returns `WrongConnection`; an instance
-that is no longer the running one on this configuration returns `StaleTask`.
-The wrong side, phase, executor or a missing transaction returns `WrongContext`;
-an ended connection or configuration epoch returns `Disconnected`. A refusal
-advances neither task. Tasks, contexts, instance and connection capabilities,
-and task errors have no `Wire` encoding.
+If the currently running task on this connection has a different type,
+`finish_configuration_task` returns `WrongType`; if no task is currently running
+(or this handler already requested completion), it returns `NotRunning`.
+Calling on the client or outside the configuration phase returns `WrongContext`;
+an ended connection or configuration epoch (or a pending disconnect) returns
+`Disconnected`. A refusal never advances a task. Tasks, contexts, connection
+capabilities, and task errors have no `Wire` encoding.
 
-Completion publishes only after the outermost transaction commits and publishes
-its deferred sends (including replies). A child commit hands the request to its
-parent; an abort discards it. Repeated callback requests coalesce, and `fail`
-wins over `finish`. An explicit payload-handler disconnect discards the request
-even if the rest of the handler succeeds.
+On the **main thread**, `finish_configuration_task` completes the matching
+running task directly in the configuration session with no transaction-layer
+staging and independently of nested child transactions; the server advances to
+the next task or `FinishConfiguration` on the next tick, after the handler's
+committed replies are queued. On the **network thread**, `finish_configuration_task`
+validates and binds the currently running task turn and publishes completion
+inside the same active-epoch gate after staged replies succeed; handler failure,
+an explicit `disconnect`, or epoch invalidation discards that staged completion.
+In task callbacks (`start`/`tick`), repeated `context.finish()` calls coalesce
+and `fail` wins over `finish`, publishing once the callback succeeds and its
+deferred sends commit.
 
-A refused task payload send, explicit `fail`, or callback panic aborts the task
-callback and closes that client with the configuration-error reason. Start and tick
-run as the registering mod. Disabled callbacks are skipped. A panic disables the
-mod's task implementation for this session; ordinary errors do not. Check the channel
-before sending to an optional or vanilla peer, then request completion or explain why it
-cannot join.
+A refused task payload send returns `Err(ConfigurationTaskError::Payload(_))`
+without failing the task session, so the task can handle it, call
+`context.fail(...)`, or finish. An explicit `fail` or callback panic aborts the
+task callback's journaled writes and closes that client with the configuration-error reason.
+A panic names the mod and task type in the log and shows an error toast if there is a local client.
+That mod's task type is skipped for the rest of the server session, including for later peers.
+Other task types still run. A returned refusal is reported but does not disable the task.
+A send uses the live configuration connection, not the current task state: even after another handler completes the
+task, sends can still queue while the connection is configuring. After the peer enters
+Play, a saved `ConfigurationConnection` returns `Disconnected`, even for a channel
+negotiated for Play. Check the channel
+before sending to an optional or vanilla peer, then request completion or explain
+why it cannot join.
 
 There is **no per-task timeout**. A client answering keep-alives can remain in
 configuration indefinitely while its task waits. The connection's ordinary idle
@@ -104,7 +154,7 @@ when another implementation requires a specific byte format.
 
 Use owned `String` fields, not static strings or interned level keys: the network codec never
 interns incoming text. The registrar also refuses Wire forms that allocate outside the shared
-budget, such as `Identifier`, `SpawnerKey`, `CustomSpawners`, `ModelPart`, JSON values and `Text`,
+budget, such as `Identifier`, `SpawnerKey`, `CustomSpawners`, `ModelPart` and JSON values,
 even in nested fields. Send bounded owned fields and convert explicitly where you need those types.
 
 Derive `Wire` for the value, register it in `Hooks::register`, and keep the token the
@@ -188,9 +238,12 @@ fn register(r: &mut dyn Registrar) {
   as it claims (forged, from another load, read as another type, or its mod off);
   `EncodeFailed` for a value the peer could not decode (a bound or the allocation budget),
   before anything is queued; `WrongProtocol` for a send in a phase the id is not declared in. A
-  received body that is not one value of the type closes the session, naming the mod, and the
-  handler does not run. A handler that panics is disabled: its transaction rolls back, nothing it
-  staged is sent, the session closes, and it is not called again.
+  malformed body for an enabled typed handler closes the session, naming the mod, without
+  running the handler. A handler that panics is disabled for the session: the game logs the
+  owning mod and shows an error toast. Work in the handler’s transaction journal or staged
+  send queue is discarded. Later packets for that callback still pass framing and channel
+  checks, but are skipped before reserving callback or main-thread queue space. Other handlers
+  and the rest of the bundle still run.
 - **Raw channel failures stay local.** A raw channel (`play_raw`) carries bytes from any client,
   so a declaring mod's handler that returns `Failed` does not close the session: the game logs the mod and the channel, rolls back that delivery's staged
   work (a staged disconnect included), and still delivers the other declaring mods' copies. A

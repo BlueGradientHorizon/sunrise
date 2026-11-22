@@ -31,6 +31,11 @@ use sunrise_system::{command_output, machine_arch};
 
 static REPORTED: AtomicBool = AtomicBool::new(false);
 
+thread_local! {
+    /// `hook_dispatch_depth()` when the innermost `contain_call` started on this thread.
+    static CONTAIN_HOOK_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 /// `message`, with the native mod hook this thread is inside, if any, and the converted package
 /// the hook's runtime is executing.
 fn attributed(message: String) -> String {
@@ -64,35 +69,18 @@ fn attributed(message: String) -> String {
 /// Runs `f`, and returns a panic in it as an error with the panic's message instead of letting
 /// it end the game. For work that is not the game's own and whose failure the caller recovers
 /// from, such as handing a shader pack's programs to the GPU driver's compiler: the panic goes
-/// to the log with its stack, and no crash report is made for it. A mod's Host call refused by
-/// the load phase comes back as an error that names it.
+/// to the log with its stack, and no crash report is made for it.
 pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
-    match contain_call(f) {
-        Ok(value) => Ok(value),
-        Err(CallError::Refused(refusal)) => {
-            refusal.report();
-            Err(refusal.to_string())
+    struct HookDepthGuard(u32);
+    impl Drop for HookDepthGuard {
+        fn drop(&mut self) {
+            CONTAIN_HOOK_DEPTH.with(|d| d.set(self.0));
         }
-        Err(CallError::Panicked(message)) => Err(message),
     }
-}
-
-pub(crate) enum CallError {
-    Refused(mod_api::__private::PhaseRefusal),
-    Panicked(String),
-}
-
-/// The same crash boundary for callers with different policies for panics and phase refusals.
-/// The crash hook logs panics; the caller decides how to report refusals and recover.
-pub(crate) fn contain_call<T>(f: impl FnOnce() -> T) -> Result<T, CallError> {
-    contain_unwind(|| {
-        mod_api::__private::contain_refusal(
-            mod_api::content::crash::current_native_mod().unwrap_or("unknown"),
-            f,
-        )
-    })
-    .map_err(CallError::Panicked)?
-    .map_err(CallError::Refused)
+    let _depth = HookDepthGuard(
+        CONTAIN_HOOK_DEPTH.with(|d| d.replace(mod_api::__private::hook_dispatch_depth())),
+    );
+    contain_unwind(f)
 }
 
 /// For the hook: a contained panic is logged with its stack and kept for its boundary to
@@ -544,9 +532,20 @@ fn emergency_save_with_timeout(timeout: Duration) {
 }
 
 /// Writes the report and tells where it is; the log gets the error too.
-fn deliver(home: &Path, report: Report) -> Option<PathBuf> {
+fn deliver(
+    home: &Path,
+    mut report: Report,
+    suppressed_exceptions: impl FnOnce() -> Option<String>,
+) -> Option<PathBuf> {
     if REPORTED.swap(true, Ordering::SeqCst) {
         return None;
+    }
+    if report.side == "server"
+        && let Some(summary) = suppressed_exceptions()
+    {
+        report
+            .details
+            .push(("Suppressed Exceptions".into(), summary));
     }
     // The panic is on stderr already: the stack goes to the log only.
     crate::logging::write_current(
@@ -593,6 +592,7 @@ pub fn report_watchdog(
     side: &'static str,
     message: String,
     server_stack: Result<String, sunrise_threads::stack_dump::NoStack>,
+    suppressed_exceptions: impl FnOnce() -> Option<String>,
 ) -> Option<PathBuf> {
     let mut details = system_details(side);
     let stack = match server_stack {
@@ -615,6 +615,7 @@ pub fn report_watchdog(
             details,
             log: crate::logging::recent_lines(),
         },
+        suppressed_exceptions,
     )
 }
 
@@ -751,13 +752,21 @@ pub fn worker_panic_report(info: &std::panic::PanicHookInfo, side: &'static str)
 /// 101); on the integrated server thread a server report relayed to the window; on a worker thread (`Util.onThreadException`) a crash report too, and the game ends
 /// with it; on other threads the error goes to the log, as vanilla's uncaught exception handler
 /// does. The default hook still prints the panic. A panic inside `contain` is only logged. A
-/// panic inside a native mod's hook names the mod and the hook.
-pub fn install(home: PathBuf, side: &'static str) {
+/// panic inside a contained hook dispatch defers to the hook dispatcher (which disables the
+/// listener for that hook, logs an error, and queues a client error toast).
+pub fn install(
+    home: PathBuf,
+    side: &'static str,
+    suppressed_exceptions: impl Fn() -> Option<String> + Send + Sync + 'static,
+) {
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        // A retained owner reports its panic and returns control to the caller. Do not
-        // emit a fatal crash report or terminate a worker before that scope unwinds.
-        if contained_panic(info) || mod_api::__private::game::retained_callback_active() {
+        // A hook dispatch or retained owner reports its panic and returns control to the caller.
+        // Do not emit a fatal crash report or terminate a worker before that scope unwinds.
+        if mod_api::__private::hook_dispatch_depth() > CONTAIN_HOOK_DEPTH.with(std::cell::Cell::get)
+            || mod_api::__private::game::retained_callback_active()
+            || contained_panic(info)
+        {
             return;
         }
         default(info);
@@ -769,12 +778,16 @@ pub fn install(home: PathBuf, side: &'static str) {
                 description: "Exception in server tick loop".into(),
                 ..panic_report(info, "server")
             };
-            deliver(&home, report);
+            deliver(&home, report, &suppressed_exceptions);
             SERVER_CRASHED.store(true, std::sync::atomic::Ordering::Release);
         } else if main {
-            deliver(&home, panic_report(info, side));
+            deliver(&home, panic_report(info, side), &suppressed_exceptions);
         } else if is_worker_thread(std::thread::current().name()) {
-            deliver(&home, worker_panic_report(info, side));
+            deliver(
+                &home,
+                worker_panic_report(info, side),
+                &suppressed_exceptions,
+            );
             emergency_save();
             // The crash ends the game, as the relayed report does on vanilla's main thread.
             std::process::exit(101);
@@ -821,6 +834,7 @@ pub fn report_error(
     home: &Path,
     side: &'static str,
     error: &(dyn std::error::Error + 'static),
+    suppressed_exceptions: impl FnOnce() -> Option<String>,
 ) -> Option<PathBuf> {
     if let Some(debug) = error.downcast_ref::<DebugCrash>() {
         return deliver(
@@ -836,6 +850,7 @@ pub fn report_error(
                 details: system_details(side),
                 log: crate::logging::recent_lines(),
             },
+            suppressed_exceptions,
         );
     }
     let mut message = error.to_string();
@@ -857,6 +872,7 @@ pub fn report_error(
             details: system_details(side),
             log: crate::logging::recent_lines(),
         },
+        suppressed_exceptions,
     )
 }
 
@@ -956,6 +972,7 @@ pub(crate) mod tests {
             install(
                 home.clone(),
                 if name == "main" { "server" } else { "client" },
+                || Some("chunk/save:std::io::Error x 9".into()),
             );
             let result = std::thread::Builder::new()
                 .name(name.into())
@@ -998,6 +1015,7 @@ pub(crate) mod tests {
                 let text = std::fs::read_to_string(&reports[0]).unwrap();
                 assert!(text.contains(&format!("Description: {title}")));
                 assert!(text.contains("posted server crash 3494"));
+                assert!(text.contains("Suppressed Exceptions: chunk/save:std::io::Error x 9"));
                 if name == "Server thread" {
                     assert!(text.contains("Server thread"));
                 }
@@ -1555,8 +1573,8 @@ pub(crate) mod tests {
                 unwound
             },
         );
-        // The game stops as before: the panic goes on to the dispatch's caller.
-        assert!(unwound.is_err());
+        // The unified dispatch rule contains the panic and does not unwind to the caller.
+        assert!(unwound.is_ok());
         let errors = caught.lock().unwrap();
         assert_eq!(errors.len(), 2);
         assert!(
@@ -1565,5 +1583,146 @@ pub(crate) mod tests {
             errors[0]
         );
         assert!(!errors[1].contains("in native mod"), "{}", errors[1]);
+    }
+
+    #[test]
+    fn dropping_panicking_startup_parts_does_not_crash_the_server_thread() {
+        use mod_platform::{BlockPart, HookId, Hooks, ModEntry, Registrar, RegistrationContext};
+        use std::sync::{Arc, atomic::AtomicBool};
+
+        struct BrokenPart;
+        impl Drop for BrokenPart {
+            fn drop(&mut self) {
+                panic!("discarded startup Part destructor");
+            }
+        }
+        impl BlockPart for BrokenPart {
+            fn block_subscribed(&self) -> &'static [Option<HookId>] {
+                &[]
+            }
+        }
+        struct Registers(Option<Arc<AtomicBool>>);
+        impl Hooks for Registers {
+            fn subscribed(&self) -> &'static [Option<HookId>] {
+                &[]
+            }
+            fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+                if let Some(healthy) = &self.0 {
+                    healthy.store(true, Ordering::Relaxed);
+                    return;
+                }
+                for id in ["minecraft:stone", "minecraft:dirt"] {
+                    let key = registrar.block_key(id);
+                    registrar.block_part(key, BrokenPart);
+                }
+                panic!("startup registration callback");
+            }
+        }
+
+        let _lock = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
+        let scratch = tempfile::tempdir().unwrap();
+        let previous = std::panic::take_hook();
+        REPORTED.store(false, Ordering::SeqCst);
+        SERVER_CRASHED.store(false, Ordering::Release);
+        install(scratch.path().to_path_buf(), "client", || None);
+        let result = std::thread::Builder::new()
+            .name(INTEGRATED_SERVER_THREAD.into())
+            .spawn(|| {
+                let healthy = Arc::new(AtomicBool::new(false));
+                let mods: mod_platform::Mods = vec![
+                    ModEntry::new("broken_startup", Box::new(Registers(None))),
+                    ModEntry::new(
+                        "healthy_startup",
+                        Box::new(Registers(Some(healthy.clone()))),
+                    ),
+                ]
+                .into();
+                mod_platform::testing::with_mods(mods.clone(), || {
+                    mod_platform::__private::install_parts(
+                        &mods,
+                        &mod_platform::__private::part_tests::rule_schema(),
+                        |_| false,
+                    )
+                    .unwrap();
+                    assert!(healthy.load(Ordering::Relaxed));
+                    assert_eq!(
+                        mod_api::__private::take_hook_panics(),
+                        [mod_api::__private::HookPanicReport {
+                            mod_id: "broken_startup",
+                            hook: "register",
+                        }]
+                    );
+                });
+            })
+            .unwrap()
+            .join();
+        std::panic::set_hook(previous);
+        assert!(result.is_ok());
+        assert!(!server_crashed());
+        assert!(!scratch.path().join("crash-reports").exists());
+    }
+
+    #[test]
+    fn contained_hook_panics_do_not_trigger_crash_reports_or_abort() {
+        let _lock = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
+        for (name, wrapped_in_contain) in [
+            ("main", false),
+            ("Server thread", false),
+            ("sunrise-worker-0", false),
+            ("main", true),
+        ] {
+            let scratch = tempfile::tempdir().unwrap();
+            let home = scratch.path().to_path_buf();
+            let previous = std::panic::take_hook();
+            REPORTED.store(false, Ordering::SeqCst);
+            SERVER_CRASHED.store(false, Ordering::Release);
+            install(home.clone(), "client", || None);
+            let result = std::thread::Builder::new()
+                .name(name.into())
+                .spawn(move || {
+                    let mods: mod_api::Mods = std::sync::Arc::from([
+                        mod_api::ModEntry::new("broken", Box::new(Broken)),
+                        mod_api::ModEntry::new("quiet", Box::new(Quiet)),
+                    ]);
+                    mod_platform::testing::with_mods(mods, || {
+                        let run_dispatch = || {
+                            mod_api::dispatch_component_types(
+                                &mod_api::RegistrationContext::new(),
+                                &mut Vec::new(),
+                            );
+                        };
+                        if wrapped_in_contain {
+                            assert_eq!(contain(run_dispatch), Ok(()));
+                        } else {
+                            run_dispatch();
+                        }
+                        // Second dispatch skips the poisoned mod without queueing another report.
+                        run_dispatch();
+                        let reports = mod_api::__private::take_hook_panics();
+                        assert_eq!(reports.len(), 1);
+                        assert_eq!(reports[0].mod_id, "broken");
+                        assert_eq!(reports[0].hook, "component_types");
+                    });
+                })
+                .unwrap()
+                .join();
+            std::panic::set_hook(previous);
+            assert!(
+                result.is_ok(),
+                "thread {name} unwound instead of containing"
+            );
+            assert!(!server_crashed(), "thread {name} set SERVER_CRASHED");
+            let reports: Vec<_> = std::fs::read_dir(home.join("crash-reports"))
+                .into_iter()
+                .flatten()
+                .map(|p| p.unwrap().path())
+                .collect();
+            assert!(
+                reports.is_empty(),
+                "thread {name} wrote crash reports: {reports:?}"
+            );
+            REPORTED.store(false, Ordering::SeqCst);
+            SERVER_CRASHED.store(false, Ordering::Release);
+        }
     }
 }

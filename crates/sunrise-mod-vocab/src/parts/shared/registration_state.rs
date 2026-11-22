@@ -9,10 +9,8 @@ pub(crate) struct Installed {
     pub(crate) dependencies: Arc<crate::__private::EffectiveDependencies>,
     pub(crate) namespace_authority: Arc<crate::parts::NamespaceAuthority>,
     pub(crate) effect_ticks: crate::parts::effects::ResolvedEffectTicks,
-    pub(crate) menu_screen_factories:
-        HashMap<String, HashMap<usize, crate::parts::menus::MenuScreenRegistration>>,
+    pub(crate) menu_screen_factories: HashMap<String, crate::parts::menus::MenuScreenRegistration>,
     pub(crate) menu_recipe_books: HashMap<String, crate::parts::menus::MenuBookDeclaration>,
-    pub(crate) menu_slot_exclusions: HashMap<String, HashMap<String, Box<[u16]>>>,
     pub(crate) recipe_book_types: HashMap<String, String>,
     pub(crate) recipe_book_fields: HashMap<String, (String, String)>,
     pub(crate) recipe_book_filters: HashMap<String, crate::RecipeBookFilterLook>,
@@ -54,6 +52,7 @@ pub(crate) struct Installed {
     pub(crate) particles: OnceLock<sunrise_mod_runtime::registry_keys::Particles>,
     /// The ticket controllers the mods registered; a [`TicketController`]'s slot indexes it.
     pub(crate) controllers: Vec<ControllerInfo>,
+    pub(crate) consume_effects: Vec<crate::parts::RegisteredConsumeEffect>,
     pub(crate) arm_poses: Vec<crate::client::arm_pose::PoseInfo>,
     pub(crate) structure_types: Vec<crate::world::structure_type::StructureTypeInfo>,
     pub(crate) feature_types: Vec<crate::world::feature_type::FeatureTypeInfo>,

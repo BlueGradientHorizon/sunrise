@@ -2,9 +2,9 @@
 
 pub trait Hooks {
     /// Collect world-space debug renderers at each client renderer-list refresh (NeoForge's
-    /// `RegisterDebugRenderersEvent`). Push `DebugRenderer::new(id, draw)` for each renderer
-    /// on every refresh, using the ID of its startup `DebugEntry::renderer` toggle. A selection
-    /// rebuild can refresh the list even when the same toggles end up enabled.
+    /// `RegisterDebugRenderersEvent`). Push `DebugRenderer::new(draw)` for each renderer that
+    /// should run until the next refresh. Use `event.is_debug_entry_enabled(id)` to gate a
+    /// renderer on a vanilla or startup `DebugEntry` switch, or push unconditionally.
     #[notes = r#"## Debug renderers
 
 `Hooks::register_debug_renderers` is the client counterpart of NeoForge 26.3's
@@ -13,26 +13,23 @@ pub trait Hooks {
 of a world since the start, and on the next view of a world after the debug selection changes.
 That is a status set in the debug options or by a key, a profile loaded, the F3 overlay opened or
 closed, or reduced debug info rebuilt. Respawn also invalidates the list for the next view.
-The next world view refreshes after a rebuild even if the enabled toggles are unchanged, such as
-when the overlay opens and closes between views or reduced debug info is set to the same value.
 Drawing the title or connect screen doesn't refresh anything. The hook receives a
 `RegistrationContext`, so it reads no world. Each mod receives an empty `event.renderers`
-batch and pushes `DebugRenderer::new(id, draw)` per renderer.
+batch and pushes `DebugRenderer::new(draw)` per active renderer.
 
-Each refresh replaces the active list, so push every renderer you want to provide and capture
-its per-refresh state in the callback. Pushing a renderer does not list an option: register
-`DebugEntry::renderer(id)` once at startup with the same ID in `Hooks::register_debug_entries`.
-The switch starts off, and its status (`alwaysOn`, `inOverlay`, `never`) is saved in
-`debug-profile.json` under its full ID. Reduced debug info hides it. A renderer without a
-matching renderer switch is logged and left out. Of active renderers with the same ID, the
-first registered wins.
+Each refresh replaces the active list, so push every renderer that should draw until the next
+refresh and capture its per-refresh state in the callback. To gate a renderer on a debug
+options switch (either a built-in vanilla entry such as `"minecraft:chunk_borders"` or a
+startup `DebugEntry::renderer(id)` from `Hooks::register_debug_entries`), check
+`event.is_debug_entry_enabled(id)` before pushing `DebugRenderer::new(draw)`. Unconditional
+renderers require no switch entry. Every submitted renderer from an enabled mod is kept in
+registration order, with no ID-based filtering or deduplication.
 
-For each world view, the client calls only the installed callbacks, in registration order,
+For each world view, the client calls the installed callbacks in registration order,
 under their registering mods' identities, after `submit_custom_geometry`. It passes the current
 `ClientHost`, `WorldRenderView` and the same `WorldDrawContext`, so
-[its limits and rules](#custom-world-geometry) apply and are shared. The ID selects the switch;
-it isn't passed to the callback. Output clears every view, and callbacks don't run on the title
-or connect screens."#]
+[its limits and rules](#custom-world-geometry) apply and are shared. Output clears every view,
+and callbacks don't run on the title or connect screens."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",
@@ -41,9 +38,11 @@ or connect screens."#]
         out = "renderers",
         context = "registration",
         answered_by = "mod",
-        owned_answer_batch = true,
         neoforge = "RegisterDebugRenderersEvent",
-        version = 2
+        version = 3
     )]
-    fn register_debug_renderers(renderers: &mut Vec<Answered<DebugRenderer>>);
+    fn register_debug_renderers(
+        entries: &dyn mod_api::__private::DebugEntryStates,
+        renderers: &mut Vec<Answered<DebugRenderer>>,
+    );
 }

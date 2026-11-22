@@ -47,7 +47,7 @@ impl anim::HumanoidSetup for Game<'_> {
 }
 
 impl Game<'_> {
-    /// Lends the live, finite pose to listeners at the shared humanoid seam.
+    /// Lends the live pose to listeners at the shared humanoid seam.
     pub(super) fn setup_humanoid_parts(
         &self,
         entity_id: u32,
@@ -56,16 +56,13 @@ impl Game<'_> {
         partial_tick: f32,
         poses: &mut anim::Poses,
     ) {
-        let Some(parts) = poses.humanoid_pose() else {
-            return;
-        };
         self.native_humanoid_setup_anim(mod_api::__private::HumanoidSetupAnimCall {
             entity_id,
             entity_type,
             humanoid,
             partial_tick,
             game_time: self.title.is_none().then_some(self.world.game_time),
-            parts,
+            parts: poses,
         });
     }
 }

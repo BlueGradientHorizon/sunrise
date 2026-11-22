@@ -693,15 +693,15 @@ held stacks, selected poses and `is_using_item`. `event.partial_tick` and option
 owned or serializable snapshot. Use `event.parts.get(HumanoidPart::RightArm)` to read
 `[position, rotation]`, then `set_rotation` or `set_position` on that same view. The head, hat,
 body, arms and legs are editable if present; sleeves, jacket and pants are not. Positions are
-local texels and rotations are radians. A non-finite component is refused
-while other finite components apply immediately, so later listeners see those
-edits. Scale and visibility are not changed. Later ITEM, attack, crouch, bob
-and swim animation still apply. Armor stands then replace rotations with
-their saved pose, preserving position edits. Their armor models run the same
-setup independently. A model can animate more than once per frame, so listeners
-must not treat this as a once-per-entity frame notification or advance simulation
-from it. The hook does not fire when an incoming base-part position or rotation
-is non-finite. When nobody subscribes, there is no callback or held-stack snapshot. To read
+local texels and rotations are radians. Writes apply all three components
+immediately on any present editable part, matching `HumanoidModel.setupAnim`
+with no finiteness gate, so later listeners see those edits. Scale and visibility
+are not changed. Later ITEM, attack, crouch, bob and swim animation still apply.
+Armor stands then replace rotations with their saved pose, preserving position
+edits. Their armor models run the same setup independently. A model can animate
+more than once per frame, so listeners must not treat this as a once-per-entity
+frame notification or advance simulation from it. When nobody subscribes, there
+is no callback or held-stack snapshot. To read
 the completed animation, use a [layer's or Post hook's final model](client/model-drawing.md#read-the-final-body-model).
 
 ```json
@@ -1092,7 +1092,8 @@ clicks and quick-move still use the declared rules and `menu_slot_rules` (vanill
 #### Menu types
 
 A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its container's slot count
-(0 to 256), the data slots its menu syncs (`ContainerData`, 0 by default), and the slots players only take
+(0 to 32,767, the 16-bit signed index limit of vanilla container packets), the data slots its menu syncs (`ContainerData`,
+0 to 32,767, 0 by default), and the slots players only take
 from (`results`, as a furnace's result slot):
 
 ```json

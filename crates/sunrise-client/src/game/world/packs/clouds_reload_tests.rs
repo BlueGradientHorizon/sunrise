@@ -114,10 +114,12 @@ fn a_startup_load_fails_back_to_the_games_resources() {
     let loaded = load_resources_sync(
         roots,
         Vec::new(),
-        None,
-        &root,
+        StartupLoadContext {
+            vanilla_root: &root,
+            launch_world: None,
+            started: std::time::Instant::now(),
+        },
         &mut Settings::default(),
-        std::time::Instant::now(),
         execution_role::ExecutionRole::Client,
         &Progress::new(),
         &mods::ModsState::default(),
@@ -173,10 +175,12 @@ fn content_entity_stays_registered_after_startup_pack_rollback() {
         load_resources_sync(
             roots,
             Vec::new(),
-            None,
-            &vanilla,
+            StartupLoadContext {
+                vanilla_root: &vanilla,
+                launch_world: None,
+                started: std::time::Instant::now(),
+            },
             &mut Settings::default(),
-            std::time::Instant::now(),
             execution_role::ExecutionRole::Client,
             &Progress::new(),
             &sources,
@@ -215,7 +219,8 @@ fn content_entity_stays_registered_after_startup_pack_rollback() {
 #[ignore = "daily"]
 fn startup_saves_the_cleared_selection_even_when_a_required_pack_fails() {
     use crate::game::{
-        Game, Progress, Settings, execution_role::ExecutionRole, load_resources_sync, mods,
+        Game, Progress, Settings, StartupLoadContext, execution_role::ExecutionRole,
+        load_resources_sync, mods,
     };
     use std::{path::PathBuf, time::Instant};
     use sunrise_assets::resource_source::ResourceRoot;
@@ -293,10 +298,12 @@ fn startup_saves_the_cleared_selection_even_when_a_required_pack_fails() {
     let error = load_resources_sync(
         roots,
         Vec::new(),
-        None,
-        &vanilla,
+        StartupLoadContext {
+            vanilla_root: &vanilla,
+            launch_world: None,
+            started: Instant::now(),
+        },
         &mut settings,
-        Instant::now(),
         ExecutionRole::Client,
         &Progress::new(),
         &mods::ModsState::default(),

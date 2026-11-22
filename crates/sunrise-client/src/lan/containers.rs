@@ -72,7 +72,7 @@ pub struct PreparedClick {
     source: Option<Slots>,
     shulker: bool,
     drag: Option<(u8, Vec<usize>)>,
-    hidden: Vec<usize>,
+
     items: Option<Vec<Option<ItemStack>>>,
     container_limits: Vec<Option<u32>>,
     pub(crate) container_insert_rules: Vec<ModContainerInsertRule>,
@@ -431,7 +431,7 @@ impl Hub {
                 sent_data: Vec::new(),
                 reported_unsent_data_len: None,
                 blockless_data: Vec::new(),
-                hidden: Vec::new(),
+
                 mod_type,
                 craft: None,
                 links: Vec::new(),
@@ -442,16 +442,6 @@ impl Hub {
         });
         self.send_menu_content(i, items);
         Some(window)
-    }
-
-    /// The open menu of `conn` has no `hidden` container slots: a mod's screen
-    /// does not show them, so a click or a shift-click never reaches them.
-    pub fn hide_menu_slots(&mut self, conn: u32, hidden: Vec<usize>) {
-        let _ = self.update_guest(conn, |g| {
-            if let Some(m) = g.menu.as_mut() {
-                m.hidden = hidden;
-            }
-        });
     }
 
     /// Opens a native mod's menu of `rows` rows (1 to 6, a chest's
@@ -496,7 +486,7 @@ impl Hub {
                 sent_data: Vec::new(),
                 reported_unsent_data_len: None,
                 blockless_data: Vec::new(),
-                hidden: Vec::new(),
+
                 mod_type: None,
                 craft: None,
                 links: Vec::new(),
@@ -721,19 +711,40 @@ impl Hub {
         carried
     }
 
-    /// `HashedStack.matches`: a slot or cursor prediction includes the component patch.
-    fn hashed_matches(&self, item: &Option<Stack>, predicted: &Option<Hashed>) -> bool {
-        match (item, predicted) {
-            (None, None) => true,
-            (Some(item), Some(predicted)) => predicted.matches(
-                item,
-                &SyncedNames {
-                    builtin: &self.sync.builtin,
-                    dynamic: &self.sync.dynamic,
-                },
-            ),
-            _ => false,
-        }
+    /// Project one live stack for a click claim. Reuse its admissions for the hash and
+    /// the projected bytes for a correction if the client guessed wrong.
+    fn stack_against_claim(
+        &mut self,
+        source: &Option<ItemStack>,
+        predicted: &Option<Hashed>,
+    ) -> (Option<Stack>, bool) {
+        let Some(predicted) = predicted else {
+            return (self.stack(source), source.is_none());
+        };
+        let projected = std::cell::RefCell::new(Vec::new());
+        let wire = self.stack_projecting(source, &|effect| {
+            projected.borrow_mut().push(effect.clone())
+        });
+        let projected = projected.into_inner();
+        let agreed = wire.as_ref().is_some_and(|wire| {
+            let names = SyncedNames {
+                builtin: &self.sync.builtin,
+                dynamic: &self.sync.dynamic,
+            };
+            if let Some(data) = source.as_ref().and_then(ItemStack::data) {
+                predicted.matches_with_admitted(wire, &names, &|name, bytes| {
+                    let matches =
+                        |effect: &sunrise_world::component_value::consume_effects::Admitted| {
+                            &effect.name == name && effect.wire.as_ref() == bytes
+                        };
+                    data.find_admitted_consume_effect(&matches)
+                        .or_else(|| projected.iter().find(|effect| matches(effect)).cloned())
+                })
+            } else {
+                predicted.matches(wire, &names)
+            }
+        });
+        (wire, agreed)
     }
 
     /// `AbstractContainerMenu.synchronizeCarriedToRemote`: send only the cursor change.
@@ -753,8 +764,10 @@ impl Hub {
             _ => {}
         }
         let carried = guest.carried.clone();
-        let item = self.stack(&carried);
-        let agreed = prediction.is_some_and(|p| self.hashed_matches(&item, &p.carried));
+        let (item, agreed) = match prediction {
+            Some(p) => self.stack_against_claim(&carried, &p.carried),
+            None => (self.stack(&carried), false),
+        };
         self.guests.update(i, |g| {
             if !agreed {
                 g.send(&C::SetCursorItem(play::SetCursorItem { item }));
@@ -863,18 +876,13 @@ impl Hub {
         let shulker = in_menu
             && shulker_box.is_some()
             && self.guests[i].menu.as_ref().map(|m| m.kind) == shulker_box;
-        let (drag, hidden, items, container_limits, container_insert_rules) = {
+        let (drag, items, container_limits, container_insert_rules) = {
             let guest = &self.guests[i];
             let drag = if in_menu {
                 guest.menu.as_ref().and_then(|m| m.drag.clone())
             } else {
                 guest.drag.clone()
             };
-            let hidden = guest
-                .menu
-                .as_ref()
-                .filter(|_| in_menu)
-                .map_or_else(Vec::new, |m| m.hidden.clone());
             let items = source.and_then(|s| s.read(world, guest));
             if in_menu && items.is_none() {
                 return None;
@@ -899,13 +907,7 @@ impl Hub {
                     }
                 }
             }
-            (
-                drag,
-                hidden,
-                items,
-                container_limits,
-                container_insert_rules,
-            )
+            (drag, items, container_limits, container_insert_rules)
         };
         Some(PreparedClick {
             i,
@@ -913,7 +915,7 @@ impl Hub {
             source,
             shulker,
             drag,
-            hidden,
+
             items,
             container_limits,
             container_insert_rules,
@@ -936,7 +938,7 @@ impl Hub {
                 container: prepared.items.as_deref_mut(),
                 shulker: prepared.shulker,
                 container_limits: std::mem::take(&mut prepared.container_limits),
-                hidden: &prepared.hidden,
+
                 loop_context,
             };
             menu::click(
@@ -982,52 +984,11 @@ impl Hub {
                 container: prepared.items.as_deref_mut(),
                 shulker: prepared.shulker,
                 container_limits: Vec::new(),
-                hidden: &prepared.hidden,
+
                 loop_context,
             }
             .stacked_click(i32::from(p.slot), i32::from(p.button))
         })
-    }
-
-    /// Run the click `p` on the prepared state to see what it would ask of `rules`, then put
-    /// everything it touched back: the guest's slots and cursor, the container's slots and the
-    /// drag. Only what `rules` kept of the asks remains.
-    pub fn plan_click(
-        &mut self,
-        prepared: &mut PreparedClick,
-        p: &play::ContainerClick,
-        rules: &dyn Rules,
-    ) {
-        let loop_context = &self.loop_context;
-        self.guests.update(prepared.i, |guest| {
-            let kept = (
-                guest.inventory.clone(),
-                guest.armor.clone(),
-                guest.offhand.clone(),
-                guest.carried.clone(),
-                guest.craft_grid.clone(),
-                guest.craft_result.clone(),
-            );
-            let (items, drag) = (prepared.items.clone(), prepared.drag.clone());
-            let _ = menu::click(
-                &mut View {
-                    guest,
-                    container: prepared.items.as_deref_mut(),
-                    shulker: prepared.shulker,
-                    container_limits: prepared.container_limits.clone(),
-                    hidden: &prepared.hidden,
-                    loop_context,
-                },
-                &mut prepared.drag,
-                i32::from(p.slot),
-                i32::from(p.button),
-                p.input,
-                rules,
-            );
-            (guest.inventory, guest.armor, guest.offhand) = (kept.0, kept.1, kept.2);
-            (guest.carried, guest.craft_grid, guest.craft_result) = (kept.3, kept.4, kept.5);
-            (prepared.items, prepared.drag) = (items, drag);
-        });
     }
 
     /// The last step: the container's slots back into the world, the unfinished drag back on the
@@ -1134,8 +1095,8 @@ impl Hub {
         for (slot, item) in items.iter().enumerate() {
             let net = match claimed.get(&slot) {
                 Some(predicted) => {
-                    let net = self.stack(item);
-                    if self.hashed_matches(&net, predicted) {
+                    let (net, agreed) = self.stack_against_claim(item, predicted);
+                    if agreed {
                         continue;
                     }
                     net

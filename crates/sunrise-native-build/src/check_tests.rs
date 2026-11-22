@@ -498,31 +498,25 @@ fn a_target_that_is_also_a_declared_internal_is_two_entries_of_one_readable_list
     );
     let bundle = crate::bundle_in(&dir).unwrap().unwrap();
     let now = game_uses::entries(&bundle.manifest, &data, OTHER_BUILD).unwrap();
-    assert_eq!(
-        now,
-        [
-            (
-                format!("game:fn:{PATH}"),
-                game_uses::Now::Is("sig:body".into())
-            ),
-            (
-                format!("game:internal:fn:{PATH}"),
-                game_uses::Now::Is("fn:isig:sig:body".into())
-            ),
-        ]
-    );
     // As the packer writes them, the list reads back.
     let table = UsesTable {
         schema: uses::USES_SCHEMA,
         made_for: pin(&dir),
         entries: now
             .into_iter()
-            .map(|(id, now)| match now {
-                game_uses::Now::Is(hash) => uses::Entry::plain(id, hash),
-                other => panic!("{id}: {other:?}"),
-            })
+            .filter_map(|(id, now)| now.into_entry(id))
             .collect(),
     };
+    assert_eq!(
+        table.entries,
+        [
+            uses::Entry::plain(format!("game:fn:{PATH}"), "sig:body".into()),
+            uses::Entry::plain(
+                format!("game:internal:fn:{PATH}"),
+                "fn:isig:sig:body".into()
+            ),
+        ]
+    );
     std::fs::write(dir.join(uses::USES_FILE), table.to_json()).unwrap();
     assert_eq!(UsesTable::read(table.to_json().as_bytes()), Ok(table));
     let judged = |data: &Path| judged_with(&dir, OTHER_BUILD, &surface(&[]), Some(data));
@@ -550,6 +544,65 @@ fn a_target_that_is_also_a_declared_internal_is_two_entries_of_one_readable_list
         }
     );
     for folder in [dir, data, unindexed] {
+        std::fs::remove_dir_all(folder).unwrap();
+    }
+}
+
+#[test]
+fn a_changed_function_declared_as_target_and_internal_is_reported_once() {
+    const PATH: &str = "sunrise_client::game::f";
+    let dir = project_dir("fit-both-changed", None, None);
+    let manifest = dir.join(crate::NATIVE_MANIFEST);
+    let text = std::fs::read_to_string(&manifest)
+        .unwrap()
+        .replace(crate::tests::B, crate::MIXINS_REV)
+        + &format!(
+            "[[native.mixin]]\nid = \"m\"\ntarget = \"{PATH}\"\nkind = \"HEAD\"\nhelper = \"src/m.rs\"\n[[internals]]\npath = \"{PATH}\"\nkind = \"fn\"\n"
+        );
+    std::fs::write(&manifest, text).unwrap();
+    std::fs::write(dir.join("src/m.rs"), "{}").unwrap();
+    let data = |name: &str, body: &str| {
+        let mut function = function(body);
+        function["digests"] = serde_json::json!({"declaration": "declaration", "body": body});
+        build_data(
+            name,
+            OTHER_BUILD,
+            serde_json::json!({PATH: function}),
+            serde_json::json!([{"path": PATH, "kind": "fn", "signature": "fn f()", "hash": "isig"}]),
+        )
+    };
+    let packed = data("fit-both-changed-packed", "body");
+    let bundle = crate::bundle_in(&dir).unwrap().unwrap();
+    let table = UsesTable {
+        schema: uses::USES_SCHEMA,
+        made_for: pin(&dir),
+        entries: game_uses::entries(&bundle.manifest, &packed, OTHER_BUILD)
+            .unwrap()
+            .into_iter()
+            .filter_map(|(id, now)| now.into_entry(id))
+            .collect(),
+    };
+    assert_eq!(table.entries.len(), 2);
+    std::fs::write(dir.join(uses::USES_FILE), table.to_json()).unwrap();
+    let surface_file = dir.join("surface.json");
+    std::fs::write(&surface_file, serde_json::to_vec(&surface(&[])).unwrap()).unwrap();
+    let edited = data("fit-both-changed-edited", "edited");
+    let checked = check(&Plan {
+        contract: crate::contract::CONTRACT,
+        mods: dir.clone(),
+        build: OTHER_BUILD.into(),
+        surface: Some(surface_file),
+        build_data: Some(edited.clone()),
+    })
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(checked).unwrap()["mods"][0]["verdict"]["misfits"],
+        serde_json::json!([{
+            "id": format!("the game's function `{PATH}` (body changed)"),
+            "change": "changed",
+        }])
+    );
+    for folder in [dir, packed, edited] {
         std::fs::remove_dir_all(folder).unwrap();
     }
 }
@@ -600,6 +653,111 @@ fn an_internal_declared_without_a_kind_is_named_when_it_becomes_another_kind() {
     for folder in [dir, as_const, as_static] {
         std::fs::remove_dir_all(folder).unwrap();
     }
+}
+
+#[test]
+fn generated_loops_compare_each_function_and_keep_the_slot_contract() {
+    use sunrise_platform::mod_build::api_gen::{functions, internals, loops};
+    const GAME: &str = r#"
+struct Game;
+trait Slot { fn update(&mut self); }
+impl Game {
+    #[sunrise_mod_api_macros::sunrise_loop(name = "ticks", side = "server")]
+    fn tick(&mut self) { self.tick_with(&mut ()) }
+    fn tick_with<S: Slot>(&mut self, slot: &mut S) { slot.update(); }
+}
+fn inspect() -> u32 { 1 }
+"#;
+    const INTERNAL: &str = "sunrise_client::game::inspect";
+    const GENERIC: &str = "sunrise_client::game::Game::tick_with";
+    let source = tempfile::tempdir().unwrap();
+    for (path, text) in [
+        (
+            "crates/sunrise-client/Cargo.toml",
+            "[package]\nname='sunrise-client'\n",
+        ),
+        ("crates/sunrise-client/src/lib.rs", "pub mod game;"),
+        ("crates/sunrise-client/src/entry.rs", ""),
+        ("crates/sunrise-mod-api-gen/internals.txt", ""),
+    ] {
+        let path = source.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    let dir = project_dir("fit-generated-loop", None, None);
+    let manifest = dir.join(crate::NATIVE_MANIFEST);
+    let text = std::fs::read_to_string(&manifest).unwrap()
+        + &format!(
+            "[[native.loop]]\nid='loop'\nloop='ticks'\nhelper='src/l.rs'\nwith='Slot'\n\
+         [[internals]]\npath='{INTERNAL}'\nkind='fn'\n"
+        );
+    std::fs::write(&manifest, text).unwrap();
+    std::fs::write(dir.join("src/l.rs"), "pub struct Slot;").unwrap();
+    let bundle = crate::bundle_in(&dir).unwrap().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let generate = |text| {
+        let source = source.path();
+        std::fs::write(source.join("crates/sunrise-client/src/game.rs"), text).unwrap();
+        let loops = loops::collect(source).unwrap();
+        let generic = loops
+            .iter()
+            .map(|row| functions::key(&row.generic_target()))
+            .collect();
+        let functions = functions::index(source, &generic).unwrap();
+        let internals = internals::catalog(source).unwrap();
+        let build = sunrise_mod_package::build_data::Build {
+            commit: OTHER_BUILD.into(),
+        };
+        for (file, body) in [
+            (functions::FILE, serde_json::to_value(functions).unwrap()),
+            (loops::FILE, serde_json::json!({"loops": loops})),
+            (
+                sunrise_mod_package::build_data::INTERNALS,
+                serde_json::json!({"internals": internals}),
+            ),
+        ] {
+            let document = sunrise_mod_package::build_data::Document::new(&build, body);
+            std::fs::write(
+                data.path().join(file),
+                serde_json::to_vec(&document).unwrap(),
+            )
+            .unwrap();
+        }
+        game_uses::entries(&bundle.manifest, data.path(), OTHER_BUILD).unwrap()
+    };
+    let entries: Vec<_> = generate(GAME)
+        .into_iter()
+        .map(|(id, now)| now.into_entry(id).unwrap())
+        .collect();
+    let entries: Vec<_> = entries.iter().collect();
+    let compare = |text| game_uses::compare(&entries, generate(text)).misfits;
+    let edited = GAME
+        .replace("slot.update();", "slot.update(); slot.update();")
+        .replace("{ 1 }", "{ 2 }");
+    let changes = [
+        Misfit {
+            id: format!("game:internal:fn:{INTERNAL}"),
+            change: Change::BodyChanged {
+                function: INTERNAL.into(),
+            },
+        },
+        Misfit {
+            id: "game:loop:ticks".into(),
+            change: Change::BodyChanged {
+                function: GENERIC.into(),
+            },
+        },
+    ];
+    assert_eq!(compare(&edited), changes);
+    let new_slot = GAME.replace("fn update(&mut self);", "fn update(&mut self, n: usize);");
+    assert_eq!(
+        compare(&new_slot),
+        [Misfit {
+            id: "game:loop:ticks".into(),
+            change: Change::Changed
+        }]
+    );
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

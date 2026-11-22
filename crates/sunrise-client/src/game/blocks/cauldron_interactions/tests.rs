@@ -139,6 +139,140 @@ impl Hooks for TestMod {
         self.seen.drops.fetch_add(1, Ordering::SeqCst);
     }
 }
+#[test]
+fn a_panicking_cauldron_registrar_leaves_no_exact_tag_or_all_entries() {
+    use mod_api::{CauldronRegistrationError, ModEntry, RegistrationContext};
+    use sunrise_mod_runtime::block_definitions::BlockDefinition;
+    use sunrise_world::{loot::PackOverlay, registry::BlockRegistry};
+
+    struct Registrant(Option<Arc<AtomicBool>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Registrant {
+        fn register_cauldron_interaction(
+            &self,
+            _: &RegistrationContext,
+            event: &mut mod_api::RegisterCauldronInteractionEvent<'_>,
+        ) {
+            let block = mod_api::__private::block_key("minecraft:water_cauldron").unwrap();
+            let item = |id| mod_api::__private::item_key(id).unwrap();
+            let handler: Arc<dyn mod_api::Interaction> = Arc::new(Syrup {
+                seen: Arc::new(Seen::default()),
+                refused: false,
+                panic: false,
+            });
+            let interactions = &mut *event.interactions;
+            let Some(added) = &self.0 else {
+                interactions
+                    .register(block, item("test:winner"), handler)
+                    .unwrap();
+                return;
+            };
+            interactions
+                .register(block, item("test:exact"), handler.clone())
+                .unwrap();
+            interactions
+                .register_tag(block, "test:tag", handler.clone())
+                .unwrap();
+            interactions
+                .register_to_all(item("test:all"), handler.clone())
+                .unwrap();
+            interactions
+                .register_tag_to_all("test:all_tag", handler.clone())
+                .unwrap();
+            // Confirm admission still sees a built-in key and an earlier key in the same batch.
+            assert_eq!(
+                interactions.register(block, item("minecraft:water_bucket"), handler.clone()),
+                Err(CauldronRegistrationError::Duplicate {
+                    owners: ["minecraft".into(), "failed".into()]
+                }),
+            );
+            assert_eq!(
+                interactions.register_tag(block, "#test:tag", handler),
+                Err(CauldronRegistrationError::Duplicate {
+                    owners: ["failed".into(), "failed".into()]
+                }),
+            );
+            added.store(true, Ordering::Relaxed);
+            panic!("after registering exact, tag and all-dispatcher entries");
+        }
+    }
+
+    let added = Arc::new(AtomicBool::new(false));
+    mod_platform::testing::with_mods(
+        vec![
+            ModEntry::new("failed", Box::new(Registrant(Some(added.clone())))),
+            ModEntry::new("healthy", Box::new(Registrant(None))),
+        ]
+        .into(),
+        || {
+            crate::game::api_values::install_parts(&[]).unwrap();
+            mod_api::__private::resolve_block_keys(["minecraft:water_cauldron"], |_| {
+                BlockDefinition::new(&[&Default::default()], 0).map_err(|err| format!("{err:?}"))
+            })
+            .unwrap();
+            let ids = [
+                "test:exact",
+                "test:all",
+                "test:winner",
+                "minecraft:water_bucket",
+            ];
+            mod_api::__private::resolve_items(ids).unwrap();
+            let root = tempfile::tempdir().unwrap();
+            let item_json = ids
+                .map(|id| (id, serde_json::json!({})))
+                .into_iter()
+                .collect::<std::collections::BTreeMap<_, _>>();
+            std::fs::write(
+                root.path().join("items.json"),
+                serde_json::to_vec(&item_json).unwrap(),
+            )
+            .unwrap();
+            let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
+            let items = Items::catalog(root.path(), &PackOverlay::NONE, &defaults).unwrap();
+            let registry = BlockRegistry::from_facts_json(
+                &br#"{
+                "defaults":{"minecraft:water_cauldron":0},
+                "states":[["water_cauldron",false,false,"","minecraft:water_cauldron"]]
+            }"#[..],
+            )
+            .unwrap();
+            let mut registrar = Registrar::new(&items, &registry);
+            Game::native_register_cauldron_interaction(&RegistrationContext::new(), &mut registrar);
+            assert!(
+                added.load(Ordering::Relaxed),
+                "the failed listener reached the intended panic"
+            );
+            let table = registrar.finish().unwrap();
+            let water = "minecraft:water_cauldron";
+            assert!(
+                table
+                    .select(water, "test:exact", false, |_| false)
+                    .is_none()
+            );
+            assert!(
+                table
+                    .select(water, "test:other", false, |tag| tag == "test:tag")
+                    .is_none()
+            );
+            for block in ["minecraft:cauldron", water] {
+                assert!(table.select(block, "test:all", false, |_| false).is_none());
+                assert!(
+                    table
+                        .select(block, "test:other", false, |tag| tag == "test:all_tag")
+                        .is_none()
+                );
+            }
+            assert!(
+                matches!(table.select(water, "test:winner", false, |_| false), Some(Entry::Mod(found)) if found.owner == "healthy")
+            );
+            assert!(matches!(
+                table.select(water, "minecraft:water_bucket", false, |_| false),
+                Some(Entry::Vanilla(sunrise_client::cauldron::Action::EmptyWater))
+            ));
+        },
+    );
+}
+
 fn fixture(refused: bool, panic: bool, dye: bool, test: impl FnOnce(&mut Game<'_>, &Arc<Seen>)) {
     let seen = Arc::new(Seen::default());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -340,13 +474,7 @@ fn cauldron_duplicates_name_both_owners() {
         return;
     }
     fixture(false, false, false, |game, seen| {
-        let mut registrar = Registrar {
-            table: Table::default(),
-            items: game.items(),
-            registry: game.pack.assets.registry,
-            all: Vec::new(),
-            error: None,
-        };
+        let mut registrar = Registrar::new(game.items(), game.pack.assets.registry);
         let handler: Arc<dyn mod_api::Interaction> = Arc::new(Syrup {
             seen: seen.clone(),
             refused: false,
@@ -503,13 +631,7 @@ fn cauldron_register_to_all_and_admission_errors() {
         });
         let item = mod_api::__private::item_key("test:syrup_bottle").unwrap();
         let custom = mod_api::__private::block_key("test:syrup_cauldron").unwrap();
-        let make = || Registrar {
-            table: Table::default(),
-            items: game.items(),
-            registry: game.pack.assets.registry,
-            all: Vec::new(),
-            error: None,
-        };
+        let make = || Registrar::new(game.items(), game.pack.assets.registry);
         let _owner = mod_api::__private::enter("all_mod", "register_cauldron_interaction");
         let mut registrar = make();
         registrar.register_to_all(item, handler.clone()).unwrap();
@@ -549,13 +671,7 @@ fn cauldron_register_to_all_and_admission_errors() {
         );
         let mut items = game.items().clone();
         items.items.remove("test:syrup_bottle");
-        let mut registrar = Registrar {
-            table: Table::default(),
-            items: &items,
-            registry: game.pack.assets.registry,
-            all: Vec::new(),
-            error: None,
-        };
+        let mut registrar = Registrar::new(&items, game.pack.assets.registry);
         assert_eq!(
             registrar.register_to_all(item, handler.clone()),
             Err(mod_api::CauldronRegistrationError::UnknownItem)
@@ -568,13 +684,7 @@ fn cauldron_register_to_all_and_admission_errors() {
                 .to_string()
                 .contains("UnknownItem")
         );
-        let mut registrar = Registrar {
-            table: Table::default(),
-            items: &items,
-            registry: game.pack.assets.registry,
-            all: Vec::new(),
-            error: None,
-        };
+        let mut registrar = Registrar::new(&items, game.pack.assets.registry);
         assert_eq!(
             registrar.register(custom, item, handler.clone()),
             Err(mod_api::CauldronRegistrationError::UnknownItem)
@@ -591,13 +701,7 @@ fn cauldron_register_to_all_and_admission_errors() {
             &br#"{"defaults":{"minecraft:air":0},"states":[["air",true,false,"","minecraft:air"]]}"#[..],
         )
         .unwrap();
-        let mut registrar = Registrar {
-            table: Table::default(),
-            items: game.items(),
-            registry: &registry,
-            all: Vec::new(),
-            error: None,
-        };
+        let mut registrar = Registrar::new(game.items(), &registry);
         assert_eq!(
             registrar.register(custom, item, handler),
             Err(mod_api::CauldronRegistrationError::UnknownBlock)
@@ -716,13 +820,7 @@ fn cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set
             panic: false,
         });
         let custom = mod_api::__private::block_key("test:syrup_cauldron").unwrap();
-        let make = || Registrar {
-            table: Table::default(),
-            items: game.items(),
-            registry: game.pack.assets.registry,
-            all: Vec::new(),
-            error: None,
-        };
+        let make = || Registrar::new(game.items(), game.pack.assets.registry);
         let _owner = mod_api::__private::enter("tag_mod", "register_cauldron_interaction");
         // The leading `#` is dropped, and the custom dispatcher is declared after the
         // register_tag_to_all that expands over it.

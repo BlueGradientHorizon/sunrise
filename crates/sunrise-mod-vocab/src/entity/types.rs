@@ -1376,12 +1376,6 @@ impl From<crate::text::TextFormError> for OpenMenuError {
     }
 }
 
-impl crate::AccessRefusal for OpenMenuError {
-    fn unavailable() -> Self {
-        Self::PlayerUnavailable
-    }
-}
-
 impl NoBackend for OpenMenuError {
     fn no_backend() -> Self {
         Self::PlayerUnavailable
@@ -1690,6 +1684,18 @@ pub enum TravelMode {
     Flying,
     /// Move using the existing velocity alone, as squid do in and out of water.
     VelocityOnly,
+}
+
+pub(crate) fn refused_move_output(
+    accepted: &[f64; 3],
+    delta: &[f64; 3],
+) -> Result<(), &'static str> {
+    if accepted.map(f64::to_bits) != delta.map(f64::to_bits)
+        && !crate::__private::valid_mod_move_delta(*delta)
+    {
+        return Err("delta");
+    }
+    Ok(())
 }
 
 /// Check each replaced vector against its own budget, without applying mod-output

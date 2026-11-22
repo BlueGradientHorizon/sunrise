@@ -25,8 +25,7 @@ impl Game<'_> {
         {
             return false;
         }
-        let changed =
-            self.with_level(|_, level, ticks| level.native_set_block(ticks, pos, state, flags));
+        let changed = self.set_block_live(pos, state, flags, true);
         let _ = self.process_level_events();
         changed
     }
@@ -193,8 +192,9 @@ impl GuiLayerWrapContext for GuiLayerWrapFrame<'_, '_, '_> {
 }
 
 impl<'g> Game<'g> {
-    /// Draws a vanilla slot where the HUD calls for it, first flushing inserted layers below it.
-    /// A replacement or wrapper inherits those same paint conditions and the layer's hooks.
+    /// Dispatches a vanilla slot after flushing inserted layers below it. Replacing or wrapping
+    /// a body leaves the slot's ID, order and hooks unchanged. The original body's eligibility
+    /// applies only to the original paint, including when a wrapper delegates to it.
     pub(in crate::game) fn gui_layer(
         &mut self,
         layer: VanillaGuiLayer,
@@ -209,6 +209,14 @@ impl<'g> Game<'g> {
                 &order.slots()[order.position(layer)].body
             }),
             Some(draw),
+            matches!(
+                layer,
+                VanillaGuiLayer::PlayerHealth
+                    | VanillaGuiLayer::ArmorLevel
+                    | VanillaGuiLayer::FoodLevel
+                    | VanillaGuiLayer::VehicleHealth
+                    | VanillaGuiLayer::AirLevel
+            ),
         );
     }
 
@@ -231,7 +239,7 @@ impl<'g> Game<'g> {
         // An earlier anchor can still paint later (e.g. deferred subtitles). Don't redraw slots.
         for slot in &slots[next.min(end)..end] {
             if slot.vanilla_anchor().is_none() {
-                self.run_gui_layer(slot.id(), batch, &slot.body, None);
+                self.run_gui_layer(slot.id(), batch, &slot.body, None, false);
             }
         }
         // Past `until` itself: its paint site draws it, not the cursor.
@@ -244,13 +252,18 @@ impl<'g> Game<'g> {
         batch: &mut HudBatch,
         body: &GuiLayerBody,
         vanilla: Option<&mut VanillaGuiDraw<'_, 'g>>,
+        status_row: bool,
     ) {
         let mut canceled = false;
         self.native_gui_layer_pre(id, batch, &mut canceled);
         if canceled {
             return;
         }
+        let start = batch.vertices.len();
         self.draw_gui_layer_body(batch, body, vanilla);
+        if status_row {
+            self.keep_status_rows(&batch.vertices[start..], batch.width, batch.height);
+        }
         self.native_gui_layer_post(id, batch);
     }
 

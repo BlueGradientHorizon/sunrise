@@ -18,7 +18,7 @@ pub trait Hooks {
         dispatch = "flat",
         side = "both",
         contract = "listen",
-        version = 2,
+        version = 3,
         neoforge = "BuildCreativeModeTabContentsEvent"
     )]
     fn build_creative_mode_tab_contents(

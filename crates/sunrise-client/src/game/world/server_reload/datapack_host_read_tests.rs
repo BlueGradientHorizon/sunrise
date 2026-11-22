@@ -1,7 +1,8 @@
 use super::*;
+use crate::game::native_entity_refs::tests::run_fresh_cases;
 use mod_api::{
     DatapackEntry, DatapackField, DatapackFieldKind, DatapackReadError as E, DatapackRegistrySync,
-    DimensionKey, LevelRef, Registrar, RegistrationContext, WorldEpoch,
+    LevelRef, Registrar, RegistrationContext, WorldEpoch,
 };
 struct SyncedRegistryMod;
 #[mod_api::__subscriptions]
@@ -21,6 +22,14 @@ impl Hooks for SyncedRegistryMod {
 #[test]
 #[ignore = "daily"]
 fn native_datapack_host_reads_enforce_level_session_and_generation() {
+    // The mock server and client each use a process-wide registry publication.
+    if run_fresh_cases(
+        "game::server_reload::tests::datapack_publication_tests::datapack_host_read_tests::native_datapack_host_reads_enforce_level_session_and_generation",
+        "SUNRISE_DATAPACK_HOST_READ_CHILD",
+        &["host-reads"],
+    ) {
+        return;
+    }
     let scratch = tempfile::tempdir().unwrap();
     mod_platform::testing::with_mods(
         vec![ModEntry::new("registry_test", Box::new(SyncedRegistryMod))].into(),
@@ -98,7 +107,15 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 );
                 for refused in [
                     LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension()),
-                    LevelRef::new(level.epoch(), DimensionKey::NETHER),
+                    LevelRef::with_generation(
+                        level.epoch(),
+                        level.dimension(),
+                        level.generation() + 1,
+                    ),
+                    LevelRef::new(
+                        level.epoch(),
+                        mod_api::__private::dimension_key("registry_test:unopened"),
+                    ),
                 ] {
                     assert_eq!(refused.datapack_entries(game, "registry_test:spell"), None);
                     assert_eq!(
@@ -111,10 +128,9 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                         Err(E::UnknownRegistry)
                     );
                 }
-                // Opening and parking a server dimension makes it readable via LevelRef::datapack_*.
-                game.enter_level(crate::game::Dim::Nether).unwrap();
-                game.enter_level(crate::game::Dim::Overworld).unwrap();
-                let parked = LevelRef::new(level.epoch(), DimensionKey::NETHER);
+                // World open already parked the Nether. Its handle shares the server's registries.
+                let parked = game.level("minecraft:the_nether").unwrap();
+                assert_ne!(parked.dimension(), level.dimension());
                 assert_eq!(
                     parked.datapack_entries(game, "registry_test:spell"),
                     Some(vec!["addon:ice".into(), "registry_test:fire".into()])

@@ -31,11 +31,17 @@ impl Game<'_> {
                     let _ = self.add_stack_to_inventory(c);
                 }
                 self.activate_screen(Screen::Creative);
+                self.release_mappings_on_screen_open();
                 self.refresh_creative_tabs();
                 self.creative_screen.reopen();
                 self.refresh_saved_hotbars();
             }
-            next if next != self.screen => self.activate_screen(next),
+            next if next != self.screen => {
+                self.activate_screen(next);
+                if next != Screen::Playing {
+                    self.release_mappings_on_screen_open();
+                }
+            }
             _ => {}
         }
     }
@@ -82,7 +88,7 @@ impl Game<'_> {
         if mode == GameMode::Spectator {
             self.mining = None;
             self.stop_active_item_use();
-            self.left = false;
+            self.set_mapping_held("key.attack", false);
             self.dismount_for_spectator();
             if let Some(p) = self.player.as_mut() {
                 p.flying = true;

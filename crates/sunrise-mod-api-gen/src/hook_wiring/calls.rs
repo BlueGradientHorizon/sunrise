@@ -218,7 +218,7 @@ impl<'b, 'ast, F: FnMut(&syn::Path, usize, &[&UseTree]) -> bool> Calls<'b, 'ast,
             return argument == 0;
         }
         if let Some(helper) = self.local_function(path) {
-            return parameter_called(self.build, helper, argument);
+            return parameter_called(self.build, helper, argument, |_, _, _| false);
         }
         let imports = self.imports();
         (self.runs_arg)(path, argument, &imports)
@@ -389,15 +389,41 @@ impl<'ast, F: FnMut(&syn::Path, usize, &[&UseTree]) -> bool> Visit<'ast> for Cal
     }
 }
 
-fn parameter_called(build: &Build, helper: &ItemFn, argument: usize) -> bool {
+fn parameter_called(
+    build: &Build,
+    helper: &ItemFn,
+    argument: usize,
+    mut runs_arg: impl FnMut(&syn::Path, usize, &[&UseTree]) -> bool,
+) -> bool {
     let Some(FnArg::Typed(arg)) = helper.sig.inputs.iter().nth(argument) else {
         return false;
     };
     let Pat::Ident(pat) = arg.pat.as_ref() else {
         return false;
     };
-    Calls::new(build).in_block(&helper.block).iter().any(|expr| {
-        matches!(Callee::from_expr(expr.expr), Some(Callee::Function(path)) if path.is_ident(&pat.ident))
+    let is_parameter =
+        |expr: &Expr| function_path(expr).is_some_and(|path| path.is_ident(&pat.ident));
+    Calls::new(build).in_block(&helper.block).iter().any(|invocation| {
+        let Expr::Call(call) = invocation.expr else {
+            return false;
+        };
+        let Some(path) = function_path(&call.func) else {
+            return false;
+        };
+        if path.is_ident(&pat.ident) {
+            return true;
+        }
+        if path_is(path, "std::panic::catch_unwind") {
+            return call.args.first().is_some_and(|arg| {
+                is_parameter(arg)
+                    || matches!(ungroup(arg), Expr::Call(wrap)
+                        if function_path(&wrap.func).is_some_and(|path| path_is(path, "std::panic::AssertUnwindSafe"))
+                            && wrap.args.first().is_some_and(is_parameter))
+            });
+        }
+        call.args.iter().enumerate().any(|(i, arg)| {
+            is_parameter(arg) && runs_arg(path, i, &invocation.imports)
+        })
     })
 }
 
@@ -459,16 +485,34 @@ impl<'b, 'i, 's> Routes<'b, 'i, 's> {
         &'r mut self,
         scope: usize,
     ) -> Calls<'r, 'ast, impl FnMut(&syn::Path, usize, &[&UseTree]) -> bool + 'r> {
-        let build = self.build;
-        Calls::with_helpers(build, move |path, argument, imports| {
-            if let Some(Found::Item(id)) = self.resolve(scope, path, imports)
-                && let Item::Fn(helper) = self.index.item(id)
-            {
-                parameter_called(build, helper, argument)
-            } else {
-                false
-            }
+        Calls::with_helpers(self.build, move |path, argument, imports| {
+            self.runs_arg(scope, path, argument, imports, &mut HashSet::new())
         })
+    }
+
+    fn runs_arg(
+        &mut self,
+        scope: usize,
+        path: &syn::Path,
+        argument: usize,
+        imports: &[&UseTree],
+        active: &mut HashSet<(ItemId, usize)>,
+    ) -> bool {
+        let Some(Found::Item(id)) = self.resolve(scope, path, imports) else {
+            return false;
+        };
+        let Item::Fn(helper) = self.index.item(id) else {
+            return false;
+        };
+        if !active.insert((id, argument)) {
+            return false;
+        }
+        let helper = helper.clone();
+        let invoked = parameter_called(self.build, &helper, argument, |path, argument, imports| {
+            self.runs_arg(id.module, path, argument, imports, active)
+        });
+        active.remove(&(id, argument));
+        invoked
     }
 
     pub(super) fn block_reaches(

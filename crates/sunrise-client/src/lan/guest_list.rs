@@ -113,32 +113,42 @@ impl GuestList {
         visible: impl Fn(&Guest) -> bool,
         outputs: impl IntoIterator<Item = &'a mut Vec<super::Body>>,
         take_moved: bool,
-    ) -> Vec<super::entity::Viewer<'a>> {
+    ) -> (
+        Vec<super::entity::Viewer<'a>>,
+        crate::fast_hash::FxHashMap<i32, (u128, &'a sunrise_mod_runtime::attachments::Attachments)>,
+    ) {
         self.tracking_viewers_and_views(visible, outputs, take_moved, ("", &mut []))
     }
 
     /// [`Self::tracking_viewers`], then the clients that view level `views.0` from another
     /// (#3716, `viewed_levels::entities`), each with its view's tracker, chunks and areas and
-    /// one of `views.1`, in the guests' order.
+    /// one of `views.1`, in the guests' order. Also borrows each guest's non-empty attachments
+    /// map by entity id so tracked players pair with their `Holder::Player` snapshot lazily.
     pub(super) fn tracking_viewers_and_views<'a>(
         &'a mut self,
         visible: impl Fn(&Guest) -> bool,
         outputs: impl IntoIterator<Item = &'a mut Vec<super::Body>>,
         take_moved: bool,
         (dimension, views): (&str, &'a mut [Vec<super::Body>]),
-    ) -> Vec<super::entity::Viewer<'a>> {
+    ) -> (
+        Vec<super::entity::Viewer<'a>>,
+        crate::fast_hash::FxHashMap<i32, (u128, &'a sunrise_mod_runtime::attachments::Attachments)>,
+    ) {
         use super::viewed_levels::entities::tracks_view;
         let viewing = !views.is_empty();
         let (mut outputs, mut views) = (outputs.into_iter(), views.iter_mut());
         let mut viewers = Vec::new();
+        let mut player_attachments = crate::fast_hash::FxHashMap::default();
         for g in self.rows.iter_mut() {
             let (spectator, sunrise) = (g.spectator(), g.is_sunrise());
-            // A general row is shown by its spawn and its first attachment snapshot together,
-            // to a client in the level that reads both; a view of another level carries neither
-            // (`viewed_levels::entities`).
-            let general_entity =
-                visible(g) && g.negotiated_general_entity() && g.negotiated_attachment_sync();
-            let (chunks, sources, tracker, out, moved) = if visible(g) {
+            let is_visible = visible(g);
+            let general_entity = is_visible && g.negotiated_general_entity();
+            let attachment_sender =
+                (is_visible && g.negotiated_attachment_sync()).then(|| g.sender.clone());
+            if g.attachments.has_index_entries() {
+                player_attachments.insert(g.entity_id, (g.uuid, &*g.attachments));
+            }
+            let (chunks, sources, tracker, out, moved) = if is_visible {
                 let Some(out) = outputs.next() else {
                     continue;
                 };
@@ -166,6 +176,7 @@ impl GuestList {
                 permission: g.permission,
                 sunrise,
                 general_entity,
+                attachment_sender,
                 moved,
                 position: g.position,
                 view_distance: g.view_distance,
@@ -175,7 +186,7 @@ impl GuestList {
                 out,
             });
         }
-        viewers
+        (viewers, player_attachments)
     }
 
     /// Borrow only queued packets, without exposing the guest's indexed fields.

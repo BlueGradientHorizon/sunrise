@@ -53,7 +53,8 @@ impl StandaloneModelBakeContext<'_> {
     /// Append the quads of a declared model `id`, in call order. `quarter_turns` are
     /// negative X, Y and Z quarter-turn counts (modulo four) around the block centre.
     /// With `uvlock`, textures keep their orientation in the resulting face's world basis.
-    /// An error invalidates the whole assembly, even if the baker returns `Ok(())`.
+    /// On error, the assembly is unchanged; return the error (for example with `?`) to
+    /// discard the model, or handle it and return `Ok(())` to keep the valid appends.
     pub fn append_dependency(
         &mut self,
         id: &str,

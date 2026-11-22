@@ -55,7 +55,7 @@ mod tests {
                 Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             game.screen = super::super::Screen::Playing;
-            game.right = true;
+            game.set_mapping_held("key.use", true);
             let player = game.living(game.entity(20).unwrap()).unwrap();
             let shield = ItemStack::new("minecraft:shield", 1);
             let delay = game.blocks_attacks(&shield).unwrap().delay_seconds;

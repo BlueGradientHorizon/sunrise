@@ -196,7 +196,7 @@ and GUI `item` / `item_model` take `ItemKey`. `block_item`, `fluid_bucket` and
 `Hit.block` return block keys; `BlockEntityDrawContext::block` takes one.
 `ItemStack::item()` returns an `ItemKey`, not a name. Request that same key in `Hooks::register`
 when binding a [`ClientItemUseBehavior`](parts/item-and-tag-parts.md#intercept-main-hand-client-input).
-The callback receives the original typed stack and a separate hotbar slot.
+The callback receives the live typed stack (or the last valid stack of that item kind if the slot was emptied or replaced) and a separate hotbar slot.
 Unknown incoming slots are refused at the boundary.
 `block_sprites` takes API-owned `BlockState` values, preserving properties without
 parsing state strings or exposing numeric engine state IDs. The pre-change block event carries resolved `from` / `to`
@@ -209,7 +209,8 @@ Retain keys to avoid formatting identifiers on hot paths.
 
 Use `level.recipe_for(host, &recipe_type, &inputs)` to find a matching recipe.
 Use `RecipeInput::Crafting { width, height, slots }` for `minecraft:crafting`
-(row-major slots, dimensions 1 through 3), `Single(stack)` for smelting, blasting,
+(row-major slots matching `width * height`; zero-area grids have no slots but keep their
+dimensions for registered crafting serializers), `Single(stack)` for smelting, blasting,
 smoking, campfire cooking and stonecutting, or `Smithing { template, base, addition }`
 for `minecraft:smithing`. Recipe **types** are not serializers: shaped and shapeless
 files both belong to `minecraft:crafting`, and transform/trim both belong to smithing.
@@ -235,7 +236,7 @@ predicate occurs anywhere in the tree; a displayed item list is not a safe subst
 `UnknownItem` refuses a missing registry identity. Do not call this method per tick.
 Stack placement predicates and drawing consumers (HUD items, GUI item decorations,
 block-entity items and tooltip images) encode API stacks without enforcing resident
-count or damage maxima. Engine-legal over-limit stacks can be inspected and drawn.
+stack limits. Engine-legal over-limit stacks can be inspected and drawn.
 Unknown item keys and invalid/unrepresentable effect payloads refuse encoding;
 this is not a total conversion. Insertion and other world writes retain strict validation.
 
@@ -321,15 +322,16 @@ A changed argument is validated in full; a refusal commits no listener edits. Th
 rule applies to menu cursor and quick-move stacks.
 
 Anvil and grindstone hook inputs are borrowed, read-only snapshots, not stack writes.
-`anvil_update` validates an output replacement only if it differs from vanilla. An invalid
-replacement or cancellation leaves no result and zero costs. The anvil's Pre and Post
+`anvil_update` validates an output replacement only if it differs from vanilla: cancellation
+leaves no result and zero costs, whereas an invalid replacement is logged and ignored so
+vanilla's output stays intact while the cost edits still apply. The anvil's Pre and Post
 hooks lend the same pre-take snapshot and do not take any stack edits. `grindstone_place`
 validates an explicit output override and `grindstone_take` validates supplied remainders,
 not the original inputs. See [item and tag Parts](parts/item-and-tag-parts.md) for the staged
 edits and the different cancellation outcomes.
 
-Recursive `Clone`, `Eq` and `Drop` of a tree a mod itself built are ordinary Rust ownership,
-not part of the boundary guarantee.
+`Text` copies and drops its component tree without using the call stack for depth. Component
+equality and formatting are not part of the serialization boundary guarantee.
 
 `Text::new(content)` constructs any content kind without exposing an engine value.
 The content, NBT-source, object, click and hover enums are exhaustive protocol enums;

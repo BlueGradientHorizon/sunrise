@@ -34,7 +34,7 @@ fn client_host_reads_playing_and_key_mappings() {
         let forward = ClientInputClientHost::vanilla_key_mapping(game, "key.forward").unwrap();
         assert_eq!(forward.is_down(game), Ok(false));
         assert_eq!(forward.translated_key_message(game), Ok(Text::literal("W")));
-        game.keys.insert(KeyCode::KeyW);
+        game.insert_device_key(KeyCode::KeyW);
         assert_eq!(forward.is_down(game), Ok(true));
         let attack = ClientInputClientHost::vanilla_key_mapping(game, "key.attack").unwrap();
         assert_eq!(

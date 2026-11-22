@@ -33,7 +33,9 @@ pub fn install(mods: crate::Mods) {
 }
 
 #[doc(hidden)]
-pub use crate::load_state::{install_dependencies, install_packages, install_registration_data};
+pub use crate::load_state::{
+    RegistrationGuard, install_dependencies, install_packages, install_registration_data,
+};
 #[cfg(any(test, feature = "testing"))]
 #[doc(hidden)]
 pub use crate::load_state::{

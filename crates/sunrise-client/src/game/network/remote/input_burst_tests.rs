@@ -1,7 +1,7 @@
-//! Bursts of key presses and clicks on a server's client: a player's act on the next tick in the
-//! order they came. A mod's loop of `VanillaKeyMappingRef::click` acts on 64 entries of each
-//! queue a tick, oldest first, and one click of each number key, with nothing dropped below
-//! the queue's maximum.
+//! Bursts of key presses and clicks on a server's client: attack, drop and swap clicks drain
+//! completely in the next tick's `handleKeybinds` order (`while (key.consumeClick())`), with
+//! no fixed per-tick or queue-length cap. Each hotbar key keeps its own counter and consumes one
+//! click per selection drain (`if (keyHotbarSlots[i].consumeClick())`).
 use super::*;
 use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
@@ -66,13 +66,13 @@ fn a_players_burst_acts_on_the_next_tick_in_handle_keybinds_order() {
     });
 }
 
-/// A mod's loop queues 150 attack clicks, 150 drops and five number keys before a tick: each tick
-/// acts on 64 of each queue, oldest first, until all have acted. Each tick takes one click of each
-/// number key, key 1 first (`keyHotbarSlots[i].consumeClick`), so 7, 7, 4, 4, 4 select slot 7 for
-/// two ticks, then 4; the tick's first drop tells the server of a new slot.
+/// A mod's loop queues 150 attack clicks, 150 drops and five number keys before a tick: the first
+/// tick drains every attack and drop click (`while (key.consumeClick())`). Each tick takes one
+/// click of each number key, key 1 first (`if (keyHotbarSlots[i].consumeClick())`), so 7, 7, 4,
+/// 4, 4 select slot 7 for two ticks, then 4.
 #[test]
 #[ignore = "daily"]
-fn a_mods_burst_acts_64_entries_of_each_queue_a_tick() {
+fn a_mods_burst_drains_all_clicks_in_one_tick() {
     with_pressing_game(|game, packets, triggered| {
         game.set_mode_id(1);
         game.forced_hit = None;
@@ -95,18 +95,18 @@ fn a_mods_burst_acts_64_entries_of_each_queue_a_tick() {
             ticks.push(counts(&sent(packets)));
             selected.push(game.selected);
         }
-        assert_eq!(ticks, [[64, 64, 1], [64, 64, 0], [22, 22, 1], [0, 0, 0]]);
+        assert_eq!(ticks, [[150, 150, 1], [0, 0, 0], [0, 0, 0], [0, 0, 0]]);
         assert_eq!(selected, [6, 6, 3, 3]);
         assert_eq!(triggered.lock().unwrap().len(), 150);
     });
 }
 
-/// A queue holds 1024 entries at most: a mod's 1100th drop, attack click or number key is refused
-/// and the call returns as usual; the 1024 queued act over the next ticks, a number key's one a
-/// tick.
+/// Click counters are not capped at 1024 entries: 1100 drops, 1100 attack clicks and 1100 hotbar
+/// clicks are all recorded; the next tick drains all 1100 drops and attacks, while hotbar clicks
+/// drain one per selection tick.
 #[test]
 #[ignore = "daily"]
-fn a_full_queue_refuses_the_entry_and_the_call_returns() {
+fn a_large_burst_is_not_capped_at_1024() {
     with_pressing_game(|game, packets, triggered| {
         game.set_mode_id(1);
         game.forced_hit = None;
@@ -119,11 +119,8 @@ fn a_full_queue_refuses_the_entry_and_the_call_returns() {
             assert_eq!(attack.click(game), Ok(()));
             assert_eq!(hotbar.click(game), Ok(()));
         }
-        assert_eq!(
-            game.remote.as_ref().unwrap().pending_keys.entries().len(),
-            1024
-        );
-        assert_eq!(game.hotbar_presses[1].count(), 1024);
+        assert_eq!(game.pending_mapping_clicks("key.drop"), 1100);
+        assert_eq!(game.pending_mapping_clicks("key.hotbar.2"), 1100);
         let mut acted = [0; 3];
         for _ in 0..17 {
             game.remote_handle_input();
@@ -132,7 +129,67 @@ fn a_full_queue_refuses_the_entry_and_the_call_returns() {
             acted[1] += tick[1];
         }
         acted[2] = triggered.lock().unwrap().len();
-        assert_eq!(acted, [1024, 1024, 1024]);
-        assert_eq!(game.hotbar_presses[1].count(), 1024 - 17);
+        assert_eq!(acted, [1100, 1100, 1100]);
+        assert_eq!(game.pending_mapping_clicks("key.hotbar.2"), 1100 - 17);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn the_inventory_poll_releases_live_queues_only_when_it_opens_a_screen() {
+    with_pressing_game(|game, packets, _| {
+        game.selected = 0;
+        for key in [
+            KeyCode::KeyQ,
+            KeyCode::Digit3,
+            KeyCode::Digit2,
+            KeyCode::Digit2,
+            KeyCode::KeyE,
+            KeyCode::KeyF,
+        ] {
+            game.key_pressed(key, key).unwrap();
+        }
+        assert_eq!((game.screen, game.selected), (Screen::Playing, 0));
+        assert!(sent(packets).is_empty());
+        game.remote_handle_input();
+        assert_eq!((game.screen, game.selected), (Screen::Inventory, 2));
+        assert!(
+            sent(packets).is_empty(),
+            "ordinary E released swap and drop before they could act"
+        );
+        assert_eq!(game.pending_mapping_clicks("key.hotbar.2"), 0);
+
+        game.set_screen(Screen::Playing);
+        game.remote_send_carried();
+        sent(packets);
+        let mut boat = crate::game::boats::Boat::new(47, "oak".into(), Vec3::ZERO, 0.0);
+        boat.chest = true;
+        game.boats.push(boat);
+        game.riding = Some(47);
+        for key in [
+            KeyCode::KeyQ,
+            KeyCode::Digit3,
+            KeyCode::Digit2,
+            KeyCode::Digit2,
+            KeyCode::KeyE,
+            KeyCode::KeyF,
+        ] {
+            game.key_pressed(key, key).unwrap();
+        }
+        assert!(sent(packets).is_empty());
+        game.remote_handle_input();
+        assert_eq!(game.screen, Screen::Playing);
+        assert_eq!(game.selected, 2);
+        assert_eq!(game.pending_mapping_clicks("key.hotbar.2"), 1);
+        assert_eq!(
+            sent(packets),
+            [
+                "minecraft:player_command",
+                "minecraft:player_action",
+                "minecraft:player_action"
+            ]
+        );
+        game.remote_handle_input();
+        assert_eq!(game.selected, 1);
     });
 }

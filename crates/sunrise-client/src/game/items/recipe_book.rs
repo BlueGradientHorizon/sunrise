@@ -2071,7 +2071,7 @@ impl Game<'_> {
             if !self.mod_book_open() {
                 return None;
             }
-            self.native_screen_slot(slot.checked_sub(300)?)?;
+            self.native_screen_slot(crate::game::inventory_slots::container_slot_index(slot)?)?;
         } else if !self.book_open(self.active_book()?) {
             return None;
         }

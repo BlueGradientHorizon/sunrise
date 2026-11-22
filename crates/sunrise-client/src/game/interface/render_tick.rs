@@ -14,7 +14,7 @@ use sunrise_client::{
     blocks::{BlockFacts, Fluid},
     containers::BlockEntity,
     mobs::Mob,
-    motion::PlayerMotion,
+    motion::{PlayerMotion, WATER},
     particles::{ParticleLevel, ParticleOptions, ParticleType, TrackingBody, TrackingTarget},
     world::World,
 };
@@ -44,10 +44,12 @@ const BLOCK_OVERLAYS: [BlockScreenEffect; 3] = [
 struct BlockScreenEffects {
     /// The view-blocking block the camera is inside, drawn with its particle texture.
     block: Option<BlockStateId>,
-    /// The eye is under water.
+    /// Draw the vanilla underwater overlay.
     water: bool,
-    /// The player burns, seen in first person.
+    /// The player burns, seen in first person. Extraction cancellation does not change this.
     on_fire: bool,
+    /// Whether a no-op or a custom renderer replaces the fire overlay.
+    fire_suppressed: bool,
     /// The renderer for each overlay in [`BLOCK_OVERLAYS`], shown or canceled.
     custom: [Option<ExtractedBlockScreenEffect>; 3],
 }
@@ -423,7 +425,7 @@ impl Game<'_> {
             partial,
             block_overlay,
             water,
-            on_fire: effects.on_fire,
+            on_fire: effects.on_fire && !effects.fire_suppressed,
             fire_lower: self.pvp_fire_lower(),
             gui_overlays: &gui_overlays,
             custom: [&custom[0], &custom[1], &custom[2]],
@@ -447,7 +449,7 @@ impl Game<'_> {
                 continue;
             };
             let mut quads = CameraQuads::new(hand_projection);
-            if custom.renderer.submit(
+            let Some(replace) = custom.renderer.submit(
                 self,
                 block_screen_effect_render(
                     effect,
@@ -457,20 +459,23 @@ impl Game<'_> {
                     self.ui.hide_gui,
                     &mut GameCameraDrawContext::new(self, &mut quads),
                 ),
-            ) {
+            ) else {
+                // Only a finished submission can affect the frame.
+                continue;
+            };
+            if replace {
                 match effect {
                     BlockScreenEffect::Block => effects.block = None,
                     BlockScreenEffect::Water => effects.water = false,
-                    BlockScreenEffect::Fire => effects.on_fire = false,
+                    BlockScreenEffect::Fire => effects.fire_suppressed = true,
                 }
             }
             *drawn = quads.take();
         }
         drawn
     }
-    /// The block overlays `ScreenEffectRenderer` draws this frame for player `p` with its eye
-    /// at `eye`, less those a mod canceled in `extract_block_screen_effect`, together with
-    /// any renderers selected during extraction.
+    /// `LevelExtractor.extractPlayerState`: extract the player's block overlays and any
+    /// renderers selected for them. Fire eligibility is separate from renderer selection.
     fn block_screen_effects(
         &self,
         p: &PlayerMotion,
@@ -484,6 +489,7 @@ impl Game<'_> {
         // ScreenEffectRenderer: none of it for a spectator (noPhysics).
         let spectator = self.spectator();
         let modded = mod_api::__private::listened(mod_api::HookId::ExtractBlockScreenEffect);
+        let player_partial_tick = self.clock.camera_fraction() as f32;
         let mut block = None;
         let mut custom = [None, None, None];
         if !spectator {
@@ -533,53 +539,72 @@ impl Game<'_> {
                     != sunrise_client::blocks::RenderShape::Invisible
                     && self.state_view_blocking(state, pos, near_plane)
                 {
-                    if !modded
-                        || self.screen_effect_kept(
+                    block = Some(state);
+                    if modded
+                        && let Ok(state) = state.try_into_api()
+                        && !self.screen_effect_kept(
                             BlockScreenEffect::Block,
                             state,
                             pos,
                             partial,
+                            player_partial_tick,
                             &mut custom[0],
                         )
                     {
-                        block = Some(state);
+                        block = None;
                     }
                     break;
                 }
             }
         }
-        let in_water = self.camera_fog_type(eye) == FogType::Water;
-        let eye_block = eye.map(|c| c.floor() as i32);
-        let water = in_water
-            && !spectator
-            && (!modded
-                || self.screen_effect_kept(
-                    BlockScreenEffect::Water,
-                    self.world.block(eye_block[0], eye_block[1], eye_block[2]),
-                    eye_block,
-                    partial,
-                    &mut custom[1],
-                ));
-        // ModelBakery.FIRE_1, told to mods as the fire block at the player's block.
-        let feet = [p.position.x, p.position.y, p.position.z].map(|c| c.floor() as i32);
-        let fire = || self.pack.assets.registry.default_state("minecraft:fire");
-        let on_fire = self.camera_type.is_first_person()
-            && !spectator
-            && p.is_on_fire()
-            && (!modded
-                || fire().is_none_or(|fire| {
-                    self.screen_effect_kept(
+        let first_person = self.camera_type.is_first_person() && !spectator;
+        let water = first_person && {
+            // LevelExtractor uses the player's tick-sampled eye state, not camera fog geometry.
+            // Keep the existing mod override explicit, applied to that answer at the eye.
+            let mut submersion = if p.is_eye_in_fluid(WATER) {
+                FogType::Water
+            } else {
+                FogType::Atmospheric
+            };
+            self.native_camera_submersion(eye, &mut submersion);
+            submersion == FogType::Water
+                && (!modded
+                    || self.screen_effect_kept(
+                        BlockScreenEffect::Water,
+                        self.pack.water_overlay_state,
+                        eye.map(|c| c.floor() as i32),
+                        partial,
+                        player_partial_tick,
+                        &mut custom[1],
+                    ))
+        };
+        // Canceling fire acts as a no-op renderer only if no listener selected one.
+        // A selected renderer can still prepend to the eligible vanilla overlay.
+        let on_fire = first_person && p.is_on_fire();
+        let fire_suppressed = on_fire
+            && modded
+            && self
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:fire")
+                .and_then(|fire| fire.try_into_api().ok())
+                .is_some_and(|fire| {
+                    let feet = [p.position.x, p.position.y, p.position.z].map(|c| c.floor() as i32);
+                    !self.screen_effect_kept(
                         BlockScreenEffect::Fire,
                         fire,
                         feet,
                         partial,
+                        player_partial_tick,
                         &mut custom[2],
-                    )
-                }));
+                    ) && custom[2].is_none()
+                });
         BlockScreenEffects {
             block,
             water,
             on_fire,
+            fire_suppressed,
             custom,
         }
     }
@@ -587,14 +612,12 @@ impl Game<'_> {
     fn screen_effect_kept(
         &self,
         effect: BlockScreenEffect,
-        state: BlockStateId,
+        state: mod_api::BlockState,
         pos: [i32; 3],
         partial_tick: f32,
+        player_partial_tick: f32,
         custom: &mut Option<ExtractedBlockScreenEffect>,
     ) -> bool {
-        let Ok(state) = state.try_into_api() else {
-            return true;
-        };
         let pos = BlockPos::new(pos[0], pos[1], pos[2]);
         let (mut canceled, mut renderer) = (false, None);
         self.native_extract_block_screen_effect(
@@ -602,6 +625,7 @@ impl Game<'_> {
             state,
             pos,
             partial_tick,
+            player_partial_tick,
             &mut canceled,
             &mut renderer,
         );

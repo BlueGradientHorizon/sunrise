@@ -38,7 +38,6 @@ impl Clone for Menu {
         Self {
             state: self.state.clone(),
             stamp: MutationStamp::fresh(),
-            planning: Default::default(),
         }
     }
 }
@@ -187,8 +186,8 @@ pub struct State {
     pub combined: bool,
     /// The caller fires `AnvilCraftEvent.Pre` for a taken anvil result: its
     /// `onTake` waits in `anvil_craft` for the caller to run `anvil_take`, or
-    /// to refuse the take with `anvil_cancel` (from an `anvil_undo` made
-    /// before the click).
+    /// on cancel to skip `anvil_take` and `anvil_craft_post` (matching NeoForge
+    /// `AnvilMenu.onTake` returning early without undoing the item move).
     pub anvil_hook: bool,
     /// The anvil result taken while `anvil_hook` is set, as it was before
     /// crafting.
@@ -203,6 +202,13 @@ pub struct State {
     pub(super) grind_xp: i32,
     /// `AnvilMenu.createResult` ran since `anvil_created` last asked.
     pub(super) anvil_made: bool,
+    /// `GrindstoneMenu.createResult` ran since `grindstone_created` last asked.
+    pub(super) grind_made: bool,
+    /// Suspend multi-slot clicks whenever `createResult` runs so callers can deliver
+    /// `anvil_update` / `grindstone_place` live between slot writes.
+    pub(super) track_results: bool,
+    /// Further setChanged calls for the same input write, after the current result hook.
+    pub(super) more_results: usize,
     /// The enchanting table's item changed to an enchantable one: the caller
     /// (with a level) fills the costs and clues (`slotsChanged`'s
     /// `access.execute`).
