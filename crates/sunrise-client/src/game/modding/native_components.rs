@@ -179,6 +179,40 @@ impl Game<'_> {
         }
         mod_id
     }
+    /// `Item.getName(ItemStack)` of a mod item: what its `item_name` Part
+    /// answers, or `None` for the default. One table lookup for an item no
+    /// Part names.
+    pub(in crate::game) fn mod_item_name(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<sunrise_client::text::Text> {
+        sunrise_client::stations::item_name_part(&self.loop_context, stack)
+    }
+    /// `ItemStack.getStyledHoverName`: the custom name (italic) or a book's
+    /// title, else the name a mod item's Part gives the stack, else the
+    /// styled name as before (its `item_name`, the item's), so the tooltip
+    /// and the hotbar name a Part's stack as the anvil, commands and the
+    /// searches do. The Part is asked at most once.
+    pub(in crate::game) fn styled_stack_name(
+        &self,
+        stack: &ItemStack,
+    ) -> sunrise_client::text::Text {
+        if !sunrise_client::stations::names_itself(stack)
+            && let Some(name) = self.mod_item_name(stack)
+        {
+            return name;
+        }
+        sunrise_client::item_tooltip::styled_name(stack, || self.stack_hover_name(stack))
+    }
+    /// `ItemStack.getHoverName` as a component: the custom name or a written
+    /// book's title, else the name a mod item's Part gives the stack, else
+    /// vanilla's. The Part is asked at most once.
+    pub(in crate::game) fn stack_hover_name_text(
+        &self,
+        stack: &ItemStack,
+    ) -> sunrise_client::text::Text {
+        sunrise_client::stations::hover_name_in(&self.loop_context, &self.pack.names, stack)
+    }
     /// `ItemStack.isBarVisible`, `getBarWidth`, `getBarColor`, before client-only hooks.
     pub(in crate::game) fn item_resource_bar(&self, stack: &ItemStack) -> Option<mod_api::ItemBar> {
         use super::api_values::TryIntoApi;

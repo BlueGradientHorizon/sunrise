@@ -737,7 +737,7 @@ impl Game<'_> {
             }
             if !query.is_empty()
                 && !book.collection_matches(&c.entries, &query, &|stack| {
-                    sunrise_client::item_tooltip::lines(
+                    let mut lines = sunrise_client::item_tooltip::lines(
                         stack,
                         self.items().get(&stack.item),
                         &crate::game::native_hooks::HookedAttributeTooltips::new(self, None),
@@ -747,7 +747,12 @@ impl Game<'_> {
                         false,
                         &|k| self.pack.names.display_get(k),
                         &|attribute| self.attribute_style(attribute, false),
-                    )
+                    );
+                    // The resolved name (a mod item's Part included) is the name line.
+                    if let Some(first) = lines.first_mut() {
+                        *first = self.stack_hover_name_text(stack).plain();
+                    }
+                    lines
                 })
             {
                 continue;

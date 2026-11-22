@@ -290,8 +290,57 @@ pub fn increased_repair_cost(cost: u32) -> u32 {
 }
 /// `ItemStack.getHoverName` as a component: the custom name as written, a potion's or tipped
 /// arrow's contents, a written book's title, the `item_name` component, else the item's or head
-/// owner's name, translatable so each viewer renders it in their own language.
+/// owner's name, translatable so each viewer renders it in their own language. The name a mod
+/// item's part gives the stack is not asked: [`hover_name_in`] asks it.
 pub fn hover_name_text(names: &crate::creative::Names, stack: &ItemStack) -> crate::text::Text {
+    hover_name_text_with(names, stack, |_| None)
+}
+/// [`hover_name_text`] with the name the parts of a mod item give the stack
+/// (`Item.getName(ItemStack)`, `ItemPart::item_name`), asked once, with the loop `context` of the
+/// side naming it, when the stack has no custom name or book title.
+pub fn hover_name_in(
+    context: &LoopContext,
+    names: &crate::creative::Names,
+    stack: &ItemStack,
+) -> crate::text::Text {
+    hover_name_text_with(names, stack, |stack| item_name_part(context, stack))
+}
+/// Whether `stack` names itself (`ItemStack.getCustomName`): a custom name, or a written book's
+/// non-blank title. `Item.getName` isn't asked then.
+pub fn names_itself(stack: &ItemStack) -> bool {
+    stack.custom_name().is_some()
+        || stack
+            .data()
+            .and_then(|d| d.written.as_ref())
+            .is_some_and(|w| !w.title.trim().is_empty())
+}
+/// `Item.getName(ItemStack)` of a mod item: the name the parts of `stack`'s item give it
+/// (`ItemPart::item_name`), or None to keep the default. Asked with the loop `context` only, so a
+/// part can't name a stack again through a host. An item with no such part costs one lookup.
+pub fn item_name_part(context: &LoopContext, stack: &ItemStack) -> Option<crate::text::Text> {
+    let mut name = None;
+    crate::native_client_hooks::item_name(context, stack, &mut name);
+    name
+}
+/// `Item.getName(ItemStack)` is being asked of the parts of `stack`'s item: `name` starts as
+/// `None`, the default, and a part may set it. Asked on both sides.
+#[inline(never)]
+pub fn native_item_name(
+    context: &LoopContext,
+    stack: &mod_api::ItemStack,
+    name: &mut Option<mod_api::Text>,
+) {
+    mod_api::dispatch_item_name(
+        &sunrise_client_render::api_context::LoopReader(context).context(),
+        stack,
+        name,
+    );
+}
+fn hover_name_text_with(
+    names: &crate::creative::Names,
+    stack: &ItemStack,
+    part: impl FnOnce(&ItemStack) -> Option<crate::text::Text>,
+) -> crate::text::Text {
     use crate::text::Text;
     let data = stack.data();
     // `ItemStack.getCustomName`: the custom name, else a written book's non-blank title.
@@ -306,6 +355,10 @@ pub fn hover_name_text(names: &crate::creative::Names, stack: &ItemStack) -> cra
         .filter(|t| !t.trim().is_empty())
     {
         return Text::literal(title);
+    }
+    // `ItemStack.getItemName`: a mod item's `getName` (its part), asked once.
+    if let Some(name) = part(stack) {
+        return name;
     }
     // `ItemStack.getItemName`: the item's own `getName`, which for a few items is not its
     // `item_name` component.

@@ -1689,6 +1689,8 @@ struct Game<'a> {
     /// The `[[native.loop]]` slots' state, per published loop (`published_loops.rs`).
     loop_states: published_loops::LoopStates,
     creative_screen: Creative,
+    /// The creative search projection whose stacks the mods' `item_name` parts last named.
+    creative_search_named: Option<u64>,
     creative_contents: native_hooks::CreativeCache,
     /// `CreativeModeInventoryScreen.ignoreTextInput`: the chat key opened the
     /// search tab, so the letter it carries is not typed into the box.
@@ -11316,6 +11318,7 @@ impl<'a> Game<'a> {
             trial_spawner_tick_positions: Vec::new(),
             loop_states: Default::default(),
             creative_screen: prepared.creative_screen,
+            creative_search_named: None,
             creative_contents: Default::default(),
             creative_ignore_text: false,
             control: None,
