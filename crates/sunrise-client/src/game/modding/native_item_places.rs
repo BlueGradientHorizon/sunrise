@@ -452,8 +452,8 @@ impl Game<'_> {
         });
         went
     }
-    /// `ItemAccess.extract` at those places: up to `stack.count` of the item and components of
-    /// `stack`, how many came out. An item entity emptied stays, empty, until the root commit
+    /// `ItemAccess.extract` at those places: up to `amount` of the item and components of
+    /// `resource`, how many came out. An item entity emptied stays, empty, until the root commit
     /// removes it. A creative player's hand gives without losing any (`forInfiniteMaterials`).
     pub(super) fn game_extract(
         &mut self,
@@ -462,10 +462,6 @@ impl Game<'_> {
         amount: u32,
         tx: &Transaction,
     ) -> u32 {
-        let stack = ItemStack {
-            count: amount,
-            ..resource.clone()
-        };
         if !self.transaction_holds(tx) {
             return 0;
         }
@@ -474,12 +470,12 @@ impl Game<'_> {
         }
         self.notice_menu_place_write(place);
         if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
-            return self.scratch_extract(*id, &stack);
+            return self.scratch_extract(*id, resource, amount);
         }
-        // How many of `stack` `held` gives.
+        let items = self.res.shared_items();
         let taken = |held: Option<&ItemStack>| {
-            held.filter(|held| held.same_item_same_components(&stack))
-                .map_or(0, |held| held.count.min(stack.count))
+            held.filter(|held| held.same_item_same_components_with_prototype(resource, &items))
+                .map_or(0, |held| held.count.min(amount))
         };
         let left = |held: &ItemStack, took: u32| ItemStack {
             count: held.count - took,
@@ -1809,28 +1805,52 @@ pub(super) mod tests {
             || {
                 with_game(|game| {
                     open_to_lan(game);
-                    let mut player = guest(1);
-                    let mut paper = ItemStack::new("minecraft:paper", 2);
-                    paper.damage = 40;
-                    player.inventory[3] = Some(paper.clone());
-                    game.lan.as_mut().unwrap().hub.guests.push(player);
+                    game.lan.as_mut().unwrap().hub.guests.push(guest(1));
                     let slot = ItemPlace::PlayerSlot {
                         player: 123,
                         slot: 3,
                     };
-                    let resource = slot.resource(game).unwrap();
-                    assert_eq!(resource.as_stack().damage_component(), Some(40));
-                    assert_eq!(
-                        game.transaction(|host, tx| {
-                            Ok::<_, ()>(slot.extract(host, tx, &resource, 1))
-                        }),
-                        Ok(1)
+                    let mut paper = ItemStack::new("minecraft:paper", 2);
+                    paper.damage = 40;
+                    let mut explicit_default = paper.clone();
+                    explicit_default.data_mut().set_other(
+                        "minecraft:max_stack_size",
+                        Some(sunrise_core::nbt::Tag::Int(64)),
                     );
-                    paper.count = 1;
-                    assert_eq!(
-                        game.lan.as_ref().unwrap().hub.guests[0].inventory[3],
-                        Some(paper)
-                    );
+                    let mut different_damage = explicit_default.clone();
+                    different_damage.damage = 41;
+                    let different_damage =
+                        ItemResource::of(&different_damage.try_into_api().unwrap());
+                    for (mut resident, equivalent) in [
+                        (paper.clone(), paper.clone()),
+                        (paper.clone(), explicit_default.clone()),
+                        (explicit_default, paper),
+                    ] {
+                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                            guest.inventory[3] = Some(resident.clone());
+                        });
+                        let resource = slot.resource(game).unwrap();
+                        assert_eq!(resource.as_stack().damage_component(), Some(40));
+                        let removed = game.transaction(|host, tx| {
+                            Ok::<_, ()>(slot.extract(host, tx, &different_damage, 1))
+                        });
+                        assert_eq!(removed, Ok(0));
+                        assert_eq!(
+                            game.lan.as_ref().unwrap().hub.guests[0].inventory[3],
+                            Some(resident.clone()),
+                        );
+
+                        let equivalent = ItemResource::of(&equivalent.try_into_api().unwrap());
+                        let removed = game.transaction(|host, tx| {
+                            Ok::<_, ()>(slot.extract(host, tx, &equivalent, 1))
+                        });
+                        assert_eq!(removed, Ok(1));
+                        resident.count = 1;
+                        assert_eq!(
+                            game.lan.as_ref().unwrap().hub.guests[0].inventory[3],
+                            Some(resident),
+                        );
+                    }
                 });
             },
         );

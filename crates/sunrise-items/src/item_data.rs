@@ -1242,6 +1242,42 @@ impl ItemStack {
     pub fn same_item_same_components(&self, other: &Self) -> bool {
         self.item == other.item && self.damage == other.damage && self.data() == other.data()
     }
+    /// Compare live component identity as `PatchedDataComponentMap.fromPatch` does:
+    /// ignore sets equal to the prototype and removals of absent defaults. This
+    /// reads decoded components, including transient ones the save codec drops.
+    pub fn same_item_same_components_with_prototype(
+        &self,
+        other: &Self,
+        items: &crate::items::Items,
+    ) -> bool {
+        if self.item != other.item {
+            return false;
+        }
+        if self.same_item_same_components(other) {
+            return true;
+        }
+        let matches_patch = |stack: &Self, other: &Self| {
+            let keep = component_patch_filter(stack, items);
+            let mut matches = true;
+            ingredient_components::visit_components(stack, |id| {
+                if matches && keep(&JavaString::from(id), false) {
+                    matches = other.carries_component(None, id)
+                        && ingredient_components::component_equal(id, stack, other);
+                }
+            });
+            matches
+                && stack
+                    .data()
+                    .into_iter()
+                    .flat_map(StackData::preserved_components)
+                    .filter_map(|(id, _)| id.strip_prefix('!'))
+                    .all(|id| {
+                        !keep(&JavaString::from(id), true)
+                            || ingredient_components::removed(other, id)
+                    })
+        };
+        matches_patch(self, other) && matches_patch(other, self)
+    }
     /// `ItemStack.matches`: the same item, count and components.
     pub fn matches(&self, other: &Self) -> bool {
         self.count == other.count && self.same_item_same_components(other)
