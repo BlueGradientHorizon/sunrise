@@ -144,38 +144,24 @@ pub fn sweep_inside_blocks<W: InsideWalk>(
 ) -> Result<i32, W::Error> {
     let epsilon = sunrise_core::geometry::Vec3::new(W::DEFLATE, W::DEFLATE, W::DEFLATE);
     let deflated = walk.bounds_at(to).deflate(epsilon);
-    // Mth.square(0.9999900000002526): a long move counts every block it crosses as
-    // precise.
-    let far = 0.999_990_000_000_252_6_f64;
-    let moved_far = from.distance_squared(to) > far * far;
-    let mut iterations = 0;
-    let mut hits: Vec<(i32, BlockPos, BlockStateId)> = Vec::new();
-    let _ = sunrise_core::geometry::sweep_intersected_blocks(
-        from,
-        to,
-        deflated,
-        // The traversal's own cap; a whole-path pass with a larger budget raises it.
-        (max_iterations.max(0) as usize).max(1_000_000),
-        |p, iteration| {
-            if !walk.is_alive() || iteration >= max_iterations {
-                return false;
-            }
-            iterations = iteration;
-            let state = walk.block(p);
-            if !walk.is_air(state) {
-                hits.push((iteration, p, state));
-            }
-            true
-        },
-    );
-    for (step, p, state) in hits {
+    let mut hits = Vec::new();
+    let iterations = sweep_inside_cells(from, to, deflated, max_iterations, |p, step, precise| {
+        if !walk.is_alive() {
+            return false;
+        }
+        let state = walk.block(p);
+        if !walk.is_air(state) {
+            hits.push((p, step, precise, state));
+        }
+        true
+    });
+    for (p, step, precise, state) in hits {
         let contact = contact_at(walk, state, p, from, to);
         if !contact.any() || !visited.insert(p.pack()) {
             continue;
         }
         if contact.block {
             // `isPrecise` and the step advance, then the block's own moment.
-            let precise = moved_far || deflated.intersects(sunrise_core::geometry::Aabb::block(p));
             effects.advance_step(step);
             walk.entity_inside(p, state, step, precise, effects)?;
         }
@@ -184,7 +170,45 @@ pub fn sweep_inside_blocks<W: InsideWalk>(
             walk.fluid_inside(p, step, effects)?;
         }
     }
-    Ok(iterations + 1)
+    Ok(iterations)
+}
+
+/// `Entity.checkInsideBlocks`' per-movement budget.
+pub(crate) const INSIDE_MOVEMENT_STEPS: i32 = 16;
+
+/// Enumerate `Entity.checkInsideBlocks`' geometry without a world loan. Its
+/// caller shares one visited set across a movement's passes, spends vanilla's
+/// 16-step budget across the axes, and visits the target box if it runs out.
+/// A mob can hold the remaining cells across a hurt and read live states.
+pub(crate) fn sweep_inside_cells(
+    from: sunrise_core::geometry::Vec3,
+    to: sunrise_core::geometry::Vec3,
+    deflated: sunrise_core::geometry::Aabb,
+    max_iterations: i32,
+    mut each: impl FnMut(BlockPos, i32, bool) -> bool,
+) -> i32 {
+    // Mth.square(0.9999900000002526): a long move counts every block it crosses as precise.
+    let far = 0.999_990_000_000_252_6_f64;
+    let moved_far = from.distance_squared(to) > far * far;
+    let mut iterations = 0;
+    let _ = sunrise_core::geometry::sweep_intersected_blocks(
+        from,
+        to,
+        deflated,
+        (max_iterations.max(0) as usize).max(1_000_000),
+        |p, step| {
+            if step >= max_iterations {
+                return false;
+            }
+            let precise = moved_far || deflated.intersects(sunrise_core::geometry::Aabb::block(p));
+            if !each(p, step, precise) {
+                return false;
+            }
+            iterations = step;
+            true
+        },
+    );
+    iterations + 1
 }
 
 /// The cells a box covers, x then y then z, each floor to floor inclusive: the
@@ -260,7 +284,7 @@ pub fn sweep_movements<W: InsideWalk>(
     for movement in movements {
         let mut from = movement.from;
         let delta = movement.to.subtract(movement.from);
-        let mut budget = 16;
+        let mut budget = INSIDE_MOVEMENT_STEPS;
         match movement.original {
             Some(original) if delta.length_squared() > 0.0 => {
                 for axis in Axis::step_order(original) {

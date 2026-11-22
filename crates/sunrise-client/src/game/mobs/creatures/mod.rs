@@ -2213,12 +2213,16 @@ impl Game<'_> {
     }
 
     fn finish_creaking_hurt(&mut self, index: usize) {
-        let id = self.mobs[index].id;
+        let mob = &mut self.mobs[index];
+        let (id, join) = (mob.id, mob.join);
         let mut events = Vec::new();
-        let reaction =
-            sunrise_client::mobs::creaking::take_hurt(&mut self.mobs[index], &mut events);
+        let reaction = sunrise_client::mobs::creaking::take_hurt(mob, &mut events);
         let _ = self.handle_mob_events(events);
-        if let Some((home, by_player)) = reaction {
+        if let Some((home, by_player)) = reaction
+            && self
+                .mob_object(id)
+                .is_some_and(|mob| mob.join == join && !mob.removed)
+        {
             self.creaking_hurt(home, id, by_player);
         }
     }
@@ -2712,6 +2716,16 @@ impl Game<'_> {
                                 m.velocity = m.velocity.add_vector(v);
                             }
                         }
+                    }
+                }
+                MobEvent::PushJoined { id, join, velocity } => {
+                    if let Some(mob) = self.mob_object_mut(id).filter(|mob| mob.join == join) {
+                        mob.velocity = mob.velocity.add_vector(Vec3::new(
+                            velocity[0],
+                            velocity[1],
+                            velocity[2],
+                        ));
+                        mob.needs_sync = true;
                     }
                 }
                 MobEvent::Knockback {
@@ -3697,11 +3711,6 @@ impl Game<'_> {
                     self.level_event_at(2001, pos, state.0 as i32);
                 }
                 MobEvent::Darkness { at, radius } => self.apply_darkness(at, radius),
-                MobEvent::CreakingHurt {
-                    home,
-                    by_player,
-                    id,
-                } => self.creaking_hurt(home, id, by_player),
                 MobEvent::CreakingTearDown { center, spread } => {
                     self.creaking_tear_down(center, spread)
                 }
@@ -4550,7 +4559,7 @@ impl Game<'_> {
     fn give_mob_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32, ambient: bool) {
         let immune = self.creative || self.spectator();
         if let Some(instance) = mob_effect_instance(effect, ticks, amplifier, ambient, immune) {
-            self.potions.effects.add(instance);
+            self.apply_player_effect(instance);
         }
     }
     /// `WitherRoseBlock.entityInside` for the player: on a server level that
