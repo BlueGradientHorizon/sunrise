@@ -800,18 +800,8 @@ fn sign_text_animated(data: &SignData) -> bool {
     })
 }
 
-/// How far the text of an outlined call sits in front of its outline, in
-/// text units (`Font.DisplayMode.POLYGON_OFFSET`, see `draw_text`).
-pub const TEXT_OVER_OUTLINE: f32 = 0.05;
-
-/// Draws a text call with the font atlas: 8x8 glyph cells, the outline as
-/// eight one-pixel offsets under the text.
-///
-/// `TextFeatureRenderer.renderText` draws the outline glyphs NORMAL and the
-/// text over them POLYGON_OFFSET, so the coplanar text always wins the depth
-/// test. Here both share one mesh, so the text is lifted a hair towards the
-/// reader instead (a twentieth of a font pixel, invisible) rather than
-/// z-fighting with the outline under it.
+/// Draws a text call with the font atlas: eight one-pixel offsets under
+/// an outlined glyph, with the underlying text geometry unchanged.
 fn draw_text(scene: &Scene, call: &TextCall, out: &mut Vec<Vertex>) {
     let glyph = |c| {
         let Some(font) = scene.font else {
@@ -838,7 +828,7 @@ pub fn push_text(
     out: &mut Vec<Vertex>,
 ) {
     let bold = call.style.is_bold();
-    let mut quad = |corners: [(f32, f32); 4], cell: Rect, z: f32, argb: u32| {
+    let mut quad = |corners: [(f32, f32); 4], cell: Rect, z: f32, argb: u32, overlay: u32| {
         let uvs = [
             [cell.u0, cell.v1],
             [cell.u1, cell.v1],
@@ -851,14 +841,14 @@ pub fn push_text(
                 normal: [0; 4],
                 pos: call.matrix.transform_point3(Vec3::new(x, y, z)).to_array(),
                 uv,
-                layer: u32::from(call.tier) << 16,
+                layer: u32::from(call.tier) << 16 | overlay,
                 color,
                 light: call.light,
                 glint_uv: [0.0; 2],
             });
         }
     };
-    let mut emit = |dx: f32, dy: f32, z: f32, argb: u32, outline: bool| {
+    let mut emit = |dx: f32, dy: f32, argb: u32, outline: bool| {
         if let Some(sprite) = call.inline_sprite {
             // The outline is the text's: an image draws once.
             if outline {
@@ -873,13 +863,21 @@ pub fn push_text(
                 quad(
                     [(x, bottom), (right, bottom), (right, y), (x, y)],
                     sprite,
-                    z,
+                    0.0,
                     argb,
+                    0,
                 );
                 x = right;
             }
             return;
         }
+        // `TextFeatureRenderer.renderText`: outline glyphs use NORMAL; the face of
+        // outlined text uses POLYGON_OFFSET on the same plane.
+        let overlay = if call.outline != 0 && !outline {
+            crate::gfx::TEXT_POLYGON_OFFSET_SOLID_OVERLAY
+        } else {
+            crate::gfx::TEXT_NORMAL_SOLID_OVERLAY
+        };
         let mut pen = call.x;
         for (i, ch) in call.text.chars().enumerate() {
             let g = glyph(ch);
@@ -908,8 +906,9 @@ pub fn push_text(
                             (x0 + shear(g.top), top),
                         ],
                         cell,
-                        z + copy as f32 * 0.001,
+                        copy as f32 * 0.001,
                         argb,
+                        overlay,
                     );
                 }
             }
@@ -930,8 +929,9 @@ pub fn push_text(
                                 (x0, y + top),
                             ],
                             white,
-                            z + 0.01,
+                            0.01,
                             argb,
+                            overlay,
                         );
                     }
                 }
@@ -943,22 +943,12 @@ pub fn push_text(
         for dx in -1..=1 {
             for dy in -1..=1 {
                 if dx != 0 || dy != 0 {
-                    emit(dx as f32, dy as f32, 0.0, call.outline, true);
+                    emit(dx as f32, dy as f32, call.outline, true);
                 }
             }
         }
     }
-    emit(
-        0.0,
-        0.0,
-        if call.outline != 0 {
-            TEXT_OVER_OUTLINE
-        } else {
-            0.0
-        },
-        call.color,
-        false,
-    );
+    emit(0.0, 0.0, call.color, false);
 }
 
 /// Block-entity fields the level ticks, at one position (vanilla's own field
@@ -2556,8 +2546,10 @@ impl BlockEntityRenderer {
         let Some(data) = (scene.sign)(pos) else {
             return;
         };
-        let draw_outline =
-            (data.front.glowing || data.back.glowing) && scene.sign_outline.visible(pos);
+        let draw_outline = [&data.front, &data.back]
+            .into_iter()
+            .any(|side| side.glowing && side.text_color() != 0 && !side.is_empty())
+            && scene.sign_outline.visible(pos);
         let Ok(mut cache) = self.sign_texts.lock() else {
             return;
         };
@@ -4222,11 +4214,10 @@ mod tests {
         }
     }
 
-    /// TextFeatureRenderer.renderText: an outlined call's text is drawn over
-    /// its outline (Font.DisplayMode.POLYGON_OFFSET), never level with it,
-    /// and plain text stays on the sign's plane.
+    /// `TextFeatureRenderer.renderText`: outlined sign text uses depth bias, not a lift.
     #[test]
-    fn outlined_sign_text_sits_in_front_of_its_outline() {
+    fn outlined_sign_text_keeps_its_plane_and_biases_only_the_fill() {
+        use crate::gfx::{TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY};
         let world = World::new(BlockStateId(0), 1);
         let sprites = HashMap::new();
         let glyph = |_: char| {
@@ -4288,17 +4279,23 @@ mod tests {
         // Eight outline copies, then the text, four corners a glyph.
         assert_eq!(out.len(), 9 * 2 * 4);
         let (outline, text) = out.split_at(8 * 2 * 4);
-        let front = outline.iter().map(|v| v.pos[2]).fold(f32::MIN, f32::max);
         assert!(
-            text.iter().all(|v| v.pos[2] > front),
-            "text z {:?} not in front of the outline at {front}",
-            text.iter().map(|v| v.pos[2]).collect::<Vec<_>>()
+            outline
+                .iter()
+                .all(|v| v.pos[2] == 0.0 && v.layer == TEXT_NORMAL_SOLID_OVERLAY)
+        );
+        assert!(
+            text.iter()
+                .all(|v| v.pos[2] == 0.0 && v.layer == TEXT_POLYGON_OFFSET_SOLID_OVERLAY)
         );
         call.outline = 0;
-        out.clear();
-        draw_text(&scene, &call, &mut out);
-        assert_eq!(out.len(), 2 * 4);
-        assert!(out.iter().all(|v| v.pos[2] == 0.0));
+        let mut plain = Vec::new();
+        draw_text(&scene, &call, &mut plain);
+        assert_eq!(plain.len(), 2 * 4);
+        for (plain, offset) in plain.iter().zip(text) {
+            assert_eq!(plain.pos, offset.pos);
+            assert_eq!(plain.layer, TEXT_NORMAL_SOLID_OVERLAY);
+        }
     }
 
     /// BakedSheetGlyph draws a glyph over its own box from the pen
@@ -4437,7 +4434,9 @@ mod tests {
         // Eight outlines contain glyphs only; effects appear once, in front.
         assert_eq!(out.len(), 8 * 8 + 24);
         assert!((out[0].pos[0] - -1.6).abs() < 1e-6);
-        assert!(out[64..].iter().all(|v| v.pos[2] >= TEXT_OVER_OUTLINE));
+        assert_eq!(out[64].pos[2], 0.0);
+        assert_eq!(out[68].pos[2], 0.001);
+        assert_eq!(out[72].pos[2], 0.01);
         // The glow tier reaches bold copies, outlines and decoration quads.
         assert!(out.iter().all(|v| v.layer >> 16 == 1));
         call.tier = 0;
@@ -4779,6 +4778,33 @@ mod tests {
         let reads = glyph_reads.get();
         renderer.render(&scene, [(pos, 1)].iter(), &mut vertices);
         assert_eq!(glyph_reads.get(), reads);
+        // Black glowing text has the same geometry even as scope starts and ends.
+        let mut black = text("black", true);
+        black.color = 15;
+        let black = SignData {
+            front: black,
+            ..Default::default()
+        };
+        let black_sign = |_| Some(&black);
+        scene.sign = &black_sign;
+        scene.sign_outline = SignOutline::None;
+        let mut unscoped = Vec::new();
+        renderer.render(&scene, [(pos, 1)].iter(), &mut unscoped);
+        let reads = glyph_reads.get();
+        for scope in [SignOutline::FirstPersonScope, SignOutline::None] {
+            scene.sign_outline = scope;
+            vertices.clear();
+            renderer.render(&scene, [(pos, 1)].iter(), &mut vertices);
+            assert_eq!(
+                glyph_reads.get(),
+                reads,
+                "scope must not rebuild black-only text"
+            );
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&vertices),
+                bytemuck::cast_slice::<_, u8>(&unscoped)
+            );
+        }
         let animated = SignData {
             front: text("§kSecret", false),
             ..Default::default()

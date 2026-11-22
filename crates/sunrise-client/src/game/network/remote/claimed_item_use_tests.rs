@@ -181,7 +181,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
             game.remote_handle_input();
             game.remote_tick_using();
             assert!(game.using.is_none());
-            assert!(game.remote.as_ref().unwrap().use_item.is_none());
+            assert!(game.use_start.item.is_none());
 
             game.set_mapping_held("key.use", false);
             game.remote_handle_input();

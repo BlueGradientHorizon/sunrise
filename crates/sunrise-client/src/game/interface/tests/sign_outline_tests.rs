@@ -1,7 +1,12 @@
 use super::{BlockEntity, CacheOptions, Game, Vertex, in_own_process};
 use glam::DVec3;
 use sunrise_client::{
-    camera::CameraType, entities::ArmorStand, items::ItemStack, motion::PlayerMotion,
+    camera::CameraType,
+    chunk::{Chunk, Light},
+    entities::ArmorStand,
+    gfx::{TEXT_NORMAL_SOLID_OVERLAY, TEXT_POLYGON_OFFSET_SOLID_OVERLAY},
+    items::ItemStack,
+    motion::PlayerMotion,
     signs::SignData,
 };
 use sunrise_core::geometry::Vec3;
@@ -28,9 +33,21 @@ fn check_signs(game: &mut Game<'_>) {
     const SUBJECT: i32 = 31;
     let (client, _server) = Pipe::pair();
     game.connect_local(client, "SignOutline").unwrap();
+    let player_id = game.remote.as_ref().unwrap().entity_id;
     let motion = game.motion;
     let player = || PlayerMotion::new(motion, Vec3::new(FAR.x, FAR.y, FAR.z)).unwrap();
-    game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
+    let mut chunk = Chunk::empty(0, 0);
+    let section = chunk.section_index(POS[1]).unwrap();
+    std::sync::Arc::make_mut(&mut chunk.sections[section]).light = Light::Uniform(0x83);
+    game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
+    let set_camera = |game: &mut Game<'_>, camera_id| {
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id }))
+            .unwrap();
+    };
+    let remove = |game: &mut Game<'_>, id| {
+        game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![id] }))
+            .unwrap();
+    };
 
     let mut observed = Vec::new();
     for (block, hanging) in [
@@ -122,13 +139,13 @@ fn check_signs(game: &mut Game<'_>) {
             for (name, camera_type, scoping, subject, visual, expected) in cases {
                 game.player = Some(player());
                 game.camera_type = camera_type;
-                game.using = scoping.then_some((0, 0));
+                game.using = None;
+                game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
+                if scoping {
+                    assert!(game.start_using_item());
+                }
+                set_camera(game, player_id);
                 game.armor_stands.clear();
-                let player_id = game.remote.as_ref().unwrap().entity_id;
-                game.handle_packet(C::SetCamera(play::SetCamera {
-                    camera_id: player_id,
-                }))
-                .unwrap();
                 if let Some(subject) = subject {
                     let at = Vec3::new(subject.x, subject.y, subject.z);
                     let mut stand = ArmorStand::new(SUBJECT as u32, at, 0.0);
@@ -137,8 +154,7 @@ fn check_signs(game: &mut Game<'_>) {
                         stand.previous = Vec3::new(NEAR.x, NEAR.y, NEAR.z);
                     }
                     game.armor_stands.push(stand);
-                    game.handle_packet(C::SetCamera(play::SetCamera { camera_id: SUBJECT }))
-                        .unwrap();
+                    set_camera(game, SUBJECT);
                 }
                 let visual = match name {
                     "eye_height" => {
@@ -161,9 +177,8 @@ fn check_signs(game: &mut Game<'_>) {
                         // Loss of the held object before a new camera subject is available.
                         game.armor_stands
                             .push(ArmorStand::new(SUBJECT as u32, Vec3::ZERO, 0.0));
-                        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: SUBJECT }))
-                            .unwrap();
-                        game.armor_stands.clear();
+                        set_camera(game, SUBJECT);
+                        remove(game, SUBJECT);
                         visual
                     }
                     "local_camera" => {
@@ -172,7 +187,7 @@ fn check_signs(game: &mut Game<'_>) {
                     }
                     _ => visual,
                 };
-                let quads = render_glyphs(game, (POS, state.0), visual, PARTIAL, cached);
+                let quads = render_glyphs(game, (POS, state.0), visual, PARTIAL, cached, 'A').len();
                 println!("{block} {cached} {name}: {quads}");
                 observed.push((block, cached, name, quads, expected));
             }
@@ -190,10 +205,120 @@ fn check_signs(game: &mut Game<'_>) {
                 .block_entities
                 .insert((0, 0, 0), sign(color, glowing));
             for cached in [true, false] {
-                let quads = render_glyphs(game, (POS, state.0), at, PARTIAL, cached);
+                let quads = render_glyphs(game, (POS, state.0), at, PARTIAL, cached, 'A').len();
                 println!("{block} {cached} {name}: {quads}");
                 observed.push((block, cached, name, quads, expected));
             }
+        }
+
+        // The front and back are independent. Keep their data and light fixed while
+        // the back gains and loses its outline, in both standing and hanging paths.
+        game.world.block_entities.insert(
+            (0, 0, 0),
+            BlockEntity::Sign(SignData {
+                hanging,
+                front: sunrise_client::signs::SignText {
+                    color: 13,
+                    lines: ["A".into(), String::new(), String::new(), String::new()],
+                    ..Default::default()
+                },
+                back: sunrise_client::signs::SignText {
+                    color: 14,
+                    glowing: true,
+                    lines: ["B".into(), String::new(), String::new(), String::new()],
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+        );
+        game.camera_type = CameraType::FirstPerson;
+        game.player = Some(player());
+        let cart_kind = game
+            .remote
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:entity_type")
+            .unwrap()
+            .id("minecraft:minecart")
+            .unwrap();
+        for cached in [true, false] {
+            let check = |game: &Game<'_>, outlined| {
+                let glyphs = |character| {
+                    render_glyphs(game, (POS, state.0), FAR, PARTIAL, cached, character)
+                };
+                assert_eq!(
+                    glyphs('A'),
+                    [(0xFF00_6600, 0x3080, TEXT_NORMAL_SOLID_OVERLAY)],
+                    "{block} front, cached={cached}"
+                );
+                let mut expected_back = Vec::new();
+                if outlined {
+                    expected_back.extend([(0xFF00_0066, 0xF0F0, TEXT_NORMAL_SOLID_OVERLAY); 8]);
+                    expected_back.push((0xFF00_00FF, 0xF0F0, TEXT_POLYGON_OFFSET_SOLID_OVERLAY));
+                } else {
+                    expected_back.push((0xFF00_00FF, 0xF0F0, TEXT_NORMAL_SOLID_OVERLAY));
+                }
+                assert_eq!(glyphs('B'), expected_back, "{block} back, cached={cached}");
+            };
+            set_camera(game, player_id);
+            check(game, false);
+
+            // Replace the stack before the first use tick. The active item remains
+            // the captured one until updatingUsingItem stops the use (in either direction).
+            for (start, replacement, starts_scoped) in [
+                ("minecraft:apple", "minecraft:spyglass", false),
+                ("minecraft:spyglass", "minecraft:apple", true),
+            ] {
+                game.inventory[0] = Some(ItemStack::new(start, 1));
+                assert!(game.start_using_item());
+                check(game, starts_scoped);
+                game.inventory[0] = Some(ItemStack::new(replacement, 1));
+                check(game, starts_scoped);
+                game.remote_tick_using();
+                assert!(game.using.is_none());
+                check(game, false);
+            }
+
+            const CART: i32 = 32;
+            game.handle_packet(C::AddEntity(play::AddEntity {
+                id: CART,
+                kind: cart_kind,
+                uuid: CART as _,
+                position: [2.5, 0.5, 0.5],
+                velocity: [0.0; 3],
+                pitch: 0,
+                yaw: 0,
+                head_yaw: 0,
+                data: 0,
+            }))
+            .unwrap();
+            set_camera(game, CART);
+            check(game, true);
+            remove(game, CART);
+
+            game.armor_stands.push(ArmorStand::new(
+                SUBJECT as u32,
+                Vec3::new(2.5, 0.5, 0.5),
+                0.0,
+            ));
+            set_camera(game, SUBJECT);
+            check(game, true);
+            // Move after selection: removal must keep the last base position, not the first.
+            game.armor_stands.last_mut().unwrap().position.x = FAR.x;
+            check(game, false);
+            game.armor_stands.last_mut().unwrap().position.x = 4.5;
+            remove(game, SUBJECT);
+            assert!(game.armor_stands.is_empty());
+            assert_eq!(
+                game.camera_subject().unwrap().camera.position,
+                [4.5, 0.5, 0.5]
+            );
+            check(game, true);
+            set_camera(game, SUBJECT); // Removed id is not a valid switch.
+            check(game, true);
+            set_camera(game, player_id);
+            check(game, false);
         }
     }
     for (block, cached, name, actual, expected) in observed {
@@ -207,7 +332,8 @@ fn render_glyphs(
     visual: DVec3,
     partial: f32,
     cached: bool,
-) -> usize {
+    character: char,
+) -> Vec<(u32, u32, u32)> {
     let renderer = game.res.block_entity_render();
     let blocks = [block];
     let mut out: Vec<Vertex> = Vec::new();
@@ -238,11 +364,24 @@ fn render_glyphs(
             );
         }
     });
-    let glyph = game.gui.atlas.font.glyph_styled('A', &Default::default());
-    let cell = glyph.rect.expect("the prepared font has a glyph for A");
+    let glyph = game
+        .gui
+        .atlas
+        .font
+        .glyph_styled(character, &Default::default());
+    let cell = glyph.rect.expect("the prepared font has a glyph");
     out.as_chunks::<4>()
         .0
         .iter()
         .filter(|q| q[0].normal == [0; 4] && q[0].uv == [cell.u0, cell.v1])
-        .count()
+        .map(|q| {
+            let v = &q[0];
+            let draw = (v.color, v.light, v.layer & 0xFFFF);
+            assert!(
+                q.iter()
+                    .all(|v| (v.color, v.light, v.layer & 0xFFFF) == draw)
+            );
+            draw
+        })
+        .collect()
 }

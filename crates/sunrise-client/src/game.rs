@@ -4798,18 +4798,8 @@ impl Game<'_> {
             if self.player.is_some() && self.camera_type.is_first_person() && self.scoping() {
                 SignOutline::FirstPersonScope
             } else {
-                // This is the same subject identity used by the native camera API. An attached
-                // subject is not the local player, even if it no longer has a camera snapshot.
-                let position = if self.remote_camera_id().is_some() {
-                    self.spectated_camera_snapshot()
-                        .map(|entity| entity.position)
-                } else {
-                    self.player
-                        .as_ref()
-                        .map(|p| [p.position.x, p.position.y, p.position.z])
-                };
-                position.map_or(SignOutline::None, |p| {
-                    SignOutline::CameraEntity(glam::DVec3::from_array(p))
+                self.camera_subject().map_or(SignOutline::None, |subject| {
+                    SignOutline::CameraEntity(glam::DVec3::from_array(subject.camera.position))
                 })
             };
         let scene = BlockEntityScene {
@@ -8561,8 +8551,13 @@ impl Game<'_> {
                     .block_entities
                     .has_mods()
                     .then(|| {
-                        r.visible_block_entities(self.settings.chunk_fade as f32, camera, view, radius)
-                            .filter(|((_, state), _)| !self.res.block_entity_render().renders(*state))
+                        r.visible_block_entities(
+                            self.settings.chunk_fade as f32,
+                            camera,
+                            view,
+                            radius,
+                        )
+                        .filter(|((_, state), _)| !self.res.block_entity_render().renders(*state))
                     })
                     .into_iter()
                     .flatten();

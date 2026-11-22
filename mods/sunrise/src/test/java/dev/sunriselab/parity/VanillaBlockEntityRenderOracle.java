@@ -306,27 +306,32 @@ public final class VanillaBlockEntityRenderOracle {
     }
 
     static JsonArray textVertices(FormattedCharSequence sequence, float x, float y, int color, int outline, int light) {
+        var result = new JsonArray();
+        if (outline != 0) {
+            recordTextVertices(result, font.prepare8xTextOutline(sequence, x, y, outline), light, Font.DisplayMode.NORMAL);
+        }
+        recordTextVertices(result, font.prepareText(sequence, x, y, color, false, false, 0), light,
+            outline == 0 ? Font.DisplayMode.NORMAL : Font.DisplayMode.POLYGON_OFFSET);
+        return result;
+    }
+
+    // Capture the prepared glyphs in the two modes of TextFeatureRenderer.renderText, on one plane.
+    static void recordTextVertices(JsonArray result, Font.PreparedText prepared, int light, Font.DisplayMode mode) {
         var verts = new ArrayList<float[]>();
         var consumer = recorder(verts);
         var pose = new Matrix4f();
-        var visitor = new Font.GlyphVisitor() {
+        prepared.visit(new Font.GlyphVisitor() {
             @Override public void acceptRenderable(net.minecraft.client.gui.font.TextRenderable renderable) {
                 renderable.render(pose, consumer, light, false);
             }
-        };
-        if (outline != 0) {
-            font.prepare8xTextOutline(sequence, x, y, outline).visit(visitor);
-            pose.translate(0, 0, 0.05F); // Sunrise's POLYGON_OFFSET substitute.
-        }
-        font.prepareText(sequence, x, y, color, false, false, 0).visit(visitor);
-        var result = new JsonArray();
+        });
         for (float[] v : verts) {
             var point = new JsonArray();
             point.add(v[0]); point.add(v[1]); point.add(v[2]);
             point.add(Integer.toUnsignedLong(Float.floatToRawIntBits(v[3])));
+            point.add(mode.name());
             result.add(point);
         }
-        return result;
     }
 
     static DyeColor dye(String name) {

@@ -149,22 +149,18 @@ impl Game<'_> {
     /// use (`held_until_released`), and a consumable's eating animation and
     /// its crumbs until the server's USE_ITEM_COMPLETE. The server sends the
     /// stack, its hunger and the sounds.
-    pub(super) fn remote_tick_using(&mut self) {
+    pub(in crate::game) fn remote_tick_using(&mut self) {
         self.tick_client_item_use();
         let Some((slot, ticks)) = self.using else {
             return;
         };
         let stack = self.stack_in(slot).cloned();
-        // The use stops when the hand no longer holds the item it began with
-        // (ItemStack.isSameItem).
-        let item = stack.as_ref().map(|s| Arc::clone(&s.item));
-        if let Some(r) = self.remote.as_mut() {
-            if ticks == 0 {
-                r.use_item = item;
-            } else if r.use_item != item {
-                self.using = None;
-                return;
-            }
+        // ItemStack.isSameItem: compare to the item captured at start, including on tick zero.
+        let active = self.use_start.item.as_ref().map(|s| &s.item);
+        if stack.as_ref().map(|s| &s.item) != active {
+            self.using = None;
+            self.use_start = Default::default();
+            return;
         }
         // Another hotbar slot picked: LivingEntity.updatingUsingItem sees a
         // different stack in the hand. The off hand keeps its item.

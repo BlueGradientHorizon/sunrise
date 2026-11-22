@@ -372,8 +372,6 @@ pub(super) struct Remote {
     pub(super) camera: Option<i32>,
     /// Detached camera snapshot retained after `RemoveEntities` until `SetCamera` replaces it.
     pub(super) detached_camera: Option<Box<crate::game::remote_camera::ResolvedCameraEntity>>,
-    /// The item the player's use began with (`LivingEntity.useItem`).
-    pub(super) use_item: Option<Arc<str>>,
     pub(super) dimension: DimensionType,
     /// The level's key (`minecraft:overworld`): where its far terrain is kept.
     pub(in crate::game) level: String,

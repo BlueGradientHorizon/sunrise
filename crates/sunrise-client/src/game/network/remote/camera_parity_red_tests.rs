@@ -1058,7 +1058,7 @@ fn culling_near_plane_uses_max_of_fov_and_option_fov_26_3() {
 
         game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
         game.selected = 0;
-        game.using = Some((0, 5));
+        assert!(game.start_using_item());
         for _ in 0..20 {
             game.tick_fov();
         }
@@ -1473,7 +1473,7 @@ fn camera_player_fov_modifier_and_death_isolation_26_3() {
             game.ui.death_time = 10;
             game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
             game.selected = 0;
-            game.using = Some((0, 5));
+            assert!(game.start_using_item());
 
             add_entity_with_data(game, id, kind, [5.5, 64.0, 5.5], 0.0, 0.0, 0);
             game.handle_packet(C::SetCamera(play::SetCamera { camera_id: id }))
