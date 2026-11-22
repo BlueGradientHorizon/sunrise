@@ -89,15 +89,12 @@ impl Game<'_> {
             sunrise_client::spans::time("replace_remote", || {
                 self.streaming.replace_remote(&mut self.world, chunk)
             });
-            self.world
-                .block_entities
-                .retain(|k, _| (k.0 >> 4, k.2 >> 4) != (x, z));
         } else {
             self.streaming.insert_remote(&mut self.world, chunk);
         }
-        self.world
-            .block_entities
-            .unload(|k| (k.0 >> 4, k.2 >> 4) == (x, z));
+        sunrise_client::spans::time("unload_block_entities", || {
+            self.world.block_entities.unload_column((x, z));
+        });
         self.load_block_entities((x, z), &p.chunk.block_entities);
         // After the column's block entities load: an attachment keeps its block entity if the
         // packet sent it again, and one left from a forgotten column goes.
@@ -125,6 +122,11 @@ impl Game<'_> {
         (x, z): (i32, i32),
         infos: &[sunrise_protocol::chunk::BlockEntityInfo],
     ) {
+        let _load = if infos.is_empty() {
+            None
+        } else {
+            sunrise_client::spans::raw_flight_guard("load_block_entities")
+        };
         for info in infos {
             let pos = (
                 x * 16 + i32::from(info.packed_xz as u8 >> 4),

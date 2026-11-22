@@ -328,8 +328,10 @@ impl World {
     ) {
         if self.chunks.contains_key(&chunk) {
             let incoming: FxHashSet<_> = entities.iter().map(|(pos, _)| *pos).collect();
-            self.block_entities
-                .unload(|p| (p.0 >> 4, p.2 >> 4) == chunk && !incoming.contains(p));
+            crate::spans::time("unload_block_entities", || {
+                self.block_entities
+                    .unload_column_where(chunk, |p| !incoming.contains(p));
+            });
         }
         self.block_entities.load_chunk(entities);
     }
