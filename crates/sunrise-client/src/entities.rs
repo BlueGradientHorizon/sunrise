@@ -1759,6 +1759,9 @@ pub struct ArmorStand {
     /// Unsaved fire immunity granted on this logical side.
     pub mod_fire_immune: bool,
     pub health: f32,
+    pub tick_count: i32,
+    /// Transient `LivingEntity.lastHurtMob`; an owned arrow or wind charge can set it.
+    pub last_hurt_mob: Option<(u32, i32)>,
     pub id: u32,
     pub position: Vec3,
     /// `Entity.xo`, `yo`, `zo`: the position at the start of the tick, which
@@ -2053,6 +2056,8 @@ impl ArmorStand {
             fire_ticks: 0,
             mod_fire_immune: false,
             health: 20.0,
+            tick_count: 0,
+            last_hurt_mob: None,
             id,
             position,
             previous: position,

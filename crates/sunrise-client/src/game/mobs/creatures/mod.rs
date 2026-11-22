@@ -12,6 +12,8 @@ mod combat_adaptations;
 mod conversion_identity;
 mod death_tail;
 mod hoglin_target;
+#[cfg(test)]
+mod last_hurt_mob_tests;
 mod living_draw;
 use living_draw::LivingFrame;
 #[path = "../../creatures/mob_conversion.rs"]
@@ -571,7 +573,7 @@ impl Game<'_> {
             spectator: self.spectator(),
             gold_armor: self.wearing_gold(),
             hurt_by: self.player_hurt_by(),
-            last_hurt: self.combat.last_hurt_mob.map(|(id, at)| (Who::Mob(id), at)),
+            last_hurt: p.health.last_hurt_mob,
             velocity: p.velocity,
             yaw: self.yaw,
             sprinting: p.sprinting,
@@ -2649,9 +2651,17 @@ impl Game<'_> {
                 // (`entity_motion_events`, `tick_mob_sculk_events`). Birds
                 // above use their movement's flyDist/nextFlap threshold.
                 MobEvent::GameEvent { .. } => {}
-                MobEvent::AttackPlayer(amount, from) => {
+                MobEvent::AttackPlayer(amount, from, attacker) => {
                     self.combat.hit_landed =
                         self.mob_hits_player(amount, from, "minecraft:mob_attack");
+                    if self.combat.hit_landed
+                        && let Some(attacker) = attacker
+                    {
+                        self.remember_mob_target(
+                            attacker,
+                            self.player.as_ref().map(|p| p.entity_id as u32),
+                        );
+                    }
                 }
                 // Bee.doHurtTarget: a sting that hurt leaves the stinger in the
                 // body, then the poison; the bee's own stinger, calm-down and
@@ -2663,6 +2673,7 @@ impl Game<'_> {
                     source,
                 } => self.sting(target, amount, poison_ticks, source),
                 MobEvent::AttackPlayerWithEffect {
+                    attacker,
                     amount,
                     from,
                     effect,
@@ -2672,11 +2683,18 @@ impl Game<'_> {
                     self.combat.hit_landed =
                         self.mob_hits_player(amount, from, "minecraft:mob_attack");
                     if self.combat.hit_landed {
+                        self.remember_mob_target(
+                            attacker,
+                            self.player.as_ref().map(|p| p.entity_id as u32),
+                        );
                         self.give_player_effect(effect, ticks, amplifier);
                     }
                 }
                 MobEvent::DamagePlayer { amount, from, kind } => {
-                    self.mob_hits_player(amount, from, kind);
+                    let hurt = self.mob_hits_player(amount, from, kind);
+                    if kind == "minecraft:spear" {
+                        self.combat.hit_landed = hurt;
+                    }
                 }
                 MobEvent::ElderCurse { at, silent } => self.elder_curse(at, silent),
                 MobEvent::SetVelocity { target, velocity } => {
@@ -2894,8 +2912,15 @@ impl Game<'_> {
                     target,
                     amount,
                     source,
+                    remember_target,
                 } => {
                     self.combat.hit_landed = self.mob_attacks_mob(target, amount, source);
+                    if remember_target
+                        && self.combat.hit_landed
+                        && let Some(Who::Mob(attacker)) = source.attacker
+                    {
+                        self.remember_mob_target(attacker, Some(target));
+                    }
                 }
                 MobEvent::DamageMob {
                     target,
@@ -2916,10 +2941,13 @@ impl Game<'_> {
                     // effect sits inside the branch where the hit landed, and
                     // `LivingEntity.addEffect` takes a mob as well as a player.
                     self.combat.hit_landed = self.mob_attacks_mob(target, amount, source);
-                    if self.combat.hit_landed
-                        && let Some(t) = self.mobs.iter_mut().find(|m| m.id == target)
-                    {
-                        t.add_effect(effect, ticks, amplifier);
+                    if self.combat.hit_landed {
+                        if let Some(Who::Mob(attacker)) = source.attacker {
+                            self.remember_mob_target(attacker, Some(target));
+                        }
+                        if let Some(t) = self.mobs.iter_mut().find(|m| m.id == target) {
+                            t.add_effect(effect, ticks, amplifier);
+                        }
                     }
                 }
                 MobEvent::CubeHurtPlayer { cube, amount, from } => {
@@ -3028,6 +3056,20 @@ impl Game<'_> {
                         let sound = sunrise_client::mobs::finalize::variant_sound(m, "hiss")
                             .unwrap_or("entity.cat.hiss");
                         self.audio.play(&full_id(sound), Some(at), 1.0, 1.0);
+                    }
+                }
+                MobEvent::StabMemory {
+                    attacker,
+                    target,
+                    attempted_damage,
+                    otherwise_affected,
+                } => {
+                    if otherwise_affected || (attempted_damage && self.combat.hit_landed) {
+                        let target = match target {
+                            Who::Player => self.player.as_ref().map(|p| p.entity_id as u32),
+                            Who::Mob(id) => Some(id),
+                        };
+                        self.remember_mob_target(attacker, target);
                     }
                 }
                 MobEvent::Tamed { .. }
@@ -5787,6 +5829,44 @@ impl Game<'_> {
         });
     }
 
+    /// `setLastHurtMob` at the arrow/wind charge's onHitEntity site.
+    pub(in crate::game) fn remember_projectile_target(&mut self, p: &Projectile, who: Who) {
+        let target = match who {
+            Who::Player => self.player.as_ref().map(|body| body.entity_id as u32),
+            Who::Mob(id) => self.last_hurt_living_target(id).map(|_| id),
+        };
+        match p.owner {
+            Some(Who::Mob(id)) => self.remember_mob_target(id, target),
+            Some(Who::Player) => {
+                if let Some(shooter) = self.projectile_player_owner_id(p.guest) {
+                    self.remember_player_projectile_target(shooter, target);
+                }
+            }
+            None => {
+                // These living bodies can be assigned as owners, but the projectile's
+                // combat shortcut (`Who`) only represents mobs and players.
+                let Some(owner) = p.owner_uuid.and_then(|uuid| {
+                    self.target_by_uuid(sunrise_client::lan::playerdata::ints_uuid(uuid))
+                }) else {
+                    return;
+                };
+                match owner {
+                    super::commands::Target::Stand(id) => {
+                        if let Some(stand) = self.armor_stands.iter_mut().find(|s| s.id == id) {
+                            stand.last_hurt_mob = target.map(|id| (id, stand.tick_count));
+                        }
+                    }
+                    super::commands::Target::Dragon(id) => {
+                        if let Some(dragon) = self.dragon.as_mut().filter(|d| d.id == id) {
+                            dragon.last_hurt_mob = target.map(|id| (id, dragon.ticks));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     /// A projectile's hit, landed in the attack of its owner.
     pub(super) fn projectile_hit(&mut self, p: &Projectile, hit: Hit) -> Result<()> {
         let attack = self.projectile_attack(p);
@@ -5871,6 +5951,9 @@ impl Game<'_> {
                     }),
                     Who::Mob(id),
                 );
+                if matches!(p.kind, ProjectileKind::Arrow { .. }) {
+                    self.remember_projectile_target(p, Who::Mob(id));
+                }
                 let outcome = match self.hit_special(
                     id,
                     amount,
@@ -5929,6 +6012,9 @@ impl Game<'_> {
             // AbstractArrow.onHitEntity on an item frame: spent when the
             // frame took the hit, turned back when a fixed one refused it.
             let by_player = p.owner == Some(Who::Player);
+            if matches!(p.kind, ProjectileKind::Arrow { .. }) {
+                self.remember_projectile_target(p, Who::Mob(id));
+            }
             let hurt = self.projectile_hurts_frame(id, by_player, by_player && self.creative);
             let outcome = if hurt {
                 EntityHit::Hurt
@@ -5948,6 +6034,9 @@ impl Game<'_> {
             let mut arrow = p.clone();
             let victim_type = self.carts[i].kind.id().to_owned();
             let amount = self.shot_damage(&mut arrow, Some(&victim_type), Who::Mob(id));
+            if matches!(p.kind, ProjectileKind::Arrow { .. }) {
+                self.remember_projectile_target(p, Who::Mob(id));
+            }
             let burning = p.arrow.as_ref().is_some_and(|a| a.on_fire());
             let creative = p.owner == Some(Who::Player) && self.creative;
             let kind = self.carts[i].kind.id();
@@ -5980,6 +6069,9 @@ impl Game<'_> {
             let mut arrow = p.clone();
             let victim_type = self.boats[i].entity_type();
             let amount = self.shot_damage(&mut arrow, Some(&victim_type), Who::Mob(id));
+            if matches!(p.kind, ProjectileKind::Arrow { .. }) {
+                self.remember_projectile_target(p, Who::Mob(id));
+            }
             let creative = p.owner == Some(Who::Player) && self.creative;
             let kind = self.boats[i].entity_type();
             let damage_type = sunrise_client::health::damage_type(
@@ -6060,6 +6152,7 @@ impl Game<'_> {
             ) if pickable_projectile_hit(id).is_some() => {
                 let mut arrow = p.clone();
                 arrow.arrow_damage();
+                self.remember_projectile_target(p, Who::Mob(id));
                 self.finish_arrow_hit(arrow, EntityHit::Refused);
             }
             (ProjectileKind::Arrow { .. }, Hit::Entity { who, .. }) => {
@@ -6073,6 +6166,7 @@ impl Game<'_> {
                         .map(|m| m.kind.id.clone()),
                 };
                 let amount = self.shot_damage(&mut arrow, victim.as_deref(), who);
+                self.remember_projectile_target(p, who);
                 let player_fire = self.player.as_ref().map(|pl| pl.fire_ticks);
                 // AbstractArrow.onHitEntity saves the fire, ignites, then puts
                 // it back when hurtOrSimulate fails and the target still takes

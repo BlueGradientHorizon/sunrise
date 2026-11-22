@@ -49,6 +49,7 @@ pub(super) const GOAL_VIEW_READS: &[&str] = &[
     "entity_invulnerable_to_damage",
     "living_is_climbing",
     "living_last_attacker",
+    "living_last_hurt_mob",
     "living_kill_credit",
     "entity_direction",
     "entity_pose",

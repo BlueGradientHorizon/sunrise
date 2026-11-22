@@ -20,8 +20,8 @@ pub trait EntityLifetimeBackend {
     /// kinds its portal walk carries (zero when it keeps no state for one).
     fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32>;
     /// Side: server.
-    /// Ticks the entity has lived (`Entity.tickCount`): players, mobs, item
-    /// entities, experience orbs and minecarts. Wraps as vanilla's `int` does.
+    /// Ticks the entity has lived (`Entity.tickCount`): living entities,
+    /// item entities, experience orbs and minecarts. Wraps as vanilla's `int` does.
     fn entity_tick_count(&self, entity: EntityRef) -> Option<i32>;
 }
 /// The handles' writes of the `entity_lifetime` area, implemented by the game and reached through [`BackendMut`].

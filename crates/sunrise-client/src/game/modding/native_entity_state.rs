@@ -618,8 +618,8 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// Ticks the entity has lived (`Entity.tickCount`): players, mobs, item
-    /// entities, experience orbs and minecarts. Wraps as vanilla's `int` does.
+    /// Ticks the entity has lived (`Entity.tickCount`): living entities,
+    /// item entities, experience orbs and minecarts. Wraps as vanilla's `int` does.
     pub(super) fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
         Some(match self.native_entity_target(entity)? {
             Target::Player => self.player.as_ref()?.health.tick_count,
@@ -633,6 +633,8 @@ impl Game<'_> {
                     .unwrap_or(0)
             }
             Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.age as i32,
+            Target::Stand(id) => self.armor_stands.iter().find(|s| s.id == id)?.tick_count,
+            Target::Dragon(id) => self.dragon.as_ref().filter(|d| d.id == id)?.ticks,
             Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
             Target::Orb(id) => self.orbs.iter().find(|o| o.id == id)?.ticks as i32,
             Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,

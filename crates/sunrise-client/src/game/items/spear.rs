@@ -279,6 +279,9 @@ impl Game<'_> {
             .find(&self.mobs, id)
             .filter(|&i| self.mobs[i].join == join && !self.mobs[i].removed)
         else {
+            if hurt {
+                self.remember_player_target(Some(id));
+            }
             return hurt;
         };
         // causeExtraKnockback: a push of 0.4, then the weapon's Knockback.
@@ -307,7 +310,12 @@ impl Game<'_> {
             // ...and the attacker stops sprinting.
             self.stop_sprint_after_extra_knockback();
         }
-        let dismounted = dismounts && self.mobs[index].extra.mount.is_some();
+        let dismounted = dismounts
+            && self.mobs[index].extra.mount.is_some()
+            && !self
+                .items()
+                .entity_type_tags
+                .contains("minecraft:cannot_be_dismounted_by_item_usage", &kind);
         if dismounted {
             self.dismount_mob(id);
         }
@@ -325,7 +333,7 @@ impl Game<'_> {
         if magic_boost > 0.0 {
             self.critical_hit(self.lan_acting, id as i32, feet, width, height, true);
         }
-        self.combat.last_hurt_mob = Some((id, self.world.game_time));
+        self.remember_player_target(Some(id));
         // itemAttackInteraction: hurtEnemy (statistic, wear), and the
         // post-attack enchantments when the target was hurt.
         if let Some(stack) = self.held().cloned() {

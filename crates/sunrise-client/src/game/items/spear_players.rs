@@ -267,7 +267,12 @@ impl Game<'_> {
                 {
                     let _ = p.ignite_for_ticks((s.ignite * 20.0) as i32);
                 }
-                let dismounted = s.dismounts && g.riding.is_some();
+                let dismounted = s.dismounts
+                    && g.riding.is_some()
+                    && !g.items().entity_type_tags.contains(
+                        "minecraft:cannot_be_dismounted_by_item_usage",
+                        "minecraft:player",
+                    );
                 if dismounted {
                     g.stop_riding();
                 }
@@ -309,6 +314,7 @@ impl Game<'_> {
             if l.magic {
                 self.critical_hit(self.lan_acting, l.id, l.feet, l.width, l.height, true);
             }
+            self.remember_player_target(Some(l.id as u32));
             // itemAttackInteraction: hurtEnemy (statistic, wear), and the
             // post-attack enchantments when the target was hurt.
             if let Some(stack) = self.held().cloned() {

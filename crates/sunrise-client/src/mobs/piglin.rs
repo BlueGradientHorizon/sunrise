@@ -2120,11 +2120,12 @@ pub fn hoglin_hurt_target(m: &mut Mob, who: Who, cx: &mut Cx) {
     match who {
         Who::Player => cx
             .events
-            .push(cx.w.route_player_event(MobEvent::AttackPlayer(amount, from))),
+            .push(cx.w.route_player_event(MobEvent::AttackPlayer(amount, from, None))),
         Who::Mob(id) => cx.events.push(MobEvent::AttackMob {
             target: id,
             amount,
             source: super::Damage::mob(m.id, from),
+            remember_target: false,
         }),
     }
     if !m.is_baby() {

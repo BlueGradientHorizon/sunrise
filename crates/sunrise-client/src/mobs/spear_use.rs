@@ -282,6 +282,7 @@ fn stab_attack(
                 target: id,
                 amount: damage,
                 source,
+                remember_target: false,
             }),
         }
         affected = true;
@@ -297,9 +298,26 @@ fn stab_attack(
         let power = gear::knockback(m) as f32 / 2.0;
         cause_extra_knockback(m, target, power, source, w, events);
     }
-    if dismounts && w.target_info(target).is_some_and(|t| t.passenger) {
+    let dismounted = dismounts
+        && w.target_info(target).is_some_and(|t| t.passenger)
+        && !w.entity_has(
+            "minecraft:cannot_be_dismounted_by_item_usage",
+            match target {
+                Who::Player => "minecraft:player",
+                Who::Mob(id) => w.seen(id).map_or("", |s| s.kind.id.as_str()),
+            },
+        );
+    if dismounted {
         affected = true;
         events.push(w.route_player_event(MobEvent::StabDismount { target }));
+    }
+    if affected {
+        events.push(w.route_player_event(MobEvent::StabMemory {
+            attacker: m.id,
+            target,
+            attempted_damage: deals_damage,
+            otherwise_affected: deals_knockback || dismounted,
+        }));
     }
     affected
 }

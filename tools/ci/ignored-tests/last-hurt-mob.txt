@@ -1,0 +1,1 @@
+sunrise-client game::creatures::last_hurt_mob_tests::last_hurt_mob_follows_the_attacking_entity lib daily resources
