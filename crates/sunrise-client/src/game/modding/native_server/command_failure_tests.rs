@@ -95,15 +95,19 @@ fn executor_failure_respects_source_silence_and_stores_zero() {
                             text::Text::tr("command.failed", &[]).plain()
                         );
 
-                        game.as_guest(12, |game| {
-                            game.ui.registries.permission = 2;
-                            assert!(game.run_command("data modify storage test:out success set value 42"));
-                            assert!(!game.run_command_quietly(
-                                "execute store success storage test:out success int 1 run rejecttest",
-                            ));
-                            assert!(game.run_command("execute if data storage test:out {success:0}"));
-                        })
-                        .unwrap();
+                        assert!(game.run_guest_command(command(
+                            "data merge storage test:out {success:42,result:42}",
+                            true,
+                        )));
+                        assert!(!game.run_guest_command(command(
+                            "execute store success storage test:out success int 1 \
+                             store result storage test:out result int 1 run rejecttest",
+                            true,
+                        )));
+                        assert!(game.run_guest_command(command(
+                            "execute if data storage test:out {success:0,result:0}",
+                            true,
+                        )));
                     });
                 },
             );
