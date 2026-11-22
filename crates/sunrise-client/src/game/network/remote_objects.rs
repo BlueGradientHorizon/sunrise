@@ -136,10 +136,10 @@ impl Game<'_> {
         } else if kind == "minecraft:painting" {
             // The variant comes with the entity data; until then the
             // registry's first one (VariantUtils.getAny).
-            let (variant, width, height) = self
+            let (variant, asset, width, height) = self
                 .remote_painting_variant(0)
-                .map_or((Arc::from("minecraft:kebab"), 1, 1), |v| {
-                    (v.id, v.width, v.height)
+                .map_or((Arc::from("minecraft:kebab"), None, 1, 1), |v| {
+                    (v.id, Some(Arc::from(v.asset)), v.width, v.height)
                 });
             // Direction 3D data value (north 2, south 3, west 4, east 5) to 2D.
             let facing = match data {
@@ -155,7 +155,7 @@ impl Game<'_> {
                 pos: block,
                 facing,
                 variant,
-                asset: None,
+                asset,
                 width,
                 height,
                 check_interval: 0,
