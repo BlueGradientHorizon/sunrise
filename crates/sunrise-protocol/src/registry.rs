@@ -140,18 +140,25 @@ impl Builtin {
                 }
                 slots[id] = (!entry.is_empty()).then_some(entry.as_str());
             }
-            // Publish canonical IDs in report order by numeric slot. Invalid IDs leave
-            // gaps, just like an unassigned slot; other entries keep their network IDs.
-            let names = slots
-                .into_iter()
-                .map(|entry| {
-                    entry
-                        .and_then(|entry| Identifier::parse(entry).ok())
-                        .map(|id| id.to_string())
-                        .unwrap_or_default()
-                })
-                .collect();
-            registries.insert(name.clone(), Ids::from_names(names));
+            // Publish canonical IDs in numeric slot order. Invalid IDs leave gaps;
+            // like MappedRegistry.register, reject repeated identifier keys.
+            let mut names = Vec::with_capacity(slots.len());
+            let mut ids = HashMap::with_capacity(entries.len());
+            for (slot, entry) in slots.into_iter().enumerate() {
+                let key = entry
+                    .and_then(|entry| Identifier::parse(entry).ok())
+                    .map(|id| id.to_string())
+                    .unwrap_or_default();
+                if let Some(previous) = ids.insert(key.clone(), slot as i32)
+                    && !key.is_empty()
+                {
+                    return Err(Error::new(format!(
+                        "{name}: duplicate registry key {key} at protocol_ids {previous} and {slot}"
+                    )));
+                }
+                names.push(key);
+            }
+            registries.insert(name.clone(), Ids { names, ids });
         }
         Ok(Self { registries })
     }
@@ -578,6 +585,15 @@ mod tests {
         let b = Builtin::parse(sparse).unwrap();
         let x = b.get("minecraft:block_entity_type").unwrap();
         assert_eq!(x.name(7), Some("minecraft:sign"));
+    }
+
+    #[test]
+    fn rejects_duplicate_canonical_report_keys() {
+        let report = r#"{"minecraft:item":{"entries":{
+            "stick":{"protocol_id":1},
+            "minecraft:stick":{"protocol_id":5}
+        }}}"#;
+        assert!(Builtin::parse(report).is_err());
     }
 
     #[test]
