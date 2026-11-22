@@ -111,7 +111,8 @@ pub struct SkinFrame {
     pub spans: Vec<super::pack_draw::EntitySpan>,
     /// Vertices the jobs write: a whole number of quads.
     pub vertices: u32,
-    /// A mob's CPU draw followed by a GPU draw. The CPU range indexes the unbatched stream.
+    /// CPU draws that precede a posed draw, in increasing GPU destination order.
+    /// The CPU ranges index the unbatched stream.
     pub insertions: Vec<(u32, Range<u32>)>,
     /// Glowing entities' silhouettes posed here (`OutlineBufferSource`'s copy of
     /// their draws, [`SkinFrame::outline_since`]): `dst` counts from the first.
@@ -171,7 +172,13 @@ impl SkinFrame {
         self.parts.truncate(parts);
         self.vertices = vertices;
         self.spans.retain(|s| s.start <= vertices);
-        self.insertions.retain(|(gpu, _)| *gpu < vertices);
+        while self
+            .insertions
+            .last()
+            .is_some_and(|(gpu, _)| *gpu >= vertices)
+        {
+            self.insertions.pop();
+        }
     }
 
     /// Whether the renderer has anything to take.
@@ -661,6 +668,21 @@ mod tests {
         assert!(poses(false, Some(true), false, no_mod));
         assert!(!poses(false, Some(true), false, mod_reads));
         assert!(!poses(false, Some(false), false, no_mod));
+    }
+
+    #[test]
+    fn culling_keeps_earlier_cpu_insertions_and_discards_only_the_removed_draws() {
+        let mut frame = SkinFrame::default();
+        frame.insert_cpu_before(4, 0..4);
+        frame.vertices = 8;
+        let mark = frame.mark();
+        frame.insert_cpu_before(8, 4..8);
+        frame.insert_cpu_before(12, 8..12);
+        frame.vertices = 16;
+        frame.truncate(mark);
+        assert_eq!(frame.insertions, [(4, 0..4)]);
+        frame.truncate(mark);
+        assert_eq!(frame.insertions, [(4, 0..4)]);
     }
 
     fn device() -> Option<(wgpu::Device, wgpu::Queue)> {

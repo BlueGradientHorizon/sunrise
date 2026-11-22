@@ -68,6 +68,7 @@ enum Placed {
 }
 
 /// How [`Skin::route`] says a model is drawn.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Route {
     /// On the GPU.
@@ -75,7 +76,8 @@ pub enum Route {
     /// On the CPU because a mod draws one of its parts itself (`render::takes_part`): the
     /// mob's other models can stay on the GPU.
     Taken,
-    /// On the CPU because the GPU path can't pose it: so is the whole mob.
+    /// On the CPU because a polygon does not face an axis. Other eligible models
+    /// on the same mob can still use the GPU.
     Cpu,
 }
 
@@ -454,6 +456,7 @@ impl<'a> Skin<'a> {
     }
 
     /// How this model is drawn (decided on its first sight): posed here, or on the CPU.
+    #[cfg(test)]
     pub fn route(&mut self, model: &Arc<Part>) -> Route {
         match self.models.place(model, self.frame).0 {
             Placed::Gpu(_) => Route::Gpu,
