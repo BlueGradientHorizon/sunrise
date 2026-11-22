@@ -263,22 +263,29 @@ mod tests {
                 .unwrap_err()
                 .contains("duplicate")
         );
-        for id in [
-            "pot",
-            "demo:",
-            ":pot",
-            "demo:Pot",
-            "..:pot",
-            "demo:a:b",
+        let malformed = ["pot", "demo:", ":pot", "demo:Pot", "..:pot", "demo:a:b"];
+        for id in malformed {
+            let error = registrar.recipe_book_type(id).unwrap_err();
+            assert!(
+                error.contains("expected a namespaced identifier"),
+                "{error}"
+            );
+        }
+        let built_in = [
             "minecraft:crafting",
             "minecraft:furnace",
             "minecraft:blast_furnace",
             "minecraft:smoker",
-        ] {
-            assert!(registrar.recipe_book_type(id).is_err(), "{id}");
+        ];
+        for id in built_in {
+            let error = registrar.recipe_book_type(id).unwrap_err();
+            assert!(error.contains("built-in recipe book type"), "{error}");
         }
         assert_eq!(registrar.recipe_book_types.len(), 3);
-        assert_eq!(registrar.refused.len(), 10);
+        assert_eq!(
+            registrar.refused.len(),
+            1 + malformed.len() + built_in.len()
+        );
     }
 
     #[test]
