@@ -128,6 +128,20 @@ impl Game<'_> {
     pub(in crate::game) fn tick_remote_entities(&mut self, running: bool) {
         use crate::game::native_ticks::{PLAYER, TickKind};
 
+        let frozen_ticking: Vec<i32> = if running {
+            Vec::new()
+        } else {
+            self.remote
+                .as_ref()
+                .map(|r| {
+                    r.entities
+                        .keys()
+                        .copied()
+                        .filter(|&id| self.entity_ticks_while_frozen(r, id as u32))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
         if running {
             if let Some(r) = self.remote.as_mut() {
                 for t in r.entities.values_mut() {
@@ -141,6 +155,22 @@ impl Game<'_> {
             }
             self.tick_text_displays();
             self.tick_remote_ominous_item_spawners();
+        } else {
+            // ClientLevel.tickPassenger: non-players in a player-bearing passenger tree still tick.
+            if let Some(r) = self.remote.as_mut() {
+                for &id in &frozen_ticking {
+                    if let Some(t) = r.entities.get_mut(&id) {
+                        t.previous = t.position;
+                        t.previous_yaw = t.yaw;
+                        t.previous_pitch = t.pitch;
+                    }
+                }
+            }
+            for &id in &frozen_ticking {
+                if let Some(i) = self.interactions.get_mut(&id) {
+                    i.snapshot_previous();
+                }
+            }
         }
         // EntityTickEvent.Pre for the mobs and players this client ticks, once for the family
         // before their tick, and the Post after it (below). A canceled one keeps its state. One
@@ -155,7 +185,13 @@ impl Game<'_> {
             let players = self.remote.as_ref().map(|r| &r.level_players);
             for m in self.mobs.iter() {
                 let player = players.is_some_and(|p| p.contains_key(&(m.id as i32)));
-                if (running || player) && driven != Some(m.id) {
+                let ticks = running
+                    || player
+                    || self
+                        .remote
+                        .as_ref()
+                        .is_some_and(|r| self.entity_ticks_while_frozen(r, m.id));
+                if ticks && driven != Some(m.id) {
                     let alone = if player {
                         alone_player
                     } else {
@@ -194,8 +230,13 @@ impl Game<'_> {
             let players = self.remote.as_ref().map(|r| &r.level_players);
             fluids.clear();
             fluids.extend(self.mobs.iter().map(|m| {
-                (running || players.is_some_and(|p| p.contains_key(&(m.id as i32))))
-                    .then(|| w.fluids(m.bounds(), m.eye_y()))
+                (running
+                    || players.is_some_and(|p| p.contains_key(&(m.id as i32)))
+                    || self
+                        .remote
+                        .as_ref()
+                        .is_some_and(|r| self.entity_ticks_while_frozen(r, m.id)))
+                .then(|| w.fluids(m.bounds(), m.eye_y()))
             }));
             rain.clear();
             rain.extend(self.mobs.iter().map(|m| {
@@ -366,7 +407,13 @@ impl Game<'_> {
                 .unwrap()
                 .level_players
                 .contains_key(&(id as i32));
-            if (!running && !player) || driven == Some(id) || round.canceled(id) {
+            let ticks_frozen = !running
+                && (player
+                    || self
+                        .remote
+                        .as_ref()
+                        .is_some_and(|r| self.entity_ticks_while_frozen(r, id)));
+            if (!running && !ticks_frozen) || driven == Some(id) || round.canceled(id) {
                 continue;
             }
             // Of a type a mod named: its own Pre, then its fluid step and its tick.
@@ -494,9 +541,20 @@ impl Game<'_> {
                     _ => {}
                 }
             }
+            if m.invulnerable > 0 {
+                m.invulnerable -= 1;
+            }
             if m.hurt_time > 0 {
                 m.hurt_time -= 1;
             }
+            if m.extra.max_health_dirty {
+                m.extra.max_health_dirty = false;
+                m.health = m.health.min(m.attrs.max_health);
+            }
+            super::super::potions::client_tick_effects(
+                &mut m.extra.client_effects,
+                &mut m.extra.darkness_blend,
+            );
             if !m.alive() {
                 m.death_time += 1;
             }
@@ -803,7 +861,7 @@ impl Game<'_> {
                         .and_then(|h| h.interpolate());
                     a.interpolate(step.map(|at| {
                         let p = at.position;
-                        (Vec3::new(p[0], p[1], p[2]), at.yaw)
+                        (Vec3::new(p[0], p[1], p[2]), at.yaw, at.pitch)
                     }));
                 }
             }
@@ -844,6 +902,24 @@ impl Game<'_> {
             self.tick_remote_projectiles(&mut step);
             // LightningBolt.tick on a client.
             self.tick_bolts();
+        } else if !frozen_ticking.is_empty() {
+            let ticking_set: sunrise_client::fast_hash::FxHashSet<u32> =
+                frozen_ticking.iter().map(|&id| id as u32).collect();
+            if let Some(r) = self.remote.as_mut() {
+                for a in &mut self.armor_stands {
+                    if !ticking_set.contains(&a.id) {
+                        continue;
+                    }
+                    let step = r
+                        .stepped
+                        .get_mut(&(a.id as i32))
+                        .and_then(|h| h.interpolate());
+                    a.interpolate(step.map(|at| {
+                        let p = at.position;
+                        (Vec3::new(p[0], p[1], p[2]), at.yaw, at.pitch)
+                    }));
+                }
+            }
         }
         lerps.retain(|_, l| l.steps > 0);
         if let Some(r) = self.remote.as_mut() {

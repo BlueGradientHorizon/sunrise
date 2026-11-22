@@ -71,9 +71,14 @@ impl Extra {
 struct Mob { id: u32, extra: Extra }
 struct MobIndex;
 impl MobIndex {
-    fn find(&self, mobs: &[Mob], id: u32) -> Option<usize> {
+    fn find_ref(&self, mobs: &[Mob], id: u32) -> Option<usize> {
         mobs.iter().position(|m| m.id == id)
     }
+}
+
+#[derive(Clone)]
+struct DetachedPlayerHud {
+    main_hand: Option<ItemStack>,
 }
 
 struct Ui { hide_gui: bool }
@@ -84,6 +89,7 @@ struct ResolvedCameraEntity {
     is_local_player: bool,
     is_player: bool,
     may_build: bool,
+    detached_hud: Option<DetachedPlayerHud>,
 }
 
 mod game_impl {
@@ -149,6 +155,7 @@ fn base_game() -> Game {
             is_local_player: true,
             is_player: true,
             may_build: true,
+            detached_hud: None,
         }),
         hit: Some(Hit { pos: [1, 2, 3] }),
         entity_hit: false,
@@ -182,6 +189,7 @@ fn camera_entity_and_mode_gate_block_outline_before_hook() {
         is_local_player: false,
         is_player: false,
         may_build: false,
+        detached_hud: None,
     });
     assert_eq!(game.run_outline(), None);
     assert_eq!(game.calls.get(), 0);
@@ -211,6 +219,7 @@ fn camera_entity_and_mode_gate_block_outline_before_hook() {
         is_local_player: false,
         is_player: true,
         may_build: true,
+        detached_hud: None,
     });
     assert_eq!(game.run_outline(), game.hit);
 

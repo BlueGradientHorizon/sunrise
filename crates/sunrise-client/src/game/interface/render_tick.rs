@@ -89,6 +89,15 @@ pub(super) fn motion_blocking_height(
         HeightmapType::MotionBlocking.is_opaque(properties.heightmap_state(s))
     })
 }
+/// `GameRenderer.nightVisionScale` for an optional night-vision duration (`-1` is infinite).
+fn night_vision_scale(duration: Option<i32>, partial: f32) -> f32 {
+    match duration {
+        Some(d) if d < 0 || d > 200 => 1.0,
+        Some(d) => 0.7 + ((d as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3,
+        None => 0.0,
+    }
+}
+
 /// `ClientLevel.tickWeatherEffects`: the MOTION_BLOCKING height of the column
 /// `x`, `z` when a rain splash may land on it for a camera in block row `y`,
 /// that is above the world's bottom and within 10 blocks of the camera.
@@ -222,6 +231,33 @@ impl Game<'_> {
         } else {
             self.res.fog()
         };
+        let partial = self.clock.fraction() as f32;
+        let fog_effects = cam.as_ref().map(|c| c.fog_effects);
+        let blindness = fog_effects.map(|e| e.blindness).unwrap_or_else(|| {
+            self.potions
+                .effects
+                .get("blindness")
+                .map(|effect| (effect.duration, effect.duration == -1))
+        });
+        let darkness = fog_effects
+            .map(|e| {
+                e.darkness_blend
+                    .map(|(previous, current)| previous + (current - previous) * partial)
+            })
+            .unwrap_or_else(|| self.darkness_fog());
+        let fire_resistance = fog_effects.map_or_else(
+            || self.potions.effects.get("fire_resistance").is_some(),
+            |e| e.fire_resistance,
+        ) || (is_local && self.pvp_clear_fluids().0);
+        let night_vision = fog_effects
+            .map(|e| {
+                if e.darkness_blend.is_some() {
+                    0.0
+                } else {
+                    night_vision_scale(e.night_vision, partial)
+                }
+            })
+            .unwrap_or_else(|| self.fog_night_vision());
         let input = FogInputs {
             fog_type,
             sky,
@@ -237,31 +273,16 @@ impl Game<'_> {
             rain,
             thunder,
             skybox: self.overworld_skybox(),
-            blindness: is_local
-                .then(|| {
-                    self.potions
-                        .effects
-                        .get("blindness")
-                        .map(|effect| (effect.duration, effect.duration == -1))
-                })
-                .flatten(),
-            darkness: if is_local { self.darkness_fog() } else { None },
-            darken_world: self
-                .boss_overlay
-                .darken_amount(self.clock.fraction() as f32),
+            blindness,
+            darkness,
+            darken_world: self.boss_overlay.darken_amount(partial),
             boss_world_fog: self.boss_overlay.should_create_world_fog(),
             spectator: cam
                 .as_ref()
                 .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator),
-            fire_resistance: is_local
-                && (self.potions.effects.get("fire_resistance").is_some()
-                    || self.pvp_clear_fluids().0),
+            fire_resistance,
             full_water_vision: !is_local || self.pvp_clear_fluids().1,
-            night_vision: if is_local {
-                self.fog_night_vision()
-            } else {
-                0.0
-            },
+            night_vision,
             environment: self.pack.polytone_colors.env,
             fluid_fog: self.pack.polytone_colors.fluid_fog,
         };
@@ -327,17 +348,13 @@ impl Game<'_> {
     /// `GameRenderer.nightVisionScale`, but not while Darkness is on.
     fn fog_night_vision(&self) -> f32 {
         let partial = self.clock.fraction() as f32;
-        match self.potions.effects.get("night_vision") {
-            Some(e) if self.potions.effects.get("darkness").is_none() => {
-                // MobEffectInstance.endsWithin(200); -1 is infinite.
-                if e.duration < 0 || e.duration > 200 {
-                    1.0
-                } else {
-                    0.7 + ((e.duration as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3
-                }
-            }
-            _ => 0.0,
+        if self.potions.effects.get("darkness").is_some() {
+            return 0.0;
         }
+        night_vision_scale(
+            self.potions.effects.get("night_vision").map(|e| e.duration),
+            partial,
+        )
     }
     /// `ClientLevelData.isFlat`: on the server thread, the world-wide flag.
     fn level_flat(&self) -> bool {

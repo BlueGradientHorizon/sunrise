@@ -101,6 +101,20 @@ impl RemoteTextDisplay {
             vehicle: None,
         }
     }
+    /// Live interpolated camera pose (`Entity.position`, `oldPosition`, rotation, and type id).
+    pub(in crate::game) fn camera_pose(
+        &self,
+    ) -> ([f64; 3], [f64; 3], f32, f32, f32, f32, &'static str) {
+        (
+            self.position.to_array(),
+            self.previous.to_array(),
+            self.rotation[0],
+            self.rotation[1],
+            self.old_rotation[0],
+            self.old_rotation[1],
+            self.shows.kind(),
+        )
+    }
     /// Where a passenger of this display sits, this tick and the last
     /// (`Display`'s box is 0 by 0, so its passenger attachment is its feet).
     pub(super) fn seat(&self) -> (glam::DVec3, glam::DVec3) {

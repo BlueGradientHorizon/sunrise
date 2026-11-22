@@ -6823,7 +6823,7 @@ impl Game<'_> {
             Some(t) => Self::named_entity(&self.mobs, t.id, |m| m.id)
                 .filter(|&i| {
                     let m = &self.mobs[i];
-                    named_mob_pickable(m.alive(), m.id, self.riding, self.remote_camera_id())
+                    named_mob_pickable(m.alive(), m.id, self.riding, self.live_remote_camera_id())
                 })
                 .map(|i| (i, 0.0, [0.0; 3])),
             None => self.mob_hit(),

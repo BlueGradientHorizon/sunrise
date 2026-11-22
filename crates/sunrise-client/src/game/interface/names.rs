@@ -316,7 +316,7 @@ impl Game<'_> {
                 distance_sqr,
                 invisible_to_viewer: invisible,
                 hud_hidden: self.ui.hide_gui,
-                is_camera: self.remote_camera_id() == Some(m.id),
+                is_camera: self.live_remote_camera_id() == Some(m.id),
                 is_vehicle: ridden.contains(&m.id),
             };
             // MobRenderer.shouldShowName: a visible name, or the mob under the

@@ -9,11 +9,12 @@ use sunrise_client::hud_layout::{self, GuiDraw, GuiItems, Undrawable};
 use sunrise_client::items::ItemStack;
 use sunrise_items::equipment::OFFHAND;
 
-/// Whose hotbar the slots come from: the local player's, or a mob (another player the camera follows).
+/// Whose hotbar the slots come from: the local player, a live remote player, or a detached camera player.
 #[derive(Clone, Copy)]
 pub(crate) enum HotbarSource {
     Own,
     Mob(usize),
+    DetachedCamera,
 }
 
 /// A hotbar's slots (0-8) and off hand (40), drawn for `GuiDraw::Item`.
@@ -28,6 +29,14 @@ impl HotbarItems<'_, '_> {
             (HotbarSource::Own, 0..=8) => self.game.inventory.get(slot as usize)?.as_ref(),
             (HotbarSource::Mob(i), 40) => self.game.mobs[i].extra.slot_stack(OFFHAND),
             (HotbarSource::Mob(i), 0) => self.game.mobs[i].extra.main_hand_stack(),
+            (HotbarSource::DetachedCamera, 40) => self
+                .game
+                .detached_camera_hud()
+                .and_then(|hud| hud.offhand.as_ref()),
+            (HotbarSource::DetachedCamera, 0) => self
+                .game
+                .detached_camera_hud()
+                .and_then(|hud| hud.main_hand.as_ref()),
             _ => None,
         }
     }

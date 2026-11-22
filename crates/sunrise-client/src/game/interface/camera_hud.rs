@@ -54,13 +54,27 @@ impl Game<'_> {
                 };
                 Some((inputs, HotbarSource::Mob(i)))
             }
+            CameraPlayer::Detached => {
+                let hud = self.detached_camera_hud()?;
+                let inputs = HotbarInputs {
+                    selected: 0,
+                    right_handed: !hud.main_hand_left,
+                    offhand: hud.offhand.is_some(),
+                    slots: std::array::from_fn(|s| {
+                        (s == 0 && hud.main_hand.is_some()).then_some(0.0)
+                    }),
+                    offhand_pop: 0.0,
+                    attack,
+                };
+                Some((inputs, HotbarSource::DetachedCamera))
+            }
         }
     }
 
     /// `Hud.getPlayerVehicleWithHealth`: the camera player's vehicle as its max health and health.
     pub(in crate::game) fn camera_vehicle(&mut self, camera: CameraPlayer) -> Option<(f32, f32)> {
         let id = match camera {
-            CameraPlayer::Absent => return None,
+            CameraPlayer::Absent | CameraPlayer::Detached => return None,
             CameraPlayer::Own => self.riding?,
             CameraPlayer::Other(i) => {
                 let rider = self.mobs[i].id as i32;
@@ -114,8 +128,19 @@ impl Game<'_> {
                 Some((inputs, kind))
             }
             CameraPlayer::Other(i) => {
-                let (mob_id, health, default_max, absorption, frozen, invulnerable) = {
+                let (
+                    mob_id,
+                    health,
+                    default_max,
+                    absorption,
+                    frozen,
+                    invulnerable,
+                    regeneration,
+                    poison,
+                    wither,
+                ) = {
                     let m = &self.mobs[i];
+                    let fx = &m.extra.client_effects;
                     (
                         m.id as i32,
                         m.health,
@@ -123,6 +148,9 @@ impl Game<'_> {
                         m.absorption,
                         m.is_fully_frozen(),
                         m.invulnerable > 0,
+                        fx.get("regeneration").is_some(),
+                        fx.get("poison").is_some(),
+                        fx.get("wither").is_some(),
                     )
                 };
                 let max_health = self
@@ -138,11 +166,61 @@ impl Game<'_> {
                     tick,
                     max_health,
                     absorption,
-                    regeneration: false,
+                    regeneration,
                     hardcore: self.level.hardcore,
                     blink,
                 };
-                let mut kind = if frozen {
+                let mut kind = if poison {
+                    HeartKind::Poisoned
+                } else if wither {
+                    HeartKind::Withered
+                } else if frozen {
+                    HeartKind::Frozen
+                } else {
+                    HeartKind::Normal
+                };
+                self.native_player_heart_type(&mut kind);
+                Some((inputs, kind))
+            }
+            CameraPlayer::Detached => {
+                let (
+                    health,
+                    max_health,
+                    absorption,
+                    frozen,
+                    invulnerable,
+                    regeneration,
+                    poison,
+                    wither,
+                ) = {
+                    let hud = self.detached_camera_hud()?;
+                    (
+                        hud.health,
+                        hud.max_health,
+                        hud.absorption,
+                        hud.frozen,
+                        hud.invulnerable,
+                        hud.regeneration,
+                        hud.poison,
+                        hud.wither,
+                    )
+                };
+                let blink = self
+                    .health_hud
+                    .update_health(health, tick, millis, invulnerable);
+                let inputs = HealthInputs {
+                    tick,
+                    max_health,
+                    absorption,
+                    regeneration,
+                    hardcore: self.level.hardcore,
+                    blink,
+                };
+                let mut kind = if poison {
+                    HeartKind::Poisoned
+                } else if wither {
+                    HeartKind::Withered
+                } else if frozen {
                     HeartKind::Frozen
                 } else {
                     HeartKind::Normal
@@ -178,6 +256,7 @@ impl Game<'_> {
                         .map_or(fallback, |v| v.floor() as i32),
                 )
             }
+            CameraPlayer::Detached => self.detached_camera_hud().map(|hud| hud.armor),
         }
     }
 
@@ -195,11 +274,17 @@ impl Game<'_> {
                     hunger: self.potions.effects.get("hunger").is_some(),
                 })
             }
-            CameraPlayer::Other(_) => Some(FoodInputs {
+            CameraPlayer::Other(i) => Some(FoodInputs {
                 tick,
                 food: REMOTE_FOOD,
                 saturation: REMOTE_SATURATION,
-                hunger: false,
+                hunger: self.mobs[i].extra.client_effects.get("hunger").is_some(),
+            }),
+            CameraPlayer::Detached => Some(FoodInputs {
+                tick,
+                food: REMOTE_FOOD,
+                saturation: REMOTE_SATURATION,
+                hunger: self.detached_camera_hud()?.hunger,
             }),
         }
     }
@@ -233,6 +318,18 @@ impl Game<'_> {
                         air: m.air,
                         max_air: MAX_AIR,
                         under_water: m.fluids.eye_in_water,
+                    },
+                    None,
+                ))
+            }
+            CameraPlayer::Detached => {
+                let hud = self.detached_camera_hud()?;
+                Some((
+                    AirInputs {
+                        tick,
+                        air: hud.air,
+                        max_air: MAX_AIR,
+                        under_water: hud.under_water,
                     },
                     None,
                 ))

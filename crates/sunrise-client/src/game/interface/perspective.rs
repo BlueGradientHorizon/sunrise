@@ -325,9 +325,7 @@ impl Game<'_> {
         }
         let subject = self.camera_subject()?;
         let mut entity = subject.camera;
-        if subject.is_local_player
-            && let Some(position) = self.remote_minecart_rider_position(partial)
-        {
+        if let Some(position) = self.remote_minecart_camera_position(&subject, partial) {
             // Already evaluated at partial: do not linearly interpolate
             // between tick endpoints across a corner a second time.
             entity.position = position;

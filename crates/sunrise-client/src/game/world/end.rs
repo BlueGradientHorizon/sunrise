@@ -282,6 +282,10 @@ impl EndState {
     }
     /// A server's move: an eye has no interpolation handler, so
     /// `moveOrInterpolateTo` puts it there at once. False when `id` isn't one.
+    pub(in crate::game) fn remote_eye_pose(&self, id: u32) -> Option<([f64; 3], [f64; 3])> {
+        let e = self.eyes.iter().find(|e| e.id == id)?;
+        Some((e.position.to_array(), e.previous.to_array()))
+    }
     pub(super) fn move_remote_eye(&mut self, id: u32, at: [f64; 3]) -> bool {
         let Some(e) = self.eyes.iter_mut().find(|e| e.id == id) else {
             return false;

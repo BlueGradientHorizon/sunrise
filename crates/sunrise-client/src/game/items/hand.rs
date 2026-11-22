@@ -412,7 +412,7 @@ impl Game<'_> {
             ),
         };
         let reach = attack_reach(range, self.creative);
-        let camera = self.remote_camera_id();
+        let camera = self.live_remote_camera_id();
         // AttackRange uses getManyEntityHitResult, which does not exclude
         // entities sharing the camera's root vehicle.
         let boxes = (self.mobs.iter().enumerate())
