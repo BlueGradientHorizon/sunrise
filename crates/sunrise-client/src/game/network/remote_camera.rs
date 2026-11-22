@@ -228,6 +228,16 @@ impl Game<'_> {
     pub(super) fn controls_camera(&self) -> bool {
         self.remote_camera_id().is_none()
     }
+    /// `camera.entity().isSpectator()`: for lava and powdered-snow fog (`setupFog`).
+    pub(in crate::game) fn camera_entity_is_spectator(&self) -> bool {
+        if let Some(id) = self.remote_camera_id() {
+            return self.remote.as_ref().is_some_and(|r| {
+                r.remote_player_info_game_mode(id as i32)
+                    == Some(sunrise_client::tab_list::SPECTATOR)
+            });
+        }
+        self.own_player_is_spectator()
+    }
     /// The mob the view follows, while the level still holds it.
     pub(super) fn camera_mob(&self) -> Option<&Mob> {
         let id = self.remote_camera_id()?;

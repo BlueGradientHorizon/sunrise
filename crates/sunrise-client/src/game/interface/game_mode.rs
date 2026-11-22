@@ -8,39 +8,41 @@ pub(super) use sunrise_gameplay::game_modes::{
     loads_chunks, mode_from_id, projectile_predicate_supported,
 };
 
-/// `InventoryScreen.containerTick`: a survival inventory left open when the
-/// player gains infinite materials becomes the creative one, so the player
-/// stays in a menu. Vanilla has no other branch: a spectator's open inventory
-/// stays open too.
-fn inventory_after_mode(screen: Screen, creative: bool) -> Screen {
-    if screen == Screen::Inventory && creative {
-        Screen::Creative
-    } else {
-        screen
+/// `InventoryScreen.containerTick` / `CreativeModeInventoryScreen.containerTick`:
+/// reconcile an open player inventory with `Player.hasInfiniteMaterials`.
+fn inventory_after_infinite_materials(screen: Screen, infinite_materials: bool) -> Screen {
+    match (screen, infinite_materials) {
+        (Screen::Inventory, true) => Screen::Creative,
+        (Screen::Creative, false) => Screen::Inventory,
+        _ => screen,
     }
 }
 
 impl Game<'_> {
-    /// `InventoryScreen.containerTick` on a mode change: the inventory the player has
-    /// open follows the mode. (`CreativeModeInventoryScreen.containerTick`, the way back
-    /// to survival, is not ported yet.)
-    fn mode_changed_under_inventory(&mut self) {
-        match inventory_after_mode(self.screen, self.creative) {
+    /// Reconcile an open player inventory on its screen tick (`InventoryScreen.containerTick`
+    /// and `CreativeModeInventoryScreen.containerTick`) against live `instabuild`.
+    pub(in crate::game) fn tick_inventory_screen(&mut self) {
+        if self.player.is_none() {
+            return;
+        }
+        let next = inventory_after_infinite_materials(self.screen, self.instabuild());
+        if next == self.screen {
+            return;
+        }
+        match next {
             Screen::Creative => {
                 if let Some(c) = self.carried.take() {
                     let _ = self.add_stack_to_inventory(c);
                 }
-                self.screen = Screen::Creative;
+                self.set_screen(Screen::Creative);
                 self.release_mappings_on_screen_open();
                 self.refresh_creative_tabs();
                 self.creative_screen.reopen();
                 self.refresh_saved_hotbars();
             }
-            next if next != self.screen => {
-                self.screen = next;
-                if next != Screen::Playing {
-                    self.release_mappings_on_screen_open();
-                }
+            Screen::Inventory => {
+                self.set_screen(Screen::Inventory);
+                self.release_mappings_on_screen_open();
             }
             _ => {}
         }
@@ -49,6 +51,14 @@ impl Game<'_> {
     /// `MultiPlayerGameMode.isSpectator()` on a client; `ServerPlayer.isSpectator()` on a server.
     pub(in crate::game) fn spectator(&self) -> bool {
         self.mode == GameMode::Spectator
+    }
+    /// `MultiPlayerGameMode.canHurtPlayer()` and `hasExperience()` (`localPlayerMode.isSurvival()`).
+    pub(in crate::game) fn can_hurt_player(&self) -> bool {
+        matches!(self.mode, GameMode::Survival | GameMode::Adventure)
+    }
+    /// `MultiPlayerGameMode.hasMissTime()` (`!localPlayerMode.isCreative()`).
+    pub(in crate::game) fn has_miss_time(&self) -> bool {
+        self.mode != GameMode::Creative
     }
     /// `AbstractClientPlayer.gameMode()` on a remote client (`PlayerInfo.getGameMode()` for our UUID), else `Some(self.mode)`.
     pub(in crate::game) fn player_info_game_mode(&self) -> Option<GameMode> {
@@ -60,6 +70,10 @@ impl Game<'_> {
     /// `Player.isSpectator()`: reads `PlayerInfo` on a remote client and `self.mode` locally.
     pub(in crate::game) fn own_player_is_spectator(&self) -> bool {
         self.player_info_game_mode() == Some(GameMode::Spectator)
+    }
+    /// `Player.isCreative()`: reads `PlayerInfo` on a remote client and `self.mode` locally.
+    pub(in crate::game) fn own_player_is_creative(&self) -> bool {
+        self.player_info_game_mode() == Some(GameMode::Creative)
     }
     /// `Abilities.mayBuild`.
     pub(super) fn may_build(&self) -> bool {
@@ -91,6 +105,7 @@ impl Game<'_> {
             self.previous_mode = Some(self.mode);
         }
         self.mode = mode;
+        self.update_world_options_personal_mode(mode.id());
         if let (Some(r), Some(p)) = (self.remote.as_mut(), self.player.as_ref()) {
             r.sync_body_flight(p.flying, p.flying_speed);
         }
@@ -114,7 +129,6 @@ impl Game<'_> {
         self.creative = r.update_local_mode_abilities(mode.id());
         self.apply_remote_abilities();
         self.sync_remote_player_game_mode();
-        self.mode_changed_under_inventory();
     }
     /// `ServerPlayer.setGameMode` on a local/server world.
     pub(super) fn set_mode(&mut self, mode: GameMode) {
@@ -178,7 +192,6 @@ impl Game<'_> {
                 }
             }
         }
-        self.mode_changed_under_inventory();
     }
 }
 impl Game<'_> {
@@ -404,7 +417,9 @@ mod tests {
         }
     }
 
-    use super::{Screen, inventory_after_mode, loads_chunks, projectile_predicate_supported};
+    use super::{
+        Screen, inventory_after_infinite_materials, loads_chunks, projectile_predicate_supported,
+    };
 
     // Added after the frozen old Game proof: unsupported conjuncts must not
     // become permission from their otherwise matching blocks portion.
@@ -431,24 +446,34 @@ mod tests {
         assert!(projectile_predicate_supported(&tag));
     }
 
-    /// `InventoryScreen.containerTick`: the survival inventory becomes the
-    /// creative one when the player gets infinite materials, and any other
-    /// screen is left where it is.
+    /// `InventoryScreen.containerTick` / `CreativeModeInventoryScreen.containerTick`:
+    /// both directions follow `hasInfiniteMaterials` and leave other screens alone.
     #[test]
-    fn a_survival_inventory_becomes_the_creative_one() {
-        assert!(inventory_after_mode(Screen::Inventory, true) == Screen::Creative);
-        let stays = inventory_after_mode(Screen::Inventory, false);
-        assert!(stays == Screen::Inventory, "survival keeps its inventory");
-        // Vanilla's only branch is `hasInfiniteMaterials`: a spectator's open
-        // inventory stays open.
+    fn open_inventory_reconciles_both_directions_with_infinite_materials() {
+        assert_eq!(
+            inventory_after_infinite_materials(Screen::Inventory, true),
+            Screen::Creative
+        );
+        assert_eq!(
+            inventory_after_infinite_materials(Screen::Inventory, false),
+            Screen::Inventory
+        );
+        assert_eq!(
+            inventory_after_infinite_materials(Screen::Creative, false),
+            Screen::Inventory
+        );
+        assert_eq!(
+            inventory_after_infinite_materials(Screen::Creative, true),
+            Screen::Creative
+        );
         for screen in [
             Screen::Playing,
-            Screen::Creative,
             Screen::Paused,
             Screen::Stats,
             Screen::Advancements,
         ] {
-            assert!(inventory_after_mode(screen, true) == screen);
+            assert_eq!(inventory_after_infinite_materials(screen, true), screen);
+            assert_eq!(inventory_after_infinite_materials(screen, false), screen);
         }
     }
 

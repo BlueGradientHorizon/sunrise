@@ -685,6 +685,17 @@ impl Game<'_> {
         self.set_screen(Screen::Paused);
     }
 
+    /// `WorldOptionsScreen.updatePersonalGameModeButton`: update both the displayed
+    /// personal mode and its baseline without discarding unrelated edits.
+    pub(in crate::game) fn update_world_options_personal_mode(&mut self, mode: i32) {
+        if self.screen == Screen::WorldOptions
+            && let Some(o) = self.world_options.as_mut()
+        {
+            o.personal_mode = mode;
+            o.initial.personal_mode = mode;
+        }
+    }
+
     /// Escape: the question and RestrictionsScreen return to the options
     /// (their onClose), which close; the game rules ask first.
     pub(super) fn world_options_escape(&mut self) {

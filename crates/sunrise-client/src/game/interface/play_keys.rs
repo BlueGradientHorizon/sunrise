@@ -15,7 +15,7 @@ impl Game<'_> {
     /// `new InventoryScreen(player)`: the player's inventory, or in creative
     /// mode the creative inventory `InventoryScreen.init` swaps in.
     pub(super) fn open_player_inventory(&mut self) {
-        if self.creative {
+        if self.instabuild() {
             self.set_screen(Screen::Creative);
             self.refresh_creative_tabs();
             self.creative_screen.reopen();

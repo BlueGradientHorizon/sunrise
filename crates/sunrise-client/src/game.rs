@@ -7399,7 +7399,7 @@ impl Game<'_> {
             // The installed vanilla bodies share the column heights and a scratch draw list.
             let mut status_heights = hud_layout::StatusBarHeights::default();
             let mut status_rows = Vec::new();
-            let mount = if !show_hud || spectator {
+            let mount = if !show_hud {
                 None
             } else {
                 self.mount_index().map(|i| {
@@ -7411,7 +7411,7 @@ impl Game<'_> {
                 })
             };
             // NeoForge applies hudVisible and survivalVisible to the vanilla bodies only.
-            let show_survival_status = show_hud && !self.creative && !spectator;
+            let show_survival_status = show_hud && self.can_hurt_player();
             self.gui_layer(
                 VanillaGuiLayer::PlayerHealth,
                 &mut batch,
@@ -7533,10 +7533,10 @@ impl Game<'_> {
         if show_hud {
             // Hud.nextContextualInfoState: the jump bar, the experience bar or
             // the locator bar above the hotbar.
-            let has_experience = !self.creative && !spectator;
+            let has_experience = self.can_hurt_player();
             let contextual = sunrise_client::locator_bar::ContextualBar::next(
                 self.waypoints.has_waypoints(),
-                !spectator && self.jumpable_mount(),
+                self.jumpable_mount(),
                 self.mount_jumping(),
                 has_experience,
                 self.experience_recent(),
@@ -7589,7 +7589,7 @@ impl Game<'_> {
                     VanillaGuiLayer::SelectedItemName,
                     &mut batch,
                     &mut |g, batch| {
-                        g.draw_selected_name(batch, !g.creative);
+                        g.draw_selected_name(batch, g.can_hurt_player());
                     },
                 );
             }
