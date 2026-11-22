@@ -1,5 +1,4 @@
 use super::*;
-use mod_api::__private::game::Fields;
 use mod_api::{Hand, HostTransaction, ItemPlace, ItemResource, MenuSlotPlace, ServerHost};
 use sunrise_client::{
     containers::{BlockEntity, ModBlockEntity, ModMenuType},
@@ -466,7 +465,7 @@ fn committed_book_settings_are_coalesced_before_a_listener_rewrites_them() {
             if event.open
                 && let RecipeBookIdentity::Custom(book) = &event.book
             {
-                let player = host.players().player(event.player).unwrap();
+                let player = host.player(event.player).unwrap();
                 assert!(player.set_recipe_book_settings(
                     host,
                     book,
@@ -783,10 +782,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                             slot,
                         })
                         .collect();
-                    assert_eq!(
-                        game.player_back_mod_menu_slots(menu.fields().player, 1, places),
-                        Ok(())
-                    );
+                    assert_eq!(menu.back_slots(game, places), Ok(()));
                     // Put an unrelated stack in slot 1 so we prove placement leaves it untouched.
                     let coal = mod_api::ItemStack::new(
                         mod_api::__private::item_key("minecraft:coal").unwrap(),
