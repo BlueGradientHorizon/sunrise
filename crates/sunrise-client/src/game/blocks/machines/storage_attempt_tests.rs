@@ -555,6 +555,7 @@ fn block_capabilities_contain_panics_under_the_provider_owner() {
         native_entity_refs::tests::{fixture_root, with_game_role},
     };
     use mod_api::content::crash::current_native_mod;
+    use sunrise_client::crash;
 
     const FLAG: &str = "SUNRISE_CAPABILITY_PROVIDER_OWNER_CHILD";
     const DISCOVERY: [i32; 3] = [1, 64, 0];
@@ -631,68 +632,87 @@ fn block_capabilities_contain_panics_under_the_provider_owner() {
         })
         .collect::<Vec<_>>()
         .into();
-    mod_platform::testing::with_mods(mods, || {
-        with_game_role(fixture_root(), role, |game| {
-            if client {
-                let (pipe, _peer) = sunrise_protocol::connection::Pipe::pair();
-                game.connect_local(pipe, "ProviderOwner").unwrap();
-                game.remote.as_mut().unwrap().logged_in = true;
-            } else {
-                game.options.dedicated = Some(Vec::new());
-            }
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            place(game, (1, 64, 0), "minecraft:barrel");
-            place(game, (2, 64, 0), "minecraft:chest");
-
-            let outer = current_native_mod();
-            let query = mod_api::__private::enter("querying_mod", "test");
-            let bad = Some("bad_provider");
-            let healthy = Some("healthy_provider");
-            game.with_level(|_, world, ticks| {
-                let view = world.view(ticks);
-                assert_eq!(view.has_item_capability(DISCOVERY, None), Some(true));
-                assert_eq!(view.has_item_capability(DISCOVERY, None), Some(true));
-                assert_eq!(view.has_item_capability(CONSTRUCTION, None), Some(true));
-            });
-            assert_eq!(current_native_mod(), Some("querying_mod"));
-            assert_eq!(
-                std::mem::take(&mut *calls.lock().unwrap()),
-                [
-                    ("discover barrel", bad),
-                    ("discover barrel", healthy),
-                    ("discover barrel", healthy),
-                    ("discover chest", bad),
-                ],
-                "discovery poisons only one registration; presence never constructs",
-            );
-
-            if !client {
-                let level = game.level(game.dim.id()).unwrap();
-                for pos in [CONSTRUCTION, CONSTRUCTION, DISCOVERY] {
-                    let capability = level.capability(game, &ITEMS, pos, None).unwrap();
-                    assert_eq!(capability.owner(), "healthy_provider");
-                    assert_eq!(current_native_mod(), Some("querying_mod"));
+    let exercise = move || {
+        mod_platform::testing::with_mods(mods, || {
+            with_game_role(fixture_root(), role, |game| {
+                if client {
+                    let (pipe, _peer) = sunrise_protocol::connection::Pipe::pair();
+                    game.connect_local(pipe, "ProviderOwner").unwrap();
+                    game.remote.as_mut().unwrap().logged_in = true;
+                } else {
+                    game.options.dedicated = Some(Vec::new());
                 }
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                place(game, (1, 64, 0), "minecraft:barrel");
+                place(game, (2, 64, 0), "minecraft:chest");
+
+                let outer = current_native_mod();
+                let query = mod_api::__private::enter("querying_mod", "test");
+                let bad = Some("bad_provider");
+                let healthy = Some("healthy_provider");
+                game.with_level(|_, world, ticks| {
+                    let view = world.view(ticks);
+                    assert_eq!(view.has_item_capability(DISCOVERY, None), Some(true));
+                    assert_eq!(view.has_item_capability(DISCOVERY, None), Some(true));
+                    assert_eq!(view.has_item_capability(CONSTRUCTION, None), Some(true));
+                });
+                assert_eq!(current_native_mod(), Some("querying_mod"));
                 assert_eq!(
-                    *calls.lock().unwrap(),
+                    std::mem::take(&mut *calls.lock().unwrap()),
                     [
-                        ("discover chest", bad),
-                        ("construct", bad),
-                        ("discover chest", healthy),
-                        ("construct", healthy),
-                        ("discover chest", healthy),
-                        ("construct", healthy),
+                        ("discover barrel", bad),
                         ("discover barrel", healthy),
-                        ("construct", healthy),
+                        ("discover barrel", healthy),
+                        ("discover chest", bad),
                     ],
+                    "discovery poisons only one registration; presence never constructs",
                 );
-            }
-            drop(query);
-            assert_eq!(current_native_mod(), outer);
-        });
-    });
+
+                if !client {
+                    let level = game.level(game.dim.id()).unwrap();
+                    for pos in [CONSTRUCTION, CONSTRUCTION, DISCOVERY] {
+                        let capability = level.capability(game, &ITEMS, pos, None).unwrap();
+                        assert_eq!(capability.owner(), "healthy_provider");
+                        assert_eq!(current_native_mod(), Some("querying_mod"));
+                    }
+                    assert_eq!(
+                        *calls.lock().unwrap(),
+                        [
+                            ("discover chest", bad),
+                            ("construct", bad),
+                            ("discover chest", healthy),
+                            ("construct", healthy),
+                            ("discover chest", healthy),
+                            ("construct", healthy),
+                            ("discover barrel", healthy),
+                            ("construct", healthy),
+                        ],
+                    );
+                }
+                drop(query);
+                assert_eq!(current_native_mod(), outer);
+            });
+        })
+    };
+    // This fixture has a fresh process. An uncontained panic on either game's thread
+    // writes a report; on the integrated server it also marks the server fatal.
+    let home = tempfile::tempdir().unwrap();
+    crash::install(home.path().to_owned(), "client", || None);
+    let name = if client {
+        "main"
+    } else {
+        crash::INTEGRATED_SERVER_THREAD
+    };
+    std::thread::Builder::new()
+        .name(name.into())
+        .spawn(exercise)
+        .unwrap()
+        .join()
+        .unwrap();
+    assert!(!crash::server_crashed());
+    assert!(!home.path().join("crash-reports").exists());
 }
 
 #[test]

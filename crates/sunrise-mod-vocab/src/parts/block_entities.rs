@@ -219,7 +219,7 @@ impl<T: ?Sized + 'static> BlockProviders<T> {
             || next_merged(&mut cursor),
             |part, _| {
                 let provider = part.provider.get::<T>()?;
-                crate::callback_owner::call(
+                crate::callback_owner::call_for_lookup(
                     part.mod_id,
                     part.mod_index,
                     &part.poisoned,
@@ -227,7 +227,6 @@ impl<T: ?Sized + 'static> BlockProviders<T> {
                     "block_capability",
                     || call(provider.as_ref()),
                 )
-                .ok()
                 .flatten()
             },
             |_| game,
