@@ -412,12 +412,14 @@ impl<'a> DamageLevel<'a> {
     pub fn accepted_mob_hit(&mut self, mob: &mut crate::mobs::Mob, source: &crate::mobs::Damage) {
         // The hit's own source, whatever the credit kind.
         let uuid = match (&self.credit, source.attacker) {
+            _ if mob.species() != crate::mobs::Species::Villager => None,
             (Credit::Loan(credit), _) => credit.hurt_by_uuid(source),
             (_, Some(crate::mobs::Who::Player)) => self.attack.player_uuid.map(|u| (u, false)),
-            (_, Some(crate::mobs::Who::Mob(id))) => self
-                .attack
-                .attacker_uuid
-                .filter(|_| self.attack.attacker == id as i32),
+            (_, Some(crate::mobs::Who::Mob(id))) if self.attack.attacker == id as i32 => Some(
+                self.attack
+                    .attacker_uuid
+                    .unwrap_or_else(|| (crate::save::random_uuid(), true)),
+            ),
             _ => None,
         };
         if let Some((uuid, minted)) = uuid {

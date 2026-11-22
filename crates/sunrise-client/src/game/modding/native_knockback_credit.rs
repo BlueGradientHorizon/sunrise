@@ -119,10 +119,7 @@ impl Game<'_> {
     /// An attacking entity's UUID, and whether it had none yet and got one made up for this hit
     /// (`uuid_for` makes it for good when the hit's mob event is handled).
     pub(super) fn attacker_uuid_of(&self, id: u32) -> ([i32; 4], bool) {
-        match self
-            .known_resident_entity_uuid_at(self.dim.key(), id)
-            .or_else(|| self.persist.uuids.get(&id).copied())
-        {
+        match self.known_attacker_uuid(id) {
             Some(uuid) => (uuid, false),
             None => (
                 *self
@@ -133,6 +130,11 @@ impl Game<'_> {
                 true,
             ),
         }
+    }
+    /// An attacking entity's UUID if it has one (nothing is made up).
+    pub(super) fn known_attacker_uuid(&self, id: u32) -> Option<[i32; 4]> {
+        self.known_resident_entity_uuid_at(self.dim.key(), id)
+            .or_else(|| self.persist.uuids.get(&id).copied())
     }
     /// The credited entity and its main hand: in the level in place, or a mob
     /// a kill credit found in another loaded level.
