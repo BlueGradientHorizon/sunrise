@@ -317,7 +317,7 @@ fn prepare_work(game: &mut Game<'_>, save: &std::path::Path) {
         .unwrap();
     game.world.game_time = WORK_TICK;
     game.world.day_time = WORK_TICK;
-    game.world.random = LegacyRandom::new(4096);
+    *game.world.random = LegacyRandom::new(4096);
     let mob = &mut game.mobs[0];
     mob.position = Vec3::new(1.5, 80.0, 0.5);
     mob.previous = mob.position;

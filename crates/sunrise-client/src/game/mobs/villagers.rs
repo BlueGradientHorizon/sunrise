@@ -5,7 +5,7 @@ use super::Game;
 use sunrise_client::{
     gossip::{self, GossipType},
     items::ItemStack,
-    mobs::{Mob, MobEvent, Species, spawning, villager, villager_brain},
+    mobs::{Mob, Species, spawning, villager, villager_brain},
 };
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 
