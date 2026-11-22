@@ -9,11 +9,20 @@ struct Random;
 impl Random { fn next_double(&self) -> f64 { panic!("nonzero fixture direction must not draw randomness") } }
 struct Mob {
     gear_knockback_resistance: Option<f64>, attrs: Attributes,
-    needs_sync: bool, random: Random, velocity: Vec3, on_ground: bool,
+    needs_sync: bool, random: Random, velocity: Vec3, ground: Ground,
 }
 impl Mob {
     fn species(&self) -> Species { Species::Ordinary }
-    fn new() -> Self { Self { gear_knockback_resistance: None, attrs: Attributes { knockback_resistance: 0.0 }, needs_sync: false, random: Random, velocity: Vec3::default(), on_ground: true } }
+    fn new() -> Self {
+        Self {
+            gear_knockback_resistance: None,
+            attrs: Attributes { knockback_resistance: 0.0 },
+            needs_sync: false,
+            random: Random,
+            velocity: Vec3::default(),
+            ground: Ground { on_ground: true },
+        }
+    }
 }
 struct Damage { attacker: Option<()>, from: Option<[f64; 3]> }
 pub struct DamageLevel<'a> { heard: &'a mut usize, scale: f64, cancel: bool }
