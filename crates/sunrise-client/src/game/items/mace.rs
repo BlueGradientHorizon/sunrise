@@ -743,10 +743,13 @@ impl Game<'_> {
                 if old_health > 0.0 && !self.mobs[i].alive() {
                     self.native_kill_event(i);
                 }
+                let aim = self.attacker_aim(source.attacker);
                 let plan = self.prepare_knockback_credit(id as i32, None, &attack);
                 let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                self.mobs[i].attacker_aim = aim;
                 let level = crate::game::entity::damage_level_of!(self, &attack, &mut credit, None);
                 self.mobs[i].knockback(level, 0.4, xd, zd, &source, amount);
+                self.mobs[i].attacker_aim = None;
                 self.remember_mob_player_credit(self.mobs[i].id);
                 self.post_attack(i);
             }

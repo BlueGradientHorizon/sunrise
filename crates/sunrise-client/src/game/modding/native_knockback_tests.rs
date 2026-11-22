@@ -9,7 +9,7 @@ use mod_api::{
 use std::sync::{Arc, Mutex};
 use sunrise_client::health::{Attack, Hurting, Knock, NO_ATTACK};
 use sunrise_client::items::ItemStack;
-use sunrise_client::mobs::{Damage, DamageKind, Mob, Who};
+use sunrise_client::mobs::{Damage, DamageKind, Mob, MobEvent, Who};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
 /// What a knockback heard: the attacker and the stacks it holds (by item id).
@@ -582,6 +582,15 @@ fn short_and_full_knockback_entries_fire_one_event_with_same_semantics() {
 #[test]
 #[ignore = "daily"]
 fn a_loaded_sulfur_cube_launch_does_not_reach_the_living_listener() {
+    let sounds = |m: &Mob| {
+        m.outbox
+            .iter()
+            .filter_map(|e| match e {
+                MobEvent::Sound(name, at, volume, pitch) => Some((*name, *at, *volume, *pitch)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
     let heard = heard(|game, log| {
         log.lock().unwrap().cancel = true;
         let kind = game
@@ -590,32 +599,140 @@ fn a_loaded_sulfur_cube_launch_does_not_reach_the_living_listener() {
             .get("minecraft:sulfur_cube")
             .unwrap()
             .clone();
-        let hit = Damage::player([1.0, 0.0, 0.0]);
+        let hit = Damage::player([1.0, 2.0, 0.0]);
         // A centered four-damage hit multiplies the horizontal power by sqrt(4),
-        // (1 - resistance), then 0.4F. Vanilla uses (0.4125F, -1) for TNT and
-        // (0.33F, 0) for a body item without an archetype.
-        for (body, expected_speed) in [
-            ("minecraft:tnt", 0.66_f32),
-            ("minecraft:iron_sword", 0.33_f32 * 2.0 * 0.4),
+        // (float)(1.0 - resistance), then 0.4F. Vanilla uses (0.4125F, -1) for TNT and
+        // (0.33F, knockback_resistance) for a body item without an archetype.
+        for (body, resistance_attr, expected_speed, expected_sound) in [
+            (
+                "minecraft:tnt",
+                0.0_f64,
+                0.66_f32,
+                "entity.sulfur_cube.explosive.hit",
+            ),
+            (
+                "minecraft:iron_sword",
+                0.0_f64,
+                0.33_f32 * 2.0 * 0.4,
+                "entity.sulfur_cube.regular.hit",
+            ),
+            (
+                "minecraft:iron_sword",
+                0.9_f64,
+                0.33_f32 * 2.0 * ((1.0_f64 - 0.9_f64) as f32) * 0.4,
+                "entity.sulfur_cube.regular.hit",
+            ),
         ] {
-            let mut mob = Mob::new(42, kind.clone(), Vec3::ZERO, 0.0);
+            let mut mob = Mob::new(42, kind.clone(), Vec3::new(0.0, 2.0, 0.0), 0.0);
             mob.extra.set_body(Some(body.into()));
+            mob.attrs.knockback_resistance = resistance_attr;
             let aim = sunrise_client::mobs::Aim {
                 eye: [1.0, mob.center()[1], 0.0],
                 look: [-1.0, 0.0, 0.0],
-                feet: [1.0, 0.0, 0.0],
+                feet: [1.0, 2.0, 0.0],
             };
             with_detached_credit(game, 42, |level| {
                 mob.attacker_aim = Some(aim);
                 mob.knockback(level, 0.4, 1.0, 0.0, &hit, 4.0);
-                assert_eq!(mob.velocity.x, -f64::from(expected_speed), "{body}");
+                assert_eq!(
+                    mob.velocity.x,
+                    -f64::from(expected_speed),
+                    "{body} (r={resistance_attr})"
+                );
 
                 mob.velocity = Vec3::ZERO;
                 mob.attacker_aim = Some(aim);
                 mob.knockback_full(level, 1.0, 1.0, 0.0, &hit, 4.0, true);
-                assert_eq!(mob.velocity.x, -f64::from(expected_speed) / 4.0, "{body}");
+                assert_eq!(
+                    mob.velocity.x,
+                    -f64::from(expected_speed) / 4.0,
+                    "{body} (r={resistance_attr})"
+                );
+                assert_eq!(
+                    sounds(&mob),
+                    [
+                        (expected_sound, [0.0, 2.0, 0.0], 1.0, 1.0),
+                        (expected_sound, [0.0, 2.0, 0.0], 1.0, 1.0),
+                    ],
+                    "{body} (r={resistance_attr})"
+                );
+
+                mob.outbox.clear();
+                mob.silent = true;
+                mob.attacker_aim = Some(aim);
+                mob.knockback(level, 0.4, 1.0, 0.0, &hit, 4.0);
+                assert!(
+                    mob.outbox.is_empty(),
+                    "silent cube emitted sound for {body}"
+                );
             });
         }
+    });
+    assert!(heard.knocks.is_empty(), "heard {:?}", heard.knocks);
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_sweep_launches_a_loaded_sulfur_cube_with_off_center_aim_without_the_living_listener() {
+    let heard = heard(|game, log| {
+        log.lock().unwrap().cancel = true;
+        player_with_sword(game);
+        game.yaw = -30.0;
+        game.pitch = 10.0;
+        let kind = game
+            .res
+            .mob_types()
+            .get("minecraft:sulfur_cube")
+            .unwrap()
+            .clone();
+        let mut mob = Mob::new(42, kind, Vec3::new(0.0, 0.0, 2.0), 0.0);
+        mob.extra.set_body(Some("minecraft:tnt".into()));
+        game.mobs.push(mob);
+        let area =
+            sunrise_core::geometry::Aabb::new(Vec3::new(-1.0, -1.0, 1.0), Vec3::new(1.0, 2.0, 3.0));
+        game.sweep_damage(area, super::mace::Spared::Nothing, 1.0);
+        let mob = &game.mobs[0];
+        // Vanilla Player.doSweepAttack runs SulfurCube.hurtServer's default push and then the
+        // follow-up knockback(0.4F, sin(yRot), -cos(yRot), source, 1.0F), both using the
+        // player's off-center eye position and look direction.
+        let expected = [
+            -0.347_157_826_914_143_65,
+            0.144_000_005_722_045_88,
+            0.534_698_680_463_567_3,
+        ];
+        let got = [mob.velocity.x, mob.velocity.y, mob.velocity.z];
+        for axis in 0..3 {
+            assert!(
+                (got[axis] - expected[axis]).abs() < 1.0e-9,
+                "axis {axis}: got {got:?}, expected {expected:?}"
+            );
+        }
+        assert!(mob.attacker_aim.is_none());
+        let sounds: Vec<_> = mob
+            .outbox
+            .iter()
+            .filter_map(|e| match e {
+                MobEvent::Sound(name, at, volume, pitch) => Some((*name, *at, *volume, *pitch)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            sounds,
+            [
+                (
+                    "entity.sulfur_cube.explosive.hit",
+                    [0.0, 0.0, 2.0],
+                    1.0,
+                    1.0
+                ),
+                (
+                    "entity.sulfur_cube.explosive.hit",
+                    [0.0, 0.0, 2.0],
+                    1.0,
+                    1.0
+                ),
+            ]
+        );
     });
     assert!(heard.knocks.is_empty(), "heard {:?}", heard.knocks);
 }

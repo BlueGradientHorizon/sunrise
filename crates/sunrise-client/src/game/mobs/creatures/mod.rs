@@ -2675,11 +2675,13 @@ impl Game<'_> {
                     // Ram knockback checks blocking independently of the hurt call.
                     Who::Player => self.mob_pushes_player(power, x, z, source, apply_blocking),
                     Who::Mob(id) => {
+                        let aim = self.attacker_aim(source.attacker);
                         let attack = self.attack_of_who(source.attacker);
                         let plan =
                             self.prepare_knockback_credit(id as i32, None, self.combat.attack());
                         let mut credit = plan.lend(&mut self.last_hurt_by_player);
                         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                            m.attacker_aim = aim;
                             let level = crate::game::entity::damage_level_of!(
                                 self,
                                 &attack,
@@ -2687,6 +2689,7 @@ impl Game<'_> {
                                 None
                             );
                             m.knockback(level, power, x, z, &source, 0.0);
+                            m.attacker_aim = None;
                         }
                     }
                 },
