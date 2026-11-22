@@ -190,6 +190,8 @@ pub enum Foil {
     Standard,
     /// `itemGlintSpecialRenderType`: compasses and clocks, a sheeted decal.
     Special,
+    /// `RenderTypes.patternedShieldGlint`: equal-depth glint-only pass drawn once after patterns.
+    GlintOnly,
 }
 /// Where submitted quads go.
 pub trait ItemSink {
@@ -510,7 +512,9 @@ struct TintedItemSink<'a> {
 }
 impl ItemSink for TintedItemSink<'_> {
     fn quad(&mut self, mut quad: ItemQuad) {
-        quad.color = crate::hud_layout::multiply(quad.color, self.tint);
+        if quad.foil != Foil::GlintOnly {
+            quad.color = crate::hud_layout::multiply(quad.color, self.tint);
+        }
         self.sink.quad(quad);
     }
 }
@@ -872,7 +876,7 @@ fn submit_quads(
         // jelly shell's partial alpha until it looks opaque (#4508).
         let translucent = translucent || q.material.force_translucent;
         let gui_glint_uv = match foil {
-            Foil::None => None,
+            Foil::None | Foil::GlintOnly => None,
             Foil::Standard => {
                 let rect = match last_glint {
                     Some((sprite, rect)) if sprite == q.material.sprite => rect,
@@ -1721,6 +1725,24 @@ impl ItemSink for WorldSink<'_> {
             .then_some(self.glint)
             .flatten()
             .map(|g| g.for_quad(q.entity_glint));
+        if q.foil == Foil::GlintOnly {
+            let Some(glint) = glint else {
+                return;
+            };
+            let src_uv = q.gui_glint_uv.unwrap_or(q.foil_uv);
+            for (i, (p, uv)) in q.pos.iter().zip(q.uv).enumerate() {
+                self.out.push(Vertex {
+                    normal: [0; 4],
+                    pos: p.to_array(),
+                    uv,
+                    layer: crate::gfx::GLINT_ONLY_OVERLAY | u32::from(self.tier) << 16,
+                    color: u32::MAX,
+                    light,
+                    glint_uv: glint.uv(src_uv[i]),
+                });
+            }
+            return;
+        }
         let overlay = match (glint.is_some(), q.translucent) {
             (false, true) => crate::gfx::TRANSLUCENT_ITEM_OVERLAY,
             (false, false) => 0,

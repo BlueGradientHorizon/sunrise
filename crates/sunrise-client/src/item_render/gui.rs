@@ -452,11 +452,13 @@ pub fn draw_posed(
                     hi[axis] = hi[axis].max(c.pos[axis]);
                 }
             }
-            batch.quad_3d(
-                corners.map(|c| c.pos.to_array()),
-                corners.map(|c| c.uv),
-                color,
-            );
+            if q.foil != Foil::GlintOnly {
+                batch.quad_3d(
+                    corners.map(|c| c.pos.to_array()),
+                    corners.map(|c| c.uv),
+                    color,
+                );
+            }
             if q.foil != Foil::None && glint.is_some() {
                 foil.push((q.entity_glint, corners));
             }
@@ -522,13 +524,15 @@ fn draw_quads_with(
             if fan.len() < 3 {
                 continue;
             }
-            emit(batch, &fan, |_| color, None);
+            if q.foil != Foil::GlintOnly {
+                emit(batch, &fan, |_| color, None);
+                if cit.is_some() {
+                    fans.push(fan.clone());
+                }
+            }
             if q.foil != Foil::None {
                 let quad_glint = glint.map(|g| g.for_quad(q.entity_glint));
                 emit(batch, &fan, |_| color, quad_glint.as_ref());
-            }
-            if cit.is_some() {
-                fans.push(fan);
             }
         }
     }

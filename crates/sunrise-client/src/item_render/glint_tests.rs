@@ -1902,10 +1902,7 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
         .iter()
         .map(|q| parse_quad_uv_bits(&q["glint_uv_t123456_bits"]))
         .collect();
-    // Both base and pattern layers carry foil in Sunrise and sample shield_base's glint UVs.
-    let mut want_both = want_single.clone();
-    want_both.append(&mut want_single);
-    want_both.sort();
+    want_single.sort();
     let state = renderer.resolve(&shield_red, DisplayContext::Ground, None, None, 0, &NoEnv);
     let mut out = Vec::new();
     state.submit(
@@ -1926,9 +1923,60 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
             tier: 0,
         },
     );
-    let mut got = vertex_quad_glint_bits(&out);
+    // Base and pattern layers draw without foil (`overlay == 0`); one `GLINT_ONLY_OVERLAY` pass follows.
+    let (glint_verts, non_glint_verts): (Vec<_>, Vec<_>) = out
+        .into_iter()
+        .partition(|v| (v.layer & 0xFFFF) == crate::gfx::GLINT_ONLY_OVERLAY);
+    assert!(non_glint_verts.iter().all(|v| (v.layer & 0xFFFF) == 0));
+    assert_eq!(non_glint_verts.len(), want_single.len() * 4 * 2);
+    let mut got = vertex_quad_glint_bits(&glint_verts);
     got.sort();
-    assert_eq!(got, want_both, "26.3 shield_red patterned_shield_glint");
+    assert_eq!(got, want_single, "26.3 shield_red patterned_shield_glint");
+
+    // In GUI, patterned shield emits foil ONCE (same glint vertex count as plain shield).
+    let mut red_batch = crate::hud::HudBatch::scratch([64, 64]);
+    let state_red_gui = renderer.resolve(&shield_red, DisplayContext::Gui, None, None, 0, &NoEnv);
+    gui::draw_with_frame(
+        &state_red_gui,
+        &renderer,
+        &sprites,
+        &NoHost,
+        &mut red_batch,
+        0.0,
+        0.0,
+        GlintFrame {
+            millis: 123_456,
+            speed: 0.5,
+            alpha: 0.75,
+            sprite: true,
+        },
+    );
+    let mut plain_batch = crate::hud::HudBatch::scratch([64, 64]);
+    let state_plain_gui =
+        renderer.resolve(&shield_plain, DisplayContext::Gui, None, None, 0, &NoEnv);
+    gui::draw_with_frame(
+        &state_plain_gui,
+        &renderer,
+        &sprites,
+        &NoHost,
+        &mut plain_batch,
+        0.0,
+        0.0,
+        GlintFrame {
+            millis: 123_456,
+            speed: 0.5,
+            alpha: 0.75,
+            sprite: true,
+        },
+    );
+    let count_glint =
+        |b: &crate::hud::HudBatch| b.vertices.iter().filter(|v| v.uv[0] >= 2.0).count();
+    assert!(count_glint(&red_batch) > 0);
+    assert_eq!(
+        count_glint(&red_batch),
+        count_glint(&plain_batch),
+        "patterned shield GUI must emit foil once, not per pattern layer"
+    );
 }
 
 /// 26.3 parity: `prepare_glint_atlas_with_mips` matches vanilla `SpriteLoader.stitch` bit-for-bit

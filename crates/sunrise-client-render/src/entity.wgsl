@@ -302,6 +302,21 @@ struct ClippedEntity {
 @fragment fn fs_entity_unmarked(in: Out, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     return frame_stored(entity_color(in, front));
 }
+// core/glint.fsh (`RenderPipelines.GLINT`, e.g. `RenderTypes.patternedShieldGlint`):
+// samples the glint texture alone, fades by fog and `GlintAlpha`, and squares RGB
+// to match `BlendFunction.GLINT` (`SRC_COLOR, ONE, ZERO, ONE`) under additive colour blend.
+@fragment fn fs_glint(in: Out) -> @location(0) vec4<f32> {
+    let color = tinted_glint(
+        textureSample(glint_tex, glint_sampler, in.glint_uv),
+        globals.colored_count.z,
+    );
+    if color.a < 0.1 { discard; }
+    let f = max(linear_fog(in.fog_distance.x, globals.fog.x, globals.fog.y),
+                linear_fog(in.fog_distance.y, globals.fog.z, globals.fog.w));
+    let fade = (1.0 - f * globals.fog_color.a) * globals.fog_ends.w;
+    let rgb = color.rgb * fade;
+    return frame_stored(vec4(rgb * rgb, 0.0));
+}
 fn entity_color(in: Out, front: bool) -> vec4<f32> {
     var uv = in.uv;
     if in.overlay == 6u { uv.y = in.wrap.x + fract(in.uv.y) * in.wrap.y; }

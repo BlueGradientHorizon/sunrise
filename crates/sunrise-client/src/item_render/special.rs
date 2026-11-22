@@ -682,15 +682,6 @@ pub(super) fn submit(
             } else {
                 "entity/shield/shield_base_nopattern"
             };
-            // Without patterns: `entitySolidGlint`. With them, vanilla draws
-            // `patternedShieldGlint` last, the glint alone over the finished
-            // plate. A foil quad here is its texture with the glint over it
-            // (the GUI adds the glint masked by the layer's alpha, the world
-            // shader composites it), so every layer carries the foil: each
-            // pixel ends with the glint once, over the layers below it.
-            // Redrawing the base with the foil would cover the patterns.
-            let foil = if has_foil { Foil::Standard } else { Foil::None };
-            // `ShieldSpecialRenderer`: every foil layer samples `base` in `shield_patterns`.
             let glint_rect = has_foil
                 .then(|| {
                     let atlas = renderer
@@ -700,21 +691,31 @@ pub(super) fn submit(
                     atlas.get_or_missing(base)
                 })
                 .flatten();
-            let mut shield_part = |texture: &str, color: u32| {
+            let mut shield_part = |texture: &str, color: u32, foil: Foil, rect: Option<Rect>| {
                 if let (Some(p), Some(r)) = (renderer.part("shield"), sprites.get(texture).copied())
                 {
-                    draw(
-                        p, "root", pose, &none, r, color, foil, true, glint_rect, sink,
-                    );
+                    draw(p, "root", pose, &none, r, color, foil, true, rect, sink);
                 }
             };
-            shield_part(base, white);
-            if has_patterns {
-                shield_part("entity/shield/base", dye(base_color.unwrap_or("white")));
+            if !has_patterns {
+                let foil = if has_foil { Foil::Standard } else { Foil::None };
+                shield_part(base, white, foil, glint_rect);
+            } else {
+                shield_part(base, white, Foil::None, None);
+                shield_part(
+                    "entity/shield/base",
+                    dye(base_color.unwrap_or("white")),
+                    Foil::None,
+                    None,
+                );
                 for (pattern, color) in patterns.into_iter().take(16) {
                     if let Some(t) = pattern_texture(host, false, &pattern) {
-                        shield_part(&t, dye(&color));
+                        shield_part(&t, dye(&color), Foil::None, None);
                     }
+                }
+                if has_foil {
+                    // `ShieldSpecialRenderer.submit`: one `patternedShieldGlint` pass after patterns.
+                    shield_part(base, white, Foil::GlintOnly, glint_rect);
                 }
             }
         }
@@ -967,9 +968,10 @@ mod tests {
         assert_eq!(
             texture_and_foil(&untinted),
             [
-                ("entity/shield/shield_base", Foil::Standard),
-                ("entity/shield/base", Foil::Standard),
-                ("entity/shield/stripe_bottom", Foil::Standard),
+                ("entity/shield/shield_base", Foil::None),
+                ("entity/shield/base", Foil::None),
+                ("entity/shield/stripe_bottom", Foil::None),
+                ("entity/shield/shield_base", Foil::GlintOnly),
             ]
         );
         assert_eq!(
@@ -984,12 +986,15 @@ mod tests {
             texture_and_foil(&drawn(Value::Null, true, None)),
             [("entity/shield/shield_base_nopattern", Foil::Standard)]
         );
-        // Removing green acts on the base and both pattern passes without changing
-        // the model's (possibly resource-pack-defined) red and blue or the foil.
+        // Removing green acts on the base and both pattern passes without altering the glint pass.
         let expected = untinted
             .into_iter()
             .map(|q| ItemQuad {
-                color: q.color & 0xFFFF_00FF,
+                color: if q.foil == Foil::GlintOnly {
+                    q.color
+                } else {
+                    q.color & 0xFFFF_00FF
+                },
                 ..q
             })
             .collect::<Vec<_>>();

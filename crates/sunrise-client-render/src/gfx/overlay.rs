@@ -78,11 +78,27 @@ impl Renderer {
                 }),
                 ..Default::default()
             });
-            pass.set_pipeline(self.overlay_hand.as_ref().unwrap_or(&self.entity_pipeline));
+            let base_hand = self.overlay_hand.as_ref().unwrap_or(&self.entity_pipeline);
+            let glint_hand = self
+                .overlay_hand_glint
+                .as_ref()
+                .unwrap_or(&self.glint_only_pipeline);
             pass.set_bind_group(0, &self.hand_group, &[]);
             pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-            pass.draw_indexed(0..overlay.hand_quads * 6, overlay.first_hand_vertex, 0..1);
+            let mut at = 0;
+            for run in
+                frame.hand.as_chunks::<4>().0[..overlay.hand_quads as usize].chunk_by(|a, b| {
+                    (a[0].layer & 0xffff == GLINT_ONLY_OVERLAY)
+                        == (b[0].layer & 0xffff == GLINT_ONLY_OVERLAY)
+                })
+            {
+                let glint = run[0][0].layer & 0xffff == GLINT_ONLY_OVERLAY;
+                let end = at + run.len() as u32;
+                pass.set_pipeline(if glint { glint_hand } else { base_hand });
+                pass.draw_indexed(at * 6..end * 6, overlay.first_hand_vertex, 0..1);
+                at = end;
+            }
             drop(pass);
             if let Some(hdr) = &self.hdr
                 && !no_pack_hdr_gain(layered, self.shader_pack_kind().is_some(), !frame.title)

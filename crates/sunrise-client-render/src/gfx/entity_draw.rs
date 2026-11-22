@@ -230,12 +230,31 @@ impl Renderer {
         self.prepared_ranges.clear();
     }
 
-    pub(super) fn draw_hand(&self, pass: &mut wgpu::RenderPass<'_>, quads: u32, first: u32) {
-        pass.set_pipeline(&self.entity_pipeline);
+    pub(super) fn draw_hand(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        hand: &[Vertex],
+        quads: u32,
+        first: u32,
+    ) {
         pass.set_bind_group(0, &self.hand_group, &[]);
         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
         pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-        pass.draw_indexed(0..quads * 6, (first * 4) as i32, 0..1);
+        let mut at = 0;
+        for run in hand.as_chunks::<4>().0[..quads as usize].chunk_by(|a, b| {
+            (a[0].layer & 0xffff == GLINT_ONLY_OVERLAY)
+                == (b[0].layer & 0xffff == GLINT_ONLY_OVERLAY)
+        }) {
+            let glint = run[0][0].layer & 0xffff == GLINT_ONLY_OVERLAY;
+            let end = at + run.len() as u32;
+            pass.set_pipeline(if glint {
+                &self.glint_only_pipeline
+            } else {
+                &self.entity_pipeline
+            });
+            pass.draw_indexed(at * 6..end * 6, (first * 4) as i32, 0..1);
+            at = end;
+        }
         if light_marks(self.output.frame.format, self.hdr.is_some()) {
             // Drawn into the world: the light sources it holds are marked as the world's are.
             pass.set_pipeline(&self.hdr_entity_mark_pipeline);
