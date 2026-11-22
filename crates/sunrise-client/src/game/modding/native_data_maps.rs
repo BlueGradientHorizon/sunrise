@@ -50,13 +50,12 @@ pub(crate) trait MapRegistries {
 /// A world's registries while its server tables build: every registry's ids
 /// as the command registries hold them (built in, the packs' and content
 /// mods'), the world's loaded datapack registries (the authority for a
-/// mod-declared one the command ids do not list), the loaded item and block
-/// tags, and another registry's tags read from the same packs on first use.
+/// mod-declared one the command ids do not list), the tags bound on the
+/// staged items, and another registry's tags read from the same packs on first use.
 pub(crate) struct WorldRegistries<'a> {
     ids: BTreeMap<&'a str, &'a [String]>,
     datapack: Option<&'a mod_api::DatapackRegistrySet>,
-    item_tags: &'a HashMap<String, HashSet<String>>,
-    block_tags: &'a HashMap<String, HashSet<String>>,
+    items: &'a sunrise_client::items::Items,
     root: &'a std::path::Path,
     overlay: &'a sunrise_world::loot::PackOverlay<'a>,
     id_sets: RefCell<HashMap<String, HashSet<String>>>,
@@ -74,8 +73,7 @@ impl<'a> WorldRegistries<'a> {
         Self {
             ids: ids.into_iter().collect(),
             datapack,
-            item_tags: &items.item_tags,
-            block_tags: &items.block_tags,
+            items,
             root,
             overlay,
             id_sets: RefCell::default(),
@@ -134,8 +132,11 @@ impl MapRegistries for WorldRegistries<'_> {
                 .unwrap_or_default()
         };
         match registry {
-            "minecraft:item" => members(self.item_tags),
-            "minecraft:block" => members(self.block_tags),
+            "minecraft:item" => members(&self.items.item_tags),
+            "minecraft:block" => members(&self.items.block_tags),
+            sunrise_client::items::EntityTypeTags::REGISTRY => {
+                members(self.items.entity_type_tags.members())
+            }
             _ => {
                 let mut loaded = self.tags.borrow_mut();
                 let tags = loaded.entry(registry.to_owned()).or_insert_with(|| {

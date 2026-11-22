@@ -1,6 +1,5 @@
 //! The server's tags on this client (`ClientPacketListener.handleUpdateTags`, and configuration's
-//! `RegistryDataCollector`): what native mods read of them, and their notice. The client's own
-//! rules keep playing with its tag files.
+//! `RegistryDataCollector`): install gameplay tags, then notify native mods.
 use super::Game;
 use std::sync::Arc;
 use sunrise_client::items::{Items, TagRegistry};
@@ -19,9 +18,7 @@ impl Game<'_> {
         if let Some(r) = self.remote.as_mut() {
             Arc::make_mut(&mut r.registries).add_tags(tags);
         }
-        if let Some(r) = self.remote.as_ref() {
-            self.server_items = self.server_items(&r.registries);
-        }
+        self.install_server_items();
         self.refresh_infiniburn();
         self.refresh_creative_search_tags();
         self.install_remote_tags();

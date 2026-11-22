@@ -795,6 +795,7 @@ fn a_falling_block_keeps_its_model_offset() {
         join: Default::default(),
         id: 0,
         state: BlockStateId(7),
+        blocks_building: true,
         start_pos: BlockPos::new(3, 72, -2),
         position: at,
         previous: Vec3::new(3.5, 71.0, -1.5),
