@@ -381,7 +381,6 @@ sunrise-client game::creatures::breeding_heart_tests::a_bred_turtle_posts_no_hea
 sunrise-client game::creatures::breeding_orb_tests::breeding_drops_one_orb_of_the_whole_roll lib daily resources
 sunrise-client game::creatures::breeding_tests::breeding_announces_the_orb_before_the_lower_id_child lib daily resources
 sunrise-client game::creatures::breeding_tests::camel_breeding_leaves_the_parent_stream_unchanged lib daily resources
-sunrise-client game::creatures::breeding_tests::empty_mod_never_defers_breeding_xp lib daily resources
 sunrise-client game::creatures::breeding_tests::equine_breeding_inheritance_precedes_same_tick_healing_and_grazing lib daily resources
 sunrise-client game::creatures::breeding_tests::first_chicken_breed_matches_without_mods_and_with_an_empty_mod lib daily resources
 sunrise-client game::creatures::breeding_tests::wolf_breeding_selects_either_coat_from_the_parent_stream lib daily resources
@@ -446,7 +445,6 @@ sunrise-client game::creatures::loaded_arrow_shot_tests::mob_launch_uses_only_th
 sunrise-client game::creatures::loaded_arrow_shot_tests::rocket_and_mob_trident_post_only_on_their_first_tick lib daily resources
 sunrise-client game::creatures::loaded_mob_arrow_permission_tests::loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit lib daily resources
 sunrise-client game::creatures::local_sound_event_tests::local_mob_events_play_without_entering_the_shared_capture lib daily resources
-sunrise-client game::creatures::mob_dispatch_panic_tests::mob_despawn_listener_panic_preserves_owned_rows_and_lent_random lib daily resources
 sunrise-client game::creatures::mob_griefing_tests::a_mod_denies_one_entity_griefing lib daily resources
 sunrise-client game::creatures::mob_pearl_hook_tests::mob_pearls_use_the_hook_and_recheck_listener_writes_without_player_side_effects lib daily resources
 sunrise-client game::creatures::mob_pearl_hook_tests::player_pearl_keeps_acting_context_cancellation_and_mutable_damage lib daily resources
@@ -938,7 +936,6 @@ sunrise-client game::living_attributes::tests::a_stand_the_dragon_and_a_player_t
 sunrise-client game::living_attributes::tests::a_zombie_reads_its_defaults lib daily resources
 sunrise-client game::living_attributes::tests::gear_knockback_is_read_again_only_when_the_gear_changes lib daily resources
 sunrise-client game::living_attributes::tests::the_mob_attribute_packet_is_the_live_maps_instances lib daily resources
-sunrise-client game::load_conditions::tests::load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes lib daily resources
 sunrise-client game::loot_kill_guest_tests::an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not lib daily resources
 sunrise-client game::loot_kill_guest_tests::loot_kill_as_a_guest_is_killed_by_that_player lib daily resources
 sunrise-client game::mace::tests::a_damage_item_part_changes_the_wear_of_a_weapon_hit lib daily resources
