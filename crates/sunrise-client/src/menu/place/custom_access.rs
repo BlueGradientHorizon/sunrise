@@ -1,5 +1,5 @@
 //! Engine owners of detached placement and publication use the same frozen plan.
-use super::super::{Role, Slot};
+use super::super::Role;
 use super::{Kind, Menu, custom_plan::MenuPlacement};
 impl MenuPlacement {
     /// Physical slots whose old contents the placement operation may return.
