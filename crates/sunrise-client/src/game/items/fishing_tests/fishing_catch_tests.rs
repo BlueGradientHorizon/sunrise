@@ -96,6 +96,7 @@ fn run(mode: Option<u8>) -> (Vec<(String, u32)>, usize, i32, u32, i64, bool) {
                 id: 999,
                 position: Vec3::new(2.0, 64.0, 2.0),
                 previous: Vec3::ZERO,
+                rotation: [0.0; 2],
                 velocity: Vec3::ZERO,
                 state: State::Bobbing,
                 last_deflected_by: None,

@@ -687,11 +687,10 @@ impl Game<'_> {
                 let Some(host) = self.lan.as_mut() else {
                     return;
                 };
-                let _ = host
-                    .hub
-                    .guests
-                    .update_connection(conn, |g| g.seen_credits = true);
-                host.play.entry(conn).or_default().won_game = true;
+                host.hub.update_guest(conn, |guest| {
+                    guest.seen_credits = true;
+                    guest.won_game = true;
+                });
                 // ClientboundGameEventPacket.WIN_GAME.
                 host.hub.send_to(
                     conn,
@@ -2334,8 +2333,8 @@ mod credits_respawn_tests {
 
         game.remove_old_player_for_clone(2, false);
         let host = game.lan.as_mut().unwrap();
-        host.play.entry(2).or_default().won_game = true;
         host.hub.guests.update(0, |g| {
+            g.won_game = true;
             g.inbox.push_back(InboxItem::Packet(
                 S::ClientCommand(play::ClientCommand { action: 0 }),
                 None,
@@ -2353,8 +2352,8 @@ mod credits_respawn_tests {
                 .iter()
                 .any(|packet| matches!(packet, C::SetEntityData(data) if data.id == 2))
         );
-        assert!(!host.play[&2].won_game, "the credits are over");
         let guest = &host.hub.guests[0];
+        assert!(!guest.won_game, "the credits are over");
         assert_eq!(guest.load_timeout, 60);
         assert!(guest.loading);
         assert!(!guest.client_loaded());
@@ -2488,10 +2487,8 @@ mod credits_respawn_tests {
         game.lan
             .as_mut()
             .unwrap()
-            .play
-            .entry(2)
-            .or_default()
-            .won_game = true;
+            .hub
+            .update_guest(2, |guest| guest.won_game = true);
         game.guest_respawn(2);
         assert_eq!(
             game.lan.as_ref().unwrap().hub.guests[0].dimension,

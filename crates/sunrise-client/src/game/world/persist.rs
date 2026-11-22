@@ -880,7 +880,7 @@ impl Game<'_> {
                     self.insert_fangs(
                         id,
                         [at.x, at.y, at.z],
-                        entity_nbt::rotation(&tag)[0],
+                        entity_nbt::loaded_rotation(&tag)[0],
                         delay,
                         owner,
                     );
@@ -1110,8 +1110,7 @@ impl Game<'_> {
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(c.id, state);
             }
-            self.remember_tags(c.id, &tag);
-            self.remember_uuid(c.id, uuid, &tag);
+            self.remember(c.id, uuid, tag);
             self.crystals.push(c);
         }
     }
@@ -2037,8 +2036,9 @@ impl Game<'_> {
         for c in &self.crystals {
             if include(c.id, c.position) {
                 let raw = anon_raw(&self.persist, "minecraft:end_crystal", c.position);
+                let raw = self.persist.raw.get(&c.id).or(raw.as_ref());
                 let uuid = saved_uuid(&self.persist, c.id);
-                let mut tag = with_raw(c.to_nbt(uuid, raw.as_ref()), self.persist.raw.get(&c.id));
+                let mut tag = with_raw(c.to_nbt(uuid, raw), raw);
                 write_attachments(&mut tag, c.id, &self.entity_attachments);
                 roots
                     .entry(chunk_of(c.position))

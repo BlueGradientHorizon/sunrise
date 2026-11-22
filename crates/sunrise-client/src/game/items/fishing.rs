@@ -91,6 +91,7 @@ pub(super) struct Hook {
     id: u32,
     pub(super) position: Vec3,
     pub(super) previous: Vec3,
+    pub(super) rotation: [f32; 2],
     velocity: Vec3,
     state: State,
     last_deflected_by: Option<u32>,
@@ -302,6 +303,12 @@ fn synchronized_random(uuid: [i32; 4], game_time: i64) -> LegacyRandom {
 fn bite_impulse(r: &mut impl RandomSource) -> f64 {
     // Mth.nextFloat(random, min, max): `random.nextFloat() * (max - min) + min`.
     f64::from(-0.4f32 * (r.next_float() * (1.0f32 - 0.6f32) + 0.6f32))
+}
+
+/// `FishingHook`'s constructor and `Projectile.updateRotation` read the current velocity.
+fn hook_rotation(v: Vec3) -> [f32; 2] {
+    let atan2 = sunrise_core::geometry::trig::atan2_degrees;
+    [atan2(v.x, v.z), atan2(v.y, v.horizontal_distance())]
 }
 
 /// `FishingHook` constructor's three independent triangle draws.
@@ -571,6 +578,7 @@ impl Game<'_> {
                 id: self.next_entity,
                 position: start,
                 previous: start,
+                rotation: hook_rotation(v),
                 velocity: v,
                 state: State::Flying,
                 last_deflected_by: None,
@@ -1345,6 +1353,10 @@ impl Game<'_> {
                 moved,
                 &mut h.velocity,
             );
+            // FishingHook.tick turns before grounding or drag zeros/scales motion.
+            let [yaw, pitch] = hook_rotation(h.velocity);
+            let lerp = sunrise_client::arrows::lerp_rotation;
+            h.rotation = [lerp(h.rotation[0], yaw), lerp(h.rotation[1], pitch)];
             if h.state == State::Flying && (h.ground.on_ground || h.ground.horizontal_collision) {
                 h.velocity = Vec3::ZERO;
             }
@@ -1915,6 +1927,7 @@ impl Hook {
             id,
             position: at,
             previous: at,
+            rotation: [0.0; 2],
             velocity: Vec3::ZERO,
             state: State::Flying,
             last_deflected_by: None,

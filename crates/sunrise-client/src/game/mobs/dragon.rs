@@ -393,6 +393,7 @@ pub(in crate::game) struct Dragon {
     pub previous: Vec3,
     pub(super) velocity: Vec3,
     pub yaw: f32,
+    pub pitch: f32,
     pub previous_yaw: f32,
     yaw_accel: f32,
     pub health: f32,
@@ -647,6 +648,7 @@ impl Dragon {
             previous: position,
             velocity: Vec3::ZERO,
             yaw,
+            pitch: 0.0,
             previous_yaw: yaw,
             yaw_accel: 0.0,
             health: MAX_HEALTH,
@@ -3919,7 +3921,7 @@ impl Dragon {
             "minecraft:ender_dragon",
             self.position,
             self.velocity,
-            [self.yaw, 0.0],
+            [self.yaw, self.pitch],
             (false, 0.0),
             uuid,
             raw,
@@ -3945,8 +3947,10 @@ impl Dragon {
         tag
     }
     pub(super) fn from_nbt(tag: &Tag, seed: i64) -> Option<Self> {
-        let (position, velocity, yaw) = sunrise_client::entity_nbt::boat_from_nbt(tag)?;
+        let (position, velocity, _) = sunrise_client::entity_nbt::boat_from_nbt(tag)?;
+        let [yaw, pitch] = sunrise_client::entity_nbt::loaded_rotation(tag);
         let mut d = Self::new(position, yaw, seed);
+        d.pitch = pitch;
         d.velocity = velocity;
         // Vanilla getFloatOr/getIntOr accept any numeric tag type.
         d.health = nbt_value::float(tag.get("Health")).map_or(d.health, |h| h as f32);
@@ -3973,7 +3977,7 @@ impl Crystal {
             "minecraft:end_crystal",
             self.position,
             Vec3::ZERO,
-            [0.0, 0.0],
+            raw.map_or([0.0; 2], sunrise_client::entity_nbt::loaded_rotation),
             self.fall,
             uuid,
             raw,
