@@ -31,6 +31,7 @@ pub(super) struct CreditPlan {
 struct HurtBy {
     player: Option<[i32; 4]>,
     attacker: Option<(u32, [i32; 4])>,
+    trade_feedback: bool,
 }
 
 pub(super) struct CreditLoan<'a> {
@@ -50,6 +51,20 @@ impl CreditPlan {
 impl KnockbackCredit for CreditLoan<'_> {
     fn accepted_mob_hit(&mut self, mob: &mut Mob) {
         assert_eq!(mob.id as i32, self.plan.victim);
+        if let Some(hurt) = &mut self.plan.hurt_by
+            && std::mem::take(&mut hurt.trade_feedback)
+            && let Some(pending) = mob
+                .extra
+                .villager
+                .as_mut()
+                .and_then(|ext| ext.pending_hurt_player.as_mut())
+        {
+            // notifyTradeUpdated draws before the victim's own hurt sound or effects.
+            pending.trade_pitch = sunrise_client::merchant::trade_update_pitch(
+                &mut mob.ambient_timer,
+                &mut mob.random,
+            );
+        }
         if let Some(responsibility) = self.plan.responsibility.take() {
             mob.ai.last_hurt_by_player = if responsibility.is_some() { 100 } else { 0 };
             match &responsibility {
@@ -215,6 +230,10 @@ impl Game<'_> {
                     Some(Who::Mob(id)) => self.known_attacker_uuid(id).map(|uuid| (id, uuid)),
                     _ => None,
                 },
+                trade_feedback: attacker == Some(Who::Player)
+                    && attack
+                        .player_uuid
+                        .is_some_and(|uuid| self.villager_trade_will_notify(victim as u32, uuid)),
             });
         let fixed = if observed && mob.is_none() {
             self.entity(victim as u32)

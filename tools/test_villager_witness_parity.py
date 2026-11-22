@@ -49,7 +49,7 @@ def main(argv=None):
                     'dev.sunriselab.parity.VanillaVillagerWitnessOracle', str(expected)],
                    cwd=scratch, env=env, check=True)
     rows = expected.read_text(encoding='utf-8').splitlines()
-    if [line.split()[0] for line in rows] != ['witnesses', 'cached', 'fresh', 'hurt', 'hurt_order']:
+    if [line.split()[0] for line in rows] != ['witnesses', 'cached', 'fresh', 'hurt', 'hurt_order', 'hurt_order_buyer']:
         raise AssertionError('Missing/extra actual Java records')
     if args.java_only:
         base.ensure_sources_unchanged(sources, hashes)

@@ -12,6 +12,11 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerSynchronizer;
+import net.minecraft.world.inventory.RemoteSlot;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.effect.MobEffect;
@@ -111,7 +116,11 @@ public final class VanillaVillagerWitnessOracle {
         @Override protected void actuallyHurt(ServerLevel level, DamageSource source, float damage) { health -= damage; }
         @Override protected Player resolvePlayerResponsibleForDamage(DamageSource source) { return null; }
         @Override public void dealDefaultKnockback(DamageSource source, float amount, boolean blocked) {}
-        @Override protected void playHurtSound(DamageSource source) { world.trace.add("sound"); }
+        @Override public float getVoicePitch() { return 1.0F; }
+        @Override public void playSound(SoundEvent sound, float volume, float pitch) {
+            if (sound == SoundEvents.VILLAGER_NO) world.trace.add("no");
+            if (sound == SoundEvents.VILLAGER_HURT) world.trace.add("sound");
+        }
         @Override public void die(DamageSource source) {}
     }
     static final class Buyer extends Player {
@@ -131,7 +140,7 @@ public final class VanillaVillagerWitnessOracle {
         field(Entity.class, "uuid").set(player, new UUID(0L, identity));
         return player;
     }
-    static List<String> hurt() throws Exception {
+    static List<String> hurt(boolean buyerFirst) throws Exception {
         var world = make(HurtLevel.class);
         world.trace = new ArrayList<>();
         var villager = make(HurtVillager.class);
@@ -148,16 +157,37 @@ public final class VanillaVillagerWitnessOracle {
         var buyer = buyer(world, 2);
         var other = buyer(world, 3);
         var lethal = buyer(world, 5);
-        buyer.containerMenu = new MerchantMenu(1, new Inventory(buyer, new EntityEquipment()), villager);
+        var menu = new MerchantMenu(1, new Inventory(buyer, new EntityEquipment()), villager);
+        buyer.containerMenu = menu;
         villager.setTradingPlayer(buyer);
+        var ambient = field(net.minecraft.world.entity.Mob.class, "ambientSoundTime");
+        ambient.setInt(villager, -80);
+        menu.getSlot(0).set(new ItemStack(Items.EMERALD, 4));
+        if (menu.getSlot(2).getItem().isEmpty()) throw new AssertionError("missing initial result");
+        menu.setSynchronizer(new ContainerSynchronizer() {
+            @Override public void sendInitialData(AbstractContainerMenu container, List<ItemStack> slots, ItemStack carried, int[] data) {}
+            @Override public void sendSlotChange(AbstractContainerMenu container, int index, ItemStack stack) {
+                if (index == 2) world.trace.add(stack.isEmpty() ? "result:empty" : "result:filled");
+            }
+            @Override public void sendCarriedChange(AbstractContainerMenu container, ItemStack carried) {}
+            @Override public void sendDataChange(AbstractContainerMenu container, int id, int value) {}
+            @Override public RemoteSlot createSlot() { return new RemoteSlot.Synchronized(null); }
+        });
+        ambient.setInt(villager, 0);
         var mob = actor(world, 1, 2, 0, false);
         var weak = actor(world, 4, 2, 0, false);
         field(Entity.class, "uuid").set(mob, new UUID(0L, 1));
         field(Entity.class, "uuid").set(weak, new UUID(0L, 4));
         var type = Holder.direct(new DamageType("test", 0.0F));
-        if (!villager.hurtServer(world, new DamageSource(type, buyer), 1.0F)
-                || !villager.hurtServer(world, new DamageSource(type, other), 3.0F)
-                || !villager.hurtServer(world, new DamageSource(type, mob), 5.0F)
+        if (!villager.hurtServer(world, new DamageSource(type, buyerFirst ? buyer : other), 1.0F)
+                || !villager.hurtServer(world, new DamageSource(type, buyerFirst ? other : buyer), 3.0F)) {
+            throw new AssertionError("same-tick player hits must both be accepted");
+        }
+        if (world.trace.stream().anyMatch(event -> event.startsWith("result:"))) {
+            throw new AssertionError("the result was sent before the menu broadcast");
+        }
+        menu.broadcastChanges(); // ServerPlayer.tick, before stillValid.
+        if (!villager.hurtServer(world, new DamageSource(type, mob), 5.0F)
                 || villager.hurtServer(world, new DamageSource(type, weak), 2.0F)
                 || !villager.hurtServer(world, new DamageSource(type, mob), 7.0F)
                 || !villager.hurtServer(world, new DamageSource(type, lethal), 1000.0F)) {
@@ -191,9 +221,10 @@ public final class VanillaVillagerWitnessOracle {
             out.write("cached " + witnesses(memory) + "\n");
             memory = new NearestVisibleLivingEntities(world, victim, candidates);
             out.write("fresh " + witnesses(memory) + "\n");
-            var hurt = hurt();
+            var hurt = hurt(false);
             out.write("hurt " + hurt.get(0) + "\n");
             out.write("hurt_order " + hurt.get(1) + "\n");
+            out.write("hurt_order_buyer " + hurt(true).get(1) + "\n");
         }
     }
 }

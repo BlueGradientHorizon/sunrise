@@ -438,6 +438,7 @@ impl Game<'_> {
         let (session, _) = self.merchant_apply(
             plan.menu.merchant.take().expect("planned merchant"),
             Some(mob),
+            sunrise_client::merchant::TradeFeedback::Current,
         );
         let host = self.lan.as_mut().expect("validated merchant host");
         let gi = host

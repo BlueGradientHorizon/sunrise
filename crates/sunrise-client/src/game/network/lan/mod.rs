@@ -3400,8 +3400,10 @@ impl Game<'_> {
                 .and_then(|s| s.get(&m.id))
                 .copied();
             let at = [m.position.x, m.position.y, m.position.z];
-            // LivingEntity.hurtServer: a hurt that restarted the hurt time.
-            if m.hurt_time > old.map_or(0, |o| o.0)
+            // Villager hits already sent their damage in accepted-hit order.
+            // Other mobs still use the restarted hurt time at the normal flush.
+            if m.species() != Species::Villager
+                && m.hurt_time > old.map_or(0, |o| o.0)
                 && !dead
                 && let Some((source, _)) = m.last_damage
             {
@@ -5701,17 +5703,25 @@ mod merchant_packet_tests {
             bind_local_player, run_fresh_cases, with_game,
         };
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
-        use sunrise_client::mobs::{Damage, Mob};
-        use sunrise_core::geometry::Vec3;
+        use sunrise_client::{
+            merchant::TradeFeedback,
+            mobs::{Damage, Mob},
+        };
+        use sunrise_core::{
+            geometry::Vec3,
+            random::{LegacyRandom, RandomSource},
+        };
         use sunrise_protocol::packets::play::Clientbound;
 
+        const CHILD: &str = "SUNRISE_MERCHANT_HURT_PACKETS_CHILD";
         if run_fresh_cases(
             "game::lan::merchant_packet_tests::merchant_take_keeps_packet_snapshot_until_price_refresh",
-            "SUNRISE_MERCHANT_HURT_PACKETS_CHILD",
-            &["merchant"],
+            CHILD,
+            &["nonbuyer-first", "buyer-first"],
         ) {
             return;
         }
+        let buyer_first = std::env::var(CHILD).unwrap() == "buyer-first";
         use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest};
 
         with_game(|game| {
@@ -5972,17 +5982,17 @@ mod merchant_packet_tests {
             assert_eq!(state.xp, 22);
             // An actual price refresh sends the snapshot even if only uses/XP
             // changed, and even a repeated refresh must reach the client.
-            game.lan_merchant_reputation(0, None);
+            game.lan_merchant_reputation(0, None, TradeFeedback::Current);
             assert!(
                 packets(&rx).0.is_empty(),
                 "unrelated merchants do not refresh this menu"
             );
-            game.lan_merchant_reputation(77, None);
+            game.lan_merchant_reputation(77, None, TradeFeedback::Current);
             let refreshed = packets(&rx).0;
             assert_eq!(refreshed.len(), 1);
             assert_eq!(refreshed[0].offers[0].uses, 2);
             assert_eq!(refreshed[0].xp, 22);
-            game.lan_merchant_reputation(77, None);
+            game.lan_merchant_reputation(77, None, TradeFeedback::Current);
             assert_eq!(
                 packets(&rx).0.len(),
                 1,
@@ -6083,9 +6093,17 @@ mod merchant_packet_tests {
                 .unwrap(),
             );
             bind_local_player(game, 300, 3);
-            let mut actual = Vec::new();
-            let mut record = |game: &mut super::Game<'_>| {
-                game.lan_flush_effects();
+            game.mobs[0].ambient_timer = 0;
+            game.mobs[0].random = LegacyRandom::new(42);
+            let mut random = LegacyRandom::new(42);
+            let pitch = (random.next_float() - random.next_float()) * 0.2 + 1.0;
+            if buyer_first {
+                // The yes/no voice consumes the first pitch pair, then hurt consumes the second.
+                random.next_float();
+                random.next_float();
+            }
+            let record = || {
+                let mut actual = Vec::new();
                 for out in rx.try_iter() {
                     let sunrise_client::lan::Out::Packet(body) = out else {
                         continue;
@@ -6108,11 +6126,20 @@ mod merchant_packet_tests {
                         Clientbound::DamageEvent(packet) if packet.id == 77 => {
                             actual.push("damage".to_owned());
                         }
+                        Clientbound::Sound(packet)
+                            if packet.sound.1.as_ref().is_some_and(|(name, _)| {
+                                name == "minecraft:entity.villager.no"
+                            }) =>
+                        {
+                            assert_eq!(packet.pitch.to_bits(), pitch.to_bits());
+                            actual.push("no".to_owned());
+                        }
                         Clientbound::ContainerSetSlot(packet)
                             if packet.container == merchant_window =>
                         {
                             assert_eq!(packet.slot, 2, "only the result slot changed");
                             assert!(packet.item.is_none());
+                            actual.push("result:empty".to_owned());
                         }
                         Clientbound::ContainerSetContent(packet)
                             if packet.container == merchant_window =>
@@ -6122,12 +6149,47 @@ mod merchant_packet_tests {
                         _ => {}
                     }
                 }
+                actual
             };
-            assert_eq!(
-                game.as_guest(1, |g| g.hurt_by_player(0, 1.0, Damage::player(at))),
-                Some((true, false))
+            let other_hit = |game: &mut super::Game<'_>, amount| {
+                assert_eq!(
+                    game.hurt_by_player(0, amount, Damage::player(at)),
+                    (true, false)
+                );
+            };
+            let buyer_hit = |game: &mut super::Game<'_>, amount| {
+                assert_eq!(
+                    game.as_guest(1, |g| g.hurt_by_player(0, amount, Damage::player(at))),
+                    Some((true, false))
+                );
+            };
+            // Use two accepted hits in one turn with no flush or tick between them.
+            if buyer_first {
+                buyer_hit(game, 1.0);
+                other_hit(game, 3.0);
+            } else {
+                other_hit(game, 1.0);
+                buyer_hit(game, 3.0);
+            }
+            assert_eq!(game.mobs[0].ambient_timer, -80);
+            assert_eq!(game.mobs[0].random.clone().next_long(), random.next_long());
+            let mut actual = record();
+            assert!(!actual.iter().any(|event| event == "result:empty"));
+            game.lan_flush_effects();
+            assert!(
+                record().is_empty(),
+                "no hurt or slot packet waited for the effects flush"
             );
-            record(game);
+            game.lan_merchant_tick();
+            let sync = record();
+            assert_eq!(
+                sync,
+                ["result:empty"],
+                "the result must reach the client at menu broadcast"
+            );
+            actual.extend(sync);
+            game.lan_merchant_tick();
+            assert!(record().is_empty(), "an unchanged result is not resent");
             let hub = &game.lan.as_ref().unwrap().hub;
             assert_eq!(hub.guests[0].carried.as_ref().unwrap().count, 3);
             let gm = game.lan.as_ref().unwrap().menus[&1]
@@ -6143,11 +6205,6 @@ mod merchant_packet_tests {
                 4,
                 "payment stayed in the menu"
             );
-            assert_eq!(
-                game.hurt_by_player(0, 3.0, Damage::player(at)),
-                (true, false)
-            );
-            record(game);
             let kind = game.mobs[0].kind.clone();
             game.mobs
                 .push(Mob::new(78, kind.clone(), Vec3::new(1.0, 4.0, 1.0), 0.0));
@@ -6157,25 +6214,34 @@ mod merchant_packet_tests {
             assert!(game.mob_hits_mob(77, 5.0, Damage::mob(78, at)));
             assert!(!game.mob_hits_mob(77, 2.0, Damage::mob(79, at)));
             assert!(game.mob_hits_mob(77, 7.0, Damage::mob(78, at)));
-            record(game);
             bind_local_player(game, 300, 5);
             assert_eq!(
                 game.hurt_by_player(0, 1000.0, Damage::player(at)),
                 (true, true)
             );
-            record(game);
+            game.lan_flush_effects();
+            actual.extend(record());
             let expected = match std::env::var_os("SUNRISE_REPUTATION_ORACLE") {
                 Some(oracle) => std::fs::read_to_string(oracle)
                     .unwrap()
                     .lines()
-                    .find_map(|line| line.strip_prefix("hurt_order "))
+                    .find_map(|line| {
+                        line.strip_prefix(if buyer_first {
+                            "hurt_order_buyer "
+                        } else {
+                            "hurt_order "
+                        })
+                    })
                     .unwrap()
                     .split(',')
-                    // The sound is delivered by the audio layer, not the effects flush.
+                    // Ordinary hurt audio has a separate packet path; the trade voice is in this order.
                     .filter(|event| *event != "sound")
                     .collect::<Vec<_>>()
                     .join(","),
-                None => "offer:9,entity:13,damage,entity:13".to_owned(),
+                None if buyer_first => {
+                    "no,offer:9,entity:13,damage,entity:13,result:empty".to_owned()
+                }
+                None => "entity:13,damage,offer:9,entity:13,result:empty".to_owned(),
             };
             assert_eq!(actual.join(","), expected);
         });

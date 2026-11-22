@@ -338,6 +338,14 @@ pub const RAID_VICTORY: u8 = 3;
 /// The raid there was lost (still found by `getRaidAt` until it stops).
 pub const RAID_LOSS: u8 = 4;
 
+/// The owner of this hit publishes the response before another hit can land.
+#[derive(Clone, Copy, Debug)]
+pub struct PlayerHurt {
+    pub uuid: [i32; 4],
+    pub angry: bool,
+    pub trade_pitch: Option<f32>,
+}
+
 /// Villager state beyond `Extra`'s scratch fields.
 #[derive(Clone, Debug, Default)]
 pub struct Ext {
@@ -349,8 +357,9 @@ pub struct Ext {
     pub raid_wave: bool,
     /// What the villager remembers of players (`gossips`).
     pub gossips: crate::gossip::Gossips,
-    /// Player UUID and whether to broadcast anger, handed to the owner of this hit.
-    pub pending_hurt_player: Option<([i32; 4], bool)>,
+    pub pending_hurt_player: Option<PlayerHurt>,
+    /// `LivingEntity.hurtServer`'s damage broadcast for a full, unblocked hit.
+    pub pending_hurt_damage: Option<(super::Damage, Option<i32>)>,
     /// `Villager.lastTradedPlayer`: the most recent trader, consumed by the
     /// next customServerAiStep. This is runtime state, not saved gossip.
     pub last_traded_player: Option<[i32; 4]>,
@@ -398,7 +407,11 @@ pub fn hurt_by(m: &mut Mob, source: &super::Damage, uuid: [i32; 4]) {
         crate::gossip::REPUTATION_CHANGE_PER_EVENT,
     );
     if who == super::Who::Player {
-        ext.pending_hurt_player = Some((uuid, alive));
+        ext.pending_hurt_player = Some(PlayerHurt {
+            uuid,
+            angry: alive,
+            trade_pitch: None,
+        });
     }
 }
 pub fn ext_mut(m: &mut Mob) -> &mut Ext {
