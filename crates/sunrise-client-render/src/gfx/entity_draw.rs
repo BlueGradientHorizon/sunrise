@@ -1,8 +1,9 @@
 use super::*;
 
-/// entity.wgsl after the OverlayTexture constants it reads.
+/// entity.wgsl after the OverlayTexture constants and the particle overlay marker it reads.
 pub(super) fn entity_shader() -> String {
     crate::overlay::wgsl_constants()
+        + &format!("const EXPLICIT_PARTICLE_OVERLAY: u32 = {EXPLICIT_PARTICLE_OVERLAY}u;\n")
         + include_str!("../hdr_light.wgsl")
         + include_str!("../entity.wgsl")
 }
