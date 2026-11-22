@@ -45,7 +45,7 @@ velocity and the level's light.
 ### Particle providers
 
 A particle provider (`Hooks::register_particle_providers`) gives a registered particle type its own
-construction and tick behavior. The type is named by its ID (`mymod:spark`); its sprite set and
+construction, tick behavior and per-frame quad. The type is named by its ID (`mymod:spark`); its sprite set and
 spawn defaults come from `assets/<namespace>/particles/<path>.json`. Make a request with
 `ParticleOptions::simple` (or another typed option constructor) on the key returned by
 `Registrar::particle_key`. Register a factory on the client at startup:
@@ -70,6 +70,13 @@ impl CustomParticle for Spark {
         if particle.advance_age() {
             particle.move_by([0.0, self.rise, 0.0]);
             particle.set_sprite_from_age();
+        }
+    }
+
+    fn extract(&self, particle: &dyn ParticleView, partial_tick: f32, quad: &mut ParticleQuad) {
+        // Grow during the first tick, without changing the particle's stored size.
+        if particle.age() == 0 {
+            quad.size *= partial_tick;
         }
     }
 }
@@ -111,12 +118,20 @@ camera quaternion's Y and W components alone; `Fixed([x, y, z, w])` sets a world
 `set_roll` turns the quad about its own normal, interpolated from the previous roll when the
 current roll is nonzero.
 
+`CustomParticle::extract` receives a read-only `ParticleView`, the frame's partial tick and a
+mutable `ParticleQuad` on the owning thread. The default draws the configured appearance.
+Override it to change this frame's size, RGBA, facing, roll or visibility. The sprite, light and
+render group still come from the particle. Colors use vanilla's `ARGB.colorFromFloat` (floor
+and mask each channel, without clamping). Fixed quaternions written to the quad are used as
+supplied. Hiding the quad, refusing the callback or producing non-finite vertices skips just
+that draw: it does not change the instance, tick state or lifetime. Update those in `tick` instead.
+
 `ParticleLevelView` reads loaded `block_state(pos)` and stored `brightness(layer, pos)` during
 construction and tick. A missing chunk reads as air; the sky layer always reads zero in a
 dimension without sky light. The instance ticks on the particle engine's owning thread. A panic
 is reported in the log and error toast with the mod's name and disables that registration's
-panicking callback kind for the session; other callbacks continue. A phase refusal is reported
-without disabling the callback. Existing native instances are discarded when sprites reload.
+panicking callback kind for the session; other callbacks continue. An extraction panic does not
+stop ticks. A phase refusal is reported without disabling the callback. Existing native instances are discarded when sprites reload.
 
 ### Particle render groups
 

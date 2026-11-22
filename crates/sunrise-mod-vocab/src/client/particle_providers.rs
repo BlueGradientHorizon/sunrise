@@ -20,8 +20,8 @@ pub enum ParticleFacing {
     /// quaternion made of the camera's `y` and `w` components alone. The particle's own position
     /// does not enter.
     AroundY,
-    /// A world-fixed orientation, as a unit quaternion `[x, y, z, w]` turning the quad's
-    /// default plane (corners in XY, facing +Z). A quad lying flat facing up is
+    /// A world-fixed orientation, as a quaternion `[x, y, z, w]` turning the quad's default
+    /// plane (corners in XY, facing +Z). A quad lying flat facing up is
     /// `[-sin(pi/4), 0, 0, cos(pi/4)]`. `roll` turns the quad about its own normal after it.
     Fixed([f32; 4]),
 }
@@ -152,8 +152,26 @@ pub trait ParticleTickView: ParticleView {
     fn remove(&mut self);
 }
 
+/// The appearance of one particle quad for this frame. The engine seeds it from the particle;
+/// edits do not change its sprite, lighting, render group or simulation state.
+// no wire: in-process output for one frame, not a particle's state or spawn options.
+// exhaustive: the engine supplies all the fields by literal; mods edit the loan.
+pub struct ParticleQuad {
+    /// Billboard half-width in blocks.
+    pub size: f32,
+    /// Red, green, blue and alpha, packed with vanilla's `ARGB.colorFromFloat` without clamping.
+    pub rgba: [f32; 4],
+    /// Camera-facing or fixed orientation. A fixed quaternion is used as supplied, without
+    /// normalizing it before rotation.
+    pub facing: ParticleFacing,
+    /// Current roll in radians. When nonzero, it interpolates from `ParticleView::previous_roll`.
+    pub roll: f32,
+    /// Set to false to skip just this draw, without removing the particle.
+    pub visible: bool,
+}
+
 /// An owned native particle instance. Its fields are its private per-particle state. It is
-/// constructed, ticked and destroyed by the particle engine, not copied to a worker or a batch.
+/// constructed, ticked, drawn and destroyed on the particle engine's owning thread.
 // no wire: owns executable behavior and private instance state.
 pub trait CustomParticle: Send + Sync + 'static {
     /// Tick this instance on the owning thread, with particle and level loans for this call.
@@ -163,6 +181,13 @@ pub trait CustomParticle: Send + Sync + 'static {
     fn tick(&mut self, particle: &mut dyn ParticleTickView, _level: &dyn ParticleLevelView) {
         particle.tick_base();
     }
+
+    /// Extract this frame's quad on the owning thread (`SingleQuadParticle.extract`). The default
+    /// leaves the particle's configured appearance in `quad`. Change only the loaned render
+    /// output; keep simulation updates in `tick`. A phase refusal or non-finite quad geometry
+    /// skips just this draw and is reported. A panic also disables this registration's extract
+    /// callback for the session; it does not disable ticking or remove the particle.
+    fn extract(&self, _particle: &dyn ParticleView, _partial_tick: f32, _quad: &mut ParticleQuad) {}
 }
 
 /// A mod's particle provider, bound to a sprite set by

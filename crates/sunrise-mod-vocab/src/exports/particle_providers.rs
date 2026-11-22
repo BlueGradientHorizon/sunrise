@@ -1,7 +1,7 @@
 use client::particle_providers::ParticleProviderRegistration;
 pub use client::particle_providers::{
-    CustomParticle, ParticleFacing, ParticleLevelView, ParticleProvider, ParticleSpawn,
-    ParticleSpriteSet, ParticleTickView, ParticleView,
+    CustomParticle, ParticleFacing, ParticleLevelView, ParticleProvider, ParticleQuad,
+    ParticleSpawn, ParticleSpriteSet, ParticleTickView, ParticleView,
 };
 mod __private {
     mod game {

@@ -1,17 +1,20 @@
 //! Opt-in, compiled particle behavior. The ordinary engine still owns the
 //! particle, its sprite set, interpolation, rendering and total count limits.
 use super::{
-    Behaviour, Particle, ParticleEngine, ParticleLevel, ParticleOptions, ParticleType, SpawnScope,
-    Sprite,
+    Behaviour, Particle, ParticleEngine, ParticleLevel, ParticleOptions, ParticleType,
+    QUAD_CORNERS, SpawnScope, Sprite,
 };
+use glam::Vec3;
 use mod_api::{
     __private::game::{CallbackOwner, ParticleProviderRegistration, particle_spawn},
     Answered, BlockState, CustomParticle, Identifier, LightLayer, ParticleFacing,
-    ParticleLevelView, ParticleProvider, ParticleSpriteSet, ParticleTickView, ParticleView,
+    ParticleLevelView, ParticleProvider, ParticleQuad, ParticleSpriteSet, ParticleTickView,
+    ParticleView,
 };
 use std::{
     collections::BTreeMap,
     fmt::Debug,
+    ops::Deref,
     sync::{Arc, OnceLock},
 };
 use sunrise_core::random::{LegacyRandom, RandomSource};
@@ -85,6 +88,7 @@ pub(super) fn freeze(providers: Vec<Answered<ParticleProviderRegistration>>) -> 
             id: answer.id.clone(),
             create: CallbackOwner::for_mod(mod_id),
             tick: CallbackOwner::for_mod(mod_id),
+            extract: CallbackOwner::for_mod(mod_id),
             dispose: CallbackOwner::for_mod(mod_id),
         });
         if let Some(previous) = factories.insert(
@@ -160,6 +164,7 @@ struct ProviderCallbacks {
     id: Identifier,
     create: CallbackOwner,
     tick: CallbackOwner,
+    extract: CallbackOwner,
     dispose: CallbackOwner,
 }
 
@@ -182,15 +187,18 @@ impl Drop for BoundProvider {
 pub(super) struct Provided {
     callbacks: Arc<ProviderCallbacks>,
     instance: Option<Box<dyn CustomParticle>>,
-    frame: usize,
-    facing: Facing,
+    presentation: Presentation,
 }
 
-#[derive(Clone, Copy, Debug)]
-enum Facing {
-    Camera,
-    AroundY,
-    Fixed(glam::Quat),
+struct Presentation {
+    frame: usize,
+    facing: ParticleFacing,
+}
+
+pub(super) struct ExtractedQuad {
+    pub(super) corners: [Vec3; 4],
+    pub(super) size: f32,
+    pub(super) color: u32,
 }
 
 impl Drop for Provided {
@@ -207,7 +215,7 @@ impl Debug for Provided {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Provided")
             .field("id", &self.callbacks.id)
-            .field("frame", &self.frame)
+            .field("frame", &self.presentation.frame)
             .finish_non_exhaustive()
     }
 }
@@ -239,12 +247,13 @@ impl Provided {
         };
         let set = particle.set.expect("provided particle has a sprite set");
         let mut view = LiveParticle {
-            particle,
-            level: level.level,
-            sprites: &engine.set_sprites[set as usize],
-            frame: &mut self.frame,
-            facing: &mut self.facing,
-            callbacks: &self.callbacks,
+            particle: &mut *particle,
+            presentation: &mut self.presentation,
+            context: TickContext {
+                level: level.level,
+                sprites: &engine.set_sprites[set as usize],
+                callbacks: &self.callbacks,
+            },
         };
         if let Err(error) = owner.call("particle provider", "tick_custom_particle", || {
             self.instance
@@ -258,69 +267,113 @@ impl Provided {
             }
         }
     }
-    /// The quad's rotation at `partial` of a tick (`SingleQuadParticle.extract`): the facing's
-    /// quaternion (`LOOKAT_XYZ` the camera's, `LOOKAT_Y` its y and w alone, as vanilla sets it,
-    /// or the world-fixed one), then `rotateZ` of `Mth.lerp(partial, oRoll, roll)` when the
-    /// particle's roll is not zero. All of it in JOML's f32 maths.
-    pub(super) fn rotation(
+    /// Run the frame callback and prepare a complete quad before submitting any vertices.
+    pub(super) fn extract(
         &self,
+        particle: &Particle,
         camera: glam::Quat,
-        o_roll: f32,
-        roll: f32,
+        center: Vec3,
         partial: f32,
-    ) -> glam::Quat {
+    ) -> Option<ExtractedQuad> {
         use crate::camera::joml::Quat;
-        let facing = match self.facing {
-            Facing::Camera => Quat {
-                x: camera.x,
-                y: camera.y,
-                z: camera.z,
-                w: camera.w,
-            },
-            Facing::AroundY => Quat {
-                x: 0.0,
-                y: camera.y,
-                z: 0.0,
-                w: camera.w,
-            },
-            Facing::Fixed(q) => Quat {
-                x: q.x,
-                y: q.y,
-                z: q.z,
-                w: q.w,
-            },
+        let owner = &self.callbacks.extract;
+        if owner.is_poisoned() {
+            return None;
+        }
+        let view = LiveParticle {
+            particle,
+            presentation: &self.presentation,
+            context: (),
         };
-        let turned = if roll == 0.0 {
-            facing
-        } else {
-            facing.rotate_z(o_roll + partial * (roll - o_roll))
+        let mut quad = ParticleQuad {
+            size: particle.quad_size(partial),
+            rgba: view.rgba(),
+            facing: view.facing(),
+            roll: view.roll(),
+            visible: true,
         };
-        glam::Quat::from_xyzw(turned.x, turned.y, turned.z, turned.w)
+        if let Err(error) = owner.call("particle provider", "extract_custom_particle", || {
+            self.instance
+                .as_ref()
+                .expect("owned particle")
+                .extract(&view, partial, &mut quad);
+        }) {
+            log::warn!("Particle provider {}: {error}", self.callbacks.id);
+            return None;
+        }
+        if !quad.visible {
+            return None;
+        }
+
+        // SingleQuadParticle.extract: keep the raw LOOKAT_Y y/w (or the fixed rotation),
+        // and apply JOML rotateZ only if the current roll is nonzero.
+        let [x, y, z, w] = match quad.facing {
+            ParticleFacing::Camera => camera.to_array(),
+            ParticleFacing::AroundY => [0.0, camera.y, 0.0, camera.w],
+            ParticleFacing::Fixed(q) => q,
+        };
+        let mut rotation = Quat { x, y, z, w };
+        if quad.roll != 0.0 {
+            let previous = view.previous_roll();
+            rotation = rotation.rotate_z(previous + partial * (quad.roll - previous));
+        }
+        let corners =
+            QUAD_CORNERS.map(|corner| center + Vec3::from(rotation.transform(corner)) * quad.size);
+        if corners.iter().any(|corner| !corner.is_finite()) {
+            log::warn!(
+                "Particle provider {} from mod {}: non-finite quad vertices",
+                self.callbacks.id,
+                owner.id(),
+            );
+            return None;
+        }
+
+        // ARGB.colorFromFloat masks each floored channel to one byte. The renderer's
+        // Unorm8x4 vertex attribute consumes those bytes in RGBA order.
+        let rgba = quad
+            .rgba
+            .map(|channel| sunrise_core::mth::floor_f32(channel * 255.0) as u8);
+        Some(ExtractedQuad {
+            corners,
+            size: quad.size,
+            color: u32::from_le_bytes(rgba),
+        })
     }
 }
 
-struct LiveParticle<'a, 'l> {
-    particle: &'a mut Particle,
+// Read and write callbacks share the same getters. Only the tick/create loan carries
+// mutable state and the level/sprite context for ParticleTickView.
+struct LiveParticle<P, S, C> {
+    particle: P,
+    presentation: S,
+    context: C,
+}
+
+struct TickContext<'a, 'l> {
     level: &'a ParticleLevel<'l>,
     sprites: &'a [u32],
-    frame: &'a mut usize,
-    facing: &'a mut Facing,
     callbacks: &'a ProviderCallbacks,
 }
 
-impl LiveParticle<'_, '_> {
+type TickParticle<'a, 'l> =
+    LiveParticle<&'a mut Particle, &'a mut Presentation, TickContext<'a, 'l>>;
+
+impl TickParticle<'_, '_> {
     #[cold]
     fn reject(&self, input: &'static str) -> bool {
+        let callbacks = self.context.callbacks;
         log::warn!(
             "Particle provider {} from mod {}: invalid {input}",
-            self.callbacks.id,
-            self.callbacks.tick.id(),
+            callbacks.id,
+            callbacks.tick.id(),
         );
         false
     }
 }
 
-impl ParticleView for LiveParticle<'_, '_> {
+impl<P: Deref<Target = Particle>, S: Deref<Target = Presentation>, C> ParticleView
+    for LiveParticle<P, S, C>
+{
     fn position(&self) -> [f64; 3] {
         self.particle.position
     }
@@ -349,14 +402,10 @@ impl ParticleView for LiveParticle<'_, '_> {
         self.particle.rgba
     }
     fn sprite_index(&self) -> usize {
-        *self.frame
+        self.presentation.frame
     }
     fn facing(&self) -> ParticleFacing {
-        match *self.facing {
-            Facing::Camera => ParticleFacing::Camera,
-            Facing::AroundY => ParticleFacing::AroundY,
-            Facing::Fixed(q) => ParticleFacing::Fixed(q.to_array()),
-        }
+        self.presentation.facing
     }
     fn roll(&self) -> f32 {
         self.particle.roll
@@ -366,7 +415,7 @@ impl ParticleView for LiveParticle<'_, '_> {
     }
 }
 
-impl ParticleTickView for LiveParticle<'_, '_> {
+impl ParticleTickView for TickParticle<'_, '_> {
     fn set_position(&mut self, position: [f64; 3]) -> bool {
         if !position.into_iter().all(f64::is_finite) {
             return self.reject("position");
@@ -434,10 +483,10 @@ impl ParticleTickView for LiveParticle<'_, '_> {
     }
 
     fn set_sprite_index(&mut self, index: usize) -> bool {
-        let Some(&sprite) = self.sprites.get(index) else {
+        let Some(&sprite) = self.context.sprites.get(index) else {
             return self.reject("sprite index");
         };
-        *self.frame = index;
+        self.presentation.frame = index;
         self.particle.sprite = Sprite::Index(sprite);
         true
     }
@@ -453,26 +502,22 @@ impl ParticleTickView for LiveParticle<'_, '_> {
         let index = self
             .particle
             .age
-            .wrapping_mul((self.sprites.len() - 1) as i32)
+            .wrapping_mul((self.context.sprites.len() - 1) as i32)
             .wrapping_div(lifetime);
         self.set_sprite_index(index as usize)
     }
 
     fn set_facing(&mut self, facing: ParticleFacing) -> bool {
-        *self.facing = match facing {
-            ParticleFacing::Camera => Facing::Camera,
-            ParticleFacing::AroundY => Facing::AroundY,
-            ParticleFacing::Fixed(q) => {
-                // Widen for the norm so every finite nonzero f32 quaternion can be normalized.
-                let q = glam::DQuat::from_array(q.map(f64::from));
-                let length = q.length();
-                if !length.is_finite() || length == 0.0 {
-                    return self.reject("fixed facing");
-                }
-                Facing::Fixed(glam::Quat::from_array(
-                    q.to_array().map(|value| (value / length) as f32),
-                ))
+        self.presentation.facing = if let ParticleFacing::Fixed(q) = facing {
+            // Widen for the norm so every finite nonzero f32 quaternion can be normalized.
+            let q = glam::DQuat::from_array(q.map(f64::from));
+            let length = q.length();
+            if !length.is_finite() || length == 0.0 {
+                return self.reject("fixed facing");
             }
+            ParticleFacing::Fixed(q.to_array().map(|value| (value / length) as f32))
+        } else {
+            facing
         };
         true
     }
@@ -489,7 +534,7 @@ impl ParticleTickView for LiveParticle<'_, '_> {
         if !displacement.into_iter().all(f64::is_finite) {
             return self.reject("displacement");
         }
-        self.particle.move_by(self.level, displacement);
+        self.particle.move_by(self.context.level, displacement);
         true
     }
 
@@ -499,7 +544,7 @@ impl ParticleTickView for LiveParticle<'_, '_> {
 
     fn tick_base(&mut self) {
         self.particle.o_roll = self.particle.roll;
-        self.particle.base_tick(self.level);
+        self.particle.base_tick(self.context.level);
     }
 
     fn remove(&mut self) {
@@ -621,16 +666,19 @@ impl ParticleEngine {
             let mut provided = Provided {
                 callbacks: Arc::clone(callbacks),
                 instance: None,
-                frame,
-                facing: Facing::Camera,
+                presentation: Presentation {
+                    frame,
+                    facing: ParticleFacing::Camera,
+                },
             };
             let mut view = LiveParticle {
                 particle: &mut q,
-                level: level.level,
-                sprites,
-                frame: &mut provided.frame,
-                facing: &mut provided.facing,
-                callbacks,
+                presentation: &mut provided.presentation,
+                context: TickContext {
+                    level: level.level,
+                    sprites,
+                    callbacks,
+                },
             };
             if let Err(error) = owner.call("particle provider", "create_custom_particle", || {
                 provided.instance = provider

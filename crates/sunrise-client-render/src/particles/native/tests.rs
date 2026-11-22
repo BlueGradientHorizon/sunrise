@@ -3,7 +3,8 @@ use crate::chunk::{Chunk, Light};
 use mod_api::{
     __private::game::{RegistrationContextNew, capture_callback_panic_notices},
     BlockState, CustomParticle, Identifier, LightLayer, ParticleFacing, ParticleLevelView,
-    ParticleProvider, ParticleSpawn, ParticleTickView, RegistrationContext,
+    ParticleProvider, ParticleQuad, ParticleSpawn, ParticleTickView, ParticleView,
+    RegistrationContext,
 };
 use std::{
     collections::BTreeMap,
@@ -380,6 +381,173 @@ fn a_roll_that_returns_to_zero_draws_unrolled_as_vanilla_does() {
         ]
     );
 }
+#[test]
+fn extract_edits_only_this_frame_and_culls_using_its_quad_size() {
+    use mod_api::__private::{LoadAccess, ModPhase, PhaseOwner, check_access};
+
+    struct Animated;
+    impl ParticleProvider for Animated {
+        fn create_particle(
+            &self,
+            _: &mut ParticleSpawn<'_>,
+            particle: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            particle.set_previous_position([6.0, 0.0, 0.0]);
+            particle.set_size(0.0);
+            particle.set_rgba([1.0; 4]);
+            Some(Box::new(Self))
+        }
+    }
+    impl CustomParticle for Animated {
+        fn extract(&self, particle: &dyn ParticleView, partial: f32, quad: &mut ParticleQuad) {
+            check_access("fixture_extract_world_access", LoadAccess::WorldOnly);
+            quad.visible = partial != 0.0 && particle.is_alive();
+            quad.size += 24.0 * partial;
+            quad.facing = if partial == 0.5 {
+                // Finite input but no quaternion rotation, so the corners are non-finite.
+                ParticleFacing::Fixed([0.0; 4])
+            } else {
+                // A raw quaternion for a quarter turn about +Z.
+                ParticleFacing::Fixed([0.0, 0.0, 1.0, 1.0])
+            };
+            quad.rgba = [-0.5, 1.25, 0.5, -0.25];
+        }
+    }
+
+    let mut e = fixture_engine(provider_factories([("example:orbit", Arc::new(Animated))]));
+    let scene = Scene::new();
+    let level = scene.level();
+    e.add_with_level(
+        &ParticleOptions::named("example:orbit"),
+        [10.0, 0.0, 0.0],
+        [0.0; 3],
+        ParticleSpawnFlags::default(),
+        &level,
+        Some(&fixture_options()),
+    );
+    e.tick(&level); // admit without ticking the particle
+    let camera = DVec3::new(2.0, 0.0, 0.0);
+    let mut vertices = Vec::new();
+    {
+        let _reload = PhaseOwner::scope(ModPhase::Reloading);
+        e.render(camera, Quat::IDENTITY, 0.75, &|_| 0, &mut vertices);
+        assert!(vertices.is_empty());
+        assert!(e.particles[0].is_alive());
+    }
+    let _world = PhaseOwner::scope(ModPhase::World);
+    for partial in [0.0, 0.5] {
+        e.render(camera, Quat::IDENTITY, partial, &|_| 0, &mut vertices);
+        assert!(vertices.is_empty());
+        assert!(e.particles[0].is_alive());
+    }
+    // At 3/4 of a tick, the center is 9 - 2 and the half-width is 18. A quarter
+    // turn maps (x, y) to (-y, x). The original zero-size quad would be subpixel.
+    e.render_culled(
+        camera,
+        Quat::IDENTITY,
+        0.75,
+        1.0,
+        true,
+        None,
+        |_, _| false,
+        &|_| 0,
+        &mut vertices,
+    );
+    assert_eq!(
+        vertices.iter().map(|v| v.pos).collect::<Vec<_>>(),
+        [
+            [25.0, 18.0, 0.0],
+            [-11.0, 18.0, 0.0],
+            [-11.0, -18.0, 0.0],
+            [25.0, -18.0, 0.0],
+        ],
+    );
+    // Floor and mask each channel: -128, 318, 127, -64, in vertex RGBA order.
+    assert!(vertices.iter().all(|v| v.color == 0xc07f_3e80));
+    let particle = &e.particles[0];
+    assert!(particle.is_alive());
+    assert_eq!(
+        (particle.age, particle.size, particle.rgba),
+        (0, 0.0, [1.0; 4])
+    );
+    e.tick(&level);
+    assert_eq!(e.particles[0].age, 1);
+}
+
+#[test]
+fn extract_panic_disables_only_that_registrations_extraction() {
+    use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+
+    #[derive(Clone)]
+    struct Instance {
+        draws: Arc<AtomicUsize>,
+        panic: bool,
+    }
+    impl ParticleProvider for Instance {
+        fn create_particle(
+            &self,
+            _: &mut ParticleSpawn<'_>,
+            particle: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            particle.set_lifetime(20);
+            Some(Box::new(self.clone()))
+        }
+    }
+    impl CustomParticle for Instance {
+        fn extract(&self, _: &dyn ParticleView, _: f32, quad: &mut ParticleQuad) {
+            self.draws.fetch_add(1, Relaxed);
+            assert!(!self.panic, "fixture extract panic");
+            quad.rgba = [1.0; 4];
+        }
+    }
+
+    let broken = Instance {
+        draws: Arc::default(),
+        panic: true,
+    };
+    let healthy = Instance {
+        draws: Arc::default(),
+        panic: false,
+    };
+    let mut e = fixture_engine(provider_factories([
+        ("example:orbit", Arc::new(broken.clone())),
+        ("example:peer", Arc::new(healthy.clone())),
+    ]));
+    let scene = Scene::new();
+    let level = scene.level();
+    let ((), notices) = capture_callback_panic_notices(|| {
+        for name in ["example:orbit", "example:orbit", "example:peer"] {
+            e.add_with_level(
+                &ParticleOptions::named(name),
+                [1.0; 3],
+                [0.0; 3],
+                ParticleSpawnFlags::default(),
+                &level,
+                Some(&fixture_options()),
+            );
+        }
+        e.tick(&level);
+        for age in [0, 1] {
+            let mut vertices = Vec::new();
+            e.render(DVec3::ZERO, Quat::IDENTITY, 0.5, &|_| 0, &mut vertices);
+            assert_eq!(vertices.len(), 4, "only the healthy particle draws");
+            assert_eq!(e.len(), 3, "extraction does not remove particles");
+            assert!(e.particles.iter().all(|p| p.age == age && p.is_alive()));
+            e.tick(&level);
+        }
+    });
+    assert_eq!(
+        (broken.draws.load(Relaxed), healthy.draws.load(Relaxed)),
+        (1, 2)
+    );
+    let [notice] = notices.as_slice() else {
+        panic!("expected one toast, got {notices:?}");
+    };
+    assert_eq!(notice.mod_id, "provider_fixture");
+    assert_eq!(notice.operation, "extract_custom_particle");
+    assert!(notice.message.contains("fixture extract panic"));
+}
+
 fn lit_chunk() -> Chunk {
     let mut chunk = Chunk::empty(0, 0);
     let section = chunk.section_index(64).unwrap();

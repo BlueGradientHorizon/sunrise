@@ -24,6 +24,11 @@ call `tick_base`, or `advance_age` and then run its own movement, or `remove` to
 selection is explicit: `set_sprite_index` selects a frame directly and `set_sprite_from_age` uses vanilla's
 age/lifetime formula. Bad inputs to setters are reported and leave the field unchanged, not the particle dead.
 
+`CustomParticle::extract` starts with the vanilla quad appearance and can edit this frame's size, color,
+facing, roll and visibility. It reads the particle without changing it; the sprite, light and render group
+remain configured by the engine. Hidden, refused or non-finite geometry is not submitted and does not
+expire the particle. An extraction panic disables extraction, not ticking.
+
 A missing sprite set or failed bind spawns nothing. A panic is named in the log and client error toast;
 only the panicking callback kind for that registration is disabled, including across resource reloads.
 An ordinary phase refusal does not disable the callback. Reloads discard existing native instances."#]

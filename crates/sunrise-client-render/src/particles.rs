@@ -47,6 +47,13 @@ mod polytone_model;
 mod simple;
 use simple::{PARALLEL_MIN, parallel_threads, sprite_from_age_in, tick_simple};
 
+const QUAD_CORNERS: [[f32; 3]; 4] = [
+    [1.0, -1.0, 0.0],
+    [1.0, 1.0, 0.0],
+    [-1.0, 1.0, 0.0],
+    [-1.0, -1.0, 0.0],
+];
+
 #[derive(Clone, Debug)]
 enum Sprite {
     /// Index into the engine's sprite table.
@@ -1261,6 +1268,23 @@ impl ParticleEngine {
             translucent,
             groups::registered(),
             native::registered(),
+        )
+    }
+
+    /// Build a fixture engine from its own staged registrations, without reading or freezing
+    /// the session-wide provider or group tables.
+    #[cfg(feature = "test-support")]
+    pub fn with_test_providers(
+        root: &ResourceSource,
+        atlas: &HashMap<String, Rect>,
+        providers: Vec<mod_api::Answered<mod_api::__private::game::ParticleProviderRegistration>>,
+    ) -> Self {
+        Self::with_factories(
+            root,
+            atlas,
+            &HashSet::new(),
+            &[],
+            Arc::new(native::freeze(providers)),
         )
     }
 
@@ -4532,14 +4556,29 @@ impl ParticleEngine {
             {
                 continue;
             }
-            if CULL && matches!(p.behaviour, Behaviour::Shriek { delay } if delay > 0) {
+            if matches!(p.behaviour, Behaviour::Shriek { delay } if delay > 0) {
                 continue;
             }
-            let culled_geometry = if CULL {
+            let interpolate = || {
                 let a = f64::from(partial);
                 let world = array::from_fn(|i| p.previous[i] + (p.position[i] - p.previous[i]) * a);
-                let center = (DVec3::from_array(world) - camera).as_vec3();
-                let size = p.quad_size(partial);
+                (world, (DVec3::from_array(world) - camera).as_vec3())
+            };
+            // Vanilla's point test above uses the live position, not quad size. The optional
+            // bounds-based tests below must see the size chosen by this frame's extraction.
+            let (position, extracted) = if let Some(provided) = &p.provided {
+                let position = interpolate();
+                let Some(quad) = provided.extract(p, base, position.1, partial) else {
+                    continue;
+                };
+                (Some(position), Some(quad))
+            } else {
+                (CULL.then(interpolate), None)
+            };
+            let culled_size = if CULL && let Some((world, center)) = position {
+                let size = extracted
+                    .as_ref()
+                    .map_or_else(|| p.quad_size(partial), |quad| quad.size);
                 // Every generated quad vertex is sqrt(2) * size from its center,
                 // including the rotated two-quad particle types.
                 let radius = f64::from(size.abs()) * std::f64::consts::SQRT_2 + 0.05;
@@ -4561,7 +4600,7 @@ impl ParticleEngine {
                 if occluded(world.map(|v| v - radius), world.map(|v| v + radius)) {
                     continue;
                 }
-                Some((center, size))
+                Some(size)
             } else {
                 None
             };
@@ -4586,18 +4625,50 @@ impl ParticleEngine {
                 Some(ParticleBlend::Translucent) => true,
                 None => layer,
             };
-            let (center, size) = culled_geometry.unwrap_or_else(|| {
-                let a = f64::from(partial);
-                let pos = DVec3::new(
-                    p.previous[0] + (p.position[0] - p.previous[0]) * a,
-                    p.previous[1] + (p.position[1] - p.previous[1]) * a,
-                    p.previous[2] + (p.position[2] - p.previous[2]) * a,
-                ) - camera;
-                (pos.as_vec3(), p.quad_size(partial))
-            });
-            let rotation = if let Some(provided) = &p.provided {
-                provided.rotation(base, p.o_roll, p.roll, partial)
-            } else if p.orientation != polytone_gpu::Orientation::Camera {
+            let block = ParticleLevel::block_at(p.position);
+            let packed = light_cache.get(block, light_at);
+            let (sky_light, block_light) = p.light_coords(
+                partial,
+                u32::from(packed >> 4) * 16,
+                u32::from(packed & 15) * 16,
+            );
+            let light = sky_light | block_light << 8;
+            let (du, dv) = (r.u1 - r.u0, r.v1 - r.v0);
+            let (u0, v0, u1, v1) = (
+                r.u0 + du * p.uv[0],
+                r.v0 + dv * p.uv[1],
+                r.u0 + du * p.uv[2],
+                r.v0 + dv * p.uv[3],
+            );
+            let target: &mut Vec<Vertex> = if p.additive { &mut additive } else { &mut *out };
+            let overlay = if p.additive {
+                crate::gfx::ADDITIVE_PARTICLE_OVERLAY
+            } else if layer {
+                crate::gfx::TRANSLUCENT_PARTICLE_OVERLAY
+            } else {
+                0
+            };
+            let uvs = [[u1, v1], [u1, v0], [u0, v0], [u0, v1]];
+            let mut vertex = |pos: FVec3, uv, color| {
+                target.push(Vertex {
+                    normal: [0; 4],
+                    pos: pos.to_array(),
+                    uv,
+                    layer: overlay | u32::from(hdr_tier(p.ty)) << 16,
+                    color,
+                    light,
+                    glint_uv: [0.0, 0.0],
+                });
+            };
+            if let Some(quad) = extracted {
+                for (corner, uv) in quad.corners.into_iter().zip(uvs) {
+                    vertex(corner, uv, quad.color);
+                }
+                continue;
+            }
+            let (_, center) = position.unwrap_or_else(interpolate);
+            let size = culled_size.unwrap_or_else(|| p.quad_size(partial));
+            let rotation = if p.orientation != polytone_gpu::Orientation::Camera {
                 // A custom particle's `movement_aligned` quad has its texture's top against
                 // its motion (measured in Java: a light ray rising toward the noon sun hangs
                 // below the leaves it starts at); a GPU particle's has it along its motion.
@@ -4625,10 +4696,7 @@ impl ParticleEngine {
             let mut rgb = [p.rgba[0], p.rgba[1], p.rgba[2]];
             match p.behaviour {
                 // ShriekParticle.extract: two tilted quads, fading out.
-                Behaviour::Shriek { delay } => {
-                    if !CULL && delay > 0 {
-                        continue;
-                    }
+                Behaviour::Shriek { .. } => {
                     alpha = 1.0 - ((p.age as f32 + partial) / p.lifetime as f32).clamp(0.0, 1.0);
                     rotations = [
                         Some(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_3)),
@@ -4673,31 +4741,8 @@ impl ParticleEngine {
                 }
                 _ => {}
             }
-            let block = ParticleLevel::block_at(p.position);
-            let packed = light_cache.get(block, light_at);
-            let (sky_light, block_light) = p.light_coords(
-                partial,
-                u32::from(packed >> 4) * 16,
-                u32::from(packed & 15) * 16,
-            );
-            let light = sky_light | block_light << 8;
             let c = |v: f32| (v.clamp(0.0, 1.0) * 255.0) as u32;
             let color = c(alpha) << 24 | c(rgb[2]) << 16 | c(rgb[1]) << 8 | c(rgb[0]);
-            let (du, dv) = (r.u1 - r.u0, r.v1 - r.v0);
-            let (u0, v0, u1, v1) = (
-                r.u0 + du * p.uv[0],
-                r.v0 + dv * p.uv[1],
-                r.u0 + du * p.uv[2],
-                r.v0 + dv * p.uv[3],
-            );
-            let target: &mut Vec<Vertex> = if p.additive { &mut additive } else { &mut *out };
-            let overlay = if p.additive {
-                crate::gfx::ADDITIVE_PARTICLE_OVERLAY
-            } else if layer {
-                crate::gfx::TRANSLUCENT_PARTICLE_OVERLAY
-            } else {
-                0
-            };
             // A Polytone model particle: its model's faces, scaled by its size and turned as
             // its quad would be.
             if let Some(model) = &p.model {
@@ -4707,52 +4752,22 @@ impl ParticleEngine {
                     };
                     let (du, dv) = (r.u1 - r.u0, r.v1 - r.v0);
                     for (corner, uv) in quad.corners.iter().zip(quad.uv) {
-                        target.push(Vertex {
-                            normal: [0; 4],
-                            pos: (center + rotation * (*corner * size)).to_array(),
-                            uv: [r.u0 + du * uv[0], r.v0 + dv * uv[1]],
-                            layer: overlay | u32::from(hdr_tier(p.ty)) << 16,
+                        vertex(
+                            center + rotation * (*corner * size),
+                            [r.u0 + du * uv[0], r.v0 + dv * uv[1]],
                             color,
-                            light,
-                            glint_uv: [0.0, 0.0],
-                        });
+                        );
                     }
                 }
                 continue;
             }
             for rotation in rotations.into_iter().flatten() {
-                for (n, uv) in [
-                    ((1.0, -1.0), [u1, v1]),
-                    ((1.0, 1.0), [u1, v0]),
-                    ((-1.0, 1.0), [u0, v0]),
-                    ((-1.0, -1.0), [u0, v1]),
-                ] {
-                    // A provider's quad turns by JOML's `Quaternionf.transform`, which also takes a
-                    // quaternion that is not a unit one, as `LOOKAT_Y`'s is.
-                    let turned = if p.provided.is_some() {
-                        FVec3::from(
-                            crate::camera::joml::Quat {
-                                x: rotation.x,
-                                y: rotation.y,
-                                z: rotation.z,
-                                w: rotation.w,
-                            }
-                            .transform([n.0, n.1, 0.0]),
-                        )
-                    } else {
-                        rotation * FVec3::new(n.0, n.1, 0.0)
-                    };
-                    let v = center + turned * size;
-                    target.push(Vertex {
-                        normal: [0; 4],
-                        pos: v.to_array(),
+                for (corner, uv) in QUAD_CORNERS.into_iter().zip(uvs) {
+                    vertex(
+                        center + (rotation * FVec3::from_array(corner)) * size,
                         uv,
-                        layer: overlay | u32::from(hdr_tier(p.ty)) << 16,
                         color,
-                        light,
-
-                        glint_uv: [0.0, 0.0],
-                    });
+                    );
                 }
             }
         }

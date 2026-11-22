@@ -209,3 +209,205 @@ impl Game<'_> {
         Ok(())
     }
 }
+
+// The standalone route fixture uses content-only assets. Exercise its native provider counterpart
+// in-process, so the trait mod and the factory table are scoped, not installed in the live game.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::{
+        api_values::TryIntoApi,
+        mods::resolve_particle_providers,
+        native_entity_refs::tests::{run_with_game_stack, with_client_game},
+    };
+    use mod_api::{
+        __private::{ModPhase, PhaseOwner, game::RegistrationContextNew},
+        BlockState, CustomParticle, Identifier, ModEntry, ParticleProvider, ParticleSpawn,
+        ParticleTickView, RegisterParticleProvidersEvent, Registrar, RegistrationContext,
+    };
+    use std::sync::{Arc, Mutex};
+    use sunrise_assets::resource_source::{Resource, ResourceSource};
+    use sunrise_client::chunk::Chunk;
+    use sunrise_protocol::{
+        entity_data::{MOD_PARTICLE_ID, Particle, ParticleData},
+        packets::play::LevelParticles,
+    };
+
+    const TYPE: &str = "fixture:encoded";
+    const BLOCK: [i32; 3] = [5, 100, 4];
+
+    #[derive(Debug, PartialEq)]
+    struct ObservedSpawn {
+        options: mod_api::ParticleOptions,
+        position: [f64; 3],
+        velocity: [f64; 3],
+        block: BlockState,
+    }
+
+    #[derive(Clone)]
+    struct Provider(Arc<Mutex<Vec<ObservedSpawn>>>);
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Provider {
+        fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+            registrar.particle_key(TYPE);
+        }
+
+        fn register_particle_providers(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterParticleProvidersEvent<'_>,
+        ) {
+            let provider = self.clone();
+            event.register_sprite_set(Identifier::parse(TYPE).unwrap(), move |_| provider.clone());
+        }
+    }
+
+    impl ParticleProvider for Provider {
+        fn create_particle(
+            &self,
+            spawn: &mut ParticleSpawn<'_>,
+            _: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            struct Instance;
+            impl CustomParticle for Instance {}
+            self.0.lock().unwrap().push(ObservedSpawn {
+                options: spawn.options.clone(),
+                position: spawn.position,
+                velocity: spawn.velocity,
+                block: spawn.level.block_state(BLOCK),
+            });
+            Some(Box::new(Instance))
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn registered_provider_receives_host_and_network_spawns_with_live_level() {
+        run_with_game_stack(|| {
+            mod_platform::testing::with_mods(Default::default(), || {
+                with_client_game(|game| {
+                    let registry = game.pack.assets.registry;
+                    let stone = registry.default_state("minecraft:stone").unwrap();
+                    let dirt = registry.default_state("minecraft:dirt").unwrap();
+                    let stone_api = stone.try_into_api().unwrap();
+                    let dirt_api = dirt.try_into_api().unwrap();
+                    let [x, y, z] = BLOCK;
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                    game.world.set(x, y, z, stone).unwrap();
+
+                    let observed = Arc::new(Mutex::new(Vec::new()));
+                    let mods = vec![ModEntry::new(
+                        "fixture",
+                        Box::new(Provider(observed.clone())),
+                    )];
+                    mod_platform::testing::with_mods(mods.into(), || {
+                        // Resolve this fixture's particle options from its own Parts epoch and
+                        // sprite declaration, keeping the loaded game's block state index.
+                        mod_platform::__private::part_tests::install_parts_fixture(
+                            mod_api::__private::mods(),
+                        )
+                        .unwrap();
+                        let source = ResourceSource::indexed(
+                            [(
+                                "assets/fixture/particles/encoded.json".into(),
+                                Resource::bytes(br#"{"textures":["fixture:encoded"]}"#.to_vec()),
+                            )]
+                            .into(),
+                        );
+                        resolve_particle_providers(&source).unwrap();
+                        let ty = mod_api::__private::particle_named_key(TYPE).unwrap();
+                        let mut factories = Vec::new();
+                        Game::native_register_particle_providers(
+                            &RegistrationContext::new(),
+                            &mut factories,
+                        );
+                        game.particles = ParticleEngine::with_test_providers(
+                            &source,
+                            &HashMap::from([(
+                                "fixture:particle/encoded".into(),
+                                Rect {
+                                    u0: 0.0,
+                                    v0: 0.0,
+                                    u1: 1.0,
+                                    v1: 1.0,
+                                    w: 16,
+                                    h: 16,
+                                },
+                            )]),
+                            factories,
+                        );
+                        configure_particle_inputs(&mut game.particles);
+
+                        let at = [5.5, 101.0, 4.5];
+                        let velocity = [f64::from(0xff12ab), 7.0, -2.0];
+                        let mut options =
+                            mod_api::ParticleOptions::colored(ty, [0.1, 0.2, 0.3, 0.4]);
+                        options.scale = 2.5;
+                        game.player = Some(
+                            PlayerMotion::new(game.motion, Vec3::new(at[0], at[1], at[2])).unwrap(),
+                        );
+                        game.particles.camera = at;
+                        let _world = PhaseOwner::scope(ModPhase::World);
+                        let host: &mut dyn ClientHost = game;
+                        assert!(host.add_particle(&options, at, velocity));
+
+                        // The next construction must see this change through the same level loan
+                        // path, even though the options arrived via a server packet this time.
+                        game.world.set(x, y, z, dirt).unwrap();
+                        let packet = LevelParticles {
+                            particle: Particle {
+                                id: MOD_PARTICLE_ID,
+                                data: Some(ParticleData::Mod(TYPE.into())),
+                            },
+                            override_limiter: false,
+                            always_show: false,
+                            pos: [6.5, 101.25, 4.5],
+                            dist: [0.5, -2.0, 4.0],
+                            max_speed: [4.0, 3.0, 0.25],
+                            count: 0,
+                            randomization: 0,
+                        };
+                        game.remote_level_particles(&packet);
+
+                        let far = [64.0, 101.0, 4.5];
+                        let host: &mut dyn ClientHost = game;
+                        assert!(host.add_particle(&options, far, velocity));
+                        game.remote_level_particles(&LevelParticles {
+                            pos: far,
+                            ..packet.clone()
+                        });
+                        game.particles.particle_level = 2;
+                        let host: &mut dyn ClientHost = game;
+                        assert!(host.add_particle(&options, at, velocity));
+                        game.remote_level_particles(&packet);
+
+                        assert_eq!(
+                            *observed.lock().unwrap(),
+                            [
+                                ObservedSpawn {
+                                    options,
+                                    position: at,
+                                    velocity,
+                                    block: stone_api
+                                },
+                                ObservedSpawn {
+                                    options: mod_api::ParticleOptions::simple(ty),
+                                    position: [6.5, 101.25, 4.5],
+                                    velocity: [2.0, -6.0, 1.0],
+                                    block: dirt_api,
+                                },
+                            ],
+                            "only admitted requests construct, with their original typed options and the live level",
+                        );
+                        assert!(game.particles.is_empty());
+                        game.particle_fixture_tick();
+                        assert_eq!(game.particles.len(), 2);
+                    });
+                });
+            });
+        });
+    }
+}
