@@ -39,7 +39,7 @@ fn install_tick_marker(game: &Path) {
     .unwrap();
     fs::write(
         pack.join("data/test/function/mark_tick.mcfunction"),
-        format!("tellraw @a[name=Sampler] \"{TICK_MARKER}\"\n"),
+        format!("say {TICK_MARKER}\n"),
     )
     .unwrap();
 }
@@ -125,10 +125,11 @@ impl Bot {
         panic!("did not receive {expected}; saw {} samples", samples.len());
     }
     fn until_chat(&mut self, marker: &str) -> Vec<Vec<i64>> {
-        self.until(
-            marker,
-            |p, _| matches!(p, C::SystemChat(c) if format!("{:?}", c.content).contains(marker)),
-        )
+        self.until(marker, |p, _| match p {
+            C::DisguisedChat(c) => format!("{:?}", c.message).contains(marker),
+            C::SystemChat(c) => format!("{:?}", c.content).contains(marker),
+            _ => false,
+        })
     }
     fn silence(&mut self) {
         // The first marker aligns to a tick; the next two close whole ticks.
@@ -202,8 +203,8 @@ fn a_dedicated_server_sends_tick_samples_only_to_an_operator_who_asked() {
 
     // Deop stops the stream; re-op resumes it without another request.
     say("deop Sampler");
-    say("tellraw Sampler \"deopped\"");
-    bot.until_chat("deopped");
+    say("say sample-test-deopped");
+    bot.until_chat("sample-test-deopped");
     bot.silence();
     say("op Sampler");
     bot.until("sample after re-op", |_, s| !s.is_empty());
@@ -211,9 +212,9 @@ fn a_dedicated_server_sends_tick_samples_only_to_an_operator_who_asked() {
     // Require the command after the empty request as an acknowledgement before checking silence.
     bot.request(vec![]);
     bot.send(S::ChatCommand(play::ChatCommand {
-        command: "tellraw @s \"cleared\"".into(),
+        command: "say sample-test-cleared".into(),
     }));
-    bot.until_chat("cleared");
+    bot.until_chat("sample-test-cleared");
     bot.silence();
     bot.request(vec![0]);
     bot.until("sample after resubscribing", |_, s| !s.is_empty());
