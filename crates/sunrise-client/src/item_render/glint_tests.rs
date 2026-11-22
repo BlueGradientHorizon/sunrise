@@ -2561,11 +2561,11 @@ fn glint_atlases_match_vanilla_26_3_mip_and_aniso() {
     );
     assert_eq!(
         witness["material_baker"]["synth_shared_atlas"].as_str(),
-        Some("minecraft:blocks")
+        Some("minecraft:textures/atlas/blocks.png")
     );
     assert_eq!(
         witness["material_baker"]["synth_missingno_atlas"].as_str(),
-        Some("minecraft:blocks")
+        Some("minecraft:textures/atlas/blocks.png")
     );
 
     renderer
