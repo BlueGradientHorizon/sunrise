@@ -5733,6 +5733,10 @@ impl Game<'_> {
     /// with neither a server nor a player (the headless fixtures) ticks
     /// everywhere.
     fn update_chunk_tickets(&mut self) {
+        self.rebuild_chunk_tickets(true);
+    }
+
+    fn rebuild_chunk_tickets(&mut self, notify: bool) {
         let rule = self
             .ui
             .rules
@@ -5768,6 +5772,7 @@ impl Game<'_> {
                 forced: self.streaming.forced.iter().copied().collect(),
                 // Filled from the `PORTAL` tickets by `update`.
                 portal: Vec::new(),
+                spawn: Vec::new(),
                 // EnderDragonFight.tick: while a player watches the fight, the arena holds a
                 // `DRAGON` ticket of radius 9 at (0, 0), so its island ticks out to 7 chunks
                 // whatever the watcher's simulation distance. The fight is where the type has one.
@@ -5782,11 +5787,14 @@ impl Game<'_> {
         // The levels' changes are kept only for a listener, so that a tick
         // with none looks at no chunk.
         self.tickets.record_changes(
-            self.is_logical_server()
+            notify
+                && self.is_logical_server()
                 && mod_api::__private::listened(mod_api::HookId::ChunkTicketLevelUpdated),
         );
         self.tickets.update(sources);
-        self.run_chunk_ticket_level_updates();
+        if notify {
+            self.run_chunk_ticket_level_updates();
+        }
     }
     /// `ServerLevel.startTickingChunk`: a loaded chunk's saved ticks are
     /// scheduled from the game time at which it becomes a ticking chunk
