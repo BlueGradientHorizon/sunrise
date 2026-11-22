@@ -17,7 +17,8 @@ impl<R: RandomSource + Clone> Context<'_, R> {
         if generation.is_empty() {
             return items;
         }
-        generation.apply(self, items)
+        generation.apply(self, &mut items);
+        items
     }
 }
 
@@ -55,14 +56,21 @@ impl<R: RandomSource + Clone> global_modifiers::ModifierRoll for Context<'_, R> 
     fn condition(&mut self, condition: &types::PreparedCondition) -> bool {
         self.condition_with_bindings(condition.value(), Some(condition.rules()))
     }
-    fn roll_raw(&mut self, id: &str) -> Result<Vec<LootStack>, String> {
+    fn roll_raw(&mut self, id: &str, visit: &mut dyn FnMut(&LootStack)) -> Result<(), String> {
+        let mut output = Vec::new();
+        self.append_raw(id, &mut output)?;
+        for stack in &output {
+            visit(stack);
+        }
+        Ok(())
+    }
+    fn append_raw(&mut self, id: &str, generated: &mut Vec<LootStack>) -> Result<(), String> {
         let table = self
             .data
             .tables
             .get(id)
             .ok_or_else(|| format!("table: missing loot table {id}"))?;
-        let mut output = Vec::new();
-        self.table_raw(id, table, &mut |_, stack| output.push(stack));
-        Ok(output)
+        self.table_raw(id, table, &mut |_, stack| generated.push(stack));
+        Ok(())
     }
 }

@@ -76,17 +76,14 @@ impl<R: RandomSource> LootContext<'_, R> {
         if generation.is_empty() {
             return stacks;
         }
-        let generated = stacks.iter().map(loot_of).collect();
+        let mut generated = stacks.iter().map(loot_of).collect();
         let mut scope = ModifierScope {
             context: self,
             random,
             dynamic,
         };
-        generation
-            .apply(&mut scope, generated)
-            .iter()
-            .map(ItemStack::from_loot)
-            .collect()
+        generation.apply(&mut scope, &mut generated);
+        generated.iter().map(ItemStack::from_loot).collect()
     }
     fn expand_dynamic(
         &self,
@@ -276,6 +273,42 @@ struct ModifierScope<'s, 'a, R> {
     random: &'s mut R,
     dynamic: &'s [ItemStack],
 }
+impl<R: RandomSource> ModifierScope<'_, '_, R> {
+    fn eval_raw(&mut self, id: &str) -> std::result::Result<Vec<ItemStack>, String> {
+        let context = self.context;
+        let table = context
+            .items
+            .loot
+            .get(id)
+            .ok_or_else(|| format!("table: missing loot table {id}"))?;
+        let Some(_guard) = NestedRoll::enter(id) else {
+            return Ok(Vec::new());
+        };
+        // Raw output retains emitted empties all the way through nested tables.
+        // The original root's output policy does not filter a raw sub-roll.
+        let raw = LootContext {
+            query: context.query.clone(),
+            place: context.place.clone(),
+            items: context.items,
+            local_bindings: None,
+            block: context.block,
+            properties: context.properties,
+            held: context.held,
+            killed_by_player: context.killed_by_player,
+            explosion_radius: context.explosion_radius,
+            this_entity: context.this_entity,
+            entity_levels: context.entity_levels,
+            block_levels: context.block_levels,
+            target: context.target,
+            target_entity: context.target_entity,
+            interacting_entity: context.interacting_entity,
+            location: context.location,
+            keep_empty: true,
+        }
+        .evaluate(table, self.random);
+        Ok(context.expand_dynamic(raw, self.dynamic, false))
+    }
+}
 impl<R: RandomSource> sunrise_world::loot::global_modifiers::ModifierRoll
     for ModifierScope<'_, '_, R>
 {
@@ -313,42 +346,21 @@ impl<R: RandomSource> sunrise_world::loot::global_modifiers::ModifierRoll
     fn roll_raw(
         &mut self,
         id: &str,
-    ) -> std::result::Result<Vec<sunrise_world::loot::LootStack>, String> {
-        let context = self.context;
-        let table = context
-            .items
-            .loot
-            .get(id)
-            .ok_or_else(|| format!("table: missing loot table {id}"))?;
-        let Some(_guard) = NestedRoll::enter(id) else {
-            return Ok(Vec::new());
-        };
-        // Raw output retains emitted empties all the way through nested tables.
-        // The original root's output policy does not filter a raw sub-roll.
-        let raw = LootContext {
-            query: context.query.clone(),
-            place: context.place.clone(),
-            items: context.items,
-            local_bindings: None,
-            block: context.block,
-            properties: context.properties,
-            held: context.held,
-            killed_by_player: context.killed_by_player,
-            explosion_radius: context.explosion_radius,
-            this_entity: context.this_entity,
-            entity_levels: context.entity_levels,
-            block_levels: context.block_levels,
-            target: context.target,
-            target_entity: context.target_entity,
-            interacting_entity: context.interacting_entity,
-            location: context.location,
-            keep_empty: true,
+        visit: &mut dyn FnMut(&sunrise_world::loot::LootStack),
+    ) -> std::result::Result<(), String> {
+        for stack in self.eval_raw(id)? {
+            let raw = loot_of(&stack);
+            visit(&raw);
         }
-        .evaluate(table, self.random);
-        Ok(context
-            .expand_dynamic(raw, self.dynamic, false)
-            .iter()
-            .map(loot_of)
-            .collect())
+        Ok(())
+    }
+    fn append_raw(
+        &mut self,
+        id: &str,
+        generated: &mut Vec<sunrise_world::loot::LootStack>,
+    ) -> std::result::Result<(), String> {
+        let raw = self.eval_raw(id)?;
+        generated.extend(raw.iter().map(loot_of));
+        Ok(())
     }
 }

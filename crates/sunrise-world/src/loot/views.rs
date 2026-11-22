@@ -2,7 +2,8 @@
 use super::{LootDamage, LootEntity, LootLevel, LootStack};
 use mod_api::{
     __private::{
-        LootDamageAccess, LootEntityAccess, LootLevelAccess, LootStackAccess, LootStackEditAccess,
+        LootDamageAccess, LootEntityAccess, LootLevelAccess, LootListAccess, LootStackAccess,
+        LootStackEditAccess,
     },
     ExplorationMap as ApiExplorationMap, LootExplorationView,
 };
@@ -174,6 +175,85 @@ impl LootStackEditAccess for LootStack {
     fn retain_components(&mut self, keep: &mut dyn FnMut(&str, Option<&Tag>) -> bool) {
         self.components
             .retain(|(id, value)| keep(id.as_str(), value.as_ref()));
+    }
+}
+
+impl LootListAccess for Vec<LootStack> {
+    fn len(&self) -> usize {
+        Vec::len(self)
+    }
+
+    fn get(&self, index: usize) -> Option<&dyn LootStackAccess> {
+        self.as_slice()
+            .get(index)
+            .map(|stack| stack as &dyn LootStackAccess)
+    }
+
+    fn get_mut(&mut self, index: usize) -> Option<&mut dyn LootStackEditAccess> {
+        self.as_mut_slice()
+            .get_mut(index)
+            .map(|stack| stack as &mut dyn LootStackEditAccess)
+    }
+
+    fn push_empty(&mut self, item_id: &str) -> &mut dyn LootStackEditAccess {
+        self.push(LootStack::new(item_id));
+        self.last_mut().expect("just pushed")
+    }
+
+    fn insert_empty(
+        &mut self,
+        index: usize,
+        item_id: &str,
+    ) -> Option<&mut dyn LootStackEditAccess> {
+        if index > self.len() {
+            return None;
+        }
+        self.insert(index, LootStack::new(item_id));
+        Some(&mut self[index])
+    }
+
+    fn remove(&mut self, index: usize) -> bool {
+        if index >= self.len() {
+            return false;
+        }
+        Vec::remove(self, index);
+        true
+    }
+
+    fn clear(&mut self) {
+        Vec::clear(self);
+    }
+
+    fn truncate(&mut self, len: usize) {
+        Vec::truncate(self, len);
+    }
+
+    fn swap(&mut self, a: usize, b: usize) -> bool {
+        if a >= self.len() || b >= self.len() {
+            return false;
+        }
+        self.as_mut_slice().swap(a, b);
+        true
+    }
+
+    fn reverse(&mut self) {
+        self.as_mut_slice().reverse();
+    }
+
+    fn reorder(&mut self, from: usize, to: usize) -> bool {
+        if from >= self.len() || to >= self.len() {
+            return false;
+        }
+        match from.cmp(&to) {
+            std::cmp::Ordering::Less => self[from..=to].rotate_left(1),
+            std::cmp::Ordering::Greater => self[to..=from].rotate_right(1),
+            std::cmp::Ordering::Equal => {}
+        }
+        true
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
 

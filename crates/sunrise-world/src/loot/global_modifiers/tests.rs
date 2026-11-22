@@ -2,12 +2,8 @@ use super::*;
 use serde_json::json;
 struct Identity;
 impl ModifierApply for Identity {
-    fn apply(
-        &self,
-        _: &mut dyn ModifierRoll,
-        generated: &[LootStack],
-    ) -> Result<Vec<LootStack>, String> {
-        Ok(generated.to_vec())
+    fn apply(&self, _: &mut dyn ModifierRoll, _: &mut Vec<LootStack>) -> Result<(), String> {
+        Ok(())
     }
 }
 fn file(id: &str, pack: &str, data: Value) -> ModifierFile {

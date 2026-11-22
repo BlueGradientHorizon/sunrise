@@ -83,27 +83,46 @@ can order listeners against it.
 
 ## Applying an instance
 
-`GlobalLootModifier::apply` takes a borrowed `LootModifierContext` and the preceding list as
-`Vec<LootStack>`. It returns the replacement list or a typed error. Like loot functions and
-conditions, it is a data-only callback: it receives no `Host` or world-write access. Its capabilities
-are borrowed parameters, the borrowed roll random and raw sub-rolls. Keep implementations
-`Send + Sync` and retain no borrowed context beyond the callback.
+`GlobalLootModifier::apply` takes a borrowed `LootModifierContext` and a mutable `LootList<'_>`
+borrowing the live generated list in place, returning `Result<(), LootModifierError>`. Like loot
+functions and conditions, it is a data-only callback: it receives no `Host` or world-write access.
+Its capabilities are borrowed parameters, the borrowed roll random, in-place list editing and raw
+sub-rolls. Keep implementations `Send + Sync` and retain no borrowed context or list beyond the
+callback.
 
-The list keeps signed counts and arbitrary component patches. A modifier may add, remove, replace
-or reorder entries, including empty and over-maximum stacks. No second splitter or count clamp runs
-between modifiers or after the pass. If application fails, later modifiers receive the preceding
-list; draws already made from the roll random are not undone. A native panic disables the failing
-prepared instance through the standard retained-callback policy. Only when the Items caller
+`LootList` exposes `len`, `is_empty`, `get` (`Option<LootStackView<'_>>`), `get_mut`
+(`Option<LootStackEditor<'_>>`), `iter`, `push`, `insert`, `replace`, `remove`, `pop`, `clear`,
+`truncate`, `swap`, `reverse`, `reorder` and `retain`. The list keeps signed counts and arbitrary
+component patches. A modifier may edit entries in place, add, remove, replace or reorder entries,
+including empty and over-maximum stacks. Invalid pushed, inserted or replaced stacks return
+`LootStackEditError` (which converts into `LootModifierError` with `?`) without modifying the
+list; out-of-range indices return `Ok(false)` or `false`. No second splitter or count clamp runs
+between modifiers or after the pass.
+
+If application returns `Err`, the failure is reported and later modifiers continue with the list as
+it stood when the error was returned (earlier valid edits and random draws are not rolled back),
+and the modifier remains eligible on future rolls. A native panic disables the registering
+serializer's callback owner through the standard retained-callback policy across its prepared
+instances and reloads while other modifiers continue to run. Only when the Items caller
 materializes its unsigned engine stack does a negative count become zero, retaining that list
 position; subsequent modifiers still observe the original signed count.
 
 `context.params()` lends the current parameters, including `queried_table_id()` for the
 set-once root id. Optional parameters stay absent unless supplied. Reading them does not draw
-randomness. `context.random()` borrows the actual selected roll source through `RandomSource`, the existing
-shared draw capability; do not create a separate seeded generator. `context.roll_raw(&table_id)`
-rolls into an appendable list using the same parameters, selected random, visited-table guards and
-data generation. It runs neither the modifier pass nor another stack splitter. A missing table
-returns an error naming it; a visited table terminates with an empty list.
+randomness. `context.random()` borrows the actual selected roll source through `RandomSource`, the
+existing shared draw capability; do not create a separate seeded generator.
+
+Two raw sub-roll methods use the same parameters, selected random, visited-table guards and data
+generation, running neither the modifier pass nor another stack splitter:
+
+- `context.append_raw(&table_id, generated)` rolls the table raw and moves its unmodified engine
+  stacks directly onto `generated` without copying them through API snapshots. The built-in
+  `neoforge:add_table` modifier uses this same path.
+- `context.roll_raw(&table_id, &mut |stack| ...)` rolls the table raw and lends each generated
+  stack as a `LootStackView<'_>` to the visitor; call `stack.to_owned()?` only when keeping a copy.
+
+For both methods, a missing table returns an error naming it and a visited table terminates with no
+output.
 
 The server's root pass is after table functions and stack splitting, before caller consumption and
 container shuffle. Nested tables and raw sub-rolls do not run it. `loot_drops` and

@@ -533,45 +533,58 @@ fn root_modifiers_chain_before_unsigned_caller_consumption() {
             ModifierRoll,
         },
     };
-    struct Stage(bool);
+    struct Stage(u8);
     impl ModifierApply for Stage {
         fn apply(
             &self,
             roll: &mut dyn ModifierRoll,
-            generated: &[LootStack],
-        ) -> std::result::Result<Vec<LootStack>, String> {
-            if self.0 {
-                assert_eq!(
-                    generated
-                        .iter()
-                        .map(|stack| stack.count)
-                        .collect::<Vec<_>>(),
-                    [-3, 200, 200]
-                );
-                return Ok(generated.to_vec());
+            generated: &mut Vec<LootStack>,
+        ) -> std::result::Result<(), String> {
+            match self.0 {
+                0 => {
+                    assert_eq!(
+                        generated
+                            .iter()
+                            .map(|stack| stack.count)
+                            .collect::<Vec<_>>(),
+                        [64, 64, 2]
+                    );
+                    assert!(matches!(
+                        roll.facts().table_id(),
+                        "minecraft:entities/zombie"
+                            | "minecraft:blocks/stone"
+                            | "neoforge:unknown_loot_table"
+                    ));
+                    assert_eq!(roll.next_long(), LegacyRandom::new(31).next_long());
+                    let mut inspected = Vec::new();
+                    roll.roll_raw("test:raw", &mut |stack| inspected.push(stack.count))?;
+                    assert_eq!(inspected, [200]);
+                    generated[0].count = -3;
+                    generated.truncate(1);
+                    roll.append_raw("test:raw", generated)?;
+                    Ok(())
+                }
+                1 => {
+                    generated[1].count = 205;
+                    generated.swap(0, 1);
+                    roll.next_long();
+                    roll.append_raw("test:missing", generated)
+                }
+                _ => {
+                    assert_eq!(
+                        generated
+                            .iter()
+                            .map(|stack| stack.count)
+                            .collect::<Vec<_>>(),
+                        [205, -3, 200]
+                    );
+                    let mut expected = LegacyRandom::new(31);
+                    expected.next_long();
+                    expected.next_long();
+                    assert_eq!(roll.next_long(), expected.next_long());
+                    Ok(())
+                }
             }
-            assert_eq!(
-                generated
-                    .iter()
-                    .map(|stack| stack.count)
-                    .collect::<Vec<_>>(),
-                [64, 64, 2]
-            );
-            assert!(matches!(
-                roll.facts().table_id(),
-                "minecraft:entities/zombie"
-                    | "minecraft:blocks/stone"
-                    | "neoforge:unknown_loot_table"
-            ));
-            assert_eq!(roll.next_long(), LegacyRandom::new(31).next_long());
-            let raw = roll.roll_raw("test:raw")?;
-            assert_eq!(
-                raw.iter().map(|stack| stack.count).collect::<Vec<_>>(),
-                [200]
-            );
-            let mut negative = generated[0].clone();
-            negative.count = -3;
-            Ok(vec![negative, raw[0].clone()])
         }
     }
     let root = json!({"pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:diamond"}]}],
@@ -585,7 +598,7 @@ fn root_modifiers_chain_before_unsigned_caller_consumption() {
         ("minecraft:blocks/stone", root.clone()),
         ("test:raw", raw),
     ]);
-    let files = ["test:first", "test:add", "test:last"]
+    let files = ["test:first", "test:add", "test:err", "test:last"]
         .into_iter()
         .map(|id| ModifierFile {
             id: id.into(),
@@ -598,14 +611,15 @@ fn root_modifiers_chain_before_unsigned_caller_consumption() {
         &sunrise_world::conditions::LoadConditions::vanilla(),
         |id, _, _| {
             let (priority, apply): (_, Arc<dyn ModifierApply>) = match id {
-                "test:first" => (1001, Arc::new(Stage(false))),
+                "test:first" => (1001, Arc::new(Stage(0))),
                 "test:add" => (
                     1000,
                     Arc::new(AddTableModifier {
                         table: "test:raw".into(),
                     }),
                 ),
-                _ => (999, Arc::new(Stage(true))),
+                "test:err" => (999, Arc::new(Stage(1))),
+                _ => (998, Arc::new(Stage(2))),
             };
             Ok(DecodedModifier {
                 priority,
@@ -617,6 +631,8 @@ fn root_modifiers_chain_before_unsigned_caller_consumption() {
     ));
     let registry = BlockRegistry::from_facts_json(&br#"{"defaults":{"minecraft:stone":0},"states":[["stone",false,false,"","minecraft:stone"]]}"#[..]).unwrap();
     let mut expected = LegacyRandom::new(31);
+    expected.next_long();
+    expected.next_long();
     expected.next_long();
     for adapter in 0..7 {
         let mut random = LegacyRandom::new(31);
@@ -648,7 +664,7 @@ fn root_modifiers_chain_before_unsigned_caller_consumption() {
         };
         assert_eq!(
             drops.iter().map(|stack| stack.count).collect::<Vec<_>>(),
-            [0, 200, 200],
+            [205, 0, 200],
             "adapter {adapter}"
         );
         assert_eq!(
@@ -671,8 +687,8 @@ fn block_dynamic_stacks_are_materialized_before_the_pass_and_raw_output_is_unspl
         fn apply(
             &self,
             roll: &mut dyn ModifierRoll,
-            generated: &[LootStack],
-        ) -> std::result::Result<Vec<LootStack>, String> {
+            generated: &mut Vec<LootStack>,
+        ) -> std::result::Result<(), String> {
             assert_eq!(
                 generated
                     .iter()
@@ -684,16 +700,12 @@ fn block_dynamic_stacks_are_materialized_before_the_pass_and_raw_output_is_unspl
                     ("minecraft:diamond", 2),
                 ]
             );
-            let raw = roll.roll_raw("test:dynamic")?;
-            assert_eq!(
-                raw.iter()
-                    .map(|stack| (stack.item.as_str(), stack.count))
-                    .collect::<Vec<_>>(),
-                [("minecraft:diamond", 130)]
-            );
-            let mut output = generated.to_vec();
-            output.extend(raw);
-            Ok(output)
+            let mut inspected = Vec::new();
+            roll.roll_raw("test:dynamic", &mut |stack| {
+                inspected.push((stack.item.clone(), stack.count));
+            })?;
+            assert_eq!(inspected, [("minecraft:diamond".to_owned(), 130)]);
+            roll.append_raw("test:dynamic", generated)
         }
     }
     let table = json!({"pools":[{"rolls":1,"entries":[{"type":"minecraft:dynamic","name":"minecraft:sherds"}]}]});
@@ -769,15 +781,15 @@ fn roll_as_caller(
         fn apply(
             &self,
             roll: &mut dyn ModifierRoll,
-            generated: &[LootStack],
-        ) -> std::result::Result<Vec<LootStack>, String> {
+            _: &mut Vec<LootStack>,
+        ) -> std::result::Result<(), String> {
             let facts = roll.facts();
             *self.0.lock().unwrap() = Some((
                 facts.entity.map(|e| e.kind.clone()),
-                facts.tool.as_ref().map(|t| t.item.clone()),
+                facts.tool.map(|t| t.item_id().to_owned()),
                 facts.place.as_ref().and_then(|p| p.origin),
             ));
-            Ok(generated.to_vec())
+            Ok(())
         }
     }
     let seen = Arc::new(Mutex::new(None));

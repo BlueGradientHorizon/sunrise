@@ -1,104 +1,6 @@
-//! Owned loot values at the guarded game boundary. No inventory count rules apply.
-use super::{TryIntoApi, TryIntoEngine};
-use mod_api::{__private::LootStackAccess, world::snapshots as api};
+//! Borrowed loot views and editors at the guarded game boundary. No inventory count rules apply.
+use mod_api::__private::LootStackAccess;
 use sunrise_world::loot as engine;
-
-#[cfg(test)]
-thread_local! { static CONVERSIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum LootValueError {
-    UnknownItem,
-    InvalidName,
-    InvalidPatch,
-}
-
-impl TryIntoApi for engine::LootStack {
-    type Api = api::LootStack;
-    type Error = LootValueError;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        #[cfg(test)]
-        CONVERSIONS.with(|count| count.set(count.get() + 1));
-        let item = mod_api::__private::item_key(&self.item).ok_or(LootValueError::UnknownItem)?;
-        let mut value = api::LootStack::new(item, self.count);
-        value.damage = self.damage;
-        value.enchantments = self.enchantments.clone();
-        value.potion = self.potion.clone();
-        value.map = self.map;
-        value.exploration = self.exploration.as_ref().map(|map| {
-            Box::new(api::ExplorationMap::new(
-                map.destination.clone(),
-                map.decoration.clone(),
-                map.zoom,
-                map.search_radius,
-                map.skip_existing_chunks,
-            ))
-        });
-        value.ominous_amplifier = self.ominous_amplifier;
-        value.stew_effects = self.stew_effects.clone();
-        value.names = self
-            .names
-            .iter()
-            .map(|(id, name)| {
-                sunrise_client_lib::api_text::captured_text(name)
-                    .map(|name| (id.clone(), name))
-                    .map_err(|_| LootValueError::InvalidName)
-            })
-            .collect::<Result<_, _>>()?;
-        value.components = self.components.clone();
-        Ok(value)
-    }
-}
-impl<C: ?Sized> TryIntoEngine<C> for api::LootStack {
-    type Engine = engine::LootStack;
-    type Error = LootValueError;
-    fn try_into_engine(&self, _: &C) -> Result<Self::Engine, Self::Error> {
-        let id = mod_api::__private::item_key_id(self.item).ok_or(LootValueError::UnknownItem)?;
-        // NBT's vanilla container-depth limit applies before copying mod-owned trees.
-        if self.components.iter().any(|(_, tag)| {
-            tag.as_ref().is_some_and(|tag| {
-                matches!(tag, sunrise_core::nbt::Tag::End)
-                    || !sunrise_core::nbt::within_depth(
-                        tag,
-                        sunrise_core::nbt::Limits::default().max_depth,
-                    )
-            })
-        }) {
-            return Err(LootValueError::InvalidPatch);
-        }
-        let names = self
-            .names
-            .iter()
-            .map(|(id, name)| {
-                let name: sunrise_client::text::Text = name
-                    .try_into_engine(&())
-                    .map_err(|_| LootValueError::InvalidName)?;
-                Ok((id.clone(), name.component()))
-            })
-            .collect::<Result<_, _>>()?;
-        Ok(engine::LootStack {
-            item: id.to_owned(),
-            count: self.count,
-            damage: self.damage,
-            enchantments: self.enchantments.clone(),
-            potion: self.potion.clone(),
-            map: self.map,
-            exploration: self.exploration.as_ref().map(|map| {
-                Box::new(engine::ExplorationMap {
-                    destination: map.destination.clone(),
-                    decoration: map.decoration.clone(),
-                    zoom: map.zoom,
-                    search_radius: map.search_radius,
-                    skip_existing_chunks: map.skip_existing_chunks,
-                })
-            }),
-            ominous_amplifier: self.ominous_amplifier,
-            stew_effects: self.stew_effects.clone(),
-            names,
-            components: self.components.clone(),
-        })
-    }
-}
 
 /// Adapt the evaluator's borrowed rows by value, not a loan of a temporary context.
 pub(crate) fn loot_params(facts: engine::LootContext<'_>) -> mod_api::LootParamsView<'_> {
@@ -139,10 +41,24 @@ fn encode_loot_name(
     sunrise_client_lib::api_text::to_engine(text).map(|text| text.component())
 }
 
+/// Borrow one raw loot candidate without converting it to an owned API stack.
+pub(crate) fn loot_stack_view(stack: &engine::LootStack) -> mod_api::LootStackView<'_> {
+    mod_api::LootStackView::new(stack, sunrise_client_lib::api_text::captured_text)
+}
+
 /// Borrow the evaluator's live candidate for one function invocation.
 pub(crate) fn loot_stack_editor(stack: &mut engine::LootStack) -> mod_api::LootStackEditor<'_> {
     mod_api::LootStackEditor::new(
         stack,
+        sunrise_client_lib::api_text::captured_text,
+        encode_loot_name,
+    )
+}
+
+/// Borrow the evaluator's live generated loot list for one global modifier invocation.
+pub(crate) fn loot_list(stacks: &mut Vec<engine::LootStack>) -> mod_api::LootList<'_> {
+    mod_api::LootList::new(
+        stacks,
         sunrise_client_lib::api_text::captured_text,
         encode_loot_name,
     )
@@ -499,7 +415,6 @@ mod tests {
     fn loot_type_preserves_signed_candidates_and_ordered_nbt() {
         super::super::prepare_stack_boundary_tests();
         let mut output = stack();
-        CONVERSIONS.with(|count| count.set(0));
         with_mods(vec![ModEntry::new("edit", Box::new(Edit))].into(), || {
             super::super::prepare_stack_boundary_tests();
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
@@ -513,7 +428,6 @@ mod tests {
                 &TestTags,
             );
         });
-        assert_eq!(CONVERSIONS.with(|count| count.get()), 0);
         assert_eq!(output.count, -12);
         assert_eq!(output.damage, -3);
         assert!(output.map);
@@ -534,7 +448,6 @@ mod tests {
         with_mods(Vec::new().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
                 .unwrap();
-            CONVERSIONS.with(|count| count.set(0));
             let mut output = stack();
             let before = output.clone();
             let mut holds = false;
@@ -554,7 +467,6 @@ mod tests {
                     &TestTags,
                 );
             }
-            assert_eq!(CONVERSIONS.with(|count| count.get()), 0);
             assert_eq!(output, before);
             assert!(!holds);
         });
@@ -562,18 +474,23 @@ mod tests {
     #[test]
     fn loot_patch_depth_matches_the_vanilla_nbt_limit() {
         super::super::prepare_stack_boundary_tests();
-        let mut value = stack().try_into_api().unwrap();
+        let mut target = stack();
+        let mut value = loot_stack_view(&target).to_owned().unwrap();
         let mut tag = Tag::Byte(7);
         for _ in 0..512 {
             tag = Tag::List(vec![tag]);
         }
         value.components = vec![("test:deep".into(), Some(tag))];
-        assert!(value.try_into_engine(&()).is_ok());
+        assert!(
+            loot_stack_editor(&mut target)
+                .replace(value.clone())
+                .is_ok()
+        );
         let tag = value.components[0].1.take().unwrap();
         value.components[0].1 = Some(Tag::List(vec![tag]));
         assert_eq!(
-            value.try_into_engine(&()),
-            Err(LootValueError::InvalidPatch)
+            loot_stack_editor(&mut target).replace(value),
+            Err(LootStackEditError::InvalidPatch)
         );
     }
 
@@ -581,15 +498,16 @@ mod tests {
     fn loot_writeback_keeps_repeated_patch_order() {
         super::super::prepare_stack_boundary_tests();
         let mut value =
-            api::LootStack::new(mod_api::__private::item_key("minecraft:stick").unwrap(), -3);
+            mod_api::LootStack::new(mod_api::__private::item_key("minecraft:stick").unwrap(), -3);
         value.components = vec![
             ("test:value".into(), Some(Tag::Byte(7))),
             ("test:value".into(), Some(Tag::ByteArray(vec![8]))),
         ];
-        let output = value.try_into_engine(&()).unwrap();
-        assert_eq!(output.count, -3);
+        let mut list = Vec::new();
+        loot_list(&mut list).push(value).unwrap();
+        assert_eq!(list[0].count, -3);
         assert_eq!(
-            output.components,
+            list[0].components,
             vec![
                 ("test:value".into(), Some(Tag::Byte(7))),
                 ("test:value".into(), Some(Tag::ByteArray(vec![8]))),
@@ -600,12 +518,11 @@ mod tests {
     fn loot_writeback_keeps_component_removals() {
         super::super::prepare_stack_boundary_tests();
         let mut value =
-            api::LootStack::new(mod_api::__private::item_key("minecraft:stick").unwrap(), 1);
+            mod_api::LootStack::new(mod_api::__private::item_key("minecraft:stick").unwrap(), 1);
         value.components = vec![("test:removed".into(), None)];
-        assert_eq!(
-            value.try_into_engine(&()).unwrap().components,
-            vec![("test:removed".into(), None)]
-        );
+        let mut list = Vec::new();
+        loot_list(&mut list).push(value).unwrap();
+        assert_eq!(list[0].components, vec![("test:removed".into(), None)]);
     }
 
     struct ScopedInvalid(std::sync::Arc<std::sync::atomic::AtomicBool>);
@@ -662,7 +579,6 @@ mod tests {
         super::super::prepare_stack_boundary_tests();
         let mut output = stack();
         let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        CONVERSIONS.with(|count| count.set(0));
         with_mods(
             vec![ModEntry::new(
                 "invalid",
@@ -686,7 +602,6 @@ mod tests {
             },
         );
         assert!(called.load(std::sync::atomic::Ordering::Relaxed));
-        assert_eq!(CONVERSIONS.with(|count| count.get()), 0);
         assert_eq!(output.count, -19);
         assert!(output.names.is_empty());
         assert_eq!(

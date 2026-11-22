@@ -8,6 +8,7 @@ use serde_json::Value;
 use std::fmt;
 
 // hidden: the engine lends its resident parameter rows; mods read LootParamsView.
+// exhaustive: hidden engine boundary struct, constructed only by the evaluator.
 #[doc(hidden)]
 #[derive(Clone, Copy, Default)]
 pub struct LootParamsParts<'a> {
@@ -332,6 +333,12 @@ pub trait LootStackAccess: LootToolAccess {
 pub struct LootStackView<'a>(&'a dyn LootStackAccess, NameProjection);
 
 impl<'a> LootStackView<'a> {
+    // hidden: the evaluator lends a raw loot candidate without converting it to an owned value.
+    #[doc(hidden)]
+    pub fn new(stack: &'a dyn LootStackAccess, project_name: NameProjection) -> Self {
+        Self(stack, project_name)
+    }
+
     /// Candidate item identifier.
     pub fn item_id(&self) -> &'a str {
         self.0.item_id()
@@ -545,6 +552,77 @@ fn validate_component_patch(id: &str, value: Option<&Tag>) -> Result<(), LootSta
     Ok(())
 }
 
+struct ValidatedLootStack {
+    item_id: &'static str,
+    count: i32,
+    damage: i32,
+    enchantments: Vec<(String, i32)>,
+    potion: Option<String>,
+    map: bool,
+    exploration: Option<ExplorationMap>,
+    ominous_amplifier: Option<i32>,
+    stew_effects: Vec<(String, i32)>,
+    names: Vec<(String, Value)>,
+    components: Vec<(String, Option<Tag>)>,
+}
+
+fn validate_loot_stack(
+    stack: LootStack,
+    encode_name: NameEncoding,
+) -> Result<ValidatedLootStack, LootStackEditError> {
+    let item_id =
+        crate::__private::item_key_id(stack.item).ok_or(LootStackEditError::UnknownItem)?;
+    for (id, _) in &stack.enchantments {
+        validate_identifier(id)?;
+    }
+    if let Some(potion) = &stack.potion {
+        validate_identifier(potion)?;
+    }
+    if let Some(map) = &stack.exploration {
+        validate_identifier(&map.destination)?;
+        validate_identifier(&map.decoration)?;
+    }
+    for (effect, _) in &stack.stew_effects {
+        validate_identifier(effect)?;
+    }
+    let mut names = Vec::with_capacity(stack.names.len());
+    for (id, text) in &stack.names {
+        validate_identifier(id)?;
+        let encoded = encode_name(text).map_err(LootStackEditError::InvalidName)?;
+        names.push((id.clone(), encoded));
+    }
+    for (id, value) in &stack.components {
+        validate_component_patch(id, value.as_ref())?;
+    }
+    Ok(ValidatedLootStack {
+        item_id,
+        count: stack.count,
+        damage: stack.damage,
+        enchantments: stack.enchantments,
+        potion: stack.potion,
+        map: stack.map,
+        exploration: stack.exploration.map(|map| *map),
+        ominous_amplifier: stack.ominous_amplifier,
+        stew_effects: stack.stew_effects,
+        names,
+        components: stack.components,
+    })
+}
+
+fn apply_validated_loot_stack(target: &mut dyn LootStackEditAccess, validated: ValidatedLootStack) {
+    target.set_item_id(validated.item_id);
+    target.set_count(validated.count);
+    target.set_damage(validated.damage);
+    target.set_enchantments(validated.enchantments);
+    target.set_potion_id(validated.potion);
+    target.set_map(validated.map);
+    target.set_exploration(validated.exploration);
+    target.set_ominous_amplifier(validated.ominous_amplifier);
+    target.set_stew_effects(validated.stew_effects);
+    target.set_names_values(validated.names);
+    target.set_components(validated.components);
+}
+
 /// Scoped in-place editor for the active loot function candidate.
 ///
 /// Reads go through [`Self::view`], explicit whole-stack copies go through [`Self::to_owned`],
@@ -586,42 +664,8 @@ impl<'a> LootStackEditor<'a> {
     /// Validate and replace the entire candidate stack.
     /// If any field in `stack` is invalid, the current candidate is left unchanged.
     pub fn replace(&mut self, stack: LootStack) -> Result<(), LootStackEditError> {
-        let item_id =
-            crate::__private::item_key_id(stack.item).ok_or(LootStackEditError::UnknownItem)?;
-        for (id, _) in &stack.enchantments {
-            validate_identifier(id)?;
-        }
-        if let Some(potion) = &stack.potion {
-            validate_identifier(potion)?;
-        }
-        if let Some(map) = &stack.exploration {
-            validate_identifier(&map.destination)?;
-            validate_identifier(&map.decoration)?;
-        }
-        for (effect, _) in &stack.stew_effects {
-            validate_identifier(effect)?;
-        }
-        let mut names = Vec::with_capacity(stack.names.len());
-        for (id, text) in &stack.names {
-            validate_identifier(id)?;
-            let encoded = (self.encode_name)(text).map_err(LootStackEditError::InvalidName)?;
-            names.push((id.clone(), encoded));
-        }
-        for (id, value) in &stack.components {
-            validate_component_patch(id, value.as_ref())?;
-        }
-        self.stack.set_item_id(item_id);
-        self.stack.set_count(stack.count);
-        self.stack.set_damage(stack.damage);
-        self.stack.set_enchantments(stack.enchantments);
-        self.stack.set_potion_id(stack.potion);
-        self.stack.set_map(stack.map);
-        self.stack
-            .set_exploration(stack.exploration.map(|map| *map));
-        self.stack.set_ominous_amplifier(stack.ominous_amplifier);
-        self.stack.set_stew_effects(stack.stew_effects);
-        self.stack.set_names_values(names);
-        self.stack.set_components(stack.components);
+        let validated = validate_loot_stack(stack, self.encode_name)?;
+        apply_validated_loot_stack(self.stack, validated);
         Ok(())
     }
 
@@ -833,6 +877,195 @@ impl<'a> LootStackEditor<'a> {
     /// Remove all component patch entries from the candidate.
     pub fn clear_components(&mut self) {
         self.stack.clear_components();
+    }
+}
+
+// hidden: lends the evaluator's active generated loot list without cloning it.
+#[doc(hidden)]
+pub trait LootListAccess {
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    fn get(&self, index: usize) -> Option<&dyn LootStackAccess>;
+    fn get_mut(&mut self, index: usize) -> Option<&mut dyn LootStackEditAccess>;
+    fn push_empty(&mut self, item_id: &str) -> &mut dyn LootStackEditAccess;
+    fn insert_empty(&mut self, index: usize, item_id: &str)
+    -> Option<&mut dyn LootStackEditAccess>;
+    fn remove(&mut self, index: usize) -> bool;
+    fn clear(&mut self);
+    fn truncate(&mut self, len: usize);
+    fn swap(&mut self, a: usize, b: usize) -> bool;
+    fn reverse(&mut self);
+    fn reorder(&mut self, from: usize, to: usize) -> bool;
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+}
+
+/// Scoped in-place editor for the generated loot list passed to a global loot modifier.
+///
+/// Reading lends [`LootStackView`], per-entry edits lend [`LootStackEditor`], and explicit
+/// insertions validate only the newly supplied [`LootStack`]. All index operations are
+/// out-of-range-safe and never panic. Earlier valid edits remain in place if a later
+/// operation or callback fails.
+// no wire: borrows the evaluator's live generated loot list for one modifier pass.
+// exhaustive: constructed only at the engine integration boundary.
+pub struct LootList<'a> {
+    list: &'a mut dyn LootListAccess,
+    project_name: NameProjection,
+    encode_name: NameEncoding,
+}
+
+impl<'a> LootList<'a> {
+    // hidden: the evaluator constructs this list over its active loot output buffer.
+    #[doc(hidden)]
+    pub fn new(
+        list: &'a mut dyn LootListAccess,
+        project_name: NameProjection,
+        encode_name: NameEncoding,
+    ) -> Self {
+        Self {
+            list,
+            project_name,
+            encode_name,
+        }
+    }
+
+    // hidden: lets the engine's raw append path move native stacks directly into the backing buffer.
+    #[doc(hidden)]
+    pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        self.list.as_any_mut().downcast_mut::<T>()
+    }
+
+    /// Number of loot candidates currently in the list.
+    pub fn len(&self) -> usize {
+        self.list.len()
+    }
+
+    /// Whether the list currently contains no loot candidates.
+    pub fn is_empty(&self) -> bool {
+        self.list.is_empty()
+    }
+
+    /// Borrow a read-only view of the candidate at `index`, or `None` if out of bounds.
+    pub fn get(&self, index: usize) -> Option<LootStackView<'_>> {
+        Some(LootStackView(self.list.get(index)?, self.project_name))
+    }
+
+    /// Borrow an in-place editor for the candidate at `index`, or `None` if out of bounds.
+    pub fn get_mut(&mut self, index: usize) -> Option<LootStackEditor<'_>> {
+        Some(LootStackEditor::new(
+            self.list.get_mut(index)?,
+            self.project_name,
+            self.encode_name,
+        ))
+    }
+
+    /// Iterate over every candidate in order without copying or projecting names.
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = LootStackView<'_>> + '_ {
+        (0..self.list.len()).map(|index| {
+            LootStackView(
+                self.list.get(index).expect("index within LootList::len"),
+                self.project_name,
+            )
+        })
+    }
+
+    /// Validate and append an explicitly constructed [`LootStack`] to the end of the list.
+    /// If `stack` is invalid, the list is left unchanged.
+    pub fn push(&mut self, stack: LootStack) -> Result<(), LootStackEditError> {
+        let validated = validate_loot_stack(stack, self.encode_name)?;
+        let slot = self.list.push_empty(validated.item_id);
+        apply_validated_loot_stack(slot, validated);
+        Ok(())
+    }
+
+    /// Validate and insert an explicitly constructed [`LootStack`] at `index`.
+    /// Returns `Ok(false)` without panicking if `index > self.len()`, or
+    /// `Err(LootStackEditError)` without mutating the list if `stack` is invalid.
+    pub fn insert(&mut self, index: usize, stack: LootStack) -> Result<bool, LootStackEditError> {
+        if index > self.list.len() {
+            return Ok(false);
+        }
+        let validated = validate_loot_stack(stack, self.encode_name)?;
+        let Some(slot) = self.list.insert_empty(index, validated.item_id) else {
+            return Ok(false);
+        };
+        apply_validated_loot_stack(slot, validated);
+        Ok(true)
+    }
+
+    /// Validate and replace the candidate at `index` with an explicitly constructed [`LootStack`].
+    /// Returns `Ok(false)` without panicking if `index >= self.len()`, or
+    /// `Err(LootStackEditError)` leaving the existing candidate intact if `stack` is invalid.
+    pub fn replace(&mut self, index: usize, stack: LootStack) -> Result<bool, LootStackEditError> {
+        let Some(mut editor) = self.get_mut(index) else {
+            return Ok(false);
+        };
+        editor.replace(stack)?;
+        Ok(true)
+    }
+
+    /// Remove the candidate at `index`, preserving the order of remaining entries.
+    /// Returns `false` without panicking if `index >= self.len()`.
+    pub fn remove(&mut self, index: usize) -> bool {
+        self.list.remove(index)
+    }
+
+    /// Remove the last candidate in the list. Returns `false` if the list is empty.
+    pub fn pop(&mut self) -> bool {
+        let Some(last) = self.list.len().checked_sub(1) else {
+            return false;
+        };
+        self.list.remove(last)
+    }
+
+    /// Remove every candidate from the list.
+    pub fn clear(&mut self) {
+        self.list.clear();
+    }
+
+    /// Shorten the list to at most `len` candidates.
+    pub fn truncate(&mut self, len: usize) {
+        self.list.truncate(len);
+    }
+
+    /// Swap the candidates at `a` and `b` in place.
+    /// Returns `false` without panicking if either index is out of bounds.
+    pub fn swap(&mut self, a: usize, b: usize) -> bool {
+        self.list.swap(a, b)
+    }
+
+    /// Reverse the order of candidates in place.
+    pub fn reverse(&mut self) {
+        self.list.reverse();
+    }
+
+    /// Move the candidate at `from` to `to` in place, shifting intervening entries in order.
+    /// Returns `false` without panicking if `from` or `to` is out of bounds.
+    pub fn reorder(&mut self, from: usize, to: usize) -> bool {
+        self.list.reorder(from, to)
+    }
+
+    /// Retain only the candidates for which `keep` returns `true`, preserving order in place.
+    pub fn retain(&mut self, mut keep: impl FnMut(LootStackView<'_>) -> bool) {
+        let len = self.list.len();
+        let mut write = 0;
+        for read in 0..len {
+            let keep_entry = {
+                let view = LootStackView(
+                    self.list.get(read).expect("index within LootList::len"),
+                    self.project_name,
+                );
+                keep(view)
+            };
+            if keep_entry {
+                if write != read {
+                    self.list.swap(write, read);
+                }
+                write += 1;
+            }
+        }
+        self.list.truncate(write);
     }
 }
 
