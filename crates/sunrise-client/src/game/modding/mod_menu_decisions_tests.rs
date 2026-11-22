@@ -752,7 +752,7 @@ fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
             // The normal toast collector names the failing mod and hook once.
             let mut batch = sunrise_client::hud::HudBatch::scratch([640, 480]);
             game.draw_pack_toasts(&mut batch, true, true);
-            let [Some(toast)] = game.server_packs.hook_panics.as_slice() else {
+            let [(Some(toast), _)] = game.server_packs.hook_panics.as_slice() else {
                 panic!("expected one shared hook error toast");
             };
             assert_eq!(

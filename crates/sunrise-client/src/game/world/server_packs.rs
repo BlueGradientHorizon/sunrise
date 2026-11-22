@@ -75,7 +75,11 @@ impl ServerPackState {
             .chain(self.load_fail.as_ref())
             .chain(self.chunk_io.iter().flatten())
             .chain(self.server_errors.iter().flatten())
-            .chain(self.hook_panics.iter().flatten())
+            .chain(
+                self.hook_panics
+                    .iter()
+                    .filter_map(|(toast, _)| toast.as_ref()),
+            )
             .filter_map(|t| t.slot)
     }
 }
@@ -104,7 +108,7 @@ pub(super) struct ServerPackState {
     server_errors: Vec<Option<SystemToast>>,
     /// Pull callback failures to show, one toast per panic.
     /// One error toast per `(hook, mod)` whose callback panicked and was disabled for the session.
-    pub(super) hook_panics: Vec<Option<SystemToast>>,
+    pub(super) hook_panics: Vec<(Option<SystemToast>, bool)>,
 }
 /// `DownloadedPackSource.createDownloadNotifier`: one batch's progress in its
 /// own `SystemToast`.
@@ -565,7 +569,11 @@ impl Game<'_> {
                 )),
             )
             .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
-            self.server_packs.hook_panics.push(Some(toast));
+            // Audio playback notices retain the player's existing F1 visibility rule.
+            let hide_with_f1 = matches!(report.hook, "AudioStream::read" | "AudioStream::drop");
+            self.server_packs
+                .hook_panics
+                .push((Some(toast), hide_with_f1));
         }
     }
 
@@ -581,21 +589,20 @@ impl Game<'_> {
         self.add_server_report_toasts();
         self.add_hook_panic_toasts();
         let mut used = self.toast_slots_used();
+        let f1 = self.ui.player_hides_gui;
         let packs = &mut self.server_packs;
-        for (slot_toast, hidden) in packs
-            .notifiers
-            .iter_mut()
-            .map(|n| &mut n.toast)
-            .chain(std::iter::once(&mut packs.load_fail))
-            .chain(packs.chunk_io.iter_mut())
-            .chain(packs.server_errors.iter_mut())
-            .map(|toast| (toast, hud_hidden))
-            .chain(
-                packs
-                    .hook_panics
-                    .iter_mut()
-                    .map(|toast| (toast, presentation_hidden)),
-            )
+        for (slot_toast, hidden) in
+            packs
+                .notifiers
+                .iter_mut()
+                .map(|n| &mut n.toast)
+                .chain(std::iter::once(&mut packs.load_fail))
+                .chain(packs.chunk_io.iter_mut())
+                .chain(packs.server_errors.iter_mut())
+                .map(|toast| (toast, hud_hidden))
+                .chain(packs.hook_panics.iter_mut().map(|(toast, hide_with_f1)| {
+                    (toast, presentation_hidden || *hide_with_f1 && f1)
+                }))
         {
             let Some(toast) = slot_toast else {
                 continue;
@@ -622,7 +629,7 @@ impl Game<'_> {
             }
         }
         packs.server_errors.retain(Option::is_some);
-        packs.hook_panics.retain(Option::is_some);
+        packs.hook_panics.retain(|(toast, _)| toast.is_some());
         self.draw_controller_notice(batch);
     }
     /// A left click on the prompt: its answer when it hit a button.
@@ -707,7 +714,7 @@ mod tests {
                     let size = [640, 480];
                     let _ = game.hud_layers(size);
                     let regular = game.server_packs.load_fail.as_mut().unwrap();
-                    let error = game.server_packs.hook_panics[0].as_mut().unwrap();
+                    let error = game.server_packs.hook_panics[0].0.as_mut().unwrap();
                     assert_eq!(regular.slot, Some(0));
                     let error_slot = error.slot.unwrap();
                     assert_ne!(error_slot, 0, "the ordinary toast keeps its slot");
@@ -1043,6 +1050,7 @@ mod tests {
                 });
                 assert_eq!(game.server_packs.hook_panics.len(), 1);
                 let toast = game.server_packs.hook_panics[0]
+                    .0
                     .as_ref()
                     .expect("hook panic toast queued");
                 assert_eq!(
@@ -1064,7 +1072,7 @@ mod tests {
                 // Advance the existing slide past its entrance without sleeping.
                 let mut first = HudBatch::scratch([640, 480]);
                 game.draw_every_toast(&mut first, false, gui_canceled);
-                let toast = game.server_packs.hook_panics[0].as_mut().unwrap();
+                let toast = game.server_packs.hook_panics[0].0.as_mut().unwrap();
                 assert_eq!(toast.slot, Some(0));
                 toast.slide.origin =
                     Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
