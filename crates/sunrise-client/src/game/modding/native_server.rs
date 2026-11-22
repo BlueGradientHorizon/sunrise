@@ -5393,7 +5393,8 @@ mod tests {
             Some(&slots),
         );
         let reg = sunrise_client::command::Registries::default();
-        let (ctx, _) = dispatcher.parse("c_int 42", &reg).executable().unwrap();
+        let parsed = dispatcher.parse("c_int 42", &reg);
+        let (ctx, _) = parsed.executable().unwrap();
         let key = ctx
             .executor
             .expect("client command node binds an executor key");
@@ -5766,7 +5767,7 @@ mod tests {
                     ] {
                         assert_eq!(
                             game.submit_client_command(line, kind, Some(chain.clone())),
-                            Some(ClientCommandOutcome::Failed)
+                            Ok(Some(ClientCommandOutcome::Failed))
                         );
                     }
                     assert!(game.command_prompt_message().is_none());
