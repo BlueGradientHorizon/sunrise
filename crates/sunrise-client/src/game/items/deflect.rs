@@ -165,8 +165,14 @@ impl Game<'_> {
             .play("minecraft:entity.shulker_bullet.hurt", Some(at), 1.0, 1.0);
         if let Some(ty) = sunrise_client::particles::ParticleType::from_name("crit") {
             let options = sunrise_client::particles::ParticleOptions::simple(ty);
-            self.particles
-                .send_particles(&options, at, [0.2, 0.2, 0.2], 0.0, 15);
+            self.particles.send_particles(
+                &options,
+                at,
+                [0.2, 0.2, 0.2],
+                0.0,
+                15,
+                sunrise_client::particles::SpawnScope::BARE,
+            );
             self.lan_level_particles(&options, at, [0.2, 0.2, 0.2], 0.0, 15, None);
         }
     }

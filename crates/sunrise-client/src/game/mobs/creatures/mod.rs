@@ -2301,8 +2301,14 @@ impl Game<'_> {
     pub(super) fn mooshroom_shear_puff(&mut self, at: [f64; 3], height: f64) {
         let at = [at[0], at[1] + 0.5 * height, at[2]];
         let options = ParticleOptions::simple(ParticleType::Explosion);
-        self.particles
-            .send_particles(&options, at, [0.0; 3], 0.0, 1);
+        self.particles.send_particles(
+            &options,
+            at,
+            [0.0; 3],
+            0.0,
+            1,
+            sunrise_client::particles::SpawnScope::BARE,
+        );
         self.lan_level_particles(&options, at, [0.0; 3], 0.0, 1, None);
     }
     /// `Entity.sendBubbleColumnParticles` at the top of the column block `pos`: two
@@ -2322,12 +2328,24 @@ impl Game<'_> {
                 f64::from(pos.z) + r.next_double(),
             ];
             let splash_options = ParticleOptions::simple(ParticleType::Splash);
-            self.particles
-                .send_particles(&splash_options, splash, [0.0; 3], 1.0, 1);
+            self.particles.send_particles(
+                &splash_options,
+                splash,
+                [0.0; 3],
+                1.0,
+                1,
+                sunrise_client::particles::SpawnScope::BARE,
+            );
             self.lan_level_particles(&splash_options, splash, [0.0; 3], 1.0, 1, None);
             let bubble_options = ParticleOptions::simple(ParticleType::Bubble);
-            self.particles
-                .send_particles(&bubble_options, bubble, [0.0, 0.01, 0.0], 0.2, 1);
+            self.particles.send_particles(
+                &bubble_options,
+                bubble,
+                [0.0, 0.01, 0.0],
+                0.2,
+                1,
+                sunrise_client::particles::SpawnScope::BARE,
+            );
             self.lan_level_particles(&bubble_options, bubble, [0.0, 0.01, 0.0], 0.2, 1, None);
         }
     }
@@ -2465,8 +2483,14 @@ impl Game<'_> {
                 } => {
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
                         let options = sunrise_client::particles::ParticleOptions::simple(ty);
-                        self.particles
-                            .send_particles(&options, at, spread, speed, count);
+                        self.particles.send_particles(
+                            &options,
+                            at,
+                            spread,
+                            speed,
+                            count,
+                            sunrise_client::particles::SpawnScope::BARE,
+                        );
                         self.lan_level_particles(&options, at, spread, speed, count, None);
                     }
                 }
@@ -2480,8 +2504,14 @@ impl Game<'_> {
                 } => {
                     let options =
                         self.item_particle(&sunrise_client::items::ItemStack::new(item, 1));
-                    self.particles
-                        .send_particles(&options, at, spread, speed, count);
+                    self.particles.send_particles(
+                        &options,
+                        at,
+                        spread,
+                        speed,
+                        count,
+                        sunrise_client::particles::SpawnScope::BARE,
+                    );
                 }
                 MobEvent::Sound(name, at, volume, pitch) => {
                     self.audio.play(&full_id(name), Some(at), volume, pitch)
@@ -7547,8 +7577,14 @@ impl Game<'_> {
             let (spread, count) = ([0.5, 0.0, 0.5], if fresh { 4 } else { 2 });
             // shortcut: scalar speed models DEFAULT randomization; 26.3 sends
             // ALTERNATIVE_WITH_SPEED with a per-axis maximum speed.
-            self.particles
-                .send_particles(&options, at, spread, 0.2, count);
+            self.particles.send_particles(
+                &options,
+                at,
+                spread,
+                0.2,
+                count,
+                sunrise_client::particles::SpawnScope::BARE,
+            );
             self.lan_send_particles(super::lan_particles::QueuedParticle {
                 dimension: self.dim.id(),
                 options,

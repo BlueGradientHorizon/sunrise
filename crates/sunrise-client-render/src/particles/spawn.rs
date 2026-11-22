@@ -10,10 +10,11 @@ impl ParticleEngine {
         spread: [f64; 3],
         speed: f64,
         count: u32,
+        scope: SpawnScope<'_, '_>,
     ) {
         if count == 0 {
             let v = [speed * spread[0], speed * spread[1], speed * spread[2]];
-            self.add(options, at, v);
+            self.add_with(options, at, v, ParticleSpawnFlags::default(), scope);
             return;
         }
         for _ in 0..count {
@@ -28,16 +29,12 @@ impl ParticleEngine {
                 r.next_gaussian() * speed,
                 r.next_gaussian() * speed,
             ];
-            self.add(options, p, v);
+            self.add_with(options, p, v, ParticleSpawnFlags::default(), scope);
         }
     }
     /// `ParticleEngine.createParticle`: bypass the level's distance and settings
     /// checks, but still apply `ParticleLimit.SPORE_BLOSSOM` when queuing the result.
-    pub fn create(&mut self, options: &ParticleOptions, p: [f64; 3], v: [f64; 3]) {
-        self.create_scoped(options, p, v, SpawnScope::BARE);
-    }
-
-    pub(super) fn create_scoped(
+    pub fn create(
         &mut self,
         options: &ParticleOptions,
         p: [f64; 3],

@@ -1709,7 +1709,7 @@ impl ParticleEngine {
         }
         let minimal = self.calculate_particle_level(flags.always_show) == 2;
         if flags.override_limiter || options.ty.override_limiter() || (d2 <= 1024.0 && !minimal) {
-            self.create_scoped(options, p, v, scope);
+            self.create(options, p, v, scope);
         }
     }
     /// `NoxiousGasCloudParticle.spawnNoxiousGasParticle`: the gas, as an
@@ -1819,8 +1819,9 @@ impl ParticleEngine {
         options: ParticleOptions,
         target: TrackingTarget,
         body: TrackingBody,
+        scope: SpawnScope<'_, '_>,
     ) {
-        self.tracking_emitter_for(options, target, body, 3);
+        self.tracking_emitter_for(options, target, body, 3, scope);
     }
     /// `createTrackingEmitter(entity, type, lifetime)`: the first burst uses vanilla options
     /// and runs immediately; later bursts borrow the ticking level.
@@ -1830,8 +1831,9 @@ impl ParticleEngine {
         target: TrackingTarget,
         body: TrackingBody,
         life: u32,
+        scope: SpawnScope<'_, '_>,
     ) {
-        self.emit(&options, body, SpawnScope::BARE);
+        self.emit(&options, body, scope);
         if life > 1 {
             self.emitters.push(TrackingEmitter {
                 options,
@@ -3544,7 +3546,7 @@ impl ParticleEngine {
                     ((c >> 24) & 255) as f32 / 255.0,
                 ];
                 let flash = ParticleOptions::colored(ParticleType::Flash, rgba);
-                self.create(&flash, s.at, [0.0; 3]);
+                self.create(&flash, s.at, [0.0; 3], SpawnScope::BARE);
             }
             s.life += 1;
             if s.life > s.lifetime {
@@ -6173,7 +6175,12 @@ mod tests {
         );
         let spore = ParticleOptions::simple(ParticleType::SporeBlossomAir);
         for i in 0..1001 {
-            engine.create(&spore, [f64::from(i % 16), 70.0, 0.0], [0.0; 3]);
+            engine.create(
+                &spore,
+                [f64::from(i % 16), 70.0, 0.0],
+                [0.0; 3],
+                SpawnScope::BARE,
+            );
         }
         assert_eq!(engine.pending.len(), 1000);
         assert!(
@@ -6186,7 +6193,7 @@ mod tests {
         // A type without a `ParticleLimit` is not capped.
         let smoke = ParticleOptions::simple(ParticleType::Smoke);
         for _ in 0..10 {
-            engine.create(&smoke, [0.0; 3], [0.0; 3]);
+            engine.create(&smoke, [0.0; 3], [0.0; 3], SpawnScope::BARE);
         }
         assert_eq!(engine.pending.len(), 1010);
     }
@@ -6306,8 +6313,13 @@ mod tests {
             color,
             ..ParticleOptions::simple(ParticleType::Item)
         };
-        engine.create(&crumb([1.0; 4]), [0.0; 3], [0.0; 3]);
-        engine.create(&crumb([0.5, 0.25, 1.0, 0.1]), [0.0; 3], [0.0; 3]);
+        engine.create(&crumb([1.0; 4]), [0.0; 3], [0.0; 3], SpawnScope::BARE);
+        engine.create(
+            &crumb([0.5, 0.25, 1.0, 0.1]),
+            [0.0; 3],
+            [0.0; 3],
+            SpawnScope::BARE,
+        );
         let rgba = |i: usize| engine.pending[i].ordinary().expect("a crumb").rgba;
         assert_eq!(rgba(0), [1.0, 1.0, 1.0, 1.0]);
         assert_eq!(rgba(1), [0.5, 0.25, 1.0, 1.0]);

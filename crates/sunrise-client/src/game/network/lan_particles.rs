@@ -294,6 +294,7 @@ impl Game<'_> {
                     [0.0; 3],
                     speed,
                     count as u32,
+                    SpawnScope::BARE,
                 );
             }
         }

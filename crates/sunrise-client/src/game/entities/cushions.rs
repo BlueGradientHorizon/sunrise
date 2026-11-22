@@ -503,8 +503,14 @@ impl Game<'_> {
             sprite,
             tint,
         );
-        self.particles
-            .send_particles(&options, particle_at, [0.25, 0.0625, 0.25], 0.05, 10);
+        self.particles.send_particles(
+            &options,
+            particle_at,
+            [0.25, 0.0625, 0.25],
+            0.05,
+            10,
+            sunrise_client::particles::SpawnScope::BARE,
+        );
     }
 
     /// `BlockAttachedEntity.tick`: survive and burn checks after the post-increment reaches 100.

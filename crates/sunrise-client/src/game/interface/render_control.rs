@@ -82,7 +82,12 @@ impl Game<'_> {
                 };
                 // ServerLevel.sendParticles: count 0 uses the delta as velocity.
                 if count == 0 {
-                    self.particles.create(&options, at, delta);
+                    self.particles.create(
+                        &options,
+                        at,
+                        delta,
+                        sunrise_client::particles::SpawnScope::BARE,
+                    );
                 }
                 for _ in 0..count {
                     let r = self.particles.random();
@@ -91,7 +96,12 @@ impl Game<'_> {
                         at[1] + r.next_gaussian() * delta[1],
                         at[2] + r.next_gaussian() * delta[2],
                     ];
-                    self.particles.create(&options, p, [0.0; 3]);
+                    self.particles.create(
+                        &options,
+                        p,
+                        [0.0; 3],
+                        sunrise_client::particles::SpawnScope::BARE,
+                    );
                 }
                 Ok(Some(json!({ "ok": true, "live": self.particles.len() })))
             }

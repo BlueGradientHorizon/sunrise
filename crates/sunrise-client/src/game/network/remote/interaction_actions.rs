@@ -271,8 +271,12 @@ impl Game<'_> {
             2 => ParticleType::EnchantedHit,
             _ => return,
         };
-        self.particles
-            .tracking_emitter(ParticleOptions::simple(particle), target, body);
+        self.particles.tracking_emitter(
+            ParticleOptions::simple(particle),
+            target,
+            body,
+            sunrise_client::particles::SpawnScope::BARE,
+        );
     }
     /// `ServerPlayer.dismountTo` lands a rider at the ghast's own (x, maxY, z)
     /// (`HappyGhast.getDismountLocationForPassenger`). A vanilla client

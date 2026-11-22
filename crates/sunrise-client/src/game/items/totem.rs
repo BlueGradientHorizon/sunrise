@@ -157,6 +157,7 @@ impl Game<'_> {
             target,
             body.bounds,
             30,
+            sunrise_client::particles::SpawnScope::BARE,
         );
         self.audio
             .play_unshared("minecraft:item.totem.use", Some(body.bounds.feet), 1.0, 1.0);

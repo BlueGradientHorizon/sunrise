@@ -875,8 +875,14 @@ impl Game<'_> {
         // Entity.getY(2/3): the box's height is scaled by 2/3 from the feet.
         let centre = [at[0], at[1] + height * (2.0 / 3.0), at[2]];
         let spread = [width / 4.0, height / 4.0, width / 4.0];
-        self.particles
-            .send_particles(&options, centre, spread, 0.05, 10);
+        self.particles.send_particles(
+            &options,
+            centre,
+            spread,
+            0.05,
+            10,
+            sunrise_client::particles::SpawnScope::BARE,
+        );
         self.lan_level_particles(&options, centre, spread, 0.05, 10, Some(state));
     }
     /// `ArmorStand.hurtServer` for a player's attack (also a sweep's): a

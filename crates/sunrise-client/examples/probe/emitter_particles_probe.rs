@@ -14,8 +14,8 @@ use sunrise_client::{
     blocks::BlockFacts,
     collisions,
     particles::{
-        self, ParticleEngine, ParticleLevel, ParticleOptions, ParticleType, TrackingBody,
-        TrackingTarget,
+        self, ParticleEngine, ParticleLevel, ParticleOptions, ParticleType, SpawnScope,
+        TrackingBody, TrackingTarget,
     },
     world::World,
 };
@@ -68,9 +68,9 @@ fn tracking_case(
             let options = ParticleOptions::simple(particle);
             let body = tracking_body(frame);
             if particle == ParticleType::TotemOfUndying {
-                engine.tracking_emitter_for(options, target, body, 30);
+                engine.tracking_emitter_for(options, target, body, 30, SpawnScope::BARE);
             } else {
-                engine.tracking_emitter(options, target, body);
+                engine.tracking_emitter(options, target, body, SpawnScope::BARE);
             }
         } else {
             engine.tick_tracking(level, |id| {

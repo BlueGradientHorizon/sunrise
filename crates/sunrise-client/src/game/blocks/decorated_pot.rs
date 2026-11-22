@@ -213,8 +213,14 @@ impl Game<'_> {
         // the server draws none of it; the players within 32 blocks do, the window included.
         let plume = ParticleOptions::simple(ParticleType::DustPlume);
         let plume_at = [center[0], f64::from(pos[1]) + 1.2, center[2]];
-        self.particles
-            .send_particles(&plume, plume_at, [0.0; 3], 0.0, 7);
+        self.particles.send_particles(
+            &plume,
+            plume_at,
+            [0.0; 3],
+            0.0,
+            7,
+            sunrise_client::particles::SpawnScope::BARE,
+        );
         self.lan_send_particles(super::lan_particles::QueuedParticle {
             dimension: self.dim.id(),
             options: plume,

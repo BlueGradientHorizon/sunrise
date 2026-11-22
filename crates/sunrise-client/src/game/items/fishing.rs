@@ -995,8 +995,14 @@ impl Game<'_> {
         count: u32,
     ) {
         let options = ParticleOptions::simple(kind);
-        self.particles
-            .send_particles(&options, at, spread, speed, count);
+        self.particles.send_particles(
+            &options,
+            at,
+            spread,
+            speed,
+            count,
+            sunrise_client::particles::SpawnScope::BARE,
+        );
         // The players a server serves are sent them too.
         self.lan_send_particles(super::lan_particles::QueuedParticle {
             dimension: self.dim.id(),

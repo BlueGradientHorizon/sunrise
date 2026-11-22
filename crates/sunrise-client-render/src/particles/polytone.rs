@@ -7,7 +7,7 @@
 use super::ModSet;
 use super::{
     Behaviour, Fluid, Particle, ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags,
-    ParticleType, ParticleUpdate, PendingParticle, Sprite,
+    ParticleType, ParticleUpdate, PendingParticle, SpawnScope, Sprite,
 };
 use crate::environment::Frame;
 use serde_json::Value as Json;
@@ -3017,6 +3017,7 @@ mod tests {
             &ParticleOptions::simple(ParticleType::Flame),
             [1.0, 65.0, 1.0],
             [0.0; 3],
+            SpawnScope::BARE,
         );
         assert_eq!(engine.pending.len(), 1);
         let p = engine.pending[0].ordinary().unwrap();

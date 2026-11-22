@@ -977,8 +977,12 @@ impl Game<'_> {
         } else if count <= 0 {
             // handleParticleEvent, count 0: one particle, the speed times
             // the delta as velocity (both sent as floats, multiplied as floats).
-            self.particles
-                .create(&options, pos, delta.map(|d| f64::from(speed * d as f32)));
+            self.particles.create(
+                &options,
+                pos,
+                delta.map(|d| f64::from(speed * d as f32)),
+                sunrise_client::particles::SpawnScope::BARE,
+            );
         } else {
             for _ in 0..count {
                 let r = self.particles.random();
@@ -992,7 +996,8 @@ impl Game<'_> {
                     r.next_gaussian() * f64::from(speed),
                     r.next_gaussian() * f64::from(speed),
                 ];
-                self.particles.create(&options, p, v);
+                self.particles
+                    .create(&options, p, v, sunrise_client::particles::SpawnScope::BARE);
             }
         }
         self.feedback(Text::translate(
