@@ -415,23 +415,20 @@ impl Game<'_> {
             .world_biomes
             .as_ref()
             .unwrap_or_else(|| self.res.biomes());
-        // Data maps must resolve against the same loaded biome entries as the world's
-        // registered keys, not the prepared command export.
-        let biome_ids: Vec<_> = biomes.list.iter().map(|biome| biome.name.clone()).collect();
-        let biome_registry = sunrise_client::lan::data::BIOME_REGISTRY;
+        // Data maps must resolve against the same loaded biome keys as the world's
+        // registered keys, including when that table is empty, not the command export.
         let registries = native_data_maps::WorldRegistries::new(
             self.ui
                 .registries
                 .by_registry
                 .iter()
-                .filter(|(registry, _)| registry.as_str() != biome_registry)
-                .map(|(registry, entries)| (registry.as_str(), entries.ids.as_slice()))
-                .chain(std::iter::once((biome_registry, biome_ids.as_slice()))),
+                .map(|(registry, entries)| (registry.as_str(), entries.ids.as_slice())),
             datapack_set,
             &items,
             root,
             &overlay,
-        );
+        )
+        .with_biome_keys(biomes.registered_keys());
         let causes_suffocation = items
             .block_tags
             .get("minecraft:causes_suffocation")

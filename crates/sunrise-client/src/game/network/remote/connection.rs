@@ -247,7 +247,7 @@ impl Game<'_> {
         Some(wire)
     }
     // handle_command_suggestions: remote/commands.rs
-    pub(in crate::game) fn set_registries(&mut self, registries: Arc<Dynamic>) {
+    pub(in crate::game) fn set_registries(&mut self, registries: Arc<Dynamic>) -> Result<()> {
         let entries: Vec<(&str, serde_json::Value)> = registries
             .registries
             .get("minecraft:enchantment")
@@ -268,7 +268,7 @@ impl Game<'_> {
             Ok(table) => table.map(Arc::new),
             Err(error) => {
                 log::warn!("Sunrise: refused enchantment registry: {error}");
-                return;
+                return Err(error);
             }
         };
         // The server's biomes the game lacks (a world data pack's) join the
@@ -281,7 +281,7 @@ impl Game<'_> {
                     Ok(table) => table.map(Arc::new),
                     Err(error) => {
                         log::warn!("Sunrise: refused biome registry: {error}");
-                        return;
+                        return Err(error);
                     }
                 },
                 None => None,
@@ -314,6 +314,7 @@ impl Game<'_> {
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
+        Ok(())
     }
     /// Another player of this level, whose copy passes every click (`Player.interactOn`).
     pub(in crate::game) fn is_level_player(&self, id: i32) -> bool {

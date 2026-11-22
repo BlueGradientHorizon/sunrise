@@ -105,7 +105,13 @@ impl Game<'_> {
                     name,
                     uuid,
                 } => {
-                    self.set_registries(registries);
+                    if let Err(error) = self.set_registries(registries) {
+                        let reason = Text::translate(
+                            "disconnect.genericReason",
+                            &[Text::literal(error.to_string())],
+                        );
+                        return self.leave_server(Some(reason));
+                    }
                     self.connection_joined();
                     self.close_dialogs();
                     if let Some(r) = self.remote.as_mut() {
@@ -184,6 +190,13 @@ impl Game<'_> {
                     }
                 }
                 Event::Reconfigured(registries) => {
+                    if let Err(error) = self.set_registries(registries) {
+                        let reason = Text::translate(
+                            "disconnect.genericReason",
+                            &[Text::literal(error.to_string())],
+                        );
+                        return self.leave_server(Some(reason));
+                    }
                     // handleConfigurationStart → clearClientLevel, and the next
                     // ClientPacketListener starts with no players or scoreboard,
                     // no waypoints (its own ClientWaypointManager: a proxy's next
@@ -203,7 +216,6 @@ impl Game<'_> {
                         r.custom_completions.clear();
                     }
                     self.ui.registries.custom_completions.clear();
-                    self.set_registries(registries);
                 }
                 // handleTransfer: "Cannot transfer to server from
                 // singleplayer" (no ServerData), so the world just closes.
@@ -297,5 +309,157 @@ impl Game<'_> {
         }
         self.send_suggestion_request();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::native_entity_refs::tests::with_client_game;
+    use sunrise_client::{multiplayer::Screen as MultiplayerScreen, title::Mode};
+    use sunrise_protocol::connection::Pipe;
+
+    fn push_events(game: &mut Game<'_>, events: impl IntoIterator<Item = Event>) {
+        let (tx, rx) = sunrise_client::net::ingress::channel(1024 * 1024, |_| 0).unwrap();
+        let backlog = &mut game.remote.as_mut().unwrap().backlog;
+        for event in events {
+            tx.send(event).unwrap();
+            let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
+            backlog.push_back(Received::Event(event, credit));
+        }
+    }
+
+    fn login_packet() -> play::Clientbound {
+        C::Login(play::Login {
+            player_id: 7,
+            hardcore: false,
+            levels: vec!["minecraft:overworld".into()],
+            max_players: 1,
+            chunk_radius: 2,
+            simulation_distance: 2,
+            reduced_debug_info: false,
+            show_death_screen: true,
+            limited_crafting: false,
+            spawn: play::SpawnInfo {
+                dimension_type: 0,
+                dimension: "minecraft:overworld".into(),
+                seed: 0,
+                game_type: 1,
+                previous_game_type: None,
+                debug: false,
+                flat: true,
+                last_death: None,
+                portal_cooldown: 0,
+                sea_level: 63,
+            },
+            online_mode: false,
+            enforces_secure_chat: false,
+        })
+    }
+
+    fn registries_with_biome(base: &Dynamic, biome_id: &str) -> Arc<Dynamic> {
+        let mut registries = base.clone();
+        registries.registries.insert(
+            "minecraft:dimension_type".into(),
+            vec![("minecraft:overworld".into(), None)],
+        );
+        registries.registries.insert(
+            BIOME_REGISTRY.into(),
+            vec![
+                ("minecraft:plains".into(), None),
+                (
+                    biome_id.into(),
+                    Some(Tag::Compound(sunrise_core::nbt::Compound::new())),
+                ),
+            ],
+        );
+        Arc::new(registries)
+    }
+
+    fn assert_disconnected_with_generic_reason(game: &Game<'_>) {
+        assert!(
+            game.remote.is_none(),
+            "client must disconnect on invalid biome registry"
+        );
+        assert!(
+            !game.connection_open,
+            "connection must close on invalid biome registry"
+        );
+        let mode = &game.title.as_ref().expect("the disconnect screen").mode;
+        assert!(matches!(
+            mode,
+            Mode::Multiplayer(MultiplayerScreen::Disconnected { reason, .. })
+                if reason.translation_key() == Some("disconnect.genericReason")
+        ));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn invalid_biome_registry_disconnects_before_join_or_reconfigured_play() {
+        with_client_game(|game| {
+            // Joined with an invalid biome identifier (e.g. `..:bad` with supplied data) must
+            // disconnect before marking the join complete or processing queued play packets.
+            game.title = None;
+            let (pipe, _server) = Pipe::pair();
+            game.connect_local(pipe, "InvalidBiomeJoin").unwrap();
+            game.connection_starts("example.invalid:25565", "InvalidBiomeJoin", false);
+            let invalid =
+                registries_with_biome(&game.remote.as_ref().unwrap().registries, "..:bad");
+            push_events(
+                game,
+                [
+                    Event::Joined {
+                        registries: invalid,
+                        uuid: 1,
+                        name: "Alex".into(),
+                    },
+                    Event::Packet(Box::new(login_packet())),
+                ],
+            );
+            game.poll_remote_events(true).unwrap();
+            assert_disconnected_with_generic_reason(game);
+
+            // Reconfigured with an invalid biome identifier after a valid play session must
+            // disconnect rather than allowing play to resume with the previous registries.
+            game.world_biomes = None;
+            game.world_biomes_base = None;
+            game.title = None;
+            let (pipe, _server) = Pipe::pair();
+            game.connect_local(pipe, "InvalidBiomeReconfigure").unwrap();
+            game.connection_starts("example.invalid:25565", "InvalidBiomeReconfigure", false);
+            let valid =
+                registries_with_biome(&game.remote.as_ref().unwrap().registries, "test:marsh");
+            let invalid =
+                registries_with_biome(&game.remote.as_ref().unwrap().registries, "..:bad");
+            push_events(
+                game,
+                [
+                    Event::Joined {
+                        registries: valid,
+                        uuid: 2,
+                        name: "Steve".into(),
+                    },
+                    Event::Packet(Box::new(login_packet())),
+                ],
+            );
+            game.poll_remote_events(true).unwrap();
+            assert!(
+                game.remote
+                    .as_ref()
+                    .is_some_and(|r| r.joined && r.logged_in && r.reconfiguring.is_none())
+            );
+            assert!(world_biomes!(game).contains("test:marsh"));
+
+            push_events(
+                game,
+                [
+                    Event::Reconfiguring,
+                    Event::Reconfigured(invalid),
+                    Event::Packet(Box::new(login_packet())),
+                ],
+            );
+            game.poll_remote_events(true).unwrap();
+            assert_disconnected_with_generic_reason(game);
+        });
     }
 }
