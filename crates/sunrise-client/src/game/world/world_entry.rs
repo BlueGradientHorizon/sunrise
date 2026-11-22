@@ -200,7 +200,7 @@ impl Game<'_> {
             None => self.synced_recipes().unwrap_or_else(|| self.res.recipes()),
         }
     }
-    pub(in crate::game) fn active_providers(&self) -> &Arc<Providers> {
+    pub(in crate::game) fn active_providers(&self) -> &Providers {
         self.world_tables
             .as_ref()
             .map_or_else(|| self.res.providers(), |t| &t.providers)
@@ -327,7 +327,7 @@ impl Game<'_> {
         let providers = if reload {
             Ok(self.active_providers().clone())
         } else {
-            Providers::load_with(root, &overlay).map(Arc::new)
+            Providers::load_with(root, &overlay)
         };
         // Visit independently readable registries before consuming any result.
         // One rejected winner must not hide the other entries' diagnostics.

@@ -75,13 +75,14 @@ impl<'a> Evaluation<'a> {
             Resolvable::Constant(value) => *value,
             Resolvable::Reference(key) => self
                 .providers
+                .0
                 .ints
                 .get(key)
                 .map_or(0, |v| self.holder(v, context, Self::int).unwrap_or(0)),
         };
         let speed = match &fuel.speed_multiplier {
             Resolvable::Constant(value) => *value,
-            Resolvable::Reference(key) => self.providers.floats.get(key).map_or(1.0, |v| {
+            Resolvable::Reference(key) => self.providers.0.floats.get(key).map_or(1.0, |v| {
                 self.holder(v, context, Self::float)
                     .ok()
                     .filter(|v| v.is_finite())
@@ -109,7 +110,7 @@ impl<'a> Evaluation<'a> {
                 .as_i64()
                 .map_or_else(|| n.as_f64().unwrap_or(0.0) as i32, |i| i as i32)),
             Value::Bool(b) => Ok(i32::from(*b)),
-            Value::String(id) => match lookup(&self.providers.ints, id) {
+            Value::String(id) => match lookup(&self.providers.0.ints, id) {
                 Some(def) => self.holder(def, context, Self::int),
                 None => Ok(0),
             },
@@ -270,7 +271,7 @@ impl<'a> Evaluation<'a> {
     pub fn float(&mut self, v: &Value, context: &mut dyn ConditionContext) -> Result<f32, Arith> {
         match v {
             Value::Number(n) => Ok(n.as_f64().unwrap_or(0.0) as f32),
-            Value::String(id) => match lookup(&self.providers.floats, id) {
+            Value::String(id) => match lookup(&self.providers.0.floats, id) {
                 Some(def) => self.holder(def, context, Self::float),
                 None => Ok(0.0),
             },

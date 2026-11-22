@@ -479,7 +479,7 @@ mod tests {
             .rest
             .get_mut()
             .unwrap()
-            .providers = sunrise_client::providers::Providers::load(&fixture).into();
+            .providers = sunrise_client::providers::Providers::load(&fixture);
         std::fs::remove_dir_all(&fixture).unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
