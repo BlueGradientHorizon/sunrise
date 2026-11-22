@@ -117,6 +117,8 @@ pub use frustum::{Cull, Frusta, JoinedFrusta, ShadowCull};
 use frustum::{block_entities_within_reach, frustum, shadow_casters, taa_frustum};
 pub use section_fade::{CHUNK_VISIBILITY_THRESHOLD, chunk_visibility, fade_millis};
 use section_fade::{FadeInputs, compiled_and_visible, section_instance, section_visibility};
+#[doc(hidden)]
+pub use section_upload::section_in_eye_view;
 pub use sunrise_render_core::SectionKey;
 pub use view::{View, ViewSet};
 

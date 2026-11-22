@@ -3,7 +3,7 @@ use super::*;
 /// Whether section `key` lies in the eye's visible terrain set: within horizontal and vertical
 /// render distance, reached by the bounded occlusion graph, and passing the eye frustum /
 /// outside-height section-tree test (`LevelExtractor.extractVisibleBlockEntities`).
-pub(super) fn section_in_eye_view(
+pub fn section_in_eye_view(
     key: SectionKey,
     camera: DVec3,
     min_y: i32,
@@ -48,6 +48,31 @@ pub(super) fn section_in_eye_view(
         };
     }
     frustum.intersects(min, max)
+}
+
+/// Pairs each faded-in section's block entities with whether that section lies in the eye's
+/// visible terrain set (`LevelExtractor.extractVisibleBlockEntities`).
+fn visible_block_entities_in_eye_view<'a>(
+    block_entities: impl Iterator<Item = (&'a SectionKey, &'a [([i32; 3], u32)])> + 'a,
+    camera: DVec3,
+    min_y: i32,
+    sections: i32,
+    frustum: Option<JoinedFrusta>,
+    radius: i32,
+    reachable: impl Fn(SectionKey) -> bool + 'a,
+) -> impl Iterator<Item = (&'a ([i32; 3], u32), bool)> + 'a {
+    block_entities.flat_map(move |(key, blocks)| {
+        let eye_visible = section_in_eye_view(
+            *key,
+            camera,
+            min_y,
+            sections,
+            radius,
+            frustum.as_ref(),
+            &reachable,
+        );
+        blocks.iter().map(move |block| (block, eye_visible))
+    })
 }
 
 /// Filters `block_entities` in range of `camera`, restricting ordinary block entities to
@@ -574,22 +599,57 @@ impl Renderer {
     pub fn block_entities(&self) -> impl Iterator<Item = &([i32; 3], u32)> {
         self.block_entities.values().flatten()
     }
-    /// `block_entities` of the sections far enough into their fade-in to draw them
-    /// (`LevelExtractor.extractVisibleBlockEntities`: `getVisibility(now, fade) >= 0.3`).
-    pub fn visible_block_entities(
-        &self,
+    /// `block_entities` of sections far enough into their fade-in to draw them
+    /// (`LevelExtractor.extractVisibleBlockEntities`: `getVisibility(now, fade) >= 0.3`),
+    /// paired with whether each block's section is in the eye's visible terrain set.
+    pub fn visible_block_entities<'a>(
+        &'a self,
         fade_seconds: f32,
-    ) -> impl Iterator<Item = &([i32; 3], u32)> {
+        camera: DVec3,
+        frustum: Option<JoinedFrusta>,
+        radius: i32,
+    ) -> impl Iterator<Item = (&'a ([i32; 3], u32), bool)> + 'a {
         let fade = fade_millis(fade_seconds);
         let now = std::time::Instant::now();
         let all = !self.sections_fading_in(fade, now);
-        self.block_entities
-            .iter()
-            .filter(move |(key, _)| {
-                all || chunk_visibility(self.section_elapsed_ms(**key, now), fade)
-                    >= CHUNK_VISIBILITY_THRESHOLD
-            })
-            .flat_map(|(_, blocks)| blocks)
+        let min_y = self.layout.min_y();
+        let sections = self.layout.sections() as i32;
+        let faded = self.block_entities.iter().filter(move |(key, _)| {
+            all || chunk_visibility(self.section_elapsed_ms(**key, now), fade)
+                >= CHUNK_VISIBILITY_THRESHOLD
+        });
+        visible_block_entities_in_eye_view(
+            faded.map(|(k, v)| (k, v.as_slice())),
+            camera,
+            min_y,
+            sections,
+            frustum,
+            radius,
+            move |k| self.occlusion.contains(k),
+        )
+    }
+    /// Whether the section holding block `pos` lies in the eye's visible terrain set
+    /// (`LevelExtractor.extractVisibleBlockEntities`).
+    pub fn block_entity_section_in_eye_view(
+        &self,
+        pos: [i32; 3],
+        camera: DVec3,
+        frustum: Option<&JoinedFrusta>,
+        radius: i32,
+    ) -> bool {
+        let Some(sy) = self.layout.section_index(pos[1]) else {
+            return false;
+        };
+        let key = (pos[0] >> 4, sy as i32, pos[2] >> 4);
+        section_in_eye_view(
+            key,
+            camera,
+            self.layout.min_y(),
+            self.layout.sections() as i32,
+            radius,
+            frustum,
+            |k| self.occlusion.contains(k),
+        )
     }
     /// `LevelRenderer.isSectionCompiledAndVisible`: the entity's section must have finished
     /// its mesh (including empty sections) and reached the same fade threshold as block entities.
@@ -1098,6 +1158,28 @@ mod block_entity_visibility_tests {
             kept,
             vec![([8, 64, 8], CHEST), ([9, 60, 8], BEACON)],
             "chest at Y=60 excluded, chest at Y=64 included, global beacon at Y=60 kept"
+        );
+
+        let mut mod_flags: Vec<([i32; 3], u32, bool)> = visible_block_entities_in_eye_view(
+            map.iter().map(|(k, v)| (k, v.as_slice())),
+            camera,
+            min_y,
+            sections,
+            Some(frustum),
+            rd,
+            |k| o.contains(k),
+        )
+        .map(|(&(pos, state), eye_visible)| (pos, state, eye_visible))
+        .collect();
+        mod_flags.sort_unstable();
+        assert_eq!(
+            mod_flags,
+            vec![
+                ([8, 60, 8], CHEST, false),
+                ([8, 64, 8], CHEST, true),
+                ([9, 60, 8], BEACON, false),
+            ],
+            "native mod block entity iterator shares the same eye-section filter"
         );
 
         // Shadow-pass block entities remain independent of eye vertical clamping.

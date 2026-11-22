@@ -8497,21 +8497,29 @@ impl Game<'_> {
                     );
             }
             // Mod block entities: their mods draw them (`native_block_entity_submit`),
-            // culled by the bounds they give. A world without any (`has_mods`) has none
-            // to find among its other unrendered block entities (furnaces, hoppers...).
+            // culled by the eye-visible section filter (ordinary renderers) and the bounds
+            // they give. A world without any (`has_mods`) has none to find among its other
+            // unrendered block entities (furnaces, hoppers...).
+            let radius = self.effective_render_distance();
             let mods = self
                 .world
                 .block_entities
                 .has_mods()
                 .then(|| {
-                    r.visible_block_entities(self.settings.chunk_fade as f32)
-                        .filter(|(_, state)| !self.res.block_entity_render().renders(*state))
+                    r.visible_block_entities(self.settings.chunk_fade as f32, camera, view, radius)
+                        .filter(|((_, state), _)| !self.res.block_entity_render().renders(*state))
                 })
                 .into_iter()
                 .flatten();
             let untemplated = self.untemplated_mod_block_entities(camera);
+            let untemplated_eye = untemplated.iter().map(|block| {
+                (
+                    block,
+                    r.block_entity_section_in_eye_view(block.0, camera, view.as_ref(), radius),
+                )
+            });
             self.mod_block_entity_geometry(
-                mods.chain(untemplated.iter()),
+                mods.chain(untemplated_eye),
                 camera,
                 alpha as f32,
                 &mut out,
@@ -11544,6 +11552,7 @@ impl Game<'_> {
             shadow_cache: self.settings.sunrise.shadow_cache,
             distance,
             detail_distance: (self.effective_render_distance() * 16) as f32,
+            shadow_distance: Some((self.streaming.radius * 16) as f32),
             depth_far,
             underwater,
             water_plane: if title

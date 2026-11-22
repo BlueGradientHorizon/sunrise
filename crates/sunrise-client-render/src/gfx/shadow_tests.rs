@@ -317,4 +317,103 @@ mod shadow_caster_tests {
             [receiver, caster]
         );
     }
+
+    /// At client distance 12 and server distance 4, the effective eye distance is 4 chunks while
+    /// the streaming/shadow radius stays 5 chunks: a loaded caster five columns away is excluded
+    /// from the eye walk but still reaches the pack's light-volume and reach tests.
+    #[test]
+    fn the_shadow_pass_keeps_streaming_casters_past_effective_eye_distance() {
+        // Client 12 / server 4: eye detail_distance = 4 * 16 = 64, streaming shadow_distance = 5 * 16 = 80.
+        let eye_distance = 4.0 * 16.0;
+        let streaming_distance = Some(5.0 * 16.0);
+        assert_eq!(
+            draw_frame::shadow_walk_radius(streaming_distance, eye_distance),
+            5
+        );
+        assert_eq!(draw_frame::shadow_walk_radius(None, eye_distance), 4);
+
+        let camera = DVec3::new(8.0, 72.0, 8.0);
+        let caster = (5, 8, 0);
+        let mut sections = resident::Resident::<()>::default();
+        sections.insert_with_bounds(caster, (), None);
+
+        let all = Frustum::from_planes([Vec4::W; 6]);
+        let mut eye_out = Vec::new();
+        sections.visible(camera, 4, &all, |_| true, |_, _| false, &mut eye_out);
+        assert!(
+            eye_out.is_empty(),
+            "eye walk at effective distance 4 excludes a column five chunks away"
+        );
+
+        let cull_proj = world_projection(70.0, 16.0 / 9.0, 192.0)
+            * Mat4::look_to_rh(Vec3::ZERO, Vec3::X, Vec3::Y);
+        let ortho = Mat4::orthographic_rh(-160.0, 160.0, -160.0, 160.0, 0.05, 512.0);
+        let mut boxed = Vec::new();
+        let mut seen = crate::fast_hash::FxHashSet::default();
+
+        // Boxed light-volume walk keeps the caster 5 columns away when within shadow reach.
+        let view_in_reach = external::ShadowView::new(ortho, Vec3::Y)
+            .with_distance(Some(128.0))
+            .with_view_casters(true);
+        let mut out = Vec::new();
+        draw_frame::collect_shadow_sections(
+            &sections,
+            camera,
+            streaming_distance,
+            eye_distance,
+            &view_in_reach,
+            cull_proj,
+            &mut out,
+            &mut boxed,
+            &mut seen,
+        );
+        assert_eq!(
+            out.iter().map(|v| v.key).collect::<Vec<_>>(),
+            [caster],
+            "boxed shadow walk keeps loaded caster 5 columns away when within reach"
+        );
+
+        // Unculled walk also uses the streaming radius, not the effective eye distance.
+        let view_unculled = external::ShadowView::new(ortho, Vec3::Y)
+            .with_distance(Some(128.0))
+            .with_unculled(Some(f32::INFINITY));
+        out.clear();
+        draw_frame::collect_shadow_sections(
+            &sections,
+            camera,
+            streaming_distance,
+            eye_distance,
+            &view_unculled,
+            cull_proj,
+            &mut out,
+            &mut boxed,
+            &mut seen,
+        );
+        assert_eq!(
+            out.iter().map(|v| v.key).collect::<Vec<_>>(),
+            [caster],
+            "unculled shadow walk keeps loaded caster 5 columns away"
+        );
+
+        // The pack's own reach limit still discards the caster when reach is shorter than 72 blocks.
+        let view_short_reach = external::ShadowView::new(ortho, Vec3::Y)
+            .with_distance(Some(64.0))
+            .with_view_casters(true);
+        out.clear();
+        draw_frame::collect_shadow_sections(
+            &sections,
+            camera,
+            streaming_distance,
+            eye_distance,
+            &view_short_reach,
+            cull_proj,
+            &mut out,
+            &mut boxed,
+            &mut seen,
+        );
+        assert!(
+            out.is_empty(),
+            "pack shadow reach still filters the caster five columns away"
+        );
+    }
 }
