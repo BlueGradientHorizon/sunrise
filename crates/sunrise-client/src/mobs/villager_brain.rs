@@ -3341,8 +3341,19 @@ fn play_work_sound(m: &mut Mob, cx: &mut Bx) {
         }
     }
 }
+/// What a work-step restock changes in the trading screen, with the player's prices and
+/// the trade sound's pitch as chosen at the work step.
+#[derive(Clone, Debug)]
+pub struct RestockNotice {
+    pub mob: u32,
+    pub step: crate::merchant::RestockStep,
+    pub reputation: i32,
+    pub hero: Option<i32>,
+    pub pitch: Option<f32>,
+}
+
 /// `WorkAtPoi.start`'s restock.
-pub fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
+fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if w.professions.state_index(&m.extra.profession).is_none() {
         return;
     }
@@ -3367,13 +3378,13 @@ pub fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
             m.ambient_timer = -80;
             m.voice_pitch()
         });
-        events.push(MobEvent::VillagerRestockStep {
+        events.push(MobEvent::VillagerRestockStep(RestockNotice {
             mob: m.id,
             step,
             reputation,
             hero,
             pitch,
-        });
+        }));
     }
 }
 #[cfg(test)]

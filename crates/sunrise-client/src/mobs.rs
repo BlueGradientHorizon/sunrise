@@ -2578,16 +2578,8 @@ pub enum MobEvent {
         mob: u32,
         pos: [i32; 3],
     },
-    /// A restock step of a villager with a trading player: what it did to the
-    /// offers, the player's prices at the work step, and the pitch of the
-    /// trade sound drawn when the screen has a payment.
-    VillagerRestockStep {
-        mob: u32,
-        step: crate::merchant::RestockStep,
-        reputation: i32,
-        hero: Option<i32>,
-        pitch: Option<f32>,
-    },
+    /// Update a trading screen at the owning game's next boundary on this tick.
+    VillagerRestockStep(villager_brain::RestockNotice),
     /// A villager asks whether enough neighbours want an iron golem.
     GolemCheck {
         mob: u32,

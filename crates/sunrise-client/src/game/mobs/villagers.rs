@@ -630,43 +630,18 @@ impl Game<'_> {
             }
         }
     }
-    /// The restock steps the brain's work steps took this pass, applied in order
-    /// to the trading screens (`events` keeps the rest).
-    pub(in crate::game) fn villager_restock_steps(&mut self, events: &mut Vec<MobEvent>) {
-        if !events
-            .iter()
-            .any(|e| matches!(e, MobEvent::VillagerRestockStep { .. }))
-        {
-            return;
-        }
-        let (steps, rest) = std::mem::take(events)
-            .into_iter()
-            .partition::<Vec<_>, _>(|e| matches!(e, MobEvent::VillagerRestockStep { .. }));
-        *events = rest;
-        for e in steps {
-            if let MobEvent::VillagerRestockStep {
-                mob,
-                step,
-                reputation,
-                hero,
-                pitch,
-            } = e
-            {
-                self.villager_offers_open(mob, step, (reputation, hero), pitch);
-            }
-        }
-    }
     /// `Villager.restock` / `shouldRestock` with a trading player, at the
     /// brain's work step: the live offers on the screen take the step, priced
     /// for the player as the work step saw them; `updateSellItem` then picks
     /// the result and the yes/no voice. Later edits are the last write.
-    fn villager_offers_open(
-        &mut self,
-        id: u32,
-        step: sunrise_client::merchant::RestockStep,
-        (reputation, hero): (i32, Option<i32>),
-        pitch: Option<f32>,
-    ) {
+    pub(in crate::game) fn villager_offers_open(&mut self, restock: villager_brain::RestockNotice) {
+        let villager_brain::RestockNotice {
+            mob: id,
+            step,
+            reputation,
+            hero,
+            pitch,
+        } = restock;
         let refresh = |menu: &mut sunrise_client::menu::Menu, env: &sunrise_client::menu::Env| {
             if let Some(session) = menu.merchant.as_mut() {
                 step.apply(&mut session.offers);

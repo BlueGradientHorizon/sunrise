@@ -1,11 +1,6 @@
 //! Resumable borrowed mob-tick region; the caller owns final restoration.
 use super::*;
 
-#[cfg(test)]
-thread_local! {
-    pub(in crate::game) static WORK_STEP: std::cell::Cell<Option<u32>> = const { std::cell::Cell::new(None) };
-}
-
 /// Route each player event to the player selected when it was emitted.
 /// Untagged events retain the previous per-tick guest binding.
 fn route_player_events(
@@ -66,6 +61,7 @@ pub(super) struct BorrowedMobTick<'a> {
     pub(super) passenger_objects: &'a [Seen],
     pub(super) blocked: &'a std::collections::HashSet<u32>,
     pub(super) events: &'a mut Vec<MobEvent>,
+    pub(super) restocks: &'a mut Vec<sunrise_client::mobs::villager_brain::RestockNotice>,
     pub(super) pushes: &'a mut sunrise_client::mobs::PendingPushes,
     pub(super) dead: &'a mut Vec<Mob>,
     pub(super) corpses: &'a mut Vec<Mob>,
@@ -606,15 +602,6 @@ impl Game<'_> {
                     } else {
                         super::super::tick_profile::start_mob(&mobs[i].kind)
                     };
-                    // Test seam: the work step of villager `id`, as its brain takes it.
-                    #[cfg(test)]
-                    if WORK_STEP.get() == Some(mobs[i].id) {
-                        sunrise_client::mobs::villager_brain::restock_if_due(
-                            &mut mobs[i],
-                            &w,
-                            &mut events,
-                        );
-                    }
                     let run_tick = || match resume.take() {
                         Some(Pause::Breathing { air, known_speed }) => {
                             sunrise_client::mobs::riders::resume_after_breathing(
@@ -670,34 +657,41 @@ impl Game<'_> {
                             &mut movement,
                         ),
                     };
-                    let progress =
-                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run_tick)) {
-                            Ok(progress) => progress,
-                            Err(payload) => {
-                                mobs[i].despawn = mod_api::Despawn::default();
-                                if seen_guest.is_none() {
-                                    base.player = w.player;
-                                } else if let Some(k) = lent {
-                                    spare =
-                                        w.player.map(|v| std::mem::replace(&mut guests[k].1, v));
-                                }
-                                sunrise_client::mobs::take_mob_pushes(
-                                    &mut events,
-                                    from,
-                                    &mut pushes,
-                                );
-                                route_player_events(
-                                    &mut events,
-                                    from,
-                                    seen_guest,
-                                    &guest_ids,
-                                    &mut guest_events,
-                                    mobs[i].id,
-                                );
-                                dispatch_panic = Some(payload);
-                                break;
+                    let progress = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run_tick));
+                    // Screen updates must run before the next callback. Take them out of this
+                    // villager's event tail now, before any continuation remembers an index in it.
+                    if mobs[i].species() == Species::Villager {
+                        for event in events.extract_if(from.., |event| {
+                            matches!(event, MobEvent::VillagerRestockStep(_))
+                        }) {
+                            let MobEvent::VillagerRestockStep(restock) = event else {
+                                unreachable!()
+                            };
+                            state.restocks.push(restock);
+                        }
+                    }
+                    let progress = match progress {
+                        Ok(progress) => progress,
+                        Err(payload) => {
+                            mobs[i].despawn = mod_api::Despawn::default();
+                            if seen_guest.is_none() {
+                                base.player = w.player;
+                            } else if let Some(k) = lent {
+                                spare = w.player.map(|v| std::mem::replace(&mut guests[k].1, v));
                             }
-                        };
+                            sunrise_client::mobs::take_mob_pushes(&mut events, from, &mut pushes);
+                            route_player_events(
+                                &mut events,
+                                from,
+                                seen_guest,
+                                &guest_ids,
+                                &mut guest_events,
+                                mobs[i].id,
+                            );
+                            dispatch_panic = Some(payload);
+                            break;
+                        }
+                    };
                     let kept = match progress {
                         sunrise_client::mobs::ai::TickProgress::Complete(kept) => {
                             movement = None;
@@ -940,8 +934,10 @@ impl Game<'_> {
                 );
             }
             // A work step's restock reaches the screen before any callback can edit it.
-            self.villager_restock_steps(&mut events);
             let callback_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                for restock in state.restocks.drain(..) {
+                    self.villager_offers_open(restock);
+                }
                 if section_yield && let Some(sections) = section_table.as_ref() {
                     self.entity_sections_ticked_live(
                         &mut sections.borrow_mut(),
