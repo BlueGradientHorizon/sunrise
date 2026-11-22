@@ -3041,8 +3041,7 @@ use condition_reload_state::PreparedWorldReload;
 
 impl WorldTables {
     /// The registries [`WorldTables::pack_tags`] holds.
-    const PACK_TAG_REGISTRIES: [&'static str; 3] =
-        ["entity_type", "worldgen/biome", "worldgen/structure"];
+    const PACK_TAG_REGISTRIES: [&'static str; 2] = ["worldgen/biome", "worldgen/structure"];
 }
 
 /// The equipment slot of `armor[index]`: head, chest, legs, feet.
