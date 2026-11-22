@@ -323,10 +323,12 @@ impl Game<'_> {
         if let Some((holder, player)) = found {
             // The boat is out of the list while it ticks: its own knot is
             // made here, not found by `lead_fences`.
-            if let Holder::Knot(fence) = holder {
+            b.leash_knot_id = if let Holder::Knot(fence) = holder {
                 self.forget_untied_knots();
-                self.tie_knot(fence);
-            }
+                Some(self.tie_knot(fence))
+            } else {
+                None
+            };
             b.leash = Some(holder);
             b.leash_player = player;
             b.leash_pending = None;
@@ -435,8 +437,11 @@ impl Game<'_> {
                 continue;
             }
             if self.boat_can_attach(i, at) {
-                self.boats.update(i, |b| b.leash = Some(to));
-                self.boats.update(i, |b| b.leash_player = None);
+                self.boats.update(i, |b| {
+                    b.leash = Some(to);
+                    b.leash_knot_id = None;
+                    b.leash_player = None;
+                });
                 any = true;
             }
         }

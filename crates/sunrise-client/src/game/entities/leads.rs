@@ -120,10 +120,9 @@ impl Game<'_> {
     /// shared `Entity.id` counter) and UUID, whether or not anyone tracks
     /// it. A fence that already has one keeps it. Call
     /// [`Self::forget_untied_knots`] before the tie.
-    pub(super) fn tie_knot(&mut self, fence: [i32; 3]) {
-        self.broken_knots.retain(|&p| p != fence);
-        if self.knot_ids.contains_key(&fence) {
-            return;
+    pub(super) fn tie_knot(&mut self, fence: [i32; 3]) -> u32 {
+        if let Some(&id) = self.knot_ids.get(&fence) {
+            return id;
         }
         self.next_entity += 1;
         let id = self.next_entity;
@@ -135,6 +134,7 @@ impl Game<'_> {
             fence,
         });
         self.uuid_for(id);
+        id
     }
     /// The authoritative fence of an active natural knot, until a last-holder
     /// notification or the tracking cleanup retires its physical owner.
@@ -476,16 +476,26 @@ impl Game<'_> {
                 .rules
                 .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS);
             for fence in fences {
+                let live_id = self.knot_ids.get(&fence).copied();
                 let mobs: Vec<u32> = self
                     .mobs
                     .iter()
-                    .filter(|m| !m.removed && m.extra.leash == Some(Holder::Knot(fence)))
+                    .filter(|m| {
+                        !m.removed
+                            && m.extra.leash == Some(Holder::Knot(fence))
+                            && (live_id.is_none() || m.extra.leash_knot_id != live_id)
+                    })
                     .map(|m| m.id)
                     .collect();
                 for mob_id in mobs {
                     self.break_leash(mob_id, drop, false);
                 }
-                for boat_idx in self.boats_on(Holder::Knot(fence)) {
+                let boats: Vec<usize> = self
+                    .boats_on(Holder::Knot(fence))
+                    .into_iter()
+                    .filter(|&i| live_id.is_none() || self.boats[i].leash_knot_id != live_id)
+                    .collect();
+                for boat_idx in boats {
                     self.release_stored_boat_leash(boat_idx, drop);
                 }
             }
@@ -527,19 +537,26 @@ impl Game<'_> {
             if let Some((Holder::Knot(_), _)) = holder {
                 self.forget_untied_knots();
             }
-            let m = &mut self.mobs[i];
             if let Some((h, player)) = holder {
+                let knot_id = if let Holder::Knot(fence) = h {
+                    Some(self.tie_knot(fence))
+                } else {
+                    None
+                };
+                let m = &mut self.mobs[i];
                 if h == Holder::Player {
                     m.extra.leash_player = player;
                 }
                 m.extra.leash = Some(h);
+                m.extra.leash_knot_id = knot_id;
                 m.extra.leash_pending = None;
-                if let Holder::Knot(fence) = h {
-                    self.tie_knot(fence);
-                }
-            } else if m.age > 100 {
-                m.extra.leash_pending = None;
-                let at = [m.position.x, m.position.y, m.position.z];
+            } else if self.mobs[i].age > 100 {
+                self.mobs[i].extra.leash_pending = None;
+                let at = [
+                    self.mobs[i].position.x,
+                    self.mobs[i].position.y,
+                    self.mobs[i].position.z,
+                ];
                 self.drop_lead_item(at);
             }
         }
@@ -724,14 +741,24 @@ impl Game<'_> {
         }
         self.forget_untied_knots();
         let mut attached = self.tie_player_boats(center, Holder::Knot(knot_pos));
+        let mut attached_mobs = Vec::new();
         for j in in_hand {
             if self.can_attach_lead(j, center) {
                 self.mobs[j].extra.leash = Some(Holder::Knot(knot_pos));
+                attached_mobs.push(j);
                 attached = true;
             }
         }
         if attached {
-            self.tie_knot(knot_pos);
+            let knot_id = self.tie_knot(knot_pos);
+            for j in attached_mobs {
+                self.mobs[j].extra.leash_knot_id = Some(knot_id);
+            }
+            for i in self.boats_on(Holder::Knot(knot_pos)) {
+                if self.boats[i].leash_knot_id.is_none() {
+                    self.boats.update(i, |b| b.leash_knot_id = Some(knot_id));
+                }
+            }
         }
         if !attached && !sneaking && knot_hit {
             let player = self.player_center();
