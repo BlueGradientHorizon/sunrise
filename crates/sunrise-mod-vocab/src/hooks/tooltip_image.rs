@@ -6,12 +6,14 @@ pub trait Hooks {
     /// to insert a component after the item's name line before
     /// `render_tooltip_gather_components` runs. Register a client factory for custom data types
     /// in `register_client_tooltip_component_factories`. Answer `None` to leave the vanilla
-    /// tooltip component unchanged. Client-side.
+    /// tooltip component unchanged. A callback or retained payload destructor panic
+    /// disables only this item-part registration for this hook. Client-side.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_tooltip_image",
         receiver = "read",
         dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "replace",
         out = "component",
         scope = "item",

@@ -1303,6 +1303,10 @@ pub(super) fn emit<'a>(
                          }}\
                      }}"
                 )
+            } else if name == "render_tooltip_gather_components" {
+                format!(
+                    "{{ let answer = {expression}; super::client::tooltip_components::retain_gather_tooltip_payloads({mod_id_expr}, {event}.elements.as_slice()); answer }}"
+                )
             } else if matches!(
                 name,
                 "contents_changed" | "farmland_trample" | "register_configuration_tasks"
@@ -1596,6 +1600,12 @@ pub(super) fn emit<'a>(
                             "continue;",
                             "break 'dispatch_parts"
                         ),
+                    )
+                } else if name == "tooltip_image" {
+                    let o = out.unwrap();
+                    // Retained payloads poison this registration rather than all the mod's item Parts.
+                    format!(
+                        "for {part_item}_registration in {part_list} {{ if let Some({replacement}) = super::client::tooltip_components::invoke_tooltip_image({part_item}_registration, |{part_item}| {part_item}.{name}({invoke})) {{ *{o} = Some({replacement}); break; }} }}"
                     )
                 } else {
                     let part_owner = if collision_owns_panic {

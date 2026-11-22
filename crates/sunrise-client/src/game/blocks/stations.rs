@@ -9,7 +9,7 @@ mod anvil;
 #[path = "stations/draw.rs"]
 mod draw;
 #[path = "stations/tooltip.rs"]
-mod tooltip;
+pub(super) mod tooltip;
 use super::smithing_icons::smithing_slot_icons;
 struct EngineTooltipLines<'a>(&'a mut Vec<(sunrise_client::text::Text, u32)>);
 
@@ -2250,22 +2250,26 @@ impl Game<'_> {
         x: f32,
         y: f32,
     ) -> Option<[f32; 4]> {
-        if lines.is_empty() {
-            return None;
-        }
+        self.draw_tooltip_lines_positioned(
+            batch,
+            lines,
+            tooltip::quantize_tooltip_anchor((x, y)),
+            &mod_api::DefaultTooltipPositioner,
+        )
+    }
+
+    pub(super) fn draw_tooltip_lines_positioned<T: Clone + Into<sunrise_client::text::Text>>(
+        &self,
+        batch: &mut HudBatch,
+        lines: &[(T, u32)],
+        anchor: [i32; 2],
+        positioner: &dyn mod_api::ClientTooltipPositioner,
+    ) -> Option<[f32; 4]> {
         let mut components: Vec<tooltip::PreparedTooltipItem> = Self::resolved(lines)
             .into_iter()
             .map(|(text, color)| tooltip::PreparedTooltipItem::Text { text, color })
             .collect();
-        self.draw_prepared_tooltip(
-            batch,
-            None,
-            &mut components,
-            tooltip::quantize_tooltip_anchor((x, y)),
-            mod_api::Identifier::from_parts("minecraft", "default")
-                .expect("minecraft:default is a valid identifier"),
-            true,
-        )
+        self.draw_prepared_tooltip(batch, None, &mut components, anchor, positioner, true)
     }
     /// A tooltip's lines with their legacy codes resolved and their colours.
     fn resolved<T: Clone + Into<sunrise_client::text::Text>>(
@@ -3787,6 +3791,13 @@ mod cycling_tests {
     #[test]
     #[ignore = "daily"]
     fn a_tooltip_pre_answer_moves_or_cancels_the_tooltip() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::stations::cycling_tests::a_tooltip_pre_answer_moves_or_cancels_the_tooltip",
+            "SUNRISE_TOOLTIP_PRE_ANSWER_CASE",
+            &["pre"],
+        ) {
+            return;
+        }
         use mod_api::{self, ClientHost, Hooks, Identifier, ModEntry, Mods, RenderTooltipPreEvent};
         use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -3803,7 +3814,7 @@ mod cycling_tests {
                 assert!(
                     matches!(event.components[0].as_text(), Some((t, _)) if *t == mod_api::Text::literal("Tip"))
                 );
-                assert_eq!((event.place.x, event.place.y), (11, 20));
+                assert_eq!((event.place.x, event.place.y), (10, 20));
                 assert_eq!(event.screen, [320.0, 240.0]);
                 assert_eq!(*event.font, Identifier::parse("minecraft:default").unwrap());
                 assert_eq!(
@@ -3812,7 +3823,7 @@ mod cycling_tests {
                         [event.place.x, event.place.y],
                         [60, 20]
                     ),
-                    [23, 8]
+                    [22, 8]
                 );
                 match MODE.load(Ordering::Relaxed) {
                     1 => {
@@ -3856,16 +3867,16 @@ mod cycling_tests {
                         None,
                         &mut components,
                         anchor,
-                        (320.0, 240.0),
-                        default_font.clone(),
+                        &mod_api::DefaultTooltipPositioner,
                     )
+                    .map(|(anchor, font)| (anchor, font.into_owned()))
                 };
                 MODE.store(0, Ordering::Relaxed);
-                assert_eq!(pre(game), Some(([11, 20], default_font.clone())));
+                assert_eq!(pre(game), Some(([10, 20], default_font.clone())));
                 MODE.store(1, Ordering::Relaxed);
                 assert_eq!(pre(game), Some(([50, 60], default_font.clone())));
                 MODE.store(3, Ordering::Relaxed);
-                assert_eq!(pre(game), Some(([11, 20], alt_font.clone())));
+                assert_eq!(pre(game), Some(([10, 20], alt_font.clone())));
                 MODE.store(2, Ordering::Relaxed);
                 assert_eq!(pre(game), None);
                 assert!(

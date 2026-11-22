@@ -1,19 +1,70 @@
 use super::*;
+use crate::game::{client_item_extensions::DEFAULT_TOOLTIP_FONT_ID, host::draw::EngineTooltipFont};
+use mod_api::{ClientTooltipPositioner, DefaultTooltipPositioner};
 use std::borrow::Cow;
-#[cfg(test)]
-use std::sync::LazyLock;
 use sunrise_client::tooltip_components::TooltipComponentPrepareError;
 
-#[cfg(test)]
-static DEFAULT_FONT_ID: LazyLock<mod_api::Identifier> = LazyLock::new(|| {
-    mod_api::Identifier::from_parts("minecraft", "default")
-        .expect("minecraft:default is a valid identifier")
-});
-
 /// Single integer anchor quantization shared by Gather wrapping, `render_tooltip_pre`
-/// (`TooltipPlace`), and `DefaultTooltipPositioner::position_tooltip`.
+/// (`TooltipPlace`), and the active positioner. Vanilla GUI extraction truncates toward zero.
 pub(in crate::game) fn quantize_tooltip_anchor(at: (f32, f32)) -> [i32; 2] {
-    [at.0.round() as i32, at.1.round() as i32]
+    [at.0 as i32, at.1 as i32]
+}
+
+/// Widget-relative tooltip placement. The rectangle is `[left, top, width, height]` in GUI pixels.
+pub(in crate::game) enum WidgetTooltipPositioner {
+    Menu([i32; 4]),
+    BelowOrAbove([i32; 4]),
+}
+
+impl ClientTooltipPositioner for WidgetTooltipPositioner {
+    fn position_tooltip(
+        &self,
+        [screen_w, screen_h]: [i32; 2],
+        [anchor_x, anchor_y]: [i32; 2],
+        [w, h]: [i32; 2],
+    ) -> [i32; 2] {
+        match *self {
+            Self::Menu([_, top, _, height]) => {
+                // Vanilla MenuTooltipPositioner: beside the mouse, vertically clear of the widget.
+                let mut x = anchor_x.wrapping_add(12);
+                if x.wrapping_add(w) > screen_w.wrapping_sub(5) {
+                    x = anchor_x.wrapping_sub(12).wrapping_sub(w).max(9);
+                }
+                let y = anchor_y.wrapping_add(3);
+                let bottom = top.wrapping_add(height);
+                let box_height = h.wrapping_add(6);
+                let offset = |y: i32, edge: i32| {
+                    let distance = y.wrapping_sub(edge).wrapping_abs().min(height);
+                    let progress = distance as f32 / height as f32;
+                    let start = height.wrapping_sub(3) as f32;
+                    (f64::from(start + progress * (5.0 - start)) + 0.5).floor() as i32
+                };
+                let lowest = bottom.wrapping_add(3).wrapping_add(offset(0, 0));
+                let y = if lowest.wrapping_add(box_height) <= screen_h.wrapping_sub(5) {
+                    y.wrapping_add(offset(y, top))
+                } else {
+                    y.wrapping_sub(box_height.wrapping_add(offset(y, bottom)))
+                };
+                [x, y]
+            }
+            Self::BelowOrAbove([left, top, width, height]) => {
+                // Vanilla BelowOrAboveWidgetTooltipPositioner: the cursor is not the anchor.
+                let mut x = left.wrapping_add(3);
+                let mut y = top.wrapping_add(height).wrapping_add(4);
+                if y.wrapping_add(h).wrapping_add(3) > screen_h {
+                    y = top.wrapping_sub(h).wrapping_sub(4);
+                }
+                if x.wrapping_add(w) > screen_w {
+                    x = left
+                        .wrapping_add(width)
+                        .wrapping_sub(w)
+                        .wrapping_sub(3)
+                        .max(4);
+                }
+                [x, y]
+            }
+        }
+    }
 }
 
 /// Internal prepared tooltip item retaining engine text and prepared bundle contents so the
@@ -63,11 +114,8 @@ impl PreparedTooltipItem {
 
 /// Outcome of gathering and preparing an item's tooltip components before `render_tooltip_pre`.
 pub(in crate::game) enum GatheredTooltip {
-    /// Gathered and prepared components plus the item's initial tooltip font (`item_tooltip_font`).
-    Ready {
-        components: Vec<PreparedTooltipItem>,
-        font: mod_api::Identifier,
-    },
+    /// Gathered and prepared components, with text already split in the wrap font.
+    Ready(Vec<PreparedTooltipItem>),
     /// A `render_tooltip_gather_components` listener explicitly returned `Flow::Cancel`.
     Cancelled,
     /// Preparing a gathered component failed (unregistered custom type, failed factory, or invalid
@@ -80,7 +128,7 @@ pub(in crate::game) enum GatheredTooltip {
 impl GatheredTooltip {
     pub(super) fn unwrap_ready(self) -> Vec<PreparedTooltipItem> {
         match self {
-            Self::Ready { components, .. } => components,
+            Self::Ready(components) => components,
             Self::Cancelled => panic!("expected GatheredTooltip::Ready, got Cancelled"),
             Self::PrepareError(err) => {
                 panic!("expected GatheredTooltip::Ready, got PrepareError({err})")
@@ -234,34 +282,39 @@ impl Game<'_> {
         }
     }
 
-    /// Measure one [`PreparedTooltipItem`] in `tooltip_font` (`font_str` matching `tooltip_font.id`).
+    /// Initially measure width and height in encounter order, as `GuiGraphicsExtractor.tooltip`.
     fn measure_prepared_item(
         &self,
         item: &PreparedTooltipItem,
-        tooltip_font: &crate::game::host::draw::EngineTooltipFont<'_>,
-        font_str: &str,
+        font: &EngineTooltipFont<'_>,
     ) -> Option<(i32, i32)> {
-        Some(match item {
-            PreparedTooltipItem::Text { text, .. } => (
-                self.gui.atlas.font.width_text_with_font(text, font_str) as i32,
-                10,
-            ),
+        let width = match item {
+            PreparedTooltipItem::Text { text, .. } => {
+                self.gui.atlas.font.width_text_with_font(text, font.name()) as i32
+            }
+            PreparedTooltipItem::Bundle { .. } => sunrise_client::bundle::Contents::TOOLTIP_WIDTH,
+            PreparedTooltipItem::Custom(component) => component.width(font)?,
+        };
+        Some((width, self.prepared_item_height(item, font)?))
+    }
+
+    fn prepared_item_height(
+        &self,
+        item: &PreparedTooltipItem,
+        font: &EngineTooltipFont<'_>,
+    ) -> Option<i32> {
+        match item {
+            PreparedTooltipItem::Text { .. } => Some(10),
             PreparedTooltipItem::Bundle { contents, .. } => {
                 let desc_lines = if contents.items().is_empty() {
-                    self.bundle_description_lines(font_str)
+                    self.bundle_description_lines(font.name())
                 } else {
                     0
                 };
-                (
-                    sunrise_client::bundle::Contents::TOOLTIP_WIDTH,
-                    contents.tooltip_height(desc_lines, 9),
-                )
+                Some(contents.tooltip_height(desc_lines, 9))
             }
-            PreparedTooltipItem::Custom(component) => (
-                component.width(tooltip_font)?,
-                component.height(tooltip_font)?,
-            ),
-        })
+            PreparedTooltipItem::Custom(component) => component.height(font),
+        }
     }
 
     /// `RenderTooltipEvent.GatherComponents` followed by wrapping in the item's tooltip font
@@ -276,9 +329,9 @@ impl Game<'_> {
     ) -> GatheredTooltip {
         let gather_listened =
             mod_api::__private::listened(mod_api::HookId::RenderTooltipGatherComponents);
+        let raw_image = self.resolve_raw_tooltip_image(stack);
         let item_font = self.item_tooltip_font(stack);
         let item_font_str = crate::game::host::draw::font_id_str(&item_font);
-        let raw_image = self.resolve_raw_tooltip_image(stack);
         let font = &self.gui.atlas.font;
 
         // Build an initial mod-API snapshot for Gather only when listeners are attached. If any
@@ -393,10 +446,7 @@ impl Game<'_> {
                     }
                 }
             }
-            return GatheredTooltip::Ready {
-                components: out,
-                font: item_font,
-            };
+            return GatheredTooltip::Ready(out);
         }
 
         // Fast / unconvertible-snapshot engine path: no Gather listeners ran, so preserve every
@@ -442,26 +492,24 @@ impl Game<'_> {
         for (text, color) in iter {
             push_prepared_text(font, &item_font_str, text, color, wrap, &mut out);
         }
-        GatheredTooltip::Ready {
-            components: out,
-            font: item_font,
-        }
+        GatheredTooltip::Ready(out)
     }
 
     /// `RenderTooltipEvent.Pre` for prepared `components`, hanging from quantized integer anchor
-    /// `at`, seeded with `initial_font`: returns the (possibly moved) integer anchor and chosen
-    /// font identifier, or `None` when a listener cancelled drawing (custom Pre draws stay in
-    /// `batch`).
+    /// `at`. Query the item font again here: Gather may have changed the provider's answer, but
+    /// its line breaks are already fixed. Return the final anchor and font, or `None` when a
+    /// listener cancels drawing (custom Pre draws stay in `batch`).
     pub(in crate::game) fn tooltip_pre_components(
         &self,
         batch: &mut HudBatch,
         stack: Option<&ItemStack>,
         components: &mut [PreparedTooltipItem],
         at: [i32; 2],
-        screen: (f32, f32),
-        initial_font: mod_api::Identifier,
-    ) -> Option<([i32; 2], mod_api::Identifier)> {
-        let mut font = initial_font;
+        positioner: &dyn ClientTooltipPositioner,
+    ) -> Option<([i32; 2], Cow<'static, mod_api::Identifier>)> {
+        let font = stack.map_or(Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID), |stack| {
+            self.item_tooltip_font(stack)
+        });
         if !mod_api::__private::listened(mod_api::HookId::RenderTooltipPre) {
             return Some((at, font));
         }
@@ -530,6 +578,8 @@ impl Game<'_> {
             return Some((at, font));
         }
 
+        let mut font = font.into_owned();
+        let screen = [batch.width, batch.height];
         let mut place = mod_api::TooltipPlace { x: at[0], y: at[1] };
         let mut cancel = false;
         let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
@@ -537,8 +587,8 @@ impl Game<'_> {
             stack: api_stack.as_ref(),
             components: &restore.lent,
             place: &mut place,
-            screen: [screen.0, screen.1],
-            positioner: &mod_api::DefaultTooltipPositioner,
+            screen,
+            positioner,
             font: &mut font,
             draw: &mut draw,
             cancel: &mut cancel,
@@ -547,11 +597,11 @@ impl Game<'_> {
         if cancel {
             return None;
         }
-        Some(([place.x, place.y], font))
+        Some(([place.x, place.y], Cow::Owned(font)))
     }
 
     /// `GuiGraphicsExtractor.tooltip`: run Pre, measure in Pre's chosen font without rewrapping,
-    /// position with `DefaultTooltipPositioner`, draw background (`render_tooltip_texture`), then
+    /// position with the caller's positioner, draw background (`render_tooltip_texture`), then
     /// run Pass 1 (`draw_text`) and Pass 2 (`draw_image`). Returns the drawn content rect
     /// `[x, y, w, h]` when drawn.
     pub(in crate::game) fn draw_prepared_tooltip(
@@ -560,7 +610,7 @@ impl Game<'_> {
         stack: Option<&ItemStack>,
         components: &mut [PreparedTooltipItem],
         at: [i32; 2],
-        initial_font: mod_api::Identifier,
+        positioner: &dyn ClientTooltipPositioner,
         extra_space_after_first_line: bool,
     ) -> Option<[f32; 4]> {
         if components.is_empty() {
@@ -568,13 +618,10 @@ impl Game<'_> {
         }
         let screen = (batch.width, batch.height);
         let (at, chosen_font) =
-            self.tooltip_pre_components(batch, stack, components, at, screen, initial_font)?;
+            self.tooltip_pre_components(batch, stack, components, at, positioner)?;
 
-        let tooltip_font = crate::game::host::draw::EngineTooltipFont {
-            font: &self.gui.atlas.font,
-            id: &chosen_font,
-        };
-        let chosen_font_str = crate::game::host::draw::font_id_str(&chosen_font);
+        let tooltip_font = EngineTooltipFont::new(&self.gui.atlas.font, &chosen_font);
+        let chosen_font_str = tooltip_font.name();
 
         let mut w = 0_i32;
         let mut h = if extra_space_after_first_line && components.len() != 1 {
@@ -582,30 +629,22 @@ impl Game<'_> {
         } else {
             -2_i32
         };
-        let mut heights = Vec::with_capacity(components.len());
         for component in components.iter() {
-            let (cw, ch) =
-                self.measure_prepared_item(component, &tooltip_font, &chosen_font_str)?;
+            let (cw, ch) = self.measure_prepared_item(component, &tooltip_font)?;
             if cw > w {
                 w = cw;
             }
-            heights.push(ch);
             h = h.wrapping_add(ch);
         }
 
-        let [x, y] = mod_api::ClientTooltipPositioner::position_tooltip(
-            &mod_api::DefaultTooltipPositioner,
-            [screen.0 as i32, screen.1 as i32],
-            at,
-            [w, h],
-        );
+        let [x, y] = positioner.position_tooltip([screen.0 as i32, screen.1 as i32], at, [w, h]);
 
         // A failed component pass discards this tooltip's entire paint, not Pre listener paint.
         let paint = batch.paint_checkpoint();
         self.tooltip_box(batch, stack, x as f32, y as f32, w as f32, h as f32);
 
         let mut local_y = y;
-        for (i, (component, &ch)) in components.iter().zip(&heights).enumerate() {
+        for (i, component) in components.iter().enumerate() {
             match component {
                 PreparedTooltipItem::Text { text, color } => {
                     batch.text_styled_with_font(
@@ -615,12 +654,13 @@ impl Game<'_> {
                         local_y as f32,
                         *color,
                         true,
-                        &chosen_font_str,
+                        chosen_font_str,
                     );
                 }
                 PreparedTooltipItem::Bundle { .. } => {}
                 PreparedTooltipItem::Custom(custom) => {
-                    let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
+                    let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch)
+                        .with_active_tooltip_font(&tooltip_font);
                     if !custom.__draw_text(&tooltip_font, x, local_y, &mut draw) {
                         drop(draw);
                         paint.discard(batch);
@@ -628,6 +668,10 @@ impl Game<'_> {
                     }
                 }
             }
+            let Some(ch) = self.prepared_item_height(component, &tooltip_font) else {
+                paint.discard(batch);
+                return None;
+            };
             local_y =
                 local_y
                     .wrapping_add(ch)
@@ -639,12 +683,12 @@ impl Game<'_> {
         }
 
         let mut local_y = y;
-        for (i, (component, &ch)) in components.iter().zip(&heights).enumerate() {
+        for (i, component) in components.iter().enumerate() {
             match component {
                 PreparedTooltipItem::Text { .. } => {}
                 PreparedTooltipItem::Bundle { contents, .. } => {
                     let description_lines = if contents.items().is_empty() {
-                        self.bundle_description_lines(&chosen_font_str)
+                        self.bundle_description_lines(chosen_font_str)
                     } else {
                         0
                     };
@@ -654,18 +698,19 @@ impl Game<'_> {
                         w as f32,
                         description_lines,
                     );
-                    self.draw_bundle_tooltip(batch, &layout, &chosen_font_str);
+                    self.draw_bundle_tooltip(batch, &layout, chosen_font_str);
                     self.draw_bundle_selected_name(
                         batch,
                         &layout,
                         x as f32,
                         local_y as f32,
                         w as f32,
-                        &chosen_font_str,
+                        chosen_font_str,
                     );
                 }
                 PreparedTooltipItem::Custom(custom) => {
-                    let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
+                    let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch)
+                        .with_active_tooltip_font(&tooltip_font);
                     if !custom.__draw_image(&tooltip_font, x, local_y, w, h, &mut draw) {
                         drop(draw);
                         paint.discard(batch);
@@ -673,6 +718,10 @@ impl Game<'_> {
                     }
                 }
             }
+            let Some(ch) = self.prepared_item_height(component, &tooltip_font) else {
+                paint.discard(batch);
+                return None;
+            };
             local_y =
                 local_y
                     .wrapping_add(ch)
@@ -732,20 +781,27 @@ impl Game<'_> {
         y: f32,
     ) {
         let anchor = quantize_tooltip_anchor((x, y));
-        let (mut components, font) = match self.gather_tooltip_components(
+        let mut components = match self.gather_tooltip_components(
             stack,
             lines,
             anchor[0],
             (batch.width, batch.height),
         ) {
-            GatheredTooltip::Ready { components, font } => (components, font),
+            GatheredTooltip::Ready(components) => components,
             GatheredTooltip::Cancelled => return,
             GatheredTooltip::PrepareError(err) => {
                 report_tooltip_prepare_error(&err);
                 return;
             }
         };
-        self.draw_prepared_tooltip(batch, Some(stack), &mut components, anchor, font, true);
+        self.draw_prepared_tooltip(
+            batch,
+            Some(stack),
+            &mut components,
+            anchor,
+            &DefaultTooltipPositioner,
+            true,
+        );
     }
 }
 

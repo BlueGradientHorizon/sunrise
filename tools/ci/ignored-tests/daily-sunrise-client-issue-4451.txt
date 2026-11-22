@@ -2473,7 +2473,7 @@ sunrise-client game::state_at_viewpoint_tests::the_camera_reads_the_state_a_bloc
 sunrise-client game::stateful_block_entity_tests::stateful_creation_uses_actual_state_and_preserves_existing_entity lib daily resources
 sunrise-client game::stations::anvil::remote_anvil_tests::a_servers_custom_enchantment_book_gives_an_anvil_result lib daily resources
 sunrise-client game::stations::brewing_changed_tests::starting_a_brew_marks_the_chunk lib daily resources
-sunrise-client game::stations::cycling_tests::a_tooltip_pre_answer_moves_or_cancels_the_tooltip lib daily resources
+sunrise-client game::stations::cycling_tests::a_tooltip_pre_answer_moves_or_cancels_the_tooltip lib daily child-process
 sunrise-client game::stations::stonecutter_scroll_tests::the_stonecutter_list_returns_to_the_top_when_its_input_changes lib daily resources
 sunrise-client game::stations::tests::anvil_subscriber_probe_and_answer_cache lib daily resources
 sunrise-client game::stations::tests::attribute_tooltip_hooks_hide_modifiers_and_add_lines_after_them lib daily resources
@@ -2481,13 +2481,13 @@ sunrise-client game::stations::tests::gathered_tooltip_components_wrap_only_when
 sunrise-client game::stations::tests::resource_tooltip_uses_inventory_lines_and_explicit_flags lib daily resources
 sunrise-client game::stations::tests::tooltip_part_lines_come_after_the_name_and_never_for_a_hidden_tooltip lib daily resources
 sunrise-client game::stations::tooltip::bundle_tests::bundle_cleared_lines_still_draws_image_at_content_top lib daily resources
-sunrise-client game::stations::tooltip::bundle_tests::bundle_empty_contents_keeps_image lib daily resources
-sunrise-client game::stations::tooltip::bundle_tests::bundle_empty_text_gathers_image_at_zero lib daily resources
+sunrise-client game::stations::tooltip::bundle_tests::bundle_empty_contents_keeps_image lib daily child-process
+sunrise-client game::stations::tooltip::bundle_tests::bundle_empty_text_gathers_image_at_zero lib daily child-process
 sunrise-client game::stations::tooltip::bundle_tests::bundle_gather_moves_image_to_end lib daily resources
 sunrise-client game::stations::tooltip::bundle_tests::bundle_gather_removes_grid_and_height lib daily resources
 sunrise-client game::stations::tooltip::bundle_tests::bundle_hidden_tooltip_still_draws_nothing lib daily resources
 sunrise-client game::stations::tooltip::bundle_tests::bundle_listener_inserts_before_name lib daily resources
-sunrise-client game::stations::tooltip::bundle_tests::bundle_no_listener_order_and_draw_position lib daily resources
+sunrise-client game::stations::tooltip::bundle_tests::bundle_no_listener_order_and_draw_position lib daily child-process
 sunrise-client game::stations::tooltip::bundle_tests::bundle_pre_observes_gather_reordered_list lib daily resources
 sunrise-client game::stations::tooltip::bundle_tests::non_bundle_keeps_text_only_geometry lib daily resources
 sunrise-client game::stations::tooltip::tests::rendered_image_callback_receives_whole_box lib daily resources
