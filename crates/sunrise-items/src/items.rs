@@ -2988,21 +2988,15 @@ impl<R: RandomSource> LootContext<'_, R> {
                         continue;
                     }
                     let ctx = self.roll_facts();
-                    mod_function(
-                        k,
-                        f,
-                        &ctx,
-                        self.items,
-                        stack,
-                        |kind, data, ctx, stack| match self
+                    mod_function(k, f, &ctx, self.items, stack, |kind, data, ctx, stack| {
+                        if let Err(reason) = self
                             .items
                             .loot_types
                             .apply(kind, data, ctx, random, self.items, stack)
                         {
-                            Ok(candidate) => *stack = candidate,
-                            Err(reason) => self.items.loot_types.warn_once(kind, true, &reason),
-                        },
-                    );
+                            self.items.loot_types.warn_once(kind, true, &reason);
+                        }
+                    });
                 }
                 _ => {}
             }
@@ -3254,8 +3248,9 @@ fn apply_loot(
 }
 
 /// Apply a registered function using the items engine's existing component write path.
-/// Convert the input once and apply only the callback's accepted candidate; tests can
-/// supply the transformation without installing a process-wide registry.
+/// Lend the operation's raw working candidate in place; `before` is used only by
+/// `apply_loot` to preserve untouched resident components, not to roll back callback edits.
+/// Tests can supply the transformation without installing a process-wide registry.
 /// `items` holds the prototypes a removal is checked against.
 fn mod_function(
     kind: &str,
@@ -3271,9 +3266,9 @@ fn mod_function(
     ),
 ) {
     let before = loot_of(stack);
-    let mut after = before.clone();
-    hook(kind, data, ctx, &mut after);
-    apply_loot(&before, &after, stack, prototypes_of(items));
+    let mut working = before.clone();
+    hook(kind, data, ctx, &mut working);
+    apply_loot(&before, &working, stack, prototypes_of(items));
 }
 
 /// `DispensibleContainerItem`: shared contents for hand use and dispensers.

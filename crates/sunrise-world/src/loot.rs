@@ -2075,7 +2075,7 @@ impl<R: RandomSource> Context<'_, R> {
             }
             // A validated registered function transforms only this stack.
             k if k.contains(':') && !k.starts_with("minecraft:") => {
-                stack = self.registered_function(k, f, stack);
+                self.registered_function(k, f, &mut stack);
             }
             // Lore and other data without random draws.
             _ => {}

@@ -80,9 +80,9 @@ impl PlacementPlacer {
 /// A loot function's intermediate item candidate, before inventory materialization.
 /// Counts can be non-positive while loot functions run; unlike `ItemStack`, this
 /// is a roll's intermediate data and does not represent an occupied inventory slot.
+// no wire: in-process loot candidate snapshot for explicit copy and replacement.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct LootStack {
     /// Resolved candidate item.
     pub item: ItemKey,
@@ -109,9 +109,9 @@ pub struct LootStack {
 }
 
 /// A deferred exploration-map search requested by a loot function.
+// no wire: in-process deferred exploration-map request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct ExplorationMap {
     /// Destination structure tag, without `#`.
     pub destination: String,

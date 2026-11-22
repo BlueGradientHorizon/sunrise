@@ -94,8 +94,8 @@ pub trait Registry: Send + Sync {
         ctx: &LootContext<'_>,
         random: &mut dyn RollRandom,
         tags: &dyn LootTags,
-        stack: &LootStack,
-    ) -> Result<LootStack, String>;
+        stack: &mut LootStack,
+    ) -> Result<(), String>;
     fn test(
         &self,
         kind: &str,
@@ -154,8 +154,8 @@ impl Types {
         ctx: &LootContext<'_>,
         random: &mut dyn RollRandom,
         tags: &dyn LootTags,
-        stack: &LootStack,
-    ) -> Result<LootStack, String> {
+        stack: &mut LootStack,
+    ) -> Result<(), String> {
         self.registry
             .as_ref()
             .ok_or_else(|| format!("unknown loot function type {kind}"))?
@@ -439,14 +439,9 @@ impl<R: sunrise_core::random::RandomSource> super::Context<'_, R> {
             }
         }
     }
-    pub(super) fn registered_function(
-        &mut self,
-        kind: &str,
-        data: &Value,
-        stack: LootStack,
-    ) -> LootStack {
+    pub(super) fn registered_function(&mut self, kind: &str, data: &Value, stack: &mut LootStack) {
         if !self.data.types.contains(kind, true) {
-            return stack;
+            return;
         }
         let facts = super::query_context::roll_facts(
             &self.query,
@@ -455,16 +450,12 @@ impl<R: sunrise_core::random::RandomSource> super::Context<'_, R> {
             self.biome,
             self.luck,
         );
-        match self
-            .data
-            .types
-            .apply(kind, data, &facts, &mut self.random, self.data, &stack)
+        if let Err(reason) =
+            self.data
+                .types
+                .apply(kind, data, &facts, &mut self.random, self.data, stack)
         {
-            Ok(value) => value,
-            Err(reason) => {
-                self.data.types.warn_once(kind, true, &reason);
-                stack
-            }
+            self.data.types.warn_once(kind, true, &reason);
         }
     }
 }

@@ -19,9 +19,9 @@ impl loot::types::Registry for QueryCodec {
         _: &LootContext<'_>,
         _: &mut dyn loot::types::RollRandom,
         _: &dyn LootTags,
-        stack: &LootStack,
-    ) -> Result<LootStack, String> {
-        Ok(stack.clone())
+        _: &mut LootStack,
+    ) -> Result<(), String> {
+        Ok(())
     }
     fn test(
         &self,

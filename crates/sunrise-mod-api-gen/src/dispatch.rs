@@ -1473,7 +1473,6 @@ fn stack_crossing_routed(
         "Suggestion",
         "GameRuleValue",
         "PlacementContext",
-        "LootStack",
         "ParticleOptions",
     ];
     const BLOCK_VALUES: &[&str] = &["BlockState", "LandingWrite", "InsideWrite"];
@@ -1512,7 +1511,7 @@ fn stack_crossing_routed(
     }
     if parameters.iter().any(|(name, ty)| {
         contains_boundary(ty, STACK_VALUES)
-            && !contains_boundary(ty, &["LootStack", "ParticleOptions"])
+            && !contains_boundary(ty, &["ParticleOptions"])
             && (!stack_list_output(ty)
                 || (!listener_output && output.is_some_and(|(output, _)| output == name)))
             && matches!(ty, Type::Reference(r) if r.mutability.is_some())
@@ -1614,7 +1613,7 @@ fn stack_crossing_routed(
                 )
             } else if stack {
                 let result = format!("__checked_{name}");
-                if contains_boundary(ty, &["LootStack", "ParticleOptions"]) {
+                if contains_boundary(ty, &["ParticleOptions"]) {
                     validations.push_str(&format!("let {result} = {local}.try_into_engine(&()); "));
                 } else {
                     validations.push_str(&format!("let {result}: Result<_, mod_api::StackWriteError> = self.boundary_items().ok_or(mod_api::StackWriteError::Unavailable).and_then(|items| {local}.try_into_engine(items)); "));

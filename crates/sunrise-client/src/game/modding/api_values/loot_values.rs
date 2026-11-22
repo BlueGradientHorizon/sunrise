@@ -55,23 +55,16 @@ impl<C: ?Sized> TryIntoEngine<C> for api::LootStack {
     fn try_into_engine(&self, _: &C) -> Result<Self::Engine, Self::Error> {
         let id = mod_api::__private::item_key_id(self.item).ok_or(LootValueError::UnknownItem)?;
         // NBT's vanilla container-depth limit applies before copying mod-owned trees.
-        let mut pending: Vec<_> = self
-            .components
-            .iter()
-            .filter_map(|(_, tag)| tag.as_ref().map(|tag| (tag, 0)))
-            .collect();
-        while let Some((tag, depth)) = pending.pop() {
-            use sunrise_core::nbt::Tag;
-            if matches!(tag, Tag::List(_) | Tag::Compound(_)) && depth >= 512 {
-                return Err(LootValueError::InvalidPatch);
-            }
-            match tag {
-                Tag::List(values) => pending.extend(values.iter().map(|value| (value, depth + 1))),
-                Tag::Compound(values) => {
-                    pending.extend(values.values().map(|value| (value, depth + 1)))
-                }
-                _ => {}
-            }
+        if self.components.iter().any(|(_, tag)| {
+            tag.as_ref().is_some_and(|tag| {
+                matches!(tag, sunrise_core::nbt::Tag::End)
+                    || !sunrise_core::nbt::within_depth(
+                        tag,
+                        sunrise_core::nbt::Limits::default().max_depth,
+                    )
+            })
+        }) {
+            return Err(LootValueError::InvalidPatch);
         }
         let names = self
             .names
@@ -137,6 +130,21 @@ pub(crate) fn loot_params(facts: engine::LootContext<'_>) -> mod_api::LootParams
             luck: facts.luck,
         },
         sunrise_client_lib::api_text::captured_text,
+    )
+}
+
+fn encode_loot_name(
+    text: &mod_api::text::Text,
+) -> Result<serde_json::Value, mod_api::TextFormError> {
+    sunrise_client_lib::api_text::to_engine(text).map(|text| text.component())
+}
+
+/// Borrow the evaluator's live candidate for one function invocation.
+pub(crate) fn loot_stack_editor(stack: &mut engine::LootStack) -> mod_api::LootStackEditor<'_> {
+    mod_api::LootStackEditor::new(
+        stack,
+        sunrise_client_lib::api_text::captured_text,
+        encode_loot_name,
     )
 }
 
@@ -242,7 +250,10 @@ pub(crate) fn dispatch_loot_ability(
 mod tests {
     use super::*;
     include!("loot_tags_tests.rs");
-    use mod_api::{Hooks, LootEntryData, LootStack, LootTypeContext, ModEntry, ModLootFunction};
+    use mod_api::{
+        Hooks, LootEntryData, LootStackEditError, LootStackEditor, LootTypeContext, ModEntry,
+        ModLootFunction,
+    };
     fn apply_type(
         kind: &str,
         data: &serde_json::Value,
@@ -255,9 +266,7 @@ mod tests {
             return;
         }
         let mut random = sunrise_core::random::LegacyRandom::new(0);
-        if let Ok(candidate) = types.apply(kind, data, ctx, &mut random, tags, stack) {
-            *stack = candidate;
-        }
+        let _ = types.apply(kind, data, ctx, &mut random, tags, stack);
     }
     fn test_type(
         kind: &str,
@@ -423,26 +432,31 @@ mod tests {
         fn apply(
             &self,
             _: &LootEntryData,
-            mut stack: LootStack,
+            stack: &mut LootStackEditor<'_>,
             context: &mut dyn LootTypeContext,
-        ) -> Result<LootStack, String> {
+        ) -> Result<(), String> {
             assert_eq!(context.params().luck(), 1.5);
-            assert_eq!(stack.count, -7);
-            assert_eq!(stack.components[0].1, Some(Tag::ByteArray(vec![7])));
-            assert_eq!(stack.components[1].1, Some(Tag::Byte(7)));
-            stack.count = -12;
-            stack.components.extend([
-                ("test:array".into(), None),
-                ("test:array".into(), Some(Tag::List(vec![Tag::Int(7)]))),
-                ("test:array".into(), Some(Tag::ByteArray(vec![8]))),
-            ]);
-            Ok(stack)
+            let view = stack.view();
+            assert_eq!(view.count(), -7);
+            let mut components = view.components();
+            assert_eq!(
+                components.next(),
+                Some(("test:array", Some(&Tag::ByteArray(vec![7]))))
+            );
+            assert_eq!(components.next(), Some(("test:byte", Some(&Tag::Byte(7)))));
+            assert_eq!(components.next(), None);
+            stack.set_count(-12);
+            stack.remove_component("test:array")?;
+            stack.push_component("test:array", Tag::List(vec![Tag::Int(7)]))?;
+            stack.push_component("test:array", Tag::ByteArray(vec![8]))?;
+            Ok(())
         }
     }
     #[test]
     fn loot_type_preserves_signed_candidates_and_ordered_nbt() {
         super::super::prepare_stack_boundary_tests();
         let mut output = stack();
+        CONVERSIONS.with(|count| count.set(0));
         with_mods(vec![ModEntry::new("edit", Box::new(Edit))].into(), || {
             super::super::prepare_stack_boundary_tests();
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
@@ -456,6 +470,7 @@ mod tests {
                 &TestTags,
             );
         });
+        assert_eq!(CONVERSIONS.with(|count| count.get()), 0);
         assert_eq!(output.count, -12);
         assert_eq!(output.damage, -3);
         assert!(output.map);
@@ -550,47 +565,63 @@ mod tests {
         );
     }
 
-    struct Invalid(std::sync::Arc<std::sync::atomic::AtomicBool>);
+    struct ScopedInvalid(std::sync::Arc<std::sync::atomic::AtomicBool>);
     #[mod_api::__subscriptions]
-    impl Hooks for Invalid {
+    impl Hooks for ScopedInvalid {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             r.register_loot_function_type(
                 &mod_api::Identifier::parse("invalid:invalid").unwrap(),
-                Invalid(self.0.clone()),
+                ScopedInvalid(self.0.clone()),
             );
         }
     }
-    impl ModLootFunction for Invalid {
+    impl ModLootFunction for ScopedInvalid {
         fn validate(&self, _: &LootEntryData) -> Result<(), String> {
             Ok(())
         }
         fn apply(
             &self,
             _: &LootEntryData,
-            mut stack: LootStack,
+            stack: &mut LootStackEditor<'_>,
             _: &mut dyn LootTypeContext,
-        ) -> Result<LootStack, String> {
+        ) -> Result<(), String> {
             self.0.store(true, std::sync::atomic::Ordering::Relaxed);
-            stack.count = 99;
-            stack.components.clear();
+            stack.set_count(-19);
+            stack.remove_component("test:array")?;
+            stack.push_component("test:array", Tag::ByteArray(vec![9]))?;
             let mut text = mod_api::text::Text::literal("end");
             for _ in 0..513 {
                 let mut parent = mod_api::text::Text::literal("");
                 parent.children.push(text);
                 text = parent;
             }
-            stack.names.push(("minecraft:custom_name".into(), text));
-            Ok(stack)
+            assert!(matches!(
+                stack.push_name("minecraft:custom_name", &text),
+                Err(LootStackEditError::InvalidName(_))
+            ));
+            let mut deep = Tag::Byte(7);
+            for _ in 0..513 {
+                deep = Tag::List(vec![deep]);
+            }
+            assert_eq!(
+                stack.push_component("test:deep", deep),
+                Err(LootStackEditError::InvalidPatch)
+            );
+            Err("refused invalid write".into())
         }
     }
     #[test]
-    fn loot_invalid_writeback_is_atomic() {
+    fn loot_scoped_editor_keeps_prior_edits_and_refuses_invalid_writes() {
         super::super::prepare_stack_boundary_tests();
         let mut output = stack();
-        let before = output.clone();
         let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        CONVERSIONS.with(|count| count.set(0));
         with_mods(
-            vec![ModEntry::new("invalid", Box::new(Invalid(called.clone())))].into(),
+            vec![ModEntry::new(
+                "invalid",
+                Box::new(ScopedInvalid(called.clone())),
+            )]
+            .into(),
             || {
                 super::super::prepare_stack_boundary_tests();
                 mod_platform::__private::part_tests::install_parts_fixture(
@@ -608,7 +639,18 @@ mod tests {
             },
         );
         assert!(called.load(std::sync::atomic::Ordering::Relaxed));
-        assert_eq!(output, before);
+        assert_eq!(CONVERSIONS.with(|count| count.get()), 0);
+        assert_eq!(output.count, -19);
+        assert!(output.names.is_empty());
+        assert_eq!(
+            output.components,
+            vec![
+                ("test:array".into(), Some(Tag::ByteArray(vec![7]))),
+                ("test:byte".into(), Some(Tag::Byte(7))),
+                ("test:array".into(), None),
+                ("test:array".into(), Some(Tag::ByteArray(vec![9]))),
+            ]
+        );
     }
 }
 

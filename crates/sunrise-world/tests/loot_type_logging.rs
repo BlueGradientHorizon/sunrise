@@ -74,9 +74,9 @@ impl Registry for NeedsAttacker {
         _: &loot::LootContext<'_>,
         _: &mut dyn RollRandom,
         _: &dyn loot::LootTags,
-        stack: &loot::LootStack,
-    ) -> Result<loot::LootStack, String> {
-        Ok(stack.clone())
+        _: &mut loot::LootStack,
+    ) -> Result<(), String> {
+        Ok(())
     }
     fn test(
         &self,

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{LootEntryData, LootStack, LootTypeContext};
+use crate::{LootEntryData, LootStackEditor, LootTypeContext};
 struct Codec;
 impl crate::ModLootFunction for Codec {
     fn validate(&self, _: &LootEntryData) -> Result<(), String> {
@@ -8,10 +8,10 @@ impl crate::ModLootFunction for Codec {
     fn apply(
         &self,
         _: &LootEntryData,
-        stack: LootStack,
+        _: &mut LootStackEditor<'_>,
         _: &mut dyn LootTypeContext,
-    ) -> Result<LootStack, String> {
-        Ok(stack)
+    ) -> Result<(), String> {
+        Ok(())
     }
 }
 impl crate::ModLootCondition for Codec {

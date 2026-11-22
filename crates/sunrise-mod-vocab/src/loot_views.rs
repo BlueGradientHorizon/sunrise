@@ -1,7 +1,11 @@
 //! Call-scoped read access to the parameters of a loot evaluation.
 
-use crate::{ItemKey, ItemStackView, Tag, Text, TextFormError};
+use crate::{
+    ComponentId, ExplorationMap, Identifier, ItemKey, ItemStackView, LootStack, Tag, Text,
+    TextFormError,
+};
 use serde_json::Value;
+use std::fmt;
 
 // hidden: the engine lends its resident parameter rows; mods read LootParamsView.
 #[doc(hidden)]
@@ -22,6 +26,7 @@ pub struct LootParamsParts<'a> {
 }
 
 type NameProjection = fn(&Value) -> Result<Text, TextFormError>;
+type NameEncoding = fn(&Text) -> Result<Value, TextFormError>;
 type QueriedStack<'a> = (
     &'a dyn LootStackAccess,
     fn(&dyn LootStackAccess) -> Option<ItemStackView<'_>>,
@@ -403,6 +408,431 @@ impl<'a> LootStackView<'a> {
     pub fn name(&self, index: usize) -> Option<Result<(&'a str, Text), TextFormError>> {
         let (id, raw) = self.0.names().get(index)?;
         Some((self.1)(raw).map(|text| (id.as_str(), text)))
+    }
+
+    /// Explicitly copy this candidate into an owned [`LootStack`].
+    /// Fails if the candidate's item is unregistered or any stored name cannot be projected.
+    pub fn to_owned(&self) -> Result<LootStack, LootStackEditError> {
+        let item = self.item().ok_or(LootStackEditError::UnknownItem)?;
+        let mut copy = LootStack::new(item, self.count());
+        copy.damage = self.damage();
+        copy.enchantments = self.0.enchantments().to_vec();
+        copy.potion = self.0.potion().map(str::to_owned);
+        copy.map = self.map();
+        copy.exploration = self.exploration().map(|map| {
+            Box::new(ExplorationMap::new(
+                map.destination().to_owned(),
+                map.decoration().to_owned(),
+                map.zoom(),
+                map.search_radius(),
+                map.skip_existing_chunks(),
+            ))
+        });
+        copy.ominous_amplifier = self.ominous_amplifier();
+        copy.stew_effects = self.0.stew_effects().to_vec();
+        copy.names = (0..self.name_count())
+            .map(|index| {
+                self.name(index)
+                    .expect("index within name_count")
+                    .map(|(id, text)| (id.to_owned(), text))
+                    .map_err(LootStackEditError::InvalidName)
+            })
+            .collect::<Result<_, _>>()?;
+        copy.components = self.0.components().to_vec();
+        Ok(copy)
+    }
+}
+
+/// Failure reported when an individual [`LootStackEditor`] write or explicit copy is refused.
+/// Earlier valid edits on the same editor remain in place; the refused field is unchanged.
+// no wire: returned locally by scoped LootStackEditor writes and explicit copies.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum LootStackEditError {
+    /// The supplied item key is not registered, or the candidate's current item is unregistered.
+    UnknownItem,
+    /// A component patch identifier or NBT value failed validation (for example, malformed
+    /// identifier, `Tag::End`, or container nesting deeper than vanilla's
+    /// `NbtAccounter.MAX_STACK_DEPTH`, 512).
+    InvalidPatch,
+    /// An identifier (enchantment, potion, stew effect, exploration setting, or name target)
+    /// is not a valid resource identifier.
+    InvalidIdentifier,
+    /// A name text tree failed text-boundary validation or projection.
+    InvalidName(TextFormError),
+}
+
+impl fmt::Display for LootStackEditError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownItem => f.write_str("unknown loot candidate item key"),
+            Self::InvalidPatch => f.write_str("invalid loot candidate component patch"),
+            Self::InvalidIdentifier => f.write_str("invalid resource identifier"),
+            Self::InvalidName(error) => write!(f, "invalid loot candidate name: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for LootStackEditError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidName(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<LootStackEditError> for String {
+    fn from(error: LootStackEditError) -> Self {
+        error.to_string()
+    }
+}
+
+// hidden: mutates the evaluator's existing signed loot candidate in place.
+#[doc(hidden)]
+pub trait LootStackEditAccess: LootStackAccess {
+    fn as_view(&self) -> &dyn LootStackAccess;
+    fn set_item_id(&mut self, id: &str);
+    fn set_count(&mut self, count: i32);
+    fn set_damage(&mut self, damage: i32);
+    fn set_map(&mut self, map: bool);
+    fn set_ominous_amplifier(&mut self, amplifier: Option<i32>);
+    fn set_potion_id(&mut self, potion: Option<String>);
+    fn set_exploration(&mut self, exploration: Option<ExplorationMap>);
+    fn push_enchantment(&mut self, id: String, level: i32);
+    fn set_enchantment(&mut self, id: String, level: i32);
+    fn set_enchantments(&mut self, enchantments: Vec<(String, i32)>);
+    fn clear_enchantments(&mut self);
+    fn push_stew_effect(&mut self, id: String, duration_ticks: i32);
+    fn set_stew_effects(&mut self, effects: Vec<(String, i32)>);
+    fn clear_stew_effects(&mut self);
+    fn push_name_value(&mut self, id: String, value: Value);
+    fn set_name_value(&mut self, id: String, value: Value);
+    fn set_names_values(&mut self, names: Vec<(String, Value)>);
+    fn clear_names(&mut self);
+    fn push_component(&mut self, id: String, value: Option<Tag>);
+    fn set_components(&mut self, components: Vec<(String, Option<Tag>)>);
+    fn clear_components(&mut self);
+    fn retain_components(&mut self, keep: &mut dyn FnMut(&str, Option<&Tag>) -> bool);
+}
+
+fn validate_identifier(id: &str) -> Result<(), LootStackEditError> {
+    Identifier::parse(id)
+        .ok()
+        .filter(|parsed| !parsed.path().is_empty())
+        .map(|_| ())
+        .ok_or(LootStackEditError::InvalidIdentifier)
+}
+
+fn validate_component_id(id: &str) -> Result<(), LootStackEditError> {
+    ComponentId::new(id)
+        .map(|_| ())
+        .ok_or(LootStackEditError::InvalidPatch)
+}
+
+fn validate_component_patch(id: &str, value: Option<&Tag>) -> Result<(), LootStackEditError> {
+    let base = id.strip_prefix('!').unwrap_or(id);
+    validate_component_id(base)?;
+    if let Some(tag) = value
+        && (matches!(tag, Tag::End)
+            || !sunrise_core::nbt::within_depth(
+                tag,
+                sunrise_core::nbt::Limits::default().max_depth,
+            ))
+    {
+        return Err(LootStackEditError::InvalidPatch);
+    }
+    Ok(())
+}
+
+/// Scoped in-place editor for the active loot function candidate.
+///
+/// Reads go through [`Self::view`], explicit whole-stack copies go through [`Self::to_owned`],
+/// and writes validate their own inputs before touching the targeted field. Earlier valid edits
+/// are not rolled back if a later write or the callback fails.
+// no wire: borrows the evaluator's live candidate for one function invocation.
+// exhaustive: constructed only at the engine integration boundary.
+pub struct LootStackEditor<'a> {
+    stack: &'a mut dyn LootStackEditAccess,
+    project_name: NameProjection,
+    encode_name: NameEncoding,
+}
+
+impl<'a> LootStackEditor<'a> {
+    // hidden: the evaluator constructs this editor over its active candidate.
+    #[doc(hidden)]
+    pub fn new(
+        stack: &'a mut dyn LootStackEditAccess,
+        project_name: NameProjection,
+        encode_name: NameEncoding,
+    ) -> Self {
+        Self {
+            stack,
+            project_name,
+            encode_name,
+        }
+    }
+
+    /// Borrow a read-only view of the candidate's current state, including earlier edits.
+    pub fn view(&self) -> LootStackView<'_> {
+        LootStackView(self.stack.as_view(), self.project_name)
+    }
+
+    /// Explicitly copy the candidate's current state into an owned [`LootStack`].
+    pub fn to_owned(&self) -> Result<LootStack, LootStackEditError> {
+        self.view().to_owned()
+    }
+
+    /// Validate and replace the entire candidate stack.
+    /// If any field in `stack` is invalid, the current candidate is left unchanged.
+    pub fn replace(&mut self, stack: LootStack) -> Result<(), LootStackEditError> {
+        let item_id =
+            crate::__private::item_key_id(stack.item).ok_or(LootStackEditError::UnknownItem)?;
+        for (id, _) in &stack.enchantments {
+            validate_identifier(id)?;
+        }
+        if let Some(potion) = &stack.potion {
+            validate_identifier(potion)?;
+        }
+        if let Some(map) = &stack.exploration {
+            validate_identifier(&map.destination)?;
+            validate_identifier(&map.decoration)?;
+        }
+        for (effect, _) in &stack.stew_effects {
+            validate_identifier(effect)?;
+        }
+        let mut names = Vec::with_capacity(stack.names.len());
+        for (id, text) in &stack.names {
+            validate_identifier(id)?;
+            let encoded = (self.encode_name)(text).map_err(LootStackEditError::InvalidName)?;
+            names.push((id.clone(), encoded));
+        }
+        for (id, value) in &stack.components {
+            validate_component_patch(id, value.as_ref())?;
+        }
+        self.stack.set_item_id(item_id);
+        self.stack.set_count(stack.count);
+        self.stack.set_damage(stack.damage);
+        self.stack.set_enchantments(stack.enchantments);
+        self.stack.set_potion_id(stack.potion);
+        self.stack.set_map(stack.map);
+        self.stack
+            .set_exploration(stack.exploration.map(|map| *map));
+        self.stack.set_ominous_amplifier(stack.ominous_amplifier);
+        self.stack.set_stew_effects(stack.stew_effects);
+        self.stack.set_names_values(names);
+        self.stack.set_components(stack.components);
+        Ok(())
+    }
+
+    /// Replace the candidate's item key without disturbing other fields.
+    pub fn set_item(&mut self, item: ItemKey) -> Result<(), LootStackEditError> {
+        let id = crate::__private::item_key_id(item).ok_or(LootStackEditError::UnknownItem)?;
+        self.stack.set_item_id(id);
+        Ok(())
+    }
+
+    /// Set the signed intermediate count without clamping.
+    pub fn set_count(&mut self, count: i32) {
+        self.stack.set_count(count);
+    }
+
+    /// Set the signed intermediate damage value without clamping.
+    pub fn set_damage(&mut self, damage: i32) {
+        self.stack.set_damage(damage);
+    }
+
+    /// Set whether to create a map id after the roll.
+    pub fn set_map(&mut self, map: bool) {
+        self.stack.set_map(map);
+    }
+
+    /// Set or clear the signed ominous bottle amplifier without clamping.
+    pub fn set_ominous_amplifier(&mut self, amplifier: Option<i32>) {
+        self.stack.set_ominous_amplifier(amplifier);
+    }
+
+    /// Set or clear the potion identifier.
+    pub fn set_potion(&mut self, potion: Option<&str>) -> Result<(), LootStackEditError> {
+        let potion = match potion {
+            Some(id) => {
+                validate_identifier(id)?;
+                Some(id.to_owned())
+            }
+            None => None,
+        };
+        self.stack.set_potion_id(potion);
+        Ok(())
+    }
+
+    /// Set or clear the deferred exploration-map search settings.
+    pub fn set_exploration(
+        &mut self,
+        exploration: Option<ExplorationMap>,
+    ) -> Result<(), LootStackEditError> {
+        if let Some(map) = &exploration {
+            validate_identifier(&map.destination)?;
+            validate_identifier(&map.decoration)?;
+        }
+        self.stack.set_exploration(exploration);
+        Ok(())
+    }
+
+    /// Append an enchantment identifier and signed level in stored order.
+    pub fn push_enchantment(&mut self, id: &str, level: i32) -> Result<(), LootStackEditError> {
+        validate_identifier(id)?;
+        self.stack.push_enchantment(id.to_owned(), level);
+        Ok(())
+    }
+
+    /// Update the first matching enchantment entry or append `(id, level)` at the end.
+    pub fn set_enchantment(&mut self, id: &str, level: i32) -> Result<(), LootStackEditError> {
+        validate_identifier(id)?;
+        self.stack.set_enchantment(id.to_owned(), level);
+        Ok(())
+    }
+
+    /// Validate every enchantment identifier and replace the enchantment list in order.
+    pub fn set_enchantments(
+        &mut self,
+        enchantments: impl IntoIterator<Item = (String, i32)>,
+    ) -> Result<(), LootStackEditError> {
+        let validated: Vec<_> = enchantments
+            .into_iter()
+            .map(|(id, level)| {
+                validate_identifier(&id)?;
+                Ok((id, level))
+            })
+            .collect::<Result<_, LootStackEditError>>()?;
+        self.stack.set_enchantments(validated);
+        Ok(())
+    }
+
+    /// Remove all enchantment entries from the candidate.
+    pub fn clear_enchantments(&mut self) {
+        self.stack.clear_enchantments();
+    }
+
+    /// Append a suspicious stew effect identifier and signed duration in ticks.
+    pub fn push_stew_effect(
+        &mut self,
+        effect: &str,
+        duration_ticks: i32,
+    ) -> Result<(), LootStackEditError> {
+        validate_identifier(effect)?;
+        self.stack
+            .push_stew_effect(effect.to_owned(), duration_ticks);
+        Ok(())
+    }
+
+    /// Validate every effect identifier and replace the suspicious stew effects in order.
+    pub fn set_stew_effects(
+        &mut self,
+        effects: impl IntoIterator<Item = (String, i32)>,
+    ) -> Result<(), LootStackEditError> {
+        let validated: Vec<_> = effects
+            .into_iter()
+            .map(|(effect, ticks)| {
+                validate_identifier(&effect)?;
+                Ok((effect, ticks))
+            })
+            .collect::<Result<_, LootStackEditError>>()?;
+        self.stack.set_stew_effects(validated);
+        Ok(())
+    }
+
+    /// Remove all suspicious stew effect entries from the candidate.
+    pub fn clear_stew_effects(&mut self) {
+        self.stack.clear_stew_effects();
+    }
+
+    /// Validate and append a name entry (`minecraft:custom_name` or `minecraft:item_name`).
+    pub fn push_name(&mut self, id: &str, text: &Text) -> Result<(), LootStackEditError> {
+        validate_identifier(id)?;
+        let encoded = (self.encode_name)(text).map_err(LootStackEditError::InvalidName)?;
+        self.stack.push_name_value(id.to_owned(), encoded);
+        Ok(())
+    }
+
+    /// Validate and set a name entry, replacing any prior entry with the same identifier.
+    pub fn set_name(&mut self, id: &str, text: &Text) -> Result<(), LootStackEditError> {
+        validate_identifier(id)?;
+        let encoded = (self.encode_name)(text).map_err(LootStackEditError::InvalidName)?;
+        self.stack.set_name_value(id.to_owned(), encoded);
+        Ok(())
+    }
+
+    /// Validate every name identifier and text tree, then replace the names list in order.
+    pub fn set_names(
+        &mut self,
+        names: impl IntoIterator<Item = (String, Text)>,
+    ) -> Result<(), LootStackEditError> {
+        let validated: Vec<_> = names
+            .into_iter()
+            .map(|(id, text)| {
+                validate_identifier(&id)?;
+                let encoded = (self.encode_name)(&text).map_err(LootStackEditError::InvalidName)?;
+                Ok((id, encoded))
+            })
+            .collect::<Result<_, LootStackEditError>>()?;
+        self.stack.set_names_values(validated);
+        Ok(())
+    }
+
+    /// Remove all name entries from the candidate.
+    pub fn clear_names(&mut self) {
+        self.stack.clear_names();
+    }
+
+    /// Validate and append a component value patch in stored order, without reordering duplicates.
+    pub fn push_component(&mut self, id: &str, value: Tag) -> Result<(), LootStackEditError> {
+        validate_component_patch(id, Some(&value))?;
+        self.stack.push_component(id.to_owned(), Some(value));
+        Ok(())
+    }
+
+    /// Validate and append an ordered component removal (`None`) without reordering earlier patches.
+    pub fn remove_component(&mut self, id: &str) -> Result<(), LootStackEditError> {
+        validate_component_id(id)?;
+        self.stack.push_component(id.to_owned(), None);
+        Ok(())
+    }
+
+    /// Validate and append an ordered component value or removal patch.
+    pub fn push_component_patch(
+        &mut self,
+        id: &str,
+        value: Option<Tag>,
+    ) -> Result<(), LootStackEditError> {
+        validate_component_patch(id, value.as_ref())?;
+        self.stack.push_component(id.to_owned(), value);
+        Ok(())
+    }
+
+    /// Validate every component patch entry and replace the ordered patch list.
+    pub fn set_components(
+        &mut self,
+        components: impl IntoIterator<Item = (String, Option<Tag>)>,
+    ) -> Result<(), LootStackEditError> {
+        let validated: Vec<_> = components
+            .into_iter()
+            .map(|(id, value)| {
+                validate_component_patch(&id, value.as_ref())?;
+                Ok((id, value))
+            })
+            .collect::<Result<_, LootStackEditError>>()?;
+        self.stack.set_components(validated);
+        Ok(())
+    }
+
+    /// Retain only component patch entries matching `keep`, preserving stored order.
+    pub fn retain_components(&mut self, mut keep: impl FnMut(&str, Option<&Tag>) -> bool) {
+        self.stack.retain_components(&mut keep);
+    }
+
+    /// Remove all component patch entries from the candidate.
+    pub fn clear_components(&mut self) {
+        self.stack.clear_components();
     }
 }
 

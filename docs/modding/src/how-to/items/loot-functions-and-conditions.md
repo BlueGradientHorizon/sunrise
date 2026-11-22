@@ -62,13 +62,15 @@ Wire depth and size checks. An unrepresentable entry refuses load.
 
 ## Applying and testing
 
-A function's `apply` receives its entry, the current owned `LootStack` and a scoped
-`&mut dyn LootTypeContext`, returning `Result<LootStack, String>`. A condition's
-`test` receives its entry and that context, returning `Result<bool, String>`.
+A function's `apply` receives its entry, a scoped `&mut LootStackEditor<'_>` over the
+active candidate, and a scoped `&mut dyn LootTypeContext`, returning `Result<(), String>`.
+A condition's `test` receives its entry and that context, returning `Result<bool, String>`.
 The result allows a refused resource call to be diagnosed, not mistaken for a
-successful edit. A function's rejected output leaves its preceding stack intact;
-a condition call failure is diagnosed and does not pass. Callback failures warn once
-per type id in each retained data generation, not once per roll.
+successful edit. Each editor write validates its own input before touching its target field;
+if a later write or the callback fails, earlier valid edits and random draws remain in
+place, matching vanilla's in-place `LootItemFunction.apply`. A condition call failure is
+diagnosed and does not pass. Callback failures warn once per type id in each retained data
+generation, not once per roll.
 
 The context lends `LootParamsView` through `params()`, authoritative tags through
 `tags()`, and the evaluator's actual selected random stream through `random()`.
@@ -83,14 +85,20 @@ order and short-circuit, so skipped terms consume no random. A function's
 first and returns the original stack if false. A direct function can return
 false from `conditional()` and own that field itself.
 
-`LootStack` carries an `ItemKey`, signed intermediate count, damage, enchantments,
-potion, deferred map facts, names and ordered NBT component patches.
-Each patch is `(String, Option<Tag>)`; `None` removes a component, and repeated
-ids apply in order. Unknown NBT values retain their exact type. Names are API
-`Text` trees. Empty and over-max intermediate counts are allowed; ordinary root
-splitting happens after the table functions. Boundary conversion validates the
-whole candidate before writeback. The items evaluator consumes stacks into its
-ordinary item representation and has no structure-search capability.
+`LootStackEditor` lends the current candidate through `view() -> LootStackView<'_>`,
+copies it into an owned `LootStack` on demand through `to_owned()`, and mutates fields
+in place (`set_item`, `set_count`, `set_damage`, `set_map`, `set_ominous_amplifier`,
+`set_potion`, `set_exploration`, enchantment, stew-effect, name and component-patch
+helpers, or whole-candidate `replace`). Signed intermediate counts, damage, enchantment
+levels, ominous amplifiers and stew durations are not clamped. Component patch writes
+preserve stored order and removals (`remove_component`, `push_component`,
+`push_component_patch`, `set_components`, `retain_components`), retaining exact unknown
+NBT types and enforcing vanilla's `NbtAccounter.MAX_STACK_DEPTH` (512) container depth
+limit. Names are validated through the API `Text` boundary on write and projected on read.
+Empty and over-max intermediate counts remain intact until ordinary root splitting after
+the table functions. `LootStack` and `ExplorationMap` are in-process owned snapshots (not
+`Wire`). The items evaluator consumes stacks into its ordinary item representation and has
+no structure-search capability.
 
 `params.entity()`, `damage()`, `last_damage_player()`, `tool()`, `block()` and
 `biome()` return only parameters the caller supplied. The place reads are

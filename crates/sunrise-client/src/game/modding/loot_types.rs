@@ -1,5 +1,5 @@
 //! Direct, owner-scoped adapters for the two loot map-codec registries.
-use super::api_values::{TryIntoApi, TryIntoEngine, loot_values::loot_params};
+use super::api_values::loot_values::{loot_params, loot_stack_editor};
 #[cfg(test)]
 #[path = "loot_types/tests.rs"]
 mod tests;
@@ -72,24 +72,23 @@ impl Registry for Codecs {
         ctx: &loot::LootContext<'_>,
         random: &mut dyn RollRandom,
         tags: &dyn loot::LootTags,
-        stack: &loot::LootStack,
-    ) -> Result<loot::LootStack, String> {
+        stack: &mut loot::LootStack,
+    ) -> Result<(), String> {
         let codec = self
             .functions
             .get(kind)
             .ok_or_else(|| format!("unknown loot function type {kind}"))?;
-        let stack = stack
-            .try_into_api()
-            .map_err(|error| format!("input stack: {error:?}"))?;
+        let mut editor = loot_stack_editor(stack);
         let mut context = Context {
             facts: ctx,
             random,
             tags: crate::game::loot_tags::LootTags(tags),
         };
-        codec
-            .apply(&LootEntryData::new(data.clone())?, stack, &mut context)?
-            .try_into_engine(&())
-            .map_err(|error| format!("output stack: {error:?}"))
+        codec.apply(
+            &LootEntryData::new(data.clone())?,
+            &mut editor,
+            &mut context,
+        )
     }
     fn test(
         &self,

@@ -1,5 +1,5 @@
 //! Static, unsynced loot function and condition map-codec registries.
-use crate::{Identifier, LootParamsView, LootStack, RandomSource, Tags};
+use crate::{Identifier, LootParamsView, LootStackEditor, RandomSource, Tags};
 #[path = "loot_types/owned.rs"]
 pub(crate) mod owned;
 
@@ -49,14 +49,16 @@ pub trait ModLootFunction: Send + Sync + 'static {
     fn conditional(&self) -> bool {
         true
     }
-    /// Transform a stack. Signed, empty and over-max counts remain intact until splitting.
-    /// A refused resource call is reported by type, never silently substituted.
+    /// Edit the current candidate stack in place. Signed, empty and over-max counts remain
+    /// intact until splitting. Earlier valid edits and random draws are retained if a later
+    /// write or the callback fails; a refused resource call is reported by type, never
+    /// silently substituted.
     fn apply(
         &self,
         data: &LootEntryData,
-        stack: LootStack,
+        stack: &mut LootStackEditor<'_>,
         context: &mut dyn LootTypeContext,
-    ) -> Result<LootStack, String>;
+    ) -> Result<(), String>;
 }
 
 /// A map codec in `Registries.LOOT_CONDITION_TYPE`, registered before data loads.

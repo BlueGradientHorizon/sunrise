@@ -77,9 +77,9 @@ impl ModLootFunction for Function {
     fn apply(
         &self,
         data: &LootEntryData,
-        stack: LootStack,
+        stack: &mut LootStackEditor<'_>,
         context: &mut dyn LootTypeContext,
-    ) -> Result<LootStack, String> {
+    ) -> Result<(), String> {
         crate::callback_owner::call(
             self.owner,
             self.index,

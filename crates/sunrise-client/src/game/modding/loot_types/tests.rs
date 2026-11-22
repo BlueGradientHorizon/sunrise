@@ -14,20 +14,22 @@ impl ModLootFunction for Codec {
     fn apply(
         &self,
         data: &LootEntryData,
-        mut stack: mod_api::LootStack,
+        stack: &mut mod_api::LootStackEditor<'_>,
         context: &mut dyn mod_api::LootTypeContext,
-    ) -> Result<mod_api::LootStack, String> {
+    ) -> Result<(), String> {
         assert!(context.params().origin().is_none());
         let draw = context.random().next_int_bound(5);
         self.0
             .lock()
             .unwrap()
             .push((data.value()["label"].as_str().unwrap().into(), draw));
-        stack.count = stack
-            .count
+        let count = stack
+            .view()
+            .count()
             .wrapping_mul(data.value()["factor"].as_i64().unwrap() as i32)
             .wrapping_add(draw);
-        Ok(stack)
+        stack.set_count(count);
+        Ok(())
     }
 }
 impl ModLootCondition for Codec {

@@ -25,9 +25,9 @@ impl sunrise_world::loot::types::Registry for QueryCodec {
         _: &sunrise_world::loot::LootContext<'_>,
         _: &mut dyn sunrise_world::loot::types::RollRandom,
         _: &dyn sunrise_world::loot::LootTags,
-        stack: &sunrise_world::loot::LootStack,
-    ) -> std::result::Result<sunrise_world::loot::LootStack, String> {
-        Ok(stack.clone())
+        _: &mut sunrise_world::loot::LootStack,
+    ) -> std::result::Result<(), String> {
+        Ok(())
     }
     fn test(
         &self,

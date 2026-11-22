@@ -1,9 +1,10 @@
 # Reading tags in custom loot evaluation
 
 Registered `ModLootFunction` and `ModLootCondition` codecs read
-`LootTypeContext::tags() -> &dyn Tags` alongside their owned context and candidate
-snapshots. This is a read-only view of the merged tags used by the current loot
-evaluator. The context supplies only its snapshot, tags and selected random.
+`LootTypeContext::tags() -> &dyn Tags` alongside their borrowed `LootParamsView`
+and, for functions, scoped `&mut LootStackEditor<'_>`. This is a read-only view of
+the merged tags used by the current loot evaluator. The context supplies only its
+borrowed parameters, tags and selected random.
 
 Resolve an `Identifier` with `context.tags().key(&id)`, retain the resulting `TagKey`,
 and call `is_in_tag(item, tag)` for item membership. The `items(tag)`, `blocks(tag)`

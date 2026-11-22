@@ -1,8 +1,10 @@
 //! Read adapters for the evaluator's existing parameter rows.
 use super::{LootDamage, LootEntity, LootLevel, LootStack};
 use mod_api::{
-    __private::{LootDamageAccess, LootEntityAccess, LootLevelAccess, LootStackAccess},
-    LootExplorationView,
+    __private::{
+        LootDamageAccess, LootEntityAccess, LootLevelAccess, LootStackAccess, LootStackEditAccess,
+    },
+    ExplorationMap as ApiExplorationMap, LootExplorationView,
 };
 use serde_json::Value;
 use sunrise_core::nbt::Tag;
@@ -65,6 +67,113 @@ impl LootStackAccess for LootStack {
 
     fn names(&self) -> &[(String, Value)] {
         &self.names
+    }
+}
+
+impl LootStackEditAccess for LootStack {
+    fn as_view(&self) -> &dyn LootStackAccess {
+        self
+    }
+
+    fn set_item_id(&mut self, id: &str) {
+        self.item = id.to_owned();
+    }
+
+    fn set_count(&mut self, count: i32) {
+        self.count = count;
+    }
+
+    fn set_damage(&mut self, damage: i32) {
+        self.damage = damage;
+    }
+
+    fn set_map(&mut self, map: bool) {
+        self.map = map;
+    }
+
+    fn set_ominous_amplifier(&mut self, amplifier: Option<i32>) {
+        self.ominous_amplifier = amplifier;
+    }
+
+    fn set_potion_id(&mut self, potion: Option<String>) {
+        self.potion = potion;
+    }
+
+    fn set_exploration(&mut self, exploration: Option<ApiExplorationMap>) {
+        self.exploration = exploration.map(|map| {
+            Box::new(super::ExplorationMap {
+                destination: map.destination,
+                decoration: map.decoration,
+                zoom: map.zoom,
+                search_radius: map.search_radius,
+                skip_existing_chunks: map.skip_existing_chunks,
+            })
+        });
+    }
+
+    fn push_enchantment(&mut self, id: String, level: i32) {
+        self.enchantments.push((id, level));
+    }
+
+    fn set_enchantment(&mut self, id: String, level: i32) {
+        match self.enchantments.iter_mut().find(|(name, _)| *name == id) {
+            Some(entry) => entry.1 = level,
+            None => self.enchantments.push((id, level)),
+        }
+    }
+
+    fn set_enchantments(&mut self, enchantments: Vec<(String, i32)>) {
+        self.enchantments = enchantments;
+    }
+
+    fn clear_enchantments(&mut self) {
+        self.enchantments.clear();
+    }
+
+    fn push_stew_effect(&mut self, id: String, duration_ticks: i32) {
+        self.stew_effects.push((id, duration_ticks));
+    }
+
+    fn set_stew_effects(&mut self, effects: Vec<(String, i32)>) {
+        self.stew_effects = effects;
+    }
+
+    fn clear_stew_effects(&mut self) {
+        self.stew_effects.clear();
+    }
+
+    fn push_name_value(&mut self, id: String, value: Value) {
+        self.names.push((id, value));
+    }
+
+    fn set_name_value(&mut self, id: String, value: Value) {
+        self.names.retain(|(existing, _)| *existing != id);
+        self.names.push((id, value));
+    }
+
+    fn set_names_values(&mut self, names: Vec<(String, Value)>) {
+        self.names = names;
+    }
+
+    fn clear_names(&mut self) {
+        self.names.clear();
+    }
+
+    fn push_component(&mut self, id: String, value: Option<Tag>) {
+        self.components.push((id, value));
+    }
+
+    fn set_components(&mut self, components: Vec<(String, Option<Tag>)>) {
+        self.components = components;
+    }
+
+    fn clear_components(&mut self) {
+        self.components.clear();
+    }
+
+    fn retain_components(&mut self, keep: &mut dyn FnMut(&str, Option<&Tag>) -> bool) {
+        self.components
+            .retain(|(id, value)| keep(id.as_str(), value.as_ref()));
     }
 }
 
