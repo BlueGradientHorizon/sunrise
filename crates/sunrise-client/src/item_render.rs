@@ -89,6 +89,8 @@ pub struct ItemQuad {
     /// The quad's render type has an `OitPipelineSet` (`entityTranslucent`: a
     /// player head's skin): improved transparency draws it in its stages.
     pub oit: bool,
+    /// `RenderTypes.bannerPattern`: translucent blend without depth writes or alpha cutout.
+    pub banner_pattern: bool,
 }
 /// `TextureTransform.setupGlintTexturing`'s inputs.
 #[derive(Clone, Copy, Debug)]
@@ -995,6 +997,7 @@ fn submit_quads(
             cull_back: true,
             translucent,
             oit: false,
+            banner_pattern: false,
         });
     }
 }
@@ -1837,11 +1840,15 @@ impl ItemSink for WorldSink<'_> {
             }
             return;
         }
-        let overlay = match (glint.is_some(), q.translucent) {
-            (false, true) => crate::gfx::TRANSLUCENT_ITEM_OVERLAY,
-            (false, false) => 0,
-            (true, true) => crate::gfx::TRANSLUCENT_GLINT_ITEM_OVERLAY,
-            (true, false) => 7,
+        let overlay = if q.banner_pattern {
+            crate::gfx::BANNER_PATTERN_OVERLAY
+        } else {
+            match (glint.is_some(), q.translucent) {
+                (false, true) => crate::gfx::TRANSLUCENT_ITEM_OVERLAY,
+                (false, false) => 0,
+                (true, true) => crate::gfx::TRANSLUCENT_GLINT_ITEM_OVERLAY,
+                (true, false) => 7,
+            }
         };
         // Only plain and foil quads: the translucent sheet's overlays are their own material.
         let oit = if q.oit && matches!(overlay, 0 | 7) {

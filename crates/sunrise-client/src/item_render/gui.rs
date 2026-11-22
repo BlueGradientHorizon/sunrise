@@ -753,6 +753,7 @@ mod tests {
             cull_back: false,
             translucent: false,
             oit: false,
+            banner_pattern: false,
         }
     }
 

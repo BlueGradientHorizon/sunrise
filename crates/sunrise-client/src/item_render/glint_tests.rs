@@ -2427,15 +2427,134 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
             tier: 0,
         },
     );
-    // Base and pattern layers draw without foil (`overlay == 0`); one `GLINT_ONLY_OVERLAY` pass follows.
-    let (glint_verts, non_glint_verts): (Vec<_>, Vec<_>) = out
-        .into_iter()
-        .partition(|v| (v.layer & 0xFFFF) == crate::gfx::GLINT_ONLY_OVERLAY);
-    assert!(non_glint_verts.iter().all(|v| (v.layer & 0xFFFF) == 0));
-    assert_eq!(non_glint_verts.len(), want_single.len() * 4 * 2);
+    // Base draws opaque (`overlay == 0`), pattern layers use `BANNER_PATTERN_OVERLAY`
+    // (`RenderTypes.bannerPattern`), and one `GLINT_ONLY_OVERLAY` pass follows.
+    let shield_red_models = witness["special_models"]["shield_red"]["ground"]["models"]
+        .as_array()
+        .unwrap();
+    assert_eq!(shield_red_models.len(), 3);
+    assert_eq!(
+        shield_red_models[0]["pipeline"]["location"].as_str(),
+        Some("minecraft:pipeline/entity_solid")
+    );
+    assert_eq!(
+        shield_red_models[0]["pipeline"]["depth_write"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        shield_red_models[1]["pipeline"]["location"].as_str(),
+        Some("minecraft:pipeline/banner_pattern")
+    );
+    assert_eq!(
+        shield_red_models[1]["pipeline"]["depth_write"].as_bool(),
+        Some(false)
+    );
+    assert!(shield_red_models[1]["pipeline"]["alpha_cutout"].is_null());
+    assert_eq!(
+        shield_red_models[1]["force_solid_model_phase"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(shield_red_models[1]["has_oit"].as_bool(), Some(false));
+    assert_eq!(
+        shield_red_models[2]["pipeline"]["location"].as_str(),
+        Some("minecraft:pipeline/glint")
+    );
+
+    let mut base_verts = Vec::new();
+    let mut pattern_verts = Vec::new();
+    let mut glint_verts = Vec::new();
+    for v in out {
+        match v.layer & 0xFFFF {
+            0 => base_verts.push(v),
+            crate::gfx::BANNER_PATTERN_OVERLAY => pattern_verts.push(v),
+            crate::gfx::GLINT_ONLY_OVERLAY => glint_verts.push(v),
+            other => panic!("unexpected shield_red overlay {other}"),
+        }
+    }
+    assert_eq!(base_verts.len(), want_single.len() * 4);
+    assert_eq!(pattern_verts.len(), want_single.len() * 4);
+    assert!(
+        pattern_verts
+            .iter()
+            .all(|v| v.normal == crate::mesher::CULL_BACK),
+        "banner_pattern layers cull back faces"
+    );
     let mut got = vertex_quad_glint_bits(&glint_verts);
     got.sort();
     assert_eq!(got, want_single, "26.3 shield_red patterned_shield_glint");
+
+    // Multi-layer patterned shield (`shield_red_stripe`): base (`0`), 2 pattern passes
+    // (`BANNER_PATTERN_OVERLAY`), and 1 glint pass (`GLINT_ONLY_OVERLAY`).
+    let stripe_models = witness["special_models"]["shield_red_stripe"]["ground"]["models"]
+        .as_array()
+        .unwrap();
+    assert_eq!(stripe_models.len(), 4);
+    assert_eq!(
+        stripe_models[1]["pipeline"]["location"].as_str(),
+        Some("minecraft:pipeline/banner_pattern")
+    );
+    assert_eq!(
+        stripe_models[2]["pipeline"]["location"].as_str(),
+        Some("minecraft:pipeline/banner_pattern")
+    );
+    let mut shield_red_stripe = shield_red.clone();
+    shield_red_stripe.patch.insert(
+        "minecraft:banner_patterns".into(),
+        Some(serde_json::json!([{
+            "pattern": {
+                "asset_id": "minecraft:stripe_bottom",
+                "translation_key": "block.minecraft.banner.stripe_bottom"
+            },
+            "color": "blue"
+        }])),
+    );
+    let stripe_sprites = dummy_hud_sprites(&[
+        "entity/shield/shield_base",
+        "entity/shield/base",
+        "entity/shield/stripe_bottom",
+    ]);
+    let stripe_state = renderer.resolve(
+        &shield_red_stripe,
+        DisplayContext::Ground,
+        None,
+        None,
+        0,
+        &NoEnv,
+    );
+    let mut stripe_out = Vec::new();
+    stripe_state.submit(
+        &renderer,
+        &stripe_sprites,
+        &NoHost,
+        Mat4::IDENTITY,
+        &mut WorldSink {
+            out: &mut stripe_out,
+            light: 0xF0F0,
+            lights: None,
+            glint: Some(Glint {
+                millis: 123_456,
+                speed: 0.5,
+                alpha: 0.75,
+                scale: 8.0,
+            }),
+            tier: 0,
+        },
+    );
+    let count_overlay = |ov: u32| {
+        stripe_out
+            .iter()
+            .filter(|v| (v.layer & 0xFFFF) == ov)
+            .count()
+    };
+    assert_eq!(count_overlay(0), want_single.len() * 4);
+    assert_eq!(
+        count_overlay(crate::gfx::BANNER_PATTERN_OVERLAY),
+        want_single.len() * 4 * 2
+    );
+    assert_eq!(
+        count_overlay(crate::gfx::GLINT_ONLY_OVERLAY),
+        want_single.len() * 4
+    );
 
     // In GUI, patterned shield emits foil ONCE (same glint vertex count as plain shield).
     let mut red_batch = crate::hud::HudBatch::scratch([64, 64]);
@@ -2480,6 +2599,208 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
         count_glint(&red_batch),
         count_glint(&plain_batch),
         "patterned shield GUI must emit foil once, not per pattern layer"
+    );
+}
+
+/// 26.3 parity: `RenderTypes.bannerPattern` / `RenderPipelines.BANNER_PATTERN` blends a partially
+/// transparent pattern texel (`alpha = 8/255 < 0.1`, no alpha cutout) without writing depth.
+#[test]
+#[ignore = "daily"]
+fn shield_banner_pattern_blends_low_alpha_without_depth_write_26_3() {
+    use crate::gfx::entity_pixel_test::{
+        EntityWorldDraw, render_entity_world, test_world_projection,
+    };
+    use sunrise_assets::item_model::NoEnv;
+
+    let witness = glint_witness_26_3();
+    let bp = &witness["banner_pattern"];
+    let pipe = &bp["pipeline"];
+    assert_eq!(bp["render_type"].as_str(), Some("banner_pattern"));
+    assert_eq!(
+        pipe["location"].as_str(),
+        Some("minecraft:pipeline/banner_pattern")
+    );
+    assert_eq!(pipe["cull"].as_bool(), Some(true));
+    assert_eq!(pipe["depth_test"].as_str(), Some("GREATER_THAN_OR_EQUAL"));
+    assert_eq!(pipe["depth_write"].as_bool(), Some(false));
+    assert!(pipe["alpha_cutout"].is_null());
+    assert_eq!(bp["force_solid_model_phase"].as_bool(), Some(true));
+    assert_eq!(bp["has_oit"].as_bool(), Some(false));
+    assert_eq!(pipe["blend"]["src_color"].as_str(), Some("SRC_ALPHA"));
+    assert_eq!(
+        pipe["blend"]["dst_color"].as_str(),
+        Some("ONE_MINUS_SRC_ALPHA")
+    );
+    assert_eq!(pipe["blend"]["src_alpha"].as_str(), Some("ONE"));
+    assert_eq!(
+        pipe["blend"]["dst_alpha"].as_str(),
+        Some("ONE_MINUS_SRC_ALPHA")
+    );
+    assert!(
+        pipe["define_flags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v.as_str() == Some("NO_OVERLAY"))
+    );
+
+    let parse_rgba = |v: &Value| -> [u8; 4] {
+        let a = v.as_array().unwrap();
+        std::array::from_fn(|i| a[i].as_u64().unwrap() as u8)
+    };
+    let src_rgba = parse_rgba(&bp["alpha_8_src_rgba8"]);
+    let dst_rgba = parse_rgba(&bp["base_dst_rgba8"]);
+    let blended_rgba = parse_rgba(&bp["blended_rgba8"]);
+    assert_eq!(src_rgba[3], 8);
+
+    // 4x1 atlas: [0]=opaque base, [1]=alpha 8/255 pattern, [2]=clear pattern, [3]=white.
+    let mut atlas = Vec::with_capacity(16);
+    atlas.extend_from_slice(&dst_rgba);
+    atlas.extend_from_slice(&src_rgba);
+    atlas.extend_from_slice(&[0, 0, 0, 0]);
+    atlas.extend_from_slice(&[255, 255, 255, 255]);
+    let white_glint = [255u8, 255, 255, 255];
+    let view_proj = test_world_projection(70.0, 1.0, 512.0);
+    let pixel = |img: &[u8], x: usize, y: usize| -> [u8; 4] {
+        let at = (y * 64 + x) * 4;
+        [img[at], img[at + 1], img[at + 2], img[at + 3]]
+    };
+
+    // 1. Real 26.3 patterned shield with an alpha 8/255 stripe texel blends in classic and OIT.
+    let renderer = full_renderer_26_3();
+    let mut shield = StackView::new("minecraft:shield", 1);
+    shield.patch.insert(
+        "minecraft:base_color".into(),
+        Some(Value::String("white".into())),
+    );
+    shield.patch.insert(
+        "minecraft:banner_patterns".into(),
+        Some(serde_json::json!([{
+            "pattern": {
+                "asset_id": "minecraft:stripe_bottom",
+                "translation_key": "block.minecraft.banner.stripe_bottom"
+            },
+            "color": "white"
+        }])),
+    );
+    let rect = |u0, u1| Rect {
+        u0,
+        v0: 0.1,
+        u1,
+        v1: 0.9,
+        w: 1,
+        h: 1,
+    };
+    let shield_sprites = HashMap::from([
+        ("entity/shield/shield_base".to_owned(), rect(0.05, 0.20)),
+        ("entity/shield/base".to_owned(), rect(0.55, 0.70)),
+        ("entity/shield/stripe_bottom".to_owned(), rect(0.30, 0.45)),
+    ]);
+    let state = renderer.resolve(&shield, DisplayContext::Ground, None, None, 0, &NoEnv);
+    let pose =
+        Mat4::from_translation(Vec3::new(0.0, -0.5, -1.5)) * Mat4::from_scale(Vec3::splat(4.0));
+    let mut shield_verts = Vec::new();
+    state.submit(
+        &renderer,
+        &shield_sprites,
+        &NoHost,
+        pose,
+        &mut WorldSink {
+            out: &mut shield_verts,
+            light: 0xF0F0,
+            lights: None,
+            glint: None,
+            tier: 0,
+        },
+    );
+    for oit in [false, true] {
+        let img = render_entity_world(EntityWorldDraw {
+            vertices: &shield_verts,
+            atlas_size: [4, 1],
+            atlas: &atlas,
+            glint_size: [1, 1],
+            glint: &white_glint,
+            view_proj,
+            glint_alpha: 0.0,
+            oit,
+        })
+        .expect("shield banner pattern GPU render");
+        assert_eq!(
+            pixel(&img, 32, 32),
+            blended_rgba,
+            "oit={oit}: alpha 8/255 shield pattern texel must blend over base instead of discarding"
+        );
+    }
+
+    // 2. Depth-write-off check: equal-depth `GLINT_ONLY_OVERLAY` passes on the left (opaque base
+    //    wrote depth) and fails on the right (pattern-only, no depth write).
+    let quad = |x0: f32, x1: f32, u: f32, layer: u32, normal: [i8; 4]| {
+        [
+            [x0, -1.0, -2.0],
+            [x1, -1.0, -2.0],
+            [x1, 1.0, -2.0],
+            [x0, 1.0, -2.0],
+        ]
+        .map(|pos| Vertex {
+            pos,
+            uv: [u, 0.5],
+            layer,
+            color: u32::MAX,
+            light: 0xF0F0,
+            normal,
+            glint_uv: [0.5, 0.5],
+        })
+    };
+    let mut depth_verts = Vec::new();
+    depth_verts.extend_from_slice(&quad(-1.0, -0.05, 0.125, 0, [0; 4]));
+    depth_verts.extend_from_slice(&quad(
+        -1.0,
+        -0.05,
+        0.375,
+        crate::gfx::BANNER_PATTERN_OVERLAY,
+        crate::mesher::CULL_BACK,
+    ));
+    depth_verts.extend_from_slice(&quad(
+        -1.0,
+        -0.05,
+        0.125,
+        crate::gfx::GLINT_ONLY_OVERLAY,
+        [0; 4],
+    ));
+    depth_verts.extend_from_slice(&quad(
+        0.05,
+        1.0,
+        0.375,
+        crate::gfx::BANNER_PATTERN_OVERLAY,
+        crate::mesher::CULL_BACK,
+    ));
+    depth_verts.extend_from_slice(&quad(
+        0.05,
+        1.0,
+        0.125,
+        crate::gfx::GLINT_ONLY_OVERLAY,
+        [0; 4],
+    ));
+    let depth_img = render_entity_world(EntityWorldDraw {
+        vertices: &depth_verts,
+        atlas_size: [4, 1],
+        atlas: &atlas,
+        glint_size: [1, 1],
+        glint: &white_glint,
+        view_proj,
+        glint_alpha: 1.0,
+        oit: false,
+    })
+    .expect("banner pattern depth-write-off GPU render");
+    assert_eq!(
+        pixel(&depth_img, 16, 32),
+        [255, 255, 255, 255],
+        "equal-depth glint must pass where opaque base wrote depth"
+    );
+    assert_eq!(
+        pixel(&depth_img, 48, 32),
+        [src_rgba[3], 0, 0, 255],
+        "banner_pattern must blend alpha 8/255 without writing depth, rejecting equal-depth glint"
     );
 }
 

@@ -16,7 +16,7 @@ use super::Vertex;
 /// ignored and they stay in the first one, in their order.
 /// Sorted still-fluid geometry follows, then the two native world-canvas text materials,
 /// NORMAL and POLYGON_OFFSET. Material storage order is independent of their draw stages.
-const MATERIALS: usize = 18;
+const MATERIALS: usize = 19;
 pub const TERRAIN_MODEL_SOLID_OVERLAY: u32 = 42;
 pub const TERRAIN_MODEL_CUTOUT_OVERLAY: u32 = 43;
 pub const TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY: u32 = 44;
@@ -25,6 +25,8 @@ pub const TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY: u32 = 44;
 pub const TERRAIN_MODEL_TRANSLUCENT_OVERLAY: u32 = 46;
 /// `RenderTypes.patternedShieldGlint`: equal-depth, no-depth-write glint-only overlay pass.
 pub const GLINT_ONLY_OVERLAY: u32 = 48;
+/// `RenderTypes.bannerPattern`: translucent-blended, no-depth-write, no-alpha-cutout pattern pass.
+pub const BANNER_PATTERN_OVERLAY: u32 = 49;
 /// The overlay of a resource pack's Polytone custom particle drawn additively
 /// (`additive_translucent`): fog tints its colour as vanilla's particle shader does, which the
 /// other additive geometry does not take.
@@ -129,7 +131,8 @@ fn material(layer: u32, oit: bool) -> usize {
         TERRAIN_MODEL_CUTOUT_OVERLAY => return 14,
         TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY => return 15,
         TERRAIN_MODEL_TRANSLUCENT_OVERLAY => return 16,
-        GLINT_ONLY_OVERLAY => return 17,
+        BANNER_PATTERN_OVERLAY => return 17,
+        GLINT_ONLY_OVERLAY => return 18,
         _ => {}
     }
     if layer & 0xffff == FLUID_OVERLAY {
@@ -278,10 +281,12 @@ impl EntityBatch {
         }
         // Native translucent models sort their quads far to near, as `sortOnUpload` does.
         append_sorted(&mut self.sort, &mut self.combined, entities, &self.runs[16]);
-        // Equal-depth glint-only overlays (`RenderTypes.patternedShieldGlint`) keep submission order.
-        for &(first, count) in &self.runs[17] {
-            self.combined
-                .extend_from_slice(&entities[first * 4..(first + count) * 4]);
+        // `RenderTypes.bannerPattern` and `RenderTypes.patternedShieldGlint` keep submission order.
+        for runs in &self.runs[17..19] {
+            for &(first, count) in runs {
+                self.combined
+                    .extend_from_slice(&entities[first * 4..(first + count) * 4]);
+            }
         }
         if self.moved_additive == 0 {
             self.combined.extend_from_slice(additive);
@@ -368,6 +373,7 @@ mod tests {
             ENERGY_SWIRL_OVERLAY,
             WATER_MASK_OVERLAY,
             TRANSLUCENT_PARTICLE_OVERLAY,
+            BANNER_PATTERN_OVERLAY,
             GLINT_ONLY_OVERLAY,
             7,
         ];
@@ -511,7 +517,7 @@ mod tests {
         );
         assert_eq!(
             counts,
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 1, 1, 0, 0]
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 2, 1, 1, 0, 0, 0]
         );
         let xs: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
         assert_eq!(
@@ -585,7 +591,7 @@ mod tests {
         let mut batch = EntityBatch::default();
         assert_eq!(
             batch.update(&entities, &additive, &quad(0, 9.0), &quad(0, 10.0), true),
-            [1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 1, 0, 0, 0, 0, 0]
+            [1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0]
         );
         let positions: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
         assert_eq!(
@@ -662,7 +668,18 @@ mod tests {
 
     #[test]
     fn a_tier_in_the_high_bits_keeps_the_material() {
-        for layer in [0u32, 11, 12, 15, 32, 33, 35, GLINT_ONLY_OVERLAY, OIT_ENTITY] {
+        for layer in [
+            0u32,
+            11,
+            12,
+            15,
+            32,
+            33,
+            35,
+            BANNER_PATTERN_OVERLAY,
+            GLINT_ONLY_OVERLAY,
+            OIT_ENTITY,
+        ] {
             for oit in [false, true] {
                 assert_eq!(material(layer | 4 << 16, oit), material(layer, oit));
             }
@@ -670,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn glint_only_quads_stay_in_order_in_their_own_material() {
+    fn banner_pattern_and_glint_only_quads_stay_in_order_and_skip_oit() {
         let quad = |layer: u32, x: f32| {
             [Vertex {
                 layer,
@@ -680,18 +697,22 @@ mod tests {
         };
         let entities: Vec<_> = [
             (0, 1.0),
-            (GLINT_ONLY_OVERLAY, 2.0),
-            (0, 3.0),
-            (GLINT_ONLY_OVERLAY, 4.0),
+            (BANNER_PATTERN_OVERLAY | OIT_ENTITY, 2.0),
+            (GLINT_ONLY_OVERLAY | OIT_ENTITY, 3.0),
+            (0, 4.0),
+            (BANNER_PATTERN_OVERLAY, 5.0),
+            (GLINT_ONLY_OVERLAY, 6.0),
         ]
         .into_iter()
         .flat_map(|(layer, x)| quad(layer, x))
         .collect();
-        let mut batch = EntityBatch::default();
-        let counts = batch.update(&entities, &[], &[], &[], false);
-        assert_eq!((counts[0], counts[17]), (2, 2));
-        let xs: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
-        assert_eq!(xs, [1.0, 3.0, 2.0, 4.0]);
+        for oit in [false, true] {
+            let mut batch = EntityBatch::default();
+            let counts = batch.update(&entities, &[], &[], &[], oit);
+            assert_eq!((counts[0], counts[9], counts[17], counts[18]), (2, 0, 2, 2));
+            let xs: Vec<_> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
+            assert_eq!(xs, [1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
+        }
     }
 
     #[test]
@@ -719,7 +740,7 @@ mod tests {
         let counts = batch.update(&entities, &[], &[], &[], false);
         assert_eq!(
             counts,
-            [4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            [4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
         let xs: Vec<f32> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
         assert_eq!(xs, [0.0, 1.0, 2.0, 4.0, 3.0]);
@@ -727,7 +748,7 @@ mod tests {
         let counts = batch.update(&entities, &[], &[], &[], true);
         assert_eq!(
             counts,
-            [2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0]
+            [2, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
         let xs: Vec<f32> = batch.combined.iter().step_by(4).map(|v| v.pos[0]).collect();
         assert_eq!(xs, [0.0, 2.0, 3.0, 1.0, 4.0]);

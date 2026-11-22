@@ -317,6 +317,19 @@ struct ClippedEntity {
     let rgb = color.rgb * fade;
     return frame_stored(vec4(rgb * rgb, 0.0));
 }
+// core/entity.fsh (`RenderPipelines.BANNER_PATTERN`): NO_OVERLAY and no ALPHA_CUTOUT,
+// alpha-blended without depth writes over the shield or banner base model.
+@fragment fn fs_banner_pattern(in: Out, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+    let texel = textureSample(atlas, atlas_sampler, in.uv);
+    var color = texel * select(in.back_color, in.color, front);
+    color *= in.light_color;
+    let f = max(linear_fog(in.fog_distance.x, globals.fog.x, globals.fog.y),
+                linear_fog(in.fog_distance.y, globals.fog.z, globals.fog.w));
+    color = vec4(mix(color.rgb, globals.fog_color.rgb, f * globals.fog_color.a), color.a);
+    let written = entity_written_color(in, color);
+    if in.cull != 0u && !front { discard; }
+    return written;
+}
 fn entity_color(in: Out, front: bool, apply_glint: bool) -> vec4<f32> {
     var uv = in.uv;
     if in.overlay == 6u { uv.y = in.wrap.x + fract(in.uv.y) * in.wrap.y; }

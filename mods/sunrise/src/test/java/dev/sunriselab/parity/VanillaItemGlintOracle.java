@@ -5,6 +5,10 @@ import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.QuadInstance;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.DepthStencilState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.serialization.JsonOps;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
@@ -20,11 +24,15 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.OptionInstance;
 import net.minecraft.client.Options;
 import net.minecraft.client.TextureFilteringMethod;
+import net.minecraft.client.gui.render.DynamicAtlasAllocator;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.model.geom.EntityModelSet;
+import net.minecraft.client.model.geom.builders.UVPair;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.OrderedSubmitNodeCollector;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.ShaderDefines;
 import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.block.MovingBlockRenderState;
@@ -41,8 +49,10 @@ import net.minecraft.client.renderer.item.ItemModel;
 import net.minecraft.client.renderer.item.ItemModelResolver;
 import net.minecraft.client.renderer.item.ItemModels;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
+import net.minecraft.client.renderer.oit.OitPipelineSet;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.rendertype.TextureTransform;
 import net.minecraft.client.renderer.special.SpecialModelRenderers;
 import net.minecraft.client.renderer.state.GameRenderState;
@@ -65,6 +75,8 @@ import net.minecraft.client.resources.model.sprite.Material;
 import net.minecraft.client.resources.model.sprite.MaterialBaker;
 import net.minecraft.client.resources.model.sprite.SpriteGetter;
 import net.minecraft.client.resources.model.sprite.SpriteId;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.data.AtlasIds;
@@ -90,6 +102,8 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BannerPattern;
+import net.minecraft.world.level.block.entity.BannerPatternLayers;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.joml.Matrix4f;
@@ -522,6 +536,42 @@ public final class VanillaItemGlintOracle {
         return (TextureTransform) getField(renderSetupOf(rt), RenderSetup.class, "textureTransform");
     }
 
+    static Map<String, Object> describePipeline(RenderPipeline pipeline) {
+        DepthStencilState ds = pipeline.getDepthStencilState();
+        ColorTargetState ct = pipeline.getColorTargetStates().isEmpty() ? null : pipeline.getColorTargetStates().get(0);
+        Map<String, Object> blend = null;
+        if (ct != null && ct.blendFunction().isPresent()) {
+            BlendFunction bf = ct.blendFunction().get();
+            blend = map(
+                "src_color", bf.color().sourceFactor().name(),
+                "dst_color", bf.color().destFactor().name(),
+                "color_op", bf.color().op().name(),
+                "src_alpha", bf.alpha().sourceFactor().name(),
+                "dst_alpha", bf.alpha().destFactor().name(),
+                "alpha_op", bf.alpha().op().name()
+            );
+        }
+        ShaderDefines defs = pipeline.getShaderDefines();
+        return map(
+            "location", pipeline.getLocation().toString(),
+            "cull", pipeline.isCull(),
+            "depth_test", ds != null ? ds.depthTest().name() : null,
+            "depth_write", ds != null ? ds.writeDepth() : null,
+            "blend", blend,
+            "alpha_cutout", defs.values().get("ALPHA_CUTOUT"),
+            "define_values", new TreeMap<>(defs.values()),
+            "define_flags", new ArrayList<>(new TreeSet<>(defs.flags()))
+        );
+    }
+
+    static Map<String, Object> describeOitSet(OitPipelineSet set) {
+        return map(
+            "depth_bounds", describePipeline(set.depthBoundsPipeline()),
+            "transmittance", describePipeline(set.transmittancePipeline()),
+            "accumulate", describePipeline(set.accumulatePipeline())
+        );
+    }
+
     @SuppressWarnings("unchecked")
     static Map<String, String> texturesOf(RenderType rt) throws Exception {
         Map<String, Object> bindings = (Map<String, Object>) getField(renderSetupOf(rt), RenderSetup.class, "textures");
@@ -768,12 +818,19 @@ public final class VanillaItemGlintOracle {
                 }
                 quads.add(qm);
             }
+            RenderSetup setup = renderSetupOf(submit.renderType());
+            RenderPipeline pipeline = (RenderPipeline) getField(setup, RenderSetup.class, "pipeline");
+            boolean forceSolidModelPhase = (boolean) getField(setup, RenderSetup.class, "forceSolidModelPhase");
+            boolean hasOit = getField(setup, RenderSetup.class, "oitPipelineSet") != null;
             out.add(
                 map(
                     "order", submit.order(),
                     "render_type", rtName,
                     "texture_transform", tt.toString(),
                     "textures", textures,
+                    "pipeline", describePipeline(pipeline),
+                    "force_solid_model_phase", forceSolidModelPhase,
+                    "has_oit", hasOit,
                     "has_uv_mapping", submit.uvMapping() != null,
                     "is_glint", isGlint,
                     "quad_count", quadCount,
@@ -1144,7 +1201,7 @@ public final class VanillaItemGlintOracle {
             st.submit(new PoseStack(), col, 15728880, 0, 0);
             specialFoilJson.put(ctx.getSerializedName(), evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true));
         }
-        // Also check compass at GUI slot poses (scales 1, 2, 3) and a non-trivial world pose.
+        // Also check compass at GUI slot poses (scales 1, 2, 3), nonzero atlas slots, and a non-trivial world pose.
         for (int guiScale : new int[] {1, 2, 3}) {
             ItemStackRenderState st = new ItemStackRenderState();
             resolver.updateForTopItem(st, glintCompass, ItemDisplayContext.GUI, null, null, 0);
@@ -1156,6 +1213,25 @@ public final class VanillaItemGlintOracle {
             st.submit(ps, col, 15728880, 0, 0);
             String key = guiScale == 1 ? "gui_slot_pose" : ("gui_slot_scale_" + guiScale);
             specialFoilJson.put(key, evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true));
+        }
+        for (Object[] slotCase : new Object[][] {
+            {"gui_slot_16_0_scale_1", 1, 16, 0},
+            {"gui_slot_3_2_scale_2", 2, 3, 2}
+        }) {
+            int guiScale = (int) slotCase[1];
+            int slotX = (int) slotCase[2];
+            int slotY = (int) slotCase[3];
+            ItemStackRenderState st = new ItemStackRenderState();
+            resolver.updateForTopItem(st, glintCompass, ItemDisplayContext.GUI, null, null, 0);
+            RecordingCollector col = new RecordingCollector();
+            PoseStack ps = new PoseStack();
+            int slotTextureSize = 16 * guiScale;
+            int left = slotX * slotTextureSize;
+            int top = slotY * slotTextureSize;
+            ps.translate(left + slotTextureSize / 2.0F, top + slotTextureSize / 2.0F, 0.0F);
+            ps.scale(slotTextureSize, -slotTextureSize, slotTextureSize);
+            st.submit(ps, col, 15728880, 0, 0);
+            specialFoilJson.put((String) slotCase[0], evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, true));
         }
         {
             ItemStackRenderState st = new ItemStackRenderState();
@@ -1212,6 +1288,19 @@ public final class VanillaItemGlintOracle {
         ItemStack glintShieldRed = new ItemStack(Items.SHIELD);
         glintShieldRed.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
         glintShieldRed.set(DataComponents.BASE_COLOR, DyeColor.RED);
+        ItemStack glintShieldRedStripe = new ItemStack(Items.SHIELD);
+        glintShieldRedStripe.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
+        glintShieldRedStripe.set(DataComponents.BASE_COLOR, DyeColor.RED);
+        glintShieldRedStripe.set(
+            DataComponents.BANNER_PATTERNS,
+            new BannerPatternLayers(List.of(new BannerPatternLayers.Layer(
+                Holder.direct(new BannerPattern(
+                    Identifier.withDefaultNamespace("stripe_bottom"),
+                    "block.minecraft.banner.stripe_bottom"
+                )),
+                DyeColor.BLUE
+            )))
+        );
 
         Map<String, Object> specialModelsJson = new LinkedHashMap<>();
         Object[][] specialCases = new Object[][] {
@@ -1227,6 +1316,9 @@ public final class VanillaItemGlintOracle {
             }},
             {"shield_red", glintShieldRed, new ItemDisplayContext[] {
                 ItemDisplayContext.GUI,
+                ItemDisplayContext.GROUND
+            }},
+            {"shield_red_stripe", glintShieldRedStripe, new ItemDisplayContext[] {
                 ItemDisplayContext.GROUND
             }}
         };
@@ -1347,6 +1439,118 @@ public final class VanillaItemGlintOracle {
             }
         }
 
+        // 9. Banner pattern pipeline + partially transparent texel (alpha 8/255) blending contract.
+        RenderType bannerPatternRt = RenderTypes.bannerPattern(Sheets.SHIELD_SHEET);
+        RenderSetup bannerPatternSetup = renderSetupOf(bannerPatternRt);
+        Map<String, Object> bannerPatternJson = map(
+            "render_type", renderTypeName(bannerPatternRt),
+            "pipeline", describePipeline(RenderPipelines.BANNER_PATTERN),
+            "force_solid_model_phase", (boolean) getField(bannerPatternSetup, RenderSetup.class, "forceSolidModelPhase"),
+            "has_oit", getField(bannerPatternSetup, RenderSetup.class, "oitPipelineSet") != null,
+            "alpha_8_src_rgba8", new int[] {255, 0, 0, 8},
+            "base_dst_rgba8", new int[] {0, 200, 0, 255},
+            "blended_rgba8", new int[] {
+                Math.round(255.0F * (8.0F / 255.0F) + 0.0F * (1.0F - 8.0F / 255.0F)),
+                Math.round(0.0F * (8.0F / 255.0F) + 200.0F * (1.0F - 8.0F / 255.0F)),
+                0,
+                255
+            }
+        );
+
+        // 10. OIT translucent item foil pipelines (OIT_ITEM, OIT_ITEM_GLINT, OIT_ITEM_GLINT_SPECIAL).
+        Map<String, Object> oitItemGlintJson = map(
+            "oit_item", describeOitSet(RenderPipelines.OIT_ITEM),
+            "oit_item_glint", describeOitSet(RenderPipelines.OIT_ITEM_GLINT),
+            "oit_item_glint_special", describeOitSet(RenderPipelines.OIT_ITEM_GLINT_SPECIAL)
+        );
+
+        // 11. Physical GuiItemAtlas slot allocation and nonzero-slot decal rounding witness.
+        Map<String, Object> allocatorByScale = new LinkedHashMap<>();
+        for (int guiScale : new int[] {1, 2, 3}) {
+            int slotTextureSize = 16 * guiScale;
+            int storageSize = 512 / slotTextureSize;
+            DynamicAtlasAllocator<String> alloc = new DynamicAtlasAllocator<>(storageSize, storageSize);
+            for (int i = 0; i < 16; i++) {
+                alloc.getOrAllocate("static_" + i, false);
+            }
+            DynamicAtlasAllocator.Slot foilA = alloc.getOrAllocate("foil_a", true);
+            DynamicAtlasAllocator.Slot foilAReuse = alloc.getOrAllocate("foil_a", true);
+            alloc.endFrame();
+            DynamicAtlasAllocator.Slot static0After = alloc.getOrAllocate("static_0", false);
+            DynamicAtlasAllocator.Slot foilB = alloc.getOrAllocate("foil_b", true);
+            allocatorByScale.put(
+                "scale_" + guiScale,
+                map(
+                    "slot_texture_size", slotTextureSize,
+                    "storage_size", storageSize,
+                    "foil_a", new int[] {foilA.x(), foilA.y()},
+                    "foil_a_reuse", new int[] {foilAReuse.x(), foilAReuse.y()},
+                    "static_0_after_end_frame", new int[] {static0After.x(), static0After.y()},
+                    "foil_b_after_end_frame", new int[] {foilB.x(), foilB.y()}
+                )
+            );
+        }
+        Map<String, Object> tinyOffsetRounding = new LinkedHashMap<>();
+        {
+            ItemStackRenderState compassState = new ItemStackRenderState();
+            resolver.updateForTopItem(compassState, glintCompass, ItemDisplayContext.GUI, null, null, 0);
+            RecordingCollector compassCol = new RecordingCollector();
+            compassState.submit(new PoseStack(), compassCol, 15728880, 0, 0);
+            BakedQuad.MaterialInfo compassMat = compassCol.items.get(0).quads().all().get(0).materialInfo();
+            float eps = Math.scalb(1.0F, -20);
+            setClock(gameRenderState, 123456L, 0.5);
+            Matrix4f glintMatT123456 = TextureTransform.GLINT_TEXTURING.createMatrix();
+            QuadInstance qi = new QuadInstance();
+            qi.setLightCoords(15728880);
+            qi.setOverlayCoords(0);
+            qi.setColor(-1);
+            for (Object[] tc : new Object[][] {
+                {"slot_0_0_eps", 0, 0, eps},
+                {"slot_0_0_zero", 0, 0, 0.0F},
+                {"slot_16_0_eps", 16, 0, eps},
+                {"slot_16_0_zero", 16, 0, 0.0F}
+            }) {
+                int slotX = (int) tc[1];
+                int slotY = (int) tc[2];
+                float offset = (float) tc[3];
+                BakedQuad synthQuad = new BakedQuad(
+                    new Vector3f(offset, 0.25F, 0.0F),
+                    new Vector3f(offset, -0.25F, 0.0F),
+                    new Vector3f(0.25F, -0.25F, 0.0F),
+                    new Vector3f(0.25F, 0.25F, 0.0F),
+                    UVPair.pack(0.0F, 0.0F),
+                    UVPair.pack(0.0F, 1.0F),
+                    UVPair.pack(1.0F, 1.0F),
+                    UVPair.pack(1.0F, 0.0F),
+                    Direction.SOUTH,
+                    compassMat
+                );
+                PoseStack ps = new PoseStack();
+                int left = slotX * 16;
+                int top = slotY * 16;
+                ps.translate(left + 8.0F, top + 8.0F, 0.0F);
+                ps.scale(16.0F, -16.0F, 16.0F);
+                PoseStack.Pose decalPose = (PoseStack.Pose) computeFoilDecalPose.invoke(null, ItemDisplayContext.GUI, ps.last());
+                RecordingConsumer rc = new RecordingConsumer();
+                rc.putBakedQuadWithGlint(ps.last(), synthQuad, qi, decalPose);
+                long[][] uv3Bits = new long[4][2];
+                long[][] glintBits = new long[4][2];
+                for (int i = 0; i < 4; i++) {
+                    RecordedVertex rv = rc.vertices.get(i);
+                    uv3Bits[i] = new long[] {u32(rv.u3), u32(rv.v3)};
+                    glintBits[i] = transformUvBits(glintMatT123456, rv.u3, rv.v3);
+                }
+                tinyOffsetRounding.put(
+                    (String) tc[0],
+                    map("uv3_bits", uv3Bits, "glint_uv_t123456_bits", glintBits)
+                );
+            }
+        }
+        Map<String, Object> guiItemAtlasJson = map(
+            "allocator", allocatorByScale,
+            "tiny_offset_rounding", tinyOffsetRounding
+        );
+
         Map<String, Object> root = map(
             "meta", map(
                 "game_version", SharedConstants.getCurrentVersion().name(),
@@ -1361,7 +1565,10 @@ public final class VanillaItemGlintOracle {
             "contexts", contextsJson,
             "block_item", blockItemJson,
             "special_foil", specialFoilJson,
-            "special_models", specialModelsJson
+            "special_models", specialModelsJson,
+            "banner_pattern", bannerPatternJson,
+            "oit_item_glint", oitItemGlintJson,
+            "gui_item_atlas", guiItemAtlasJson
         );
 
         Files.createDirectories(outPath.getParent());

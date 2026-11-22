@@ -95,6 +95,19 @@ impl ItemSink for OitEntity<'_> {
     }
 }
 
+/// Marks every quad passed on as drawn with `RenderTypes.bannerPattern` (`cull = true`,
+/// `BlendFunction.TRANSLUCENT`, no depth writes, no alpha cutout).
+struct BannerPattern<'a>(&'a mut dyn ItemSink);
+impl ItemSink for BannerPattern<'_> {
+    fn quad(&mut self, quad: ItemQuad) {
+        self.0.quad(ItemQuad {
+            cull_back: true,
+            banner_pattern: true,
+            ..quad
+        });
+    }
+}
+
 /// A pose override for a named part (`setupAnim`).
 type Adjust<'a> = &'a dyn Fn(&str, &mut [f32; 9]);
 fn none(_: &str, _: &mut [f32; 9]) {}
@@ -158,6 +171,7 @@ fn draw(
             cull_back: false,
             translucent: false,
             oit: false,
+            banner_pattern: false,
         });
     }
     for (child_name, child) in &part.children {
@@ -472,7 +486,7 @@ pub(super) fn submit_banner_result(
     let Some(flag) = renderer.part("standing_banner_flag") else {
         return;
     };
-    let mut part = |texture: &str, color: u32| {
+    let part = |texture: &str, color: u32, target: &mut dyn ItemSink| {
         if let Some(r) = sprites.get(texture).copied() {
             draw(
                 flag,
@@ -484,14 +498,15 @@ pub(super) fn submit_banner_result(
                 Foil::None,
                 false,
                 None,
-                sink,
+                target,
             );
         }
     };
-    part("entity/banner/banner_base", argb(-1));
-    part("entity/banner/base", dye(base));
+    part("entity/banner/banner_base", argb(-1), sink);
+    let mut pattern_sink = BannerPattern(sink);
+    part("entity/banner/base", dye(base), &mut pattern_sink);
     for (texture, color) in layers.iter().take(16) {
-        part(texture, dye(color));
+        part(texture, dye(color), &mut pattern_sink);
     }
 }
 
@@ -660,16 +675,39 @@ pub(super) fn submit(
                 Foil::None,
             );
             // `submitPatterns`: the base layer in the banner's colour, then up to 16 layers.
-            part(
-                flag,
-                &flag_pose,
-                "entity/banner/base",
-                dye(color),
-                Foil::None,
-            );
-            for (pattern, color) in pattern_layers(argument).into_iter().take(16) {
-                if let Some(t) = pattern_texture(host, true, &pattern) {
-                    part(flag, &flag_pose, &t, dye(&color), Foil::None);
+            if let Some(p) = renderer.part(flag) {
+                let mut pattern_sink = BannerPattern(sink);
+                if let Some(r) = sprites.get("entity/banner/base").copied() {
+                    draw(
+                        p,
+                        "root",
+                        pose,
+                        &flag_pose,
+                        r,
+                        dye(color),
+                        Foil::None,
+                        false,
+                        None,
+                        &mut pattern_sink,
+                    );
+                }
+                for (pattern, color) in pattern_layers(argument).into_iter().take(16) {
+                    if let Some(t) = pattern_texture(host, true, &pattern)
+                        && let Some(r) = sprites.get(&t).copied()
+                    {
+                        draw(
+                            p,
+                            "root",
+                            pose,
+                            &flag_pose,
+                            r,
+                            dye(&color),
+                            Foil::None,
+                            false,
+                            None,
+                            &mut pattern_sink,
+                        );
+                    }
                 }
             }
         }
@@ -691,31 +729,37 @@ pub(super) fn submit(
                     atlas.get_or_missing(base)
                 })
                 .flatten();
-            let mut shield_part = |texture: &str, color: u32, foil: Foil, rect: Option<Rect>| {
+            let shield_part = |texture: &str,
+                               color: u32,
+                               foil: Foil,
+                               rect: Option<Rect>,
+                               target: &mut dyn ItemSink| {
                 if let (Some(p), Some(r)) = (renderer.part("shield"), sprites.get(texture).copied())
                 {
-                    draw(p, "root", pose, &none, r, color, foil, true, rect, sink);
+                    draw(p, "root", pose, &none, r, color, foil, true, rect, target);
                 }
             };
             if !has_patterns {
                 let foil = if has_foil { Foil::Standard } else { Foil::None };
-                shield_part(base, white, foil, glint_rect);
+                shield_part(base, white, foil, glint_rect, sink);
             } else {
-                shield_part(base, white, Foil::None, None);
+                shield_part(base, white, Foil::None, None, sink);
+                let mut pattern_sink = BannerPattern(sink);
                 shield_part(
                     "entity/shield/base",
                     dye(base_color.unwrap_or("white")),
                     Foil::None,
                     None,
+                    &mut pattern_sink,
                 );
                 for (pattern, color) in patterns.into_iter().take(16) {
                     if let Some(t) = pattern_texture(host, false, &pattern) {
-                        shield_part(&t, dye(&color), Foil::None, None);
+                        shield_part(&t, dye(&color), Foil::None, None, &mut pattern_sink);
                     }
                 }
                 if has_foil {
                     // `ShieldSpecialRenderer.submit`: one `patternedShieldGlint` pass after patterns.
-                    shield_part(base, white, Foil::GlintOnly, glint_rect);
+                    shield_part(base, white, Foil::GlintOnly, glint_rect, sink);
                 }
             }
         }
@@ -952,7 +996,7 @@ mod tests {
                         .iter()
                         .find(|t| sprites[**t].u0 == q.uv[0][0].min(q.uv[1][0]))
                         .unwrap();
-                    (*texture, q.foil)
+                    (*texture, q.foil, q.banner_pattern)
                 })
                 .collect::<Vec<_>>()
         };
@@ -968,23 +1012,23 @@ mod tests {
         assert_eq!(
             texture_and_foil(&untinted),
             [
-                ("entity/shield/shield_base", Foil::None),
-                ("entity/shield/base", Foil::None),
-                ("entity/shield/stripe_bottom", Foil::None),
-                ("entity/shield/shield_base", Foil::GlintOnly),
+                ("entity/shield/shield_base", Foil::None, false),
+                ("entity/shield/base", Foil::None, true),
+                ("entity/shield/stripe_bottom", Foil::None, true),
+                ("entity/shield/shield_base", Foil::GlintOnly, false),
             ]
         );
         assert_eq!(
             texture_and_foil(&drawn(banner.clone(), false, None)),
             [
-                ("entity/shield/shield_base", Foil::None),
-                ("entity/shield/base", Foil::None),
-                ("entity/shield/stripe_bottom", Foil::None),
+                ("entity/shield/shield_base", Foil::None, false),
+                ("entity/shield/base", Foil::None, true),
+                ("entity/shield/stripe_bottom", Foil::None, true),
             ]
         );
         assert_eq!(
             texture_and_foil(&drawn(Value::Null, true, None)),
-            [("entity/shield/shield_base_nopattern", Foil::Standard)]
+            [("entity/shield/shield_base_nopattern", Foil::Standard, false)]
         );
         // Removing green acts on the base and both pattern passes without altering the glint pass.
         let expected = untinted

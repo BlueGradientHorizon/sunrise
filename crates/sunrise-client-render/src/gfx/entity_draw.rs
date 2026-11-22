@@ -240,17 +240,20 @@ impl Renderer {
         pass.set_bind_group(0, &self.hand_group, &[]);
         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
         pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+        let hand_kind = |layer: u32| match layer & 0xffff {
+            BANNER_PATTERN_OVERLAY => 1u8,
+            GLINT_ONLY_OVERLAY => 2u8,
+            _ => 0u8,
+        };
         let mut at = 0;
-        for run in hand.as_chunks::<4>().0[..quads as usize].chunk_by(|a, b| {
-            (a[0].layer & 0xffff == GLINT_ONLY_OVERLAY)
-                == (b[0].layer & 0xffff == GLINT_ONLY_OVERLAY)
-        }) {
-            let glint = run[0][0].layer & 0xffff == GLINT_ONLY_OVERLAY;
+        for run in hand.as_chunks::<4>().0[..quads as usize]
+            .chunk_by(|a, b| hand_kind(a[0].layer) == hand_kind(b[0].layer))
+        {
             let end = at + run.len() as u32;
-            pass.set_pipeline(if glint {
-                &self.glint_only_pipeline
-            } else {
-                &self.entity_pipeline
+            pass.set_pipeline(match hand_kind(run[0][0].layer) {
+                1 => &self.banner_pattern_pipeline,
+                2 => &self.glint_only_pipeline,
+                _ => &self.entity_pipeline,
             });
             pass.draw_indexed(at * 6..end * 6, (first * 4) as i32, 0..1);
             at = end;

@@ -79,6 +79,10 @@ impl Renderer {
                 ..Default::default()
             });
             let base_hand = self.overlay_hand.as_ref().unwrap_or(&self.entity_pipeline);
+            let banner_hand = self
+                .overlay_hand_banner_pattern
+                .as_ref()
+                .unwrap_or(&self.banner_pattern_pipeline);
             let glint_hand = self
                 .overlay_hand_glint
                 .as_ref()
@@ -86,16 +90,21 @@ impl Renderer {
             pass.set_bind_group(0, &self.hand_group, &[]);
             pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+            let hand_kind = |layer: u32| match layer & 0xffff {
+                BANNER_PATTERN_OVERLAY => 1u8,
+                GLINT_ONLY_OVERLAY => 2u8,
+                _ => 0u8,
+            };
             let mut at = 0;
-            for run in
-                frame.hand.as_chunks::<4>().0[..overlay.hand_quads as usize].chunk_by(|a, b| {
-                    (a[0].layer & 0xffff == GLINT_ONLY_OVERLAY)
-                        == (b[0].layer & 0xffff == GLINT_ONLY_OVERLAY)
-                })
+            for run in frame.hand.as_chunks::<4>().0[..overlay.hand_quads as usize]
+                .chunk_by(|a, b| hand_kind(a[0].layer) == hand_kind(b[0].layer))
             {
-                let glint = run[0][0].layer & 0xffff == GLINT_ONLY_OVERLAY;
                 let end = at + run.len() as u32;
-                pass.set_pipeline(if glint { glint_hand } else { base_hand });
+                pass.set_pipeline(match hand_kind(run[0][0].layer) {
+                    1 => banner_hand,
+                    2 => glint_hand,
+                    _ => base_hand,
+                });
                 pass.draw_indexed(at * 6..end * 6, overlay.first_hand_vertex, 0..1);
                 at = end;
             }

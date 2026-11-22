@@ -24,6 +24,7 @@ LIB_TESTS = [
     'item_render::glint_tests::end_crystal_world_sink_uses_atlas_uv_and_item_glint_scale_26_3',
     'item_render::glint_tests::block_item_glint_uses_blocks_atlas_uv_26_3',
     'item_render::glint_tests::compass_special_foil_uses_decal_uv_26_3',
+    'item_render::glint_tests::shield_banner_pattern_blends_low_alpha_without_depth_write_26_3',
     'item_render::glint_tests::special_model_trident_and_shield_glint_uses_entity_scale_26_3',
     'item_render::glint_tests::glint_atlases_match_vanilla_26_3_mip_and_aniso',
 ]
