@@ -25,7 +25,7 @@ pub trait Hooks {
         inert = "signal",
         key = "state",
         neoforge = "none (vanilla DispenserBlock.getDispenseMethod; NeoForge adds no event or extension for it)",
-        version = 2
+        version = 3
     )]
     fn dispense_method(
         dimension: &str,

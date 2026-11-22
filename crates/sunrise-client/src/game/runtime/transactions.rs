@@ -612,10 +612,7 @@ pub(super) enum After {
     DispenserDrop {
         pos: Pos,
         facing: sunrise_core::geometry::Direction,
-        stack: ItemStack,
-        at: [f64; 3],
-        velocity: [f64; 3],
-        random: Box<super::spill::ItemRandom>,
+        spawn: Box<super::spill::Spawn>,
         play_events: bool,
     },
     /// `BlockEntity.setChanged`.
@@ -2067,21 +2064,10 @@ impl Game<'_> {
             After::DispenserDrop {
                 pos,
                 facing,
-                stack,
-                at,
-                velocity,
-                random,
+                spawn,
                 play_events,
             } => {
-                self.add_item_entity_prepared(stack, at, Some(velocity), 0, Some(*random));
-                if play_events {
-                    self.dispenser_event(super::dispenser::CLICK, pos, 0);
-                    self.dispenser_event(
-                        2000,
-                        pos,
-                        sunrise_gameplay::dispense_rules::data_value(facing),
-                    );
-                }
+                self.commit_dispensed(pos, facing, *spawn, play_events);
             }
             After::LevelWrite(write) => self.commit_level_write(*write),
             After::BlockGameEvent(id, pos, who, state) => {

@@ -23,7 +23,7 @@ pub trait Hooks {
         scope = "item",
         key = "stack",
         neoforge = "none (vanilla DispenserBlock.getDispenseMethod; NeoForge adds no event or extension for it)",
-        version = 2
+        version = 3
     )]
     fn dispense_item(
         dimension: &str,

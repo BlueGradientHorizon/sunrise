@@ -228,7 +228,12 @@ impl Game<'_> {
         )
     }
     /// `DefaultDispenseItemBehavior.spawnItem` at `getDispensePosition`.
-    fn spawn_dispensed(&mut self, pos: Pos, facing: Direction, stack: ItemStack, play_events: bool) {
+    fn prepared_dispensed(
+        &mut self,
+        pos: Pos,
+        facing: Direction,
+        stack: ItemStack,
+    ) -> super::spill::Spawn {
         let s = step(facing);
         let p = Self::dispense_position(pos, facing, 0.7, [0.0; 3]);
         let mut at = [p.x, p.y, p.z];
@@ -244,15 +249,58 @@ impl Game<'_> {
             r.triangle(0.2, spread),
             r.triangle(f64::from(s[2]) * pow, spread),
         ];
-        self.after_commit(super::transactions::After::DispenserDrop {
-            pos,
-            facing,
+        super::spill::Spawn {
+            random: Some(random),
             stack,
-            at,
-            velocity: v,
-            random: Box::new(random),
-            play_events,
-        });
+            pos: at,
+            motion: Some(v),
+            delay: 0,
+        }
+    }
+
+    pub(super) fn spawn_dispensed(&mut self, pos: Pos, facing: Direction, stack: ItemStack) {
+        let spawn = self.prepared_dispensed(pos, facing, stack);
+        self.commit_dispensed(pos, facing, spawn, false);
+    }
+
+    fn stage_dispensed(
+        &mut self,
+        pos: Pos,
+        facing: Direction,
+        stack: ItemStack,
+        play_events: bool,
+    ) {
+        let spawn = self.prepared_dispensed(pos, facing, stack);
+        if self.has_level_transaction() {
+            self.after_commit(super::transactions::After::DispenserDrop {
+                pos,
+                facing,
+                spawn: Box::new(spawn),
+                play_events,
+            });
+        } else {
+            self.commit_dispensed(pos, facing, spawn, play_events);
+        }
+    }
+
+    pub(super) fn commit_dispensed(
+        &mut self,
+        pos: Pos,
+        facing: Direction,
+        spawn: super::spill::Spawn,
+        play_events: bool,
+    ) {
+        self.add_item_entity_prepared(
+            spawn.stack,
+            spawn.pos,
+            spawn.motion,
+            spawn.delay,
+            spawn.random,
+        );
+        if play_events {
+            self.dispenser_event(CLICK, pos, 0);
+            self.dispenser_event(2000, pos, data_value(facing));
+        }
     }
     /// `DefaultDispenseItemBehavior.execute`: drop one item.
     fn default_execute(
@@ -266,7 +314,7 @@ impl Game<'_> {
             ..stack.clone()
         };
         stack.count -= 1;
-        self.spawn_dispensed(pos, facing, one, false);
+        self.stage_dispensed(pos, facing, one, false);
         (stack.count > 0).then_some(stack)
     }
     /// Drop one item as DefaultDispenseItemBehavior does. For a dispenser hook:
@@ -409,7 +457,7 @@ impl Game<'_> {
             self.after_commit(super::transactions::After::Changed(pos));
         }
         if rest.count > 0 {
-            self.spawn_dispensed(pos, facing, rest, true);
+            self.stage_dispensed(pos, facing, rest, true);
         }
     }
     /// `DefaultDispenseItemBehavior.consumeWithRemainder`: the remainder goes
