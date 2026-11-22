@@ -152,8 +152,8 @@ is currently open.
 title screen, overlay, or other mod screen through `screen_opening` / `screen_closing` rather than \
 returning `false` outside bare `Screen::Playing`. Remove any workaround that closed another screen \
 first only to satisfy the old restriction.
-3. Screen input hooks: five hooks have moved from v2 to v3. The other changed mouse, key and \
-character Pre/Post hooks and preedit Post are v2.
+3. Screen input hooks: the entries below mark which hooks have moved from v2 to v3. The other \
+changed mouse, key and character Pre/Post hooks and preedit Post are v2.
    - `screen_mouse_button_pressed_pre`: v2 excluded overlays such as the server-pack prompt; v3 \
 can cancel a press on the top prompt or dialog, before any native or mounted child handles it.
    - `screen_mouse_button_pressed_post`: v2 observed the stock screen's answer on the screens \
@@ -166,7 +166,7 @@ completion is not a handled release by itself; an early swallowed release still 
 window and socket releases to the current receiver, including in-world screens and prompts.
    - `screen_key_pressed_post`: v2 used the screen still open after handling and skipped a closed \
 screen. v3 reports an unhandled press on the captured receiver even after that screen closed \
-or was replaced.
+or was replaced. It also follows the shared socket press route (down, repeat, or the press in tap).
    - The mouse button, drag, scroll, key and typed-character Pre hooks now receive overlays, as do \
 matching Post hooks. To keep the previous exclusion, return without handling when \
 `event.screen.id` is `"command_prompt"`, `"link_prompt"`, `"code_of_conduct"`, `"server_pack_prompt"`, \
@@ -195,10 +195,10 @@ The default uses the original answer.
 only when neither mounted widgets nor the screen handled the drag or scroll.
    - `screen_key_pressed_post` and `screen_key_released_post`: continue cancelling with \
 `event.cancelled = true` or `Flow::Cancel` for unhandled keys; both now report the receiving screen.
-   - `screen_char_typed_post`: change the return type from `Flow` to `()`, remove any \
-`event.cancelled` access, and rely on it as a non-cancellable notice for unhandled characters on \
-the receiving screen. The control socket's `type` now also delivers this Post for unhandled \
-text. Printable window text with no physical key, such as an Alt code, uses the normal Pre, child, \
+   - `screen_char_typed_post`: v2 exposed a cancellable Post and delivered socket or input-method \
+text only for a bound preset editor. v3 is a non-cancellable notice for unhandled characters \
+on the captured screen, including socket `type`. Change the return type from `Flow` to `()` and \
+remove any `event.cancelled` access. Printable window text with no physical key, such as an Alt code, uses the normal Pre, child, \
 and Post route even without a focused edit box.
    - `screen_preedit_post`: a focused custom `ScreenWidget` does not consume preedit, even with \
 `captures_input() == true`. Unless Pre cancels, handle the unconsumed composition as a notice in \

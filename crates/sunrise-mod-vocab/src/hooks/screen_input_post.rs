@@ -136,7 +136,7 @@ pub trait Hooks {
         receiver = "read",
         dispatch = "flat",
         side = "client",
-        version = 2,
+        version = 3,
         contract = "listen",
         neoforge = "ScreenEvent.CharacterTyped.Post",
         cancellable = false
