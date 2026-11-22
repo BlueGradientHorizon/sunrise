@@ -71,16 +71,23 @@ Not every registration-context hook runs only at startup. `register_fluid_models
 `register_texture_atlases` collect declarations again on client resource reload before baking or
 stitching, respectively. Atlas admission, duplicate handling and dispatch timing are unchanged.
 
-The context's `mods()`, `registry(name)` and `setting(mod_id, key)` read one startup snapshot:
-package metadata, built-in registry names (the engine's effect table for mob effects and the prepared
+The context's `mods()`, `has_optional_dependency(package_id)`, `registry(name)` and
+`setting(mod_id, key)` read one startup snapshot: package metadata, startup-admitted optional
+dependency rows, built-in registry names (the engine's effect table for mob effects and the prepared
 report for other registries), and the settings on disk when the snapshot was captured. Registry reads
 exclude what mods declare during registration. Invalid registry names, unknown registries, empty or
 path-like setting keys, unknown packages and unavailable snapshots return a `RegistrationReadError`.
 
-Package metadata describes what was selected, not what content admission accepted. Component types
-register first so content files can use them. In `Hooks::register` or a later registration hook,
-`context.has_optional_dependency("package_id")` opts in using the calling mod's admitted,
-side- and override-filtered optional dependency row. It does not guarantee that a registry key exists.
+Package metadata (`mods()`) describes what was selected, not what content admission accepted.
+`component_types` runs first at startup—before content admission and before `Hooks::register`—so
+content files can use native components; listeners must not rely on state initialized in
+`Hooks::register`, and `has_optional_dependency` returns `false` there. In `Hooks::register` and
+other startup-only registration hooks (such as `blocks` and `items`),
+`context.has_optional_dependency("package_id")` opts in using the calling mod's startup-admitted,
+side- and override-filtered optional dependency row. It does not guarantee that a registry key
+exists. Because `RegistrationContext` always reads the once-published startup snapshot, later client
+resource-reload calls to `register_fluid_models` and `register_texture_atlases` still see the
+startup snapshot rather than live switches of asset-only optional content packs.
 Client setup
 runs once after the initial asset apply. The window's Client/Common configs load once immediately after client setup and before title,
 connection, input, render or ordinary tick callbacks. This includes pack-error recovery: the failed

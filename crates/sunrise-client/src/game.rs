@@ -13975,24 +13975,9 @@ pub(crate) fn run_with(
         .mods
         .select(&std::env::current_dir()?, &early_settings.mods.enabled);
     let mod_phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Packages);
-    api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
-    let registration_data =
-        mods::registration_data(&vanilla_root, mods::runtime_files::sources(&options.mods))?;
-    mod_phase.advance(mod_api::__private::ModPhase::Registration)?;
-    // Content files may use native components. Admit the files with those IDs known, then
-    // register Parts against the resolved dependencies, not the selected-package metadata.
-    mods::register_components(
-        &vanilla_root,
-        &registration_data.component_registration_context(),
-    )?;
     let jar_store = sunrise_client::logging::game_home().join("jars");
-    let mut content = mods::admit_file_content(&vanilla_root, &options.mods, &jar_store)?;
-    (mod_api::__private::platform::platform()?.install_registration_data)(
-        registration_data.with_optional_dependencies(std::mem::take(
-            &mut content.resolution.optional_dependencies,
-        )),
-    );
-    crate::game::part_admission::admit_parts(mod_api::__private::mods())?;
+    let content =
+        mods::admit_startup_registration(&mod_phase, &vanilla_root, &options.mods, &jar_store)?;
     // The structure types those mods registered, handed to the engine before
     // any world opens, as its StructureRegistry reads them.
     if sunrise_world::worldgen::structure::mod_types::install_mod_structure_types(

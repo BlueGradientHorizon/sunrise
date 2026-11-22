@@ -1,12 +1,17 @@
-use super::{Fixture, ModsState, admit_file_content, registration_registry_names, run_in_child};
-use crate::game::{api_values::TryIntoApi, part_admission::admit_parts};
-use mod_api::{
-    Dist, Hooks, MobEffectPart, MobEffectPartError, ModEntry, Registrar, RegistrationContext,
-    RuntimeEnvironment, Side,
+use super::{
+    Fixture, ModsState, admit_startup_registration, registration_registry_names, run_in_child,
 };
-use mod_platform::__private::{with_test_package_inventory, with_test_registration_data};
-use mod_platform::testing::with_mods;
-use std::{fs, sync::Arc};
+use crate::game::{api_values, part_admission::admit_parts};
+use mod_api::{
+    ComponentTypesEvent, Dist, Hooks, MobEffectPart, MobEffectPartError, ModEntry, Registrar,
+    RegistrationContext, RuntimeEnvironment, Side,
+};
+use mod_platform::__private::with_test_registration_data;
+use mod_platform::testing::{with_dispatch, with_mods};
+use std::{
+    fs,
+    sync::{Arc, Mutex},
+};
 use sunrise_mod_package::Package;
 
 type Files<'a> = &'a [(&'a str, &'a [u8])];
@@ -27,10 +32,33 @@ fn optional_effect_targets_use_admitted_packages_and_effective_dependency_rows()
         );
         return;
     }
-    struct Integration;
+    let cwd = std::env::current_dir().unwrap();
+    let launch = sunrise_mod_package::selection::LaunchArguments::parse(
+        std::iter::empty::<String>(),
+        &cwd,
+        &cwd,
+        None,
+    )
+    .unwrap();
+    crate::entry::runtime_environment::capture(&launch);
+
+    struct Integration {
+        order: Arc<Mutex<Vec<&'static str>>>,
+    }
     #[mod_api::__subscriptions]
     impl Hooks for Integration {
+        fn component_types(
+            &self,
+            context: &RegistrationContext,
+            event: &mut ComponentTypesEvent<'_>,
+        ) {
+            self.order.lock().unwrap().push("component_types");
+            assert!(context.mods().get("with_effect").is_some());
+            assert!(!context.has_optional_dependency("with_effect"));
+            event.register("machine_sample:charge".into());
+        }
         fn register(&self, r: &mut dyn Registrar, context: &RegistrationContext) {
+            self.order.lock().unwrap().push("register");
             for (package, target) in [
                 ("with_effect", "effect_alias:missing"),
                 ("missing_jar", "missing_jar:comfort"),
@@ -78,7 +106,13 @@ fn optional_effect_targets_use_admitted_packages_and_effective_dependency_rows()
         (
             "with_effect",
             "namespaces=['effect_alias']\n",
-            &[("data/effect_alias/sunrise/mob_effect/comfort.json", effect)],
+            &[
+                ("data/effect_alias/sunrise/mob_effect/comfort.json", effect),
+                (
+                    "data/effect_alias/sunrise/item/battery.json",
+                    br#"{"template":"minecraft:stick","components":{"machine_sample:charge":1}}"#,
+                ),
+            ],
         ),
         (
             "missing_jar",
@@ -110,7 +144,11 @@ fn optional_effect_targets_use_admitted_packages_and_effective_dependency_rows()
         "[machine_sample]\ndropped_row='drop'\n",
     )
     .unwrap();
-    fs::write(root.join("registries.json"), "{}").unwrap();
+    fs::write(
+        root.join("registries.json"),
+        r#"{"minecraft:data_component_type":{"entries":{"minecraft:custom_name":{"protocol_id":0}}}}"#,
+    )
+    .unwrap();
     let mut sources = ModsState {
         native: Arc::new(fixture.runtime()),
         dev,
@@ -119,59 +157,55 @@ fn optional_effect_targets_use_admitted_packages_and_effective_dependency_rows()
         ..Default::default()
     };
     sources.select(root, &Default::default());
-    let metadata = sources
-        .selected
-        .iter()
-        .map(|source| source.package.try_into_api().unwrap())
-        .chain(
-            sources
-                .native
-                .packages()
-                .iter()
-                .map(|package| package.try_into_api().unwrap()),
-        )
-        .collect();
-    let files = admit_file_content(root, &sources, &root.join("jars")).unwrap();
-    for (id, admitted) in [
-        ("with_effect", true),
-        ("missing_jar", false),
-        ("refused_content", false),
-        ("server_only_row", true),
-        ("dropped_row", true),
-    ] {
-        assert_eq!(
-            files.mods.iter().any(|package| package.id == id),
-            admitted,
-            "{id}"
-        );
-    }
-    let data = mod_api::__private::RegistrationData::new(
-        registration_registry_names(root).unwrap(),
-        Default::default(),
-        root.clone(),
-        RuntimeEnvironment::new(Dist::Client, "26.3".into(), "test".into(), false),
-    )
-    .with_optional_dependencies(files.resolution.optional_dependencies);
-    with_test_package_inventory(metadata, || {
-        with_test_registration_data(data, || {
-            let mods: mod_api::Mods =
-                vec![ModEntry::new("machine_sample", Box::new(Integration))].into();
-            with_mods(mods.clone(), || {
-                admit_parts(&mods).unwrap();
-                let names = files
-                    .mods
+    api_values::install_test_platform();
+    mod_platform::__private::initialize().unwrap();
+    let order = Arc::new(Mutex::new(Vec::new()));
+    let mods: mod_api::Mods = vec![ModEntry::new(
+        "machine_sample",
+        Box::new(Integration {
+            order: Arc::clone(&order),
+        }),
+    )]
+    .into();
+    with_dispatch(mods, || {
+        let mod_phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Packages);
+        let files =
+            admit_startup_registration(&mod_phase, root, &sources, &root.join("jars")).unwrap();
+        assert_eq!(*order.lock().unwrap(), ["component_types", "register"]);
+        assert!(sunrise_protocol::item::custom::id("machine_sample:charge").is_some());
+        for (id, admitted) in [
+            ("with_effect", true),
+            ("missing_jar", false),
+            ("refused_content", false),
+            ("server_only_row", true),
+            ("dropped_row", true),
+        ] {
+            assert_eq!(
+                files.mods.iter().any(|package| package.id == id),
+                admitted,
+                "{id}"
+            );
+        }
+        assert!(files.mods.iter().any(|package| {
+            package.id == "with_effect"
+                && package
+                    .content
+                    .items
                     .iter()
-                    .flat_map(|package| &package.content.effects)
-                    .map(|effect| effect.id.as_str());
-                assert_eq!(
-                    mod_api::__private::resolve_effects(names, |name| {
-                        (name == "effect_alias:comfort").then_some(0)
-                    })
-                    .unwrap_err(),
-                    ["mod machine_sample requested unknown effect effect_alias:missing"],
-                );
-            });
-        });
+                    .any(|item| item.id == "effect_alias:battery")
+        }));
+        let names = files
+            .mods
+            .iter()
+            .flat_map(|package| &package.content.effects)
+            .map(|effect| effect.id.as_str());
+        assert_eq!(
+            mod_api::__private::resolve_effects(names, |name| {
+                (name == "effect_alias:comfort").then_some(0)
+            })
+            .unwrap_err(),
+            ["mod machine_sample requested unknown effect effect_alias:missing"],
+        );
     });
 }
 

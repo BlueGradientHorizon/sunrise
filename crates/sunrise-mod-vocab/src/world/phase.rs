@@ -625,12 +625,15 @@ impl std::error::Error for RegistrationReadError {}
 /// A registration phase's view. Declarations go on the hook's event; there is
 /// no world, handle constructor, transaction or game Host at this point.
 ///
-/// Registration hooks read the startup snapshot. The current mod's optional dependencies
-/// become available after component registration and content admission:
+/// Registration hooks read the once-published startup snapshot. The current mod's admitted
+/// optional dependencies are added to that snapshot after component registration and startup
+/// content admission, before [`Hooks::register`](crate::Hooks::register):
 ///
 /// - [`mods`](Self::mods): startup package metadata.
-/// - [`has_optional_dependency`](Self::has_optional_dependency): the calling mod's applicable
-///   optional dependencies after content admission.
+/// - [`has_optional_dependency`](Self::has_optional_dependency): the calling mod's startup-admitted,
+///   side- and override-filtered optional dependencies. This is `false` during
+///   [`Hooks::component_types`](crate::Hooks::component_types) and does not update on later client
+///   resource reloads.
 /// - [`registry`](Self::registry): the built-in registries. Mob effects come from the game's
 ///   built-in effect table; other registry names come from the prepared report. Entries that mods
 ///   declare during registration are not in it; a mod already has those on its event or registrar.
@@ -723,12 +726,14 @@ impl RegistrationContext {
         &self.mods
     }
 
-    /// Whether the calling mod has an admitted optional dependency on this package ID.
-    /// Use this in [`Hooks::register`](crate::Hooks::register) to opt in before requesting a
-    /// registry key. An absent or refused package, a declaration for a different installation
-    /// side, or a declaration removed by an instance override does not enable the integration.
-    /// This is false before content admission; a true result does not guarantee any particular
-    /// registry key exists.
+    /// Whether the calling mod has a startup-admitted optional dependency on this package ID.
+    /// Use this in [`Hooks::register`](crate::Hooks::register) (and other startup-only
+    /// registration hooks) to opt in before requesting a registry key. An absent or refused
+    /// package, a declaration for a different installation side, or a declaration removed by an
+    /// instance override does not enable the integration. This is `false` before startup content
+    /// admission (including in [`Hooks::component_types`](crate::Hooks::component_types)), does
+    /// not change on client resource reload (such as live switches of asset-only content packs),
+    /// and a `true` result does not guarantee any particular registry key exists.
     pub fn has_optional_dependency(&self, package_id: &str) -> bool {
         let Some(owner) = crate::content::crash::current_native_mod() else {
             return false;

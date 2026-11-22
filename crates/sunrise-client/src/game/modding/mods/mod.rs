@@ -266,10 +266,7 @@ fn builtin_registries(root: &Path) -> sunrise_client::Result<sunrise_protocol::r
 /// Freeze native component IDs before reading content or opening a connection.
 /// With no mod registering any, nothing is installed, which every reader
 /// treats as no custom components, and `registries.json` isn't read.
-pub(super) fn register_components(
-    root: &Path,
-    context: &RegistrationContext,
-) -> sunrise_client::Result<()> {
+fn register_components(root: &Path, context: &RegistrationContext) -> sunrise_client::Result<()> {
     let mut names = Vec::new();
     Game::native_component_types(context, &mut names);
     if names.is_empty() {
@@ -739,7 +736,36 @@ pub(super) struct FileContent<'a> {
     mods: Vec<sunrise_client::mod_content::ContentMod>,
     announced: Vec<sunrise_protocol::mod_list::Entry>,
     content_mods: Vec<sunrise_client::save::level_mods::ModRecord>,
-    pub(super) resolution: sunrise_mod_package::dependencies::Resolution,
+    resolution: sunrise_mod_package::dependencies::Resolution,
+}
+
+/// Run startup registration through Parts admission: publish package metadata, capture the
+/// startup registration snapshot, register native component types before content files load,
+/// admit content files with those IDs known, publish the admitted optional dependency rows,
+/// and admit Parts.
+pub(super) fn admit_startup_registration<'a>(
+    mod_phase: &mod_api::__private::PhaseOwner,
+    vanilla_root: &Path,
+    sources: &'a ModsState,
+    jar_store: &Path,
+) -> sunrise_client::Result<FileContent<'a>> {
+    super::api_values::install_packages(sources.native.packages(), &sources.selected)?;
+    let registration_data = registration_data(vanilla_root, runtime_files::sources(sources))?;
+    mod_phase.advance(mod_api::__private::ModPhase::Registration)?;
+    // Content files may use native components. Admit the files with those IDs known, then
+    // register Parts against the resolved dependencies, not the selected-package metadata.
+    register_components(
+        vanilla_root,
+        &registration_data.component_registration_context(),
+    )?;
+    let mut content = admit_file_content(vanilla_root, sources, jar_store)?;
+    (mod_api::__private::platform::platform()?.install_registration_data)(
+        registration_data.with_optional_dependencies(std::mem::take(
+            &mut content.resolution.optional_dependencies,
+        )),
+    );
+    super::part_admission::admit_parts(mod_api::__private::mods())?;
+    Ok(content)
 }
 
 /// The admitted layers, shared by startup resource generations until game handoff.
@@ -791,7 +817,7 @@ fn refuse_primary_namespace_claims(
 }
 
 /// Admit content files and resolve the graph before optional integrations register Parts.
-pub(super) fn admit_file_content<'a>(
+fn admit_file_content<'a>(
     root: &Path,
     sources: &'a ModsState,
     jar_store: &Path,

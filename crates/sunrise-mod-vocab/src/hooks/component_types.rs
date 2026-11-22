@@ -2,10 +2,14 @@
 // catalog-order: 0074
 
 pub trait Hooks {
-    /// Register namespaced NBT component types before content loads. Call
+    /// Register namespaced NBT component types first during startup registration, before content
+    /// files load and before [`Hooks::register`](crate::Hooks::register). Call
     /// [`ComponentTypesEvent::register`] with each owned ID, such as `"mymod:charge".into()`.
-    /// IDs are checked together at startup: invalid IDs, the `minecraft` namespace and
-    /// duplicate IDs are refused before the component registry is frozen.
+    /// Listeners must not rely on state initialized in `Hooks::register`, and
+    /// [`RegistrationContext::has_optional_dependency`](crate::RegistrationContext::has_optional_dependency)
+    /// is always `false` here because content admission has not run yet. IDs are checked together
+    /// at startup: invalid IDs, the `minecraft` namespace and duplicate IDs are refused before
+    /// the component registry is frozen.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_component_types",
         receiver = "associated",
@@ -16,7 +20,7 @@ pub trait Hooks {
         registration_append = "register",
         context = "registration",
         neoforge = "RegisterEvent",
-        version = 2
+        version = 3
     )]
     fn component_types(types: &mut Vec<String>);
 }
