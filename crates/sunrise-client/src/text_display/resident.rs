@@ -56,7 +56,7 @@ impl DisplayComponent {
     }
 
     fn is_empty(&self) -> bool {
-        matches!(&self.0, Tag::String(text) if text.is_empty())
+        matches!(&self.0, Tag::String(text) if text.0.is_empty())
     }
 }
 
