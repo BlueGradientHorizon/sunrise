@@ -26,6 +26,68 @@ fn collect_factories() -> TooltipComponentFactories {
     factories
 }
 
+#[test]
+fn a_panicking_factory_registration_publishes_none_of_its_edits() {
+    struct Data;
+    impl TooltipComponentData for Data {}
+    struct Unpublished;
+    impl TooltipComponentData for Unpublished {}
+
+    struct Component(i32);
+    impl ClientTooltipComponent for Component {
+        fn width(&self, _: &dyn TooltipFont) -> i32 {
+            self.0
+        }
+        fn height(&self, _: &dyn TooltipFont) -> i32 {
+            0
+        }
+    }
+
+    struct Register(i32);
+    #[mod_api::__subscriptions]
+    impl Hooks for Register {
+        fn register_client_tooltip_component_factories(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterClientTooltipComponentFactoriesEvent<'_>,
+        ) {
+            let value = self.0;
+            event
+                .factories
+                .register::<Data, Component>(move |_| Component(value));
+            if value == 2 {
+                event
+                    .factories
+                    .register::<Unpublished, Component>(|_| Component(3));
+                panic!("failed tooltip factory registration");
+            }
+        }
+    }
+
+    use sunrise_client::tooltip_components::{TooltipComponentPrepareError, create};
+    let mods = vec![
+        ModEntry::new("first", Box::new(Register(1))),
+        ModEntry::new("failing", Box::new(Register(2))),
+    ];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_test_factories(collect_factories(), || {
+            let original = create(&TooltipComponent::custom(Data)).unwrap();
+            assert_eq!(original.downcast_ref::<Component>().unwrap().0, 1);
+            assert!(matches!(
+                create(&TooltipComponent::custom(Unpublished)),
+                Err(TooltipComponentPrepareError::MissingFactory { .. })
+            ));
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "failing",
+                    hook: "register_client_tooltip_component_factories",
+                }]
+            );
+        });
+    });
+}
+
 fn with_mod_factories(mods: Mods, test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::testing::with_mods(mods.clone(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();

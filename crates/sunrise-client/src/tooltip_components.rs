@@ -22,6 +22,25 @@ impl ClientTooltipComponentFactoriesRegistrar for TooltipComponentFactories {
     }
 }
 
+impl TooltipComponentFactories {
+    /// Publish a listener's factories only if its registration callback returns normally.
+    pub fn register_listener(
+        &mut self,
+        listen: impl FnOnce(&mut dyn ClientTooltipComponentFactoriesRegistrar) -> bool,
+    ) {
+        let mut pending = Self::default();
+        if listen(&mut pending) {
+            let retired: Vec<_> = pending
+                .factories
+                .into_iter()
+                .filter_map(|(type_id, factory)| self.factories.insert(type_id, factory))
+                .collect();
+            // Factory destructors run through their original callback owners after publication.
+            drop(retired);
+        }
+    }
+}
+
 /// Frozen lookup table of client tooltip component factories published at client startup.
 pub struct FrozenTooltipComponentFactories {
     factories: HashMap<TypeId, TooltipComponentFactory>,

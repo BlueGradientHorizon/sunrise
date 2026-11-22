@@ -95,7 +95,8 @@ impl ClientTooltipComponent for ChargeBarClient {
 
 2. **Register the client factory once at startup.** Implement
    `Hooks::register_client_tooltip_component_factories` and bind the payload type to its
-   `ClientTooltipComponent`. A later registration for the same type replaces the earlier one:
+   `ClientTooltipComponent`. A later registration for the same type replaces the earlier one.
+   If the registration listener panics, none of its factories replace or extend the table:
 
 ```rust,ignore
 fn register_client_tooltip_component_factories(
