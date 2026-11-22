@@ -12,7 +12,7 @@ A comment on an issue, on any line (alone, or after `🤖 Agent:`):
     /unclaim @login    the repository owner, the council and trusted reviewers release someone else's claim
 
 Trailing command punctuation is allowed. `/claim` ignores explanatory text; `/unclaim` targets the commenter
-unless the entire remainder of that first line is a login.
+unless the entire remainder of that line is a login.
 
 An assigned issue is taken, and so is one claimed on Discord (Kira's `in progress` label). Trackers and proposals
 (labels `tracker`, `proposal`, `not claimable`, set by maintainers) are never claimed whole. Refused with a one-line

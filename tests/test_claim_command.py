@@ -323,8 +323,12 @@ class ConcurrentClaimTests(unittest.TestCase):
             def held_issues(self, login):
                 return next(self.counts)
 
+        racing = Racing()
         with self.assertRaisesRegex(cc.Refused, "at the same moment"):
-            do("/claim", Racing())
+            do("/claim", racing)
+        self.assertEqual([c[:3] for c in racing.calls if c[0] in ("assign", "unassign")],
+                         [("assign", 5, "newcomer"), ("unassign", 5, "newcomer")])
+
         class Tenth(Fake):
             """9 held at the first count; the recount sees those and this claim, exactly the limit: kept."""
             counts = iter([[held(n) for n in range(10, 19)], [held(n) for n in range(10, 19)] + [held(5)]])
