@@ -490,6 +490,7 @@ impl ParticleEngine {
         };
         self.provided_live.fetch_add(1, Ordering::Relaxed);
         q.behaviour = super::Behaviour::Controlled { translucent: true };
+        q.set = Some(set.set);
         q.provided = Some(Box::new(Provided {
             factory: Arc::clone(&bound.factory),
             instance: CallbackValue::new(
