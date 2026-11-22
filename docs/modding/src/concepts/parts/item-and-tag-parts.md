@@ -271,6 +271,32 @@ lookup.
   text the part leaves is drawn at the same place and fade. It is asked once a client tick while the name shows. The
   name's timer still restarts only when the item or its hover name changes, so a tip that changes every tick doesn't
   keep it up.
+- `ItemPart::item_name` is vanilla's `Item.getName(ItemStack)`: the name of `event.stack`, from its components, so
+  one item names each stack (a data model after the mob in it, a filled tank after its fluid). `event.name` arrives
+  as `None`, the default name: the `minecraft:item_name` component, else the item's translated name. Set it to
+  `Some(text)`, a translatable `Text` (`Text::translate`) so each viewer reads it in their language. It replaces the
+  default, as the vanilla items that override `getName` do, and a `minecraft:custom_name` or a written book's title
+  still wins over it (`ItemStack.getHoverName`); the part isn't asked then. Every place that names a stack reads it,
+  once per naming: tooltips, the held item's name above the hotbar, command feedback such as `/give`'s, the anvil's
+  rename box and its comparison on both sides, stats, the recipe book's and the creative inventory's search, recipe
+  screens and `Host::hover_name`. It takes the loop `context` and no `Host`, so it can't name a stack again: answer
+  from the stack alone, and fast.
+
+```rust,ignore
+struct DataModel;
+
+#[mod_api::sunrise_part]
+impl ItemPart for DataModel {
+    fn item_name(&self, _context: &dyn LoopContext, event: &mut ItemNameEvent<'_>) {
+        // The mob in the stack's own component names it: "Zombie Data Model".
+        let id = ComponentId::new("mymod:data_model").expect("a component id");
+        if let Some(Tag::String(mob)) = ItemResource::of(event.stack).component(&id) {
+            let mob = Text::translate(format!("entity.{}", mob.to_string_lossy().replace(':', ".")), Vec::new());
+            *event.name = Some(Text::translate("item.mymod.data_model.named", vec![mob]));
+        }
+    }
+}
+```
 
 ## Grindstone, repair combining and container items
 

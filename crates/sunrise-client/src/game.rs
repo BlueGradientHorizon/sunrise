@@ -742,6 +742,9 @@ mod item_interact_mob_tests;
 mod item_menu_parts_tests;
 #[path = "game/modding/item_model_context.rs"]
 mod item_model_context;
+#[cfg(test)]
+#[path = "game/items/item_name_tests.rs"]
+mod item_name_tests;
 #[path = "game/modding/item_particle_send.rs"]
 mod item_particle_send;
 #[cfg(test)]
@@ -3925,6 +3928,8 @@ struct Game<'a> {
     /// The `[[native.loop]]` slots' state, per published loop (`published_loops.rs`).
     loop_states: published_loops::LoopStates,
     creative_screen: Creative,
+    /// The creative search projection whose stacks the mods' `item_name` parts last named.
+    creative_search_named: Option<u64>,
     creative_contents: native_hooks::CreativeCache,
     /// `CreativeModeInventoryScreen.ignoreTextInput`: the chat key opened the
     /// search tab, so the letter it carries is not typed into the box.
@@ -7201,6 +7206,7 @@ impl Game<'_> {
             }
             // The early return skips the match below: the hooks still see the
             // screen, after its own drawing.
+            self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
             self.draw_pack_toasts(&mut batch, true, self.ui.hide_gui);
             return batch;
@@ -7216,6 +7222,7 @@ impl Game<'_> {
             } else {
                 self.ui.options.discard_draw();
             }
+            self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
             self.draw_controller_notice(&mut batch);
             self.draw_pack_toasts(&mut batch, true, self.ui.hide_gui);
@@ -7250,6 +7257,7 @@ impl Game<'_> {
             } else if drawn {
                 self.draw_mod_screen(&mut batch);
             }
+            self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
             self.draw_toasts(&mut batch, false);
             self.draw_tutorial_toasts(&mut batch, false);
@@ -7282,6 +7290,7 @@ impl Game<'_> {
             // ScreenEvent.Render.Post over the title's own screens: a mod draws
             // over them here (a pack browser over Create New World, say), and the
             // toasts still come after, as over any screen.
+            self.publish_screen_regions(&batch, None);
             self.draw_title_screen_with_post_hook(&mut batch);
             self.draw_toasts(&mut batch, false);
             self.draw_tutorial_toasts(&mut batch, false);
@@ -7294,6 +7303,7 @@ impl Game<'_> {
         // The ToastManager draws over every screen: a server's packs
         // download while the connection screen shows.
         if self.remote_overlay(&mut batch) {
+            self.publish_screen_regions(&batch, None);
             self.draw_pack_toasts(&mut batch, false, false);
             self.draw_music_toast(&mut batch, false);
             return batch;
@@ -7676,6 +7686,7 @@ impl Game<'_> {
             self.screen
         };
         let drawn = self.draw_screen_with_pre_hook(&mut batch);
+        let mut region_screen = None;
         match screen {
             _ if !drawn => {}
             Screen::Paused if self.pause_menu => self.draw_pause_menu(&mut batch),
@@ -7720,12 +7731,16 @@ impl Game<'_> {
             Screen::HudEditor => self.draw_hud_editor(&mut batch),
             Screen::Inventory => {
                 let from = batch.vertices.len();
-                self.draw_inventory(&mut batch);
+                if self.draw_inventory(&mut batch) {
+                    region_screen = Some(Screen::Inventory);
+                }
                 self.draw_pad_menu_guide(&mut batch, from);
             }
             Screen::Creative => {
                 let from = batch.vertices.len();
-                self.draw_creative(&mut batch);
+                if self.draw_creative(&mut batch) {
+                    region_screen = Some(Screen::Creative);
+                }
                 self.draw_pad_menu_guide(&mut batch, from);
             }
             Screen::Chat => self.draw_chat_screen(&mut batch),
@@ -7735,6 +7750,7 @@ impl Game<'_> {
         // tooltips, so a native mod draws over it here. Never `Playing`: the
         // prompts, books and sign editors drawn over gameplay keep it, draw
         // after this point and so over what a mod drew.
+        self.publish_screen_regions(&batch, region_screen);
         self.draw_screen_with_post_hook(&mut batch);
         self.draw_saving_indicator(&mut batch);
         self.draw_every_toast(&mut batch, self.replay.playing(), gui_canceled);
@@ -13712,6 +13728,7 @@ impl<'a> Game<'a> {
             trial_spawner_tick_positions: Vec::new(),
             loop_states: Default::default(),
             creative_screen: prepared.creative_screen,
+            creative_search_named: None,
             creative_contents: Default::default(),
             creative_ignore_text: false,
             control: None,
