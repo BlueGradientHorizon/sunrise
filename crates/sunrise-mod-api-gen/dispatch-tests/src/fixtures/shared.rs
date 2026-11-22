@@ -43,11 +43,6 @@ mod content {
         ) -> Option<&'static str> {
             Some("test:counter")
         }
-        pub(in crate::tests) fn entity_type_name(
-            _: super::super::EntityTypeKey,
-        ) -> Option<&'static str> {
-            Some("test:entity")
-        }
         pub(in crate::tests) fn item_id(key: super::super::ItemKey<'_>) -> Option<&str> {
             Some(key.0)
         }
@@ -236,17 +231,6 @@ impl ModEntry {
     }
 }
 trait Registrar {}
-struct EntityTypeKey;
-impl EntityRef {
-    fn kind(self, _: &dyn Host) -> Option<EntityTypeKey> {
-        Some(EntityTypeKey)
-    }
-}
-impl UnspawnedMobRef {
-    fn kind(&self, _: &dyn Host) -> Result<Identifier, ()> {
-        Ok(Identifier)
-    }
-}
 /// The goal registrar of the generated `EntityPart`, as the fixture sees it.
 struct GoalRegistrar<'a> {
     _lifetime: std::marker::PhantomData<&'a ()>,
@@ -361,9 +345,6 @@ impl Parts {
         &self.fluids
     }
     fn entity<'k>(&self, _: impl FnOnce() -> Option<&'k str>) -> &[&'static dyn EntityPart] {
-        &self.entities
-    }
-    fn entity_id(&self, _: impl FnOnce() -> Option<Identifier>) -> &[&'static dyn EntityPart] {
         &self.entities
     }
 }

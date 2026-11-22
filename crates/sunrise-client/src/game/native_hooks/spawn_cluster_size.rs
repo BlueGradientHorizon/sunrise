@@ -6,7 +6,8 @@ impl Game<'_> {
     pub(in crate::game) fn native_spawn_cluster_size(
         &self,
         call: mod_api::__private::SpawnClusterSizeCall<'_>,
+        entity_kind: &str,
     ) {
-        self.fire_spawn_cluster_size(call);
+        self.fire_spawn_cluster_size(call, entity_kind);
     }
 }

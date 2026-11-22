@@ -20,8 +20,16 @@ impl Game<'_> {
         player: Option<PlayerRef>,
         shears: &ItemStack,
     ) -> Option<((usize, usize), bool)> {
+        if !self.mobs[index].alive() {
+            return None;
+        }
+        let kind = &self.mobs[index].kind.id;
         if !mod_api::__private::has_scoped_hook(mod_api::HookId::IsShearable)
-            || !self.mobs[index].alive()
+            || !mod_api::__private::entity_part_hooked(
+                mod_api::HookId::IsShearable,
+                "is_shearable",
+                kind,
+            )
         {
             return None;
         }
@@ -30,7 +38,7 @@ impl Game<'_> {
         let project = |metadata| super::api_values::project_stack(shears, metadata).ok();
         let shears_view = mod_api::ItemStackView::resident(metadata, &project);
         let mut shearable = None;
-        let slot = self.native_is_shearable(entity, player, shears_view, &mut shearable)?;
+        let slot = self.native_is_shearable(entity, player, shears_view, &mut shearable, kind)?;
         shearable.map(|answer| (slot, answer))
     }
 
@@ -46,7 +54,11 @@ impl Game<'_> {
         player: Option<PlayerRef>,
         shears: &ItemStack,
     ) -> Result<(), ()> {
-        let (id, at) = (self.mobs[index].id, self.mobs[index].position);
+        let (id, at, kind) = (
+            self.mobs[index].id,
+            self.mobs[index].position,
+            std::sync::Arc::clone(&self.mobs[index].kind),
+        );
         let (Some(entity), Ok(metadata)) = (
             self.entity(id),
             super::api_values::stack_read_metadata(shears),
@@ -66,7 +78,15 @@ impl Game<'_> {
                 Ok(())
             };
         let mut drops = Vec::new();
-        self.native_on_sheared(entity, player, shears_view, &mut drops, &mut validate, part)?;
+        self.native_on_sheared(
+            entity,
+            player,
+            shears_view,
+            &mut drops,
+            &mut validate,
+            part,
+            &kind.id,
+        )?;
         // The part may have moved or removed the mob: its drops fall where it is now.
         let index = self.mobs.iter().position(|m| m.id == id && !m.removed);
         let at = index.map_or(at, |i| self.mobs[i].position);
@@ -159,6 +179,7 @@ mod tests {
         ) -> Option<bool> {
             assert!(event.player.is_none(), "a dispenser has no player");
             assert_eq!(event.shears.count(), 1);
+            assert_eq!(event.shears.damage(), 7);
             Some(true)
         }
         fn on_sheared(
@@ -166,6 +187,7 @@ mod tests {
             _: &mut dyn mod_api::ServerHost,
             event: &mut mod_api::OnShearedEvent<'_>,
         ) {
+            assert_eq!(event.shears.damage(), 7);
             let leather = mod_api::__private::item_key("minecraft:leather").unwrap();
             event
                 .drops
@@ -226,7 +248,12 @@ mod tests {
             add(1, "minecraft:cow", 0);
             add(2, "minecraft:sheep", 4);
 
-            assert!(game.shear_entity((0, 64, 0)).unwrap(), "the cow is sheared");
+            let mut shears = ItemStack::new("minecraft:shears", 1);
+            shears.damage = 7;
+            assert!(
+                game.shear_entity((0, 64, 0), &shears).unwrap(),
+                "the cow is sheared"
+            );
             let leather: Vec<_> = game
                 .dropped
                 .iter()
@@ -235,7 +262,10 @@ mod tests {
                 .collect();
             assert_eq!(leather, [1]);
 
-            assert!(!game.shear_entity((4, 64, 0)).unwrap(), "the sheep refuses");
+            assert!(
+                !game.shear_entity((4, 64, 0), &shears).unwrap(),
+                "the sheep refuses"
+            );
             assert!(!game.mobs.iter().any(|m| m.id == 2 && m.extra.sheared));
             assert!(!game.dropped.iter().any(|d| d.stack.item.ends_with("_wool")));
         });
@@ -334,7 +364,7 @@ mod tests {
                 assert!(game.dropped.is_empty(), "a refused part drops nothing");
                 // The dispenser's shearing is not a success when the part's performing is refused.
                 assert!(
-                    !game.shear_entity((4, 64, 0)).unwrap(),
+                    !game.shear_entity((4, 64, 0), &shears).unwrap(),
                     "a refused on_sheared shears nothing"
                 );
                 assert!(!game.mobs[1].extra.sheared);

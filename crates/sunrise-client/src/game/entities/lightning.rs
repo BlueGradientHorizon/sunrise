@@ -1192,7 +1192,8 @@ mod tests {
                         .unwrap()
                     );
                 } else {
-                    assert!(game.shear_entity((x, 64, 0)).unwrap());
+                    let shears = sunrise_client::items::ItemStack::new("minecraft:shears", 1);
+                    assert!(game.shear_entity((x, 64, 0), &shears).unwrap());
                 }
             }
             assert_eq!(pre.load(Ordering::SeqCst), 4);

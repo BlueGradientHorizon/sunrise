@@ -1229,20 +1229,29 @@ impl Game<'_> {
         spawner: Option<mod_api::SpawnSource>,
         vanilla: u32,
     ) -> Option<u32> {
-        if !mod_api::__private::has_scoped_hook(mod_api::HookId::SpawnClusterSize) {
+        if !mod_api::__private::has_scoped_hook(mod_api::HookId::SpawnClusterSize)
+            || !mod_api::__private::entity_part_hooked(
+                mod_api::HookId::SpawnClusterSize,
+                "spawn_cluster_size",
+                &mob.kind.id,
+            )
+        {
             return None;
         }
-        let kind = mob.kind.id.clone();
+        let kind = Arc::clone(&mob.kind);
         let at = [mob.position.x, mob.position.y, mob.position.z];
         let mut limit = None;
-        self.lend_unspawned(&kind, at, Some(mob), |lent, _| {
-            self.native_spawn_cluster_size(mod_api::__private::SpawnClusterSizeCall {
-                mob: lent,
-                reason,
-                spawner,
-                vanilla,
-                limit: &mut limit,
-            });
+        self.lend_unspawned(&kind.id, at, Some(mob), |lent, _| {
+            self.native_spawn_cluster_size(
+                mod_api::__private::SpawnClusterSizeCall {
+                    mob: lent,
+                    reason,
+                    spawner,
+                    vanilla,
+                    limit: &mut limit,
+                },
+                &kind.id,
+            );
         });
         limit
     }

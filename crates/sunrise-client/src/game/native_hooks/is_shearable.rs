@@ -10,7 +10,8 @@ impl Game<'_> {
         player: Option<PlayerRef>,
         shears: mod_api::ItemStackView<'_>,
         shearable: &mut Option<bool>,
+        entity_kind: &str,
     ) -> Option<(usize, usize)> {
-        mod_api::dispatch_is_shearable(self, entity, player, shears, shearable)
+        mod_api::dispatch_is_shearable(self, entity, player, shears, shearable, entity_kind)
     }
 }

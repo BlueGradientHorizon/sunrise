@@ -14,6 +14,7 @@ impl Game<'_> {
             &Vec<mod_api::ItemStack>,
         ) -> Result<(), mod_api::StackWriteError>,
         part_slot: (usize, usize),
+        entity_kind: &str,
     ) -> Result<(), ()> {
         mod_api::dispatch_on_sheared(
             self,
@@ -23,6 +24,7 @@ impl Game<'_> {
             drops,
             validate_drops,
             part_slot,
+            entity_kind,
         )
     }
 }

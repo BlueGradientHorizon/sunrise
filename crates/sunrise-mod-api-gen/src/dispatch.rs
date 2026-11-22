@@ -238,6 +238,7 @@ pub(super) fn emit<'a>(
             });
         // A scoped hook's parts: the trait its method goes on, and the lookup
         // of the parts attached to the thing its `key` argument names.
+        let mut entity_kind_param = false;
         let scoped = match &hook.scope {
             None => None,
             Some(scope) => {
@@ -292,15 +293,9 @@ pub(super) fn emit<'a>(
                     ),
                     "& str" if opener_routed => format!("menu_for_opener({key}, block)"),
                     "& str" => format!("{table}(|| Some({key}))"),
-                    "EntityRef" if table == "entity" => {
-                        let host = &host.as_ref().ok_or("entity handle needs a Host")?.0;
-                        format!(
-                            "entity(|| {key}.kind(&*{host}).and_then(super::content::registry_keys::entity_type_name))"
-                        )
-                    }
-                    "UnspawnedMobRef" if table == "entity" => {
-                        let host = &host.as_ref().ok_or("unspawned mob handle needs a Host")?.0;
-                        format!("entity_id(|| {key}.kind(&*{host}).ok())")
+                    "EntityRef" | "UnspawnedMobRef" if table == "entity" => {
+                        entity_kind_param = true;
+                        "entity(|| Some(__entity_kind))".to_owned()
                     }
                     "& mut GoalRegistrar < '_ >" | "& mut BehaviorRegistrar < '_ >"
                         if table == "entity" =>
@@ -609,6 +604,9 @@ pub(super) fn emit<'a>(
         if single_part_slot {
             dispatch_params.push("__part_slot: (usize, usize)".into());
         }
+        if entity_kind_param {
+            dispatch_params.push("__entity_kind: &str".into());
+        }
         let (generics, elided) = match (lifetimes.a, lifetimes.b) {
             (_, true) => ("<'a, 'b>", "<'_, '_>"),
             (true, false) => ("<'a>", "<'_>"),
@@ -795,6 +793,10 @@ pub(super) fn emit<'a>(
             if inert_signal {
                 parameter("inert", "&mut bool");
                 passed.push("inert".to_owned());
+            }
+            if entity_kind_param {
+                parameter("entity_kind", "&str");
+                passed.push("entity_kind".to_owned());
             }
             let receiver = match hook.receiver {
                 Receiver::Read => "&self",
