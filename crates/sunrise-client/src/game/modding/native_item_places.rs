@@ -3589,6 +3589,13 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn crafted_by_replaces_the_map_in_a_handler_backed_slot() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_item_places::tests::crafted_by_replaces_the_map_in_a_handler_backed_slot",
+            "SUNRISE_CRAFTED_BY_HANDLER_CASE",
+            &["replace"],
+        ) {
+            return;
+        }
         with_crafted_by_handler_map(true, None, |game, place, source, original| {
             assert_eq!(
                 game.storage_transaction(|game, tx| place.on_crafted_by(game, tx, 3)),
@@ -3626,6 +3633,13 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn crafted_by_refused_handler_write_drops_the_map_and_stat() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_item_places::tests::crafted_by_refused_handler_write_drops_the_map_and_stat",
+            "SUNRISE_CRAFTED_BY_HANDLER_CASE",
+            &["refuse"],
+        ) {
+            return;
+        }
         with_crafted_by_handler_map(false, None, |game, place, source, original| {
             // Catch the refusal and commit the caller's transaction anyway.
             assert_eq!(
