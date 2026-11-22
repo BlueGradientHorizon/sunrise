@@ -146,6 +146,11 @@ impl WorldOptions {
         self.initial.difficulty = self.difficulty;
         self.initial.locked = self.locked;
     }
+    /// `WorldOptionsScreen.updatePersonalGameModeButton`: refresh both value and baseline.
+    fn update_personal_mode(&mut self, mode: i32) {
+        self.personal_mode = mode;
+        self.initial.personal_mode = mode;
+    }
     /// `WorldOptionsScreen.updatePortControlsState`: the port box takes an
     /// edit only with LAN on; it stays focusable either way, so its value can
     /// be read, selected and copied while LAN is off.
@@ -683,6 +688,30 @@ impl Game<'_> {
     pub(super) fn close_world_options(&mut self) {
         self.world_options = None;
         self.set_screen(Screen::Paused);
+    }
+
+    /// `WorldOptionsScreen.updatePersonalGameModeButton`: update both the displayed
+    /// personal mode and its baseline without discarding unrelated edits.
+    pub(in crate::game) fn update_world_options_personal_mode(&mut self, mode: i32) {
+        if self.screen == Screen::WorldOptions
+            && let Some(o) = self.world_options.as_mut()
+        {
+            o.update_personal_mode(mode);
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::game) fn world_options_personal_state(&self) -> Option<(i32, i32, u8)> {
+        self.world_options
+            .as_ref()
+            .map(|o| (o.personal_mode, o.initial.personal_mode, o.difficulty))
+    }
+
+    #[cfg(test)]
+    pub(in crate::game) fn set_world_options_difficulty_for_test(&mut self, difficulty: u8) {
+        if let Some(o) = self.world_options.as_mut() {
+            o.difficulty = difficulty;
+        }
     }
 
     /// Escape: the question and RestrictionsScreen return to the options
@@ -2056,5 +2085,27 @@ mod tests {
         assert!(o.port.editable);
         assert!(o.port.key(KeyCode::Backspace, false, false));
         assert_eq!(o.port.value, "2555");
+    }
+
+    /// `WorldOptionsScreen.updatePersonalGameModeButton`: external local-mode updates refresh
+    /// both `personal_mode` and its baseline without discarding unrelated edits.
+    #[test]
+    fn updating_personal_mode_refreshes_baseline_without_discarding_other_edits() {
+        let mut o = options(false, false);
+        assert_eq!((o.personal_mode, o.initial.personal_mode), (1, 1));
+        assert!(!o.active(Button::Apply));
+        o.difficulty = 3;
+        assert!(o.active(Button::Apply));
+        o.update_personal_mode(0);
+        assert_eq!((o.personal_mode, o.initial.personal_mode), (0, 0));
+        assert_eq!(o.difficulty, 3);
+        assert!(o.active(Button::Apply));
+        o.difficulty = o.initial.difficulty;
+        assert!(!o.active(Button::Apply));
+        o.personal_mode = 2;
+        assert!(o.active(Button::Apply));
+        o.update_personal_mode(3);
+        assert_eq!((o.personal_mode, o.initial.personal_mode), (3, 3));
+        assert!(!o.active(Button::Apply));
     }
 }

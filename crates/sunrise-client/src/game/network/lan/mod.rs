@@ -39,7 +39,7 @@ use sunrise_client::{
     world::World,
 };
 use sunrise_protocol::{
-    entity_data::{Value, serializer},
+    entity_data::{Particles, Value, serializer},
     packets::play::{self, Clientbound as C},
 };
 use sunrise_world::block_collision::BlockCollisionRegistry;
@@ -387,7 +387,11 @@ pub(super) fn mob_meta(
         Some(modified) => meta.extend_from_slice(&modified.meta),
         None => meta.extend(hub.effect_meta(mob_effects(m))),
     }
-    defaults.push((10, serializer::PARTICLES, Value::Particles(Vec::new())));
+    defaults.push((
+        10,
+        serializer::PARTICLES,
+        Value::Particles(Particles::new()),
+    ));
     defaults.push((11, serializer::BOOLEAN, Value::Bool(false)));
     // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID.
     stuck_meta(
@@ -4994,7 +4998,7 @@ mod tests {
                 (meta.iter())
                     .filter_map(|(index, _, value)| match value {
                         Value::Particles(list) if *index == 10 => {
-                            Some((10, list.iter().map(named).collect::<Vec<_>>()))
+                            Some((10, list.iter().map(|p| named(&p)).collect::<Vec<_>>()))
                         }
                         Value::Bool(ambient) if *index == 11 => {
                             assert!(*ambient);
