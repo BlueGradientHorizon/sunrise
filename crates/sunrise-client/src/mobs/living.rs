@@ -4395,7 +4395,7 @@ mod tests {
                         Vec3::ZERO,
                         effect,
                         &mut events,
-                        false,
+                        LandingMode::Uninterrupted,
                     );
                     let dust = events
                         .iter()

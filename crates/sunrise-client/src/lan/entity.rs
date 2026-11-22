@@ -2875,6 +2875,7 @@ mod tests {
                 view_distance: 10,
                 chunks: &chunks,
                 sources: None,
+                attachment_sender: None,
                 tracker: &mut tracker,
                 out: &mut out,
             }];
@@ -2887,6 +2888,7 @@ mod tests {
                     &[marker.clone(), general.clone(), next.clone()],
                     &riding,
                     &mut viewer,
+                    None,
                     |_| Some(100),
                 );
                 assert!(!level.tracks(marker.id));
@@ -2894,7 +2896,7 @@ mod tests {
                 assert!(level.tracks(next.id));
             }
             let states = [&marker, &general, &next];
-            level.tick(&states, &riding, &mut viewer, |_| Some(100));
+            level.tick(&states, &riding, &mut viewer, None, |_| Some(100));
             assert!(!level.tracks(marker.id));
             assert!(!level.tracks(general.id));
             assert!(level.tracks(next.id));
@@ -2906,7 +2908,7 @@ mod tests {
             assert_eq!(events.len(), 1);
             assert!(events[0].start);
             assert_eq!(events[0].entity, next.id);
-            level.tick(&states, &riding, &mut viewer, |_| Some(100));
+            level.tick(&states, &riding, &mut viewer, None, |_| Some(100));
             assert!(viewer[0].tracker.take_events().is_empty());
             let added: Vec<_> = viewer[0]
                 .out
