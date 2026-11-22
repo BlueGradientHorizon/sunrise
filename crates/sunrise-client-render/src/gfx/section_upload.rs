@@ -593,7 +593,7 @@ impl Renderer {
     pub fn shadow_pass_drew(&self, pos: [i32; 3]) -> bool {
         let key = (
             pos[0] >> 4,
-            (pos[1] - self.layout.min_y()) >> 4,
+            resident::block_to_section_y(pos[1], self.layout.min_y()),
             pos[2] >> 4,
         );
         self.shadow_visible.iter().any(|v| v.key == key)

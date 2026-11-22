@@ -299,6 +299,14 @@ mod tests {
         assert_eq!(out[0].origin, [-8.0, -8.0, 132.0]);
     }
 
+    #[test]
+    fn extreme_y_world_view_does_not_overflow() {
+        let at = DVec3::new(8.0, f64::from(i32::MAX), 8.0);
+        let view = native_render::WorldView::new(1, at, 0.0, 90.0, 70.0, [200, 120]);
+        let out = walk(view, &[(0, 0, 0), (0, 23, 0)], DVec3::ZERO);
+        assert!(out.iter().all(|v| v.key.1 == 23));
+    }
+
     /// Vanilla 26.3 witness (SUNRISE_SECTION_VISIBILITY_WITNESS): world views obey vertical clamp.
     #[test]
     #[ignore = "run by tools/test_visibility_parity.py"]

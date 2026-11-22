@@ -275,4 +275,46 @@ mod shadow_caster_tests {
         assert!(!kept(50.0, 339.0, -20.0, [3.0, 4.0, -1.0]));
         assert!(!kept(50.0, 0.0, 0.0, [-2.0, 3.0, 0.0]));
     }
+
+    /// Shadow selection keeps casters outside the eye's vertical render-distance band within shadow reach.
+    #[test]
+    fn the_shadow_pass_keeps_casters_outside_the_eye_vertical_band() {
+        // Overworld min_y = -64: section Y = 4 covers block Y 0..16, Y = 6 covers 32..48,
+        // Y = 7 covers 48..64, Y = 12 covers 128..144.
+        let camera = DVec3::new(8.0, 8.0, 8.0);
+        let rd = 2;
+        let receiver = (0, 6, 0);
+        let caster = (0, 7, 0);
+        let beyond_reach = (0, 12, 0);
+        let mut sections = resident::Resident::<()>::default();
+        for key in [receiver, caster, beyond_reach] {
+            sections.insert_with_bounds(key, (), None);
+        }
+        let up = world_projection(70.0, 16.0 / 9.0, 192.0)
+            * Mat4::look_to_rh(Vec3::ZERO, Vec3::Y, Vec3::Z);
+        let eye = Frustum::from_planes(frustum(up));
+        let keys_of = |cull: &dyn Fn(&mut Vec<resident::Visible>)| {
+            let mut out = Vec::new();
+            cull(&mut out);
+            let mut keys: Vec<_> = out.iter().map(|v| v.key).collect();
+            keys.sort_unstable();
+            keys
+        };
+        assert_eq!(
+            keys_of(&|out| sections.visible(camera, rd, &eye, |_| true, |_, _| false, out)),
+            [receiver]
+        );
+        let all = ShadowCull::new(Frustum::from_planes([Vec4::W; 6])).with_reach(Some(96.0));
+        assert_eq!(
+            keys_of(&|out| sections.visible(camera, rd, &all, |_| true, |_, _| false, out)),
+            [receiver, caster]
+        );
+        let light = ShadowCull::new(Frustum::from_planes([Vec4::W; 6]))
+            .with_casters(Some(shadow_casters(up, Vec3::Y)))
+            .with_reach(Some(96.0));
+        assert_eq!(
+            keys_of(&|out| sections.visible(camera, rd, &light, |_| true, |_, _| false, out)),
+            [receiver, caster]
+        );
+    }
 }

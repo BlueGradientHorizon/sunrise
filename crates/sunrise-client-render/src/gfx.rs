@@ -970,11 +970,8 @@ pub use view::test_frustum;
 /// fire_side's 0.01 pixel in front of its block, from z-fighting.
 /// The section the camera is in.
 fn camera_section(camera: DVec3, min_y: i32) -> SectionKey {
-    (
-        (camera.x.floor() as i32) >> 4,
-        (camera.y.floor() as i32 - min_y) >> 4,
-        (camera.z.floor() as i32) >> 4,
-    )
+    let (cx, cz) = resident::camera_column(camera);
+    (cx, resident::camera_section_y(camera, min_y), cz)
 }
 
 /// The near plane of the world's projection, in blocks.

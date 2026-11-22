@@ -267,10 +267,10 @@ struct Params {
     w: [[i32; 4]; 2],
     /// Cave culling's graph (`Reach`): from x, from z, radius, lowest section y.
     reach: [i32; 4],
-    /// Its height in sections, and padding to keep 16-byte uniform layout.
+    /// Its height in sections, and with `TREE` where per-column branch states start in `tables`.
     reach_height: i32,
-    _reach_pad: i32,
-    /// `REACH`, `EYE`, `OCCLUDE`, `PROBE`.
+    tree: u32,
+    /// `REACH`, `EYE`, `OCCLUDE`, `PROBE`, `TREE`.
     flags: u32,
     /// With `EYE`, where the eye's keys start in `tables`, in words.
     eyes: u32,
@@ -310,6 +310,8 @@ const EYE: u32 = 4;
 /// and it tests every box (cull.rs's probe frame).
 const OCCLUDE: u32 = 8;
 const PROBE: u32 = 16;
+/// In `Params::flags` (the shader's `TREE`): outside-height octree branch decisions are in `tables`.
+const TREE: u32 = 32;
 /// Ids per block (the shader's `BLOCK`), and the workgroup of the passes over ids.
 const WORKGROUP: u32 = 64;
 /// Workgroups along x when there are more (the shader's `ROW`).
@@ -495,7 +497,15 @@ fn tables(input: &FrameInputs<'_>, words: &mut Vec<u32>) -> Option<Params> {
             .map(|&o| f64::from(f32::from_bits(o)).abs());
         sizes.fold(0.0, f64::max) + 24.0
     });
-    let planes = input.frustum.planes().map(|p| {
+    let outside_tree =
+        resident::outside_height_tree(input.camera, input.min_y, input.sections, radius);
+    let offset_frustum = outside_tree.map(|_| {
+        input
+            .frustum
+            .offset_to_fully_include_camera_cube(input.camera, 8)
+    });
+    let active_frustum = offset_frustum.as_ref().unwrap_or(input.frustum);
+    let planes = active_frustum.planes().map(|p| {
         if p.is_finite() {
             p.as_dvec4()
         } else {
@@ -544,6 +554,22 @@ fn tables(input: &FrameInputs<'_>, words: &mut Vec<u32>) -> Option<Params> {
             }
         }
     }
+    let mut flags = if input.eye.is_some() { EYE } else { 0 };
+    let mut tree_offset = 0u32;
+    if let Some(tree) = outside_tree {
+        tree_offset = words.len() as u32;
+        let tree_words = (nx * nx).div_ceil(16);
+        words.resize(tree_offset as usize + tree_words, 0);
+        for dz in 0..nx {
+            for dx in 0..nx {
+                let state =
+                    tree.branch_state(x0 + dx as i32, z0 + dz as i32, input.camera, active_frustum);
+                let col = dz * nx + dx;
+                words[tree_offset as usize + (col >> 4)] |= (state & 3) << ((col & 15) * 2);
+            }
+        }
+        flags |= TREE;
+    }
     let w = planes.map(|p| {
         let rounding: f64 = (0..3).map(|axis| p[axis].abs() * reach[axis]).sum();
         let margin = (SCALE * (6.0 * UNIT * rounding + 2.0 * UNIT * p.w.abs())).ceil() + 1.0;
@@ -562,7 +588,8 @@ fn tables(input: &FrameInputs<'_>, words: &mut Vec<u32>) -> Option<Params> {
         first: [x0, y0, z0, 0],
         cells: [side as u32, ny_i32 as u32, side as u32, 0],
         w: [[w[0], w[1], w[2], w[3]], [w[4], w[5], 0, 0]],
-        flags: if input.eye.is_some() { EYE } else { 0 },
+        tree: tree_offset,
+        flags,
         eyes,
         ..Default::default()
     })
@@ -1755,9 +1782,20 @@ mod tests {
             return false;
         }
         let c: [u32; 3] = std::array::from_fn(|i| key[i].wrapping_sub(params.first[i]) as u32);
-        (key[3] as u32) < params.pages
-            && (0..3).all(|i| c[i] < params.cells[i])
-            && in_frustum(params, words, c, a[2])
+        if (key[3] as u32) >= params.pages || !(0..3).all(|i| c[i] < params.cells[i]) {
+            return false;
+        }
+        if (params.flags & TREE) != 0 {
+            let col = (c[2] * params.cells[0] + c[0]) as usize;
+            let state = (words[params.tree as usize + (col >> 4)] >> ((col & 15) * 2)) & 3;
+            if state == 0 {
+                return false;
+            }
+            if state == 2 {
+                return true;
+            }
+        }
+        in_frustum(params, words, c, a[2])
     }
 
     /// A frame of the overworld's 24 sections, cave culling off, every solid
@@ -2581,12 +2619,18 @@ mod tests {
             let mut params =
                 tables(&input, &mut words).unwrap_or_else(|| panic!("case {case}: the planes fit"));
             params.pages = 1;
-            assert_eq!(params.flags, EYE, "case {case}");
+            let outside_tree =
+                resident::outside_height_tree(camera, crate::chunk::MIN_Y, 24, radius);
+            let expected_flags = EYE | if outside_tree.is_some() { TREE } else { 0 };
+            assert_eq!(params.flags, expected_flags, "case {case}");
+            let offset_frustum =
+                outside_tree.map(|_| frustum.offset_to_fully_include_camera_cube(camera, 8));
+            let active_frustum = offset_frustum.as_ref().unwrap_or(&frustum);
             let [nx, ny, nz, _] = params.cells.map(|n| n as usize);
             // Every term rounds up: at least the plane's component times its
             // origin or box end, which f64 holds exactly.
             let n = nx + ny + nz;
-            let planes = frustum.planes().iter().enumerate();
+            let planes = active_frustum.planes().iter().enumerate();
             for (j, p) in planes.filter(|(_, p)| p.is_finite()) {
                 for i in 0..n {
                     let axis = usize::from(i >= nx) + usize::from(i >= nx + ny);
@@ -2672,15 +2716,16 @@ mod tests {
                 let (cx, cz) = resident::camera_column(base);
                 let (x, z) = (cx + rng.range(-1, 1), cz + rng.range(-1, 1));
                 // Keep columns inside vanilla's vertical render-distance band across the ±4 block bisection.
+                // Radius 8 keeps the octree root aligned to the world column (`size = 32 >= 24`).
                 let (lo_min, hi_min) = resident::vertical_section_range(
                     resident::camera_section_y(base - DVec3::Y * 4.0, min_y),
-                    3,
+                    8,
                     24,
                 )
                 .unwrap();
                 let (lo_max, hi_max) = resident::vertical_section_range(
                     resident::camera_section_y(base + DVec3::Y * 4.0, min_y),
-                    3,
+                    8,
                     24,
                 )
                 .unwrap();
@@ -2757,7 +2802,7 @@ mod tests {
                     }
                 }
                 let camera = base + normal * kept;
-                let mut params = tables(&inputs(camera, 3, &frustum), &mut words)
+                let mut params = tables(&inputs(camera, 8, &frustum), &mut words)
                     .unwrap_or_else(|| panic!("height {lift}, trial {trial}: the planes fit"));
                 params.pages = 1;
                 let tested = if column { &rows[..] } else { &rows[..1] };
@@ -2792,6 +2837,23 @@ mod tests {
             }
         }
         assert!(worst[2].max(worst[3]) > 1.0 / SCALE, "{worst:?}");
+    }
+
+    #[test]
+    fn outside_height_octree_culls_off_axis_seeds() {
+        let camera = DVec3::new(0.0, 400.0, 0.0);
+        let proj = super::super::world_projection(70.0, 1.0, 192.0);
+        let view = crate::camera::view_matrix(0.0, 90.0);
+        let frustum = Frustum::from_planes(super::super::frustum(proj * view));
+        let input = inputs(camera, 2, &frustum);
+        let mut words = Vec::new();
+        let mut params = tables(&input, &mut words).expect("tables fit");
+        params.pages = 1;
+        assert_ne!(params.flags & TREE, 0, "outside-height octree active");
+        let center = Record::new((0, 23, 0), 0, 0, 1, rounded_box(None));
+        let off_axis = Record::new((2, 23, 0), 0, 0, 1, rounded_box(None));
+        assert!(keeps(&params, &words, &center), "center seed kept");
+        assert!(!keeps(&params, &words, &off_axis), "off-axis seed culled");
     }
 
     /// A device on `adapter` that draws counts with first instances, if it

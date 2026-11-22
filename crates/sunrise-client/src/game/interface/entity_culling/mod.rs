@@ -266,10 +266,12 @@ impl Game<'_> {
             self.occlusion.async_failed = false;
             return;
         }
-        let at = camera.to_array().map(|v| v.floor() as i32);
-        self.occlusion.section_camera = at[1]
-            .checked_sub(self.world.bottom_y())
-            .map(|y| (at[0] >> 4, y >> 4, at[2] >> 4));
+        let at = camera.to_array().map(sunrise_core::mth::floor);
+        self.occlusion.section_camera = Some((
+            at[0] >> 4,
+            (at[1] >> 4) - (self.world.bottom_y() >> 4),
+            at[2] >> 4,
+        ));
         let camera_facts = self.res.facts().get(self.world.block(at[0], at[1], at[2]));
         if opaque(camera_facts) {
             self.occlusion.sync_culler = None;
