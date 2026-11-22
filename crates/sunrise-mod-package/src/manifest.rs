@@ -838,24 +838,7 @@ impl std::fmt::Display for ServerOnlyDeclaration {
 
 impl std::error::Error for ServerOnlyDeclaration {}
 
-/// Folders of a mod's project that are never part of its package: Git's, Cargo's build output
-/// and the pinned SDK the mod tool fetches into `.sunrise/`.
-pub const NOT_PACKAGED: [&str; 3] = [".git", "target", ".sunrise"];
-
-/// A source file that belongs to the flat Cargo project, not its resource packs.
-pub fn source_file(name: &str) -> bool {
-    if name.split('/').any(|part| NOT_PACKAGED.contains(&part)) {
-        return false;
-    }
-    name == "Cargo.toml"
-        || name == "Cargo.lock"
-        || name == "build.rs"
-        || (name.starts_with("src/") && (name.ends_with(".rs") || name.ends_with(".toml")))
-        || (!name.contains('/')
-            && ["README", "LICENSE", "LICENCE", "COPYING", "NOTICE"]
-                .iter()
-                .any(|prefix| name.starts_with(prefix)))
-}
+pub use mod_source::package::{NOT_PACKAGED, source_file};
 
 pub(crate) fn plain_path(name: &str) -> bool {
     !name.starts_with('/')
@@ -1172,68 +1155,20 @@ impl Package {
             }
         }
         if self.is_native() {
-            fn walk(
-                root: &Path,
-                dir: &Path,
-                prefix: &str,
-                files: &mut std::collections::BTreeMap<String, Vec<u8>>,
-                source_bytes: &mut u64,
-                source_count: &mut usize,
-            ) -> Result<(), String> {
-                for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-                    let entry = entry.map_err(|e| e.to_string())?;
-                    let kind = entry.file_type().map_err(|e| e.to_string())?;
-                    // A name no package path can hold (not UTF-8, or with a `\` in it) is left
-                    // out, and at the top so is any folder but `src/`.
-                    let file_name = entry.file_name();
-                    let Some(file_name) = file_name.to_str().filter(|name| !name.contains('\\'))
-                    else {
-                        continue;
-                    };
-                    let name = if prefix.is_empty() {
-                        file_name.to_owned()
-                    } else {
-                        format!("{prefix}/{file_name}")
-                    };
-                    if kind.is_dir() {
-                        if (prefix.is_empty() && file_name != "src")
-                            || NOT_PACKAGED.contains(&file_name)
-                        {
-                            continue;
-                        }
-                        walk(
-                            root,
-                            &entry.path(),
-                            &name,
-                            files,
-                            source_bytes,
-                            source_count,
-                        )?;
-                    } else if source_file(&name) {
-                        check_folder_file(root, &name)?;
-                        let size = entry.metadata().map_err(|e| e.to_string())?.len();
-                        *source_bytes = source_bytes
-                            .checked_add(size)
-                            .ok_or("native package too large")?;
-                        *source_count += 1;
-                        if *source_bytes > MAX_SOURCE_BYTES || *source_count > MAX_SOURCE_FILES {
-                            return Err("native package exceeds its entry or size limit".into());
-                        }
-                        let bytes = std::fs::read(entry.path()).map_err(|e| e.to_string())?;
-                        files.insert(name, bytes);
-                    }
+            let (mut source_bytes, mut source_count) = (0u64, 0usize);
+            for name in mod_source::package::source_files(root).map_err(|e| e.to_string())? {
+                check_folder_file(root, &name)?;
+                let path = root.join(&name);
+                let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+                source_bytes = source_bytes
+                    .checked_add(size)
+                    .ok_or("native package too large")?;
+                source_count += 1;
+                if source_bytes > MAX_SOURCE_BYTES || source_count > MAX_SOURCE_FILES {
+                    return Err("native package exceeds its entry or size limit".into());
                 }
-                Ok(())
+                files.insert(name, std::fs::read(path).map_err(|e| e.to_string())?);
             }
-            let (mut source_bytes, mut source_count) = (0, 0);
-            walk(
-                root,
-                root,
-                "",
-                &mut files,
-                &mut source_bytes,
-                &mut source_count,
-            )?
         }
         files.insert(
             MANIFEST.to_owned(),

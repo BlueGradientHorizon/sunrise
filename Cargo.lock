@@ -4863,6 +4863,7 @@ dependencies = [
  "sunrise-assets",
  "sunrise-core",
  "sunrise-game-discovery",
+ "sunrise-mod-source",
  "sunrise-mod-surface",
  "sunrise-mod-vocab",
  "sunrise-shader-api",
