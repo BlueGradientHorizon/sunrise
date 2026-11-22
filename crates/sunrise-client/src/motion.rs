@@ -49,8 +49,10 @@ use sunrise_world::{
     world_movement::MovementRequest,
     worldgen::tags::TagDefinitions,
 };
+mod body_restitution;
 mod exclusions;
 mod restitution;
+pub use body_restitution::{BodyCollision, BodyContact, BodyMotion, BodyMove, BodyRestitution};
 pub mod section_writes;
 
 /// A living entity jumped (`LivingEvent.LivingJumpEvent`); `velocity` is its motion right after
@@ -269,6 +271,9 @@ pub enum MotionEvent {
     /// `LivingEntity.handleDamageEvent`: the hurt sound the player hears.
     HurtSound(&'static str),
     Fall(crate::landing::FallEvent),
+    /// `ServerPlayer.resetFallDistance`: where the fall ended, even if the
+    /// block or fluid effects move the player again before this turn ends.
+    FallDistanceReset(Vec3),
     Recorded {
         mover: MoverType,
         movement: Vec3,
@@ -400,6 +405,8 @@ pub struct PlayerMotion {
     pub collision: CollisionFlags,
     pub history: MovementHistory,
     pub fall_distance: f64,
+    /// The packet phase needs the first reset of a tracked server-player fall.
+    pub record_fall_reset: bool,
     /// The block fallOn currently running, consumed by its damage call.
     pub(crate) block_landing: Option<(BlockStateId, BlockPos, f64)>,
     pub stuck_multiplier: Vec3,
@@ -578,6 +585,14 @@ pub struct PlayerMotion {
     pub collision_exclusions: sunrise_world::collision_exclusions::CollisionExclusions,
 }
 impl PlayerMotion {
+    pub fn reset_fall_distance(&mut self) {
+        if std::mem::take(&mut self.record_fall_reset) {
+            self.events
+                .push(MotionEvent::FallDistanceReset(self.position));
+        }
+        self.fall_distance = 0.0;
+    }
+
     /// `ServerGamePacketListenerImpl.handleMovePlayer`: the movement the client
     /// sent is the server copy's own delta movement. A glide's wall hit reads it
     /// as the speed the glide had (`LivingEntity.handleFallFlyingCollisions`'s
@@ -2222,23 +2237,9 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
         horizontal: bool,
         movement: Vec3,
     ) -> Result<()> {
-        let position = self.player.position;
-        let bounds = self.player.bounds();
-        let held = self.player.main_hand.clone();
-        let context = player_context(self.player, held.as_deref());
-        let mut collisions = SceneCollisions {
-            world: self.scene,
-            binding: self.collision_binding,
-            subject: Some(self.player.powder_snow_subject()),
-        };
-        self.player.ground.set_with_movement(
-            below,
-            horizontal,
-            bounds,
-            Some(movement),
-            |bounds| find_supporting_block(&mut collisions, context, position, bounds, 1_000_000),
-        )?;
-        Ok(())
+        self.player.ground.on_ground = below;
+        self.player.ground.horizontal_collision = horizontal;
+        self.check_supporting_block(below, movement)
     }
     /// `LocalPlayer.isHorizontalCollisionMinor`: the move that hit a wall was
     /// within 8 degrees of the direction the input asked for.
@@ -2274,9 +2275,17 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
     fn can_simulate(&mut self) -> Result<bool> {
         Ok(true)
     }
-    fn restitute(&mut self, state: BlockStateId, x: bool, z: bool, resolved: Vec3) -> Result<()> {
+    fn restitute(
+        &mut self,
+        state: BlockStateId,
+        position: BlockPos,
+        x: bool,
+        z: bool,
+        resolved: Vec3,
+    ) -> Result<()> {
         let input = RestitutionInput {
             block: state,
+            effect_position: position,
             collided_x: x,
             collided_z: z,
             vertical_collision: self.player.collision.vertical,
@@ -2316,6 +2325,26 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
 // The player's footsteps and swim sounds. Flapping and the step game event
 // are not bound here (the sculk listeners track the player's steps themselves).
 impl MotionWorld<'_, '_, '_> {
+    /// `Entity.checkSupportingBlock`: also called by `doCheckFallDamage`,
+    /// independently of (and without changing) the movement flags.
+    pub fn check_supporting_block(&mut self, on_ground: bool, movement: Vec3) -> Result<()> {
+        let position = self.player.position;
+        let bounds = self.player.bounds();
+        let held = self.player.main_hand.clone();
+        let context = player_context(self.player, held.as_deref());
+        let mut collisions = SceneCollisions {
+            world: self.scene,
+            binding: self.collision_binding,
+            subject: Some(self.player.powder_snow_subject()),
+        };
+        self.player
+            .ground
+            .check_support(on_ground, bounds, Some(movement), |bounds| {
+                find_supporting_block(&mut collisions, context, position, bounds, 1_000_000)
+            })?;
+        Ok(())
+    }
+
     pub fn check_guest_fall_damage(
         &mut self,
         dy: f64,
@@ -2564,8 +2593,8 @@ impl RestitutionWorld for MotionWorld<'_, '_, '_> {
     fn block_suppresses_bounce(&mut self, state: BlockStateId) -> Result<bool> {
         Ok(self.resources.blocks.get(state)?.suppresses_bounce)
     }
-    fn block_bounce_restitution(&mut self, state: BlockStateId) -> Result<f32> {
-        self.part_bounce_restitution(state)
+    fn block_bounce_restitution(&mut self, state: BlockStateId, position: BlockPos) -> Result<f32> {
+        self.part_bounce_restitution(state, position)
     }
     fn air_drag(&mut self) -> Result<f32> {
         living_motion::air_drag(self)
@@ -2834,30 +2863,34 @@ pub fn block_jump_factor_at(
         |blocks, location| movement_support::block_jump_factor(blocks, location),
     )
 }
-/// `Entity.getOnPosLegacy` with the world's bound fence and wall tags.
-pub(crate) fn legacy_block_support_at(
+/// `Entity.getOnPos(float)` with the world's bound fence and wall tags.
+pub(crate) fn block_support_at(
     world: &World,
-    properties: &BoundMovementProperties,
+    properties: Option<&BoundMovementProperties>,
     position: Vec3,
     supporting_block: Option<BlockPos>,
+    offset: f32,
 ) -> BlockPos {
-    movement_support::support_position(
-        &mut RegistryMovementWorld {
-            properties,
-            edits: &NoFactorEdits,
-            world: &mut WorldBlocks(world),
-        },
-        position,
-        supporting_block,
-        movement_support::LEGACY_SUPPORT_OFFSET,
-    )
-    .unwrap_or_else(|_| {
-        BlockPos::new(
-            position.x.floor() as i32,
-            (position.y - f64::from(movement_support::LEGACY_SUPPORT_OFFSET)).floor() as i32,
-            position.z.floor() as i32,
+    if let Some(properties) = properties
+        && let Ok(pos) = movement_support::support_position(
+            &mut RegistryMovementWorld {
+                properties,
+                edits: &NoFactorEdits,
+                world: &mut WorldBlocks(world),
+            },
+            position,
+            supporting_block,
+            offset,
         )
-    })
+    {
+        return pos;
+    }
+    // Standalone fixtures may not have bound fence/wall tags.
+    let y = (position.y - f64::from(offset)).floor() as i32;
+    supporting_block.map_or_else(
+        || BlockPos::new(position.x.floor() as i32, y, position.z.floor() as i32),
+        |support| BlockPos::new(support.x, y, support.z),
+    )
 }
 
 /// The player's `Entity.checkInsideBlocks` moments on the shared walk: the

@@ -48,8 +48,7 @@ impl LoaderGeometry for ModLoaders {
             log::warn!("model {model}: loader {loader}: its JSON doesn't convert to NBT; no quads");
             return Vec::new();
         };
-        let _phase =
-            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+
         let mut quads = Vec::new();
         native_bake_model_loader(
             &RegistrationContext::new(),

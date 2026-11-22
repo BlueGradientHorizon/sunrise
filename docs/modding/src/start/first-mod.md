@@ -25,7 +25,7 @@ Created greeter (native mod id greeter). Your editor resolves sunrise-mod-api on
 SDK 2d81263 (build 2d8126336e579777eabf9b2fd8b3d476236a04f2) in greeter/.sunrise/sdk
 ```
 
-The tool pins the project to the build of the current Nightly (or to `--sunrise <build>`) and fetches that build's
+The tool pins the project to the build of the current Nightly (or to [`--sunrise <build>`](../reference/sdk/03-in-a-project.md#build-names)) and fetches that build's
 [SDK](../reference/sdk.md), checking its signature. It writes both pins in `sunrise-mod.toml`, the Sunrise build and
 the `horizon-mixins` tool that build names, so you never write a commit by hand:
 

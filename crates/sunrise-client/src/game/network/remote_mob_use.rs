@@ -79,7 +79,7 @@ impl Game<'_> {
         {
             return true;
         }
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.held_mapping(Action::Sneak);
         match m.species() {
             // Villager.mobInteract: trading, or a baby's head shake. A sleeping
             // villager falls back to super.mobInteract, which passes.

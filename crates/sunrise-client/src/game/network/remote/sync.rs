@@ -315,15 +315,19 @@ impl Game<'_> {
         self.mining = None;
         Ok(())
     }
+    /// `LocalPlayer.tickDeath`: the level stops ticking the player at death tick 20,
+    /// but the client keeps the player for death-screen rendering until respawn.
+    pub(super) fn local_player_removed_by_death(&self) -> bool {
+        self.screen == Screen::Dead && self.ui.death_time >= 20
+    }
+
     /// The end of the player's tick: `AbstractBoat.tick`'s paddles (the vehicle ticks before its
     /// passenger's `sendChanges`), then `LocalPlayer.sendChanges`: the input, and a passenger's look,
     /// vehicle and sprint, or `sendPosition`'s sprint and move. The held slot is not sent here:
     /// `MultiPlayerGameMode.tick` sends it at the start of the next tick (`remote_handle_input`).
     pub(in crate::game) fn remote_send_state(&mut self, input: u8) {
-        // LocalPlayer.tickDeath removes the player once its deathTime reaches 20, and
-        // Minecraft.tick's sendChanges skips a removed player: nothing goes out until the
-        // respawn's new player, not even the position reminder.
-        if self.screen == Screen::Dead && self.ui.death_time >= 20 {
+        // Minecraft.tick's sendChanges also skips the tick that removed the player.
+        if self.local_player_removed_by_death() {
             return;
         }
         let Some(p) = self.player.as_ref() else {

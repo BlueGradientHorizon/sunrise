@@ -351,6 +351,14 @@ impl Game<'_> {
     ) {
         for pkt in packets {
             match sunrise_protocol::packets::play::Clientbound::decode(pkt.id, &pkt.payload) {
+                Ok(sunrise_protocol::packets::play::Clientbound::CustomPayload(payload))
+                    if payload.channel == sunrise_protocol::attachment_sync::CHANNEL =>
+                {
+                    match sunrise_protocol::attachment_sync::decode_staged(payload) {
+                        Ok(staged) => self.apply_staged_attachment_sync(staged),
+                        Err(error) => log::debug!("Studio replay skipped attachment sync: {error}"),
+                    }
+                }
                 Ok(packet) => {
                     let _ = self.handle_packet(packet);
                 }
@@ -710,11 +718,11 @@ impl Game<'_> {
         self.replay.virtual_tick_ms = 0.0;
         self.capture(false);
         if standalone {
+            self.reset_client_item_use();
             if let Some(mut remote) = self.remote.take() {
                 remote.session.disconnect();
             }
             self.using = None;
-            self.end_mod_use();
             if let Err(error) = self.finish_close_world() {
                 log::error!("Failed to close standalone Studio replay cleanly: {error}");
             }

@@ -1352,7 +1352,7 @@ impl Game<'_> {
         }
         if let Some(applied) = self
             .lan_owned_menu_click(conn, p)
-            .or_else(|| self.lan_mod_quick_move(conn, p))
+            .or_else(|| self.lan_mod_quick_move(conn, p, None))
         {
             return applied;
         }
@@ -1362,7 +1362,7 @@ impl Game<'_> {
         {
             return true;
         }
-        if let Some(applied) = self.lan_machine_click_asked(conn, p, Default::default()) {
+        if let Some(applied) = self.lan_machine_click(conn, p) {
             return applied;
         }
         if self.lan_station_click(conn, p)
