@@ -106,6 +106,8 @@ pub struct StackData {
     sulfur_cube_effects: Option<Arc<[Admitted]>>,
     /// Validated nutrition; the original component is preserved in `other`.
     villager_food: Option<i32>,
+    /// The fuel patch, decoded alongside its preserved component in `other`.
+    cooking_fuel: Option<cooking_fuel::Patch>,
     /// `minecraft:potion_contents.potion`.
     pub potion: Option<Arc<str>>,
     /// The rest of `minecraft:potion_contents` (`custom_color`, `custom_effects`,
@@ -175,6 +177,7 @@ impl PartialEq for StackData {
             use_remainder_effects: _,
             sulfur_cube_effects: _,
             villager_food,
+            cooking_fuel: _, // derived from preserved components
             potion,
             potion_extra,
             trim,
@@ -251,6 +254,7 @@ impl std::hash::Hash for StackData {
             use_remainder_effects: _,
             sulfur_cube_effects: _,
             villager_food,
+            cooking_fuel: _, // derived from preserved components
             potion,
             potion_extra,
             trim,
@@ -735,6 +739,25 @@ impl StackData {
     /// This setter deliberately remains infallible. Invalid custom data and opaque
     /// effect payloads refuse replacement without changing the previous value or cache.
     pub fn set_other(&mut self, id: &str, value: Option<Tag>) {
+        if matches!(id, cooking_fuel::ID | cooking_fuel::REMOVED) {
+            if value.is_some() {
+                let opposite = if id == cooking_fuel::ID {
+                    cooking_fuel::REMOVED
+                } else {
+                    cooking_fuel::ID
+                };
+                self.other.retain(|(key, _)| key != opposite);
+            }
+            if value.is_some() || self.other(id).is_some() {
+                self.cooking_fuel = value.as_ref().map(|tag| {
+                    if id == cooking_fuel::ID {
+                        cooking_fuel::Patch::from_value(tag)
+                    } else {
+                        cooking_fuel::Patch::Unavailable
+                    }
+                });
+            }
+        }
         let mut value = if id == "minecraft:custom_data" {
             match value {
                 Some(raw) => match custom_data::decode(raw) {
@@ -982,6 +1005,7 @@ impl StackData {
                 "minecraft:death_protection" => {
                     replace_fields!(death_protection, death_protection_refused)
                 }
+                cooking_fuel::ID => replace_fields!(cooking_fuel),
                 "minecraft:consumable" => replace_fields!(consumable),
                 "minecraft:use_remainder" => replace_fields!(use_remainder_effects),
                 "minecraft:sulfur_cube_content" => replace_fields!(sulfur_cube_effects),
@@ -2348,6 +2372,7 @@ fn decode_components_inner(
     };
     let mut data = StackData {
         villager_food: None,
+        cooking_fuel: None,
         damage_set: damage == 0 && seen.damage.is_some(),
         enchantments: read_levels(seen.enchantments),
         stored_enchantments: read_levels(seen.stored_enchantments),
@@ -2469,8 +2494,22 @@ fn decode_components_inner(
         other: Vec::new(),
         wire: Wire::default(),
     };
+    // DataComponentPatch.CODEC visits NbtOps' compound entries in Java map
+    // order; the last entry for the component type is the one it stores.
+    let mut fuel = None;
     for (key, v) in map {
         let key = key.to_string_lossy();
+        match key.as_str() {
+            cooking_fuel::ID | "cooking_fuel" | ":cooking_fuel" => {
+                fuel = Some((cooking_fuel::ID, v));
+                continue;
+            }
+            cooking_fuel::REMOVED | "!cooking_fuel" | "!:cooking_fuel" => {
+                fuel = Some((cooking_fuel::REMOVED, v));
+                continue;
+            }
+            _ => {}
+        }
         if key == "minecraft:villager_food" {
             data.set_other(&key, Some(v.clone()));
             // Persistence has no refusal channel. Retain a malformed patch
@@ -2508,7 +2547,11 @@ fn decode_components_inner(
             data.other.push((key, value));
         }
     }
-    data.other.sort_by(|a, b| a.0.cmp(&b.0));
+    if let Some((id, value)) = fuel {
+        data.set_other(id, Some(value.clone()));
+    } else {
+        data.other.sort_by(|a, b| a.0.cmp(&b.0));
+    }
     if compact_banner {
         data.compact_ominous_banner();
     }
@@ -3970,6 +4013,7 @@ mod tests {
         };
         let mut data = StackData {
             villager_food: None,
+            cooking_fuel: None,
             damage_set: damage == 0 && c.get("minecraft:damage").is_some(),
             death_protection_refused: false,
             use_remainder_effects: None,

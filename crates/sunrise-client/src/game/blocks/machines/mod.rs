@@ -28,6 +28,7 @@ use std::{borrow::Cow, ops::ControlFlow, sync::Arc};
 use sunrise_client::{
     Result,
     containers::{BlockEntity, HOPPER_SLOTS, ModContainer},
+    item_data::cooking_fuel,
     items::{ItemStack, Items},
     mobs::Mob,
     save,
@@ -574,10 +575,7 @@ impl Containers<'_> {
                 2 => false,
                 1 => {
                     &*stack.item == "minecraft:bucket"
-                        || self
-                            .items
-                            .get(&stack.item)
-                            .is_some_and(|i| i.fuel.is_some())
+                        || cooking_fuel::for_stack(self.items, stack).is_some()
                 }
                 _ => true,
             },
@@ -633,7 +631,12 @@ impl Containers<'_> {
         match view.kind {
             Kind::Jukebox | Kind::Bookshelf => held.is_none(),
             Kind::Brewing => slot >= 3 || held.is_none(),
-            Kind::Furnace => slot != 1 || !is_bucket(stack) || !held.is_some_and(is_bucket),
+            Kind::Furnace => {
+                slot != 1
+                    || !is_bucket(stack)
+                    || !held.is_some_and(is_bucket)
+                    || cooking_fuel::for_stack(self.items, stack).is_some()
+            }
             Kind::Crafter => match self.world.block_entities.get(&view.parts[0].0) {
                 Some(BlockEntity::Crafter(c)) => {
                     // The slot's own stack sets the limit (`slotStack.getMaxStackSize`).
@@ -2354,6 +2357,118 @@ mod brewing_fuel_transfer_tests {
                 );
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod furnace_fuel_transfer_tests {
+    use super::*;
+    use crate::game::{game_tests::tests::server_game, native_entity_refs::tests::run_fresh_cases};
+    use sunrise_client::containers::{Furnace, FurnaceKind};
+    use sunrise_client::item_data::parse_stack;
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_side_hopper_respects_the_furnace_fuel_patch_and_bucket_rule() {
+        if run_fresh_cases(
+            "game::machines::furnace_fuel_transfer_tests::a_side_hopper_respects_the_furnace_fuel_patch_and_bucket_rule",
+            "SUNRISE_FURNACE_HOPPER_CASE",
+            &["side"],
+        ) {
+            return;
+        }
+        let mut resources = None;
+        let mut game = server_game(&mut resources);
+        let hopper = (8, 64, 8);
+        let furnace = (9, 64, 8);
+        let registry = &game.pack.assets.registry;
+        let mut hopper_state = registry
+            .state(registry.default_state("minecraft:hopper").unwrap())
+            .unwrap()
+            .clone();
+        hopper_state
+            .properties
+            .insert("facing".into(), "east".into());
+        game.world
+            .set(
+                hopper.0,
+                hopper.1,
+                hopper.2,
+                registry.resolve(&hopper_state).unwrap(),
+            )
+            .unwrap();
+        game.world
+            .set(
+                furnace.0,
+                furnace.1,
+                furnace.2,
+                registry.default_state("minecraft:furnace").unwrap(),
+            )
+            .unwrap();
+        for line in include_str!("furnace_hopper.tsv")
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+        {
+            let [case, offered, held, moves] = line.split('\t').collect::<Vec<_>>()[..] else {
+                panic!("invalid furnace hopper case: {line}");
+            };
+            let stack = parse_stack(offered).unwrap().unwrap();
+            let held = parse_stack(held).unwrap();
+            let moves: bool = moves.parse().unwrap();
+            let mut hopper_slots = vec![None; HOPPER_SLOTS];
+            hopper_slots[0] = Some(stack.clone());
+            game.world
+                .block_entities
+                .insert(hopper, BlockEntity::Chest(hopper_slots));
+            game.world.block_entities.insert(
+                furnace,
+                BlockEntity::Furnace(Furnace {
+                    kind: FurnaceKind::Furnace,
+                    items: [None, held.clone(), None],
+                    lit_remaining: 0,
+                    lit_total: 0,
+                    cooking_timer: 0,
+                    cooking_total: 200,
+                    speed: 1.0,
+                    recipes_used: Default::default(),
+                }),
+            );
+            game.hoppers.remove(&hopper);
+
+            game.hopper_try_move_items(hopper);
+
+            let containers = game.containers();
+            let source = containers.view(hopper, false).unwrap();
+            let destination = containers.view(furnace, false).unwrap();
+            let mut source_left = stack.clone();
+            source_left.count -= u32::from(moves);
+            assert_eq!(
+                containers.get(&source, 0),
+                Some(&source_left),
+                "{case}: hopper"
+            );
+            let target = if moves {
+                let mut after = held.unwrap_or_else(|| {
+                    let mut stack = stack.clone();
+                    stack.count = 0;
+                    stack
+                });
+                after.count += 1;
+                Some(after)
+            } else {
+                held
+            };
+            assert_eq!(
+                containers.get(&destination, 1),
+                target.as_ref(),
+                "{case}: fuel slot"
+            );
+            assert!(
+                containers.get(&destination, 0).is_none()
+                    && containers.get(&destination, 2).is_none(),
+                "{case}: side did not touch the other slots"
+            );
+        }
     }
 }
 

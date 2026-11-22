@@ -2989,6 +2989,7 @@ struct WorldTables {
     items: Arc<Items>,
     /// Registry definitions stay frozen at world open, even when tags reload.
     packed_registries: Arc<sunrise_client::lan::data::PackRegistryDefinitions>,
+    providers: Providers,
     loot: Arc<sunrise_world::loot::LootData>,
     loot_modifier_manager: Arc<mod_api::GlobalLootModifierManager>,
     recipes: Recipes,

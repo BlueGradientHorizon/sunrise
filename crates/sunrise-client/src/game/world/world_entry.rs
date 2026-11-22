@@ -208,6 +208,11 @@ impl Game<'_> {
             None => self.synced_recipes().unwrap_or_else(|| self.res.recipes()),
         }
     }
+    pub(in crate::game) fn active_providers(&self) -> &Providers {
+        self.world_tables
+            .as_ref()
+            .map_or_else(|| self.res.providers(), |t| &t.providers)
+    }
     /// The station recipes menus and screens use: a client of a server numbers and draws its
     /// stonecutter buttons by the list the server sent, else the world's own.
     pub(super) fn station_recipes(&self) -> &sunrise_client::stations::StationRecipes {
@@ -321,6 +326,9 @@ impl Game<'_> {
                 )
                 .map(Arc::new)
             };
+        // RegistryDataLoader.RELOADABLE_REGISTRIES: providers are staged and
+        // published with the other reloadable data, including on /reload.
+        let providers = Providers::load_with(root, &overlay);
         // Visit independently readable registries before consuming any result.
         // One rejected winner must not hide the other entries' diagnostics.
         let loot = sunrise_world::loot::LootData::load_with_damage(
@@ -368,6 +376,7 @@ impl Game<'_> {
                     let errors = [
                         packed.err(),
                         conditions.err(),
+                        providers.as_ref().err().cloned(),
                         install_items_result.err().map(|error| error.to_string()),
                         loot.as_ref().err().map(ToString::to_string),
                         datapack_candidate.as_ref().err().map(ToString::to_string),
@@ -380,6 +389,7 @@ impl Game<'_> {
                     return Err(errors.into());
                 }
             };
+        let providers = providers?;
         install_items_result?;
         let sources = sources?;
         let mut loot = loot?;
@@ -527,6 +537,7 @@ impl Game<'_> {
                 priority_layers,
                 items: Arc::new(items),
                 packed_registries: packed_registry_definitions,
+                providers,
                 loot,
                 loot_modifier_manager,
                 recipes,
