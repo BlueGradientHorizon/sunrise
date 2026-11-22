@@ -5655,7 +5655,6 @@ mod teams_tests {
 #[cfg_attr(not(test), allow(dead_code))] // only kind() is used by the gameplay crates' tests
 pub mod sensor_scan_tests {
     use super::*;
-    use serde_json::json;
     use sunrise_core::geometry::Vec3;
 
     pub fn kind() -> Arc<MobType> {
@@ -5702,7 +5701,7 @@ pub mod sensor_scan_tests {
                 animal: true,
                 ..Default::default()
             },
-            model: Arc::new(Part::parse("root", &json!({}))),
+            model: Arc::new(Part::empty("root")),
             layers: Default::default(),
             texture: String::new(),
             brain: Brain::Passive,
