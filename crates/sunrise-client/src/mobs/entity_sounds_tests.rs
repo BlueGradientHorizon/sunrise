@@ -408,7 +408,10 @@ fn entity_sounds_declared_interval_replaces_the_templates_at_load() {
     }
     let dir = tempfile::tempdir().unwrap();
     let rows = serde_json::json!({
-        "bird:vulture": {"template":"minecraft:villager","sounds":{"ambient_interval":200}},
+        "bird:vulture": {"template":"minecraft:villager","sounds":{
+            "ambient_interval":200,
+            "step":{"sound":"bird:step","volume":0.625,"pitch":0.875},
+        }},
         "bird:quiet": {"template":"minecraft:villager","sounds":{"ambient_interval":i32::MIN}},
         "bird:plain": {"template":"minecraft:villager"},
     });
@@ -424,6 +427,11 @@ fn entity_sounds_declared_interval_replaces_the_templates_at_load() {
     }))
     .unwrap();
     let types = MobTypes::load_for_server(dir.path(), &attributes).unwrap();
+    let vulture = &types.types["bird:vulture"];
+    assert_eq!(
+        declared_step(&vulture.sound_overrides),
+        Some(Some((Cow::Borrowed("bird:step"), 0.625, 0.875)))
+    );
     let interval = |id: &str| types.types[id].ambient_interval;
     assert_eq!(interval("bird:vulture"), 200);
     assert_eq!(interval("bird:quiet"), i32::MIN);
