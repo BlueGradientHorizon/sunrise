@@ -15,16 +15,14 @@ impl Hooks for Doubler {
             .build();
         r.block_entity_part(&kind, Press).expect("native type");
         let hoard_key = r
-            .register_attachment_type(AttachmentDescriptor::new("test:hoard", || 0u32))
+            .register_attachment_type(AttachmentDescriptor::new("doubler:hoard", || 0u32))
             .unwrap();
-        *HOARD_KEY.lock().unwrap() = Some(hoard_key.clone());
         let energy_key = r
-            .register_attachment_type(AttachmentDescriptor::new("test:energy", || 0u32))
+            .register_attachment_type(AttachmentDescriptor::new("doubler:energy", || 0u32))
             .unwrap();
         let fluid_key = r
-            .register_attachment_type(AttachmentDescriptor::new("test:fluid", || 0u32))
+            .register_attachment_type(AttachmentDescriptor::new("doubler:fluid", || 0u32))
             .unwrap();
-        *ROBOT_FLUID_KEY.lock().unwrap() = Some(fluid_key.clone());
         let hoard = r.block_entity_type("hoard").blocks(&["test:hoard"]).build();
         let granite = r.block_key("minecraft:granite");
         r.block_entity_part(&hoard, Hoard(granite, hoard_key))

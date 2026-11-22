@@ -263,20 +263,14 @@ pub mod tests {
             event.distance = 128.0;
         }
     }
-    pub(crate) static HOARD_KEY: std::sync::Mutex<Option<AttachmentKey<u32>>> =
-        std::sync::Mutex::new(None);
-    /// The live gold attachment key registered by `Doubler` for `doubler:hoard`.
+    /// Attachment stored by the active Doubler fixture.
     pub fn hoard_key() -> AttachmentKey<u32> {
-        HOARD_KEY
-            .lock()
-            .unwrap()
-            .clone()
-            .expect("Doubler must be installed via game_thread() before reading hoard_key()")
+        crate::testing::attachment_key("doubler", "hoard")
     }
     /// How many times a `doubler:hoard` was asked about its removal.
     pub static HOARD_ASKED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     /// The block entity of type `doubler:hoard`, held by block `test:hoard`: when it is
-    /// removed it gives back the gold its `test:hoard` attachment counts.
+    /// removed it gives back the gold its `doubler:hoard` attachment counts.
     pub(crate) struct Hoard(pub(crate) BlockKey, pub(crate) AttachmentKey<u32>);
     #[mod_api::sunrise_part]
     impl BlockPart for Hoard {}

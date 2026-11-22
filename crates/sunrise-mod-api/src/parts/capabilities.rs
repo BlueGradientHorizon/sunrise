@@ -225,15 +225,9 @@ pub mod tests {
         }
     }
 
-    pub(crate) static ROBOT_FLUID_KEY: std::sync::Mutex<Option<AttachmentKey<u32>>> =
-        std::sync::Mutex::new(None);
-    /// The live fluid attachment key registered by `Doubler` for the tests.
+    /// Attachment stored by the active Doubler fixture.
     pub fn robot_fluid_key() -> AttachmentKey<u32> {
-        ROBOT_FLUID_KEY
-            .lock()
-            .unwrap()
-            .clone()
-            .expect("Doubler must be installed via game_thread() before reading robot_fluid_key()")
+        crate::testing::attachment_key("doubler", "fluid")
     }
 
     /// A second test mod, sharing `CHEMICALS` and `Chemical` with the first, as a mod depending

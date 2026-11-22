@@ -16,15 +16,8 @@ use sunrise_mod_runtime::attachments::Holder;
 
 use super::{Dim, Game, commands::Target, lan_entities::ENTITY_ID_HEADROOM};
 
-/// Kept for the session only.
-static MARK_KEY: Mutex<Option<AttachmentKey<i32>>> = Mutex::new(None);
-
 fn mark_key() -> AttachmentKey<i32> {
-    MARK_KEY
-        .lock()
-        .unwrap()
-        .clone()
-        .expect("Observer must be registered before reading mark_key()")
+    mod_api::testing::attachment_key("journal", "mark")
 }
 
 /// What the observer heard, in order.
@@ -67,10 +60,8 @@ struct Observer;
 #[mod_api::__subscriptions]
 impl Hooks for Observer {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        let mark = r
-            .register_attachment_type(AttachmentDescriptor::new("journal:mark", || 0i32))
+        r.register_attachment_type(AttachmentDescriptor::new("journal:mark", || 0i32))
             .unwrap();
-        *MARK_KEY.lock().unwrap() = Some(mark);
     }
     fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
         if let (HostSide::Server(host), Holder::Entity(id)) = (host, event.holder) {

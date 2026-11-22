@@ -2560,9 +2560,12 @@ mod tests {
         };
         assert_eq!(
             server.take_sync_changes(project_type(&dual)),
-            [expected_sync.clone()]
+            *std::slice::from_ref(&expected_sync)
         );
-        assert_eq!(server.synced(project_type(&dual)), [expected_sync.clone()]);
+        assert_eq!(
+            server.synced(project_type(&dual)),
+            *std::slice::from_ref(&expected_sync)
+        );
 
         // Saved disk envelope carries only persistence data (no sync flag or sync_value).
         let saved = server.to_nbt();
@@ -2584,12 +2587,12 @@ mod tests {
         let mut reloaded = Attachments::from_nbt(saved.clone());
         assert_eq!(
             reloaded.synced(project_type(&dual)),
-            [expected_sync.clone()]
+            *std::slice::from_ref(&expected_sync)
         );
         dual.sync_data(&mut reloaded, Holder::Level).unwrap();
         assert_eq!(
             reloaded.take_sync_changes(project_type(&dual)),
-            [expected_sync.clone()]
+            *std::slice::from_ref(&expected_sync)
         );
 
         // Changing the active descriptor's sync codec re-projects from disk without stale NBT.
@@ -2607,7 +2610,7 @@ mod tests {
         };
         assert_eq!(
             reloaded.synced(project_type(&dual_v2)),
-            [expected_v2.clone()]
+            *std::slice::from_ref(&expected_v2)
         );
         dual_v2.sync_data(&mut reloaded, Holder::Level).unwrap();
         assert_eq!(

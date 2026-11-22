@@ -95,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    fn part_state_keys_allow_foreign_uses_and_refuse_stale_keys() {
+    fn part_state_keys_use_owned_namespaces_and_refuse_stale_keys() {
         struct Checks(AttachmentKey<i64>);
         #[mod_api::__subscriptions]
         impl Hooks for Checks {
@@ -105,11 +105,10 @@ mod tests {
                         0_u32
                     }))
                     .unwrap();
-                let vanilla_key = r
-                    .register_attachment_type(AttachmentDescriptor::new(
-                        "minecraft:progress",
-                        || 0_u32,
-                    ))
+                let primary_key = r
+                    .register_attachment_type(AttachmentDescriptor::new("porter:progress", || {
+                        0_u32
+                    }))
                     .unwrap();
                 let progress = PartStateDeclaration::of(&legacy_key);
                 assert_eq!(
@@ -129,7 +128,7 @@ mod tests {
                 assert_eq!(
                     r.declare_block_entity_part_state(
                         "porter::Press",
-                        PartStateDeclaration::of(&vanilla_key),
+                        PartStateDeclaration::of(&primary_key),
                     ),
                     Ok(())
                 );
