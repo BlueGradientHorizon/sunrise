@@ -80,7 +80,7 @@ fn boolean(t: &Tag) -> Result<Value> {
 }
 /// `ComponentSerialization.CODEC`: normalize the decoded contents and style before
 /// projection or hashing. A component list appends its tail to the first component.
-fn text(t: &Tag, source: Source) -> Result<Value> {
+fn text(t: &Tag, source: Source<'_>) -> Result<Value> {
     if let Tag::String(s) = t {
         return Ok(Value::String(s.0.clone()));
     }
@@ -91,7 +91,7 @@ fn text(t: &Tag, source: Source) -> Result<Value> {
     Ok(Value::Map(fields))
 }
 
-fn text_fields(t: &Tag, source: Source) -> Result<Vec<(Value, Value)>> {
+fn text_fields(t: &Tag, source: Source<'_>) -> Result<Vec<(Value, Value)>> {
     super::with_tree_stack(|| {
         match t {
             Tag::String(s) => return Ok(vec![(Value::string("text"), Value::String(s.0.clone()))]),
@@ -164,7 +164,7 @@ fn text_fields(t: &Tag, source: Source) -> Result<Vec<(Value, Value)>> {
     })
 }
 
-fn text_contents(r: &mut Record<'_>, kind: &str, source: Source) -> Result<()> {
+fn text_contents(r: &mut Record<'_>, kind: &str, source: Source<'_>) -> Result<()> {
     let t = r.tag;
     match kind {
         "text" => r.required("text", string_value),
@@ -250,7 +250,7 @@ fn text_contents(r: &mut Record<'_>, kind: &str, source: Source) -> Result<()> {
 }
 
 /// `Style.Serializer.MAP_CODEC`: known fields are strict optional fields.
-fn text_style(r: &mut Record<'_>, source: Source) -> Result<()> {
+fn text_style(r: &mut Record<'_>, source: Source<'_>) -> Result<()> {
     r.optional("color", text_color)?;
     r.optional("shadow_color", |t| {
         if let Ok(color) = int(t) {
@@ -327,7 +327,7 @@ fn text_color(t: &Tag) -> Result<Value> {
     }
 }
 
-fn click_event(t: &Tag, source: Source) -> Result<Value> {
+fn click_event(t: &Tag, source: Source<'_>) -> Result<Value> {
     record(t, |r| {
         let action = string(t.get("action").ok_or("missing click action")?)?;
         r.fields
@@ -411,7 +411,7 @@ fn click_event(t: &Tag, source: Source) -> Result<Value> {
     })
 }
 
-fn hover_event(t: &Tag, source: Source) -> Result<Value> {
+fn hover_event(t: &Tag, source: Source<'_>) -> Result<Value> {
     record(t, |r| {
         let action = string(t.get("action").ok_or("missing hover action")?)?;
         r.fields
@@ -681,13 +681,13 @@ fn explosion(t: &Tag) -> Result<Value> {
         r.b("has_twinkle", false)
     })
 }
-fn trim_material(t: &Tag, source: Source) -> Result<Value> {
+fn trim_material(t: &Tag, source: Source<'_>) -> Result<Value> {
     record(t, |r| {
         r.required("palette_id", ident)?;
         r.required("description", |v| text(v, source))
     })
 }
-fn trim_pattern(t: &Tag, source: Source) -> Result<Value> {
+fn trim_pattern(t: &Tag, source: Source<'_>) -> Result<Value> {
     record(t, |r| {
         r.required("asset_id", ident)?;
         r.required("description", |v| text(v, source))?;
@@ -699,7 +699,7 @@ fn trim_pattern(t: &Tag, source: Source) -> Result<Value> {
         }
     })
 }
-fn instrument(t: &Tag, source: Source) -> Result<Value> {
+fn instrument(t: &Tag, source: Source<'_>) -> Result<Value> {
     validate_source("instrument", t)?;
     record(t, |r| {
         r.required("sound_event", sound)?;
@@ -730,15 +730,19 @@ fn resolvable(t: &Tag, f: impl Fn(&Tag) -> Result<Value>) -> Result<Value> {
     }
 }
 
-#[derive(Clone, Copy)]
-struct Source {
-    upgraded: bool,
-    is_native: fn(&str) -> bool,
+fn no_native(_: &str) -> bool {
+    false
 }
-impl Source {
-    const SAVED: Self = Self {
+
+#[derive(Clone, Copy)]
+struct Source<'a> {
+    upgraded: bool,
+    is_native: &'a dyn Fn(&str) -> bool,
+}
+impl Source<'_> {
+    const SAVED: Source<'static> = Source {
         upgraded: false,
-        is_native: |_| false,
+        is_native: &no_native,
     };
 
     fn component_type(self, id: &str) -> Result<()> {
@@ -762,7 +766,22 @@ pub fn validate_template_count(count: i32) -> Result<()> {
 pub fn template_from_tag(t: &Tag) -> Result<Template> {
     template_tag(t, Source::SAVED)
 }
-fn template_tag(t: &Tag, source: Source) -> Result<Template> {
+
+/// `ItemStack.MAP_CODEC`: strict compound admission against the active component registry.
+pub fn item_stack_from_tag_with(t: &Tag, is_native: impl Fn(&str) -> bool) -> Result<Template> {
+    if !matches!(t, Tag::Compound(_)) {
+        return Err("argument.nbt.expected.compound".into());
+    }
+    compound_template_tag(
+        t,
+        Source {
+            upgraded: false,
+            is_native: &is_native,
+        },
+    )
+}
+
+fn template_tag(t: &Tag, source: Source<'_>) -> Result<Template> {
     if matches!(t, Tag::String(_)) {
         let item = identifier(&string(t)?)?;
         if item == "minecraft:air" {
@@ -774,6 +793,10 @@ fn template_tag(t: &Tag, source: Source) -> Result<Template> {
             patch: vec![],
         });
     }
+    compound_template_tag(t, source)
+}
+
+fn compound_template_tag(t: &Tag, source: Source<'_>) -> Result<Template> {
     let item = identifier(&string(t.get("id").ok_or("missing template item")?)?)?;
     if item == "minecraft:air" {
         return Err("air is not a template item".into());
@@ -793,39 +816,45 @@ fn template_tag(t: &Tag, source: Source) -> Result<Template> {
     } else {
         validate_template_count(count)?;
     }
-    let mut patch: Patch = vec![];
-    if let Some(c) = t.get("components") {
-        let Tag::Compound(c) = c else {
-            return Err("template components are not a map".into());
-        };
-        for (name, value) in c {
-            let name = name.to_string_lossy();
-            let (remove, name) = name
-                .strip_prefix('!')
-                .map_or((false, name.as_str()), |n| (true, n));
-            let name = identifier(name)?;
-            let value = if remove {
-                source.component_type(&name)?;
-                if !source.upgraded && !super::is_persistent(&name) {
-                    return Err(format!("{name} has no persistent codec"));
-                }
-                if !matches!(value, Tag::Compound(_)) {
-                    return Err(format!("{name}: removal payload must be a map"));
-                }
-                None
-            } else {
-                Some(component_tag(&name, value, source)?)
-            };
-            patch.push((name, value));
-        }
-        super::normalize_map(&mut patch, |(name, _)| name);
-    }
+    let patch = match t.get("components") {
+        Some(c) => patch_tag(c, source)?,
+        None => vec![],
+    };
     Ok(Template { item, count, patch })
 }
-fn template(t: &Tag, source: Source) -> Result<Value> {
+
+fn patch_tag(c: &Tag, source: Source<'_>) -> Result<Patch> {
+    let Tag::Compound(c) = c else {
+        return Err("template components are not a map".into());
+    };
+    let mut patch: Patch = Vec::with_capacity(c.len());
+    for (name, value) in c {
+        let name = name.to_string_lossy();
+        let (remove, name) = name
+            .strip_prefix('!')
+            .map_or((false, name.as_str()), |n| (true, n));
+        let name = identifier(name)?;
+        let value = if remove {
+            source.component_type(&name)?;
+            if !source.upgraded && !super::is_persistent(&name) {
+                return Err(format!("{name} has no persistent codec"));
+            }
+            if !matches!(value, Tag::Compound(_)) {
+                return Err(format!("{name}: removal payload must be a map"));
+            }
+            None
+        } else {
+            Some(component_tag(&name, value, source)?)
+        };
+        patch.push((name, value));
+    }
+    super::normalize_map(&mut patch, |(name, _)| name);
+    Ok(patch)
+}
+fn template(t: &Tag, source: Source<'_>) -> Result<Value> {
     Ok(Value::Template(Box::new(template_tag(t, source)?)))
 }
-fn predicate(t: &Tag, source: Source) -> Result<Value> {
+fn predicate(t: &Tag, source: Source<'_>) -> Result<Value> {
     record(t, |r| {
         only_fields(t, &["blocks", "state", "nbt", "components", "predicates"])?;
         r.optional("blocks", holder_set)?;
@@ -873,8 +902,8 @@ pub fn from_component_tag_with(id: &str, t: &Tag, is_native: fn(&str) -> bool) -
         &identifier(id)?,
         t,
         Source {
-            is_native,
-            ..Source::SAVED
+            upgraded: false,
+            is_native: &is_native,
         },
     )
 }
@@ -889,7 +918,7 @@ pub fn from_upgraded_component_tag(id: &str, t: &Tag) -> Result<Value> {
         },
     )
 }
-fn component_tag(id: &str, t: &Tag, source: Source) -> Result<Value> {
+fn component_tag(id: &str, t: &Tag, source: Source<'_>) -> Result<Value> {
     source.component_type(id)?;
     if !source.upgraded && !super::is_persistent(id) {
         return Err(format!("{id} has no persistent codec"));
@@ -897,7 +926,7 @@ fn component_tag(id: &str, t: &Tag, source: Source) -> Result<Value> {
     super::with_tree_stack(|| decode_component(id, t, source))
         .map_err(|error| format!("{id}: {error}"))
 }
-fn decode_component(id: &str, t: &Tag, source: Source) -> Result<Value> {
+fn decode_component(id: &str, t: &Tag, source: Source<'_>) -> Result<Value> {
     let name = id.strip_prefix("minecraft:").unwrap_or(id);
     validate_source(name, t)?;
     // Recursive template and predicate paths do not carry the large leaf dispatcher's frame.
@@ -948,7 +977,7 @@ fn decode_component(id: &str, t: &Tag, source: Source) -> Result<Value> {
 }
 
 #[inline(never)]
-fn component_leaf(name: &str, id: &str, t: &Tag, source: Source) -> Result<Value> {
+fn component_leaf(name: &str, id: &str, t: &Tag, source: Source<'_>) -> Result<Value> {
     Ok(match name {
         "creative_slot_lock" => unit(t)?,
         "map_post_processing" | "additional_trade_cost" => int(t)?,
@@ -1410,14 +1439,14 @@ fn only_fields(t: &Tag, allowed: &[&str]) -> Result<()> {
     }
     Ok(())
 }
-fn sign_messages(t: &Tag, source: Source) -> Result<Value> {
+fn sign_messages(t: &Tag, source: Source<'_>) -> Result<Value> {
     let value = list(t, |v| text(v, source))?;
     if !matches!(&value,Value::List(v) if v.len()==4) {
         return Err("sign requires four messages".into());
     }
     Ok(value)
 }
-fn exact_components(t: &Tag, source: Source) -> Result<Value> {
+fn exact_components(t: &Tag, source: Source<'_>) -> Result<Value> {
     let Tag::Compound(entries) = t else {
         return Err("expected component map".into());
     };
@@ -1437,7 +1466,7 @@ fn exact_components(t: &Tag, source: Source) -> Result<Value> {
             .collect(),
     ))
 }
-fn partial_predicates(t: &Tag, source: Source) -> Result<Value> {
+fn partial_predicates(t: &Tag, source: Source<'_>) -> Result<Value> {
     let Tag::Compound(entries) = t else {
         return Err("expected partial predicate map".into());
     };
@@ -1473,7 +1502,7 @@ fn partial_predicates(t: &Tag, source: Source) -> Result<Value> {
     }
     Ok(Value::Map(out))
 }
-fn predicate_value(t: &Tag, source: Source) -> Result<Value> {
+fn predicate_value(t: &Tag, source: Source<'_>) -> Result<Value> {
     super::with_tree_stack(|| {
         const BOOLS: &[&str] = &[
             "has_twinkle",
@@ -1511,7 +1540,7 @@ fn predicate_value(t: &Tag, source: Source) -> Result<Value> {
         }
     })
 }
-fn item_predicate(t: &Tag, source: Source) -> Result<Value> {
+fn item_predicate(t: &Tag, source: Source<'_>) -> Result<Value> {
     record(t, |r| {
         r.optional("items", holder_set)?;
         r.default("count", Value::Map(vec![]), |v| {
@@ -1931,7 +1960,7 @@ fn validate_codec_limits(name: &str, t: Input<'_>) -> Result<()> {
     }
     Ok(())
 }
-fn attribute_entry(t: &Tag, source: Source) -> Result<Value> {
+fn attribute_entry(t: &Tag, source: Source<'_>) -> Result<Value> {
     fn enumeration(t: &Tag, values: &[&str]) -> Result<Value> {
         let name = string(t)?;
         if !values.contains(&name.as_str()) {
@@ -1978,7 +2007,7 @@ fn attribute_entry(t: &Tag, source: Source) -> Result<Value> {
         Ok(())
     })
 }
-fn sign_text(t: &Tag, source: Source) -> Result<Value> {
+fn sign_text(t: &Tag, source: Source<'_>) -> Result<Value> {
     record(t, |r| {
         r.required("messages", |v| sign_messages(v, source))?;
         if let Some(filtered) = t

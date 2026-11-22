@@ -89,6 +89,15 @@ pub fn item_to_nbt(stack: &crate::items::ItemStack, items: &crate::items::Items)
 /// The SNBT grammar and saved-item decoder report their own errors; binary NBT quotas
 /// are not part of this text boundary.
 pub fn item_from_snbt(snbt: &str) -> Result<crate::items::ItemStack, String> {
+    item_from_snbt_with(snbt, |_| false)
+}
+
+/// Read one `TagParser.parseCompoundFully` compound as an `ItemStack.CODEC` item,
+/// resolving registered native component types via `is_native`.
+pub fn item_from_snbt_with(
+    snbt: &str,
+    is_native: impl Fn(&str) -> bool,
+) -> Result<crate::items::ItemStack, String> {
     let (tag, end) = parse_snbt(snbt)?;
     if let Some((pos, _)) = snbt[end..]
         .char_indices()
@@ -96,30 +105,29 @@ pub fn item_from_snbt(snbt: &str) -> Result<crate::items::ItemStack, String> {
     {
         return Err(format!("argument.nbt.trailing at {}", end + pos));
     }
-    item_from_persistent_nbt(&tag)
+    item_from_persistent_nbt_with(&tag, is_native)
 }
 
 /// Decode an `ItemStack.CODEC` compound at a strict input boundary. Unlike the save
 /// reader, refuse an invalid count or component patch and preserve the diagnostic.
 pub fn item_from_persistent_nbt(tag: &Tag) -> Result<crate::items::ItemStack, String> {
-    if !matches!(tag, Tag::Compound(_)) {
-        return Err("argument.nbt.expected.compound".into());
-    }
-    let id = saved_item_id(tag).ok_or("id must name a non-air item")?;
-    let count = match tag.get("count") {
-        None => 1,
-        Some(value) => number(Some(value))
-            .filter(|count| (1..=99).contains(count))
-            .ok_or("count must be a number in 1..=99")? as u32,
-    };
-    let components = tag.get("components");
-    if let Some(components) = components {
-        if !matches!(components, Tag::Compound(_)) {
-            return Err("components must be a compound".into());
-        }
-        sunrise_world::item_defaults::validate_component_map_tag(components)?;
-    }
-    Ok(decode_item_fields(&id, count, components))
+    item_from_persistent_nbt_with(tag, |_| false)
+}
+
+/// Decode an `ItemStack.CODEC` compound at a strict input boundary, resolving registered
+/// native component types via `is_native`.
+pub fn item_from_persistent_nbt_with(
+    tag: &Tag,
+    is_native: impl Fn(&str) -> bool,
+) -> Result<crate::items::ItemStack, String> {
+    let template =
+        sunrise_world::component_value::source::item_stack_from_tag_with(tag, is_native)?;
+    let components = template.patch_to_tag()?;
+    Ok(decode_item_fields(
+        &template.item,
+        template.count as u32,
+        components.as_ref(),
+    ))
 }
 
 fn saved_item_id(tag: &Tag) -> Option<String> {
@@ -253,6 +261,53 @@ mod tests {
     }
 
     #[test]
+    fn item_snbt_validates_component_codecs_registry_membership_and_narrowed_count() {
+        let narrowed = item_from_snbt(r#"{id:"minecraft:stone",count:4294967297L}"#).unwrap();
+        assert_eq!(narrowed.count, 1);
+        let narrowed_max = item_from_snbt(r#"{id:"minecraft:stone",count:4294967395L}"#).unwrap();
+        assert_eq!(narrowed_max.count, 99);
+        assert!(item_from_snbt(r#"{id:"minecraft:stone",count:4294967296L}"#).is_err());
+        assert!(item_from_snbt(r#"{id:"minecraft:stone",count:4294967396L}"#).is_err());
+
+        let negative_damage =
+            item_from_snbt(r#"{id:"minecraft:diamond_sword",components:{"minecraft:damage":-1}}"#)
+                .unwrap_err();
+        assert!(
+            negative_damage.contains("minecraft:damage"),
+            "{negative_damage}"
+        );
+
+        let unknown =
+            item_from_snbt(r#"{id:"minecraft:stone",components:{"nomod:unknown":1}}"#).unwrap_err();
+        assert!(unknown.contains("nomod:unknown"), "{unknown}");
+
+        let unknown_removal =
+            item_from_snbt(r#"{id:"minecraft:stone",components:{"!nomod:unknown":{}}}"#)
+                .unwrap_err();
+        assert!(
+            unknown_removal.contains("nomod:unknown"),
+            "{unknown_removal}"
+        );
+
+        let registered = item_from_snbt_with(
+            r#"{id:"diamond_sword",components:{"damage":5,"!repair_cost":{ignored:1},"sample:charge":{value:5}}}"#,
+            |id| id == "sample:charge",
+        )
+        .unwrap();
+        assert_eq!(&*registered.item, "minecraft:diamond_sword");
+        assert_eq!(registered.damage, 5);
+        let data = registered.data().unwrap();
+        assert_eq!(
+            data.other("!minecraft:repair_cost"),
+            Some(&Tag::Compound(Default::default()))
+        );
+        assert_eq!(
+            data.other("sample:charge"),
+            Some(&Tag::compound([("value", Tag::Int(5))]))
+        );
+    }
+
+    #[test]
     fn nbt_count_defaults_to_one_outside_codec_range() {
         for item in ["minecraft:stone", "minecraft:diamond_sword"] {
             for (raw, expected) in [
@@ -335,7 +390,7 @@ mod tests {
             // Strict input keeps the component codec's reason instead of stripping it.
             assert_eq!(
                 item_from_persistent_nbt(&saved).unwrap_err(),
-                format!("'{transient}' is not a persistent component")
+                format!("{transient} has no persistent codec")
             );
         }
     }

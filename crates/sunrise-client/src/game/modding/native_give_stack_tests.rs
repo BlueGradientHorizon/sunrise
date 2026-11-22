@@ -53,6 +53,12 @@ fn item_from_snbt_refuses_what_is_not_one_item_compound() {
         assert_eq!(count(r#"{id:"minecraft:stone",count:99}"#), Some(99));
         assert_eq!(count(r#"{id:"minecraft:stone",count:1}"#), Some(1));
         assert_eq!(
+            count(r#"{id:"minecraft:stone",count:4294967297L}"#),
+            Some(1),
+            "Codec.INT narrows via Number.intValue before intRange(1, 99)"
+        );
+        assert_eq!(count(r#"{id:"minecraft:stone",count:4294967296L}"#), None);
+        assert_eq!(
             count(r#"{id:"minecraft:stone",count:100}"#),
             None,
             "a count past 99 is refused, not clamped"
@@ -80,6 +86,19 @@ fn item_from_snbt_refuses_what_is_not_one_item_compound() {
         assert_eq!(
             count(r#"{id:"stone",components:{"minecraft:creative_slot_lock":{}}}"#),
             None
+        );
+        assert_eq!(
+            count(r#"{id:"minecraft:diamond_sword",components:{"minecraft:damage":-1}}"#),
+            None
+        );
+        assert_eq!(
+            count(r#"{id:"minecraft:stone",components:{"nomod:unknown":1}}"#),
+            None
+        );
+        assert_eq!(
+            host.item_from_snbt(r#"{id:"diamond_sword",components:{"damage":5}}"#)
+                .and_then(|s| s.damage_component()),
+            Some(5)
         );
         let nested = |levels: usize| {
             format!(
