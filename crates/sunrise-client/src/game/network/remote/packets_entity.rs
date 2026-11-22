@@ -455,7 +455,12 @@ impl Game<'_> {
                 if let Some(m) = m
                     && m.species() == sunrise_client::mobs::Species::Rabbit
                 {
-                    let sample = (m.position, m.velocity, f64::from(m.width()), m.supporting);
+                    let sample = (
+                        m.position,
+                        m.velocity,
+                        f64::from(m.width()),
+                        m.ground.supporting_block.map(|p| [p.x, p.y, p.z]),
+                    );
                     sunrise_client::mobs::rabbit::hop_event(m);
                     Some(sample)
                 } else {

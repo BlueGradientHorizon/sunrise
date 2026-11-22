@@ -1025,16 +1025,20 @@ fn player_collision_identity(player: &PlayerMotion) -> EntityIdentity {
     EntityIdentity(u64::from(player.entity_id as u32))
 }
 
-/// The context `player` moves through: a player at its height holding `held`, as
-/// `CollisionContext.of(player)`. It names the player by its entity id, so a block's parts are
-/// asked about the same entity as when the server checks this move inside `as_mover`.
-fn player_context<'a>(player: &PlayerMotion, held: Option<&'a str>) -> CollisionContext<'a> {
+/// The context of a live player at its feet, holding its current main hand, as
+/// `CollisionContext.of(player)`. Block parts see the same identity as in `as_mover`.
+pub fn player_context(
+    entity_id: u32,
+    feet_y: f64,
+    descending: bool,
+    held: Option<&str>,
+) -> CollisionContext<'_> {
     CollisionContext::for_entity(
         CollisionEntity {
-            identity: player_collision_identity(player),
+            identity: EntityIdentity(u64::from(entity_id)),
             kind: sunrise_world::collision_context::EntityContextKind::Player,
-            y: player.position.y,
-            descending: player.shift_key_down,
+            y: feet_y,
+            descending,
             main_hand: Some(held.map_or(CollisionItem::EMPTY, |item| CollisionItem {
                 item,
                 count: 1,
@@ -1045,7 +1049,12 @@ fn player_context<'a>(player: &PlayerMotion, held: Option<&'a str>) -> Collision
 }
 impl MotionWorld<'_, '_, '_> {
     fn context(&self) -> CollisionContext<'_> {
-        player_context(self.player, self.player.main_hand.as_deref())
+        player_context(
+            self.player.entity_id as u32,
+            self.player.position.y,
+            self.player.shift_key_down,
+            self.player.main_hand.as_deref(),
+        )
     }
     fn collisions(&self) -> SceneCollisions<'_, '_> {
         SceneCollisions {
@@ -2317,7 +2326,12 @@ impl MotionWorld<'_, '_, '_> {
         let position = self.player.position;
         let bounds = self.player.bounds();
         let held = self.player.main_hand.clone();
-        let context = player_context(self.player, held.as_deref());
+        let context = player_context(
+            self.player.entity_id as u32,
+            position.y,
+            self.player.shift_key_down,
+            held.as_deref(),
+        );
         let mut collisions = SceneCollisions {
             world: self.scene,
             binding: self.collision_binding,

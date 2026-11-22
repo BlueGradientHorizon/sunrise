@@ -49,7 +49,7 @@ impl Seat {
         sunrise_client::mobs::living::teleports::snap_to(mob, self.passenger_position(offset));
         mob.velocity = Vec3::ZERO;
         mob.fall_distance = 0.0;
-        mob.on_ground = false;
+        mob.ground.on_ground = false;
         mob.extra.passenger = true;
         mob.ai.nav.stop();
     }
