@@ -12,10 +12,6 @@ impl Game<'_> {
             None => self.container_layout(batch).exclusion(),
         }
     }
-    /// A native mod's own folder: `sunrise-mods/.sunrise-mod-data/<id>/`. Not created here.
-    pub(in crate::game) fn native_data_dir(&self, mod_id: &str) -> PathBuf {
-        Self::mod_data_root().join(mod_id)
-    }
     pub(in crate::game) fn mod_data_root() -> PathBuf {
         Self::game_dir()
             .join(mod_list::DIR)
