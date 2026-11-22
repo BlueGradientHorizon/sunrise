@@ -742,6 +742,7 @@ impl After {
                 | Self::FluidWrite(_)
                 | Self::FluidEffects(_)
                 | Self::BlockGameEvent(..)
+                | Self::Biome(_)
                 | Self::Drop(..)
                 | Self::Spawn(..)
                 | Self::Emptied(_)
@@ -820,6 +821,9 @@ impl Level {
 
     fn merge_level_writes(&mut self, child: &mut Self) {
         self.level_save_gate = self.level_save_gate.take().or(child.level_save_gate.take());
+        for (pos, biome) in std::mem::take(&mut child.biomes) {
+            self.biomes.entry(pos).or_insert(biome);
+        }
         for (pos, group) in std::mem::take(&mut child.connection_groups) {
             self.keep_connection_group(pos, group);
         }
@@ -1198,6 +1202,7 @@ impl Game<'_> {
                     general_entities: std::mem::take(&mut level.general_entities),
                     chunk_marks: std::mem::take(&mut level.chunk_marks),
                     level_save_gate: level.level_save_gate.take(),
+                    biomes: std::mem::take(&mut level.biomes),
                     after: level
                         .after
                         .extract_if(.., |after| after.level_owned())
@@ -1242,9 +1247,6 @@ impl Game<'_> {
                     for (pos, random) in randoms {
                         kept.entry(pos).or_insert(random);
                     }
-                }
-                for (pos, biome) in level.biomes {
-                    outer.biomes.entry(pos).or_insert(biome);
                 }
                 for (owner, kept) in level.players {
                     outer.players.entry(owner).or_insert(kept);
@@ -2083,10 +2085,10 @@ impl Game<'_> {
                 .or_insert_with(|| station.clone());
         }
     }
-    /// Keep the original cell without publishing the tentative write.
+    /// Keep the original cell in the transaction for the level in place.
     pub(in crate::game) fn journal_biome(&mut self, pos: [i32; 3], old: u16) {
         let dim = self.dim;
-        if let Some(level) = self.transactions.last_mut() {
+        if let Some(level) = entities::open_in(&mut self.transactions, dim) {
             level
                 .biomes
                 .entry((dim, (pos[0] >> 2, pos[1] >> 2, pos[2] >> 2)))
