@@ -63,7 +63,6 @@ pub(super) struct BorrowedMobTick<'a> {
     pub(super) events: &'a mut Vec<MobEvent>,
     pub(super) pushes: &'a mut sunrise_client::mobs::PendingPushes,
     pub(super) dead: &'a mut Vec<Mob>,
-    pub(super) corpses: &'a mut Vec<Mob>,
     pub(super) died: &'a mut sunrise_client::fast_hash::FxHashSet<u32>,
     pub(super) ticked: &'a mut sunrise_client::fast_hash::FxHashSet<u32>,
     pub(super) guests: &'a mut super::super::lan_mobs::GuestViews,
@@ -74,7 +73,7 @@ pub(super) struct BorrowedMobTick<'a> {
     pub(super) player_credit:
         &'a mut std::collections::HashMap<u32, super::super::combat::PlayerCredit>,
     pub(super) path_writes: &'a mut Vec<((i32, i32, i32), u32, u32)>,
-    pub(super) gone: &'a mut Vec<(u32, Vec3, f64, f64, Option<Mob>)>,
+    pub(super) gone: &'a mut Vec<(u32, Vec3, f64, f64)>,
     pub(super) lent: sunrise_client::health::LentLevel,
     pub(super) laps: &'a mut sunrise_client::spans::Laps,
     pub(super) uuid: Option<[i32; 4]>,
@@ -95,7 +94,6 @@ impl Game<'_> {
         let mut snapshot = std::mem::take(state.snapshot);
         let mut events = std::mem::take(state.events);
         let mut dead = std::mem::take(state.dead);
-        let mut corpses = std::mem::take(state.corpses);
         let mut died = std::mem::take(state.died);
         let mut ticked = std::mem::take(state.ticked);
         let mut guests = std::mem::take(state.guests);
@@ -195,6 +193,7 @@ impl Game<'_> {
             let mut air_answer = None;
             let mut retry_rider = None;
             let mut removing_vehicle = None;
+            let mut removal = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
@@ -215,6 +214,9 @@ impl Game<'_> {
                 // reusable base empty lets its reference fields remain copyable between rows.
                 base.section_writer = None;
                 base.passenger_objects = passenger_objects;
+                // The owning game completes live births at the goal/behaviour site even
+                // without a listener. Hostless probes still emit an ordinary breed event.
+                base.asks_baby_spawn = true;
                 let mut level = sunrise_client::health::DamageLevel::lent(
                     &self.world,
                     self.pack.assets.registry,
@@ -626,6 +628,17 @@ impl Game<'_> {
                                 &mut movement,
                             )
                         }
+                        Some(Pause::Breeding { resume, .. }) => {
+                            sunrise_client::mobs::riders::resume_after_birth(
+                                &mut mobs,
+                                i,
+                                &w,
+                                &mut level,
+                                resume,
+                                &mut events,
+                                &mut movement,
+                            )
+                        }
                         Some(Pause::Trample(_) | Pause::FallToPassengers(_)) => {
                             sunrise_client::mobs::riders::resume_movement(
                                 &mut mobs,
@@ -690,6 +703,16 @@ impl Game<'_> {
                             kept
                         }
                         sunrise_client::mobs::ai::TickProgress::Paused(paused) => {
+                            if matches!(paused, Pause::Breeding { .. }) {
+                                // In particular AnimalMakeLove's earlier lock-gaze is already
+                                // visible to the partner when spawnChildFromBreeding runs.
+                                sunrise_client::mobs::apply_brain_events(
+                                    &mut mobs,
+                                    &mut level,
+                                    &mut events,
+                                    from,
+                                );
+                            }
                             // Return every player loan before ending the world borrow.
                             if seen_guest.is_none() {
                                 base.player = w.player;
@@ -769,30 +792,24 @@ impl Game<'_> {
                     } else if let Some(k) = lent {
                         spare = w.player.map(|v| std::mem::replace(&mut guests[k].1, v));
                     }
-                    // A killed mob's body is removed: its effects that act on
-                    // death run (`LivingEntity.remove` with KILLED).
-                    if !kept && !m.alive() && !m.removed && !m.extra.effects.is_empty() {
-                        corpses.push(m.clone());
-                    }
                     sunrise_client::mobs::take_mob_pushes(&mut events, from, &mut pushes);
-                    // LivingEntity.tickDeath: after twenty ticks the body is removed.
-                    if !kept && !m.removed && !m.alive() && m.death_time >= 20 {
-                        let (width, height) = (f64::from(m.width()), f64::from(m.height()));
-                        // 🤖 Agent: `AbstractCubeMob.remove` splits a grown cube into
-                        // its smaller halves when it is removed, twenty ticks after
-                        // the death. The parent leaves the list before the split
-                        // runs, so its size, position, kind and persistence are
-                        // captured here, as they are at the removal.
-                        let split = if matches!(
-                            m.species(),
-                            Species::Slime | Species::MagmaCube | Species::SulfurCube
-                        ) && m.extra.size > 1
-                        {
-                            Some(m.clone())
-                        } else {
-                            None
-                        };
-                        gone.push((m.id, m.position, width, height, split));
+                    if !kept && !m.removed && !m.alive() {
+                        // LivingEntity.tickDeath: after twenty ticks the body is removed.
+                        let split = m.death_time >= 20
+                            && m.extra.size > 1
+                            && matches!(
+                                m.species(),
+                                Species::Slime | Species::MagmaCube | Species::SulfurCube
+                            );
+                        if m.death_time >= 20 {
+                            let (width, height) = (f64::from(m.width()), f64::from(m.height()));
+                            gone.push((m.id, m.position, width, height));
+                        }
+                        // AbstractCubeMob.remove splits before LivingEntity.remove runs
+                        // removal effects. Finish both while the dying parent still resolves.
+                        if split || !m.extra.effects.is_empty() {
+                            removal = Some((m.join, split));
+                        }
                     }
                     route_player_events(
                         &mut events,
@@ -840,7 +857,8 @@ impl Game<'_> {
                         removing_vehicle = Some(id);
                         break;
                     }
-                    if sting.is_some() || section_yield || tell_post.is_some() {
+                    if sting.is_some() || section_yield || tell_post.is_some() || removal.is_some()
+                    {
                         break;
                     }
                 }
@@ -858,6 +876,7 @@ impl Game<'_> {
                 && !section_yield
                 && tell_pre.is_none()
                 && tell_post.is_none()
+                && removal.is_none()
             {
                 break;
             }
@@ -869,7 +888,12 @@ impl Game<'_> {
             // can read or replace another actor's velocity. A section-only
             // or a told-alone yield must not change the normal end-of-pass
             // push ordering.
-            if pause.is_some() || stinging || retry_rider.is_some() || removing_vehicle.is_some() {
+            if pause.is_some()
+                || stinging
+                || retry_rider.is_some()
+                || removing_vehicle.is_some()
+                || removal.is_some()
+            {
                 for m in &mut mobs {
                     sunrise_client::mobs::apply_mob_pushes(m, &mut pushes);
                 }
@@ -883,13 +907,15 @@ impl Game<'_> {
                 && !stinging
                 && retry_rider.is_none()
                 && removing_vehicle.is_none()
+                && removal.is_none()
                 && !section_yield;
             let same_rows = told_only && !gone_rows;
             if !same_rows {
                 mobs.retain(|m| {
-                    // Give the departing vehicle back for its pre-removal effects
-                    // and for marking it removed before the dismount hooks.
+                    // Give the departing vehicle or cube/effect removal back for its pre-removal
+                    // effects, splitting and marking it removed before dismount hooks.
                     removing_vehicle == Some(m.id)
+                        || removal.is_some_and(|(join, _)| join == m.join)
                         || index
                             .get(&m.id)
                             .and_then(|&slot| keep.get(slot as usize))
@@ -909,17 +935,22 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
             }
-            // Lifts and hurt listeners can write positions from the owning game.
+            // Lifts, births, removals and hurt listeners can write positions and join entities
+            // through the owning game. Give them the live section table and take it back even on
+            // unwind.
             let trampling = matches!(pause, Some(Pause::Trample(_)));
-            let live_sections = section_table.as_ref().filter(|_| {
+            let breeding = matches!(pause, Some(Pause::Breeding { .. }));
+            let sections_in_game = section_table.as_ref().filter(|_| {
                 trampling
                     || stinging
+                    || breeding
+                    || removal.is_some()
                     || matches!(
                         pause,
                         Some(Pause::AfterDamage(_) | Pause::FallToPassengers(_))
                     )
             });
-            if let Some(sections) = live_sections {
+            if let Some(sections) = sections_in_game {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),
@@ -931,6 +962,22 @@ impl Game<'_> {
                         &mut sections.borrow_mut(),
                         &mut section_moves,
                     );
+                }
+                if removal.is_some() || breeding {
+                    // Consume completed removals before calling a listener which can unwind.
+                    self.emit_death_poofs(gone.drain(..));
+                }
+                let mut vehicle_split = false;
+                if let Some((join, split)) = removal {
+                    if removing_vehicle.is_some_and(|id| {
+                        self.mob_index
+                            .find(&self.mobs, id)
+                            .is_some_and(|i| self.mobs[i].join == join)
+                    }) {
+                        vehicle_split = split;
+                    } else {
+                        self.complete_mob_removal(join, split);
+                    }
                 }
                 if let Some(sting) = sting {
                     let before_hurt = events.drain(brain_from..sting.at).collect();
@@ -963,7 +1010,7 @@ impl Game<'_> {
                     }
                 } else if let Some(id) = retry_rider {
                     self.dismount_mob(id);
-                } else if let Some((paused, (id, join))) = pause.as_ref().zip(resume_entity)
+                } else if let Some((paused, (id, join))) = pause.as_mut().zip(resume_entity)
                     && let Some(i) = self.mob_index.find(&self.mobs, id)
                     && self.mobs[i].join == join
                     && !self.mobs[i].removed
@@ -974,6 +1021,11 @@ impl Game<'_> {
                         }
                         Pause::Breathing { air, .. } => {
                             air_answer = self.ask_mob_breath(air);
+                        }
+                        Pause::Breeding { event, .. } => {
+                            if let Some(event) = event.take() {
+                                self.deliver_breed(*event, true);
+                            }
                         }
                         Pause::AfterDamage(_) => {
                             if sunrise_client::mobs::creaking::has_pending_hurt(&self.mobs[i]) {
@@ -1001,12 +1053,16 @@ impl Game<'_> {
                     // LivingEntity.tickDeath broadcasts event 60 before remove;
                     // cube splitting and the killed effects also precede setRemoved.
                     let animation = gone.pop_if(|death| death.0 == id);
+                    let killed_effects = removal.is_some();
                     let animate = |game: &mut Self| {
-                        if let Some((_, at, width, height, split)) = animation {
-                            game.finish_mob_death_animation(id, at, width, height, split);
+                        if let Some((id, at, width, height)) = animation {
+                            game.emit_death_poofs([(id, at, width, height)]);
+                        }
+                        if vehicle_split && let Some(i) = game.mob_index.find(&game.mobs, id) {
+                            let mut dying = game.mobs[i].clone();
+                            game.split_cube_children(&mut dying);
                         }
                     };
-                    let killed_effects = corpses.pop_if(|mob| mob.id == id).is_some();
                     if self.mob_object(id).is_some_and(|mob| mob.removed) {
                         animate(self);
                         self.finish_mob_removal(id);
@@ -1031,7 +1087,7 @@ impl Game<'_> {
                 }
             }))
             .err();
-            if let Some(sections) = live_sections {
+            if let Some(sections) = sections_in_game {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
                     &mut sections.borrow_mut(),
@@ -1157,7 +1213,6 @@ impl Game<'_> {
         *state.snapshot = snapshot;
         *state.events = events;
         *state.dead = dead;
-        *state.corpses = corpses;
         *state.died = died;
         *state.ticked = ticked;
         *state.guests = guests;

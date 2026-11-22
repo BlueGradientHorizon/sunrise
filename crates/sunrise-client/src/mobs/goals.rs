@@ -129,6 +129,18 @@ pub(super) struct GoalMovementPause {
     pub(super) force: bool,
 }
 
+#[derive(Debug)]
+pub(super) struct GoalBreed {
+    next: usize,
+    force: bool,
+}
+
+#[derive(Debug)]
+pub(super) enum GoalPause {
+    Movement(GoalMovementPause),
+    Breed(Box<MobEvent>, GoalBreed),
+}
+
 impl GoalSelector {
     pub fn add(&mut self, priority: i32, goal: impl Goal + 'static) {
         self.add_boxed(priority, Box::new(goal));
@@ -234,16 +246,17 @@ impl GoalSelector {
             }
         }
     }
-    pub(super) fn tick_until_movement_pause(
+    pub(super) fn tick_until_pause(
         &mut self,
         m: &mut Mob,
         cx: &mut Cx,
         force: bool,
-    ) -> Option<GoalMovementPause> {
+        breed: bool,
+    ) -> Option<GoalPause> {
         if force {
             self.prepare_tick(m, cx);
         }
-        self.tick_from(m, cx, force, 0)
+        self.tick_from(m, cx, force, 0, breed)
     }
 
     fn tick_from(
@@ -252,20 +265,43 @@ impl GoalSelector {
         cx: &mut Cx,
         force: bool,
         start: usize,
-    ) -> Option<GoalMovementPause> {
+        breed: bool,
+    ) -> Option<GoalPause> {
         for (slot, g) in self.goals.iter_mut().enumerate().skip(start) {
-            if g.running
-                && (force || g.goal.every_tick())
-                && let Some(movement) = g.goal.tick_until_movement_pause(m, cx)
-            {
-                return Some(GoalMovementPause {
+            if !g.running || !(force || g.goal.every_tick()) {
+                continue;
+            }
+            let before = cx.events.len();
+            if let Some(movement) = g.goal.tick_until_movement_pause(m, cx) {
+                return Some(GoalPause::Movement(GoalMovementPause {
                     movement,
                     slot,
                     force,
-                });
+                }));
+            }
+            if breed
+                && cx.events.len() > before
+                && matches!(cx.events.last(), Some(MobEvent::Breed { .. }))
+            {
+                return Some(GoalPause::Breed(
+                    Box::new(cx.events.pop().unwrap()),
+                    GoalBreed {
+                        next: slot + 1,
+                        force,
+                    },
+                ));
             }
         }
         None
+    }
+
+    pub(super) fn resume_after_birth(
+        &mut self,
+        m: &mut Mob,
+        cx: &mut Cx,
+        paused: GoalBreed,
+    ) -> Option<GoalPause> {
+        self.tick_from(m, cx, paused.force, paused.next, true)
     }
 
     pub(super) fn resume_movement(
@@ -273,9 +309,13 @@ impl GoalSelector {
         m: &mut Mob,
         cx: &mut Cx,
         paused: GoalMovementPause,
-    ) -> Option<GoalMovementPause> {
+        breed: bool,
+    ) -> Option<GoalPause> {
         if let ControlFlow::Break(movement) = paused.movement.resume(m, cx.w, cx.level, cx.events) {
-            return Some(GoalMovementPause { movement, ..paused });
+            return Some(GoalPause::Movement(GoalMovementPause {
+                movement,
+                ..paused
+            }));
         }
         if m.removed {
             return None;
@@ -287,7 +327,7 @@ impl GoalSelector {
             .iter_mut()
             .position(|g| g.goal.after_movement(m, cx))
             .map_or(paused.slot, |slot| slot + 1);
-        self.tick_from(m, cx, paused.force, next)
+        self.tick_from(m, cx, paused.force, next, breed)
     }
 
     pub fn stop_all(&mut self, m: &mut Mob, cx: &mut Cx) {
@@ -2622,8 +2662,14 @@ impl Goal for Breed {
                 cx.w,
                 equine.is_some() || parent_variant.is_some(),
             );
-            m.extra.in_love = 0;
-            m.extra.age = 6000;
+            // NeoForge Animal.spawnChildFromBreeding / Fox.FoxBreedGoal.breed:
+            // when a baby_entity_spawn listener is present on a live-baby route, defer the
+            // initiating parent's cooldown until Game::breed so an uncanceled empty slot does
+            // not leave the parent cooled down.
+            if !cx.w.asks_live_birth(m.species()) {
+                m.extra.in_love = 0;
+                super::finalize::set_age(m, 6000, Some(cx.w));
+            }
             // TurtleBreedGoal.breed: the mother carries an egg, not a baby.
             if m.species() == Species::Turtle {
                 m.extra.flag = true;
@@ -3378,7 +3424,7 @@ mod breeding_variant_tests {
                     }
                 )));
                 assert_eq!(parent.extra.egg_time, 8313);
-                assert_eq!(parent.extra.age, 5999);
+                assert_eq!(parent.extra.age, if asks_baby_spawn { 0 } else { 5999 });
             }
         }));
     }

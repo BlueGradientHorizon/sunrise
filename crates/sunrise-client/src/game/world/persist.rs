@@ -1666,6 +1666,15 @@ impl Game<'_> {
 
     /// Drop objects after the caller captured the tree, before forgetting or transferring its state.
     pub(super) fn remove_vehicle_rows(&mut self, gone: &[u32]) {
+        use super::natural_spawning::NaturalAdmission;
+        if let Some(NaturalAdmission::Placed { level, id, join }) =
+            &self.creatures.natural_admission
+            && *level == self.dim
+            && gone.contains(id)
+            && let Some(index) = self.mobs.locate(*join)
+        {
+            self.detach_natural_candidate(*id, index);
+        }
         self.mobs.retain(|m| !gone.contains(&m.id));
         self.persist.off_level.retain(|id, _| !gone.contains(id));
         for &id in gone {

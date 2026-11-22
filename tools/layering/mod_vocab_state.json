@@ -184,10 +184,10 @@
     "category": "dispatch table",
     "reason": "Thread-local depth of active hook panic-containment guards. The crash hook defers only while this call is inside a guarded native dispatch."
   },
-  "runtime.rs::LISTENER_SERIAL": {
-    "type": "std::cell::Cell<(u64,u64)>",
+  "runtime.rs::ISOLATED_FAILURES": {
+    "type": "std::cell::Cell<u64>",
     "category": "dispatch table",
-    "reason": "Independent per-thread counts of listener entries and trapped listeners. Scoped engine leases compare the entry count; owning decide/fire/apply actions compare the trap count to decide whether to abort tentative Host writes."
+    "reason": "Per-thread count of trapped listener failures; owning decide/fire/apply actions compare it to decide whether to abort tentative Host writes."
   },
   "runtime.rs::MODS": {
     "type": "OnceLock<Installed>",

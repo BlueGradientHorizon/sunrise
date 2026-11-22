@@ -60,44 +60,57 @@ fn matrix(mods: mod_api::Mods) {
                 (kids[2].position.x, kids[2].yaw, kids[2].extra.size),
                 (3.0, 12.0, 2)
             );
-            // Replace C with E; a second append of E reports Ownership (2) in A's yaw.
+            // Replace C with E (and round-trip insert/remove at index 0).
             let kids = split(game, 3);
             assert_eq!(kids.len(), 3);
-            assert_eq!(kids[0].yaw, 2.0);
+            assert_eq!(kids[0].yaw, YAWS[0]);
             assert_eq!(kids[2].kind.id, "minecraft:magma_cube");
             assert_eq!((kids[2].position.x, kids[2].yaw), (8.0, 33.0));
-            // Invalid input: NaN, unknown kind, wrong dimension (4, 4, 4), duplicate token (2),
-            // the 65th child (3) and a NaN move (4): digits 4,4,4,2,3,4 read from the right.
+            // Invalid inputs (NaN pos, unknown kind, wrong dimension, out-of-bounds insert/replace,
+            // NaN move -> six Invalid=4 digits) refuse cleanly while the unbounded list grows to 70.
             let kids = split(game, 4);
-            assert_eq!(kids.len(), 64);
-            assert_eq!(kids[0].yaw, 432_444.0);
-            // A removed child's borrow is stale (1).
-            let kids = split(game, 5);
-            assert_eq!(kids.len(), 2);
-            assert_eq!(kids[0].yaw, 1.0);
+            assert_eq!(kids.len(), 70);
+            assert_eq!(kids[0].yaw, 444_444.0);
+            // Clearing the list spawns no children.
+            assert!(split(game, 5).is_empty());
 
             // Breeding: untouched baby.
             let (_, child) = breed(game, 0);
             assert_eq!(find(game, child.unwrap()).extra.age, -24000);
-            // Veto, and removing the baby: no child, parents resting.
-            for mode in [1, 3] {
-                let (mobs, child) = breed(game, mode);
-                assert_eq!(child, None, "mode {mode}");
-                assert!(mobs.iter().all(|m| m.extra.age >= 0));
-                assert_eq!(find(game, 9000 + mode).extra.age, 6000);
-                assert_eq!(find(game, 9001 + mode).extra.in_love, 0);
-            }
-            // Replace with a pig baby; a second baby reports Capacity (3).
-            let (_, child) = breed(game, 2);
+            // Veto (mode 1): no child, both parents reset to age 6000 and in_love 0.
+            let (mobs, child) = breed(game, 1);
+            assert_eq!(child, None);
+            assert!(mobs.iter().all(|m| m.extra.age >= 0));
+            assert_eq!(find(game, 9001).extra.age, 6000);
+            assert_eq!(find(game, 9001).extra.in_love, 0);
+            assert_eq!(find(game, 9002).extra.age, 6000);
+            assert_eq!(find(game, 9002).extra.in_love, 0);
+            // Uncanceled empty slot (mode 3): no child, parents are NOT cooled down.
+            let (mobs, child) = breed(game, 3);
+            assert_eq!(child, None);
+            assert!(mobs.iter().all(|m| m.extra.age >= 0));
+            assert_eq!(find(game, 9003).extra.age, 0);
+            assert_eq!(find(game, 9003).extra.in_love, 600);
+            assert_eq!(find(game, 9004).extra.age, 0);
+            assert_eq!(find(game, 9004).extra.in_love, 600);
+            // Replace with a pig baby; post-event snap puts it at parent's position with yaw 0,
+            // and a detached second baby dropped without attaching never joins.
+            let (mobs, child) = breed(game, 2);
+            let parent = find(game, 9002);
             let pig = find(game, child.unwrap());
             assert_eq!(pig.kind.id, "minecraft:pig");
             assert!(pig.extra.age < 0);
-            assert_eq!(pig.yaw, 3.0);
-            // A grown replacement is Invalid (4); the cow baby stays.
+            assert_eq!(pig.position, parent.position);
+            assert_eq!(pig.yaw, 0.0);
+            assert_eq!(pig.head_pitch, 0.0);
+            assert!(pig.extra.spawn_tags.iter().any(|t| t == "replaced_pig"));
+            assert_eq!(mobs.len(), 3);
+            // A grown replacement is Invalid (4); the cow baby stays with yaw 0 and the tag.
             let (_, child) = breed(game, 4);
             let baby = find(game, child.unwrap());
             assert_eq!(baby.kind.id, "minecraft:cow");
-            assert_eq!(baby.yaw, 4.0);
+            assert_eq!(baby.yaw, 0.0);
+            assert!(baby.extra.spawn_tags.iter().any(|t| t == "refused_4"));
         });
     });
 }

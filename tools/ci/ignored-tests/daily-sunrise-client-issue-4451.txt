@@ -1968,8 +1968,7 @@ sunrise-client game::native_surface::tests::mob_travel_and_both_leash_sites_use_
 sunrise-client game::native_tick_time::tests::a_client_level_always_has_time lib daily resources
 sunrise-client game::native_tick_time::tests::a_server_has_time_until_its_tick_deadline_passes lib daily resources
 sunrise-client game::native_tick_time::tests::the_tick_listeners_see_the_deadline_through_the_host lib daily resources
-sunrise-client game::native_unspawned_mob::tests::a_handle_kept_past_its_hook_is_expired lib daily resources
-sunrise-client game::native_unspawned_mob::tests::a_panicking_listener_still_ends_the_lend lib daily resources
+sunrise-client game::native_unspawned_mob::tests::an_engine_unwind_still_ends_the_unspawned_mob_lend lib daily resources
 sunrise-client game::native_unspawned_mob::tests::both_cancels_keep_their_contract_with_edits lib daily resources
 sunrise-client game::native_unspawned_mob::tests::edits_through_the_editor_are_on_the_mob_that_joins lib daily resources
 sunrise-client game::native_unspawned_mob::tests::the_group_a_listener_leaves_is_what_finalization_reads lib daily resources

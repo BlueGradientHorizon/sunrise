@@ -1,226 +1,159 @@
-//! The engine side of pending children (docs/design/mod-api/pending-children.md):
-//! it constructs the children of a split or a breeding, lends them to `mob_split` and
-//! `baby_entity_spawn` listeners as an engine-owned, ordered list, then freezes, validates and
-//! hands back what is left, once. Mod listeners reach the same arena through
-//! the same editor (`native_pending_children`), so a call has the same effect from either.
+//! The engine side of pending children for `mob_split` and `baby_entity_spawn`:
+//! constructs the children on the stack, lends them to listeners via scoped editors
+//! (`SplitChildList` / `BabyChildSlot`), and inserts whatever survives in order if not cancelled.
 //!
-//! Nothing here replays construction or draws randomness: a veto, a stale parent or an invalid
-//! list keeps every draw construction already made and spawns no child.
+//! Nothing here replays construction or draws randomness: a cancel or empty output keeps every
+//! draw construction already made and spawns no child, and unwinding drops pending state via RAII.
 
 use super::Game;
-use super::native_pending_children::{Children, PendingMob, valid_child};
-use mod_api::PendingChildrenEdits;
+use super::native_pending_children::{BabyChildSlot, ChildConstraint, PendingMob, SplitChildList};
+use mod_api::{BabyEntitySpawnChild, MobSplitChildren};
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+use std::sync::atomic::{AtomicU64, Ordering};
 use sunrise_client::mobs::Mob;
-use sunrise_mod_runtime::{
-    attachments::Attachments,
-    pending_children::{Decision, PendingChildren},
-};
 
-/// A split's most children, and a breeding's only one (the design's limits).
-const SPLIT_CAPACITY: usize = 64;
+static NEXT_CHILD_ACTION: AtomicU64 = AtomicU64::new(1);
 
-/// What a breeding's baby was derived from, per parent: compared again before the baby is
-/// accepted, so a listener that changed a parent through the host cannot leave a baby built
-/// from the old state. Anything the baby's kind, variant, colour, ownership or age came from.
-#[derive(PartialEq)]
-struct ParentState {
-    kind: String,
-    position: [f64; 3],
-    age: i32,
-    in_love: i32,
-    variant: u8,
-    variant2: u8,
-    color: u8,
-    tame: bool,
-}
+#[cfg(test)]
+pub(super) mod escaping_fault {
+    use std::cell::Cell;
+    use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 
-fn parent_state(mob: &Mob) -> ParentState {
-    ParentState {
-        kind: mob.kind.id.clone(),
-        position: [mob.position.x, mob.position.y, mob.position.z],
-        age: mob.extra.age,
-        in_love: mob.extra.in_love,
-        variant: mob.extra.variant,
-        variant2: mob.extra.variant2,
-        color: mob.extra.color,
-        tame: mob.extra.tame,
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub(in crate::game) enum At {
+        Constructed,
+        Admission,
+        SplitDispatched,
+        BabyDispatched,
+    }
+
+    thread_local! {
+        static ARMED: Cell<Option<(At, u32)>> = const { Cell::new(None) };
+    }
+
+    /// Fail at an engine checkpoint, not from inside a mod callback. The unique payload
+    /// lets the fixture distinguish an exercised cleanup path from an unrelated assertion.
+    pub(in crate::game) fn reach(at: At, id: u32) {
+        if ARMED.get() == Some((at, id)) {
+            ARMED.set(None);
+            resume_unwind(Box::new((at, id)));
+        }
+    }
+
+    pub(in crate::game) fn expect(at: At, id: u32, run: impl FnOnce()) {
+        let previous = ARMED.replace(Some((at, id)));
+        let result = catch_unwind(AssertUnwindSafe(run));
+        ARMED.set(previous);
+        let payload = result.expect_err("engine checkpoint did not unwind");
+        assert_eq!(payload.downcast_ref::<(At, u32)>(), Some(&(at, id)));
     }
 }
 
-/// Restores the hook the pending arena was serving when a dispatch ends, even by unwinding.
-struct HookScope {
-    cell: std::rc::Rc<std::cell::Cell<Option<mod_api::HookId>>>,
-    previous: Option<mod_api::HookId>,
-}
-impl Drop for HookScope {
-    fn drop(&mut self) {
-        self.cell.set(self.previous);
-    }
+/// Result of dispatching `baby_entity_spawn`: distinguishes cancellation (which resets both
+/// parents per NeoForge's `Animal.spawnChildFromBreeding` / `Fox.FoxBreedGoal.breed`) from
+/// an uncanceled empty slot (which skips breeding finalization without resetting parents).
+pub(super) enum BreedOutcome {
+    Accepted(Option<Mob>),
+    Cancelled,
 }
 
 impl Game<'_> {
-    /// Lends `initial` to the listeners `fire` calls and returns the children that survive them,
-    /// in order, each with its entity number issued but not yet in any level. Empty means no
-    /// child: a cancel, a list a listener emptied, a stale parent (one of
-    /// `parents` is gone or no longer in the state the children were built from, or the world or
-    /// dimension changed) or a final child that breaks an invariant. Nothing is recomputed.
-    ///
-    /// `hook` is the hook `fire` dispatches: its listener count ends each listener's leases.
-    /// `breeding` selects the one-baby limit and requires every child to be a baby. A child that
-    /// already has an entity number keeps its UUID and constructor attachments here, outside the
-    /// game's tables, until it joins; children a listener removed or replaced are forgotten, also
-    /// when a listener panics, so none leaves state behind.
-    pub(super) fn dispatch_pending_children(
-        &mut self,
-        hook: mod_api::HookId,
-        breeding: bool,
-        initial: Vec<Mob>,
-        parents: &[u32],
-        fire: impl FnOnce(&mut Self, &dyn PendingChildrenEdits, &mut bool),
-    ) -> Vec<Mob> {
-        use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
-        let capacity = if breeding { 1 } else { SPLIT_CAPACITY };
-        let (dim, epoch, resources) = (self.dim, self.lend_epoch(), self.res.clone());
-        let before: Vec<(u32, Option<ParentState>)> = parents
-            .iter()
-            .map(|&id| (id, self.mobs.iter().find(|m| m.id == id).map(parent_state)))
-            .collect();
-        // A child with a number already published state: take its UUID and, where nothing is
-        // bound to it, its constructor attachments back out of the game's tables, so none of
-        // it is visible before the child joins.
-        let reserved: Vec<u32> = initial.iter().map(|m| m.id).filter(|&id| id != 0).collect();
-        let initial = initial
-            .into_iter()
-            .map(|mob| {
-                let id = mob.id;
-                let uuid = (id != 0).then(|| self.persist.uuids.remove(&id)).flatten();
-                let attachments = match self.entity_attachments.get(&id) {
-                    Some(held)
-                        if id != 0 && !held.has_index_entries() && !held.has_index_binding() =>
-                    {
-                        self.entity_attachments.remove(&id).unwrap_or_default()
-                    }
-                    _ => Attachments::default(),
-                };
-                PendingMob {
-                    mob,
-                    uuid,
-                    attachments,
-                    dimension: dim,
-                }
-            })
-            .collect();
-        let (arena, hook_cell) = {
-            let lent = self.lent_mobs.borrow();
-            (lent.pending.clone(), lent.hook.clone())
-        };
-        let _scope = HookScope {
-            previous: hook_cell.replace(Some(hook)),
-            cell: hook_cell.clone(),
-        };
+    /// Run construction with the holder reachable, but retire only this unpublished mob's
+    /// metadata if dispatch unwinds. Unrelated Host writes stay in the level.
+    pub(super) fn initialize_unpublished_mob(&mut self, id: u32, kind: &str) {
         let run = catch_unwind(AssertUnwindSafe(|| {
-            PendingChildren::run_scoped(
-                &arena,
-                epoch.get(),
-                capacity,
-                initial,
-                |action| {
-                    let editor = Children::new(&*self, action, breeding);
-                    // The baseline: listeners entered from here on end the previous lease.
-                    super::native_pending_children::sync_listener(&arena, &hook_cell);
-                    let mut cancel = false;
-                    fire(self, &editor, &mut cancel);
-                    // A listener's Host writes ran against the live world: the frozen list is
-                    // only valid if what it was made from still stands.
-                    if self.lend_epoch() != epoch
-                        || self.dim != dim
-                        || before.iter().any(|(id, state)| {
-                            let now = self.mobs.iter().find(|m| m.id == *id).map(parent_state);
-                            now.is_none() || now.as_ref() != state.as_ref()
-                        })
-                    {
-                        return Decision::Stale;
-                    }
-                    if cancel {
-                        // Monotonic: a later reader of the frame sees it cancelled too.
-                        let _ = arena.borrow_mut().cancel(action);
-                        return Decision::Cancel;
-                    }
-                    Decision::Accept
-                },
-                |child| valid_child(&resources, dim, breeding, child),
-            )
+            self.initialize_entity(mod_api::Holder::Entity(id), kind);
         }));
-        let mut kept = Vec::new();
-        let panic = match run {
-            Ok(Ok(mut frozen)) => {
-                while frozen
-                    .consume_next::<()>(|child| {
-                        kept.push(child);
-                        Ok(())
-                    })
-                    .unwrap_or(false)
-                {}
-                None
-            }
-            Ok(Err(_)) => None,
-            Err(panic) => Some(panic),
-        };
-        // The numbers reserved for children that did not survive; also before a panic resumes.
-        for id in reserved {
-            if !kept.iter().any(|child| child.mob.id == id) {
-                self.forget_entity(id);
-            }
-        }
-        if let Some(panic) = panic {
+        if let Err(panic) = run {
+            self.forget_entity(id);
             resume_unwind(panic);
         }
-        kept.into_iter()
-            .map(|child| self.issue_pending_child(child))
-            .collect()
     }
 
-    /// The child as an ordinary unjoined mob. A child a mod constructed gets its entity number
-    /// now, so breeding's finalization and its advancement see the real one. Its UUID and
-    /// attachments, and those an engine-made child kept out of the tables while it waited, are
-    /// published here: the first moment it can join.
-    fn issue_pending_child(&mut self, child: PendingMob) -> Mob {
+    /// Move constructor state out of the level before lending a proposed child. Dropping
+    /// the owned value now discards just this child's unpublished data.
+    fn stash_pending_child(&mut self, mut mob: Mob, action: u64) -> PendingMob {
+        let id = std::mem::replace(&mut mob.id, 0);
+        let uuid = self.persist.uuids.remove(&id);
+        let mut attachments = self.entity_attachments.remove(&id).unwrap_or_default();
+        attachments.unbind_index();
+        let initialized = self
+            .entity_initialization
+            .initialized
+            .remove(&mod_api::Holder::Entity(id));
+        self.forget_entity(id);
+        PendingMob {
+            mob,
+            uuid,
+            attachments,
+            initialized,
+            origin_reservation: Some((action, id)),
+            dimension: self.dim,
+            resources: self.res.clone(),
+            attributes: self.motion.attributes.clone(),
+        }
+    }
+
+    /// Publish one pending child's unpublished state under an entity ID belonging to this world
+    /// and complete `EntityConstructing` if it has not already run.
+    ///
+    /// If construction itself unwinds past dispatch, `initialize_unpublished_mob` retires the
+    /// child's unpublished UUID, attachments and initialization marker before resuming the unwind.
+    fn issue_pending_child(&mut self, child: PendingMob, action: u64) -> Mob {
         let PendingMob {
             mut mob,
             uuid,
             attachments,
+            initialized,
+            origin_reservation,
             ..
         } = child;
-        let fresh = mob.id == 0;
-        if fresh {
-            self.next_entity += 1;
-            mob.id = self.next_entity;
-        }
+        // Reuse the ID only in its originating action. Detached children reattached to a
+        // different action or world get an ID belonging to that destination.
+        let reused = origin_reservation
+            .filter(|&(origin, id)| {
+                origin == action
+                    && !self.persist.uuids.contains_key(&id)
+                    && !self.entity_attachments.contains_key(&id)
+                    && !self.mobs.iter().any(|m| m.id == id)
+            })
+            .map(|(_, id)| id);
+        mob.id = match reused {
+            Some(id) => id,
+            None => {
+                self.next_entity += 1;
+                self.next_entity
+            }
+        };
+        let id = mob.id;
         if let Some(uuid) = uuid {
-            self.persist.uuids.insert(mob.id, uuid);
+            self.persist.uuids.insert(id, uuid);
         }
-        if !attachments.to_nbt().is_empty() {
+        if attachments.has_index_entries() || !attachments.to_nbt().is_empty() {
             self.entity_attachments
-                .entry(mob.id)
+                .entry(id)
                 .or_default()
                 .replace_contents(attachments);
         }
-        if fresh {
+        if initialized {
+            self.entity_initialization
+                .initialized
+                .insert(mod_api::Holder::Entity(id));
+        } else {
             let kind = super::native_hooks::mob_kind(&mob);
-            self.initialize_entity(mod_api::Holder::Entity(mob.id), &kind);
+            self.initialize_unpublished_mob(id, &kind);
         }
         mob
     }
 
     /// `AbstractCubeMob.remove`'s children once the parent `dying` is dead: the count is drawn,
     /// then each half-size child is constructed in order with its yaw draw from the parent. With a
-    /// `mob_split` listener the whole list is constructed first and lent; otherwise each
-    /// child joins as it is made, exactly as vanilla does.
+    /// `mob_split` listener the whole list is constructed first on the stack and lent via
+    /// [`MobSplitChildren`] (even when `drawn == 0`, e.g. a primed sulfur cube above size 1,
+    /// matching NeoForge's `AbstractCubeMob.remove` patch); otherwise each child joins as it is
+    /// made, with zero extra work when no listener is present.
     pub(super) fn split_cube_children(&mut self, dying: &mut Mob) {
         let drawn = sunrise_client::mobs::cube::split_count(dying);
-        if drawn == 0 {
-            return;
-        }
         if !mod_api::__private::listened(mod_api::HookId::MobSplit) {
             for i in 0..drawn {
                 self.next_entity += 1;
@@ -231,74 +164,118 @@ impl Game<'_> {
             }
             return;
         }
-        // The numbers are issued when the children join, so a listener's own spawns cannot
-        // collide; the constructor still seeds from the number the child would have.
-        let first = self.next_entity + 1;
-        let children = (0..drawn)
-            .map(|i| {
-                let mut child = Mob::new(first + i, dying.kind.clone(), dying.position, 0.0);
-                sunrise_client::mobs::cube::split_child(dying, &mut child, i);
-                child.id = 0;
-                child
-            })
-            .collect();
-        let dimension = self.dim.id();
+        let dimension = self.dim;
+        let resources = self.res.clone();
+        let attributes = self.motion.attributes.clone();
+        let action = NEXT_CHILD_ACTION.fetch_add(1, Ordering::Relaxed);
         let (parent, kind, size) = (
             dying.id,
             super::native_hooks::mob_kind(dying),
             dying.extra.size,
         );
-        let kept = self.dispatch_pending_children(
-            mod_api::HookId::MobSplit,
-            false,
-            children,
-            &[],
-            |game, edits, cancel| {
-                game.native_mob_split(mod_api::__private::MobSplitCall {
-                    dimension,
-                    parent,
-                    kind: &kind,
-                    size,
-                    child_size: size / 2,
-                    edits,
-                    cancel,
-                });
-            },
-        );
-        for child in kept {
-            self.mobs.push(child);
-            self.native_mobs_joined(self.mobs.len() - 1, false);
+        let mut pending = Vec::with_capacity(drawn as usize);
+        for i in 0..drawn {
+            self.next_entity += 1;
+            let mut child = Mob::new(self.next_entity, dying.kind.clone(), dying.position, 0.0);
+            // The conversion constructs each proposal even if the split event will later
+            // remove it. The constructor runs before this child's split setup draws its yaw.
+            self.initialize_unpublished_mob(child.id, &kind);
+            sunrise_client::mobs::cube::split_child(dying, &mut child, i);
+            pending.push(self.stash_pending_child(child, action));
+        }
+        let mut cancel = false;
+        {
+            let mut editor = SplitChildList {
+                children: &mut pending,
+                resources,
+                attributes,
+                dimension,
+            };
+            self.native_mob_split(mod_api::__private::MobSplitCall {
+                dimension: dimension.id(),
+                parent,
+                kind: &kind,
+                size,
+                child_size: size / 2,
+                children: MobSplitChildren::new(&mut editor),
+                cancel: &mut cancel,
+            });
+        }
+        #[cfg(test)]
+        escaping_fault::reach(escaping_fault::At::SplitDispatched, parent);
+        if cancel {
+            return;
+        }
+        // Issue survivors in order, completing construction for mod-made replacements that
+        // have not been told yet. On unwind retire only issued children that have not joined.
+        let mut issued = Vec::with_capacity(pending.len());
+        for child in pending {
+            let run = catch_unwind(AssertUnwindSafe(|| self.issue_pending_child(child, action)));
+            match run {
+                Ok(mob) => issued.push(mob),
+                Err(panic) => {
+                    for unjoined in issued {
+                        self.forget_entity(unjoined.id);
+                    }
+                    resume_unwind(panic);
+                }
+            }
+        }
+        let mut remaining = issued.into_iter();
+        while let Some(child) = remaining.next() {
+            let run = catch_unwind(AssertUnwindSafe(|| {
+                self.mobs.push(child);
+                self.native_mobs_joined(self.mobs.len() - 1, false);
+            }));
+            if let Err(panic) = run {
+                for unjoined in remaining {
+                    self.forget_entity(unjoined.id);
+                }
+                resume_unwind(panic);
+            }
         }
     }
 
-    /// `Animal.spawnChildFromBreeding` once `baby` is constructed: lends it to
-    /// `baby_entity_spawn` listeners and returns the baby that remains (the listener's
-    /// replacement when it swapped one in), or `None` when the baby is vetoed.
+    /// `Animal.spawnChildFromBreeding` / `Fox.FoxBreedGoal.breed` once the proposed `baby`
+    /// (if any) is constructed: lends it in a stack-local optional slot to `baby_entity_spawn`
+    /// listeners and distinguishes cancellation from an uncanceled empty slot.
     pub(super) fn breed_with_listeners(
         &mut self,
         parent: u32,
         partner: u32,
         player: (Option<u128>, Option<i32>),
-        baby: Mob,
-    ) -> Option<Mob> {
-        let dimension = self.dim.id();
-        self.dispatch_pending_children(
-            mod_api::HookId::BabyEntitySpawn,
-            true,
-            vec![baby],
-            &[parent, partner],
-            |game, edits, cancel| {
-                game.native_baby_entity_spawn(mod_api::__private::BabyEntitySpawnCall {
-                    dimension,
-                    parent,
-                    partner,
-                    player: player.0,
-                    player_entity_id: player.1,
-                    edits,
-                    cancel,
-                });
-            },
-        )
-        .pop()
+        baby: Option<Mob>,
+        constraint: ChildConstraint,
+    ) -> BreedOutcome {
+        let dimension = self.dim;
+        let resources = self.res.clone();
+        let attributes = self.motion.attributes.clone();
+        let action = NEXT_CHILD_ACTION.fetch_add(1, Ordering::Relaxed);
+        let mut slot = baby.map(|baby| self.stash_pending_child(baby, action));
+        let mut cancel = false;
+        {
+            let mut editor = BabyChildSlot {
+                slot: &mut slot,
+                resources,
+                attributes,
+                dimension,
+                constraint,
+            };
+            self.native_baby_entity_spawn(mod_api::__private::BabyEntitySpawnCall {
+                dimension: dimension.id(),
+                parent,
+                partner,
+                player: player.0,
+                player_entity_id: player.1,
+                child: BabyEntitySpawnChild::new(&mut editor),
+                cancel: &mut cancel,
+            });
+        }
+        #[cfg(test)]
+        escaping_fault::reach(escaping_fault::At::BabyDispatched, parent);
+        if cancel {
+            return BreedOutcome::Cancelled;
+        }
+        BreedOutcome::Accepted(slot.map(|kept| self.issue_pending_child(kept, action)))
     }
 }

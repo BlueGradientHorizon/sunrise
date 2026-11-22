@@ -659,6 +659,25 @@ pub fn resume_after_breathing(
     })
 }
 
+/// Resume the breeding goal or brain with the current vehicle/navigation owner.
+pub fn resume_after_birth(
+    mobs: &mut JoinList<Mob>,
+    index: usize,
+    w: &MobWorld,
+    level: &mut super::DamageLevel<'_>,
+    resume: super::ai::BreedingResume,
+    events: &mut Vec<super::MobEvent>,
+    movement: &mut Option<super::ai::MobMovement>,
+) -> super::ai::TickProgress {
+    tick_with(mobs, index, w, level, events, |m, w, level, events| {
+        let progress = super::ai::resume_after_birth(m, w, level, events, resume, movement);
+        if matches!(progress, super::ai::TickProgress::Complete(_)) {
+            super::neutral_anger::after_tick(m, w.game_time);
+        }
+        progress
+    })
+}
+
 /// Resume the tick with its current navigation owner after settling a hit.
 pub fn resume_after_damage(
     mobs: &mut JoinList<Mob>,

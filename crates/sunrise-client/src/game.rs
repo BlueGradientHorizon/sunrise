@@ -4002,9 +4002,6 @@ struct Game<'a> {
     /// The native lifecycle bookkeeping.
     native_lifecycle: native_lifecycle::NativeLifecycle,
     resident_entities: resident_state::ResidentEntities,
-    /// The mobs lent to the hook calls running now, before they join a level
-    /// (game/modding/native_unspawned_mob.rs).
-    lent_mobs: RefCell<native_unspawned_mob::LentMobs>,
     /// Entities whose copies are held out of storage; their handles refuse until stored back.
     held_out: Vec<u32>,
     /// Native mods' config files this game loaded (game/modding/native_configs.rs).
@@ -13895,7 +13892,6 @@ impl<'a> Game<'a> {
             mod_keys: Default::default(),
             native_lifecycle: Default::default(),
             resident_entities: Default::default(),
-            lent_mobs: Default::default(),
             held_out: Vec::with_capacity(4),
             native_configs: Default::default(),
             native_net: Default::default(),

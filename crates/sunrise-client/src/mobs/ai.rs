@@ -1110,12 +1110,30 @@ pub enum Pause {
         /// `Entity.computeSpeed`, read before the tick moved the mob.
         known_speed: Vec3,
     },
+    /// A breeding goal or brain behaviour finished its decision. Deliver the action before
+    /// resuming any later goal, movement or age and love ticks.
+    Breeding {
+        event: Option<Box<MobEvent>>,
+        resume: BreedingResume,
+    },
     /// A hit needs its owning level before the tick goes on.
     AfterDamage(DamageResume),
     /// A landing's farmland decision, before its superclass hurt.
     Trample(sunrise_world::block_landing::FarmlandTrample),
     /// A vehicle must propagate the selected fall before this move continues.
     FallToPassengers(super::living::PassengerFall),
+}
+
+#[derive(Debug)]
+pub struct BreedingResume {
+    phase: BreedingPhase,
+    was_on_fire: bool,
+}
+
+#[derive(Debug)]
+enum BreedingPhase {
+    Goal(super::goals::GoalBreed),
+    Brain(super::animal_brain::BrainBreed),
 }
 
 #[derive(Debug)]
@@ -1176,7 +1194,19 @@ enum BaseStage {
 
 enum AiPause {
     Movement(MovementPhase),
+    Breed(Box<MobEvent>, BreedingPhase),
     BeeDamage(super::bee::ServerAiStage),
+}
+
+fn goal_pause_to_ai(phase: SelectorPhase, pause: super::goals::GoalPause) -> AiPause {
+    match pause {
+        super::goals::GoalPause::Movement(pause) => {
+            AiPause::Movement(MovementPhase::Goal(phase, pause))
+        }
+        super::goals::GoalPause::Breed(event, pause) => {
+            AiPause::Breed(event, BreedingPhase::Goal(pause))
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -1291,8 +1321,10 @@ pub fn tick(
             TickProgress::Paused(Pause::AfterDamage(resume)) => {
                 resume_after_damage(m, w, level, events, resume, None)
             }
-            TickProgress::Paused(Pause::Trample(_) | Pause::FallToPassengers(_)) => {
-                unreachable!("hostless travel cannot pause")
+            TickProgress::Paused(
+                Pause::Trample(_) | Pause::FallToPassengers(_) | Pause::Breeding { .. },
+            ) => {
+                unreachable!("a hostless tick cannot pause for movement or breeding")
             }
         };
     }
@@ -1592,6 +1624,59 @@ fn ai_and_finish_tick(
     finish_ai_progress(m, w, level, events, was_on_fire, movement, progress)
 }
 
+/// Resume the rest of the selector or brain, then movement and the rest of this tick.
+pub(super) fn resume_after_birth(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    resume: BreedingResume,
+    movement: &mut Option<MobMovement>,
+) -> TickProgress {
+    if m.removed {
+        return TickProgress::Complete(false);
+    }
+    let progress = match resume.phase {
+        BreedingPhase::Goal(goal) => {
+            let paused = {
+                let BorrowedGoalSelectors { mob, goals, .. } = &mut BorrowedGoalSelectors::new(m);
+                goals.resume_after_birth(mob, &mut Cx { w, level, events }, goal)
+            };
+            if let Some(pause) = paused {
+                ControlFlow::Break(goal_pause_to_ai(SelectorPhase::Goals, pause))
+            } else if m.removed {
+                return TickProgress::Complete(false);
+            } else {
+                match finish_server_ai_step(m, w, level, events, true) {
+                    ControlFlow::Continue(()) => ai_step_after_server_ai(m, w, level, events, true),
+                    ControlFlow::Break(pause) => ControlFlow::Break(pause),
+                }
+            }
+        }
+        BreedingPhase::Brain(brain) => {
+            if let Some((event, resume)) =
+                super::animal_brain::resume_after_birth(m, w, level, events, brain)
+            {
+                ControlFlow::Break(AiPause::Breed(event, BreedingPhase::Brain(resume)))
+            } else {
+                match server_ai_controls(m, w, level, events, false) {
+                    ControlFlow::Continue(()) => ai_step_after_server_ai(m, w, level, events, true),
+                    ControlFlow::Break(pause) => ControlFlow::Break(pause),
+                }
+            }
+        }
+    };
+    finish_ai_progress(
+        m,
+        w,
+        level,
+        events,
+        resume.was_on_fire,
+        Some(movement),
+        progress,
+    )
+}
+
 fn finish_ai_progress(
     m: &mut Mob,
     w: &MobWorld,
@@ -1611,6 +1696,10 @@ fn finish_ai_progress(
             phase,
             was_on_fire,
         ),
+        ControlFlow::Break(AiPause::Breed(event, phase)) => TickProgress::Paused(Pause::Breeding {
+            event: Some(event),
+            resume: BreedingResume { phase, was_on_fire },
+        }),
         ControlFlow::Break(AiPause::BeeDamage(next)) => {
             TickProgress::Paused(Pause::AfterDamage(DamageResume {
                 join: m.join,
@@ -1802,33 +1891,35 @@ pub(super) fn resume_movement(
                     goals,
                 } = &mut BorrowedGoalSelectors::new(m);
                 let mut cx = Cx { w, level, events };
-                let (active, after) = match phase {
-                    SelectorPhase::Targets => (targets, Some(goals)),
-                    SelectorPhase::Goals => (goals, None),
+                let pause_birth = w.asks_live_birth(mob.species());
+                let (active, after, breed_active) = match phase {
+                    SelectorPhase::Targets => (targets, Some(goals), false),
+                    SelectorPhase::Goals => (goals, None, pause_birth),
                 };
-                if let Some(goal) = active.resume_movement(mob, &mut cx, goal) {
-                    Some((phase, goal))
+                if let Some(pause) = active.resume_movement(mob, &mut cx, goal, breed_active) {
+                    Some((phase, pause))
                 } else if !mob.removed
                     && let Some(goals) = after
                 {
                     // `Mob.serverAiStep` ticks the action selector only after
                     // the target selector's last running goal returns.
                     goals
-                        .tick_until_movement_pause(mob, &mut cx, force)
-                        .map(|goal| (SelectorPhase::Goals, goal))
+                        .tick_until_pause(mob, &mut cx, force, pause_birth)
+                        .map(|pause| (SelectorPhase::Goals, pause))
                 } else {
                     None
                 }
             };
-            if let Some((phase, goal)) = paused {
-                ControlFlow::Break(AiPause::Movement(MovementPhase::Goal(phase, goal)))
+            if let Some((phase, pause)) = paused {
+                ControlFlow::Break(goal_pause_to_ai(phase, pause))
             } else {
                 if m.removed {
                     return TickProgress::Complete(false);
                 }
-                match finish_server_ai_step(m, w, level, events) {
+                let pause_birth = w.asks_live_birth(m.species());
+                match finish_server_ai_step(m, w, level, events, pause_birth) {
                     ControlFlow::Continue(()) => ai_step_after_server_ai(m, w, level, events, true),
-                    ControlFlow::Break(next) => ControlFlow::Break(AiPause::BeeDamage(next)),
+                    ControlFlow::Break(pause) => ControlFlow::Break(pause),
                 }
             }
         }
@@ -3868,7 +3959,7 @@ pub(super) fn server_ai_step(
     let _ = server_ai_until_pause(m, w, level, events, false);
 }
 
-/// `Mob.serverAiStep`, pausing on goal movement or a bee's own hurt.
+/// `Mob.serverAiStep`, pausing on goal movement, live breeding birth, or a bee's own hurt.
 fn server_ai_until_pause(
     m: &mut Mob,
     w: &MobWorld,
@@ -3890,6 +3981,7 @@ fn server_ai_until_pause(
     super::riders::drive(m, w);
     let tick_count = i64::from(m.age);
     let id_based = tick_count + i64::from(m.id);
+    let pause_birth = pause_movement && w.asks_live_birth(m.species());
     {
         let BorrowedGoalSelectors {
             mob,
@@ -3899,15 +3991,13 @@ fn server_ai_until_pause(
         let mut cx = Cx { w, level, events };
         let force = !(id_based % 2 != 0 && tick_count > 1);
         // Native mods can install BreathAir in either selector, not just on dolphins.
-        for (selector, phase) in [
-            (targets, SelectorPhase::Targets),
-            (goals, SelectorPhase::Goals),
+        for (selector, phase, breed) in [
+            (targets, SelectorPhase::Targets, false),
+            (goals, SelectorPhase::Goals, pause_birth),
         ] {
             if pause_movement {
-                if let Some(paused) = selector.tick_until_movement_pause(mob, &mut cx, force) {
-                    return ControlFlow::Break(AiPause::Movement(MovementPhase::Goal(
-                        phase, paused,
-                    )));
+                if let Some(paused) = selector.tick_until_pause(mob, &mut cx, force, breed) {
+                    return ControlFlow::Break(goal_pause_to_ai(phase, paused));
                 }
             } else if force {
                 selector.tick(mob, &mut cx);
@@ -3916,7 +4006,7 @@ fn server_ai_until_pause(
             }
         }
     }
-    finish_server_ai_step(m, w, level, events).map_break(AiPause::BeeDamage)
+    finish_server_ai_step(m, w, level, events, pause_birth)
 }
 
 fn finish_server_ai_step(
@@ -3924,7 +4014,8 @@ fn finish_server_ai_step(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-) -> ControlFlow<super::bee::ServerAiStage> {
+    pause_birth: bool,
+) -> ControlFlow<AiPause> {
     // A creaking looked at stands still: its navigation, move, look and jump
     // controls wait (CreakingPathNavigation and the Creaking*Control).
     let frozen = super::creaking::is_creaking(m) && !super::creaking::can_move(m);
@@ -3950,16 +4041,29 @@ fn finish_server_ai_step(
     }
     // Sniffer and HappyGhast.customServerAiStep: the brain (a happy ghast's
     // only while it is a ghastling), then updateActivity.
-    if m.species() == Species::Sniffer
+    if (m.species() == Species::Sniffer
         || m.species() == Species::HappyGhast && m.is_baby()
         || m.species() == Species::CopperGolem
         || m.species() == Species::Axolotl
-        || m.species() == Species::Tadpole
+        || m.species() == Species::Tadpole)
+        && let Some((event, resume)) =
+            super::animal_brain::tick_until_birth(m, w, level, events, pause_birth)
     {
-        super::animal_brain::tick(m, w, level, events);
+        return ControlFlow::Break(AiPause::Breed(event, BreedingPhase::Brain(resume)));
     }
+    server_ai_controls(m, w, level, events, frozen)
+}
+
+fn server_ai_controls(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    frozen: bool,
+) -> ControlFlow<AiPause> {
     if m.species() == Species::Bee {
-        return bee_server_ai_step(m, w, level, events, super::bee::ServerAiStage::Start);
+        return bee_server_ai_step(m, w, level, events, super::bee::ServerAiStage::Start)
+            .map_break(AiPause::BeeDamage);
     }
     custom_server_ai_step(m, &mut Cx { w, level, events });
     tick_ai_controls(m, w, events, frozen);
