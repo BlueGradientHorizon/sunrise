@@ -11,6 +11,9 @@ server's client: chunk packets (`remote_chunk`), forgotten columns, level events
 `tick_client_block_entities`. Each tick compares one ordered stream of particles and local sounds
 (with each sound's seed), each block entity's spin and the level random's state, bit for bit.
 
+Each tick also compares what it left of every beacon (levels, beam sections) and of the chest lids,
+shulker lids, enchanting books, bells and conduits (`states`), with block events driving the lids and bells.
+
 Cases: campfires, a conduit, a beacon and potent sulfur mixed with the rest in one packet order, through
 `tick_client_block_entities` and through `tick_remote_block_entities`; a spawner at its required range's edge (inside, on, outside), with a dead or spectating
 player; every trial spawner state, ominous or not, around a spawn and a 20-tick boundary; vaults
@@ -171,6 +174,42 @@ def cases():
         who, ticks=30, path='remote')
     add('continuous geyser', [sulfur([13, 64, 13], 'continuous'), spawner([5, 64, 1], range_=-1)], who, ticks=50,
         fills=column_water[:1], path='remote')
+    # The animated block entities the client's list took over (chest lids, shulker lids, enchanting
+    # books, bells), a beacon's beam and a conduit's turn: their state after each tick is compared
+    # as well (`states`), with block events (`blockEvent`) where vanilla has them.
+    def at(kind, pos, **fields):
+        return {'kind': kind, 'pos': pos, **fields}
+
+    def open_close(pos, opens, closes):
+        return {str(t): [['blockEvent', pos, 1, n]] for t, n in ((opens, 1), (closes, 0))}
+
+    add('chest lid', [at('chest', [8, 64, 8], facing='north')], who, ticks=30, path='remote',
+        events=open_close([8, 64, 8], 2, 14))
+    add('shulker lid', [at('shulker', [8, 64, 8], facing='up')], player(20.5, 64.0, 8.5), ticks=40, path='remote',
+        events=open_close([8, 64, 8], 1, 20))
+    add('shulker lid east', [at('shulker', [8, 64, 8], facing='east')], player(20.5, 64.0, 8.5), ticks=40,
+        path='remote', events=open_close([8, 64, 8], 3, 25))
+    add('book near the player', [at('enchanting_table', [8, 64, 8])], player(9.5, 64.0, 9.5), ticks=40, path='remote')
+    add('book far from the player', [at('enchanting_table', [8, 64, 8])], player(30.5, 64.0, 8.5), ticks=40,
+        path='remote')
+    add('bell rung', [at('bell', [8, 64, 8], facing='north')], who, ticks=60, path='remote',
+        events={'2': [['blockEvent', [8, 64, 8], 1, 2]], '40': [['blockEvent', [8, 64, 8], 1, 4]]})
+    base = {'from': [7, 63, 7], 'to': [9, 63, 9], 'block': 'minecraft:iron_block'}
+    glass = {'from': [8, 66, 8], 'to': [8, 66, 8], 'block': 'minecraft:red_stained_glass'}
+    more = {'from': [8, 67, 8], 'to': [8, 67, 8], 'block': 'minecraft:blue_stained_glass'}
+    add('beacon beam', [at('beacon', [8, 64, 8])], who, ticks=130, fills=[base, glass, more], path='remote')
+    add('beacon without a base', [at('beacon', [8, 64, 8])], who, ticks=100, fills=[glass], path='remote')
+    # Lids, books, bells and a beam in the ticker list with the rest, their block events between ticks.
+    crowd = [at('chest', [1, 64, 1], facing='south'), spawner([5, 64, 1], range_=-1),
+             at('shulker', [3, 64, 1], facing='up'), at('enchanting_table', [3, 64, 4]),
+             at('bell', [14, 64, 2], facing='east'), campfire([12, 64, 1], [True, False, True, True]),
+             at('beacon', [14, 64, 6]), {'kind': 'conduit', 'pos': [8, 64, 8]}, vault([1, 64, 9]),
+             at('chest', [1, 64, 12], facing='west')]
+    add('animated block entities mixed', crowd, player(4.5, 64.0, 3.5), ticks=70, game_time=1000, path='remote',
+        fills=[water, *frame(42), base | {'from': [13, 63, 5], 'to': [15, 63, 7]}, glass | {'from': [14, 66, 6], 'to': [14, 66, 6]}],
+        events={'3': [['blockEvent', [1, 64, 1], 1, 1]], '4': [['blockEvent', [3, 64, 1], 1, 1]],
+                '6': [['blockEvent', [14, 64, 2], 1, 3]], '9': [['blockEvent', [1, 64, 12], 1, 2]],
+                '30': [['blockEvent', [3, 64, 1], 1, 0]], '33': [['blockEvent', [1, 64, 1], 1, 0]]})
     return out
 
 
@@ -231,7 +270,10 @@ def main():
         scratch = Path(tmp)
         homes = {k: scratch / k for k in ('SUNRISE_HOME', 'SUNRISE_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME')}
         env = lab.game_env(os.environ, **homes, RUST_MIN_STACK='16777216')
-        compiled = run(['cargo', 'test', '--locked', '-p', 'sunrise-client', '--lib', '--no-run', '--message-format=json'],
+        # The shared vanilla build (no Extras, no controllers), as the other harnesses of this test
+        # binary take it; tools/parity.py builds it ahead from this command.
+        compiled = run(['cargo', 'test', '--locked', '-p', 'sunrise-client', '--no-default-features', '--lib', '--no-run',
+                        '--message-format=json'],
                        'compile', env=env)
         binaries = []
         for line in compiled.read_text(encoding='utf-8').splitlines():
@@ -269,7 +311,7 @@ def main():
 def first_difference(vanilla, rust):
     """Where two logs first part: the tick and field, and the entry, never vanilla's values."""
     for t, (vt, rt) in enumerate(zip(vanilla, rust)):
-        for field in ('events', 'spins', 'random'):
+        for field in ('events', 'spins', 'states', 'random'):
             if vt[field] == rt[field]:
                 continue
             if field == 'random':

@@ -7,6 +7,7 @@
 //! random's state.
 use super::*;
 use std::sync::Arc;
+use sunrise_client::block_entity_anim::Ticker;
 use sunrise_client::chunk::block_entity::{Next, SpawnData, Spawner, TrialSpawner, Vault};
 use sunrise_core::nbt::Tag;
 
@@ -408,6 +409,9 @@ fn start_case(
     game.level.player_uuid = Some(PLAYER);
     game.particles
         .seed_randoms(0, case["seed"].as_i64().unwrap(), 0);
+    // `EnchantingTableBlockEntity.RANDOM`, shared by every table: one stream per case.
+    game.be_anims.book_random =
+        sunrise_core::random::LegacyRandom::new(case["seed"].as_i64().unwrap());
     game.world.game_time = case["gameTime"].as_i64().unwrap();
     // The columns arrive in the order their first block entity is listed, each listing its
     // block entities in the case's order.
@@ -424,6 +428,55 @@ fn start_case(
     game.particles.requested = Some(Vec::new());
     game.audio.capture = Some(Vec::new());
     entities
+}
+
+/// What the ticks left of each beacon and animated block entity, in the oracle's rows: ints as
+/// numbers, floats as raw bits, sorted as `Vec3i.compareTo` does.
+fn animation_states(game: &Game<'_>) -> Vec<serde_json::Value> {
+    use serde_json::json;
+    let mut rows: Vec<_> = (&game.world.block_entities)
+        .into_iter()
+        .filter_map(|(k, e)| {
+            let pos = [k.0, k.1, k.2];
+            let anims = &game.be_anims;
+            let colour = |sections: &[(u32, i32)]| -> Vec<_> {
+                sections.iter().map(|(c, h)| json!([c & 0xFF_FFFF, h])).collect()
+            };
+            let ticker = anims.ticker(game.world.block(k.0, k.1, k.2).0);
+            let [x, y, z] = pos;
+            let row = match (e, ticker) {
+                (BlockEntity::Beacon(b), _) => json!([x, y, z, "beacon", b.levels, b.last_check_y,
+                    colour(&b.sections), colour(&b.checking)]),
+                (_, Some(Ticker::Lid)) => {
+                    let lid = anims.chests.get(&pos).cloned().unwrap_or_default();
+                    json!([x, y, z, "chest", hex_f32(lid.get_openness(1.0)), hex_f32(lid.get_openness(0.0))])
+                }
+                (_, Some(Ticker::Shulker { .. })) => {
+                    let s = anims.shulkers.get(&pos).cloned().unwrap_or_default();
+                    json!([x, y, z, "shulker", hex_f32(s.progress), hex_f32(s.progress_old)])
+                }
+                (_, Some(Ticker::Bell)) => {
+                    let b = anims.bells.get(&pos).cloned().unwrap_or_default();
+                    json!([x, y, z, "bell", b.ticks, i32::from(b.shaking)])
+                }
+                (_, Some(Ticker::Book)) => {
+                    let b = anims.books.get(&pos).cloned().unwrap_or_default();
+                    json!([x, y, z, "book", b.time, hex_f32(b.flip), hex_f32(b.o_flip), hex_f32(b.flip_t),
+                        hex_f32(b.flip_a), hex_f32(b.open), hex_f32(b.o_open), hex_f32(b.rot),
+                        hex_f32(b.o_rot), hex_f32(b.t_rot)])
+                }
+                (_, Some(Ticker::Conduit)) => {
+                    let c = anims.conduits.get(&pos).cloned().unwrap_or_default();
+                    json!([x, y, z, "conduit", c.tick_count, hex_f32(c.active_rotation),
+                        i32::from(c.is_active), i32::from(c.is_hunting)])
+                }
+                _ => return None,
+            };
+            Some(((k.1, k.2, k.0), row))
+        })
+        .collect();
+    rows.sort_by_key(|(order, _)| *order);
+    rows.into_iter().map(|(_, row)| row).collect()
 }
 
 fn client_tick_case(
@@ -465,12 +518,19 @@ fn client_tick_case(
                     let pos = [int(&op[2][0]), int(&op[2][1]), int(&op[2][2])];
                     game.level_event_at(int(&op[1]), pos, int(&op[3]));
                 }
+                // `ClientboundBlockEventPacket`: the block's `triggerEvent`.
+                "blockEvent" => {
+                    let pos = [int(&op[1][0]), int(&op[1][1]), int(&op[1][2])];
+                    game.block_entity_event(pos, int(&op[2]), int(&op[3]));
+                }
                 other => panic!("unknown case event {other}"),
             }
         }
         // `path: remote` runs the whole phase, so a pass outside the ticker list shows.
         if case["path"] == "remote" {
             game.tick_remote_block_entities();
+            // `Minecraft.tick`: the particle engine follows the block entities.
+            game.tick_particle_engine();
         } else {
             game.tick_client_block_entities();
         }
@@ -492,10 +552,12 @@ fn client_tick_case(
             })
             .collect();
         spins.sort_by_key(|(order, _)| *order);
+        let states = animation_states(game);
         // Keys in their sorted order, as the harness hashes vanilla's log.
         ticks.push(serde_json::json!({
             "events": events,
             "random": format!("{:x}", game.particles.level_random().state()),
+            "states": states,
             "spins": spins.into_iter().map(|(_, s)| s).collect::<Vec<_>>(),
         }));
         game.world.game_time += 1;
