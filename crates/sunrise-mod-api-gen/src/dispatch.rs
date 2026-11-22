@@ -1328,7 +1328,7 @@ pub(super) fn emit<'a>(
                     "{snapshot_statement}let {flow} = {invocation};
                      if let Err({field}) = {validator}({arguments}) {{
                          {restore_statement}
-                         log::warn!(\"mod {{}} hook {name} output {{{field}}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id);
+                         super::runtime::report_output_refusal({mod_entry}.id, \"{name}\", {field});
                          continue;
                      }}
                      {event}.cancelled |= {saved}.{previous_cancel} || matches!({flow}, Flow::Cancel);"

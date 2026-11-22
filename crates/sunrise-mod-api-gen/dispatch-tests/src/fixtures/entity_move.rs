@@ -123,15 +123,11 @@ fn an_invalid_move_discards_its_delta_and_veto_and_reports_each_invocation() {
     let (later_heard, later) = mover("later", Answer::Continue);
     install(vec![first, invalid, later].into());
 
-    let warnings = capture_warnings(|| {
+    let refusals = capture_output_refusals(|| {
         assert_eq!(dispatch([1.0; 3]), (delta, false));
         assert_eq!(dispatch([2.0; 3]), (delta, false));
     });
-    assert_eq!(
-        warnings,
-        ["mod invalid hook entity_move output delta refused: its outputs are dropped and the preceding ones stand";
-            2]
-    );
+    assert_eq!(refusals, [("invalid", "entity_move", "delta"); 2]);
     assert_eq!(*invalid_heard.lock().unwrap(), [(delta, false); 2]);
     assert_eq!(*later_heard.lock().unwrap(), [(delta, false); 2]);
     assert!(!runtime::poisoned(HookId::EntityMove, "invalid"));
@@ -158,6 +154,18 @@ mod root {
                     None
                 }
             }
+        }
+
+        pub(super) fn report_output_refusal(
+            owner: &'static str,
+            hook: &'static str,
+            field: &'static str,
+        ) {
+            super::OUTPUT_REFUSALS.with_borrow_mut(|refusals| {
+                if let Some(refusals) = refusals {
+                    refusals.push((owner, hook, field));
+                }
+            });
         }
 
         pub(super) fn discard_registration<T>(
