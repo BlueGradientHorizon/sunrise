@@ -146,6 +146,11 @@ impl WorldOptions {
         self.initial.difficulty = self.difficulty;
         self.initial.locked = self.locked;
     }
+    /// `WorldOptionsScreen.updatePersonalGameModeButton`: refresh both value and baseline.
+    fn update_personal_mode(&mut self, mode: i32) {
+        self.personal_mode = mode;
+        self.initial.personal_mode = mode;
+    }
     /// `WorldOptionsScreen.updatePortControlsState`: the port box takes an
     /// edit only with LAN on; it stays focusable either way, so its value can
     /// be read, selected and copied while LAN is off.
@@ -691,8 +696,7 @@ impl Game<'_> {
         if self.screen == Screen::WorldOptions
             && let Some(o) = self.world_options.as_mut()
         {
-            o.personal_mode = mode;
-            o.initial.personal_mode = mode;
+            o.update_personal_mode(mode);
         }
     }
 
@@ -2088,16 +2092,20 @@ mod tests {
     #[test]
     fn updating_personal_mode_refreshes_baseline_without_discarding_other_edits() {
         let mut o = options(false, false);
-        assert_eq!((o.personal_mode, o.initial.personal_mode), (0, 0));
+        assert_eq!((o.personal_mode, o.initial.personal_mode), (1, 1));
         assert!(!o.active(Button::Apply));
         o.difficulty = 3;
         assert!(o.active(Button::Apply));
-        o.personal_mode = 1;
-        o.initial.personal_mode = 1;
-        assert_eq!((o.personal_mode, o.initial.personal_mode), (1, 1));
+        o.update_personal_mode(0);
+        assert_eq!((o.personal_mode, o.initial.personal_mode), (0, 0));
         assert_eq!(o.difficulty, 3);
         assert!(o.active(Button::Apply));
         o.difficulty = o.initial.difficulty;
+        assert!(!o.active(Button::Apply));
+        o.personal_mode = 2;
+        assert!(o.active(Button::Apply));
+        o.update_personal_mode(3);
+        assert_eq!((o.personal_mode, o.initial.personal_mode), (3, 3));
         assert!(!o.active(Button::Apply));
     }
 }
