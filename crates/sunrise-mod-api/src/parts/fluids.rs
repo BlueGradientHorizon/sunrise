@@ -278,9 +278,10 @@ pub mod tests {
             }) {
                 Ok(moved) => Ok(moved),
                 Err(crate::TransactionError::Aborted(over)) => Err(over),
-                Err(crate::TransactionError::Unavailable) => {
-                    panic!("TankWorld supports transactions")
-                }
+                Err(
+                    error @ (crate::TransactionError::Unavailable
+                    | crate::TransactionError::CommitRefused),
+                ) => Err(error),
             }
         }
     }
@@ -453,7 +454,7 @@ pub mod tests {
                 &'loan mut dyn ServerHost,
                 &'loan TransactionContext,
             ) -> bool,
-        ) -> Result<(), crate::TransactionUnavailable> {
+        ) -> Result<bool, crate::TransactionScopeError> {
             FakeJournal::with_scope(
                 self,
                 |world| &mut world.journal,

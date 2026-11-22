@@ -4,7 +4,7 @@ use mod_api::{
     __private::game::CallbackFailure, ConfigurationTaskError, HandlerThread, IPayloadContext,
     Identifier, PayloadAccepted, PayloadBytes, PayloadContextError, PayloadDirection, PayloadId,
     PayloadProtocol, PayloadSendError, PayloadWork, PayloadWorkStatus, PlayerRef, Text,
-    TransactionContext, TransactionUnavailable,
+    TransactionContext, TransactionScopeError,
 };
 use std::sync::Arc;
 use sunrise_client::raw_payloads::{Body, Endpoint, Incoming, Prepared, Side, connection::Epoch};
@@ -289,15 +289,15 @@ impl IPayloadContext for MainContext<'_, '_> {
             &'loan mut dyn IPayloadContext,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
+    ) -> Result<bool, TransactionScopeError> {
         if !self.epoch.active() || self.disconnect.is_some() || self.endpoint.side() != Side::Server
         {
-            return Err(TransactionUnavailable);
+            return Err(TransactionScopeError::Unavailable);
         }
         let epoch = self.epoch;
         let endpoint = self.endpoint.clone();
         let receiver = self.receiver;
-        if let Ok((disconnect, failure)) = self.game.storage_transaction(|game, tx| {
+        let settled = self.game.scoped_storage(|game, tx| {
             let mut inner = MainContext {
                 game,
                 epoch,
@@ -306,20 +306,19 @@ impl IPayloadContext for MainContext<'_, '_> {
                 disconnect: None,
                 failure: None,
             };
-            if callback(&mut inner, tx) {
-                Ok((inner.disconnect, inner.failure))
-            } else {
-                Err(())
-            }
-        }) {
+            callback(&mut inner, tx).then_some((inner.disconnect, inner.failure))
+        })?;
+        if let Some((disconnect, failure)) = settled {
             if let Some(reason) = disconnect {
                 self.disconnect = Some(reason);
             }
             if let Some(error) = failure {
                 self.failure = Some(error);
             }
+            Ok(true)
+        } else {
+            Ok(false)
         }
-        Ok(())
     }
 }
 #[cfg(test)]

@@ -41,6 +41,8 @@ pub enum StorageError {
     },
     /// The host refused to open the transfer savepoint.
     TransactionUnavailable,
+    /// The savepoint ran, but the host rolled back its requested commit.
+    CommitRefused,
     /// The handler could not answer.
     Unavailable {
         /// The provider whose handler was asked, or "the game".
@@ -388,6 +390,7 @@ pub fn transfer(
     .map_err(|error| match error {
         TransactionError::Aborted(over) => over.into(),
         TransactionError::Unavailable => StorageError::TransactionUnavailable,
+        TransactionError::CommitRefused => StorageError::CommitRefused,
     })
 }
 

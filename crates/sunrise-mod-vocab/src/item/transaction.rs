@@ -92,35 +92,54 @@ pub enum TransactionLifecycle {
     RootClosing,
 }
 
-// no wire: a local refusal to lend transaction authority, not a mod boundary payload.
-// exhaustive: a unit marker.
-/// This host cannot open a transaction in the current phase.
+// no wire: local scope settlement, not a mod boundary payload.
+/// A host could not open a transaction, or refused it during commit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TransactionUnavailable;
+pub enum TransactionScopeError {
+    /// The callback did not run.
+    Unavailable,
+    /// The callback requested commit, but its writes were rolled back.
+    CommitRefused,
+}
 
-impl fmt::Display for TransactionUnavailable {
+impl fmt::Display for TransactionScopeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("transaction unavailable in the current phase")
+        f.write_str(match self {
+            Self::Unavailable => "transaction unavailable in the current phase",
+            Self::CommitRefused => "transaction commit refused; changes rolled back",
+        })
     }
 }
 
-impl std::error::Error for TransactionUnavailable {}
+impl std::error::Error for TransactionScopeError {}
 
 // no wire: the error belongs to a local closure and can contain any Rust type.
-// exhaustive: the closure either did not run or ran and returned an error.
+// exhaustive: all transaction refusal and callback failure outcomes.
 /// Why [`HostTransaction::transaction`] did not commit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransactionError<E> {
     /// The host could not open a transaction. The closure was not called.
     Unavailable,
+    /// The closure returned `Ok`, but the host refused the commit and rolled back its writes.
+    CommitRefused,
     /// The closure returned this error. Its writes were rolled back.
     Aborted(E),
+}
+
+impl<E> From<TransactionScopeError> for TransactionError<E> {
+    fn from(error: TransactionScopeError) -> Self {
+        match error {
+            TransactionScopeError::Unavailable => Self::Unavailable,
+            TransactionScopeError::CommitRefused => Self::CommitRefused,
+        }
+    }
 }
 
 impl<E> TransactionError<TransactionError<E>> {
     pub(crate) fn flatten(self) -> TransactionError<E> {
         match self {
             Self::Unavailable => TransactionError::Unavailable,
+            Self::CommitRefused => TransactionError::CommitRefused,
             Self::Aborted(inner) => inner,
         }
     }
@@ -129,7 +148,8 @@ impl<E> TransactionError<TransactionError<E>> {
 impl<E: fmt::Display> fmt::Display for TransactionError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unavailable => TransactionUnavailable.fmt(f),
+            Self::Unavailable => TransactionScopeError::Unavailable.fmt(f),
+            Self::CommitRefused => TransactionScopeError::CommitRefused.fmt(f),
             Self::Aborted(error) => error.fmt(f),
         }
     }
@@ -138,24 +158,24 @@ impl<E: fmt::Display> fmt::Display for TransactionError<E> {
 impl<E: std::error::Error + 'static> std::error::Error for TransactionError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Unavailable => None,
+            Self::Unavailable | Self::CommitRefused => None,
             Self::Aborted(error) => Some(error),
         }
     }
 }
 
-// no wire: a local refusal to open a scratch transaction scope, not a mod boundary payload.
-// exhaustive: either the host cannot open a transaction or the initial stack failed write validation.
-/// Why this host could not open a scratch item-place scope.
+// no wire: a local scratch transaction refusal, not a mod boundary payload.
+// exhaustive: transaction refusal or rejected initial stack.
+/// Why this host refused a scratch item-place scope.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ScratchUnavailable {
-    /// The host could not open a transaction in the current phase.
-    Transaction(TransactionUnavailable),
+pub enum ScratchScopeError {
+    /// The host could not open or commit the transaction.
+    Transaction(TransactionScopeError),
     /// The initial stack did not pass the game's write validation.
     Stack(StackWriteError),
 }
 
-impl fmt::Display for ScratchUnavailable {
+impl fmt::Display for ScratchScopeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Transaction(error) => error.fmt(f),
@@ -164,7 +184,7 @@ impl fmt::Display for ScratchUnavailable {
     }
 }
 
-impl std::error::Error for ScratchUnavailable {
+impl std::error::Error for ScratchScopeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Transaction(error) => Some(error),
@@ -174,7 +194,7 @@ impl std::error::Error for ScratchUnavailable {
 }
 
 // no wire: the error belongs to a local closure and can contain any Rust type.
-// exhaustive: either the scope could not open, the initial stack was rejected, or the closure aborted.
+// exhaustive: all scratch loan refusal and callback failure outcomes.
 /// Why [`HostTransaction::scratch_stack`] or [`HostTransaction::scratch_slots`] did not commit.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ScratchError<E> {
@@ -182,6 +202,8 @@ pub enum ScratchError<E> {
     Unavailable,
     /// The initial stack did not pass the game's write validation. The closure was not called.
     Stack(StackWriteError),
+    /// The closure returned `Ok`, but the host refused the commit and rolled back its writes.
+    CommitRefused,
     /// The closure returned this error. Its writes were rolled back.
     Aborted(E),
 }
@@ -189,7 +211,8 @@ pub enum ScratchError<E> {
 impl<E: fmt::Display> fmt::Display for ScratchError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unavailable => TransactionUnavailable.fmt(f),
+            Self::Unavailable => TransactionScopeError::Unavailable.fmt(f),
+            Self::CommitRefused => TransactionScopeError::CommitRefused.fmt(f),
             Self::Stack(error) => write!(f, "invalid scratch stack: {error:?}"),
             Self::Aborted(error) => error.fmt(f),
         }
@@ -199,7 +222,7 @@ impl<E: fmt::Display> fmt::Display for ScratchError<E> {
 impl<E: std::error::Error + 'static> std::error::Error for ScratchError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Unavailable | Self::Stack(_) => None,
+            Self::Unavailable | Self::CommitRefused | Self::Stack(_) => None,
             Self::Aborted(error) => Some(error),
         }
     }
@@ -222,6 +245,20 @@ pub(crate) fn assert_transaction_matches(
             tx.depth()
         ),
         None => panic!("expected no open transaction on this host, but a transaction is open"),
+    }
+}
+
+/// Combine the host's actual settlement with the callback's typed result.
+pub(crate) fn finish_scope<T, E>(
+    settled: Result<bool, TransactionScopeError>,
+    outcome: Option<Result<T, E>>,
+) -> Result<T, TransactionError<E>> {
+    let committed = settled.map_err(TransactionError::from)?;
+    match outcome {
+        Some(Ok(value)) if committed => Ok(value),
+        Some(Ok(_)) => Err(TransactionError::CommitRefused),
+        Some(Err(error)) => Err(TransactionError::Aborted(error)),
+        None => Err(TransactionError::Unavailable),
     }
 }
 
@@ -278,6 +315,7 @@ pub trait HostTransaction: ServerHost {
     ///
     /// An error returned by `f` becomes [`TransactionError::Aborted`]. If a transaction cannot
     /// be opened, [`TransactionError::Unavailable`] means `f` did not run.
+    /// [`TransactionError::CommitRefused`] means `f` returned `Ok` but its writes were rolled back.
     ///
     /// `f` gets a loan of `&mut dyn ServerHost`, even on a concrete receiver, and a
     /// [`TransactionContext`] to write in. Only the
@@ -294,17 +332,14 @@ pub trait HostTransaction: ServerHost {
     ) -> Result<T, TransactionError<E>> {
         let mut f = Some(f);
         let mut result = None;
-        self.with_transaction_scope(&mut |host, tx| {
+        let settled = self.with_transaction_scope(&mut |host, tx| {
             let Some(f) = f.take() else { return false };
             let outcome = f(host, tx);
             let commit = outcome.is_ok();
             result = Some(outcome);
             commit
-        })
-        .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
-        result
-            .ok_or(TransactionError::Unavailable)?
-            .map_err(TransactionError::Aborted)
+        });
+        finish_scope(settled, result)
     }
 
     /// Runs `f` in a transaction with a lent single-slot scratch [`ItemPlace`] initialised from
@@ -336,13 +371,19 @@ pub trait HostTransaction: ServerHost {
                 commit
             })
             .map_err(|error| match error {
-                ScratchUnavailable::Transaction(_) => ScratchError::Unavailable,
-                ScratchUnavailable::Stack(error) => ScratchError::Stack(error),
+                ScratchScopeError::Transaction(TransactionScopeError::Unavailable) => {
+                    ScratchError::Unavailable
+                }
+                ScratchScopeError::Transaction(TransactionScopeError::CommitRefused) => {
+                    ScratchError::CommitRefused
+                }
+                ScratchScopeError::Stack(error) => ScratchError::Stack(error),
             })?;
         match (slots, outcome) {
             (Some(slots), Some(Ok(value))) => Ok((value, slots)),
             (_, Some(Err(error))) => Err(ScratchError::Aborted(error)),
-            (None, Some(Ok(_))) | (_, None) => Err(ScratchError::Unavailable),
+            (None, Some(Ok(_))) => Err(ScratchError::CommitRefused),
+            (_, None) => Err(ScratchError::Unavailable),
         }
     }
 
@@ -375,13 +416,19 @@ pub trait HostTransaction: ServerHost {
                 commit
             })
             .map_err(|error| match error {
-                ScratchUnavailable::Transaction(_) => ScratchError::Unavailable,
-                ScratchUnavailable::Stack(error) => ScratchError::Stack(error),
+                ScratchScopeError::Transaction(TransactionScopeError::Unavailable) => {
+                    ScratchError::Unavailable
+                }
+                ScratchScopeError::Transaction(TransactionScopeError::CommitRefused) => {
+                    ScratchError::CommitRefused
+                }
+                ScratchScopeError::Stack(error) => ScratchError::Stack(error),
             })?;
         match (slots, outcome) {
             (Some(slots), Some(Ok(value))) => Ok((value, slots)),
             (_, Some(Err(error))) => Err(ScratchError::Aborted(error)),
-            (None, Some(Ok(_))) | (_, None) => Err(ScratchError::Unavailable),
+            (None, Some(Ok(_))) => Err(ScratchError::CommitRefused),
+            (_, None) => Err(ScratchError::Unavailable),
         }
     }
 }

@@ -16,7 +16,7 @@ pub use typed::{PayloadToken, ToClient, ToServer};
 
 use crate::{
     ClientHost, ConfigurationTaskError, PlayerRef, ServerHost, Text, TransactionContext,
-    TransactionError, TransactionUnavailable,
+    TransactionError, TransactionScopeError,
 };
 use std::sync::Arc;
 
@@ -356,8 +356,8 @@ pub trait IPayloadContext {
     ) -> Result<PayloadWorkStatus, PayloadContextError>;
     /// Runs `callback` inside one scoped transaction on this payload context (server main
     /// thread only), committing on `true` and aborting on `false` or unwind. Returns
-    /// [`TransactionUnavailable`] when this context cannot open a transaction (for example, on
-    /// the client, on the network thread, or when the receiving connection has ended).
+    /// `Ok(true)` on commit, `Ok(false)` on callback abort, or a [`TransactionScopeError`]
+    /// when opening or committing is refused.
     /// Most callers use [`IPayloadContext::transaction`].
     fn with_transaction_scope(
         &mut self,
@@ -365,8 +365,8 @@ pub trait IPayloadContext {
             &'loan mut dyn IPayloadContext,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
-        Err(TransactionUnavailable)
+    ) -> Result<bool, TransactionScopeError> {
+        Err(TransactionScopeError::Unavailable)
     }
 }
 
@@ -385,16 +385,13 @@ impl dyn IPayloadContext + '_ {
     ) -> Result<T, TransactionError<E>> {
         let mut f = Some(f);
         let mut result = None;
-        self.with_transaction_scope(&mut |context, tx| {
+        let settled = self.with_transaction_scope(&mut |context, tx| {
             let Some(f) = f.take() else { return false };
             let outcome = f(context, tx);
             let commit = outcome.is_ok();
             result = Some(outcome);
             commit
-        })
-        .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
-        result
-            .ok_or(TransactionError::Unavailable)?
-            .map_err(TransactionError::Aborted)
+        });
+        crate::item::transaction::finish_scope(settled, result)
     }
 }

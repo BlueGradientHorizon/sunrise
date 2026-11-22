@@ -361,7 +361,7 @@ pub mod tests {
             );
         match went {
             Ok(went) | Err(crate::TransactionError::Aborted(went)) => went,
-            Err(crate::TransactionError::Unavailable) => 0,
+            Err(crate::TransactionError::Unavailable | crate::TransactionError::CommitRefused) => 0,
         }
     }
 

@@ -51,7 +51,7 @@ pub use registries::FakeRegistries;
 pub use services::{FakeCommands, FakeMessages};
 
 use crate::item::item_stack::component_edits::edit_item_components;
-use crate::item::transaction::{ScratchUnavailable, TransactionContext, TransactionUnavailable};
+use crate::item::transaction::{ScratchScopeError, TransactionContext, TransactionScopeError};
 use crate::runtime::Installed;
 use crate::world::ticket_controller::{ControllerInfo, TEST_CONTROLLERS};
 use crate::{
@@ -363,7 +363,7 @@ impl FakeHost {
             &'loan TransactionContext,
             Option<ScratchSlot>,
         ) -> bool,
-    ) -> Result<Option<scratch::FakeScratchEntry>, TransactionUnavailable> {
+    ) -> Result<(bool, Option<scratch::FakeScratchEntry>), TransactionScopeError> {
         struct ScratchScopeGuard<'a> {
             host: &'a mut FakeHost,
             owned_id: Option<u64>,
@@ -397,8 +397,7 @@ impl FakeHost {
             owned_id: slot.map(ScratchSlot::id),
             closed: false,
         };
-        let mut committed = false;
-        let result = FakeJournal::with_scope_with(
+        let committed = FakeJournal::with_scope_with(
             &mut *guard.host,
             |host| &mut host.journal,
             |host| {
@@ -411,21 +410,16 @@ impl FakeHost {
             |host, (players, level, attachments)| {
                 (host.players, host.level, host.attachments) = (players, level, attachments);
             },
-            |host, tx| {
-                let commit = run(host, tx, slot);
-                committed = commit;
-                commit
-            },
-        );
-        let published = guard.finish(result.is_ok() && committed);
-        result?;
+            |host, tx| run(host, tx, slot),
+        )?;
+        let published = guard.finish(committed);
         // The outermost commit plays what waited for it; an abort already restored `level`.
         if self.journal.depth() == 0 {
             for queued in std::mem::take(&mut self.level.fluid_effects) {
                 self.play_fluid_effects(queued);
             }
         }
-        Ok(published)
+        Ok((committed, published))
     }
 }
 
@@ -466,7 +460,7 @@ impl FakeHost {
             .expect("test scratch stack is valid");
         let item = stack.item();
         let mut out = None;
-        let published = self
+        let (_, published) = self
             .run_transaction_scope(Some((Some(item), stack)), |host, tx, slot| {
                 let place = ItemPlace::Scratch(slot.expect("scratch loan minted"));
                 let (commit, value) = f(host, tx, &place);
@@ -585,9 +579,9 @@ impl ServerHost for FakeHost {
             &'loan mut dyn ServerHost,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
-        self.run_transaction_scope(None, |host, tx, _| callback(host, tx))?;
-        Ok(())
+    ) -> Result<bool, TransactionScopeError> {
+        self.run_transaction_scope(None, |host, tx, _| callback(host, tx))
+            .map(|(committed, _)| committed)
     }
     fn with_scratch_stack_scope(
         &mut self,
@@ -597,17 +591,17 @@ impl ServerHost for FakeHost {
             &'loan TransactionContext,
             &'loan ItemPlace,
         ) -> bool,
-    ) -> Result<Option<Option<ItemStack>>, ScratchUnavailable> {
+    ) -> Result<Option<Option<ItemStack>>, ScratchScopeError> {
         self.validate_scratch_stack(&stack)
-            .map_err(ScratchUnavailable::Stack)?;
+            .map_err(ScratchScopeError::Stack)?;
         let item = stack.item();
-        let published = self
+        let (_, published) = self
             .run_transaction_scope(Some((Some(item), stack)), |host, tx, slot| {
                 let Some(slot) = slot else { return false };
                 let place = ItemPlace::Scratch(slot);
                 callback(host, tx, &place)
             })
-            .map_err(ScratchUnavailable::Transaction)?;
+            .map_err(ScratchScopeError::Transaction)?;
         Ok(published.map(|entry| entry.stack))
     }
     fn with_scratch_slots_scope(
@@ -618,16 +612,16 @@ impl ServerHost for FakeHost {
             &'loan TransactionContext,
             &'loan ItemPlace,
         ) -> bool,
-    ) -> Result<Option<(Option<ItemStack>, Option<ItemStack>)>, ScratchUnavailable> {
+    ) -> Result<Option<(Option<ItemStack>, Option<ItemStack>)>, ScratchScopeError> {
         self.validate_scratch_stack(&stack)
-            .map_err(ScratchUnavailable::Stack)?;
-        let published = self
+            .map_err(ScratchScopeError::Stack)?;
+        let (_, published) = self
             .run_transaction_scope(Some((None, stack)), |host, tx, slot| {
                 let Some(slot) = slot else { return false };
                 let place = ItemPlace::Scratch(slot);
                 callback(host, tx, &place)
             })
-            .map_err(ScratchUnavailable::Transaction)?;
+            .map_err(ScratchScopeError::Transaction)?;
         Ok(published.map(|entry| (entry.stack, entry.overflow)))
     }
     fn transaction_matches(&self, tx: Option<&TransactionContext>) -> bool {

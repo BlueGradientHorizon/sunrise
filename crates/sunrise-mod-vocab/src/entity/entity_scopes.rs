@@ -1,7 +1,7 @@
 //! Scoped views and sequential host loans for entity-scoped and item-entity-scoped hooks.
 use crate::{
     ClientHost, EntityRef, EntityTypeKey, ItemEntityRef, ItemStack, ItemStackView, ServerHost,
-    StackWriteError, TransactionContext, TransactionError, TransactionUnavailable, WorldEpoch,
+    StackWriteError, TransactionContext, TransactionError, TransactionScopeError, WorldEpoch,
 };
 
 /// Live resident view of a server general entity row during `general_entity_tick`.
@@ -128,18 +128,14 @@ impl<'a> EntityServerScope<'a> {
     ) -> Result<T, TransactionError<E>> {
         let mut f = Some(f);
         let mut result = None;
-        self.0
-            .with_transaction_scope(&mut |access, tx| {
-                let Some(f) = f.take() else { return false };
-                let outcome = f(&mut EntityServerScope::new(access), tx);
-                let commit = outcome.is_ok();
-                result = Some(outcome);
-                commit
-            })
-            .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
-        result
-            .ok_or(TransactionError::Unavailable)?
-            .map_err(TransactionError::Aborted)
+        let settled = self.0.with_transaction_scope(&mut |access, tx| {
+            let Some(f) = f.take() else { return false };
+            let outcome = f(&mut EntityServerScope::new(access), tx);
+            let commit = outcome.is_ok();
+            result = Some(outcome);
+            commit
+        });
+        crate::item::transaction::finish_scope(settled, result)
     }
 }
 
@@ -402,18 +398,14 @@ impl<'a> ItemEntityServerScope<'a> {
         let item_id = self.item_id;
         let mut f = Some(f);
         let mut result = None;
-        self.access
-            .with_transaction_scope(&mut |access, tx| {
-                let Some(f) = f.take() else { return false };
-                let outcome = f(&mut ItemEntityServerScope::new(access, item_id), tx);
-                let commit = outcome.is_ok();
-                result = Some(outcome);
-                commit
-            })
-            .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
-        result
-            .ok_or(TransactionError::Unavailable)?
-            .map_err(TransactionError::Aborted)
+        let settled = self.access.with_transaction_scope(&mut |access, tx| {
+            let Some(f) = f.take() else { return false };
+            let outcome = f(&mut ItemEntityServerScope::new(access, item_id), tx);
+            let commit = outcome.is_ok();
+            result = Some(outcome);
+            commit
+        });
+        crate::item::transaction::finish_scope(settled, result)
     }
 }
 
@@ -443,8 +435,8 @@ pub trait EntityServerAccess {
             &'loan mut dyn EntityServerAccess,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
-        Err(TransactionUnavailable)
+    ) -> Result<bool, TransactionScopeError> {
+        Err(TransactionScopeError::Unavailable)
     }
 }
 
@@ -496,7 +488,7 @@ pub trait ItemEntityServerAccess {
             &'loan mut dyn ItemEntityServerAccess,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
-        Err(TransactionUnavailable)
+    ) -> Result<bool, TransactionScopeError> {
+        Err(TransactionScopeError::Unavailable)
     }
 }

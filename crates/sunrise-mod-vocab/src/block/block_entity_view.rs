@@ -1,7 +1,7 @@
 //! Sequential loans of a resident block entity and its server Host.
 use crate::{
     BlockEntityItemError, BlockEntityRef, BlockState, Compound, ItemKey, ItemStack, JavaString,
-    LevelRef, ServerHost, Tag, TransactionContext, TransactionError, TransactionUnavailable,
+    LevelRef, ServerHost, Tag, TransactionContext, TransactionError, TransactionScopeError,
 };
 
 /// A resident block entity lent by a server callback. Its storage stays in the level.
@@ -212,19 +212,15 @@ impl<'a> BlockEntityScope<'a> {
     ) -> Result<T, TransactionError<E>> {
         let mut f = Some(f);
         let mut result = None;
-        self.0
-            .with_transaction_scope(&mut |access, tx| {
-                let Some(f) = f.take() else { return false };
-                let mut scope = BlockEntityScope::new(access);
-                let outcome = f(&mut scope, tx);
-                let commit = outcome.is_ok();
-                result = Some(outcome);
-                commit
-            })
-            .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
-        result
-            .ok_or(TransactionError::Unavailable)?
-            .map_err(TransactionError::Aborted)
+        let settled = self.0.with_transaction_scope(&mut |access, tx| {
+            let Some(f) = f.take() else { return false };
+            let mut scope = BlockEntityScope::new(access);
+            let outcome = f(&mut scope, tx);
+            let commit = outcome.is_ok();
+            result = Some(outcome);
+            commit
+        });
+        crate::item::transaction::finish_scope(settled, result)
     }
 }
 
@@ -240,8 +236,8 @@ pub trait BlockEntityAccess {
             &'loan mut dyn BlockEntityAccess,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
-        Err(TransactionUnavailable)
+    ) -> Result<bool, TransactionScopeError> {
+        Err(TransactionScopeError::Unavailable)
     }
 }
 

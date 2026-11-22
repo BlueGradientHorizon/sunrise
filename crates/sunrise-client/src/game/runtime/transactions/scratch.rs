@@ -6,8 +6,8 @@
 //! them, while closed loans are removed before commit and never leak into outer journals. A
 //! single-slot loan (`item: Some(..)`) never changes its item; a two-slot loan (`item: None`)
 //! may change its item and catches what its first slot does not take in its second slot.
-use super::{Game, HashMap};
-use mod_api::{ItemPlace, ScratchSlot, TransactionContext};
+use super::{Game, HashMap, StorageSettlement};
+use mod_api::{ItemPlace, ScratchSlot, TransactionContext, TransactionScopeError};
 use std::sync::Arc;
 use sunrise_client::items::{ItemStack, Items};
 
@@ -46,14 +46,14 @@ impl Game<'_> {
 
     /// Runs `f` inside a new (or nested) storage transaction with a lent scratch [`ItemPlace`].
     /// Commits and returns the final slots when `f` returns `true`; aborts and returns `None` on
-    /// `false` or unwind.
+    /// `false` or unwind. Reports a refused commit separately from callback abort.
     pub(in crate::game) fn scratch_scope(
         &mut self,
         item: Option<Arc<str>>,
         stack: ItemStack,
         f: impl for<'loan> FnOnce(&'loan mut Self, &'loan TransactionContext, &'loan ItemPlace) -> bool,
-    ) -> Option<Scratch> {
-        self.run_storage_scope(|game, frame| {
+    ) -> Result<Option<Scratch>, TransactionScopeError> {
+        let (_, settled) = self.run_storage_scope(|game, frame| {
             let slot = game.transactions.insert_scratch(Scratch {
                 item,
                 stack: Some(stack),
@@ -65,8 +65,12 @@ impl Game<'_> {
             let place = ItemPlace::Scratch(slot);
             let commit = frame.lend(|tx| f(game, tx, &place));
             ((), commit)
-        })
-        .1
+        });
+        match settled {
+            StorageSettlement::Committed(slots) => Ok(slots),
+            StorageSettlement::Aborted => Ok(None),
+            StorageSettlement::Refused => Err(TransactionScopeError::CommitRefused),
+        }
     }
 
     /// The first slot of lent scratch place `slot`.
@@ -213,6 +217,7 @@ mod tests {
                     assert_eq!(game.scratch_insert(slot, &offer), 1);
                     true
                 })
+                .unwrap()
                 .unwrap();
             assert_eq!(taken.stack, Some(ItemStack::new("minecraft:stick", 2)));
             assert_eq!(taken.overflow, None);

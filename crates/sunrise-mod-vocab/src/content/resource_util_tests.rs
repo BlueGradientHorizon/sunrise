@@ -988,7 +988,7 @@ fn transfers_and_probes_report_a_refused_scope_on_every_attempt() {
                 &'loan mut dyn ServerHost,
                 &'loan TransactionContext,
             ) -> bool,
-        ) -> Result<(), crate::TransactionUnavailable> {
+        ) -> Result<bool, crate::TransactionScopeError> {
             if self.allow_root && self.journal.matches(None) {
                 FakeJournal::with_scope(
                     self,
@@ -999,7 +999,7 @@ fn transfers_and_probes_report_a_refused_scope_on_every_attempt() {
                 )
             } else {
                 self.refusals += 1;
-                Err(crate::TransactionUnavailable)
+                Err(crate::TransactionScopeError::Unavailable)
             }
         }
         fn transaction_matches(&self, tx: Option<&TransactionContext>) -> bool {

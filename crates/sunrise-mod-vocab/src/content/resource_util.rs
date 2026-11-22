@@ -565,6 +565,7 @@ pub fn extract_first<R>(
         Err(TransactionError::Aborted(None)) => Ok(None),
         Err(TransactionError::Aborted(Some(error))) => Err(error),
         Err(TransactionError::Unavailable) => Err(TransactionError::Unavailable),
+        Err(TransactionError::CommitRefused) => Err(TransactionError::CommitRefused),
     }
 }
 
@@ -606,6 +607,7 @@ fn probe_extractable<R>(
     match probe {
         Ok(never) => match never {},
         Err(TransactionError::Unavailable) => Err(TransactionError::Unavailable),
+        Err(TransactionError::CommitRefused) => Err(TransactionError::CommitRefused),
         Err(TransactionError::Aborted(result)) => result.map_err(TransactionError::Aborted),
     }
 }
@@ -838,6 +840,7 @@ fn move_slot<R>(
     let extracted = match probe {
         Ok(never) => match never {},
         Err(TransactionError::Unavailable) => return Err(TransactionError::Unavailable),
+        Err(TransactionError::CommitRefused) => return Err(TransactionError::CommitRefused),
         Err(TransactionError::Aborted(extracted)) => extracted,
     };
     let available = checked_transfer(extracted, want)
@@ -863,6 +866,7 @@ fn move_slot<R>(
         Err(TransactionError::Aborted(Some(over))) => Err(over),
         Err(TransactionError::Aborted(None)) => Ok(0),
         Err(TransactionError::Unavailable) => Err(TransactionError::Unavailable),
+        Err(TransactionError::CommitRefused) => Err(TransactionError::CommitRefused),
     }
 }
 

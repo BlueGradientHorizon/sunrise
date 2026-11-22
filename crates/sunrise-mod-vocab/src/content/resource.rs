@@ -745,6 +745,7 @@ pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
     }
     .or_else(|error| match error {
         TransactionError::Unavailable => Err(TransactionError::Unavailable),
+        TransactionError::CommitRefused => Err(TransactionError::CommitRefused),
         TransactionError::Aborted(Ok(_)) => Ok(N::default()),
         TransactionError::Aborted(Err(error)) => Err(error),
     })

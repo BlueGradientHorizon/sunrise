@@ -278,9 +278,9 @@ impl<R> Capability<dyn ResourceHandler<R>> {
             })
             .map_err(|mut error| {
                 match &mut error {
-                    TransactionError::Unavailable => {
+                    TransactionError::Unavailable | TransactionError::CommitRefused => {
                         let owner = self.owner.unwrap_or("the game");
-                        log::warn!("Resource handler from {owner}: {operation} could not open a transaction");
+                        log::warn!("Resource handler from {owner}: {operation}: {error}");
                     }
                     TransactionError::Aborted(over) if over.owner.is_none() => {
                         crate::block::item_place::warn_broken(self.owner, &operation);

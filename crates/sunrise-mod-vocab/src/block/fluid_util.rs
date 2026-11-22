@@ -304,7 +304,11 @@ pub fn dispense_container(
                 Err(ScratchError::Aborted(())) => host
                     .dispense_default(event.dimension, event.pos, event.facing, stack)
                     .map_err(|_| ()),
-                Err(ScratchError::Unavailable | ScratchError::Stack(_)) => Err(()),
+                Err(
+                    ScratchError::Unavailable
+                    | ScratchError::CommitRefused
+                    | ScratchError::Stack(_),
+                ) => Err(()),
             }
         })
         .ok()?;
@@ -352,9 +356,9 @@ fn move_first(
         );
         match moved {
             Ok(moved) if moved > 0 => return Ok(Some(fluid.to_stack(moved))),
-            Err(TransactionError::Unavailable) => {
+            Err(error @ (TransactionError::Unavailable | TransactionError::CommitRefused)) => {
                 log::warn!(
-                    "Fluid transfer from {} to {} could not open a transaction",
+                    "Fluid transfer from {} to {}: {error}",
                     from.owner(),
                     to.owner()
                 );

@@ -878,7 +878,7 @@ pub mod tests {
                 &'loan mut dyn ServerHost,
                 &'loan TransactionContext,
             ) -> bool,
-        ) -> Result<(), crate::TransactionUnavailable> {
+        ) -> Result<bool, crate::TransactionScopeError> {
             FakeJournal::with_scope(
                 self,
                 |shelf| &mut shelf.journal,

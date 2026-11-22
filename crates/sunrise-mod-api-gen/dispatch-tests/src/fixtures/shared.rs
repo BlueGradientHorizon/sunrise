@@ -69,10 +69,13 @@ mod item {
     pub(super) mod transaction {
         use super::super::ServerHost;
 
+        #[derive(Debug)]
         pub(in crate::tests) enum TransactionError<E> {
             Aborted(E),
             #[allow(dead_code)]
             Unavailable,
+            #[allow(dead_code)]
+            CommitRefused,
         }
 
         // The game exercises the actual journal; these fixtures have no world state.

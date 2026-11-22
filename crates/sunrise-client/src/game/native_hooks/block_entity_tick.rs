@@ -6,7 +6,7 @@ use crate::game::{
 };
 use mod_api::{
     BlockEntityAccess, BlockEntityItemError, BlockEntityRef, BlockEntityScope, BlockEntityView,
-    ResidentBlockEntity, ServerHost, TransactionContext, TransactionUnavailable,
+    ResidentBlockEntity, ServerHost, TransactionContext, TransactionScopeError,
 };
 use std::collections::HashMap;
 use sunrise_client::{
@@ -200,20 +200,16 @@ impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
             &'loan mut dyn BlockEntityAccess,
             &'loan TransactionContext,
         ) -> bool,
-    ) -> Result<(), TransactionUnavailable> {
+    ) -> Result<bool, TransactionScopeError> {
         let (subject, loan) = (self.subject, self.loan);
-        let committed = self.game.storage_transaction(|game, tx| {
+        let committed = self.game.scoped_storage(|game, tx| {
             let mut child = ResidentBlockEntityAccess::new(game, subject, loan);
-            if call(&mut child, tx) {
-                Ok(child.items_changed)
-            } else {
-                Err(())
-            }
-        });
-        if let Ok(changed) = committed {
+            call(&mut child, tx).then_some(child.items_changed)
+        })?;
+        if let Some(changed) = committed {
             self.items_changed |= changed;
         }
-        Ok(())
+        Ok(committed.is_some())
     }
 }
 

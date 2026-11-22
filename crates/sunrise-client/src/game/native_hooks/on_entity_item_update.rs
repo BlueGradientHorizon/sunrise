@@ -196,17 +196,18 @@ impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
             &'loan mut dyn mod_api::ItemEntityServerAccess,
             &'loan mod_api::TransactionContext,
         ) -> bool,
-    ) -> Result<(), mod_api::TransactionUnavailable> {
+    ) -> Result<bool, mod_api::TransactionScopeError> {
         let (subject, index) = (self.subject, self.index);
-        let _ = self.game.storage_transaction(|game, tx| {
-            let mut child = ItemEntityTickAccess {
-                game,
-                subject,
-                index,
-            };
-            callback(&mut child, tx).then_some(()).ok_or(())
-        });
-        Ok(())
+        self.game
+            .scoped_storage(|game, tx| {
+                let mut child = ItemEntityTickAccess {
+                    game,
+                    subject,
+                    index,
+                };
+                callback(&mut child, tx).then_some(())
+            })
+            .map(|settled| settled.is_some())
     }
 }
 
