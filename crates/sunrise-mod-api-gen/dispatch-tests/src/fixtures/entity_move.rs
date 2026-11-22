@@ -137,8 +137,19 @@ fn an_invalid_move_discards_its_delta_and_veto_and_reports_each_invocation() {
 
 mod root {
     mod runtime {
+        pub(super) enum Callback {
+            Hook(super::HookId),
+            IndependentHook(super::HookId),
+        }
+
+        impl From<super::HookId> for Callback {
+            fn from(hook: super::HookId) -> Self {
+                Self::Hook(hook)
+            }
+        }
+
         pub(super) fn invoke<T>(
-            hook: super::HookId,
+            callback: impl Into<Callback>,
             _: &'static str,
             mod_id: &'static str,
             call: impl FnOnce() -> T,
@@ -146,6 +157,7 @@ mod root {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
                 Ok(value) => Some(value),
                 Err(payload) => {
+                    let (Callback::Hook(hook) | Callback::IndependentHook(hook)) = callback.into();
                     poison(hook, mod_id);
                     // The real boundary also contains the destructor of a panic payload.
                     if let Err(secondary) =
@@ -197,11 +209,42 @@ mod root {
         pub(super) fn entered_with_id_matching<'a>(
             hook_id: super::HookId,
             hook: &'static str,
-            mut allow: impl FnMut(&str) -> bool + 'a,
+            allow: impl FnMut(&str) -> bool + 'a,
         ) -> impl Iterator<Item = (&'static str, &'static dyn super::Hooks)> + 'a {
-            super::listening(hook_id)
-                .filter(move |(_, entry)| allow(entry.id))
+            listening_matching(hook_id, allow)
                 .map(move |(_, entry)| (entry.id, super::enter_listener(entry, hook).1))
+        }
+
+        pub(super) fn listening_matching<'a>(
+            hook: super::HookId,
+            mut allow: impl FnMut(&str) -> bool + 'a,
+        ) -> impl Iterator<Item = (bool, &'static super::ModEntry)> + 'a {
+            super::listening(hook).filter(move |(_, entry)| allow(entry.id))
+        }
+
+        thread_local! {
+            static ACTIVE: std::cell::RefCell<Vec<(usize, &'static str)>> = const {
+                std::cell::RefCell::new(Vec::new())
+            };
+        }
+
+        pub(super) fn listener_is_inactive(hook: super::HookId, _: &str, id: &str) -> bool {
+            ACTIVE.with_borrow(|active| !active.contains(&(hook as usize, id)))
+        }
+
+        pub(super) struct ActiveListener;
+
+        impl ActiveListener {
+            pub(super) fn enter(hook: super::HookId, id: &'static str) -> Self {
+                ACTIVE.with_borrow_mut(|active| active.push((hook as usize, id)));
+                Self
+            }
+        }
+
+        impl Drop for ActiveListener {
+            fn drop(&mut self) {
+                ACTIVE.with_borrow_mut(|active| active.pop());
+            }
         }
 
         pub(super) struct ListenerScope;
