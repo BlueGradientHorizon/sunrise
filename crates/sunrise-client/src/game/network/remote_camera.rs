@@ -301,6 +301,39 @@ pub(super) fn tnt_camera_entity(t: &super::tnt::PrimedTnt) -> CameraEntity {
     }
 }
 
+/// `Camera.alignWithEntity`'s view of an `Interaction`: non-living, scalable dimensions.
+pub(super) fn interaction_camera_entity(
+    i: &super::interactions::RemoteInteraction,
+) -> CameraEntity {
+    CameraEntity {
+        position: [i.position.x, i.position.y, i.position.z],
+        previous: [i.previous.x, i.previous.y, i.previous.z],
+        x_rot: i.pitch,
+        y_rot: i.yaw,
+        x_rot_o: i.previous_pitch,
+        y_rot_o: i.previous_yaw,
+        eye_height: i.eye_height(),
+        living: None,
+        mount: None,
+    }
+}
+
+/// Fallback view for any other tracked level entity (`Level.getEntity`).
+#[cfg(test)]
+fn tracked_camera_entity(t: &super::remote::Tracked) -> CameraEntity {
+    CameraEntity {
+        position: t.position,
+        previous: t.previous,
+        x_rot: t.pitch,
+        y_rot: t.yaw,
+        x_rot_o: t.previous_pitch,
+        y_rot_o: t.previous_yaw,
+        eye_height: 0.0,
+        living: None,
+        mount: None,
+    }
+}
+
 /// Unit-test fixture wrapping entity slices for pure `CameraEntity` view checks.
 #[cfg(test)]
 pub(super) struct CameraEntities<'a> {
@@ -309,6 +342,9 @@ pub(super) struct CameraEntities<'a> {
     pub boats: &'a [super::boats::Boat],
     pub frames: &'a [ItemFrame],
     pub tnts: &'a [super::tnt::PrimedTnt],
+    pub displays: &'a indexmap::IndexMap<i32, super::text_displays::RemoteTextDisplay>,
+    pub interactions: &'a HashMap<i32, super::interactions::RemoteInteraction>,
+    pub tracked: Option<&'a HashMap<i32, super::remote::Tracked>>,
     pub vehicles: &'a HashMap<u32, super::remote_vehicles::PassengerSeat>,
     pub player: Option<(u32, &'a PlayerMotion)>,
     pub living: Box<dyn Fn(&Mob) -> (f32, f64) + 'a>,
@@ -323,6 +359,11 @@ impl CameraEntities<'_> {
             || self.boats.iter().any(|b| b.id == id)
             || self.frames.iter().any(|f| f.id == id)
             || self.tnts.iter().any(|t| t.id == id)
+            || self.displays.contains_key(&(id as i32))
+            || self.interactions.contains_key(&(id as i32))
+            || self
+                .tracked
+                .is_some_and(|tracked| tracked.contains_key(&(id as i32)))
     }
 
     pub(super) fn view(&self, id: u32) -> Option<CameraEntity> {
@@ -361,7 +402,18 @@ impl CameraEntities<'_> {
         if let Some(f) = self.frames.iter().find(|f| f.id == id) {
             return Some(frame_camera_entity(f));
         }
-        self.tnts.iter().find(|t| t.id == id).map(tnt_camera_entity)
+        if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
+            return Some(tnt_camera_entity(t));
+        }
+        if let Some(d) = self.displays.get(&(id as i32)) {
+            return Some(d.camera_entity());
+        }
+        if let Some(i) = self.interactions.get(&(id as i32)) {
+            return Some(interaction_camera_entity(i));
+        }
+        self.tracked
+            .and_then(|tracked| tracked.get(&(id as i32)))
+            .map(tracked_camera_entity)
     }
 }
 
@@ -417,11 +469,22 @@ impl Game<'_> {
                 r.detached_camera = None;
             }
         }
-        // Minecraft.setCameraEntity applies the camera entity's post effect regardless of view.
+        // Minecraft.setCameraEntity recomputes the spectated entity post effect in either perspective.
         if in_level || player {
             let _ = self.mob_index.find(&self.mobs, id);
             self.check_entity_post_effect(true);
         }
+    }
+
+    /// `GameRenderer.clearSpectatedEntityPostEffect`.
+    pub(super) fn clear_spectated_entity_post_effect(&mut self) {
+        self.spectated_post_effect = None;
+        self.spectated_post_effect_active = false;
+    }
+
+    /// `GameRenderer.toggleSpectatorPostEffect` (`key.toggleSpectatorShaderEffects` / F4).
+    pub(super) fn toggle_spectator_post_effect(&mut self) {
+        self.spectated_post_effect_active = !self.spectated_post_effect_active;
     }
 
     /// `GameRenderer.checkEntityPostEffect` for the camera entity, or for none
@@ -431,6 +494,7 @@ impl Game<'_> {
             .camera_subject()
             .filter(|_| first_person)
             .and_then(|c| c.post_effect);
+        self.spectated_post_effect_active = self.spectated_post_effect.is_some();
     }
 
     /// The entity a server attached the view to, when it is not the player (live or detached).
@@ -542,6 +606,7 @@ impl Game<'_> {
     }
 
     /// `camera.entity().isSpectator()`: for lava and powdered-snow fog (`setupFog`).
+    #[cfg(test)]
     pub(in crate::game) fn camera_entity_is_spectator(&self) -> bool {
         self.camera_subject()
             .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator)
@@ -557,6 +622,7 @@ impl Game<'_> {
     }
 
     /// `GameRenderer.shouldRenderBlockOutline`: player camera entity, HUD shown, and build or target gate.
+    #[cfg(test)]
     pub(in crate::game) fn should_render_block_outline(&self) -> bool {
         let hit = (!self.entity_targeted()).then(|| self.pick()).flatten();
         self.should_render_block_outline_for_hit(hit.as_ref())
@@ -1028,17 +1094,8 @@ impl Game<'_> {
             });
         }
         if let Some(i) = self.interactions.get(&id) {
-            let camera = CameraEntity {
-                position: [i.position.x, i.position.y, i.position.z],
-                previous: [i.previous.x, i.previous.y, i.previous.z],
-                x_rot: i.pitch,
-                y_rot: i.yaw,
-                x_rot_o: i.previous_pitch,
-                y_rot_o: i.previous_yaw,
-                eye_height: i.eye_height(),
-                living: None,
-                mount,
-            };
+            let mut camera = interaction_camera_entity(i);
+            camera.mount = mount;
             return Some(Self::non_living_subject(
                 uid,
                 camera,
@@ -1338,24 +1395,14 @@ impl Game<'_> {
             ));
         }
         if let Some(d) = self.text_displays.get(&id) {
-            let (position, previous, y_rot, x_rot, y_rot_o, x_rot_o, kind) = d.camera_pose();
-            let camera = CameraEntity {
-                position,
-                previous,
-                x_rot,
-                y_rot,
-                x_rot_o,
-                y_rot_o,
-                eye_height: self.type_eye_height(kind) as f32,
-                living: None,
-                mount,
-            };
+            let mut camera = d.camera_entity();
+            camera.mount = mount;
             return Some(Self::non_living_subject(
                 uid,
                 camera,
                 has_player_passenger,
                 EntityContextKind::Other,
-                kind,
+                d.kind(),
             ));
         }
         if let Some(c) = self.crystals.iter().find(|c| c.id == uid) {
@@ -1426,7 +1473,6 @@ impl Game<'_> {
             &tracked.kind,
         ))
     }
-
     /// `Hud.getCameraPlayer`: whose hotbar, bars and vehicle the HUD shows.
     pub(in crate::game) fn camera_player(&mut self) -> CameraPlayer {
         let Some(id) = self.remote_camera_id() else {

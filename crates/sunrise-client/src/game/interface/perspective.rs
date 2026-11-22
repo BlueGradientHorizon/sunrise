@@ -1532,6 +1532,9 @@ pub(super) fn player_preview_quads_no_cull(
     }
     let mut quads: Vec<(f32, [[f32; 3]; 4], [[f32; 2]; 4], u32)> = Vec::new();
     for (index, q) in verts.as_chunks::<4>().0.iter().enumerate() {
+        if (q[0].layer & 0xffff) == sunrise_client::gfx::GLINT_ONLY_OVERLAY {
+            continue;
+        }
         let p: [glam::Vec3; 4] =
             std::array::from_fn(|i| gui.transform_point3(glam::Vec3::from_array(q[i].pos)));
         let n = (p[1] - p[0]).cross(p[2] - p[0]);
@@ -1591,7 +1594,10 @@ pub(super) fn preview_glint_quads(
     for (index, q) in verts.as_chunks::<4>().0.iter().enumerate() {
         let armor = match q[0].layer & 0xffff {
             sunrise_client::mobs::render::ARMOR_GLINT => true,
-            7 | 8 | sunrise_client::gfx::TRANSLUCENT_GLINT_ITEM_OVERLAY => false,
+            7
+            | 8
+            | sunrise_client::gfx::TRANSLUCENT_GLINT_ITEM_OVERLAY
+            | sunrise_client::gfx::GLINT_ONLY_OVERLAY => false,
             _ => continue,
         };
         let p: [glam::Vec3; 4] =
@@ -1914,7 +1920,7 @@ mod preview_tests {
         .flatten()
         .collect();
         let frame = GlintFrame {
-            millis: 1234.0,
+            millis: 1_234,
             speed: 0.5,
             alpha: 0.75,
             sprite: true,
@@ -1926,7 +1932,7 @@ mod preview_tests {
         let armor = sunrise_client::item_render::Glint {
             speed: 0.5,
             alpha: 0.75,
-            millis: 1234.0,
+            millis: 1_234,
             scale: 0.16,
         };
         let (pos, uv, glint_uv, is_armor) = glints[0];

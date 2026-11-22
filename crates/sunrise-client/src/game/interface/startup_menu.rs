@@ -644,6 +644,10 @@ impl Loading {
                     self.save_menu_settings();
                     self.menu.reload_packs = true;
                 }
+                Event::ReloadTextures => {
+                    self.save_menu_settings();
+                    self.menu.reload_packs = true;
+                }
                 Event::PackOptions { entries, chosen } => {
                     packs::save_pack_options(&entries, chosen);
                     self.menu.options.pack_configs = packs::pack_configs(&self.vanilla_root);
@@ -1564,11 +1568,16 @@ mod tests {
     use super::*;
 
     fn gui(root: &std::path::Path) -> UiResources {
-        UiResources {
-            atlas: HudAtlas::fonts(&sunrise_assets::resource_source::ResourceSource::directory(
+        let atlas = if root.exists() {
+            HudAtlas::fonts(&sunrise_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             ))
-            .unwrap(),
+            .unwrap()
+        } else {
+            HudAtlas::boot()
+        };
+        UiResources {
+            atlas,
             panorama: Arc::new(sunrise_client::gfx::panorama::Faces::colour([
                 96, 110, 111, 255,
             ])),
@@ -2033,8 +2042,18 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn menu_is_usable_while_the_core_worker_is_blocked() {
-        let root = std::env::temp_dir().join("sunrise-startup-menu-no-world-resources");
+        // Publishing the empty root's language must not replace another game's language.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::startup_menu::tests::menu_is_usable_while_the_core_worker_is_blocked",
+            "SUNRISE_STARTUP_BLOCKED_WORKER_CASE",
+            &["blocked"],
+        ) {
+            return;
+        }
+        let scratch = tempfile::tempdir().unwrap();
+        let root = scratch.path().to_path_buf();
         let (sender, receiver) = std::sync::mpsc::channel();
         let (release, wait) = std::sync::mpsc::channel();
         let (published, published_rx) = std::sync::mpsc::channel();

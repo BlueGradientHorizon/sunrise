@@ -31,6 +31,10 @@ impl Game<'_> {
         // pairs a vehicle again with ClientboundSetPassengersPacket).
         self.selected = 0;
         self.potions.effects.clear();
+        // handleLogin creates a fresh LocalPlayer only when none exists yet.
+        if self.remote.as_ref().is_none_or(|r| !r.logged_in) {
+            self.post_effects.clear();
+        }
         self.riding = None;
         if let Some(player) = self.player.as_mut() {
             player.entity_id = p.player_id;
@@ -62,16 +66,15 @@ impl Game<'_> {
             r.reduced_debug_info = p.reduced_debug_info;
             r.do_limited_crafting = p.limited_crafting;
         }
-        self.check_entity_post_effect(true);
+        self.clear_spectated_entity_post_effect();
         self.bind_local_player_residency();
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
         self.debug_entries.invalidate();
-        self.streaming.radius = self
-            .settings
-            .render_distance
-            .min(p.chunk_radius.saturating_add(1))
-            .max(2);
+        self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+            self.settings.render_distance,
+            Some(p.chunk_radius),
+        );
 
         // handleLogin: startWaitingForNewLevel(.., Reason.OTHER).
         self.enter_remote_dimension(
@@ -103,6 +106,7 @@ impl Game<'_> {
         // A new player, without effects (the server sends them
         // again) and with no item in use.
         self.potions.effects.clear();
+        self.post_effects.clear();
         // Every synced attachment but the player's is sent again; the viewed
         // levels go or stay with the level entered (`enter_respawn_level`).
         if let Some(r) = self.remote.as_mut() {
@@ -197,7 +201,7 @@ impl Game<'_> {
             r.camera = None;
             r.detached_camera = None;
         }
-        self.check_entity_post_effect(true);
+        self.clear_spectated_entity_post_effect();
         self.capture(true);
         if let Some((old_id, uuid)) = old_player {
             self.native_client_player_clone(

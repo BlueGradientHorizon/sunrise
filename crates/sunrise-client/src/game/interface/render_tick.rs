@@ -92,7 +92,7 @@ pub(super) fn motion_blocking_height(
 /// `GameRenderer.nightVisionScale` for an optional night-vision duration (`-1` is infinite).
 fn night_vision_scale(duration: Option<i32>, partial: f32) -> f32 {
     match duration {
-        Some(d) if d < 0 || d > 200 => 1.0,
+        Some(d) if !(0..=200).contains(&d) => 1.0,
         Some(d) => 0.7 + ((d as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3,
         None => 0.0,
     }
@@ -747,7 +747,15 @@ impl Game<'_> {
         }
     }
 
+    /// The client level's particle sources and the engine's tick, in one go.
     pub(super) fn tick_particles(&mut self) {
+        self.tick_particle_sources();
+        self.tick_particle_engine();
+    }
+
+    /// What adds particles in `Minecraft.tick` and the level's ambient: `animateTick`, the rain,
+    /// the vignette and fog, before the block entities tick.
+    pub(in crate::game) fn tick_particle_sources(&mut self) {
         // A client mod's `clear_particles`, before this tick adds any.
         self.apply_mod_particle_clear();
         self.update_animation_inputs();
@@ -771,12 +779,15 @@ impl Game<'_> {
             }
             let nausea = self.potions.effects.get("nausea").map(nausea_has_effect);
             self.screen_fx.tick_spinning(nausea);
-            // LocalPlayer.aiStep: water vision checks `this.isEyeInFluid(FluidTags.WATER)` and `this.isSpectator()`.
-            let in_water = self
-                .player
-                .as_ref()
-                .is_some_and(|p| p.is_eye_in_fluid(WATER));
-            self.fog.tick(in_water, self.own_player_is_spectator());
+            // A client of a server advances `LocalPlayer.waterVisionTime` in `tick_local_player`
+            // (after `Entity.baseTick`'s fluid sample, matching `LocalPlayer.aiStep`).
+            if self.remote.is_none() {
+                let in_water = self
+                    .player
+                    .as_ref()
+                    .is_some_and(|p| p.is_eye_in_fluid(WATER));
+                self.fog.tick(in_water, self.own_player_is_spectator());
+            }
             let (rain, sky_light, rains) = self.rain_fog_inputs(cam_pos);
             update_rain_fog(&mut self.fog, rain, sky_light, rains, 1.0);
         }
@@ -962,7 +973,8 @@ impl Game<'_> {
                     }
                 }
             }
-            if let Some(r) = &self.renderer {
+            // A client of a server ticks its campfires with the other block entities.
+            if let Some(r) = self.renderer.as_ref().filter(|_| self.remote.is_none()) {
                 campfire_particles(
                     self.res.animate(),
                     &mut self.particles,
@@ -977,6 +989,12 @@ impl Game<'_> {
             laps.lap("tp_rain_campfire");
             break;
         }
+    }
+
+    /// `ParticleEngine.tick` (and the pickups and sounds it raises): in `Minecraft.tick` after
+    /// `Level.tickBlockEntities`, so a particle a block entity just added ages with the rest.
+    pub(in crate::game) fn tick_particle_engine(&mut self) {
+        let mut laps = sunrise_client::spans::laps();
         let world = &self.world;
         let facts = self.res.facts();
         // SpellParticle.isCloseToScopingPlayer: the eye of a local player looking

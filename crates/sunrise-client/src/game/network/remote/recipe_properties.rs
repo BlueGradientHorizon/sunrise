@@ -18,7 +18,7 @@ impl Game<'_> {
             .player
             .as_ref()
             .map(|_| (remote.entity_id, remote.profile));
-        self.spectated_post_effect = None;
+        self.clear_spectated_entity_post_effect();
         self.reset_client_item_use();
         // Camera.reset clears initialization while keeping the last aligned position.
         self.view.initialized = false;

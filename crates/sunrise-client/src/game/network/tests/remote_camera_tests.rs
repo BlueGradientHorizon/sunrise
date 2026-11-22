@@ -68,12 +68,32 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
     boat.previous_yaw = 45.0;
     let frame = frame(11, [2, 64, -5], 3);
     let tnt = tnt(13);
+    let displays = indexmap::IndexMap::new();
+    let interactions = std::collections::HashMap::from([(
+        15,
+        crate::game::interactions::RemoteInteraction {
+            position: Vec3::new(0.5, 300.0, 0.5),
+            previous: Vec3::new(0.5, 300.0, 0.5),
+            yaw: 0.0,
+            pitch: 0.0,
+            previous_yaw: 0.0,
+            previous_pitch: 0.0,
+            width: 0.1,
+            height: 1.9059,
+            dimensions_refreshed: true,
+            response: false,
+            vehicle: None,
+        },
+    )]);
     let entities = CameraEntities {
         mobs: &[],
         stands: &[],
         boats: std::slice::from_ref(&boat),
         frames: std::slice::from_ref(&frame),
         tnts: std::slice::from_ref(&tnt),
+        displays: &displays,
+        interactions: &interactions,
+        tracked: None,
         vehicles: &std::collections::HashMap::new(),
         player: None,
         living: Box::new(|_| (1.0, 4.0)),
@@ -97,6 +117,11 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
     assert_eq!(view.position, [4.5, 64.0, 7.5]);
     assert_eq!((view.eye_height, view.y_rot), (0.15, 135.0));
 
+    let view = entities.view(15).expect("an interaction is a camera");
+    assert_eq!(view.position, [0.5, 300.0, 0.5]);
+    assert_eq!(view.eye_height.to_bits(), (1.9059_f32 * 0.85_f32).to_bits());
+    assert!(view.living.is_none());
+
     // An id the level does not hold changes nothing.
     assert!(!entities.holds(10));
     assert!(entities.view(10).is_none());
@@ -109,12 +134,17 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
 fn a_frame_camera_turns_with_its_facing() {
     let view = |facing| {
         let frame = frame(1, [0; 3], facing);
+        let displays = indexmap::IndexMap::new();
+        let interactions = std::collections::HashMap::new();
         let entities = CameraEntities {
             mobs: &[],
             stands: &[],
             boats: &[],
             frames: std::slice::from_ref(&frame),
             tnts: &[],
+            displays: &displays,
+            interactions: &interactions,
+            tracked: None,
             vehicles: &std::collections::HashMap::new(),
             player: None,
             living: Box::new(|_| (1.0, 4.0)),
@@ -225,4 +255,37 @@ fn a_spectated_sleeping_villager_shows_the_bed_view() {
         checked += 1;
     }
     assert_eq!(checked, 40);
+}
+
+#[test]
+fn a_server_camera_follows_a_tracked_display() {
+    use crate::game::text_displays::{RemoteTextDisplay, Shows};
+    let display = RemoteTextDisplay::new(Shows::Text, [3.0, 70.0, -4.0], 90.0).with_pitch(15.0);
+    let mut displays = indexmap::IndexMap::new();
+    displays.insert(42, display);
+    let interactions = std::collections::HashMap::new();
+    let entities = CameraEntities {
+        mobs: &[],
+        stands: &[],
+        boats: &[],
+        frames: &[],
+        tnts: &[],
+        displays: &displays,
+        interactions: &interactions,
+        tracked: None,
+        vehicles: &std::collections::HashMap::new(),
+        player: None,
+        living: Box::new(|_| (1.0, 4.0)),
+        stand_living: Box::new(|_| (1.0, 4.0)),
+    };
+    assert!(entities.holds(42));
+    let view = entities
+        .view(42)
+        .expect("a display is a valid camera entity");
+    assert_eq!(view.position, [3.0, 70.0, -4.0]);
+    assert_eq!(view.previous, [3.0, 70.0, -4.0]);
+    assert_eq!((view.y_rot_o, view.y_rot), (90.0, 90.0));
+    assert_eq!((view.x_rot_o, view.x_rot), (15.0, 15.0));
+    assert_eq!(view.eye_height, 0.0);
+    assert!(view.living.is_none());
 }

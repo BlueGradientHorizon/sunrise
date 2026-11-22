@@ -156,6 +156,13 @@ fn events(heard: &Arc<Mutex<Heard>>) -> Vec<String> {
 #[test]
 #[ignore = "daily"]
 fn two_entities_are_asked_in_the_draw_queues_order() {
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::native_render_pair_tests::two_entities_are_asked_in_the_draw_queues_order",
+        "SUNRISE_RENDER_PAIR_ORDER_CHILD",
+        &["draw-order"],
+    ) {
+        return;
+    }
     let heard = Arc::default();
     with_pair(&heard, |game| {
         game.pack_ids = Some(Default::default());
@@ -168,10 +175,10 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
             [
                 "living_pre 91",
                 "living_post 91",
-                "player_pre true",
-                "living_pre 4321",
+                "player_pre true head Some(true)",
+                "living_pre 4321 head Some(false)",
                 "living_post 4321",
-                "player_post true",
+                "player_post true model true head Some(false)",
                 "living_pre 92",
                 "living_post 92"
             ]
@@ -534,7 +541,11 @@ fn a_canceled_entity_draws_no_name_tag() {
         let tag = |game: &mut Game<'_>| {
             mob_frame(game);
             let (mut out, mut see_through) = (Vec::new(), Vec::new());
-            game.name_tag_geometry(CAMERA, 1.0, &mut out, &mut see_through);
+            let mut collector = std::mem::take(&mut game.see_through_collector);
+            collector.clear();
+            game.name_tag_geometry(CAMERA, 1.0, &mut out, &mut collector);
+            collector.flush(&mut see_through);
+            game.see_through_collector = collector;
             out.len() + see_through.len()
         };
         assert!(tag(game) > 0, "a named zombie's tag");

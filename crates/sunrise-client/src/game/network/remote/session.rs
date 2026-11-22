@@ -746,7 +746,7 @@ impl Game<'_> {
         self.native_net.holds.borrow_mut().clear();
         if let Some(mut r) = self.remote.take() {
             r.session.disconnect();
-            self.spectated_post_effect = None;
+            self.clear_spectated_entity_post_effect();
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
@@ -788,6 +788,8 @@ impl Game<'_> {
         self.streaming.paused = true;
         self.reset_client_world(0);
         self.remove_local_player_body();
+        self.post_effects.clear();
+        self.clear_spectated_entity_post_effect();
         // The vehicle went with the level: an id kept here would seat the
         // next login on an entity that is not there.
         self.riding = None;

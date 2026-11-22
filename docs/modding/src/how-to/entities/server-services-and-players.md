@@ -65,6 +65,12 @@ permission and address reads work for connected players whose bodies are displac
 by another player's turn; stale handles are refused. Entity and living handles
 provide world-state reads, which require a resolvable body.
 
+In `player_stat_award`, find the recipient with
+`host.players().player_by_name(event.name)` or use their retained `PlayerRef`.
+`player.stat(host, stat_type, key)` reads that player's count before the award,
+even if a nested turn has displaced them. This does not make displaced players
+available for statistic writes.
+
 `player.level(host)` returns the authoritative `LevelRef`;
 `player.dimension(host)` returns its dimension `Identifier`, including registered
 custom dimensions. Both accept `&dyn Host`. On a server they identify the player's
@@ -316,7 +322,9 @@ wait for the outermost commit.
 local player's supported open menu, or the inventory menu when none is open; every other
 player returns `None`. `MenuRef::slot_count`, `slot` and `carried` read the client's view:
 server slot updates plus local prediction, not server authority. A menu ref becomes stale
-when that menu closes or another opens. The server retains its supported-menu restrictions.
+when that menu closes or another opens. `MenuRef::kind` returns `Some(Some(id))` for a supported
+registry-backed menu, `Some(None)` for the player's inventory menu or a mount's inventory on the client,
+and `None` for a stale, foreign or unavailable handle. The server retains its supported-menu restrictions.
 
 ## Local player reads on a client
 
