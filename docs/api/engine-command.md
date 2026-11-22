@@ -44,9 +44,8 @@ One JSON object on stdout:
 - `env`: the variables it sets on top of the inherited environment. A `null` value means the variable is removed.
 - `resources`: the game-files folder the supervisor selects (`--resources`), absolute. Startup, this
   description and `import-resources` all use the same version and profile checks.
-- `resources_pending`: `true` if `run` needs to prepare its managed server profile at `resources`
-  before starting; otherwise `false`. The probe does not prepare it. Forward Start to the
-  supervisor rather than launching the engine yourself when preparation is pending.
+- `resources_pending`: `true` if the supervisor needs to prepare its managed server profile at
+  `resources`; otherwise `false`. The probe does not prepare it.
 - Every path is a string. A path that isn't valid Unicode is an `io` error, not a lossy string.
 
 ### Errors
@@ -72,6 +71,11 @@ A refused command line (anything after `engine-command` but `--json`) exits 2 wi
 stdout.
 
 ### Starting it
+
+If `resources_pending` is `true` for a configured server that has already accepted the EULA, run
+`sunrise-server --dir DIR init --yes`. This prepares the selected managed slot without changing
+`server.toml` or starting the engine. Probe again: the same path is now ready and `resources_pending`
+is `false`. Only then take launch leases and send Start.
 
 The reply is what to run; how `sunrise-server run` starts it is fixed, so a launcher that starts the engine itself
 does the same (`command_with_transfers` in `crates/sunrise-server-launch/src/lib.rs`):

@@ -90,8 +90,9 @@ Or prepare on another computer with `sunrise-prepare --server` and copy its `gam
 folder to the server. Use `sunrise-server import-resources DIR` to install that copy, or
 `sunrise-server init --resources DIR` to use it in place.
 
-Managed server files are prepared again when `sunrise-server run` finds they are missing or stale; do not rerun
-`init` on an existing server. For a folder you set in `[engine] resources`, run
+Managed server files are prepared again when `sunrise-server run` finds they are missing or stale. To prepare
+those files before starting a configured server that has already accepted the EULA, run
+`sunrise-server --dir DIR init --yes`; it leaves `server.toml` unchanged. For a folder you set in `[engine] resources`, run
 `sunrise-prepare --server --output DIR` for server-only output. To repair a full folder, including output v7,
 run `sunrise-prepare --prepare --server-jar PATH --output DIR` with your own client files. Full output v8 is
 required. Use `--complete` to copy the sounds and run the full check, including client extras. Only the launcher downloads

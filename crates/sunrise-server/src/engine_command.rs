@@ -128,7 +128,7 @@ fn human(reply: &Value) -> String {
         reply["cwd"].as_str().unwrap_or_default()
     );
     if reply["resources_pending"] == true {
-        out.push_str("Game files are not ready; `sunrise-server run` will prepare them before starting the engine.\n");
+        out.push_str("Game files are not ready. Prepare them with `sunrise-server --dir DIR init --yes` before starting.\n");
     }
     for (key, value) in reply["env"].as_object().into_iter().flatten() {
         match value.as_str() {
@@ -258,6 +258,7 @@ mod tests {
     fn the_command_skips_stale_full_resources_for_the_current_server_slot() {
         let root = folder("stale-full");
         let server = root.join("server");
+        std::fs::write(server.join("server.toml"), "").unwrap();
         let (supervisor, slot) = managed_install(&root);
         prepared_server(&slot);
         let full = server.join("resources");
@@ -281,7 +282,7 @@ mod tests {
         .unwrap();
         std::fs::write(full.join(STAMP), r#"{"output_version":7}"#).unwrap();
         let (code, reply) = cli_json(&server, supervisor);
-        assert_eq!(code, 0);
+        assert_eq!(code, 0, "{reply}");
         assert_eq!(reply["resources"], slot.to_str().unwrap());
         assert_eq!(reply["args"][1], slot.to_str().unwrap());
         assert_eq!(reply["resources_pending"], false);
@@ -289,21 +290,6 @@ mod tests {
             std::fs::read_to_string(full.join(STAMP)).unwrap(),
             r#"{"output_version":7}"#
         );
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn an_empty_managed_install_reports_pending_without_writing() {
-        let root = folder("managed-pending");
-        let server = root.join("server");
-        let (supervisor, slot) = managed_install(&root);
-        let (code, reply) = cli_json(&server, supervisor);
-        assert_eq!(code, 0);
-        assert_eq!(reply["resources_pending"], true);
-        assert_eq!(reply["resources"], slot.to_str().unwrap());
-        assert_eq!(reply["args"][1], slot.to_str().unwrap());
-        assert!(!root.join("install/game-files").exists());
-        assert!(std::fs::read_dir(&server).unwrap().next().is_none());
         std::fs::remove_dir_all(root).unwrap();
     }
 

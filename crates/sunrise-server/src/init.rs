@@ -267,6 +267,15 @@ pub fn run(dir: &Path, answers: Answers) -> Result<(), String> {
     Ok(())
 }
 
+/// `init --yes` on an existing server prepares its game files without rerunning setup.
+pub(crate) fn prepare_existing(dir: &Path) -> Result<(), String> {
+    let cfg = Config::load(dir)?;
+    let program = launch::program(&cfg, dir)?;
+    let resources = ensure_resources(&cfg, dir, Some(&program), None)?;
+    println!("Game files: {}", resources.display());
+    Ok(())
+}
+
 /// A configured path stays configured; otherwise repair the managed dedicated slot.
 /// Both setup and server restarts use this path (no need to rerun init on an existing server).
 pub(crate) fn ensure_resources(

@@ -52,7 +52,8 @@ Usage: sunrise-server [--dir DIR] <command>
   init        Set up a server here: the EULA, the world, the port, who may join (asks, or takes flags:
               --eula --world NAME --seed SEED --port N --whitelist/--no-whitelist --player NAME... --op NAME
               --offline --yes); prepares game files when none are found, or takes --server-jar PATH
-              for an offline prepare or --resources DIR to use an existing preparation
+              for an offline prepare or --resources DIR to use an existing preparation.
+              On an existing server, `init --yes` only prepares its managed game files.
   run         Run the server in the foreground; type console commands, Ctrl-C stops it cleanly. It
               restarts the game if it crashes.
   start       Run the server in the background, or resume a stopped supervisor (output goes to logs/supervisor.log)
@@ -138,7 +139,12 @@ pub fn main() -> ExitCode {
             println!("sunrise-server {VERSION}");
             Ok(())
         }
-        Some("init") => init_answers(&args[1..]).and_then(|a| init::run(&dir, a)),
+        Some("init") => match &args[1..] {
+            [yes] if matches!(yes.as_str(), "--yes" | "-y") && dir.join(config::FILE).exists() => {
+                init::prepare_existing(&dir)
+            }
+            flags => init_answers(flags).and_then(|a| init::run(&dir, a)),
+        },
         Some("run") => {
             let done = supervisor::run(&dir);
             signals::stopped();
