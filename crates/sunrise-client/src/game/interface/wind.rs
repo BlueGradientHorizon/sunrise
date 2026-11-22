@@ -431,6 +431,7 @@ impl Game<'_> {
                     self.remember_mob_player_credit(id);
                 }
                 if hurt {
+                    self.flush_mob_death_protection(id);
                     self.shot_post_attack(p, who, p.kind.id(), "minecraft:wind_charge");
                 }
             }

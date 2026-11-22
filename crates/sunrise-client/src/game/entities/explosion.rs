@@ -1331,6 +1331,7 @@ impl Game<'_> {
                             (amount, source),
                         );
                         if hurt {
+                            self.flush_mob_death_protection(victim);
                             if source.attacker == Some(Who::Player) {
                                 let guest = self.combat.blast_guest;
                                 if let Some(uuid) = self.player_uuid_of(guest) {

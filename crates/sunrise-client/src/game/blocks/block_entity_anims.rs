@@ -666,7 +666,7 @@ impl Game<'_> {
                 ambient: true,
                 ..EffectInstance::new("conduit_power", 260, 0)
             };
-            g.potions.effects.add(power);
+            g.add_player_effect(power);
         });
     }
     /// `Entity.isInRain`: rain at the block position or at the top of the box.
@@ -744,8 +744,9 @@ impl Game<'_> {
         else {
             return;
         };
+        let mob_id = m.id;
         let at = [m.position.x, m.position.y, m.position.z];
-        m.damage(
+        let hurt = m.damage(
             crate::game::entity::damage_level_of!(
                 self,
                 &sunrise_client::health::NO_ATTACK,
@@ -755,6 +756,9 @@ impl Game<'_> {
             4.0,
             Damage::of(DamageKind::Magic),
         );
+        if hurt {
+            self.flush_mob_death_protection(mob_id);
+        }
         self.audio
             .play("minecraft:block.conduit.attack.target", Some(at), 1.0, 1.0);
     }

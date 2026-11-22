@@ -36,11 +36,9 @@ impl Game<'_> {
                     {
                         continue;
                     }
-                    let plan = self.prepare_knockback_credit(
-                        self.mobs[index].id as i32,
-                        None,
-                        self.combat.attack(),
-                    );
+                    let mob_id = self.mobs[index].id;
+                    let plan =
+                        self.prepare_knockback_credit(mob_id as i32, None, self.combat.attack());
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
                     falling_block::hurt_mobs_with_kind(
                         crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
@@ -49,6 +47,7 @@ impl Game<'_> {
                         impact.amount,
                         mob_kind,
                     );
+                    self.flush_mob_death_protection(mob_id);
                 }
                 // Enderman.hurtServer: a falling block is no living attacker.
                 if let Err(e) = self.settle_hurt_teleports() {

@@ -240,6 +240,40 @@ impl Game<'_> {
     /// leaving the same way its expiry takes them. False (and nothing
     /// changes) when the entity has the effect not, before effect resolution, or for
     /// an armor stand, the dragon, a stale handle or a client.
+    pub(super) fn remove_mob_effect_by_index(&mut self, id: u32, effect_index: usize) -> bool {
+        let Some(def) = sunrise_client_core::potions::effect_by_index(effect_index) else {
+            return false;
+        };
+        let Some(amplifier) = self
+            .mobs
+            .iter()
+            .find(|m| m.id == id && !m.removed)
+            .and_then(|m| {
+                m.extra
+                    .effects
+                    .iter()
+                    .find(|e| e.registry_index == Some(def.index))
+                    .map(|e| e.amplifier)
+            })
+        else {
+            return false;
+        };
+        // `MobEffectEvent.Remove`: refusing the removal keeps it.
+        if let Some(living) = self.effect_living_ref(Some(id as i32))
+            && let Some(key) = mod_api::__private::effect_key_by_index(def.index)
+        {
+            let mut cancel = false;
+            self.native_mob_effect_remove(living, key, amplifier, &mut cancel);
+            if cancel {
+                return false;
+            }
+        }
+        self.mutate_mob_effects(id, Some(def.id), |mob| {
+            mob.retain_effects(|e| e.registry_index != Some(def.index))
+        })
+        .unwrap_or(false)
+    }
+
     pub(super) fn living_remove_effect(&mut self, living: LivingRef, effect: EffectKey) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect)
             .and_then(sunrise_client_core::potions::effect_by_index)
@@ -250,32 +284,7 @@ impl Game<'_> {
             Some(t @ (Target::Player | Target::Guest(_))) => self
                 .for_player(t, |g| g.remove_player_effects(Some(def.index)))
                 .unwrap_or(false),
-            Some(Target::Mob(id)) => {
-                let Some(amplifier) = self
-                    .mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)
-                    .and_then(|m| {
-                        m.extra
-                            .effects
-                            .iter()
-                            .find(|e| e.registry_index == Some(def.index))
-                            .map(|e| e.amplifier)
-                    })
-                else {
-                    return false;
-                };
-                // `MobEffectEvent.Remove`: refusing the removal keeps it.
-                let mut cancel = false;
-                self.native_mob_effect_remove(living, effect, amplifier, &mut cancel);
-                if cancel {
-                    return false;
-                }
-                self.mutate_mob_effects(id, Some(def.id), |mob| {
-                    mob.retain_effects(|e| e.registry_index != Some(def.index))
-                })
-                .unwrap_or(false)
-            }
+            Some(Target::Mob(id)) => self.remove_mob_effect_by_index(id, def.index),
             _ => false,
         }
     }

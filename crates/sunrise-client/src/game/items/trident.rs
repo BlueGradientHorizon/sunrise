@@ -827,6 +827,7 @@ impl Game<'_> {
                         let plan =
                             self.prepare_knockback_credit(id as i32, Some(Who::Player), &attack);
                         let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                        let mut hurt_mob = false;
                         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
                             let from = Some([t.position.x, t.position.y, t.position.z]);
                             let hurt = m.damage_projectile(
@@ -847,8 +848,12 @@ impl Game<'_> {
                                 [t.velocity.x, t.velocity.z],
                             );
                             if hurt {
+                                hurt_mob = true;
                                 hurt_at = Some([m.position.x, m.position.y, m.position.z]);
                             }
+                        }
+                        if hurt_mob {
+                            self.flush_mob_death_protection(id);
                         }
                         self.thrower_dealt_absorbed(t.guest);
                         // ThrownTrident.onHitEntity on a boat or minecart:

@@ -3017,6 +3017,7 @@ impl Game<'_> {
                         part,
                     ) {
                         let id = self.mobs[index].id;
+                        self.flush_mob_death_protection(id);
                         self.mob_post_attack(
                             id,
                             Some(sunrise_client::mobs::Who::Mob(frame.dragon_id)),

@@ -647,7 +647,8 @@ impl Game<'_> {
                     continue;
                 }
                 Species::Turtle => {
-                    m.damage(
+                    let id = m.id;
+                    let hurt = m.damage(
                         crate::game::entity::damage_level_of!(
                             self,
                             &sunrise_client::health::NO_ATTACK,
@@ -657,6 +658,9 @@ impl Game<'_> {
                         f32::MAX,
                         damage,
                     );
+                    if hurt {
+                        self.flush_mob_death_protection(id);
+                    }
                     continue;
                 }
                 Species::Creeper => {
@@ -685,7 +689,8 @@ impl Game<'_> {
                 }
             }
 
-            m.damage(
+            let id = m.id;
+            let hurt = m.damage(
                 crate::game::entity::damage_level_of!(
                     self,
                     &sunrise_client::health::NO_ATTACK,
@@ -695,6 +700,9 @@ impl Game<'_> {
                 5.0,
                 damage,
             );
+            if hurt {
+                self.flush_mob_death_protection(id);
+            }
         }
         for entity in powered {
             self.native_creeper_power(entity, [at[0], at[1], at[2]]);

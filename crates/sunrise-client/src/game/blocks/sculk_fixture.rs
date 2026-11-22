@@ -758,12 +758,15 @@ impl Game<'_> {
                         &attack,
                     );
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                    let hurt = self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
                         m.damage(
                             crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                             amount,
                             sunrise_client::mobs::Damage::player(at),
-                        );
+                        )
+                    });
+                    if hurt {
+                        self.flush_mob_death_protection(id);
                     }
                     self.remember_mob_player_credit(id);
                 }

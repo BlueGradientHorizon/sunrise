@@ -908,16 +908,19 @@ impl Game<'_> {
         for &(id, amount) in hits {
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
             let mut credit = plan.lend(&mut self.last_hurt_by_player);
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-                let hurt = m.damage(
+            let hurt = self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+                m.damage(
                     crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                     amount,
                     Damage::fireworks(attacker, at),
-                );
+                )
+            });
+            if hurt {
+                self.flush_mob_death_protection(id);
                 // LivingEntity.hurtServer: a player's rocket makes them the
                 // last player to hurt it (`setLastHurtByPlayer`), so its death
                 // message names them and their item.
-                if hurt && attacker == Some(Who::Player) {
+                if attacker == Some(Who::Player) {
                     self.remember_mob_player_credit(id);
                 }
             }

@@ -257,6 +257,7 @@ impl Game<'_> {
                 let plan =
                     self.prepare_knockback_credit(id as i32, source.attacker, self.combat.attack());
                 let mut credit = plan.lend(&mut self.last_hurt_by_player);
+                let mut hurt = false;
                 let mut survived_hit = false;
                 let killed = match self.mobs.iter_mut().find(|m| m.id == id) {
                     Some(m) => {
@@ -270,11 +271,15 @@ impl Game<'_> {
                             amount,
                             source,
                         );
+                        hurt = hit;
                         survived_hit = hit && m.alive();
                         hit && !m.alive()
                     }
                     None => false,
                 };
+                if hurt {
+                    self.flush_mob_death_protection(id);
+                }
                 if survived_hit && live_owner.is_some() {
                     self.mob_post_attack(
                         id,

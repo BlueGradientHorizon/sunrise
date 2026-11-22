@@ -1131,7 +1131,7 @@ impl Game<'_> {
                             // `LivingEntity.addEffect` refuses nothing here; the
                             // tick hurts with magic (6 << amp) or heals (4 << amp).
                             if (effect == "instant_damage") != inverted {
-                                m.damage(
+                                let hurt = m.damage(
                                     crate::game::entity::damage_level_of!(
                                         self,
                                         self.combat.attack(),
@@ -1141,6 +1141,9 @@ impl Game<'_> {
                                     (6 << amp.min(30)) as f32,
                                     Damage::of(DamageKind::Magic),
                                 );
+                                if hurt {
+                                    self.flush_mob_death_protection(id);
+                                }
                             } else {
                                 m.heal(&self.loop_context, (4 << amp.min(30)) as f32);
                             }
@@ -1281,118 +1284,220 @@ impl Game<'_> {
                 self.effects_on_death(&ids, bounds, self.player_silent(), None, None);
             }
         }
-        // The omens act from inside the effect tick (BadOmenMobEffect,
-        // RaidOmenMobEffect), as a content mod's effects do.
-        let absorption_empty = self
-            .player
-            .as_ref()
-            .is_some_and(|p| p.health.absorption() <= 0.0);
-        let mut effects = std::mem::take(&mut self.potions.effects);
         // `MobEffectEvent.Expired`: ask before the pass, for the effects at
         // zero ticks and the ones reaching it in this pass (the last tick of
         // their countdown); a canceled expiry keeps the effect at no ticks,
         // asking again next tick. Only on the server, where the effects tick.
         let keep_expired: Vec<&'static str> = if self.remote.is_none() {
             let player = self.effect_living_ref(None);
-            effects
+            let expiring: Vec<(&'static str, usize, i32)> = self
+                .potions
+                .effects
                 .list
                 .iter()
                 .filter(|e| matches!(e.duration, 0 | 1))
-                .filter(|e| {
+                .map(|e| {
+                    (
+                        e.id,
+                        e.registry_index.expect("active effect registry index"),
+                        e.amplifier,
+                    )
+                })
+                .collect();
+            expiring
+                .into_iter()
+                .filter(|&(_, index, amplifier)| {
                     let Some(player) = player else {
                         return false;
                     };
                     let mut cancel = false;
                     self.native_mob_effect_expired(
                         player,
-                        mod_api::__private::effect_key_by_index(
-                            e.registry_index.expect("active effect registry index"),
-                        )
-                        .expect("effects resolved at load"),
-                        e.amplifier,
+                        mod_api::__private::effect_key_by_index(index)
+                            .expect("effects resolved at load"),
+                        amplifier,
                         &mut cancel,
                     );
                     cancel
                 })
-                .map(|e| e.id)
+                .map(|(id, _, _)| id)
                 .collect()
         } else {
             Vec::new()
         };
-        let (actions, raid_omen_added) = effects.tick_with(
-            &mut |e, t, actions, dispatch, active_effects| {
-                for action in actions.drain(..) {
-                    self.apply_effect_action(action);
-                }
-                if !dispatch {
-                    return OmenTick::Continue;
-                }
-                if !brewing::is_mod_effect(e.id) {
-                    self.omen_tick(e)
+        // Keep `self.potions.effects` live on `Game` during the pass so
+        // tick-driven `addEffect` (`BadOmenMobEffect` -> `RaidOmen`) runs
+        // `add_player_effect` with the live active-effect map.
+        self.potions.effects.tick_count = self.potions.effects.tick_count.wrapping_add(1);
+        let tick_count = self.potions.effects.tick_count;
+        let mut i = 0;
+        while i < self.potions.effects.list.len() {
+            let e = self.potions.effects.list[i].clone();
+            if !(e.infinite() || e.duration > 0) {
+                if keep_expired.contains(&e.id) {
+                    i += 1;
                 } else {
-                    let Some(player) = self.player.as_mut() else {
-                        return OmenTick::Remove;
+                    self.potions.effects.list.remove(i);
+                }
+                continue;
+            }
+            let t = if e.infinite() { tick_count } else { e.duration };
+            if let Some(a) = sunrise_client::effects::periodic(e.id, t, e.amplifier) {
+                self.apply_effect_action(a);
+            }
+            let answer = match e.id {
+                "bad_omen" => self.omen_tick(&e),
+                "raid_omen" if t == 1 => self.omen_tick(&e),
+                id if brewing::is_mod_effect(id) => {
+                    let Some((holder_id, health, max_health, food)) =
+                        self.player.as_ref().map(|player| {
+                            let food = &player.health.food;
+                            (
+                                player.entity_id as u32,
+                                player.health.health(),
+                                player.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
+                                Some(PlayerFood::from(mod_api::__private::built::PlayerFood {
+                                    level: food.food,
+                                    saturation: food.saturation,
+                                    exhaustion: food.exhaustion,
+                                })),
+                            )
+                        })
+                    else {
+                        self.potions.effects.list.remove(i);
+                        continue;
                     };
-                    let Some(epoch) = self.native_lifecycle.epoch() else {
-                        return OmenTick::Continue;
-                    };
-                    let holder = LivingRef::new(EntityRef::new(epoch, player.entity_id as u32));
-                    let health = player.health.health();
-                    let max_health =
-                        player.attribute("minecraft:max_health").unwrap_or(20.0) as f32;
-                    let food = &player.health.food;
-                    let food = Some(PlayerFood::from(mod_api::__private::built::PlayerFood {
-                        level: food.food,
-                        saturation: food.saturation,
-                        exhaustion: food.exhaustion,
-                    }));
-                    let (keep, changes) = self.mod_effect_tick(
-                        e.registry_index,
-                        None,
-                        t,
-                        e.amplifier,
-                        holder,
-                        health,
-                        max_health,
-                        food,
-                        active_effects
-                            .iter()
-                            .filter_map(|effect| effect.registry_index),
-                    );
-                    let registry = &self.health_resources.damage;
-                    actions.extend(changes.into_iter().filter_map(|change| {
-                        match change {
-                            EffectTickChange::Heal(amount) => Some(EffectAction::Heal(amount)),
-                            // An unregistered damage type hurts nothing.
-                            EffectTickChange::Hurt(source, amount) => {
-                                NamedDamage::registered(registry, &source)
-                                    .map(|damage| EffectAction::Hurt(damage.name, amount))
-                            }
-                            EffectTickChange::AddExhaustion(amount) => {
-                                Some(EffectAction::Exhaust(amount))
-                            }
-                            EffectTickChange::Eat(nutrition, saturation) => {
-                                Some(EffectAction::Eat(nutrition, saturation))
-                            }
-                            _ => unreachable!("EffectTickChange: unhandled variant"),
+                    if let Some(epoch) = self.native_lifecycle.epoch() {
+                        let holder = LivingRef::new(EntityRef::new(epoch, holder_id));
+                        let (keep, changes) = self.mod_effect_tick(
+                            e.registry_index,
+                            None,
+                            t,
+                            e.amplifier,
+                            holder,
+                            health,
+                            max_health,
+                            food,
+                            self.potions
+                                .effects
+                                .list
+                                .iter()
+                                .filter_map(|effect| effect.registry_index),
+                        );
+                        let actions: Vec<EffectAction> = {
+                            let registry = &self.health_resources.damage;
+                            changes
+                                .into_iter()
+                                .filter_map(|change| match change {
+                                    EffectTickChange::Heal(amount) => {
+                                        Some(EffectAction::Heal(amount))
+                                    }
+                                    // An unregistered damage type hurts nothing.
+                                    EffectTickChange::Hurt(source, amount) => {
+                                        NamedDamage::registered(registry, &source)
+                                            .map(|damage| EffectAction::Hurt(damage.name, amount))
+                                    }
+                                    EffectTickChange::AddExhaustion(amount) => {
+                                        Some(EffectAction::Exhaust(amount))
+                                    }
+                                    EffectTickChange::Eat(nutrition, saturation) => {
+                                        Some(EffectAction::Eat(nutrition, saturation))
+                                    }
+                                    _ => unreachable!("EffectTickChange: unhandled variant"),
+                                })
+                                .collect()
+                        };
+                        for action in actions {
+                            self.apply_effect_action(action);
                         }
-                    }));
-                    if keep {
-                        OmenTick::Continue
+                        if keep {
+                            OmenTick::Continue
+                        } else {
+                            OmenTick::Remove
+                        }
                     } else {
-                        OmenTick::Remove
+                        OmenTick::Continue
                     }
                 }
-            },
-            absorption_empty,
-            &keep_expired,
-        );
-        self.potions.effects = effects;
-        if raid_omen_added {
-            self.raid_omen_added();
-        }
-        for action in actions {
-            self.apply_effect_action(action);
+                "absorption"
+                    if self
+                        .player
+                        .as_ref()
+                        .is_some_and(|p| p.health.absorption() <= 0.0) =>
+                {
+                    OmenTick::Remove
+                }
+                _ => OmenTick::Continue,
+            };
+            match answer {
+                OmenTick::Continue => {}
+                OmenTick::Remove => {
+                    if let Some(pos) = self
+                        .potions
+                        .effects
+                        .list
+                        .iter()
+                        .position(|cur| cur.id == e.id)
+                    {
+                        self.potions.effects.list.remove(pos);
+                        if pos < i {
+                            i -= 1;
+                        }
+                    }
+                    continue;
+                }
+                OmenTick::Add(effect) => {
+                    let target_id = effect.id;
+                    let had = self.potions.effects.get(target_id).is_some();
+                    self.add_player_effect(effect);
+                    // `LivingEntity.tickEffects` + `BadOmenMobEffect.applyEffectTick`:
+                    // inserting a new entry structurally modifies `activeEffects`, so
+                    // `iterator.remove()` throws `ConcurrentModificationException`,
+                    // leaving `bad_omen` for the next tick and ending this pass.
+                    // Updating an existing entry (or a denied add) does not structurally
+                    // modify the map, so `bad_omen` is removed and the pass continues.
+                    if !had && self.potions.effects.get(target_id).is_some() {
+                        break;
+                    }
+                    if let Some(pos) = self
+                        .potions
+                        .effects
+                        .list
+                        .iter()
+                        .position(|cur| cur.id == e.id)
+                    {
+                        self.potions.effects.list.remove(pos);
+                        if pos < i {
+                            i -= 1;
+                        }
+                    }
+                    continue;
+                }
+            }
+            let Some(pos) = (i < self.potions.effects.list.len()
+                && self.potions.effects.list[i].id == e.id)
+                .then_some(i)
+                .or_else(|| {
+                    self.potions
+                        .effects
+                        .list
+                        .iter()
+                        .position(|cur| cur.id == e.id)
+                })
+            else {
+                continue;
+            };
+            let cur = &mut self.potions.effects.list[pos];
+            cur.tick_down();
+            cur.downgrade();
+            // `MobEffectEvent.Expired`: a kept expiry leaves the effect at
+            // no ticks instead of removing it here.
+            if cur.infinite() || cur.duration > 0 || keep_expired.contains(&cur.id) {
+                i = pos + 1;
+            } else {
+                self.potions.effects.list.remove(pos);
+                i = pos;
+            }
         }
         self.turtle_helmet_tick();
         self.apply_effect_status();
@@ -1413,7 +1518,7 @@ impl Game<'_> {
         {
             let mut effect = EffectInstance::new("water_breathing", 200, 0);
             effect.visible = false;
-            self.potions.effects.add(effect);
+            self.add_player_effect(effect);
         }
     }
     /// A client's own effects (`LivingEntity.tickEffects` on the client,
@@ -2315,7 +2420,7 @@ impl Game<'_> {
                                 let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) else {
                                     return;
                                 };
-                                m.damage_by(
+                                let hurt = m.damage_by(
                                     crate::game::entity::damage_level_of!(
                                         self,
                                         &attack,
@@ -2326,6 +2431,9 @@ impl Game<'_> {
                                     source,
                                     "minecraft:area_effect_cloud",
                                 );
+                                if hurt {
+                                    self.flush_mob_death_protection(mob);
+                                }
                             } else {
                                 m.heal(&self.loop_context, amount(4));
                             }
@@ -2700,13 +2808,25 @@ impl Game<'_> {
                     let attack = self.potion_attack(owner.who(), owner.guest);
                     let plan = self.prepare_knockback_credit(id as i32, owner.who(), &attack);
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob_id) {
-                        m.damage_by(
-                            crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
-                            harm,
-                            source,
-                            "minecraft:splash_potion",
-                        );
+                    let hurt = self
+                        .mobs
+                        .iter_mut()
+                        .find(|m| m.id == mob_id)
+                        .is_some_and(|m| {
+                            m.damage_by(
+                                crate::game::entity::damage_level_of!(
+                                    self,
+                                    &attack,
+                                    &mut credit,
+                                    None
+                                ),
+                                harm,
+                                source,
+                                "minecraft:splash_potion",
+                            )
+                        });
+                    if hurt {
+                        self.flush_mob_death_protection(mob_id);
                     }
                 } else {
                     m.heal(

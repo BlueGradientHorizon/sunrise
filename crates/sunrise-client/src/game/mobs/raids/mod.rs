@@ -433,16 +433,6 @@ impl Game<'_> {
             _ => OmenTick::Continue,
         }
     }
-    /// The Raid Omen sound when the effect is first added
-    /// (`MobEffect.onEffectAdded`: at the player's feet).
-    pub(super) fn raid_omen_added(&mut self) {
-        let Some(p) = self.player.as_ref() else {
-            return;
-        };
-        let at = [p.position.x, p.position.y, p.position.z];
-        self.audio
-            .play("minecraft:event.mob_effect.raid_omen", Some(at), 1.0, 1.0);
-    }
     /// `Raids.createOrExtendRaid`: not for spectators, with the `raids` rule
     /// and where raids may start; the raid centres on the occupied village
     /// points of interest within 64 blocks.
@@ -715,7 +705,7 @@ impl Game<'_> {
                 let mut effect =
                     EffectInstance::new("hero_of_the_village", raid::HERO_DURATION, amplifier);
                 effect.visible = false;
-                g.potions.effects.add(effect);
+                g.add_player_effect(effect);
                 g.award_custom_stat("raid_win", 1);
                 g.trigger_player("minecraft:hero_of_the_village");
             }),
@@ -1425,15 +1415,7 @@ impl Game<'_> {
         let mut effect =
             sunrise_client::effects::EffectInstance::new("bad_omen", 120_000, i32::from(amplifier));
         effect.visible = false;
-        let new = self.potions.effects.get("bad_omen").is_none();
-        self.potions.effects.add(effect);
-        // MobEffect.onEffectAdded: Bad Omen's sound when it is new, at the
-        // player's feet.
-        if new && let Some(p) = self.player.as_ref() {
-            let at = [p.position.x, p.position.y, p.position.z];
-            self.audio
-                .play("minecraft:event.mob_effect.bad_omen", Some(at), 1.0, 1.0);
-        }
+        self.add_player_effect(effect);
     }
 }
 

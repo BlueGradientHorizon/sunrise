@@ -184,6 +184,7 @@ impl Game<'_> {
             let mut air_answer = None;
             let mut retry_rider = None;
             let mut removing_vehicle = None;
+            let mut pending_effects: Vec<MobEvent> = Vec::new();
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
@@ -772,6 +773,25 @@ impl Game<'_> {
                         &mut events,
                         from,
                     );
+                    if events[from..].iter().any(|e| {
+                        matches!(
+                            e,
+                            MobEvent::DeathProtectionEffects { .. } | MobEvent::EffectMob { .. }
+                        )
+                    }) {
+                        let mut idx = from;
+                        while idx < events.len() {
+                            if matches!(
+                                events[idx],
+                                MobEvent::DeathProtectionEffects { .. }
+                                    | MobEvent::EffectMob { .. }
+                            ) {
+                                pending_effects.push(events.remove(idx));
+                            } else {
+                                idx += 1;
+                            }
+                        }
+                    }
                     cursor += 1;
                     if !kept
                         && !was_removed
@@ -781,7 +801,7 @@ impl Game<'_> {
                         removing_vehicle = Some(id);
                         break;
                     }
-                    if section_yield || tell_post.is_some() {
+                    if section_yield || tell_post.is_some() || !pending_effects.is_empty() {
                         break;
                     }
                 }
@@ -793,6 +813,7 @@ impl Game<'_> {
                 && !section_yield
                 && tell_pre.is_none()
                 && tell_post.is_none()
+                && pending_effects.is_empty()
             {
                 break;
             }
@@ -817,7 +838,8 @@ impl Game<'_> {
             let told_only = pause.is_none()
                 && retry_rider.is_none()
                 && removing_vehicle.is_none()
-                && !section_yield;
+                && !section_yield
+                && pending_effects.is_empty();
             let same_rows = told_only && !gone_rows;
             if !same_rows {
                 mobs.retain(|m| {
@@ -859,6 +881,34 @@ impl Game<'_> {
                         &mut sections.borrow_mut(),
                         &mut section_moves,
                     );
+                }
+                for event in pending_effects.drain(..) {
+                    match event {
+                        MobEvent::DeathProtectionEffects {
+                            mob,
+                            stack,
+                            effects,
+                        } => {
+                            self.apply_mob_death_protection_effects(mob, &stack, &effects);
+                        }
+                        MobEvent::EffectMob {
+                            target,
+                            effect,
+                            ticks,
+                            amplifier,
+                        } => {
+                            if let Some(def) = sunrise_client::brewing::effect(effect) {
+                                self.add_mob_effect(
+                                    target,
+                                    sunrise_client::effects::EffectInstance::from_def(
+                                        def, ticks, amplifier,
+                                    ),
+                                    None,
+                                );
+                            }
+                        }
+                        _ => {}
+                    }
                 }
                 if let Some(id) = retry_rider {
                     self.dismount_mob(id);

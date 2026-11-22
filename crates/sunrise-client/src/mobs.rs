@@ -1800,6 +1800,14 @@ pub enum MobEvent {
         mob: u32,
         stack: crate::items::ItemStack,
     },
+    /// `DeathProtection.applyEffects` for a mob saved by a `death_protection`
+    /// item: delivered on the owning `Game` so `MobEffectEvent.Remove`,
+    /// `Applicable`, `Added` and `MobEffectPart::on_effect_added` all fire.
+    DeathProtectionEffects {
+        mob: u32,
+        stack: crate::items::ItemStack,
+        effects: Vec<crate::items::ConsumeEffect>,
+    },
     /// Squid.handleEntityEvent(19), resetting the remote tentacle cycle.
     SquidCycle {
         mob: u32,
@@ -3190,22 +3198,36 @@ pub fn apply_brain_events(
                     .map(|(aim, pos, silent)| (Some(aim), Some(pos), silent))
                     .unwrap_or((None, None, true));
                 let mut hit_level = level.reborrow().attacked_by(&attack);
+                let mut poison_event = None;
                 if let Some(t) = mobs.iter_mut().find(|m| m.id == target)
                     && t.damage_aimed(&mut hit_level, amount, source, aim)
                 {
-                    t.add_effect("minecraft:poison", poison_ticks, 0);
+                    if hit_level.defers_death_protection_effects() {
+                        poison_event = Some(MobEvent::EffectMob {
+                            target,
+                            effect: "minecraft:poison",
+                            ticks: poison_ticks,
+                            amplifier: 0,
+                        });
+                    } else {
+                        t.add_effect("minecraft:poison", poison_ticks, 0);
+                    }
                     raised = std::mem::take(&mut t.outbox);
                     if !fish_silent && let Some(at) = fish_pos {
                         sound = Some(MobEvent::Sound("entity.puffer_fish.sting", at, 1.0, 1.0));
                     }
                 }
                 events.remove(i);
-                if let Some(s) = sound {
-                    events.insert(i, s);
-                    i += 1;
-                }
                 for e in raised {
                     events.insert(i, e);
+                    i += 1;
+                }
+                if let Some(e) = poison_event {
+                    events.insert(i, e);
+                    i += 1;
+                }
+                if let Some(s) = sound {
+                    events.insert(i, s);
                     i += 1;
                 }
             }
@@ -4766,6 +4788,11 @@ impl Mob {
         ) {
             return false;
         }
+        let protector = self
+            .extra
+            .slot_stack(slot)
+            .cloned()
+            .unwrap_or_else(|| crate::items::ItemStack::new(TOTEM, 1));
         let remaining = self.extra.slot_stack(slot).cloned().and_then(|mut s| {
             s.count -= 1;
             (s.count > 0).then_some(s)
@@ -4773,8 +4800,16 @@ impl Mob {
         self.extra.set_slot_stack(slot, remaining);
         self.extra.hand_protection = None;
         self.health = 1.0;
-        for effect in &effects {
-            self.apply_consume_effect(level, effect);
+        if level.defers_death_protection_effects() {
+            self.outbox.push(MobEvent::DeathProtectionEffects {
+                mob: self.id,
+                stack: protector,
+                effects,
+            });
+        } else {
+            for effect in &effects {
+                self.apply_consume_effect(level, effect);
+            }
         }
         let at = [self.position.x, self.position.y, self.position.z];
         self.outbox.push(MobEvent::EntityEvent {

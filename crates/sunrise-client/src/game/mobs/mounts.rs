@@ -967,6 +967,7 @@ impl Game<'_> {
                     modifier,
                     &mut events,
                 );
+                self.flush_mob_death_protection(rider);
                 let _ = self.handle_mob_events(events);
             }
         }
