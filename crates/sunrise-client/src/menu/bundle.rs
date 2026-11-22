@@ -4,14 +4,14 @@
 use super::container_items::{can_be_in_bundle, fits_inside_container_items};
 use super::{Env, ItemStack, LoopContext, Menu, SlotView, tidy};
 use crate::bundle::{Contents, INSERT, INSERT_FAIL, REMOVE_ONE, toggle_selected};
-use crate::items::Items;
+use crate::items::{ItemInfo, Items};
 
 /// Shared vanilla `Item.overrideStackedOnOther` (`BundleItem.overrideStackedOnOther`).
 ///
-/// Vanilla 26.3 dispatches by item type (`Item.overrideStackedOnOther` returns `false`; only
-/// `BundleItem` overrides it), so a non-bundle item carrying `minecraft:bundle_contents` does not
-/// trigger this override. Returns `true` when the carried item's vanilla override handled the
-/// click.
+/// Vanilla 26.3 dispatches by item class (`Item.overrideStackedOnOther` returns `false`; only
+/// `BundleItem` overrides it), so a non-bundle item carrying `minecraft:bundle_contents` — even as
+/// a default component — does not trigger this override. Returns `true` when the carried item's
+/// vanilla override handled the click.
 pub fn vanilla_carried_override(
     items: &Items,
     carried: &mut Option<ItemStack>,
@@ -22,7 +22,7 @@ pub fn vanilla_carried_override(
 ) -> bool {
     let Some(mut contents) = carried
         .as_ref()
-        .filter(|c| items.get(&c.item).is_some_and(|info| info.bundle))
+        .filter(|c| items.get(&c.item).is_some_and(ItemInfo::is_bundle_item))
         .and_then(|c| Contents::of(items, c))
     else {
         return false;
@@ -63,9 +63,10 @@ pub fn vanilla_carried_override(
 
 /// Shared vanilla `Item.overrideOtherStackedOnMe` (`BundleItem.overrideOtherStackedOnMe`).
 ///
-/// Vanilla 26.3 dispatches by item type (`info.bundle`). Returns `(handled, updated_slot_stack)`:
-/// when `updated_slot_stack` is `Some`, the caller writes it back to the clicked slot in place
-/// (an unmatched click still clears `toggleSelectedItem(-1)` while returning `handled = false`).
+/// Vanilla 26.3 dispatches by item class (`ItemInfo::is_bundle_item`). Returns
+/// `(handled, updated_slot_stack)`: when `updated_slot_stack` is `Some`, the caller writes it back
+/// to the clicked slot in place (an unmatched click still clears `toggleSelectedItem(-1)` while
+/// returning `handled = false`).
 pub fn vanilla_clicked_override(
     items: &Items,
     carried: &mut Option<ItemStack>,
@@ -77,7 +78,10 @@ pub fn vanilla_clicked_override(
     let Some(mut bundle) = slot.item() else {
         return (false, None);
     };
-    if !items.get(&bundle.item).is_some_and(|info| info.bundle) {
+    if !items
+        .get(&bundle.item)
+        .is_some_and(ItemInfo::is_bundle_item)
+    {
         return (false, None);
     }
     let Some(mut contents) = Contents::of(items, &bundle) else {

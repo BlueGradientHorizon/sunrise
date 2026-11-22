@@ -972,12 +972,25 @@ mod item_part_tests {
         static TRACE: RefCell<Vec<(&'static str, StackedOnOtherDirection)>> =
             const { RefCell::new(Vec::new()) };
         static OBSERVATIONS: RefCell<Vec<PartObservation>> = const { RefCell::new(Vec::new()) };
+        static SMELTED: RefCell<Vec<(Option<(String, u32)>, u32)>> =
+            const { RefCell::new(Vec::new()) };
+        static EXTRACTED: RefCell<Vec<(String, u32)>> = const { RefCell::new(Vec::new()) };
     }
 
     fn set_part_script(script: PartScript) {
         TRACE.with(|t| t.borrow_mut().clear());
         OBSERVATIONS.with(|o| o.borrow_mut().clear());
+        SMELTED.with(|s| s.borrow_mut().clear());
+        EXTRACTED.with(|e| e.borrow_mut().clear());
         PART_SCRIPT.with(|s| *s.borrow_mut() = script);
+    }
+
+    fn smelted_events() -> Vec<(Option<(String, u32)>, u32)> {
+        SMELTED.with(|s| s.borrow().clone())
+    }
+
+    fn extracted_events() -> Vec<(String, u32)> {
+        EXTRACTED.with(|e| e.borrow().clone())
     }
 
     fn trace() -> Vec<(&'static str, StackedOnOtherDirection)> {
@@ -1098,6 +1111,49 @@ mod item_part_tests {
             r.item_part(stick, TaggedPart("stick"));
             r.item_part(flint, TaggedPart("flint"));
         }
+    }
+
+    struct PartWithFurnaceHooksMod;
+    #[mod_api::__subscriptions]
+    impl Hooks for PartWithFurnaceHooksMod {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let stick = r.item_key("minecraft:stick");
+            let flint = r.item_key("minecraft:flint");
+            r.item_part(stick, TaggedPart("stick"));
+            r.item_part(flint, TaggedPart("flint"));
+        }
+        fn item_smelted(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::ItemSmeltedEvent<'_>,
+        ) {
+            let stack = event.stack.map(|s| {
+                (
+                    mod_api::__private::item_key_id(s.item())
+                        .unwrap_or_default()
+                        .to_owned(),
+                    s.count(),
+                )
+            });
+            SMELTED.with(|s| s.borrow_mut().push((stack, event.amount_removed)));
+        }
+        fn furnace_extract(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::FurnaceExtractEvent<'_>,
+        ) {
+            EXTRACTED.with(|e| e.borrow_mut().push((event.item.to_owned(), event.count)));
+        }
+    }
+
+    fn with_part_and_furnace_hooks_mod(test: impl FnOnce()) {
+        let mods: Mods = vec![ModEntry::new(
+            "part_furnace",
+            Box::new(PartWithFurnaceHooksMod),
+        )]
+        .into();
+        crate::game::api_values::install_parts(&mods).unwrap();
+        mod_platform::testing::with_mods(mods, test);
     }
 
     struct GlobalAndPartMod(bool);
@@ -2041,7 +2097,34 @@ mod item_part_tests {
                     Some(("minecraft:flint", 4))
                 );
 
-                // Full take from Furnace output slot via ItemPart succeeds too.
+                // Full take and partial take from Furnace output slot via ItemPart both run
+                // output take effects: XP orbs are spawned from `recipes_used` and `recipes_used`
+                // is cleared.
+                let recipe = "minecraft:iron_ingot_from_smelting_raw_iron";
+                assert!(
+                    game.res.recipes().cooking_experience(recipe) > 0.0,
+                    "expected positive smelting experience for {recipe}"
+                );
+                let seed_furnace = |game: &mut crate::game::Game<'_>, pos: (i32, i32, i32)| {
+                    let mut recipes_used = std::collections::HashMap::new();
+                    recipes_used.insert(recipe.to_owned(), 10);
+                    game.world.block_entities.insert(
+                        pos,
+                        BlockEntity::Furnace(Furnace {
+                            kind: FurnaceKind::Furnace,
+                            items: [None, None, Some(ItemStack::new("minecraft:iron_ingot", 4))],
+                            lit_remaining: 0,
+                            lit_total: 0,
+                            cooking_timer: 0,
+                            cooking_total: 0,
+                            speed: 1.0,
+                            recipes_used,
+                        }),
+                    );
+                };
+                seed_furnace(game, pos);
+                game.orbs.clear();
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
@@ -2055,7 +2138,217 @@ mod item_part_tests {
                     Some(("minecraft:stick", 5))
                 );
                 assert!(game.world.block_entities.get(&pos).unwrap().slots()[2].is_none());
+                assert_eq!(
+                    game.orbs.iter().map(|o| o.points()).sum::<u32>(),
+                    7,
+                    "local furnace full take must pop smelting XP orbs (10 * 0.7 = 7)"
+                );
+                let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
+                    panic!("expected furnace");
+                };
+                assert!(f.recipes_used.is_empty());
+
+                // Local partial take (4 -> 2) runs `remove` + `on_take` and pops XP too.
+                seed_furnace(game, pos);
+                game.orbs.clear();
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:stick", 3))),
+                    set_clicked: Some(Some(("minecraft:iron_ingot", 2))),
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[2]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:iron_ingot", 2))
+                );
+                assert_eq!(
+                    game.orbs.iter().map(|o| o.points()).sum::<u32>(),
+                    7,
+                    "local furnace partial take must pop smelting XP orbs"
+                );
+                let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
+                    panic!("expected furnace");
+                };
+                assert!(f.recipes_used.is_empty());
                 game.container = None;
+            });
+        });
+
+        // 3b. LAN guest ItemPart taking from a Furnace output slot runs the exact same shared
+        //     outcome/take path as local menus: XP orbs spawn at the guest, `recipes_used` clears,
+        //     `item_smelted` and `furnace_extract` fire on commit, and outer abort rolls all back.
+        with_part_and_furnace_hooks_mod(|| {
+            use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+            with_guests(|game| {
+                PLAYER.set(12);
+                let pos = (1, 64, 1);
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                );
+                let furnace_state = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:furnace")
+                    .unwrap();
+                game.world.set(pos.0, pos.1, pos.2, furnace_state).unwrap();
+                let recipe = "minecraft:iron_ingot_from_smelting_raw_iron";
+                let seed_furnace = |game: &mut crate::game::Game<'_>| {
+                    let mut recipes_used = std::collections::HashMap::new();
+                    recipes_used.insert(recipe.to_owned(), 10);
+                    game.world.block_entities.insert(
+                        pos,
+                        BlockEntity::Furnace(Furnace {
+                            kind: FurnaceKind::Furnace,
+                            items: [None, None, Some(ItemStack::new("minecraft:iron_ingot", 4))],
+                            lit_remaining: 0,
+                            lit_total: 0,
+                            cooking_timer: 0,
+                            cooking_total: 0,
+                            speed: 1.0,
+                            recipes_used,
+                        }),
+                    );
+                };
+                seed_furnace(game);
+                assert!(matches!(
+                    game.open_block_menu(12, pos),
+                    crate::game::lan_actions::MenuOpen::Opened
+                ));
+                let window = game.lan.as_ref().unwrap().hub.guests[0]
+                    .menu
+                    .as_ref()
+                    .unwrap()
+                    .window;
+                let click_output = Serverbound::ContainerClick(ContainerClick {
+                    container: window,
+                    state: 0,
+                    slot: 2,
+                    button: 0,
+                    input: 0,
+                    changed: Vec::new(),
+                    carried: None,
+                });
+
+                // LAN guest full take (4 -> None).
+                game.orbs.clear();
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                });
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:stick", 5))),
+                    set_clicked: Some(None),
+                    ..PartScript::default()
+                });
+                game.lan_guest_packet(12, click_output.clone());
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                assert!(game.world.block_entities.get(&pos).unwrap().slots()[2].is_none());
+                assert_eq!(
+                    game.lan.as_ref().unwrap().hub.guests[0]
+                        .carried
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:stick", 5))
+                );
+                assert_eq!(
+                    game.orbs.iter().map(|o| o.points()).sum::<u32>(),
+                    7,
+                    "LAN guest furnace full take must spawn smelting XP orbs"
+                );
+                let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
+                    panic!("expected furnace");
+                };
+                assert!(f.recipes_used.is_empty());
+                assert_eq!(
+                    smelted_events(),
+                    [(Some(("minecraft:iron_ingot".to_owned(), 4)), 4)],
+                    "LAN guest full take must run FurnaceResultSlot.onTake -> item_smelted"
+                );
+                assert_eq!(
+                    extracted_events(),
+                    [("minecraft:iron_ingot".to_owned(), 4)],
+                    "LAN guest full take must fire furnace_extract"
+                );
+
+                // LAN guest partial take (4 -> 2).
+                seed_furnace(game);
+                game.orbs.clear();
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                });
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:stick", 3))),
+                    set_clicked: Some(Some(("minecraft:iron_ingot", 2))),
+                    ..PartScript::default()
+                });
+                game.lan_guest_packet(12, click_output.clone());
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[2]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:iron_ingot", 2))
+                );
+                assert_eq!(
+                    game.orbs.iter().map(|o| o.points()).sum::<u32>(),
+                    7,
+                    "LAN guest furnace partial take must spawn smelting XP orbs"
+                );
+                let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
+                    panic!("expected furnace");
+                };
+                assert!(f.recipes_used.is_empty());
+                assert_eq!(
+                    smelted_events(),
+                    [(Some(("minecraft:iron_ingot".to_owned(), 2)), 2)],
+                    "LAN guest partial take must run remove + on_take -> item_smelted"
+                );
+                assert_eq!(extracted_events(), [("minecraft:iron_ingot".to_owned(), 2)]);
+
+                // Outer transaction abort on LAN guest furnace take restores furnace output and
+                // recipes_used without popping XP orbs or firing post-commit furnace hooks.
+                seed_furnace(game);
+                game.orbs.clear();
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                });
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:stick", 5))),
+                    set_clicked: Some(None),
+                    ..PartScript::default()
+                });
+                let seal = game.transaction_open();
+                game.lan_guest_packet(12, click_output);
+                assert!(game.world.block_entities.get(&pos).unwrap().slots()[2].is_none());
+                assert!(game.orbs.is_empty(), "XP orb award waits for root commit");
+                game.transaction_close(&seal, false);
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[2]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:iron_ingot", 4))
+                );
+                let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
+                    panic!("expected furnace");
+                };
+                assert_eq!(f.recipes_used.get(recipe), Some(&10));
+                assert!(game.orbs.is_empty());
+                assert!(smelted_events().is_empty());
+                assert!(extracted_events().is_empty());
             });
         });
 
@@ -2120,9 +2413,35 @@ mod item_part_tests {
             );
             bundle
         };
+        let install_default_bundle_contents_non_bundle_items =
+            |game: &mut crate::game::Game<'_>| {
+                let mut items = game.items().clone();
+                // Simulate mod/custom non-BundleItem items whose default component prototype
+                // includes `minecraft:bundle_contents` (`info.bundle == true`) without a
+                // `BundleItem` class or template.
+                for id in ["minecraft:stick", "minecraft:flint", "minecraft:paper"] {
+                    let info = items.items.get_mut(id).unwrap();
+                    info.bundle = true;
+                    info.template = None;
+                    assert!(!info.is_bundle_item());
+                }
+                let mut pouch = items.items["minecraft:stick"].clone();
+                pouch.id = "test:pouch".into();
+                pouch.bundle = true;
+                pouch.template = None;
+                assert!(!pouch.is_bundle_item());
+                items.items.insert("test:pouch".into(), pouch);
+                game.server_items = Some(std::sync::Arc::new(items));
+            };
+        let stack_with_bundle_contents = |id: &str| {
+            let mut stack = ItemStack::new(id, 1);
+            stack.data_mut().bundle_contents = vec![ItemStack::new("minecraft:stone", 1)];
+            stack
+        };
         with_part_only_mod(|| {
-            // 1. Local menu: non-bundle item carrying `bundle_contents` on the cursor does NOT
-            //    suppress the clicked item's `OtherStackedOnMe` Part on a primary click.
+            // 1. Local menu: non-bundle items carrying `bundle_contents` (either per-stack OR as
+            //    a default component with `info.bundle == true`) NEVER run vanilla `BundleItem`
+            //    overrides; they run their own `ItemPart` and plain pickup.
             with_local(|game| {
                 set_part_script(PartScript {
                     cancel_clicked: true,
@@ -2162,6 +2481,122 @@ mod item_part_tests {
                     game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:emerald", 1))
                 );
+
+                // Now mark stick, flint, and `test:pouch` with `info.bundle == true` (default
+                // `minecraft:bundle_contents`) and no `BundleItem` class.
+                install_default_bundle_contents_non_bundle_items(game);
+
+                // Carried non-bundle item with default `bundle_contents`: declining CarriedOnOther
+                // MUST NOT trigger vanilla `BundleItem` insert; clicked ItemPart runs, and when
+                // both decline plain pickup swaps the stacks instead of swallowing flint.
+                set_part_script(PartScript::default());
+                game.carried = Some(stack_with_bundle_contents("minecraft:stick"));
+                game.inventory[9] = Some(stack_with_bundle_contents("minecraft:flint"));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(
+                    trace(),
+                    [
+                        ("stick", StackedOnOtherDirection::CarriedOnOther),
+                        ("flint", StackedOnOtherDirection::OtherStackedOnMe),
+                    ],
+                    "non-BundleItem with default bundle_contents must run both ItemParts"
+                );
+                assert_eq!(
+                    game.carried.as_ref().map(|s| &*s.item),
+                    Some("minecraft:flint"),
+                    "declining non-BundleItem with default bundle_contents must fall through to plain pickup swap"
+                );
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| &*s.item),
+                    Some("minecraft:stick")
+                );
+
+                // Clicked non-bundle item with default `bundle_contents`: primary click with stone
+                // and secondary click with empty cursor must NOT trigger vanilla
+                // `BundleItem.overrideOtherStackedOnMe`; its own OtherStackedOnMe and plain pickup
+                // run instead.
+                set_part_script(PartScript::default());
+                game.carried = Some(ItemStack::new("minecraft:stone", 1));
+                game.inventory[9] = Some(stack_with_bundle_contents("minecraft:flint"));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(
+                    trace(),
+                    [("flint", StackedOnOtherDirection::OtherStackedOnMe)]
+                );
+                assert_eq!(
+                    game.carried.as_ref().map(|s| &*s.item),
+                    Some("minecraft:flint")
+                );
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| &*s.item),
+                    Some("minecraft:stone")
+                );
+
+                // A non-BundleItem with `info.bundle == true` and no `ItemPart` of its own
+                // (`paper`) does NOT suppress clicked `flint`'s `OtherStackedOnMe` Part.
+                set_part_script(PartScript {
+                    cancel_clicked: true,
+                    handled: true,
+                    set_clicked: Some(Some(("minecraft:diamond", 1))),
+                    ..PartScript::default()
+                });
+                game.carried = Some(stack_with_bundle_contents("minecraft:paper"));
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(
+                    trace(),
+                    [("flint", StackedOnOtherDirection::OtherStackedOnMe)],
+                    "non-BundleItem with default bundle_contents must not suppress clicked ItemPart"
+                );
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 1))
+                );
+
+                // Synthetic mod item `test:pouch` with `info.bundle == true`: neither carried
+                // nor clicked triggers vanilla bundle insert/extract; plain pickup runs instead.
+                set_part_script(PartScript::default());
+                game.carried = Some(stack_with_bundle_contents("test:pouch"));
+                game.inventory[9] = Some(ItemStack::new("minecraft:stone", 1));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| &*s.item),
+                    Some("test:pouch")
+                );
+                assert_eq!(
+                    game.carried.as_ref().map(|s| &*s.item),
+                    Some("minecraft:stone")
+                );
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(game.carried.as_ref().map(|s| &*s.item), Some("test:pouch"));
+                assert_eq!(
+                    game.inventory[9].as_ref().map(|s| &*s.item),
+                    Some("minecraft:stone")
+                );
+                // Secondary click with empty cursor picks up `test:pouch` instead of popping
+                // from `bundle_contents`.
+                game.inventory[9] = Some(stack_with_bundle_contents("test:pouch"));
+                game.carried = None;
+                assert!(game.menu_ops(&[(Some(9), 1, Input::Pickup)]));
+                assert_eq!(game.carried.as_ref().map(|s| &*s.item), Some("test:pouch"));
+                assert!(game.inventory[9].is_none());
+
+                // Dyed vanilla `BundleItem` (`minecraft:red_bundle`) STILL wins before clicked
+                // `OtherStackedOnMe`.
+                set_part_script(PartScript {
+                    cancel_clicked: true,
+                    handled: true,
+                    set_clicked: Some(Some(("minecraft:diamond", 1))),
+                    ..PartScript::default()
+                });
+                game.carried = Some(ItemStack::new("minecraft:red_bundle", 1));
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(
+                    trace().is_empty(),
+                    "dyed vanilla BundleItem must still win before clicked ItemPart"
+                );
+                assert!(game.inventory[9].is_none());
             });
 
             // 2. LAN hub container: same shared carried override behavior.
@@ -2229,11 +2664,44 @@ mod item_part_tests {
                     Some(("minecraft:diamond", 2))
                 );
 
-                // Real `minecraft:bundle` DOES suppress clicked Part on LAN hub primary click.
+                // Non-BundleItem with default `bundle_contents` (`info.bundle == true`) on LAN
+                // hub also runs its own ItemParts and plain pickup, NOT vanilla bundle override.
+                install_default_bundle_contents_non_bundle_items(game);
+                game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] =
+                    Some(stack_with_bundle_contents("minecraft:flint"));
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(stack_with_bundle_contents("minecraft:stick"));
+                });
+                set_part_script(PartScript::default());
+                game.lan_guest_packet(12, click_pkt.clone());
+                assert_eq!(
+                    trace(),
+                    [
+                        ("stick", StackedOnOtherDirection::CarriedOnOther),
+                        ("flint", StackedOnOtherDirection::OtherStackedOnMe),
+                    ],
+                    "LAN hub must gate vanilla bundle override on BundleItem class, not info.bundle"
+                );
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[0]
+                        .as_ref()
+                        .map(|s| &*s.item),
+                    Some("minecraft:stick")
+                );
+                assert_eq!(
+                    game.lan.as_ref().unwrap().hub.guests[0]
+                        .carried
+                        .as_ref()
+                        .map(|s| &*s.item),
+                    Some("minecraft:flint")
+                );
+
+                // Real dyed `BundleItem` (`minecraft:red_bundle`) DOES suppress clicked Part on
+                // LAN hub primary click.
                 game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] =
                     Some(ItemStack::new("minecraft:flint", 1));
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.carried = Some(ItemStack::new("minecraft:bundle", 1));
+                    guest.carried = Some(ItemStack::new("minecraft:red_bundle", 1));
                 });
                 set_part_script(PartScript {
                     cancel_clicked: true,
@@ -2244,7 +2712,7 @@ mod item_part_tests {
                 game.lan_guest_packet(12, click_pkt);
                 assert!(
                     trace().is_empty(),
-                    "real carried bundle must win before clicked ItemPart on LAN hub"
+                    "real carried BundleItem must win before clicked ItemPart on LAN hub"
                 );
                 assert!(game.world.block_entities.get(&pos).unwrap().slots()[0].is_none());
             });

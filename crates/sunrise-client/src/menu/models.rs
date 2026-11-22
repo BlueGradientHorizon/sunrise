@@ -92,6 +92,42 @@ impl StackedOutcome {
         }
     }
 }
+
+/// Slot category for [`super::apply_stacked_outcome`], shared by local/client [`super::Menu`] and
+/// hosted LAN [`crate::lan::menu::View`] pickups.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StackedSlotKind {
+    /// Ordinary inventory, container, or equipment slot.
+    Ordinary,
+    /// Non-interactive result slot (for example `CrafterMenu`'s display result).
+    Inert,
+    /// Furnace output slot (`Role::Output`): full take runs `safe_take`, partial same-item take
+    /// runs `remove` + `on_take`, and occupied direct edits use the item's max stack size.
+    Output,
+    /// Brewing stand potion slot (`Role::Potion`): global policy refuses edits when held; part
+    /// policy runs `safe_take` / partial take and caps occupied direct edits at 1.
+    Potion,
+    /// Crafting, station, merchant, or mod result slot: global policy refuses edits; part policy
+    /// runs `safe_take` on full take and allows occupied direct edits up to the item's max stack.
+    Result,
+}
+
+/// Slot operations required by [`super::apply_stacked_outcome`] so local/client [`super::Menu`]
+/// and hosted LAN [`crate::lan::menu::View`] share one outcome-application implementation.
+pub trait StackedSlotTarget {
+    fn slot_kind(&self) -> StackedSlotKind;
+    fn current_clicked(&self) -> Option<ItemStack>;
+    fn may_pickup(&self) -> bool;
+    fn may_place(&self, stack: &ItemStack) -> bool;
+    fn slot_max(&self, stack: &ItemStack) -> u32;
+    fn item_max_stack(&self, stack: &ItemStack) -> u32;
+    fn set_carried(&mut self, carried: Option<ItemStack>);
+    fn set_clicked(&mut self, clicked: Option<ItemStack>);
+    /// Full take from a slot (`Slot.safeTake`, including `onTake` side effects).
+    fn safe_take(&mut self, amount: u32, max_amount: u32) -> Option<ItemStack>;
+    /// Partial take from an output/potion slot (`Slot.remove` followed by `Slot.onTake`).
+    fn take_partial(&mut self, amount: u32) -> Option<ItemStack>;
+}
 /// Who and where a `menu_slot_rules` ask is about: the player whose menu it is, the menu's
 /// block, the container the asked slot indexes, and the menu's own containers' slots as they
 /// stand when the click plans (read only, borrowed; the player's inventory slots are not in

@@ -24,7 +24,7 @@ mod models;
 pub use models::{
     AnvilCraft, AnvilUpdate, AnvilVanilla, GrindstonePlace, GrindstoneTake, PlanningRules,
     RuleAnswers, SlotContext, SlotRules, SlotView, StackedClick, StackedEditPolicy, StackedOutcome,
-    StackedResume, StoredRules,
+    StackedResume, StackedSlotKind, StackedSlotTarget, StoredRules,
 };
 mod slot_context;
 pub use slot_context::{SlotSnapshot, apply_menu_slot_rules, lan_container};
@@ -35,7 +35,7 @@ pub use bundle::{vanilla_carried_override, vanilla_clicked_override};
 pub mod container_items;
 pub use container_items::fits_inside_container_items;
 mod click;
-pub use click::{ClickContinuation, SlotTake};
+pub use click::{ClickContinuation, SlotTake, apply_stacked_outcome};
 mod storage;
 pub use storage::{MutationStamp, Snapshot};
 mod asked;
