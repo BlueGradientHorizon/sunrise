@@ -20,18 +20,20 @@ impl Game<'_> {
         let visual = sunrise_client::bidi::visual_characters(&resolved, |a, b| {
             local.visual_styles_match(a, b)
         });
-        let mut style = mod_api::text::TextStyle::default();
+        // Text drains deep click, hover and metadata payloads iteratively on replacement,
+        // early stop and unwind. A bare scratch TextStyle would drop nested tags recursively.
+        let mut component = Text::literal("");
         let mut previous = None;
         for (scalar, effective, source_index) in visual {
             // Equal effective styles may still carry distinct opaque metadata. Reuse only
             // repeats of the exact same engine style.
             if !previous.is_some_and(|old| std::ptr::eq(old, effective)) {
-                style = local.style_to_api(effective);
+                component = Text::literal("").with_style(local.style_to_api(effective));
                 previous = Some(effective);
             }
             if !visit(VisualTextCharacterRef {
                 scalar: scalar as u32,
-                style: &style,
+                style: &component.style,
                 source_index,
             }) {
                 return false;

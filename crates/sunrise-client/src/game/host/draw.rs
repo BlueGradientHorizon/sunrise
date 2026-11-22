@@ -965,38 +965,46 @@ mod tests {
             scale,
         };
         let at = [10.0, 20.0];
+        let text = Text::literal("§cmmmm §aאבג §bmmmm");
         let mut expected = crate::hud::HudBatch::scratch([320, 240]);
-        for y in [0.0, 9.0, 18.0] {
-            expected.text(&atlas, "mmmm", 0.0, y, u32::MAX, true);
+        // Known line breaks and carried colours. The normal painter shapes the Hebrew line
+        // without exercising the wrapped canvas path or its style conversions.
+        for (line, y) in [("§cmmmm", 0.0), ("§aאבג", 9.0), ("§bmmmm", 18.0)] {
+            expected.text(&atlas, line, 0.0, y, u32::MAX, false);
         }
+        for v in &mut expected.vertices {
+            v.pos = [14.0 + v.pos[0] * scale, 26.0 + v.pos[1] * scale];
+        }
+        let original_vertices = expected.vertices.len();
+        expected.clip_since(0, 9.0, 16.0, 43.0, 69.0);
+        assert!(expected.vertices.len() < original_vertices);
+        for colour in [0xFF55_55FF, 0xFF55_FF55, 0xFFFF_FF55] {
+            assert!(expected.vertices.iter().any(|v| v.color == colour));
+        }
+
         let mut actual = crate::hud::HudBatch::scratch([320, 240]);
-        gui_canvas::GameGuiCanvas::draw(&mut actual, &atlas, None, &mut |canvas| {
-            let size = canvas.text_with_word_wrap(
-                &Text::literal("mmmm mmmm mmmm"),
-                at,
-                spec,
-                u32::MAX,
-                true,
-            )?;
-            assert_eq!(
-                size,
-                TextLayoutSize {
-                    width: width * 2.0,
-                    height: 54.0
-                }
-            );
-            Ok(())
+        gui_canvas::GameGuiCanvas::draw(&mut actual, &atlas, None, None, &mut |canvas| {
+            canvas.scope(
+                &[mod_api::client::hud_layout::PoseOp::Translate(4.0, 6.0)],
+                Some([5.0, 10.0, 34.0, 53.0]),
+                &mut |scoped| {
+                    let size = scoped.text_with_word_wrap(&text, at, spec, u32::MAX, false)?;
+                    assert_eq!(
+                        size,
+                        TextLayoutSize {
+                            width: width * scale,
+                            height: 54.0
+                        }
+                    );
+                    Ok(())
+                },
+            )
         })
         .unwrap();
-        assert!(!expected.vertices.is_empty());
-        assert_eq!(actual.vertices.len(), expected.vertices.len());
-        for (actual, expected) in actual.vertices.iter().zip(&expected.vertices) {
-            assert_eq!(
-                actual.pos,
-                [at[0] + expected.pos[0] * 2.0, at[1] + expected.pos[1] * 2.0]
-            );
-            assert_eq!((actual.uv, actual.color), (expected.uv, expected.color));
-        }
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&actual.vertices),
+            bytemuck::cast_slice::<_, u8>(&expected.vertices),
+        );
     }
 
     #[test]

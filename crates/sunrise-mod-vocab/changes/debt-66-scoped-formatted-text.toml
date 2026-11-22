@@ -1,4 +1,6 @@
 ids = [
+    "handle:TextLine::new",
+    "handle:TextLines::new",
     "method:DrawContext::text_lines",
     "method:prelude::ClientTextClientHost::text_visual_order",
     "method:prelude::ClientTextClientHost::visit_text_visual_order",
@@ -6,20 +8,20 @@ ids = [
     "method:GuiCanvas::text_with_word_wrap",
     "type:TextAlign",
     "type:TextLine",
+    "type:TextLine.text",
     "type:TextLines",
     "type:TextLinesRefusal",
     "type:TextLayoutSpec",
     "type:TextLayoutSize",
     "type:TextLayoutError",
-    "type:GuiDrawError",
     "type:GuiDrawError.TextLayout",
-    "type:VisualTextCharacter",
-    "type:VisualTextCharacterRef",
-    "method:VisualTextCharacterRef::to_owned",
+    "type:visual_text::VisualTextCharacter",
+    "type:visual_text::VisualTextCharacterRef",
+    "handle:visual_text::VisualTextCharacterRef::to_owned",
 ]
 why = "Native mods can visit formatted text or paint a wrapped component in scope, as in vanilla’s FormattedCharSequence.accept and GuiGraphicsExtractor.textWithWordWrap. Drawing uses the same wrapping and visual order as measurement without building API-owned lines to replay. In-process output no longer has a line or character budget."
 migrate = '''
-To paint, replace `draw.text_lines` and the loop drawing its lines with `canvas.text_with_word_wrap(&text, at, TextLayoutSpec { max_width, align, scale }, argb, shadow)?` inside `draw.draw_gui`. Position and dimensions are already in scaled local GUI pixels: do not divide the returned positions by scale or apply a second scale pose. Use the returned `TextLayoutSize` for the label's width and height. The canvas reports invalid width or scale as `GuiDrawError::TextLayout`; geometry and component representation refusals still use the canvas's existing errors.
+To paint, replace `draw.text_lines` and the loop drawing its lines with `canvas.text_with_word_wrap(&text, at, TextLayoutSpec { max_width, align, scale }, argb, shadow)?` inside `draw.draw_gui`. `at` is the label origin in local GUI pixels. Do not apply a second scale pose: the returned `TextLayoutSize` gives the label's width and height after the requested scale and before the surrounding pose. The canvas reports invalid width or scale as `GuiDrawError::TextLayout`; geometry and component representation refusals still use the canvas's existing errors.
 
 For reads outside drawing, use `host.visit_text_lines(&text, spec, &mut |line| { ... })`. Read its logical-order, legacy-resolved text, scaled offset, and width in the visitor. Clone `line.text` explicitly if retaining it. Handle `TextLayoutError` for invalid width or scale; remove matches on the old output count refusals.
 

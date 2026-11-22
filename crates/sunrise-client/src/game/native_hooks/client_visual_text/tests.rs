@@ -168,6 +168,28 @@ fn check_visual_reads(host: &dyn ClientHost) {
     );
     assert_eq!(early, [('A', 0), ('😀', 1), ('B', 3)]);
 
+    // Neither early stop nor advancing to the next style may recursively free opaque tags.
+    let mut nested = mod_api::Tag::Int(7);
+    for _ in 0..32_768 {
+        nested = mod_api::Tag::List(vec![nested]);
+    }
+    let mut payload = Text::literal("X");
+    payload.style.metadata = mod_api::Tag::compound([("deep", nested)]);
+    let payload = Text::literal("").append(payload).append(Text::literal("Y"));
+    let mut count = 0;
+    assert!(!host.visit_text_visual_order(&payload, &mut |v| {
+        count += 1;
+        assert_eq!(v.scalar, 'X' as u32);
+        assert!(v.style.metadata.get("deep").is_some());
+        false
+    }));
+    assert_eq!(count, 1);
+    assert!(host.visit_text_visual_order(&payload, &mut |_| {
+        count += 1;
+        true
+    }));
+    assert_eq!(count, 3);
+
     let spec = TextLayoutSpec {
         max_width: 100.0,
         align: TextAlign::Left,
