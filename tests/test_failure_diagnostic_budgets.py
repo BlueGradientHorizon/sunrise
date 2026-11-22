@@ -107,6 +107,20 @@ class Budgets(unittest.TestCase):
         for withheld in ('PRIVATE', '/hidden/path.rs', 'mismatched types', 'E0599', 'E0307'):
             self.assertNotIn(withheld, log)
 
+    def test_a_panic_that_is_rustc_output_shows_its_codes_not_its_text(self):
+        with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
+                patch.object(ci, 'source_lines', return_value=['assert!(output.status.success(), "{}", stderr);']):
+            log = self.render(
+                "thread 'generated' panicked at crates/example.rs:1:1:\n"
+                "error[E0425]: cannot find function `PRIVATE` in module `super::runtime`\n"
+                "  --> /hidden/path.rs:2:1\nerror[E0609]: no field `SECRET`\nerror[E0425]: duplicate\n"
+                "test generated ... FAILED\n"
+            )
+        self.assertIn('panic reason: rustc could not compile a test program; payload withheld', log)
+        self.assertIn('compiler: rustc E0425, E0609 (diagnostic text withheld)', log)
+        for withheld in ('PRIVATE', 'SECRET', '/hidden/path.rs', 'cannot find function'):
+            self.assertNotIn(withheld, log)
+
     def test_payloads_cannot_become_locations_or_numeric_operands(self):
         path = 'crates/sunrise-client/src/title/tests.rs'
         for payload in (f'{path}:109:5',
