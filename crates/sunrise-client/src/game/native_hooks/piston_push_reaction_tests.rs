@@ -259,8 +259,6 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
                 ExecutionRole::IntegratedServer
             },
             |game| {
-                use mod_api::__private::{ModPhase, PhaseOwner};
-                let _world = PhaseOwner::scope(ModPhase::World);
                 let host = &*game as &dyn Host;
                 let registry = game.pack.assets.registry;
                 let a = state(registry, "test:lock", &[("locked", "false")]);
@@ -300,13 +298,9 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
                     ] {
                         assert_eq!(facts.piston_push_reaction(state), Ok(Some(expected)));
                     }
-                    let invalid = BlockStateRecord::new(a_api.block(), u16::MAX).into();
+                    let invalid =
+                        mod_api::__private::block_state_from_ordinal(a_api.block(), u16::MAX);
                     assert_eq!(facts.piston_push_reaction(invalid), Ok(None));
-                    let _config = PhaseOwner::scope(ModPhase::Config);
-                    assert_eq!(
-                        facts.piston_push_reaction(a_api),
-                        Err(LevelReadError::Unavailable)
-                    );
                 }
                 exercise(
                     game.res.behaviours(),

@@ -106,7 +106,7 @@ same facts is `StateFacts` in `crates/sunrise-items/src/blocks.rs`.
 | `isEmpty(state)` | Missing | — | Air/replaceable facts exist (`block_states().replaceable`), but no `isEmpty` answer for a state. |
 | `getBubbleColumnDirection(state)` | Missing | — | Bubble-column rules are engine-owned. |
 | `shouldHideAdjacentFluidFace(state, direction, fluid)` | Partial | `BlockPart::should_hide_adjacent_fluid_face` (`hooks/should_hide_adjacent_fluid_face.rs`) | Client side, resolved per (state, fluid) on the client thread at join and on `refresh_render_visibility`, and read by the fluid mesher from a table, with one bit per direction. The fluid is asked as its source at amount 8 or its flowing form at amount 7, not the cell's own amount. `hidden` starts false and vanilla's same-fluid and occlusion tests apply first. |
-| `getBounceRestitution(level, pos, state, entity)` | Covered | `BlockPart::bounce_restitution` (`hooks/bounce_restitution.rs`) | Asked for the player and the mobs on both sides, with the entity's level as a read-only `LevelSide` host, the entity, its type and the block's position. The answer must be pure because replayed ticks ask again: the same host and event inputs must give the same factor. Dropped items keep their own slime rule. `BlockPart::bounce_on` still edits the movement after the bounce. |
+| `getBounceRestitution(level, pos, state, entity)` | Covered | `BlockPart::bounce_restitution` (`hooks/bounce_restitution.rs`, version 2) | Pure query in the simulating entity’s level, with the exact legacy effect state and position. Nonliving bodies scale the block coefficient in float precision. |
 | `getRelocability(level, pos, state)` | Missing | — | No relocation query (pistons, structure blocks). |
 | `canBeConnectedTo(state, direction, neighborBlock)` | Covered | `BlockPart::can_be_connected_to` (`hooks/can_be_connected_to.rs`) | The block being connected to answers, with its position, the connector's state, its rule (`ConnectionKind`), the direction toward it and its face's sturdiness, after the connector's vanilla rule (fences, walls, bars and panes ask). The connector's own `BlockPart::connects_to` (`hooks/connects_to.rs`) is asked after and has the last word; that order is Sunrise's. |
 | `getModelData(state, level, pos)` | Missing | — | No `ModelData`; block-entity drawing takes a `block_entity_submit` part with its own model path. |
@@ -135,7 +135,7 @@ which is the same place NeoForge's item components live. Reads are on `host` (`h
 
 | Method | Verdict | Sunrise | Notes |
 | --- | --- | --- | --- |
-| `MutableDataComponentHolder`: `set`, `remove`, `update`, `applyComponents`, `copyFrom` | Covered | `ItemStack::set`, `remove`, `get`, `apply_components`, `copy_component_from`; `ItemPlace::edit` | `update` is `get` then `set`. Patch merges retain unrelated overrides and normalize damage atomically; copying preserves the source's own value/removal or clears the target override when the source inherits. Server-side `edit` writes the whole slot without changing its item/count or splitting one off, and a transaction abort restores it. [#3339](https://github.com/arismoko/horizon/issues/3339). |
+| `MutableDataComponentHolder`: `set`, `remove`, `update`, `applyComponents`, `copyFrom` | Covered | `ItemStack` for owned values; `ItemPlace::edit` lends `ItemComponentEditor` for held stacks | `update` is `get` then `set`; the editor reads pending overrides. Patch merges retain unrelated overrides and normalize damage atomically; copying preserves the source's own value/removal or clears the target override when the source inherits. On the server, edits to player slots, hands and equipment are validated together and applied in place without changing item/count or replaying equip effects. The usual sync sends a committed change, and a transaction abort restores the slot. [#3339](https://github.com/arismoko/horizon/issues/3339). |
 | `getDefaultAttributeModifiers(stack)` | Partial | `item_attribute_modifier` (`hooks/item_attribute_modifier.rs`) | Global `ItemAttributeModifierEvent` edits the stack's modifiers; the stack filters it, but it is not a Part method. |
 | `onDroppedByPlayer(stack, player)` | Covered | `ItemPart::on_dropped_by_player` (`hooks/on_dropped_by_player.rs`) | Runs on the server where `ServerPlayer.drop(boolean)` starts, for the drop key, with the whole selected stack and whether all of it goes; a cancel keeps the stack in the slot (no item entity, no statistic, no `item_toss`) and sends a server's player the slot back. A menu's throw is not asked, as in NeoForge; the global `item_toss` still hears every toss the part allows. |
 | `getHighlightTip(stack, name)` | Covered | `ItemPart::highlight_tip` (`hooks/highlight_tip.rs`) | The selected stack's name above the hotbar, starting from vanilla's styled hover name; asked once each client tick while the name shows. A tip that changes every tick doesn't restart the display timer. |
@@ -152,7 +152,7 @@ which is the same place NeoForge's item components live. Reads are on `host` (`h
 | `createEntity(level, entity, stack)` | Missing | — | Same. |
 | `onEntityItemUpdate(stack, itemEntity)` | Missing | — | No per-item dropped-entity tick. [#1039](https://github.com/arismoko/horizon/issues/1039). |
 | `doesSneakBypassUse(stack, level, pos, player)` | Missing | — | No sneak-bypass query. |
-| `canEquip(stack, slot, entity)` | Covered | `ItemPart::can_equip` (`hooks/can_equip.rs`) | Starts as the stack's own `equippable` component's answer (slot and `allowed_entities`); the part sets it either way, with a read-only `Host` and the entity as a `LivingRef`. Asked for the player's armour slots (both menus), a dispenser's equip and a mob's pickup. Native dispatch borrows the prepared stack, slot name and entity-kind name for each ask. One dispense, menu input scope, or one mob’s pickup attempt shares its preparation across candidates. The former WebAssembly route retained one stack per guest instance, used borrowed-stack tokens, and refused missing prepared exports at load or registration. Scoped source revisions and identity generations invalidate stale asks and apply preconditions; no-listener paths convert nothing and add no entity lookup. Target type, position, living health/status and physical equipment reads reuse prepared values; other Host reads can allocate. |
+| `canEquip(stack, slot, entity)` | Covered | `ItemPart::can_equip` (`hooks/can_equip.rs`) | Starts as the stack's own `equippable` component's answer (slot and `allowed_entities`); the part sets it either way, with a read-only `Host` over live state and the entity as a `LivingRef`. Asked for the player's armour slots (both menus), a dispenser's equip and a mob's pickup. No-listener paths convert nothing and add no entity lookup. |
 | `getEquipmentSlot(stack)` | Covered | `ItemResource::equippable_slot`, `host.item_equippable_slot` | Read from the effective `equippable` component. |
 | `onEntitySwing(stack, entity, hand)` | Covered | `ItemPart::on_entity_swing` (`hooks/item_attack.rs`) | Runs where `LivingEntity.swing` starts, on both sides; a cancel starts no swing (no animation, no packet). |
 | `getDamage(stack)` | Covered | `ItemStack::damage` | The stack's numeric damage override. |
@@ -222,7 +222,7 @@ entity coverage is data, handles and global hooks. On the server a mod can act o
 | `getSoundFromFluidType(type, action)` | Missing | — | No fluid sound-action table. |
 | `sendPairingData(player, consumer)` | Missing | — | No pairing-payload API. |
 | `copyAttachmentsFrom(entity, wasDeath)` | Partial | attachments survive dimension change; player respawn keeps `copy_on_death` entries; mob conversion copies every entry with a codec; `player_clone` (`hooks/base.rs`) | Copy rules are the attachment store's; there is no per-entity hook at the copy. |
-| `getBlockBounciness(pos, state)` | Partial | `BlockPart::bounce_on` (`hooks/block_landing.rs`) | Edits post-bounce movement instead of returning a bounciness factor. |
+| `getBlockBounciness(pos, state)` | Covered for the movement query | `BlockPart::bounce_restitution` | Uses the same state/position pair as `Entity.move`; the engine applies the nonliving multiplier. This is distinct from `BlockPart::bounce_on`. |
 
 ## `ILivingEntityExtension`
 
@@ -413,24 +413,18 @@ These are model-registration counterparts, not object-extension methods (#3430).
 
 | NeoForge | Verdict | Sunrise route |
 | --- | --- | --- |
-| `ModelEvent.RegisterStandalone.register` | **Covered for quad results** | The native client `standalone_models` hook takes `RegistrationContext`; it supports plain file ids in `models` and [bake-time standalone forms](../../modding/src/how-to/client/model-drawing.md#bake-time-standalone-forms) in `forms`. |
-| `SimpleUnbakedStandaloneModel` with a `ModelState` | **Covered for quad results** | `Rotated { id, model, turns, uvlock }` uses the blockstate baker's centered negative XYZ quarter-turns and inverse face UV transform; no draw-pose substitution. |
-| `UnbakedStandaloneModel.resolveDependencies` and quad composition | **Covered for declared file dependencies** | `Combined { id, parts }` loads all sources and their transitive dependencies, concatenates their quads and publishes one `ModelRef`. A missing dependency drops the entire form and logs its registering mod. |
+| `ModelEvent.RegisterStandalone.register` | **Covered for quad results** | The client `standalone_models` hook takes `RegistrationContext`; call `event.register_model(id)` for plain files and `event.register(id, dependencies, baker)` for [standalone model bakers](../../modding/src/how-to/client/model-drawing.md#standalone-model-bakers). |
+| `SimpleUnbakedStandaloneModel` with a `ModelState` | **Covered for quad results** | `append_dependency(id, quarter_turns, uvlock)` uses the blockstate baker's centered negative XYZ quarter-turns and inverse face UV transform; no draw-pose substitution. |
+| `UnbakedStandaloneModel.resolveDependencies` and quad composition | **Covered for declared file dependencies** | Declared files and their transitive dependencies load together; the baker appends their quads in call order. A missing dependency or failed append drops the whole result and logs the registering mod. |
 | Mod-defined baked result type `T` | **Out of scope** | Sunrise's standalone result is baked quads, not arbitrary mod-owned objects. |
 
 The namespace rule, `RenderAssets::model` resolution and `model_baking_completed` publication
-are unchanged. Forms rebake on every resource load; failed reloads leave old handles valid.
-See [the model drawing guide](../../modding/src/how-to/client/model-drawing.md#bake-time-standalone-forms).
+are unchanged. Bakers run on each resource load; failed reloads leave old handles valid.
 
-CPU proof selectors in `sunrise-client-render` are
-`models::catalog::standalone_tests::standalone_rotated_arrow_has_literal_geometry_and_world_locked_uvs`,
-`models::catalog::standalone_tests::standalone_combined_keeps_both_cubes_and_rebakes_changed_dependencies`
-and `models::catalog::standalone_tests::standalone_missing_dependency_drops_entire_form_and_logs_registering_mod`.
-The resource-backed `sunrise-client` test
-`game::model_baking_completed_tests::standalone_forms_resolve_as_one_model_and_republish_after_resource_reload`
-exercises real Game publication, model-registry lookup, distinct full-block/slab geometry,
-missing-form refusal and stale/replacement handles. It requires `SUNRISE_TEST_RESOURCES`
-and `--ignored`. These are CPU/model-registry proofs, not GPU rendering or screenshot proof.
+The CPU proofs live in `sunrise-client-render`'s `models::catalog::standalone_tests`.
+The resource-backed tests in `sunrise-client`'s `game::model_baking_completed_tests` exercise
+Game publication, model-registry lookup, distinct full-block/slab geometry, missing-dependency
+refusal and stale or replacement handles. They require `SUNRISE_TEST_RESOURCES` and `--ignored`.
 
 ## Changes
 

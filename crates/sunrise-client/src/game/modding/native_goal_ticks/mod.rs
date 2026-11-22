@@ -15,7 +15,8 @@ use crate::mobs::{
     part_goals::{BehaviorOp, GoalOp},
 };
 use mod_api::{
-    BehaviorCxBackend, EntityRef, GoalCxBackend, Host, LivingRef, MobRef, PlayerRef, RandomSource,
+    BehaviorCxBackend, EntityRef, EntityTags, GoalCxBackend, Host, LivingRef, MobRef, PlayerRef,
+    RandomSource,
     content::crash::{ModCall, enter_native_mod},
 };
 use sunrise_core::geometry::Axis;
@@ -29,7 +30,7 @@ mod live_living;
 mod live_merchant;
 mod live_mob;
 #[cfg(test)]
-mod live_read_tests;
+pub(in crate::game) mod live_read_tests;
 mod live_support;
 mod live_vehicle;
 #[cfg(test)]
@@ -546,10 +547,13 @@ impl BehaviorCxBackend for GoalCx<'_, '_> {
     fn attack_target(&self) -> Option<LivingRef> {
         // The brain's own target read through the engine's path, the handle
         // resolved in the tick's view.
-        let who = mobs::ai::brain_target(self.m)??;
         let host = self.w.goal_host?;
         let epoch = host.epoch()?;
-        let id = match who {
+        if self.m.species() == mobs::Species::Warden {
+            let id = mobs::warden::brain_target_id(self.m)?;
+            return self.lookup_living(EntityRef::new(epoch, id));
+        }
+        let id = match mobs::ai::brain_target(self.m)?? {
             Who::Mob(id) => id,
             Who::Player => self.w.player_identity?.1,
         };
@@ -577,7 +581,7 @@ impl BehaviorCxBackend for GoalCx<'_, '_> {
                 Some(Resolved::Dragon(_) | Resolved::Unavailable) | None => return false,
             },
         };
-        mobs::ai::set_brain_target(self.m, who)
+        mobs::ai::set_brain_target(self.m, who, target.map(|t| t.entity().id()))
     }
 
     fn set_walk_target(&mut self, at: [i32; 3], speed: f64, close: i32) {
@@ -638,11 +642,11 @@ impl mobs::part_goals::GoalHost for Game<'_> {
         ) && self.native_player_controls(mob, target)
     }
 
-    fn mob_tags(&self, mob: &Mob) -> Option<Vec<String>> {
+    fn mob_tags(&self, mob: &Mob) -> Option<EntityTags<'_>> {
         if self.remote.is_some() {
             return None;
         }
-        Some(self.tags_of(super::commands::Target::Mob(mob.id)))
+        Some(self.saved_entity_tags(super::commands::Target::Mob(mob.id)))
     }
 
     fn mob_name(&self, mob: &Mob, actor: &Mob, world: &MobWorld<'_>) -> String {
@@ -695,6 +699,13 @@ impl mobs::part_goals::GoalHost for Game<'_> {
     }
 
     fn mob_target(&self, mob: &Mob, actor: &Mob, world: &MobWorld<'_>) -> Option<LivingRef> {
+        if mob.species() == mobs::Species::Warden {
+            let (id, _) = self.warden_attack_target(mob, Some((actor, world)))?;
+            return Some(LivingRef::new(EntityRef::new(
+                self.native_lifecycle.epoch()?,
+                id,
+            )));
+        }
         let target = mobs::ai::brain_target(mob).unwrap_or(mob.ai.target)?;
         match target {
             Who::Player => {
@@ -730,34 +741,16 @@ impl mobs::part_goals::GoalHost for Game<'_> {
                 if other.removed {
                     return None;
                 }
-                let valid = if mob.species() == mobs::Species::Warden {
-                    let bounds = other.bounds();
-                    let border = self.border.geometry();
-                    other.alive()
-                        && !other.invulnerable_flag
-                        && other.species() != mobs::Species::Warden
-                        && !sunrise_client::scoreboard::teams_allied(
-                            self.mob_team_scoped(mob, actor, world),
-                            self.mob_team_scoped(other, actor, world),
-                        )
-                        && border.is_within_bounds(bounds.min(Axis::X), bounds.min(Axis::Z), 0.0)
-                        && border.is_within_bounds(
-                            bounds.max(Axis::X) - f64::from(1.0e-5_f32),
-                            bounds.max(Axis::Z) - f64::from(1.0e-5_f32),
-                            0.0,
-                        )
-                } else {
-                    mob.valid_target(
-                        world,
-                        &mobs::goals::TargetFacts::Mob {
-                            id,
-                            species: other.species(),
-                            alive: other.alive(),
-                            invulnerable: other.invulnerable_flag,
-                            baby: other.is_baby(),
-                        },
-                    )
-                };
+                let valid = mob.valid_target(
+                    world,
+                    &mobs::goals::TargetFacts::Mob {
+                        id,
+                        species: other.species(),
+                        alive: other.alive(),
+                        invulnerable: other.invulnerable_flag,
+                        baby: other.is_baby(),
+                    },
+                );
                 let epoch = self.native_lifecycle.epoch()?;
                 valid.then(|| LivingRef::new(EntityRef::new(epoch, id)))
             }
@@ -815,8 +808,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
             hook: call,
             part: Some(part),
         });
-        // Outside the world (a reload or setup) a refused Host call is no answer.
-        mod_api::__private::contain_outside_world(|| match op {
+        Some(match op {
             GoalOp::CanUse => goal.can_use(&mut context),
             GoalOp::CanContinue => goal.can_continue(&mut context),
             GoalOp::Start => {
@@ -832,8 +824,6 @@ impl mobs::part_goals::GoalHost for Game<'_> {
                 true
             }
         })
-        .map_err(|refusal| refusal.report())
-        .ok()
     }
 
     fn run_behavior(
@@ -861,8 +851,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
             hook: call,
             part: Some(part),
         });
-        // Outside the world (a reload or setup) a refused Host call is no answer.
-        mod_api::__private::contain_outside_world(|| match op {
+        Some(match op {
             BehaviorOp::CheckExtraStartConditions => {
                 behavior.check_extra_start_conditions(&mut context)
             }
@@ -880,8 +869,6 @@ impl mobs::part_goals::GoalHost for Game<'_> {
                 true
             }
         })
-        .map_err(|refusal| refusal.report())
-        .ok()
     }
 }
 

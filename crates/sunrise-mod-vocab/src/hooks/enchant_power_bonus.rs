@@ -18,6 +18,8 @@ pub trait Hooks {
     /// the origin for this state-only snapshot. Particles use the cached answers, not a per-frame
     /// dispatch. Any nonzero answer qualifies its state when the intervening block transmits.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "both",
         version = 3,
         contract = "collect",
@@ -27,5 +29,11 @@ pub trait Hooks {
         host = "read",
         neoforge = "IBlockExtension.getEnchantPowerBonus, IBlockStateExtension.getEnchantPowerBonus"
     )]
-    fn enchant_power_bonus();
+    fn enchant_power_bonus(
+        level: Option<LevelRef>,
+        state: BlockState,
+        pos: BlockPos,
+        table_pos: BlockPos,
+        power: &mut f32,
+    );
 }

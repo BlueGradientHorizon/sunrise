@@ -965,14 +965,14 @@ impl Game<'_> {
             // Y in an inventory: a shift-click (quick move).
             Button::North if matches!(self.screen, Screen::Inventory | Screen::Creative) => {
                 self.pad_take_pointer(event_loop);
-                let in_keys = self.keys.held(Action::Sneak);
-                self.keys.insert(KeyCode::ShiftLeft);
+                let in_keys = self.held_mapping(Action::Sneak);
+                self.insert_device_key(KeyCode::ShiftLeft);
                 self.pad_with_modifier(KeyCode::ShiftLeft, |game| {
                     game.pad_pointer_button(event_loop, false, true);
                     game.pad_pointer_button(event_loop, false, false);
                 });
                 if !in_keys {
-                    self.keys.remove(&KeyCode::ShiftLeft);
+                    self.remove_device_key(&KeyCode::ShiftLeft);
                 }
             }
             // View / left stick in an inventory: throw one / the stack from

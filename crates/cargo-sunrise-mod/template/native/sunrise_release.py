@@ -286,7 +286,7 @@ def confirmed_rebuild(batch, registry, published, hashes):
             "the published stable pin changed; replan the rebuild")
     if nightly := index.get("nightly_build"):
         commits["nightly"] = nightly["commit"]
-    require(not any(verdict["verdict"] == "breaks" and commits.get(tag) == target["commit"]
+    require(not any(verdict["verdict"] in {"breaks", "rebuild"} and commits.get(tag) == target["commit"]
                     for tag, verdict in listed.get("verdicts", {}).items()),
             "the reviewed source now has a published fit break on this commit")
     releases = {release["tag"]: release["commit"] for release in json_read(batch.releases)}

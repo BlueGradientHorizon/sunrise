@@ -6,7 +6,6 @@ use crate::game::{
     native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game, with_game_role},
 };
 use mod_api::{
-    __private::{ModPhase, PhaseOwner},
     BlockPart, EnchantPowerBonusEvent, Hooks, Host, LevelReadError, ModEntry, Mods, Registrar,
     RegistrationContext,
 };
@@ -109,7 +108,6 @@ fn with_query_probe(
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
         with_game_role(fixture_root(), role, |game| {
-            let _phase = PhaseOwner::scope(ModPhase::World);
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
