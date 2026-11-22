@@ -298,9 +298,11 @@ fn block_use_resolves_saved_event_block_without_requiring_the_location_neighbour
             // A resident column still at InitializeLight must wait for lighting before
             // same-column location_check predicates read light.
             let unlit = (24, 26);
-            g.world
-                .chunks
-                .insert(unlit, Arc::new(Chunk::empty(unlit.0, unlit.1)));
+            let mut chunk = Chunk::empty(unlit.0, unlit.1);
+            let section = chunk.section_index(65).unwrap();
+            Arc::make_mut(&mut chunk.sections[section]).light =
+                sunrise_client::chunk::Light::Uniform(0);
+            g.world.chunks.insert(unlit, Arc::new(chunk));
             assert_eq!(
                 g.streaming.latest_status(&g.world, unlit.0, unlit.1),
                 Some(Status::InitializeLight)
