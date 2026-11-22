@@ -47,6 +47,27 @@ fn check_log_template(template: &str, native_log: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Add the SDK entry and give Cargo the same checked root used for generation.
+fn stage_library(
+    dest: &Path,
+    manifest: &mut toml::Table,
+    id: &str,
+    entry: &str,
+) -> Result<PathBuf, String> {
+    let lib = manifest
+        .entry("lib")
+        .or_insert_with(|| toml::Table::new().into())
+        .as_table_mut()
+        .ok_or(tr("Invalid lib table"))?;
+    let root = prebuilt::stage_entry(dest, lib.get("path"), id, entry)?;
+    lib.insert("path".into(), root.display().to_string().into());
+    lib.insert(
+        "crate-type".into(),
+        vec![toml::Value::String("dylib".into())].into(),
+    );
+    Ok(dest.join(root))
+}
+
 /// `out` is the mods folder's staging folder, rewritten every build; `target_dir` is cargo's build
 /// folder, kept between builds of the same game build (see `prebuilt::compile`).
 #[allow(clippy::too_many_arguments)]
@@ -201,18 +222,9 @@ pub(super) fn stage_and_cargo(
                     );
                 }
                 wrapper_deps.insert(format!("mod_{position}"), dependency.into());
-                let lib = manifest
-                    .entry("lib")
-                    .or_insert_with(|| toml::Table::new().into())
-                    .as_table_mut()
-                    .ok_or(tr("Invalid lib table"))?;
-                lib.insert(
-                    "crate-type".into(),
-                    vec![toml::Value::String("dylib".into())].into(),
-                );
-                let root = prebuilt::stage_entry(
+                let root = stage_library(
                     &dest,
-                    &manifest,
+                    &mut manifest,
                     id,
                     &prebuilt::library_entry(
                         &template,
@@ -223,10 +235,8 @@ pub(super) fn stage_and_cargo(
                         &[],
                     ),
                 )?;
-                // Give Cargo the same normalized path that was checked and edited above.
-                manifest["lib"]["path"] = root.display().to_string().into();
                 mod_dirs.insert(id.clone(), dest.clone());
-                mod_roots.insert(id.clone(), dest.join(root));
+                mod_roots.insert(id.clone(), root);
             }
             fs::write(path, manifest.to_string()).map_err(|e| e.to_string())?;
         }
@@ -714,6 +724,29 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn registry_staging_inserts_the_implicit_library_root() {
+        let stage = tempfile::tempdir().unwrap();
+        let src = stage.path().join("src");
+        fs::create_dir(&src).unwrap();
+        fs::write(src.join("lib.rs"), "pub fn library() {}\n").unwrap();
+        let mut manifest = toml::toml! { [package] name = "example" version = "1.0.0" };
+
+        let root = stage_library(stage.path(), &mut manifest, "example", "// generated\n").unwrap();
+        let configured = manifest["lib"]["path"].as_str().unwrap();
+        assert_eq!(stage.path().join(configured), root);
+        assert_eq!(root, src.join("lib.rs"));
+        assert!(
+            fs::read_to_string(root)
+                .unwrap()
+                .contains("mod __sunrise_entry;")
+        );
+        assert_eq!(
+            fs::read_to_string(src.join("__sunrise_entry.rs")).unwrap(),
+            "// generated\n"
+        );
+    }
 
     #[test]
     fn forwarding_sdk_requires_one_logger_slot_in_its_template() {

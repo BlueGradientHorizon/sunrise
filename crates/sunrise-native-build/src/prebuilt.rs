@@ -923,13 +923,11 @@ pub fn library_entry(
 /// stay in the mod; neither is ever written through a link.
 pub(super) fn stage_entry(
     staged: &Path,
-    cargo: &toml::Table,
+    lib_path: Option<&toml::Value>,
     id: &str,
     entry: &str,
 ) -> Result<PathBuf, String> {
-    let path = cargo
-        .get("lib")
-        .and_then(|lib| lib.get("path"))
+    let path = lib_path
         .map(|value| value.as_str().ok_or("[lib].path must be a string"))
         .transpose()?
         .unwrap_or("src/lib.rs");
@@ -991,7 +989,8 @@ pub fn compile_mod<'a>(
         _ => (),
     }
     super::copy_bundle(project.bundle, &staged)?;
-    let source = staged.join(stage_entry(&staged, &project.cargo, id, entry)?);
+    let lib_path = project.cargo.get("lib").and_then(|lib| lib.get("path"));
+    let source = staged.join(stage_entry(&staged, lib_path, id, entry)?);
     let mut cmd = rustc(edition);
     // Diagnostics as JSON, which `run_diagnosed` shows at the author's files: the compiler's
     // inputs and outputs stay those of the staged copy.
@@ -1288,14 +1287,21 @@ mod tests {
         let outside = work.path().join("outside.rs");
         let entry = work.path().join("__sunrise_entry.rs");
         fs::write(&outside, "fn untouched() {}\n").unwrap();
-        let cargo = toml::toml! { [lib] path = "../outside.rs" };
-        let error = super::stage_entry(&stage, &cargo, "example", "// generated").unwrap_err();
-        assert!(
-            error.contains("[lib].path") && error.contains("outside the mod"),
-            "{error}"
-        );
-        assert_eq!(fs::read_to_string(outside).unwrap(), "fn untouched() {}\n");
-        assert!(!entry.exists());
+        for (path, reason) in [
+            ("../outside.rs", "outside the mod"),
+            ("src/C:/x.rs", "outside the mod"),
+            (r"src\..\..", "portable separators"),
+        ] {
+            let path = toml::Value::String(path.into());
+            let error =
+                super::stage_entry(&stage, Some(&path), "example", "// generated").unwrap_err();
+            assert!(
+                error.contains("[lib].path") && error.contains(reason),
+                "{error}"
+            );
+            assert_eq!(fs::read_to_string(&outside).unwrap(), "fn untouched() {}\n");
+            assert!(!entry.exists());
+        }
     }
 
     /// A linked build directory is refused before the files in it are cleared.
