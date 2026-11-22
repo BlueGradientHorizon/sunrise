@@ -3466,7 +3466,9 @@ mod tests {
             .unwrap()
             .clone();
         state.properties.insert("facing".into(), facing.into());
-        state.properties.insert("enabled".into(), enabled.to_string());
+        state
+            .properties
+            .insert("enabled".into(), enabled.to_string());
         registry.resolve(&state).unwrap()
     }
     fn place_hopper(
