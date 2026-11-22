@@ -276,7 +276,7 @@ impl Game<'_> {
         for element in elements {
             match element {
                 TooltipElement::Text(text, color) => {
-                    let text = text.try_into_engine(&()).ok()?;
+                    let text = sunrise_client_lib::api_text::to_engine_inprocess(&text);
                     if max_width < 0 {
                         result.push(Element::Text(text.resolve_legacy(), color));
                     } else {
@@ -426,7 +426,13 @@ mod tests {
                         )
                         .unwrap();
                     stack.set_damage(251);
-                    assert!(stack.try_into_engine(game.items()).is_err());
+                    assert!(
+                        crate::game::api_values::TryIntoEngine::try_into_engine(
+                            &stack,
+                            game.items()
+                        )
+                        .is_err()
+                    );
                     DRAWN.store(false, Ordering::Relaxed);
                     game.draw_tooltip_item_part(
                         &mut HudBatch::scratch([320, 240]),

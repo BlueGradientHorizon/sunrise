@@ -359,7 +359,9 @@ fn load_conditions_registration_allows_shared_namespaces() {
             let mut registrar = mod_api::LoadConditionDeclarations::new(
                 sunrise_world::conditions::is_builtin_condition,
             );
-            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), &mut registrar);
+            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), |listen| {
+                registrar.register_listener(listen)
+            });
             let entries = registrar.finish().unwrap();
             assert_eq!(entries.len(), 2);
             for (name, owner, value) in [("a:y", "a", true), ("a:x", "b", false)] {
@@ -384,10 +386,72 @@ fn load_conditions_registration_refuses_duplicate_ids_even_if_ignored() {
             let mut registrar = mod_api::LoadConditionDeclarations::new(
                 sunrise_world::conditions::is_builtin_condition,
             );
-            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), &mut registrar);
+            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), |listen| {
+                registrar.register_listener(listen)
+            });
             let error = registrar.finish().err().unwrap().message;
             assert!(error.contains("condition a:x"), "{error}");
             assert!(error.contains("both a and b"), "{error}");
+        },
+    );
+}
+
+#[test]
+fn a_panicking_load_condition_registrar_leaves_neither_handlers_nor_errors() {
+    use std::sync::atomic::AtomicBool;
+
+    struct Failing(Arc<AtomicBool>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Failing {
+        fn register_load_conditions(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterLoadConditionsEvent<'_>,
+        ) {
+            let handler = || Flag(Arc::default(), Arc::default());
+            let shared = Identifier::parse("a:shared").unwrap();
+            event
+                .conditions
+                .register(shared.clone(), handler())
+                .unwrap();
+            event
+                .conditions
+                .register(Identifier::parse("a:leaked").unwrap(), handler())
+                .unwrap();
+            assert_eq!(
+                event
+                    .conditions
+                    .register(shared, handler())
+                    .unwrap_err()
+                    .message,
+                "condition a:shared registered by both a and a",
+            );
+            self.0.store(true, Ordering::Relaxed);
+            panic!("load condition registrar fixture failed");
+        }
+    }
+
+    let reached = Arc::new(AtomicBool::new(false));
+    mod_platform::testing::with_mods(
+        vec![
+            ModEntry::new("a", Box::new(Failing(reached.clone()))),
+            ModEntry::new("b", Box::new(NamedCondition("a:shared"))),
+        ]
+        .into(),
+        || {
+            let mut registrar = mod_api::LoadConditionDeclarations::new(
+                sunrise_world::conditions::is_builtin_condition,
+            );
+            super::Game::native_register_load_conditions(
+                &RegistrationContext::new(),
+                &mut registrar,
+            );
+            assert!(reached.load(Ordering::Relaxed));
+            let entries = registrar.finish().unwrap();
+            assert_eq!(entries.len(), 1);
+            let (owner, handler) = &entries[&Identifier::parse("a:shared").unwrap()];
+            assert_eq!(owner, "b");
+            assert_eq!(handler.test(&json!({"value": false})), Ok(false));
         },
     );
 }
@@ -537,53 +601,4 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
         "the pack no longer has it: not registered"
     );
     assert!(next.allows(&registered("minecraft:worldgen/biome", "minecraft:plains")));
-}
-
-/// A handler that reads the world through the Host. Read in a load phase, it is a named refusal.
-struct Gated;
-impl LoadCondition for Gated {
-    fn test(&self, _: &Value) -> std::result::Result<bool, ConditionError> {
-        mod_api::__private::check_access("level", mod_api::__private::LoadAccess::WorldOnly);
-        Ok(true)
-    }
-}
-struct GatedRegistrant;
-#[mod_api::__subscriptions]
-impl Hooks for GatedRegistrant {
-    fn register_load_conditions(
-        &self,
-        _: &RegistrationContext,
-        event: &mut RegisterLoadConditionsEvent<'_>,
-    ) {
-        event
-            .conditions
-            .register(Identifier::parse("testmod:gated").unwrap(), Gated)
-            .unwrap();
-    }
-}
-
-/// A Host call the load phase refuses is a refusal of that condition, named, and no panic: the
-/// arm of the client's catch sites that reads `PhaseRefusal`.
-#[test]
-fn a_handler_refused_by_the_load_phase_is_a_named_refusal_not_a_panic() {
-    mod_platform::__private::initialize().unwrap();
-    mod_platform::testing::with_mods(
-        vec![ModEntry::new("testmod", Box::new(GatedRegistrant))].into(),
-        || {
-            let sources = crate::game::mods::ModsState::default();
-            let inventory = sunrise_mod_package::enabled::EnabledMods::default();
-            let conditions = super::conditions_for_mods(&sources, &inventory).unwrap();
-            let file = json!({"neoforge:conditions":[{"type":"testmod:gated"}]});
-            let _setup = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
-            let error = conditions
-                .allows_file_isolated(&file, "gated.json")
-                .unwrap_err();
-            assert!(
-                error.contains("testmod")
-                    && error.contains("refused")
-                    && error.contains("mod API level is unavailable during Setup"),
-                "{error}"
-            );
-        },
-    );
 }

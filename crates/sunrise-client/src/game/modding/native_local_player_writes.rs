@@ -374,6 +374,7 @@ mod tests {
                         player.reset_fall_distance(host),
                         Err(mod_api::LevelWriteError::Unavailable),
                     );
+                    assert!(host.client_executor().is_none());
                     self.0.lock().unwrap().push((
                         event.old_section,
                         event.new_section,

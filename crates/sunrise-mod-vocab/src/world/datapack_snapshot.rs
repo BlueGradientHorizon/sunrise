@@ -46,15 +46,11 @@ pub struct DatapackSnapshotRegistry {
     pub tags: BTreeMap<String, Vec<String>>,
 }
 
-/// The synchronized registries of a set at one generation, as a server sends them.
+/// The synchronized registries of a set, as a server sends them.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: a plain record that the snapshot builds and reads
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct DatapackSnapshot {
-    /// The server's world session.
-    pub session: u64,
-    /// The generation these entries belong to, from 1.
-    pub generation: u64,
     /// The registries, sorted by key.
     pub registries: Vec<DatapackSnapshotRegistry>,
 }
@@ -120,14 +116,7 @@ impl DatapackRegistrySet {
         declarations: &[DatapackRegistryDeclaration],
         accepts: impl Fn(&DatapackRegistryDeclaration) -> bool,
     ) -> DatapackSnapshot {
-        snapshot_of(
-            self.session,
-            self.generation,
-            &self.registries,
-            &self.tags,
-            declarations,
-            accepts,
-        )
+        snapshot_of(&self.registries, &self.tags, declarations, accepts)
     }
 
     /// The snapshot for a client that `offered` these registries (`offer`): a registry goes
@@ -155,16 +144,9 @@ impl DatapackRegistrySet {
         Ok(self.snapshot(declarations, matches))
     }
 
-    /// Publishes a snapshot's candidate on a client at the generation the server sent. The
-    /// session is this client's own, so a handle from an earlier world fails as on a server.
-    pub fn received(
-        snapshot: &DatapackSnapshot,
-        candidate: DatapackCandidate,
-        session: u64,
-    ) -> Self {
+    /// Publishes a snapshot's candidate on a client.
+    pub fn received(candidate: DatapackCandidate) -> Self {
         Self {
-            session,
-            generation: snapshot.generation,
             registries: candidate.registries,
             tags: candidate.tags,
             received_registries: Some(candidate.synchronized),
@@ -172,11 +154,8 @@ impl DatapackRegistrySet {
     }
 }
 
-/// The snapshot of `published` at `session` and `generation`, as [`DatapackRegistrySet::snapshot`]
-/// builds it.
+/// The snapshot of `published`, as [`DatapackRegistrySet::snapshot`] builds it.
 fn snapshot_of(
-    session: u64,
-    generation: u64,
     published: &BTreeMap<String, BTreeMap<String, DatapackEntry>>,
     tags: &BTreeMap<String, BTreeMap<String, Vec<String>>>,
     declarations: &[DatapackRegistryDeclaration],
@@ -203,11 +182,7 @@ fn snapshot_of(
         })
         .collect();
     registries.sort_by(|a, b| a.key.cmp(&b.key));
-    DatapackSnapshot {
-        session,
-        generation,
-        registries,
-    }
+    DatapackSnapshot { registries }
 }
 
 /// Encoded bytes of selected synchronized registries before tags are bound, or None when
@@ -217,28 +192,9 @@ pub(super) fn snapshot_size(
     registries: &BTreeMap<String, BTreeMap<String, DatapackEntry>>,
     accepts: impl Fn(&DatapackRegistryDeclaration) -> bool,
 ) -> Option<usize> {
-    snapshot_of(0, 0, registries, &BTreeMap::new(), declarations, accepts)
+    snapshot_of(registries, &BTreeMap::new(), declarations, accepts)
         .encode()
         .map(|bytes| bytes.len())
-}
-
-impl DatapackRegistrySet {
-    /// Publishes a later snapshot's candidate over this set, on a client: the same session, the
-    /// server's generation. `None` when the snapshot's generation does not come after this
-    /// one's, so a snapshot out of order or sent twice changes nothing.
-    pub fn received_next(
-        &self,
-        snapshot: &DatapackSnapshot,
-        candidate: DatapackCandidate,
-    ) -> Option<Self> {
-        (snapshot.generation > self.generation).then_some(Self {
-            session: self.session,
-            generation: snapshot.generation,
-            registries: candidate.registries,
-            tags: candidate.tags,
-            received_registries: Some(candidate.synchronized),
-        })
-    }
 }
 
 impl DatapackSnapshot {
@@ -427,7 +383,7 @@ mod tests {
                 ]),
             )
             .unwrap();
-        DatapackRegistrySet::first(candidate, 1)
+        DatapackRegistrySet::from_candidate(candidate)
     }
 
     #[test]
@@ -458,7 +414,7 @@ mod tests {
                 .is_err()
         );
         assert_eq!(candidate, before);
-        let client = DatapackRegistrySet::received(&received, candidate, 9);
+        let client = DatapackRegistrySet::received(candidate);
         for set in [&server, &client] {
             assert_eq!(
                 set.tag_contains("example:spell", "addon:fire", "example:hot"),
@@ -497,21 +453,18 @@ mod tests {
     }
 
     #[test]
-    fn a_client_reads_what_the_server_sent_at_the_same_generation() {
+    fn a_client_reads_what_the_server_sent() {
         let declaration = spell(DatapackRegistrySync::Required);
-        let server = set(&declaration);
-        let server = server
-            .reload(
-                DatapackCandidate::build(
-                    std::slice::from_ref(&declaration),
-                    &[(
-                        "data/addon/example/spell/fire.json".to_owned(),
-                        vec![("pack".to_owned(), br#"{"power": 9}"#.to_vec())],
-                    )],
-                )
-                .unwrap(),
+        let server = DatapackRegistrySet::from_candidate(
+            DatapackCandidate::build(
+                std::slice::from_ref(&declaration),
+                &[(
+                    "data/addon/example/spell/fire.json".to_owned(),
+                    vec![("pack".to_owned(), br#"{"power": 9}"#.to_vec())],
+                )],
             )
-            .unwrap();
+            .unwrap(),
+        );
         let snapshot = server.snapshot(std::slice::from_ref(&declaration), |_| true);
         let bytes = snapshot.encode().unwrap();
         let received = DatapackSnapshot::decode(&bytes).unwrap();
@@ -519,11 +472,12 @@ mod tests {
         let candidate = received
             .candidate(std::slice::from_ref(&declaration))
             .unwrap();
-        let client = DatapackRegistrySet::received(&received, candidate, 99);
-        assert_eq!(client.generation(), 2);
-        let handle = client.handle("example:spell", "addon:fire").unwrap();
+        let client = DatapackRegistrySet::received(candidate);
         assert_eq!(
-            client.get(&handle).unwrap().get("power"),
+            client
+                .get("example:spell", "addon:fire")
+                .unwrap()
+                .get("power"),
             Some(&DatapackValue::Int(9))
         );
     }
@@ -568,8 +522,6 @@ mod tests {
         );
         // A required registry the snapshot lacks.
         let empty = DatapackSnapshot {
-            session: 1,
-            generation: 1,
             registries: Vec::new(),
         };
         assert_eq!(
@@ -583,7 +535,7 @@ mod tests {
         // An optional one it lacks stays empty.
         let optional = spell(DatapackRegistrySync::Optional);
         let candidate = empty.candidate(std::slice::from_ref(&optional)).unwrap();
-        let client = DatapackRegistrySet::received(&empty, candidate, 2);
+        let client = DatapackRegistrySet::received(candidate);
         assert_eq!(client.entries("example:spell").unwrap(), Vec::<&str>::new());
     }
 
@@ -737,11 +689,7 @@ mod tests {
         });
         let declarations = [required, empty, omitted, secret];
         let received = DatapackSnapshot::decode(&snapshot.encode().unwrap()).unwrap();
-        let client = DatapackRegistrySet::received(
-            &received,
-            received.candidate(&declarations).unwrap(),
-            51,
-        );
+        let client = DatapackRegistrySet::received(received.candidate(&declarations).unwrap());
         assert!(client.registry_available("example:spell"));
         assert!(client.registry_available("example:empty"));
         for registry in ["example:omitted", "example:secret", "example:unknown"] {
@@ -750,13 +698,10 @@ mod tests {
         for registry in ["example:empty", "example:omitted", "example:secret"] {
             assert!(client.entries(registry).unwrap().is_empty());
         }
-        snapshot.generation += 1;
         snapshot
             .registries
             .retain(|registry| registry.key != "example:empty");
-        let next = client
-            .received_next(&snapshot, snapshot.candidate(&declarations).unwrap())
-            .unwrap();
+        let next = DatapackRegistrySet::received(snapshot.candidate(&declarations).unwrap());
         assert!(!next.registry_available("example:empty"));
         assert!(next.registry_available("example:spell"));
         assert!(next.entries("example:empty").unwrap().is_empty());
@@ -764,11 +709,6 @@ mod tests {
             client.registry_available("example:empty"),
             "the previous publication remains intact"
         );
-        assert!(
-            next.received_next(&snapshot, snapshot.candidate(&declarations).unwrap(),)
-                .is_none()
-        );
-        assert!(!next.registry_available("example:empty"));
     }
 
     #[test]
@@ -796,8 +736,6 @@ mod tests {
         let declarations = [payload.clone(), optional];
         assert!(DatapackSnapshot::encode_offer(&declarations).is_some());
         let snapshot = DatapackSnapshot {
-            session: 8,
-            generation: 4,
             registries: vec![DatapackSnapshotRegistry {
                 key: payload.key,
                 fields: payload.fields,
@@ -816,13 +754,15 @@ mod tests {
         let received = DatapackSnapshot::decode(&bytes).unwrap();
         drop(bytes);
         let candidate = received.candidate(&declarations).unwrap();
-        let client = DatapackRegistrySet::received(&received, candidate, 77);
-        assert_eq!(client.generation(), 4);
+        let client = DatapackRegistrySet::received(candidate);
         assert!(client.registry_available("example:payload"));
         assert!(!client.registry_available("client:optional"));
         assert!(client.entries("client:optional").unwrap().is_empty());
-        let handle = client.handle("example:payload", "example:e63").unwrap();
-        let Some(DatapackValue::Text(body)) = client.get(&handle).unwrap().get("body") else {
+        let Some(DatapackValue::Text(body)) = client
+            .get("example:payload", "example:e63")
+            .unwrap()
+            .get("body")
+        else {
             panic!("the accepted payload must be readable");
         };
         assert_eq!(body.len(), ENTRY_BYTES);
