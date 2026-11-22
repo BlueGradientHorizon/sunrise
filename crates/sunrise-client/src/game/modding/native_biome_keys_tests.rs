@@ -51,6 +51,10 @@ fn biome_key_world_install_reload_and_unavailable_sides() {
                 r#"{"pack":{"description":"Biome fixture"}}"#,
             )
             .unwrap();
+            let definition = pack.join("data/test/worldgen/biome/marsh.json");
+            std::fs::create_dir_all(definition.parent().unwrap()).unwrap();
+            let plains_file = game.res.biomes().builtin_file("minecraft:plains").unwrap();
+            std::fs::write(definition, plains_file.to_string()).unwrap();
             std::fs::write(
                 root.path().join("datapacks.json"),
                 r#"{"enabled":["file/biomes"],"disabled":[]}"#,

@@ -247,7 +247,7 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                     (2, "value must be a boolean"),
                     (6, "invalid result"),
                     (7, "ingredient kind testmod:unregistered"),
-                    (8, "invalid ingredients or required fields"),
+                    (8, "invalid ingredient: 42"),
                 ] {
                     mode.store(bad, Ordering::SeqCst);
                     let error = format!(
