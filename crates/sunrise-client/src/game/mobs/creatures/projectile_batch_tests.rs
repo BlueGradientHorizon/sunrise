@@ -703,6 +703,7 @@ fn wind_charges_retrace_only_after_gameplay_breaks_a_vehicle() {
         for (i, (hit, target)) in hits.iter().zip(targets).enumerate() {
             assert_eq!(hit.projectile, 80 + i as u32);
             assert_eq!(hit.entity, Some(*target));
+            assert_eq!(hit.entity_kind, "minecraft:oak_boat");
             assert_eq!(hit.projectile_pos, hit.at);
         }
         if hits.len() == 10 {

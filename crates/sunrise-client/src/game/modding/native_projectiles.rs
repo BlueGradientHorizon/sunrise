@@ -305,6 +305,9 @@ impl Game<'_> {
         if let Some(cart) = self.carts.iter().find(|c| c.id == id) {
             return (id, cart.kind.id().into());
         }
+        if let Some(boat) = self.boats.iter().find(|b| b.id == id) {
+            return (id, boat.entity_type_name().into());
+        }
         if self.lan_guest_entities().iter().any(|&(_, e)| e == id) {
             return (id, "minecraft:player".into());
         }
