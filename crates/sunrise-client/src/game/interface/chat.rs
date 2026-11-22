@@ -239,8 +239,6 @@ pub struct UiState {
     pub chat_screen: Option<ChatScreen>,
     /// `ChatComponent.latestDraft`.
     pub chat_draft: Option<ChatDraft>,
-    /// `ChatScreen.isDraft`: the box opened with the draft and is unchanged since.
-    pub chat_draft_shown: bool,
     /// When the chat screen opened (its input took the focus: the cursor blink).
     pub chat_opened: Option<std::time::Instant>,
     /// The chat screen is `InBedChatScreen`: the sleeper's, with a Leave Bed button.
@@ -999,7 +997,6 @@ impl Game<'_> {
             );
             screen.auto_suggestions = game.settings.auto_suggestions;
             game.ui.chat_screen = Some(screen);
-            game.ui.chat_draft_shown = is_draft;
             game.ui.chat_opened = Some(std::time::Instant::now());
             game.keys.clear();
             game.left = false;
@@ -1027,35 +1024,32 @@ impl Game<'_> {
     /// `ChatScreen.removed`, called only after the screen transition is accepted.
     pub(in crate::game) fn remove_chat_screen(&mut self, reason: ChatExit) {
         if let Some(screen) = self.ui.chat_screen.take() {
-            self.keep_chat_draft(screen.value(), reason);
-            self.ui.chat_draft_shown = false;
+            self.keep_chat_draft(screen.value(), screen.is_draft(), reason);
             self.ui.chat_opened = None;
             self.ui.chat.reset_scroll();
-            self.ui.in_bed_chat = false;
         }
+        self.ui.in_bed_chat = false;
     }
     /// `ChatScreen.removed`: the text left in the box becomes the draft unless
     /// `shouldDiscardDraft` (closed on purpose without Save Chat Drafts, or
     /// sent); blank text discards the draft. A draft still shown unchanged
     /// stays as it is.
-    fn keep_chat_draft(&mut self, text: &str, reason: ChatExit) {
+    fn keep_chat_draft(&mut self, text: &str, is_draft: bool, reason: ChatExit) {
         // During PvP & HUD's chat search the box holds the query: the draft is the text the
         // search put aside, whichever way the chat closed.
         let aside;
-        let text = if self.pvp.chat_search {
+        let (text, is_draft) = if self.pvp.chat_search {
             self.pvp.chat_search = false;
             aside = std::mem::take(&mut self.pvp.chat_search_aside);
-            aside.as_str()
+            (aside.as_str(), false)
         } else {
-            text
+            (text, is_draft)
         };
-        let unchanged =
-            self.ui.chat_draft_shown && self.ui.chat_draft.as_ref().is_some_and(|d| d.text == text);
         if should_discard_draft(reason, self.settings.file.bool("saveChatDrafts"))
             || text.trim().is_empty()
         {
             self.ui.chat_draft = None;
-        } else if !unchanged {
+        } else if !is_draft {
             self.ui.chat_draft = Some(ChatDraft {
                 text: text.to_owned(),
                 command: text.starts_with('/'),
@@ -1072,17 +1066,22 @@ impl Game<'_> {
         }
         if self.ui.in_bed_chat && self.sleeping.is_none() && !self.screen_over_playing() {
             // InBedChatScreen.onPlayerWokeUp: replace once, discarding the
-            // outgoing draft only when the typed text transfers into ordinary chat.
+            // outgoing draft only when non-draft typed text transfers into
+            // ordinary chat; empty or untouched-draft wake dismisses via
+            // `Gui.setScreen(null)` (Closing without a vetoable Opening).
             let typed = self
                 .ui
                 .chat_screen
                 .as_ref()
-                .map(|screen| screen.value())
-                .filter(|text| !self.ui.chat_draft_shown && !text.is_empty());
-            if let Some(text) = typed.map(str::to_owned) {
+                .filter(|screen| !screen.is_draft() && !screen.value().is_empty())
+                .map(|screen| screen.value().to_owned());
+            if let Some(text) = typed {
                 self.replace_chat_screen(&text, false, ChatExit::Done);
             } else {
-                self.close_chat(ChatExit::Interrupted);
+                self.dismiss_screen_with(|game| game.remove_chat_screen(ChatExit::Interrupted));
+                if self.screen == Screen::Playing {
+                    self.capture(true);
+                }
             }
         } else if self.sleeping.is_some()
             && self.screen == Screen::Playing

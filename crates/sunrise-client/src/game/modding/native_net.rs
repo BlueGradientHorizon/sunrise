@@ -271,6 +271,229 @@ mod tests {
         );
     }
 
+    #[test]
+    #[ignore = "daily"]
+    fn overlay_redirected_to_chat_emits_init_post_once() {
+        use crate::game::Screen;
+        use mod_api::{
+            ClientHost, Hooks, ScreenClosingEvent, ScreenInitPostEvent, ScreenOpening,
+            ScreenOpeningEvent, ScreenTarget,
+        };
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::motion::PlayerMotion;
+        use sunrise_core::geometry::Vec3;
+
+        if run_fresh_cases(
+            "game::native_net::tests::overlay_redirected_to_chat_emits_init_post_once",
+            "SUNRISE_OVERLAY_CHAT_REDIRECT_CASE",
+            &["redirect"],
+        ) {
+            return;
+        }
+        struct RedirectToChat(Arc<Mutex<Vec<String>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for RedirectToChat {
+            fn screen_opening(
+                &self,
+                _: &dyn ClientHost,
+                event: &mut ScreenOpeningEvent<'_>,
+            ) -> Option<ScreenOpening> {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push(format!("{}->{}", event.current.id, event.new.id));
+                (event.new.id == "link_prompt")
+                    .then_some(ScreenOpening::Vanilla(ScreenTarget::Chat))
+            }
+            fn screen_closing(&self, _: &dyn ClientHost, event: &mut ScreenClosingEvent<'_>) {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push(format!("close {}", event.screen.id));
+            }
+            fn screen_init_post(&self, _: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push(format!("init {}", event.screen.id));
+            }
+        }
+        let events = Arc::new(Mutex::new(Vec::new()));
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new(
+                "overlay_to_chat",
+                Box::new(RedirectToChat(events.clone())),
+            )]
+            .into(),
+            || {
+                with_client_game(|game| {
+                    game.title = None;
+                    game.player =
+                        Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+                    game.screen = Screen::Playing;
+                    events.lock().unwrap().clear();
+
+                    let opened = game.open_screen_overlay("link_prompt", |game| {
+                        game.link_prompt = Some("https://example.com".into());
+                    });
+                    assert!(!opened);
+                    assert!(game.link_prompt.is_none());
+                    assert_eq!(game.screen, Screen::Chat);
+                    assert!(game.ui.chat_screen.is_some());
+                    game.observe_screen();
+                    assert_eq!(
+                        *events.lock().unwrap(),
+                        ["playing->link_prompt", "init chat"]
+                    );
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn waking_bed_chat_dismisses_empty_or_draft_despite_veto_and_keeps_edited_draft() {
+        use crate::game::{Screen, chat::ChatDraft};
+        use mod_api::{
+            ClientHost, Hooks, ScreenClosingEvent, ScreenInitPostEvent, ScreenOpening,
+            ScreenOpeningEvent,
+        };
+        use std::sync::{
+            Arc, Mutex,
+            atomic::{AtomicBool, Ordering},
+        };
+        use sunrise_client::motion::PlayerMotion;
+        use sunrise_core::geometry::Vec3;
+
+        if run_fresh_cases(
+            "game::native_net::tests::waking_bed_chat_dismisses_empty_or_draft_despite_veto_and_keeps_edited_draft",
+            "SUNRISE_WAKE_BED_CHAT_CASE",
+            &["wake_cases"],
+        ) {
+            return;
+        }
+        #[derive(Default)]
+        struct Probe {
+            cancel: AtomicBool,
+            events: Mutex<Vec<String>>,
+        }
+        struct Listener(Arc<Probe>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn screen_opening(
+                &self,
+                _: &dyn ClientHost,
+                event: &mut ScreenOpeningEvent<'_>,
+            ) -> Option<ScreenOpening> {
+                self.0
+                    .events
+                    .lock()
+                    .unwrap()
+                    .push(format!("{}->{}", event.current.id, event.new.id));
+                self.0
+                    .cancel
+                    .load(Ordering::Relaxed)
+                    .then_some(ScreenOpening::Cancel)
+            }
+            fn screen_closing(&self, _: &dyn ClientHost, event: &mut ScreenClosingEvent<'_>) {
+                self.0
+                    .events
+                    .lock()
+                    .unwrap()
+                    .push(format!("close {}", event.screen.id));
+            }
+            fn screen_init_post(&self, _: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
+                self.0
+                    .events
+                    .lock()
+                    .unwrap()
+                    .push(format!("init {}", event.screen.id));
+            }
+        }
+        let probe = Arc::new(Probe::default());
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new(
+                "wake_bed_chat",
+                Box::new(Listener(probe.clone())),
+            )]
+            .into(),
+            || {
+                with_client_game(|game| {
+                    game.title = None;
+                    game.player =
+                        Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+                    game.sleeping = None;
+
+                    // Empty bed chat dismisses via Gui.setScreen(null): Closing, no vetoable Opening.
+                    assert!(game.begin_chat_screen("", false));
+                    game.ui.in_bed_chat = true;
+                    probe.events.lock().unwrap().clear();
+                    probe.cancel.store(true, Ordering::Relaxed);
+                    game.tick_in_bed_chat();
+                    game.tick_in_bed_chat();
+                    game.observe_screen();
+                    assert_eq!(game.screen, Screen::Playing);
+                    assert!(!game.ui.in_bed_chat);
+                    assert!(game.ui.chat_screen.is_none());
+                    assert_eq!(
+                        std::mem::take(&mut *probe.events.lock().unwrap()),
+                        ["close chat"]
+                    );
+
+                    // Untouched restored draft in bed also dismisses despite veto and preserves draft.
+                    probe.cancel.store(false, Ordering::Relaxed);
+                    game.ui.chat_draft = Some(ChatDraft {
+                        text: "saved draft".into(),
+                        command: false,
+                    });
+                    assert!(game.begin_chat_screen("saved draft", true));
+                    assert!(game.ui.chat_screen.as_ref().unwrap().is_draft());
+                    game.ui.in_bed_chat = true;
+                    probe.events.lock().unwrap().clear();
+                    probe.cancel.store(true, Ordering::Relaxed);
+                    game.tick_in_bed_chat();
+                    game.tick_in_bed_chat();
+                    game.observe_screen();
+                    assert_eq!(game.screen, Screen::Playing);
+                    assert!(!game.ui.in_bed_chat);
+                    assert!(game.ui.chat_screen.is_none());
+                    assert_eq!(
+                        game.ui.chat_draft.as_ref().map(|d| d.text.as_str()),
+                        Some("saved draft")
+                    );
+                    assert_eq!(
+                        std::mem::take(&mut *probe.events.lock().unwrap()),
+                        ["close chat"]
+                    );
+
+                    // Editing a restored draft clears the live is_draft flag, so waking carries it
+                    // into ordinary chat instead of dismissing the box.
+                    probe.cancel.store(false, Ordering::Relaxed);
+                    assert!(game.begin_chat_screen("saved draft", true));
+                    assert!(game.ui.chat_screen.as_ref().unwrap().is_draft());
+                    game.ui.in_bed_chat = true;
+                    game.chat_type("!");
+                    assert!(!game.ui.chat_screen.as_ref().unwrap().is_draft());
+                    probe.events.lock().unwrap().clear();
+                    game.tick_in_bed_chat();
+                    game.observe_screen();
+                    assert_eq!(game.screen, Screen::Chat);
+                    assert!(!game.ui.in_bed_chat);
+                    assert_eq!(
+                        game.ui.chat_screen.as_ref().unwrap().value(),
+                        "saved draft!"
+                    );
+                    assert!(!game.ui.chat_screen.as_ref().unwrap().is_draft());
+                    assert!(game.ui.chat_draft.is_none());
+                    assert_eq!(
+                        *probe.events.lock().unwrap(),
+                        ["chat->chat", "close chat", "init chat"]
+                    );
+                });
+            },
+        );
+    }
+
     /// A joined flag cannot manufacture a physical transport. Packet codec,
     /// reservation, and framing cases live in net::mod_packet_tests.
     #[test]

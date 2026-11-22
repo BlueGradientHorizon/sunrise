@@ -142,6 +142,27 @@ impl Game<'_> {
         self.transition_screen(screen, false, |game, _| before(game));
     }
 
+    /// `Gui.setScreen(null)`: dismisses the open screen without a vetoable
+    /// `ScreenEvent.Opening` (NeoForge only posts `Opening` for a non-null
+    /// target), firing `screen_closing` for the screen being left, running
+    /// `before`, and returning to `Screen::Playing`.
+    pub(in crate::game) fn dismiss_screen_with(&mut self, before: impl FnOnce(&mut Self)) {
+        if self.screen == Screen::Playing {
+            before(self);
+            return;
+        }
+        if self.screen_hooks_heard() {
+            let current = self.screen_change_view(self.screen);
+            self.native_screen_closing(&current);
+        }
+        before(self);
+        if self.screen == Screen::Options {
+            self.ui.options.discard_draw();
+        }
+        self.apply_screen_with_mod_book(Screen::Playing, None);
+        self.screen_state.observed = self.observed_now();
+    }
+
     /// A new instance can replace the current screen of the same kind. The preparation
     /// sees the accepted screen, or `None` when a replacement opens through its own path.
     pub(in crate::game) fn transition_screen(
@@ -189,10 +210,8 @@ impl Game<'_> {
                         self.remote_close_container();
                     }
                     self.open_screen_target(target);
-                    if self.title.is_some() || (new_instance && target != ScreenTarget::Chat) {
-                        self.screen_state.observed = self.observed_now();
-                        self.shown_init_post();
-                    }
+                    self.screen_state.observed = self.observed_now();
+                    self.shown_init_post();
                     return;
                 }
                 ScreenDecision::Open => {}
@@ -210,7 +229,7 @@ impl Game<'_> {
             self.ui.options.discard_draw();
         }
         self.apply_screen_with_mod_book(screen, owner);
-        if new_instance && !mod_api::__private::mods().is_empty() {
+        if new_instance && !self.screen_state.replacing && !mod_api::__private::mods().is_empty() {
             self.screen_state.observed = self.observed_now();
             self.shown_init_post();
         }
@@ -303,14 +322,16 @@ impl Game<'_> {
     }
     /// Opens vanilla screen `target` as it opens on its own, in place of the
     /// one asked for (`ScreenOpening::Vanilla`, which `screen_decision` let
-    /// through): the change fires no screen hook again.
+    /// through): the change fires no screen hook again, and leaves `observed`
+    /// and `screen_init_post` to the caller that accepted the replacement.
     fn open_screen_target(&mut self, target: ScreenTarget) {
         self.screen_state.replacing = true;
+        self.screen_state.build.reopened();
         match target {
             ScreenTarget::Pause => {
                 self.pause_focus = None;
-                self.set_screen(Screen::Paused);
                 self.pause_menu = true;
+                self.set_screen(Screen::Paused);
             }
             ScreenTarget::Options => self.open_options(false),
             ScreenTarget::Inventory => {
@@ -333,9 +354,9 @@ impl Game<'_> {
                 if let (Some(title), Some(id)) = (self.title.as_mut(), title_target_id(target)) {
                     title.open_by_id(id);
                 }
-                self.build_screen();
             }
         }
+        self.build_screen();
         // Every target takes the pointer, even one opened in place of a
         // request that grabbed none (a mod's screen asked for while playing).
         self.capture(false);
