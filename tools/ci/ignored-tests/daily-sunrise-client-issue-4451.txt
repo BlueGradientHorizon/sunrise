@@ -1137,7 +1137,6 @@ sunrise-client game::native_cauldron_contents::tests::registered_contents_and_re
 sunrise-client game::native_chunk_areas::tests::a_mods_areas_reach_the_client_and_refusals_come_back_typed lib daily resources
 sunrise-client game::native_chunk_queries::tests::slime_queries_work_without_loading_and_refuse_stale_handles lib daily resources
 sunrise-client game::native_client_particles::tests::a_client_mods_fireworks_sound_only_when_audible lib daily resources
-sunrise-client game::native_client_services::tests::mod_widgets_draw_as_the_games_own lib daily resources
 sunrise-client game::native_client_services::tests::tooltip_helpers_read_live_keys_and_draw_count_overrides lib daily resources
 sunrise-client game::native_client_session::tests::client_session_reads_follow_connection_language_and_frame_state lib daily resources
 sunrise-client game::native_client_session::tests::local_player_status_tracks_mining_mood_and_refuses_other_handles lib daily resources

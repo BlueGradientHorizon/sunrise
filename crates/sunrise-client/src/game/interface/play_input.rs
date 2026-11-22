@@ -183,8 +183,6 @@ impl Game<'_> {
                         if button != MouseButton::Middle {
                             self.mouse_mapping(button, pressed, Source::Keyboard)?;
                         }
-                    } else if container_key_clones(button, action) {
-                        self.inventory_pick_key();
                     }
                 }
             }

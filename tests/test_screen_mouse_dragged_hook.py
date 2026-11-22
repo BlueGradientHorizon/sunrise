@@ -21,18 +21,16 @@ class ScreenMouseDraggedHookTests(unittest.TestCase):
         track = method(hooks, "track_drag_button")
         dispatch = method(hooks, "screen_mouse_dragged")
         start = source.index("                        let projection = self.pointer_projection(size);")
-        cursor_end = source.index("                        if self.dialog_open()", start)
+        cursor_end = source.index("                        let [w, h]", start)
         cursor = source[start:cursor_end]
+        start = source.index("                        match self.screen_mouse_dragged(delta)", cursor_end)
+        end = source.index("                        if self.screen_state.screen_instance", start)
+        cursor += source[start:end]
         window_handler = (ROOT / "crates/sunrise-client/src/game/runtime/window_handler.rs").read_text(encoding="utf-8")
         handler = method(window_handler, "handle_window_event_as")
         sample = handler[handler.index("        let cursor_sample ="):handler.index("        // Who caused it,")]
         refresh = method(source, "refresh_window_cursor")
         set_cursor = method(source, "set_window_cursor")
-        # The extracted fixture only models the mouse-drag hook. Keep the
-        # replay timeline's independent drag handler out of this focused slice.
-        studio_drag = cursor.index("                        let [w, h]")
-        hook_dispatch = cursor.index("                        match self.screen_mouse_dragged(delta)", studio_drag)
-        cursor = cursor[:studio_drag] + cursor[hook_dispatch:]
         start = source.index("        if let WindowEvent::Focused(false)")
         focus = source[start:source.index("        if let WindowEvent::ModifiersChanged", start)]
         fixture = r"""
@@ -66,13 +64,17 @@ mod input_trace {
     #[derive(PartialEq)] pub enum InputOrigin { User, Game }
 }
 mod native_hooks {
-    pub enum ScreenMousePost { Drag { button: i32, delta: [f32; 2] } }
+    use super::View;
+    pub enum ScreenMousePostKind { Drag { button: i32, delta: [f32; 2] } }
+    pub struct ScreenMousePost;
+    impl ScreenMousePost { pub fn new(_: View, _: u32, _: ScreenMousePostKind) -> Self { Self } }
     pub enum ScreenMousePre { NotFired, Canceled, Passed(ScreenMousePost) }
 }
-use native_hooks::{ScreenMousePost, ScreenMousePre};
+use native_hooks::{ScreenMousePost, ScreenMousePostKind, ScreenMousePre};
 fn glfw_button(button: i32) -> i32 { button }
 fn glfw_modifiers(state: ModifiersState) -> u32 { state.0 }
-struct View { mouse: (f32, f32) }
+#[derive(Clone, Copy)] struct View { mouse: (f32, f32) }
+impl View { fn view(&self) -> Self { *self } }
 type Point = PhysicalPosition<f64>;
 enum WindowEvent { Focused(bool), CursorMoved { position: Point } }
 struct Game { drag_button: Option<i32>, physical_buttons: HashSet<i32>, physical_keys: HashSet<i32>,
@@ -85,7 +87,7 @@ impl Game {
     fn pad_synthetic_input(&self) -> bool { self.synthetic }
     // No container hook registered: it takes no drag.
     fn container_drag(&mut self) -> bool { false }
-    fn screen_view_now(&self) -> Option<View> { self.open.then_some(View { mouse: self.cursor }) }
+    fn observed_input_screen(&self) -> Option<View> { self.open.then_some(View { mouse: self.cursor }) }
     fn native_screen_mouse_dragged_pre(&self, view: &View, button: i32, delta: [f32; 2], modifiers: u32, canceled: &mut bool) {
         assert_eq!(modifiers, 5);
         self.calls.borrow_mut().push((button, delta, view.mouse)); *canceled = self.cancel;
