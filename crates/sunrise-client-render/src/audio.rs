@@ -2878,6 +2878,7 @@ mod tests {
                 [-max, 0.0, 0.0],
                 45.0,
                 [f32::MAX, -axis, axis],
+                false,
                 [0.75, 0.25],
             ),
             // Directly left at 60 degrees elevation: 1 MAX left and sqrt(3) MAX up.
@@ -2886,10 +2887,20 @@ mod tests {
                 [0.0, (1.0 - 3.0_f64.sqrt()) * max, 0.0],
                 0.0,
                 [f32::MAX, f32::MAX, 0.0],
+                false,
                 [0.625, 0.375],
             ),
+            // Listener-relative right and ahead (Z negated), ignoring the listener pose:
+            // length sqrt(1.25) MAX > f32::MAX, azimuth atan2(1, 0.5) > 60 degrees -> full right.
+            (
+                [max, 0.0, 0.0],
+                45.0,
+                [f32::MAX, 0.0, -(f32::MAX * 0.5)],
+                true,
+                [0.25, 0.75],
+            ),
         ];
-        for (listener, listener_pitch, at, [left, right]) in poses {
+        for (listener, listener_pitch, at, relative, [left, right]) in poses {
             for (linear, expected) in [
                 (None, [left, right, left, right]),
                 (Some(f32::MAX), [0.25; 4]),
@@ -2903,9 +2914,9 @@ mod tests {
                 mixer
                     .channels
                     .insert(1, stereo_channel(vec![0.25; 6], None, [0.0; 3], false));
-                mixer
-                    .channels
-                    .insert(2, channel(vec![0.5; 4], linear, at, false));
+                let mut voice = channel(vec![0.5; 4], linear, at, false);
+                voice.relative = relative;
+                mixer.channels.insert(2, voice);
                 let mut mixed = [0.0; 4];
                 mix(&mut mixer, &mut mixed, 2, 48_000);
                 assert_eq!(mixed, expected);
