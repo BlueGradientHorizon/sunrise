@@ -559,6 +559,8 @@ pub enum Arg {
     ScoreHolder(ScoreHolderArg),
     IntRange(IntRange),
     DoubleRange(DoubleRange),
+    /// Options already decoded by a registered common particle type.
+    Particle(Box<mod_vocab::ParticleOptions>),
     /// A custom argument: the id of its registered type and its canonical value.
     Custom {
         kind: Arc<str>,
@@ -636,11 +638,7 @@ fn parsed_arguments(context: &Context, input: &str, start: usize) -> Vec<ParsedA
 /// The bytes a text occupies in Java modified UTF-8: a tooltip's NBT string limit counts those.
 fn modified_utf8_len(text: &str) -> usize {
     text.encode_utf16()
-        .map(|unit| match unit {
-            1..=0x7f => 1,
-            0..=0x7ff => 2,
-            _ => 3,
-        })
+        .map(sunrise_core::modified_utf8::unit_len)
         .sum()
 }
 
@@ -1731,10 +1729,19 @@ impl ArgType {
                 } else {
                     sunrise_core::nbt::Tag::Compound(Default::default())
                 };
-                if let Err(m) = particle_options(&id, &options) {
-                    return Err(CommandError::tr("particle.invalidOptions", &[&m]));
+                if let sunrise_core::nbt::Tag::Compound(fields) = &options
+                    && let Some(result) =
+                        reg.particle_options.and_then(|decode| decode(&id, fields))
+                {
+                    Arg::Particle(Box::new(
+                        result.map_err(|m| CommandError::tr("particle.invalidOptions", &[&m]))?,
+                    ))
+                } else {
+                    if let Err(m) = particle_options(&id, &options) {
+                        return Err(CommandError::tr("particle.invalidOptions", &[&m]));
+                    }
+                    Arg::Str(reader.string[start..reader.cursor].to_owned())
                 }
-                Arg::Str(reader.string[start..reader.cursor].to_owned())
             }
             ArgType::Enum(words) => {
                 let word = reader.read_unquoted_string();

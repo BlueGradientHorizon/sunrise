@@ -6,23 +6,27 @@ For example, during registration, obtain `pipe` from your declaration builder or
 `r.block_entity_type_key("mymod:pipe")`, then supply your handler:
 
 ```rust,ignore
-r.block_entity_capability(&ITEMS, &pipe, |_, at| {
-    Some(Box::new(PipeItems(at)))
+r.block_entity_capability(&ITEMS, &pipe, |_, at, _, _, offer| {
+    offer.offer(|| Box::new(PipeItems(at)));
 });
 ```
 
 Here, `PipeItems` is your implementation of `ResourceHandler<ItemResource>`. Its `BlockSide` context
-contains the level, position and requested side. Return `None` to let another provider answer.
-This registration corresponds to NeoForge's `RegisterCapabilitiesEvent`.
+contains the level, position and requested side. A provider checks the supplied state, entity and
+read-only level, and leaves `offer` untouched to decline. The closure passed to `offer.offer` runs
+only when the caller needs the handler. Select before offering; do transfers and writes later,
+through the handler's `ServerHost` and transaction. This registration corresponds to NeoForge's
+`RegisterCapabilitiesEvent`.
 
 ## Register and look up providers
 
 | Operation | Behaviour |
 |---|---|
-| `r.block_entity_capability(&ITEMS, &kind, provider)` | The provider receives `&mut dyn ServerHost` and `BlockSide`. |
-| `r.block_capability(&ITEMS, &block, provider)` | The provider also receives the `BlockState` and `Option<BlockEntityRef>` at the position. Obtain `block` with `r.block_key("mymod:void_bin")`. |
+| `r.block_entity_capability(&ITEMS, &kind, provider)` | The provider receives `&dyn LevelHost`, `BlockSide`, `BlockState`, the matching `BlockEntityRef`, and the offer. |
+| `r.block_capability(&ITEMS, &block, provider)` | The same inputs, but the `BlockEntityRef` is optional. Obtain `block` with `r.block_key("mymod:void_bin")`. |
 | `r.block_entity_capability_before_game(...)` / `r.block_capability_before_game(...)` | Register a provider ahead of the game's provider. |
 | `level.capability(host, &ITEMS, pos, side)` | Look up a handler on a `LevelRef`; `side` is `Option<Direction>`, with `None` meaning no particular side. The result is `Option<Capability<dyn ResourceHandler<ItemResource>>>`. |
+| `view.has_item_capability(pos, side)` | Test whether a handler would be offered on a read-only `LevelHost`, without making one. |
 | `r.is_block_capability_registered(&KEY, &block)` | Whether any game or mod provider registered so far covers this block type. |
 | `r.is_entity_capability_registered(&KEY, &entity_type)` | The same type-coverage query for an `EntityTypeKey`, obtained with `r.entity_type_key("minecraft:pig")`. |
 | `r.is_item_capability_registered(&KEY, &item)` | The same query for an `ItemKey`, obtained with `r.item_key("minecraft:stick")`. |
@@ -39,7 +43,7 @@ Lookup uses this order:
 3. Other registered providers.
 
 Within each mod-provider group, block and block entity type providers form one list in registration
-order. The first `Some` wins; handlers are not merged. Use `_before_game` when you need priority over
+order. The first offer wins; handlers are not merged. Use `_before_game` when you need priority over
 the game's handler, but do not assume precedence over another mod at the same priority.
 Disabled mods' providers are skipped. A stale level handle or a level that is not in place returns
 `None` without asking providers.
@@ -67,9 +71,12 @@ The three block-storage declarations accept mod blocks only, not `minecraft` blo
 type supplies its default storage. Item-container declarations may target vanilla items too, and
 their callbacks run in registration order until one returns `Some`.
 
-One capability supports at most 65,535 providers per block or block entity type. The next registration
-is refused at load with a message naming the mod, capability and target and stating that the target
-already has the most providers it may have.
+`LevelHost::has_item_capability` asks the same enabled providers in the same order on either side.
+`None` as the side means unsided, not a search over the faces. `Some(true)` means a provider
+answered even if its handler would be empty or have no slots. `Some(false)` means no provider
+answered; `None` means the view could not resolve a resident block at that position. The lookup
+never loads a chunk or opens deferred loot. A client's answer uses only the state, entity and mods
+available to that client; the server still decides the actual placement or transfer.
 
 Declare your own capability with `CapabilityKey::new("mymod:chemicals")`. Only registered providers
 answer it; it has no game-provided handler. A `Capability` wraps the handler and identifies its
@@ -145,6 +152,16 @@ everything, `InfiniteResourceHandler::new(resource)` for an endless supply of on
 There is no `simulate` parameter. To try an operation without keeping its changes, run it in a
 transaction and return `Err` to abort. See [Transactions](transactions.md).
 
+`BlockSide`, `ItemResource`, `FluidResource`, `Overanswered`, and the other local capability and
+Part values and errors are native in-process types and do not implement `Wire`. Use `ItemStack`,
+`FluidStack`, or a mod-owned `#[derive(mod_api::Wire)]` schema at network or recipe boundaries;
+attachment storage keeps using its own attachment codecs.
+
+To send a `BlockSide` address, include `pos`, `side`, and the canonical dimension name from
+`level.dimension().id(host)`. Do not encode the address if the name is unavailable. Do not send
+`DimensionKey`: custom dimension slots can differ between processes. Resolve the name with
+`host.level(&name)` on receipt, and reconstruct the address only if the level is available.
+
 ### Hopper and dropper attempts
 
 Vanilla containers, composter-provided containers and container entities keep their direct
@@ -172,7 +189,11 @@ Notifications your extract/insert issues happen immediately and survive abort. T
 `ITEMS` and item `STORAGE` handlers defer a single notice per backing block to root commit
 for vanilla containers and engine-managed mod slots. On the default block `ITEMS` handler, a
 successful `set_max_stack_size` call queues the backing container's change notice at root commit,
-even if no items moved. Direct writes by mods to their own storage and rollback restores do not
+even if no items moved. If a root commit runs during `menu_quick_move`, those implicit notices
+wait until the clicked slot's accepted remainder is in place, or until the hook finishes without one.
+A deferred notice does not run if the original backing container was removed or replaced. A write
+from an active `contents_changed` callback to its own backing block still applies without queuing
+another notice. Direct writes by mods to their own storage and rollback restores do not
 issue notices. Keep storage in the transaction journal: a handler
 that ignores it can lose an extracted item on abort. The hopper does not guard or repair that loss.
 
@@ -185,11 +206,11 @@ The comparator regression uses a supported comparator in a forced, lit chunk wit
 neighbours loaded. It drives the real scheduler before each hopper tick, retaining literal
 comparator executions on game ticks 3 and 5 rather than manually firing those ticks.
 
-Composters need no block entity. Their top and unsided `ITEMS` ports each expose one empty input
+Composters need no block entity. Their top `ITEMS` port exposes one empty input
 slot: below level seven, each insertion consumes **one** compostable item, even when offered a
 stack, and evaluates the same vanilla layers provider and random draw algorithm as hopper insertion.
 Their bottom port exposes one bone meal only at level eight; extraction empties the composter.
-Horizontal faces have no game-provided handler. Retained handlers recheck the current level.
+Unsided and horizontal requests have no game-provided handler. Retained handlers recheck the current level.
 State changes are visible inside the transaction, but fill feedback, game events, maturation
 scheduling and outward block updates wait for the outermost commit. Aborting restores the
 level without those effects. The capability also journals its composter-local random stream,

@@ -1433,6 +1433,7 @@ impl Renderer {
             alpha_blend,
             false,
         );
+        let particle_pipelines = particle_draws::ParticlePipelines::new(entity_pipeline_with);
         // The hand as `entity_pipeline` draws it, in the overlays' format.
         let overlay_hand = (overlay_format != frame_format || linear_light).then(|| {
             entity_pipeline_factory(
@@ -2261,6 +2262,9 @@ impl Renderer {
             world_views: views,
             world_view_side: max_side,
             entity_pipeline,
+            particle_pipelines,
+            explicit_opaque_particles: Default::default(),
+            explicit_translucent_particles: Default::default(),
             static_entity_pipeline,
             hdr_mark_pipeline,
             hdr_entity_mark_pipeline,
@@ -2369,6 +2373,7 @@ impl Renderer {
             depth,
             sections: resident::Resident::default(),
             lods: FxHashMap::default(),
+            lod_vertex_bytes: 0,
             lod_cells: lod::TileGrid::default(),
             lod_cull_free: Vec::new(),
             lod_cull_next: 0,

@@ -9,6 +9,7 @@ use std::sync::{Arc, OnceLock};
 use sunrise_core::random::{LegacyRandom, LevelRandom};
 use sunrise_world::registry::BlockStateId;
 
+mod extra_models;
 mod path_type_cache;
 mod pending_entity;
 pub use pending_entity::{EntityLoadReason, PendingEntity};
@@ -327,8 +328,10 @@ impl World {
     ) {
         if self.chunks.contains_key(&chunk) {
             let incoming: FxHashSet<_> = entities.iter().map(|(pos, _)| *pos).collect();
-            self.block_entities
-                .unload(|p| (p.0 >> 4, p.2 >> 4) == chunk && !incoming.contains(p));
+            crate::spans::time("unload_block_entities", || {
+                self.block_entities
+                    .unload_column_where(chunk, |p| !incoming.contains(p));
+            });
         }
         self.block_entities.load_chunk(entities);
     }
@@ -624,24 +627,11 @@ impl World {
         self.group_lifetime = Some(behaviours);
     }
 
-    /// Commit the group lifetime of a resident storage replacement. Both the scalar and the
-    /// palette-run writer use this boundary; speculative storage uses `set_stored` instead.
-    pub(crate) fn block_storage_changed(
-        &mut self,
-        pos: (i32, i32, i32),
-        old: BlockStateId,
-        new: BlockStateId,
-    ) -> bool {
-        if self
-            .group_lifetime
+    /// Whether this transition ends the lifetime of a group at that cell.
+    pub(crate) fn replaces_connection_group(&self, old: BlockStateId, new: BlockStateId) -> bool {
+        self.group_lifetime
             .as_ref()
             .is_some_and(|b| !b.keeps_block_entity(old, new))
-        {
-            self.invalidate_replaced_group(pos);
-            true
-        } else {
-            false
-        }
     }
 
     /// A committed replacement (including a fresh block entity of the same state)
@@ -704,8 +694,10 @@ impl World {
         }
         let previous = Arc::make_mut(chunk).set(x & 15, y, z & 15, state.0);
         if previous != state.0 {
-            if !chunk.connection_groups.is_empty() {
-                self.block_storage_changed((x, y, z), BlockStateId(previous), state);
+            if !chunk.connection_groups.is_empty()
+                && self.replaces_connection_group(BlockStateId(previous), state)
+            {
+                self.invalidate_replaced_group((x, y, z));
             }
             self.block_entities
                 .state_changed((x, y, z), previous, state.0);
@@ -840,6 +832,7 @@ impl World {
     pub fn is_air(&self, state: BlockStateId) -> bool {
         state == self.air
     }
+    #[inline]
     pub fn loaded(&self, x: i32, z: i32) -> bool {
         self.chunks.contains_key(&(x >> 4, z >> 4))
     }
@@ -951,19 +944,7 @@ impl World {
     /// The fields Sunrise keeps beside a block entity's model, for a journal: the tag it was
     /// loaded or set with (its `lock`) and its pending loot metadata.
     pub fn block_entity_extras(&self, key: (i32, i32, i32)) -> BlockEntityExtras {
-        let saved = self
-            .chunks
-            .get(&(key.0 >> 4, key.2 >> 4))
-            .and_then(|chunk| chunk.saved.as_ref());
-        BlockEntityExtras {
-            source: saved.and_then(|s| {
-                s.block_entity_sources
-                    .iter()
-                    .find(|(p, _)| *p == key)
-                    .map(|(_, tag)| tag.clone())
-            }),
-            pending_loot: saved.and_then(|s| s.pending_loot.get(&key).cloned()),
-        }
+        BlockEntityExtras::capture(&self.chunks, key)
     }
     /// Puts back what [`World::block_entity_extras`] kept.
     pub fn set_block_entity_extras(&mut self, key: (i32, i32, i32), kept: BlockEntityExtras) {
@@ -1314,4 +1295,22 @@ mod tests {
 pub struct BlockEntityExtras {
     pub source: Option<sunrise_core::nbt::Tag>,
     pub pending_loot: Option<crate::chunk::PendingContainerLoot>,
+}
+
+impl BlockEntityExtras {
+    /// Capture the saved side fields without borrowing the block-entity map.
+    pub fn capture(chunks: &crate::chunk_map::ChunkMap, key: (i32, i32, i32)) -> Self {
+        let saved = chunks
+            .get(&(key.0 >> 4, key.2 >> 4))
+            .and_then(|chunk| chunk.saved.as_ref());
+        Self {
+            source: saved.and_then(|s| {
+                s.block_entity_sources
+                    .iter()
+                    .find(|(p, _)| *p == key)
+                    .map(|(_, tag)| tag.clone())
+            }),
+            pending_loot: saved.and_then(|s| s.pending_loot.get(&key).cloned()),
+        }
+    }
 }

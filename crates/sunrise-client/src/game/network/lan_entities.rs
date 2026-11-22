@@ -303,7 +303,7 @@ impl Game<'_> {
                 &b.entity_type(),
                 [p.x, p.y, p.z],
                 b.yaw,
-                b.on_ground,
+                b.ground.on_ground,
             );
             // Leashable.setLeashedTo / dropLeash: who holds the boat's lead.
             e.leash = leash;
@@ -407,7 +407,7 @@ impl Game<'_> {
                 "minecraft:armor_stand",
                 [p.x, p.y, p.z],
                 a.yaw,
-                a.on_ground,
+                a.ground.on_ground,
             );
             e.head_yaw = a.yaw;
             e.velocity = [a.velocity.x, a.velocity.y, a.velocity.z];
@@ -763,6 +763,9 @@ impl Game<'_> {
         // A bare state is never paired: its UUID is never read.
         for e in states.as_mut_slice().iter_mut().filter(|e| !e.bare) {
             e.uuid = ints_uuid(self.uuid_for(e.id as u32));
+            if !self.persist.sync_body_position.is_empty() {
+                e.sync_position |= self.persist.sync_body_position.contains(&(e.id as u32));
+            }
             if let Some(bits) = self.persist.forced_meta.get(&(e.id as u32)) {
                 e.forced_meta = *bits;
             }
@@ -773,6 +776,7 @@ impl Game<'_> {
     /// SteppedInterpolationTracker.updateTracking clears syncPosition: once the states for the
     /// tracking pass are taken.
     pub(super) fn lan_syncs_looked(&mut self) {
+        self.persist.sync_body_position.clear();
         for m in &mut self.mobs {
             m.needs_sync = false;
             m.sync_position = false;
@@ -841,7 +845,7 @@ impl Game<'_> {
             e.velocity = [v.x, v.y, v.z];
             [e.yaw, e.pitch] = row.rotation;
             e.head_yaw = row.rotation[0];
-            e.general = true;
+            e.general = Some(catalog.tracking(row.type_slot));
         }
     }
 
@@ -865,14 +869,21 @@ impl Game<'_> {
             add_state(out, b.id, "minecraft:lightning_bolt", b.at, 0.0, false);
         }
         for t in self.tnts.iter().filter(|t| t.id > after) {
-            let e = add_state(out, t.id, "minecraft:tnt", at(t.position), 0.0, t.on_ground);
+            let e = add_state(
+                out,
+                t.id,
+                "minecraft:tnt",
+                at(t.position),
+                0.0,
+                t.ground.on_ground,
+            );
             e.velocity = at(t.velocity);
             // PrimedTnt.DATA_FUSE_ID, 80 by default; requiresPrecisePosition
             // while it touches a block.
             if t.fuse != 80 {
                 e.meta.push((8, serializer::INT, Value::Int(t.fuse)));
             }
-            e.precise = t.on_ground;
+            e.precise = t.ground.on_ground;
         }
         for f in self.falling.iter().filter(|f| f.id > after) {
             let e = add_state(
@@ -881,7 +892,7 @@ impl Game<'_> {
                 "minecraft:falling_block",
                 at(f.position),
                 0.0,
-                f.on_ground,
+                f.ground.on_ground,
             );
             e.velocity = at(f.velocity);
             e.sync_velocity = f.sync_velocity;
@@ -903,7 +914,7 @@ impl Game<'_> {
                 Some(g) => g.entity_id,
                 None => owner(p.owner),
             };
-            let e = add_state(out, p.id, kind, at(p.position), p.yaw, p.on_ground);
+            let e = add_state(out, p.id, kind, at(p.position), p.yaw, p.ground.on_ground);
             e.pitch = p.pitch;
             e.velocity = at(p.velocity);
             e.needs_sync = p.needs_sync;
@@ -1050,7 +1061,7 @@ impl Game<'_> {
                 "minecraft:trident",
                 at(t.position),
                 t.yaw,
-                t.on_ground,
+                t.ground.on_ground,
             );
             e.pitch = t.pitch;
             e.velocity = at(t.velocity);
@@ -1091,7 +1102,7 @@ impl Game<'_> {
                 "minecraft:firework_rocket",
                 at(r.position),
                 0.0,
-                r.on_ground,
+                r.ground.on_ground,
             );
             e.velocity = at(r.velocity);
             // DATA_ID_FIREWORKS_ITEM once set from a stack, DATA_ATTACHED_TO_TARGET,

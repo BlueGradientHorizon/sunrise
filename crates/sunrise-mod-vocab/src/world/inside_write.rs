@@ -6,7 +6,7 @@
 //! entity directly. A part here names those writes as [`EntityWrite`] values on the
 //! same collector, and its level writes as [`InsideWrite`] requests, so the walk's
 //! order and the entity's own tick are kept.
-use crate::{BlockState, EffectKey};
+use crate::{BlockState, DamageTypeKey, EffectKey};
 
 /// Vanilla `InsideBlockEffectType`: what a block does to the entity inside it, beyond
 /// the writes it makes directly. The collector flushes them per step in this order.
@@ -59,15 +59,11 @@ pub enum EntityWrite {
     /// `makeStuckInBlock`: scale the entity's movement by these factors until it leaves.
     /// Resets its fall distance, as every stuck block does.
     StuckIn([f64; 3]),
-    /// `hurt(source, amount)`. `source` is the id of the entity the damage came from,
-    /// resolved through the game's one entity table when the write applies: a table that
-    /// answers [`EntityLookup::Taken`] (its list is lifted out of the game that moment,
-    /// ) refuses the write with [`HurtSourceError::Taken`] instead of retrying or
-    /// panicking, and the refusal refuses the callback's sibling queued writes too, as an
-    /// invalid landing write does.
+    /// Hurt the contacted entity without a causing or direct entity. A missing type in
+    /// the current level does not apply damage; it never becomes generic damage.
     Hurt {
-        /// The damaging entity's id, or none for the block itself.
-        source: Option<u32>,
+        /// The type requested at registration (`Registrar::damage_type_key`).
+        damage_type: DamageTypeKey,
         /// The damage dealt.
         amount: f32,
     },
@@ -87,36 +83,6 @@ pub enum EntityWrite {
         /// The effect's amplifier, 0 for the plain effect.
         amplifier: u8,
     },
-}
-
-/// The answer of the game's one entity table for an id a [`EntityWrite::Hurt`] names:
-/// the same lookup other entity operations use, never a second one.
-// exhaustive: a closed set the game matches without a wildcard
-// no wire: the game's own answer to an entity-table lookup; it is matched in the game and never sent to a mod.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EntityLookup {
-    /// The entity's row is in the table.
-    Found,
-    /// The entity exists, but its list is lifted out of the game this moment: its row
-    /// cannot be read or written now.
-    Taken,
-    /// No entity with this id.
-    Missing,
-}
-
-/// Why an [`EntityWrite::Hurt`] was refused: its source went through the entity table
-/// and the table could not hand out a row. Reported to the part as a typed value, not a
-/// retry and not a panic.
-// exhaustive: a closed set the game matches without a wildcard
-// no wire: a refusal the game reports to the part as a typed value inside the game; it is never encoded.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HurtSourceError {
-    /// The source's list is lifted out of the game this moment, so its row
-    /// cannot be read: the write and its sibling queued writes from the same callback
-    /// are refused.
-    Taken(u32),
-    /// No entity with this id: the write is refused the same way.
-    Missing(u32),
 }
 
 /// A write at the block an entity is inside, asked for when the part is told and applied
@@ -249,7 +215,7 @@ mod tests {
         let mut effects = InsideEffects::default();
         let stuck = EntityWrite::StuckIn([0.25, 0.05, 0.25]);
         let fire = EntityWrite::Hurt {
-            source: Some(7),
+            damage_type: DamageTypeKey(0),
             amount: 1.0,
         };
         // Step 0: a berry bush (Freeze queued by powder snow elsewhere, and the

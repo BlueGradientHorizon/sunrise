@@ -220,9 +220,11 @@ pub(super) mod hotbar_slot_tests {
             );
             game.handle_packet(C::Login(login_packet())).unwrap();
             game.tick_remote_level().unwrap();
-            assert!(sent(&mut reader).iter().any(
-                |p| matches!(p, S::DebugSubscriptionRequest(r) if r.subscriptions == [0])
-            ));
+            assert!(
+                sent(&mut reader)
+                    .iter()
+                    .any(|p| matches!(p, S::DebugSubscriptionRequest(r) if r.subscriptions == [0]))
+            );
         });
     }
 
