@@ -12,7 +12,6 @@ sunrise-mod-vocab = { path = "../sunrise-mod-vocab" }
 sunrise-client-core = { path = "../sunrise-client-core" }
 sunrise-core = { path = "../sunrise-core" }
 sunrise-world = { path = "../sunrise-world" }
-sunrise-mod-vocab = { path = "../sunrise-mod-vocab" }
 serde = { version = "1", features = ["derive"] }
 log = "0.4"
 serde_json = { version = "1.0.151", features = ["raw_value"] }
