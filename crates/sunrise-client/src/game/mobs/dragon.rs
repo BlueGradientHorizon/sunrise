@@ -443,7 +443,7 @@ pub(in crate::game) struct Dragon {
     strafe_request: Option<FightWho>,
     /// `Mob.isNoAi` (`NoAI`): it flaps in place, with no phase or flight.
     pub(super) no_ai: bool,
-    random: LegacyRandom,
+    pub(super) random: LegacyRandom,
 }
 /// A player in the fight: the window's own player, or a guest by
 /// connection (a LAN or server player).

@@ -855,8 +855,13 @@ impl Game<'_> {
                         let attacker = self
                             .player_attacker(t.guest)
                             .map_or(self.own_entity_id() as u32, |s| s.0);
-                        let damage =
-                            self.evaluate_weapon_damage(&t.stack, Some((attacker, id)), ctx, 8.0);
+                        let damage = self.evaluate_weapon_damage(
+                            &t.stack,
+                            Some(attacker),
+                            Some(id),
+                            ctx,
+                            8.0,
+                        );
                         t.dealt_damage = true;
                         let mut hurt_mob = None;
                         let aim = self.attacker_aim(Some(Who::Player));

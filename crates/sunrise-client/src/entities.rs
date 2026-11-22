@@ -1778,6 +1778,8 @@ pub struct ArmorStand {
     pub mod_fire_immune: bool,
     pub health: f32,
     pub id: u32,
+    /// `Entity.getRandom`, after UUID and living construction draws.
+    pub random: LegacyRandom,
     pub position: Vec3,
     /// `Entity.xo`, `yo`, `zo`: the position at the start of the tick, which
     /// the renderer blends toward `position` by the partial tick.
@@ -2064,42 +2066,53 @@ impl ArmorStand {
         self.previous_yaw = yaw;
     }
     pub fn new(id: u32, position: Vec3, yaw: f32) -> Self {
-        Self {
-            attachment_lifetime: Default::default(),
-            pitch: 0.0,
-            join: Default::default(),
-            fire_ticks: 0,
-            mod_fire_immune: false,
-            health: 20.0,
-            id,
-            position,
-            previous: position,
-            velocity: Vec3::ZERO,
-            yaw,
-            previous_yaw: yaw,
-            equipment: Default::default(),
-            small: false,
-            show_arms: false,
-            no_base_plate: false,
-            invisible: false,
-            marker: false,
-            no_gravity: false,
-            no_physics: None,
-            custom_name: None,
-            name_visible: false,
-            last_hit: i64::MIN / 2,
-            pose: Self::DEFAULT_POSE,
-            vehicle: None,
-            disabled_slots: 0,
-            enchantment_block: None,
-            enchantment_fall_distance: 0.0,
-            enchantment_equipment: Default::default(),
-            live: Default::default(),
-            first_tick: true,
-            ground: Default::default(),
-            speed_instance: false,
-            nameplate: Default::default(),
-        }
+        Self::new_with_uuid(id, position, yaw).0
+    }
+
+    pub fn new_with_uuid(id: u32, position: Vec3, yaw: f32) -> (Self, [i32; 4]) {
+        let (mut random, uuid) = crate::mobs::living_random();
+        // LivingEntity's initial yaw draw, even when placement or loading replaces it.
+        random.next_float();
+        (
+            Self {
+                attachment_lifetime: Default::default(),
+                pitch: 0.0,
+                join: Default::default(),
+                fire_ticks: 0,
+                mod_fire_immune: false,
+                health: 20.0,
+                id,
+                random,
+                position,
+                previous: position,
+                velocity: Vec3::ZERO,
+                yaw,
+                previous_yaw: yaw,
+                equipment: Default::default(),
+                small: false,
+                show_arms: false,
+                no_base_plate: false,
+                invisible: false,
+                marker: false,
+                no_gravity: false,
+                no_physics: None,
+                custom_name: None,
+                name_visible: false,
+                last_hit: i64::MIN / 2,
+                pose: Self::DEFAULT_POSE,
+                vehicle: None,
+                disabled_slots: 0,
+                enchantment_block: None,
+                enchantment_fall_distance: 0.0,
+                enchantment_equipment: Default::default(),
+                live: Default::default(),
+                first_tick: true,
+                ground: Default::default(),
+                speed_instance: false,
+                nameplate: Default::default(),
+            },
+            uuid,
+        )
     }
     /// `Entity.getOnPos(0.2)` (`getOnPosLegacy`): the supporting block's
     /// column 0.2 below the feet, the supporting block itself when `tall`

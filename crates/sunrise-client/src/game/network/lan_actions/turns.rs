@@ -5,7 +5,7 @@ use sunrise_client::{actions::Action, lan::guest::Guest};
 /// The player that was in place before this guest's turn. Stats stay with the
 /// displaced body so a synchronous death can credit it before the put-back.
 pub(in crate::game) struct DisplacedPlayer {
-    body: Option<PlayerMotion>,
+    pub(in crate::game) body: Option<PlayerMotion>,
     pub(in crate::game) name: Option<String>,
     pub(in crate::game) uuid: Option<u128>,
     pub(in crate::game) fake: bool,

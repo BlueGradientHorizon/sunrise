@@ -180,8 +180,7 @@ impl Game<'_> {
             } else {
                 victim
             };
-        let enchanted =
-            self.evaluate_weapon_damage(weapon, attacker.map(|id| (id, victim)), ctx, base);
+        let enchanted = self.evaluate_weapon_damage(weapon, attacker, Some(victim), ctx, base);
         if trident {
             enchanted
         } else {

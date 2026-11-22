@@ -1025,27 +1025,30 @@ impl Enchantments {
         &self,
         levels: &[(Arc<str>, u32)],
         ctx: &EffectContext<'_>,
-        random: &mut LegacyRandom,
+        level_random: &mut LegacyRandom,
+        victim_random: &mut LegacyRandom,
         mut value: f32,
         custom: &mut impl FnMut(usize, &sunrise_core::nbt::Tag, u32, f32) -> f32,
     ) -> f32 {
-        for (id, level) in levels.iter() {
-            let Some(nodes) = self.custom_damage.get(id.as_ref()) else {
-                value = self.modify_value_with(id, *level, "minecraft:damage", ctx, random, value);
+        for (id, level) in levels {
+            let Some(enchantment) = self.get(id) else {
                 continue;
             };
-            let enchantment = self.get(id).expect("compiled enchantment exists");
-            for (entry, node) in enchantment.effects["minecraft:damage"]
+            let nodes = self.custom_damage.get(id.as_ref());
+            for (index, entry) in enchantment.effects["minecraft:damage"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .zip(nodes)
+                .enumerate()
             {
                 if entry
                     .get("requirements")
-                    .is_none_or(|req| self.condition(req, *level, ctx, random))
+                    .is_none_or(|req| self.condition(req, *level, ctx, level_random))
                 {
-                    value = node.apply(*level, random, value, custom);
+                    value = match nodes {
+                        Some(nodes) => nodes[index].apply(*level, victim_random, value, custom),
+                        None => apply_value_effect(&entry["effect"], *level, victim_random, value),
+                    };
                 }
             }
         }
@@ -1485,6 +1488,7 @@ pub mod tests {
             &stack.all_enchantments(),
             &EffectContext::default(),
             &mut LegacyRandom::new(0),
+            &mut LegacyRandom::new(0),
             5.0,
             &mut |slot, config, level, value| {
                 calls.push((slot, level, value));
@@ -1520,12 +1524,37 @@ pub mod tests {
             &stack.all_enchantments(),
             &EffectContext::default(),
             &mut random,
+            &mut LegacyRandom::new(0),
             7.0,
             &mut |_, _, _, _| panic!("a refused node must not run"),
         );
         assert_eq!(value, 7.0);
         // java.util.Random(42): nextFloat for the condition, then nextInt.
         assert_eq!(random.next_int(), 234_785_527);
+    }
+
+    #[test]
+    fn damage_requirements_and_value_effects_advance_different_owners() {
+        let mut enchantments = sample();
+        let index = enchantments.index["minecraft:sharpness"];
+        enchantments.list[index].effects = json!({"minecraft:damage":[{
+            "effect":{"type":"minecraft:remove_binomial", "chance":0.5},
+            "requirements":{"condition":"minecraft:random_chance", "chance":1.0}
+        }]});
+        let mut level = LegacyRandom::new(42);
+        let mut victim = LegacyRandom::new(0);
+        let value = enchantments.modify_damage(
+            &[("minecraft:sharpness".into(), 1)],
+            &EffectContext::default(),
+            &mut level,
+            &mut victim,
+            2.0,
+            &mut |_, _, _, _| unreachable!(),
+        );
+        // Java Random(0) first two floats are greater than 0.5.
+        assert_eq!(value, 2.0);
+        assert_eq!(level.next_int(), 234_785_527);
+        assert_eq!(victim.next_int(), 1_033_096_058);
     }
 
     #[test]
@@ -1558,6 +1587,7 @@ pub mod tests {
                     &stack.all_enchantments(),
                     &context,
                     &mut random,
+                    &mut LegacyRandom::new(0),
                     7.0,
                     &mut |_, _, _, value| {
                         calls += 1;

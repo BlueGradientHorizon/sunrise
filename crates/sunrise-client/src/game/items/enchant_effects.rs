@@ -300,13 +300,20 @@ impl Game<'_> {
             items: None,
             ..Default::default()
         };
-        self.evaluate_weapon_damage(held, actors, ctx, base)
+        self.evaluate_weapon_damage(
+            held,
+            actors.map(|(attacker, _)| attacker),
+            actors.map(|(_, victim)| victim),
+            ctx,
+            base,
+        )
     }
 
     pub(super) fn evaluate_weapon_damage(
         &mut self,
         held: &ItemStack,
-        actors: Option<(u32, u32)>,
+        attacker: Option<u32>,
+        victim: Option<u32>,
         ctx: EffectContext<'_>,
         base: f32,
     ) -> f32 {
@@ -316,27 +323,37 @@ impl Game<'_> {
         };
         // Read effective levels once: get_enchantment_level may itself be mod-provided.
         let levels = held.all_enchantments();
+        if levels.is_empty() {
+            return base;
+        }
         let custom = self.remote.is_none()
             && self.is_logical_server()
             && world_stations!(self)
                 .enchantments
                 .has_custom_damage(&levels);
-        let actors = actors.filter(|_| custom).and_then(|(attacker, victim)| {
-            let epoch = self.native_lifecycle.epoch()?;
-            Some((
-                mod_api::EntityRef::new(epoch, attacker),
-                mod_api::EntityRef::new(epoch, victim),
-            ))
-        });
+        let actors = attacker
+            .zip(victim)
+            .filter(|_| custom)
+            .and_then(|(attacker, victim)| {
+                let epoch = self.native_lifecycle.epoch()?;
+                Some((
+                    mod_api::EntityRef::new(epoch, attacker),
+                    mod_api::EntityRef::new(epoch, victim),
+                ))
+            });
         let weapon = actors.and_then(|_| {
             use crate::game::api_values::TryIntoApi;
             held.try_into_api().ok()
         });
         let mut random = self.world.random.clone();
+        let mut victim_random = victim
+            .and_then(|id| self.damage_victim_random(id))
+            .map_or_else(|| (*random).clone(), |rng| rng.clone());
         let value = world_stations!(self).enchantments.modify_damage(
             &levels,
             &ctx,
             &mut random,
+            &mut victim_random,
             base,
             &mut |slot, config, level, value| {
                 let Some(((attacker, victim), weapon)) = actors.zip(weapon.as_ref()) else {
@@ -362,7 +379,51 @@ impl Game<'_> {
             },
         );
         self.world.random = random;
+        if let Some(rng) = victim.and_then(|id| self.damage_victim_random(id)) {
+            *rng = victim_random;
+        }
         value
+    }
+
+    /// `Entity.getRandom` for the body that the damage effect is about.
+    fn damage_victim_random(&mut self, id: u32) -> Option<&mut LegacyRandom> {
+        use super::lan_actions::CombatPlayer;
+        match self.combat_player(id) {
+            Some(CombatPlayer::InPlace) => return self.player.as_mut().map(|p| &mut *p.random),
+            Some(CombatPlayer::Displaced(depth, _)) => {
+                return self.lan_displaced_players[depth]
+                    .body
+                    .as_mut()
+                    .map(|p| &mut *p.random);
+            }
+            Some(CombatPlayer::Parked(guest)) => {
+                let conn = guest.conn;
+                return self
+                    .lan
+                    .as_mut()?
+                    .hub
+                    .guests
+                    .motion_mut(conn)
+                    .map(|p| &mut *p.random);
+            }
+            None => {}
+        }
+        if let Some(index) = self.mob_index.find(&self.mobs, id) {
+            return self.mobs.get_mut(index).map(|mob| &mut mob.random);
+        }
+        if let Some(dragon) = self.dragon.as_mut().filter(|dragon| dragon.id == id) {
+            return Some(&mut dragon.random);
+        }
+        if let Some(stand) = self.armor_stands.iter_mut().find(|stand| stand.id == id) {
+            return Some(&mut stand.random);
+        }
+        if let Some(boat) = self.boats.iter_mut().find(|boat| boat.id == id) {
+            return Some(&mut boat.random);
+        }
+        self.carts
+            .iter_mut()
+            .find(|cart| cart.id == id)
+            .map(|cart| &mut cart.random)
     }
     /// `Player.attack`'s extra knockback: `getKnockback` (the ATTACK_KNOCKBACK
     /// attribute, plus the weapon's knockback enchantment, halved) plus 0.5 for a

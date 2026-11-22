@@ -449,7 +449,7 @@ impl Game<'_> {
         &self,
         hit: &super::Hit,
         stack: &ItemStack,
-    ) -> Option<([i32; 3], ArmorStand)> {
+    ) -> Option<([i32; 3], ArmorStand, [i32; 4])> {
         if hit.face == [0, -1, 0] {
             return None;
         }
@@ -470,7 +470,7 @@ impl Game<'_> {
         );
         let yaw =
             (((self.yaw - 180.0 + 180.0).rem_euclid(360.0) - 180.0 + 22.5) / 45.0).floor() * 45.0;
-        let mut stand = ArmorStand::new(self.next_entity + 1, foot, yaw);
+        let (mut stand, uuid) = ArmorStand::new_with_uuid(self.next_entity + 1, foot, yaw);
         // Entity.applyImplicitComponents: a name from an anvil names the stand.
         if let Some(name) = stack.custom_name() {
             stand.custom_name = Some(sunrise_client::text::Text::literal(name));
@@ -496,13 +496,13 @@ impl Game<'_> {
         {
             return None;
         }
-        Some((pos, stand))
+        Some((pos, stand, uuid))
     }
     pub(super) fn place_armor_stand(&mut self, hit: &super::Hit, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:armor_stand" {
             return false;
         }
-        let Some((pos, mut stand)) = self.armor_stand_spawn(hit, stack) else {
+        let Some((pos, mut stand, uuid)) = self.armor_stand_spawn(hit, stack) else {
             return false;
         };
         // EntityType.create(.., tryMoveDown, movedUp): the new stand falls onto what is under it,
@@ -522,6 +522,7 @@ impl Game<'_> {
         );
         if let Some(mut loaded) = sunrise_client::entity_nbt::armor_stand_from_nbt(&raw, stand.id) {
             loaded.first_tick = stand.first_tick;
+            loaded.random = stand.random;
             loaded.yaw = stand.yaw;
             loaded.previous_yaw = stand.previous_yaw;
             loaded.pitch = 0.0;
@@ -537,7 +538,6 @@ impl Game<'_> {
         // ArmorStandItem.useOn turns the stand to face the player.
         self.world.random.next_float();
         self.next_entity += 1;
-        let (_, uuid) = sunrise_client::mobs::living_random();
         self.persist.uuids.insert(stand.id, uuid);
         self.audio.play(
             "minecraft:entity.armor_stand.place",
