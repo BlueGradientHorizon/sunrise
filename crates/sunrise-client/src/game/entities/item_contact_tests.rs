@@ -1178,8 +1178,11 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
                 let at = Vec3::new(4.5, 64.0, 4.5);
                 let mut boots = ItemStack::new("minecraft:leather_boots", 1);
                 boots.enchant("minecraft:frost_walker", 1);
-                game.armor[3] = Some(boots);
-                for (bypass, creative, health) in [(false, false, 20.0), (true, true, 0.0)] {
+                for (bypass, creative, wears_boots, health) in [
+                    (false, false, true, 20.0),
+                    (false, false, false, 0.0),
+                    (true, true, true, 0.0),
+                ] {
                     let mut files = vec![
                         (
                             "damage_type/test:stove_burn".into(),
@@ -1204,12 +1207,25 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
                     Arc::make_mut(&mut items.enchantments)
                         .bind_damage_catalog(&game.health_resources.damage);
                     game.server_items = Some(Arc::new(items));
-                    let mut player = PlayerMotion::new(game.motion, at).unwrap();
-                    player.ground.on_ground = true;
-                    player.invulnerable = creative;
-                    game.player = Some(player);
-                    game.refresh_player_damage_immunities();
+                    let resources = game.motion;
+                    let new_player = || {
+                        let mut player = PlayerMotion::new(resources, at).unwrap();
+                        player.ground.on_ground = true;
+                        player.invulnerable = creative;
+                        player
+                    };
+                    game.player = Some(new_player());
+                    // Equip or remove the boots and hit immediately, without a body tick.
+                    game.armor[3] = wears_boots.then(|| boots.clone());
+                    game.hurt_player_by("test:stove_burn", 40.0);
+                    assert_eq!(
+                        game.player.as_ref().unwrap().health.health(),
+                        health,
+                        "direct hit, boots: {wears_boots}, bypass tag: {bypass}"
+                    );
+                    game.player = Some(new_player());
                     let items = world_items!(game);
+                    let side = game_side!(game);
                     let mut world = MotionWorld {
                         player: game.player.as_mut().unwrap(),
                         scene: &mut game.world,
@@ -1219,7 +1235,7 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
                         health: &game.health_resources,
                         tag_items: Some(items),
                         loop_context: &game.loop_context,
-                        side: sunrise_client::motion::dry_side(),
+                        side: &side,
                         damage_hooks: &game.damage_hooks,
                         block_registries: Some(&game.pack.block_registries),
                         entities: &[],
@@ -1231,7 +1247,11 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
                             world.apply_effects_from_blocks().unwrap();
                         },
                     );
-                    assert_eq!(world.player.health.health(), health, "bypass tag: {bypass}");
+                    assert_eq!(
+                        world.player.health.health(),
+                        health,
+                        "step-on hit, boots: {wears_boots}, bypass tag: {bypass}"
+                    );
                 }
             });
         },

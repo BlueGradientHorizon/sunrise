@@ -169,8 +169,8 @@ queues a write at `pos`. The `fall_on` drain applies the ordered block writes af
 only if the block still holds the contacted state. An invalid state or non-finite movement or damage
 refuses that Part's outputs. Other Parts' accepted writes and movement edits remain. This replaces `Hooks::block_step_on`, the former server-only notice.
 
-Boats and minecarts do not take damage from `EntityWrite::Hurt` in `step_on` or `entity_inside` yet
-([#4177](https://github.com/sunrise-org/sunrise/issues/4177)).
+Boats and minecarts ([#4177](https://github.com/sunrise-org/sunrise/issues/4177)), armor stands and
+projectiles ignore `EntityWrite::Hurt` from both callbacks. Experience orbs accept it only from `step_on`.
 
 ## Landing writes
 

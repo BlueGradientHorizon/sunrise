@@ -1,8 +1,9 @@
-//! Stored player health and empty-equipment server damage for the resident scene.
+//! Stored player health and server damage for the resident scene.
 //! World/audio/network consumers are queued explicitly; full death and tick
 //! lifecycles (drops, respawn, effects) remain separate work.
 use crate::{
     Result,
+    items::ItemStack,
     motion::{MotionEvent, PlayerMotion},
 };
 pub use mod_api::entity::health::{HurtSource, ShieldBlock, Victim};
@@ -307,6 +308,9 @@ impl<T: FnMut(ImmunityTag) -> bool> EntityImmunityWorld for BodyImmunity<T> {
     }
 }
 
+/// The acting player's stacks borrowed in vanilla equipment slot order.
+pub type PlayerEquipment<'a> = [Option<&'a ItemStack>; sunrise_items::equipment::SLOT_NAMES.len()];
+
 /// The level a hit lands in, as damage code sees it: its blocks, its random
 /// (`Level.random`) and its own attachments, lent to the damage hooks as their level host.
 /// Built from the level's world, or, in the mob tick, which reads the world while mobs
@@ -339,6 +343,7 @@ pub struct DamageLevel<'a> {
     /// What the hit's listeners may queue and draw ([`HitEffects`]); none for a level built
     /// outside a game's hit.
     effects: Option<HitEffects<'a>>,
+    player_equipment: PlayerEquipment<'a>,
 }
 impl<'a> DamageLevel<'a> {
     /// The level of `world`, whose blocks `registry` names.
@@ -375,6 +380,7 @@ impl<'a> DamageLevel<'a> {
             credit: Credit::Memory,
             players: None,
             effects: None,
+            player_equipment: [None; 8],
         }
     }
     /// The level of `world`, with the random and attachments `lent` took out of it.
@@ -403,6 +409,7 @@ impl<'a> DamageLevel<'a> {
             credit: Credit::Memory,
             players: None,
             effects: None,
+            player_equipment: [None; 8],
         }
     }
     /// The same level, for a shorter borrow.
@@ -427,6 +434,14 @@ impl<'a> DamageLevel<'a> {
                 .as_mut()
                 .map(|(resolver, memory)| (*resolver, &mut **memory as &mut dyn PlayerMemory)),
             effects: self.effects.as_mut().map(HitEffects::reborrow),
+            player_equipment: self.player_equipment,
+        }
+    }
+    /// Lend the stacks worn by this hit's player victim for enchantment immunity.
+    pub fn with_player_equipment(self, player_equipment: PlayerEquipment<'a>) -> Self {
+        Self {
+            player_equipment,
+            ..self
         }
     }
     /// The same level whose hit lends `effects`.
@@ -1530,7 +1545,6 @@ impl PlayerMotion {
             permanently_invulnerable: hit.permanently_invulnerable,
             invulnerable_time: hit.invulnerable_time,
             fire_immune: self.mod_fire_immune,
-            damage_immunities: &self.damage_immunities,
             creative_source: hit.creative_source,
             client_loaded: self.client_loaded,
             rules,
@@ -1616,7 +1630,6 @@ pub(crate) struct Environment<'a> {
     /// `Entity.invulnerableTime > 0` (#916): the entity-level window.
     pub(crate) invulnerable_time: bool,
     pub(crate) fire_immune: bool,
-    pub(crate) damage_immunities: &'a [(std::sync::Arc<str>, u32)],
     /// The hit is a creative player's (`DamageSource.isCreativePlayer`,
     /// #916): it passes the invulnerability below.
     pub(crate) creative_source: bool,
@@ -1991,13 +2004,15 @@ impl EntityImmunityWorld for Environment<'_> {
 }
 impl ImmunityWorld for Environment<'_> {
     fn enchantment_immunity(&mut self) -> io::Result<bool> {
-        let Some(items) = self
-            .level
-            .tags()
-            .filter(|_| !self.damage_immunities.is_empty())
-        else {
+        let Some(items) = self.level.tags() else {
             return Ok(false);
         };
+        let equipment = self
+            .level
+            .player_equipment
+            .into_iter()
+            .map(|stack| stack.map_or(&[][..], ItemStack::enchantments))
+            .zip(sunrise_items::equipment::SLOT_NAMES);
         let source = self
             .level
             .attack()
@@ -2010,9 +2025,7 @@ impl ImmunityWorld for Environment<'_> {
             ..Default::default()
         };
         Ok(items.enchantments.is_damage_immune(
-            self.damage_immunities
-                .iter()
-                .map(|(id, level)| (id, *level)),
+            items.enchantments.damage_immunities(equipment),
             &context,
             self.level.random(),
         ))

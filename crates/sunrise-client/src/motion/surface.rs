@@ -18,6 +18,10 @@ pub trait SideLevel {
     fn enabled_features(&self) -> &std::sync::Arc<[String]>;
     /// The merged tag tables: the server's, a client's from the join, none before they exist.
     fn tag_items(&self) -> Option<&crate::items::Items>;
+    /// Borrow the equipment of the player whose movement this side is driving.
+    fn player_equipment(&self) -> crate::health::PlayerEquipment<'_> {
+        [None; 8]
+    }
     /// The damage-type registry of this side's current level.
     fn damage_types(&self) -> &sunrise_world::damage_source::Catalog;
     /// The resident block entity at `pos` of `world`, as a handle of this side's level.

@@ -259,7 +259,8 @@ impl Game<'_> {
                         game,
                         &sunrise_client::health::NO_ATTACK,
                         no_push,
-                        None
+                        None,
+                        acting_equipment!(game)
                     ),
                     &game.health_resources,
                     rules,
@@ -287,7 +288,6 @@ impl Game<'_> {
             let health = &motion.health;
             let leather_boots = super::super::worn_boots::leather_boots(&game.armor);
             let freeze_immune = game.wears_freeze_immune();
-            game.refresh_player_damage_immunities();
             let boat = game.riding_boat_fluid_box();
             let Some(player) = game.player.as_mut() else {
                 return (Vec::new(), None, ServerTravel::Continue);
@@ -431,7 +431,8 @@ impl Game<'_> {
                     game,
                     &sunrise_client::health::NO_ATTACK,
                     no_push,
-                    None
+                    None,
+                    acting_equipment!(game)
                 ),
                 health,
                 rules,

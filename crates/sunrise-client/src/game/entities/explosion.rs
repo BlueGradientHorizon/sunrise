@@ -896,7 +896,8 @@ impl Game<'_> {
                         self,
                         self.combat.attack(),
                         no_push,
-                        None
+                        None,
+                        acting_equipment!(self)
                     ),
                     &self.health_resources,
                     rules,
