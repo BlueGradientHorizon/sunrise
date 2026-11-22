@@ -283,7 +283,10 @@ fn a_large_item_handler_keeps_the_saved_slot_format() {
             host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 5001, &dirt, 1))),
             Ok(0)
         );
-        let held = ITEMS.get_existing(&mut host, CHUNK).unwrap().unwrap();
+        let held = ITEMS
+            .get_existing(&mut host as &mut dyn ServerHost, CHUNK)
+            .unwrap()
+            .unwrap();
         let saved = (ITEM_STACKS.encode)(&held).unwrap();
         assert_eq!(
             saved.get(&"stacks".into()),
@@ -342,14 +345,17 @@ fn an_unencoded_handler_bulk_extracts_in_order_without_walking_gaps() {
             Ok(2)
         );
         assert_eq!(
-            MEMORY.get_existing(&mut host, CHUNK),
+            MEMORY.get_existing(&mut host as &mut dyn ServerHost, CHUNK),
             Ok(Some(StackList::from([(last, (slate, 2))])))
         );
         assert_eq!(
             host.transaction(|host, tx| slots.extract(host, tx, &slate, 10)),
             Ok(2)
         );
-        assert_eq!(MEMORY.get_existing(&mut host, CHUNK), Ok(None));
+        assert_eq!(
+            MEMORY.get_existing(&mut host as &mut dyn ServerHost, CHUNK),
+            Ok(None)
+        );
     });
 }
 
@@ -366,7 +372,10 @@ fn bulk_insert_skips_a_sparse_range_that_rejects_the_resource() {
             resource_util::insert_stacking(&mut host, &slots, &Pebble::Quartz, 1, None),
             Ok(0)
         );
-        assert_eq!(MEMORY.get_existing(&mut host, CHUNK), Ok(None));
+        assert_eq!(
+            MEMORY.get_existing(&mut host as &mut dyn ServerHost, CHUNK),
+            Ok(None)
+        );
         let last = usize::MAX - 1;
         assert_eq!(
             host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(
@@ -414,7 +423,10 @@ fn bulk_insert_refuses_a_view_beyond_the_stock_codec() {
                 host.transaction(|host, tx| view.insert(host, tx, &water, 1)),
                 Ok(0)
             );
-            assert_eq!(FLUIDS.get_existing(&mut host, CHUNK), Ok(None));
+            assert_eq!(
+                FLUIDS.get_existing(&mut host as &mut dyn ServerHost, CHUNK),
+                Ok(None)
+            );
         },
     );
 }
@@ -431,7 +443,9 @@ fn bulk_insert_skips_a_refused_attachment_and_still_visits_the_next_handler() {
         sync: false,
     };
     let mut host = FakeHost::new();
-    WRONG_TYPE.set(&mut host, CHUNK, 7).unwrap();
+    WRONG_TYPE
+        .set(&mut host as &mut dyn ServerHost, CHUNK, 7)
+        .unwrap();
     let bad = AttachedStacks::new(&MEMORY, CHUNK, usize::MAX - 1, 4, |_| true);
     let combined = resource_util::CombinedResourceHandler::new(
         &mut host,
@@ -447,7 +461,10 @@ fn bulk_insert_skips_a_refused_attachment_and_still_visits_the_next_handler() {
         host.transaction(|host, tx| view.insert(host, tx, &Pebble::Slate, 1)),
         Ok(1)
     );
-    assert_eq!(WRONG_TYPE.get_existing(&mut host, CHUNK), Ok(Some(7)));
+    assert_eq!(
+        WRONG_TYPE.get_existing(&mut host as &mut dyn ServerHost, CHUNK),
+        Ok(Some(7))
+    );
 }
 
 #[test]
@@ -541,7 +558,7 @@ fn bulk_moves_follow_sparse_source_order_through_wrappers() {
         assert_eq!(destination.resource(&mut host, 0), Some(Pebble::Quartz));
         assert_eq!(destination.amount(&mut host, 1), 3);
         assert_eq!(
-            MEMORY.get_existing(&mut host, CHUNK),
+            MEMORY.get_existing(&mut host as &mut dyn ServerHost, CHUNK),
             Ok(Some(StackList::from([(high + 1, (Pebble::Slate, 4))])))
         );
     });
