@@ -991,6 +991,21 @@ pub struct ParticleLevel<'a> {
     pub cached_chunk: std::cell::Cell<Option<((i32, i32), Option<&'a crate::chunk::Chunk>)>>,
 }
 impl<'a> ParticleLevel<'a> {
+    /// A level loan without a local player sample; particle ticks that need one supply it.
+    pub fn new(
+        world: &'a World,
+        facts: &'a BlockFacts,
+        collision: &'a BlockCollisionRegistry<'a>,
+    ) -> Self {
+        Self {
+            world,
+            facts,
+            collision,
+            player: None,
+            cached_chunk: std::cell::Cell::new(None),
+        }
+    }
+
     pub(crate) fn block_at(p: [f64; 3]) -> [i32; 3] {
         [
             p[0].floor() as i32,
@@ -1140,6 +1155,8 @@ pub struct ParticleEngine {
     /// Where the providers' `ParticleLevelView` finds every engine block state as a mod reads
     /// it, asked only when a provider has particles to tick.
     block_state_source: fn() -> Option<BlockStates>,
+    /// The game's conversion for bound native providers when the spawn has no original API options.
+    pub options_to_api: Option<fn(&ParticleOptions) -> Option<mod_api::ParticleOptions>>,
     /// How many provider particles live, in every list and still waiting to join.
     provided_live: Arc<std::sync::atomic::AtomicUsize>,
     batch: native::Batch,
@@ -1272,6 +1289,7 @@ impl ParticleEngine {
             mod_sets: HashMap::new(),
             providers: native::registered().clone(),
             block_state_source: || None,
+            options_to_api: None,
             provided_live: Arc::default(),
             batch: native::Batch::default(),
             set_sprites: Vec::new(),

@@ -9,15 +9,16 @@
 use super::api_values::TryIntoEngine as _;
 use super::{
     Game,
+    native_client_particles::configure_particle_inputs,
     native_scene::{SceneBlock, SceneQuad, face_shade, shaded},
 };
 use glam::{DVec3, Quat, Vec3};
 use mod_api::{
     GuiEntity, GuiEntityError, SCENE_ANIMATE_PICKS, SCENE_CATCH_UP, SCENE_MAX_ANIMATING,
-    SCENE_MAX_ENTITIES, SCENE_MAX_PARTICLES, Scene, SceneClock, SceneError, SceneView,
+    SCENE_MAX_ENTITIES, SCENE_MAX_PARTICLES, Scene, SceneClock, SceneError, SceneParticle,
+    SceneView,
 };
 use std::{
-    cell::Cell,
     hash::{DefaultHasher, Hash, Hasher},
     sync::Arc,
 };
@@ -27,7 +28,7 @@ use sunrise_client::{
     hud::HudBatch,
     mesher::Vertex,
     mobs::Mob,
-    particles::{ParticleEngine, ParticleLevel, ParticleOptions},
+    particles::{ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags},
     world::World,
 };
 use sunrise_core::geometry::Vec3 as Position;
@@ -231,10 +232,10 @@ impl Game<'_> {
             .map(|(p, index)| {
                 p.options
                     .try_into_engine(&())
-                    .map(|o| (o, p.pos, p.velocity))
+                    .map(|o| (o, p))
                     .map_err(|_| SceneError::BadParticle { index })
             })
-            .collect::<Result<Vec<(ParticleOptions, _, _)>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
         // The client's entities as they are this frame, refused before anything is kept.
         let mut existing = Vec::new();
         for (index, e) in (0u32..).zip(&scene.entities) {
@@ -387,6 +388,7 @@ impl Game<'_> {
             &self.gui.atlas.sprites,
             &self.gui.atlas.translucent,
         );
+        configure_particle_inputs(&mut engine);
         engine.live_limit = Some(SCENE_MAX_PARTICLES);
         // The spawn limiter's camera at the blocks' middle: the view never changes what lives.
         if !picks.is_empty() {
@@ -424,7 +426,7 @@ impl Game<'_> {
         &self,
         l: &mut Live,
         clock: SceneClock,
-        added: &[(ParticleOptions, [f64; 3], [f64; 3])],
+        added: &[(ParticleOptions, &SceneParticle)],
     ) {
         let Some((restart, first, last)) = ticks_to_run(l.tick, clock.tick) else {
             return;
@@ -439,13 +441,13 @@ impl Game<'_> {
             engine.clear();
         }
         engine.particle_level = self.settings.particles;
-        let facts = self.res.facts();
+        let level = ParticleLevel::new(world, self.res.facts(), self.collision);
         let tables = &self.pack.context.tables;
         let model_offset = |state, x, z| tables.offset(state, x, z);
         let ctx = AnimateContext {
             enchant_power: &self.ambience.enchant_power,
-            world,
-            facts,
+            world: level.world,
+            facts: level.facts,
             collision: self.collision,
             biomes: world_biomes!(self),
             registry: self.pack.assets.registry,
@@ -466,20 +468,21 @@ impl Game<'_> {
             engine.seed_randoms(seed, seed.rotate_left(21), seed.rotate_left(42));
             engine.seed_particle_randoms(seed.rotate_left(53));
             if tick == first {
-                for (options, at, velocity) in added {
-                    engine.add(options, *at, *velocity);
+                for (options, request) in added {
+                    engine.add_with_level(
+                        options,
+                        request.pos,
+                        request.velocity,
+                        ParticleSpawnFlags::default(),
+                        &level,
+                        Some(&request.options),
+                    );
                 }
             }
             if clock.animate_blocks {
                 animate_scene(self.res.animate(), engine, &ctx, picks, SCENE_ANIMATE_PICKS);
             }
-            engine.tick(&ParticleLevel {
-                world,
-                facts,
-                collision: self.collision,
-                player: None,
-                cached_chunk: Cell::new(None),
-            });
+            engine.tick(&level);
             engine.sounds.clear();
         }
         l.tick = clock.tick;

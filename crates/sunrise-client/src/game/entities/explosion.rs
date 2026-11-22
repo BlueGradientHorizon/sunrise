@@ -16,7 +16,8 @@ use std::{
 };
 use sunrise_client::health::DamageLevel;
 use sunrise_client::{
-    Result, blocks::Fluid, collisions::SceneCollisions, items::ItemStack, mobs::Who, text::Text,
+    Result, blocks::Fluid, collisions::SceneCollisions, items::ItemStack, mobs::Who,
+    particles::ParticleLevel, text::Text,
 };
 use sunrise_core::{
     geometry::{Vec3, VoxelShape},
@@ -1872,12 +1873,14 @@ impl Game<'_> {
         let block_count = targets.len();
         let small = radius < 2.0 || interaction == BlockInteraction::Keep;
         let emitter = effects.emitter(small);
+        let level = ParticleLevel::new(&self.world, self.res.facts(), self.collision);
         self.particles.explosion(
             center,
             emitter,
             block_count,
             radius,
             &effects.block_particles,
+            &level,
         );
         self.lan_explode(center, small, radius, block_count, pushed, effects);
         Ok(())

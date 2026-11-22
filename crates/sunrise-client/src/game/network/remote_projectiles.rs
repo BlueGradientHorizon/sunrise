@@ -9,7 +9,7 @@ use sunrise_client::join_seq::{JoinList, RestoreOrder};
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
 use sunrise_client::{
     collisions::SceneCollisions,
-    particles::{ParticleOptions, ParticleType},
+    particles::{ParticleLevel, ParticleOptions, ParticleType},
 };
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
 use sunrise_protocol::entity_data::Value;
@@ -757,8 +757,16 @@ impl Game<'_> {
 
     /// `AreaEffectCloud.clientTick` for each cloud a server tracks.
     fn tick_remote_clouds(&mut self) {
+        let level = ParticleLevel::new(&self.world, self.res.facts(), self.collision);
         for c in &self.potions.clouds {
-            cloud_client_tick(&mut self.particles, c.at, c.radius, c.waiting, &c.particle);
+            cloud_client_tick(
+                &mut self.particles,
+                &level,
+                c.at,
+                c.radius,
+                c.waiting,
+                &c.particle,
+            );
         }
     }
 

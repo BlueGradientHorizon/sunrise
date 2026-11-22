@@ -74,8 +74,16 @@ impl ParticleEngine {
         block_count: usize,
         radius: f32,
         particles: &[ExplosionParticle],
+        level: &ParticleLevel<'_>,
     ) {
-        self.add(emitter, center, [1.0, 0.0, 0.0]);
+        self.add_with_level(
+            emitter,
+            center,
+            [1.0, 0.0, 0.0],
+            ParticleSpawnFlags::default(),
+            level,
+            None,
+        );
         self.track_explosion(center, radius, block_count, particles);
     }
     /// `ClientExplosionTracker.tick`: throws up to 512 debris particles across all

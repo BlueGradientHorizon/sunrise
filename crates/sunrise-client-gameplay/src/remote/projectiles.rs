@@ -2,7 +2,9 @@
 use sunrise_client::arrows::{ArrowEvent, ArrowScene};
 use sunrise_client::items::ItemStack;
 use sunrise_client::join_seq::JoinList;
-use sunrise_client::particles::{ParticleEngine, ParticleOptions, ParticleType};
+use sunrise_client::particles::{
+    ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags, ParticleType,
+};
 use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
@@ -25,6 +27,7 @@ pub fn default_cloud_particle() -> ParticleOptions {
 /// (an entity effect stays still).
 pub fn cloud_client_tick(
     particles: &mut ParticleEngine,
+    level: &ParticleLevel<'_>,
     at: [f64; 3],
     radius: f32,
     waiting: bool,
@@ -50,26 +53,29 @@ pub fn cloud_client_tick(
             at[1],
             at[2] + f64::from(angle.sin() * distance),
         ];
-        let (options, velocity) = if particle.ty == ParticleType::EntityEffect {
-            let default = waiting && r.next_boolean();
-            let options = if default {
-                default_cloud_particle()
-            } else {
-                particle.clone()
-            };
-            (options, [0.0; 3])
-        } else if waiting {
-            (particle.clone(), [0.0; 3])
+        let entity_effect = particle.ty == ParticleType::EntityEffect;
+        let default = (entity_effect && waiting && r.next_boolean()).then(default_cloud_particle);
+        let velocity = if entity_effect || waiting {
+            [0.0; 3]
         } else {
-            let v = [
+            [
                 (0.5 - r.next_double()) * 0.15,
                 f64::from(0.01f32),
                 (0.5 - r.next_double()) * 0.15,
-            ];
-            (particle.clone(), v)
+            ]
         };
         // `addAlwaysVisibleParticle`.
-        particles.add_with(&options, at, velocity, false, true);
+        particles.add_with_level(
+            default.as_ref().unwrap_or(particle),
+            at,
+            velocity,
+            ParticleSpawnFlags {
+                override_limiter: false,
+                always_show: true,
+            },
+            level,
+            None,
+        );
     }
 }
 

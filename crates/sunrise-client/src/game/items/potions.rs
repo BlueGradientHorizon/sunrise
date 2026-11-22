@@ -21,7 +21,7 @@ use sunrise_client::{
     items::ItemStack,
     mesher::Vertex,
     mobs::{Damage, DamageKind, Mob, NamedDamage, Who},
-    particles::{ParticleOptions, ParticleType},
+    particles::{ParticleLevel, ParticleOptions, ParticleType},
     projectiles::{Projectile, ProjectileKind},
     text::Text,
 };
@@ -1967,8 +1967,10 @@ impl Game<'_> {
             return false;
         }
         let waiting = c.age < potion.settings.wait_time;
+        let level = ParticleLevel::new(&self.world, self.res.facts(), self.collision);
         cloud_client_tick(
             &mut self.particles,
+            &level,
             c.at,
             c.radius,
             waiting,

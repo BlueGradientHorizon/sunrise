@@ -5,7 +5,10 @@ use super::{Game, explosion_settings::BlastEffects, lan::LanHost, level_sounds::
 use mod_api::{SoundSource, client::particles::PositionSource};
 use sunrise_client::lan::containers::within_range;
 use sunrise_client::lan::hub::Hub;
-use sunrise_client::particles::{ExplosionParticle, ParticleOptions, ParticleType};
+use sunrise_client::particles::{
+    ExplosionParticle, ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags,
+    ParticleType,
+};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -507,8 +510,13 @@ impl Game<'_> {
         let (d, s) = (p.dist.map(f64::from), p.max_speed.map(f64::from));
         // ClientLevel.addParticle: the camera's 32 blocks and the Particles
         // option, unless the packet or the type overrides the limiter.
-        let add = |particles: &mut sunrise_client::particles::ParticleEngine, at, v| {
-            particles.add_with(&options, at, v, p.override_limiter, p.always_show);
+        let flags = ParticleSpawnFlags {
+            override_limiter: p.override_limiter,
+            always_show: p.always_show,
+        };
+        let level = ParticleLevel::new(&self.world, self.res.facts(), self.collision);
+        let add = |particles: &mut ParticleEngine, at, v| {
+            particles.add_with_level(&options, at, v, flags, &level, None);
         };
         if p.count == 0 {
             add(
@@ -541,7 +549,15 @@ impl Game<'_> {
             self.audio.play(&sound, Some(p.center), 4.0, pitch);
         }
         if let Some(options) = self.received_particle(&p.particle, p.center) {
-            self.particles.add(&options, p.center, [1.0, 0.0, 0.0]);
+            let level = ParticleLevel::new(&self.world, self.res.facts(), self.collision);
+            self.particles.add_with_level(
+                &options,
+                p.center,
+                [1.0, 0.0, 0.0],
+                ParticleSpawnFlags::default(),
+                &level,
+                None,
+            );
         }
         // A wind charge's burst lists none, and one this client can't draw is left out.
         let block_particles: Vec<_> = p

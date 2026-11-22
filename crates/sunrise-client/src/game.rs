@@ -13231,11 +13231,7 @@ impl<'a> Game<'a> {
             &gui.atlas.sprites,
             &gui.atlas.translucent,
         );
-        particles.set_block_state_source(|| {
-            api_values::block_state::current()
-                .ok()
-                .map(|states| -> sunrise_client::particles::BlockStates { states })
-        });
+        native_client_particles::configure_particle_inputs(&mut particles);
         let resource_source = pack.source.clone();
         let mut game = Game {
             structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns::load(

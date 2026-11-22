@@ -1,31 +1,23 @@
 //! Local particle and firework requests from native client hooks.
-use super::Game;
-use mod_api::{FireworksRequest, client::particles::PositionSource};
-use sunrise_client::particles::ParticleOptions;
+use super::{
+    Game,
+    api_values::{TryIntoApi, TryIntoEngine, block_state},
+};
+use mod_api::{FireworksRequest, ParticleOptions};
+use sunrise_client::particles::{ParticleEngine, ParticleLevel, ParticleSpawnFlags};
 
 /// The most explosions one `create_fireworks` request draws (a crafted rocket holds at
 /// most 7 stars; a mod's show can be larger).
 const MAX_FIREWORK_EXPLOSIONS: usize = 256;
 
-fn finite_options(options: &ParticleOptions) -> bool {
-    options.color.into_iter().all(f32::is_finite)
-        && options.to_color.into_iter().all(f32::is_finite)
-        && options.scale.is_finite()
-        && options
-            .trail
-            .as_ref()
-            .is_none_or(|(at, _)| at.iter().all(|v| v.is_finite()))
-        && options
-            .geyser
-            .is_none_or(|(_, impulse)| impulse.is_finite())
-        && options.vibration.as_ref().is_none_or(|(source, at, _)| {
-            at.iter().all(|v| v.is_finite())
-                && match source {
-                    PositionSource::Block(_) => true,
-                    PositionSource::Entity { y_offset, .. } => y_offset.is_finite(),
-                    _ => false,
-                }
-        })
+/// Lend game-owned value conversions to the window and scene particle engines.
+pub(super) fn configure_particle_inputs(engine: &mut ParticleEngine) {
+    engine.set_block_state_source(|| {
+        block_state::current()
+            .ok()
+            .map(|states| -> sunrise_client::particles::BlockStates { states })
+    });
+    engine.options_to_api = Some(|options| options.try_into_api().ok());
 }
 
 impl Game<'_> {
@@ -45,13 +37,25 @@ impl Game<'_> {
             || self.player.is_none()
             || !at.into_iter().all(f64::is_finite)
             || !velocity.into_iter().all(f64::is_finite)
-            || !finite_options(options)
         {
             return false;
         }
+        let Ok(engine_options) = options.try_into_engine(self.items()) else {
+            return false;
+        };
         // The limiter's roll draws the level random: inside a part's `animate_tick`, the one
         // the part holds as `event.random`.
-        self.with_lent_level_random(|game| game.particles.add(options, at, velocity));
+        self.with_lent_level_random(|game| {
+            let level = ParticleLevel::new(&game.world, game.res.facts(), game.collision);
+            game.particles.add_with_level(
+                &engine_options,
+                at,
+                velocity,
+                ParticleSpawnFlags::default(),
+                &level,
+                Some(options),
+            );
+        });
         true
     }
     /// `ClientLevel.createFireworks`: queue a firework's explosions in this client's loaded
@@ -60,7 +64,6 @@ impl Game<'_> {
     /// True means queued; false on a server, without a client player/level, for non-finite
     /// input or for more than [`MAX_FIREWORK_EXPLOSIONS`] explosions. API @API:client_fireworks@.
     pub(super) fn create_fireworks(&mut self, request: &FireworksRequest) -> bool {
-        use super::api_values::TryIntoEngine;
         if !self.native_window()
             || self.player.is_none()
             || !request
@@ -96,34 +99,7 @@ impl Game<'_> {
 mod tests {
     use super::*;
     use mod_api::{ClientHost, FireworkExplosion, FireworkShape};
-    use sunrise_client::particles::{ParticleLevel, ParticleType};
-
-    #[test]
-    fn nonfinite_nested_particle_parameters_are_rejected() {
-        let good = ParticleOptions::simple(ParticleType::Smoke);
-        assert!(finite_options(&good));
-        let mut bad = good.clone();
-        bad.to_color[0] = f32::NAN;
-        assert!(!finite_options(&bad));
-        bad = good.clone();
-        bad.trail = Some(([f64::INFINITY, 0.0, 0.0], 3));
-        assert!(!finite_options(&bad));
-        bad = good.clone();
-        bad.geyser = Some((1, f32::NAN));
-        assert!(!finite_options(&bad));
-        bad = good;
-        bad.vibration = Some((
-            PositionSource::Entity {
-                id: 1,
-                y_offset: f32::NAN,
-            },
-            [0.0; 3],
-            3,
-        ));
-        assert!(!finite_options(&bad));
-        bad.vibration = Some((PositionSource::Block([0; 3]), [0.0, f64::NAN, 0.0], 3));
-        assert!(!finite_options(&bad));
-    }
+    use sunrise_client::particles::ParticleType;
 
     /// A client mod's fireworks burst either way, and blast and twinkle only when audible,
     /// as a rocket that isn't silent; a server draws nothing.

@@ -1,5 +1,7 @@
 //! Headless proof of the generated Host bridge and the ordinary particle queue.
-use super::{Game, execution_role::ExecutionRole};
+use super::{
+    Game, execution_role::ExecutionRole, native_client_particles::configure_particle_inputs,
+};
 use mod_api::ClientHost;
 use std::{
     collections::{HashMap, HashSet},
@@ -116,6 +118,7 @@ impl Game<'_> {
             ]),
             &HashSet::new(),
         );
+        configure_particle_inputs(&mut self.particles);
         self.particles.camera = at;
         assert!(add(self, &smoke, at, [0.0; 3]));
         assert_eq!(
