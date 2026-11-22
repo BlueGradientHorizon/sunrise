@@ -637,15 +637,6 @@ impl Game<'_> {
             } else {
                 None
             };
-            if inline_range.is_none()
-                && heard.name.starts_with("minecraft:")
-                && host
-                    .hub
-                    .registry_id("minecraft:sound_event", &heard.name)
-                    .is_none()
-            {
-                continue;
-            }
             let mut packet = host.hub.sound_packet(
                 &heard.name,
                 sound.at,
