@@ -11,7 +11,7 @@ use super::{
 };
 use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
 use sunrise_assets::item_model::DisplayContext;
-use sunrise_client::health::{Attack, DamageLevel};
+use sunrise_client::health::Attack;
 use sunrise_client::{
     block_entity_render::vertex_light,
     brewing,
@@ -2747,14 +2747,15 @@ impl Game<'_> {
 impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
     fn tick_mod_effect(
         &self,
-        level: &mut DamageLevel<'_>,
         effect: usize,
-        mob: &mut Mob,
+        mob: &Mob,
         tick_count: i32,
         amplifier: i32,
-    ) -> bool {
+    ) -> (bool, Vec<sunrise_client::mobs::MobEffectChange>) {
+        use sunrise_client::mobs::MobEffectChange;
+
         let Some(epoch) = self.native_lifecycle.epoch() else {
-            return true;
+            return (true, Vec::new());
         };
         let holder = LivingRef::new(EntityRef::new(epoch, mob.id));
         let (keep, changes) = self.mod_effect_tick(
@@ -2771,21 +2772,19 @@ impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
                 .iter()
                 .filter_map(|effect| effect.registry_index),
         );
-        for change in changes {
-            match change {
-                EffectTickChange::Heal(amount) => mob.heal(&self.loop_context, amount),
+        let registry = &self.health_resources.damage;
+        let changes = changes
+            .into_iter()
+            .filter_map(|change| match change {
+                EffectTickChange::Heal(amount) => Some(MobEffectChange::Heal(amount)),
                 // An unregistered damage type hurts nothing.
-                EffectTickChange::Hurt(source, amount) => {
-                    let registry = &self.health_resources.damage;
-                    if registry.id(&source).is_some() {
-                        let kind = Self::damage_kind(registry, &source);
-                        mob.damage(level, amount, Damage::of(kind));
-                    }
-                }
-                _ => {}
-            }
-        }
-        keep
+                EffectTickChange::Hurt(source, amount) if registry.id(&source).is_some() => Some(
+                    MobEffectChange::Hurt(Self::damage_kind(registry, &source), amount),
+                ),
+                _ => None,
+            })
+            .collect();
+        (keep, changes)
     }
     fn effect_expired(&self, mob: u32, effect: usize, amplifier: i32, cancel: &mut bool) {
         if let Some(living) = self.effect_living_ref(Some(mob as i32))
