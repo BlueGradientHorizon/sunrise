@@ -2307,8 +2307,7 @@ impl Game<'_> {
                         }
                         continue;
                     }
-                    // The menu they had open closes, in the level they were in
-                    // (`ServerPlayer.disconnect` -> `doCloseContainer`).
+                    // Close the guest's menu in their level before `player_logged_out`.
                     if guest.placed {
                         let back = self.dim;
                         let theirs = super::Dim::from_id(&guest.dimension);
