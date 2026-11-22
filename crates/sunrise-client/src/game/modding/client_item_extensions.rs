@@ -6,9 +6,10 @@ use mod_api::{
     ModelPart,
 };
 use std::{
+    borrow::Cow,
     collections::hash_map::Entry,
     sync::{
-        Arc,
+        Arc, LazyLock,
         atomic::{AtomicU64, Ordering},
     },
 };
@@ -16,6 +17,11 @@ use sunrise_client::{
     fast_hash::FxHashMap,
     mobs::{finalize::EquipmentRead, render::EquipmentModel},
 };
+
+pub(super) static DEFAULT_TOOLTIP_FONT_ID: LazyLock<mod_api::Identifier> = LazyLock::new(|| {
+    mod_api::Identifier::from_parts("minecraft", "default")
+        .expect("minecraft:default is a valid identifier")
+});
 
 /// One callback owner per mod and item, shared by all generations of that provider.
 #[derive(Default)]
@@ -223,6 +229,39 @@ impl Game<'_> {
             Self::prepare_client_item_extensions(&self.gui, &mut self.client_item_extension_owners);
     }
 
+    /// Item-owned tooltip font (`ClientHooks.getTooltipFont` -> `IClientItemExtensions.getFont`).
+    ///
+    /// Returns `minecraft:default` when no extension is registered, the provider returns `None`,
+    /// the stack cannot cross the API boundary, or the provider panics.
+    pub(super) fn item_tooltip_font(
+        &self,
+        stack: &sunrise_client::items::ItemStack,
+    ) -> Cow<'static, mod_api::Identifier> {
+        let default = Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID);
+        let state = &self.armor_stand_assets.extensions;
+        if state.items.is_empty() {
+            return default;
+        }
+        let Some(item) = mod_api::__private::item_key(&stack.item) else {
+            return default;
+        };
+        let Some(part) = state.items.get(&item) else {
+            return default;
+        };
+        if !part.owner().is_enabled() {
+            return default;
+        }
+        let Ok(api_stack) = super::api_values::TryIntoApi::try_into_api(stack) else {
+            return default;
+        };
+        part.owner()
+            .call("client item extensions", "tooltip_font", || {
+                part.value().tooltip_font(self, &api_stack)
+            })
+            .ok()
+            .flatten()
+            .map_or(default, Cow::Owned)
+    }
     pub(super) fn extended_equipment_materials<'a>(
         &'a self,
         piece: &super::equipment_piece::EquipmentPiece<'_>,

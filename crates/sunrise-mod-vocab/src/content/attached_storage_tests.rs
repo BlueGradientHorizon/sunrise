@@ -102,8 +102,7 @@ fn a_fluid_tank_round_trips_through_its_codec_and_moves() {
         let mut host = FakeHost::new();
         let water = fluid("minecraft:water");
         let tanks = AttachedFluids::new(&FLUIDS, CHUNK, 6000, 1000, |_| true);
-        let moved =
-            host.transaction(|host, tx| Ok::<_, ()>(tanks.insert_at(host, tx, 5999, &water, 250)));
+        let moved = host.transaction(|host, tx| tanks.insert_at(host, tx, 5999, &water, 250));
         assert_eq!(moved, Ok(250));
         assert_eq!(tanks.amount(&mut host, 5999), 250);
         // The codec of the saved attachment reads back to the same index and amount.
@@ -114,8 +113,7 @@ fn a_fluid_tank_round_trips_through_its_codec_and_moves() {
         let reloaded = (codec.decode)(&saved).unwrap();
         assert_eq!(reloaded, StackList::from([(5999, (water.clone(), 250))]));
         // A transfer takes the same amount out again.
-        let came =
-            host.transaction(|host, tx| Ok::<_, ()>(tanks.extract_at(host, tx, 5999, &water, 250)));
+        let came = host.transaction(|host, tx| tanks.extract_at(host, tx, 5999, &water, 250));
         assert_eq!(came, Ok(250));
         assert_eq!(tanks.amount(&mut host, 5999), 0);
     });
@@ -130,21 +128,16 @@ fn extraction_takes_part_and_none_of_another_resource() {
         let dirt = item("minecraft:dirt");
         let cobble = item("minecraft:cobblestone");
         let slots = AttachedItems::new(&ITEMS, CHUNK, 9, 64, |_| true);
-        let went =
-            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 4, &dirt, 30)));
+        let went = host.transaction(|host, tx| slots.insert_at(host, tx, 4, &dirt, 30));
         assert_eq!(went, Ok(30));
-        let none =
-            host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 4, &cobble, 30)));
+        let none = host.transaction(|host, tx| slots.extract_at(host, tx, 4, &cobble, 30));
         assert_eq!(none, Ok(0), "none of another resource");
-        let came =
-            host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 4, &dirt, 12)));
+        let came = host.transaction(|host, tx| slots.extract_at(host, tx, 4, &dirt, 12));
         assert_eq!(came, Ok(12));
         assert_eq!(slots.amount(&mut host, 4), 18);
-        let rest =
-            host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 4, &dirt, 50)));
+        let rest = host.transaction(|host, tx| slots.extract_at(host, tx, 4, &dirt, 50));
         assert_eq!(rest, Ok(18), "at most what remains");
-        let empty =
-            host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 4, &dirt, 1)));
+        let empty = host.transaction(|host, tx| slots.extract_at(host, tx, 4, &dirt, 1));
         assert_eq!(empty, Ok(0));
         assert_eq!(slots.amount(&mut host, 4), 0);
     });
@@ -167,18 +160,14 @@ fn capacity_stays_physical_while_validity_refuses_inserts_only() {
             "the physical limit (the item's stack size), though cobblestone is not valid here"
         );
         assert!(!only_dirt.is_valid(&mut host, 2, &cobble));
-        let refused =
-            host.transaction(|host, tx| Ok::<_, ()>(only_dirt.insert_at(host, tx, 2, &cobble, 10)));
+        let refused = host.transaction(|host, tx| only_dirt.insert_at(host, tx, 2, &cobble, 10));
         assert_eq!(refused, Ok(0));
-        let went =
-            host.transaction(|host, tx| Ok::<_, ()>(only_dirt.insert_at(host, tx, 2, &dirt, 120)));
+        let went = host.transaction(|host, tx| only_dirt.insert_at(host, tx, 2, &dirt, 120));
         assert_eq!(went, Ok(64), "at most the item's stack size per index");
         // A cobblestone another (permissive) handler's write stored reads out through this one.
         let anything = AttachedItems::new(&VALID_ITEMS, CHUNK, 4, 500, |_| true);
-        let _ =
-            host.transaction(|host, tx| Ok::<_, ()>(anything.insert_at(host, tx, 3, &cobble, 7)));
-        let came =
-            host.transaction(|host, tx| Ok::<_, ()>(only_dirt.extract_at(host, tx, 3, &cobble, 7)));
+        let _ = host.transaction(|host, tx| anything.insert_at(host, tx, 3, &cobble, 7));
+        let came = host.transaction(|host, tx| only_dirt.extract_at(host, tx, 3, &cobble, 7));
         assert_eq!(came, Ok(7), "extraction is independent of validity");
     });
 }
@@ -191,19 +180,19 @@ fn energy_limits_and_a_nested_abort() {
         resolve(&[], &[]);
         let mut host = FakeHost::new();
         let battery = AttachedEnergy::new(&ENERGY, CHUNK, 100, 30, 20);
-        let past_insert = host.transaction(|host, tx| Ok::<_, ()>(battery.insert(host, tx, 150)));
+        let past_insert = host.transaction(|host, tx| battery.insert(host, tx, 150));
         assert_eq!(past_insert, Ok(30), "at most max_insert per call");
-        let past_extract = host.transaction(|host, tx| Ok::<_, ()>(battery.extract(host, tx, 25)));
+        let past_extract = host.transaction(|host, tx| battery.extract(host, tx, 25));
         assert_eq!(past_extract, Ok(20), "at most max_extract per call");
         let nested = host.transaction(|outer_host, outer_tx| {
             let aborted = outer_host.transaction(|host, tx| {
-                battery.insert(host, tx, 10);
+                assert_eq!(battery.insert(host, tx, 10), Ok(10));
                 Err::<(), _>(())
             });
-            assert_eq!(aborted, Err(()));
+            assert_eq!(aborted, Err(crate::TransactionError::Aborted(())));
             let came = battery.extract(&mut *outer_host, outer_tx, 5);
-            assert_eq!(came, 5);
-            Ok::<_, ()>(came)
+            assert_eq!(came, Ok(5));
+            came
         });
         assert_eq!(nested, Ok(5));
         assert_eq!(
@@ -222,10 +211,10 @@ fn a_smaller_view_keeps_higher_indices() {
         let mut host = FakeHost::new();
         let dirt = item("minecraft:dirt");
         let big = AttachedItems::new(&ITEMS, CHUNK, 9, 64, |_| true);
-        let went = host.transaction(|host, tx| Ok::<_, ()>(big.insert_at(host, tx, 7, &dirt, 12)));
+        let went = host.transaction(|host, tx| big.insert_at(host, tx, 7, &dirt, 12));
         assert_eq!(went, Ok(12));
         let small = AttachedItems::new(&ITEMS, CHUNK, 3, 64, |_| true);
-        let went = host.transaction(|host, tx| Ok::<_, ()>(small.insert_at(host, tx, 0, &dirt, 5)));
+        let went = host.transaction(|host, tx| small.insert_at(host, tx, 0, &dirt, 5));
         assert_eq!(went, Ok(5));
         assert_eq!(big.amount(&mut host, 7), 12, "the higher index survived");
         assert_eq!(big.amount(&mut host, 0), 5);
@@ -276,11 +265,11 @@ fn a_large_item_handler_keeps_the_saved_slot_format() {
         let dirt = item("minecraft:dirt");
         let slots = AttachedItems::new(&ITEMS, CHUNK, 5001, 64, |_| true);
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 5000, &dirt, 1))),
+            host.transaction(|host, tx| slots.insert_at(host, tx, 5000, &dirt, 1)),
             Ok(1)
         );
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 5001, &dirt, 1))),
+            host.transaction(|host, tx| slots.insert_at(host, tx, 5001, &dirt, 1)),
             Ok(0)
         );
         let held = ITEMS
@@ -334,11 +323,11 @@ fn an_unencoded_handler_bulk_extracts_in_order_without_walking_gaps() {
         );
         assert_eq!(
             host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, last, &slate, 3))),
-            Ok(3)
+            Ok(Ok(3))
         );
         assert_eq!(
             host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 5, &slate, 1))),
-            Ok(1)
+            Ok(Ok(1))
         );
         assert_eq!(
             host.transaction(|host, tx| slots.extract(host, tx, &slate, 2)),
@@ -385,7 +374,7 @@ fn bulk_insert_skips_a_sparse_range_that_rejects_the_resource() {
                 &Pebble::Slate,
                 3
             ))),
-            Ok(3)
+            Ok(Ok(3))
         );
         assert_eq!(
             resource_util::insert_stacking(&mut host, &slots, &Pebble::Slate, 2, None),
@@ -522,7 +511,7 @@ fn bulk_moves_follow_sparse_source_order_through_wrappers() {
                 host.transaction(|host, tx| Ok::<_, ()>(
                     source.insert_at(host, tx, index, &resource, amount)
                 )),
-                Ok(amount)
+                Ok(Ok(amount))
             );
         }
         let combined = CombinedResourceHandler::new(

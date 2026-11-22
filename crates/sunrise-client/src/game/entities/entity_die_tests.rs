@@ -90,14 +90,15 @@ fn receiver_kill_stages_orb_removal_until_commit_and_kills_a_resident_knot_once(
 
         for commit in [false, true] {
             capture();
-            let tx = game.transaction_open();
-            assert_eq!(orb.kill(game), Ok(true));
-            assert!(game.entity(orb.id()).is_none());
-            assert!(orb.position(game).is_none());
-            assert_eq!(orb.kill(game), Err(mod_api::LevelWriteError::Stale));
-            assert!(deaths().is_empty());
-            capture();
-            game.transaction_close(&tx, commit);
+            game.storage_scope(|game, _| {
+                assert_eq!(orb.kill(game), Ok(true));
+                assert!(game.entity(orb.id()).is_none());
+                assert!(orb.position(game).is_none());
+                assert_eq!(orb.kill(game), Err(mod_api::LevelWriteError::Stale));
+                assert!(deaths().is_empty());
+                capture();
+                ((), commit)
+            });
             assert_eq!(game.entity(orb.id()), (!commit).then_some(orb));
             let expected = if commit { vec![at] } else { vec![] };
             assert_eq!(

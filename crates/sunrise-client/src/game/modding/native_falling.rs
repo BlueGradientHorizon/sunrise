@@ -979,31 +979,33 @@ mod tests {
                         let level = game.level(home.id()).unwrap();
                         let host: &dyn mod_api::Host = game;
                         let sand = host.block_state_id("minecraft:sand").unwrap();
-                        let home_seal = game.transaction_open();
-                        game.enter_level(Dim::Nether).unwrap();
                         let at = [1.5, 70.0, 1.5];
-                        let pending = level
-                            .spawn_falling_block(game, sand, at, [0.0; 3], Falling::default())
-                            .unwrap()
-                            .unwrap();
-                        assert_eq!(game.dim, Dim::Nether);
-                        assert!(game.falling.is_empty());
-                        assert!(heard.lock().unwrap().is_empty());
-                        game.enter_level(home).unwrap();
-                        assert_eq!(game.entity_position(pending), Some(at));
-                        game.transaction_close(&home_seal, false);
+                        game.storage_scope(|game, _| {
+                            game.enter_level(Dim::Nether).unwrap();
+                            let pending = level
+                                .spawn_falling_block(game, sand, at, [0.0; 3], Falling::default())
+                                .unwrap()
+                                .unwrap();
+                            assert_eq!(game.dim, Dim::Nether);
+                            assert!(game.falling.is_empty());
+                            assert!(heard.lock().unwrap().is_empty());
+                            game.enter_level(home).unwrap();
+                            assert_eq!(game.entity_position(pending), Some(at));
+                            ((), false)
+                        });
                         assert!(game.falling.is_empty());
 
                         game.enter_level(Dim::Nether).unwrap();
-                        let caller_seal = game.transaction_open();
-                        let joined = level
-                            .spawn_falling_block(game, sand, at, [0.0; 3], Falling::default())
-                            .unwrap()
-                            .unwrap();
-                        assert_eq!(game.dim, Dim::Nether);
-                        assert!(game.falling.is_empty());
-                        assert_eq!(*heard.lock().unwrap(), [home.id()]);
-                        game.transaction_close(&caller_seal, false);
+                        let joined = game.storage_scope(|game, _| {
+                            let joined = level
+                                .spawn_falling_block(game, sand, at, [0.0; 3], Falling::default())
+                                .unwrap()
+                                .unwrap();
+                            assert_eq!(game.dim, Dim::Nether);
+                            assert!(game.falling.is_empty());
+                            assert_eq!(*heard.lock().unwrap(), [home.id()]);
+                            (joined, false)
+                        });
                         game.enter_level(home).unwrap();
                         assert_eq!(game.entity_position(joined), Some(at));
                         assert_eq!(game.falling.len(), 1);
@@ -1298,23 +1300,24 @@ mod tests {
                         cancel.store(false, Ordering::Relaxed);
 
                         // Aborted transaction removes the falling block and never announces join.
-                        let seal = game.transaction_open();
-                        let aborted = game
-                            .level_spawn_falling_block(
-                                level,
-                                sand,
-                                [3.5, 70.0, 1.5],
-                                [0.0; 3],
-                                Falling::default(),
-                            )
-                            .unwrap()
-                            .unwrap();
-                        assert!(game.falling.iter().any(|f| f.id == aborted.id()));
-                        assert_eq!(
-                            *heard.lock().unwrap(),
-                            ["construct minecraft:falling_block"]
-                        );
-                        game.transaction_close(&seal, false);
+                        let aborted = game.storage_scope(|game, _| {
+                            let aborted = game
+                                .level_spawn_falling_block(
+                                    level,
+                                    sand,
+                                    [3.5, 70.0, 1.5],
+                                    [0.0; 3],
+                                    Falling::default(),
+                                )
+                                .unwrap()
+                                .unwrap();
+                            assert!(game.falling.iter().any(|f| f.id == aborted.id()));
+                            assert_eq!(
+                                *heard.lock().unwrap(),
+                                ["construct minecraft:falling_block"]
+                            );
+                            (aborted, false)
+                        });
                         assert!(!game.falling.iter().any(|f| f.id == aborted.id()));
                         assert_eq!(
                             *heard.lock().unwrap(),
@@ -1323,22 +1326,23 @@ mod tests {
                         heard.lock().unwrap().clear();
 
                         // Committed transaction announces join at commit and keeps the falling block.
-                        let seal = game.transaction_open();
-                        let committed = game
-                            .level_spawn_falling_block(
-                                level,
-                                sand,
-                                [4.5, 70.0, 1.5],
-                                [0.0; 3],
-                                Falling::default(),
-                            )
-                            .unwrap()
-                            .unwrap();
-                        assert_eq!(
-                            *heard.lock().unwrap(),
-                            ["construct minecraft:falling_block"]
-                        );
-                        game.transaction_close(&seal, true);
+                        let committed = game.storage_scope(|game, _| {
+                            let committed = game
+                                .level_spawn_falling_block(
+                                    level,
+                                    sand,
+                                    [4.5, 70.0, 1.5],
+                                    [0.0; 3],
+                                    Falling::default(),
+                                )
+                                .unwrap()
+                                .unwrap();
+                            assert_eq!(
+                                *heard.lock().unwrap(),
+                                ["construct minecraft:falling_block"]
+                            );
+                            (committed, true)
+                        });
                         assert!(game.falling.iter().any(|f| f.id == committed.id()));
                         assert_eq!(
                             *heard.lock().unwrap(),

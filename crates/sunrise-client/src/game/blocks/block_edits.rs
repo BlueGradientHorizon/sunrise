@@ -501,28 +501,30 @@ mod tests {
             game.world.block_log.as_mut().unwrap().clear();
 
             for commit in [false, true] {
-                let tx = game.transaction_open();
-                let nested = game.transaction_open();
-                assert_eq!(level.edit_blocks(game, &edit), Ok(2));
-                game.transaction_close(&nested, true);
-                assert!(game.block_entity(level, original).is_none());
-                assert!(game.block_entity(level, new_holder).is_some());
-                for pos in [ordinary, original] {
-                    assert_eq!(
-                        level.set_block(
-                            game,
-                            pos,
-                            dirt.try_into_api().unwrap(),
-                            BlockUpdateFlags::CLIENTS
-                        ),
-                        Ok(true)
-                    );
-                }
-                assert!(game.world.bulk_log.is_empty());
-                assert!(game.world.dirty_light.is_empty());
-                assert!(game.world.modified.is_empty());
-                assert!(game.world.block_log.as_ref().unwrap().is_empty());
-                game.transaction_close(&tx, commit);
+                game.storage_scope(|game, _| {
+                    game.storage_scope(|game, _| {
+                        assert_eq!(level.edit_blocks(game, &edit), Ok(2));
+                        ((), true)
+                    });
+                    assert!(game.block_entity(level, original).is_none());
+                    assert!(game.block_entity(level, new_holder).is_some());
+                    for pos in [ordinary, original] {
+                        assert_eq!(
+                            level.set_block(
+                                game,
+                                pos,
+                                dirt.try_into_api().unwrap(),
+                                BlockUpdateFlags::CLIENTS
+                            ),
+                            Ok(true)
+                        );
+                    }
+                    assert!(game.world.bulk_log.is_empty());
+                    assert!(game.world.dirty_light.is_empty());
+                    assert!(game.world.modified.is_empty());
+                    assert!(game.world.block_log.as_ref().unwrap().is_empty());
+                    ((), commit)
+                });
                 assert_eq!(
                     game.world.block(1, 64, 0),
                     if commit { dirt } else { chest }
@@ -607,30 +609,32 @@ mod tests {
                 }],
             };
 
-            let outer = game.transaction_open();
-            // Only the overworld transaction is open. The parked nether commits immediately.
-            assert_eq!(nether.edit_blocks(game, &edit), Ok(1));
-            let back = game.enter_command_level(Dim::Nether).unwrap();
-            assert_eq!(game.world.block(1, 64, 0), cobblestone);
-            assert!(game.world.modified.contains(&(0, 0)));
-            assert!(game.world.bulk_log.contains(&(0, 0)));
-            // The parked overworld still has its own open frame.
-            assert_eq!(overworld.edit_blocks(game, &edit), Ok(1));
-            let parked = game.levels.parked_world(Dim::Overworld).unwrap();
-            assert_eq!(parked.block(1, 64, 0), cobblestone);
-            assert!(parked.modified.is_empty());
-            assert!(parked.bulk_log.is_empty());
+            game.storage_scope(|game, _| {
+                // Only the overworld transaction is open. The parked nether commits immediately.
+                assert_eq!(nether.edit_blocks(game, &edit), Ok(1));
+                let back = game.enter_command_level(Dim::Nether).unwrap();
+                assert_eq!(game.world.block(1, 64, 0), cobblestone);
+                assert!(game.world.modified.contains(&(0, 0)));
+                assert!(game.world.bulk_log.contains(&(0, 0)));
+                // The parked overworld still has its own open frame.
+                assert_eq!(overworld.edit_blocks(game, &edit), Ok(1));
+                let parked = game.levels.parked_world(Dim::Overworld).unwrap();
+                assert_eq!(parked.block(1, 64, 0), cobblestone);
+                assert!(parked.modified.is_empty());
+                assert!(parked.bulk_log.is_empty());
 
-            // A nether transaction commits its own edits even with an overworld parent.
-            let nested = game.transaction_open();
-            let reset = BlockEdit {
-                palette: vec![dirt.try_into_api().unwrap()],
-                ..edit
-            };
-            assert_eq!(nether.edit_blocks(game, &reset), Ok(1));
-            game.transaction_close(&nested, true);
-            game.enter_command_level(back).unwrap();
-            game.transaction_close(&outer, false);
+                // A nether transaction commits its own edits even with an overworld parent.
+                game.storage_scope(|game, _| {
+                    let reset = BlockEdit {
+                        palette: vec![dirt.try_into_api().unwrap()],
+                        ..edit
+                    };
+                    assert_eq!(nether.edit_blocks(game, &reset), Ok(1));
+                    ((), true)
+                });
+                game.enter_command_level(back).unwrap();
+                ((), false)
+            });
             assert_eq!(game.world.block(1, 64, 0), stone);
             assert!(game.world.modified.is_empty());
             assert!(game.world.bulk_log.is_empty());
@@ -706,14 +710,16 @@ mod tests {
                     .collect(),
             };
 
-            let tx = game.transaction_open();
-            let nested = game.transaction_open();
-            assert_eq!(level.edit_blocks(game, &edit), Ok(2));
-            game.transaction_close(&nested, true);
-            assert!(game.block_entity(level, to_stone).is_none());
-            assert_ne!(game.block_entity(level, to_hopper), Some(h2));
-            assert!(game.block_entity(level, to_hopper).is_some());
-            game.transaction_close(&tx, false);
+            game.storage_scope(|game, _| {
+                game.storage_scope(|game, _| {
+                    assert_eq!(level.edit_blocks(game, &edit), Ok(2));
+                    ((), true)
+                });
+                assert!(game.block_entity(level, to_stone).is_none());
+                assert_ne!(game.block_entity(level, to_hopper), Some(h2));
+                assert!(game.block_entity(level, to_hopper).is_some());
+                ((), false)
+            });
 
             assert_eq!(game.world.block(1, 64, 0), chest);
             assert_eq!(game.world.block(2, 64, 0), chest);
@@ -729,9 +735,10 @@ mod tests {
             }
 
             let (lease, entity) = game.world.block_entities.take(&(1, 64, 0)).unwrap();
-            let tx = game.transaction_open();
-            assert_eq!(level.edit_blocks(game, &edit), Ok(2));
-            game.transaction_close(&tx, true);
+            game.storage_scope(|game, _| {
+                assert_eq!(level.edit_blocks(game, &edit), Ok(2));
+                ((), true)
+            });
             assert!(!game.world.block_entities.put(lease, entity));
             assert_eq!(game.world.block(1, 64, 0), stone);
             assert!(game.world.block_entities.get(&(1, 64, 0)).is_none());

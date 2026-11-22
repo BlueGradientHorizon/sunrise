@@ -13,8 +13,8 @@ use super::api_values::TryIntoEngine;
 use super::native_menus::native_menu_inventory_slot;
 use mod_api::__private::game::*;
 use mod_api::{
-    Hand, HostTransaction, ItemPlace, ItemResource, MenuContainer, MenuRef, MenuSlotBackRefusal,
-    MenuSlotPlace, ServerHost,
+    Hand, ItemPlace, ItemResource, MenuContainer, MenuRef, MenuSlotBackRefusal, MenuSlotPlace,
+    ServerHost,
 };
 use sunrise_client::items::ItemStack;
 use sunrise_client::lan::{
@@ -518,7 +518,7 @@ fn click_pickup(
 ) -> bool {
     let cursor = menu.cursor();
     let at = ItemPlace::MenuSlot { menu, slot };
-    game.transaction(|host, tx| {
+    game.storage_transaction(|host, tx| {
         let here = at.resource(host);
         let have = at.amount(host);
         if let Some(here) = &here
@@ -531,8 +531,8 @@ fn click_pickup(
                 return Ok(());
             };
             let want = if right { have.div_ceil(2) } else { have };
-            let out = at.extract(host, tx, &here, want);
-            return match cursor.insert(host, tx, &here, out) == out {
+            let out = at.extract(host, tx, &here, want).map_err(|_| ())?;
+            return match cursor.insert(host, tx, &here, out) == Ok(out) {
                 true => Ok(()),
                 false => Err(()),
             };
@@ -547,9 +547,11 @@ fn click_pickup(
         } else {
             max
         };
-        let put = at.insert(host, tx, &held, (if right { 1 } else { carried }).min(room));
+        let put = at
+            .insert(host, tx, &held, (if right { 1 } else { carried }).min(room))
+            .map_err(|_| ())?;
         if put > 0 {
-            return match cursor.extract(host, tx, &held, put) == put {
+            return match cursor.extract(host, tx, &held, put) == Ok(put) {
                 true => Ok(()),
                 false => Err(()),
             };
@@ -557,10 +559,10 @@ fn click_pickup(
         let Some(here) = here.filter(|here| *here != held && carried <= max) else {
             return Ok(());
         };
-        let swapped = at.extract(host, tx, &here, have) == have
-            && cursor.extract(host, tx, &held, carried) == carried
-            && at.insert(host, tx, &held, carried) == carried
-            && cursor.insert(host, tx, &here, have) == have;
+        let swapped = at.extract(host, tx, &here, have) == Ok(have)
+            && cursor.extract(host, tx, &held, carried) == Ok(carried)
+            && at.insert(host, tx, &held, carried) == Ok(carried)
+            && cursor.insert(host, tx, &here, have) == Ok(have);
         match swapped {
             true => Ok(()),
             false => Err(()),
@@ -595,7 +597,7 @@ fn click_quick_move(
         true => (size, player_slots, true),
         false => (0, count, false),
     };
-    game.transaction(|host, tx| {
+    game.storage_transaction(|host, tx| {
         let mut left = amount;
         for merge in [true, false] {
             for i in 0..len {
@@ -618,9 +620,11 @@ fn click_quick_move(
                     continue;
                 }
                 let room = max.saturating_sub(to.amount(host));
-                let moved = to.insert(host, tx, &resource, left.min(room));
+                let moved = to
+                    .insert(host, tx, &resource, left.min(room))
+                    .map_err(|_| ())?;
                 if moved > 0 {
-                    if from.extract(host, tx, &resource, moved) != moved {
+                    if from.extract(host, tx, &resource, moved) != Ok(moved) {
                         return Err(());
                     }
                     left -= moved;
@@ -637,7 +641,7 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game as with_base_game;
     use super::super::native_item_places::tests::{guest, open_to_lan};
     use super::*;
-    use mod_api::{MenuReplace, MenuSlotBacking};
+    use mod_api::{HostTransaction, MenuReplace, MenuSlotBacking};
     use sunrise_client::items::ItemStack;
     use sunrise_client::lan::menu::Slots;
 
@@ -769,8 +773,7 @@ mod tests {
 
             // The box gone from the hand, the write's notice closes the menu once taken.
             let resource = held.resource(host).unwrap();
-            let taken =
-                host.transaction(|host, tx| Ok::<_, ()>(held.extract(host, tx, &resource, 1)));
+            let taken = host.transaction(|host, tx| held.extract(host, tx, &resource, 1));
             assert_eq!(taken, Ok(1));
             game.run_native_menu_events();
             let host: &mut dyn ServerHost = game;
@@ -914,8 +917,7 @@ mod tests {
             .unwrap()
             .with_component(host, &custom_data, data.clone())
             .unwrap();
-            let put =
-                host.transaction(|host, tx| Ok::<_, ()>(held_slot(4).insert(host, tx, &stone, 5)));
+            let put = host.transaction(|host, tx| held_slot(4).insert(host, tx, &stone, 5));
             assert_eq!(put, Ok(5));
             let shown = |game: &Game<'_>| {
                 let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
@@ -936,8 +938,7 @@ mod tests {
             assert_eq!(shown(game), Some(5));
 
             let host: &mut dyn ServerHost = game;
-            let taken =
-                host.transaction(|host, tx| Ok::<_, ()>(held_slot(4).extract(host, tx, &stone, 5)));
+            let taken = host.transaction(|host, tx| held_slot(4).extract(host, tx, &stone, 5));
             assert_eq!(taken, Ok(5));
             assert_eq!(shown(game), Some(5), "the mirror has not caught up yet");
             assert_eq!(
@@ -962,9 +963,7 @@ mod tests {
                         slot: 9,
                     };
                     let stone = carried.resource(host).unwrap();
-                    let put = host.transaction(|host, tx| {
-                        Ok::<_, ()>(held_slot(4).insert(host, tx, &stone, 5))
-                    });
+                    let put = host.transaction(|host, tx| held_slot(4).insert(host, tx, &stone, 5));
                     assert_eq!(put, Ok(5));
                     let menu = open_pack(game);
                     let places = held_places(Hand::Main, 0..27);
@@ -1102,7 +1101,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn backed_slot_rules_ask_the_live_handler_not_the_display_copy() {
-        use mod_api::{ItemResource, ResourceHandler, Transaction};
+        use mod_api::{
+            ItemResource, Overanswered, ResourceHandler, TransactionContext, TransactionError,
+        };
         struct Handler;
         impl ResourceHandler<ItemResource> for Handler {
             fn size(&self, _: &mut dyn ServerHost) -> usize {
@@ -1134,22 +1135,22 @@ mod tests {
             fn insert_at(
                 &self,
                 _: &mut dyn ServerHost,
-                _: &Transaction,
+                _: &TransactionContext,
                 _: usize,
                 _: &ItemResource,
                 _: u32,
-            ) -> u32 {
-                0
+            ) -> Result<u32, TransactionError<Overanswered>> {
+                Ok(0)
             }
             fn extract_at(
                 &self,
                 _: &mut dyn ServerHost,
-                _: &Transaction,
+                _: &TransactionContext,
                 _: usize,
                 _: &ItemResource,
                 _: u32,
-            ) -> u32 {
-                0
+            ) -> Result<u32, TransactionError<Overanswered>> {
+                Ok(0)
             }
         }
         struct ReadOnly;
@@ -1214,7 +1215,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn backed_clicks_enforce_handler_pickup_probe_before_taking_or_quick_moving() {
-        use mod_api::{ItemResource, ResourceHandler, Transaction};
+        use mod_api::{
+            ItemResource, Overanswered, ResourceHandler, TransactionContext, TransactionError,
+        };
         use std::sync::{
             Arc,
             atomic::{AtomicU32, Ordering},
@@ -1247,30 +1250,30 @@ mod tests {
             fn insert_at(
                 &self,
                 _: &mut dyn ServerHost,
-                _: &Transaction,
+                _: &TransactionContext,
                 _: usize,
                 _: &ItemResource,
                 amount: u32,
-            ) -> u32 {
-                amount
+            ) -> Result<u32, TransactionError<Overanswered>> {
+                Ok(amount)
             }
             fn extract_at(
                 &self,
                 _: &mut dyn ServerHost,
-                _: &Transaction,
+                _: &TransactionContext,
                 _: usize,
                 _: &ItemResource,
                 amount: u32,
-            ) -> u32 {
+            ) -> Result<u32, TransactionError<Overanswered>> {
                 // Refuse extracting 1 so ResourceHandlerSlot.mayPickup is false,
                 // while still allowing larger explicit extracts.
                 if amount <= 1 {
-                    return 0;
+                    return Ok(0);
                 }
                 let held = self.0.load(Ordering::Relaxed);
                 let taken = held.min(amount);
                 self.0.store(held - taken, Ordering::Relaxed);
-                taken
+                Ok(taken)
             }
         }
         struct BulkPack(Arc<AtomicU32>);
@@ -1326,7 +1329,7 @@ mod tests {
                 let host: &mut dyn ServerHost = game;
                 let moved =
                     host.transaction(|host, tx| Ok::<_, ()>(slot.extract(host, tx, &stone, 4)));
-                assert_eq!(moved, Ok(4));
+                assert_eq!(moved, Ok(Ok(4)));
                 assert_eq!(stored.load(Ordering::Relaxed), 0);
             })
         });
@@ -1469,16 +1472,16 @@ mod tests {
             .resource(host)
             .unwrap();
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(hidden.insert(host, tx, &stone, 5))),
+            host.transaction(|host, tx| hidden.insert(host, tx, &stone, 5)),
             Ok(0)
         );
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(held_slot(0).insert(host, tx, &stone, 5))),
+            host.transaction(|host, tx| held_slot(0).insert(host, tx, &stone, 5)),
             Ok(5)
         );
         assert_eq!(hidden.amount(host), 5);
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(hidden.extract(host, tx, &stone, 5))),
+            host.transaction(|host, tx| hidden.extract(host, tx, &stone, 5)),
             Ok(0)
         );
         let contents = |game: &mut Game<'_>| {

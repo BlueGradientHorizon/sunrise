@@ -1346,19 +1346,33 @@ pub(super) fn emit<'a>(
                 "match {invocation} {{ Some(answer) => answer, None => {{ {report_panic}{restore_statement}{discard_batch}{stack_restore}{on_abort} }} }}"
             )
         };
-        let listener_call = |callee: &str| {
+        let listener_call = |callee: &str, mod_id_expr: &str| {
             let expression = format!("{callee}.{name}({invoke})");
             if panic_signal {
                 // Quick move chains the healthy Parts' proposals. Abort only the failing
                 // Part's storage writes before the shared panic boundary restores its outputs.
                 format!(
-                    "{event}.subject.transaction(|subject, _| -> Result<_, core::convert::Infallible> {{\
-                         Ok({callee}.{name}(&mut {event_type} {{\
-                             kind: {event}.kind, subject: subject.reborrow(),\
-                             container_slots: {event}.container_slots, slot: {event}.slot,\
-                             stack: &mut *{event}.stack,\
-                         }}))\
-                     }}).unwrap_or_else(|never| match never {{}})"
+                    "{{\
+                         use super::item::transaction::TransactionError;\
+                         match {event}.subject.transaction(|subject, _| -> Result<_, core::convert::Infallible> {{\
+                             Ok({callee}.{name}(&mut {event_type} {{\
+                                 kind: {event}.kind, subject: subject.reborrow(),\
+                                 container_slots: {event}.container_slots, slot: {event}.slot,\
+                                 stack: &mut *{event}.stack,\
+                             }}))\
+                         }}) {{\
+                             Ok(answer) => answer,\
+                             Err(TransactionError::Aborted(never)) => match never {{}},\
+                             Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
+                                 log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
+                                 {stack_restore} Flow::Continue\
+                             }}\
+                         }}\
+                     }}"
+                )
+            } else if name == "render_tooltip_gather_components" {
+                format!(
+                    "{{ let answer = {expression}; super::client::tooltip_components::retain_gather_tooltip_payloads({mod_id_expr}, {event}.elements.as_slice()); answer }}"
                 )
             } else if matches!(
                 name,
@@ -1369,15 +1383,25 @@ pub(super) fn emit<'a>(
             ) {
                 // Let the existing journal see the unwind before invoke catches it.
                 let (host, _) = host.as_ref().unwrap();
-                let commit = if result.is_empty() {
-                    format!("{expression}; Ok(())")
-                } else {
-                    format!("Ok({expression})")
-                };
+                let (commit, no_answer) =
+                    if matches!(contract, Contract::Listen | Contract::Collect) && !answered_return
+                    {
+                        (format!("{expression}; Ok(())"), "")
+                    } else {
+                        (format!("Ok({expression})"), "Flow::Continue")
+                    };
                 format!(
-                    "super::item::transaction::run_transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{\
-                         {commit}\
-                     }}).unwrap_or_else(|never| match never {{}})"
+                    "{{\
+                         use super::item::transaction::{{HostTransaction, TransactionError}};\
+                         match HostTransaction::transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{ {commit} }}) {{\
+                             Ok(answer) => answer,\
+                             Err(TransactionError::Aborted(never)) => match never {{}},\
+                             Err(error @ (TransactionError::InvalidContext | TransactionError::Unavailable | TransactionError::CommitRefused)) => {{\
+                                 log::warn!(\"mod {{}}: {name} callback refused: {{error:?}}\", {mod_id_expr});\
+                                 {restore_statement} {no_answer}\
+                             }}\
+                         }}\
+                     }}"
                 )
             } else {
                 expression
@@ -1420,7 +1444,7 @@ pub(super) fn emit<'a>(
                     &format!("{invoke_part}({callee}, {level}, &mut {event})"),
                 )
             } else {
-                run(mod_id_expr, on_abort, &listener_call(callee))
+                run(mod_id_expr, on_abort, &listener_call(callee, mod_id_expr))
             };
             let invocation = match contract {
                 Contract::Cancel => format!(
@@ -1453,7 +1477,7 @@ pub(super) fn emit<'a>(
             )
         };
         let cancel_invocation =
-            |callee: &str, owner: &str| run(owner, "continue;", &listener_call(callee));
+            |callee: &str, owner: &str| run(owner, "continue;", &listener_call(callee, owner));
         let plain_cancel_step = |invocation: &str| {
             let cancel = format!(
                 "{snapshot_statement}if matches!({invocation}, Flow::Cancel) {{ {event}.cancelled = true; }}"
@@ -1467,7 +1491,8 @@ pub(super) fn emit<'a>(
         // Global cancel hooks use the same snapshot and invoke path even when they validate
         // outputs. Only a completed listener has a proposal for the validator to check.
         let cancel_step = if mod_cancel {
-            let invocation = cancel_invocation(&mod_item, &format!("{mod_entry}.id"));
+            let mod_id_expr = format!("{mod_entry}.id");
+            let invocation = cancel_invocation(&mod_item, &mod_id_expr);
             if hook.independent_listener && local_cancel {
                 let out = cancel_out.unwrap();
                 let vetoed = fresh_name("vetoed", &mut used);
@@ -1719,6 +1744,12 @@ pub(super) fn emit<'a>(
                          let Some(({listener_id}, {part_item})) = __entered.next() else {{ return Err(()); }};
                          {} Ok(())",
                         call(&part_item, &listener_id, "return Err(());", ""),
+                    )
+                } else if name == "tooltip_image" {
+                    let o = out.unwrap();
+                    // Retained payloads poison this registration rather than all the mod's item Parts.
+                    format!(
+                        "for {part_item}_registration in {part_list} {{ if let Some({replacement}) = super::client::tooltip_components::invoke_tooltip_image({part_item}_registration, |{part_item}| {part_item}.{name}({invoke})) {{ *{o} = Some({replacement}); break; }} }}"
                     )
                 } else {
                     let part_owner = if collision_owns_panic {

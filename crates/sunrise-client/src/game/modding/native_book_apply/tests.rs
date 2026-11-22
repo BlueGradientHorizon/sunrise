@@ -393,7 +393,7 @@ fn panicking_recipe_book_place_discards_answer_disables_only_that_callback_and_k
                 .into_iter()
                 .next()
                 .unwrap();
-            mod_api::run_transaction(game, |game, _| {
+            game.storage_transaction(|game, _| {
                 assert!(player.set_recipe_book_settings(
                     game,
                     &book,
@@ -500,7 +500,7 @@ fn committed_book_settings_are_coalesced_before_a_listener_rewrites_them() {
                 .into_iter()
                 .next()
                 .unwrap();
-            mod_api::run_transaction(game, |host, _| {
+            game.storage_transaction(|host, _| {
                 for filtering in [false, true] {
                     assert!(player.set_recipe_book_settings(
                         host,
@@ -801,7 +801,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                             host.transaction(|host, tx| {
                                 if (ItemPlace::MenuSlot { menu, slot: 1 })
                                     .insert(host, tx, &coal_res, 2)
-                                    == 2
+                                    == Ok(2)
                                 {
                                     Ok(())
                                 } else {
@@ -882,8 +882,8 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                                 let p = ItemPlace::MenuSlot { menu, slot: 0 };
                                 let old = p.resource(host).ok_or(())?;
                                 let count = p.amount(host);
-                                if p.extract(host, tx, &old, count) != count
-                                    || p.insert(host, tx, &dirt_res, 1) != 1
+                                if p.extract(host, tx, &old, count) != Ok(count)
+                                    || p.insert(host, tx, &dirt_res, 1) != Ok(1)
                                 {
                                     return Err(());
                                 }

@@ -74,9 +74,8 @@ impl Game<'_> {
                     self.tick_phantom_spawner(spawn_enemies);
                 }
                 mod_api::__private::CustomSpawnerStep::Mod(mut spawner) => {
-                    let _ = mod_api::run_transaction(self, |game, _| {
-                        spawner.tick(game, level, spawn_enemies)
-                    });
+                    let _ = self
+                        .storage_transaction(|game, _| spawner.tick(game, level, spawn_enemies));
                     if let Some(list) = self.creatures.custom_spawners.get_mut(&dim) {
                         list.put_back(at, spawner);
                     }
@@ -92,7 +91,9 @@ impl Game<'_> {
 mod tests {
     use super::super::native_entity_refs::tests::{with_client_game, with_game};
     use super::*;
-    use mod_api::{CustomSpawner, LevelRef, ObjectiveRenderType, ServerHost, Text};
+    use mod_api::{
+        CustomSpawner, HostTransaction, LevelRef, ObjectiveRenderType, ServerHost, Text,
+    };
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -545,7 +546,7 @@ mod tests {
             fn tick(&mut self, host: &mut dyn ServerHost, _: LevelRef, _: bool) {
                 self.ticks.fetch_add(1, Ordering::Relaxed);
                 let refuse = std::mem::take(&mut self.should_refuse);
-                let result = mod_api::run_transaction(host, |host, _| {
+                let result = host.transaction(|host, _| {
                     host.add_objective(
                         "spawner_refusal_write",
                         "dummy",

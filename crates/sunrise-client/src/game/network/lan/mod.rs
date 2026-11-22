@@ -5966,11 +5966,11 @@ mod merchant_packet_tests {
                         .unwrap();
                 };
                 if self.abort {
-                    let aborted: Result<(), ()> = host.transaction(|host, _| {
+                    let aborted = host.transaction(|host, _| {
                         open(host);
-                        Err(())
+                        Err::<(), _>(())
                     });
-                    assert_eq!(aborted, Err(()));
+                    assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
                 } else {
                     open(host);
                 }

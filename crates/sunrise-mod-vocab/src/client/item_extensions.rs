@@ -1,5 +1,5 @@
-//! Item-owned client behaviour for worn equipment. Registered anew at resource load.
-use crate::{ClientHost, Component, ItemKey, ItemStackView, ModelPart, Tag};
+//! Item-owned client behaviour for worn equipment and tooltip fonts. Registered anew at resource load.
+use crate::{ClientHost, Component, Identifier, ItemKey, ItemStack, ItemStackView, ModelPart, Tag};
 use std::sync::Arc;
 
 /// The equipment asset's material list used for this piece.
@@ -195,6 +195,15 @@ pub trait ClientItemExtensions: Send + Sync + 'static {
     ) -> ArmorTextureRef {
         let _ = (host, stack, layer_type, layer, default_texture);
         ArmorTextureRef::DEFAULT
+    }
+    /// Choose the tooltip font for this item (`IClientItemExtensions.getFont` with
+    /// `FontContext.TOOLTIP`).
+    ///
+    /// Used to measure and wrap text lines during `render_tooltip_gather_components` and to seed
+    /// `render_tooltip_pre`'s `font`. Return `None` to use the default font (`minecraft:default`).
+    fn tooltip_font(&self, host: &dyn ClientHost, stack: &ItemStack) -> Option<Identifier> {
+        let _ = (host, stack);
+        None
     }
 }
 

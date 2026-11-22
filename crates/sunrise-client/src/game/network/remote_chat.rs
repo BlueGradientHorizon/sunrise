@@ -292,6 +292,16 @@ impl Game<'_> {
         kind: PendingClientCommandKind,
         chain: Option<Arc<ClientCommandChain>>,
     ) -> Result<Option<ClientCommandOutcome>, String> {
+        self.submit_client_command_with_sent(input, kind, chain)
+            .map(|(outcome, _)| outcome)
+    }
+
+    fn submit_client_command_with_sent(
+        &mut self,
+        input: &str,
+        kind: PendingClientCommandKind,
+        chain: Option<Arc<ClientCommandChain>>,
+    ) -> Result<(Option<ClientCommandOutcome>, bool), String> {
         let remote = self.remote.as_ref().ok_or("not connected to a server")?;
         if !remote.joined || remote.reconfiguring.is_some() {
             return Err("the player has not joined yet".into());
@@ -302,25 +312,26 @@ impl Game<'_> {
                 let input = input.trim();
                 let command = input.strip_prefix('/').unwrap_or(input);
                 if command.is_empty() || !self.chat_abilities().allows(&format!("/{command}")) {
-                    return Ok(None);
+                    return Ok((None, false));
                 }
                 command
             }
         };
         if self.native_client_commands.defer(input, kind) {
-            return Ok(None);
+            return Ok((None, false));
         }
         if let Some(outcome) = self.run_client_native_command_in_chain(command, chain) {
-            return Ok(Some(outcome));
+            return Ok((Some(outcome), false));
         }
-        match kind {
+        let sent = match kind {
             PendingClientCommandKind::Signed if !self.studio_command(command) => {
                 self.send_server_command(command)?;
+                true
             }
-            PendingClientCommandKind::Signed => {}
+            PendingClientCommandKind::Signed => false,
             PendingClientCommandKind::Unattended => self.send_server_unattended_command(command),
-        }
-        Ok(None)
+        };
+        Ok((None, sent))
     }
 
     /// Sign only arguments from the remote dispatcher, never client-only display branches.
@@ -416,11 +427,14 @@ impl Game<'_> {
     /// asks first, and one with a message argument is never sent from here:
     /// the player can only send it themselves, from the chat box. So neither
     /// a server nor a mod can have the player sign a message they never saw.
-    pub(super) fn send_unattended_command(&mut self, command: &str) {
-        let _ = self.submit_client_command(command, PendingClientCommandKind::Unattended, None);
+    /// Returns true when sent without a confirmation, so a dialog can open
+    /// its screen after the command.
+    pub(super) fn send_unattended_command(&mut self, command: &str) -> bool {
+        self.submit_client_command_with_sent(command, PendingClientCommandKind::Unattended, None)
+            .is_ok_and(|(_, sent)| sent)
     }
 
-    fn send_server_unattended_command(&mut self, command: &str) {
+    fn send_server_unattended_command(&mut self, command: &str) -> bool {
         // Vanilla's dispatcher is empty until the server sends its tree.
         let check = self
             .remote
@@ -433,10 +447,9 @@ impl Game<'_> {
         let over_screen = self.screen != Screen::Playing || self.dialog_open();
         let (message, accept) = match check {
             CommandCheck::NoIssues => {
-                self.send(S::ChatCommand(play::ChatCommand {
-                    command: command.to_owned(),
-                }));
-                return;
+                // Verification above excludes message arguments. Use the ordinary sender so
+                // releases without an unsigned command packet still acknowledge seen chat.
+                return self.send_server_command(command).is_ok();
             }
             CommandCheck::ParseErrors => (
                 "multiplayer.confirm_command.parse_errors",
@@ -466,6 +479,7 @@ impl Game<'_> {
             });
             game.capture(false);
         });
+        false
     }
 
     /// The command just clicked left this screen: if it asks, no returns there.
@@ -533,6 +547,7 @@ impl Game<'_> {
         let mut layout = self.command_prompt_layout(prompt, (w, h));
         layout.declare_no(1);
         layout.draw(batch, atlas, self.cursor, &labels);
+        self.draw_overlay_mounted_widgets(batch, "command_prompt");
     }
 
     /// The confirmation's answer; on no, what was behind it is back.
@@ -560,6 +575,7 @@ impl Game<'_> {
             (false, _, Some(Behind::Dialog(dialog))) => self.reopen_dialog(dialog),
             (false, _, None) => {}
         }
+        self.refresh_screen_widgets();
         if self.screen == Screen::Playing && !self.screen_over_playing() {
             self.capture(true);
         }
@@ -567,29 +583,34 @@ impl Game<'_> {
 
     /// ConfirmScreen.keyPressed, and what its buttons take from the keyboard
     /// (Screen's focus navigation, AbstractButton's Enter and Space).
-    pub(super) fn command_prompt_key(&mut self, key: KeyCode) {
+    pub(super) fn command_prompt_key(&mut self, key: KeyCode) -> bool {
         let (size, shift) = (self.gui_size(), self.has_shift_down());
         let Some(prompt) = &self.command_prompt else {
-            return;
+            return false;
         };
         let mut choice = self.command_prompt_layout(prompt, size);
         match key {
-            KeyCode::Escape => return self.answer_command_prompt(false),
+            KeyCode::Escape => {
+                self.answer_command_prompt(false);
+                return true;
+            }
             KeyCode::Tab => choice.tab(shift),
             KeyCode::ArrowLeft | KeyCode::ArrowRight => choice.arrow(key == KeyCode::ArrowLeft),
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                 if let Some(button) = choice.pressed() {
                     self.audio.play_button_click();
                     self.answer_command_prompt(button == 0);
+                    return true;
                 }
-                return;
+                return false;
             }
-            _ => return,
+            _ => return false,
         }
         let focus = choice.focus;
         if let Some(prompt) = self.command_prompt.as_mut() {
             prompt.focus = focus;
         }
+        false
     }
 
     pub(super) fn command_prompt_click(&mut self) -> bool {

@@ -26,6 +26,11 @@ What a hook's return value means depends on its kind:
 
 A hook with no receiver gets no `Host`.
 
+To group journaled writes from a hook with a `ServerHost`, import `HostTransaction`
+and call `host.transaction(|host, tx| …)`. Use the host and `TransactionContext`
+lent to that closure, even if an engine action already has a transaction open.
+See [Transactions](transactions.md) for nesting and failure handling.
+
 ## Failures and panics
 
 The dispatcher catches panics in hook callbacks, including chunk-disk callbacks and startup

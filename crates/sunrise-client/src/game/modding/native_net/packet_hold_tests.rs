@@ -163,16 +163,18 @@ fn physical_hold_orders_engine_and_mod_packets_and_bypasses_network_keepalive() 
             assert_eq!(game.release_held(first), Err(HoldError::WrongOwner));
             assert_eq!(game.drop_held(first), Err(HoldError::WrongOwner));
             let pong = Identifier::parse("minecraft:pong").unwrap();
-            let transaction = game.transaction_open();
-            game.send_packet(ServerboundPlayPacket::new(pong.clone(), vec![0, 0, 0, 2]))
-                .unwrap();
-            // Invocation order is not commit order: the engine send joins first.
-            assert_eq!(game.send_play(S::Pong(Ping { id: 3 })), PlaySend::Admitted);
-            game.transaction_close(&transaction, true);
-            let aborted = game.transaction_open();
-            game.send_packet(ServerboundPlayPacket::new(pong, vec![0, 0, 0, 4]))
-                .unwrap();
-            game.transaction_close(&aborted, false);
+            game.storage_scope(|game, _| {
+                game.send_packet(ServerboundPlayPacket::new(pong.clone(), vec![0, 0, 0, 2]))
+                    .unwrap();
+                // Invocation order is not commit order: the engine send joins first.
+                assert_eq!(game.send_play(S::Pong(Ping { id: 3 })), PlaySend::Admitted);
+                ((), true)
+            });
+            game.storage_scope(|game, _| {
+                game.send_packet(ServerboundPlayPacket::new(pong, vec![0, 0, 0, 4]))
+                    .unwrap();
+                ((), false)
+            });
         }
         keepalive(9);
         assert_eq!(

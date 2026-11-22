@@ -895,7 +895,7 @@ fn catching_a_delegated_fault_aborts_the_journal_even_if_the_callback_returns_ok
                         Some(&"engine fault during consumption")
                     );
                     assert_eq!(closed.load(Ordering::Relaxed), attempt + 1);
-                    assert!(game.transaction_current().is_none());
+                    assert!(game.transactions.is_empty());
                     assert!((game as &dyn ServerHost).objective("staged").is_none());
                     assert!(take_hook_panics().is_empty());
                 }

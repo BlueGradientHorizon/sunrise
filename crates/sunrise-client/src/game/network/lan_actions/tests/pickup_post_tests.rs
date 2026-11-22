@@ -69,7 +69,7 @@ impl Hooks for Probe {
                     assert_eq!(event.item.set_stack(host, Some(stack)), Ok(true));
                     Err::<(), ()>(())
                 });
-                assert_eq!(result, Err(()));
+                assert_eq!(result, Err(mod_api::TransactionError::Aborted(())));
             }
             PreAction::ClearStack => {
                 assert_eq!(event.item.set_stack(host, None), Ok(true));

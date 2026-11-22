@@ -706,7 +706,7 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::super::native_item_places::tests::{guest, open_to_lan};
     use super::*;
-    use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost};
+    use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost, TransactionError};
     use std::sync::{Arc, mpsc};
     use sunrise_client::lan::{Out, PlayerSender};
     use sunrise_protocol::{
@@ -796,29 +796,29 @@ mod tests {
                         let mut inner_restored = None;
                         let host: &mut dyn ServerHost = game;
                         let aborted = host.transaction(|host, tx| {
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                             let inner = host.transaction(|host, tx| {
-                                assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                                assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                                 Err::<(), ()>(())
                             });
-                            assert_eq!(inner, Err(()));
+                            assert_eq!(inner, Err(TransactionError::Aborted(())));
                             inner_restored =
                                 place.with_stack(host, |stack| stack.project()).flatten();
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                             Err::<(), ()>(())
                         });
-                        assert_eq!(aborted, Err(()));
+                        assert_eq!(aborted, Err(TransactionError::Aborted(())));
                         restored.push((
                             inner_restored,
                             place.with_stack(host, |stack| stack.project()).flatten(),
                         ));
                         // Player and menu writes share the ender snapshot, not competing copies.
                         let aborted = host.transaction(|host, tx| {
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
-                            assert_eq!(menu.cursor().insert(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
+                            assert_eq!(menu.cursor().insert(host, tx, &resource, 1), Ok(1));
                             Err::<(), ()>(())
                         });
-                        assert_eq!(aborted, Err(()));
+                        assert_eq!(aborted, Err(TransactionError::Aborted(())));
                         assert_eq!(
                             place.with_stack(host, |stack| stack.project()).flatten(),
                             Some(stack.clone().try_into_api().unwrap())
@@ -827,13 +827,13 @@ mod tests {
                         // A committed child lends its first snapshot to the parent.
                         let aborted = host.transaction(|host, _| {
                             host.transaction(|host, tx| {
-                                assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                                assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                                 Ok::<_, ()>(())
                             })
                             .unwrap();
                             Err::<(), ()>(())
                         });
-                        assert_eq!(aborted, Err(()));
+                        assert_eq!(aborted, Err(TransactionError::Aborted(())));
                         assert_eq!(
                             place.with_stack(host, |stack| stack.project()).flatten(),
                             Some(stack.clone().try_into_api().unwrap())
@@ -1172,9 +1172,8 @@ mod tests {
                 .try_into_api()
                 .unwrap();
             let slot = ItemPlace::MenuSlot { menu, slot: 4 };
-            let written = host.transaction(|host, tx| {
-                Ok::<_, ()>(slot.insert(host, tx, &ItemResource::of(&diamond), 3))
-            });
+            let written =
+                host.transaction(|host, tx| slot.insert(host, tx, &ItemResource::of(&diamond), 3));
             assert_eq!(written, Ok(3));
             assert!(sent(&rx).is_empty(), "nothing before the tick's sync");
 
@@ -1295,21 +1294,23 @@ mod tests {
                 game.as_guest(1, |game| {
                     assert_eq!(menu.set_items(game, items(1)), Ok(()));
                     check(1);
-                    let aborted: Result<(), ()> = game.transaction(|game, _| {
-                        assert_eq!(menu.set_items(game, items(3)), Ok(()));
-                        Err(())
-                    });
-                    assert_eq!(aborted, Err(()));
+                    let aborted: Result<(), mod_api::TransactionError<()>> =
+                        game.transaction(|game, _| {
+                            assert_eq!(menu.set_items(game, items(3)), Ok(()));
+                            Err(())
+                        });
+                    assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
                     assert!(sent(&rx).is_empty());
                     assert_eq!(
                         menu.slot(game, 0).flatten().map(|stack| stack.count()),
                         Some(1)
                     );
-                    let committed: Result<(), ()> = game.transaction(|game, _| {
-                        assert_eq!(menu.set_items(game, items(5)), Ok(()));
-                        assert!(sent(&rx).is_empty());
-                        Ok(())
-                    });
+                    let committed: Result<(), mod_api::TransactionError<()>> =
+                        game.transaction(|game, _| {
+                            assert_eq!(menu.set_items(game, items(5)), Ok(()));
+                            assert!(sent(&rx).is_empty());
+                            Ok(())
+                        });
                     assert_eq!(committed, Ok(()));
                     check(5);
                 })
@@ -2537,26 +2538,29 @@ mod tests {
                                 .hub
                                 .resend_menu(1, window, &game.world);
                         };
-                        let abort = game.transaction_open();
-                        assert_eq!(menu.set_data_slot(game, 0, i32::MAX), Ok(true));
-                        assert!(sent(&rx).is_empty());
-                        resend(game);
-                        assert_eq!(
-                            updates(sent(&rx)),
-                            snapshot,
-                            "a resend cannot see the pending write"
-                        );
-                        game.transaction_close(&abort, false);
+                        game.storage_scope(|game, _| {
+                            assert_eq!(menu.set_data_slot(game, 0, i32::MAX), Ok(true));
+                            assert!(sent(&rx).is_empty());
+                            resend(game);
+                            assert_eq!(
+                                updates(sent(&rx)),
+                                snapshot,
+                                "a resend cannot see the pending write"
+                            );
+                            ((), false)
+                        });
                         assert_eq!(menu.set_data_slot(game, 0, -80_000), Ok(false));
                         assert!(sent(&rx).is_empty());
 
-                        let capture = game.transaction_open();
-                        game.transactions.last_mut().unwrap().packets =
-                            Some(sunrise_client::lan::conn::transaction_packets::Scope::begin());
-                        assert_eq!(menu.set_data_slot(game, 0, 100_000), Ok(true));
-                        resend(game);
-                        assert!(sent(&rx).is_empty());
-                        game.transaction_close(&capture, true);
+                        game.storage_scope(|game, _| {
+                            game.transactions.last_mut().unwrap().packets = Some(
+                                sunrise_client::lan::conn::transaction_packets::Scope::begin(),
+                            );
+                            assert_eq!(menu.set_data_slot(game, 0, 100_000), Ok(true));
+                            resend(game);
+                            assert!(sent(&rx).is_empty());
+                            ((), true)
+                        });
                         assert_eq!(
                             updates(sent(&rx)),
                             [
@@ -2572,18 +2576,20 @@ mod tests {
                         );
 
                         let host = game as &mut dyn ServerHost;
-                        let committed: Result<(), ()> = host.transaction(|host, _| {
-                            assert_eq!(menu.set_data_slot(host, 0, 1), Ok(true));
-                            let nested: Result<(), ()> = host.transaction(|host, _| {
-                                assert_eq!(menu.set_data_slot(host, 0, i32::MIN), Ok(true));
-                                assert_eq!(menu.set_data_slot(host, 1, 5), Ok(true));
+                        let committed: Result<(), TransactionError<()>> =
+                            host.transaction(|host, _| {
+                                assert_eq!(menu.set_data_slot(host, 0, 1), Ok(true));
+                                let nested: Result<(), TransactionError<()>> =
+                                    host.transaction(|host, _| {
+                                        assert_eq!(menu.set_data_slot(host, 0, i32::MIN), Ok(true));
+                                        assert_eq!(menu.set_data_slot(host, 1, 5), Ok(true));
+                                        Ok(())
+                                    });
+                                assert_eq!(nested, Ok(()));
+                                assert_eq!(menu.set_data_slot(host, 1, 0), Ok(true));
+                                assert!(sent(&rx).is_empty());
                                 Ok(())
                             });
-                            assert_eq!(nested, Ok(()));
-                            assert_eq!(menu.set_data_slot(host, 1, 0), Ok(true));
-                            assert!(sent(&rx).is_empty());
-                            Ok(())
-                        });
                         assert_eq!(committed, Ok(()));
                         assert_eq!(
                             updates(sent(&rx)),
@@ -2633,7 +2639,7 @@ mod tests {
                             .hub
                             .guests
                             .update(0, |g| g.next_window = window - 1);
-                        let replaced: Result<(), ()> =
+                        let replaced: Result<(), TransactionError<()>> =
                             (game as &mut dyn ServerHost).transaction(|host, _| {
                                 assert_eq!(menu.set_data_slot(host, 0, 900), Ok(true));
                                 let staged = show(host, vec![5, 6]).unwrap().unwrap();
@@ -2792,22 +2798,24 @@ mod tests {
                     );
                     assert_eq!(player.container_menu(game), Some(menu));
                     let host: &mut dyn ServerHost = game;
-                    let committed: Result<(), ()> = host.transaction(|host, _| {
-                        assert_eq!(menu.set_data_slot(host, LAST, i32::MAX), Ok(true));
-                        assert!(sent(&rx).is_empty());
-                        Ok(())
-                    });
+                    let committed: Result<(), mod_api::TransactionError<()>> =
+                        host.transaction(|host, _| {
+                            assert_eq!(menu.set_data_slot(host, LAST, i32::MAX), Ok(true));
+                            assert!(sent(&rx).is_empty());
+                            Ok(())
+                        });
                     assert_eq!(committed, Ok(()));
                     assert!(updates().eq([DataSlot {
                         window,
                         index: u16::MAX,
                         value: i32::MAX,
                     }]));
-                    let committed: Result<(), ()> = host.transaction(|host, _| {
-                        assert_eq!(menu.set_data_slot(host, OVERFLOW, i32::MIN), Ok(true));
-                        assert!(sent(&rx).is_empty());
-                        Ok(())
-                    });
+                    let committed: Result<(), mod_api::TransactionError<()>> =
+                        host.transaction(|host, _| {
+                            assert_eq!(menu.set_data_slot(host, OVERFLOW, i32::MIN), Ok(true));
+                            assert!(sent(&rx).is_empty());
+                            Ok(())
+                        });
                     assert_eq!(committed, Ok(()));
                     assert!(sent(&rx).is_empty(), "unencodable index sent a delta");
 
@@ -2855,7 +2863,7 @@ mod tests {
                 event: &mut ContainerOpenedEvent<'_>,
             ) -> Flow {
                 assert_eq!(event.kind, MOD_MENU);
-                assert!(host.transaction_current().is_none());
+                assert!(host.transaction_matches(None));
                 let level = host.level("minecraft:overworld").unwrap();
                 let chest = BlockState::of(
                     &host.block_states(),
@@ -2965,9 +2973,8 @@ mod tests {
                 _: &mut ContainerOpenedEvent<'_>,
             ) -> mod_api::Flow {
                 self.calls.fetch_add(1, Relaxed);
-                assert_eq!(
-                    host.transaction_current(),
-                    None,
+                assert!(
+                    host.transaction_matches(None),
                     "deferred cross-level veto must not borrow the caller's transaction journal"
                 );
                 let nether = host.level("minecraft:the_nether").unwrap();
@@ -3030,7 +3037,7 @@ mod tests {
                         game.enter_level(Dim::Overworld).unwrap();
 
                         let player = game.player(123).unwrap();
-                        let aborted: Result<(), ()> =
+                        let aborted: Result<(), mod_api::TransactionError<()>> =
                             (game as &mut dyn ServerHost).transaction(|host, _| {
                                 let overworld = host.level("minecraft:overworld").unwrap();
                                 let planks = mod_api::BlockState::of(
@@ -3059,7 +3066,7 @@ mod tests {
                                 assert_eq!(calls.load(Relaxed), 0);
                                 Err(())
                             });
-                        assert_eq!(aborted, Err(()));
+                        assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
                         assert_eq!(game.dim, Dim::Overworld);
                         assert_eq!(calls.load(Relaxed), 0);
                         assert_eq!(game.world.block(POS[0], POS[1], POS[2]), stone);
@@ -3077,7 +3084,7 @@ mod tests {
                         assert_eq!(game.world.block(POS[0], POS[1], POS[2]), netherrack);
                         game.enter_level(Dim::Overworld).unwrap();
 
-                        let committed: Result<(), ()> =
+                        let committed: Result<(), mod_api::TransactionError<()>> =
                             (game as &mut dyn ServerHost).transaction(|host, _| {
                                 let overworld = host.level("minecraft:overworld").unwrap();
                                 let cobble = mod_api::BlockState::of(
@@ -3193,8 +3200,8 @@ mod tests {
                             sent(&rx);
 
                             for step in 0..105 {
-                                let aborted: Result<(), ()> = (game as &mut dyn ServerHost)
-                                    .transaction(|host, _| {
+                                let aborted: Result<(), mod_api::TransactionError<()>> =
+                                    (game as &mut dyn ServerHost).transaction(|host, _| {
                                         let staged = if step % 2 == 0 {
                                             player
                                                 .open_chest_menu(
@@ -3227,7 +3234,7 @@ mod tests {
                                         assert_eq!(player.container_menu(host), Some(old));
                                         Err(())
                                     });
-                                assert_eq!(aborted, Err(()));
+                                assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
                             }
 
                             assert_eq!(
@@ -3238,8 +3245,8 @@ mod tests {
                             assert!(opened.lock().unwrap().is_empty());
                             assert!(sent(&rx).is_empty());
 
-                            let committed: Result<MenuRef, ()> = (game as &mut dyn ServerHost)
-                                .transaction(|host, _| {
+                            let committed: Result<MenuRef, mod_api::TransactionError<()>> =
+                                (game as &mut dyn ServerHost).transaction(|host, _| {
                                     let staged = player
                                         .open_chest_menu(
                                             host,

@@ -403,7 +403,7 @@ pub(super) mod tests {
             use sunrise_client::items::ConsumeSound;
             use sunrise_core::position::BlockPos;
             let ids = [sound, "minecraft:test.inline"];
-            mod_api::run_transaction(game, |game, _| {
+            game.storage_transaction(|game, _| {
                 for id in ids {
                     assert!(
                         game.queue_consume_sound(

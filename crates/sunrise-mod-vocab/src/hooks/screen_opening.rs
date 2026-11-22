@@ -8,6 +8,9 @@ pub trait Hooks {
     /// `ScreenOpening::Vanilla` to open another vanilla screen instead.
     /// A new chat screen instance can replace another chat screen; `current`
     /// is the foreground screen, including a prompt or editor it will replace.
+    /// The waiting screen and a warning's live return dialog can replace a
+    /// receiver with the same `dialog` id. `Cancel` keeps its mounted widgets
+    /// and focus, without emitting Closing or the replacement's Init.Post.
     #[hook(
         receiver = "read",
         dispatch = "flat",

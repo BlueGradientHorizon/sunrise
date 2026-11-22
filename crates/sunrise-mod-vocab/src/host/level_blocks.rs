@@ -124,8 +124,13 @@ pub trait LevelBlocksBackendMut {
     /// Side: server.
     /// Drop one item as `DefaultDispenseItemBehavior.execute` does. Use the
     /// returned remainder in the dispenser's answer; the caller plays the answer's
-    /// event and smoke. A missing or mismatched dispenser returns `InvalidDispenser`.
+    /// event and smoke. The detached stack keeps its actual count until one item
+    /// is dropped; placement limits apply only to the final slot write. An enclosing
+    /// transaction defers the drop in the dispenser's level until commit.
+    /// A missing or mismatched dispenser returns `InvalidDispenser`.
     /// A parked level cannot be used while a Host transaction is open.
+    #[forward_api_inputs]
+    #[forward_api_output]
     fn level_dispense_default(
         &mut self,
         level: LevelRef,
@@ -136,9 +141,14 @@ pub trait LevelBlocksBackendMut {
     /// Side: server.
     /// `DefaultDispenseItemBehavior.consumeWithRemainder`: one item of `stack` is used.
     /// If it was the last, the slot gets `remainder`; otherwise the remainder goes
-    /// into the dispenser or out its front with a click and smoke. Returns the chosen
-    /// slot's resulting stack. A missing or mismatched dispenser returns `InvalidDispenser`.
+    /// into the dispenser or out its front with a click and smoke. Returns the detached
+    /// active-slot remainder immediately; inside a transaction, insertion into another
+    /// slot is provisional and slot notices, overflow drops, click and smoke are published
+    /// in the source level only when the enclosing transaction commits at the root.
+    /// A missing or mismatched dispenser returns `InvalidDispenser`.
     /// A parked level cannot be used while a Host transaction is open.
+    #[forward_api_inputs]
+    #[forward_api_output]
     fn level_dispense_with_remainder(
         &mut self,
         level: LevelRef,

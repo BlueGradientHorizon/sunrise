@@ -7,7 +7,7 @@ use crate::content::registry_keys::{fluid_id, fluid_key, item_id, item_key_by_id
 use crate::{
     AttachmentCodec, AttachmentError, AttachmentType, Components, Compound, EnergyHandler,
     FluidIdentity, FluidResource, FluidStack, Holder, Identifier, ItemResource, ItemStack,
-    ResourceHandler, ServerHost, Tag, Transaction,
+    Overanswered, ResourceHandler, ServerHost, Tag, TransactionContext, TransactionError,
 };
 use std::{
     collections::BTreeMap,
@@ -238,47 +238,59 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        _: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
-    ) -> u32 {
-        self.insert_index(host, index, resource, amount)
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
+        Ok(self
+            .insert_index(host, index, resource, amount)
             .continue_value()
-            .unwrap_or(0)
+            .unwrap_or(0))
     }
     fn insert_at_in_range(
         &self,
         host: &mut dyn ServerHost,
-        _: &Transaction,
+        tx: &TransactionContext,
         indices: Range<usize>,
         resource: &R,
         amount: u32,
-    ) -> (u32, usize) {
+    ) -> Result<(u32, usize), TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         if indices.is_empty() {
-            return (0, indices.end);
+            return Ok((0, indices.end));
         }
-        match self.insert_index(host, indices.start, resource, amount) {
-            ControlFlow::Continue(went) => (went, indices.start + 1),
-            ControlFlow::Break(()) => (0, indices.end),
-        }
+        Ok(
+            match self.insert_index(host, indices.start, resource, amount) {
+                ControlFlow::Continue(went) => (went, indices.start + 1),
+                ControlFlow::Break(()) => (0, indices.end),
+            },
+        )
     }
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        _: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         let Some((held, have)) = self.at(host, index).filter(|(held, _)| held == resource) else {
-            return 0;
+            return Ok(0);
         };
-        match amount.min(have) {
+        Ok(match amount.min(have) {
             0 => 0,
             came if self.write(host, index, Some((held, have - came))).is_ok() => came,
             _ => 0,
-        }
+        })
     }
 }
 
@@ -332,22 +344,40 @@ impl EnergyHandler for AttachedEnergy {
     fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
         self.capacity
     }
-    fn insert(&self, host: &mut dyn ServerHost, _: &Transaction, amount: u32) -> u32 {
-        let held = self.amount(host);
-        match amount
-            .min(self.max_insert)
-            .min(self.capacity.saturating_sub(held))
-        {
-            0 => 0,
-            went => self.write(host, held + went, went),
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
         }
-    }
-    fn extract(&self, host: &mut dyn ServerHost, _: &Transaction, amount: u32) -> u32 {
         let held = self.amount(host);
-        match amount.min(self.max_extract).min(held) {
+        Ok(
+            match amount
+                .min(self.max_insert)
+                .min(self.capacity.saturating_sub(held))
+            {
+                0 => 0,
+                went => self.write(host, held + went, went),
+            },
+        )
+    }
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
+        let held = self.amount(host);
+        Ok(match amount.min(self.max_extract).min(held) {
             0 => 0,
             came => self.write(host, held - came, came),
-        }
+        })
     }
 }
 

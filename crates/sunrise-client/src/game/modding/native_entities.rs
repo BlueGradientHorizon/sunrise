@@ -1291,12 +1291,13 @@ mod tests {
                 .chunks
                 .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
 
-            let tx = game.transaction_open();
-            assert_eq!(
-                overworld.summon(game, "minecraft:pig", [1.5, 70.0, 1.5], Compound::new()),
-                Err(LevelWriteError::InTransaction)
-            );
-            game.transaction_close(&tx, false);
+            game.storage_scope(|game, _| {
+                assert_eq!(
+                    overworld.summon(game, "minecraft:pig", [1.5, 70.0, 1.5], Compound::new()),
+                    Err(LevelWriteError::InTransaction)
+                );
+                ((), false)
+            });
 
             let pig = overworld
                 .summon(game, "minecraft:pig", [1.5, 70.0, 1.5], Compound::new())

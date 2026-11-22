@@ -195,13 +195,13 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             chemical: &Chemical,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let held = match self.held(host) {
-                Some((other, _)) if other != *chemical => return 0,
+                Some((other, _)) if other != *chemical => return Ok(0),
                 Some((_, held)) => held,
                 None => 0,
             };
@@ -209,22 +209,22 @@ pub mod tests {
             if went > 0 {
                 self.set(host, chemical, held + went);
             }
-            went
+            Ok(went)
         }
         fn extract_at(
             &self,
             host: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             chemical: &Chemical,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let Some((held_chemical, held)) = self.held(host).filter(|(c, _)| c == chemical) else {
-                return 0;
+                return Ok(0);
             };
             let came = amount.min(held);
             self.set(host, &held_chemical, held - came);
-            came
+            Ok(came)
         }
     }
 
@@ -317,23 +317,21 @@ pub mod tests {
         let stick_ = ItemResource::of(&stick());
         // The pipe calls the chest's capability, the game's own, with the host it was given:
         // in an aborted transaction the stick goes in, and comes back out.
-        let aborted: Result<(), u32> =
-            host.transaction(|host, tx| Err(pipe.insert_at(host, tx, 0, &stick_, 1)));
-        assert_eq!(aborted, Err(1));
+        let aborted: Result<(), crate::TransactionError<u32>> =
+            host.transaction(|host, tx| Err(pipe.insert_at(host, tx, 0, &stick_, 1).unwrap()));
+        assert_eq!(aborted, Err(crate::TransactionError::Aborted(1)));
         assert!(
             backend_of(&*host)
                 .and_then(|backend| backend.container_stack(on(CHEST, None), 0))
                 .is_none()
         );
-        let went =
-            host.transaction(|host, tx| Ok::<_, ()>(pipe.insert_at(host, tx, 0, &stick_, 1)));
+        let went = host.transaction(|host, tx| pipe.insert_at(host, tx, 0, &stick_, 1));
         assert_eq!(went, Ok(1));
         assert_eq!(
             backend_of(&*host).and_then(|backend| backend.container_stack(on(CHEST, None), 0)),
             Some(stick())
         );
-        let went =
-            host.transaction(|host, tx| Ok::<_, ()>(pipe.insert_at(host, tx, 0, &stick_, 1)));
+        let went = host.transaction(|host, tx| pipe.insert_at(host, tx, 0, &stick_, 1));
         assert_eq!(went, Ok(0));
         // No block entity with slots: no answer. A mod's own capability has no game answer.
         assert!(here().capability(host, &ITEMS, [5, 64, 0], None).is_none());
@@ -358,11 +356,19 @@ pub mod tests {
         let went =
             host.transaction(
                 |host, tx| match handler.insert_at(host, tx, 0, &resource, amount) {
-                    went if went == amount => Ok(went),
-                    went => Err(went),
+                    Ok(went) if went == amount => Ok(went),
+                    Ok(went) => Err(went),
+                    Err(_) => Err(0),
                 },
             );
-        went.unwrap_or_else(|went| went)
+        match went {
+            Ok(went) | Err(crate::TransactionError::Aborted(went)) => went,
+            Err(
+                crate::TransactionError::InvalidContext
+                | crate::TransactionError::Unavailable
+                | crate::TransactionError::CommitRefused,
+            ) => 0,
+        }
     }
 
     /// A mod declaring its own key under a name another mod's providers answer with another
@@ -589,22 +595,22 @@ pub mod tests {
         fn insert_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
     }
 
@@ -626,22 +632,22 @@ pub mod tests {
         fn insert_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             amount: u32,
-        ) -> u32 {
-            amount
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(amount)
         }
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
     }
 
@@ -658,8 +664,7 @@ pub mod tests {
             .expect("the bin's provider");
         assert_eq!(voids.owner(), "doubler");
         let stick_ = ItemResource::of(&stick());
-        let went: Result<u32, ()> =
-            host.transaction(|host, tx| Ok(voids.insert_at(host, tx, 0, &stick_, 64)));
+        let went = host.transaction(|host, tx| voids.insert_at(host, tx, 0, &stick_, 64));
         assert_eq!(went, Ok(64));
         assert_eq!(voids.amount(host, 0), 0);
         // A block no provider is registered for has none, as before.
@@ -1195,10 +1200,10 @@ pub mod tests {
                     .ok_or(StorageError::Overflow)
             );
             host.transaction(|host, tx| {
-                assert_eq!(storage.insert(host, tx, &dirt, 1), 1);
-                assert_eq!(items.extract_at(host, tx, 0, &dirt, 1), 1);
-                assert_eq!(items.insert_at(host, tx, last, &dirt, 1), 1);
-                assert_eq!(storage.insert(host, tx, &dirt, 2), 2);
+                assert_eq!(storage.insert(host, tx, &dirt, 1), Ok(1));
+                assert_eq!(items.extract_at(host, tx, 0, &dirt, 1), Ok(1));
+                assert_eq!(items.insert_at(host, tx, last, &dirt, 1), Ok(1));
+                assert_eq!(storage.insert(host, tx, &dirt, 2), Ok(2));
                 assert_eq!(items.amount(host, last), 2, "top up before filling a gap");
                 assert_eq!(items.amount(host, 0), 1);
                 Ok::<_, ()>(())
@@ -1216,7 +1221,7 @@ pub mod tests {
             assert_eq!(entries, [(dirt.clone(), 1), (dirt.clone(), 2)]);
             assert_eq!(
                 host.transaction(|host, tx| Ok::<_, ()>(storage.extract(host, tx, &dirt, 2))),
-                Ok(2)
+                Ok(Ok(2))
             );
             assert_eq!(items.amount(host, last), 1);
         });
@@ -1246,8 +1251,8 @@ pub mod tests {
             assert!(host.game_events.is_empty());
             let high = i32::MAX as usize;
             host.transaction(|host, tx| {
-                assert_eq!(tanks.insert_at(host, tx, high, &water, 500), 500);
-                assert_eq!(tanks.insert_at(host, tx, high - 1, &water, 250), 250);
+                assert_eq!(tanks.insert_at(host, tx, high, &water, 500), Ok(500));
+                assert_eq!(tanks.insert_at(host, tx, high - 1, &water, 250), Ok(250));
                 Ok::<_, ()>(())
             })
             .unwrap();

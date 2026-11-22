@@ -683,7 +683,7 @@ fn live_slot_queries_read_live_siblings_limits_acting_armor_and_stale_handles() 
                             ))
                         })
                         .unwrap();
-                    assert_eq!(moved, (1, 2, 0, 0));
+                    assert_eq!(moved, (Ok(1), Ok(2), Ok(0), Ok(0)));
                 }
                 assert_eq!(
                     game.world.block_entities.get(&linked).unwrap().slots()[0]

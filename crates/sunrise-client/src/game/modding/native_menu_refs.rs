@@ -625,10 +625,14 @@ impl Game<'_> {
             };
             // NeoForge ResourceHandlerSlot.mayPickup: simulate extracting one, without
             // publishing any writes or change notices from the handler.
-            let result: Result<(), bool> = self.transaction(|game, tx| {
-                Err(handler.extract_at(game, tx, index, &resource, 1) == 1)
+            let result: Result<(), mod_api::TransactionError<bool>> =
+                self.transaction(|game, tx| {
+                    Err(handler.extract_at(game, tx, index, &resource, 1) == Ok(1))
+                });
+            return Ok(match result {
+                Err(mod_api::TransactionError::Aborted(ok)) => Some(ok),
+                _ => None,
             });
-            return Ok(result.err());
         }
         Ok(self.menu_slot_gives(menu, slot))
     }

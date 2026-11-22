@@ -762,9 +762,10 @@ mod tests {
             let nether = super::super::Dim::Nether;
             game.enter_command_level(nether).unwrap();
 
-            let tx = game.transaction_open();
-            assert_eq!(cow.kill(game), Err(LevelWriteError::InTransaction));
-            game.transaction_close(&tx, false);
+            game.storage_scope(|game, _| {
+                assert_eq!(cow.kill(game), Err(LevelWriteError::InTransaction));
+                ((), false)
+            });
 
             assert_eq!(cow.kill(game), Ok(true));
             assert_eq!(game.dim, nether);

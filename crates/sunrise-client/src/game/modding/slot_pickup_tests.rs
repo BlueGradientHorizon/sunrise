@@ -155,16 +155,17 @@ impl BlockEntityPart for PotBlock {
                 let pos = [LINK.0, LINK.1, LINK.2];
                 match change {
                     LinkChange::Insert => {
-                        let result: Result<(), ()> = event.subject.transaction(|scope, tx| {
-                            let host = scope.host();
-                            let level = host.level("minecraft:overworld").unwrap();
-                            let items = level.capability(host, &ITEMS, pos, None).unwrap();
-                            assert_eq!(
-                                items.insert_at(host, tx, 0, &ItemResource::of(source), 1),
-                                1
-                            );
-                            Ok(())
-                        });
+                        let result: Result<(), mod_api::TransactionError<()>> =
+                            event.subject.transaction(|scope, tx| {
+                                let host = scope.host();
+                                let level = host.level("minecraft:overworld").unwrap();
+                                let items = level.capability(host, &ITEMS, pos, None).unwrap();
+                                assert_eq!(
+                                    items.insert_at(host, tx, 0, &ItemResource::of(source), 1),
+                                    Ok(1)
+                                );
+                                Ok(())
+                            });
                         result.unwrap();
                     }
                     LinkChange::Remove => {

@@ -602,7 +602,7 @@ impl Game<'_> {
         menu.reset_mod_visibility(opening.hidden.iter().copied());
         menu.set_registry_id(Some(opening.kind.id));
         let mut synced_places = false;
-        let placed = mod_api::run_transaction(self, |game, tx| {
+        let placed = self.storage_transaction(|game, tx| {
             game.journal_parked_player(opening.gi);
             let post = game
                 .guest_menu_edit(opening.gi, &mut menu, None, |menu, env| {
@@ -639,13 +639,13 @@ impl Game<'_> {
                 };
                 if let Some(stack) = before_stack {
                     let resource = ItemResource::of(stack);
-                    if place.extract(host, tx, &resource, stack.count()) != stack.count() {
+                    if place.extract(host, tx, &resource, stack.count()) != Ok(stack.count()) {
                         return Err(R::Changed);
                     }
                 }
                 if let Some(stack) = after_stack {
                     let resource = ItemResource::of(stack);
-                    if place.insert(host, tx, &resource, stack.count()) != stack.count() {
+                    if place.insert(host, tx, &resource, stack.count()) != Ok(stack.count()) {
                         return Err(R::Changed);
                     }
                 }
