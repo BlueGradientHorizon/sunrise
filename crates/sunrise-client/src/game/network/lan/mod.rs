@@ -5935,6 +5935,7 @@ mod merchant_packet_tests {
     use mod_api::HostTransaction;
 
     struct ReplaceOnTradeVoice {
+        buyer: mod_api::PlayerRef,
         abort: bool,
     }
 
@@ -5950,8 +5951,7 @@ mod merchant_packet_tests {
                     panic!("the trade voice is a server level sound");
                 };
                 let open = |host: &mut dyn mod_api::ServerHost| {
-                    let player = host.player(2).expect("buyer player handle");
-                    player
+                    self.buyer
                         .open_chest_menu(
                             host,
                             1,
@@ -6472,10 +6472,11 @@ mod merchant_packet_tests {
                 );
             };
             if case.starts_with("sound-replaces-") {
+                let buyer = game.player(2).expect("buyer player handle");
                 let abort = case.ends_with("-abort");
                 let mods = vec![mod_api::ModEntry::new(
                     "replace_on_trade_voice",
-                    Box::new(ReplaceOnTradeVoice { abort }),
+                    Box::new(ReplaceOnTradeVoice { buyer, abort }),
                 )]
                 .into();
                 mod_platform::testing::with_mods(mods, || {

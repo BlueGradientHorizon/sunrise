@@ -101,11 +101,7 @@ impl Game<'_> {
             .map_err(|_| OpenMenuError::TitleNotEncodable)?;
         let guest = self
             .online_player_record(player)
-            .filter(|g| {
-                !g.dead
-                    && !g.disconnect_pending
-                    && (self.lan_acting == Some(g.conn) || !self.lan_guest_swaps.contains(&g.conn))
-            })
+            .filter(|g| !g.dead && !g.disconnect_pending)
             .ok_or(OpenMenuError::PlayerUnavailable)?;
         let conn = guest.conn;
         if self.menu_click_in_progress(conn) {
