@@ -4073,7 +4073,7 @@ mod tests {
                 let mut reader = Reader::new(&body);
                 let id = reader.varint().unwrap();
                 match id {
-                    ids::ENTITY_EVENT | ids::COMMANDS => {
+                    ids::ENTITY_EVENT | ids::COMMANDS | ids::PLAYER_INFO_UPDATE => {
                         Some(C::decode(id, reader.rest()).unwrap())
                     }
                     _ => None,
@@ -4107,7 +4107,6 @@ mod tests {
                         event.player.announced_channels(host).unwrap().as_ref(),
                         ["test:join"]
                     );
-                    assert!(!host.players().server_players().contains(&event.player));
                 }
                 self.0.lock().unwrap().push(uuid);
                 event
@@ -4172,15 +4171,26 @@ mod tests {
                         } else {
                             game.send_player_command_tree(conn);
                         }
-                        let packet = command_delivery_packets(&rx)
-                            .find_map(|packet| {
-                                if let C::Commands(tree) = packet {
-                                    Some(tree)
-                                } else {
-                                    None
+                        let mut packets = command_delivery_packets(&rx);
+                        let packet = packets
+                            .find_map(|packet| match packet {
+                                C::Commands(tree) => Some(tree),
+                                C::PlayerInfoUpdate(info)
+                                    if conn == 12
+                                        && info.entries.iter().any(|row| row.uuid == 12) =>
+                                {
+                                    panic!(
+                                        "the joining player was announced before its command tree"
+                                    );
                                 }
+                                _ => None,
                             })
                             .expect("expected command tree");
+                        if conn == 12 {
+                            assert!(packets.any(|packet| matches!(packet,
+                                C::PlayerInfoUpdate(info) if info.entries.iter().any(|row| row.uuid == 12)
+                            )), "the joining player must be announced after its command tree");
+                        }
                         if conn == 13 {
                             assert_eq!(
                                 packet, unchanged,
