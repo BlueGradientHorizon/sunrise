@@ -2163,8 +2163,9 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                 ]
             );
 
-            // 6) KeyPressed.Post & KeyReleased.Post: returning Flow::Cancel blocks mapped_key_event.
-            //    First with cancel_key_post = true: pressing W does NOT mark W down in game.keys.
+            // 6) KeyPressed.Post & KeyReleased.Post: returning Flow::Cancel blocks mapped_key_event_from.
+            //    Pressing W on Screen::Mod fires KeyPressed.Pre and KeyPressed.Post on "mod" and
+            //    never holds a movement key while a screen is open (matching KeyboardHandler.keyPress).
             game.keys.clear();
             cancel_key_post.store(true, Ordering::SeqCst);
             take_log(&log);
@@ -2177,12 +2178,21 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                     "key_press_post:mod:key.keyboard.w",
                 ]
             );
-            //    Now with cancel_key_post = false: pressing W reaches mapped_key_event and sets W down.
             cancel_key_post.store(false, Ordering::SeqCst);
             send_key_control(game, "key w down");
-            assert!(game.keys.raw(&KeyCode::KeyW));
+            assert!(!game.keys.raw(&KeyCode::KeyW));
+            assert_eq!(
+                take_log(&log),
+                vec![
+                    "key_press_pre:mod:key.keyboard.w",
+                    "key_press_post:mod:key.keyboard.w",
+                ]
+            );
             //    Releasing through the control socket (`key w up`) runs KeyReleased.Pre and
-            //    KeyReleased.Post on the receiving screen; cancelling Post blocks mapped_key_event.
+            //    KeyReleased.Post on the receiving screen; cancelling Post blocks mapped_key_event_from
+            //    from releasing an already-held key, while continuing lets the release through.
+            game.press_device_key(KeyCode::KeyW, sunrise_client::held::Source::Agent);
+            assert!(game.keys.raw(&KeyCode::KeyW));
             take_log(&log);
             cancel_key_post.store(true, Ordering::SeqCst);
             send_key_control(game, "key w up");
@@ -2230,6 +2240,31 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                 vec!["press_pre:mod:0:false", "press_post:mod:0:false:true"]
             );
             send_mouse_button(game, win_id, MouseButton::Left, false);
+
+            //    KeyPressed.Post returning Flow::Cancel blocks mapped_key_event_from (Advancements
+            //    handles KeyL only after KeyPressed.Post, via immediate_key_pressed).
+            game.set_screen(Screen::Advancements);
+            take_log(&log);
+            cancel_key_post.store(true, Ordering::SeqCst);
+            send_key_control(game, "key l down");
+            assert_eq!(game.screen, Screen::Advancements);
+            assert_eq!(
+                take_log(&log),
+                vec![
+                    "key_press_pre:advancements:key.keyboard.l",
+                    "key_press_post:advancements:key.keyboard.l",
+                ]
+            );
+            cancel_key_post.store(false, Ordering::SeqCst);
+            send_key_control(game, "key l down");
+            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(
+                take_log(&log),
+                vec![
+                    "key_press_pre:advancements:key.keyboard.l",
+                    "key_press_post:advancements:key.keyboard.l",
+                ]
+            );
 
             // 8) Advancements blank-space press/release and no-tab scroll report unhandled.
             game.set_screen(Screen::Advancements);

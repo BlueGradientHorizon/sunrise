@@ -68,6 +68,7 @@ impl Game<'_> {
         player.may_fly = self.creative || spectator;
         player.invulnerable = self.creative || spectator;
         player.spectator = spectator;
+        player.local_spectator = spectator;
         if spectator {
             player.flying = true;
         } else if !player.may_fly {

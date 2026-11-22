@@ -8,7 +8,7 @@ use sunrise_client::lan::{
     entity::{EntityState, Riding, States},
     playerdata::ints_uuid,
 };
-use sunrise_protocol::entity_data::{Value, serializer};
+use sunrise_protocol::entity_data::{PaintingHolder, PaintingVariant, Value, serializer};
 use {sunrise_core::nbt::Tag, sunrise_world::registry::BlockStateId};
 
 /// Allocate once: a native summon may need its id before the tracking tick.
@@ -551,8 +551,32 @@ impl Game<'_> {
                 .registry_id("minecraft:painting_variant", &p.variant)
                 && id != 0
             {
-                e.meta
-                    .push((9, serializer::PAINTING_VARIANT, Value::Id(id + 1)));
+                let asset_id = p
+                    .asset
+                    .as_deref()
+                    .map(|a| {
+                        if a.contains(':') {
+                            a.to_owned()
+                        } else {
+                            format!("minecraft:{a}")
+                        }
+                    })
+                    .unwrap_or_else(|| p.variant.to_string());
+                e.meta.push((
+                    9,
+                    serializer::PAINTING_VARIANT,
+                    Value::PaintingVariant(PaintingHolder::Reference {
+                        id,
+                        name: p.variant.to_string(),
+                        variant: PaintingVariant {
+                            width: p.width,
+                            height: p.height,
+                            asset_id,
+                            title: None,
+                            author: None,
+                        },
+                    }),
+                ));
             }
         }
         for c in self.cushions.iter().filter(|c| c.id > after) {

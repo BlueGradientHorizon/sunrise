@@ -832,7 +832,18 @@ impl Game<'_> {
                     }
                 }
                 let repeat = action == "repeat";
-                if action != "up" && !self.screenshot_shortcut(key, repeat) {
+                if action != "up" {
+                    if self.screenshot_shortcut(physical, repeat) {
+                        if action == "tap" {
+                            self.press_modifier_key(physical, false);
+                            self.physical_keys.remove(&physical);
+                            self.debug_key(
+                                physical,
+                                sunrise_client::debug_keys::KeyAction::Release,
+                            );
+                        }
+                        return ok();
+                    }
                     let name = arg(1)?;
                     let letter = name.chars().next().filter(|_| name.len() == 1);
                     let shortcut = self.edit_shortcut_for_letter(letter);
@@ -846,22 +857,7 @@ impl Game<'_> {
                     )? && !self.key_press_canceled(physical, true, repeat)
                     {
                         self.native_panel_key_event(physical, true, repeat);
-                        match self.settings.keys.translate(key) {
-                            Some(Ok(k)) if repeat => {
-                                self.mapped_key(k, true, true, physical, Source::Agent)?
-                            }
-                            Some(Ok(k)) => self.control_key_down(k, physical)?,
-                            Some(Err(button))
-                                if self.screen == Screen::Playing
-                                    && self.shared_default_acts(
-                                        button,
-                                        sunrise_client::keybinds::key_name(physical),
-                                    ) =>
-                            {
-                                self.mouse_mapping(button, true, Source::Agent)?;
-                            }
-                            _ => {}
-                        }
+                        self.mapped_key_event_from(physical, true, repeat, Source::Agent)?;
                     }
                 }
                 if action == "up" || action == "tap" {
@@ -881,22 +877,8 @@ impl Game<'_> {
                     )? && !self.key_press_canceled(physical, false, false)
                     {
                         self.native_panel_key_event(physical, false, false);
-                        match self.settings.keys.translate(key) {
-                            Some(Ok(k)) => {
-                                self.control_key_up(k);
-                                self.physical_keys.remove(&k);
-                            }
-                            Some(Err(button))
-                                if self.screen == Screen::Playing
-                                    && self.shared_default_acts(
-                                        button,
-                                        sunrise_client::keybinds::key_name(physical),
-                                    ) =>
-                            {
-                                self.mouse_mapping(button, false, Source::Agent)?;
-                            }
-                            _ => {}
-                        }
+                        self.mapped_key_event_from(physical, false, false, Source::Agent)?;
+                        self.release_control_keyboard_standin(physical);
                     }
                 }
                 ok()
@@ -938,20 +920,21 @@ impl Game<'_> {
                 if matches!(action, "up" | "click") {
                     self.mod_mappings_button(button, false);
                 }
+                let input = sunrise_client::keybinds::mouse_name(button);
                 match action {
                     "down" => {
                         self.extras_mouse(button, true);
-                        self.mouse_mapping(button, true, Source::Agent)?
+                        self.mapped_mouse_event_from(button, &input, true, Source::Agent)?;
                     }
                     "up" => {
                         self.extras_mouse(button, false);
-                        self.mouse_mapping(button, false, Source::Agent)?
+                        self.mapped_mouse_event_from(button, &input, false, Source::Agent)?;
                     }
                     "click" => {
                         self.extras_mouse(button, true);
                         self.extras_mouse(button, false);
-                        self.mouse_mapping(button, true, Source::Agent)?;
-                        self.mouse_mapping(button, false, Source::Agent)?;
+                        self.mapped_mouse_event_from(button, &input, true, Source::Agent)?;
+                        self.mapped_mouse_event_from(button, &input, false, Source::Agent)?;
                     }
                     other => {
                         return Err(
@@ -1444,19 +1427,22 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn control_key_down(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
-        self.physical_keys.insert(key);
-        if self.press_device_key(key, Source::Agent) {
-            self.key_pressed(key, raw)?;
+    /// Release any untagged keyboard-standin holds on non-toggle keys bound to `physical`.
+    fn release_control_keyboard_standin(&mut self, physical: KeyCode) {
+        for key in self
+            .settings
+            .keys
+            .translate_all(physical)
+            .into_iter()
+            .flatten()
+        {
+            self.physical_keys.remove(&key);
+            if !matches!(key, KeyCode::ShiftLeft | KeyCode::ControlLeft)
+                && self.keys.held_by(&key, Source::Keyboard)
+            {
+                self.release_device_key(&key, Source::Keyboard);
+            }
         }
-        Ok(())
-    }
-
-    /// `key ... up`: the script lets go. What it pressed as the keyboard's stand-in goes with it
-    /// (a fixture's untagged press), and a controller's hold stays.
-    fn control_key_up(&mut self, key: KeyCode) {
-        self.release_device_key(&key, Source::Agent);
-        self.release_device_key(&key, Source::Keyboard);
     }
 
     fn screen_name(&self) -> &'static str {
