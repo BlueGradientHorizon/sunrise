@@ -4145,7 +4145,7 @@ pub(super) mod tests {
                 mod_api::Flow::Cancel
             }
         }
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
             for (screen, screen_id, image_width) in [
                 (Screen::Inventory, "inventory", 176),
                 (Screen::Creative, "creative", 195),
