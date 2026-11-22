@@ -124,7 +124,6 @@ pub trait ScreensClientHost {
     /// screen open right now; inside `screen_closing` or `screen_*_post` hooks,
     /// read `event.screen.mod_screen` to identify the screen that received the
     /// event even after a synchronous replacement or close.
-    #[access(ClientSetup)]
     fn mod_screen(&self) -> Option<&str>;
     /// Side: client.
     /// The open menu's title (the block's name, or the one it was given),
