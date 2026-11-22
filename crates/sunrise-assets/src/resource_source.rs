@@ -484,8 +484,8 @@ impl ResourceSource {
                 .read(),
         }
     }
-    /// Open a relative resource path without loading its contents. A missing
-    /// resource is distinct from an I/O error.
+    /// Open a relative resource path. Directory and archive backends stream it;
+    /// fixed sources provide owned bytes. A missing resource is distinct from an I/O error.
     pub fn open_resource(
         &self,
         ResourcePath(name): ResourcePath<'_>,
@@ -497,6 +497,15 @@ impl ResourceSource {
             Storage::Archive(archive) => archive.open_entry(name),
             Storage::Prefix { source, prefix } => {
                 source.open_resource(ResourcePath(&format!("{prefix}{name}")))
+            }
+            Storage::Fixed { names, read, .. } => {
+                if names
+                    .binary_search_by(|listed| listed.as_str().cmp(name))
+                    .is_err()
+                {
+                    return Ok(None);
+                }
+                Ok(Some(Box::new(io::Cursor::new(read(name, None)?))))
             }
             Storage::Index(files, ..) => match files.get(name).map(|file| &file.0) {
                 Some(ResourceStorage::Bytes(bytes)) => Ok(Some(Box::new(bytes.as_ref()))),
@@ -821,6 +830,29 @@ mod tests {
     };
 
     struct Fixture(PathBuf);
+
+    #[test]
+    fn fixed_open_distinguishes_unlisted_entries_from_read_errors() {
+        let source = ResourceSource::fixed(
+            ["gone".to_owned(), "present".to_owned()].into(),
+            |name, _| match name {
+                "present" => Ok(b"content".to_vec()),
+                "gone" => Err(io::ErrorKind::NotFound.into()),
+                _ => panic!("attempted to read an unlisted path"),
+            },
+            |_| None,
+        );
+        let open = |name| source.open_resource(ResourcePath::new(name).unwrap());
+        let mut bytes = Vec::new();
+        open("present")
+            .unwrap()
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(bytes, b"content");
+        assert!(open("unlisted").unwrap().is_none());
+        assert!(matches!(open("gone"), Err(error) if error.kind() == io::ErrorKind::NotFound));
+    }
 
     #[test]
     fn runtime_textures_join_the_asset_generation_without_changing_data() {
