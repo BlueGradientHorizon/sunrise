@@ -33,6 +33,56 @@ fn derived(record: &str, field: &str) -> bool {
     )
 }
 
+// The generator has syntax but no trait resolver. Recognize the Copy types this
+// storage schema uses, including compositions of those types.
+fn is_copy(ty: &Type) -> bool {
+    match ty {
+        Type::Reference(reference) => reference.mutability.is_none(),
+        Type::Tuple(tuple) => tuple.elems.iter().all(is_copy),
+        Type::Path(path) if path.qself.is_none() => {
+            let segments = &path.path.segments;
+            let last = segments.last().unwrap();
+            match segments.len() {
+                1 if last.ident == "Option" => {
+                    matches!(&last.arguments, syn::PathArguments::AngleBracketed(args)
+                        if args.args.len() == 1
+                            && matches!(args.args.first(), Some(syn::GenericArgument::Type(inner)) if is_copy(inner)))
+                }
+                1 => matches!(
+                    last.ident.to_string().as_str(),
+                    "bool"
+                        | "char"
+                        | "usize"
+                        | "isize"
+                        | "u8"
+                        | "u16"
+                        | "u32"
+                        | "u64"
+                        | "u128"
+                        | "i8"
+                        | "i16"
+                        | "i32"
+                        | "i64"
+                        | "i128"
+                        | "f32"
+                        | "f64"
+                        | "HandlerThread"
+                        | "PayloadProtocol"
+                        | "PayloadDirection"
+                        | "VanillaStages"
+                ),
+                3 => {
+                    segments[0].ident == "std"
+                        && segments[1].ident == "any"
+                        && last.ident == "TypeId"
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 impl Schema {
     fn read(&mut self, dir: &Path, module: &str) -> Result<(), String> {
         let mut files = fs::read_dir(dir)
@@ -258,14 +308,7 @@ impl Schema {
                 fields.push(quote!(#(#attrs)* pub #field_name: #ty));
                 let converted = self.convert(quote!(input.#field_name), &field.ty)?;
                 conversions.push(quote!(#field_name: #converted));
-                let copied = matches!(&field.ty, Type::Reference(_))
-                    || matches!(&field.ty,
-                    Type::Path(path) if path.path.segments.len() == 1 && matches!(
-                        path.path.segments[0].ident.to_string().as_str(),
-                        "bool" | "char" | "usize" | "isize" | "u8" | "u16" | "u32" | "u64" | "u128" |
-                        "i8" | "i16" | "i32" | "i64" | "i128" | "f32" | "f64" | "HandlerThread" | "PayloadProtocol" | "PayloadDirection" |
-                        "VanillaStages"
-                    ));
+                let copied = is_copy(&field.ty);
                 reverse.push(if copied {
                     quote!(#field_name: input.#field_name)
                 } else {
