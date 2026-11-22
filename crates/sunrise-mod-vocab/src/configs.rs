@@ -32,16 +32,18 @@ impl ConfigSpec {
     }
 }
 
-/// The moment at which a registered config's listener is called.
+/// The moment at which a registered config's listener is called (NeoForge's
+/// `ModConfigEvent`).
 // no wire: the in-process config loader delivers this event directly.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ConfigEvent {
-    /// The config was read for the first time in this load.
+    /// The config was read for the first time in this load (`ModConfigEvent.Loading`).
     Loading,
-    /// A loaded config's text changed.
+    /// A loaded config's text changed (`ModConfigEvent.Reloading`).
     Reloading,
-    /// A loaded config is being dropped; the snapshot is its last loaded text.
+    /// A loaded config is being dropped; the snapshot is its last loaded text
+    /// (`ModConfigEvent.Unloading`).
     Unloading,
 }
 
@@ -54,9 +56,11 @@ pub struct ConfigSnapshot {
     pub mod_id: &'static str,
     /// When and on which side this config loads.
     pub kind: ConfigKind,
-    /// The filename supplied at registration (or the generated default name).
+    /// The filename supplied at registration (or the generated default name;
+    /// NeoForge's `ModConfig.getFileName`).
     pub file: PathBuf,
-    /// The actual path the loader used, which can be in the world's `serverconfig/`.
+    /// The actual path the loader used, which can be in the world's `serverconfig/`
+    /// (NeoForge's `ModConfig.getFullPath`).
     pub path: PathBuf,
     /// The text as read by the game.
     pub text: String,

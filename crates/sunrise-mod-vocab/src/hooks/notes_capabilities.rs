@@ -178,9 +178,19 @@ pub trait Notes {
   was queued, not whether a player heard it. The server discards unknown sound events when it dispatches
   the queue.
 
-- `Host::config_dir()` lends `&std::path::Path` for the game's `config/` folder beside `options.txt` (beside `server.properties` on a dedicated server), matching NeoForge's `FMLPaths.CONFIGDIR`, and is available in both the `Config` and `World` load phases.
-  Native mods read and write their own config and bulk files directly with `std::fs` under `Host::config_dir()`, `Host::instance_dir()` (for instance-wide data such as `<instance>/sunrise-mod-data/<mod id>/`), or `ServerHost::world_dir()` (for world-scoped data backed up and deleted with the save).
-  Settings remain separate in `sunrise-mods/.sunrise-mod-data/<mod id>/`, one file per key ([config files and settings](../how-to/mod-settings.md)).
+- `Registrar::register_config(ConfigSpec, Option<Arc<ConfigListener>>)` registers config files in startup
+  declaration order (`ModContainer.registerConfig`) and delivers `ConfigEvent::{Loading, Reloading, Unloading}`
+  (`ModConfigEvent`) with `&ConfigSnapshot` (`mod_id`, `kind`, registered `file`, actual on-disk `path`, `text`)
+  only to the registered owner. `Host::config_dir()` lends `&std::path::Path` for the game's `config/` folder
+  beside `options.txt` (beside `server.properties` on a dedicated server), matching NeoForge's
+  `FMLPaths.CONFIGDIR`, and is available in both the `Config` and `World` load phases; registration-phase code
+  reaches the same folder via `RegistrationContext::instance_dir()?.join("config")`.
+  Native mods read and write their own config and bulk files directly with `std::fs` under `Host::config_dir()`,
+  `Host::instance_dir()` (for instance-wide data such as `<instance>/sunrise-mod-data/<mod id>/`), or
+  `ServerHost::world_dir()` (for world-scoped data backed up and deleted with the save).
+  Settings (`sunrise-mods/.sunrise-mod-data/<mod id>/`, one file per key) and shipped verified package `[runtime]`
+  assets (`RegistrationContext::runtime_files()`) remain separate
+  ([config files and settings](../how-to/mod-settings.md)).
 
 - The player-health HUD rows through `health_hud`: every frame the HUD draws them, the
   hook hears the layout's inputs (`HealthInputs`) and the screen's GUI size, and a mod that answers with

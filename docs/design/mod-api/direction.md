@@ -49,7 +49,7 @@ and the apply re-checks the decision's preconditions and refuses, never recomput
 ## Load access belongs to the owning thread
 
 Registration has only a `RegistrationContext`. Each side then enters Setup, Config and World;
-config loading can read settings and use its existing scoped `ConfigFiles` service, but cannot
+config loading can read settings and call `Host::config_dir()`, but cannot
 acquire world handles, open transactions or call other game operations. Client setup and initial
 Client/Common configs finish before title, connection or ordinary runtime callbacks begin, so the
 first client pre-tick is already in World even without an open world. Data and asset reloads
@@ -102,7 +102,7 @@ and [Parts](../../modding/src/concepts/parts.md).
 | Special item model renderers | `register_special_model_renderer` registers a `SpecialModelFactory` per type; the last registration wins | The hook runs once, at client startup. Each resource load decodes and bakes each node; a successful reload resets disabled types. | Each draw extracts a typed argument from the selected stack and submits via a scoped collector. Only a successful special layer commits ([special item renderers](../../modding/src/how-to/client/special-item-renderers.md)). |
 | Data map types | `data_map_types` | Server, at world data load and each reload | After the server publishes the loaded data maps. |
 | Recipe property additions | `recipe_property_sets` | Server data load and client preload, after recipes resolve, and again on reload | When station slot checks use the published sets. |
-| Mod configs | `register_configs` | Config phase on the owning side, once at startup for Client/Common and per world for Server | After the file is read and the mod receives its config loading callback. |
+| Mod configs | `Registrar::register_config` | Startup registration; Config phase loads Client/Common once on the owning side and Server per world | After the file is read and the config's owner-bound `ConfigListener` receives `ConfigEvent::Loading` (`Reloading` on edits, `Unloading` on server stop). |
 
 [Content mods](../../modding/src/how-to/content-mods.md) declare identities and data such as blocks, items, entity types
 and menus in `data/<id>/sunrise/`. These declarations supply the game's registry entries, models or

@@ -1,62 +1,156 @@
 # Config files and settings
 
-A mod keeps its options in one of two ways:
+A mod keeps its options and files in distinct places according to who edits them and how they are verified:
 
-| | Config files | Settings |
-| --- | --- | --- |
-| Lives in | The game's `config/` folder (on a server, `serverconfig/` per world) | `sunrise-mods/.sunrise-mod-data/<mod id>/`, one file per key |
-| Edited by | The player, in a text editor | The player, on the mod's page in **Options > Mods** |
-| You declare it with | `Registrar::register_config` | `Registrar::register_setting` |
-| You read it in | The config's `ConfigListener` (`ConfigEvent::Loading`, `Reloading`, `Unloading`) | `Host::setting` and the typed `setting_*` reads |
-| NeoForge counterpart | `ModContainer.registerConfig`, `ModConfigEvent` | `ModConfigSpec` entries on the config screen |
+| | Config files | Settings | Verified package runtime files |
+| --- | --- | --- | --- |
+| Lives in | The game's `config/` folder (on a server, `serverconfig/` per world) | `sunrise-mods/.sunrise-mod-data/<mod id>/`, one file per key | `runtime/` inside the `.smod` package, listed in `[runtime]` with SHA-512 |
+| Edited by | The player, in a text editor | The player, on the mod's page in **Options > Mods** | The mod author at packaging time (immutable verified assets) |
+| You declare it with | `Registrar::register_config` | `Registrar::register_setting` | `[runtime]` in `sunrise-mod.toml` |
+| You read it in | The config's `ConfigListener` (`ConfigEvent::Loading`, `Reloading`, `Unloading`) or `std::fs` under `Host::config_dir()` | `Host::setting` and the typed `setting_*` reads | `RegistrationContext::runtime_files()` |
+| NeoForge counterpart | `ModContainer.registerConfig`, `ModConfigEvent`, `FMLPaths.CONFIGDIR` | `ModConfigSpec` entries on the config screen | — |
 
 ## Config files
 
-The startup registrar accepts `register_config(ConfigSpec::new(kind, default_text), listener)` in
-`Hooks::register`. The default filename uses the registering mod's ID (`<mod id>-<kind>.toml`), and
-`.file(path)` names a different native path. A filename already registered by any mod or config kind returns
-`ConfigRegistrationError::Duplicate` and keeps the first declaration. The optional `Arc<ConfigListener>` is
-bound to that config's owner and receives only its own `ConfigEvent` and `&ConfigSnapshot` with the owning
-`mod_id`, `kind`, registered `file`, resolved on-disk `path`, and `text`.
+Register each managed config file from `Hooks::register` with
+`Registrar::register_config(ConfigSpec::new(kind, default_text), listener)`.
+
+- **Default naming and custom paths:** `ConfigSpec::new(kind, default_text)` uses the registering mod's ID
+  from the registrar to build `<mod id>-<kind>.toml` (`client`, `common` or `server`). Call `.file(path)`
+  with any `impl Into<PathBuf>` to register a different native path (such as `"mymod/machines.toml"`).
+- **Uniqueness:** Registered filenames are unique by spelling across all mods and config kinds, matching
+  FML's `ConfigTracker.trackConfig`. Registering a filename already claimed returns
+  `Err(ConfigRegistrationError::Duplicate { file, owner })`, logs the conflict, and keeps the first
+  declaration.
+- **Owner-bound delivery:** The optional `Arc<ConfigListener>` is bound to that registration's owner and
+  receives only that config's events (`ConfigEvent::Loading`, `Reloading`, `Unloading`) with
+  `&ConfigSnapshot` (`mod_id`, `kind`, registered `file`, resolved on-disk `path`, and `text`). Pass `None`
+  if the file needs no callback.
+
+```rust
+use mod_api::{
+    ConfigEvent, ConfigKind, ConfigSnapshot, ConfigSpec, Hooks, HostSide, Registrar,
+    RegistrationContext,
+};
+use std::sync::{Arc, RwLock};
+
+struct MyMod {
+    rate: Arc<RwLock<u32>>,
+}
+
+#[mod_api::sunrise_mod]
+impl Hooks for MyMod {
+    fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
+        let rate = Arc::clone(&self.rate);
+        let spec = ConfigSpec::new(ConfigKind::Server, "rate = 4\n")
+            .file("mymod/machines.toml");
+        if let Err(err) = r.register_config(
+            spec,
+            Some(Arc::new(
+                move |_host: HostSide<'_>, event: ConfigEvent, snapshot: &ConfigSnapshot| {
+                    match event {
+                        ConfigEvent::Loading | ConfigEvent::Reloading => {
+                            // `snapshot.file` is the registered path ("mymod/machines.toml");
+                            // `snapshot.path` is the actual file on disk (e.g. `<world>/serverconfig/...`
+                            // when overridden, or `<config_dir>/mymod/machines.toml`).
+                            let parsed = parse_rate(&snapshot.text)?;
+                            *rate.write().unwrap() = parsed;
+                        }
+                        ConfigEvent::Unloading => {
+                            *rate.write().unwrap() = 4;
+                        }
+                        _ => {}
+                    }
+                    Ok(())
+                },
+            )),
+        ) {
+            log::error!("failed to register config: {err}");
+        }
+    }
+}
+```
+
+### Phase, ordering and path resolution
 
 Config files sit in the game's `config/` folder, beside `options.txt` (beside `server.properties` on a
 dedicated server), as Fabric and NeoForge mods' do.
 
-1. In `Hooks::register`, call `r.register_config(ConfigSpec::new(kind, default_text), listener)` for each
-   `Client`, `Common` or `Server` config. Declarations freeze in registration order before file I/O.
-2. When an owning side loads its configs (`Client` and `Common` once on the window; `Common` once and
-   `Server` per world on a dedicated server; `Server` per world on an integrated server), the game selects an
-   existing world `serverconfig/` override for `Server` configs when present, or the instance `config/` path
-   otherwise, writes the default text only for a missing base file, reads the file, and calls only that
-   registration's listener with `ConfigEvent::Loading`.
-3. Once a second the game checks tracked files' text; when a tracked file's text changed, it updates the
-   snapshot and calls only that registration's listener with `ConfigEvent::Reloading`. Unchanged files fire
-   nothing. An actual I/O failure (including a later missing or unreadable file) is logged with owner and path
-   and keeps the last successfully read snapshot without substituting another path, retrying, or latching.
-4. When a server stops, each tracked `Server` config is dropped and only its registration's listener receives
-   `ConfigEvent::Unloading` with its last snapshot. `Client` and `Common` configs stay until the game quits.
-   Returning `Err(message)` from a listener logs the error on every call without disabling future deliveries;
-   a panic disables only that registration for the rest of the session and raises an error notice naming that
-   mod without aborting server shutdown.
+1. **Freeze order:** `Hooks::register` runs in installed dependency order, and each mod's `register_config`
+   calls are retained in declaration order. Declarations freeze before any config file I/O runs.
+2. **Initial load (`ConfigEvent::Loading`):** Each owning side loads its kinds in frozen declaration order:
+   - Client window: `Client` and `Common` once, right after `client_setup` and before title, connection,
+     input, render or tick callbacks.
+   - Dedicated server: `Common` once and `Server` per world, before `server_about_to_start`.
+   - Single-player integrated server: `Server` per world, before `server_about_to_start`.
+   For a `Server` config, if `<world>/serverconfig/<file>` already exists on disk, that override path wins
+   (`snapshot.path` points there and no missing base file is created). Otherwise the loader uses
+   `<config_dir>/<file>`, creating parent folders and writing `default` only when that base file is missing.
+   `ConfigEvent::Loading` runs in the `Config` [load phase](../concepts/load-phases.md): settings reads and
+   `Host::config_dir()` are available; world handles and transactions panic naming `Config`.
+3. **Reloading (`ConfigEvent::Reloading`):** Once a second on the owning side's tick, the game reads each
+   tracked file's text. When the text differs from the last snapshot, it updates the snapshot and calls only
+   that registration's listener with `ConfigEvent::Reloading` (leaving the current load phase unchanged).
+   Files saved with unchanged text fire nothing. An I/O error (including a deleted or unreadable file) is
+   logged with owner and path and keeps the last successfully read snapshot without substituting another
+   path, retrying, or latching.
+4. **Unloading (`ConfigEvent::Unloading`):** When a server stops, each tracked `Server` config is dropped
+   and only its registration's listener receives `ConfigEvent::Unloading` in the `World` phase with its last
+   snapshot. `Client` and `Common` configs stay until the process exits.
+5. **Listener errors and panics:** Returning `Err(message)` from a listener logs the failure with owner,
+   operation and `snapshot.path` on every invocation without disabling future deliveries. A panic disables
+   only that registration's callback for the rest of the session and raises an error notice naming that mod
+   without aborting server shutdown or affecting other mods.
 
-`ConfigEvent::Loading` runs in the Config [load phase](../concepts/load-phases.md): settings reads and
-`Host::config_dir()` are available, world handles and transactions are not. Polling leaves the current phase
-unchanged and `ConfigEvent::Unloading` runs in World.
+## Native filesystem operations under `config/`
 
-For files the config lifecycle doesn't manage, `Host::config_dir()` lends `&std::path::Path` for the game's
-`config/` folder (NeoForge's `FMLPaths.CONFIGDIR`). Startup ensures the folder exists; lending it performs no
-I/O, and mods read and write their files directly with `std::fs`.
+For files outside the managed config lifecycle, `Host::config_dir()` lends `&std::path::Path` for the game's
+`config/` folder (NeoForge's `FMLPaths.CONFIGDIR`). It is available in both the `Config` and `World` phases,
+and lending it performs no I/O. During `Registration` (where there is no `Host`), derive the same folder
+with `cx.instance_dir()?.join("config")`.
+
+Use `std::fs` directly on paths joined from `host.config_dir()`:
+
+```rust
+use std::fs;
+
+let root = host.config_dir().join("mymod");
+let file = root.join("presets.toml");
+
+// Create parent folders and write
+fs::create_dir_all(&root)?;
+fs::write(&file, b"enabled = true\n")?;
+
+// Read
+let bytes = fs::read(&file)?;
+
+// List a directory
+for entry in fs::read_dir(&root)? {
+    let entry = entry?;
+    let _name = entry.file_name();
+}
+
+// Inspect metadata
+let meta = fs::metadata(&file)?;
+let _len = meta.len();
+
+// Remove a file
+fs::remove_file(&file)?;
+```
 
 ## Bulk data
 
 Keep map tiles, waypoints, seeds and exports out of settings and config files, using `std::fs` under the
 host's real directories:
 
-- `Host::instance_dir()` is available on both sides (for example, `<instance>/sunrise-mod-data/<mod id>/`).
-  A client-only mod can key its own subfolders by server or save and dimension.
-- `ServerHost::world_dir()` is server-only and returns `Option<PathBuf>` for the open save folder (for example,
-  `<world>/sunrise-mod-data/<mod id>/`). Its contents are copied, deleted and backed up with the save. It
-  returns `None` when no world is open.
+- **Instance-wide bulk data (both sides):** `Host::instance_dir()` returns the instance folder as `PathBuf`.
+  Store instance-wide files under `host.instance_dir().join("sunrise-mod-data").join("mymod")` (for example,
+  keying client-only subfolders by server or save and dimension). Create parent folders with
+  `std::fs::create_dir_all` before writing.
+- **World-scoped bulk data (server only):** `ServerHost::world_dir()` returns `Option<PathBuf>` for the open
+  save folder (`None` when no world is open). Store save-bound files under
+  `world_dir.join("sunrise-mod-data").join("mymod")`; their contents are copied, backed up and deleted with
+  the save.
 
 The game never scans `sunrise-mod-data/` as settings or config.
 
@@ -79,3 +173,11 @@ A mod reads and writes only its own settings: another mod's id, or a key its own
 The settings folder is settings only, not bulk storage: ordinary files there are read as setting keys and
 subfolders or unsafe entries still warn during snapshots. Keep bulk files under `Host::instance_dir()` or
 `ServerHost::world_dir()` instead; their files are not included in settings snapshots.
+
+## Verified package runtime files
+
+Do not mix player-editable configs or settings with immutable data shipped inside your `.smod` package.
+Files declared under `[runtime]` in `sunrise-mod.toml` are SHA-512 verified at package load and read
+through `RegistrationContext::runtime_files()` (see [package contents](native-mods/03-data-files.md#package-contents)).
+They are never written by the game, never scanned as settings or configs, and stay separate from
+`Host::config_dir()`, `Host::instance_dir()` and `ServerHost::world_dir()`.

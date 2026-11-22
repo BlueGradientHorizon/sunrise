@@ -23,9 +23,11 @@ Each owning thread progresses through `Packages → Registration → Setup → C
 
 `RegistrationContext::instance_dir()` returns `Result<&std::path::Path, RegistrationReadError>`.
 The path is borrowed from the startup snapshot and preserves the host's native encoding,
-including non-Unicode names. Use it directly for path operations, or call
-`cx.instance_dir()?.to_path_buf()` if you need to keep it beyond registration. A context
-with no startup snapshot returns `RegistrationReadError::Unavailable`.
+including non-Unicode names. Use it directly for path operations (for example,
+`cx.instance_dir()?.join("config")` when registration-phase code needs the `config/` path
+before any `Host` exists), or call `cx.instance_dir()?.to_path_buf()` if you need to keep it
+beyond registration. A context with no startup snapshot returns `RegistrationReadError::Unavailable`.
+Verified shipped `[runtime]` package files stay separate on `RegistrationContext::runtime_files()`.
 
 A mod that does slow work while the game starts shows it on the startup loading screen
 (NeoForge's `StartupNotificationManager` and `ProgressMeter`). `RegistrationContext::progress(label,
@@ -77,17 +79,21 @@ whatever the dispatch order: the loaded packages, the built-in registries as `re
 lists them (not what mods declare during registration) and the settings on disk when the snapshot is captured. A
 mod validates the keys it declares against them from `Hooks::register`; a name that is not a
 namespaced identifier, an unknown registry, an empty or path-like setting key, a package that is
-not loaded, or a context the engine gave no data returns a `RegistrationReadError`. Client setup
-runs once after the initial asset apply. The window's Client/Common configs load once immediately after client setup and before title,
-connection, input, render or ordinary tick callbacks. This includes pack-error recovery: the failed
+not loaded, or a context the engine gave no data returns a `RegistrationReadError`. Client setup runs once after the initial asset apply. Config files declared in `Hooks::register` via
+`Registrar::register_config(ConfigSpec, listener)` freeze in installed dependency and registration order
+before any config file I/O runs. The window's Client/Common configs load once immediately after client setup
+and before title, connection, input, render or ordinary tick callbacks, delivering `ConfigEvent::Loading`
+with `&ConfigSnapshot` only to each config's registered owner. This includes pack-error recovery: the failed
 selection is cleared and saved during initialization, but its options screen opens only after Config
 completes. A title-screen callback is already in World: world-handle constructors can return `None`,
-rather than being forbidden in Setup. A dedicated
-server loads Common once before its first world; Server configs load and unload per world.
-A second world does not repeat registration or client setup. Config loading can read settings and
-call `Host::config_dir()` to reach the `config/` folder with `std::fs`. World handles,
-transactions and other game operations panic with `Config` in the diagnostic.
-Config file polling is not a phase transition, and Server config unloading leaves the World phase.
+rather than being forbidden in Setup. A dedicated server loads Common once before its first world; Server
+configs load and unload per world. A second world does not repeat registration or client setup. Config
+loading can read settings and call `Host::config_dir()` to reach the `config/` folder with `std::fs`.
+World handles, transactions and other game operations panic with `Config` in the diagnostic.
+Config file polling (`ConfigEvent::Reloading`) is not a phase transition, and Server config unloading
+(`ConfigEvent::Unloading`) runs in the World phase when a server stops. See
+[Config files and settings](../how-to/mod-settings.md) for the registration example, path resolution and
+error handling.
 
 Attribute bounds are registration data too. `Registrar::widen_attribute_bounds` asks, from a both-side package's
 `register`, join the attribute catalog once when it grows: after the attributes mods declare with
