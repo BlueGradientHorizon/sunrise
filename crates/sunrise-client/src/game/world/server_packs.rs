@@ -586,6 +586,7 @@ impl Game<'_> {
         presentation_hidden: bool,
     ) {
         let multiplier = self.settings.notification_display_time;
+        self.admit_mod_toasts();
         self.add_server_report_toasts();
         self.add_hook_panic_toasts();
         let mut used = self.toast_slots_used();
@@ -608,7 +609,7 @@ impl Game<'_> {
                 continue;
             };
             if toast.slot.is_none() {
-                let Some(slot) = (0..Self::TOAST_SLOTS).find(|s| used & (1 << s) == 0) else {
+                let Some(slot) = Self::free_toast_slot(used, 1) else {
                     continue;
                 };
                 used |= 1 << slot;
@@ -630,6 +631,7 @@ impl Game<'_> {
         }
         packs.server_errors.retain(Option::is_some);
         packs.hook_panics.retain(|(toast, _)| toast.is_some());
+        self.draw_mod_toasts(batch, hud_hidden);
         self.draw_controller_notice(batch);
     }
     /// A left click on the prompt: its answer when it hit a button.

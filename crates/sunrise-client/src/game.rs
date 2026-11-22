@@ -986,6 +986,8 @@ mod mod_raycast_tests;
 #[cfg(test)]
 #[path = "game/interface/mod_recipe_property_tests.rs"]
 mod mod_recipe_property_tests;
+#[path = "game/interface/mod_toasts.rs"]
+mod mod_toasts;
 #[cfg(test)]
 #[path = "game/modding/model_baking_completed_tests.rs"]
 mod model_baking_completed_tests;
@@ -3731,6 +3733,7 @@ struct Game<'a> {
     look: look::LookCache,
     tutorial: tutorial::Tutorial,
     tutorial_toasts: Vec<tutorial::HintToast>,
+    mod_toasts: mod_toasts::ModToasts,
     /// The `SystemToastId.NARRATOR_TOGGLE` toast, wherever the player is.
     narrator_toast: Option<sunrise_client::toasts::SystemToast>,
     /// The open screen's narration (`Screen`'s narration state and timing).
@@ -13802,6 +13805,7 @@ impl<'a> Game<'a> {
             look: Default::default(),
             tutorial,
             tutorial_toasts: Vec::new(),
+            mod_toasts: Default::default(),
             narrator_toast: None,
             narration: Default::default(),
             options_from_title: false,

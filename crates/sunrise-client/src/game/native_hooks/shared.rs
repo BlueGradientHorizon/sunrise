@@ -1138,7 +1138,7 @@ fn screen_text_hooked(text: &str, mut canceled: impl FnMut(char) -> bool) -> Opt
 impl Game<'_> {
     /// Admission for ordinary toasts. Only an accepted candidate enters its
     /// queue; mandatory callback-panic diagnostics bypass mod admission.
-    pub(super) fn add_toast(
+    pub(super) fn admit_toast(
         &self,
         kind: mod_api::ToastKind,
         title: &mut Text,
@@ -1158,7 +1158,7 @@ impl Game<'_> {
         &self,
         mut toast: sunrise_client::toasts::SystemToast,
     ) -> Option<sunrise_client::toasts::SystemToast> {
-        self.add_toast(
+        self.admit_toast(
             mod_api::ToastKind::System,
             &mut toast.title,
             &mut toast.message,

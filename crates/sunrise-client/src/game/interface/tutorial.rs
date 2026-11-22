@@ -278,7 +278,7 @@ impl super::Game<'_> {
             self.translate_with_fallback(description_key, description),
             &desc_args,
         )));
-        if !self.add_toast(mod_api::ToastKind::Tutorial, &mut title, &mut description) {
+        if !self.admit_toast(mod_api::ToastKind::Tutorial, &mut title, &mut description) {
             return None;
         }
         let font = &self.gui.atlas.font;

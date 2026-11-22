@@ -2537,7 +2537,10 @@ impl Game<'_> {
             .filter_map(|t| t.slot)
             .chain(packs)
             .chain(self.narrator_toast.as_ref().and_then(|t| t.slot))
-            .fold(self.tutorial_toast_slots(), |used, slot| used | 1 << slot)
+            .fold(
+                self.tutorial_toast_slots() | self.mod_toasts.slots(),
+                |used, slot| used | 1 << slot,
+            )
     }
     pub(super) fn add_advancement_toast(&mut self, mut toast: Toast) {
         let kind = if toast.is_recipe() {
@@ -2545,7 +2548,7 @@ impl Game<'_> {
         } else {
             mod_api::ToastKind::Advancement
         };
-        if self.add_toast(kind, &mut toast.title, &mut toast.description) {
+        if self.admit_toast(kind, &mut toast.title, &mut toast.description) {
             self.adv.toasts.push_back(toast);
         }
     }
@@ -2943,7 +2946,7 @@ mod tests {
                 ] {
                     let mut title = Text::literal("title");
                     let mut description = Some(Text::literal("cancel"));
-                    assert!(!game.add_toast(kind, &mut title, &mut description));
+                    assert!(!game.admit_toast(kind, &mut title, &mut description));
                 }
                 let mut system = sunrise_client::toasts::SystemToast::new("system".into(), None);
                 system.message = Some(Text::literal("edit"));
@@ -2957,7 +2960,11 @@ mod tests {
                     game.options.execution_role = role;
                     let mut title = Text::literal("server");
                     let mut description = Some(Text::literal("edit"));
-                    assert!(!game.add_toast(ToastKind::Advancement, &mut title, &mut description));
+                    assert!(!game.admit_toast(
+                        ToastKind::Advancement,
+                        &mut title,
+                        &mut description
+                    ));
                     assert_eq!(title.plain(), "server", "server must not invoke listener");
                     assert_eq!(description.unwrap().plain(), "edit");
                 }
