@@ -31,6 +31,13 @@ documentation examples and the Python steps of `verify` are not under the guard.
 tests and the summed test seconds. (libtest's own `--ensure-time` was the alternative: it fails a slow test inside
 the binary with libtest's words, not the instruction, and needs a threshold variable per kind of test target.)
 
+With `--time-limits` a hung test fails at once, by name, instead of holding verify until the job is cancelled.
+libtest prints `test NAME has been running for over 60 seconds` from its own thread once a test passes
+TEST_WARN_TIMEOUT_S (60 s, library/test/src/time.rs), with more than one test thread. The runner reads each
+binary's output as it grows, and the first such line kills the binary, which then fails, naming every test the
+warning named. A single-test rerun (`--exact NAME --test-threads=1`) gets no warning from libtest, so it is
+killed after the same 60 s and names its test. Such a test is far over the unit tier's FAIL limit already.
+
 `--no-data-skips` (verify) fails the run when a test that ran prints the `skipped: no vanilla data; test=NAME` line of
 the shared helper (`crates/sunrise-client/src/test_fixtures.rs`, `report_missing`): such a test returns early and is
 counted as passed, though verify has no prepared resources. Every one is listed with its package and the fix. The
@@ -41,6 +48,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -163,14 +171,42 @@ def run_one(binary: dict, extra_env: dict, test_args: list[str], timed: bool = F
             os.unlink(log)
         return result
     result["pid"] = process.pid
-    _, wait_status, usage = os.wait4(process.pid, 0)
+    hung, wait_status, usage = wait_killing_a_hang(process.pid, result["output"], test_args, started, timed)
     process.returncode = code = os.waitstatus_to_exitcode(wait_status)
     status = "ok" if code == 0 else f"killed by signal {-code}" if code < 0 else f"exit {code}"
+    if hung:
+        result["hung"] = hung
+        status = f"hung: {', '.join(hung)} still running after {HANG_SECONDS} s; killed"
+        result["output"].write(f"\n::error::{binary['label']}: {status}\n")
     result.update(status=status, seconds=time.monotonic() - started, max_rss_kib=usage.ru_maxrss)
     if log:
         result["log"] = read_log(Path(log).read_text(errors="replace"))
         os.unlink(log)
     return result
+
+
+def wait_killing_a_hang(pid: int, output, test_args: list[str], started: float, watch: bool):
+    """Wait for the test binary `pid` like os.wait4; with `watch`, kill it on the first sign of a hung test. Returns
+    (the hung tests' names, none if it ended by itself; its wait status; its resource usage). The sign is libtest's
+    over-60-seconds warning in its output, or HANG_SECONDS of running for a single-test rerun libtest never warns about."""
+    single = test_args[test_args.index("--exact") + 1] if "--exact" in test_args else None
+    seen, partial, hung = 0, "", []
+    while True:
+        done, wait_status, usage = os.wait4(pid, 0 if hung or not watch else os.WNOHANG)
+        if done:
+            return hung, wait_status, usage
+        output.flush()
+        grown = os.pread(output.fileno(), 1 << 20, seen)
+        seen += len(grown)
+        text = partial + grown.decode(errors="replace")
+        complete, _, partial = text.rpartition("\n")
+        hung = HUNG.findall(complete)
+        if not hung and single and time.monotonic() - started > HANG_SECONDS:
+            hung = [single]
+        if hung:
+            os.kill(pid, signal.SIGKILL)
+        else:
+            time.sleep(0.5)
 
 
 def untimed(result: dict) -> list[str]:
@@ -192,6 +228,10 @@ def untimed(result: dict) -> list[str]:
 FAILED = re.compile(r"^test (\S+)(?: - should panic)? \.\.\. FAILED(?: <\d+(?:\.\d+)?s>)?$")
 # The line `report_missing` writes when a test returns early for want of prepared data. It is searched for, not
 # anchored: libtest's own `test a::b ... ` may be on the same line, since both write to one file.
+# libtest's warning for a test running past TEST_WARN_TIMEOUT_S, printed only with more than one test thread.
+HUNG = re.compile(r"^test (\S+) has been running for over \d+ seconds$", re.M)
+# libtest's TEST_WARN_TIMEOUT_S (library/test/src/time.rs): the bound for a single-test rerun, which gets no warning.
+HANG_SECONDS = 60
 DATA_SKIP = re.compile(r"skipped: no vanilla data; test=([^;\n]+); skipped tests=\d+")
 
 
@@ -327,6 +367,7 @@ def main(argv: list[str]) -> int:
                 b, extra_env, test_args, bool(limits), args.network_guard.resolve(), run_one, listed_tests), binaries)
     for result in results():
         failed_tests = report(result)
+        failed_tests.extend(name for name in result.get("hung", []) if name not in failed_tests)
         data_skips.extend((result["binary"]["label"], test) for test in result["data_skips"])
         failed_tests.extend(name for name in result.get("network_tests", []) if name not in failed_tests)
         times.extend((seconds, test, result["binary"]["label"])

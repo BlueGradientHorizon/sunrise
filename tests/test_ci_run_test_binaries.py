@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import unittest.mock
 
@@ -284,6 +285,41 @@ printf 'ok a::slow <7.500s>\\nok a::fast <0.001s>\\n' > "$log"
             cargo = self.fake_toolchain(root, [clean])
             code, _ = self.run_main("--jobs", "1", "--no-data-skips", "--", str(cargo), "test")
             self.assertEqual(code, 0)
+
+    # A libtest stand-in whose a::stuck never ends: with more than one thread libtest warns about it after
+    # TEST_WARN_TIMEOUT_S, and a single-test rerun (--exact) only hangs.
+    HANGING_LIBTEST = """#!/bin/sh
+for arg in "$@"; do case "$arg" in --list) printf 'a::stuck: test\\n\\n1 test, 0 benchmarks\\n'; exit 0;; esac; done
+case " $* " in *' --exact '*) exec sleep 600;; esac
+echo 'test a::other ... ok <0.001s>'
+printf 'test a::stuck has been running for over 60 seconds\\n'
+exec sleep 600
+"""
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("sh"), "requires a POSIX shell")
+    def test_a_hung_test_fails_at_once_by_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "crates/sunrise-world").mkdir(parents=True)
+            binary = root / "hanging"
+            binary.write_text(self.HANGING_LIBTEST)
+            binary.chmod(0o755)
+            cargo = self.fake_toolchain(root, [binary])
+            started = time.monotonic()
+            code, output = self.run_main("--jobs", "1", "--time-limits", "2,5", "--", str(cargo), "test")
+            self.assertLess(time.monotonic() - started, 30, output)
+            self.assertEqual(code, 1)
+            summary = output[output.index("FAILED TESTS"):].splitlines()
+            self.assertIn("::error::sunrise-world lib.rs (hanging): hung: a::stuck still running after 60 s; killed",
+                          summary)
+            self.assertIn("    a::stuck", summary)
+            # A single-test rerun has no warning to read: it is killed after HANG_SECONDS and names its test.
+            listed = {"executable": str(binary), "cwd": directory, "env": {}, "label": "pkg"}
+            with unittest.mock.patch.object(runner, "HANG_SECONDS", 0.5):
+                result = runner.run_one(listed, {}, ["--exact", "a::stuck", "--test-threads=1"], timed=True)
+            self.assertEqual(result["hung"], ["a::stuck"])
+            self.assertTrue(result["status"].startswith("hung: a::stuck"))
+            result["output"].close()
 
     @unittest.skipUnless(os.name == "posix" and shutil.which("sh"), "requires a POSIX shell")
     def test_a_listing_without_test_binaries_fails(self):
