@@ -69,6 +69,7 @@ impl Game<'_> {
         }
         self.move_remote_text_display(p.id, p.position, Some((rotation[0], rotation[1])));
         self.move_remote_interaction(p.id, p.position);
+        self.pick_section_sync_id(p.id as u32);
     }
 
     /// `C::RemoveEntities`: its arms of `apply_packet`, guard and order kept.
@@ -86,6 +87,7 @@ impl Game<'_> {
                 r.attachments.remove(&Holder::Entity(id as u32));
                 Self::forget_remote_general(r, id);
             }
+            self.pick_section_remove(id as u32);
         }
         self.remove_entities(&p.ids);
     }

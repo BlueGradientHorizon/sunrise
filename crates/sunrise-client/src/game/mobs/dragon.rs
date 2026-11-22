@@ -44,6 +44,18 @@ use sunrise_core::{
 };
 use sunrise_protocol::entity_data::Value;
 
+/// `EnderDragon.recreateFromPacket`: part `part` (`0..8`) gets wire id `dragon_id + 1 + part`
+/// using Java's wrapping 32-bit integer arithmetic.
+pub(in crate::game) fn dragon_part_id(dragon_id: u32, part: usize) -> u32 {
+    dragon_id.wrapping_add(1).wrapping_add(part as u32)
+}
+
+/// Inverse of [`dragon_part_id`]: returns the `0..8` part index when `candidate_id` belongs to `dragon_id`.
+pub(in crate::game) fn dragon_part_index(dragon_id: u32, candidate_id: u32) -> Option<usize> {
+    let offset = candidate_id.wrapping_sub(dragon_id.wrapping_add(1));
+    (offset < 8).then_some(offset as usize)
+}
+
 /// `HealOrHarmMobEffect.applyInstantaneousEffect` at an `AreaEffectCloud`'s
 /// 0.5 scale: `(int) (scale * (6 << amplifier) + 0.5)`.
 fn harm_amount(amplifier: u32) -> f32 {
@@ -119,13 +131,7 @@ pub(super) const CRYSTAL_IDS: u32 = SPECIAL + 16;
 
 /// `EnderDragon.recreateFromPacket`: signed wrapping `i32` id of part `part` (`i + dragonId + 1`).
 pub(in crate::game) fn dragon_part_wire_id(dragon_id: u32, part: usize) -> i32 {
-    (dragon_id as i32).wrapping_add(1).wrapping_add(part as i32)
-}
-
-/// Inverse of [`dragon_part_wire_id`] for the 8 `EnderDragonPart` sub-entities.
-pub(in crate::game) fn dragon_part_index(dragon_id: u32, wire_id: i32) -> Option<usize> {
-    let offset = wire_id.wrapping_sub(dragon_id as i32).wrapping_sub(1);
-    (0..8).contains(&offset).then_some(offset as usize)
+    dragon_part_id(dragon_id, part) as i32
 }
 const FIGHT_FILE: &str = "data/minecraft/ender_dragon_fight.dat";
 pub(super) const MAX_HEALTH: f32 = 200.0;
@@ -1643,6 +1649,22 @@ impl Game<'_> {
         }
         out
     }
+    /// Resolves a crosshair target id (including synthetic dragon-part and crystal ids) to its wire entity id.
+    pub(in crate::game) fn wire_entity_id(&self, id: u32) -> Option<i32> {
+        if (SPECIAL..SPECIAL + 8).contains(&id) {
+            let dragon = self
+                .dragon
+                .as_ref()
+                .filter(|d| d.id != 0 || self.remote.is_some())?;
+            return Some(dragon_part_wire_id(dragon.id, (id - SPECIAL) as usize));
+        }
+        if id >= CRYSTAL_IDS
+            && let Some(crystal) = self.crystals.get((id - CRYSTAL_IDS) as usize)
+        {
+            return Some(crystal.id as i32).filter(|&id| id != 0);
+        }
+        Some(id as i32)
+    }
     /// `ServerLevel.dragonParts`: where the part with that entity id is
     /// and its box.
     pub(super) fn dragon_part(&self, id: u32) -> Option<(Vec3, Aabb)> {
@@ -2087,22 +2109,16 @@ impl Game<'_> {
         });
         self.trigger_killed(view, blow.as_ref());
     }
-    /// Player melee on the dragon's parts or a crystal under the crosshair.
-    /// The dragon part under the crosshair within reach: its id and distance.
+    /// The dragon part or crystal under the crosshair within reach.
     pub(super) fn dragon_hit(&self) -> Option<(u32, f64)> {
-        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
-        self.dragon_hit_with_pick(&mut pick)
-    }
-    pub(super) fn dragon_hit_with_pick(
-        &self,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(u32, f64)> {
-        use crate::game::pick_accumulator::PickTarget;
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let id = entity.id();
-            if let Some(d) = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)
-                && let Some(part) = dragon_part_index(d.id, id as i32)
+            if let Some(d) = self
+                .dragon
+                .as_ref()
+                .filter(|d| d.id != 0 || self.remote.is_some())
+                && let Some(part) = dragon_part_index(d.id, id)
             {
                 return Some((SPECIAL + part as u32, distance));
             }
@@ -2117,40 +2133,13 @@ impl Game<'_> {
         }
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
+        let (from, to) = super::pick_accumulator::pick_ray_segment(eye, dir, reach);
+        let mut pick = super::pick_accumulator::PickAccumulator::new(reach * reach);
         let mut best: Option<(u32, f64)> = None;
-        let mut consider = |target: PickTarget, special: u32, b: Aabb| {
-            let (lo, hi) = (b.min_position(), b.max_position());
-            let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
-            let (mut t0, mut t1) = (0.0f64, reach);
-            let mut hit = true;
-            for a in 0..3 {
-                if dir[a].abs() < 1e-9 {
-                    hit &= eye[a] >= lo[a] && eye[a] <= hi[a];
-                    continue;
-                }
-                let (mut ta, mut tb) = ((lo[a] - eye[a]) / dir[a], (hi[a] - eye[a]) / dir[a]);
-                if ta > tb {
-                    std::mem::swap(&mut ta, &mut tb);
-                }
-                t0 = t0.max(ta);
-                t1 = t1.min(tb);
+        for (id, b) in self.special_targets() {
+            if pick.consider_box(self, id, from, to, b) {
+                best = Some((id, pick.hovered.unwrap().distance_sq.sqrt()));
             }
-            if hit && t0 <= t1 && pick.consider_target(self, target, t0) {
-                best = Some((special, t0));
-            }
-        };
-        if let Some(boxes) = self.dragon_part_boxes() {
-            for (i, part) in boxes.into_iter().enumerate() {
-                consider(PickTarget::DragonPart(i), SPECIAL + i as u32, part);
-            }
-        }
-        for (i, c) in self.crystals.iter().enumerate() {
-            let p = c.position;
-            let b = Aabb::new(
-                Vec3::new(p.x - 1.0, p.y, p.z - 1.0),
-                Vec3::new(p.x + 1.0, p.y + 2.0, p.z + 1.0),
-            );
-            consider(PickTarget::Crystal(i), CRYSTAL_IDS + i as u32, b);
         }
         best
     }
@@ -4907,12 +4896,11 @@ impl Game<'_> {
     }
     /// The remote dragon, if `id` is it or one of its parts.
     fn remote_dragon_mut(&mut self, id: i32) -> Option<&mut Dragon> {
-        let Ok(uid) = u32::try_from(id) else {
-            return None;
-        };
-        self.dragon
-            .as_mut()
-            .filter(|d| d.id == uid || (d.id != 0 && (d.id + 1..=d.id + 8).contains(&uid)))
+        let uid = id as u32;
+        let remote = self.remote.is_some();
+        self.dragon.as_mut().filter(|d| {
+            (d.id != 0 || remote) && (d.id == uid || dragon_part_index(d.id, uid).is_some())
+        })
     }
     /// `handleSetEntityData`: LivingEntity.DATA_HEALTH_ID and
     /// EnderDragon.DATA_PHASE (`onSyncedDataUpdated` sets the phase).
@@ -5156,33 +5144,6 @@ impl Game<'_> {
                 .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
         }
     }
-    /// The dragon's parts as a server's client attacks them: the server's
-    /// ids for `EnderDragonPart`s follow the dragon's.
-    pub(super) fn remote_dragon_part_hit_with_pick(
-        &self,
-        eye: [f64; 3],
-        dir: [f64; 3],
-        reach: f64,
-        pick: &mut crate::game::pick_accumulator::PickAccumulator,
-    ) -> Option<(i32, f64, [f64; 3])> {
-        let d = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)?;
-        (0..8)
-            .filter_map(|i| {
-                let part_id = dragon_part_wire_id(d.id, i);
-                let b = d.part_box(i);
-                let p = d.parts[i].0;
-                super::ray_box(eye, dir, reach, b)
-                    .filter(|&t| {
-                        pick.consider_target(
-                            self,
-                            crate::game::pick_accumulator::PickTarget::DragonPart(i),
-                            t,
-                        )
-                    })
-                    .map(|t| (part_id, t, [p.x, p.y, p.z]))
-            })
-            .last()
-    }
 }
 
 #[path = "dragon/crystal.rs"]
@@ -5198,16 +5159,16 @@ mod tests {
         for part in 0..8 {
             let wire = dragon_part_wire_id(neg_one, part);
             assert_eq!(wire, part as i32);
-            assert_eq!(dragon_part_index(neg_one, wire), Some(part));
+            assert_eq!(dragon_part_index(neg_one, wire as u32), Some(part));
         }
-        assert_eq!(dragon_part_index(neg_one, -1), None);
+        assert_eq!(dragon_part_index(neg_one, (-1i32) as u32), None);
         assert_eq!(dragon_part_index(neg_one, 8), None);
 
         let max = i32::MAX as u32;
         assert_eq!(dragon_part_wire_id(max, 0), i32::MIN);
-        assert_eq!(dragon_part_index(max, i32::MIN), Some(0));
+        assert_eq!(dragon_part_index(max, i32::MIN as u32), Some(0));
         assert_eq!(dragon_part_wire_id(max, 7), i32::MIN + 7);
-        assert_eq!(dragon_part_index(max, i32::MIN + 7), Some(7));
+        assert_eq!(dragon_part_index(max, (i32::MIN + 7) as u32), Some(7));
     }
 
     #[test]

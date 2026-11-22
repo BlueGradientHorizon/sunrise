@@ -355,6 +355,7 @@ impl Game<'_> {
 
     /// Entity `id` was put from `from` (when known) at `to`; tell it immediately after filing.
     pub(super) fn entity_section_moved(&mut self, id: u32, from: Option<[f64; 3]>, to: [f64; 3]) {
+        self.pick_section_move(id, to);
         if let Some(from) = from {
             self.entity_section_entered(id, from, to);
         }
@@ -368,6 +369,7 @@ impl Game<'_> {
 
     /// Entity `id`'s position was written: it is wherever it is now (any kind, either side).
     pub(super) fn entity_section_moved_id(&mut self, id: u32) {
+        self.pick_section_sync_moved_id(id);
         let Some(scope) = self.entity_section_scope() else {
             return;
         };
@@ -381,6 +383,7 @@ impl Game<'_> {
 
     /// Entity `id` is gone, or replaced under the same id: it starts over untold.
     pub(super) fn entity_section_forget(&mut self, id: u32) {
+        self.pick_section_remove(id);
         self.native_lifecycle.entity_sections.forget(id);
         self.native_lifecycle
             .entity_sections
@@ -448,6 +451,9 @@ impl Game<'_> {
     /// Entity `id`'s position was written from `from` to `to` (`setPosRaw`) inside a family tick
     /// or while a rider is carried by a vehicle teleport. File and tell it at this write.
     pub(super) fn entity_section_step(&mut self, id: u32, from: [f64; 3], to: [f64; 3]) {
+        if crossed(from, to) {
+            self.pick_section_move(id, to);
+        }
         self.entity_section_entered(id, from, to);
         if id != 0
             && let Some(scope) = self.entity_section_scope()
