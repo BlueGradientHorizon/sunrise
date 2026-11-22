@@ -1185,6 +1185,7 @@ fn probe_frame(hud: &HudBatch) -> super::Frame<'_> {
         sky: crate::environment::Sky::default(),
         distance: 12.0,
         detail_distance: 12.0,
+        shadow_distance: None,
         depth_far: 1000.0,
         underwater: false,
         cave_culling: false,
