@@ -40,12 +40,12 @@ use mod_api::{
     ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
     ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
-    EntityRenderers, ExperienceOrbRef, GameRuleActor, GuiLayerRegistrar, HandDrawContext,
-    HandRender, InsideEffects, InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext,
-    LivingRef, LoadConditions, NoteBlockChange, ParticleProviders, PathComputationType, Placement,
-    PlayerRef, PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget,
-    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, ToolUse,
-    VillagerProfessions, WorldPhase,
+    EntityRenderers, ExperienceOrbRef, GuiLayerRegistrar, HandDrawContext, HandRender,
+    InsideEffects, InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef,
+    LoadConditions, NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
+    PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
+    ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, ToolUse, VillagerProfessions,
+    WorldPhase,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -550,5 +550,5 @@ pub(in crate::game) use bounce_restitution::install_block_contact_hooks;
 pub(in crate::game) use living_change_target::NativeHookHost;
 use mod_api::ModBlockEntity;
 use sound_and_shader_helpers::finite_params;
-pub(super) use sound_and_shader_helpers::{mod_sound_ok, sound_id};
+pub(super) use sound_and_shader_helpers::sound_id;
 include!("shared.rs");

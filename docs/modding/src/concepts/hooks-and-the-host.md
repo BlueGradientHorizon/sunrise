@@ -335,12 +335,19 @@ and `is_loaded(pos)` (`Level.isLoaded`: inside the build height and in a loaded 
 (`LevelReader.enabledFeatures`, a shared `FeatureFlags` with the world's effective flags). An omitted
 flag list in the save means `minecraft:vanilla`, not an empty set. These queries do not allocate.
 None of them loads a chunk. Light can be available outside the build height or where no chunk is
-resident, so check `is_loaded` first when you need a resident block. `LevelHost` also answers
-tag and fluid questions without a `Host`: `block_in_tag(block_key, tag)`, `fluid_state(pos)`
-(`getFluidState`, `None` where the block read is),
-`state_fluid_state(state)` and `fluid_in_tag(fluid_name, tag)`. Fluid reads return `FluidState` with a
-`FluidKey`, amount, falling flag and engine-derived source flag; `is_empty()` and `is_source()` report
-those states without a registry lookup. `block_state_id(name)` parses a block and properties, and `block_state_default(block)` gives a block's default state, as on `Host`; both return `None` for invalid input or unavailable context. For tag reads, use `Host::tags()`: resolve a `TagKey` with `Tags::key`, then call `Tags::is_in_tag` for item membership or `Tags::items`, `Tags::blocks` or `Tags::fluids` for ordered member lists. The list methods return `TagMembers::Missing` for an absent tag and `TagMembers::Members(keys)` for a loaded tag, even if `keys` is empty. They return `TagMembers::Unavailable` until that registry's authoritative tags have been applied or if a member key cannot be resolved. On clients `tags_updated` announces the applied server tags; the query never substitutes local resource-pack tags.
+resident, so check `is_loaded` first when you need a resident block. `LevelHost` reads fluid at a
+position with `fluid_state(pos)` (`BlockGetter.getFluidState`, `None` outside the build height or
+in an unloaded chunk).
+
+Use `let states = level.block_states();` in a restricted callback, or `host.block_states()` with
+`HostBlockStates` in scope on a full `Host`. Both read the same block-state and fluid tables.
+`state.fluid_state(&states)` reads the state's fluid, including water for a waterlogged block.
+`state.outline(&states)` borrows its block-local outline (`BlockState.getShape` with an empty
+getter at the origin). An unknown state or unavailable tables returns `None`; air has an empty
+outline and the empty fluid. `FluidKey::is_same`, `bucket`, `pickup_sound` and `empty_sound`
+read fluid facts from the same tables without raw names. A position or state fluid read returns a
+`FluidKey`, amount, falling flag and engine-derived source flag; `is_empty()`, `is_source()` and
+`is_in_tag(tags, tag)` query those states without a registry lookup. `block_state_id(name)` parses a block and properties, and `block_state_default(block)` gives a block's default state, as on `Host`; both return `None` for invalid input or unavailable context. For tag reads on either `Host` or `LevelHost`, use `tags()`: resolve a `TagKey` once through `Registrar::tag_key` or `Tags::key`, then call `is_in_tag(tags, tag)` on a `BlockKey`, `BlockState`, `FluidKey`, `FluidState` or `ItemKey` (or `Tags::block_in_tag`, `Tags::fluid_in_tag`, `Tags::is_in_tag`), or `Tags::items`, `Tags::blocks` or `Tags::fluids` for ordered member lists. The list methods return `TagMembers::Missing` for an absent tag and `TagMembers::Members(keys)` for a loaded tag, even if `keys` is empty. They return `TagMembers::Unavailable` until that registry's authoritative tags have been applied or if a member key cannot be resolved. On clients `tags_updated` announces the applied server tags; the query never substitutes local resource-pack tags.
 `default_components_bound` precedes `tags_updated` after item defaults are published and readable.
 Both notices carry `TagsUpdateCause`: `ServerDataLoad { reload }` for the server's initial data
 load or reload, and `ClientPacketReceived { integrated_server }` for a client's applied tags.
@@ -369,9 +376,21 @@ containers. Both require the owning game thread, not a worker-thread hook body.
 
 `block_entity(pos)` reads this level's block entity without loading a chunk; it returns `None`
 when absent, unloaded or out for its tick. On a client it returns only the local block entity
-handle. `container_size(at)` and `container_stack(at, slot)` are the same side-local capability
-snapshots as `ItemsHost` supplies; neither generates unopened loot, and both refuse clients and
-unloaded positions.
+handle. `container_size(at)` and `with_container_stack(at, slot, read)` use the same side-local
+slots as the game's `ITEMS` provider (`ItemsBackend`); neither generates unopened loot or loads
+chunks. A client, unloaded position, or level without container access returns `None`. A slot
+read also returns `None` for an empty slot, without calling `read`.
+
+`with_container_stack` lends an `ItemStackView` to the reader. Read the item, count or damage
+without copying the stack. Use `stack.project()` inside the callback to inspect components or
+retain an owned stack; a failed projection returns `None`. For a `LevelTicksHost`,
+`LevelRandomHost` or `LevelWriteHost`, upcast to a shared `LevelHost` first:
+
+```rust,ignore
+let read: &dyn LevelHost = level;
+let count = read.with_container_stack(at, slot, |stack| stack.count());
+let snapshot = read.with_container_stack(at, slot, |stack| stack.project()).flatten();
+```
 
 `BlockEntityPartState::state_in(level, entity)` and `state_existing_in` read the same attachment
 snapshots as their `Host` equivalents, without inserting a default, generating loot or loading
@@ -399,8 +418,8 @@ and `collision_shape` alike.
 A signal read never asks `state_for_placement` or `can_survive`, so it cannot re-enter the hook it was read in.
 On a client (its placement prediction and its own shape updates ask `state_for_placement`, `can_survive`,
 `may_place_on` and `can_sustain_plant` too) these reads answer from the client's loaded copy of the level, and the
-reads above that refuse clients return `None`, as do `block_in_tag` and `fluid_in_tag`. `tags()` still returns a
-service: `Tags::key` can resolve a key, but `is_in_tag` returns `None` and `items`, `fluids` and `blocks` return
+reads above that refuse clients return `None`. `tags()` still returns a
+service: `Tags::key` can resolve a key, but `is_in_tag`, `block_in_tag` and `fluid_in_tag` return `None` and `items`, `fluids` and `blocks` return
 `TagMembers::Unavailable` in this view. `BlockEntityPartState::state_in` gives its default there. Never answer from those as if
 they were the server's: a client's own shape update that refuses a block removes it on that client.
 `LevelTicksHost`'s signal reads moved here and now return `Option`.
@@ -465,8 +484,12 @@ Draws advance the live stream directly and are not rolled back on panic/unwind o
 abort, matching vanilla `Level.getRandom()` ([Randomness](randomness.md#borrow-the-live-level-stream)).
 
 `LevelTicksHost` adds scheduling through `schedule_block_tick` and `schedule_fluid_tick`, while
-`LevelWriteHost` adds random access, `set_block`, `set_block_property`, `play_sound` and
-`send_particles` and `level_event` (`levelEvent`, queued in order with the write's own events).
+`LevelWriteHost` adds random access, block writes, sounds, particles and level events. `set_block`
+and `set_block_property` take `BlockUpdateFlags`, for example `BlockUpdateFlags::CLIENTS`. A full
+`ServerHost` also takes these flags in `set_block_property_with`; its three-argument
+`set_block_property` still notifies both neighbors and clients. `play_sound` takes a `SoundSource`,
+such as `SoundSource::Blocks`. `level_event` (`levelEvent`) queues events in order with the write's
+own events.
 A damage hit's listeners (`living_incoming_damage`, `living_damage_pre`, `living_damage_post`,
 `living_shield_block`, `living_use_totem`) are given a `HitHost`: a `LevelRandomHost` that also plays level
 sounds and draws from an entity's own random, and writes no block. `host.play_sound_at(sound, at, source,
@@ -475,8 +498,13 @@ volume, pitch)` is `Level.playSound(null, x, y, z, ...)` and `host.play_sound_fr
 queued. The seed is drawn at the call from the level's sound-seed stream, not from the level's random.
 Registered events go by ID and other valid namespaced keys go inline; clients resolve the event in their
 sound resources and process the volume and pitch.
-`entity.next_float(host)`, `next_double`, `next_bool` and `next_int(host, bound)` draw from the entity's actual
-random stream, in listener order. A hit lends its attacker where the game applies a melee hit (the attacking player or mob, for player → mob, mob → mob and mob → player) and no entity at any other damage site (environment, projectiles, explosions, potions and the like); the attacking mob's own random is the one its AI draws from, and a hit built inside a mob's own tick lends none. Any other entity, a stale handle, a client and an out-of-range `bound` answer `None` (`false` for a sound).
+`entity.with_random(host, |random| random.next_float())` borrows the entity's real random stream.
+A callback can make several draws on that loan; they advance the stream in listener order. A hit
+lends its attacker where the game applies a melee hit (player → mob, mob → mob and mob → player),
+not for environmental, projectile, explosion or potion damage. An attacking mob lends the same
+random its AI draws from, unless the hit is built inside its own tick. A client, a stale handle or
+any other entity gives `None` without entering the callback. `RandomSource::next_int_bound` returns
+zero without drawing for a nonpositive bound.
 Outside a write, a `LevelRef` plays level events, and their global form for every player on the server
 ([Playing level events](../how-to/world/level-events.md)).
 `set_block(pos, state, flags)` is `Level.setBlock` on a whole state, as `LevelRef::set_block` takes it: it

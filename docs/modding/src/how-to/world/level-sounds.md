@@ -55,6 +55,9 @@ Outside a transaction, a queued level sound draws its seed at the call even if a
 one, it draws a seed only when the resolved sound is published. A directed play request draws from the request
 level's random when published. The `HitHost::play_sound_at` and `play_sound_from` calls below always queue at the call.
 
+When a block callback lends a `LevelWriteHost`, use `host.play_sound(sound, at, SoundSource::Blocks, volume, pitch)`
+to queue a positional sound for nearby players. A transaction's level writer publishes its queued sounds only on commit.
+
 ## Engine playback and live parameters
 
 `play_sound` also observes transient playback updates. `event.starting` is true for a
@@ -103,7 +106,7 @@ entity:
 ```rust,ignore
 fn living_incoming_damage(&self, hit: &mut dyn HitHost, e: &mut LivingIncomingDamageEvent<'_>) -> Flow {
     let Some(attacker) = self.attacker_ref(e.source.causing) else { return Flow::Continue };
-    if let Some(roll) = attacker.next_float(hit) {
+    if let Some(roll) = attacker.with_random(hit, |rng| rng.next_float()) {
         hit.play_sound_at("mymod:hit.crunch", e.victim.position, SoundSource::Players, 1.0, 0.8 + roll * 0.4);
     }
     Flow::Continue

@@ -81,14 +81,14 @@ impl<'a> From<LootDrops<'a>> for super::LootDrops<'a> {
 // exhaustive: the game builds it with a literal; mods only read it
 // no wire: borrowed game-to-hook adapter; its call fields cross separately.
 pub struct ExplosionStart<'a> {
-    pub dimension: &'a str,
+    pub dimension: DimensionKey,
     pub center: [f64; 3],
     pub radius: f32,
     pub fire: bool,
     pub interaction: BlockInteraction,
     pub damage_type: &'a str,
-    pub source: Option<u32>,
-    pub owner: Option<u32>,
+    pub source: Option<EntityRef>,
+    pub owner: Option<EntityRef>,
 }
 impl<'a> From<ExplosionStart<'a>> for super::ExplosionStart<'a> {
     fn from(v: ExplosionStart<'a>) -> Self {

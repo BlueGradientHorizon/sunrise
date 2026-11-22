@@ -79,7 +79,7 @@ the modifiers before you drew from.
 |---|---|
 | `config` | The configured feature's decoded settings |
 | `random` | The caller's `RandomSource`: `next_int`, `next_int_bound`, `next_long`, `next_float`, `next_double`, `next_boolean`, `next_gaussian` |
-| `block`, `block_in_tag` | Read current blocks and their tags |
+| `block`, `block_in_tag` | Read current blocks and test membership in a resolved `TagKey` |
 | `height` | Read the current heightmap |
 | `ensure_can_write` | Check the region's write admission at a position without writing |
 | `set_block` | Write a `BlockState` immediately with `BlockUpdateFlags`; `Feature.setBlock` uses `NEIGHBORS \| CLIENTS` |

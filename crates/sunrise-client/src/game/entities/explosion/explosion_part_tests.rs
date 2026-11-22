@@ -48,7 +48,9 @@ impl BlockPart for Blast {
         assert_eq!(item.get(&"count".into()), Some(&mod_api::Tag::Int(3)));
         assert_eq!(event.explosion.center, [1.0, 65.0, 1.0]);
         assert_eq!(event.explosion.radius, 4.0);
-        let level = host.level(event.explosion.dimension).unwrap();
+        let level = host
+            .level(event.explosion.dimension.id(host).unwrap())
+            .unwrap();
         let state = host.block_state_id("minecraft:stone").unwrap();
         assert!(
             level
@@ -193,7 +195,7 @@ fn block_parts_xp_and_explosion_contract() {
             }
             let chest = registry.default_state("minecraft:chest").unwrap();
             let start = ExplosionStart::from(mod_api::__private::built::ExplosionStart {
-                dimension: "minecraft:overworld",
+                dimension: mod_api::DimensionKey::OVERWORLD,
                 center: [1.0, 65.0, 1.0],
                 radius: 4.0,
                 fire: false,
@@ -403,7 +405,7 @@ fn with_answers(answers: &Answers, test: impl FnOnce(&mut Game<'_>)) {
 /// A radius-4 `Destroy` blast at `[1.5, 65.5, 3.5]`, beside the cell `[2, 65, 3]`.
 fn blast() -> ExplosionStart<'static> {
     ExplosionStart::from(mod_api::__private::built::ExplosionStart {
-        dimension: "minecraft:overworld",
+        dimension: mod_api::DimensionKey::OVERWORLD,
         center: [1.5, 65.5, 3.5],
         radius: 4.0,
         fire: false,

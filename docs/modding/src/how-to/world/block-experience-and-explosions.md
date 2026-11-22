@@ -49,7 +49,9 @@ items or experience spawn after the event.
 block. The server host permits writes. `event.block_entity` is a live handle,
 and `entity.data(host)` can read it while the block remains. The event borrows
 the same `ExplosionStart` description as the global start event: dimension,
-center, radius, fire, interaction, damage type, source and owner.
+center, radius, fire, interaction, damage type, source and owner. `dimension` is a
+`DimensionKey`; use `dimension.id(host)` when you need the name. `source` and `owner`
+are optional `EntityRef`s for the direct and indirect source, respectively.
 
 The engine writes air after the callback, including when the callback
 replaced the block. Vanilla's separate `wasExploded` behavior follows removal.

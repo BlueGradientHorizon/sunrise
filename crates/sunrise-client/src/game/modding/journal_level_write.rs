@@ -8,9 +8,9 @@ use super::native_level_signals::ReadLevel;
 use super::transactions::After;
 use mod_api::{
     AttachmentBatch, AttachmentStore, BlockEntityRef, BlockKey, BlockPos, BlockSide, BlockState,
-    BlockUpdateFlags, Compound, Direction, FeatureFlags, FluidState, ItemStack, LevelHost,
+    BlockUpdateFlags, Compound, Direction, FeatureFlags, FluidState, ItemStackView, LevelHost,
     LevelRandomHost, LevelRef, LevelTicksHost, LevelWriteHost, LightLayer, PartStateError,
-    ParticleOptions, PlayerRef, RandomDraw, Tags,
+    ParticleOptions, PlayerRef, RandomDraw, SoundSource, Tags,
 };
 use sunrise_core::{random::RandomSource, ticks::TickPriority};
 use sunrise_world::{
@@ -67,8 +67,8 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
 }
 
 macro_rules! read_level {
-    ($(fn $method:ident(&self $(, $arg:ident: $ty:ty)*) -> $result:ty;)*) => {$(
-        fn $method(&self $(, $arg: $ty)*) -> $result {
+    ($(fn $method:ident(&self $(, $arg:ident: $ty:ty)*) $(-> $result:ty)?;)*) => {$(
+        fn $method(&self $(, $arg: $ty)*) $(-> $result)? {
             self.read().$method($($arg),*)
         }
     )*};
@@ -85,7 +85,7 @@ impl LevelHost for JournalLevelWrite<'_, '_> {
         fn block_entity(&self, pos: [i32; 3]) -> Option<BlockEntityRef>;
         fn has_item_capability(&self, pos: [i32; 3], side: Option<Direction>) -> Option<bool>;
         fn container_size(&self, at: BlockSide) -> Option<usize>;
-        fn container_stack(&self, at: BlockSide, slot: usize) -> Option<ItemStack>;
+        fn lend_container_stack(&self, at: BlockSide, slot: usize, read: &mut dyn for<'a> FnMut(ItemStackView<'a>));
         fn block_entity_part_snapshot(&self, entity: BlockEntityRef, namespace: &str, name: &str) -> Result<AttachmentBatch, PartStateError>;
         fn block_state(&self, pos: [i32; 3]) -> Option<BlockState>;
         fn block_state_id(&self, name: &str) -> Option<BlockState>;
@@ -93,10 +93,7 @@ impl LevelHost for JournalLevelWrite<'_, '_> {
         fn state_string(&self, state: BlockState) -> Option<String>;
         fn min_y(&self) -> i32;
         fn height(&self) -> i32;
-        fn block_in_tag(&self, block: BlockKey, tag: &str) -> Option<bool>;
         fn fluid_state(&self, pos: [i32; 3]) -> Option<FluidState>;
-        fn state_fluid_state(&self, state: BlockState) -> Option<FluidState>;
-        fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool>;
         fn state_with_property(&self, state: BlockState, key: &str, value: &str) -> Option<BlockState>;
         fn brightness(&self, layer: LightLayer, pos: [i32; 3]) -> i32;
         fn raw_brightness(&self, pos: [i32; 3], sky_darken: i32) -> i32;
@@ -194,7 +191,13 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         let (replacement, flags) = self.game.level_removal_write(pos, moved);
         self.write_block(pos, replacement, flags)
     }
-    fn set_block_property(&mut self, pos: [i32; 3], key: &str, value: &str, flags: i32) -> bool {
+    fn set_block_property(
+        &mut self,
+        pos: [i32; 3],
+        key: &str,
+        value: &str,
+        flags: BlockUpdateFlags,
+    ) -> bool {
         let [x, y, z] = pos;
         super::native_hooks::with_property(
             self.game.pack.assets.registry,
@@ -202,17 +205,17 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
             key,
             value,
         )
-        .is_some_and(|state| self.write_block(pos, state, flags))
+        .is_some_and(|state| self.write_block(pos, state, flags.bits()))
     }
     fn play_sound(
         &mut self,
         sound: &str,
         at: [f64; 3],
-        source: usize,
+        source: SoundSource,
         volume: f32,
         pitch: f32,
     ) -> bool {
-        if self.game.lan.is_none() || !super::native_hooks::mod_sound_ok(sound, source) {
+        if self.game.lan.is_none() || !super::native_hooks::sound_id(sound) {
             return false;
         }
         self.game
@@ -221,7 +224,7 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
                 sound: sound.to_owned(),
                 inline_range: None,
                 at,
-                source: source as i32,
+                source: source.index() as i32,
                 volume,
                 pitch,
                 seed: 0,

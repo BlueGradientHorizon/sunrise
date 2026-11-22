@@ -1,4 +1,5 @@
 mod stubs {
     pub(super) struct GameRuleValue;
-    pub(super) struct GameRuleActor<'a>(pub(super) &'a str);
+    #[derive(Clone, Copy)]
+    pub(super) struct PlayerRef;
 }

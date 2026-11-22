@@ -12,7 +12,7 @@ impl Game<'_> {
         &mut self,
         rule: &str,
         value: GameRuleValue,
-        actor: Option<&GameRuleActor<'_>>,
+        actor: Option<PlayerRef>,
     ) {
         self.fire_game_rule_changed(rule, value, actor);
     }

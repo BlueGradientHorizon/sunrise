@@ -7,7 +7,7 @@ the merged tags used by the current loot evaluator. The context supplies only it
 borrowed parameters, tags and selected random.
 
 Resolve an `Identifier` with `context.tags().key(&id)`, retain the resulting `TagKey`,
-and call `is_in_tag(item, tag)` for item membership:
+and call `is_in_tag(item, tag)`, `block_in_tag(block, tag)` or `fluid_in_tag(fluid, tag)` for membership:
 
 ```rust,ignore
 fn test(&self, context: &mut dyn mod_api::LootTypeContext) -> Result<bool, String> {

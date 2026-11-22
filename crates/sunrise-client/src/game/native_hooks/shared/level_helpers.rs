@@ -10,11 +10,11 @@ impl GameLevel<'_> {
         &mut self,
         sound: &str,
         at: [f64; 3],
-        source: usize,
+        source: mod_api::SoundSource,
         volume: f32,
         pitch: f32,
     ) -> bool {
-        if !self.native_authoritative || !mod_sound_ok(sound, source) {
+        if !self.native_authoritative || !sound_id(sound) {
             return false;
         }
         // `Level.playSound` draws `soundSeedGenerator.nextLong` at the call;
@@ -28,7 +28,7 @@ impl GameLevel<'_> {
                 sound: sound.to_owned(),
                 inline_range: None,
                 at,
-                source: source as i32,
+                source: source.index() as i32,
                 volume,
                 pitch,
                 seed,

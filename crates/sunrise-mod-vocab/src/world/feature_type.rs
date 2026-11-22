@@ -20,7 +20,7 @@
 //! Feature types run on the worldgen workers.
 use crate::world::datapack_registry::{DatapackEntry, DatapackField};
 use crate::world::structure_type::HeightmapType;
-use crate::{BlockKey, BlockMetadata, BlockState, BlockUpdateFlags, RandomSource};
+use crate::{BlockKey, BlockMetadata, BlockState, BlockUpdateFlags, RandomSource, TagKey};
 use std::sync::Arc;
 use sunrise_core::nbt::Compound;
 
@@ -111,8 +111,8 @@ pub trait FeatureContext {
     /// resident blocks or empty `STRUCTURE_STARTS` air (`void_air` outside build height).
     fn block(&mut self, pos: [i32; 3]) -> Option<BlockState>;
     /// `BlockState.is(tag)` of the block at `pos`: whether it is in block tag `tag`
-    /// (`minecraft:leaves`), or `None` where the level can't be read.
-    fn block_in_tag(&mut self, pos: [i32; 3], tag: &str) -> Option<bool>;
+    /// (for example `minecraft:leaves`), or `None` where the level or tag is unavailable.
+    fn block_in_tag(&mut self, pos: [i32; 3], tag: TagKey) -> Option<bool>;
     /// `WorldGenLevel.ensureCanWrite(pos)`. During `FEATURES` it allows the center chunk and its
     /// eight neighbors, restricted throughout by the center's generation height if it is
     /// upgrading. This is an admission check, not a guarantee of a change: the live level

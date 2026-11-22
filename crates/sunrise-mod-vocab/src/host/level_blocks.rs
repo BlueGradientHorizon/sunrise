@@ -17,8 +17,8 @@ pub trait LevelBlocksBackend {
     ) -> Result<(), LevelReadError>;
     /// Side: both.
     /// The contextual friction of `state` at `pos` (`IBlockExtension.getFriction`).
-    /// The state need not occupy the position. `entity` is the optional id and type
-    /// passed to the block's part. Returns `Ok(None)` for a nested query that repeats
+    /// The state need not occupy the position. `entity` is the optional live handle passed to the block's part. A stale entity
+    /// is refused. Returns `Ok(None)` for a nested query that repeats
     /// an active read or exceeds the nesting bound. A stale level, unknown state, or
     /// unavailable host or phase returns a typed read error.
     /// The query never loads chunks or changes the world.
@@ -27,7 +27,7 @@ pub trait LevelBlocksBackend {
         level: LevelRef,
         pos: [i32; 3],
         state: BlockState,
-        entity: Option<(u32, &str)>,
+        entity: Option<EntityRef>,
     ) -> Result<Option<f32>, LevelReadError>;
     /// Side: both.
     /// The enchanting power of the supplied `state` at `pos` (`IBlockStateExtension.getEnchantPowerBonus`).
