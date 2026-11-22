@@ -6,7 +6,11 @@ use crate::{
     item::{Slot, Stack, Template},
     packets::login::PropertyCodec,
 };
-use sunrise_core::{nbt::Tag, profile::AccountProperty, vanilla_bytes::Writer};
+use sunrise_core::{
+    nbt::{self, Tag},
+    profile::AccountProperty,
+    vanilla_bytes::Writer,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -578,8 +582,13 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
         LONG => Value::Long(r.varlong()?),
         FLOAT => Value::Float(r.f32()?),
         STRING => Value::String(r.string(32767)?),
-        COMPONENT => Value::Text(r.nbt()?),
-        OPTIONAL_COMPONENT => Value::OptText(if r.bool()? { Some(r.nbt()?) } else { None }),
+        // ComponentSerialization.TRUSTED_STREAM_CODEC and its optional wrapper.
+        COMPONENT => Value::Text(r.nbt_within(nbt::Limits::unlimited_heap())?),
+        OPTIONAL_COMPONENT => Value::OptText(if r.bool()? {
+            Some(r.nbt_within(nbt::Limits::unlimited_heap())?)
+        } else {
+            None
+        }),
         ITEM_STACK => Value::Item(Slot::read(r)?),
         BOOLEAN => Value::Bool(r.bool()?),
         ROTATIONS | VECTOR3 => Value::Floats(vec![r.f32()?, r.f32()?, r.f32()?]),
@@ -1005,6 +1014,94 @@ mod tests {
             EntityData::read(&mut Reader::new(&w.data)).unwrap(),
             entries
         );
+    }
+
+    fn component_entry(kind: i32, component: &[u8]) -> Writer {
+        let mut w = Writer::new();
+        w.u8(2);
+        w.varint(kind);
+        if kind == serializer::OPTIONAL_COMPONENT {
+            w.bool(true);
+        }
+        w.bytes(component);
+        w
+    }
+
+    #[test]
+    fn entity_components_exceed_the_generic_nbt_budget() {
+        // A component can be a list of literal strings. This list exceeds
+        // both the ordinary network NBT byte budget and its node budget.
+        const TEXT: &str = "literal";
+        const SIBLINGS: i32 = 262_144;
+        let text = Tag::String(TEXT.into());
+        let mut component = Writer::new();
+        component.bytes(&[9, 8]); // TAG_List of TAG_String
+        component.i32(SIBLINGS);
+        for _ in 0..SIBLINGS {
+            component.u16(TEXT.len() as u16);
+            component.bytes(TEXT.as_bytes());
+        }
+        assert!(Reader::new(&component.data).nbt().is_err());
+
+        for kind in [serializer::COMPONENT, serializer::OPTIONAL_COMPONENT] {
+            let mut w = component_entry(kind, &component.data);
+            w.bytes(&[3, 0, 7, 0xff]); // A byte entry after the component, then the terminator.
+
+            let entries = EntityData::read(&mut Reader::new(&w.data)).unwrap();
+            let strings = match &entries[0] {
+                (2, serializer::COMPONENT, Value::Text(Tag::List(strings)))
+                | (2, serializer::OPTIONAL_COMPONENT, Value::OptText(Some(Tag::List(strings)))) => {
+                    strings
+                }
+                _ => panic!("expected a component list"),
+            };
+            assert_eq!(entries[0].1, kind);
+            assert_eq!(strings.len(), SIBLINGS as usize);
+            assert!(strings.iter().all(|s| s == &text));
+            assert_eq!(entries[1..], [(3, serializer::BYTE, Value::Byte(7))]);
+        }
+    }
+
+    #[test]
+    fn entity_components_keep_vanillas_nbt_depth_limit() {
+        // An unused field isolates the NBT depth limit from the component codec.
+        let mut unused = Tag::Int(0);
+        for _ in 0..511 {
+            unused = Tag::List(vec![unused]);
+        }
+        for (depth, unused) in [(512, unused.clone()), (513, Tag::List(vec![unused]))] {
+            let component =
+                Tag::compound([("text", Tag::String("name".into())), ("unused", unused)]);
+            let bytes = nbt::write_network(
+                &component,
+                nbt::Limits {
+                    max_depth: 513,
+                    ..nbt::Limits::default()
+                },
+            )
+            .unwrap();
+            for kind in [serializer::COMPONENT, serializer::OPTIONAL_COMPONENT] {
+                let mut w = component_entry(kind, &bytes);
+                w.u8(0xff);
+
+                let decoded = EntityData::read(&mut Reader::new(&w.data));
+                if depth == 512 {
+                    let expected = if kind == serializer::COMPONENT {
+                        Value::Text(component.clone())
+                    } else {
+                        Value::OptText(Some(component.clone()))
+                    };
+                    assert_eq!(decoded.unwrap(), [(2, kind, expected)]);
+                } else {
+                    assert!(
+                        decoded
+                            .unwrap_err()
+                            .to_string()
+                            .ends_with("depth limit exceeded")
+                    );
+                }
+            }
+        }
     }
 
     /// `EntityDataSerializers.VECTOR3` and `QUATERNION`
