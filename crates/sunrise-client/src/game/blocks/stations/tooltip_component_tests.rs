@@ -3,7 +3,7 @@
 //! `render_tooltip_pre` font replacement & cancellation, `render_tooltip_texture` & line-only
 //! `ItemResource::tooltip`, `show_tooltip_with_item_in_hand`, audit [88], and panic containment.
 use super::*;
-use crate::game::native_entity_refs::tests::with_client_game;
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use mod_api::{
     __private::game::RegistrationContextNew, ClientHost, ClientTooltipComponent, DrawContext, Flow,
     Hooks, Identifier, ItemPart, ItemResource, ModEntry, Mods,
@@ -116,6 +116,16 @@ fn text_lines(components: &[PreparedTooltipItem]) -> Vec<String> {
 #[test]
 #[ignore = "daily"]
 fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct WideData(i32, i32);
     impl TooltipComponentData for WideData {}
 
@@ -411,6 +421,16 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
 #[test]
 #[ignore = "daily"]
 fn two_pass_draw_order_geometry_and_zero_sized_components() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::two_pass_draw_order_geometry_and_zero_sized_components"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct ZeroWidthData;
     impl TooltipComponentData for ZeroWidthData {}
     struct ZeroHeightData;
@@ -573,6 +593,16 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
 #[test]
 #[ignore = "daily"]
 fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cancels() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cancels"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct FontAwareData;
     impl TooltipComponentData for FontAwareData {}
 
@@ -805,6 +835,16 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
 #[test]
 #[ignore = "daily"]
 fn tooltip_texture_and_item_resource_tooltip_with_custom_components() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::tooltip_texture_and_item_resource_tooltip_with_custom_components"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct BadgeData;
     impl TooltipComponentData for BadgeData {}
 
@@ -916,6 +956,16 @@ fn tooltip_texture_and_item_resource_tooltip_with_custom_components() {
 #[test]
 #[ignore = "daily"]
 fn show_tooltip_with_item_in_hand_controls_carried_visibility() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::show_tooltip_with_item_in_hand_controls_carried_visibility"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct AlwaysShowData;
     impl TooltipComponentData for AlwaysShowData {}
     struct HideWithHandData;
@@ -1042,6 +1092,16 @@ fn show_tooltip_with_item_in_hand_controls_carried_visibility() {
 #[test]
 #[ignore = "daily"]
 fn audit_88_no_listener_fast_path_and_deep_local_text() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::audit_88_no_listener_fast_path_and_deep_local_text"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     // Part 1: no listeners at all — an unconvertible stack still gathers and renders its lines.
     let empty_mods: Mods = Vec::<ModEntry>::new().into();
     with_mod_factories(empty_mods, |game| {
@@ -1205,6 +1265,16 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
 #[test]
 #[ignore = "daily"]
 fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct CreatePanicData;
     impl TooltipComponentData for CreatePanicData {}
     struct WidthPanicData;
@@ -1615,6 +1685,16 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
 #[test]
 #[ignore = "daily"]
 fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     let pre_calls = Arc::new(AtomicUsize::new(0));
     let gather_calls = Arc::new(AtomicUsize::new(0));
 
@@ -1757,6 +1837,16 @@ fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
 #[test]
 #[ignore = "daily"]
 fn unregistered_custom_component_aborts_before_pre_texture_and_paint_without_latching() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::unregistered_custom_component_aborts_before_pre_texture_and_paint_without_latching"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct UnregisteredPayload;
     impl TooltipComponentData for UnregisteredPayload {}
 
@@ -1846,6 +1936,16 @@ fn unregistered_custom_component_aborts_before_pre_texture_and_paint_without_lat
 #[test]
 #[ignore = "daily"]
 fn panicking_tooltip_payload_drop_contained_across_prepare_cancel_and_removal() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::panicking_tooltip_payload_drop_contained_across_prepare_cancel_and_removal"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct PanicDropPayload(Arc<AtomicUsize>);
     impl TooltipComponentData for PanicDropPayload {}
     impl Drop for PanicDropPayload {
@@ -2009,6 +2109,16 @@ fn panicking_tooltip_payload_drop_contained_across_prepare_cancel_and_removal() 
 #[test]
 #[ignore = "daily"]
 fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quantizes_once() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quantizes_once"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct ItemFontProvider(Identifier);
     impl mod_api::ClientItemExtensions for ItemFontProvider {
         fn tooltip_font(&self, _: &dyn ClientHost, _: &mod_api::ItemStack) -> Option<Identifier> {
@@ -2156,6 +2266,16 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
 #[test]
 #[ignore = "daily"]
 fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::gather_wraps_logical_arabic_advances_but_measures_visual_lines"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct Width25;
     #[mod_api::__subscriptions]
     impl Hooks for Width25 {
@@ -2214,6 +2334,16 @@ fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
 #[test]
 #[ignore = "daily"]
 fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::only_hovered_slots_check_show_tooltip_with_item_in_hand"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct OnceHandData;
     impl TooltipComponentData for OnceHandData {}
 
@@ -2384,6 +2514,16 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
 #[test]
 #[ignore = "daily"]
 fn tooltip_height_and_local_y_use_wrapping_signed_i32_arithmetic() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::tooltip_height_and_local_y_use_wrapping_signed_i32_arithmetic"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
     struct WrapData {
         tag: &'static str,
         height: i32,
