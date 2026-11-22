@@ -1107,7 +1107,7 @@ impl PostEffects {
 
     /// Takes the chains `preload` has finished.
     fn collect_preloaded(&mut self) {
-        let Some((root, rx)) = &self.preloading else {
+        let Some((root, _)) = &self.preloading else {
             return;
         };
         if !root.same_generation(&self.root) {
@@ -1116,6 +1116,9 @@ impl PostEffects {
             return;
         }
         loop {
+            let Some((_, rx)) = &self.preloading else {
+                return;
+            };
             match rx.try_recv() {
                 Ok((id, loaded)) => {
                     self.pending.remove(&id);
