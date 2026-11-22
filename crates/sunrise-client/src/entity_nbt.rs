@@ -5168,10 +5168,14 @@ mod tests {
             .trade
             .unwrap();
 
-        assert!(!trader.should_restock(1001, 0));
-        assert_eq!(trader.restocks_today, i32::MIN);
-        assert!(trader.should_restock(13001, 0));
-        assert_eq!(trader.restocks_today, 0);
+        assert!(!trader.should_restock(1001, 1));
+        assert_eq!(
+            (trader.last_restock, trader.restocks_today),
+            (1000, i32::MIN)
+        );
+        // Day rollover alone triggers catch-up, with only two ticks since LastRestock.
+        assert!(trader.should_restock(1002, 2));
+        assert_eq!((trader.last_restock, trader.restocks_today), (1002, 0));
         // Java's 2 - MIN is negative, so catch-up does not reset uses or update demand.
         assert_eq!((trader.offers[0].uses, trader.offers[0].demand), (1, 7));
     }
