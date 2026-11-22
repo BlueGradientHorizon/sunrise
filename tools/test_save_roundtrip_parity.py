@@ -44,9 +44,10 @@ import anvil_dump  # noqa: E402
 import save_roundtrip_scene as scene  # noqa: E402
 
 try:
-    from . import lab
+    from . import lab, vanilla_world_check
 except ImportError:
     import lab
+    import vanilla_world_check
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCAL = ROOT / '.local'
@@ -182,7 +183,7 @@ class Vanilla:
             self.process.kill()
 
     def problems(self):
-        return [l for l in self.lines if SUSPICIOUS.search(l) and not BENIGN.search(l)]
+        return vanilla_world_check.log_problems(self.lines, suspicious=SUSPICIOUS, benign=BENIGN)
 
 
 def command_failed(lines):
