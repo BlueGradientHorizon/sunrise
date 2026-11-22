@@ -177,6 +177,38 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     assert!(game.toast_manager.visible.is_empty());
                     assert!(game.toast_manager.queued.is_empty());
                     assert_eq!(seen.lock().unwrap().last().unwrap(), "Queued at disconnect");
+
+                    game.add_toast(ModToast::new(Text::literal("§a"))).unwrap();
+                    draw(game);
+                    draw(game);
+                    let Toast::Mod(entry) = &mut game.toast_manager.visible[0].toast else {
+                        panic!("expected formatting-only toast");
+                    };
+                    entry.request.toast.slide.origin =
+                        Some(Instant::now() - Duration::from_secs(1));
+                    let rect = *game.gui.atlas.gui_rect("toast/system").unwrap();
+                    let frame = draw(game);
+                    let frame_bounds = frame
+                        .vertices
+                        .iter()
+                        .filter(|v| {
+                            v.text == 0
+                                && (rect.u0..=rect.u1).contains(&v.uv[0])
+                                && (rect.v0..=rect.v1).contains(&v.uv[1])
+                        })
+                        .fold(
+                            [
+                                f32::INFINITY,
+                                f32::INFINITY,
+                                f32::NEG_INFINITY,
+                                f32::NEG_INFINITY,
+                            ],
+                            |[x0, y0, x1, y1], vertex| {
+                                let [x, y] = vertex.pos;
+                                [x0.min(x), y0.min(y), x1.max(x), y1.max(y)]
+                            },
+                        );
+                    assert_eq!(frame_bounds, [frame.width - 190.0, 0.0, frame.width, 32.0]);
                 });
             });
         },

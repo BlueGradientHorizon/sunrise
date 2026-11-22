@@ -155,7 +155,7 @@ impl SystemToast {
 
     /// `SystemToast.update` and `recalculateWidth` for a notification with wrapped text.
     pub fn layout(&self, atlas: &HudAtlas, has_icon: bool) -> SystemToastLayout {
-        let wrap = |text: &Text| atlas.font.split_formatted(&text.resolved(), 200.0);
+        let wrap = |text: &Text| atlas.font.split_formatted(text, 200.0);
         let title = wrap(&self.title);
         let message = self.message.as_ref().map_or_else(Vec::new, wrap);
         let icon_indent = if has_icon { 12.0 } else { 0.0 };
