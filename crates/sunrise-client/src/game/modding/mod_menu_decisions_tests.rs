@@ -12,7 +12,7 @@ use std::{
     sync::Arc,
 };
 use sunrise_client::{
-    containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer, ModMenuType},
+    containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer},
     items::ItemStack,
     lan::menu::Slots,
 };
@@ -672,10 +672,53 @@ fn open_native_menu(game: &mut crate::game::Game<'_>) -> i32 {
 }
 
 const POS: (i32, i32, i32) = (1, 64, 1);
+const QUICK_MOVE_MENU: &str = "movemod:quick_move";
 
-/// A mod container (a block entity of the mod's registered type) with stone 10 in slot 0, open
-/// as a 9-slot menu for guest 12.
-fn open_depot(game: &mut crate::game::Game<'_>) -> i32 {
+fn with_depot_guests(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+    with_guests(|game| {
+        // The game fixture stops before content loading freezes the block-entity type registry.
+        // Resolve this fixture's declarations in its scoped Parts table, not the engine global.
+        let types = mod_api::__private::block_entity_types();
+        if !types.is_empty() {
+            mod_api::__private::resolve_block_entity_types(
+                types.iter().map(|(_, kind)| kind.id.as_str()),
+                |id| types.iter().any(|(_, kind)| kind.id == id).then_some(()),
+            )
+            .unwrap();
+        }
+        test(game);
+    });
+}
+
+fn with_live_depot_guests(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+    sunrise_client::containers::with_mod_menu_types(
+        [(
+            QUICK_MOVE_MENU.into(),
+            "movemod".into(),
+            9,
+            0,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            true,
+            None,
+        )],
+        || {
+            with_depot_guests(|game| {
+                register_test_menu(game, QUICK_MOVE_MENU);
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.brand = "sunrise".into();
+                    guest.sender.menu_extra_rev = sunrise_protocol::menu_extra::LIVE_DATA_REVISION;
+                });
+                test(game);
+            });
+        },
+    );
+}
+
+/// A resident mod container (a block entity of the mod's registered type) with stone 10 in slot 0.
+fn place_depot(game: &mut crate::game::Game<'_>, menu: Option<&str>) {
     game.world.chunks.insert(
         (0, 0),
         std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
@@ -693,6 +736,7 @@ fn open_depot(game: &mut crate::game::Game<'_>) -> i32 {
             Arc::new(ModContainer {
                 slots: 9,
                 inputs: vec![0],
+                menu: menu.map(str::to_owned),
                 ..Default::default()
             }),
         )]
@@ -711,6 +755,11 @@ fn open_depot(game: &mut crate::game::Game<'_>) -> i32 {
             fields,
         ))),
     );
+}
+
+/// A mod container opening a stock 9-slot layout.
+fn open_depot(game: &mut crate::game::Game<'_>) -> i32 {
+    place_depot(game, None);
     let host = game.lan.as_mut().unwrap();
     host.hub.open_container(
         12,
@@ -724,10 +773,25 @@ fn open_depot(game: &mut crate::game::Game<'_>) -> i32 {
     host.hub.guests[0].menu.as_ref().unwrap().window
 }
 
+/// A block-backed mod layout opened through the ordinary server path.
+fn open_live_depot(game: &mut crate::game::Game<'_>) -> i32 {
+    place_depot(game, Some(QUICK_MOVE_MENU));
+    assert_eq!(
+        game.open_block_menu(12, POS),
+        super::lan_actions::MenuOpen::Opened
+    );
+    let menu = game.lan.as_ref().unwrap().hub.guests[0]
+        .menu
+        .as_ref()
+        .unwrap();
+    assert_eq!(menu.mod_type.unwrap().id, QUICK_MOVE_MENU);
+    menu.window
+}
+
 const SECOND: (i32, i32, i32) = (2, 64, 1);
 
-/// A second mod container beside the depot, empty, that a listener can move items into through
-/// its `ITEMS` capability.
+/// A second mod container with the same state/layout as the depot, empty, that a listener
+/// can move items into through its `ITEMS` capability.
 fn second_block(game: &mut crate::game::Game<'_>) {
     let state = game
         .pack
@@ -745,18 +809,6 @@ fn second_block(game: &mut crate::game::Game<'_>) {
                 ..Default::default()
             },
         ))),
-    );
-    game.world.block_entities.set_mod_containers(
-        [(
-            state.0,
-            Arc::new(ModContainer {
-                slots: 9,
-                inputs: vec![0],
-                ..Default::default()
-            }),
-        )]
-        .into_iter()
-        .collect(),
     );
 }
 
@@ -796,7 +848,7 @@ fn depot(game: &crate::game::Game<'_>) -> (u32, u32, u32, u32) {
 #[ignore = "daily"]
 fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
     with_mod(|| {
-        with_guests(|game| {
+        with_depot_guests(|game| {
             open_depot(game);
             let click = |game: &mut crate::game::Game<'_>| {
                 let window = game.lan.as_ref().unwrap().hub.guests[0]
@@ -903,23 +955,8 @@ fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
     log::set_logger(&ErrorLog).unwrap();
     log::set_max_level(log::LevelFilter::Error);
     with_publication_mods(|| {
-        with_guests(|game| {
-            let window = open_depot(game);
-            let kind = Box::leak(Box::new(ModMenuType {
-                id: "minecraft:generic_9x1",
-                owner: "minecraft",
-                slots: 9,
-                player_inventory: true,
-                data_slots: 0,
-                results: Vec::new(),
-                inputs: Vec::new(),
-                crafting: None,
-                links: None,
-                owned_slots: None,
-            }));
-            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                g.menu.as_mut().unwrap().mod_type = Some(kind);
-            });
+        with_live_depot_guests(|game| {
+            let window = open_live_depot(game);
             let click = |game: &mut crate::game::Game<'_>| {
                 game.lan_guest_packet(12, container_click(window, 0, 1));
             };
@@ -1088,6 +1125,7 @@ fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entit
                 };
                 let mut carried = Some(ItemStack::new("minecraft:stick", 3));
                 BUTTONS.set(0);
+                BUTTON_ENTITIES.set(0);
 
                 // A panic inside `event.subject.transaction(...)` rolls back subject + world edits
                 // together, restores `carried`, and records the hook panic.
@@ -1098,6 +1136,7 @@ fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entit
                 });
                 game.mod_menu_button(DEPOT_MENU, context_at(POS), None, Some(POS), &mut carried);
                 assert_eq!(BUTTONS.get(), 1);
+                assert_eq!(BUTTON_ENTITIES.get(), 1);
                 assert_eq!(mod_entity_at(game, POS).data, [7]);
                 assert!(!mod_entity_at(game, POS).has_client_update_fields());
                 assert_eq!(inventory(game, 20), 0);
@@ -1129,7 +1168,10 @@ fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entit
                     Some(SECOND),
                     &mut carried,
                 );
-                assert_eq!(BUTTONS.get(), 3);
+                // This menu dispatches only to its owner. The nested panic is from the
+                // separate contents_changed callback; it is not a second menu-button call.
+                assert_eq!(BUTTONS.get(), 2);
+                assert_eq!(BUTTON_ENTITIES.get(), 2);
                 assert_eq!(mod_entity_at(game, SECOND).data, [42]);
                 assert!(mod_entity_at(game, SECOND).has_client_update_fields());
                 assert_eq!(carried, Some(ItemStack::new("minecraft:gold_ingot", 1)));
@@ -1149,7 +1191,7 @@ fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entit
 #[ignore = "daily"]
 fn menu_quick_move_validates_writes_and_contains_panics_on_live_resident_block_entity() {
     with_publication_mods(|| {
-        with_guests(|game| {
+        with_depot_guests(|game| {
             let window = open_depot(game);
             let stone = game
                 .pack
@@ -1272,22 +1314,10 @@ fn menu_quick_move_validates_writes_and_contains_panics_on_live_resident_block_e
 fn a_replaced_backing_block_or_reopened_menu_never_receives_old_quick_move_settlement_or_fallback()
 {
     with_publication_mods(|| {
-        with_guests(|game| {
+        with_live_depot_guests(|game| {
             game.build_registries();
-            let kind = Box::leak(Box::new(ModMenuType {
-                id: "minecraft:generic_9x1",
-                owner: "minecraft",
-                slots: 9,
-                player_inventory: true,
-                data_slots: 0,
-                results: Vec::new(),
-                inputs: Vec::new(),
-                crafting: None,
-                links: None,
-                owned_slots: None,
-            }));
             let setup = |game: &mut crate::game::Game<'_>| {
-                let window = open_depot(game);
+                let window = open_live_depot(game);
                 let stone = game
                     .pack
                     .assets
@@ -1310,6 +1340,7 @@ fn a_replaced_backing_block_or_reopened_menu_never_receives_old_quick_move_settl
                             Arc::new(ModContainer {
                                 slots: 9,
                                 inputs: vec![0],
+                                menu: Some(QUICK_MOVE_MENU.into()),
                                 ..Default::default()
                             }),
                         ),
@@ -1339,7 +1370,6 @@ fn a_replaced_backing_block_or_reopened_menu_never_receives_old_quick_move_settl
                 );
                 game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                     g.inventory[20] = None;
-                    g.menu.as_mut().unwrap().mod_type = Some(kind);
                 });
                 window
             };
@@ -1508,7 +1538,7 @@ fn with_quick_move_observer(test: impl FnOnce(&QuickMoveObserver)) {
 #[ignore = "daily"]
 fn a_handled_quick_move_notifies_contents_after_settling_the_source() {
     with_quick_move_observer(|observer| {
-        with_guests(|game| {
+        with_depot_guests(|game| {
             let window = open_depot(game);
             observer.0.lock().unwrap().clear();
             script(Script {
@@ -1532,7 +1562,7 @@ fn a_handled_quick_move_notifies_contents_after_settling_the_source() {
 #[ignore = "daily"]
 fn a_handled_items_quick_move_notifies_the_destination_after_settling_the_source() {
     with_quick_move_observer(|observer| {
-        with_guests(|game| {
+        with_depot_guests(|game| {
             let window = open_depot(game);
             second_block(game);
             observer.0.lock().unwrap().clear();
@@ -1565,7 +1595,7 @@ fn a_handled_items_quick_move_notifies_the_destination_after_settling_the_source
 #[ignore = "daily"]
 fn an_explicit_quick_move_destination_notice_does_not_reenter_after_a_self_write() {
     with_quick_move_observer(|observer| {
-        with_guests(|game| {
+        with_depot_guests(|game| {
             let window = open_depot(game);
             second_block(game);
             script(Script {
@@ -1597,7 +1627,7 @@ fn an_explicit_quick_move_destination_notice_does_not_reenter_after_a_self_write
 #[ignore = "daily"]
 fn a_quick_move_does_not_notify_a_replaced_items_destination_or_its_watchers() {
     with_quick_move_observer(|observer| {
-        with_guests(|game| {
+        with_depot_guests(|game| {
             game.build_registries();
             let window = open_depot(game);
             second_block(game);
@@ -1632,7 +1662,7 @@ fn a_quick_move_does_not_notify_a_replaced_items_destination_or_its_watchers() {
 #[ignore = "daily"]
 fn a_nested_contents_panic_does_not_reject_an_unanswered_quick_move() {
     with_quick_move_observer(|_| {
-        with_guests(|game| {
+        with_depot_guests(|game| {
             let window = open_depot(game);
             second_block(game);
             script(Script {
@@ -1641,6 +1671,11 @@ fn a_nested_contents_panic_does_not_reject_an_unanswered_quick_move() {
             });
             game.lan_guest_packet(12, container_click(window, 0, 1));
 
+            assert_eq!(
+                DISPATCHES.get(),
+                1,
+                "the notice must originate in the listener"
+            );
             assert_eq!(stone_everywhere(game), (0, 0, 10));
             assert_eq!(
                 mod_api::__private::take_hook_panics(),
@@ -1692,7 +1727,7 @@ fn a_later_part_can_handle_the_same_quick_move_after_a_panic() {
     mod_platform::__private::with_test_dependencies(dependencies, || {
         mod_platform::testing::with_mods(mods.clone(), || {
             crate::game::api_values::install_parts(&mods).unwrap();
-            with_guests(|game| {
+            with_depot_guests(|game| {
                 let window = open_depot(game);
                 script(Script {
                     take: true,
@@ -1772,26 +1807,8 @@ fn a_handled_quick_move_take_panic_after_live_slot_write_still_publishes_content
     .into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
-        with_guests(|game| {
-            let kind = Box::leak(Box::new(ModMenuType {
-                id: "minecraft:generic_9x1",
-                owner: "minecraft",
-                slots: 9,
-                player_inventory: true,
-                data_slots: 0,
-                results: Vec::new(),
-                inputs: Vec::new(),
-                crafting: None,
-                links: None,
-                owned_slots: None,
-            }));
-            let window = open_depot(game);
-            game.lan
-                .as_mut()
-                .unwrap()
-                .hub
-                .guests
-                .update(0, |g| g.menu.as_mut().unwrap().mod_type = Some(kind));
+        with_live_depot_guests(|game| {
+            let window = open_live_depot(game);
             notices.store(0, Ordering::Relaxed);
             game.lan_guest_packet(12, container_click(window, 0, 1));
 
@@ -1827,7 +1844,7 @@ fn a_handled_quick_move_take_panic_after_live_slot_write_still_publishes_content
 fn a_mod_quick_move_no_mod_took_is_left_to_the_games_routing() {
     let run = || {
         let mut result = None;
-        with_guests(|game| {
+        with_depot_guests(|game| {
             let window = open_depot(game);
             script(Script::default());
             game.lan_guest_packet(12, container_click(window, 0, 1));
@@ -1855,7 +1872,7 @@ fn a_mod_quick_move_no_mod_took_is_left_to_the_games_routing() {
 #[ignore = "daily"]
 fn an_untaken_quick_move_keeps_live_writes_and_falls_through_to_routing() {
     with_mod(|| {
-        with_guests(|game| {
+        with_depot_guests(|game| {
             let window = open_depot(game);
             second_block(game);
             // The listener moves 4 into the second block via `subject.transaction(...)` and
@@ -1887,28 +1904,10 @@ fn an_untaken_quick_move_keeps_live_writes_and_falls_through_to_routing() {
 #[ignore = "daily"]
 fn a_handled_cross_block_move_fires_slot_take_and_contains_take_panics() {
     with_mod(|| {
-        with_guests(|game| {
-            let kind = Box::leak(Box::new(ModMenuType {
-                id: "minecraft:generic_9x1",
-                owner: "minecraft",
-                slots: 9,
-                player_inventory: true,
-                data_slots: 0,
-                owned_slots: None,
-                results: Vec::new(),
-                inputs: Vec::new(),
-                crafting: None,
-                links: None,
-            }));
+        with_live_depot_guests(|game| {
             for fail_take in [false, true] {
-                let window = open_depot(game);
+                let window = open_live_depot(game);
                 second_block(game);
-                game.lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .guests
-                    .update(0, |g| g.menu.as_mut().unwrap().mod_type = Some(kind));
                 script(Script {
                     cross: true,
                     handle_cross: true,
@@ -1984,7 +1983,7 @@ fn a_quick_move_cannot_reach_a_player_slot_omitted_from_the_menu() {
         )],
         || {
             with_mod(|| {
-                with_guests(|game| {
+                with_depot_guests(|game| {
                     let window = open_depot(game);
                     game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                         guest.inventory[9] = Some(ItemStack::new("minecraft:stone", 10));
