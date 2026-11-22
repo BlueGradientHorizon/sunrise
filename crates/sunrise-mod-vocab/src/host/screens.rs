@@ -85,8 +85,8 @@ pub trait ScreensClientHost {
     /// screen is open, and `false` when cancelled or redirected by
     /// `screen_opening`, while a world or connection is loading, or without a
     /// client window (a headless/dedicated server, the server thread, or
-    /// guest-acting contexts). A gamepad can close it (B, Start) but not click on
-    /// it: its clicks don't reach the mouse hooks.
+    /// guest-acting contexts). A gamepad can close it (B, Start) and activate
+    /// focused mounted controls. That activation does not dispatch screen mouse hooks.
     fn mod_screen_open(&mut self, mod_id: &str) -> bool;
     /// Side: client.
     /// Closes mod `mod_id`'s own screen, if it is open.

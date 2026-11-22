@@ -5,7 +5,7 @@
 //! (`Screen.addRenderableWidget`), rather than drawing widgets manually or forwarding screen input
 //! hooks by hand. The engine owns drawing, hover, focus, Tab traversal, controller navigation,
 //! narration, and mouse/keyboard dispatch for mounted widgets on every screen, clearing and
-//! rebuilding them whenever the screen initializes or resizes.
+//! rebuilding them when the screen initializes or rebuilds its children, not on a layout-only resize.
 //!
 //! Built-in buttons and text fields match vanilla's `Button` (`Button.Builder` / `Button.OnPress`)
 //! and `EditBox`, sharing the same editing core ([`TextEdit`]) as the game's own fields.
@@ -15,10 +15,10 @@
 //! use mod_api::Text;
 //! let _name = TextField::new([20.0, 20.0, 150.0, 20.0], 32)
 //!     .value("Steve")
-//!     .hint(Text::literal("Player name"));
+//!     .hint(Text::translate("mymod.screen.player_name", vec![]));
 //! let done = Button::new(
 //!     [20.0, 50.0, 150.0, 20.0],
-//!     Text::literal("Done"),
+//!     Text::translate("gui.done", vec![]),
 //!     |state, _host| {
 //!         state.active = false;
 //!     },
@@ -204,7 +204,7 @@ pub struct TextFieldParts {
     pub value: String,
     /// Optional hint text shown when the field is empty (`EditBox.setHint`).
     pub hint: Option<Text>,
-    /// Maximum number of characters accepted (`EditBox.setMaxLength`).
+    /// Maximum number of UTF-16 code units accepted (`EditBox.setMaxLength`, `insertText`).
     pub max_length: usize,
     /// Whether the player may edit the text (`EditBox.setEditable`).
     pub editable: bool,
@@ -240,7 +240,7 @@ pub struct TextField {
 
 impl TextField {
     /// An empty, editable, active, visible, bordered text field taking up to `max_length`
-    /// characters (`EditBox`).
+    /// UTF-16 code units (`EditBox.setMaxLength` and `EditBox.insertText`).
     pub fn new(rect: [f32; 4], max_length: usize) -> Self {
         Self {
             rect,
