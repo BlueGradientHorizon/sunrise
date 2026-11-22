@@ -22,7 +22,7 @@ known state reads as `Ok(None)`; unavailable metadata, invalid states and refuse
 | `replaceable(state) -> Option<bool>` | `BlockState.canBeReplaced()` |
 | `destroy_speed(state) -> Option<f32>` | `BlockBehaviour.Properties.destroyTime` (`getDestroySpeed`): stone 1.5, -1 unbreakable |
 | `requires_correct_tool(state) -> Option<bool>` | `BlockState.requiresCorrectToolForDrops()`: stone and ores true, dirt and logs false; which tool is correct for a state is `BlockStates::is_correct_tool_for_drops` |
-| `sound(state) -> Option<BlockSoundType>` | `BlockState.getSoundType()`: base volume, pitch and the validated break, step, place, hit and fall event keys |
+| `sound(state) -> Option<BlockSoundType>` | `BlockState.getSoundType()`: sound type identity, base volume and pitch, and the validated break, step, place, hit and fall event keys |
 | `has_block_entity(state) -> Option<bool>` | `BlockState.hasBlockEntity()` |
 | `light_emission(state) -> Option<u8>` | `BlockState.getLightEmission()`: 0 to 15; a block with `dynamic_light` answers per cell through its parts, which this does not ask |
 | `friction(state) -> Option<f32>` | `BlockBehaviour.getFriction()` of the block: 0.6 usually, 0.98 ice, 0.8 slime |
@@ -73,8 +73,14 @@ registration with `SoundEventKey::parse("my_mod:block.machine.step")`, handle `N
 syntax, and keep the key on the part. For example, on `BlockSoundCause::Step`, assign
 `event.sound.step = self.step.clone()`. Both `block.stone.step` and `:block.stone.step` resolve to
 `minecraft:block.stone.step`. The game reads the event for that action and applies its usual
-volume and pitch factors. An event missing from the active sound resources plays nothing; it
-never causes the block to play its old sound instead.
+volume and pitch factors. A solid bucket uses the item's placement event with those same levels.
+Block break and placement play in the Blocks category even if their event is from another namespace.
+An event missing from the active sound resources plays nothing; it never causes the block to play
+its old sound instead.
+
+Changing an event key does not change `sound.identity`: a horse chooses its hoof sound from the
+sound type's identity, not from the step or placement events. When constructing a custom
+`BlockSoundType` literal, set `identity: BlockSoundTypeIdentity::Other`.
 
 ## Contextual friction
 

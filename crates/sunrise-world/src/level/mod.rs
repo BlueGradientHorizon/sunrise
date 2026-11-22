@@ -338,7 +338,9 @@ pub struct LevelEventPlayer(pub u128);
 pub enum LevelSoundSource {
     Blocks,
     /// `BlockItem.place`: blocks source, excluding the player predicting the placement.
-    BlockPlacement,
+    BlockPlacement {
+        except: Option<u32>,
+    },
 }
 
 /// Side effects reported to the caller, in vanilla call order.
@@ -632,7 +634,8 @@ pub trait LevelAccess: BlockEntityNeighbors {
         &self,
         _pos: BlockPos,
         _state: BlockStateId,
-    ) -> Option<data::PlacementSound> {
+        _placer: Option<u32>,
+    ) -> Option<data::BlockSound> {
         None
     }
     fn allow_cauldron_level_change(
@@ -1452,8 +1455,12 @@ pub trait GameplayStateSource {
     fn unsigned(&self, name: &str) -> u64;
     fn number(&self, name: &str) -> f64;
     fn text(&self, name: &str) -> &str;
-    fn sound_number(&self, name: &str) -> f64;
-    fn sound_id(&self, name: &str) -> &str;
+    /// The state's placement sound. Raw JSON resolves its event at load; the
+    /// typed gameplay projection already holds the resolved event.
+    fn placement_sound(
+        &self,
+        resolve: &mut dyn FnMut(&str) -> std::io::Result<mod_api::SoundEventKey>,
+    ) -> std::io::Result<data::BlockSound>;
 }
 
 /// Immutable vanilla block-behaviour tables. Build once with [`Behaviours::load`].

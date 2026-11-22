@@ -17,6 +17,15 @@ pub fn sound_type_game_thread() {
             *event.sound = self.sound.clone();
         }
     }
+    struct EditUnusedPlace(SoundEventKey);
+    #[mod_api::sunrise_part]
+    impl BlockPart for EditUnusedPlace {
+        fn sound_type(&self, _: &dyn LoopContext, event: &mut SoundTypeEvent<'_>) {
+            if event.cause == BlockSoundCause::Step {
+                event.sound.place = self.0.clone();
+            }
+        }
+    }
     struct PanicAfterEdit;
     #[mod_api::sunrise_part]
     impl BlockPart for PanicAfterEdit {
@@ -75,6 +84,8 @@ pub fn sound_type_game_thread() {
                     },
                 );
             }
+            let planks = r.block_key("minecraft:oak_planks");
+            r.block_part(planks, EditUnusedPlace(key("mymod:unused_place")));
             let wool = r.block_key("minecraft:green_wool");
             r.block_part(wool, PanicAfterEdit);
         }

@@ -6069,33 +6069,38 @@ impl Game<'_> {
                         f64::from(pos.y) + 0.5,
                         f64::from(pos.z) + 0.5,
                     ];
-                    let name = if sound.contains(':') {
-                        sound.to_string()
-                    } else {
-                        format!("minecraft:{sound}")
-                    };
                     use sunrise_world::level::LevelSoundSource;
-                    match source {
-                        Some(LevelSoundSource::Blocks | LevelSoundSource::BlockPlacement) => {
-                            self.audio.play_on(
-                                mod_api::SoundSource::Blocks.index(),
-                                &name,
-                                Some(c),
-                                volume,
-                                pitch,
-                            );
-                            if source == Some(LevelSoundSource::BlockPlacement)
-                                && let Some(placer) = self.lan_acting_entity
-                                && let Some(captured) = self
-                                    .audio
-                                    .capture
-                                    .as_mut()
-                                    .and_then(|sounds| sounds.last_mut())
-                            {
-                                captured.except_entity = Some(placer as u32);
-                            }
+                    // Block placement carries a canonical key from its resolved sound type.
+                    let qualified;
+                    let name = if matches!(source, Some(LevelSoundSource::BlockPlacement { .. }))
+                        || sound.contains(':')
+                    {
+                        &*sound
+                    } else {
+                        qualified = format!("minecraft:{sound}");
+                        &qualified
+                    };
+                    if source.is_some() {
+                        self.audio.play_on(
+                            mod_api::SoundSource::Blocks.index(),
+                            name,
+                            Some(c),
+                            volume,
+                            pitch,
+                        );
+                        if let Some(LevelSoundSource::BlockPlacement {
+                            except: Some(placer),
+                        }) = source
+                            && let Some(captured) = self
+                                .audio
+                                .capture
+                                .as_mut()
+                                .and_then(|sounds| sounds.last_mut())
+                        {
+                            captured.except_entity = Some(placer);
                         }
-                        None => self.audio.play(&name, Some(c), volume, pitch),
+                    } else {
+                        self.audio.play(name, Some(c), volume, pitch);
                     }
                 }
                 // Handled as the behaviour emits it (GameLevel::emit).

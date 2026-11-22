@@ -1,11 +1,11 @@
 //! The `sound_type` Part method (`IBlockExtension.getSoundType`). The client library asks through
 //! `native_client_hooks`; only a state whose block has a subscribing part is converted.
+use super::Game;
 use super::api_values::{TryIntoApi, block_state};
-use super::{Game, GameLevel};
-use mod_api::{BlockSoundCause, BlockSoundType, SoundEventKey};
+use mod_api::{BlockSoundCause, BlockSoundType, SoundSource};
 use sunrise_core::position::BlockPos;
 use sunrise_world::{
-    level::data::PlacementSound, native_load_context::LoopContext, registry::BlockStateId,
+    level::data::BlockSound, native_load_context::LoopContext, registry::BlockStateId,
 };
 
 /// The game's side of `sunrise_client::block_sounds::native_sound_type`.
@@ -33,13 +33,6 @@ pub(crate) fn sound_type(
     Some(sound)
 }
 
-/// The single sound requested by a block action, before its volume and pitch factors.
-pub(in crate::game) struct SelectedBlockSound {
-    pub event: SoundEventKey,
-    pub volume: f32,
-    pub pitch: f32,
-}
-
 impl Game<'_> {
     /// The sound of `state` at `pos` for `cause`, using the block's contextual sound type.
     /// `entity` is the entity stepping, landing, placing or digging, or None for a break or a
@@ -50,7 +43,7 @@ impl Game<'_> {
         state: BlockStateId,
         entity: Option<(u32, &str)>,
         cause: BlockSoundCause,
-    ) -> SelectedBlockSound {
+    ) -> BlockSound {
         let sound = sunrise_client::block_sounds::sound_type(
             &self.loop_context,
             self.res.facts(),
@@ -59,11 +52,7 @@ impl Game<'_> {
             entity,
             cause,
         );
-        SelectedBlockSound {
-            event: sound.event(cause).clone(),
-            volume: sound.volume,
-            pitch: sound.pitch,
-        }
+        BlockSound::from_type(&sound, cause)
     }
     /// [`Game::selected_block_sound`] for the sounds this window's player plays itself.
     pub(in crate::game) fn own_block_sound(
@@ -71,7 +60,7 @@ impl Game<'_> {
         pos: [i32; 3],
         state: BlockStateId,
         cause: BlockSoundCause,
-    ) -> SelectedBlockSound {
+    ) -> BlockSound {
         let player = (self.own_entity_id() as u32, "minecraft:player");
         self.selected_block_sound(pos, state, Some(player), cause)
     }
@@ -83,46 +72,13 @@ impl Game<'_> {
             return;
         }
         let sound = self.selected_block_sound(pos, state, None, BlockSoundCause::Break);
-        self.audio.play(
+        self.audio.play_on(
+            SoundSource::Blocks.index(),
             sound.event.as_str(),
             Some(pos.map(|v| f64::from(v) + 0.5)),
             (sound.volume + 1.0) / 2.0,
             sound.pitch * 0.8,
         );
-    }
-}
-
-impl GameLevel<'_> {
-    /// A part's answer to `BlockItem.place`, asked with the placing player or none for a
-    /// dispenser. The other slots cannot change this action's sound.
-    pub(super) fn part_place_sound(
-        &self,
-        pos: BlockPos,
-        state: BlockStateId,
-    ) -> Option<PlacementSound> {
-        let entity = self
-            .native_player_entity
-            .map(|id| (id as u32, "minecraft:player"));
-        let own = &self.facts.get(state).sounds;
-        let answer = sunrise_client::block_sounds::native_sound_type(
-            self.loop_context,
-            pos,
-            state,
-            entity,
-            BlockSoundCause::Place,
-            own,
-        )?;
-        if answer.place == own.place
-            && answer.volume.to_bits() == own.volume.to_bits()
-            && answer.pitch.to_bits() == own.pitch.to_bits()
-        {
-            return None;
-        }
-        Some(PlacementSound {
-            event: mod_api::__private::game::sound_event_name(answer.place),
-            volume: answer.volume,
-            pitch: answer.pitch,
-        })
     }
 }
 
@@ -207,6 +163,16 @@ mod tests {
             // The server's placement (`BlockItem.place`) asks with the acting player, and with
             // none when nothing places it (a dispenser).
             let glass = registry.default_state("minecraft:glass").unwrap();
+            game.audio.capture = Some(Vec::new());
+            game.play_break_sound([5, 64, 5], glass);
+            let captured = game.audio.capture.take().unwrap();
+            let [broken] = captured.as_slice() else {
+                panic!("expected one break sound");
+            };
+            assert_eq!(broken.event, "mymod:block.x.break");
+            assert_eq!(broken.source, mod_api::SoundSource::Blocks.index());
+            assert_eq!((broken.volume, broken.pitch), (1.5, 1.2));
+
             let white_wool = registry.default_state("minecraft:white_wool").unwrap();
             let kind = game
                 .res
@@ -229,13 +195,12 @@ mod tests {
 
             let mut placed = Vec::new();
             for acting in [Some(7), None] {
-                game.lan_acting_entity = acting;
                 placed.extend(game.with_level(|_, level, _| {
                     let place = |state| {
                         let pos = BlockPos::new(5, 64, 5);
-                        level
-                            .override_place_sound(pos, state)
-                            .map(|sound| (sound.event.to_string(), sound.volume, sound.pitch))
+                        level.override_place_sound(pos, state, acting).map(|sound| {
+                            (sound.event.as_str().to_owned(), sound.volume, sound.pitch)
+                        })
                     };
                     [place(glass), place(white_wool)]
                 }));
@@ -243,7 +208,12 @@ mod tests {
             let placement = Some(answered("place"));
             assert_eq!(
                 placed,
-                [placement.clone(), placement.clone(), placement, None]
+                [
+                    placement.clone(),
+                    placement.clone(),
+                    placement,
+                    Some(wool("place")),
+                ]
             );
             // A horse stepping on stone under a snow layer plays the snow's answer, asked at the
             // stone's position (`AbstractHorse.playStepSound`): volume 2.0 × 0.15, pitch 1.5.
@@ -272,6 +242,38 @@ mod tests {
                 ),
                 "{events:?}"
             );
+            // Oak's part edited only its place event. The horse still hears WOOD's hoof sound,
+            // and a hard crop sharing the wood step event still has an ordinary hoof sound.
+            let air = registry.default_state("minecraft:air").unwrap();
+            let planks = registry.default_state("minecraft:oak_planks").unwrap();
+            let answered = sunrise_client::block_sounds::sound_type(
+                &game.loop_context,
+                game.res.facts(),
+                BlockPos::new(5, 64, 5),
+                planks,
+                Some((horse.id, "minecraft:horse")),
+                Step,
+            );
+            assert_eq!(answered.place.as_str(), "mymod:unused_place");
+            game.world.set(5, 65, 5, air).unwrap();
+            for (block, expected) in [
+                ("minecraft:oak_planks", "entity.horse.step_wood"),
+                ("minecraft:pumpkin_stem", "entity.horse.step"),
+            ] {
+                let state = registry.default_state(block).unwrap();
+                game.world.set(5, 64, 5, state).unwrap();
+                events.clear();
+                equine::play_step(
+                    &mut horse,
+                    &game.mob_world_base(&[]),
+                    [5, 64, 5],
+                    state,
+                    &mut events,
+                );
+                assert!(
+                    matches!(events.as_slice(), [MobEvent::Sound(name, ..)] if *name == expected)
+                );
+            }
             // A panic drops only the unfinished edit and disables this mod's callback. It
             // neither disables an unrelated mod nor reports the same panic a second time.
             assert_eq!(

@@ -185,7 +185,7 @@ impl sunrise_world::level::LevelAccess for DryLevel<'_> {
                 None
                 | Some(
                     sunrise_world::level::LevelSoundSource::Blocks
-                    | sunrise_world::level::LevelSoundSource::BlockPlacement,
+                    | sunrise_world::level::LevelSoundSource::BlockPlacement { .. },
                 ) => mod_api::SoundSource::Blocks,
             };
             self.sounds.push((pos, sound, source, volume, pitch));
