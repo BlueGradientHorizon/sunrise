@@ -113,6 +113,29 @@ Adding a taller status bar does not move the selected item name or the action ba
 pixels from the bottom. A mod that needs to move either can cancel and redraw its layer:
 `minecraft:selected_item_name` or `minecraft:overlay_message`.
 
+## Showing an action-bar line
+
+A client mod puts a line over the hotbar with `host.set_overlay_message(line, animate_color)`, as
+`Hud.setOverlayMessage` does in Java. No player handle or connection is needed: it is this window's
+HUD. Each call replaces the current line (empty text too) and restarts the stock timer and fade;
+`animate_color` cycles the colour like a jukebox's "Now Playing" line. The game's own lines use the
+same slot, so a server's action-bar packet or a jukebox message replaces a mod's line, and the other
+way round. Nothing is added to chat, narrated or sent. Text the boundary refuses returns
+`Err(TextFormError)` and the previous line stays. A server mod sends a player's action bar with
+`player_action_bar` instead.
+
+```rust
+use mod_api::prelude::*;
+use mod_api::Text;
+
+fn tool_mode_changed(host: &mut dyn ClientHost, mode: &str) {
+    let line = Text::translate("message.example.tool_mode", vec![Text::literal(mode)]);
+    if let Err(error) = host.set_overlay_message(line, false) {
+        log::debug!("action bar refused: {error:?}");
+    }
+}
+```
+
 ## Registering F3 text
 
 Push a `DebugEntry::text(id, group, lines)` in `Hooks::register_debug_entries` at client
