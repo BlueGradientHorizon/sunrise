@@ -58,7 +58,7 @@ impl Game<'_> {
         self
     }
     /// Whether a mod with the `sunrise-mod.toml` id `id` is installed: a
-    /// native, wasm or content package (Fabric's `FabricLoader.isModLoaded`,
+    /// native or content package (Fabric's `FabricLoader.isModLoaded`,
     /// NeoForge's `ModList.isLoaded`). The list is fixed at startup.
     pub(super) fn is_loaded(id: &str) -> bool {
         mod_api::__private::loaded_mods().get(id).is_some()
@@ -517,9 +517,9 @@ mod tests {
 
     /// The service through a real game and the hooks' own dispatch: a mod
     /// saves its registered config from `config_loading` and keeps a file in
-    /// its folder, the reload poll hands the saved text back, and the same
-    /// call for another mod's file is refused. In a fresh process, run in a
-    /// scratch folder, since `config/` is beside the game's working folder.
+    /// its folder, the client frame poll hands the saved text back on the client
+    /// host, and a call for another mod's file is refused. A fresh process
+    /// gives the test its own working folder and `config/`.
     #[test]
     #[ignore = "daily"]
     fn a_mod_saves_its_config_through_the_game_and_the_reload_hears_it() {
@@ -541,24 +541,26 @@ mod tests {
         ) {
             return;
         }
-        fn files(host: &HostSide) -> &'static dyn ConfigFiles {
-            match host {
-                HostSide::Server(host) => host.config_files(),
-                HostSide::Client(host) => host.config_files(),
-            }
-        }
         struct Proof;
         #[mod_api::__subscriptions]
         impl Hooks for Proof {
-            fn register_configs(&self, _: HostSide, event: &mut RegisterConfigsEvent<'_>) {
+            fn register_configs(
+                &self,
+                _: &dyn mod_api::ConfigContext,
+                event: &mut RegisterConfigsEvent<'_>,
+            ) {
                 event.configs.push(mod_api::Config::new(
                     "proof",
                     mod_api::ConfigKind::Common,
                     "count = 0\n",
                 ));
             }
-            fn config_loading(&self, host: HostSide, event: &mut ConfigLoadingEvent<'_>) {
-                let files = files(&host);
+            fn config_loading(
+                &self,
+                context: &dyn mod_api::ConfigContext,
+                event: &mut ConfigLoadingEvent<'_>,
+            ) {
+                let files = context.config_files();
                 heard().push(format!("loading {}", event.config.text.trim()));
                 files
                     .write(&path("proof-common.toml"), b"count = 1\n")
@@ -569,15 +571,24 @@ mod tests {
                 assert_eq!(files.read(&other), Err(ConfigFileError::NotOwned));
                 assert_eq!(files.write(&other, b"x"), Err(ConfigFileError::NotOwned));
             }
-            fn config_reloading(&self, _: HostSide, event: &mut ConfigReloadingEvent<'_>) {
+            fn config_reloading(&self, host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
+                let HostSide::Client(context) = host else {
+                    panic!("expected the client polling host");
+                };
+                assert!(
+                    context
+                        .config_files()
+                        .read(&path("proof/state.bin"))
+                        .is_ok()
+                );
                 heard().push(format!("reloading {}", event.config.text.trim()));
             }
         }
         let mods: Mods = vec![ModEntry::new("proof", Box::new(Proof))].into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 game.native_configs_client_start();
-                game.native_configs_poll();
+                game.native_configs_tick_client();
             });
         });
         assert_eq!(*heard(), ["loading count = 0", "reloading count = 1"]);
@@ -911,103 +922,6 @@ mod tests {
                 Game::data_files().read(&path("server-cache")).unwrap(),
                 b"game-cache"
             );
-        });
-    }
-    #[test]
-    #[ignore = "daily"]
-    fn compiled_wasm_bulk_files_use_actual_game_filesystem_roots() {
-        use crate::game::native_entity_refs::tests::run_fresh_cases;
-        use crate::game::native_guest_turn_tests::with_guests_at;
-        if run_fresh_cases(
-            "game::native_config_files::tests::compiled_wasm_bulk_files_use_actual_game_filesystem_roots",
-            "SUNRISE_WASM_BULK_FILES_CHILD",
-            &["game"],
-        ) {
-            return;
-        }
-        sunrise_guest_stack::run_on_guest_stack(|| {
-            sunrise_mod_wasm::copy_probe::with_load_budget(|| {
-                use sunrise_mod_package::manifest::Package;
-                use sunrise_mod_wasm::{WasmPackage, load};
-                let package_path = PathBuf::from(std::env::var_os("SUNRISE_WASM_FIXTURE").unwrap());
-                let mut manifest = Package::read(&package_path).unwrap().manifest;
-                manifest.inject.clear();
-                let info = mod_api::PackageInfo::new(
-                    manifest.id.clone(),
-                    manifest.version.to_string(),
-                    mod_api::PackageKind::Code,
-                    mod_api::Side::Both,
-                    vec![manifest.id.clone()],
-                    vec![],
-                );
-                let loaded = load(
-                    &fs::read(std::env::var_os("SUNRISE_WASM_STD").unwrap()).unwrap(),
-                    vec![WasmPackage {
-                        manifest,
-                        module: Package::read_wasm(&package_path).unwrap(),
-                    }],
-                );
-                assert!(loaded.refused.is_empty(), "{:?}", loaded.refused);
-                loaded.initialize(&[info]).unwrap();
-                let mods: mod_api::Mods = loaded.mods.into();
-                mod_platform::testing::with_mods(mods.clone(), || {
-                    crate::game::api_values::install_parts(&mods).unwrap();
-                    let base = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-                    let root =
-                        super::super::mods::content_root(&base, &Default::default()).unwrap();
-                    with_guests_at(root.prepared().to_owned(), |game| {
-                        let world = Root::new("wasm-world");
-                        game.world_root = world.0.path.clone();
-                        game.set_allow_commands(true);
-                        game.build_registries();
-                        game.register_native_commands();
-                        assert!(game.native_run_command("wasmbulkfiles"));
-                        let game_dir = Game::game_dir();
-                        assert_eq!(
-                            fs::read(game_dir.join("config/wasm_fixture/a.bin")).unwrap(),
-                            [0]
-                        );
-                        assert_eq!(
-                            fs::read(
-                                game_dir.join("sunrise-mod-data/wasm_fixture/wasm_fixture/a.bin")
-                            )
-                            .unwrap(),
-                            [1, 1]
-                        );
-                        assert_eq!(
-                            fs::read(
-                                world
-                                    .0
-                                    .path
-                                    .join("sunrise-mod-data/wasm_fixture/wasm_fixture/a.bin")
-                            )
-                            .unwrap(),
-                            [2, 2, 2]
-                        );
-                        as_mod("wasm_fixture", || {
-                            let host: &dyn mod_api::ServerHost = game;
-                            assert_eq!(
-                                host.data_files().read(&path("wasm_fixture/a.bin")).unwrap(),
-                                [1, 1]
-                            );
-                            assert_eq!(
-                                host.world_data_files()
-                                    .read(&path("wasm_fixture/a.bin"))
-                                    .unwrap(),
-                                [2, 2, 2]
-                            );
-                        });
-                        as_mod("other", || {
-                            assert_eq!(
-                                Game::data_files().read(&path("wasm_fixture/a.bin")),
-                                Err(ConfigFileError::NotFound)
-                            );
-                        });
-                        game.world_root.clear();
-                        assert!(game.native_run_command("wasmbulkfilesnoworld"));
-                    });
-                });
-            });
         });
     }
 }

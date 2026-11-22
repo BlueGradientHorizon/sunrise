@@ -12,8 +12,8 @@
 //! [`NaturalLevel`] so the game and the differential test world
 //! (tools/test_natural_spawn_parity.py) run the same code; random draws follow
 //! vanilla's order.
-use super::Species;
 use super::spawn_rules::{self, Reason, SpawnLevel};
+use super::{MobType, Species};
 use crate::biome::SpawnEntry;
 use crate::fast_hash::FxHashMap;
 use mod_api::{SpawnCheck, SpawnFlags, SpawnLimits};
@@ -335,9 +335,6 @@ fn spawns_far_from_player(s: Species, category: Category) -> bool {
 }
 
 /// What natural spawning reads from a level beyond the spawn rules.
-/// An entity type's species, width, height and category.
-pub type MobType = (Species, f32, f32, Category);
-
 pub trait NaturalLevel: SpawnLevel {
     /// `MobSpawnEvent.PositionCheck`: what server mods answer for the new mob
     /// of type `entity` at `at`, described by `pending`; `Default` leaves the
@@ -373,8 +370,8 @@ pub trait NaturalLevel: SpawnLevel {
     /// `DimensionType.ambientLight`.
     fn ambient_light(&self) -> f32;
     fn has_ceiling(&self) -> bool;
-    /// The entity type's species, width, height and category.
-    fn mob_type(&self, entity: &str) -> Option<MobType>;
+    /// The registered living entity type.
+    fn mob_type(&self, entity: &str) -> Option<&MobType>;
     /// The `natural_mob_spawns` lists by category at a position.
     fn biome_spawns(&self, x: i32, y: i32, z: i32) -> Option<&HashMap<String, Vec<SpawnEntry>>>;
     /// The `natural_mob_spawns` spawn cost of a type at a position.
@@ -427,11 +424,23 @@ pub enum Heightmap {
     MotionBlockingNoLeaves,
 }
 impl Heightmap {
-    pub fn from_name(name: &str) -> Self {
-        match name {
+    pub(super) fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
             "WORLD_SURFACE" => Self::WorldSurface,
             "OCEAN_FLOOR" => Self::OceanFloor,
             "MOTION_BLOCKING" => Self::MotionBlocking,
+            "MOTION_BLOCKING_NO_LEAVES" => Self::MotionBlockingNoLeaves,
+            _ => return None,
+        })
+    }
+}
+
+impl From<mod_api::Heightmap> for Heightmap {
+    fn from(heightmap: mod_api::Heightmap) -> Self {
+        match heightmap {
+            mod_api::Heightmap::WorldSurface => Self::WorldSurface,
+            mod_api::Heightmap::OceanFloor => Self::OceanFloor,
+            mod_api::Heightmap::MotionBlocking => Self::MotionBlocking,
             _ => Self::MotionBlockingNoLeaves,
         }
     }
@@ -588,10 +597,13 @@ pub fn contains_any_liquid<L: SpawnLevel>(l: &L, b: Aabb) -> bool {
 }
 /// `EntityDimensions.makeBoundingBox`: the half width is a float.
 pub fn spawn_box(x: f64, y: f64, z: f64, width: f32, height: f32) -> Aabb {
-    let half = f64::from(width / 2.0);
+    spawn_box_at([x, y, z], f64::from(width / 2.0), f64::from(height))
+}
+
+pub(super) fn spawn_box_at([x, y, z]: [f64; 3], half_width: f64, height: f64) -> Aabb {
     Aabb::new(
-        Vec3::new(x - half, y, z - half),
-        Vec3::new(x + half, y + f64::from(height), z + half),
+        Vec3::new(x - half_width, y, z - half_width),
+        Vec3::new(x + half_width, y + height, z + half_width),
     )
 }
 /// `EntityType.spawnDimensionsScale`: cube mobs are checked for room at
@@ -603,14 +615,16 @@ fn spawn_dimensions_scale(s: Species) -> f32 {
         _ => 1.0,
     }
 }
+/// The half-width and height used by `EntityType.getSpawnAABB`.
+pub(super) fn spawn_extents(s: Option<Species>, width: f32, height: f32) -> (f64, f64) {
+    let scale = s.map_or(1.0, spawn_dimensions_scale);
+    (f64::from(scale * width / 2.0), f64::from(scale * height))
+}
+
 /// `EntityType.getSpawnAABB`.
 pub fn spawn_aabb(s: Species, x: f64, y: f64, z: f64, width: f32, height: f32) -> Aabb {
-    let scale = spawn_dimensions_scale(s);
-    let half = f64::from(scale * width / 2.0);
-    Aabb::new(
-        Vec3::new(x - half, y, z - half),
-        Vec3::new(x + half, y + f64::from(scale * height), z + half),
-    )
+    let (half, height) = spawn_extents(Some(s), width, height);
+    spawn_box_at([x, y, z], half, height)
 }
 /// The mob a position check is about, which the site has not created yet
 /// (vanilla creates it before the check).
@@ -1278,7 +1292,7 @@ pub struct Spawned {
 
 /// `NaturalSpawner.spawnForChunk` for the categories already filtered.
 #[allow(clippy::too_many_arguments)]
-pub fn spawn_for_chunk<L: NaturalLevel, R: RandomSource>(
+pub fn spawn_for_chunk<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     state: &mut SpawnState,
@@ -1297,7 +1311,7 @@ pub fn spawn_for_chunk<L: NaturalLevel, R: RandomSource>(
 }
 /// `NaturalSpawner.spawnCategoryForChunk`: `getRandomPosWithin` (a column of
 /// the chunk, a height up to one above the world surface).
-pub fn spawn_category_for_chunk<L: NaturalLevel, R: RandomSource>(
+pub fn spawn_category_for_chunk<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     state: &mut SpawnState,
@@ -1319,7 +1333,7 @@ pub fn spawn_category_for_chunk<L: NaturalLevel, R: RandomSource>(
 /// `NaturalSpawner.spawnCategoryForPosition` with the spawn state's
 /// `canSpawn` and `afterSpawn`.
 #[allow(clippy::too_many_arguments)]
-pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource>(
+pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     state: &mut SpawnState,
@@ -1339,7 +1353,8 @@ pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource>(
     'groups: for _ in 0..3 {
         let (mut x, mut z) = (x0, z0);
         // The group's entry, its type and where it was picked.
-        let mut current: Option<(Cow<'_, SpawnEntry>, Option<MobType>, [i32; 3])> = None;
+        let mut current: Option<(Cow<'_, SpawnEntry>, Option<(&MobType, Category)>, [i32; 3])> =
+            None;
         let mut group_index = 0u32;
         let mut max = (random.next_float() * 4.0).ceil() as i32;
         let mut ll = 0;
@@ -1373,25 +1388,31 @@ pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource>(
                     break;
                 };
                 max = sample_count(&entry, random) as i32;
-                let kind = l.mob_type(&entry.entity);
+                let kind = l
+                    .mob_type(&entry.entity)
+                    .map(|t| (t, Category::from_name(&t.category)));
                 current = Some((entry, kind, [x, y, z]));
             }
             let (entry, kind, picked_at) = current.as_ref().unwrap_or_else(|| unreachable!());
+            let Some((kind, type_category)) = *kind else {
+                continue;
+            };
             // The list the entry was picked from holds it where it was picked.
             let listed = *picked_at == [x, y, z];
-            let valid = valid_position_for_type(
+            if !valid_position_for_type(
                 l,
                 random,
                 category,
                 entry,
-                *kind,
+                kind,
+                type_category,
                 listed,
                 [x, y, z],
                 distance,
-            );
-            let Some((species, width, height, type_category)) = (*kind).filter(|_| valid) else {
+            ) {
                 continue;
-            };
+            }
+            let (species, width, height) = (kind.species, kind.width as f32, kind.height as f32);
             let passed = state.can_spawn(l, &entry.entity, [x, y, z]);
             trace(Event::Test(&entry.entity, [x, y, z], passed));
             if !passed {
@@ -1572,19 +1593,18 @@ fn right_distance<L: NaturalLevel>(l: &L, chunk: (i32, i32), pos: [i32; 3], dist
 /// `isValidSpawnPostitionForType`, for the entry's type (`mob_type`).
 /// `listed`: the position is where the entry was picked from `mobsAt`.
 #[allow(clippy::too_many_arguments)]
-fn valid_position_for_type<L: NaturalLevel, R: RandomSource>(
+fn valid_position_for_type<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     category: Category,
     entry: &SpawnEntry,
-    kind: Option<MobType>,
+    kind: &MobType,
+    type_category: Category,
     listed: bool,
     pos: [i32; 3],
     distance: f64,
 ) -> bool {
-    let Some((species, width, height, type_category)) = kind else {
-        return false;
-    };
+    let (species, width, height) = (kind.species, kind.width as f32, kind.height as f32);
     if type_category == Category::Misc {
         return false;
     }
@@ -1613,7 +1633,7 @@ fn valid_position_for_type<L: NaturalLevel, R: RandomSource>(
     if !hooked && !listed && !in_list() {
         return false;
     }
-    if !spawn_rules::check_spawn_rules(&entry.entity, species, l, Reason::Natural, random, pos) {
+    if !spawn_rules::check_spawn_rules(kind.into(), l, Reason::Natural, random, pos) {
         return false;
     }
     l.no_collision(spawn_aabb(
@@ -1637,7 +1657,11 @@ pub enum GenEvent {
 /// the chunk's surface. `rules` is the region's random, which the spawn
 /// predicates and `spawn` (finalizeSpawn) draw from.
 #[allow(clippy::too_many_arguments)]
-pub fn spawn_mobs_for_chunk_generation<L: NaturalLevel, R: RandomSource, Q: RandomSource>(
+pub fn spawn_mobs_for_chunk_generation<
+    L: NaturalLevel,
+    R: RandomSource,
+    Q: RandomSource + Clone,
+>(
     l: &L,
     source: [i32; 3],
     chunk: (i32, i32),
@@ -1675,9 +1699,11 @@ pub fn spawn_mobs_for_chunk_generation<L: NaturalLevel, R: RandomSource, Q: Rand
             let mut attempts = 0;
             while !success && attempts < 4 {
                 attempts += 1;
-                let Some((species, width, height, _)) = kind else {
+                let Some(kind) = kind else {
                     break;
                 };
+                let (species, width, height) =
+                    (kind.species, kind.width as f32, kind.height as f32);
                 let pos = top_non_colliding(l, &entry.entity, x, z);
                 trace(GenEvent::Column(x, z));
                 if spawn_rules::is_spawn_position_ok(
@@ -1700,8 +1726,7 @@ pub fn spawn_mobs_for_chunk_generation<L: NaturalLevel, R: RandomSource, Q: Rand
                     let (bx, bz) = (fx.floor() as i32, fz.floor() as i32);
                     if !l.no_collision(spawn_aabb(species, fx, fy, fz, width, height))
                         || !spawn_rules::check_spawn_rules(
-                            &entry.entity,
-                            species,
+                            kind.into(),
                             l,
                             Reason::ChunkGeneration,
                             rules,
@@ -1753,7 +1778,7 @@ pub fn spawn_mobs_for_chunk_generation<L: NaturalLevel, R: RandomSource, Q: Rand
 /// `getTopNonCollidingPos`: the type's heightmap, under the ceiling in
 /// dimensions that have one, then the placement type's adjustment.
 fn top_non_colliding<L: NaturalLevel>(l: &L, entity: &str, x: i32, z: i32) -> [i32; 3] {
-    let heightmap = Heightmap::from_name(l.mob_data().heightmap(entity));
+    let heightmap = l.mob_data().heightmap(entity);
     let mut y = l.heightmap(heightmap, x, z);
     if l.has_ceiling() {
         loop {

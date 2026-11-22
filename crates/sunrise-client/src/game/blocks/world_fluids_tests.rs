@@ -301,10 +301,7 @@ fn a_later_write_that_puts_the_block_back_keeps_its_block_entity_at_the_commit()
 #[ignore = "daily"]
 fn journal_level_host_stages_block_entity_random_and_effect_changes() {
     use crate::game::journal_level_write::JournalLevelWrite;
-    use mod_api::{
-        BlockPos, BlockUpdateFlags, LevelHost, LevelRandomHost, LevelTicksHost, LevelWriteHost,
-        RandomSource,
-    };
+    use mod_api::{BlockPos, BlockUpdateFlags, LevelWriteHost};
     use sunrise_core::{position::ChunkPos, ticks::TickTypeId};
     use sunrise_world::fluid::FluidKind;
 
@@ -327,6 +324,7 @@ fn journal_level_host_stages_block_entity_random_and_effect_changes() {
             dispense_fixture::start_recording();
             {
                 let mut host = JournalLevelWrite::new(game, level).unwrap();
+                let host: &mut dyn LevelWriteHost = &mut host;
                 assert!(host.block_entity(AT).is_some());
                 assert_eq!(
                     host.state_block(host.block_state(AT).unwrap()),
@@ -340,9 +338,7 @@ fn journal_level_host_stages_block_entity_random_and_effect_changes() {
                 ));
                 assert_eq!(host.block_state(AT), Some(stone));
                 assert!(host.block_entity(AT).is_none());
-                let mut random = host.random().unwrap();
-                random.next_int();
-                assert!(host.set_random(random));
+                host.with_random(|random| random.next_int()).unwrap();
                 assert!(host.schedule_fluid_tick(AT, "minecraft:water", 5));
                 assert!(host.level_event(1501, AT, 0));
                 assert!(!host.level_event(2001, AT, -1));
@@ -354,13 +350,64 @@ fn journal_level_host_stages_block_entity_random_and_effect_changes() {
             game.transaction_close(&seal, commit);
             assert_eq!(block(game), if commit { stone } else { skull });
             assert_eq!(game.world.block_entities.get(&key).is_none(), commit);
-            assert_eq!(
-                <(u64, Option<f64>)>::from(&*game.world.random) != before,
-                commit
-            );
+            assert_ne!(<(u64, Option<f64>)>::from(&*game.world.random), before);
             assert_eq!(game.block_ticks.fluids.has_scheduled(pos, water), commit);
             let lines = dispense_fixture::stop_recording();
             assert_eq!(lines.iter().any(|line| line == "L 1501 2,65,2 0"), commit);
+        }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn journalled_removal_keeps_fluid_and_restores_a_block_entity_on_abort() {
+    with_level(|game, level| {
+        let chest = game
+            .pack
+            .assets
+            .registry
+            .resolve(&sunrise_world::chunk::BlockState {
+                name: "minecraft:chest".into(),
+                properties: [
+                    ("facing".into(), "north".into()),
+                    ("type".into(), "single".into()),
+                    ("waterlogged".into(), "true".into()),
+                ]
+                .into(),
+            })
+            .unwrap();
+        let water = state(game, "minecraft:water");
+        let [x, y, z] = AT;
+        let pos = (x, y, z);
+        let stack = sunrise_client::items::ItemStack::new("minecraft:diamond", 3);
+        let mut slots = vec![None; 27];
+        slots[0] = Some(stack.clone());
+        game.world.set(x, y, z, chest).unwrap();
+        game.world
+            .block_entities
+            .insert(pos, BlockEntity::Chest(slots));
+        game.world.block_log = Some(Vec::new());
+        let drops = game.dropped.len();
+
+        for commit in [false, true] {
+            let seal = game.transaction_open();
+            assert!(level.remove_block(game, AT, false));
+            assert_eq!(block(game), water);
+            assert!(game.world.block_entities.get(&pos).is_none());
+            assert!(game.world.block_log.as_ref().unwrap().is_empty());
+            assert_eq!(game.dropped.len(), drops);
+            game.transaction_close(&seal, commit);
+
+            assert_eq!(block(game), if commit { water } else { chest });
+            assert_eq!(
+                game.world.block_log.as_ref().unwrap().contains(&pos),
+                commit
+            );
+            if !commit {
+                let restored = game.world.block_entities.get(&pos).unwrap();
+                assert_eq!(restored.slots()[0].as_ref(), Some(&stack));
+                assert_eq!(game.dropped.len(), drops);
+            }
         }
     });
 }

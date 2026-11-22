@@ -10,13 +10,11 @@ pub trait LevelSpawningBackend {
     /// The level's natural spawning limits by category ([`SpawnLimits`]):
     /// [`SpawnLimits::VANILLA`] until a mod sets others. Reads parked levels.
     /// None on a client and for a stale handle.
-    #[access(WorldOnly)]
     fn level_spawn_limits(&self, level: LevelRef) -> Option<SpawnLimits>;
     /// Side: server.
     /// Which categories the level's natural spawning may spawn ([`SpawnFlags`]):
     /// both on until a mod turns one off. Reads parked levels. None on a
     /// client and for a stale handle.
-    #[access(WorldOnly)]
     fn level_spawn_flags(&self, level: LevelRef) -> Option<SpawnFlags>;
     /// Side: server.
     /// `ServerLevel.canSpawnEntitiesInChunk`: whether natural spawning may place
@@ -24,7 +22,6 @@ pub trait LevelSpawningBackend {
     /// position outside the chunk it started in. Sunrise's answer is the one
     /// its spawner uses: the chunk is loaded. Reads parked levels and loads
     /// nothing. None on a client and for a stale handle.
-    #[access(WorldOnly)]
     fn level_can_spawn_entities_in_chunk(&self, level: LevelRef, pos: [i32; 2]) -> Option<bool>;
 }
 /// The handles' writes of the `level_spawning` area, implemented by the game and reached through [`BackendMut`].
@@ -42,13 +39,13 @@ pub trait LevelSpawningBackendMut {
     /// living route as [`SpawnBody::Living`] through `level_spawn_entity`, at rest. The
     /// level's spawn limits, flags and spawn rules don't apply, as they don't
     /// to `/summon`. The new mob as a handle. None, with nothing spawned, for a
-    /// kind that isn't a mob, a position that isn't finite or is outside the
+    /// kind that isn't a mob or is disallowed in Peaceful at that difficulty,
+    /// a position that isn't finite or is outside the
     /// spawnable bounds (`Level.isInSpawnableBounds`), an unloaded chunk, a
     /// stale handle, a level not in place, a client, a `finalize_spawn` that
     /// cancelled the spawn or a mob a mod kept out.
     /// Inside a transaction its join waits for the root commit, so a mod keeping the mob out is not
     /// known at the call: the handle is returned and reads stale from the commit on.
-    #[access(WorldOnly)]
     fn level_spawn_mob(
         &mut self,
         level: LevelRef,
@@ -78,7 +75,8 @@ pub trait LevelSpawningBackendMut {
     ///   from the level random unless `spawn.rotation` names one, then
     ///   `finalize_spawn` and `finalizeSpawn` with that reason (equipment,
     ///   variants, jockeys), and it joins the level (`entity_join_level`), not
-    ///   persistent. A mob takes no owner. `kind` resolves as `/summon`'s
+    ///   persistent. In Peaceful, a type disallowed at that difficulty is refused
+    ///   before construction. A mob takes no owner. `kind` resolves as `/summon`'s
     ///   (`cow` is `minecraft:cow`); the ender dragon takes its own creation,
     ///   facing `spawn.rotation`'s yaw, and is refused with a velocity or a
     ///   pitch, which it has no state for.
@@ -105,7 +103,6 @@ pub trait LevelSpawningBackendMut {
     /// the spawn or an entity a mod kept out. Inside a transaction its join
     /// waits for the root commit, so a mod keeping the entity out is not known
     /// at the call: the handle is returned and reads stale from the commit on.
-    #[access(WorldOnly)]
     fn level_spawn_entity(
         &mut self,
         level: LevelRef,
@@ -120,12 +117,10 @@ pub trait LevelSpawningBackendMut {
     /// world opens with vanilla's, so a mod sets its own in `level_load`. Mobs
     /// already in the level stay. False, with nothing set, on a client and for
     /// a stale handle or a level that isn't open.
-    #[access(WorldOnly)]
     fn level_set_spawn_limits(&mut self, level: LevelRef, limits: SpawnLimits) -> bool;
     /// Side: server.
     /// Sets which categories the level's natural spawning may spawn
     /// ([`SpawnFlags`]), from the next spawn pass on. Kept and refused as
     /// `set_spawn_limits`.
-    #[access(WorldOnly)]
     fn level_set_spawn_flags(&mut self, level: LevelRef, flags: SpawnFlags) -> bool;
 }

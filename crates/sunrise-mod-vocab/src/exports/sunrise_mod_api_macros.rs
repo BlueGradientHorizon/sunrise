@@ -1,8 +1,9 @@
-/// Encode an owned value with the shared native and wasm Wire contract.
+/// Encode an owned value with the Wire codec.
 ///
 /// Fields are encoded in declaration order. Enum tags are zero-based declaration
 /// indices, independent of explicit discriminants. Use `#[wire(via = Type)]` to
 /// encode through `From<&Self>` and validate decoding with `TryFrom<Type>`.
+/// This conversion form is for ordinary Wire, not bounded typed payloads.
 /// Borrowed call arguments are not owned Wire values.
 ///
 /// ```compile_fail

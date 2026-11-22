@@ -19,7 +19,8 @@ fn client_host_reads_playing_and_key_mappings() {
     use super::super::Screen;
     use super::super::native_entity_refs::tests::with_game;
     use crate::game::execution_role::ExecutionRole;
-
+    use mod_api::prelude::ClientInputClientHost;
+    use mod_api::{MappingError, Text};
     use winit::keyboard::KeyCode;
 
     with_game(|game| {
@@ -30,32 +31,29 @@ fn client_host_reads_playing_and_key_mappings() {
         assert!(!mod_api::prelude::ClientInputClientHost::playing(game));
 
         // Vanilla's default bindings: forward is W, attack the left mouse button.
-        let forward = mod_api::prelude::ClientInputClientHost::mapping(game, "key.forward")
-            .unwrap()
-            .unwrap();
+        let forward = ClientInputClientHost::vanilla_key_mapping(game, "key.forward").unwrap();
+        assert_eq!(forward.is_down(game), Ok(false));
+        assert_eq!(forward.translated_key_message(game), Ok(Text::literal("W")));
+        game.insert_device_key(KeyCode::KeyW);
+        assert_eq!(forward.is_down(game), Ok(true));
+        let attack = ClientInputClientHost::vanilla_key_mapping(game, "key.attack").unwrap();
         assert_eq!(
-            (forward.down, forward.label),
-            (false, mod_api::Text::literal("W"))
+            attack.translated_key_message(game),
+            Ok(Text::translate("key.mouse.left", Vec::new()))
         );
-        game.keys.insert(KeyCode::KeyW);
-        assert!(
-            mod_api::prelude::ClientInputClientHost::mapping(game, "key.forward")
-                .unwrap()
-                .unwrap()
-                .down
-        );
-        let attack = mod_api::prelude::ClientInputClientHost::mapping(game, "key.attack")
-            .unwrap()
-            .unwrap();
         assert_eq!(
-            attack.label,
-            mod_api::Text::translate("key.mouse.left", Vec::new())
+            ClientInputClientHost::vanilla_key_mapping(game, "key.mymod.boost"),
+            Err(MappingError::Unknown {
+                key: "key.mymod.boost".into(),
+            }),
         );
-        assert!(
-            mod_api::prelude::ClientInputClientHost::mapping(game, "key.mymod.boost")
-                .unwrap()
-                .is_none()
+
+        game.options.execution_role = ExecutionRole::IntegratedServer;
+        assert_eq!(
+            ClientInputClientHost::vanilla_key_mapping(game, "key.forward"),
+            Err(MappingError::Unavailable),
         );
+        assert_eq!(forward.binding(game), Err(MappingError::Unavailable));
     });
 }
 
@@ -114,6 +112,34 @@ fn mod_menus_are_slot_grids_and_furnaces() {
     assert_eq!(mod_menu("minecraft:furnace").map(|m| m.1), Some(3));
     assert_eq!(mod_menu("minecraft:brewing_stand"), None);
     assert_eq!(mod_menu("hopper"), None);
+}
+
+#[test]
+fn block_containers_cannot_bind_an_owned_menu_type() {
+    let menu = |id: &str, limits| {
+        (
+            id.into(),
+            "test".into(),
+            1,
+            0,
+            vec![],
+            vec![],
+            None,
+            None,
+            true,
+            limits,
+        )
+    };
+    sunrise_client::containers::with_mod_menu_types(
+        [
+            menu("test:block", None),
+            menu("test:transient", Some(vec![1])),
+        ],
+        || {
+            assert_eq!(super::mod_menu("test:block"), Some(("test:block", 1)));
+            assert_eq!(super::mod_menu("test:transient"), None);
+        },
+    );
 }
 
 /// The config folder is `config/` beside `options.txt`, made when

@@ -124,7 +124,14 @@ pub struct Registries {
     /// value (`ResourceOrIdArgument`), where the source has the server's live
     /// features; None leaves the decode to when the command runs.
     pub inline_feature: Option<InlineFeatureCheck>,
+    /// The common custom particle codecs available to `ParticleArgument`.
+    pub particle_options: Option<DecodeParticleOptions>,
 }
+
+/// Read the registered particle type's fields. `None` leaves built-in arguments
+/// on their vanilla path; `Some(Err(_))` means the type refused its options.
+pub type DecodeParticleOptions =
+    fn(&str, &sunrise_core::nbt::Compound) -> Option<Result<mod_vocab::ParticleOptions, String>>;
 
 /// A codec check of an inline value: its error message when it does not decode.
 #[derive(Clone)]

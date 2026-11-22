@@ -4,7 +4,6 @@ use super::{Game, Screen};
 use sunrise_client::{
     Result,
     confirm_screen::Confirm,
-    dialog::Dialog,
     hud::{HudBatch, rgba},
     text::{self, ClickEvent, Text},
     ui,
@@ -246,10 +245,10 @@ fn pause_icons(
     let (x0, y0) = pause_grid(w, h, u8::from(links || additions) + rows.len() as u8);
     let (x0, y) = (x0 + 60.0, y0 + 98.0);
     [
-        (x0, y, "gui/sprites/pause_menu/bug"),
-        (x0 + 24.0, y, "gui/sprites/pause_menu/social_interactions"),
-        (x0 + 48.0, y, "gui/sprites/friends/friends"),
-        (x0 + 72.0, y, "gui/sprites/pause_menu/player_reporting"),
+        (x0, y, "pause_menu/bug"),
+        (x0 + 24.0, y, "pause_menu/social_interactions"),
+        (x0 + 48.0, y, "friends/friends"),
+        (x0 + 72.0, y, "pause_menu/player_reporting"),
     ]
 }
 /// DeathScreen.init: a hardcore player can only spectate.
@@ -318,7 +317,7 @@ impl Game<'_> {
         let tag = registries.tag("minecraft:dialog", "minecraft:pause_screen_additions")?;
         // addCustomDialogButtons' label: computeExternalTitle falls back to the title.
         let button = |dialog_tag: Tag| -> Option<(Text, Tag)> {
-            let dialog = Dialog::parse(&dialog_tag)?;
+            let dialog = self.decode_dialog(&dialog_tag, Some(registries))?;
             let label = dialog.external_title.unwrap_or(dialog.title);
             Some((label, dialog_tag))
         };
@@ -546,7 +545,7 @@ impl Game<'_> {
             })
             .map(|(i, page)| (page.title(), ADDED_PAGES + i as u8))
     }
-    pub(super) fn pause_click(&mut self) -> Result<()> {
+    pub(super) fn pause_click(&mut self) -> Result<bool> {
         let (w, h) = {
             let size = self
                 .renderer
@@ -593,7 +592,7 @@ impl Game<'_> {
             self.audio.play_button_click();
             self.execute_pause_action(id)?;
         }
-        Ok(())
+        Ok(hit.is_some())
     }
     pub(super) fn pause_key(&mut self, key: KeyCode) -> Result<()> {
         let (w, h) = {
@@ -851,22 +850,23 @@ impl Game<'_> {
         self.death_focus = None;
         self.ui.death_text = None;
         // LocalPlayer.respawn: KeyMapping.resetToggleKeys.
-        self.toggles.respawn();
+        self.reset_toggle_keys();
+        self.vanilla_mappings.reset_toggle_keys();
         self.remote_respawn();
         Ok(())
     }
-    pub(super) fn death_click(&mut self) -> Result<()> {
+    pub(super) fn death_click(&mut self) -> Result<bool> {
         if self
             .ui
             .died_at
             .is_some_and(|t| t.elapsed().as_millis() < 1000)
         {
-            return Ok(());
+            return Ok(false);
         }
         if let Some(opened) = self.ui.death_confirm {
             // ConfirmScreen.setDelay: both buttons wait 20 ticks.
             if opened.elapsed().as_millis() < 1000 {
-                return Ok(());
+                return Ok(false);
             }
             let (title, _) = death_confirm_texts();
             let confirm = Confirm::new(
@@ -878,8 +878,9 @@ impl Game<'_> {
             if let Some(yes) = confirm.answer_at(self.cursor) {
                 self.death_focus = Some(if yes { 0 } else { 1 });
                 self.death_confirm_answer(yes)?;
+                return Ok(true);
             }
-            return Ok(());
+            return Ok(false);
         }
         // DeathScreen.mouseClicked first looks for a click event on the
         // cause line: an open_url link goes through the chat link flow.
@@ -896,7 +897,7 @@ impl Game<'_> {
                 self.cursor,
             ) {
                 self.click_url(url);
-                return Ok(());
+                return Ok(true);
             }
         }
         let size = self
@@ -915,9 +916,10 @@ impl Game<'_> {
         if hit == Some(1) && !self.level.hardcore {
             self.ui.death_confirm = Some(std::time::Instant::now());
             self.audio.play_button_click();
-            return Ok(());
+            return Ok(true);
         }
-        self.death_action(hit)
+        self.death_action(hit)?;
+        Ok(hit.is_some())
     }
     pub(super) fn death_key(&mut self, key: KeyCode) -> Result<()> {
         if self

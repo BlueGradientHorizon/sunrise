@@ -73,7 +73,7 @@ impl Game<'_> {
     }
 
     /// Where a player's or a guest's effects are: the acting player's own
-    /// are the game's (swapped in by `enter_guest`; a player handle names
+    /// are the game's (swapped in by the entry of `guest_turn`; a player handle names
     /// the acting player, and a game without a hub keeps its single
     /// player's the same way), any other guest's are their hub record's.
     /// None for another kind.
@@ -131,10 +131,11 @@ impl Game<'_> {
                 if !self.can_be_affected_resolved(Some(id as i32), &kind, name, Some(effect.id)) {
                     return false;
                 }
-                let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+                let Some(changed) = self.mutate_mob_effects(id, Some(name), |mob| {
+                    mob.add_effect_instance(name, instance)
+                }) else {
                     return false;
                 };
-                let changed = m.add_effect_instance(name, instance);
                 self.mod_effect_added_resolved(effect.id, Some(id as i32), amplifier, new);
                 changed
             }
@@ -294,10 +295,10 @@ impl Game<'_> {
                 if cancel {
                     return false;
                 }
-                self.mobs
-                    .iter_mut()
-                    .find(|m| m.id == id && !m.removed)
-                    .is_some_and(|m| m.retain_effects(|e| e.registry_index != Some(def.index)))
+                self.mutate_mob_effects(id, Some(def.id), |mob| {
+                    mob.retain_effects(|e| e.registry_index != Some(def.index))
+                })
+                .unwrap_or(false)
             }
             _ => false,
         }
@@ -339,14 +340,12 @@ impl Game<'_> {
                     .map(|(name, _)| *name)
                     .collect();
                 // The refused removals keep their effects; the rest go.
-                self.mobs
-                    .iter_mut()
-                    .find(|m| m.id == id && !m.removed)
-                    .is_some_and(|m| {
-                        m.retain_effects(|e| {
-                            e.registry_index.is_some_and(|index| keep.contains(&index))
-                        })
+                self.mutate_mob_effects(id, None, |mob| {
+                    mob.retain_effects(|e| {
+                        e.registry_index.is_some_and(|index| keep.contains(&index))
                     })
+                })
+                .unwrap_or(false)
             }
             _ => false,
         }
@@ -398,7 +397,7 @@ mod tests {
                 listed[0].id,
                 mod_platform::__private::part_tests::effect_key("speed")
             );
-            assert_eq!(listed[0].id.id(game), "minecraft:speed");
+            assert_eq!(listed[0].id.id(game), Some("minecraft:speed"));
         });
     }
 

@@ -36,7 +36,7 @@ pub use biomes::{
     category as biome_category, pack_id as biome_pack_id, precipitation as biome_precipitation,
 };
 pub use block_ids::BlockIds;
-pub use condition::eval_condition;
+pub use condition::{Conditionals, eval_condition, resolve_defined};
 pub use config::{
     BUFFERS, Buffer, Config, Format, HALF_LIVES, Kind, SHADOW_COLORS, Shadow, buffer_index,
     draw_buffers, shadow_color,
@@ -52,8 +52,11 @@ pub use options::{
 pub use pack::{Pack, PackError};
 pub use post::{
     Blend, BufferObject, BufferSize, CELESTIAL_BLEND, CustomImage, Factor, GameInputs, Group,
-    ImageSize, Post, PostProgram, STARS_BLEND, ShadowCulling, TRANSLUCENT_BLEND, dimension_folder,
-    dimension_folder_named, load_post,
+    ImageSize,
+};
+pub use post::{
+    Post, PostProgram, STARS_BLEND, ShadowCulling, SkySwitches, TRANSLUCENT_BLEND,
+    dimension_folder, dimension_folder_named, load_post,
 };
 pub use preprocess::{Diagnostic, Origin, Preprocessed, preprocess};
 pub use properties::{Entry, Note, Properties};

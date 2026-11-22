@@ -2347,7 +2347,7 @@ pub fn hoglin_anim(m: &Mob, s: &State, p: &mut Poses) {
 
 /// `Brain.Packed`: the guarded-block live ANGRY_AT entry. The existing
 /// anger counter supplies its remaining long TTL, not an absolute timestamp.
-pub fn write_guarded_anger(m: &Mob, map: &mut sunrise_core::nbt::Compound) {
+pub fn write_guarded_anger(m: &Mob, map: &mut crate::entity_nbt::EntityTagWriter) {
     use sunrise_core::nbt::{Compound, Tag};
     let Some(actor) = m.extra.piglin.guarded_angry_at else {
         return;
@@ -2891,7 +2891,7 @@ mod brute_home_tests {
         Arc::make_mut(&mut kind).species = Species::PiglinBrute;
         let mut m = Mob::new(1, kind, at, 0.0);
         m.extra.home = home;
-        m.on_ground = true;
+        m.ground.on_ground = true;
         m
     }
     /// A stone floor under the brute, and the chunks the pathfinder reads.

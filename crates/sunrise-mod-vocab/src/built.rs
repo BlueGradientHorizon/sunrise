@@ -136,6 +136,7 @@ pub struct ScreenView<'a> {
     pub slots: usize,
     pub mouse: [f32; 2],
     pub partial_tick: f32,
+    pub regions: &'a [ScreenRegion],
 }
 impl<'a> From<ScreenView<'a>> for super::ScreenView<'a> {
     fn from(v: ScreenView<'a>) -> Self {
@@ -147,6 +148,7 @@ impl<'a> From<ScreenView<'a>> for super::ScreenView<'a> {
             slots,
             mouse,
             partial_tick,
+            regions,
         } = v;
         Self {
             id,
@@ -156,6 +158,7 @@ impl<'a> From<ScreenView<'a>> for super::ScreenView<'a> {
             slots,
             mouse,
             partial_tick,
+            regions,
         }
     }
 }
@@ -422,6 +425,7 @@ pub struct SoundPlay {
     pub delay: i32,
     pub attenuation: super::SoundAttenuation,
     pub relative: bool,
+    pub effects: super::SoundEffects,
 }
 impl From<SoundPlay> for super::SoundPlay {
     fn from(v: SoundPlay) -> Self {
@@ -435,6 +439,7 @@ impl From<SoundPlay> for super::SoundPlay {
             delay,
             attenuation,
             relative,
+            effects,
         } = v;
         Self {
             identifier,
@@ -446,6 +451,7 @@ impl From<SoundPlay> for super::SoundPlay {
             delay,
             attenuation,
             relative,
+            effects,
         }
     }
 }
@@ -474,7 +480,7 @@ impl From<PortalShape> for super::PortalShape {
     }
 }
 // exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: the engine converts this native staging record directly into the render frame.
 pub struct EntityRenderState {
     pub id: u32,
     pub partial: f32,
@@ -486,6 +492,7 @@ pub struct EntityRenderState {
     pub orb_value: Option<i32>,
     pub painting: Option<PaintingRenderState>,
     pub item_frame: Option<ItemFrameRenderState>,
+    pub attachments: Option<super::EntityRenderAttachments>,
 }
 impl From<EntityRenderState> for super::EntityRenderState {
     fn from(v: EntityRenderState) -> Self {
@@ -500,6 +507,7 @@ impl From<EntityRenderState> for super::EntityRenderState {
             orb_value,
             painting,
             item_frame,
+            attachments,
         } = v;
         Self {
             id,
@@ -512,6 +520,7 @@ impl From<EntityRenderState> for super::EntityRenderState {
             orb_value,
             painting: painting.map(Into::into),
             item_frame: item_frame.map(Into::into),
+            attachments,
         }
     }
 }

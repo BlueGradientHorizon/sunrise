@@ -1122,7 +1122,7 @@ impl Screen {
                                     motd.resolve_legacy(),
                                     Ping::player_count(*players),
                                     format!(
-                                        "gui/sprites/server_list/ping_{}",
+                                        "server_list/ping_{}",
                                         match ms {
                                             0..150 => 5,
                                             150..300 => 4,
@@ -1135,13 +1135,13 @@ impl Screen {
                                 Some(Ping::Incompatible { motd, version, .. }) => (
                                     motd.resolve_legacy(),
                                     version.clone().with_color(crate::text::RED),
-                                    "gui/sprites/server_list/incompatible".to_owned(),
+                                    "server_list/incompatible".to_owned(),
                                 ),
                                 Some(Ping::Failed(_)) => (
                                     Text::translate("multiplayer.status.cannot_connect", &[])
                                         .with_color(0xFF0000),
                                     Text::empty(),
-                                    "gui/sprites/server_list/unreachable".to_owned(),
+                                    "server_list/unreachable".to_owned(),
                                 ),
                                 _ => {
                                     // The pinging bars bounce, offset by the row.
@@ -1150,7 +1150,7 @@ impl Screen {
                                     (
                                         Text::translate("multiplayer.status.pinging", &[]),
                                         Text::empty(),
-                                        format!("gui/sprites/server_list/pinging_{}", frame + 1),
+                                        format!("server_list/pinging_{}", frame + 1),
                                     )
                                 }
                             };
@@ -1196,7 +1196,7 @@ impl Screen {
                                         let lit = if over { "_highlighted" } else { "" };
                                         batch.sprite_scaled(
                                             atlas,
-                                            &format!("gui/sprites/server_list/{sprite}{lit}"),
+                                            &format!("server_list/{sprite}{lit}"),
                                             cx,
                                             cy,
                                             32.0,
@@ -1818,7 +1818,7 @@ impl Screen {
     }
     /// The button was released: a server that was dragged somewhere else is
     /// saved there.
-    pub fn release(&mut self, saves: &Path) {
+    pub fn release(&mut self, saves: &Path) -> bool {
         if let Self::List {
             servers,
             scroll,
@@ -1826,11 +1826,15 @@ impl Screen {
             ..
         } = self
         {
+            let scrolled = scroll.held();
             scroll.release();
-            if held.take().is_some_and(|h| h.moved) {
+            let row = held.take();
+            if row.as_ref().is_some_and(|h| h.moved) {
                 save_servers(&servers_file(saves), servers);
             }
+            return scrolled || row.is_some();
         }
+        false
     }
     /// The focused box, in GUI pixels: name at 66, address at 106
     /// (`ManageServerScreen`), direct address at 116, friend fields at 64 and 105.

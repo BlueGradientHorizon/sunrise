@@ -32,16 +32,16 @@ use std::{cell::RefCell, fmt, sync::Arc};
 /// their own nested transaction and store the new value only when the closure returns.
 /// Every call first checks that `entity` is still the block entity it named, in the
 /// level this host is in: a replaced, removed or unloaded one refuses with
-/// [`PartStateError::Stale`]. A block entity out of the world for its own tick still
-/// answers, through [`BlockEntitiesHost::block_entity_identity`].
+/// [`PartStateError::Stale`]. In `block_entity_tick`, take the resident entity's handle
+/// from `event.subject.with_view` before borrowing the Host from `event.subject.host()`.
 ///
 /// Server-side only for now: `DATA` must not sync, and a client's copy holds nothing
 /// of it, so a client reads the default.
 pub trait BlockEntityPartState: BlockEntityPart + Sized {
     /// The value each block entity of the Part's type keeps.
-    type Data: Clone + Send + Sync + crate::wire::Wire + 'static;
+    type Data: Clone + Send + Sync + 'static;
     /// Its attachment key, default and codec. The owner declares the key at registration;
-    /// without a codec the value is kept for the session only (and a wasm mod needs one).
+    /// without a codec the value is kept for the session only.
     const DATA: &'static AttachmentType<Self::Data>;
 
     /// The block entity's value, or the default when it has none. Inserts nothing.
@@ -66,9 +66,10 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
     ) -> Result<Self::Data, PartStateError> {
         Ok(Self::state_existing_in(level, entity)?.unwrap_or_else(Self::DATA.default))
     }
-    /// The existing value through a read-only level. No chunk loading or loot generation;
-    /// unloaded/stale holders fail and clients return None. Owning game thread only, never
-    /// reachable from worker-thread hook bodies.
+    /// The existing value through a read-only level, including tentative writes visible in
+    /// its current transaction. No chunk loading or loot generation; unloaded/stale holders
+    /// fail and clients return None. Owning game thread only, never reachable from
+    /// worker-thread hook bodies.
     fn state_existing_in(
         level: &dyn crate::LevelHost,
         entity: BlockEntityRef,
@@ -77,7 +78,10 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
             .block_entity_part_snapshot(entity, Self::DATA.namespace, Self::DATA.name)?
             .query(Self::DATA)
             .map_err(|error| attachment(Self::DATA, error))?
-            .get(AttachmentHolder::BlockEntity(entity))
+            .get(
+                level.attachment_read_scope(),
+                AttachmentHolder::BlockEntity(entity),
+            )
             .map_err(|error| match error {
                 AttachmentRowError::Value(error) => attachment(Self::DATA, error),
                 _ => PartStateError::Stale,
@@ -97,9 +101,16 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
 
 /// Why a block entity's or an entity's Part state could not be read or changed. Nothing was
 /// stored.
+///
+/// This is a process-local access refusal, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::PartStateError>();
+/// ```
+// no wire: local Part state access refusal carrying static names and runtime states.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum PartStateError {
     /// The handle names a block entity or an entity of another level than the one this host
     /// is in.
@@ -152,20 +163,21 @@ impl fmt::Display for PartStateError {
 impl std::error::Error for PartStateError {}
 
 /// Why a Part's state declaration was refused at registration.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// This is a process-local registration refusal, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::PartStateRefusal>();
+/// ```
+// no wire: local Part state registration refusal carrying &'static str type names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PartStateRefusal {
     /// `DATA.sync` is set: Part state is not sent to clients yet.
     Sync,
     /// `DATA.copy_on_death` is set: a block entity has no death to copy across.
     CopyOnDeath,
-    /// `DATA` has no codec, which a wasm mod needs: its values cross the wasm
-    /// boundary only in their saved form.
-    NoCodecOnWasm,
-    /// `Data`'s Wire form holds a resource handle (an erased handler such as
-    /// `Arc<dyn BlockPart>`), which crosses only into one link group's resource scope:
-    /// not as data both targets read, nor into a save.
-    ResourceHandle,
     /// The same key is already declared with a type of another Rust type name, named here.
     Incompatible {
         /// The type the key was first declared with.
@@ -187,13 +199,6 @@ impl PartStateRefusal {
         match self {
             Self::Sync => f.write_str("sync is not supported for part state yet"),
             Self::CopyOnDeath => write!(f, "copy_on_death does not apply to {holder}"),
-            Self::NoCodecOnWasm => f.write_str(
-                "a wasm mod's part state needs a codec (its values cross only in saved form)",
-            ),
-            Self::ResourceHandle => f.write_str(
-                "its Wire form holds a resource handle, which crosses only within one link \
-                 group: not to every target, nor into a save",
-            ),
             Self::Incompatible { declared } => write!(
                 f,
                 "the key is already declared with type {declared}, a different Rust type"
@@ -204,7 +209,15 @@ impl PartStateRefusal {
 }
 
 /// A Part with state could not be attached.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Debug, PartialEq, Eq)]
+///
+/// This is a process-local registration error, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::BlockEntityStateError>();
+/// ```
+// no wire: local block-entity Part registration error.
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BlockEntityStateError {
     /// The Part itself was refused, as by `block_entity_part`.
@@ -256,7 +269,15 @@ impl From<BlockEntityPartError> for BlockEntityStateError {
 }
 
 /// One Part state declaration, as the registrar checks it.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// This is a process-local startup declaration, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::PartStateDeclaration>();
+/// ```
+// no wire: local startup declaration carrying a Rust type name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct PartStateDeclaration {
     /// The state's namespace.
@@ -267,41 +288,27 @@ pub struct PartStateDeclaration {
     pub data_name: &'static str,
     sync: bool,
     copy_on_death: bool,
-    codec: bool,
-    /// Whether the type's Wire form holds a resource handle anywhere in it.
-    resource: bool,
 }
 
 impl PartStateDeclaration {
-    /// The declaration of `key`: what the typed declaration is erased to, the same on both
-    /// targets.
-    pub fn of<T: crate::wire::Wire + 'static>(key: &AttachmentType<T>) -> Self {
+    /// The declaration of `key`: what the typed declaration is erased to, for registration.
+    pub fn of<T: 'static>(key: &AttachmentType<T>) -> Self {
         Self {
             namespace: key.namespace,
             name: key.name,
             data_name: std::any::type_name::<T>(),
             sync: key.sync,
             copy_on_death: key.copy_on_death,
-            codec: key.codec.is_some(),
-            resource: T::holds_resource(&mut Vec::new()),
         }
     }
 
-    /// What the declaration is refused for on its own, for a mod the game loaded as a wasm
-    /// module where `wasm` (the game's knowledge, not the module's): syncing, copying on death,
-    /// a resource handle in its Wire form, or no codec in a wasm mod.
-    pub fn check(&self, wasm: bool) -> Result<(), PartStateRefusal> {
+    /// Validate that the state is local to its owning holder.
+    pub fn check(&self) -> Result<(), PartStateRefusal> {
         if self.sync {
             return Err(PartStateRefusal::Sync);
         }
         if self.copy_on_death {
             return Err(PartStateRefusal::CopyOnDeath);
-        }
-        if self.resource {
-            return Err(PartStateRefusal::ResourceHandle);
-        }
-        if wasm && !self.codec {
-            return Err(PartStateRefusal::NoCodecOnWasm);
         }
         Ok(())
     }
@@ -389,9 +396,10 @@ pub fn read_state<H: PartStateHolder, T: Clone + Send + Sync + 'static>(
     key: &AttachmentType<T>,
 ) -> Result<Option<T>, PartStateError> {
     entity.part_state_holder(host)?;
-    host.query(key)
-        .map_err(|error| attachment(key, error))?
-        .get(entity.attachment_holder())
+    let query = host.query(key).map_err(|error| attachment(key, error))?;
+    let scope = host.attachment_read_scope();
+    scope
+        .and_then(|scope| query.get(scope, entity.attachment_holder()))
         .map_err(|error| match error {
             AttachmentRowError::Value(error) => attachment(key, error),
             _ => PartStateError::Stale,
@@ -504,75 +512,14 @@ mod tests {
     }
 
     #[test]
-    fn declarations_refuse_sync_copy_on_death_and_codec_less_wasm_state() {
-        let check = |key: &AttachmentType<i32>, wasm| PartStateDeclaration::of(key).check(wasm);
-        assert_eq!(check(&key(false, false, true), true), Ok(()));
-        assert_eq!(check(&key(false, false, false), false), Ok(()));
+    fn declarations_refuse_sync_and_copy_on_death() {
+        let check = |key: &AttachmentType<i32>| PartStateDeclaration::of(key).check();
+        assert_eq!(check(&key(false, false, true)), Ok(()));
+        assert_eq!(check(&key(false, false, false)), Ok(()));
+        assert_eq!(check(&key(true, false, true)), Err(PartStateRefusal::Sync));
         assert_eq!(
-            check(&key(false, false, false), true),
-            Err(PartStateRefusal::NoCodecOnWasm)
-        );
-        assert_eq!(
-            check(&key(true, false, true), false),
-            Err(PartStateRefusal::Sync)
-        );
-        assert_eq!(
-            check(&key(false, true, true), false),
+            check(&key(false, true, true)),
             Err(PartStateRefusal::CopyOnDeath)
-        );
-    }
-
-    #[test]
-    fn a_resource_handle_anywhere_in_the_type_refuses_the_declaration_on_both_targets() {
-        #[derive(sunrise_mod_api_macros::Wire)]
-        struct Holds {
-            _part: Vec<(u8, Option<Arc<dyn BlockPart>>)>,
-        }
-        #[derive(sunrise_mod_api_macros::Wire)]
-        enum Plain {
-            _A(u8, String),
-            _B { _x: Vec<Option<i64>> },
-        }
-        fn declared<T: crate::wire::Wire + 'static>(wasm: bool) -> Result<(), PartStateRefusal> {
-            let key = AttachmentType::<T> {
-                namespace: "test",
-                name: "state",
-                default: || unreachable!(),
-                codec: Some(AttachmentCodec {
-                    encode: |_| Ok(Compound::new()),
-                    decode: |_| unreachable!(),
-                }),
-                copy_on_death: false,
-                sync: false,
-            };
-            PartStateDeclaration::of(&key).check(wasm)
-        }
-        for wasm in [false, true] {
-            assert_eq!(
-                declared::<Option<Arc<dyn BlockPart>>>(wasm),
-                Err(PartStateRefusal::ResourceHandle)
-            );
-            assert_eq!(
-                declared::<Holds>(wasm),
-                Err(PartStateRefusal::ResourceHandle)
-            );
-            assert_eq!(declared::<Plain>(wasm), Ok(()));
-        }
-    }
-
-    #[test]
-    fn a_refusal_names_the_part_key_type_and_capability() {
-        let error = BlockEntityStateError::State {
-            part: "press::Press",
-            namespace: "press",
-            name: "progress",
-            data: "u32",
-            reason: PartStateRefusal::NoCodecOnWasm,
-        };
-        assert_eq!(
-            error.to_string(),
-            "part press::Press: state press:progress of type u32 refused: \
-             a wasm mod's part state needs a codec (its values cross only in saved form)"
         );
     }
 

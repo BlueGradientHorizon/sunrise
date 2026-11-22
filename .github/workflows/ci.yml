@@ -115,7 +115,6 @@ jobs:
           find crates/sunrise-mod-api/src crates/sunrise-mod-vocab/src -name '*.rs' -print0 | xargs -0 rustup run stable rustfmt --edition 2024 --check --config skip_children=true
           find crates/sunrise-client/src/game -name '*.rs' -print0 | xargs -0 rustup run stable rustfmt --edition 2024 --config skip_children=true --check
           rustup run stable rustfmt --edition 2024 --check crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/*.rs crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/*/*.rs
-          rustup run stable rustfmt --edition 2024 --check crates/sunrise-mod-wasm/wire-loopback/tests/wire_loopback/*.rs
           cargo +stable clippy --workspace --all-targets --locked -- -D warnings
           # The server build (released as sunrise-engine): the game without sound or controllers.
           cargo +stable clippy -p sunrise-client -p sunrise-game -p sunrise-mod-host --all-targets --locked --no-default-features -- -D warnings
@@ -211,10 +210,27 @@ jobs:
           $clang = Get-Command clang -ErrorAction Stop
           Write-Output "Using $($clang.Source)"
           & $clang.Source --version
-      - name: Build the game for native Windows ARM64 (the official game, as game-build.yml ships it)
-        run: cargo build --release --locked --target aarch64-pc-windows-msvc -p sunrise-official --bin sunrise-official -p sunrise-client-lib --bin sunrise-ctl -p sunrise-perf --bin sunrise-perf -p sunrise-prepare --bin sunrise-prepare -p sunrise-server --bin sunrise-server -p sunrise-port-pack --bin sunrise-port-pack
-      - name: Check the game's PE machine
-        run: python tools/check_pe_arch.py arm64 target/aarch64-pc-windows-msvc/release/sunrise-official.exe target/aarch64-pc-windows-msvc/release/sunrise-ctl.exe target/aarch64-pc-windows-msvc/release/sunrise-perf.exe target/aarch64-pc-windows-msvc/release/sunrise-prepare.exe target/aarch64-pc-windows-msvc/release/sunrise-server.exe target/aarch64-pc-windows-msvc/release/sunrise-port-pack.exe
+      - name: Build both game executables and the shipped tools for native Windows ARM64
+        run: >-
+          cargo build --release --locked --target aarch64-pc-windows-msvc
+          -p sunrise-game --bin sunrise-client -p sunrise-official --bin sunrise-official
+          -p sunrise-client-lib --bin sunrise-ctl -p sunrise-perf --bin sunrise-perf
+          -p sunrise-prepare --bin sunrise-prepare -p sunrise-server --bin sunrise-server
+          -p sunrise-port-pack --bin sunrise-port-pack
+      - name: Verify both game executables reserve 8 MiB of main stack
+        # This job builds the dispatched ref using that ref's workflow and validation tools.
+        run: >-
+          python tools/check_pe_arch.py --stack-reserve 8388608 arm64
+          target/aarch64-pc-windows-msvc/release/sunrise-client.exe
+          target/aarch64-pc-windows-msvc/release/sunrise-official.exe
+      - name: Verify the shipped tools' PE machine
+        run: >-
+          python tools/check_pe_arch.py arm64
+          target/aarch64-pc-windows-msvc/release/sunrise-ctl.exe
+          target/aarch64-pc-windows-msvc/release/sunrise-perf.exe
+          target/aarch64-pc-windows-msvc/release/sunrise-prepare.exe
+          target/aarch64-pc-windows-msvc/release/sunrise-server.exe
+          target/aarch64-pc-windows-msvc/release/sunrise-port-pack.exe
       - name: Check game DLL imports
         run: python tools/check_imports.py target/aarch64-pc-windows-msvc/release/sunrise-official.exe target/aarch64-pc-windows-msvc/release/sunrise-ctl.exe target/aarch64-pc-windows-msvc/release/sunrise-perf.exe target/aarch64-pc-windows-msvc/release/sunrise-prepare.exe target/aarch64-pc-windows-msvc/release/sunrise-server.exe target/aarch64-pc-windows-msvc/release/sunrise-port-pack.exe
       - name: Start every game executable

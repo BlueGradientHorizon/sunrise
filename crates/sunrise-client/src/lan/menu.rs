@@ -14,6 +14,7 @@ use crate::{
     mobs::equip::equippable_in_slot,
     world::World,
 };
+use mod_api::{Hand, MenuOpeningItem};
 use sunrise_world::native_load_context::LoopContext;
 
 /// The equipment slots of the inventory menu's armour slots 5 to 8, in menu order.
@@ -59,7 +60,7 @@ pub trait Rules {
     }
 }
 
-/// An open block container.
+/// A guest's open container menu.
 pub struct Menu {
     pub window: i32,
     /// The `minecraft:menu` registry id.
@@ -79,9 +80,10 @@ pub struct Menu {
     /// The data slots the client was last sent (ContainerSetData), a furnace's
     /// progress; None until sent, so any first value goes out.
     pub sent_data: Vec<Option<i16>>,
-    /// Container slots the menu does not have: a mod's screen hides them, so
-    /// no click or quick move reaches them (`Slot` positions are the screen's).
-    pub hidden: Vec<usize>,
+    /// Last data count reported as too wide for ContainerSetData on this opening.
+    pub reported_unsent_data_len: Option<usize>,
+    /// Committed live data owned by this blockless mod menu window, not a block entity.
+    pub blockless_data: Vec<i32>,
     /// A content mod's menu type: its data slot count. Its clicks run on the
     /// vanilla menu engine (`menu::Kind::Mod`), not here.
     pub mod_type: Option<&'static crate::containers::ModMenuType>,
@@ -94,6 +96,8 @@ pub struct Menu {
     /// Whether a part on this mod menu type answers `menu_still_valid`,
     /// resolved when it opened; vanilla menu types never ask one.
     pub asks_still_valid: bool,
+    /// The hand the opener supplied and its stack at open. Neither travels to the client.
+    pub opening_item: Option<(Hand, Option<ItemStack>)>,
 }
 
 /// What a mod menu type's crafting grid makes (`ResultContainer`), and the
@@ -105,18 +109,27 @@ pub struct ModCraft {
     pub result: Option<ItemStack>,
 }
 
-/// Dispatch a mod menu type's `stillValid` answer for a player's block
-/// menu: `valid` arrives as the game's own answer and the scoped part may change it.
+/// Dispatch a mod menu type's `stillValid` answer for a player's menu:
+/// `valid` arrives as the game's own answer and the scoped part may change it.
 #[inline(always)]
 pub fn native_menu_still_valid(
     context: &LoopContext,
     player: u128,
     menu: &str,
-    pos: [i32; 3],
+    pos: Option<[i32; 3]>,
     eye: [f64; 3],
+    opening_item: Option<MenuOpeningItem>,
     valid: &mut bool,
 ) {
-    crate::native_client_hooks::menu_still_valid(context, player, menu, pos, eye, valid);
+    crate::native_client_hooks::menu_still_valid(
+        context,
+        player,
+        menu,
+        pos,
+        eye,
+        opening_item,
+        valid,
+    );
 }
 
 /// Whether a menu of this type asks its parts `menu_still_valid`: only a mod
@@ -126,31 +139,85 @@ pub fn asks_still_valid(mod_type: Option<&crate::containers::ModMenuType>, menu:
 }
 
 impl Menu {
+    pub fn player_slots(&self) -> usize {
+        self.mod_type
+            .map_or(36, crate::containers::ModMenuType::player_slots)
+    }
+
+    pub fn slot_count(&self) -> usize {
+        self.size + self.player_slots()
+    }
+
+    /// Stack limits for an explicitly declared transient container; owned types are blockless.
+    pub fn owned_slots(&self) -> Option<&[u8]> {
+        self.mod_type?.owned_slots.as_deref()
+    }
+
+    /// Detached transient values and provenance, for the existing close notice. The old
+    /// native storage is emptied even for a menu that did not declare owned slots.
+    pub(super) fn native_closed(
+        &self,
+        uuid: u128,
+        generation: u64,
+        native_menu: &mut Vec<Option<ItemStack>>,
+    ) -> Option<NativeMenuEvent> {
+        if self.slots != Slots::Native {
+            return None;
+        }
+        let owned_slots = if self.owned_slots().is_some() {
+            std::mem::take(native_menu)
+        } else {
+            native_menu.clear();
+            Vec::new()
+        };
+        Some(NativeMenuEvent::Closed {
+            uuid,
+            window: self.window,
+            generation,
+            opening_hand: self.opening_item.as_ref().map(|(hand, _)| *hand),
+            owned_slots,
+        })
+    }
+
     /// `AbstractContainerMenu.stillValid` of this menu for the guest: its
     /// slots' own answer (`Slots::still_valid`), which the parts on its mod
-    /// menu type may change (`menu_still_valid`). Vanilla menu types, menus
-    /// with no block behind them (a chest vehicle, a native mod's menu) and
-    /// menus whose type no part answers are not asked, nor is one whose block
-    /// entities are gone: it closes.
+    /// menu type may change (`menu_still_valid`). A mod menu with no backing
+    /// block passes `None` even if its opener supplied a screen position.
+    /// Vanilla menu types, vehicles and menus without an answering part are
+    /// not asked. A menu whose backing block entities are gone closes without asking.
     pub fn still_valid(&self, context: &LoopContext, world: &World, guest: &Guest) -> bool {
+        if !self.asks_still_valid {
+            return self.slots.still_valid(world, guest, self.pos);
+        }
         let block = match self.slots {
             Slots::Block(k) | Slots::Double(k, _) => Some(k),
             Slots::Ender => self.pos,
             Slots::Native => None,
         };
-        let Some(k) = block.filter(|k| self.asks_still_valid && k.1 != VEHICLE_KEY_Y) else {
+        if block.is_some_and(|(_, y, _)| y == VEHICLE_KEY_Y) {
             return self.slots.still_valid(world, guest, self.pos);
-        };
+        }
         if !self.slots.valid(world) {
             return false;
         }
         let mut valid = self.slots.in_reach(guest, self.pos);
+        let opening_item = self.opening_item.as_ref().map(|(hand, opening)| {
+            let stack = match hand {
+                Hand::Main => guest.inventory.get(guest.selected).and_then(Option::as_ref),
+                Hand::Off => guest.offhand.as_ref(),
+            };
+            let stack_matches = stack
+                .zip(opening.as_ref())
+                .is_some_and(|(now, then)| now.same_item_same_components(then));
+            MenuOpeningItem::new(*hand, stack_matches)
+        });
         native_menu_still_valid(
             context,
             guest.uuid,
             &self.registry_id,
-            [k.0, k.1, k.2],
+            block.map(|(x, y, z)| [x, y, z]),
             guest.eye(),
+            opening_item,
             &mut valid,
         );
         valid
@@ -185,22 +252,21 @@ impl Menu {
     }
 }
 
-/// What a guest did with a native mod's menu (`Slots::Native`), for the game
-/// to tell the mod once the hub is back in its hands.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A menu notice for the game once it has the hub back.
+#[derive(Clone, Debug, PartialEq)]
 pub enum NativeMenuEvent {
-    /// A click (`ServerboundContainerClickPacket`): the menu's slot (its own
-    /// first, then the player's 36; -999 outside), the button and the mode.
-    Click {
-        uuid: u128,
-        window: i32,
-        slot: i32,
-        button: i32,
-        mode: i32,
-    },
+    /// The cursor of a menu the hub closed itself, to be returned to its player.
+    ReturnCarried { conn: u32, item: ItemStack },
     /// The menu closed: by the player, by the server, another opened, or
     /// the player left.
-    Closed { uuid: u128, window: i32 },
+    Closed {
+        uuid: u128,
+        window: i32,
+        /// The window instance, for rolling back writes made before this pending close.
+        generation: u64,
+        opening_hand: Option<Hand>,
+        owned_slots: Vec<Option<ItemStack>>,
+    },
     /// The storage a mod backed the menu's slots with was written (the game's notice): its
     /// slots are looked at again once the write is done.
     PlacesChanged { uuid: u128, window: i32 },
@@ -220,8 +286,8 @@ pub enum Slots {
     Double((i32, i32, i32), (i32, i32, i32)),
     /// The player's own ender chest inventory (`PlayerEnderChestContainer`).
     Ender,
-    /// A native mod's menu (`Guest::native_menu`): items to look at, which no
-    /// click moves; the clicks go to the mod.
+    /// A blockless mod menu's vector (`Guest::native_menu`), either transient
+    /// owned slots or a display of stacks controlled by mods.
     Native,
 }
 
@@ -299,19 +365,19 @@ impl Slots {
         let m = guest.menu.as_ref().filter(|m| m.slots == self)?;
         m.linked()
     }
-    fn halves(self) -> Vec<(i32, i32, i32)> {
+    pub fn halves(self) -> impl Iterator<Item = (i32, i32, i32)> {
         match self {
-            Slots::Block(k) => vec![k],
-            Slots::Double(a, b) => vec![a, b],
-            Slots::Ender | Slots::Native => Vec::new(),
+            Slots::Block(k) => [Some(k), None],
+            Slots::Double(a, b) => [Some(a), Some(b)],
+            Slots::Ender | Slots::Native => [None, None],
         }
+        .into_iter()
+        .flatten()
     }
     /// Whether the block entities behind the slots are still there
     /// (`Container.stillValid`).
     pub fn valid(self, world: &World) -> bool {
-        self.halves()
-            .iter()
-            .all(|k| world.block_entities.contains_key(k))
+        self.halves().all(|k| world.block_entities.contains_key(&k))
     }
     /// How many slots the block entities behind a block menu show now, a missing one none;
     /// none for the ender chest's and a mod's chest menu, which no block holds.
@@ -320,7 +386,6 @@ impl Slots {
             Slots::Ender | Slots::Native => None,
             _ => Some(
                 self.halves()
-                    .into_iter()
                     .map(|k| shown(world, k).map_or(0, <[_]>::len))
                     .sum(),
             ),
@@ -335,16 +400,12 @@ impl Slots {
     /// The reach half of `still_valid`: the guest is within its block
     /// interaction range plus 4 of each block behind the slots.
     fn in_reach(self, guest: &Guest, at: Option<(i32, i32, i32)>) -> bool {
-        let blocks = match self {
-            Slots::Ender => at.into_iter().collect(),
-            Slots::Native => Vec::new(),
-            _ => self.halves(),
-        };
+        let ender_chest = if self == Slots::Ender { at } else { None };
         // A vehicle's container is kept under a key, not a block: the game
         // checks its reach to the vehicle (`isChestVehicleStillValid`).
-        blocks
-            .iter()
-            .all(|k| k.1 == VEHICLE_KEY_Y || guest.within_block_range([k.0, k.1, k.2], 4.0))
+        self.halves()
+            .chain(ender_chest)
+            .all(|(x, y, z)| y == VEHICLE_KEY_Y || guest.within_block_range([x, y, z], 4.0))
     }
     /// Container slot `n`.
     pub fn get(self, world: &World, guest: &Guest, mut n: usize) -> Option<ItemStack> {
@@ -444,7 +505,9 @@ impl Slots {
             return;
         }
         if self == Slots::Native {
-            // Only the mod changes what it shows.
+            if guest.menu.as_ref().and_then(Menu::owned_slots).is_some() {
+                guest.native_menu = items;
+            }
             return;
         }
         let mut items = items;
@@ -555,12 +618,8 @@ pub struct View<'a> {
     /// The container is a shulker box (`ShulkerBoxSlot`).
     pub shulker: bool,
     pub container_limits: Vec<Option<u32>>,
-    /// Container slots that do not exist in this menu (see [`Menu::hidden`]).
-    pub hidden: &'a [usize],
     /// The context the hooks fired inside a click are given.
     pub loop_context: &'a LoopContext,
-    /// The parts' one copy of the container for this click (`menu_slot_rules`).
-    pub slot_snapshot: crate::menu::SlotSnapshot,
 }
 
 impl View<'_> {
@@ -586,7 +645,7 @@ impl View<'_> {
         }
     }
     pub fn set(&mut self, i: usize, item: Option<ItemStack>) {
-        self.slot_snapshot.clear();
+        let item = item.filter(|s| s.count > 0);
         match &mut self.container {
             Some(c) if i < c.len() => c[i] = item,
             Some(c) => {
@@ -608,7 +667,9 @@ impl View<'_> {
             pos: menu.and_then(|menu| menu.pos).map(|(x, y, z)| [x, y, z]),
             container: crate::menu::lan_container(i, self.container.as_deref()),
             slots,
-            snapshot: Some(&self.slot_snapshot),
+            player_slots: &self.guest.inventory,
+            player_armor: Some(&self.guest.armor),
+            player_offhand: Some(&self.guest.offhand),
             ..Default::default()
         };
         let mut index = if i < slots.len() {
@@ -635,7 +696,7 @@ impl View<'_> {
     }
     /// Whether the slot takes part in clicks at all.
     fn enabled(&self, i: usize) -> bool {
-        (self.container.is_some() || i >= 5) && !self.hidden.contains(&i)
+        self.container.is_some() || i >= 5
     }
     /// The pickup click on menu slot `slot` with `button`, as `item_stacked_on_other` is asked
     /// about it: the stacks it finds, before any listener. `None` for a click that never asks
@@ -683,7 +744,7 @@ impl View<'_> {
             && self.container.as_ref().is_some_and(|c| i < c.len())
             && !crate::menu::fits_inside_container_items(self.loop_context, stack))
     }
-    fn slot_rules(&self, i: usize, stack: &ItemStack, rules: &dyn Rules) -> (bool, u32) {
+    fn slot_rules(&self, i: usize, stack: &ItemStack, rules: &dyn Rules) -> (bool, bool, u32) {
         let admission = rules.mod_container_insert_rule(i, self.get(i).as_ref(), stack);
         let own = self.vanilla_may_place(i, stack, rules) && admission;
         let max = if self.container.is_none() && (5..=8).contains(&i) {
@@ -698,10 +759,10 @@ impl View<'_> {
             .as_ref()
             .filter(|_| self.container.is_some())
         else {
-            return (own, max.min(item_max));
+            return (own, true, max.min(item_max));
         };
         let (index, context) = self.slot_context(i);
-        let (place, _, max) = crate::menu::apply_menu_slot_rules(
+        let (place, pickup, max) = crate::menu::apply_menu_slot_rules(
             rules.slot_rules(),
             &menu.registry_id,
             index,
@@ -711,13 +772,13 @@ impl View<'_> {
             item_max,
         );
         // A scoped rule may not admit what the declaration's admission rule refuses.
-        (place && admission, max)
+        (place && admission, pickup, max)
     }
     fn may_place(&self, i: usize, stack: &ItemStack, rules: &dyn Rules) -> bool {
         self.enabled(i) && self.slot_rules(i, stack, rules).0
     }
     fn slot_max(&self, i: usize, stack: &ItemStack, rules: &dyn Rules) -> u32 {
-        let max = self.slot_rules(i, stack, rules).1;
+        let max = self.slot_rules(i, stack, rules).2;
         self.container_limits
             .get(i)
             .copied()
@@ -739,7 +800,15 @@ impl View<'_> {
         {
             return false;
         }
-        stack.is_none_or(|s| rules.may_pickup(i, s))
+        stack.is_none_or(|s| {
+            rules.may_pickup(i, s)
+                && (self
+                    .guest
+                    .menu
+                    .as_ref()
+                    .is_none_or(|m| m.mod_type.is_none())
+                    || self.slot_rules(i, s, rules).1)
+        })
     }
     /// The ranges quick move uses: (container start..end, main, hotbar).
     fn player_ranges(&self) -> (std::ops::Range<usize>, std::ops::Range<usize>) {
@@ -865,17 +934,20 @@ fn player_slot(n: usize) -> usize {
 /// Inventory.add-like merge of `stack` into slots `range` (moveItemStackTo).
 fn move_to(
     view: &mut View,
+    source: usize,
     mut stack: ItemStack,
     range: std::ops::Range<usize>,
     reverse: bool,
     rules: &dyn Rules,
 ) -> Option<ItemStack> {
-    let order: Vec<usize> = if reverse {
-        range.rev().collect()
-    } else {
-        range.collect()
+    let order = |offset| {
+        if reverse {
+            range.end - 1 - offset
+        } else {
+            range.start + offset
+        }
     };
-    for &i in &order {
+    for i in (0..range.len()).map(order) {
         if stack.count == 0 {
             break;
         }
@@ -914,16 +986,22 @@ fn move_to(
                 let moved = (max - existing.count).min(stack.count);
                 existing.count += moved;
                 stack.count -= moved;
+                view.set(source, (stack.count > 0).then(|| stack.clone()));
                 view.set(i, Some(existing));
             }
         }
     }
-    for &i in &order {
+    for i in (0..range.len()).map(order) {
         if stack.count == 0 {
             break;
         }
         if view.enabled(i) && view.get(i).is_none() && view.may_place(i, &stack, rules) {
             let moved = stack.count.min(view.slot_max(i, &stack, rules));
+            if moved == 0 {
+                continue;
+            }
+            stack.count -= moved;
+            view.set(source, (stack.count > 0).then(|| stack.clone()));
             view.set(
                 i,
                 Some(ItemStack {
@@ -931,7 +1009,7 @@ fn move_to(
                     ..stack.clone()
                 }),
             );
-            stack.count -= moved;
+            break;
         }
     }
     (stack.count > 0).then_some(stack)
@@ -949,12 +1027,12 @@ fn quick_move(view: &mut View, i: usize, rules: &dyn Rules) {
         let n = c.len();
         if i < n {
             // Container to inventory, filling from the hotbar's end.
-            move_to(view, stack, n..n + 36, true, rules)
+            move_to(view, i, stack, n..n + 36, true, rules)
         } else {
-            move_to(view, stack, 0..n, false, rules)
+            move_to(view, i, stack, 0..n, false, rules)
         }
     } else if (5..=8).contains(&i) || i < 5 {
-        move_to(view, stack, 9..45, false, rules)
+        move_to(view, i, stack, 9..45, false, rules)
     } else {
         // Wear it, otherwise the stack fills the inventory: from the main
         // slots for the hotbar and the off hand, from the hotbar for the
@@ -1001,11 +1079,11 @@ fn quick_move(view: &mut View, i: usize, rules: &dyn Rules) {
                 ..stack.clone()
             })
         } else if hotbar.contains(&i) {
-            move_to(view, stack, main, false, rules)
+            move_to(view, i, stack, main, false, rules)
         } else if main.contains(&i) {
-            move_to(view, stack, hotbar, false, rules)
+            move_to(view, i, stack, hotbar, false, rules)
         } else {
-            move_to(view, stack, 9..45, false, rules)
+            move_to(view, i, stack, 9..45, false, rules)
         }
     };
     view.set(i, rest);
@@ -1063,17 +1141,19 @@ pub fn click(
             }
             input::PICKUP => pickup(view, slot, button, rules),
             input::QUICK_MOVE => {
-                // doClick calls quickMoveStack again while the clicked slot
-                // still holds the item it moved, because moveItemStackTo fills
-                // one empty slot per call. move_to here fills every empty slot
-                // of its range in one pass and leaves the same remainder, so
-                // one call is vanilla's loop: a full inventory keeps its stack,
-                // and a stack too big for one slot spreads over several.
                 if let Ok(i) = usize::try_from(slot)
                     && i < view.len()
                     && view.may_pickup(i, rules)
                 {
-                    quick_move(view, i, rules);
+                    while let Some(before) = view.get(i) {
+                        quick_move(view, i, rules);
+                        if !view
+                            .get(i)
+                            .is_some_and(|now| now.item == before.item && now.count < before.count)
+                        {
+                            break;
+                        }
+                    }
                 }
             }
             input::SWAP => swap(view, slot, button, rules, &mut drops),
@@ -1137,6 +1217,19 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
     if let Some(outcome) = rules.stacked() {
         (canceled, handled) = (outcome.canceled, outcome.handled);
         if canceled && handled {
+            // The replacement goes through the clicked slot's rules (`mayPickup`, `mayPlace`, its
+            // size); one they refuse changes nothing.
+            if let Some(clicked) = &outcome.clicked
+                && clicked.as_ref() != view.get(i).as_ref()
+                && (view.get(i).is_some() && !view.may_pickup(i, rules)
+                    || clicked.as_ref().is_some_and(|stack| {
+                        !view.may_place(i, stack, rules)
+                            || stack.count > view.slot_max(i, stack, rules)
+                    }))
+            {
+                outcome.refused.set(true);
+                return;
+            }
             if let Some(carried) = outcome.carried.clone() {
                 view.guest.carried = carried;
             }
@@ -1156,43 +1249,31 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
     let (slot_item, carried) = (view.get(i), view.guest.carried.clone());
     match (slot_item, carried) {
         (None, None) => {}
-        (None, Some(mut c)) => {
-            let (may_place, max) = view.slot_rules(i, &c, rules);
-            let max = view
-                .container_limits
-                .get(i)
-                .copied()
-                .flatten()
-                .map_or(max, |limit| max.min(limit));
-            if view.enabled(i) && may_place {
-                let amount = if right { 1 } else { c.count }.min(max);
-                view.set(
-                    i,
-                    Some(ItemStack {
-                        count: amount,
-                        ..c.clone()
-                    }),
-                );
-                c.count -= amount;
-                view.guest.carried = (c.count > 0).then_some(c);
-            }
+        (None, Some(c)) => {
+            let amount = if right { 1 } else { c.count };
+            let mut slot = HostedSlotView {
+                view,
+                slot: i,
+                rules,
+                staged: None,
+            };
+            slot.view.guest.carried =
+                crate::menu::SlotView::safe_insert(&mut slot, Some(c), amount);
         }
-        (Some(mut s), None) => {
-            // doClick's PICKUP arm takes from the slot only while
-            // `Slot.mayPickup` allows it.
+        (Some(s), None) => {
             if !view.may_pickup(i, rules) {
                 return;
             }
-            let take = if right { s.count.div_ceil(2) } else { s.count };
-            let taken = ItemStack {
-                count: take,
-                ..s.clone()
+            let amount = if right { s.count.div_ceil(2) } else { s.count };
+            let mut slot = HostedSlotView {
+                view,
+                slot: i,
+                rules,
+                staged: None,
             };
-            s.count -= take;
-            view.set(i, (s.count > 0).then_some(s));
-            view.guest.carried = Some(taken);
+            slot.view.guest.carried = crate::menu::SlotView::safe_take(&mut slot, amount, u32::MAX);
         }
-        (Some(mut s), Some(mut c)) => {
+        (Some(s), Some(mut c)) => {
             // Merging into, swapping with and topping the hand up from the
             // slot are all takes (`allowModification`: mayPickup and
             // mayPlace).
@@ -1218,12 +1299,15 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
                 return;
             }
             if s.same_item_same_components(&c) {
-                let max = view.slot_max(i, &c, rules);
-                let moved = if right { 1 } else { c.count }.min(max.saturating_sub(s.count));
-                s.count += moved;
-                c.count -= moved;
-                view.set(i, Some(s));
-                view.guest.carried = (c.count > 0).then_some(c);
+                let amount = if right { 1 } else { c.count };
+                let mut slot = HostedSlotView {
+                    view,
+                    slot: i,
+                    rules,
+                    staged: None,
+                };
+                slot.view.guest.carried =
+                    crate::menu::SlotView::safe_insert(&mut slot, Some(c), amount);
             } else if c.count <= view.slot_max(i, &c, rules) {
                 view.set(i, Some(c));
                 view.guest.carried = Some(s);
@@ -1343,20 +1427,23 @@ fn swap(view: &mut View, slot: i32, button: i32, rules: &dyn Rules, drops: &mut 
         {
             return;
         }
-        if let Some(mut source) = off.clone()
-            && source.count > view.slot_max(i, &source, rules)
-        {
+        if let Some(mut source) = off.clone() {
             let max = view.slot_max(i, &source, rules);
-            let mut part = source.clone();
-            part.count = max;
-            source.count -= max;
-            view.set(i, Some(part));
-            view.guest.offhand = Some(source);
-            if let Some(taken) = clicked {
-                add_to_inventory(view, taken, rules, drops);
+            if source.count > max {
+                let mut part = source.clone();
+                part.count = max;
+                source.count -= max;
+                view.set(i, Some(part));
+                view.guest.offhand = Some(source);
+                if let Some(taken) = clicked {
+                    add_to_inventory(view, taken, rules, drops);
+                }
+            } else {
+                view.set(i, Some(source));
+                view.guest.offhand = clicked;
             }
         } else {
-            view.set(i, off);
+            view.set(i, None);
             view.guest.offhand = clicked;
         }
         return;
@@ -1381,20 +1468,23 @@ fn swap(view: &mut View, slot: i32, button: i32, rules: &dyn Rules, drops: &mut 
     {
         return;
     }
-    if let Some(mut source) = b.clone()
-        && source.count > view.slot_max(i, &source, rules)
-    {
+    if let Some(mut source) = b.clone() {
         let max = view.slot_max(i, &source, rules);
-        let mut part = source.clone();
-        part.count = max;
-        source.count -= max;
-        view.set(i, Some(part));
-        view.set(other, Some(source));
-        if let Some(taken) = a {
-            add_to_inventory(view, taken, rules, drops);
+        if source.count > max {
+            let mut part = source.clone();
+            part.count = max;
+            source.count -= max;
+            view.set(i, Some(part));
+            view.set(other, Some(source));
+            if let Some(taken) = a {
+                add_to_inventory(view, taken, rules, drops);
+            }
+        } else {
+            view.set(i, Some(source));
+            view.set(other, a);
         }
     } else {
-        view.set(i, b);
+        view.set(i, None);
         view.set(other, a);
     }
 }
@@ -1756,8 +1846,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -1788,8 +1877,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -1832,8 +1920,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -1877,8 +1964,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -1953,8 +2039,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: crate::test_resources::server_loop_context(),
         };
         // Left click with stone in hand over the refused bundle: nothing goes in.
@@ -1988,8 +2073,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: crate::test_resources::server_loop_context(),
         };
         let mut bundle = ItemStack::new("minecraft:bundle", 1);
@@ -2044,9 +2128,13 @@ pub(crate) mod tests {
         );
         let t: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
             id: "test:station",
+            owner: "test",
             slots: 5,
+            player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![],
+            inputs: Vec::new(),
             links: None,
             crafting: Some(ModCrafting {
                 grid: 1,
@@ -2056,6 +2144,14 @@ pub(crate) mod tests {
         }));
         let planks = Some(ItemStack::new("minecraft:oak_planks", 4));
         let mut g = guest();
+        g.inventory[9] = Some(ItemStack::new("minecraft:stone", 2));
+        g.armor = [
+            Some(ItemStack::new("minecraft:iron_helmet", 1)),
+            Some(ItemStack::new("minecraft:iron_chestplate", 1)),
+            Some(ItemStack::new("minecraft:iron_leggings", 1)),
+            Some(ItemStack::new("minecraft:iron_boots", 1)),
+        ];
+        g.offhand = Some(ItemStack::new("minecraft:shield", 1));
         let slots = Slots::Block(k);
         g.menu = Some(Menu {
             window: 1,
@@ -2067,12 +2163,15 @@ pub(crate) mod tests {
             sent: Vec::new(),
             drag: None,
             sent_data: Vec::new(),
-            hidden: Vec::new(),
+            reported_unsent_data_len: None,
+            blockless_data: Vec::new(),
+
             mod_type: Some(t),
             registry_id: "test:station".into(),
             craft: None,
             links: Vec::new(),
             asks_still_valid: false,
+            opening_item: None,
         });
         // Nothing made yet: nothing shown.
         assert_eq!(slots.get(&world, &g, 0), None);
@@ -2092,8 +2191,7 @@ pub(crate) mod tests {
                 container: Some(&mut read),
                 shulker: false,
                 container_limits: Vec::new(),
-                hidden: &[],
-                slot_snapshot: Default::default(),
+
                 loop_context: crate::test_resources::server_loop_context(),
             };
             let (index, context) = view.slot_context(2);
@@ -2109,14 +2207,34 @@ pub(crate) mod tests {
             assert_eq!((index, context.container), (0, Result));
             let (index, context) = view.slot_context(5);
             assert_eq!((index, context.container), (9, Player));
-            let builds = std::cell::Cell::new(0);
-            let build = || {
-                builds.set(builds.get() + 1);
-                mod_api::MenuSlotContext::new(None, None, Vec::new())
-            };
-            view.slot_snapshot.get_or_init(build);
-            view.slot_snapshot.get_or_init(build);
-            assert_eq!(builds.get(), 1);
+            assert_eq!(
+                context
+                    .slot(Player, index)
+                    .map(|s| (s.item.as_ref(), s.count)),
+                Some(("minecraft:stone", 2))
+            );
+            assert!(context.slot(Player, 0).is_none());
+            assert_eq!(
+                context.slot(Player, 36).map(|s| s.item.as_ref()),
+                Some("minecraft:iron_boots")
+            );
+            assert_eq!(
+                context.slot(Player, 37).map(|s| s.item.as_ref()),
+                Some("minecraft:iron_leggings")
+            );
+            assert_eq!(
+                context.slot(Player, 38).map(|s| s.item.as_ref()),
+                Some("minecraft:iron_chestplate")
+            );
+            assert_eq!(
+                context.slot(Player, 39).map(|s| s.item.as_ref()),
+                Some("minecraft:iron_helmet")
+            );
+            assert_eq!(
+                context.slot(Player, 40).map(|s| s.item.as_ref()),
+                Some("minecraft:shield")
+            );
+            assert!(context.slot(Player, 41).is_none());
             view.set(1, Some(ItemStack::new("minecraft:birch_log", 3)));
             let (_, context) = view.slot_context(1);
             assert_eq!(
@@ -2124,8 +2242,6 @@ pub(crate) mod tests {
                 "minecraft:birch_log"
             );
             assert_eq!(context.slot(Grid, 0).unwrap().count, 3);
-            context.snapshot.unwrap().get_or_init(build);
-            assert_eq!(builds.get(), 2, "a mutation starts a fresh snapshot");
         }
         slots.write(&mut world, &mut g, read);
         let Some(BlockEntity::Mod(m)) = world.block_entities.get(&k) else {
@@ -2172,9 +2288,13 @@ pub(crate) mod tests {
         );
         let t: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
             id: "test:station",
+            owner: "test",
             slots: 6,
+            player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![],
+            inputs: Vec::new(),
             crafting: None,
             links: Some(ModLinks { from: 2, count: 4 }),
         }));
@@ -2191,11 +2311,14 @@ pub(crate) mod tests {
             sent: Vec::new(),
             drag: None,
             sent_data: Vec::new(),
-            hidden: Vec::new(),
+            reported_unsent_data_len: None,
+            blockless_data: Vec::new(),
+
             mod_type: Some(t),
             craft: None,
             links: Vec::new(),
             asks_still_valid: false,
+            opening_item: None,
         });
         // Nothing linked yet: the linked slots are empty and all left out.
         let read = slots.read(&world, &g).unwrap();
@@ -2276,8 +2399,7 @@ pub(crate) mod tests {
                 container: Some(&mut read),
                 shulker: false,
                 container_limits: Vec::new(),
-                hidden: &[],
-                slot_snapshot: Default::default(),
+
                 loop_context: &crate::test_resources::loop_context(
                     sunrise_world::native_load_context::LoopSide::Server,
                 ),
@@ -2300,39 +2422,6 @@ pub(crate) mod tests {
         assert_eq!(m.items[7].as_ref().map(|s| s.count), Some(2));
     }
 
-    /// A slot a mod's screen hides is not in the menu: a shift-click from the
-    /// inventory skips it, and a shift-click on it moves nothing.
-    #[test]
-    fn a_hidden_slot_takes_no_quick_move() {
-        let Some(rules) = rules() else {
-            return;
-        };
-        let mut g = guest();
-        let mut container = vec![None; 3];
-        container[2] = Some(ItemStack::new("minecraft:stone", 1));
-        g.inventory[0] = Some(ItemStack::new("minecraft:dirt", 1));
-        let hidden = [0, 2];
-        let mut drag = None;
-        let mut view = View {
-            guest: &mut g,
-            container: Some(&mut container),
-            shulker: false,
-            container_limits: Vec::new(),
-            hidden: &hidden,
-            slot_snapshot: Default::default(),
-            loop_context: &crate::test_resources::loop_context(
-                sunrise_world::native_load_context::LoopSide::Server,
-            ),
-        };
-        // The hotbar's first slot (menu slot 3 + 27) lands in the one slot shown.
-        click(&mut view, &mut drag, 3 + 27, 0, input::QUICK_MOVE, &rules);
-        assert!(view.get(0).is_none());
-        assert_eq!(view.get(1).map(|s| s.item), Some("minecraft:dirt".into()));
-        // Nothing leaves a hidden slot either.
-        click(&mut view, &mut drag, 2, 0, input::QUICK_MOVE, &rules);
-        assert_eq!(view.get(2).map(|s| s.item), Some("minecraft:stone".into()));
-    }
-
     #[test]
     fn quick_craft_uses_original_stack_and_clamps_existing_count() {
         let Some(rules) = rules() else { return };
@@ -2343,8 +2432,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: crate::test_resources::server_loop_context(),
         };
         view.guest.carried = Some(ItemStack::new("minecraft:stone", 8));
@@ -2378,8 +2466,7 @@ pub(crate) mod tests {
                     container: Some(&mut chest),
                     shulker: false,
                     container_limits: Vec::new(),
-                    hidden: &[],
-                    slot_snapshot: Default::default(),
+
                     loop_context: crate::test_resources::server_loop_context(),
                 };
                 menu.load_slot(0, view.get(0));
@@ -2430,8 +2517,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2551,8 +2637,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: crate::test_resources::server_loop_context(),
         };
         let (drops, _) = click(&mut view, &mut None, 0, 0, input::SWAP, &rules);
@@ -2592,8 +2677,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2648,8 +2732,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2698,8 +2781,7 @@ pub(crate) mod tests {
                 container: Some(&mut container),
                 shulker,
                 container_limits: Vec::new(),
-                hidden: &[],
-                slot_snapshot: Default::default(),
+
                 loop_context: &crate::test_resources::loop_context(
                     sunrise_world::native_load_context::LoopSide::Server,
                 ),
@@ -2748,8 +2830,7 @@ pub(crate) mod tests {
             container: None,
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2831,8 +2912,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2876,8 +2956,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2917,8 +2996,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2961,8 +3039,7 @@ pub(crate) mod tests {
                     container: None,
                     shulker: false,
                     container_limits: Vec::new(),
-                    hidden: &[],
-                    slot_snapshot: Default::default(),
+
                     loop_context: &crate::test_resources::loop_context(
                         sunrise_world::native_load_context::LoopSide::Server,
                     ),
@@ -2998,8 +3075,7 @@ pub(crate) mod tests {
                     container: None,
                     shulker: false,
                     container_limits: Vec::new(),
-                    hidden: &[],
-                    slot_snapshot: Default::default(),
+
                     loop_context: &crate::test_resources::loop_context(
                         sunrise_world::native_load_context::LoopSide::Server,
                     ),
@@ -3033,8 +3109,7 @@ pub(crate) mod tests {
                 container: None,
                 shulker: false,
                 container_limits: Vec::new(),
-                hidden: &[],
-                slot_snapshot: Default::default(),
+
                 loop_context: &context,
             };
             view.guest.carried = Some(stack.clone());
@@ -3049,8 +3124,7 @@ pub(crate) mod tests {
             container: None,
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &context,
         };
         view.set(36, Some(stack.clone()));
@@ -3113,8 +3187,7 @@ pub(crate) mod tests {
             container: None,
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -3163,8 +3236,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: vec![Some(10); 3],
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &context,
         };
         view.guest.carried = Some(ItemStack::new("minecraft:stick", 20));
@@ -3203,8 +3275,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -3254,8 +3325,7 @@ pub(crate) mod tests {
             container: None,
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -3301,8 +3371,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &context,
         };
         let mut drag = None;
@@ -3325,8 +3394,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &context,
         };
         let mut drag = None;
@@ -3350,12 +3418,15 @@ pub(crate) mod tests {
             sent: Vec::new(),
             drag: None,
             sent_data: Vec::new(),
-            hidden: Vec::new(),
+            reported_unsent_data_len: None,
+            blockless_data: Vec::new(),
+
             mod_type: None,
             registry_id: "test:chest".into(),
             craft: None,
             links: Vec::new(),
             asks_still_valid: false,
+            opening_item: None,
         });
         g.inventory[9] = Some(ItemStack::new("minecraft:stone", 1));
         let mut chest = vec![Some(ItemStack::new("minecraft:stone", 1))];
@@ -3367,8 +3438,7 @@ pub(crate) mod tests {
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
-            hidden: &[],
-            slot_snapshot: Default::default(),
+
             loop_context: &context,
         };
         let mut drag = None;
@@ -3386,5 +3456,372 @@ pub(crate) mod tests {
             view.guest.carried,
             Some(ItemStack::new("minecraft:stone", 2))
         );
+    }
+
+    #[test]
+    fn zero_max_stack_places_nothing_and_leaves_no_zero_count_stack() {
+        struct ZeroMax;
+        impl crate::menu::SlotRules for ZeroMax {
+            fn listens(&self, menu: &str) -> bool {
+                menu == "test:chest"
+            }
+            fn rule(
+                &self,
+                _: &str,
+                _: usize,
+                _: &ItemStack,
+                _: crate::menu::SlotContext<'_>,
+                _: &mut bool,
+                _: &mut bool,
+                max_stack: &mut u32,
+            ) {
+                *max_stack = 0;
+            }
+        }
+        struct ZeroMaxRules(Items);
+        impl Rules for ZeroMaxRules {
+            fn items(&self) -> &Items {
+                &self.0
+            }
+            fn enchantments(&self) -> &Enchantments {
+                enchantments()
+            }
+            fn max_stack(&self, _: &str) -> u32 {
+                64
+            }
+            fn slot_rules(&self) -> Option<&dyn crate::menu::SlotRules> {
+                Some(&ZeroMax)
+            }
+        }
+        let rules = ZeroMaxRules(Items::for_tests(Default::default()));
+        let mut g = guest();
+        g.menu = Some(Menu {
+            window: 1,
+            kind: 0,
+            pos: Some((0, 0, 0)),
+            slots: Slots::Block((0, 0, 0)),
+            size: 1,
+            state: 0,
+            sent: Vec::new(),
+            drag: None,
+            sent_data: Vec::new(),
+            blockless_data: Vec::new(),
+            reported_unsent_data_len: None,
+            opening_item: None,
+            mod_type: None,
+            registry_id: "test:chest".into(),
+            craft: None,
+            links: Vec::new(),
+            asks_still_valid: false,
+        });
+        g.carried = Some(ItemStack::new("minecraft:stone", 8));
+        let mut chest = vec![None];
+        let context = crate::test_resources::loop_context(
+            sunrise_world::native_load_context::LoopSide::Server,
+        );
+        let mut view = View {
+            guest: &mut g,
+            container: Some(&mut chest),
+            shulker: false,
+            container_limits: Vec::new(),
+            loop_context: &context,
+        };
+        let mut drag = None;
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &rules);
+        assert_eq!(view.get(0), None);
+        assert_eq!(
+            view.guest.carried,
+            Some(ItemStack::new("minecraft:stone", 8))
+        );
+    }
+
+    #[test]
+    fn swap_reads_slot_max_once_even_when_rule_limit_grows() {
+        struct GrowingMax(std::cell::Cell<usize>);
+        impl crate::menu::SlotRules for GrowingMax {
+            fn listens(&self, menu: &str) -> bool {
+                menu == "test:chest"
+            }
+            fn rule(
+                &self,
+                _: &str,
+                _: usize,
+                _: &ItemStack,
+                _: crate::menu::SlotContext<'_>,
+                _: &mut bool,
+                _: &mut bool,
+                max_stack: &mut u32,
+            ) {
+                let call = self.0.get();
+                self.0.set(call + 1);
+                // First two queries (may_place + the single slot_max) cap at 1;
+                // a duplicate slot_max query would return 8 and underflow `4 - 8`.
+                *max_stack = if call < 2 { 1 } else { 8 };
+            }
+        }
+        struct GrowingRules(Items, GrowingMax);
+        impl Rules for GrowingRules {
+            fn items(&self) -> &Items {
+                &self.0
+            }
+            fn enchantments(&self) -> &Enchantments {
+                enchantments()
+            }
+            fn max_stack(&self, _: &str) -> u32 {
+                64
+            }
+            fn slot_rules(&self) -> Option<&dyn crate::menu::SlotRules> {
+                Some(&self.1)
+            }
+        }
+        for button in [40, 0] {
+            let rules = GrowingRules(
+                Items::for_tests(Default::default()),
+                GrowingMax(std::cell::Cell::new(0)),
+            );
+            let mut g = guest();
+            g.menu = Some(Menu {
+                window: 1,
+                kind: 0,
+                pos: Some((0, 0, 0)),
+                slots: Slots::Block((0, 0, 0)),
+                size: 1,
+                state: 0,
+                sent: Vec::new(),
+                drag: None,
+                sent_data: Vec::new(),
+                blockless_data: Vec::new(),
+                reported_unsent_data_len: None,
+                opening_item: None,
+                mod_type: None,
+                registry_id: "test:chest".into(),
+                craft: None,
+                links: Vec::new(),
+                asks_still_valid: false,
+            });
+            if button == 40 {
+                g.offhand = Some(ItemStack::new("minecraft:stone", 4));
+            } else {
+                g.inventory[0] = Some(ItemStack::new("minecraft:stone", 4));
+            }
+            let mut chest = vec![None];
+            let context = crate::test_resources::loop_context(
+                sunrise_world::native_load_context::LoopSide::Server,
+            );
+            let mut view = View {
+                guest: &mut g,
+                container: Some(&mut chest),
+                shulker: false,
+                container_limits: Vec::new(),
+                loop_context: &context,
+            };
+            let mut drag = None;
+            click(&mut view, &mut drag, 0, button, input::SWAP, &rules);
+            assert_eq!(
+                rules.1.0.get(),
+                2,
+                "may_place + one slot_max for button {button}"
+            );
+            assert_eq!(view.get(0), Some(ItemStack::new("minecraft:stone", 1)));
+            let remainder = if button == 40 {
+                view.guest.offhand.clone()
+            } else {
+                view.guest.inventory[0].clone()
+            };
+            assert_eq!(remainder, Some(ItemStack::new("minecraft:stone", 3)));
+        }
+    }
+
+    struct LiveSlotRules<'a> {
+        items: &'a Items,
+        query: &'a dyn crate::menu::SlotRules,
+    }
+
+    impl Rules for LiveSlotRules<'_> {
+        fn items(&self) -> &Items {
+            self.items
+        }
+        fn enchantments(&self) -> &Enchantments {
+            enchantments()
+        }
+        fn max_stack(&self, _: &str) -> u32 {
+            64
+        }
+        fn slot_rules(&self) -> Option<&dyn crate::menu::SlotRules> {
+            Some(self.query)
+        }
+    }
+
+    fn with_live_slot_engines(
+        query: &dyn crate::menu::SlotRules,
+        test: impl FnOnce(&mut crate::menu::Menu, &crate::menu::Env, &mut View, &dyn Rules),
+    ) {
+        crate::menu::tests::bare_env(|env| {
+            let menu_type = Box::leak(Box::new(crate::containers::ModMenuType {
+                id: "test:live_slots",
+                owner: "test",
+                slots: 2,
+                player_inventory: true,
+                data_slots: 0,
+                owned_slots: None,
+                results: Vec::new(),
+                inputs: Vec::new(),
+                crafting: None,
+                links: None,
+            }));
+            let mut guest = guest();
+            guest.menu = Some(Menu {
+                window: 1,
+                kind: 0,
+                pos: Some((0, 0, 0)),
+                slots: Slots::Block((0, 0, 0)),
+                size: 2,
+                state: 0,
+                sent: Vec::new(),
+                drag: None,
+                sent_data: Vec::new(),
+                blockless_data: Vec::new(),
+                reported_unsent_data_len: None,
+                opening_item: None,
+                mod_type: Some(menu_type),
+                registry_id: menu_type.id.into(),
+                craft: None,
+                links: Vec::new(),
+                asks_still_valid: false,
+            });
+            let mut prediction = crate::menu::Menu::new(crate::menu::Kind::Mod(menu_type));
+            prediction.set_registry_id(Some(menu_type.id));
+            let env = crate::menu::Env {
+                slot_rules: Some(query),
+                ..*env
+            };
+            test(
+                &mut prediction,
+                &env,
+                &mut View {
+                    guest: &mut guest,
+                    container: Some(&mut [None, None]),
+                    shulker: false,
+                    container_limits: Vec::new(),
+                    loop_context: env.loop_context,
+                },
+                &LiveSlotRules {
+                    items: env.items,
+                    query,
+                },
+            );
+        });
+    }
+
+    #[test]
+    fn pickup_checks_live_permission_and_capacity_in_both_menu_engines() {
+        use std::cell::Cell;
+        struct Answers(Cell<usize>);
+        impl crate::menu::SlotRules for Answers {
+            fn listens(&self, _: &str) -> bool {
+                true
+            }
+            fn rule(
+                &self,
+                _: &str,
+                _: usize,
+                _: &ItemStack,
+                _: crate::menu::SlotContext<'_>,
+                place: &mut bool,
+                pickup: &mut bool,
+                max: &mut u32,
+            ) {
+                let call = self.0.get();
+                self.0.set(call + 1);
+                *place = call == 0 || call == 1;
+                *pickup = call == 0;
+                *max = if call == 0 { 1 } else { 3 };
+            }
+        }
+        let answers = Answers(Cell::new(0));
+        with_live_slot_engines(&answers, |menu, env, view, rules| {
+            let stone = |count| Some(ItemStack::new("minecraft:stone", count));
+            menu.carried = stone(5);
+            menu.click(env, 0, 0, crate::menu::Input::Pickup).unwrap();
+            assert_eq!(menu.slot(0), stone(3).as_ref());
+            assert_eq!(menu.carried, stone(2));
+            assert_eq!(answers.0.replace(0), 2);
+            view.guest.carried = stone(5);
+            click(view, &mut None, 0, 0, input::PICKUP, rules);
+            assert_eq!(view.get(0), stone(3));
+            assert_eq!(view.guest.carried, stone(2));
+            assert_eq!(answers.0.replace(0), 2);
+
+            // The outer mayPickup allows the click; the second one in tryRemove refuses.
+            menu.carried = None;
+            menu.click(env, 0, 0, crate::menu::Input::Pickup).unwrap();
+            assert_eq!(menu.slot(0), stone(3).as_ref());
+            assert!(menu.carried.is_none());
+            assert_eq!(answers.0.replace(0), 2);
+            view.guest.carried = None;
+            click(view, &mut None, 0, 0, input::PICKUP, rules);
+            assert_eq!(view.get(0), stone(3));
+            assert!(view.guest.carried.is_none());
+            assert_eq!(answers.0.replace(0), 2);
+
+            // The outer mayPlace allows a merge; the second one in safeInsert refuses.
+            menu.set_slot(env, 0, stone(1));
+            menu.carried = stone(5);
+            menu.click(env, 0, 0, crate::menu::Input::Pickup).unwrap();
+            assert_eq!(menu.slot(0), stone(1).as_ref());
+            assert_eq!(menu.carried, stone(5));
+            assert_eq!(answers.0.replace(0), 3);
+            view.set(0, stone(1));
+            view.guest.carried = stone(5);
+            click(view, &mut None, 0, 0, input::PICKUP, rules);
+            assert_eq!(view.get(0), stone(1));
+            assert_eq!(view.guest.carried, stone(5));
+            assert_eq!(answers.0.get(), 3);
+        });
+    }
+
+    #[test]
+    fn quick_move_rules_see_source_remainder_after_a_partial_top_up() {
+        struct SourceRemainder;
+        impl crate::menu::SlotRules for SourceRemainder {
+            fn listens(&self, _: &str) -> bool {
+                true
+            }
+            fn rule(
+                &self,
+                _: &str,
+                slot: usize,
+                _: &ItemStack,
+                context: crate::menu::SlotContext<'_>,
+                place: &mut bool,
+                _: &mut bool,
+                _: &mut u32,
+            ) {
+                if context.container == mod_api::MenuContainer::Main && slot == 1 {
+                    *place = context
+                        .slot(mod_api::MenuContainer::Player, 9)
+                        .map(|s| s.count)
+                        == Some(2)
+                        && context
+                            .slot(mod_api::MenuContainer::Main, 0)
+                            .map(|s| s.count)
+                            == Some(64);
+                }
+            }
+        }
+        with_live_slot_engines(&SourceRemainder, |menu, env, view, rules| {
+            let stone = |count| Some(ItemStack::new("minecraft:stone", count));
+            for (slot, count) in [(0, 63), (1, 60), (2, 3)] {
+                menu.set_slot(env, slot, stone(count));
+                view.set(slot, stone(count));
+            }
+            menu.click(env, 2, 0, crate::menu::Input::QuickMove)
+                .unwrap();
+            click(view, &mut None, 2, 0, input::QUICK_MOVE, rules);
+            for (slot, count) in [(0, Some(64)), (1, Some(62)), (2, None)] {
+                assert_eq!(menu.slot(slot).map(|s| s.count), count);
+                assert_eq!(view.get(slot).map(|s| s.count), count);
+            }
+        });
     }
 }

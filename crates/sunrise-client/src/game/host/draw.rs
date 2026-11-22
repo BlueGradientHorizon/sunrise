@@ -1,8 +1,7 @@
 //! The game's side of the `draw` area (`sunrise-mod-api/src/host/draw.rs`).
-use crate::game::{
-    Game,
-    api_values::{TryIntoApi, TryIntoEngine},
-};
+#[cfg(test)]
+use crate::game::api_values::TryIntoApi;
+use crate::game::{Game, api_values::TryIntoEngine};
 use mod_api::{prelude::*, *};
 
 /// [`DrawContext`] on the game's `crate::hud::HudBatch`: one per hook call.
@@ -13,6 +12,33 @@ pub(crate) struct GameDrawContext<'a, 'g> {
     clips: crate::game::gui_clips::GuiClips,
 }
 impl<'a, 'g> GameDrawContext<'a, 'g> {
+    /// Lend a fresh clip stack and isolate the drawable tail of one listener.
+    pub(crate) fn stage(
+        game: &Game<'_>,
+        surface: &mut crate::hud::HudBatch,
+        listen: &mut dyn FnMut(&mut dyn DrawContext) -> bool,
+    ) {
+        let counts = (
+            surface.vertices.len(),
+            surface.pictures.len(),
+            surface.blends.len(),
+            surface.inline_profiles.len(),
+        );
+        let last_blend_end = surface.blends.last().map(|(range, _)| range.end);
+        let accepted = listen(&mut GameDrawContext::new(game, surface));
+        if !accepted {
+            surface.vertices.truncate(counts.0);
+            surface.pictures.truncate(counts.1);
+            surface.blends.truncate(counts.2);
+            surface.inline_profiles.truncate(counts.3);
+            if let Some((last, end)) = surface.blends.last_mut().zip(last_blend_end) {
+                last.0.end = end;
+            }
+            // Keep glyph uploads: font extraction already cached those atlas locations.
+            // They do not draw anything without an accepted vertex referencing them.
+        }
+    }
+
     pub(crate) fn new(game: &'a Game<'g>, surface: &'a mut crate::hud::HudBatch) -> Self {
         Self {
             game,
@@ -86,7 +112,10 @@ impl DrawContext for GameDrawContext<'_, '_> {
         lines: &[Text],
         at: [f32; 2],
     ) -> Result<(), mod_api::text::TextFormError> {
-        let lines = lines.try_into_engine(&())?;
+        let lines: Vec<_> = lines
+            .iter()
+            .map(sunrise_client_lib::api_text::to_engine)
+            .collect::<Result<_, _>>()?;
         self.game.native_gui_tooltip(&mut *self.surface, &lines, at);
         Ok(())
     }
@@ -100,8 +129,15 @@ impl DrawContext for GameDrawContext<'_, '_> {
         align: TextAlign,
         scale: f32,
     ) -> Result<TextLines, TextLinesRefusal> {
-        let text: crate::text::Text = text.try_into_engine(&())?;
-        label_layout(&self.game.gui.atlas.font, &text, max_width, align, scale)
+        let local = sunrise_client_lib::api_text::to_local_engine(text);
+        label_layout_with(
+            &self.game.gui.atlas.font,
+            local.engine(),
+            max_width,
+            align,
+            scale,
+            |piece| Ok(local.text_to_api(piece)),
+        )
     }
     fn fluid(&mut self, fluid: &str, at: [f32; 2], size: f32) {
         self.game.native_fluid(&mut *self.surface, fluid, at, size)
@@ -115,6 +151,13 @@ impl DrawContext for GameDrawContext<'_, '_> {
         let blocks = crate::game::api_values::aggregates::scene_blocks(&scene.blocks)?;
         self.game
             .native_draw_scene(&mut *self.surface, rect, &blocks, scene, view)
+    }
+    fn model_3d(
+        &mut self,
+        subject: mod_api::Gui3dSubject<'_>,
+        view: mod_api::Gui3dView,
+    ) -> Result<(), mod_api::Gui3dError> {
+        self.game.native_model_3d(&mut *self.surface, subject, view)
     }
     fn push_clip(&mut self, rect: [f32; 4]) -> Result<(), GuiClipRefusal> {
         self.clips.push(self.surface, rect)
@@ -147,10 +190,17 @@ impl DrawContext for GameDrawContext<'_, '_> {
         label: &Text,
         active: bool,
         highlighted: bool,
+        sprites: Option<&ButtonSprites>,
     ) -> Result<(), mod_api::text::TextFormError> {
-        let label = label.try_into_engine(&())?;
-        self.game
-            .native_widget_button(&mut *self.surface, rect, &label, active, highlighted);
+        let label = sunrise_client_lib::api_text::to_engine_inprocess(label);
+        self.game.native_widget_button(
+            &mut *self.surface,
+            rect,
+            &label,
+            active,
+            highlighted,
+            sprites,
+        );
         Ok(())
     }
     fn widget_text_field(&mut self, field: &TextFieldView) -> TextFieldLayout {
@@ -170,12 +220,25 @@ const MAX_GLYPHS: usize = 8192;
 /// Lays `text` out as a label's lines, as [`DrawContext::text_lines`] documents: the font's own
 /// split wraps it at `max_width / scale`, the font measures each line, `align` places them inside
 /// that wrapping width, and every dimension and position answered is scaled by `scale`.
+#[cfg(test)]
 fn label_layout(
     font: &crate::font::Font,
     text: &crate::text::Text,
     max_width: f32,
     align: TextAlign,
     scale: f32,
+) -> Result<TextLines, TextLinesRefusal> {
+    label_layout_with(font, text, max_width, align, scale, |piece| {
+        Ok(piece.try_into_api()?)
+    })
+}
+fn label_layout_with(
+    font: &crate::font::Font,
+    text: &crate::text::Text,
+    max_width: f32,
+    align: TextAlign,
+    scale: f32,
+    mut to_api: impl FnMut(&crate::text::Text) -> Result<Text, TextLinesRefusal>,
 ) -> Result<TextLines, TextLinesRefusal> {
     // No position and no size to answer: a scale of zero or less, or one that is not a number,
     // refuses rather than answering every line at an undefined place.
@@ -216,7 +279,7 @@ fn label_layout(
             TextAlign::Right => wrap_width - width,
         };
         let at = [x * scale, i as f32 * LINE_HEIGHT * scale];
-        lines.push(TextLine::new(piece.try_into_api()?, at, width * scale));
+        lines.push(TextLine::new(to_api(&piece)?, at, width * scale));
     }
     let width = lines.iter().map(|line| line.width).fold(0.0, f32::max);
     let height = lines
@@ -271,6 +334,9 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
     }
     fn set_light(&mut self, light: u32) {
         self.game.native_draw_set_light(&mut *self.surface, light)
+    }
+    fn level_light(&mut self) {
+        self.game.native_draw_level_light(&mut *self.surface)
     }
     fn quad(&mut self, sprite: &str, corners: [[f32; 3]; 4], uv: [f32; 4], tint: u32) -> bool {
         self.game
@@ -327,7 +393,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         glowing: bool,
         outline: Option<u32>,
     ) -> Result<f32, mod_api::text::TextFormError> {
-        let text = text.try_into_engine(&())?;
+        let text = sunrise_client_lib::api_text::to_engine(text)?;
         Ok(self
             .game
             .native_draw_text(&mut *self.surface, &text, at, color, glowing, outline))
@@ -340,9 +406,9 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         self.game
             .native_draw_terrain_model(&mut *self.surface, model, options)
     }
-    fn text_width(&self, text: &Text) -> Result<f32, mod_api::text::TextFormError> {
-        let text = text.try_into_engine(&())?;
-        Ok(self.game.native_draw_text_width(&*self.surface, &text))
+    fn text_width(&self, text: &Text) -> f32 {
+        let text = sunrise_client_lib::api_text::to_engine_inprocess(text);
+        self.game.native_draw_text_width(&*self.surface, &text)
     }
     fn model_part(&mut self, part: &ModelPart, sprite: &str, tint: u32) -> bool {
         self.game
@@ -358,6 +424,19 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
             .native_draw_fluid_box(&mut *self.surface, stack, bounds, options)
     }
 }
+impl HandDrawContext for GameBlockEntityDrawContext<'_, '_> {
+    fn render_arm(&mut self, arm: MainHand) {
+        if let Some(normals) = self.surface.normal_pose() {
+            self.game.submit_first_person_arm(
+                arm == MainHand::Left,
+                (self.surface.pose(), normals),
+                self.surface.light(),
+                self.surface.vertices_mut(),
+            );
+        }
+    }
+}
+
 /// [`CameraDrawContext`] on the game's `crate::screen_effects::CameraQuads`.
 pub(crate) struct GameCameraDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
@@ -634,6 +713,138 @@ mod tests {
     }
 
     #[test]
+    fn laid_out_objects_keep_their_sprites_profiles_and_fallbacks_on_redraw() {
+        use mod_api::text::{TextContent, TextObject, TextProfile};
+        use sunrise_client::text::InlineObject;
+
+        let atlas = Text::new(TextContent::Object(TextObject::Atlas {
+            atlas: "minecraft:gui".into(),
+            sprite: "minecraft:heart/full".into(),
+            fallback: Some(Box::new(Text::literal("[heart]"))),
+        }));
+        let mut profile = TextProfile::default();
+        profile.name = Some("Alex".into());
+        let mut head = Text::new(TextContent::Object(TextObject::Player {
+            profile,
+            hat: false,
+            fallback: Some(Box::new(Text::literal("[Alex]"))),
+        }));
+        head.style.shadow_color = Some(0xFF00_0011);
+        let input = atlas.append(head);
+        let font = fake_font(6.0);
+        let local = sunrise_client_lib::api_text::to_local_engine(&input);
+        let lines = label_layout_with(&font, local.engine(), 150.0, TextAlign::Left, 1.0, |line| {
+            Ok(local.text_to_api(line))
+        })
+        .unwrap();
+        let redrawn = engine(&lines.lines[0].text);
+        assert_eq!(redrawn.plain(), "[heart][Alex]");
+        assert_eq!(font.width_text(&redrawn), lines.lines[0].width);
+        let [atlas, head] = redrawn.spans.as_slice() else {
+            panic!("expected two object spans")
+        };
+        assert!(matches!(&atlas.style.inline_object,
+            Some(InlineObject::Atlas { atlas, sprite, .. })
+            if atlas == "minecraft:gui" && sprite == "minecraft:heart/full"));
+        assert!(matches!(&head.style.inline_object,
+            Some(InlineObject::Player { profile, hat: false, .. })
+            if profile.get("name").and_then(serde_json::Value::as_str) == Some("Alex")));
+        assert_eq!(head.style.shadow_color, Some(0xFF00_0011));
+    }
+
+    #[test]
+    fn layout_does_not_read_style_indices_from_mod_metadata() {
+        use mod_api::{Tag, text::TextClick};
+        let mut styled = Text::literal("A");
+        styled.style.click = Some(TextClick::CopyToClipboard("not for B".into()));
+        let mut plain = Text::literal("B");
+        plain.metadata = Tag::compound([("__sunrise_local_style_id", Tag::Int(0))]);
+        let input = Text::literal("").append(styled).append(plain);
+        let local = sunrise_client_lib::api_text::to_local_engine(&input);
+        let lines = label_layout_with(
+            &fake_font(6.0),
+            local.engine(),
+            150.0,
+            TextAlign::Left,
+            1.0,
+            |line| Ok(local.text_to_api(line)),
+        )
+        .unwrap();
+        let [styled, plain] = lines.lines[0].text.children.as_slice() else {
+            panic!("expected two styles")
+        };
+        assert_eq!(
+            styled.style.click,
+            Some(TextClick::CopyToClipboard("not for B".into()))
+        );
+        assert_eq!(
+            plain.content,
+            mod_api::text::TextContent::Literal("B".into())
+        );
+        assert_eq!(plain.style.click, None);
+    }
+
+    #[test]
+    fn layout_copies_inherited_deep_hover_and_opaque_metadata_without_recursion() {
+        use mod_api::{
+            Tag,
+            text::{TextContent, TextHover},
+        };
+        const DEPTH: usize = 4096;
+        let mut hover = Text::literal("hover leaf");
+        let mut metadata = Tag::Int(73);
+        for _ in 0..DEPTH {
+            let mut parent = Text::literal("");
+            parent.style.hover = Some(TextHover::Text(Box::new(hover)));
+            hover = parent;
+            metadata = Tag::List(vec![metadata]);
+        }
+        let mut root = Text::literal("");
+        root.style.hover = Some(TextHover::Text(Box::new(hover)));
+        root.style.metadata = Tag::compound([("deep", metadata), ("override", Tag::Int(1))]);
+        let mut child = Text::literal("A");
+        child.style.metadata = Tag::compound([("override", Tag::Int(2))]);
+        root.children.push(child);
+        let local = sunrise_client_lib::api_text::to_local_engine(&root);
+        let lines = label_layout_with(
+            &fake_font(6.0),
+            local.engine(),
+            150.0,
+            TextAlign::Left,
+            1.0,
+            |line| Ok(local.text_to_api(line)),
+        )
+        .unwrap();
+        let style = &lines.lines[0].text.style;
+        let Some(TextHover::Text(hover)) = &style.hover else {
+            panic!("inherited hover")
+        };
+        let mut hover = hover.as_ref();
+        let Tag::Compound(metadata) = &style.metadata else {
+            panic!("inherited metadata")
+        };
+        assert_eq!(
+            metadata[&sunrise_core::nbt::JavaString::from("override")],
+            Tag::Int(2)
+        );
+        let mut deep = &metadata[&sunrise_core::nbt::JavaString::from("deep")];
+        for _ in 0..DEPTH {
+            let Tag::List(list) = deep else {
+                panic!("nested metadata")
+            };
+            deep = &list[0];
+        }
+        assert_eq!(deep, &Tag::Int(73));
+        for _ in 0..DEPTH {
+            let Some(TextHover::Text(child)) = &hover.style.hover else {
+                panic!("nested hover")
+            };
+            hover = child;
+        }
+        assert_eq!(hover.content, TextContent::Literal("hover leaf".into()));
+    }
+
+    #[test]
     fn a_reset_after_a_break_restores_the_style_the_tail_carried() {
         // `§lAA §rB` in a 14-pixel box: two bold characters fill the first line, the space is
         // where it breaks, and the second line starts in the bold style the split carried over.
@@ -850,5 +1061,65 @@ mod tests {
         assert_eq!(doubled.lines[1].width, plain_size.lines[1].width * 2.0);
         assert_eq!(doubled.lines[1].at[1], plain_size.lines[1].at[1] * 2.0);
         assert_eq!(doubled.height, plain_size.height * 2.0);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn local_tooltip_draws_deep_text_but_refuses_unrepresentable_metadata() {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            let mut deep = mod_api::Text::literal("Tooltip");
+            for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                deep = mod_api::Text::literal("").append(deep);
+            }
+            let mut invalid = mod_api::Text::literal("Unrepresentable");
+            invalid.metadata = Tag::compound([("test:nonfinite", Tag::Double(f64::NAN.to_bits()))]);
+
+            let mut batch = crate::hud::HudBatch::scratch([400, 200]);
+            let mut draw = GameDrawContext::new(game, &mut batch);
+            assert_eq!(
+                draw.gui_tooltip(&[deep.clone(), invalid], [16.0, 16.0]),
+                Err(TextFormError::NonFinite)
+            );
+            assert!(draw.surface.vertices.is_empty());
+            draw.gui_tooltip(&[deep], [16.0, 16.0]).unwrap();
+            assert!(!draw.surface.vertices.is_empty());
+        });
+    }
+
+    #[test]
+    fn local_label_layout_handles_deep_trees_and_preserves_opaque_styles() {
+        let mut opaque_dialog = Tag::ByteArray(vec![7, 8]);
+        for _ in 0..600 {
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("n".into(), opaque_dialog);
+            opaque_dialog = Tag::Compound(map.into_iter().collect());
+        }
+        let mut style = mod_api::text::TextStyle::default();
+        style.bold = Some(true);
+        style.click = Some(mod_api::text::TextClick::ShowDialog(opaque_dialog.clone()));
+        let mut deep = mod_api::Text::literal("AAAA BBBB").with_style(style);
+        for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+            let mut parent = mod_api::Text::literal("");
+            parent.children.push(deep);
+            deep = parent;
+        }
+        let local = sunrise_client_lib::api_text::to_local_engine(&deep);
+        let lines = label_layout_with(
+            &fake_font(6.0),
+            local.engine(),
+            30.0,
+            TextAlign::Left,
+            1.0,
+            |piece| Ok(local.text_to_api(piece)),
+        )
+        .unwrap();
+        assert_eq!(lines.lines.len(), 2);
+        for line in &lines.lines {
+            assert_eq!(line.text.style.bold, Some(true));
+            assert_eq!(
+                line.text.style.click,
+                Some(mod_api::text::TextClick::ShowDialog(opaque_dialog.clone()))
+            );
+        }
     }
 }

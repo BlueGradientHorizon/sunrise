@@ -1,10 +1,9 @@
-use super::*;
-
 /// The local player's own state reads answer on a client from what the
 /// server sent it (`LocalPlayer`); another player reads None there.
 #[test]
 #[ignore = "daily"]
 fn client_player_reads_answer_from_the_local_players_copy() {
+    use crate::game::remote::RemoteDimensionEntry;
     use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests::with_game};
     use mod_api::{EntityRef, GameMode};
     use sunrise_client::{level_loading::Reason, motion::PlayerMotion};
@@ -30,7 +29,7 @@ fn client_player_reads_answer_from_the_local_players_copy() {
             portal_cooldown: 0,
             sea_level: 63,
         };
-        game.enter_remote_dimension(&spawn, false, Reason::Other);
+        game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
         let remote = game.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
@@ -53,6 +52,12 @@ fn client_player_reads_answer_from_the_local_players_copy() {
         assert_eq!(player.is_creative(game), Some(false));
         assert_eq!(player.is_spectator(game), Some(false));
         assert_eq!(player.may_build(game), Some(false));
+        // The parameter rounds (Mth.floor(param + 0.5F)): 0.6 is creative, 1.6 adventure again.
+        for (param, mode) in [(0.6, GameMode::Creative), (1.6, GameMode::Adventure)] {
+            game.handle_packet(C::GameEvent(play::GameEvent { event: 3, param }))
+                .unwrap();
+            assert_eq!(player.game_mode(game), Some(mode), "{param}");
+        }
         game.handle_packet(C::PlayerAbilities(play::PlayerAbilities {
             flags: 4 | 2,
             flying_speed: 0.1,
@@ -63,6 +68,16 @@ fn client_player_reads_answer_from_the_local_players_copy() {
         assert!(abilities.may_fly && abilities.flying && !abilities.invulnerable);
         assert!(!abilities.may_build);
         assert_eq!((abilities.fly_speed, abilities.walk_speed), (0.1, 0.2));
+
+        // An invalid game mode falls back to Survival in the game and its remote snapshot.
+        game.handle_packet(C::GameEvent(play::GameEvent {
+            event: 3,
+            param: 4.0,
+        }))
+        .unwrap();
+        assert_eq!(game.mode_id(), 0);
+        assert_eq!(game.remote.as_ref().unwrap().game_mode, 0);
+        assert_eq!(player.game_mode(game), Some(GameMode::Survival));
 
         // Food from SetHealth; the client keeps no exhaustion.
         game.handle_packet(C::SetHealth(play::SetHealth {
@@ -97,19 +112,23 @@ fn client_player_reads_answer_from_the_local_players_copy() {
         let mut stack = sunrise_client::items::ItemStack::new("minecraft:diamond_pickaxe", 1);
         stack.damage = 7;
         game.inventory.fill(None);
-        game.inventory[3] = Some(stack.clone());
+        game.inventory[3] = Some(stack);
         game.inventory[8] = Some(sunrise_client::items::ItemStack::new("minecraft:stone", 12));
-        assert_eq!(
-            player.inventory(game),
-            Some(
-                vec![
-                    stack,
-                    sunrise_client::items::ItemStack::new("minecraft:stone", 12)
-                ]
-                .try_into_api()
-                .unwrap()
-            )
-        );
+        player
+            .with_inventory(game, |view| {
+                let mut slots = view.iter();
+                let (slot, pickaxe) = slots.next().unwrap();
+                let expected = mod_api::__private::item_key("minecraft:diamond_pickaxe").unwrap();
+                assert_eq!(
+                    (slot, pickaxe.item(), pickaxe.count(), pickaxe.damage()),
+                    (3, expected, 1, 7)
+                );
+                let (slot, stone) = slots.next().unwrap();
+                let expected = mod_api::__private::item_key("minecraft:stone").unwrap();
+                assert_eq!((slot, stone.item(), stone.count()), (8, expected, 12));
+                assert!(slots.next().is_none());
+            })
+            .unwrap();
 
         // Another player: the client isn't sent their state.
         let epoch = player.entity().epoch();
@@ -117,6 +136,6 @@ fn client_player_reads_answer_from_the_local_players_copy() {
         assert_eq!(other.game_mode(game), None);
         assert_eq!(other.food(game), None);
         assert_eq!(other.selected_slot(game), None);
-        assert_eq!(other.inventory(game), None);
+        assert_eq!(other.with_inventory(game, |_| ()), None);
     });
 }

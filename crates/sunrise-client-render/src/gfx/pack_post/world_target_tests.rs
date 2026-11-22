@@ -351,7 +351,10 @@ fn render(
         window,
         &[],
         &mut |_, _, _, _| {},
-    );
+        &std::sync::atomic::AtomicBool::new(false),
+        super::super::in_flight::poll_live,
+    )
+    .unwrap();
     encoder.copy_texture_to_buffer(
         screen.texture().as_image_copy(),
         wgpu::TexelCopyBufferInfo {
@@ -425,6 +428,7 @@ fn frame(hud: &HudBatch) -> Frame<'_> {
         glint_ticks: 0.0,
         nether_lighting: false,
         entities: &[],
+        explicit_particles: None,
         static_block_entities: &[],
         visible_static_block_entity_sections: &[],
         static_block_entity_stats: crate::block_entity_render::StaticCacheFrameStats::default(),
@@ -443,6 +447,7 @@ fn frame(hud: &HudBatch) -> Frame<'_> {
         see_through: &[],
         world_primitives: Default::default(),
         celestial: &[],
+        celestial_bodies: &[],
         stars: None,
         hand: &[],
         hand_items: &[],

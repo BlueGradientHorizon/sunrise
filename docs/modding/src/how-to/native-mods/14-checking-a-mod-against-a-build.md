@@ -2,11 +2,12 @@
 
 In a mod folder, `cargo sunrise-mod` does this for you from the SDK it fetched into `.sunrise/sdk/`:
 
-- `cargo sunrise-mod check` runs `cargo check` for the project's own target (this computer for a native mod, wasm32 for a wasm mod; `--wasm` or `--native` asks for the other), checks the package rules,
+- `cargo sunrise-mod check` runs `cargo check` for this computer, checks the package rules,
   and prints what the mod uses: `Greeter uses 14 items of the API (6 hooks, 5 methods, 3 types). Made for
   nightly-2026-11-13 (afe471c).` With `--uses` it lists each item with the line that brought it in.
 - `cargo sunrise-mod build` packs the list into the package as `uses.json`, with each item's fingerprint at the
-  pinned build. A mod with a `[native.*]` table or internals is made for exactly one build and gets no list.
+  pinned build, and each mixin target, loop and internal the manifest declares with its fingerprint there. A mod
+  with a `[[native.module]]` or `[[native.bridge]]` row is made for exactly one build and gets no list.
 - `cargo sunrise-mod fits` says, one line per build, whether the mod fits the current Nightly, or each build
   `--build` names. `cargo sunrise-mod fits greeter.smod --build nightly-2026-11-20` asks the same of a package.
   It exits 0 when every build fits, 1 when one does not, and 2 when it cannot tell or the question does not
@@ -56,6 +57,12 @@ stand: an API struct name followed by `{` or `(` is a build, in full unless it e
 except where only a type stands or as a type written after `name:` in parameters, a `let` or a struct's fields
 (`.map(Pos)`, `{ Marker }` and `make: Pos` count).
 
+A positional read counts when the scan can tie it to a tuple struct path: `p.0` on a typed parameter or
+binding, a read on a constructor result (directly or through a binding), `self.0` in a known `impl`, or the
+positions a tuple pattern lists before `..`. If the path is proven to name a mod-local type or constructor,
+or an enum variant, it does not count for a same-named API tuple struct. An unresolved path keeps its
+plausible API fields.
+
 What the scan cannot place is left to the compile, and records nothing:
 - a literal of a name that is no API struct's: a macro's `$t { … }`, another crate's type;
 - a `Self { … }` the scan cannot tie to an impl, and a literal of a `type` alias whose target is not a plain path;
@@ -78,8 +85,7 @@ Some sources cannot be judged at all:
   comparisons between plain names (`[a < b, c < d, …]`) is also refused, though it would compile;
 - a `use` statement nested deeper than 64 groups;
 - a symbolic link;
-- a `#[path]` or `include!` that leaves the mod's folder or is computed, or an `include!` renamed by a `use`;
-- any source when the scan runs where it cannot give the parser a stack of its own (on wasm).
+- a `#[path]` or `include!` that leaves the mod's folder or is computed, or an `include!` renamed by a `use`.
 
 The parser runs first in a separate process, the same program started again with the mod's source on its
 input, never on its command line. If that process runs out of stack, or takes longer than 15 seconds, the
@@ -87,5 +93,7 @@ source cannot be judged, and the program that asked carries on. On Linux the pro
 4 GiB, and on Linux and macOS its processor time too; Windows and macOS have no memory cap, so there only the
 15 seconds bound it.
 
-A mod with a `[native.*]` table or internals is made for exactly one build, and this check does not apply to
-it. A mod that fits is still compiled against the target build, and the binary built is exact to that build.
+This by-hand check covers the mod API's items. The game code a mod declares is compared by
+`cargo sunrise-mod fits`, from the target build's build data; `sunrise-stage` refuses such a mod and such a list
+by name. A mod with a `[[native.module]]` or `[[native.bridge]]` row is made for exactly one build, and no check
+applies to it. A mod that fits is still compiled against the target build, and the binary built is exact to that build.

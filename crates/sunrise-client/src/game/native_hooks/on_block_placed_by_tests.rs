@@ -56,7 +56,12 @@ impl ItemPart for Probe {
         let level = event.level;
         assert_eq!(level, host.level("minecraft:overworld").unwrap());
         assert_eq!(level.block_state(host, event.pos), Some(event.state));
-        let item = event.stack.item().id(host);
+        let item = event
+            .stack
+            .item()
+            .id(host)
+            .expect("placed item is registered")
+            .to_owned();
         match item.as_str() {
             CRATE => {
                 let entity = host
@@ -116,7 +121,7 @@ impl ItemPart for Probe {
                 assert_eq!(entity.name(host).as_deref(), Some("Shulker"));
             }
             SKULL => {
-                assert_eq!(event.state.block().id(host), "minecraft:air");
+                assert_eq!(event.state.block().id(host), Some("minecraft:air"));
                 crate::game::dispense_fixture::record(|| "item notice".into());
             }
             _ => panic!("unsubscribed item {item}"),
@@ -144,8 +149,8 @@ impl Hooks for Probe {
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
         event
-            .blocks
-            .push(mod_api::Block::new(CRATE, "minecraft:stone"));
+            .register(mod_api::Block::new(CRATE, "minecraft:stone"))
+            .unwrap();
     }
     fn entity_place(
         &self,
@@ -165,7 +170,7 @@ impl Hooks for Probe {
 
 fn place(game: &mut Game<'_>, pos: [i32; 3], stack: ItemStack) {
     *game.held_mut() = Some(stack);
-    game.guest_use = Some(GuestUse::OnBlock(mod_api::Hand::Main));
+    game.guest_use = Some(GuestUse::on_block(mod_api::Hand::Main));
     let [x, y, z] = pos;
     let hit = Hit {
         pos: [x, y - 1, z],

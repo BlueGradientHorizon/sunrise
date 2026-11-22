@@ -3,15 +3,19 @@ use super::*;
 
 impl PartRegistrar {
     /// Attaches each declared type's parts to its blocks. A type is found by id whichever mod
-    /// declared it, but another mod's type only for a package that lists the declaring package
-    /// in its `[dependencies]`: otherwise resolution would depend on what else is installed.
+    /// declared it, but another mod's type requires a surviving dependency on its owner.
     pub(crate) fn expand_block_entity_parts(&mut self) {
         let packages = crate::load_state::current_packages();
+        let dependencies = crate::load_state::effective_dependencies();
         let mut ids: Vec<_> = self.parts.block_entity_kinds.keys().collect();
         ids.sort_unstable();
         for id in ids {
             let parts = &self.parts.block_entity_kinds[id];
-            let Some(kind) = self.block_entity_types.iter().find(|kind| kind.id == **id) else {
+            let Some(&(owner, ref kind)) = self
+                .block_entity_types
+                .iter()
+                .find(|(_, kind)| kind.id == **id)
+            else {
                 let namespace = id.split_once(':').map_or("", |(namespace, _)| namespace);
                 // The installed package owning the namespace; an absent one is known only by
                 // its id, which an optional dependency is matched against.
@@ -21,16 +25,7 @@ impl PartRegistrar {
                 let dependency_id = package.map_or(namespace, |package| package.id());
                 let absent = package.is_none();
                 for part in parts {
-                    let dependency = packages
-                        .iter()
-                        .find(|package| package.id() == part.mod_id)
-                        .and_then(|package| {
-                            package
-                                .dependencies()
-                                .iter()
-                                .find(|dependency| dependency.id() == dependency_id)
-                        })
-                        .map(|dependency| dependency.kind());
+                    let dependency = dependencies.kind(part.mod_id, dependency_id);
                     match dependency {
                         Some(crate::DependencyKind::Optional) if absent => {
                             log::debug!(
@@ -65,26 +60,10 @@ impl PartRegistrar {
                 }
                 continue;
             };
-            let owner = self.block_entity_owners.get(&**id).copied();
             let allowed: Vec<_> = parts
                 .iter()
                 .filter(|part| {
-                    let Some(owner) = owner.filter(|owner| *owner != part.mod_id) else {
-                        return true;
-                    };
-                    let depends = packages
-                        .iter()
-                        .find(|package| package.id() == part.mod_id)
-                        .is_some_and(|package| {
-                            package.dependencies().iter().any(|dependency| {
-                                dependency.id() == owner
-                                    && matches!(
-                                        dependency.kind(),
-                                        crate::DependencyKind::Required
-                                            | crate::DependencyKind::Optional
-                                    )
-                            })
-                        });
+                    let depends = dependencies.permits(part.mod_id, owner);
                     if !depends {
                         self.refused.push(format!(
                             "mod {} attached {} to block entity type {id}, declared by package {owner}; declare {owner} as a dependency",
@@ -222,10 +201,8 @@ pub mod tests {
         );
         struct Table;
         impl mod_api::prelude::KeysBackend for Table {
-            fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> String {
+            fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str> {
                 mod_vocab::__private::block_entity_type_name(key)
-                    .unwrap()
-                    .to_owned()
             }
         }
         impl Backend for Table {}
@@ -236,7 +213,7 @@ pub mod tests {
             }
         }
         mod_api::impl_host_areas!(Table);
-        assert_eq!(keys[0].id(&Table), "owner:press");
+        assert_eq!(keys[0].id(&Table), Some("owner:press"));
     }
 
     #[test]
@@ -261,8 +238,8 @@ pub mod tests {
             && (error.contains("invalid identifier") || error.contains("unowned namespace"))));
     }
 
-    /// The block entity of type `doubler:press_entity`, held by block `test:press`: it ticks, and
-    /// each tick adds a data slot.
+    /// The block entity of type `doubler:press_entity`, held by block `test:press`.
+    static PRESS_TICKS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     pub(crate) struct Press;
     #[mod_api::sunrise_part]
     impl BlockPart for Press {
@@ -275,8 +252,8 @@ pub mod tests {
         fn block_entity_ticks(&self, _: &dyn Host, event: &mut BlockEntityTicksEvent<'_>) {
             event.ticks = true;
         }
-        fn block_entity_tick(&self, _: &mut dyn ServerHost, event: &mut BlockEntityTickEvent<'_>) {
-            event.entity.data.push(1);
+        fn block_entity_tick(&self, _: &mut BlockEntityTickEvent<'_>) {
+            PRESS_TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         fn block_entity_view_distance(
             &self,
@@ -305,16 +282,18 @@ pub mod tests {
     #[mod_api::sunrise_part]
     impl BlockEntityPart for Hoard {
         /// With data `[1]`, it replaces its own block with granite.
-        fn block_entity_tick(
-            &self,
-            host: &mut dyn ServerHost,
-            event: &mut BlockEntityTickEvent<'_>,
-        ) {
-            if event.entity.data == [1] {
-                let level = host.level("minecraft:overworld").unwrap();
+        fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+            if let Some((level, pos)) = event
+                .subject
+                .with_view(|entity| {
+                    (entity.data_slots() == [1]).then(|| (entity.level(), entity.position()))
+                })
+                .flatten()
+            {
+                let host = event.subject.host();
                 let state = BlockState::of(&host.block_states(), self.0, &[]).unwrap();
                 assert_eq!(
-                    level.set_block(host, event.pos, state, BlockUpdateFlags::KNOWN_SHAPE),
+                    level.set_block(host, pos, state, BlockUpdateFlags::KNOWN_SHAPE),
                     Ok(true)
                 );
             }
@@ -481,6 +460,17 @@ pub mod tests {
                 let (attached, refused) = attached_to_owner_block(&mods);
                 assert_eq!(refused, Vec::<String>::new());
                 assert_eq!(attached, ["b"]);
+                crate::load_state::with_test_dependencies(Default::default(), || {
+                    let (attached, refused) = attached_to_owner_block(&mods);
+                    assert!(attached.is_empty());
+                    assert_eq!(
+                        refused,
+                        [format!(
+                            "mod b attached {} to block entity type owner:press, declared by package owner; declare owner as a dependency",
+                            type_name::<FromB>()
+                        )]
+                    );
+                });
             },
         );
     }
@@ -584,7 +574,9 @@ pub mod tests {
                 r.block_entity_capability(
                     &crate::parts::capabilities::tests::CHEMICALS,
                     &press,
-                    |_, at| Some(Box::new(crate::parts::capabilities::tests::ChemTank(at))),
+                    |_, at, _, _, offer| {
+                        offer.offer(|| Box::new(crate::parts::capabilities::tests::ChemTank(at)))
+                    },
                 );
             }
         }
@@ -877,15 +869,37 @@ pub mod tests {
         // The ticker is asked by block: the type id is not a block.
         assert!(ticks("test:press"));
         assert!(!ticks("doubler:press_entity"));
+        mod_vocab::__private::resolve_block_entity_types(
+            [
+                "doubler:press_entity",
+                "doubler:hoard",
+                "test:pipe",
+                "test:greedy",
+                "test:item_overstates",
+                "test:press",
+            ],
+            |_| Some(()),
+        )
+        .unwrap();
+        struct Unused;
+        impl BlockEntityAccess for Unused {
+            fn with_view(&mut self, _: &mut dyn FnMut(BlockEntityView<'_>)) {
+                unreachable!()
+            }
+            fn host(&mut self) -> &mut dyn ServerHost {
+                unreachable!()
+            }
+            fn transaction(
+                &mut self,
+                _: &mut dyn FnMut(&mut dyn BlockEntityAccess, &Transaction) -> bool,
+            ) {
+                unreachable!()
+            }
+        }
         let tick = |kind: &str| {
-            let mut entity = ModBlockEntity::new(kind.into(), Default::default());
-            dispatch_block_entity_tick(
-                &mut NoHost,
-                &mut BlockEntityTickReply::Changed,
-                [0, 64, 0],
-                &mut entity,
-            );
-            entity.data.len()
+            let kind = mod_vocab::__private::block_entity_type_key(kind).unwrap();
+            dispatch_block_entity_tick(kind, BlockEntityScope::new(&mut Unused));
+            PRESS_TICKS.swap(0, std::sync::atomic::Ordering::Relaxed)
         };
         // The tick is asked by the entity's type, which differs from its block's id.
         assert_eq!(tick("doubler:press_entity"), 1);
@@ -915,7 +929,9 @@ impl BlockEntitiesRegistrar for PartRegistrar {
             .id(mod_vocab::__private::parts_installation::block_entity_type_key_slot(key))
             .map(str::to_owned);
         if let Some(id) = id.filter(|id| {
-            self.block_entity_types.iter().any(|decl| decl.id == *id)
+            self.block_entity_types
+                .iter()
+                .any(|(_, decl)| decl.id == *id)
                 && self.owned_declaration_id(id).is_ok()
         }) {
             self.block_entity_transforms.insert(id, step);
@@ -957,11 +973,10 @@ impl BlockEntitiesRegistrar for PartRegistrar {
             .iter()
             .map(|block| mod_vocab::__private::qualified(self.mod_id, block))
             .collect();
-        self.block_entity_owners
-            .entry(id.clone())
-            .or_insert(self.mod_id);
-        self.block_entity_types
-            .push(mod_vocab::__private::parts_installation::block_entity_declaration(id, blocks));
+        self.block_entity_types.push((
+            self.mod_id,
+            mod_vocab::__private::parts_installation::block_entity_declaration(id, blocks),
+        ));
         key
     }
 
@@ -1035,7 +1050,7 @@ impl PartRegistrar {
     ) -> Result<(), crate::PartStateRefusal> {
         let key = (declaration.namespace, declaration.name);
         declaration
-            .check(self.mod_wasm)
+            .check()
             .and_then(|()| match self.part_states.get(&key) {
                 Some(&declared) if declared != declaration.data_name => {
                     Err(crate::PartStateRefusal::Incompatible { declared })

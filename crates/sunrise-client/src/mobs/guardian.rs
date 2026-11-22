@@ -15,9 +15,9 @@ use super::{
 };
 use crate::health::DamageLevel;
 use std::f32::consts::PI;
+use std::ops::ControlFlow;
 use sunrise_core::geometry::trig::Mth;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
-use sunrise_world::move_gate::MoveGate;
 
 // Guardian state: `flag` an active beam target (DATA_ID_ATTACK_TARGET),
 // `flag2` moving (DATA_ID_MOVING), `counter2` the client attack time.
@@ -208,23 +208,21 @@ pub fn move_control(m: &mut Mob) {
     m.extra.flag2 = true;
 }
 /// `Guardian.travelInWater`; on land the usual travel.
-pub fn travel(
+pub(super) fn travel(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     input: Vec3,
     events: &mut Vec<MobEvent>,
-) -> bool {
-    if !m.fluids.in_water {
-        return false;
-    }
+    pause: bool,
+) -> ControlFlow<super::living::TravelPause> {
     m.move_relative(0.1, input);
-    m.do_move(w, level, events, &mut MoveGate::new());
-    m.velocity = m.velocity.scale(0.9);
-    if !m.extra.flag2 && m.ai.target.is_none() {
-        m.velocity.y -= 0.005;
-    }
-    true
+    m.travel_move(w, level, events, pause, |m, _, _, _| {
+        m.velocity = m.velocity.scale(0.9);
+        if !m.extra.flag2 && m.ai.target.is_none() {
+            m.velocity.y -= 0.005;
+        }
+    })
 }
 /// `Guardian.aiStep`'s `clientSideTailAnimation` and
 /// `clientSideSpikesAnimation` (the server's and a client's).
@@ -265,12 +263,12 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     client_tick(m);
     if in_water {
         m.air = 300;
-    } else if m.on_ground {
+    } else if m.ground.on_ground {
         let r = &mut m.random;
         let (x, z) = (r.next_float(), r.next_float());
         m.velocity = m.velocity.add_vector(flop_kick(x, z));
         m.yaw = m.random.next_float() * 360.0;
-        m.on_ground = false;
+        m.ground.on_ground = false;
         if !m.silent {
             let flop = if is_elder(m) {
                 "entity.elder_guardian.flop"
@@ -684,7 +682,7 @@ mod tests {
                 0.0,
             );
             register(&mut mob);
-            mob.on_ground = true;
+            mob.ground.on_ground = true;
             mob.fluids.in_water = false;
             mob.silent = silent;
             let mut events = Vec::new();
@@ -710,7 +708,10 @@ mod tests {
                 let Some((mob, events)) = flop(kind, silent) else {
                     return;
                 };
-                assert!(!mob.on_ground && mob.velocity.y > 0.0, "{kind} flops");
+                assert!(
+                    !mob.ground.on_ground && mob.velocity.y > 0.0,
+                    "{kind} flops"
+                );
                 let sounds: Vec<_> = events
                     .iter()
                     .filter_map(|e| match e {

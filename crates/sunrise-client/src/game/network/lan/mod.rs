@@ -4,7 +4,7 @@
 //! costs one `Option` check per tick.
 mod event_timings;
 #[cfg(test)]
-mod level_event_targets;
+use sunrise_gameplay::lan::level_event_targets;
 mod mob_metadata;
 mod mob_states;
 mod raw_inbox;
@@ -17,7 +17,7 @@ use super::{
     native_living_effects::{active_effect, mob_effect},
     shield::OFFHAND_SLOT,
 };
-use crate::game::api_values::{TryIntoApi, TryIntoEngine};
+use crate::game::api_values::TryIntoApi;
 use event_timings::{EventTimings, UseDetail, describe_burst, event_kind, note_event};
 use std::{collections::HashMap, sync::Arc, time::Instant};
 use sunrise_client::{
@@ -1076,15 +1076,20 @@ impl Game<'_> {
             })
     }
 
+    /// MinecraftServer.findRespawnDimension: the world spawn's level.
+    pub(super) fn world_spawn_level(&self) -> super::Dim {
+        super::Dim::of_world_spawn(&self.level)
+    }
+
     /// MinecraftServer.setRespawnData: every placed player hears a changed world spawn.
     pub(super) fn lan_broadcast_world_spawn(&self) {
         if let Some(host) = &self.lan {
             for guest in host.hub.guests.iter().filter(|guest| guest.placed) {
-                guest.send(
-                    &host
-                        .hub
-                        .default_spawn(self.world_spawn_position(), self.level.world_spawn_angle),
-                );
+                guest.send(&host.hub.default_spawn(
+                    self.world_spawn_position(),
+                    self.level.world_spawn_angle,
+                    self.world_spawn_level().id(),
+                ));
             }
         }
     }
@@ -1134,7 +1139,7 @@ impl Game<'_> {
     pub(super) fn lan_status(&self) -> serde_json::Value {
         use serde_json::json;
         match &self.lan {
-            Some(h) if !self.serving() || self.published_port().is_some() => json!({
+            Some(h) if self.open_to_others() => json!({
                 "open": true,
                 // The owner's profile name.
                 "host": self.options.player_name(),
@@ -1204,13 +1209,10 @@ impl Game<'_> {
         let mut sync = sync::sync_data(
             &self.options.resources,
             &self.res.core.item_data,
+            self.items(),
             &self.pack_files(),
         )?;
-        let features = if self.level.enabled_features.is_empty() {
-            vec!["minecraft:vanilla".to_owned()]
-        } else {
-            self.level.enabled_features.to_vec()
-        };
+        let features = self.enabled_feature_ids().to_vec();
         // A world whose packs change biomes sends its own biome registry.
         let packed = self.world_biomes.clone().filter(|b| b.has_packs());
         if packed.is_some()
@@ -1229,6 +1231,7 @@ impl Game<'_> {
                 sync::server_sources(
                     &self.options.resources,
                     &self.res.core.item_data,
+                    self.items(),
                     &self.pack_files(),
                 )?
                 .as_ref(),
@@ -1275,6 +1278,7 @@ impl Game<'_> {
             .then(|| sunrise_client::lod_net::Service::new(net.lod_distance, biome_names.clone()));
         let lan = super::lan_configuration_tasks::start(sync.clone(), net)?;
         let mut hub = Hub::new(lan, sync, encoder, config, self.loop_context.clone());
+        hub.dispatch_move_effects = true;
         self.bind_guest_residency(&mut hub);
         self.passages.record_on(&mut hub);
         hub.rule_registry = self.level.rule_registry.clone();
@@ -1283,6 +1287,7 @@ impl Game<'_> {
         hub.debug_world = self.world_debug;
         let port = hub.lan.port;
         self.world.block_log = Some(Vec::new());
+        self.world.connection_group_log = Some(Default::default());
         self.world.light_log = Some(Default::default());
         self.lan = Some(LanHost {
             players_told_left: false,
@@ -1351,6 +1356,7 @@ impl Game<'_> {
         // Give the network threads a moment to flush the disconnect packets.
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.world.block_log = None;
+        self.world.connection_group_log = None;
         self.world.light_log = None;
         self.audio.capture = None;
         self.bound_sounds.clear();
@@ -1373,10 +1379,9 @@ impl Game<'_> {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        // Every open menu closes first, in its guest's level
-        // (`ServerPlayer.disconnect` -> `doCloseContainer`), so the cursor,
-        // the trade and the inputs are back in the file that is saved. An interrupted
-        // guest's file is not written, so its menu is left alone.
+        // Remove the open menu and window 0 in the guest's own level before
+        // saving, so held stacks and inputs return to their inventory or drop
+        // there if full. An interrupted guest's file is not written.
         let back = self.dim;
         let open: Vec<(u32, super::Dim)> = host
             .hub
@@ -1391,7 +1396,7 @@ impl Game<'_> {
             .collect();
         for (conn, dim) in open {
             if self.enter_level(dim).is_ok() {
-                self.guest_close_all(conn);
+                self.guest_close_menus_for_save(conn);
             }
         }
         if let Err(e) = self.enter_level(back) {
@@ -1426,7 +1431,7 @@ impl Game<'_> {
             return;
         }
         // A proxy released this record to another server, which now owns saving it.
-        if guest.placed && !guest.released && !self.crash_save.excludes(guest.conn) {
+        if guest.joined() && !guest.released && !self.crash_save.excludes(guest.conn) {
             let _ = self.finish_player_autosaves(true);
             if self
                 .lan
@@ -1476,7 +1481,7 @@ impl Game<'_> {
         others: &[u32],
         remove: bool,
     ) -> Option<(sunrise_core::nbt::Tag, [i32; 4])> {
-        vehicle?;
+        let vehicle = vehicle?;
         let back = self.dim;
         let theirs = super::Dim::from_id(dim);
         if theirs != back
@@ -1485,26 +1490,23 @@ impl Game<'_> {
             log::error!("could not open {}: {e}", theirs.id());
             return None;
         }
-        let found = if self.dim == theirs {
-            self.parent_vehicle_tag(vehicle, others)
+        let saved = if self.dim == theirs {
+            self.snapshot_parent_vehicle(vehicle, others, remove)
         } else {
             None
         };
-        if remove && let Some((_, root, _)) = &found {
-            self.remove_vehicle_tree(*root);
-        }
         if self.dim != back
             && let Err(e) = self.enter_level(back)
         {
             log::error!("could not reopen {}: {e}", back.id());
         }
-        found.map(|(tag, _, attach)| (tag, attach))
+        saved
     }
-    /// `PlayerList.remove` of a guest out of the hub: its file takes the
-    /// vehicle it alone rides (`saveParentVehicle`'s RootVehicle, kept in
-    /// `saved` as a file not yet ridden again), the vehicle tree leaves the
-    /// world, and the guest stops riding (`unRide`). A guest the crash save excludes keeps
-    /// the vehicle in the world: its file is not written, so nothing would hold it.
+    /// `PlayerList.remove` of a guest out of the hub: the vehicle it alone rides
+    /// leaves the world, and the guest stops riding (`unRide`). The file takes
+    /// a persistent tree as `RootVehicle` (`saved` holds it until the next ride).
+    /// A guest the crash save excludes keeps the vehicle in the world: its file
+    /// is not written, so nothing would hold it.
     pub(super) fn take_parent_vehicle(&mut self, guest: &mut sunrise_client::lan::guest::Guest) {
         // An interrupted player's file is not written, so the vehicle stays in the world.
         if self.crash_save.excludes(guest.conn) {
@@ -1595,7 +1597,7 @@ impl Game<'_> {
     /// live record, independently of the dirty entries sent to their client.
     pub(super) fn save_connected_guest_statistics(&self, host: &LanHost) {
         for guest in &host.hub.guests {
-            if !guest.placed || guest.released || self.crash_save.excludes(guest.conn) {
+            if !guest.joined() || guest.released || self.crash_save.excludes(guest.conn) {
                 continue;
             }
             let Some(uuid) = self.records_uuid(host, guest.uuid) else {
@@ -1872,7 +1874,7 @@ impl Game<'_> {
             let place = super::lan_idle::Place {
                 position: [m.position.x, m.position.y, m.position.z],
                 rotation: (m.yaw, m.head_pitch, m.head_yaw),
-                on_ground: m.on_ground,
+                on_ground: m.ground.on_ground,
                 velocity: [m.velocity.x, m.velocity.y, m.velocity.z],
             };
             let kind = m.kind.id.as_str();
@@ -1906,7 +1908,7 @@ impl Game<'_> {
             let place = super::lan_idle::Place {
                 position: [d.position.x, d.position.y, d.position.z],
                 rotation: (0.0, 0.0, 0.0),
-                on_ground: d.on_ground,
+                on_ground: d.ground.on_ground,
                 velocity: [d.velocity.x, d.velocity.y, d.velocity.z],
             };
             let bare = idle
@@ -1931,7 +1933,7 @@ impl Game<'_> {
             e.precise = false;
             e.needs_sync = d.needs_sync;
             e.vertical_collision = d.vertical_collision;
-            e.horizontal_collision = d.horizontal_collision;
+            e.horizontal_collision = d.ground.horizontal_collision;
             // Entity.DATA_SHARED_FLAGS_ID: glowing 0x40 (the Glowing tag).
             if self.tracked_entity_glowing(d.id) {
                 e.meta.push((0, serializer::BYTE, Value::Byte(0x40)));
@@ -1942,7 +1944,7 @@ impl Game<'_> {
             let e = out.add(o.id as i32, entity_uuid(o.id), "minecraft:experience_orb");
             e.position = [o.position.x, o.position.y, o.position.z];
             e.idle = idle_at(o.position);
-            e.on_ground = o.on_ground;
+            e.on_ground = o.ground.on_ground;
             e.velocity = [o.velocity.x, o.velocity.y, o.velocity.z];
             // ExperienceOrb.DATA_VALUE.
             e.meta.push((8, serializer::INT, Value::Int(o.value)));
@@ -2077,7 +2079,9 @@ impl Game<'_> {
             }
             match event {
                 HostEvent::InputCredits(credits) => drop(credits),
-                HostEvent::RawPayload(delivery) => self.receive_raw_delivery(delivery),
+                HostEvent::RawPayload(delivery) => {
+                    self.run_payload(delivery.endpoint, delivery.incoming);
+                }
                 event @ (HostEvent::Chat { .. } | HostEvent::Warn(_) | HostEvent::Error(_)) => {
                     self.lan_log_event(event);
                 }
@@ -2124,8 +2128,11 @@ impl Game<'_> {
                         let converted: std::result::Result<_, mod_api::text::TextFormError> =
                             (|| {
                                 Ok((
-                                    api_text.try_into_engine(&())?,
-                                    replies.try_into_engine(&())?,
+                                    sunrise_client_lib::api_text::to_serialized_engine(&api_text)?,
+                                    replies
+                                        .iter()
+                                        .map(sunrise_client_lib::api_text::to_serialized_engine)
+                                        .collect::<std::result::Result<Vec<_>, _>>()?,
                                 ))
                             })();
                         match converted {
@@ -2215,6 +2222,10 @@ impl Game<'_> {
                     }
                     self.lan_guest_joined(conn, entities, spawn);
                     let host = self.lan.as_ref()?;
+                    super::cauldron_prediction::publish_registrations(
+                        &super::cauldron_interactions::snapshot(),
+                        host.hub.guest(conn),
+                    );
                     if self.is_dedicated_server()
                         && let Some(g) = host.hub.guest(conn)
                     {
@@ -2224,7 +2235,7 @@ impl Game<'_> {
                             "join",
                             &g.name,
                             g.uuid,
-                            serde_json::json!({ "address": g.address.ip().to_string() }),
+                            serde_json::json!({ "address": g.ip_address() }),
                         );
                         let [x, y, z] = g.position;
                         super::dedicated::log(
@@ -2232,7 +2243,7 @@ impl Game<'_> {
                             &format!(
                                 "{}[/{}] logged in with entity id {} at ({}, {}, {})",
                                 g.name,
-                                g.address,
+                                g.address(),
                                 g.entity_id,
                                 sunrise_core::java_number::double_to_string(x),
                                 sunrise_core::java_number::double_to_string(y),
@@ -2315,7 +2326,7 @@ impl Game<'_> {
                         }
                     }
                     self.lan_crafting_left(&mut guest);
-                    if guest.placed {
+                    if guest.joined() {
                         self.award_leave_game(guest.conn, guest.uuid, &guest.name);
                     }
                     // PlayerList.remove: the vehicle it alone rides goes too.
@@ -2416,8 +2427,8 @@ impl Game<'_> {
                         self.run_guest_commands();
                     }
                 }
-                HostEvent::Jump { conn, from, yaw } => {
-                    self.guest_jump(conn, from, yaw);
+                HostEvent::AcceptedMove(conn, movement) => {
+                    self.guest_accepted_move(conn, movement);
                 }
             }
         }
@@ -2459,6 +2470,7 @@ impl Game<'_> {
                 next_entity: &mut self.next_entity,
                 spawn,
                 spawn_angle: self.level.world_spawn_angle,
+                spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
                 difficulty: i32::from(self.ui.difficulty),
                 difficulty_locked: self.level.difficulty_locked,
                 clock_rate,
@@ -2541,8 +2553,8 @@ impl Game<'_> {
     /// first updated in this tick's pass (`Entities::synced`).
     /// `ServerChunkCache.tick`'s broadcast, where ServerLevel.tick runs it:
     /// after the scheduled and random ticks, before the block events, so the
-    /// players get the blocks as they are then. The block log's length after
-    /// it: what the tick writes from there on goes out with the next tick's.
+    /// players get the blocks as they are then. What the tick writes from
+    /// there on goes out with the next tick's.
     pub(super) fn lan_broadcast_changes(&mut self) -> Option<usize> {
         if let Some(host) = self.lan.as_mut() {
             host.hub.broadcast_changes(&mut self.world);
@@ -2609,7 +2621,7 @@ impl Game<'_> {
     /// tick. The counter prevents taking or draining an entity's state twice.
     pub(super) fn lan_pair_joined(&mut self, host: &mut LanHost) {
         if let Some(next) = host.states_next_entity
-            && host.hub.guests.iter().any(|g| host.hub.here(g))
+            && host.hub.guests.iter().any(|g| host.hub.watches(g))
         {
             self.lan_assign_ids();
             if self.next_entity != next {
@@ -2617,7 +2629,8 @@ impl Game<'_> {
                 self.lan_entities(&mut states, false, next, None);
                 self.lan_hook_states(&mut states);
                 self.lan_entity_uuids(&mut states);
-                host.hub.note_joined(states.as_slice());
+                host.hub
+                    .note_joined(states.as_slice(), Some(&*self.entity_attachments));
             }
             host.states_next_entity = Some(self.next_entity);
         }
@@ -2663,17 +2676,27 @@ impl Game<'_> {
         }
         // A guest whose file names the vehicle it rode rides it again.
         self.restore_guest_vehicles();
-        // Finish the players' mining, item use and pickups before describing
-        // this tick to their clients. Otherwise a newly broken block and its
-        // drops remain absent from the snapshot until the following tick.
+        // Keep chunk and entity publication in the level pass. A real server
+        // then runs each connection's player body after all levels; a standalone
+        // level tick (e.g. a fixture) has no outer server pass.
+        let defer_connections = self.level_pass.running.is_some();
         if !paused {
-            sunrise_client::spans::time("lan_guests", || self.tick_guests());
-            // The vehicles the guests just moved enter their portals now.
+            sunrise_client::spans::time("lan_guests", || self.tick_level_guests());
+            if !defer_connections {
+                self.tick_guest_connections(false)
+                    .expect("the current-level connection pass does not switch levels");
+            }
+            // Ridden vehicles enter their portals on the level path.
             let Some(host) = self.lan.as_ref() else {
                 return;
             };
             let ridden: Vec<u32> = host.hub.guests.iter().filter_map(|g| g.vehicle).collect();
             self.find_ridden_vehicle_portals(&ridden);
+        }
+        // LevelChunk.registerAllBlockEntitiesAfterLevelLoad publishes saved data before
+        // the first send, not on the first entity tick (which may be frozen or later).
+        if self.is_logical_server() {
+            self.fire_pending_block_entity_loads();
         }
         // A guest's mount fired its `started_riding` with that guest alone in
         // place (the hub held by its action): now every player on the vehicle
@@ -2783,7 +2806,6 @@ impl Game<'_> {
             for (id, event) in gone {
                 host.hub.entity_event(id, event);
             }
-            host.hub.far_level(&self.save);
             let spawn = self.world_spawn_position();
             let mut solids = self
                 .lan
@@ -2808,6 +2830,7 @@ impl Game<'_> {
                     next_entity: &mut self.next_entity,
                     spawn,
                     spawn_angle: self.level.world_spawn_angle,
+                    spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
                     difficulty: i32::from(self.ui.difficulty),
                     difficulty_locked: self.level.difficulty_locked,
                     clock_rate,
@@ -2853,9 +2876,17 @@ impl Game<'_> {
                 // entry, before world sync/physics or any scheduled work.
                 let mut events = Vec::new();
                 events.extend(sunrise_client::spans::time("lan_tick_level", || {
-                    host.hub.tick_level(&mut ctx)
+                    if defer_connections {
+                        host.hub.tick_level_before_connections(
+                            &mut ctx,
+                            Some(&*self.entity_attachments),
+                        )
+                    } else {
+                        host.hub
+                            .tick_level(&mut ctx, Some(&*self.entity_attachments))
+                    }
                 }));
-                (events, pass.last)
+                (events, pass.last && !defer_connections)
             };
             // The mods hear the pass's starts and stops of tracking at each one's packet, before
             // the players' own state and the end of the tick (#4522).
@@ -2911,17 +2942,7 @@ impl Game<'_> {
         {
             self.run_native_tracking();
         }
-        // A blast from a guest's attack, and a mace's wind burst.
-        self.flush_lan_explosions();
-        let _ = self.flush_wind_bursts();
-        // A sweep attack's reach to the other players from a guest's attack.
-        self.flush_sweeps();
-        // A reeled-in hook pulling a player.
-        self.flush_hook_pulls();
-        // Particles a guest's turn sent (sweep attack, damage indicator, a hook's splashes).
-        self.flush_lan_particles();
-        self.lan_flush_effects();
-        self.lan_living_flags();
+        self.flush_guest_connection_effects();
         self.lan_stuck(paused);
         self.tick_server_travel();
         self.lan_swings();
@@ -2944,12 +2965,24 @@ impl Game<'_> {
         }
     }
 
+    /// Flush actions made by guest turns while their level is still in place.
+    pub(in crate::game) fn flush_guest_connection_effects(&mut self) {
+        self.flush_lan_explosions();
+        let _ = self.flush_wind_bursts();
+        self.flush_sweeps();
+        self.flush_hook_pulls();
+        self.flush_lan_particles();
+        self.lan_flush_effects();
+        self.lan_living_flags();
+    }
+
     pub(super) fn lan_guest_joined(
         &mut self,
         conn: u32,
         entities: &[EntityState],
         spawn: [f64; 3],
     ) {
+        let spawn_level = self.world_spawn_level();
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -2966,9 +2999,11 @@ impl Game<'_> {
                 Some(o) => playerdata::load_owner(g, &root, o.saved.take().as_deref()),
                 None => playerdata::load(g, &root),
             };
-            // `PlayerList.placeNewPlayer`: a saved level the world no longer has is the Overworld.
+            // `PrepareSpawnTask.start`: a saved level the world no longer has is the world
+            // spawn's (the Overworld when that one is gone too); the saved position and
+            // rotation stay.
             if !levels.has(&g.dimension) {
-                g.dimension = "minecraft:overworld".to_owned();
+                g.dimension = spawn_level.id().to_owned();
             }
             // PlayerEvent.LoadFromFile: the player's data is read and applied,
             // the player not yet placed.
@@ -3001,12 +3036,23 @@ impl Game<'_> {
             // ServerPlayer.adjustSpawnLocation: a player new to the world
             // stands where PlayerSpawnFinder puts them, not all on one spot
             // (it reads the loaded level, which holds the spawn when it is
-            // the overworld).
-            let feet = if self.dim == super::Dim::Overworld {
+            // the world spawn's). PrepareSpawnTask puts them in that level, so
+            // the search reads that one, opened for it.
+            let back = self.dim;
+            let opened = back != spawn_level
+                && self
+                    .enter_level(spawn_level)
+                    .inspect_err(|e| log::error!("could not open {}: {e}", spawn_level.id()))
+                    .is_ok();
+            let feet = if self.dim == spawn_level {
                 self.server_player_spawn(spawn)
             } else {
                 spawn
             };
+            if opened && let Err(e) = self.enter_level(back) {
+                log::error!("could not reopen {}: {e}", back.id());
+                return;
+            }
             let Some(host) = self.lan.as_mut() else {
                 return;
             };
@@ -3020,7 +3066,7 @@ impl Game<'_> {
                     g.head_yaw = g.yaw;
                     g.health = 20.0;
                     g.food = 20;
-                    g.dimension = super::Dim::Overworld.id().to_owned();
+                    g.dimension = spawn_level.id().to_owned();
                 })
                 .is_none()
             {
@@ -3047,15 +3093,20 @@ impl Game<'_> {
         self.prepare_recipe_join(conn);
         // A level that will not open, its generator gone with a mod, is one the
         // world no longer has: left in it, the player would fail the next tick.
+        // It goes to the world spawn's, as one missing from the world does.
         if elsewhere && let Err(e) = self.enter_level(level) {
             log::error!("could not open {}: {e}", level.id());
-            let overworld = super::Dim::Overworld;
+            let fallback = if spawn_level == level {
+                super::Dim::Overworld
+            } else {
+                spawn_level
+            };
             let moved = self.lan.as_mut().and_then(|host| {
                 host.hub
-                    .update_guest(conn, |g| g.dimension = overworld.id().to_owned())
+                    .update_guest(conn, |g| g.dimension = fallback.id().to_owned())
             });
-            elsewhere = back != overworld;
-            if moved.is_none() || (elsewhere && self.enter_level(overworld).is_err()) {
+            elsewhere = back != fallback;
+            if moved.is_none() || (elsewhere && self.enter_level(fallback).is_err()) {
                 return;
             }
         }
@@ -3077,6 +3128,7 @@ impl Game<'_> {
             next_entity: &mut self.next_entity,
             spawn,
             spawn_angle: self.level.world_spawn_angle,
+            spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
             difficulty: i32::from(self.ui.difficulty),
             difficulty_locked: self.level.difficulty_locked,
             clock_rate,
@@ -3092,6 +3144,8 @@ impl Game<'_> {
         };
         host.hub.place_new_player(conn, &mut ctx);
         self.bind_player_attachments(conn, false);
+        self.lan_register_player_waypoint(conn);
+        self.lan_update_waypoints();
         if elsewhere && let Err(e) = self.enter_level(back) {
             log::error!("could not reopen {}: {e}", back.id());
         }
@@ -3200,12 +3254,6 @@ impl Game<'_> {
             EquipmentSlot::Body => 65,
             EquipmentSlot::Saddle => 68,
         };
-        // The mods hear a server player's break (a creative player's gear takes no wear).
-        if !self.creative
-            && let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-        {
-            self.native_player_destroy_item(uuid, &name, &stack.item, equipment_slot_name(slot));
-        }
         let Some(at) = self
             .player
             .as_ref()
@@ -3549,22 +3597,6 @@ pub(super) fn living_flags(using: Option<(usize, u32)>, spinning: bool) -> i8 {
         | if spinning { 4 } else { 0 }
 }
 
-/// The name a mod hears for an equipment slot (the armor stand hook's names, plus
-/// the two slots a mount's gear uses).
-fn equipment_slot_name(slot: sunrise_core::equipment_slot::EquipmentSlot) -> &'static str {
-    use sunrise_core::equipment_slot::EquipmentSlot;
-    match slot {
-        EquipmentSlot::MainHand => "mainhand",
-        EquipmentSlot::OffHand => "offhand",
-        EquipmentSlot::Head => "head",
-        EquipmentSlot::Chest => "chest",
-        EquipmentSlot::Legs => "legs",
-        EquipmentSlot::Feet => "feet",
-        EquipmentSlot::Body => "body",
-        EquipmentSlot::Saddle => "saddle",
-    }
-}
-
 #[cfg(test)]
 use level_event_targets::level_event_except;
 
@@ -3625,13 +3657,13 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, equipment_slot_name, living_flags,
-        mob_freeze_meta,
+        EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags, mob_freeze_meta,
     };
 
     impl LanHost {
         /// Install an already configured fixture hub without touching the process-wide sync cache.
-        pub(in crate::game) fn for_test(hub: Hub) -> Self {
+        pub(in crate::game) fn for_test(mut hub: Hub) -> Self {
+            hub.dispatch_move_effects = true;
             Self {
                 settings: LanSettings {
                     port: hub.lan.port,
@@ -3817,7 +3849,9 @@ mod tests {
                 .update(0, |g| g.fall_flying = true);
             game.as_guest(1, |game| {
                 let player = game.player.as_mut().unwrap();
+                let side = game_side!(game);
                 MotionWorld {
+                    side: &side,
                     entities: &[],
                     player,
                     scene: &mut game.world,
@@ -3855,12 +3889,16 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items =
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap();
         let preloaded = Arc::new(
             SyncData::load(
                 &root,
                 &PackOverlay::NONE,
                 item_data.defaults(),
-                &super::sync::server_sources(&root, &item_data, &PackOverlay::NONE).unwrap(),
+                &super::sync::server_sources(&root, &item_data, &items, &PackOverlay::NONE)
+                    .unwrap(),
             )
             .unwrap(),
         );
@@ -3878,13 +3916,21 @@ mod tests {
         // A missing root makes an accidental second disk read fail, rather
         // than merely comparing equal snapshots loaded twice.
         let absent = root.join("no-such-resources");
-        initialize_world_sync_data(&mut cache, &absent, &PackOverlay::NONE, &damage, &item_data)
-            .unwrap();
-        let opened = cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data).unwrap();
+        initialize_world_sync_data(
+            &mut cache,
+            &absent,
+            &PackOverlay::NONE,
+            &damage,
+            &item_data,
+            &items,
+        )
+        .unwrap();
+        let opened =
+            cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(Arc::ptr_eq(&preloaded, &opened));
         assert!(Arc::ptr_eq(
             &opened,
-            &cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data).unwrap()
+            &cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data, &items).unwrap()
         ));
     }
 
@@ -3904,12 +3950,17 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items = Arc::new(
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap(),
+        );
         let preloaded = Arc::new(
             SyncData::load(
                 &root,
                 &PackOverlay::NONE,
                 item_data.defaults(),
-                &super::sync::server_sources(&root, &item_data, &PackOverlay::NONE).unwrap(),
+                &super::sync::server_sources(&root, &item_data, &items, &PackOverlay::NONE)
+                    .unwrap(),
             )
             .unwrap(),
         );
@@ -3928,6 +3979,7 @@ mod tests {
             let barrier = barrier.clone();
             let root = root.clone();
             let item_data = item_data.clone();
+            let items = items.clone();
             std::thread::spawn(move || {
                 barrier.wait();
                 for _ in 0..32 {
@@ -3936,6 +3988,7 @@ mod tests {
                         &root,
                         &PackOverlay::NONE,
                         &item_data,
+                        &items,
                     )
                     .unwrap();
                 }
@@ -3954,10 +4007,17 @@ mod tests {
             &overlay,
             &damage,
             &item_data,
+            &items,
         )
         .unwrap();
-        let opened =
-            cached_sync_data(&mut cache.lock().unwrap(), &root, &overlay, &item_data).unwrap();
+        let opened = cached_sync_data(
+            &mut cache.lock().unwrap(),
+            &root,
+            &overlay,
+            &item_data,
+            &items,
+        )
+        .unwrap();
         worker.join().unwrap();
         assert!(!Arc::ptr_eq(&preloaded, &opened));
         let id = opened
@@ -3968,6 +4028,7 @@ mod tests {
             &root,
             &PackOverlay::NONE,
             &item_data,
+            &items,
         )
         .unwrap();
         assert!(
@@ -3996,13 +4057,17 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items =
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap();
         let damage = Catalog::load(&root, &PackOverlay::NONE).unwrap();
         let preloaded = Arc::new(
             SyncData::load(
                 &root,
                 &PackOverlay::NONE,
                 item_data.defaults(),
-                &super::sync::server_sources(&root, &item_data, &PackOverlay::NONE).unwrap(),
+                &super::sync::server_sources(&root, &item_data, &items, &PackOverlay::NONE)
+                    .unwrap(),
             )
             .unwrap(),
         );
@@ -4025,6 +4090,7 @@ mod tests {
                 &PackOverlay::new(&files),
                 &damage,
                 &item_data,
+                &items,
             )
             .unwrap();
             assert!(cache.data.is_none(), "{key} must not eagerly load SyncData");
@@ -4037,6 +4103,7 @@ mod tests {
             &PackOverlay::NONE,
             &damage,
             &item_data,
+            &items,
         )
         .unwrap();
         assert!(
@@ -4057,6 +4124,9 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items =
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap();
         let damage = Catalog::load(&root, &PackOverlay::NONE).unwrap();
         let initial = vec![(
             "dialog/demo:before".into(),
@@ -4076,10 +4146,11 @@ mod tests {
             packed_registries: Some(std::sync::Arc::new(packed)),
             ..SyncCache::default()
         };
-        initialize_world_sync_data(&mut cache, &root, &initial, &damage, &item_data).unwrap();
+        initialize_world_sync_data(&mut cache, &root, &initial, &damage, &item_data, &items)
+            .unwrap();
         assert!(cache.data.is_none());
         // A late vanilla helper cannot install its overlay over this world.
-        cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data).unwrap();
+        cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(cache.data.is_none());
         let changed = vec![
             (
@@ -4105,7 +4176,7 @@ mod tests {
         let overlay = PackOverlay::new(&changed);
         assert!(prepare_sync_reload(&mut cache, &overlay).is_none());
         let health = damage.reload_tags(&root, &overlay).unwrap();
-        let wire = cached_sync_data(&mut cache, &root, &overlay, &item_data).unwrap();
+        let wire = cached_sync_data(&mut cache, &root, &overlay, &item_data, &items).unwrap();
         assert!(wire.id("minecraft:damage_type", "demo:too_late").is_none());
         assert!(health.id("demo:too_late").is_none());
         assert!(wire.id("minecraft:dialog", "demo:before").is_some());
@@ -4144,9 +4215,10 @@ mod tests {
         // The next world's initial load can register the previously-late type.
         let next = Catalog::load(&root, &overlay).unwrap();
         let mut next_cache = SyncCache::default();
-        initialize_world_sync_data(&mut next_cache, &root, &overlay, &next, &item_data).unwrap();
+        initialize_world_sync_data(&mut next_cache, &root, &overlay, &next, &item_data, &items)
+            .unwrap();
         assert!(
-            cached_sync_data(&mut next_cache, &root, &overlay, &item_data)
+            cached_sync_data(&mut next_cache, &root, &overlay, &item_data, &items)
                 .unwrap()
                 .id("minecraft:damage_type", "demo:too_late")
                 .is_some()
@@ -4209,6 +4281,12 @@ mod tests {
             .expect("prepared test resources require registries.json");
         std::fs::copy(report, root.join("registries.json")).unwrap();
         let item_data = sync_test_items(&prepared);
+        let items = sunrise_client::items::Items::catalog(
+            &prepared,
+            &PackOverlay::NONE,
+            item_data.defaults(),
+        )
+        .unwrap();
         let damage = Catalog::load(&prepared, &PackOverlay::NONE).unwrap();
         let files = vec![(
             "recipe/demo:unrelated".into(),
@@ -4221,17 +4299,20 @@ mod tests {
             &PackOverlay::new(&files),
             &damage,
             &item_data,
+            &items,
         )
         .unwrap();
         assert!(cache.data.is_none());
         assert!(prepare_sync_reload(&mut cache, &PackOverlay::NONE).is_none());
-        let opened = cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data).unwrap();
+        let opened =
+            cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(opened.content_identity.is_some());
         // Changing the root invalidates the cache. Instead remove the private
         // fixture's files: an accidental reload at the same root must now fail.
         std::fs::remove_dir_all(&root).unwrap();
         assert!(sunrise_protocol::registry::Builtin::find(&root).is_none());
-        let reused = cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data).unwrap();
+        let reused =
+            cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(Arc::ptr_eq(&opened, &reused));
     }
 
@@ -4507,21 +4588,6 @@ mod tests {
         assert_eq!(super::level_event_except(2001, actor, true), None);
     }
 
-    /// The names a mod matches on for a broken item's slot (a contract).
-    #[test]
-    fn a_broken_items_slot_is_named_for_mods() {
-        use sunrise_core::equipment_slot::EquipmentSlot::*;
-        let named: Vec<_> = [MainHand, OffHand, Head, Chest, Legs, Feet, Body, Saddle]
-            .map(equipment_slot_name)
-            .to_vec();
-        assert_eq!(
-            named,
-            [
-                "mainhand", "offhand", "head", "chest", "legs", "feet", "body", "saddle"
-            ]
-        );
-    }
-
     /// `server_chat`'s replies reach the sender alone, as system chat, whether
     /// or not the message goes out; a canceled message reaches nobody.
     #[test]
@@ -4767,17 +4833,21 @@ mod tests {
                 event: &mut EffectParticleModificationEvent<'_>,
             ) {
                 let id = event.entity.id();
-                let name = event.effect.id.id(host).to_string();
+                let name = event
+                    .effect
+                    .id
+                    .id(host)
+                    .expect("active effect is registered");
                 assert_eq!(event.visible, event.effect.visible);
                 ASKED.lock().unwrap().push((
                     id,
-                    name.clone(),
+                    name.to_owned(),
                     event.effect.amplifier,
                     event.original_particle.try_into_engine(&()).unwrap(),
                     event.particle.try_into_engine(&()).unwrap(),
                     event.visible,
                 ));
-                match name.as_str() {
+                match name {
                     "minecraft:speed" if id == ZOMBIE as u32 => {
                         *event.particle = Some(
                             ParticleOptions::simple(ParticleType::Flame)
@@ -4807,7 +4877,7 @@ mod tests {
                 host: &dyn Host,
                 event: &mut EffectParticleModificationEvent<'_>,
             ) {
-                if event.effect.id.id(host) == "minecraft:trial_omen" {
+                if event.effect.id.id(host) == Some("minecraft:trial_omen") {
                     assert_eq!(
                         *event.particle,
                         Some(
@@ -4893,6 +4963,7 @@ mod tests {
             let builtin = super::sync::sync_data(
                 &game.options.resources,
                 &game.res.core.item_data,
+                game.items(),
                 &game.pack_files(),
             )
             .unwrap()
@@ -5065,6 +5136,7 @@ mod sources_tests {
             overlay_key(&PackOverlay {
                 conditions: &sunrise_world::conditions::LoadConditions::vanilla(),
                 files,
+                ..PackOverlay::default()
             })
         };
         assert_eq!(key(&files), key(&files.clone()));
@@ -5072,6 +5144,18 @@ mod sources_tests {
         assert_ne!(key(&files), key(&[]));
     }
     include!("sulfur_cube_meta_tests.rs");
+}
+
+impl super::Dim {
+    /// The level `level`'s world spawn is in (MinecraftServer.findRespawnDimension), the
+    /// Overworld when the world has no such level. It borrows only the level data, so a
+    /// `TickCtx` can name it beside the world it borrows mutably.
+    pub(super) fn of_world_spawn(level: &sunrise_client::save::Level) -> Self {
+        level
+            .world_spawn_dimension
+            .as_deref()
+            .map_or(Self::Overworld, Self::from_id)
+    }
 }
 
 #[cfg(test)]
@@ -5177,7 +5261,7 @@ pub(crate) mod world_spawn_sync_tests {
 
     #[test]
     #[ignore = "daily"]
-    fn setworldspawn_reaches_guests_in_other_dimensions_and_keeps_compass_overrides() {
+    fn setworldspawn_reaches_guests_with_the_dimension_it_ran_in() {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.build_registries();
             game.level.world_spawn = None;
@@ -5214,6 +5298,22 @@ pub(crate) mod world_spawn_sync_tests {
             assert!(
                 spawns(&rx).is_empty(),
                 "unchanged respawn data is not broadcast again"
+            );
+            // SetWorldSpawnCommand keeps the level it runs in (RespawnData.of(level.dimension(), ..)):
+            // the same block in another dimension is changed respawn data, and reaches the guests
+            // with that dimension.
+            game.as_console(|game| {
+                assert!(
+                    game.run_command("execute in minecraft:the_end run setworldspawn 100 140 -20")
+                )
+            });
+            let sent = spawns(&rx);
+            assert_eq!(sent.len(), 1);
+            assert_eq!(sent[0].pos.dimension, "minecraft:the_end");
+            assert_eq!(sent[0].pos.pos, [100, 140, -20]);
+            println!(
+                "world-spawn\tother_dimension\t{}\t{}\t{}\t{}",
+                sent[0].pos.dimension, sent[0].pos.pos[0], sent[0].pos.pos[1], sent[0].pos.pos[2]
             );
             game.as_console(|game| assert!(game.run_command("setworldspawn -7 90 12")));
             let sent = spawns(&rx);
@@ -5327,6 +5427,39 @@ pub(crate) mod world_spawn_sync_tests {
                 sent[0].yaw,
                 sent[0].pitch
             );
+        });
+    }
+}
+
+#[cfg(test)]
+mod world_spawn_join_tests {
+    /// `PrepareSpawnTask.start`: a returning player whose saved level the world no longer has
+    /// joins in the world spawn's level (`respawnData.dimension()`), at its saved position and
+    /// rotation, not in the Overworld.
+    #[test]
+    #[ignore = "daily"]
+    fn a_returning_player_from_a_missing_level_joins_in_the_world_spawn_level() {
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            game.world_root = game.save.root.clone();
+            game.level.world_spawn_dimension = Some("minecraft:the_nether".into());
+            let guests = &mut game.lan.as_mut().unwrap().hub.guests;
+            guests.update(0, |g| {
+                g.dimension = "example:gone".into();
+                g.position = [40.5, 70.0, -12.5];
+                g.yaw = 135.0;
+                g.pitch = -20.0;
+            });
+            sunrise_client::lan::playerdata::save(
+                &guests[0],
+                &game.world_root,
+                &Default::default(),
+            );
+            guests.update(0, |g| g.placed = false);
+            game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5]);
+            let g = &game.lan.as_ref().unwrap().hub.guests[0];
+            assert_eq!(g.dimension, "minecraft:the_nether");
+            assert_eq!(g.position, [40.5, 70.0, -12.5]);
+            assert_eq!((g.yaw, g.pitch), (135.0, -20.0));
         });
     }
 }

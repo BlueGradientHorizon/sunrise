@@ -9,13 +9,11 @@ pub(super) struct PacketDrain {
     pub(super) movement_held: bool,
 }
 
-pub(super) struct DeferredPayload {
-    delivery: Option<Box<crate::raw_payloads::Delivery>>,
-    retrying: bool,
-    movement_held: bool,
-}
-
 impl Hub {
+    fn drains_in(&self, g: &Guest) -> bool {
+        self.watches(g) || (g.respawning && g.dimension == self.config.dimension)
+    }
+
     /// Handle the players in this level's packets (`ServerGamePacketListenerImpl`
     /// for each), before the level's scheduled block ticks so a place landed in
     /// the same tick as a falling block's schedule still sees the support
@@ -27,7 +25,7 @@ impl Hub {
             conns: self
                 .guests
                 .iter()
-                .filter(|g| self.here(g) || (g.held && self.watches(g)))
+                .filter(|g| self.drains_in(g))
                 .map(|g| g.conn)
                 .collect(),
             next: 0,
@@ -35,17 +33,6 @@ impl Hub {
             movement_held: false,
         });
         while let Some(&conn) = pass.conns.get(pass.next) {
-            if let Some(held) = self.deferred_payloads.get(&Some(conn)) {
-                if held.retrying || held.delivery.is_some() {
-                    pass.next += 1;
-                    pass.started = false;
-                    pass.movement_held = false;
-                    continue;
-                }
-                pass.started = true;
-                pass.movement_held = held.movement_held;
-                self.deferred_payloads.remove(&Some(conn));
-            }
             let Some(i) = self.guests.iter().position(|g| g.conn == conn) else {
                 pass.next += 1;
                 pass.started = false;
@@ -61,15 +48,14 @@ impl Hub {
                 pass.movement_held = false;
                 continue;
             }
-            if !self.here(&self.guests[i])
-                && !(self.guests[i].held && self.watches(&self.guests[i]))
-            {
+            if !self.drains_in(&self.guests[i]) {
                 pass.next += 1;
                 pass.started = false;
                 pass.movement_held = false;
                 continue;
             }
-            let frozen = self.guests[i].handover.is_some() || self.guests[i].held;
+            let g = &self.guests[i];
+            let frozen = g.handover.is_some() || g.held || g.respawning;
             if frozen {
                 self.keep_acknowledgements(i, &mut events);
             }
@@ -92,51 +78,6 @@ impl Hub {
     /// Resuming drains only the frozen inbox turn: no poll, maintenance or world tick.
     pub fn packets_paused(&self) -> bool {
         self.packet_drain.is_some()
-    }
-
-    /// A refused guest call retains the same receiving root at the queue head.
-    pub fn defer_raw_payload(&mut self, delivery: Box<crate::raw_payloads::Delivery>) {
-        let movement_held = self
-            .packet_drain
-            .as_ref()
-            .is_some_and(|pass| pass.movement_held);
-        let held = self
-            .deferred_payloads
-            .entry(delivery.conn)
-            .or_insert(DeferredPayload {
-                delivery: None,
-                retrying: false,
-                movement_held,
-            });
-        held.retrying = false;
-        held.delivery = Some(delivery);
-    }
-
-    pub fn payload_deferred(&self) -> bool {
-        self.deferred_payloads
-            .values()
-            .any(|held| held.retrying || held.delivery.is_some())
-    }
-
-    pub fn finish_raw_payload(&mut self, conn: Option<u32>) {
-        if let Some(held) = self.deferred_payloads.get_mut(&conn) {
-            held.retrying = false;
-        }
-    }
-
-    pub(super) fn begin_payload_poll(&mut self) -> Vec<HostEvent> {
-        let mut events = std::mem::take(&mut self.pending_kicks);
-        // Departed physical connections no longer own a receiving turn or its credit.
-        self.deferred_payloads.retain(|conn, _| {
-            conn.is_none_or(|conn| self.guests.iter().any(|guest| guest.conn == conn))
-        });
-        for held in self.deferred_payloads.values_mut() {
-            if let Some(delivery) = held.delivery.take() {
-                held.retrying = true;
-                events.push(HostEvent::RawPayload(delivery));
-            }
-        }
-        events
     }
 
     pub(super) fn bind_raw_player(&self, guest: &Guest, entity_id: i32) {

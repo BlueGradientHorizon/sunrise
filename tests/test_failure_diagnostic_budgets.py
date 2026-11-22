@@ -58,14 +58,16 @@ class Budgets(unittest.TestCase):
     def test_relative_and_cross_crate_raw_panic_headers(self):
         path = 'crates/sunrise-client/src/title/tests.rs'
         for raw_path in (path, 'crates/sunrise-client-lib/../sunrise-client/src/title/tests.rs'):
-            log = self.render(f"test game::x::y ... FAILED\n"
-                              f"thread 'game::x::y' (12345) panicked at {raw_path}:109:5:\n"
-                              "assertion failed: PRIVATE\n")
+            # Keep real path validation, but do not tie this fixture to the contents of line 109.
+            with patch.object(ci, 'source_lines', return_value=[''] * 108 + ['assert!(ready);']):
+                log = self.render(f"test game::x::y ... FAILED\n"
+                                  f"thread 'game::x::y' (12345) panicked at {raw_path}:109:5:\n"
+                                  "assertion failed: PRIVATE\n")
             self.assertEqual(log,
                 '  failed test: game::x::y\n'
                 f'  panicked at {path}:109:5\n'
                 '  panic reason: assertion condition failed; payload withheld (resource privacy)\n'
-                '  panic source: assert!(!friends.1);\n'
+                '  panic source: assert!(ready);\n'
                 'failure diagnostics: 1 shown; 0 failing tests not shown (total byte budget 128000); '
                 '0 records shortened (per-test byte budget 500); 0 missing context; '
                 '1 withheld context/identity; 1 classified panic reasons; 0 identities withheld; '
@@ -89,6 +91,21 @@ class Budgets(unittest.TestCase):
         self.assertIn('Option::unwrap on None', log)
         self.assertIn('1 classified panic reasons; 0 identities withheld; 0 locations withheld; '
                       '1 payloads withheld', log)
+
+    def test_a_shown_panic_message_allows_bounded_rustc_codes_not_diagnostic_text(self):
+        with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
+                patch.object(ci, 'source_lines', return_value=['assert!(ok, "fixture did not compile");']):
+            log = self.render(
+                "thread 'generated' panicked at crates/example.rs:1:1:\nfixture did not compile\n"
+                "error[E0433]: PRIVATE\n  --> /hidden/path.rs:2:1\nerror[E0433]: duplicate\n"
+                "error[E0308]: mismatched types\nerror[E0425]: missing name\nerror[E0599]: beyond the bound\n"
+                "test generated ... FAILED\n"
+                "thread 'other' panicked at crates/example.rs:1:1:\nunrecognized panic\n"
+                "error[E0307]: unverified message\ntest other ... FAILED\n"
+            )
+        self.assertIn('compiler: rustc E0433, E0308, E0425 (diagnostic text withheld)', log)
+        for withheld in ('PRIVATE', '/hidden/path.rs', 'mismatched types', 'E0599', 'E0307'):
+            self.assertNotIn(withheld, log)
 
     def test_payloads_cannot_become_locations_or_numeric_operands(self):
         path = 'crates/sunrise-client/src/title/tests.rs'

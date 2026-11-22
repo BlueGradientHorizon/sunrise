@@ -1,4 +1,5 @@
 //! A mod folder as `sunrise-stage uses` scans it: its Rust sources and what its manifest names.
+use crate::package;
 use mod_surface::scan::{Token, tokens};
 use std::path::{Path, PathBuf};
 
@@ -18,6 +19,9 @@ pub struct ModInput {
     pub sources: Vec<(String, String)>,
     /// The capability keys `sunrise-mod.toml` lists.
     pub manifest_names: Vec<String>,
+    /// Whether `sunrise-mod.toml` declares game code (a row of a `[native]` table, or an
+    /// `internals` entry): the surface alone cannot judge such a mod.
+    pub game_code: bool,
 }
 
 /// Why a mod folder cannot be judged.
@@ -30,11 +34,12 @@ pub enum ReadError {
     /// A `#[path]` or `include!` in `file` brings in source from outside the folder, or from a
     /// place the scan cannot know.
     Escapes { file: String, target: String },
-    /// A `#[path]` or `include!` in `file` brings in a file of the folder the scan does not read:
-    /// not a `.rs` file, under the root `target/` or a hidden folder, or missing.
+    /// A `#[path]` or `include!` in `file` names a file of the folder that is not in the scanned
+    /// Rust set: not a `.rs` file the scan selects, or missing.
     NotScanned { file: String, target: String },
-    /// The mod is made for exactly one build (a `[native.*]` table or internals): why.
-    Exact(String),
+    /// The mod's library root (`[lib].path` in its `Cargo.toml`, or `src/lib.rs`) is one of the
+    /// files the scan was told to leave out, so the root's own uses would go unread.
+    RootSkipped(String),
     /// More source than is read: a file, or the whole mod.
     TooLarge { what: String, size: u64, most: u64 },
     /// `sunrise-mod.toml` is not valid TOML.
@@ -58,9 +63,9 @@ impl std::fmt::Display for ReadError {
                 f,
                 "{file} brings in `{target}`, which the scan does not read; the mod's source cannot be judged"
             ),
-            Self::Exact(why) => write!(
+            Self::RootSkipped(file) => write!(
                 f,
-                "this mod is tied to one build ({why}); fit checks do not apply"
+                "{file} is the mod's library root and also a file it hands to the game; move one of them to its own file so the mod's source can be judged"
             ),
             Self::TooLarge { what, size, most } => {
                 write!(f, "{what} is {size} bytes; the most read is {most}")
@@ -237,6 +242,57 @@ fn references(text: &str, folder: &[String]) -> Result<Vec<String>, String> {
     Ok(found)
 }
 
+/// The file Cargo compiles as the mod's library: `[lib].path` of the `Cargo.toml` in `dir`,
+/// relative and `/`-separated without `.` parts, or `src/lib.rs` when the manifest names none
+/// (or there is no manifest to read: the build then says so).
+fn library_root(dir: &Path) -> Result<String, ReadError> {
+    let manifest = dir.join("Cargo.toml");
+    let named = if manifest.is_file() {
+        let text = read_bounded(&manifest, "Cargo.toml", MAX_MANIFEST_BYTES)?;
+        toml::from_str::<toml::Table>(&text)
+            .ok()
+            .and_then(|table| Some(table.get("lib")?.get("path")?.as_str()?.to_owned()))
+    } else {
+        None
+    };
+    Ok(named.map_or_else(
+        || "src/lib.rs".to_owned(),
+        |path| {
+            path.split(['/', '\\'])
+                .filter(|part| !part.is_empty() && *part != ".")
+                .collect::<Vec<_>>()
+                .join("/")
+        },
+    ))
+}
+
+/// The first of `skip` that a `mod name;` in `text`, a file in `folder`, may load as the mod's
+/// own source: a file below that folder named for the module (`name.rs`, `name/mod.rs`). Where
+/// the module's file lies is not resolved, so one of that name anywhere below counts.
+fn declares_skipped<'s>(text: &str, folder: &[String], skip: &[&'s str]) -> Option<&'s str> {
+    let list: Vec<Token<'_>> = tokens(text).map(|(t, _)| t).collect();
+    let below = folder
+        .iter()
+        .map(|part| format!("{part}/"))
+        .collect::<String>();
+    list.windows(3).find_map(|window| {
+        let [Token::Ident("mod"), Token::Ident(name), Token::Punct(b';')] = window else {
+            return None;
+        };
+        skip.iter().copied().find(|path| {
+            let Some(rest) = path.strip_prefix(below.as_str()) else {
+                return false;
+            };
+            let mut parts = rest.rsplit('/');
+            let module = match parts.next() {
+                Some("mod.rs") => parts.next(),
+                file => file.and_then(|file| file.strip_suffix(".rs")),
+            };
+            module == Some(*name)
+        })
+    })
+}
+
 /// Reads at most `most` bytes of `path`, refusing a larger file by its size.
 fn read_bounded(path: &Path, shown: &str, most: u64) -> Result<String, ReadError> {
     use std::io::Read;
@@ -257,80 +313,66 @@ fn read_bounded(path: &Path, shown: &str, most: u64) -> Result<String, ReadError
     })
 }
 
-/// Why a mod whose manifest is `manifest` is made for exactly one build: a `[native.*]` table, or
-/// game internals it names; `None` for a mod a fit check applies to.
-pub fn exact(manifest: &toml::Table) -> Option<String> {
-    let native_table = manifest
-        .get("native")
-        .and_then(toml::Value::as_table)
-        .and_then(|native| {
-            native
-                .iter()
-                .find(|(_, v)| v.is_table() || v.is_array())
-                .map(|(k, _)| k)
-        });
-    if let Some(table) = native_table {
-        return Some(format!("it has a [native.{table}] table"));
+/// Reads `dir`: the `.rs` files its package carries ([`package::source_files`], the selection
+/// packing makes), and `sunrise-mod.toml` when there is one, but not the files `skip` names
+/// (relative and `/`-separated), which are not the mod's own source. A symbolic link among them,
+/// or a linked `src/`, is refused; any other entry that is not a regular file is left unread.
+/// A `#[path]` or `include!` of a file the scan does not read, a skipped one included, is
+/// refused, and so is a `mod` declaration that may load a skipped file, and so is a skipped file
+/// that is the mod's library root.
+pub fn read(dir: &Path, skip: &[&str]) -> Result<ModInput, ReadError> {
+    let root = library_root(dir)?;
+    if skip.contains(&root.as_str()) {
+        return Err(ReadError::RootSkipped(root));
     }
-    manifest
-        .get("internals")
-        .and_then(toml::Value::as_array)
-        .is_some_and(|rows| !rows.is_empty())
-        .then(|| "it names game internals".to_owned())
-}
-
-/// Reads `dir`: every `.rs` file outside the mod's `target/` and hidden folders, and
-/// `sunrise-mod.toml` when there is one. A mod made for exactly one build is refused
-/// ([`ReadError::Exact`]), and so is a `#[path]` or `include!` of a file the scan does not read.
-pub fn read(dir: &Path) -> Result<ModInput, ReadError> {
     let mut input = ModInput::default();
     let mut total = 0u64;
     let mut brought: Vec<(String, String)> = Vec::new();
-    let mut pending = vec![dir.to_path_buf()];
-    while let Some(folder) = pending.pop() {
-        for entry in std::fs::read_dir(&folder).map_err(io(&folder))? {
-            let entry = entry.map_err(io(&folder))?;
-            let path = entry.path();
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            let kind = entry.file_type().map_err(io(&path))?;
-            if kind.is_symlink() {
-                return Err(ReadError::Symlink(path));
-            }
-            if kind.is_dir() {
-                let build_output = folder == dir && name == "target";
-                if !name.starts_with('.') && !build_output {
-                    pending.push(path);
-                }
-            } else if kind.is_file() && name.ends_with(".rs") {
-                let relative: Vec<String> = path
-                    .strip_prefix(dir)
-                    .unwrap_or(&path)
-                    .components()
-                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                    .collect();
-                let shown = relative.join("/");
-                let text = read_bounded(&path, &shown, MAX_SOURCE_BYTES)?;
-                total += text.len() as u64;
-                if total > MAX_TOTAL_BYTES || input.sources.len() >= MAX_FILES {
-                    return Err(ReadError::TooLarge {
-                        what: format!("the mod's source ({} files)", input.sources.len() + 1),
-                        size: total,
-                        most: MAX_TOTAL_BYTES,
-                    });
-                }
-                match references(&text, &relative[..relative.len() - 1]) {
-                    Ok(paths) => brought.extend(paths.into_iter().map(|p| (shown.clone(), p))),
-                    Err(target) => {
-                        return Err(ReadError::Escapes {
-                            file: shown,
-                            target,
-                        });
-                    }
-                }
-                input.sources.push((shown, text));
+    // A linked `src/` is not walked by the selection, so it is refused here, not read as empty.
+    let src = dir.join("src");
+    if std::fs::symlink_metadata(&src).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        return Err(ReadError::Symlink(src));
+    }
+    for shown in package::source_files(dir).map_err(io(dir))? {
+        if !shown.ends_with(".rs") || skip.contains(&shown.as_str()) {
+            continue;
+        }
+        let path = dir.join(&shown);
+        let kind = std::fs::symlink_metadata(&path)
+            .map_err(io(&path))?
+            .file_type();
+        if kind.is_symlink() {
+            return Err(ReadError::Symlink(path));
+        }
+        if !kind.is_file() {
+            continue;
+        }
+        let relative: Vec<String> = shown.split('/').map(str::to_owned).collect();
+        let text = read_bounded(&path, &shown, MAX_SOURCE_BYTES)?;
+        total += text.len() as u64;
+        if total > MAX_TOTAL_BYTES || input.sources.len() >= MAX_FILES {
+            return Err(ReadError::TooLarge {
+                what: format!("the mod's source ({} files)", input.sources.len() + 1),
+                size: total,
+                most: MAX_TOTAL_BYTES,
+            });
+        }
+        if let Some(target) = declares_skipped(&text, &relative[..relative.len() - 1], skip) {
+            return Err(ReadError::NotScanned {
+                file: shown,
+                target: target.to_owned(),
+            });
+        }
+        match references(&text, &relative[..relative.len() - 1]) {
+            Ok(paths) => brought.extend(paths.into_iter().map(|p| (shown.clone(), p))),
+            Err(target) => {
+                return Err(ReadError::Escapes {
+                    file: shown,
+                    target,
+                });
             }
         }
+        input.sources.push((shown, text));
     }
     input.sources.sort();
     for (file, target) in brought {
@@ -354,9 +396,16 @@ pub fn read(dir: &Path) -> Result<ModInput, ReadError> {
                 .map(str::to_owned)
                 .collect();
         }
-        if let Some(why) = exact(&value) {
-            return Err(ReadError::Exact(why));
-        }
+        let rows = |value: Option<&toml::Value>| {
+            value
+                .and_then(toml::Value::as_array)
+                .is_some_and(|rows| !rows.is_empty())
+        };
+        input.game_code = rows(value.get("internals"))
+            || value
+                .get("native")
+                .and_then(toml::Value::as_table)
+                .is_some_and(|native| native.values().any(|rows_of| rows(Some(rows_of))));
     }
     Ok(input)
 }
@@ -372,14 +421,15 @@ mod tests {
     }
 
     #[test]
-    fn reads_sources_outside_target_and_hidden_folders_and_the_manifest_names() {
+    fn reads_the_packaged_sources_and_the_manifest_names() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         write(root, "src/lib.rs", "a");
         write(root, "src/deep/b.rs", "b");
         write(root, "build.rs", "c");
         write(root, "target/debug/build/x.rs", "no");
-        write(root, "src/target/aim.rs", "d");
+        write(root, "src/target/aim.rs", "no");
+        write(root, "tools/generate.rs", "no");
         write(root, ".sunrise/sdk/api/lib.rs", "no");
         write(root, "src/notes.txt", "no");
         write(
@@ -387,7 +437,7 @@ mod tests {
             "sunrise-mod.toml",
             "id = \"m\"\ncapabilities = [\"registries\"]\n[native]\ngame = \"26.3\"\n",
         );
-        let input = read(root).unwrap();
+        let input = read(root, &[]).unwrap();
         let sources: Vec<(&str, &str)> = input
             .sources
             .iter()
@@ -398,34 +448,10 @@ mod tests {
             [
                 ("build.rs", "c"),
                 ("src/deep/b.rs", "b"),
-                ("src/lib.rs", "a"),
-                ("src/target/aim.rs", "d")
+                ("src/lib.rs", "a")
             ]
         );
         assert_eq!(input.manifest_names, ["registries"]);
-    }
-
-    #[test]
-    fn a_mod_tied_to_one_build_gets_no_table() {
-        let dir = tempfile::tempdir().unwrap();
-        write(
-            dir.path(),
-            "sunrise-mod.toml",
-            "capabilities = []\n[native]\ngame = \"26.3\"\n[[native.mixin]]\nid = \"x\"\n",
-        );
-        assert_eq!(
-            read(dir.path()).unwrap_err().to_string(),
-            "this mod is tied to one build (it has a [native.mixin] table); fit checks do not apply"
-        );
-        write(
-            dir.path(),
-            "sunrise-mod.toml",
-            "capabilities = []\n[[internals]]\npath = \"x\"\n",
-        );
-        assert_eq!(
-            read(dir.path()).unwrap_err(),
-            ReadError::Exact("it names game internals".into())
-        );
     }
 
     #[test]
@@ -438,7 +464,7 @@ mod tests {
         );
         write(root, "sunrise-mod.toml", &big);
         assert!(matches!(
-            read(root).unwrap_err(),
+            read(root, &[]).unwrap_err(),
             ReadError::TooLarge { what, most: MAX_MANIFEST_BYTES, .. } if what == "sunrise-mod.toml"
         ));
         write(root, "sunrise-mod.toml", "capabilities = []\n");
@@ -448,9 +474,41 @@ mod tests {
             &"/".repeat(MAX_SOURCE_BYTES as usize + 1),
         );
         assert!(matches!(
-            read(root).unwrap_err(),
+            read(root, &[]).unwrap_err(),
             ReadError::TooLarge { what, most: MAX_SOURCE_BYTES, .. } if what == "src/lib.rs"
         ));
+    }
+
+    #[test]
+    fn a_skipped_file_that_is_the_library_root_is_refused_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "src/lib.rs", "");
+        write(root, "src/entry.rs", "");
+        // The default root, with and without a manifest that names none.
+        let refused = |skip: &str| read(root, &[skip]).unwrap_err();
+        assert_eq!(
+            refused("src/lib.rs"),
+            ReadError::RootSkipped("src/lib.rs".into())
+        );
+        write(root, "Cargo.toml", "[package]\nname = \"m\"\n");
+        assert_eq!(
+            refused("src/lib.rs"),
+            ReadError::RootSkipped("src/lib.rs".into())
+        );
+        // A named root, however its path is written; the default is then an ordinary file.
+        write(root, "Cargo.toml", "[lib]\npath = \"./src//entry.rs\"\n");
+        assert_eq!(
+            refused("src/entry.rs"),
+            ReadError::RootSkipped("src/entry.rs".into())
+        );
+        let scanned = read(root, &["src/lib.rs"]).unwrap();
+        let files: Vec<_> = scanned
+            .sources
+            .iter()
+            .map(|(file, _)| file.as_str())
+            .collect();
+        assert_eq!(files, ["src/entry.rs"]);
     }
 
     #[test]
@@ -458,7 +516,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), "sunrise-mod.toml", "capabilities = [");
         assert!(matches!(
-            read(dir.path()).unwrap_err(),
+            read(dir.path(), &[]).unwrap_err(),
             ReadError::Manifest(_)
         ));
     }
@@ -475,10 +533,10 @@ mod tests {
             "src/lib.rs",
             "#[path = \"gen/x.rs\"] mod x;\ninclude!(\"../src/y.rs\");\ninclude! { r#\"y.rs\"# }\ninclude![\"\\x79.rs\"];\ninclude!(\"\\u{79}.rs\");\n// #[path = \"/etc\"]",
         );
-        assert!(read(root).is_ok());
+        assert!(read(root, &[]).is_ok());
         let escapes = |text: &str| {
             write(root, "src/lib.rs", text);
-            read(root).unwrap_err()
+            read(root, &[]).unwrap_err()
         };
         // Escapes decoded before the check, with every delimiter.
         for text in [
@@ -524,7 +582,7 @@ mod tests {
         let many = format!("fn f() {{ {} }}", "path = x; ".repeat(400_000));
         let started = std::time::Instant::now();
         write(root, "src/lib.rs", &many);
-        assert!(read(root).is_ok());
+        assert!(read(root, &[]).is_ok());
         assert!(started.elapsed() < std::time::Duration::from_millis(1500));
         // A `#[path]` inside an inline module nests by its name: not judged.
         assert!(matches!(
@@ -567,7 +625,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let deep = "m/".repeat(200);
         write(dir.path(), &format!("src/{deep}x.rs"), "x");
-        let input = read(dir.path()).unwrap();
+        let input = read(dir.path(), &[]).unwrap();
         assert_eq!(input.sources, [(format!("src/{deep}x.rs"), "x".to_owned())]);
     }
 
@@ -577,10 +635,57 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         write(root, "src/lib.rs", "a");
-        std::os::unix::fs::symlink(root.join("src"), root.join("linked")).unwrap();
+        std::os::unix::fs::symlink(root.join("src/lib.rs"), root.join("src/linked.rs")).unwrap();
         assert_eq!(
-            read(root).unwrap_err(),
-            ReadError::Symlink(root.join("linked"))
+            read(root, &[]).unwrap_err(),
+            ReadError::Symlink(root.join("src/linked.rs"))
+        );
+        // A linked `src/` itself is refused, not scanned as empty.
+        let linked = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(root.join("src"), linked.path().join("src")).unwrap();
+        assert_eq!(
+            read(linked.path(), &[]).unwrap_err(),
+            ReadError::Symlink(linked.path().join("src"))
+        );
+    }
+
+    /// A file packing leaves out is not read, so its contents cannot stop the scan.
+    #[cfg(unix)]
+    #[test]
+    fn files_packing_leaves_out_are_not_read() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "src/lib.rs", "a");
+        // Packed, and Cargo's library root: read.
+        write(root, "README.rs", "r");
+        write(
+            root,
+            "Cargo.toml",
+            "[package]\nname = \"m\"\n[lib]\npath = \"README.rs\"\n",
+        );
+        let not_text = [0xff_u8, 0xfe];
+        for name in [
+            &b"src/a\\b.rs"[..],
+            b"src/\xff.rs",
+            b"node_modules/x.rs",
+            b"gen.rs",
+            b"build.rs/x.rs",
+        ] {
+            let path = root.join(std::ffi::OsStr::from_bytes(name));
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, not_text).unwrap();
+        }
+        std::os::unix::fs::symlink(root.join("src"), root.join("linked")).unwrap();
+        // A selected name that is not a regular file is not opened, so it cannot block the scan.
+        let _socket = std::os::unix::net::UnixListener::bind(root.join("src/sock.rs")).unwrap();
+        let input = read(root, &[]).unwrap();
+        assert_eq!(
+            input.sources,
+            [
+                ("README.rs".to_owned(), "r".to_owned()),
+                ("src/lib.rs".to_owned(), "a".to_owned())
+            ]
         );
     }
 }
