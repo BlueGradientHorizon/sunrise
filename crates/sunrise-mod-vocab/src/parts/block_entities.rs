@@ -42,8 +42,6 @@ where
 /// A block capability provider, as the registrar keeps it.
 pub type BlockProvider<T> = dyn BlockCapabilityProvider<T>;
 
-pub use super::capabilities::providers_of::{BlockProviderOf, EntityProviderOf, ItemProviderOf};
-
 /// One retained structure callback, with its owner and session-wide panic state.
 // no wire: native callback and process-local enablement.
 #[derive(Clone)]
