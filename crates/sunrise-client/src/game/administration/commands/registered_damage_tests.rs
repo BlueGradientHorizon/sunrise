@@ -5,6 +5,9 @@ use sunrise_client::{
 };
 use sunrise_world::damage_source::Catalog;
 
+#[path = "registered_damage_tests/creaking_borrowed.rs"]
+mod creaking_borrowed;
+
 #[test]
 fn formerly_aliased_types_keep_their_id_and_registry_tags() {
     let registry_backed = ["minecraft:indirect_magic", "minecraft:fly_into_wall"];
@@ -460,7 +463,7 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         let index = game.mobs.iter().position(|m| m.id == warden_id).unwrap();
         let health_after_first = game.mobs[index].health;
         let from = game.target_position(Target::Player).unwrap();
-        assert!(!game.hurt_by_player(index, 1.0, Damage::player(from)));
+        assert!(!game.hurt_by_player(index, 1.0, Damage::player(from)).0);
         assert_eq!(game.mobs[index].health, health_after_first);
         assert_eq!(warden_state(game), (Some(Who::Player), 100));
 
@@ -808,6 +811,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             .unwrap()
             .ai
             .last_hurt_by_player = 0;
+        game.last_hurt_by_player.remove(&creaking_id);
         assert!(
             !game.run_command("damage 00000055-0000-0000-0000-000000000001 1 minecraft:generic")
         );

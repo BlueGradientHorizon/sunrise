@@ -172,7 +172,7 @@ impl Game<'_> {
         // run and again after an explosion, which can move or remove them.
         let mut obstacles: Option<sunrise_client::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
-        for (join, kind) in pending.drain(..) {
+        'entity: for (join, kind) in pending.drain(..) {
             self.ordered.done = Some(join);
             // ServerLevel.tick: only entities in entity-ticking chunks tick.
             match kind {
@@ -300,14 +300,70 @@ impl Game<'_> {
                     };
                     let response =
                         self.orbs[i].move_restitution(self.body_motion(&game_side!(self)), tick);
-                    let velocity = self.finish_body_restitution(
-                        (orb_id, "minecraft:experience_orb"),
-                        self.orbs[i].position,
-                        response,
-                    );
-                    let Some(i) = self.orbs.locate(join) else {
+                    let entity = (orb_id, "minecraft:experience_orb");
+                    let mut velocity =
+                        self.finish_body_restitution(entity, self.orbs[i].position, response);
+                    let Some(mut i) = self.orbs.locate(join) else {
                         continue;
                     };
+                    let orb = &self.orbs[i];
+                    let (footprint, ground) = ((orb.position, orb.bounds()), orb.ground);
+                    self.body_motion(&game_side!(self))
+                        .apply_block_speed(orb.position, &mut velocity);
+                    if !tick.burnt_out {
+                        let writes = self.body_step_on(entity, footprint, &ground, &mut velocity);
+                        for write in writes {
+                            match write {
+                                mod_api::EntityWrite::Hurt {
+                                    damage_type,
+                                    amount,
+                                } => {
+                                    let Some(name) =
+                                        mod_api::__private::parts_installation::damage_type_name(
+                                            damage_type,
+                                        )
+                                    else {
+                                        continue;
+                                    };
+                                    let Some(kind) = self.health_resources.damage.id(name) else {
+                                        continue;
+                                    };
+                                    let source = sunrise_client::health::HurtSource {
+                                        damage_type: name,
+                                        causing: 0,
+                                        direct: 0,
+                                        position: None,
+                                    };
+                                    let vanilla = self
+                                        .resident_item_or_orb_immune(orb_id, entity.1, kind, false);
+                                    let invulnerable = self.native_nonliving_invulnerable(
+                                        orb_id, entity.1, source, vanilla,
+                                    );
+                                    let Some(current) = self.orbs.locate(join) else {
+                                        continue 'entity;
+                                    };
+                                    i = current;
+                                    if !invulnerable && self.orbs[i].hurt(amount) {
+                                        self.orbs.remove(i);
+                                        continue 'entity;
+                                    }
+                                }
+                                mod_api::EntityWrite::Push([x, y, z]) => {
+                                    velocity = velocity.add_vector(Vec3::new(x, y, z))
+                                }
+                                mod_api::EntityWrite::SetMovement([x, y, z]) => {
+                                    velocity = Vec3::new(x, y, z)
+                                }
+                                mod_api::EntityWrite::ResetFallDistance => {
+                                    self.orbs[i].fall_distance = 0.0
+                                }
+                                mod_api::EntityWrite::SetFireTicks(ticks) => {
+                                    self.orbs[i].fire_ticks = ticks
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
                     let registry = self.pack.assets.registry;
                     let tags = world_items!(self);
                     let block_registries = &self.pack.block_registries;

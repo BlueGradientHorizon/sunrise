@@ -20,7 +20,7 @@ mod interaction_actions;
 mod interaction_prediction;
 use inventory::{
     CREATIVE_SYNCED, Predicted, changed_slots, creative_sync_slot, creative_sync_stacks,
-    mark_synced, menu_items, predict_clicks,
+    mark_synced, menu_items, predict_clicks, predict_clicks_with,
 };
 mod level_format;
 mod raw_ingress;
@@ -30,11 +30,13 @@ mod use_item;
 mod block_entity_data;
 #[cfg(test)]
 mod block_entity_data_tests;
+#[cfg(test)]
+mod claimed_item_use_tests;
 use super::raw_backlog::Received;
 use super::remote_chunks::{ChunkDecoder, ChunkFormat, Next};
 use super::remote_vehicles::PassengerSeat;
 use super::render_tick::{mob_tracking_body, player_tracking_body};
-use super::{Dim, Game, Mining, Screen, item_use::ticks_left, level_sounds::LevelSound};
+use super::{Dim, Game, Hit, Mining, Screen, item_use::ticks_left, level_sounds::LevelSound};
 use crate::game::api_values::TryIntoApi;
 use mod_api::InteractionKey;
 use movement::MovePacket;
@@ -47,7 +49,6 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_client::first_person::{Hand, SwingAnimation};
-use sunrise_client::input_queue::InputQueue;
 use sunrise_client::{
     Result,
     blocks::Fluid,
@@ -84,7 +85,6 @@ use sunrise_protocol::{
     secure_chat::{self, Signature},
     text::{Language, plain},
 };
-use winit::keyboard::KeyCode;
 use {
     sunrise_core::nbt::Tag,
     sunrise_mod_runtime::attachments::{Holder, ResidentAttachments},
@@ -116,7 +116,6 @@ mod packets_entity;
 mod packets_object;
 mod packets_player;
 mod packets_world;
-mod queued_keys;
 mod remote_attributes;
 mod remote_state;
 mod session;
@@ -246,9 +245,9 @@ fn seat_passengers(entities: &mut HashMap<i32, Tracked>, vehicle: u32, passenger
 /// `LinearInterpolationHandler`'s target: a position and rotation (yRot,
 /// xRot) reached in `steps` ticks.
 pub(super) struct Lerp {
-    target: [f64; 3],
+    pub(super) target: [f64; 3],
     rotation: Option<(f32, f32)>,
-    steps: u32,
+    pub(super) steps: u32,
 }
 
 /// `SteppedInterpolationHandler.doInterpolate`'s `setPos` and `setRot` on a
@@ -285,10 +284,44 @@ enum OwnProfile {
     Done(Option<sunrise_client::skins::Textures>),
 }
 
+pub(in crate::game) struct PendingCauldron {
+    hand: Hand,
+    hit: Hit,
+    attempt: mod_api::InteractionAttempt,
+    selected: usize,
+    main: Option<ItemStack>,
+    off: Option<ItemStack>,
+    aim: ItemUseAim,
+    swing: [bool; 2],
+    sequence: i32,
+    item_after_block: bool,
+}
+
+#[derive(PartialEq)]
+struct ItemUseAim {
+    // UseItem carries these angles but not the server's ray origin.
+    rotation: (f32, f32),
+    eye: Option<[f64; 3]>,
+    // The local ray can also come from a tracked input device.
+    ray: Option<([f64; 3], [f64; 3])>,
+    reach: f64,
+}
+
+/// The packet route that starts a remote level entry.
+pub(in crate::game) enum RemoteDimensionEntry {
+    Login,
+    Respawn,
+    DeathRespawn,
+}
+
 pub(super) struct Remote {
     pub(super) professions: Arc<sunrise_client::mobs::villager::ResolvedProfessions>,
     pub session: Session,
+    /// Display-only address computed at connection setup. Never holds the raw friend invite.
+    pub(super) display_address: Option<String>,
     pub brand: String,
+    /// `ClientPacketListener.random` draws packet spread, not provider RNG.
+    pub(super) particle_packet_random: sunrise_core::random::LegacyRandom,
     pub(super) recipe_viewer: crate::game::recipe_book::ViewerChannels,
     /// This connection's configured feature flags, carried through reconfiguration.
     pub(super) features: std::sync::Arc<[String]>,
@@ -300,6 +333,9 @@ pub(super) struct Remote {
     pub attachments: HashMap<Holder, ResidentAttachments>,
     /// The colliders the server sent, by entity id (`sunrise:collider_sync`).
     pub colliders: HashMap<u32, sunrise_client::colliders::ColliderState>,
+    /// The colliders at the last client tick, before any packets handled between ticks.
+    pub(super) collider_shove_start:
+        Option<(Dim, sunrise_client_render::moving_colliders::Prepared)>,
     /// How old the copy of the collider carrying the player is (`sunrise:carry_age`).
     pub carry_age: sunrise_client::colliders::CarryAge,
     /// The server samples far terrain for us, this far at most (`lod_net`).
@@ -441,6 +477,11 @@ pub(super) struct Remote {
     inventory_craft_grid: [Option<ItemStack>; 4],
     inventory_craft_result: Option<ItemStack>,
     use_target: Option<[i32; 3]>,
+    pub(super) cauldron_entries: Option<sunrise_client::cauldron::interactions::Dispatcher<()>>,
+    /// Receipts are connection-scoped; unlike block prediction sequences, they
+    /// are never reset on a level change.
+    cauldron_receipt: i64,
+    pub(in crate::game) pending_cauldrons: std::cell::RefCell<HashMap<i64, PendingCauldron>>,
     /// A mod menu's extra data, kept for the `OpenScreen` of its window that
     /// follows (`sunrise:menu_extra`).
     pub(in crate::game) menu_extra: Option<sunrise_protocol::menu_extra::Message>,
@@ -572,11 +613,6 @@ pub(super) struct Remote {
     /// Per-hand swing policy, restored when the current input attempt ends.
     pub(in crate::game) interaction_swing: [bool; 2],
     destroy_delay: u32,
-    pub(super) input: sunrise_client::interaction_input::InteractionInput,
-    /// Keys whose presses send a packet (swap hands, drop, a mount's
-    /// inventory): like the click queue, they wait for the tick's
-    /// `handleKeybinds` phase rather than going out between window events.
-    pub(super) pending_keys: InputQueue<KeyCode>,
     /// Whether the main and off hand still wait for the server's answer to
     /// a SWAP_ITEM_WITH_OFFHAND (`remote_hand_slot_set`).
     swap_answer: [bool; 2],
@@ -755,8 +791,12 @@ impl Game<'_> {
 
     fn decode_remote_stack(&self, stack: &Stack) -> Option<ItemStack> {
         let r = self.remote.as_ref()?;
-        if !sunrise_protocol::item::custom::permitted(stack, r.registries.custom_components)
-            .unwrap_or(false)
+        if !sunrise_protocol::item::custom::permitted_with_names(
+            stack,
+            r.registries.custom_components,
+            &*r.registries,
+        )
+        .unwrap_or(false)
         {
             log::warn!("Dropping a stack with unnegotiated custom components");
             return None;
@@ -766,6 +806,76 @@ impl Game<'_> {
             &r.builtin,
             &r.registries,
         ))
+    }
+
+    pub(super) fn to_network_projecting(
+        &self,
+        s: &Option<ItemStack>,
+        projected: &dyn Fn(&sunrise_world::component_value::consume_effects::Admitted),
+    ) -> Option<Stack> {
+        let r = self.remote.as_ref()?;
+        // A stack as the server sent it, only its count changed: its own
+        // components go back, as a vanilla client keeps them.
+        let effect_mapping = r
+            .registries
+            .consume_effect_codecs
+            .as_ref()
+            .map(|snapshot| snapshot.identity());
+        let source = s.as_ref()?;
+        if let Some(patch) = source.wire_patch_for(effect_mapping) {
+            let mut out = Stack::new(self.item_id(&source.item), source.count as i32);
+            let safe = r.registries.custom_components
+                || sunrise_protocol::item::custom::entries().next().is_none()
+                || sunrise_protocol::item::WirePatch::decode_reader(
+                    sunrise_protocol::buf::Reader::new(&patch).with_names(&*r.registries),
+                )
+                .and_then(|(added, removed)| {
+                    let decoded = Stack {
+                        added,
+                        removed,
+                        ..Stack::new(out.item, out.count)
+                    };
+                    sunrise_protocol::item::custom::permitted_with_names(
+                        &decoded,
+                        false,
+                        &*r.registries,
+                    )
+                })
+                .unwrap_or(false);
+            if safe {
+                out.wire = sunrise_protocol::item::WirePatch(Some(patch));
+                return Some(out);
+            }
+            log::warn!("Cannot send cached custom components to this peer");
+        }
+        let mut wire = sunrise_client::lan::guest::stack_to_network_projecting(
+            |name| self.item_id(name),
+            // Built-in first, as a hub's `SyncData::id` does: potions are one.
+            |registry, name| {
+                if registry == sunrise_protocol::item::consume_effects::REGISTRY {
+                    return r.registries.consume_effect_id(name);
+                }
+                r.builtin
+                    .get(registry)
+                    .and_then(|ids| ids.id(name))
+                    .or_else(|| r.registries.id(registry, name))
+                    .or_else(|| {
+                        (r.registries.custom_components
+                            && registry == "minecraft:data_component_type")
+                            .then(|| sunrise_protocol::item::custom::id(name))
+                            .flatten()
+                    })
+            },
+            s,
+            projected,
+        )?;
+        sunrise_client::lan::guest::canonicalize_stack_patch(
+            &mut wire,
+            source,
+            self.items(),
+            &r.builtin,
+        );
+        Some(wire)
     }
 
     /// `HashedStack.create` with the connection's registries (the client's
@@ -782,11 +892,32 @@ impl Game<'_> {
             builtin: &r.builtin,
             dynamic: &r.registries,
         };
+        let projected = std::cell::RefCell::new(Vec::new());
         let stack = self
-            .to_network(s)
+            .to_network_projecting(s, &|effect| projected.borrow_mut().push(effect.clone()))
             .ok_or_else(|| sunrise_protocol::Error::new("cannot encode a nonempty stack"))?;
-        Hashed::create(&stack, &names)
-            .map(Some)
+        let projected = projected.into_inner();
+        let hash = if let Some(data) = s.as_ref().and_then(ItemStack::data) {
+            Hashed::create_with_admitted(&stack, &names, &|name, bytes| {
+                let matches =
+                    |effect: &sunrise_world::component_value::consume_effects::Admitted| {
+                        &effect.name == name && effect.wire.as_ref() == bytes
+                    };
+                if stack.wire.0.is_some() {
+                    data.wire
+                        .admitted_effects()
+                        .iter()
+                        .find(|effect| matches(effect))
+                        .cloned()
+                } else {
+                    data.find_admitted_consume_effect(&matches)
+                        .or_else(|| projected.iter().find(|effect| matches(effect)).cloned())
+                }
+            })
+        } else {
+            Hashed::create(&stack, &names)
+        };
+        hash.map(Some)
             .map_err(|e| sunrise_protocol::Error::new(e.to_string()))
     }
 
@@ -842,10 +973,7 @@ impl Game<'_> {
 
     /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
     pub(in crate::game) fn remote_attack_clicks_queued(&self) -> u32 {
-        self.remote.as_ref().map_or(0, |r| {
-            r.input
-                .queued(sunrise_client::interaction_input::Button::Attack)
-        })
+        self.pending_mapping_clicks("key.attack")
     }
 
     /// Process what the network thread received (once per frame, like the
@@ -896,7 +1024,7 @@ impl Game<'_> {
         else {
             return;
         };
-        let mut w = sunrise_protocol::buf::Writer::new();
+        let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
         w.varint(id);
         w.string(&command);
         self.send(S::Unknown(
@@ -968,6 +1096,15 @@ impl Game<'_> {
             // ClientCommonPacketListenerImpl.handlePing runs on the game
             // thread, after all preceding packets (especially teleports).
             C::Ping(p) => self.send(S::Pong(p)),
+            C::CustomPayload(p) if p.channel == super::cauldron_prediction::ENTRIES_CHANNEL => {
+                let entries = super::cauldron_prediction::decode_registrations(&p.data)?;
+                if let Some(remote) = &mut self.remote {
+                    remote.cauldron_entries = Some(entries);
+                }
+            }
+            C::CustomPayload(p) if p.channel == super::cauldron_prediction::USE_CHANNEL => {
+                self.receive_cauldron_use(&p.data)?;
+            }
             // The server's next generation of mod registries: all of it or the connection.
             C::CustomPayload(p) if p.channel == sunrise_client::datapack_net::CHANNEL => {
                 sunrise_client::datapack_net::accept_chunk(&p.data)?;
@@ -986,10 +1123,6 @@ impl Game<'_> {
                 if p.channel == sunrise_client::recipe_book::settings_sync::CHANNEL =>
             {
                 self.remote_book_settings(&p.data);
-            }
-            // The synced attachments of a holder the server shows the window.
-            C::CustomPayload(p) if p.channel == sunrise_protocol::attachment_sync::CHANNEL => {
-                self.remote_attachment_sync(&p.data);
             }
             // A native mod's general row the server starts showing the window.
             C::CustomPayload(p) if p.channel == sunrise_protocol::general_entity::CHANNEL => {
@@ -1017,7 +1150,7 @@ impl Game<'_> {
             }
             // A mod menu type's opening context, just before its OpenScreen.
             C::CustomPayload(p) if p.channel == sunrise_protocol::menu_extra::CHANNEL => {
-                self.receive_menu_extra(&p.data);
+                self.receive_menu_extra(&p.data)?;
             }
             C::CustomPayload(p) if sunrise_client::lan::recipes::viewer_channel(&p.channel) => {
                 self.remote_recipe_viewer(&p.channel, &p.data);
@@ -1290,7 +1423,7 @@ impl Game<'_> {
             C::ShowDialog(p) => self.show_play_dialog(&p.dialog),
             C::ClearDialog(_) => self.clear_dialog(),
             // ClientPacketListener.handleLowDiskSpaceWarning.
-            C::LowDiskSpaceWarning(_) => sunrise_client::chunk_io::report_low_disk_space(),
+            C::LowDiskSpaceWarning(_) => self.client_reports.report_low_disk_space(),
             C::ClearTitles(p) => self.apply_clear_titles_packet(p),
             _ => {}
         }
@@ -1972,10 +2105,10 @@ impl sunrise_client::interaction_input::TargetUseWorld for RemoteUseWorld<'_, '_
         self.0.remote_use_entity(Hand::Main)
     }
     fn use_block(&mut self) -> bool {
-        self.0.remote_use_block(Hand::Main)
+        self.0.remote_use_block(Hand::Main, self.1, None)
     }
     fn use_item(&mut self) {
-        self.0.remote_use_hands(self.1);
+        self.0.remote_use_hands(Hand::Main, self.1, None);
     }
 }
 
@@ -1984,21 +2117,35 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         self.0.pick_tick_targets();
     }
     fn handle_keys(&mut self) {
-        self.0.remote_queued_keys();
+        self.0.handle_play_keybinds();
+    }
+    fn pending_clicks(&self, button: sunrise_client::interaction_input::Button) -> u32 {
+        self.0.pending_mapping_clicks(button.mapping())
+    }
+    fn consume_click(&mut self, button: sunrise_client::interaction_input::Button) -> bool {
+        self.0.consume_mapping_click(button.mapping())
+    }
+    fn is_down(&self, button: sunrise_client::interaction_input::Button) -> bool {
+        self.0.mapped_key_down(button.mapping())
+    }
+    fn can_continue_attack(&self) -> bool {
+        !self.0.mod_mappings_screen_open()
+    }
+    fn spectator_hotbar(&mut self) {
+        while self.0.spectator() && self.0.consume_mapping_click("key.spectatorHotbar") {
+            self.0.spectator_action_key();
+        }
     }
     fn release_hit_result(&mut self) {
         self.0.release_tick_targets();
     }
     fn using_item(&self) -> bool {
-        self.0.using.is_some()
+        self.0.client_item_use.is_some() || self.0.using.is_some()
     }
     fn release_using(&mut self) {
-        if let Some((slot, ticks)) = self.0.using
-            && self.0.mod_use_tick(slot, ticks, true)
-        {
-            return;
+        if !self.0.end_client_item_use(true) && self.0.using.is_some() {
+            self.0.release_remote_use();
         }
-        self.0.release_remote_use();
     }
     fn start_attack(&mut self) -> bool {
         self.0.remote_start_attack()
@@ -2218,6 +2365,13 @@ mod attachment_query_tests;
 mod passage_cross_tests;
 #[cfg(test)]
 mod respawn_motion_tests;
+impl Remote {
+    /// Project the session address for display once, dropping the memory transport's marker.
+    pub(super) fn display_address_for(address: &str) -> Option<String> {
+        (address != "local").then(|| sunrise_client::net::shown_address(address))
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::api_values::TryIntoApi;
@@ -2445,7 +2599,7 @@ pub(crate) mod tests {
         connect_play_test(game, |_, _| {})
     }
 
-    fn connect_play_test(
+    pub(super) fn connect_play_test(
         game: &mut super::Game<'_>,
         configure: impl FnOnce(
             &mut sunrise_protocol::connection::ConnReader,
@@ -2513,8 +2667,36 @@ pub(crate) mod tests {
         (reader, writer)
     }
 
+    /// The test server offers its payload manifest and reads the client's offer.
+    pub(super) fn offer_test_payloads(
+        reader: &mut sunrise_protocol::connection::ConnReader,
+        writer: &mut sunrise_protocol::connection::ConnWriter,
+        manifest: &sunrise_protocol::payload_negotiation::Manifest,
+    ) {
+        use sunrise_protocol::{
+            packets::configuration as cfg,
+            payload_negotiation::{CHANNEL, Control},
+        };
+        writer
+            .send(
+                &cfg::Clientbound::CustomPayload(cfg::CustomPayload {
+                    channel: CHANNEL.into(),
+                    data: Control::Offer(manifest.clone()).encode().unwrap(),
+                })
+                .encode(),
+            )
+            .unwrap();
+        let (id, body) = reader.recv().unwrap();
+        assert!(
+            matches!(cfg::Serverbound::decode(id, &body).unwrap(), cfg::Serverbound::CustomPayload(p) if p.channel == CHANNEL)
+        );
+    }
+
     /// Spawns the connected client in the overworld as entity 7, profile 42.
-    fn spawn_menu_test(game: &mut super::Game<'_>) -> sunrise_protocol::packets::play::SpawnInfo {
+    pub(crate) fn spawn_menu_test(
+        game: &mut super::Game<'_>,
+    ) -> sunrise_protocol::packets::play::SpawnInfo {
+        use crate::game::remote::RemoteDimensionEntry;
         use sunrise_client::level_loading::Reason;
         use sunrise_protocol::packets::play::SpawnInfo;
         let spawn = SpawnInfo {
@@ -2529,7 +2711,7 @@ pub(crate) mod tests {
             portal_cooldown: 0,
             sea_level: 63,
         };
-        game.enter_remote_dimension(&spawn, false, Reason::Other);
+        game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
         let remote = game.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
@@ -2693,7 +2875,8 @@ pub(crate) mod tests {
                         12,
                         game.guest_index(12).unwrap(),
                         hit,
-                        super::Hand::Main
+                        super::Hand::Main,
+                        None,
                     )
                     .unwrap()
                 );
@@ -3012,6 +3195,8 @@ mod boat_push_order_tests;
 mod item_use_tick_tests;
 #[cfg(test)]
 mod movement_input_tests;
+#[cfg(test)]
+mod swim_start_tests;
 /// `Entity.baseTick`'s fluid update for a mob this window only displays (`fluids`, sampled before
 /// the tick), with the splash it draws, and the block it stands on.
 pub(super) fn client_fluid_step(

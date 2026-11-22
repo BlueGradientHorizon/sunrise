@@ -17,7 +17,6 @@ use sunrise_client::{
 };
 use sunrise_core::{
     geometry::{Aabb, Vec3},
-    position::BlockPos,
     random::RandomSource,
 };
 pub(super) const TYPE_ID: &str = "minecraft:armor_stand";
@@ -839,7 +838,7 @@ impl Game<'_> {
         let (area, id) = (self.armor_stands[i].bounds(), self.armor_stands[i].id);
         let (center, on_ground) = (
             self.armor_stands[i].position,
-            self.armor_stands[i].on_ground,
+            self.armor_stands[i].ground.on_ground,
         );
         let hurt = self.punch_armor_stand(i);
         if hurt {
@@ -1051,33 +1050,28 @@ impl Game<'_> {
                 self.res.facts(),
                 self.collision,
             );
-            let mut scene = sunrise_client::collisions::SceneCollisions {
+            let scene = sunrise_client::collisions::SceneCollisions {
                 world,
                 binding: collision,
                 subject: None,
             };
-            let mut tops: Vec<BlockPos> = Vec::new();
             let side = game_side!(self);
-            if let Some(step) = a.tick_move(
-                &mut scene,
+            let step = a.tick_move(
+                &scene,
                 facts,
+                Some(&self.res.motion().blocks),
                 &self.res.motion().climbing,
                 in_water,
                 Some(self.border.geometry()),
                 &nearby,
                 &self.loop_context,
                 &side,
-            ) {
-                // LivingEntity.aiStep: `travel` first, then the blocks' push.
+            );
+            if let Some(step) = step {
+                // LivingEntity.aiStep: `travel` settles before applyEffectsFromBlocks.
                 a.tick_settle(medium, step);
-                a.push_by_bubble_column_over(world, registry, facts, collision, |pos| {
-                    tops.push(pos)
-                });
             }
             let section_step = (a.id, a.previous, a.position);
-            for pos in tops {
-                self.bubble_column_particles(pos);
-            }
             let a = &mut self.armor_stands[i];
             if in_water {
                 a.enchantment_fall_distance = 0.0;
@@ -1086,8 +1080,8 @@ impl Game<'_> {
                 a.enchantment_fall_distance +=
                     f64::from((a.previous.y - a.position.y).max(0.0) as f32);
             }
-            let landed = a.on_ground && a.enchantment_fall_distance > 0.0;
-            if a.on_ground {
+            let landed = a.ground.on_ground && a.enchantment_fall_distance > 0.0;
+            if a.ground.on_ground {
                 a.enchantment_fall_distance = 0.0;
             }
             // LivingEntity.checkFallDamage: onChangedBlock before the block's
@@ -1101,6 +1095,39 @@ impl Game<'_> {
                 let stand = &self.armor_stands[i];
                 let (position, bounds) = (stand.position, stand.bounds());
                 self.post_landing_event(position, bounds, true);
+            }
+            if step.is_some() && !self.armor_stands[i].no_physics(None) {
+                let stand = &self.armor_stands[i];
+                let (id, footprint, ground, mut velocity) = (
+                    stand.id,
+                    (stand.position, stand.bounds()),
+                    stand.ground,
+                    stand.velocity,
+                );
+                let writes = self.body_step_on((id, TYPE_ID), footprint, &ground, &mut velocity);
+                let stand = &mut self.armor_stands[i];
+                // `ArmorStand.hurtServer` does not take generic damage; the stand
+                // has no stuck multiplier or active-effect list in its travel row.
+                super::entity::apply_contact_writes(
+                    writes,
+                    &mut velocity,
+                    Some(&mut stand.enchantment_fall_distance),
+                    None,
+                    Some(&mut stand.fire_ticks),
+                );
+                stand.velocity = velocity;
+                // BubbleColumnBlock.entityInside runs in the sweep after Block.stepOn.
+                let mut tops = Vec::new();
+                stand.push_by_bubble_column_over(
+                    &self.world,
+                    registry,
+                    self.res.facts(),
+                    collision,
+                    |pos| tops.push(pos),
+                );
+                for pos in tops {
+                    self.bubble_column_particles(pos);
+                }
             }
             self.armor_stands[i].apply_honey_slide(&self.world, self.res.facts());
             let a = &self.armor_stands[i];
@@ -1168,8 +1195,9 @@ impl Game<'_> {
     /// `Entity.move(mover, delta)` for armor stand `i` (a lid's push or a mod's move), one with physics (vanilla's
     /// `!noPhysics`: not a marker, not `NoGravity`), the stand's own `shove` by `delta`. Stands tick
     /// before mobs here, while vanilla ticks a stand that joined after the
-    /// pushing `shulker` (one placed on it) after the shulker: `shove` makes
-    /// up for the order. A shulker box's lid moves it after every entity's tick.
+    /// pushing `shulker` (one placed on it) after the shulker. Only the settled
+    /// vertical velocity depends on that order. A shulker box's lid moves it
+    /// after every entity's tick.
     /// `grid` holds the stands' obstacles, built once per lid at its first stand.
     pub(super) fn shoves_armor_stand(
         &mut self,
@@ -1199,6 +1227,7 @@ impl Game<'_> {
             Some(self.border.geometry()),
             &nearby,
             travels_after,
+            !self.options.execution_role.is_client() && self.remote.is_none(),
             mover,
             &self.loop_context,
         );
@@ -1280,7 +1309,10 @@ impl Game<'_> {
     /// still steps). `canDestroyEgg` wants mob griefing before the level's roll.
     fn armor_stand_turtle_eggs(&mut self, i: usize, landed: bool) -> Result<()> {
         let stand = &self.armor_stands[i];
-        if !stand.on_ground || self.remote.is_some() || self.options.execution_role.is_client() {
+        if !stand.ground.on_ground
+            || self.remote.is_some()
+            || self.options.execution_role.is_client()
+        {
             return Ok(());
         }
         let p = stand.on_pos_legacy(|p| {

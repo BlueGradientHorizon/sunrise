@@ -407,7 +407,7 @@ impl Game<'_> {
                 "minecraft:armor_stand",
                 [p.x, p.y, p.z],
                 a.yaw,
-                a.on_ground,
+                a.ground.on_ground,
             );
             e.head_yaw = a.yaw;
             e.velocity = [a.velocity.x, a.velocity.y, a.velocity.z];
@@ -845,7 +845,7 @@ impl Game<'_> {
             e.velocity = [v.x, v.y, v.z];
             [e.yaw, e.pitch] = row.rotation;
             e.head_yaw = row.rotation[0];
-            e.general = true;
+            e.general = Some(catalog.tracking(row.type_slot));
         }
     }
 
@@ -914,7 +914,7 @@ impl Game<'_> {
                 Some(g) => g.entity_id,
                 None => owner(p.owner),
             };
-            let e = add_state(out, p.id, kind, at(p.position), p.yaw, p.on_ground);
+            let e = add_state(out, p.id, kind, at(p.position), p.yaw, p.ground.on_ground);
             e.pitch = p.pitch;
             e.velocity = at(p.velocity);
             e.needs_sync = p.needs_sync;

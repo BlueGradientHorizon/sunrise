@@ -14,7 +14,12 @@ are supported: a partial predicate does not need to form a complete state with d
 All palette entries, predicates and run indices are prepared before any mutation.
 NBT is not representable. At most 65,536 filters are allowed. Unloaded chunks and
 out-of-height portions of runs are skipped. Edits preserve strict block-entity behavior,
-notify no neighbors and send whole changed chunks.
+drop no contents from replaced block entities, notify no neighbors and send whole changed chunks.
+Inside a transaction in the level in place, the new states and entities are visible immediately.
+Abort quietly restores both, along with the connection group each replaced block had. Only the
+outermost commit in that level publishes the changed chunks, with their resulting connection groups.
+When a bulk edit and a `LevelRef::set_block` write touch the same position, they replay in
+call order. Only the ordinary write can spill contents or notify neighbors.
 
 ## Read column palettes
 
@@ -22,11 +27,17 @@ notify no neighbors and send whole changed chunks.
 same block with different properties have distinct entries. Only distinct numeric
 states are converted to API values, not each block in the returned columns.
 
+`ColumnBlocks.water_colors` carries one `0xRRGGBB` server-side biome JSON water
+colour (`BiomeSpecialEffects.waterColor`) per column at the column's top (`0` where
+unloaded). Colormap-derived grass and foliage tints are client-side only. See
+[Read blended biome tints on the client](read-biome-data.md#read-blended-biome-tints-on-the-client)
+for `ClientHost::biome_tint(pos, resolver)` and the equivalent read inside a block tint callback.
+
 ## Query terrain before loading chunks
 
 `ServerHost::terrain_surface(dimension, columns)` reads the level's generator, not resident
 chunks. It returns one optional `TerrainColumn` per input pair `(x, z)`, in input order.
-At most `MAX_TERRAIN_COLUMNS` (4,096) columns are accepted per call. The call is available in the World phase.
+At most `MAX_TERRAIN_COLUMNS` (4,096) columns are accepted per call. Use the hook's live server host.
 
 - `height` is one above the highest solid block, skipping fluids, like OceanFloor. The scan
   starts at the level top, so the Nether returns its bedrock roof, not a floor.

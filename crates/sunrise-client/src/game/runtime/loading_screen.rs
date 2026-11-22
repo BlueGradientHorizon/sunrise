@@ -325,7 +325,7 @@ impl Loading {
             renderer.release_surface();
         }
         let renderer_at = Instant::now();
-        let renderer = startup::time("renderer.world", || {
+        let (renderer, clouds) = startup::time("renderer.world", || {
             build_renderer(
                 window.clone(),
                 options.offscreen,
@@ -382,24 +382,24 @@ impl Loading {
             self.vanilla_root.clone(),
             self.started,
             loaded.rest_loader,
-            Some(self.settings.clone()),
+            self.settings.clone(),
             loaded.game_cpu,
             std::mem::take(&mut loaded.client_applies),
             loaded.entity_models,
+            Some((window, renderer)),
         )?
         else {
             return Ok(None);
         };
         drop(game_step);
         let game_ms = game_at.elapsed().as_millis();
-        game.renderer = Some(renderer);
-        game.resize_state = Some(game.resize_state_of(window.inner_size()));
-        game.window = Some(window);
-        game.world_renderer_ready = true;
         game.fullscreen = self.fullscreen;
         game.panorama_rotation = self.panorama_rotation;
         self.menu.handoff(&mut game);
         game.apply_settings();
+        if let Err(error) = clouds {
+            game.selection_reload_failed(&error);
+        }
         game.previous = Instant::now();
         // Minecraft.onGameLoadFinished: a start that made it this far is clean.
         game.settings.file.set(

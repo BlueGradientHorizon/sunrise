@@ -25,17 +25,6 @@ thread_local! {
 struct Part;
 #[mod_api::sunrise_part]
 impl MenuPart for Part {
-    fn screen(
-        &self,
-        _: &dyn mod_api::Host,
-        _: &mut mod_api::ScreenEvent<'_>,
-    ) -> Option<mod_api::Screen> {
-        Some(mod_api::Screen {
-            slots: vec![Some(mod_api::ScreenSlot::default()); 2],
-            ..Default::default()
-        })
-    }
-
     fn menu_still_valid(&self, _: &dyn mod_api::LoopContext, event: &mut MenuStillValidEvent<'_>) {
         if let Some(item) = event.opening_item {
             assert_eq!(item.hand, Hand::Off);
@@ -115,6 +104,20 @@ struct Listener {
 impl Hooks for Listener {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
         r.menu_part(MOD_MENU, Part);
+        r.register_menu_screen(
+            MOD_MENU,
+            std::sync::Arc::new(
+                |_: &dyn mod_api::ClientHost, _: mod_api::MenuScreenOpen<'_>| {
+                    Some(mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                        width: 176.0,
+                        height: 166.0,
+                        slots: vec![Some(mod_api::ScreenSlot::default()); 2],
+                        ..Default::default()
+                    }))
+                },
+            ),
+        )
+        .unwrap();
     }
 
     fn menu_closed(&self, host: &mut dyn ServerHost, event: &mut MenuClosedEvent<'_>) {
@@ -257,7 +260,7 @@ fn an_item_opened_menu_has_two_empty_owned_slots_with_individual_caps() {
             host.transaction(|host, tx| {
                 let place = ItemPlace::MenuSlot { menu, slot };
                 assert_eq!(place.insert(host, tx, &resource, 8), cap);
-                assert_eq!(place.stack(host).unwrap().count(), cap);
+                assert_eq!(place.with_stack(host, |stack| stack.count()), Some(cap));
                 Ok::<_, ()>(())
             })
             .unwrap();
@@ -367,7 +370,7 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
 #[test]
 #[ignore = "daily"]
 fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
-    use crate::game::execution_role::ExecutionRole;
+    use crate::game::{execution_role::ExecutionRole, inventory_slots::MOD_MENU_SLOT_BASE};
     use sunrise_client::menu::Input;
     use sunrise_protocol::item::Hashed;
     with_owned_menu(false, |game, rx, key| {
@@ -530,33 +533,34 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
             game.handle_packet(packet).unwrap();
         }
         assert_eq!(game.remote_menu_type(), Some(MOD_MENU));
-        assert_eq!(game.slots(), [300, 301]);
+        let [first, second] = [MOD_MENU_SLOT_BASE, MOD_MENU_SLOT_BASE + 1];
+        assert_eq!(game.slots(), [first, second]);
         let cursor = || {
             C::SetCursorItem(SetCursorItem {
                 item: Some(seven.clone()),
             })
         };
         game.handle_packet(cursor()).unwrap();
-        assert!(game.menu_ops(&[(Some(300), 0, Input::Pickup)]));
-        assert_eq!(*game.slot_mut(300), stack(1));
+        assert!(game.menu_ops(&[(Some(first), 0, Input::Pickup)]));
+        assert_eq!(*game.slot_mut(first), stack(1));
         assert_eq!(game.carried, stack(6));
-        assert!(game.menu_ops(&[(Some(300), 0, Input::QuickMove)]));
-        assert_eq!(*game.slot_mut(300), stack(1));
+        assert!(game.menu_ops(&[(Some(first), 0, Input::QuickMove)]));
+        assert_eq!(*game.slot_mut(first), stack(1));
 
         game.handle_packet(cursor()).unwrap();
-        assert!(game.menu_ops(&[(Some(301), 0, Input::Pickup)]));
-        assert_eq!(*game.slot_mut(301), stack(4));
+        assert!(game.menu_ops(&[(Some(second), 0, Input::Pickup)]));
+        assert_eq!(*game.slot_mut(second), stack(4));
         assert_eq!(game.carried, stack(3));
         for packet in corrections {
             game.handle_packet(packet).unwrap();
         }
-        assert_eq!(*game.slot_mut(300), stack(1));
-        assert_eq!(*game.slot_mut(301), stack(1));
+        assert_eq!(*game.slot_mut(first), stack(1));
+        assert_eq!(*game.slot_mut(second), stack(1));
         assert_eq!(game.carried, stack(7));
         for packet in component_correction {
             game.handle_packet(packet).unwrap();
         }
-        assert_eq!(*game.slot_mut(301), Some(named_one));
+        assert_eq!(*game.slot_mut(second), Some(named_one));
         assert_eq!(game.carried, Some(named));
     });
 }

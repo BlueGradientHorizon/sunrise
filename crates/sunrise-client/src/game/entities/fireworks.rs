@@ -238,6 +238,13 @@ impl Rocket {
                         self.fall_distance,
                     )
                     .velocity;
+                motion.apply_block_speed(self.position, &mut self.velocity);
+                motion.step_on(
+                    (self.id, "minecraft:firework_rocket"),
+                    (self.position, Self::bounds_at(self.position)),
+                    &self.ground,
+                    &mut self.velocity,
+                );
                 self.velocity = restored;
             }
         }
@@ -466,6 +473,22 @@ impl Game<'_> {
             r.fall_distance,
         );
         r.velocity = self.finish_body_restitution(entity, r.position, response);
+        let side = game_side!(self);
+        let motion = self.body_motion(&side);
+        motion.apply_block_speed(r.position, &mut r.velocity);
+        let writes = self.body_step_on(
+            entity,
+            (r.position, Rocket::bounds_at(r.position)),
+            &r.ground,
+            &mut r.velocity,
+        );
+        super::entity::apply_contact_writes(
+            writes,
+            &mut r.velocity,
+            Some(&mut r.fall_distance),
+            Some(&mut r.stuck),
+            None,
+        );
         let length = moved.length_squared();
         let recorded = length > 1.0e-7 || wanted.length_squared() - length < 1.0e-7;
         let (world, facts) = (&self.world, self.res.facts());
@@ -1029,8 +1052,8 @@ impl Game<'_> {
         for &(id, amount) in hits {
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
             let mut credit = plan.lend(&mut self.last_hurt_by_player);
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-                let hurt = m.damage(
+            if let Some(index) = self.mob_index.find(&self.mobs, id) {
+                let hurt = self.mobs[index].damage(
                     crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                     amount,
                     Damage::fireworks(attacker, at),
@@ -1041,6 +1064,7 @@ impl Game<'_> {
                 if hurt && attacker == Some(Who::Player) {
                     self.remember_mob_player_credit(id);
                 }
+                self.finish_mob_damage_at(index);
             }
             self.settle_mob_hurt(id);
         }

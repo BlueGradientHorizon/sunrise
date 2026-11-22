@@ -34,10 +34,9 @@ thread_local! {
     static NEAR_BUF_POOL: std::cell::RefCell<Vec<Vec<u32>>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
-/// What `push_entities` pushes: who, where, whether it rides a vehicle (`Entity.isPassenger`),
-/// whether it shares the pusher's root vehicle (`isPassengerOfSameVehicle`), and whether it is
-/// itself a vehicle.
-pub(super) type PushTarget = (Who, Vec3, bool, bool, bool);
+/// The selected object and whether it was a passenger for the cramming count.
+/// A paused round also pins the mob's join so it cannot push a replacement.
+pub(super) type PushTarget = (Who, bool, Option<crate::join_seq::JoinSeq>);
 thread_local! {
     static PUSH_TARGETS: std::cell::RefCell<Vec<PushTarget>> = const { std::cell::RefCell::new(Vec::new()) };
 }
@@ -983,6 +982,34 @@ impl TestResources {
             .as_ref()
     }
 }
+/// A built test world with the generic damage key installed for its mocked contact Part.
+#[cfg(test)]
+pub(crate) fn with_built_contact_test_world(
+    build: impl FnOnce(&mut crate::world::World, &sunrise_world::registry::BlockRegistry),
+    f: impl FnOnce(&MobWorld<'_>, &super::MobTypes, mod_api::DamageTypeKey),
+) -> bool {
+    struct Contact(std::sync::Arc<std::sync::OnceLock<mod_api::DamageTypeKey>>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Contact {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            let requested = r.damage_type_key("minecraft:generic");
+            assert_eq!(*self.0.get_or_init(|| requested), requested);
+        }
+    }
+    let key = std::sync::Arc::new(std::sync::OnceLock::new());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "contact",
+        Box::new(Contact(key.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+        with_built_test_world(&[], build, |world, types| {
+            f(world, types, *key.get().unwrap())
+        })
+    })
+}
+
 /// Runs `f` over a fresh `World` (`build` places its blocks) on `resources`.
 #[cfg(test)]
 fn run_test_world(
@@ -1010,7 +1037,7 @@ fn run_test_world(
     build(&mut world, registry);
     let lid_openers = std::collections::HashMap::new();
     let w = MobWorld {
-        side: sunrise_client::motion::dry_side(),
+        side: &crate::motion::surface::DrySide(&motion.health.damage),
         mob_maps: sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
         goal_host: None,
         teams: Default::default(),
