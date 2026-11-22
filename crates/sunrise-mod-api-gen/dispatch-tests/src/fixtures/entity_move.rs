@@ -160,6 +160,14 @@ mod root {
             }
         }
 
+        pub(super) fn discard_registration<T>(
+            (hook, name): (super::HookId, &'static str),
+            owner: Option<&'static str>,
+            value: T,
+        ) {
+            invoke(hook, name, owner.unwrap_or("unknown"), || drop(value));
+        }
+
         pub(super) fn listening_kind_owner(
             hook: super::HookId,
             kind: &str,
