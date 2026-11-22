@@ -197,8 +197,11 @@ impl Game<'_> {
                 let dimension = saved
                     .dimension
                     .as_deref()
-                    .filter(|id| shapes.has(id))
-                    .map_or_else(|| self.world_spawn_level().id(), |id| Dim::from_id(id).id());
+                    .into_iter()
+                    .chain(self.level.world_spawn_dimension.as_deref())
+                    .find(|id| shapes.has(id))
+                    .map_or(Dim::Overworld, Dim::from_id)
+                    .id();
                 let rotation = saved.rotation.unwrap_or(self.level.world_spawn_angle);
                 if let Some(position) = saved.position {
                     let prepared = PreparedSpawn {
@@ -276,11 +279,15 @@ impl Game<'_> {
         Ok(task)
     }
 
-    pub(super) fn tick_spawn_tickets(&mut self) {
+    pub(super) fn tick_spawn_tickets(&mut self, running: bool) {
         if self.tickets.spawn_areas().next().is_some() {
-            let world = &self.world;
-            self.tickets
-                .tick_spawn(|center, radius| spawn_area_full(world, center, radius));
+            // ServerChunkCache.tick doesn't purge in a frozen level, nor
+            // does pause-when-empty tick the cache (it only polls chunk work).
+            if running {
+                let world = &self.world;
+                self.tickets
+                    .tick_spawn(|center, radius| spawn_area_full(world, center, radius));
+            }
             self.update_chunk_tickets();
         }
     }
@@ -334,4 +341,34 @@ fn spawn_area_full(
                 .is_some_and(|chunk| chunk.lit)
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sunrise_client::{chunk::Chunk, world::World};
+    use sunrise_world::registry::BlockStateId;
+
+    #[test]
+    fn spawn_is_not_ready_until_the_last_corner_is_full() {
+        let mut world = World::new(BlockStateId(0), 0);
+        let center = (8, -6);
+        let corner = (5, -9);
+        for z in -9..=-3 {
+            for x in 5..=11 {
+                if (x, z) != corner {
+                    let mut column = Chunk::empty(x, z);
+                    column.lit = true;
+                    world.chunks.insert((x, z), Arc::new(column));
+                }
+            }
+        }
+        assert!(!spawn_area_full(&world, center, PLAYER_SPAWN_RADIUS));
+        let mut column = Chunk::empty(corner.0, corner.1);
+        column.lit = false;
+        world.chunks.insert(corner, Arc::new(column));
+        assert!(!spawn_area_full(&world, center, PLAYER_SPAWN_RADIUS));
+        Arc::make_mut(world.chunks.get_mut(&corner).unwrap()).lit = true;
+        assert!(spawn_area_full(&world, center, PLAYER_SPAWN_RADIUS));
+    }
 }
