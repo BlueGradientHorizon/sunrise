@@ -253,8 +253,11 @@ there with its initial light done, so the level's block and light reads find it.
 it are loaded too (vanilla only generates them part of the way); they hold no ticket and unload with the next sweep. **It blocks the server tick until the chunk is loaded or
 generated**, as vanilla does, with no timeout; a chunk already full answers at once. Generating a new chunk takes
 long enough to be felt, so load ahead of time rather than many chunks in one tick. Like vanilla, the call leaves an
-`UNKNOWN` ticket on the chunk that keeps it loaded (not ticking) through the next tick and expires at the one after;
-the chunk then unloads like any other. To keep a chunk, force it (`chunk.set_forced`) or hold a ticket controller's
+`UNKNOWN` ticket on the chunk that keeps it loaded (not ticking) through the next ticket purge and expires at the one
+after, and the first purge can come in the same tick, depending on when the call runs; the chunk then unloads like
+any other. Loading a chunk of a parked level doesn't put the level in place: `set_block` and the other writes that
+need it in place still answer `LevelWriteError::Unavailable` there. To keep a chunk, force it (`chunk.set_forced`)
+or hold a ticket controller's
 ticket. The `chunk_load` listeners of each chunk the call brings in run during the call, while that chunk is loaded
 and before the call returns, as NeoForge's `ChunkEvent.Load` does inside `getChunk`. `false` for a
 stale handle, a client, a level the server has not opened, a chunk past `ChunkPos.isValid`
