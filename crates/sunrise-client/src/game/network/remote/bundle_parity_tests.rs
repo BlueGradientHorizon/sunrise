@@ -1,24 +1,30 @@
 //! Atomic play packet bundle dispatch against the recorded 26.3 witness.
 use crate::game::{native_entity_refs::tests::with_client_game, remote::RemoteDimensionEntry};
 use std::time::{Duration, Instant};
-use sunrise_client::{level_loading::Reason, motion::PlayerMotion, net::Session};
-use sunrise_core::geometry::Vec3;
+use sunrise_client::{
+    level_loading::Reason, motion::PlayerMotion, multiplayer, net::Session, title::Mode,
+};
+use sunrise_core::{geometry::Vec3, nbt::Tag};
 use sunrise_protocol::{
     connection::Pipe,
-    entity_data::{Value, serializer},
+    entity_data::{PaintingHolder, PaintingVariant, Value, serializer},
     packets::{
         Empty, configuration as cfg,
         play::{self, Clientbound as C, Serverbound as S, SpawnInfo},
     },
 };
 
-fn bundle_witness() -> serde_json::Value {
+fn witness_json(name: &str) -> serde_json::Value {
     let dir = std::env::var("SUNRISE_NETWORK_WITNESS_DIR")
         .expect("SUNRISE_NETWORK_WITNESS_DIR must be set (run via tools/test_network_parity.py)");
-    let path = std::path::Path::new(&dir).join("bundle.json");
+    let path = std::path::Path::new(&dir).join(name);
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
     serde_json::from_str(&text).unwrap()
+}
+
+fn bundle_witness() -> serde_json::Value {
+    witness_json("bundle.json")
 }
 
 fn format_serverbound(packet: S) -> Option<String> {
@@ -198,7 +204,7 @@ fn dependent_entity_bundle_never_splits_across_poll_or_tick_26_3() {
         remote.entity_id = expected_cam_before;
         let entity_types = remote.builtin.get("minecraft:entity_type").unwrap();
         let expected_eye_height_bits =
-            u32::from_str_radix(dep["entity_eye_height_bits"].as_str().unwrap(), 16).unwrap();
+            u32::from_str_radix(case["entity_eye_height_bits"].as_str().unwrap(), 16).unwrap();
         let interaction_kind = entity_types.id(entity_type).unwrap();
         let creeper_kind = entity_types.id("minecraft:creeper").unwrap();
 
@@ -337,5 +343,380 @@ fn dependent_entity_bundle_never_splits_across_poll_or_tick_26_3() {
         assert_eq!(game.remote_camera_id(), Some(expected_cam_after as u32));
         assert_eq!(game.spectated_post_effect, None);
         assert!(!game.spectated_post_effect_active);
+    });
+}
+
+#[test]
+#[ignore = "run by tools/test_network_parity.py"]
+fn entity_data_validation_inline_painting_and_pre_login_bundle_errors_26_3() {
+    let bundle = bundle_witness();
+    let entity_data = witness_json("entity_data.json");
+    let assignment = &entity_data["metadata_assignment"];
+
+    // 1. SetEntityData before Login disconnects with disconnect.packetError.
+    with_client_game(|game| {
+        game.title = None;
+        let (client, _server) = Pipe::pair();
+        game.connect_local(client, "MetadataBeforeLogin").unwrap();
+        let (session, mut peer) = Session::play_loop_probe();
+        let remote = game.remote.as_mut().unwrap();
+        remote.session = session;
+        remote.joined = true;
+        remote.logged_in = false;
+        peer.reader
+            .set_read_timeout(Some(Duration::from_millis(20)))
+            .unwrap();
+        peer.send(
+            &C::SetEntityData(play::SetEntityData {
+                id: 1,
+                values: vec![(0, serializer::BYTE, Value::Byte(0x40))],
+            })
+            .encode(),
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while game.remote.is_some() && Instant::now() < deadline {
+            game.poll_remote().unwrap();
+            std::thread::yield_now();
+        }
+        assert!(
+            game.remote.is_none(),
+            "SetEntityData before Login must disconnect"
+        );
+        let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
+            game.title.as_ref().map(|t| &t.mode)
+        else {
+            panic!("missing Disconnected screen for SetEntityData before Login");
+        };
+        assert_eq!(
+            reason.translation_key(),
+            assignment["before_login_disconnect_key"].as_str()
+        );
+    });
+
+    // 2. Absent entity, repeated valid flags, valid prefix before invalid entry, bundle failure, and inline painting.
+    with_client_game(|game| {
+        game.title = None;
+        let (client, _server) = Pipe::pair();
+        game.connect_local(client, "MetadataValidation").unwrap();
+        let spawn = SpawnInfo {
+            dimension_type: 0,
+            dimension: "minecraft:overworld".into(),
+            seed: 0,
+            game_type: 0,
+            previous_game_type: None,
+            debug: false,
+            flat: true,
+            last_death: None,
+            portal_cooldown: 0,
+            sea_level: 63,
+        };
+        game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
+        let (session, mut peer) = Session::play_loop_probe();
+        let remote = game.remote.as_mut().unwrap();
+        remote.session = session;
+        remote.joined = true;
+        remote.logged_in = true;
+        remote.entity_id = 1000;
+        let entity_types = remote.builtin.get("minecraft:entity_type").unwrap();
+        let interaction_kind = entity_types.id("minecraft:interaction").unwrap();
+        let painting_kind = entity_types.id("minecraft:painting").unwrap();
+        peer.reader
+            .set_read_timeout(Some(Duration::from_millis(20)))
+            .unwrap();
+
+        let wait_pong = |game: &mut crate::game::Game<'_>,
+                         peer: &mut sunrise_protocol::connection::Connection,
+                         ping_id: i32| {
+            peer.send(&C::Ping(cfg::Ping { id: ping_id }).encode())
+                .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while Instant::now() < deadline {
+                game.poll_remote().unwrap();
+                while let Ok((id, body)) = peer.recv() {
+                    if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == ping_id) {
+                        return;
+                    }
+                }
+                std::thread::yield_now();
+            }
+            panic!("timed out waiting for Pong({ping_id})");
+        };
+
+        // Absent entity is ignored and never enters the glowing set.
+        assert_eq!(
+            assignment["absent_entity_disconnect_key"].as_str(),
+            Some("none")
+        );
+        peer.send(
+            &C::SetEntityData(play::SetEntityData {
+                id: 77_777,
+                values: vec![(0, serializer::BYTE, Value::Byte(0x40))],
+            })
+            .encode(),
+        )
+        .unwrap();
+        wait_pong(game, &mut peer, 1);
+        assert!(game.remote.is_some());
+        assert!(!game.remote.as_ref().unwrap().glowing.contains(&77_777));
+
+        // Spawn an Interaction and a Painting.
+        peer.send(
+            &C::AddEntity(play::AddEntity {
+                id: 1001,
+                uuid: 1001,
+                kind: interaction_kind,
+                position: [0.5, 64.0, 0.5],
+                velocity: [0.0; 3],
+                pitch: 0,
+                yaw: 0,
+                head_yaw: 0,
+                data: 0,
+            })
+            .encode(),
+        )
+        .unwrap();
+        peer.send(
+            &C::AddEntity(play::AddEntity {
+                id: 2001,
+                uuid: 2001,
+                kind: painting_kind,
+                position: [2.0, 65.0, 2.0],
+                velocity: [0.0; 3],
+                pitch: 0,
+                yaw: 0,
+                head_yaw: 0,
+                data: 2,
+            })
+            .encode(),
+        )
+        .unwrap();
+
+        // Repeated valid flag entries: last update wins.
+        peer.send(
+            &C::SetEntityData(play::SetEntityData {
+                id: 1001,
+                values: vec![
+                    (0, serializer::BYTE, Value::Byte(0x40)),
+                    (0, serializer::BYTE, Value::Byte(0x00)),
+                ],
+            })
+            .encode(),
+        )
+        .unwrap();
+
+        // Inline PaintingVariant updates asset and geometry (2x1).
+        peer.send(
+            &C::SetEntityData(play::SetEntityData {
+                id: 2001,
+                values: vec![(
+                    9,
+                    serializer::PAINTING_VARIANT,
+                    Value::PaintingVariant(PaintingHolder::Direct(PaintingVariant {
+                        width: 2,
+                        height: 1,
+                        asset_id: "minecraft:alban".into(),
+                        title: Some(Tag::String("Alban".into())),
+                        author: None,
+                    })),
+                )],
+            })
+            .encode(),
+        )
+        .unwrap();
+        wait_pong(game, &mut peer, 2);
+        assert_eq!(
+            game.remote.as_ref().unwrap().glowing.contains(&1001),
+            assignment["repeated_flags_last_wins"]["glowing_after"]
+                .as_bool()
+                .unwrap()
+        );
+        let painting = game.paintings.iter().find(|p| p.id == 2001).unwrap();
+        assert_eq!(painting.asset.as_deref(), Some("alban"));
+        assert_eq!((painting.width, painting.height), (2, 1));
+        let (lo, hi) = painting.bounds();
+        assert!((hi[0] - lo[0] - 2.0).abs() < 1e-6);
+        assert!((hi[1] - lo[1] - 1.0).abs() < 1e-6);
+
+        // Out-of-range accessor preserves valid prefix and raises PacketError.
+        let err = game
+            .apply_set_entity_data_packet(play::SetEntityData {
+                id: 1001,
+                values: vec![
+                    (0, serializer::BYTE, Value::Byte(0x40)),
+                    (99, serializer::BYTE, Value::Byte(1)),
+                ],
+            })
+            .unwrap_err();
+        assert!(err.is::<super::PacketError>());
+        assert_eq!(
+            game.remote.as_ref().unwrap().glowing.contains(&1001),
+            assignment["out_of_range_preserves_prefix"]["glowing_after"]
+                .as_bool()
+                .unwrap()
+        );
+        game.remote.as_mut().unwrap().glowing.remove(&1001);
+
+        // Mismatched serializer preserves valid prefix and raises PacketError.
+        let err = game
+            .apply_set_entity_data_packet(play::SetEntityData {
+                id: 1001,
+                values: vec![
+                    (0, serializer::BYTE, Value::Byte(0x40)),
+                    (0, serializer::INT, Value::Int(1)),
+                ],
+            })
+            .unwrap_err();
+        assert!(err.is::<super::PacketError>());
+        assert_eq!(
+            game.remote.as_ref().unwrap().glowing.contains(&1001),
+            assignment["mismatched_serializer_preserves_prefix"]["glowing_after"]
+                .as_bool()
+                .unwrap()
+        );
+
+        // Inside a bundle, invalid entity metadata stops before a trailing Ping and disconnects.
+        for packet in [
+            C::BundleDelimiter(Empty),
+            C::SetEntityData(play::SetEntityData {
+                id: 1001,
+                values: vec![
+                    (0, serializer::BYTE, Value::Byte(0x40)),
+                    (0, serializer::INT, Value::Int(1)),
+                ],
+            }),
+            C::Ping(cfg::Ping { id: 55 }),
+            C::BundleDelimiter(Empty),
+        ] {
+            peer.send(&packet.encode()).unwrap();
+        }
+        let mut saw_pong = false;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while game.remote.is_some() && Instant::now() < deadline {
+            game.poll_remote().unwrap();
+            while let Ok((id, body)) = peer.recv() {
+                if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 55) {
+                    saw_pong = true;
+                }
+            }
+            std::thread::yield_now();
+        }
+        assert!(
+            game.remote.is_none(),
+            "invalid SetEntityData in bundle must disconnect"
+        );
+        assert!(!saw_pong, "bundle must stop before trailing Ping(55)");
+        let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
+            game.title.as_ref().map(|t| &t.mode)
+        else {
+            panic!("missing Disconnected screen after bundle metadata error");
+        };
+        assert_eq!(
+            reason.translation_key(),
+            assignment["mismatched_serializer_preserves_prefix"]["disconnect_key"].as_str()
+        );
+    });
+
+    // 3. Pre-Login bundle [Disconnect("server kick"), PostEffects, Ping(88)] preserves first reason and stops.
+    with_client_game(|game| {
+        game.title = None;
+        game.post_effects.clear();
+        let (client, _server) = Pipe::pair();
+        game.connect_local(client, "PreLoginDisconnectBundle")
+            .unwrap();
+        let (session, mut peer) = Session::play_loop_probe();
+        let remote = game.remote.as_mut().unwrap();
+        remote.session = session;
+        remote.joined = true;
+        remote.logged_in = false;
+        peer.reader
+            .set_read_timeout(Some(Duration::from_millis(20)))
+            .unwrap();
+        for packet in [
+            C::BundleDelimiter(Empty),
+            C::Disconnect(cfg::Disconnect {
+                reason: Tag::String("server kick".into()),
+            }),
+            C::PostEffects(play::PostEffects {
+                effects: vec!["minecraft:invert".into()],
+            }),
+            C::Ping(cfg::Ping { id: 88 }),
+            C::BundleDelimiter(Empty),
+        ] {
+            peer.send(&packet.encode()).unwrap();
+        }
+        let mut saw_pong = false;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while game.remote.is_some() && Instant::now() < deadline {
+            game.poll_remote().unwrap();
+            while let Ok((id, body)) = peer.recv() {
+                if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 88) {
+                    saw_pong = true;
+                }
+            }
+            std::thread::yield_now();
+        }
+        assert!(game.remote.is_none());
+        assert!(!saw_pong, "bundle must stop before Ping(88)");
+        assert!(game.post_effects.is_empty());
+        let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
+            game.title.as_ref().map(|t| &t.mode)
+        else {
+            panic!("missing Disconnected screen");
+        };
+        assert_eq!(
+            Some(reason.plain().as_str()),
+            bundle["pre_login_disconnect_then_post_effects_bundle"]["disconnect_text"].as_str()
+        );
+    });
+
+    // 4. Pre-Login bundle [PostEffects, Ping(89)] stops before Ping(89) with disconnect.packetError.
+    with_client_game(|game| {
+        game.title = None;
+        game.post_effects.clear();
+        let (client, _server) = Pipe::pair();
+        game.connect_local(client, "PreLoginPostEffectsBundle")
+            .unwrap();
+        let (session, mut peer) = Session::play_loop_probe();
+        let remote = game.remote.as_mut().unwrap();
+        remote.session = session;
+        remote.joined = true;
+        remote.logged_in = false;
+        peer.reader
+            .set_read_timeout(Some(Duration::from_millis(20)))
+            .unwrap();
+        for packet in [
+            C::BundleDelimiter(Empty),
+            C::PostEffects(play::PostEffects {
+                effects: vec!["minecraft:invert".into()],
+            }),
+            C::Ping(cfg::Ping { id: 89 }),
+            C::BundleDelimiter(Empty),
+        ] {
+            peer.send(&packet.encode()).unwrap();
+        }
+        let mut saw_pong = false;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while game.remote.is_some() && Instant::now() < deadline {
+            game.poll_remote().unwrap();
+            while let Ok((id, body)) = peer.recv() {
+                if matches!(S::decode(id, &body), Ok(S::Pong(p)) if p.id == 89) {
+                    saw_pong = true;
+                }
+            }
+            std::thread::yield_now();
+        }
+        assert!(game.remote.is_none());
+        assert!(!saw_pong, "bundle must stop before Ping(89)");
+        assert!(game.post_effects.is_empty());
+        let Some(Mode::Multiplayer(multiplayer::Screen::Disconnected { reason, .. })) =
+            game.title.as_ref().map(|t| &t.mode)
+        else {
+            panic!("missing Disconnected screen");
+        };
+        assert_eq!(
+            reason.translation_key(),
+            bundle["pre_login_post_effects_then_ping_bundle"]["disconnect_key"].as_str()
+        );
     });
 }

@@ -4832,6 +4832,21 @@ mod tests {
         std::sync::mpsc::Receiver<Result<Reason, Reason>>,
         JoinHandle<()>,
     ) {
+        spawn_play_harness_with_registries(name, lang, Arc::default())
+    }
+
+    fn spawn_play_harness_with_registries(
+        name: &str,
+        lang: Language,
+        registries: Arc<Dynamic>,
+    ) -> (
+        TempDirGuard,
+        Connection,
+        ingress::Consumer<Event>,
+        Arc<Mutex<Option<QueuedWriter>>>,
+        std::sync::mpsc::Receiver<Result<Reason, Reason>>,
+        JoinHandle<()>,
+    ) {
         let (root, data) = empty_item_data(name);
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let (mut reader, writer) = Connection::local(client).split();
@@ -4846,7 +4861,7 @@ mod tests {
         let thread = std::thread::spawn(move || {
             let result = receive_play(
                 &mut reader,
-                Arc::default(),
+                registries,
                 &client_writer,
                 &Arc::new(AtomicBool::new(false)),
                 &lang,
@@ -5113,13 +5128,64 @@ mod tests {
             };
             assert_eq!(
                 reason.key.as_deref(),
-                witness["terminal_packet"]["inside_disconnect_key"].as_str()
+                witness["terminal_at_4097"]["disconnect_key"].as_str()
             );
             assert_eq!(
                 Some(reason.text.as_str()),
-                witness["terminal_packet"]["inside_disconnect_text"].as_str(),
+                witness["terminal_at_4097"]["disconnect_text"].as_str(),
                 "terminal packet at 4097th member must fail as terminal before size limit"
             );
+        }
+
+        // Malformed frames fail decode before bundling in either bundle state.
+        let malformed = &witness["malformed_before_bundling"];
+        let mut delimiter_extra = play::Clientbound::BundleDelimiter(Empty).encode();
+        delimiter_extra.push(0);
+        let mut truncated_post_effects = ::sunrise_core::vanilla_bytes::Writer::new();
+        truncated_post_effects
+            .varint(play::Clientbound::PostEffects(play::PostEffects { effects: vec![] }).id());
+        truncated_post_effects.varint(1);
+        let mut unregistered_id = ::sunrise_core::vanilla_bytes::Writer::new();
+        unregistered_id.varint(999);
+        for (case_name, frame, also_bundled) in [
+            ("bundle_delimiter_extra_bytes", delimiter_extra, true),
+            ("truncated_post_effects", truncated_post_effects.data, false),
+            ("unregistered_packet_id", unregistered_id.data, true),
+        ] {
+            for bundled in if also_bundled {
+                vec![false, true]
+            } else {
+                vec![false]
+            } {
+                let (_dir, mut server, events, shared_writer, done_rx, thread) =
+                    spawn_play_harness(&format!("malformed-{case_name}-{bundled}"), generic_lang());
+                if bundled {
+                    let _ = server.send(&play::Clientbound::BundleDelimiter(Empty).encode());
+                }
+                let _ = server.send(&frame);
+                let ended = done_rx.recv_timeout(Duration::from_secs(2));
+                drop(server);
+                drop(events);
+                drop(shared_writer);
+                let _ = thread.join();
+                let reason = match ended {
+                    Ok(Err(reason)) => reason,
+                    other => panic!(
+                        "{case_name} (bundled={bundled}): expected decode disconnect, got {:?}",
+                        other.map(|r| r.map(|ok| ok.text).map_err(|e| e.text))
+                    ),
+                };
+                assert_eq!(
+                    reason.key.as_deref(),
+                    malformed[case_name]["disconnect_key"].as_str(),
+                    "{case_name} (bundled={bundled})"
+                );
+                assert_eq!(
+                    Some(reason.text.as_str()),
+                    malformed[case_name]["disconnect_text"].as_str(),
+                    "{case_name} (bundled={bundled}): full disconnect text"
+                );
+            }
         }
 
         let limit = witness["bundle_size_limit"].as_u64().unwrap() as usize;
@@ -5253,9 +5319,23 @@ mod tests {
             }
             let ended = thread.join().unwrap();
             drop(shared_writer);
+            let expected_replies: Vec<String> =
+                witness["configuration_state"][case_name]["sent_after_process"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_str().unwrap().to_owned())
+                    .collect();
+            let got_replies: Vec<String> = replies
+                .iter()
+                .map(|packet| match packet {
+                    cfg::Serverbound::Pong(p) => format!("pong:{}", p.id),
+                    cfg::Serverbound::FinishConfiguration(_) => "finish_configuration".to_owned(),
+                    other => format!("{other:?}"),
+                })
+                .collect();
             assert_eq!(
-                replies,
-                vec![cfg::Serverbound::Pong(cfg::Ping { id: 19 })],
+                got_replies, expected_replies,
                 "config post_effects ({case_name}): earlier Ping must drain as Pong and FinishConfiguration must not send"
             );
             let got = match ended {
@@ -5270,37 +5350,91 @@ mod tests {
     #[ignore = "run by tools/test_network_parity.py"]
     fn unknown_entity_data_serializer_disconnects_play_session_like_26_3() {
         let witness = network_witness("entity_data.json");
+        let mut reg = Dynamic::default();
+        let variants = witness["painting_variants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| (v.as_str().unwrap().to_owned(), None))
+            .collect();
+        reg.registries
+            .insert("minecraft:painting_variant".into(), variants);
+        let registries = Arc::new(reg);
+        let assert_disconnect =
+            |name: &str, body: &[u8], expected_key: &str, expected_text: Option<&str>| {
+                let lang: Language = [("disconnect.genericReason".to_owned(), "%s".to_owned())]
+                    .into_iter()
+                    .collect();
+                let (_dir, mut server, events, shared_writer, done_rx, thread) =
+                    spawn_play_harness_with_registries(
+                        &format!("entity-data-{name}"),
+                        lang,
+                        registries.clone(),
+                    );
+                let mut frame = ::sunrise_core::vanilla_bytes::Writer::new();
+                frame.varint(sunrise_protocol::ids::play::clientbound::SET_ENTITY_DATA);
+                frame.bytes(body);
+                let _ = server.send(&frame.data);
+                let ended = done_rx.recv_timeout(Duration::from_millis(500));
+                drop(server);
+                drop(events);
+                drop(shared_writer);
+                let _ = thread.join();
+                let reason = match ended {
+                    Ok(Err(reason)) => reason,
+                    other => panic!(
+                        "{name}: expected play disconnect on malformed entity_data, got {:?}",
+                        other.map(|r| r.map(|ok| ok.text).map_err(|e| e.text))
+                    ),
+                };
+                assert_eq!(reason.key.as_deref(), Some(expected_key), "{name}");
+                assert_eq!(
+                    Some(reason.text.as_str()),
+                    expected_text,
+                    "{name}: full disconnect text"
+                );
+            };
         for row in witness["unknown_serializers"].as_array().unwrap() {
             let name = row["name"].as_str().unwrap();
             let body = network_hex(row["packet_body_hex"].as_str().unwrap());
-            let expected_key = row["connection_disconnect_key"].as_str().unwrap();
-            let lang: Language = [("disconnect.genericReason".to_owned(), "%s".to_owned())]
-                .into_iter()
-                .collect();
-            let (_dir, mut server, events, shared_writer, done_rx, thread) =
-                spawn_play_harness(&format!("entity-data-{name}"), lang);
-            let mut frame = ::sunrise_core::vanilla_bytes::Writer::new();
-            frame.varint(sunrise_protocol::ids::play::clientbound::SET_ENTITY_DATA);
-            frame.bytes(&body);
-            let _ = server.send(&frame.data);
-            let ended = done_rx.recv_timeout(Duration::from_millis(300));
-            drop(server);
-            drop(events);
-            drop(shared_writer);
-            let _ = thread.join();
-            let reason = match ended {
-                Ok(Err(reason)) => reason,
-                other => panic!(
-                    "{name}: expected play disconnect on unknown serializer, got {:?}",
-                    other.map(|r| r.map(|ok| ok.text).map_err(|e| e.text))
-                ),
-            };
-            assert_eq!(reason.key.as_deref(), Some(expected_key), "{name}");
-            assert_eq!(
-                Some(reason.text.as_str()),
+            assert_disconnect(
+                name,
+                &body,
+                row["connection_disconnect_key"].as_str().unwrap(),
                 row["connection_disconnect_text"].as_str(),
-                "{name}: full disconnect text"
             );
         }
+        let wrap_entity_data = |hex: &str| -> Vec<u8> {
+            let mut body = ::sunrise_core::vanilla_bytes::Writer::new();
+            body.varint(1);
+            body.bytes(&network_hex(hex));
+            body.data
+        };
+        for row in witness["invalid_painting_holders"].as_array().unwrap() {
+            let name = row["name"].as_str().unwrap();
+            let body = wrap_entity_data(row["entity_data_hex"].as_str().unwrap());
+            assert_disconnect(
+                &format!("painting-holder-{name}"),
+                &body,
+                row["connection_disconnect_key"].as_str().unwrap(),
+                row["connection_disconnect_text"].as_str(),
+            );
+        }
+        let bad_inline = &witness["malformed_inline_painting_component"];
+        assert_disconnect(
+            "malformed-inline-painting",
+            &wrap_entity_data(bad_inline["entity_data_hex"].as_str().unwrap()),
+            bad_inline["connection_disconnect_key"].as_str().unwrap(),
+            bad_inline["connection_disconnect_text"].as_str(),
+        );
+        let bad_particle = &witness["particle_metadata"];
+        assert_disconnect(
+            "unregistered-particle-128",
+            &wrap_entity_data(bad_particle["unregistered_128_hex"].as_str().unwrap()),
+            bad_particle["unregistered_128_disconnect_key"]
+                .as_str()
+                .unwrap(),
+            bad_particle["unregistered_128_disconnect_text"].as_str(),
+        );
     }
 }

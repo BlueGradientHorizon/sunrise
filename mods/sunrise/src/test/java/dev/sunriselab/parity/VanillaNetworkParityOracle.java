@@ -66,11 +66,13 @@ import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.common.ClientboundDisconnectPacket;
 import net.minecraft.network.protocol.common.ClientboundKeepAlivePacket;
 import net.minecraft.network.protocol.common.ClientboundPingPacket;
 import net.minecraft.network.protocol.common.ClientboundPostEffectsPacket;
 import net.minecraft.network.protocol.common.ServerboundKeepAlivePacket;
 import net.minecraft.network.protocol.common.ServerboundPongPacket;
+import net.minecraft.network.protocol.configuration.ClientboundFinishConfigurationPacket;
 import net.minecraft.network.protocol.configuration.ConfigurationProtocols;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
@@ -94,6 +96,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.Interaction;
 import net.minecraft.world.entity.decoration.painting.PaintingVariant;
+import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
@@ -145,6 +148,8 @@ public final class VanillaNetworkParityOracle {
 
     static final class RecordingConnection extends Connection {
         final List<String> sent = new ArrayList<>();
+        boolean connected = true;
+        int disconnectCount = 0;
         String disconnectKey = "none";
         String disconnectText = "";
 
@@ -181,6 +186,11 @@ public final class VanillaNetworkParityOracle {
 
         @Override
         public void disconnect(Component reason) {
+            if (!this.connected) {
+                return;
+            }
+            this.connected = false;
+            this.disconnectCount++;
             this.disconnectKey = VanillaNetworkParityOracle.disconnectKey(reason);
             this.disconnectText = reason.getString();
         }
@@ -192,7 +202,7 @@ public final class VanillaNetworkParityOracle {
 
         @Override
         public boolean isConnected() {
-            return true;
+            return this.connected;
         }
     }
 
@@ -761,6 +771,98 @@ public final class VanillaNetworkParityOracle {
             root.add("dependent_entity_bundle", obj);
         }
 
+        // 10. Malformed packets rejected in PacketDecoder before PacketBundlePacker
+        {
+            JsonObject malformed = new JsonObject();
+            int delimId = new FriendlyByteBuf(encodeFrame(play, delimiter)).readVarInt();
+            int postId = new FriendlyByteBuf(encodeFrame(play, new ClientboundPostEffectsPacket(List.of()))).readVarInt();
+
+            ByteBuf delimExtra = Unpooled.buffer();
+            new FriendlyByteBuf(delimExtra).writeVarInt(delimId).writeByte(1);
+            ByteBuf truncPost = Unpooled.buffer();
+            new FriendlyByteBuf(truncPost).writeVarInt(postId).writeVarInt(1);
+            ByteBuf unknownId = Unpooled.buffer();
+            new FriendlyByteBuf(unknownId).writeVarInt(999);
+
+            for (var entry : List.of(
+                Map.entry("bundle_delimiter_extra_bytes", delimExtra),
+                Map.entry("truncated_post_effects", truncPost),
+                Map.entry("unregistered_packet_id", unknownId)
+            )) {
+                RecordingConnection conn = new RecordingConnection();
+                EmbeddedChannel ch = new EmbeddedChannel(new PacketDecoder<>(play), new PacketBundlePacker(play.bundlerInfo()), conn);
+                ch.writeInbound(entry.getValue());
+                JsonObject r = new JsonObject();
+                r.addProperty("disconnect_key", conn.disconnectKey);
+                r.addProperty("disconnect_text", conn.disconnectText);
+                malformed.add(entry.getKey(), r);
+                ch.finishAndReleaseAll();
+            }
+            root.add("malformed_before_bundling", malformed);
+        }
+
+        // 11. Terminal packet as the 4,097th member: terminal check runs before bundle size limit
+        {
+            RecordingConnection conn = new RecordingConnection();
+            EmbeddedChannel ch = new EmbeddedChannel(new PacketDecoder<>(play), new PacketBundlePacker(play.bundlerInfo()), conn);
+            ch.writeInbound(encodeFrame(play, delimiter));
+            for (int i = 0; i < 4096; i++) ch.writeInbound(encodeFrame(play, new ClientboundPingPacket(i)));
+            ch.writeInbound(encodeFrame(play, ClientboundStartConfigurationPacket.INSTANCE));
+            JsonObject r = new JsonObject();
+            r.addProperty("disconnect_key", conn.disconnectKey);
+            r.addProperty("disconnect_text", conn.disconnectText);
+            root.add("terminal_at_4097", r);
+            ch.finishAndReleaseAll();
+        }
+
+        // 12. Pre-login bundle [Disconnect("server kick"), PostEffects, Ping(99)] keeps first disconnect reason and stops bundle
+        {
+            StubMinecraft mc = makeMinecraft(gameDir);
+            RecordingConnection conn = new RecordingConnection();
+            ClientPacketListener listener = makePlayListener(mc, conn, null);
+
+            EmbeddedChannel ch = new EmbeddedChannel(new PacketDecoder<>(play), new PacketBundlePacker(play.bundlerInfo()));
+            ch.writeInbound(encodeFrame(play, delimiter));
+            ch.writeInbound(encodeFrame(play, new ClientboundDisconnectPacket(Component.literal("server kick"))));
+            ch.writeInbound(encodeFrame(play, new ClientboundPostEffectsPacket(List.of(Identifier.parse("minecraft:invert")))));
+            ch.writeInbound(encodeFrame(play, new ClientboundPingPacket(99)));
+            ch.writeInbound(encodeFrame(play, delimiter));
+            Packet<?> bundle = ch.readInbound();
+            ch.finishAndReleaseAll();
+
+            deliverFromNetThread(bundle, listener);
+            mc.packetProcessor().processQueuedPackets();
+            JsonObject r = new JsonObject();
+            r.addProperty("disconnect_key", conn.disconnectKey);
+            r.addProperty("disconnect_text", conn.disconnectText);
+            r.addProperty("disconnect_count", conn.disconnectCount);
+            r.add("sent_after_process", strArray(conn.sent));
+            root.add("pre_login_disconnect_then_post_effects_bundle", r);
+        }
+
+        // 13. Pre-login bundle [PostEffects, Ping(99)] stops bundle at PostEffects with disconnect.packetError
+        {
+            StubMinecraft mc = makeMinecraft(gameDir);
+            RecordingConnection conn = new RecordingConnection();
+            ClientPacketListener listener = makePlayListener(mc, conn, null);
+
+            EmbeddedChannel ch = new EmbeddedChannel(new PacketDecoder<>(play), new PacketBundlePacker(play.bundlerInfo()));
+            ch.writeInbound(encodeFrame(play, delimiter));
+            ch.writeInbound(encodeFrame(play, new ClientboundPostEffectsPacket(List.of(Identifier.parse("minecraft:invert")))));
+            ch.writeInbound(encodeFrame(play, new ClientboundPingPacket(99)));
+            ch.writeInbound(encodeFrame(play, delimiter));
+            Packet<?> bundle = ch.readInbound();
+            ch.finishAndReleaseAll();
+
+            deliverFromNetThread(bundle, listener);
+            mc.packetProcessor().processQueuedPackets();
+            JsonObject r = new JsonObject();
+            r.addProperty("disconnect_key", conn.disconnectKey);
+            r.addProperty("disconnect_count", conn.disconnectCount);
+            r.add("sent_after_process", strArray(conn.sent));
+            root.add("pre_login_post_effects_then_ping_bundle", r);
+        }
+
         return root;
     }
 
@@ -803,10 +905,13 @@ public final class VanillaNetworkParityOracle {
                     null, null, null, Map.of(), null, Map.of(), ServerLinks.EMPTY, Map.of(), false
                 );
                 var listener = new ClientConfigurationPacketListenerImpl(mc, conn, cookie);
+                deliverFromNetThread(new ClientboundPingPacket(19), listener);
                 deliverFromNetThread(new ClientboundPostEffectsPacket(entry.getValue()), listener);
+                deliverFromNetThread(ClientboundFinishConfigurationPacket.INSTANCE, listener);
                 mc.packetProcessor().processQueuedPackets();
                 JsonObject r = new JsonObject();
                 r.addProperty("disconnect_key", conn.disconnectKey);
+                r.add("sent_after_process", strArray(conn.sent));
                 cfgCases.add(entry.getKey(), r);
             }
             root.add("configuration_state", cfgCases);
@@ -893,9 +998,17 @@ public final class VanillaNetworkParityOracle {
         return root;
     }
 
-    static JsonObject recordEntityData(ProtocolInfo<ClientGamePacketListener> play) throws Exception {
+    static JsonObject recordEntityData(ProtocolInfo<ClientGamePacketListener> play, File gameDir) throws Exception {
         JsonObject root = new JsonObject();
         root.addProperty("game_version", "26.3");
+
+        // Synchronized minecraft:painting_variant registry names in wire order
+        var paintingReg = ParityData.access.lookupOrThrow(Registries.PAINTING_VARIANT);
+        JsonArray paintingNames = new JsonArray();
+        for (int i = 0; i < paintingReg.size(); i++) {
+            paintingNames.add(paintingReg.getKey(paintingReg.byIdOrThrow(i)).toString());
+        }
+        root.add("painting_variants", paintingNames);
 
         // 1. Registered serializer IDs in 26.3
         JsonArray registered = new JsonArray();
@@ -1023,6 +1136,192 @@ public final class VanillaNetworkParityOracle {
         }
         root.add("valid_serializers", validCases);
 
+        // 4. Invalid painting holders (out-of-range, -1, Integer.MIN_VALUE) fail decode even for an absent entity
+        {
+            int setEntityDataId = new FriendlyByteBuf(encodeFrame(play, new ClientboundSetEntityDataPacket(1, List.of()))).readVarInt();
+            JsonArray invalidHolders = new JsonArray();
+            for (var entry : List.of(
+                Map.entry("out_of_range", paintingReg.size() + 1),
+                Map.entry("negative_one", -1),
+                Map.entry("int_min", Integer.MIN_VALUE)
+            )) {
+                RegistryFriendlyByteBuf dataOnly = new RegistryFriendlyByteBuf(Unpooled.buffer(), ParityData.access);
+                dataOnly.writeByte(9);
+                dataOnly.writeVarInt(34); // PAINTING_VARIANT
+                dataOnly.writeVarInt(entry.getValue());
+                dataOnly.writeByte(0xFF);
+                String dataHex = toHex(dataOnly);
+
+                ByteBuf framed = Unpooled.buffer();
+                new FriendlyByteBuf(framed).writeVarInt(setEntityDataId).writeVarInt(999999);
+                framed.writeBytes(dataOnly.duplicate());
+                RecordingConnection conn = new RecordingConnection();
+                EmbeddedChannel ch = new EmbeddedChannel(new PacketDecoder<>(play), conn);
+                ch.writeInbound(framed);
+                ch.finishAndReleaseAll();
+
+                JsonObject row = new JsonObject();
+                row.addProperty("name", entry.getKey());
+                row.addProperty("holder_id", entry.getValue());
+                row.addProperty("entity_data_hex", dataHex);
+                row.addProperty("connection_disconnect_key", conn.disconnectKey);
+                row.addProperty("connection_disconnect_text", conn.disconnectText);
+                invalidHolders.add(row);
+            }
+            root.add("invalid_painting_holders", invalidHolders);
+
+            // Inline painting variant with malformed title component (IntTag(7)) fails decode
+            RegistryFriendlyByteBuf badInline = new RegistryFriendlyByteBuf(Unpooled.buffer(), ParityData.access);
+            badInline.writeByte(9);
+            badInline.writeVarInt(34); // PAINTING_VARIANT
+            badInline.writeVarInt(0);  // inline
+            badInline.writeVarInt(2);  // width
+            badInline.writeVarInt(1);  // height
+            badInline.writeIdentifier(Identifier.parse("minecraft:alban"));
+            badInline.writeBoolean(true); // title present
+            badInline.writeByte(3);       // TAG_Int
+            badInline.writeInt(7);
+            badInline.writeBoolean(false); // author absent
+            badInline.writeByte(0xFF);
+
+            ByteBuf badFramed = Unpooled.buffer();
+            new FriendlyByteBuf(badFramed).writeVarInt(setEntityDataId).writeVarInt(1);
+            badFramed.writeBytes(badInline.duplicate());
+            RecordingConnection badConn = new RecordingConnection();
+            EmbeddedChannel badCh = new EmbeddedChannel(new PacketDecoder<>(play), badConn);
+            badCh.writeInbound(badFramed);
+            badCh.finishAndReleaseAll();
+            JsonObject badInlineObj = new JsonObject();
+            badInlineObj.addProperty("entity_data_hex", toHex(badInline));
+            badInlineObj.addProperty("connection_disconnect_key", badConn.disconnectKey);
+            badInlineObj.addProperty("connection_disconnect_text", badConn.disconnectText);
+            root.add("malformed_inline_painting_component", badInlineObj);
+
+            // 5. Particle metadata: 65,537 simple particles succeeds; unregistered particle id 128 fails
+            JsonObject particleObj = new JsonObject();
+            RegistryFriendlyByteBuf many = new RegistryFriendlyByteBuf(Unpooled.buffer(), ParityData.access);
+            many.writeVarInt(1);
+            many.writeByte(10);
+            many.writeVarInt(17); // PARTICLES
+            many.writeVarInt(65537);
+            for (int i = 0; i < 65537; i++) many.writeVarInt(0);
+            many.writeByte(0xFF);
+            ClientboundSetEntityDataPacket manyDecoded = ClientboundSetEntityDataPacket.STREAM_CODEC.decode(
+                new RegistryFriendlyByteBuf(many.duplicate(), ParityData.access)
+            );
+            particleObj.addProperty("list_65537_ok", true);
+            particleObj.addProperty("list_65537_count", ((List<?>) manyDecoded.packedItems().get(0).value()).size());
+
+            RegistryFriendlyByteBuf badParticle = new RegistryFriendlyByteBuf(Unpooled.buffer(), ParityData.access);
+            badParticle.writeByte(10);
+            badParticle.writeVarInt(16); // PARTICLE
+            badParticle.writeVarInt(128); // unregistered
+            badParticle.writeByte(0xFF);
+            ByteBuf badParticleFrame = Unpooled.buffer();
+            new FriendlyByteBuf(badParticleFrame).writeVarInt(setEntityDataId).writeVarInt(1);
+            badParticleFrame.writeBytes(badParticle.duplicate());
+            RecordingConnection bpConn = new RecordingConnection();
+            EmbeddedChannel bpCh = new EmbeddedChannel(new PacketDecoder<>(play), bpConn);
+            bpCh.writeInbound(badParticleFrame);
+            bpCh.finishAndReleaseAll();
+            particleObj.addProperty("unregistered_128_hex", toHex(badParticle));
+            particleObj.addProperty("unregistered_128_disconnect_key", bpConn.disconnectKey);
+            particleObj.addProperty("unregistered_128_disconnect_text", bpConn.disconnectText);
+            root.add("particle_metadata", particleObj);
+        }
+
+        // 6. Metadata assignment validation (ClientPacketListener.handleSetEntityData + SynchedEntityData.assignValues)
+        {
+            JsonObject assign = new JsonObject();
+
+            // Pre-login: level is null -> disconnect.packetError
+            {
+                StubMinecraft mc = makeMinecraft(gameDir);
+                RecordingConnection conn = new RecordingConnection();
+                ClientPacketListener listener = makePlayListener(mc, conn, null);
+                deliverFromNetThread(new ClientboundSetEntityDataPacket(1, List.of(
+                    new SynchedEntityData.DataValue<>(0, EntityDataSerializers.BYTE, (byte) 0x40)
+                )), listener);
+                mc.packetProcessor().processQueuedPackets();
+                assign.addProperty("before_login_disconnect_key", conn.disconnectKey);
+            }
+
+            // Absent entity -> ignored (no disconnect)
+            {
+                StubMinecraft mc = makeMinecraft(gameDir);
+                StubWorld world = makeStubWorld();
+                RecordingConnection conn = new RecordingConnection();
+                ClientPacketListener listener = makePlayListener(mc, conn, world);
+                deliverFromNetThread(new ClientboundSetEntityDataPacket(999, List.of(
+                    new SynchedEntityData.DataValue<>(0, EntityDataSerializers.BYTE, (byte) 0x40)
+                )), listener);
+                mc.packetProcessor().processQueuedPackets();
+                assign.addProperty("absent_entity_disconnect_key", conn.disconnectKey);
+            }
+
+            // Out-of-range accessor preserves valid prefix then disconnects with disconnect.packetError
+            {
+                StubMinecraft mc = makeMinecraft(gameDir);
+                StubWorld world = makeStubWorld();
+                RecordingConnection conn = new RecordingConnection();
+                ClientPacketListener listener = makePlayListener(mc, conn, world);
+                Entity creeper = new Creeper(EntityTypes.CREEPER, world);
+                creeper.setId(50);
+                world.addEntity(creeper);
+                deliverFromNetThread(new ClientboundSetEntityDataPacket(50, List.of(
+                    new SynchedEntityData.DataValue<>(0, EntityDataSerializers.BYTE, (byte) 0x40),
+                    new SynchedEntityData.DataValue<>(99, EntityDataSerializers.BYTE, (byte) 0)
+                )), listener);
+                mc.packetProcessor().processQueuedPackets();
+                JsonObject r = new JsonObject();
+                r.addProperty("glowing_after", creeper.isCurrentlyGlowing());
+                r.addProperty("disconnect_key", conn.disconnectKey);
+                assign.add("out_of_range_preserves_prefix", r);
+            }
+
+            // Mismatched serializer preserves valid prefix then disconnects with disconnect.packetError
+            {
+                StubMinecraft mc = makeMinecraft(gameDir);
+                StubWorld world = makeStubWorld();
+                RecordingConnection conn = new RecordingConnection();
+                ClientPacketListener listener = makePlayListener(mc, conn, world);
+                Entity creeper = new Creeper(EntityTypes.CREEPER, world);
+                creeper.setId(51);
+                world.addEntity(creeper);
+                deliverFromNetThread(new ClientboundSetEntityDataPacket(51, List.of(
+                    new SynchedEntityData.DataValue<>(0, EntityDataSerializers.BYTE, (byte) 0x40),
+                    new SynchedEntityData.DataValue<>(0, EntityDataSerializers.INT, 1)
+                )), listener);
+                mc.packetProcessor().processQueuedPackets();
+                JsonObject r = new JsonObject();
+                r.addProperty("glowing_after", creeper.isCurrentlyGlowing());
+                r.addProperty("disconnect_key", conn.disconnectKey);
+                assign.add("mismatched_serializer_preserves_prefix", r);
+            }
+
+            // Repeated valid flag entries: last update wins
+            {
+                StubMinecraft mc = makeMinecraft(gameDir);
+                StubWorld world = makeStubWorld();
+                RecordingConnection conn = new RecordingConnection();
+                ClientPacketListener listener = makePlayListener(mc, conn, world);
+                Entity creeper = new Creeper(EntityTypes.CREEPER, world);
+                creeper.setId(52);
+                world.addEntity(creeper);
+                deliverFromNetThread(new ClientboundSetEntityDataPacket(52, List.of(
+                    new SynchedEntityData.DataValue<>(0, EntityDataSerializers.BYTE, (byte) 0x40),
+                    new SynchedEntityData.DataValue<>(0, EntityDataSerializers.BYTE, (byte) 0x00)
+                )), listener);
+                mc.packetProcessor().processQueuedPackets();
+                JsonObject r = new JsonObject();
+                r.addProperty("glowing_after", creeper.isCurrentlyGlowing());
+                r.addProperty("disconnect_key", conn.disconnectKey);
+                assign.add("repeated_flags_last_wins", r);
+            }
+
+            root.add("metadata_assignment", assign);
+        }
+
         return root;
     }
 
@@ -1044,7 +1343,7 @@ public final class VanillaNetworkParityOracle {
         var gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
         Files.writeString(outDir.resolve("bundle.json"), gson.toJson(recordBundles(play, gameDir)) + "\n");
         Files.writeString(outDir.resolve("post_effects.json"), gson.toJson(recordPostEffects(play, gameDir)) + "\n");
-        Files.writeString(outDir.resolve("entity_data.json"), gson.toJson(recordEntityData(play)) + "\n");
+        Files.writeString(outDir.resolve("entity_data.json"), gson.toJson(recordEntityData(play, gameDir)) + "\n");
         System.out.println("NETWORK_PARITY_WITNESS_OK " + outDir);
     }
 }

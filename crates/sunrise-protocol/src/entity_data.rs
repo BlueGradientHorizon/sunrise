@@ -1055,15 +1055,30 @@ mod tests {
             .collect()
     }
 
+    fn painting_registries(witness: &serde_json::Value) -> crate::registry::Dynamic {
+        let mut registries = crate::registry::Dynamic::default();
+        let entries = witness["painting_variants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| (v.as_str().unwrap().to_owned(), None))
+            .collect();
+        registries
+            .registries
+            .insert("minecraft:painting_variant".into(), entries);
+        registries
+    }
+
     #[test]
     #[ignore = "run by tools/test_network_parity.py"]
     fn unknown_entity_data_serializers_fail_decode_like_26_3() {
         let witness = entity_data_witness();
+        let registries = painting_registries(&witness);
         for row in witness["unknown_serializers"].as_array().unwrap() {
             let name = row["name"].as_str().unwrap();
             let serializer_id = row["serializer_id"].as_i64().unwrap() as i32;
             let data = entity_data_hex(row["entity_data_hex"].as_str().unwrap());
-            let Err(err) = EntityData::read(&mut Reader::new(&data)) else {
+            let Err(err) = EntityData::read(&mut Reader::new(&data).with_names(&registries)) else {
                 panic!("{name}: serializer {serializer_id} must fail decode");
             };
             assert!(
@@ -1072,24 +1087,51 @@ mod tests {
             );
             let body = entity_data_hex(row["packet_body_hex"].as_str().unwrap());
             assert!(
-                crate::packets::play::Clientbound::decode(
+                crate::packets::play::Clientbound::decode_reader(
                     crate::ids::play::clientbound::SET_ENTITY_DATA,
-                    &body,
+                    Reader::new(&body).with_names(&registries),
                 )
                 .is_err(),
                 "{name}: SET_ENTITY_DATA packet decode must fail"
             );
         }
+        for row in witness["invalid_painting_holders"].as_array().unwrap() {
+            let name = row["name"].as_str().unwrap();
+            let data = entity_data_hex(row["entity_data_hex"].as_str().unwrap());
+            assert!(
+                EntityData::read(&mut Reader::new(&data).with_names(&registries)).is_err(),
+                "invalid painting holder {name} must fail decode"
+            );
+        }
+        let bad_inline = entity_data_hex(
+            witness["malformed_inline_painting_component"]["entity_data_hex"]
+                .as_str()
+                .unwrap(),
+        );
+        assert!(
+            EntityData::read(&mut Reader::new(&bad_inline).with_names(&registries)).is_err(),
+            "malformed inline painting component must fail decode"
+        );
+        let bad_particle = entity_data_hex(
+            witness["particle_metadata"]["unregistered_128_hex"]
+                .as_str()
+                .unwrap(),
+        );
+        assert!(
+            EntityData::read(&mut Reader::new(&bad_particle).with_names(&registries)).is_err(),
+            "unregistered particle id 128 must fail decode"
+        );
     }
 
     #[test]
     #[ignore = "run by tools/test_network_parity.py"]
     fn valid_26_3_optional_global_pos_and_painting_variant_decode_completely() {
         let witness = entity_data_witness();
+        let registries = painting_registries(&witness);
         for row in witness["valid_serializers"].as_array().unwrap() {
             let name = row["name"].as_str().unwrap();
             let data = entity_data_hex(row["entity_data_hex"].as_str().unwrap());
-            let entries = EntityData::read(&mut Reader::new(&data))
+            let entries = EntityData::read(&mut Reader::new(&data).with_names(&registries))
                 .unwrap_or_else(|e| panic!("{name}: failed to decode valid 26.3 data: {e}"));
             let expected_count = row["entry_count"].as_u64().unwrap() as usize;
             assert_eq!(entries.len(), expected_count, "{name}: entry count");
@@ -1107,9 +1149,9 @@ mod tests {
             let body = entity_data_hex(row["packet_body_hex"].as_str().unwrap());
             let entity_id = row["entity_id"].as_i64().unwrap() as i32;
             let crate::packets::play::Clientbound::SetEntityData(pkt) =
-                crate::packets::play::Clientbound::decode(
+                crate::packets::play::Clientbound::decode_reader(
                     crate::ids::play::clientbound::SET_ENTITY_DATA,
-                    &body,
+                    Reader::new(&body).with_names(&registries),
                 )
                 .unwrap()
             else {
@@ -1117,6 +1159,28 @@ mod tests {
             };
             assert_eq!(pkt.id, entity_id, "{name}: entity_id");
             assert_eq!(pkt.values, entries, "{name}: packet entries");
+        }
+        assert!(
+            witness["particle_metadata"]["list_65537_ok"]
+                .as_bool()
+                .unwrap()
+        );
+        let expected_particles = witness["particle_metadata"]["list_65537_count"]
+            .as_u64()
+            .unwrap() as usize;
+        let mut many = Writer::new();
+        many.u8(10);
+        many.varint(serializer::PARTICLES);
+        many.varint(expected_particles as i32);
+        for _ in 0..expected_particles {
+            many.varint(0);
+        }
+        many.u8(0xFF);
+        let decoded = EntityData::read(&mut Reader::new(&many.data).with_names(&registries))
+            .expect("65537 simple particles must decode");
+        match &decoded[0].2 {
+            Value::Particles(list) => assert_eq!(list.len(), expected_particles),
+            other => panic!("expected Particles, got {other:?}"),
         }
     }
 }
