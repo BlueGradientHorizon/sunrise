@@ -4,8 +4,8 @@ use std::{panic::AssertUnwindSafe, sync::Arc};
 
 use mod_api::{
     AttachmentType, BlockEntityPart, BlockEntityPartState, BlockEntityRef, BlockEntityTickEvent,
-    BlockPart, Hooks, HostTransaction, PartStateError, Registrar, ServerHost, TransactionError,
-    edit_part_state, read_state,
+    BlockPart, Hooks, HostTransaction, PartStateError, Registrar, ServerHost, edit_part_state,
+    read_state,
 };
 use sunrise_client::{
     chunk::Chunk,

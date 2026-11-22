@@ -786,17 +786,14 @@ pub(in crate::game) mod tests {
                 let air = host.block_state_id("minecraft:air").unwrap();
                 game.storage_scope(|game, _| {
                     assert_eq!(
-                        level.set_block(&mut game, AT, air, BlockUpdateFlags::NONE),
+                        level.set_block(game, AT, air, BlockUpdateFlags::NONE),
                         Ok(true)
                     );
                     assert_eq!(
-                        level.set_block(&mut game, AT, state, BlockUpdateFlags::NONE),
+                        level.set_block(game, AT, state, BlockUpdateFlags::NONE),
                         Ok(true)
                     );
-                    assert_eq!(
-                        level.set_connection_group(&mut game, AT, Some(730)),
-                        Ok(true)
-                    );
+                    assert_eq!(level.set_connection_group(game, AT, Some(730)), Ok(true));
                     ((), true)
                 });
                 let expected = game.world.block(AT[0], AT[1], AT[2]).0 as i32;

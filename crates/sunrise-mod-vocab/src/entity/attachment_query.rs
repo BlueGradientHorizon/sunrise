@@ -110,11 +110,10 @@ impl<T: 'static> AttachmentRow<'_, T> {
     /// The default scope is only for captures made outside a transaction.
     ///
     /// ```compile_fail,E0500
-    /// use mod_api::{AttachmentRow, ServerHost};
-    /// fn close_during_read(row: &AttachmentRow<'_, u32>, host: &mut dyn ServerHost,
-    /// ) {
+    /// use mod_api::{AttachmentRow, HostTransaction, ServerHost};
+    /// fn transact_during_read(row: &AttachmentRow<'_, u32>, host: &mut dyn ServerHost) {
     ///     let _ = row.with_value(host.attachment_read_scope().unwrap(), |value| {
-    ///         let _ = host.attachment_read_scope();
+    ///         let _ = host.transaction(|_, _| Ok::<_, ()>(()));
     ///         *value
     ///     });
     /// }

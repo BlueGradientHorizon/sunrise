@@ -23,16 +23,20 @@ receives `&mut dyn ServerHost`, even if you call `transaction` on a concrete or 
 host. Use that type in explicitly typed callbacks and in the helpers they call, and
 keep concrete-host-only setup and assertions outside the loan.
 
-Two other entry points use the same result type:
+Other entry points use the same result type:
 
 - In `block_entity_tick`, use `event.subject.transaction(|tick, tx| …)` to group writes
   through `tick.host()` and `tick.with_view(…)`. End each borrow before starting the next;
   another view loan can refuse if the original block entity is gone. Return `Err` if a
   required write or view does not succeed.
+- The server scopes for `general_entity_tick` and `on_entity_item_update` also expose
+  `.transaction(|scope, tx| …)`, with sequential view and host loans.
 - In a server main-thread payload handler, use `cx.transaction(|cx, tx| …)` on
   `&mut dyn IPayloadContext` when you need the payload context and world writes in the
   same savepoint. Call `cx.server_host()` for the host and use `tx` for its capability
-  writes. End the host borrow before calling `cx.reply` or `cx.finish_configuration_task`.
+  writes. End the host borrow before calling `cx.reply`. Replies reserve packet budget
+  when staged and refund it on rollback. `cx.finish_configuration_task` updates the
+  main-thread session immediately; a transaction does not roll it back.
   The client and the network thread cannot open this scope.
 
 To lend a temporary scratch item slot inside a scoped transaction—either a single fixed-item
@@ -47,8 +51,9 @@ keep closed loans out of enclosing journals; see
 - Writes apply immediately, so subsequent steps in the transaction see them.
 - The game snapshots each storage before its first write. Handlers use the game's
   journal rather than keeping their own.
-- A nested commit merges into its parent. Only the outermost commit makes storage
-  changes final and publishes deferred engine-managed container effects.
+- For level-local work, a nested commit merges into the nearest open transaction
+  in that level. Its outermost commit makes changes final and publishes deferred
+  effects. A transaction in another level does not defer or undo that work.
 - An abort restores recorded storage without publishing those commit effects.
 - Direct writes by mods to their own storage and rollback restores issue no notices.
 - Explicit changed/comparator/neighbour/data-send notifications run when issued,
@@ -81,7 +86,7 @@ item drops, including items placed at a block, thrown by a player or entity, or 
 item entity. Explicit mod-issued world notifications are not deferred with these effects.
 
 A world pickup or placement of fluid (`level.pickup_fluid`, `level.place_fluid`) writes
-its block at the call and the rest at the outermost commit; an aborted one leaves the world
+its block at the call and the rest at the outermost commit in that level; an abort leaves the world
 unchanged, where NeoForge's may not. `level.play_fluid_effects` queues a fluid's sound and
 game event the same way: they play only at the outermost commit and are dropped on abort,
 unlike `trigger_sound_and_game_event`, which acts at once. The `block_drops` listeners of a
@@ -114,14 +119,14 @@ tick does not open a transaction for you. Use `event.subject.transaction` to mak
 a subject edit and a dropped-item write atomic:
 
 ```rust,ignore
-use mod_api::{BlockEntityScope, ItemEntityRef, ItemStack};
+use mod_api::{BlockEntityScope, ItemEntityRef, ItemStack, TransactionError};
 
 fn update(
     tick: &mut BlockEntityScope<'_>,
     item: ItemEntityRef,
     replacement: ItemStack,
     progress: i32,
-) -> Result<(), &'static str> {
+) -> Result<(), TransactionError<&'static str>> {
     tick.transaction(|tick, _| {
         if !item.set_stack(tick.host(), replacement).map_err(|_| "invalid stack")? {
             return Err("dropped-item write was refused");

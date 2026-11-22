@@ -496,9 +496,9 @@ mod tests {
                     Ok(true)
                 );
                 assert_eq!(level.connection_group(game, [4, 64, 4]), Ok(Some(33)));
-                let sy = (64 - MIN_Y) >> 4;
                 ((), true)
             });
+            let sy = (64 - MIN_Y) >> 4;
             assert_eq!(level.connection_group(game, [4, 64, 4]), Ok(Some(33)));
             assert!(game.world.dirty_sections.contains(&(0, sy, 0)));
             assert_eq!(
@@ -697,15 +697,16 @@ mod tests {
             let edit_commit = single_replace([8, 64, 8], glass);
             {
                 let host: &mut dyn ServerHost = game;
-                let res: Result<(), ()> = host.transaction(|host, _tx| {
-                    assert_eq!(
-                        level.set_connection_group(host, [8, 64, 8], Some(2)),
-                        Ok(true)
-                    );
-                    assert_eq!(host.edit_blocks("minecraft:overworld", &edit_commit), Ok(1));
-                    assert_eq!(level.connection_group(host, [8, 64, 8]), Ok(None));
-                    Ok(())
-                });
+                let res: Result<(), mod_api::TransactionError<()>> =
+                    host.transaction(|host, _tx| {
+                        assert_eq!(
+                            level.set_connection_group(host, [8, 64, 8], Some(2)),
+                            Ok(true)
+                        );
+                        assert_eq!(host.edit_blocks("minecraft:overworld", &edit_commit), Ok(1));
+                        assert_eq!(level.connection_group(host, [8, 64, 8]), Ok(None));
+                        Ok(())
+                    });
                 assert_eq!(res, Ok(()));
             }
             assert_eq!(level.block_state(game, [8, 64, 8]), Some(glass));
@@ -723,15 +724,16 @@ mod tests {
             let edit_abort = single_replace([9, 64, 9], glass);
             {
                 let host: &mut dyn ServerHost = game;
-                let res: Result<(), ()> = host.transaction(|host, _tx| {
-                    assert_eq!(
-                        level.set_connection_group(host, [9, 64, 9], Some(2)),
-                        Ok(true)
-                    );
-                    assert_eq!(host.edit_blocks("minecraft:overworld", &edit_abort), Ok(1));
-                    Err(())
-                });
-                assert_eq!(res, Err(()));
+                let res: Result<(), mod_api::TransactionError<()>> =
+                    host.transaction(|host, _tx| {
+                        assert_eq!(
+                            level.set_connection_group(host, [9, 64, 9], Some(2)),
+                            Ok(true)
+                        );
+                        assert_eq!(host.edit_blocks("minecraft:overworld", &edit_abort), Ok(1));
+                        Err(())
+                    });
+                assert_eq!(res, Err(mod_api::TransactionError::Aborted(())));
             }
             assert_eq!(level.block_state(game, [9, 64, 9]), Some(glass));
             assert_eq!(level.connection_group(game, [9, 64, 9]), Ok(None));
@@ -748,18 +750,19 @@ mod tests {
             let edit_tentative_none = single_replace([10, 64, 10], glass);
             {
                 let host: &mut dyn ServerHost = game;
-                let res: Result<(), ()> = host.transaction(|host, _tx| {
-                    assert_eq!(
-                        level.set_connection_group(host, [10, 64, 10], None),
-                        Ok(true)
-                    );
-                    assert_eq!(
-                        host.edit_blocks("minecraft:overworld", &edit_tentative_none),
-                        Ok(1)
-                    );
-                    Err(())
-                });
-                assert_eq!(res, Err(()));
+                let res: Result<(), mod_api::TransactionError<()>> =
+                    host.transaction(|host, _tx| {
+                        assert_eq!(
+                            level.set_connection_group(host, [10, 64, 10], None),
+                            Ok(true)
+                        );
+                        assert_eq!(
+                            host.edit_blocks("minecraft:overworld", &edit_tentative_none),
+                            Ok(1)
+                        );
+                        Err(())
+                    });
+                assert_eq!(res, Err(mod_api::TransactionError::Aborted(())));
             }
             assert_eq!(level.block_state(game, [10, 64, 10]), Some(glass));
             assert_eq!(level.connection_group(game, [10, 64, 10]), Ok(None));
@@ -777,21 +780,22 @@ mod tests {
             let edit_after_commit = single_replace([11, 64, 11], glass);
             {
                 let host: &mut dyn ServerHost = game;
-                let res: Result<(), ()> = host.transaction(|host, _tx| {
-                    assert_eq!(
-                        level.set_connection_group(host, [11, 64, 11], Some(2)),
-                        Ok(true)
-                    );
-                    assert_eq!(
-                        host.edit_blocks("minecraft:overworld", &edit_after_commit),
-                        Ok(1)
-                    );
-                    assert_eq!(
-                        level.set_connection_group(host, [11, 64, 11], Some(3)),
-                        Ok(true)
-                    );
-                    Ok(())
-                });
+                let res: Result<(), mod_api::TransactionError<()>> =
+                    host.transaction(|host, _tx| {
+                        assert_eq!(
+                            level.set_connection_group(host, [11, 64, 11], Some(2)),
+                            Ok(true)
+                        );
+                        assert_eq!(
+                            host.edit_blocks("minecraft:overworld", &edit_after_commit),
+                            Ok(1)
+                        );
+                        assert_eq!(
+                            level.set_connection_group(host, [11, 64, 11], Some(3)),
+                            Ok(true)
+                        );
+                        Ok(())
+                    });
                 assert_eq!(res, Ok(()));
             }
             assert_eq!(level.block_state(game, [11, 64, 11]), Some(glass));
@@ -808,22 +812,23 @@ mod tests {
             let edit_after_abort = single_replace([12, 64, 12], glass);
             {
                 let host: &mut dyn ServerHost = game;
-                let res: Result<(), ()> = host.transaction(|host, _tx| {
-                    assert_eq!(
-                        level.set_connection_group(host, [12, 64, 12], Some(2)),
-                        Ok(true)
-                    );
-                    assert_eq!(
-                        host.edit_blocks("minecraft:overworld", &edit_after_abort),
-                        Ok(1)
-                    );
-                    assert_eq!(
-                        level.set_connection_group(host, [12, 64, 12], Some(3)),
-                        Ok(true)
-                    );
-                    Err(())
-                });
-                assert_eq!(res, Err(()));
+                let res: Result<(), mod_api::TransactionError<()>> =
+                    host.transaction(|host, _tx| {
+                        assert_eq!(
+                            level.set_connection_group(host, [12, 64, 12], Some(2)),
+                            Ok(true)
+                        );
+                        assert_eq!(
+                            host.edit_blocks("minecraft:overworld", &edit_after_abort),
+                            Ok(1)
+                        );
+                        assert_eq!(
+                            level.set_connection_group(host, [12, 64, 12], Some(3)),
+                            Ok(true)
+                        );
+                        Err(())
+                    });
+                assert_eq!(res, Err(mod_api::TransactionError::Aborted(())));
             }
             assert_eq!(level.block_state(game, [12, 64, 12]), Some(glass));
             assert_eq!(level.connection_group(game, [12, 64, 12]), Ok(None));
@@ -879,7 +884,7 @@ mod tests {
                 Ok(true)
             );
             assert_eq!(level.set_connection_group(game, pos, Some(10)), Ok(true));
-            game.storage_scope(|game, _| {
+            let nether = game.storage_scope(|game, _| {
                 assert_eq!(level.set_connection_group(game, pos, Some(11)), Ok(true));
                 assert_eq!(game.enter_command_level(Dim::Nether), Some(Dim::Overworld));
                 game.world
@@ -895,7 +900,7 @@ mod tests {
                 assert_eq!(nether.connection_group(game, pos), Ok(None));
                 assert_eq!(nether.set_connection_group(game, pos, Some(21)), Ok(true));
                 assert_eq!(game.enter_command_level(Dim::Overworld), Some(Dim::Nether));
-                ((), false)
+                (nether, false)
             });
             assert_eq!(level.connection_group(game, pos), Ok(Some(10)));
             assert_eq!(nether.connection_group(game, pos), Ok(Some(21)));

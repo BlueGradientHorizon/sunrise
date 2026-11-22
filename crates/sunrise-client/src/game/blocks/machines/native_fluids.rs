@@ -1320,11 +1320,10 @@ mod tests {
                 );
                 assert_eq!(source.amount(game, 1), 800);
                 assert_eq!(target.amount(game, 1), 700);
-                let abort: Result<(), mod_api::TransactionError<()>> =
-                    game.storage_transaction(|host, tx| {
-                        assert_eq!(target.insert_at(host, tx, 1, &water, 200), 200);
-                        Err(())
-                    });
+                let abort: Result<(), ()> = game.storage_transaction(|host, tx| {
+                    assert_eq!(target.insert_at(host, tx, 1, &water, 200), 200);
+                    Err(())
+                });
                 assert!(abort.is_err());
                 assert_eq!(target.amount(game, 1), 700);
                 assert_eq!(

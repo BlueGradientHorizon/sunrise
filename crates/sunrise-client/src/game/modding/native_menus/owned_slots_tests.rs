@@ -627,7 +627,7 @@ fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
         })
         .unwrap();
 
-        let aborted: Result<(), ()> = host.transaction(|host, tx| {
+        let aborted: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, tx| {
             assert_eq!(old_slot.insert(host, tx, &resource, 1), 1);
             player
                 .open_mod_menu(host, {
@@ -644,7 +644,7 @@ fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
             assert_eq!(new_slot.insert(host, tx, &resource, 4), 4);
             Err(())
         });
-        assert_eq!(aborted, Err(()));
+        assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
         let new = game.player_container_menu(player).unwrap();
         assert_eq!(old.slot(game, 1), None);
         assert_eq!(new.slot(game, 1), Some(None), "no leakage between windows");

@@ -750,19 +750,25 @@ mod tests {
                     host.schedule_task(
                         0,
                         Box::new(|host| {
-                            let result: Result<(), ObjectiveError> = host.transaction(|host, _| {
-                                // The second write refuses the duplicate, rolling back the first.
-                                for _ in 0..2 {
-                                    host.add_objective(
-                                        "discarded",
-                                        "dummy",
-                                        Text::literal("Discarded"),
-                                        ObjectiveRenderType::Integer,
-                                    )?;
-                                }
-                                Ok(())
-                            });
-                            assert_eq!(result, Err(ObjectiveError::NameTaken));
+                            let result: Result<(), mod_api::TransactionError<ObjectiveError>> =
+                                host.transaction(|host, _| {
+                                    // The second write refuses the duplicate, rolling back the first.
+                                    for _ in 0..2 {
+                                        host.add_objective(
+                                            "discarded",
+                                            "dummy",
+                                            Text::literal("Discarded"),
+                                            ObjectiveRenderType::Integer,
+                                        )?;
+                                    }
+                                    Ok(())
+                                });
+                            assert_eq!(
+                                result,
+                                Err(mod_api::TransactionError::Aborted(
+                                    ObjectiveError::NameTaken
+                                ))
+                            );
                         }),
                     )
                     .unwrap();

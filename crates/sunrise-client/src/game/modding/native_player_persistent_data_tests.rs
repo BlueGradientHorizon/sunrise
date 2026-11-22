@@ -1,7 +1,7 @@
 //! Scoped persistent-data reads and key edits against real LAN guests, through player handles.
 
 use super::native_guest_turn_tests::with_guests;
-use mod_api::{Compound, HostTransaction, JavaString, PlayerPersistentDataError, Tag, prelude::*};
+use mod_api::{Compound, JavaString, PlayerPersistentDataError, Tag, prelude::*};
 
 fn saved_data<'a>(game: &'a super::Game<'_>, conn: u32) -> Option<&'a Compound> {
     let hub = &game.lan.as_ref().unwrap().hub;

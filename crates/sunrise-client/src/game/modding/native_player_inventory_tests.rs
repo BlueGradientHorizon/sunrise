@@ -257,7 +257,7 @@ fn inventory_write_aborts() {
         let old = stack(game, r#"{id:"minecraft:stone",count:64}"#);
         player.set_inventory_slot(game, 36, Some(old)).unwrap();
         let before = player.with_inventory(game, snapshot).unwrap();
-        let _: Result<(), TransactionError<()>> = game.storage_transaction(|host, _| {
+        let _: Result<(), ()> = game.storage_transaction(|host, _| {
             player.set_inventory_slot(host, 36, Some(new)).unwrap();
             Err(())
         });
@@ -274,7 +274,7 @@ fn ender_write_aborts() {
         let old = stack(game, r#"{id:"minecraft:stone",count:64}"#);
         player.set_ender_chest_slot(game, 0, Some(old)).unwrap();
         let before = player.with_ender_chest(game, snapshot).unwrap();
-        let _: Result<(), TransactionError<()>> = game.storage_transaction(|host, _| {
+        let _: Result<(), ()> = game.storage_transaction(|host, _| {
             player.set_ender_chest_slot(host, 0, Some(new)).unwrap();
             Err(())
         });
@@ -294,7 +294,7 @@ fn data_write_aborts() {
         player
             .set_persistent_data_key(game, &key, Some(&old))
             .unwrap();
-        let _: Result<(), TransactionError<()>> = game.storage_transaction(|host, _| {
+        let _: Result<(), ()> = game.storage_transaction(|host, _| {
             player.set_persistent_data_key(host, &key, None).unwrap();
             missing
                 .set_persistent_data_key(host, &key, Some(&old))
@@ -325,7 +325,7 @@ fn give_write_aborts() {
             Some(true)
         );
         let drops = game.dropped.len();
-        let _: Result<(), TransactionError<()>> = game.storage_transaction(|host, _| {
+        let _: Result<(), ()> = game.storage_transaction(|host, _| {
             player.give_stack(host, new.clone()).unwrap();
             assert_eq!(
                 player.with_inventory(host, snapshot),
@@ -345,7 +345,7 @@ fn give_write_aborts() {
         }
         let before = player.with_inventory(game, snapshot).unwrap();
         let drops = game.dropped.len();
-        let _: Result<(), TransactionError<()>> = game.storage_transaction(|host, _| {
+        let _: Result<(), ()> = game.storage_transaction(|host, _| {
             player.give_stack(host, new).unwrap();
             Err(())
         });
@@ -361,7 +361,7 @@ fn equipment_effects_wait_for_root() {
         let player = game.players().server_players()[1];
         let new = stack(game, r#"{id:"minecraft:iron_boots",count:1}"#);
         game.audio.capture = Some(Vec::new());
-        let _: Result<(), TransactionError<()>> = game.storage_transaction(|host, _| {
+        let _: Result<(), ()> = game.storage_transaction(|host, _| {
             host.transaction(|host, _| {
                 player
                     .set_inventory_slot(host, 36, Some(new.clone()))
@@ -373,7 +373,7 @@ fn equipment_effects_wait_for_root() {
         });
         assert!(game.audio.capture.as_ref().unwrap().is_empty());
         let inner = stack(game, r#"{id:"minecraft:diamond_helmet",count:1}"#);
-        let _: Result<(), TransactionError<()>> = game.storage_transaction(|host, _| {
+        let _: Result<(), ()> = game.storage_transaction(|host, _| {
             player
                 .set_inventory_slot(host, 36, Some(new.clone()))
                 .unwrap();

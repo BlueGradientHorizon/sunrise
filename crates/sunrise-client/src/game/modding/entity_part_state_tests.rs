@@ -698,7 +698,7 @@ fn a_transfer_inside_an_aborted_action_leaves_the_state_with_the_entity() {
         game.enter_level(Dim::Overworld).unwrap();
         let first = mob(game, "minecraft:cow", 54);
         assert_eq!(Charge::edit_state(game, first, |_, n| *n = 7), Ok(()));
-        let state = game.storage_scope(|game, _| {
+        let (state, second) = game.storage_scope(|game, _| {
             assert_eq!(Charge::edit_state(game, first, |_, n| *n = 9), Ok(()));
             let state = game.take_transferred_entity_state(first.id());
             game.mobs.retain(|m| m.id != first.id());
@@ -713,7 +713,7 @@ fn a_transfer_inside_an_aborted_action_leaves_the_state_with_the_entity() {
             game.mobs.retain(|m| m.id != second.id());
             game.detach_entity(second.id());
             game.enter_level(Dim::Overworld).unwrap();
-            (state, false)
+            ((state, second), false)
         });
         assert!(game.transactions.is_empty());
         let third = game

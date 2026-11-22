@@ -2081,7 +2081,7 @@ mod tests {
                 (rng.next_gaussian().to_bits(), rng.next_long())
             };
 
-            game.storage_scope(|game, _| {
+            let advanced = game.storage_scope(|game, _| {
                 game.add_objective(
                     "outer_discarded",
                     "dummy",
@@ -2101,7 +2101,7 @@ mod tests {
                     );
                 }
 
-                game.storage_scope(|game, _| {
+                let advanced = game.storage_scope(|game, _| {
                     game.add_objective(
                         "child_discarded",
                         "dummy",
@@ -2114,12 +2114,8 @@ mod tests {
                         (parked, &mut expected_parked),
                     ] {
                         assert_eq!(
-                            states(game),
-                            [
-                                level_random_state(&expected_active),
-                                level_random_state(&expected_parked),
-                            ],
-                            "child commit",
+                            level.with_random(game, draw),
+                            Some((expected.next_gaussian().to_bits(), expected.next_long()))
                         );
                     }
                     let advanced = [
@@ -2128,7 +2124,7 @@ mod tests {
                     ];
                     assert_eq!(states(game), advanced);
 
-                    ((), false)
+                    (advanced, false)
                 });
                 assert!(game.objective("child_discarded").is_none());
                 assert!(game.objective("outer_discarded").is_some());
@@ -2138,7 +2134,7 @@ mod tests {
                     "child abort rolls back journaled state without rewinding active or parked RNG"
                 );
 
-                ((), false)
+                (advanced, false)
             });
             assert!(game.objective("outer_discarded").is_none());
             assert_eq!(

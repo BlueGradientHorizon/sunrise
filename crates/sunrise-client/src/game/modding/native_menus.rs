@@ -2465,22 +2465,24 @@ mod tests {
                     );
                     let menu = player.container_menu(game).unwrap();
                     let host: &mut dyn ServerHost = game;
-                    let committed: Result<(), ()> = host.transaction(|host, _| {
-                        assert_eq!(menu.set_data_slot(host, LAST, i32::MAX), Ok(true));
-                        assert!(sent(&rx).is_empty());
-                        Ok(())
-                    });
+                    let committed: Result<(), mod_api::TransactionError<()>> =
+                        host.transaction(|host, _| {
+                            assert_eq!(menu.set_data_slot(host, LAST, i32::MAX), Ok(true));
+                            assert!(sent(&rx).is_empty());
+                            Ok(())
+                        });
                     assert_eq!(committed, Ok(()));
                     assert!(updates().eq([DataSlot {
                         window,
                         index: u16::MAX,
                         value: i32::MAX,
                     }]));
-                    let committed: Result<(), ()> = host.transaction(|host, _| {
-                        assert_eq!(menu.set_data_slot(host, OVERFLOW, i32::MIN), Ok(true));
-                        assert!(sent(&rx).is_empty());
-                        Ok(())
-                    });
+                    let committed: Result<(), mod_api::TransactionError<()>> =
+                        host.transaction(|host, _| {
+                            assert_eq!(menu.set_data_slot(host, OVERFLOW, i32::MIN), Ok(true));
+                            assert!(sent(&rx).is_empty());
+                            Ok(())
+                        });
                     assert_eq!(committed, Ok(()));
                     assert!(sent(&rx).is_empty(), "unencodable index sent a delta");
 

@@ -14,8 +14,8 @@ use super::{BlockEntity, Game};
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use crate::game::world_loading::WorldRequest;
 use mod_api::{
-    BlocksEvent, FLUIDS, FluidResource, FluidStack, Hooks, HostTransaction, LevelRef, ModEntry,
-    ModFluidTanks, Mods, Registrar, RegistrationContext,
+    BlocksEvent, FLUIDS, FluidResource, FluidStack, Hooks, LevelRef, ModEntry, ModFluidTanks, Mods,
+    Registrar, RegistrationContext,
 };
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -162,7 +162,7 @@ fn a_committed_mod_tank_survives_a_world_save_close_and_reopen() {
                 assert_eq!(tanks.insert_at(host, tx, 0, &fluid(BRINE, 1), 500), 500);
                 Err::<(), _>("abort")
             }),
-            Err(mod_api::TransactionError::Aborted("abort"))
+            Err("abort")
         );
         assert_eq!(contents(game, level, pos), expected());
         // The integrated server's save: what the autosave and the pause menu run (`save-all` is a

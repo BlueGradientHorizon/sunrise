@@ -165,10 +165,11 @@ fn exercise(reopen: bool) {
             assert_eq!(take.with_stack(game, |stack| stack.count()).unwrap(), 6);
             assert_eq!(give.with_stack(game, |stack| stack.count()).unwrap(), 5);
             assert_eq!(partial.with_stack(game, |stack| stack.count()).unwrap(), 16);
-            let aborted: Result<(), ()> = (game as &mut dyn ServerHost).transaction(|host, tx| {
-                assert_eq!(give.insert(host, tx, &dirt, 3), 3);
-                Err(())
-            });
+            let aborted: Result<(), mod_api::TransactionError<()>> = (game as &mut dyn ServerHost)
+                .transaction(|host, tx| {
+                    assert_eq!(give.insert(host, tx, &dirt, 3), 3);
+                    Err(())
+                });
             assert!(aborted.is_err());
             assert_eq!(give.with_stack(game, |stack| stack.count()).unwrap(), 5);
             game.lan

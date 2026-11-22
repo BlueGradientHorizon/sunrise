@@ -1139,7 +1139,7 @@ pub(super) mod tests {
                     );
                     Err::<(), ()>(())
                 }),
-                Err(TransactionError::Aborted(()))
+                Err(())
             );
             assert_eq!(inventory(game), before);
 
@@ -1371,7 +1371,7 @@ pub(super) mod tests {
                 assert_eq!(items.insert_at(host, tx, 4, &chest, 1), 1);
                 Err::<(), ()>(())
             });
-            assert_eq!(result, Err(TransactionError::Aborted(())));
+            assert_eq!(result, Err(()));
             assert!(game.armor_stands[0].equipment.get(4).is_none());
             assert!(
                 game.audio.capture.as_ref().unwrap().is_empty(),
@@ -1388,7 +1388,7 @@ pub(super) mod tests {
                 .unwrap();
                 Err::<(), ()>(())
             });
-            assert_eq!(result, Err(TransactionError::Aborted(())));
+            assert_eq!(result, Err(()));
             assert!(game.armor_stands[0].equipment.get(4).is_none());
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
@@ -1617,9 +1617,7 @@ pub(super) mod tests {
                     game.storage_transaction(|host, tx| {
                         place.edit(host, tx, |_| panic!("a refused place ran its editor"))
                     }),
-                    Err(TransactionError::Aborted(
-                        ItemPlaceEditError::UnsupportedPlace
-                    ))
+                    Err(ItemPlaceEditError::UnsupportedPlace)
                 );
             }
             for place in [&hand, &menu.cursor()] {
@@ -2544,7 +2542,7 @@ pub(super) mod tests {
                     }
                     Err::<(), ()>(())
                 });
-                assert_eq!(rolled_back, Err(TransactionError::Aborted(())));
+                assert_eq!(rolled_back, Err(()));
                 assert_eq!(
                     living.attribute_base(game, "minecraft:gravity"),
                     Some(gravity)
@@ -2613,7 +2611,7 @@ pub(super) mod tests {
                 );
                 Err::<(), ()>(())
             });
-            assert_eq!(result, Err(TransactionError::Aborted(())));
+            assert_eq!(result, Err(()));
             assert_eq!(place.resource(game), Some(before));
             assert_eq!(
                 armor(game),

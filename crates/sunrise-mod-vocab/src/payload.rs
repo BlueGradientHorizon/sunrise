@@ -357,7 +357,7 @@ pub trait IPayloadContext {
     /// Runs `callback` inside one scoped transaction on this payload context (server main
     /// thread only), committing on `true` and aborting on `false` or unwind. Returns
     /// [`TransactionUnavailable`] when this context cannot open a transaction (for example, on
-    /// the client, on the network thread, or while a transaction is closing).
+    /// the client, on the network thread, or when the receiving connection has ended).
     /// Most callers use [`IPayloadContext::transaction`].
     fn with_transaction_scope(
         &mut self,

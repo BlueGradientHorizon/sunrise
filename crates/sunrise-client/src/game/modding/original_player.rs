@@ -366,8 +366,8 @@ mod tests {
     use super::*;
     use crate::game::native_guest_turn_tests::with_guests;
     use mod_api::{
-        __private::TransactionFrame, AttachmentType, Holder, Hooks, HostTransaction,
-        PlayerCloneEvent, PlayerContainerCloseEvent, ServerHost,
+        AttachmentType, Holder, Hooks, HostTransaction, PlayerCloneEvent,
+        PlayerContainerCloseEvent, ServerHost,
     };
     use sunrise_core::nbt::{JavaString, Tag};
 
@@ -717,9 +717,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn clone_removes_menus_and_retires_old_attachment_owner_before_copy() {
-        use mod_api::{
-            __private::TransactionFrame, AttachmentHolder, AttachmentRowError, AttachmentWriteToken,
-        };
+        use mod_api::{AttachmentHolder, AttachmentRowError, AttachmentWriteToken};
         use sunrise_mod_runtime::attachments::index::AttachmentIndex;
         type OldIndex = Arc<Mutex<AttachmentIndex<AttachmentHolder>>>;
 
@@ -1173,23 +1171,24 @@ mod tests {
             }
 
             fn player_clone(&self, host: &mut dyn ServerHost, event: &mut PlayerCloneEvent<'_>) {
-                let aborted: Result<(), ()> = host.transaction(|host, _| {
-                    VALUE.set(host, Holder::Player(event.player), 555).unwrap();
-                    event.original.set_attachment(&VALUE, 444).unwrap();
-                    assert_eq!(event.original.remove_attachment(&RETAINED), Ok(Some(17)));
-                    assert_eq!(event.original.attachment(&DEFAULTED), Ok(41));
-                    assert_eq!(event.original.existing_attachment(&SAVED), Ok(Some(31)));
-                    // Inner committed transaction must still roll back when outer aborts.
-                    host.transaction(|_, _| {
-                        event.original.set_attachment(&VALUE, 445).unwrap();
-                        Ok::<(), ()>(())
-                    })
-                    .unwrap();
-                    assert_eq!(event.original.existing_attachment(&VALUE), Ok(Some(445)));
-                    assert_eq!(VALUE.get(host, Holder::Player(event.player)), Ok(555));
-                    Err(())
-                });
-                assert_eq!(aborted, Err(()));
+                let aborted: Result<(), mod_api::TransactionError<()>> =
+                    host.transaction(|host, _| {
+                        VALUE.set(host, Holder::Player(event.player), 555).unwrap();
+                        event.original.set_attachment(&VALUE, 444).unwrap();
+                        assert_eq!(event.original.remove_attachment(&RETAINED), Ok(Some(17)));
+                        assert_eq!(event.original.attachment(&DEFAULTED), Ok(41));
+                        assert_eq!(event.original.existing_attachment(&SAVED), Ok(Some(31)));
+                        // Inner committed transaction must still roll back when outer aborts.
+                        host.transaction(|_, _| {
+                            event.original.set_attachment(&VALUE, 445).unwrap();
+                            Ok::<(), ()>(())
+                        })
+                        .unwrap();
+                        assert_eq!(event.original.existing_attachment(&VALUE), Ok(Some(445)));
+                        assert_eq!(VALUE.get(host, Holder::Player(event.player)), Ok(555));
+                        Err(())
+                    });
+                assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
                 assert_eq!(VALUE.has(host, Holder::Player(event.player)), Ok(false));
                 assert_eq!(event.original.existing_attachment(&VALUE), Ok(Some(73)));
                 assert_eq!(event.original.has_attachment(&RETAINED), Ok(true));

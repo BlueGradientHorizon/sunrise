@@ -535,32 +535,42 @@ mod on_entity_item_update_tests {
                                 scope.with_view(|mut view| view.set_stack(earlier.clone())),
                                 Some(Ok(true))
                             );
-                            scope.transaction(|scope, _| {
-                                scope
-                                    .with_view(|mut view| {
-                                        assert_eq!(view.set_stack(later.clone()), Ok(true));
-                                        assert!(view.set_pickup_delay(7));
-                                        assert!(view.set_target(Some(8)));
-                                        assert!(view.set_velocity([9.0; 3]));
-                                        STACK_PROJECTIONS.set(0);
-                                        assert_eq!(view.with_stack(|stack| stack.count()), Some(3));
-                                        assert_eq!(STACK_PROJECTIONS.get(), 0);
-                                        assert_eq!(
-                                            view.with_stack(|stack| stack.project()).flatten(),
-                                            Some(later.clone())
-                                        );
-                                        assert_eq!(STACK_PROJECTIONS.get(), 1);
-                                    })
-                                    .unwrap();
-                                assert_eq!(
-                                    peer.set_stack(scope.host(), peer_stack.clone()),
-                                    Ok(true)
-                                );
-                                Ok::<_, ()>(())
-                            })?;
+                            scope
+                                .transaction(|scope, _| {
+                                    scope
+                                        .with_view(|mut view| {
+                                            assert_eq!(view.set_stack(later.clone()), Ok(true));
+                                            assert!(view.set_pickup_delay(7));
+                                            assert!(view.set_target(Some(8)));
+                                            assert!(view.set_velocity([9.0; 3]));
+                                            STACK_PROJECTIONS.set(0);
+                                            assert_eq!(
+                                                view.with_stack(|stack| stack.count()),
+                                                Some(3)
+                                            );
+                                            assert_eq!(STACK_PROJECTIONS.get(), 0);
+                                            assert_eq!(
+                                                view.with_stack(|stack| stack.project()).flatten(),
+                                                Some(later.clone())
+                                            );
+                                            assert_eq!(STACK_PROJECTIONS.get(), 1);
+                                        })
+                                        .unwrap();
+                                    assert_eq!(
+                                        peer.set_stack(scope.host(), peer_stack.clone()),
+                                        Ok(true)
+                                    );
+                                    Ok::<_, ()>(())
+                                })
+                                .unwrap();
                             commit.then_some(()).ok_or(())
                         });
-                        assert_eq!(result, commit.then_some(()).ok_or(()));
+                        assert_eq!(
+                            result,
+                            commit
+                                .then_some(())
+                                .ok_or(mod_api::TransactionError::Aborted(()))
+                        );
                         let item = &game.dropped[0];
                         assert_eq!(
                             (

@@ -199,7 +199,7 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
         game.world.modified.clear();
         let mut access = access(game, subject);
         let mut scope = BlockEntityScope::new(&mut access);
-        let result: Result<(), ()> = scope.transaction(|scope, _| {
+        let result: Result<(), mod_api::TransactionError<()>> = scope.transaction(|scope, _| {
             scope
                 .with_view(|mut view| {
                     assert!(view.set_data_slot(0, 24));
@@ -338,32 +338,33 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
                     .unwrap();
                 scope.host().block_entity_sync(AT);
 
-                let result: Result<(), ()> = scope.transaction(|scope, _| {
-                    if replace {
-                        // The first write captures the row through the world, not a ticker loan.
-                        assert_eq!(
-                            level.set_block(
-                                scope.host(),
-                                AT,
-                                replacement,
-                                BlockUpdateFlags::KNOWN_SHAPE
-                            ),
-                            Ok(true)
-                        );
-                        assert_eq!(scope.with_view(|_| ()), None);
-                    } else {
-                        scope
-                            .with_view(|mut view| {
-                                view.set_client_update_fields(Compound::from([(
-                                    "effect".into(),
-                                    Tag::Int(9),
-                                )]));
-                            })
-                            .unwrap();
-                    }
-                    Err(())
-                });
-                assert_eq!(result, Err(()));
+                let result: Result<(), mod_api::TransactionError<()>> =
+                    scope.transaction(|scope, _| {
+                        if replace {
+                            // The first write captures the row through the world, not a ticker loan.
+                            assert_eq!(
+                                level.set_block(
+                                    scope.host(),
+                                    AT,
+                                    replacement,
+                                    BlockUpdateFlags::KNOWN_SHAPE
+                                ),
+                                Ok(true)
+                            );
+                            assert_eq!(scope.with_view(|_| ()), None);
+                        } else {
+                            scope
+                                .with_view(|mut view| {
+                                    view.set_client_update_fields(Compound::from([(
+                                        "effect".into(),
+                                        Tag::Int(9),
+                                    )]));
+                                })
+                                .unwrap();
+                        }
+                        Err(())
+                    });
+                assert_eq!(result, Err(mod_api::TransactionError::Aborted(())));
 
                 game.lan
                     .as_mut()
@@ -447,11 +448,17 @@ fn check_edit_then_replace(commit: bool, observer: Option<ModEntry>) {
                     Ok(true)
                 );
                 Ok::<(), ()>(())
-            })?;
+            })
+            .unwrap();
             assert_eq!(scope.with_view(|_| ()), None);
             if commit { Ok(()) } else { Err(()) }
         });
-        assert_eq!(result, if commit { Ok(()) } else { Err(()) });
+        assert_eq!(
+            result,
+            commit
+                .then_some(())
+                .ok_or(mod_api::TransactionError::Aborted(()))
+        );
         assert_eq!(
             scope.with_view(|view| view.handle()),
             (!commit).then_some(subject)
@@ -821,7 +828,7 @@ fn strict_bulk_replacement_aborts_the_block_handle_and_inventory_together() {
         game.world.block_log = Some(Vec::new());
         let mut access = access(game, subject);
         let mut scope = BlockEntityScope::new(&mut access);
-        let result: Result<(), ()> = scope.transaction(|tick, _| {
+        let result: Result<(), mod_api::TransactionError<()>> = scope.transaction(|tick, _| {
             tick.with_view(|mut view| assert_eq!(view.set_item_slot(0, None), Ok(true)))
                 .unwrap();
             let host = tick.host();
@@ -831,7 +838,7 @@ fn strict_bulk_replacement_aborts_the_block_handle_and_inventory_together() {
             assert!(host.block_entity(level, AT).is_some());
             Err(())
         });
-        assert_eq!(result, Err(()));
+        assert_eq!(result, Err(mod_api::TransactionError::Aborted(())));
         let level = game.level("minecraft:overworld").unwrap();
         assert_eq!(game.world.block(POS.0, POS.1, POS.2), original);
         assert_eq!(game.block_entity(level, AT), Some(subject));
@@ -943,7 +950,7 @@ fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
         row.items = vec![Some(original_stack.clone())];
         game.world.block_log = Some(Vec::new());
 
-        game.storage_scope(|game, _| {
+        let last_chest = game.storage_scope(|game, _| {
             if strict_first {
                 assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
                 game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[0] =
@@ -956,7 +963,7 @@ fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
             assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
             let last_chest = game.block_entity(level, AT).unwrap();
             assert_ne!(last_chest, subject);
-            ((), true)
+            (last_chest, true)
         });
 
         assert_eq!(game.world.block(POS.0, POS.1, POS.2), chest);
@@ -1686,14 +1693,14 @@ fn blockless_scope_returns_none_for_view_and_keeps_host_and_transaction_working(
         let mut access = ResidentBlockEntityAccess::blockless(game);
         let mut scope = BlockEntityScope::new(&mut access);
         assert_eq!(scope.with_view(|_| 1u32), None);
-        let aborted: Result<(), ()> = scope.transaction(|scope, _| {
+        let aborted: Result<(), mod_api::TransactionError<()>> = scope.transaction(|scope, _| {
             assert_eq!(scope.with_view(|_| 1u32), None);
             assert!(subject.set_data_slot(scope.host(), 0, 50).unwrap());
             Err(())
         });
-        assert_eq!(aborted, Err(()));
+        assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
         assert_eq!(subject.data_slots(scope.host()).unwrap(), [23]);
-        let committed: Result<(), ()> = scope.transaction(|scope, _| {
+        let committed: Result<(), mod_api::TransactionError<()>> = scope.transaction(|scope, _| {
             assert!(subject.set_data_slot(scope.host(), 0, 55).unwrap());
             Ok(())
         });
@@ -1742,30 +1749,32 @@ fn items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transac
 
         {
             let mut scope = BlockEntityScope::new(&mut access);
-            let aborted: Result<(), ()> = scope.transaction(|scope, _| {
-                assert_eq!(
-                    scope
-                        .with_view(|mut view| view.set_item_slot(0, Some(stone.clone())))
-                        .unwrap(),
-                    Ok(true)
-                );
-                Err(())
-            });
-            assert_eq!(aborted, Err(()));
+            let aborted: Result<(), mod_api::TransactionError<()>> =
+                scope.transaction(|scope, _| {
+                    assert_eq!(
+                        scope
+                            .with_view(|mut view| view.set_item_slot(0, Some(stone.clone())))
+                            .unwrap(),
+                        Ok(true)
+                    );
+                    Err(())
+                });
+            assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
         }
         assert!(!access.items_changed());
 
         {
             let mut scope = BlockEntityScope::new(&mut access);
-            let committed: Result<(), ()> = scope.transaction(|scope, _| {
-                assert_eq!(
-                    scope
-                        .with_view(|mut view| view.set_item_slot(0, Some(stone.clone())))
-                        .unwrap(),
-                    Ok(true)
-                );
-                Ok(())
-            });
+            let committed: Result<(), mod_api::TransactionError<()>> =
+                scope.transaction(|scope, _| {
+                    assert_eq!(
+                        scope
+                            .with_view(|mut view| view.set_item_slot(0, Some(stone.clone())))
+                            .unwrap(),
+                        Ok(true)
+                    );
+                    Ok(())
+                });
             assert_eq!(committed, Ok(()));
             assert_eq!(
                 scope

@@ -1,5 +1,5 @@
 use super::super::{Dim, Game, native_guest_turn_tests::with_guests};
-use mod_api::{AttachmentAccess, AttachmentHolder, Host, HostTransaction, PlayerRef, ServerHost};
+use mod_api::{AttachmentAccess, AttachmentHolder, Host, PlayerRef, ServerHost};
 use std::sync::{Arc, Mutex};
 use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::{Compound, Tag};

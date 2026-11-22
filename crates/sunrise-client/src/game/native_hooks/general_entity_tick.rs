@@ -209,20 +209,30 @@ mod tests {
                                 scope.with_view(|mut view| view.set_velocity([7.0; 3])),
                                 Some(true)
                             );
-                            scope.transaction(|scope, _| {
-                                scope
-                                    .with_view(|mut view| {
-                                        assert!(view.set_velocity([8.0; 3]));
-                                        assert!(view.set_rotation(9.0, 10.0));
-                                        view.reset_fall_distance();
-                                    })
-                                    .unwrap();
-                                assert_eq!(peer.set_stack(scope.host(), stack.clone()), Ok(true));
-                                Ok::<_, ()>(())
-                            })?;
+                            scope
+                                .transaction(|scope, _| {
+                                    scope
+                                        .with_view(|mut view| {
+                                            assert!(view.set_velocity([8.0; 3]));
+                                            assert!(view.set_rotation(9.0, 10.0));
+                                            view.reset_fall_distance();
+                                        })
+                                        .unwrap();
+                                    assert_eq!(
+                                        peer.set_stack(scope.host(), stack.clone()),
+                                        Ok(true)
+                                    );
+                                    Ok::<_, ()>(())
+                                })
+                                .unwrap();
                             commit.then_some(()).ok_or(())
                         });
-                        assert_eq!(result, commit.then_some(()).ok_or(()));
+                        assert_eq!(
+                            result,
+                            commit
+                                .then_some(())
+                                .ok_or(mod_api::TransactionError::Aborted(()))
+                        );
                         let row = game.resident_entities.general.row(id).unwrap();
                         assert_eq!(
                             (
