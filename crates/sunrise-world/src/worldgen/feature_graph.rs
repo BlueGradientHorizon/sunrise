@@ -18,7 +18,7 @@ use super::{
     weighted::OptionalWeightedList,
 };
 use serde_json::value::RawValue;
-use std::{cell::Cell, collections::BTreeSet};
+use std::collections::BTreeSet;
 use sunrise_core::random::{InvalidBound, RandomSource};
 
 #[derive(Clone, Debug)]
@@ -175,11 +175,6 @@ impl<E> From<FeaturePlacementError<Self>> for FeatureExecutionError<E> {
         }
     }
 }
-struct Run {
-    blocks: FeatureBlocks,
-    depth: Cell<usize>,
-    remaining: Cell<usize>,
-}
 fn visit(depth: usize, remaining: &mut usize) -> Result<(), DecodeError> {
     if depth > 128 || *remaining == 0 {
         return Err(DecodeError::Field("feature graph depth or node count"));
@@ -251,17 +246,7 @@ impl PlacedFeatureDefinition {
         origin: [i32; 3],
         blocks: FeatureBlocks,
     ) -> Result<bool, FeatureExecutionError<W::Error>> {
-        self.place_in(
-            &mut FeaturePlacer::new(),
-            world,
-            random,
-            origin,
-            &Run {
-                blocks,
-                depth: Cell::new(0),
-                remaining: Cell::new(65536),
-            },
-        )
+        self.place_in(&mut FeaturePlacer::new(), world, random, origin, blocks)
     }
     fn place_in<W: FeatureWorld + PlacementContext>(
         &self,
@@ -269,19 +254,14 @@ impl PlacedFeatureDefinition {
         world: &mut W,
         random: &mut impl RandomSource,
         origin: [i32; 3],
-        run: &Run,
+        blocks: FeatureBlocks,
     ) -> Result<bool, FeatureExecutionError<W::Error>> {
-        if run.remaining.get() == 0 {
-            return Err(FeatureExecutionError::WorkLimit);
-        }
-        run.remaining.set(run.remaining.get() - 1);
-        Ok(placer.place_with_budget(
+        Ok(placer.place_with_context(
             &self.placement,
             world,
             random,
             origin,
-            &run.remaining,
-            |world, random, p| self.feature.place_inner(world, random, p, run),
+            |world, random, p| self.feature.evaluate(world, random, p, blocks),
         )?)
     }
 }
@@ -834,44 +814,19 @@ impl FeatureDefinition {
         origin: [i32; 3],
         blocks: FeatureBlocks,
     ) -> Result<bool, FeatureExecutionError<W::Error>> {
-        self.place_inner(
-            world,
-            random,
-            origin,
-            &Run {
-                blocks,
-                depth: Cell::new(0),
-                remaining: Cell::new(65536),
-            },
-        )
-    }
-    fn place_inner<W: FeatureWorld + PlacementContext>(
-        &self,
-        world: &mut W,
-        random: &mut impl RandomSource,
-        origin: [i32; 3],
-        run: &Run,
-    ) -> Result<bool, FeatureExecutionError<W::Error>> {
-        if run.depth.get() >= 128 || run.remaining.get() == 0 {
-            return Err(FeatureExecutionError::WorkLimit);
-        }
-        run.depth.set(run.depth.get() + 1);
-        run.remaining.set(run.remaining.get() - 1);
-        let result = self.evaluate(world, random, origin, run);
-        run.depth.set(run.depth.get() - 1);
-        result
+        self.evaluate(world, random, origin, blocks)
     }
     fn evaluate<W: FeatureWorld + PlacementContext>(
         &self,
         world: &mut W,
         random: &mut impl RandomSource,
         origin: [i32; 3],
-        run: &Run,
+        blocks: FeatureBlocks,
     ) -> Result<bool, FeatureExecutionError<W::Error>> {
         let mut placer = FeaturePlacer::new();
         match self {
             Self::Basic(feature) => feature
-                .place(world, random, origin, run.blocks)
+                .place(world, random, origin, blocks)
                 .map_err(FeatureExecutionError::Basic),
             Self::NoOp => Ok(true),
             Self::Mod(feature) => Ok(feature.place(world, random, origin)),
@@ -950,10 +905,6 @@ impl FeatureDefinition {
                     .map_err(|e| FeatureExecutionError::Basic(FeatureError::World(e)))?;
                 let count = attempts.sample(random)?;
                 for _ in 0..count {
-                    if run.remaining.get() == 0 {
-                        return Err(FeatureExecutionError::WorkLimit);
-                    }
-                    run.remaining.set(run.remaining.get() - 1);
                     let dx = xz_offset.sample(random)?;
                     let dy = y_offset.sample(random)?;
                     let dz = xz_offset.sample(random)?;
@@ -1001,10 +952,6 @@ impl FeatureDefinition {
                 let mut position = origin;
                 let step = direction.normal();
                 loop {
-                    if run.remaining.get() == 0 {
-                        return Err(FeatureExecutionError::WorkLimit);
-                    }
-                    run.remaining.set(run.remaining.get() - 1);
                     if !can_replace
                         .test(world, position)
                         .map_err(FeatureExecutionError::Query)?
@@ -1030,7 +977,7 @@ impl FeatureDefinition {
                 }
                 position = std::array::from_fn(|i| position[i].wrapping_sub(step[i]));
                 if let Some(cap) = cap {
-                    cap.place_in(&mut placer, world, random, position, run)?;
+                    cap.place_in(&mut placer, world, random, position, blocks)?;
                 }
                 Ok(true)
             }
@@ -1046,11 +993,11 @@ impl FeatureDefinition {
             Self::Ore(feature) => feature.place(world, random, origin),
             Self::VegetationPatch(feature) => {
                 feature.place(world, random, origin, &mut |f, w, r, p| {
-                    f.place_in(&mut placer, w, r, p, run)
+                    f.place_in(&mut placer, w, r, p, blocks)
                 })
             }
             Self::Coral(feature) => feature.place(world, random, origin, &mut |f, w, r, p| {
-                f.place_in(&mut placer, w, r, p, run)
+                f.place_in(&mut placer, w, r, p, blocks)
             }),
             Self::HugeMushroom(feature) => feature.place(world, random, origin),
             Self::MultifaceGrowth(feature) => feature.place(world, random, origin),
@@ -1066,13 +1013,13 @@ impl FeatureDefinition {
             Self::ProjectedPatchySquare(feature) => feature.place(world, random, origin),
             Self::SteppedColumnCluster(feature) => feature.place(world, random, origin),
             Self::RootSystem(feature) => feature.place(world, random, origin, &mut |f, w, r, p| {
-                f.place_in(&mut placer, w, r, p, run)
+                f.place_in(&mut placer, w, r, p, blocks)
             }),
             Self::Tree(feature) => feature.place(world, random, origin, &mut |f, w, r, p| {
-                f.place_inner(w, r, p, run)
+                f.evaluate(w, r, p, blocks)
             }),
             Self::FallenTree(feature) => feature.place(world, random, origin, &mut |f, w, r, p| {
-                f.place_inner(w, r, p, run)
+                f.evaluate(w, r, p, blocks)
             }),
             Self::FillLayer(feature) => feature.place(world, origin).map_err(|e| match e {
                 BlockFeatureError::World(e) => FeatureExecutionError::Basic(FeatureError::World(e)),
@@ -1087,12 +1034,12 @@ impl FeatureDefinition {
                 })
             }
             Self::WeightedChoice(features) => match features.sample(random)? {
-                Some(feature) => feature.place_in(&mut placer, world, random, origin, run),
+                Some(feature) => feature.place_in(&mut placer, world, random, origin, blocks),
                 None => Ok(false),
             },
             Self::Sequence(features) => {
                 for feature in features {
-                    if !feature.place_in(&mut placer, world, random, origin, run)? {
+                    if !feature.place_in(&mut placer, world, random, origin, blocks)? {
                         return Ok(false);
                     }
                 }
@@ -1101,25 +1048,25 @@ impl FeatureDefinition {
             Self::Overlay(features) => {
                 let mut any = false;
                 for feature in features {
-                    any |= feature.place_in(&mut placer, world, random, origin, run)?;
+                    any |= feature.place_in(&mut placer, world, random, origin, blocks)?;
                 }
                 Ok(any)
             }
             Self::BooleanChoice(features) => {
                 let index = if random.next_boolean() { 0 } else { 1 };
-                features[index].place_in(&mut placer, world, random, origin, run)
+                features[index].place_in(&mut placer, world, random, origin, blocks)
             }
             Self::RandomChoice(features) => {
                 let index = random.next_int_bound(features.len() as i32)? as usize;
-                features[index].place_in(&mut placer, world, random, origin, run)
+                features[index].place_in(&mut placer, world, random, origin, blocks)
             }
             Self::ChanceChoice { features, fallback } => {
                 for (chance, feature) in features {
                     if random.next_float() < *chance {
-                        return feature.place_in(&mut placer, world, random, origin, run);
+                        return feature.place_in(&mut placer, world, random, origin, blocks);
                     }
                 }
-                fallback.place_in(&mut placer, world, random, origin, run)
+                fallback.place_in(&mut placer, world, random, origin, blocks)
             }
         }
     }
