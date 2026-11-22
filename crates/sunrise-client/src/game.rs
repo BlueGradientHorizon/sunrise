@@ -14180,6 +14180,7 @@ pub(crate) fn run_with(
         mods::register_layer_definitions(options.execution_role, &vanilla_root)?;
         mods::register_debug_entries(options.execution_role);
         mods::register_gui_layers(options.execution_role);
+        mods::register_client_tooltip_component_factories(options.execution_role);
         mods::register_map_decoration_types();
         mods::register_range_select_item_model_properties(options.execution_role);
         mods::register_select_item_model_properties(options.execution_role);

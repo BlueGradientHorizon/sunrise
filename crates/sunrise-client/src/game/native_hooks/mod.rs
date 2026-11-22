@@ -441,6 +441,7 @@ mod register_block_tint_sources;
 mod register_cauldron_fluid_content;
 mod register_cauldron_interaction;
 mod register_client_item_extensions;
+mod register_client_tooltip_component_factories;
 mod register_color_resolvers;
 mod register_configuration_tasks;
 mod register_debug_entries;
