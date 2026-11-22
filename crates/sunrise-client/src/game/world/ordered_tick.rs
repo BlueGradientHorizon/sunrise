@@ -36,6 +36,8 @@ pub(super) struct OrderedTicks {
     /// entity lists can change between passes, so this only retains capacity;
     /// entries are rebuilt from the live lists every time.
     pending_buf: Vec<(JoinSeq, Pending)>,
+    /// Stand turns that belong after a shulker's turn, kept in join order.
+    pub(super) armor_stands: std::collections::VecDeque<JoinSeq>,
     /// The falling blocks (id, join) that ended a tick still falling with a part listening to
     /// `falling_tick`, delivered after the pass.
     pub(super) falling_ticked: Vec<(u32, JoinSeq)>,
@@ -88,6 +90,8 @@ impl Game<'_> {
     pub(super) fn begin_ordered_ticks(&mut self) {
         let _span = sunrise_client::spans::guard("ordered_ticks");
         let pending_buf = std::mem::take(&mut self.ordered.pending_buf);
+        let mut armor_stands = std::mem::take(&mut self.ordered.armor_stands);
+        armor_stands.clear();
         let mut falling_ticked = std::mem::take(&mut self.ordered.falling_ticked);
         falling_ticked.clear();
         let told = self.native_tick_told();
@@ -118,6 +122,7 @@ impl Game<'_> {
             suffix_min,
             lava_random: None,
             pending_buf,
+            armor_stands,
             falling_ticked,
             told,
         };

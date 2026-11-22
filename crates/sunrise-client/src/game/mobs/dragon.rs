@@ -4919,6 +4919,8 @@ impl Game<'_> {
         // Finalization listeners can install another dragon after the initial
         // refusal check. Keep the constructor's existing replacement order.
         self.replace_resident_dragon(dragon);
+        // Entity's constructor assigns the identity before any join callbacks or hits.
+        self.uuid_for(id);
         self.place_dragon_parts();
         self.native_joins_flush(false, id).then_some(id)
     }

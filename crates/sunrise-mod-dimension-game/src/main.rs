@@ -56,14 +56,16 @@ fn travel(
     host: &dyn ServerHost,
     source: &CommandSource,
     command: &CommandInvocation,
-) -> Option<String> {
+) -> Result<String, Box<Text>> {
     let (CommandSource::Player { player, .. }, Some(CommandArgumentValue::String(level))) =
         (source, command.argument("level"))
     else {
-        return None;
+        return Err(Text::literal("Expected a player and a level").into());
     };
-    let name = player.name(host)?;
-    Some(format!("execute in dimprobe:{level} run tp {name} 8 40 8"))
+    let name = player
+        .name(host)
+        .ok_or_else(|| Text::literal("The player is no longer available"))?;
+    Ok(format!("execute in dimprobe:{level} run tp {name} 8 40 8"))
 }
 
 #[mod_api::__subscriptions]
@@ -103,7 +105,7 @@ impl Hooks for DimProbe {
                 host.commands()
                     .feedback(Text::literal(format!("dimprobe ran={ran}")))
                     .expect("bounded probe text");
-                Some(1)
+                Ok(1)
             }),
             Command::new("dimprobe later <level:word>").executes(move |host, source, command| {
                 let line = travel(host, source, command)?;
@@ -111,7 +113,7 @@ impl Hooks for DimProbe {
                 host.commands()
                     .feedback(Text::literal("dimprobe queued"))
                     .expect("bounded probe text");
-                Some(1)
+                Ok(1)
             }),
         ]);
     }
