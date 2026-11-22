@@ -138,6 +138,7 @@ pub struct CameraPosition {
 }
 
 impl CameraPosition {
+    // hidden: game-side camera position construction for camera_position dispatch.
     #[doc(hidden)]
     pub const fn placed_at(placed: [f64; 3]) -> Self {
         Self {
@@ -165,6 +166,7 @@ impl CameraPosition {
         true
     }
 
+    // hidden: game-side readout of camera_position overrides after dispatch.
     #[doc(hidden)]
     pub const fn overrides(&self) -> [Option<f64>; 3] {
         self.overrides
@@ -188,6 +190,7 @@ pub struct ViewTransform<'frame> {
 impl<'frame> ViewTransform<'frame> {
     const IDENTITY: [f32; 16] = glam::Mat4::IDENTITY.to_cols_array();
 
+    // hidden: game-side per-frame scope constructor for render_view_transform dispatch.
     #[doc(hidden)]
     pub fn with_frame<R>(
         usable_in_frame: impl Fn([f32; 16]) -> bool,

@@ -254,6 +254,7 @@ pub trait ParticleProvider<T = ()>: Send + Sync + 'static {
 
 /// The sprite set lent to a factory after the atlas and particle descriptions are loaded.
 // no wire: identifies the available frames in a bound local resource generation.
+// exhaustive: private field; mods read through methods.
 #[derive(Clone, Copy, Debug)]
 pub struct ParticleSpriteSet {
     frame_count: usize,
@@ -269,6 +270,7 @@ impl ParticleSpriteSet {
 /// The staged typed registrations of a logical-client listener.
 pub trait ParticleProviders {
     /// Internal erased registration. Mods call [`Self::register_sprite_set`] on the trait object.
+    // hidden: erased registration seam called by the typed register_sprite_set method.
     #[doc(hidden)]
     fn add_sprite_set(&mut self, key: ParticleKey, factory: Arc<ParticleProviderFactory>);
 }
@@ -286,6 +288,7 @@ impl dyn ParticleProviders + '_ {
 }
 
 /// The renderer's erased provider. It lends the value of the registered type without encoding it.
+// hidden: erased renderer provider trait exposed only through __private.
 #[doc(hidden)]
 pub trait BoundParticleProvider: Send + Sync {
     fn create_particle(
@@ -326,6 +329,8 @@ impl<T: 'static, P: ParticleProvider<T>> BoundParticleProvider for BoundProvider
 type Factory = dyn Fn(ParticleSpriteSet) -> Box<dyn BoundParticleProvider> + Send + Sync;
 
 /// An attributed factory and the independently quarantined callbacks of its registration.
+// hidden: erased renderer factory struct exposed only through __private.
+// exhaustive: private fields; constructed only by particle_provider_factory.
 #[doc(hidden)]
 pub struct ParticleProviderFactory {
     factory: CallbackValue<Box<Factory>>,
@@ -362,6 +367,7 @@ impl ParticleProviderFactory {
 
 /// Create an erased factory under the current listener's mod scope. This is also used by
 /// scoped renderer fixtures, which do not publish a process-wide provider table.
+// hidden: erased factory builder exposed only through __private.
 #[doc(hidden)]
 pub fn particle_provider_factory<T: 'static, P: ParticleProvider<T>>(
     _ty: ParticleType<T>,

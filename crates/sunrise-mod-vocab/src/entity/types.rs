@@ -300,6 +300,7 @@ impl AttributeModifier {
 
 /// A modifier lent by [`LivingRef::visit_attribute_modifiers`].
 // no wire: the id is borrowed from an in-process attribute map
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AttributeModifierView<'a> {
     /// The canonical modifier id (`mymod:sprint_boost`), borrowed for this visit.

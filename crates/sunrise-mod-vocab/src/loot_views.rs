@@ -134,6 +134,7 @@ pub trait LootBlockProperties {
 pub struct LootBlockView<'a>(&'a str, &'a dyn LootBlockProperties);
 
 impl<'a> LootBlockView<'a> {
+    // hidden: engine-side constructor for loot roll block views.
     #[doc(hidden)]
     pub fn new(id: &'a str, properties: &'a dyn LootBlockProperties) -> Self {
         Self(id, properties)

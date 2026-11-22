@@ -86,8 +86,6 @@ pub fn block_hook_inert(hook: HookId, state: BlockState) -> bool {
         .is_some()
 }
 
-pub use crate::runtime::ConsumeEffectBinding;
-
 /// Resolve a listener's owner by id, for dispatch through [`mod_index_on`].
 pub fn mod_index(id: &str) -> Option<usize> {
     crate::runtime::installed()?.by_id.get(id).copied()
@@ -422,7 +420,18 @@ pub mod game {
     pub fn ticket_controller_slot_by_id(id: &str) -> Option<u32> {
         crate::world::ticket_controller::slot_for_id(id)
     }
-    pub use crate::world::ticket_controller::TicketActivation;
+    /// Borrowed modifier view constructed at the living-entity read boundary.
+    pub fn attribute_modifier_view<'a>(
+        id: &'a str,
+        amount: f64,
+        operation: AttributeOperation,
+    ) -> AttributeModifierView<'a> {
+        AttributeModifierView {
+            id,
+            amount,
+            operation,
+        }
+    }
     /// An open menu's handle the game names.
     pub fn menu_ref(player: PlayerRef, window: i32, generation: u64) -> MenuRef {
         MenuRef {

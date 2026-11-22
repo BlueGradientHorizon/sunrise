@@ -83,6 +83,7 @@ impl NoBackend for TriggerCriterionError {
 }
 
 /// Run one borrowed criterion predicate with the current mod's panic attribution.
+// hidden: engine-side attributed invocation helper for criterion predicates.
 #[doc(hidden)]
 pub fn run_criterion_test(
     trigger: &str,

@@ -44,6 +44,7 @@ pub type BlockProvider<T> = dyn BlockCapabilityProvider<T>;
 
 /// One retained structure callback, with its owner and session-wide panic state.
 // no wire: native callback and process-local enablement.
+// exhaustive: internal engine registration record in parts::block_entities.
 #[derive(Clone)]
 pub struct RegisteredBlockEntityTransform {
     /// The mod that registered this transform and its quarantine state.

@@ -151,6 +151,7 @@ pub enum InstanceError {
 /// A live client, setup, or published reload context that can operate on retained render groups.
 pub trait InstanceGroupContext {
     /// The scoped engine access used by [`InstanceGroupRef`] methods.
+    // hidden: internal trait method opening the retained-group backend for InstanceGroupRef.
     #[doc(hidden)]
     fn instance_group_backend(&self) -> Option<InstanceGroupBackendRef<'_>> {
         None
@@ -159,6 +160,7 @@ pub trait InstanceGroupContext {
 
 /// Opaque access to the retained-group operations, not to the world or other client services.
 // hidden: only the handle can open the group backend.
+// exhaustive: private field; only constructed inside this crate.
 // no wire: scoped backend borrow.
 #[doc(hidden)]
 pub struct InstanceGroupBackendRef<'a>(&'a dyn crate::prelude::ClientRenderClientBackend);

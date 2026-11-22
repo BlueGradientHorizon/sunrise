@@ -144,6 +144,7 @@ pub(crate) fn slot_for_id(id: &str) -> Option<u32> {
 
 // no wire: a process-local authority owned by the engine's level-open path.
 // exhaustive: downstream callers cannot construct this authority.
+// hidden: engine-only startup ticket activation authority exposed through __private::game.
 /// The engine's authority to activate a level's saved mod tickets.
 #[doc(hidden)]
 pub struct TicketActivation(ActivationTable);

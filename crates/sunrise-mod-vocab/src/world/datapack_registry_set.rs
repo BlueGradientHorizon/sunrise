@@ -85,6 +85,7 @@ pub fn datapack_entry_id(directory: &str, file: &str) -> Option<String> {
 /// Local load stages, not yet eligible for publication or network projection.
 #[derive(Default)]
 // no wire: local staging retains pack provenance and does not cross a process boundary
+// exhaustive: private fields; built through staging methods.
 pub struct DatapackCandidateBuilder {
     registries: BTreeMap<String, BTreeMap<String, DatapackEntry>>,
     tags: BTreeMap<String, BTreeMap<String, Vec<String>>>,

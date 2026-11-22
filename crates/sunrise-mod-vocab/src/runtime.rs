@@ -1217,6 +1217,7 @@ pub(crate) fn listening_matching<'a>(
 // no wire: the binding refers to this process's installed native callback.
 /// A consume-effect callback resolved while decoding the effect's registered kind.
 // hidden: the game retains the callback with its decoded effect.
+// exhaustive: private fields; resolved only inside this crate.
 #[doc(hidden)]
 #[derive(Clone, Copy)]
 pub struct ConsumeEffectBinding {

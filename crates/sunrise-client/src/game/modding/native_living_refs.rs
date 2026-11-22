@@ -137,15 +137,15 @@ pub(super) fn visit_attribute_modifiers(
     visit: &mut dyn FnMut(AttributeModifierView<'_>) -> ControlFlow<()>,
 ) -> ControlFlow<()> {
     modifiers.iter().try_for_each(|m| {
-        visit(AttributeModifierView {
-            id: m.id(),
-            amount: m.amount(),
-            operation: match m.operation() {
+        visit(mod_api::__private::game::attribute_modifier_view(
+            m.id(),
+            m.amount(),
+            match m.operation() {
                 Operation::AddValue => AttributeOperation::AddValue,
                 Operation::AddMultipliedBase => AttributeOperation::AddMultipliedBase,
                 Operation::AddMultipliedTotal => AttributeOperation::AddMultipliedTotal,
             },
-        })
+        ))
     })
 }
 

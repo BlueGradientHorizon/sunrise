@@ -1,7 +1,10 @@
 pub use client::particle_providers::{
     CustomParticle, ParticleExtractView, ParticleFacing, ParticleLevelView, ParticleProvider,
-    ParticleProviderRegistry, ParticleProviders, ParticleQuad, ParticleSpawn, ParticleSpriteSet,
-    ParticleTickView, ParticleView, QuadParticleRenderState,
+    ParticleProviderRegistry, ParticleProviders,
+};
+pub use client::particle_providers::{
+    ParticleQuad, ParticleSpawn, ParticleSpriteSet, ParticleTickView, ParticleView,
+    QuadParticleRenderState,
 };
 pub mod __private {
     pub use crate::client::particle_providers::{

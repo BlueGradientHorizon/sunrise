@@ -1338,6 +1338,7 @@ pub enum ProgressType {
 
 // no wire: a validated event name for native playback; the sound's own protocol carries its name.
 /// A validated sound event identifier, independent of what resource packs are loaded.
+// exhaustive: private field; constructed only by SoundEventKey::parse.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SoundEventKey(pub(crate) Arc<str>);
 

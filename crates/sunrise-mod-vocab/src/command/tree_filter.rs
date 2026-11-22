@@ -3,6 +3,7 @@ use std::sync::Arc;
 /// The roots of a player's outgoing command tree, after permission checks and
 /// before any listener selections are applied. Root names are borrowed in send order.
 // no wire: borrows the outgoing server command tree for this send.
+// exhaustive: private fields; constructed only at the command tree send boundary.
 #[derive(Clone, Copy)]
 pub struct CommandTreeFilter<'a> {
     len: usize,
@@ -13,6 +14,7 @@ pub struct CommandTreeFilter<'a> {
 /// A listener's requested exclusions for this send only. Return it from the
 /// callback that created it; it does not select commands in any other tree.
 // no wire: returned directly by an in-process command tree callback.
+// exhaustive: private fields; constructed only by CommandTreeFilter.
 pub struct CommandTreeSelection {
     send: Arc<()>,
     roots: Vec<usize>,

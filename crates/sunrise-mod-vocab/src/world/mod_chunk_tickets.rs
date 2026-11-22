@@ -132,6 +132,7 @@ impl<'a> ControllerTickets<'a> {
     }
 
     /// Publish the staged removals after a successful callback. For the game.
+    // hidden: engine-side commit step after a ticket validation callback succeeds.
     #[doc(hidden)]
     pub fn publish_removals(self) {
         if self.selected.is_empty() {
