@@ -379,6 +379,61 @@ fn attack_by_id_reports_a_click_no_tick_took() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn attack_by_id_stop_retires_only_its_queued_click() {
+    if run_fresh_cases(
+        "game::agent::face_pick_tests::attack_by_id_stop_retires_only_its_queued_click",
+        "SUNRISE_AGENT_ATTACK_STOP_CHILD",
+        &["stop"],
+    ) {
+        return;
+    }
+
+    with_pig_and_server(|game, listener, server| {
+        add_second_pig(game);
+        let (_, replies) = command(game, "attack 31");
+        tick_with_player_clicks(game, 1);
+
+        let (stopped, _) = command(game, "stop");
+        assert!(matches!(stopped, Ok(Handled::Reply(_))));
+        assert_eq!(reply(&replies)["error"], json!("cancelled by stop"));
+
+        pick_second_pig(game, listener);
+        tick(game);
+        assert_eq!(clicks_sent(game, server), ["attack 32", "punch"]);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn attack_by_id_expiry_retires_only_its_queued_click() {
+    if run_fresh_cases(
+        "game::agent::face_pick_tests::attack_by_id_expiry_retires_only_its_queued_click",
+        "SUNRISE_AGENT_ATTACK_EXPIRY_CHILD",
+        &["expiry"],
+    ) {
+        return;
+    }
+
+    with_pig_and_server(|game, listener, server| {
+        add_second_pig(game);
+        let (_, replies) = command(game, "attack 31");
+        tick_with_player_clicks(game, 1);
+
+        game.agent.task.as_mut().unwrap().deadline = Instant::now();
+        game.advance_agent();
+        assert_eq!(
+            reply(&replies)["error"],
+            json!("the attack click was not taken")
+        );
+
+        pick_second_pig(game, listener);
+        tick(game);
+        assert_eq!(clicks_sent(game, server), ["attack 32", "punch"]);
+    });
+}
+
 /// A player's left click through the same mouse mapping, queued for the next tick.
 fn player_click(game: &mut Game<'_>) {
     game.agent_mouse(MouseButton::Left, true).unwrap();

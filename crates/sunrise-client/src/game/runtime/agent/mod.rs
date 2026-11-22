@@ -2037,8 +2037,8 @@ impl Game<'_> {
         picked != *id
     }
 
-    /// Resolve a queued `attack ID` click that the tick didn't take. If keybinds ran,
-    /// an empty mapping means the click was drained (while using an item).
+    /// Resolve a queued `attack ID` click that keybinds didn't take or whose task is ending.
+    /// If keybinds ran, an empty mapping means the click was drained (while using an item).
     pub(in crate::game) fn finish_agent_attack_input(&mut self, keybinds_ran: bool) {
         if keybinds_ran && self.remote_attack_clicks_queued() != 0 {
             return;
@@ -2061,10 +2061,17 @@ impl Game<'_> {
     /// Advance the running agent task; reply when it ends.
     pub(super) fn advance_agent(&mut self) {
         self.advance_glide();
+        let timed_out = self
+            .agent
+            .task
+            .as_ref()
+            .is_some_and(|task| Instant::now() >= task.deadline);
+        if timed_out {
+            self.finish_agent_attack_input(false);
+        }
         let Some(mut task) = self.agent.task.take() else {
             return;
         };
-        let timed_out = Instant::now() >= task.deadline;
         let result = self.step_task(&mut task.kind, timed_out);
         match result {
             Some(value) => {
