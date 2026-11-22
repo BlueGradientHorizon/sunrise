@@ -4,17 +4,42 @@ Call `host.disconnect(reason)` through `ClientHost` to leave the joined server o
 
 ## Observing play packets
 
-`client_packet` and `client_packet_send` lend each listener the original packet
-view for the duration of the call. Copy any channel or payload bytes you need
-after the callback returns. The receive hook cannot cancel a packet. On send,
-`Flow::Cancel` drops the packet unless a later listener marked
-`#[listener(receive_cancelled)]` sets `event.cancelled` to `false` and continues.
+`client_packet` and `client_packet_send` lend each listener an immutable
+`ClientPacket<'a>` view (`id: &'a Identifier`, `custom_payload: Option<ClientPayload<'a>>`
+with `channel: &'a str` and `data: &'a [u8]`) valid only for the duration of the
+callback. Neither hook exposes other decoded fields or mutable packet bytes. Copy
+only what you need to retain after the callback returns (`event.packet.id.clone()`,
+`payload.channel.to_owned()`, `payload.data.to_vec()`). Reassigning `event.packet`
+inside a listener only changes that listener's local event struct; later listeners
+and the game still observe the original borrowed packet.
 
-A panic in either hook is logged and shown in an error toast naming the mod.
-Only that mod's callback for that hook is disabled for the session. Later eligible
-listeners still run; a failed send listener neither adds nor clears a cancellation,
-and effects on the Host are not rolled back. A phase refusal is logged each time
-without disabling the callback.
+Both hooks run client-side on any server (including single player's integrated
+server), in packet order, and pay only a single subscriber check when no mod listens:
+
+- `client_packet` fires for every decoded play-phase server packet before the
+  window handles it, including custom payloads and each chunk packet from the
+  batching path. An ID outside the protocol's packet table is reported as
+  `sunrise:unknown`. Configuration-phase packets and packets handled by the network
+  thread (keep-alives, chunk batch starts and finishes, bundle delimiters, resource
+  pack pushes and pops, cookies, server links, transfers, disconnects, the
+  configuration switch, `minecraft:brand`, and far terrain tiles) do not fire it.
+  The receive hook cannot cancel a packet.
+- `client_packet_send` fires for every play-phase packet the window is about to
+  send, in send order, including the selected slot sent before an attack or use and
+  play-phase pongs. Packets the network thread sends itself (keep-alives, chunk
+  batch acknowledgements, configuration pongs, cookies, configuration packets),
+  phase-dependent connection answers (resource pack status, a dialog's custom click
+  action), and far terrain requests do not fire it. Returning `Flow::Cancel` drops
+  the packet unless a later listener marked `#[listener(receive_cancelled)]` sets
+  `event.cancelled = false` and returns `Flow::Continue`.
+
+A panic in either hook is logged and shown in an error toast naming the mod, and
+disables only that mod's callback for that hook for the rest of the session (not the
+other hook or other mods). Later eligible listeners still run on the original packet
+view; a panicked send listener neither adds nor clears a cancellation (even if it
+wrote `event.cancelled` before panicking), and effects already made on the `Host`
+are not rolled back. A phase refusal is logged each time without disabling the
+callback and likewise neither adds nor clears a cancellation.
 
 ## Holding outgoing play packets
 
