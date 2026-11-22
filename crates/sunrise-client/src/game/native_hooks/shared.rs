@@ -732,11 +732,6 @@ impl Game<'_> {
     }
 }
 
-/// `Level.setBlock`'s flags, for the `native_set_block_property` helpers:
-/// `flags::UPDATE_CLIENTS` as a vanilla crop grows, `flags::UPDATE_ALL` as a
-/// furnace sets its `lit`.
-pub(super) use sunrise_world::level::flags;
-
 /// The pose a native mod asks for the first-person hand, each out-of-range
 /// or non-finite component replaced by its identity.
 pub(in crate::game) fn hand_pose_matrix(values: [f32; 7]) -> glam::Mat4 {

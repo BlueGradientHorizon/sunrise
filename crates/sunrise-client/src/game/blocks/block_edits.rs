@@ -15,7 +15,9 @@ use sunrise_client::{
     fast_hash::{FxHashMap, FxHashSet},
     world::World,
 };
-use sunrise_world::{heightmap::HeightmapType, registry::BlockStateId};
+use sunrise_world::{
+    heightmap::HeightmapType, registry::BlockStateId, worldgen::terrain::TerrainBlockStates,
+};
 
 /// A change `World::edit_runs` reported: position, previous and new state.
 pub(super) type Tracked = ((i32, i32, i32), u32, u32);
