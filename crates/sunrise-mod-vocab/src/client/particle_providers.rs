@@ -7,6 +7,7 @@ use std::{collections::HashMap, marker::PhantomData, sync::Arc};
 
 const CALLBACK: &str = "particle provider";
 
+/// Orientation of an extracted particle quad relative to the camera.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 // exhaustive: a closed set the game matches without a wildcard
 #[derive(sunrise_mod_api_macros::Wire)]
