@@ -1107,7 +1107,7 @@ mod tests {
                 game.set_hud_mode(mod_api::HudMode::AllVisible);
                 assert!(game.ui.player_hides_gui);
                 let mut player_hidden = HudBatch::scratch([640, 480]);
-                game.draw_every_toast(&mut player_hidden, true, false);
+                game.draw_every_toast(&mut player_hidden, false, false);
                 assert!(
                     player_hidden.vertices.iter().any(|v| {
                         v.text == 1 && v.color == sunrise_client::hud::rgba(255, 85, 85, 255)
