@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use mod_api::{self, EquipmentSlot, Hooks, LivingEquipmentChangeEvent, ServerHost};
 use sunrise_client::{entities::ArmorStand, items::ItemStack};
 use sunrise_core::geometry::Vec3;
-use sunrise_items::equipment::{BODY, HEAD, SADDLE};
+use sunrise_items::equipment::{BODY, HEAD, MAINHAND, SADDLE};
 
 use super::native_entity_refs::tests::with_game;
 
@@ -89,6 +89,96 @@ fn a_stands_body_and_saddle_writes_are_told_once_each() {
                     ),
                 ]
             );
+        })
+    });
+}
+
+struct Rewriter {
+    heard: Arc<Mutex<Heard>>,
+    restore_head: mod_api::ItemStack,
+    equip_chest: mod_api::ItemStack,
+}
+#[mod_api::__subscriptions]
+impl Hooks for Rewriter {
+    fn living_equipment_change(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut LivingEquipmentChangeEvent<'_>,
+    ) {
+        self.heard.lock().unwrap().push((
+            event.entity.id(),
+            event.slot,
+            event.from.as_ref().and_then(|stack| stack.project()),
+            event.to.as_ref().and_then(|stack| stack.project()),
+        ));
+        if event.slot == EquipmentSlot::MainHand {
+            // Undo the pending Head change back to what enchantment_equipment holds
+            // and write a previously untouched Chest slot in the same pass.
+            event
+                .entity
+                .set_equipment(host, EquipmentSlot::Head, Some(self.restore_head.clone()))
+                .unwrap();
+            event
+                .entity
+                .set_equipment(host, EquipmentSlot::Chest, Some(self.equip_chest.clone()))
+                .unwrap();
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn listener_edits_to_later_slots_take_effect_in_the_same_pass() {
+    let heard = Arc::new(Mutex::new(Heard::new()));
+    let sword = ItemStack::new("minecraft:iron_sword", 1);
+    let old_helmet = ItemStack::new("minecraft:iron_helmet", 1);
+    let new_helmet = ItemStack::new("minecraft:diamond_helmet", 1);
+    let chestplate = ItemStack::new("minecraft:iron_chestplate", 1);
+    let rewriter = Rewriter {
+        heard: heard.clone(),
+        restore_head: old_helmet.try_into_api().unwrap(),
+        equip_chest: chestplate.try_into_api().unwrap(),
+    };
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("rewriter", Box::new(rewriter))].into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.armor_stands.push(ArmorStand::new(17, Vec3::ZERO, 0.0));
+            game.armor_stands[0].equipment[HEAD] = Some(old_helmet.clone());
+            game.armor_stand_location_effects(0, false);
+            heard.lock().unwrap().clear();
+
+            // Change MainHand and Head, leaving Chest untouched. When MainHand
+            // fires, Rewriter restores Head back to `old_helmet` and equips
+            // `chestplate` in Chest.
+            let stand = &mut game.armor_stands[0];
+            stand.equipment[MAINHAND] = Some(sword.clone());
+            stand.equipment[HEAD] = Some(new_helmet.clone());
+            game.armor_stand_location_effects(0, false);
+
+            // Only MainHand and Chest fire; Head is skipped instead of firing
+            // a bogus identical `(old_helmet, old_helmet)` transition.
+            assert_eq!(
+                *heard.lock().unwrap(),
+                vec![
+                    (
+                        17,
+                        EquipmentSlot::MainHand,
+                        None,
+                        Some(sword.try_into_api().unwrap())
+                    ),
+                    (
+                        17,
+                        EquipmentSlot::Chest,
+                        None,
+                        Some(chestplate.try_into_api().unwrap())
+                    ),
+                ]
+            );
+
+            // A follow-up pass sees everything synchronized and emits nothing.
+            heard.lock().unwrap().clear();
+            game.armor_stand_location_effects(0, false);
+            assert!(heard.lock().unwrap().is_empty());
         })
     });
 }

@@ -16,16 +16,18 @@ pub trait Hooks {
     /// that joins the level wearing something counts from empty on its first
     /// tick. It only hears: change the entity with its own helpers.
     ///
-    /// Players are told the same way, once a tick, for the players connected
-    /// to the server (a dedicated server's, a published world's guests),
-    /// walking all eight `EquipmentSlot`s as vanilla's `PlayerEquipment` and
+    /// Players are told the same way inside their server body tick
+    /// (`ServerPlayer.doTick` -> `LivingEntity.detectEquipmentUpdates`), after
+    /// per-tick item use and before equipment attribute updates, walking all
+    /// eight `EquipmentSlot`s as vanilla's `PlayerEquipment` and
     /// `LivingEntity.collectEquipmentChanges` do: a player new to the level
-    /// counts from empty, and `MainHand` is the selected hotbar slot, so a
-    /// hotbar selection or a pickup into the selected slot is a `MainHand`
-    /// change. Mobs and players are told only while a mod sets
-    /// `living_equipment_listened`. The world host's own player, in single
-    /// player or hosting a LAN world, isn't told here: `on_equip` hears it.
-    /// Server-side.
+    /// counts from empty, a spectator touching an unloaded chunk skips its body
+    /// tick (and therefore this check), and `MainHand` is the selected hotbar
+    /// slot, so a hotbar selection, a pickup into the selected slot or a
+    /// finished item use is a `MainHand` change. Mobs and players are told only
+    /// while a mod sets `living_equipment_listened`. The world host's own
+    /// player, in single player or hosting a LAN world, isn't told here:
+    /// `on_equip` hears it. Server-side.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_living_equipment_change",
         dispatch = "api_carrier",

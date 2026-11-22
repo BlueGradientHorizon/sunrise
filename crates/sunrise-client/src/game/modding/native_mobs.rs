@@ -7,7 +7,7 @@
 //! tick, and the others read as gone.
 use super::api_values::{StackReadMetadata, project_stack, stack_read_metadata};
 use super::{Game, commands::Target};
-use mod_api::{EntityRef, EquipmentSlot, HookId, ItemStackView, LivingRef};
+use mod_api::{EquipmentSlot, HookId, ItemStackView, LivingRef, WorldEpoch};
 use sunrise_client::items::ItemStack;
 use sunrise_client::lan::guest::Guest;
 use sunrise_client::mobs::{
@@ -16,7 +16,19 @@ use sunrise_client::mobs::{
 };
 use sunrise_items::equipment::{BODY, Equipment, SADDLE};
 
-fn equipment_read_matches(now: Option<&EquipmentRead<'_>>, prev: Option<&ItemStack>) -> bool {
+/// `LivingEntity.equipmentHasChanged` negated (`ItemStack.matches`).
+pub(super) fn equipment_stack_matches(now: Option<&ItemStack>, prev: Option<&ItemStack>) -> bool {
+    match (now, prev) {
+        (None, None) => true,
+        (Some(now), Some(prev)) => now.matches(prev),
+        _ => false,
+    }
+}
+
+pub(super) fn equipment_read_matches(
+    now: Option<&EquipmentRead<'_>>,
+    prev: Option<&ItemStack>,
+) -> bool {
     match (now, prev) {
         (None, None) => true,
         (Some(now), Some(prev)) => now.matches_stack(prev),
@@ -24,26 +36,26 @@ fn equipment_read_matches(now: Option<&EquipmentRead<'_>>, prev: Option<&ItemSta
     }
 }
 
-fn mob_equipment_changed(m: &Mob) -> bool {
-    if m.extra.equipment.is_empty() && m.extra.equipment_heard.is_none() {
+pub(super) fn mob_equipment_changed(m: &Mob) -> bool {
+    if m.extra.equipment.is_empty() && m.extra.last_equipment.is_none() {
         return false;
     }
-    let heard = m.extra.equipment_heard.as_deref();
+    let last = m.extra.last_equipment.as_deref();
     EquipmentSlot::ALL.into_iter().any(|slot| {
         let current = finalize::equipment_slot(m, slot);
-        let prev = heard.and_then(|heard| heard[slot as usize].as_ref());
+        let prev = last.and_then(|last| last[slot as usize].as_ref());
         !equipment_read_matches(current.as_ref(), prev)
     })
 }
 
-fn mob_by_hint_mut(mobs: &mut [Mob], hint: usize, id: u32) -> Option<&mut Mob> {
+pub(super) fn mob_by_hint_mut(mobs: &mut [Mob], hint: usize, id: u32) -> Option<&mut Mob> {
     if mobs.get(hint).is_some_and(|m| m.id == id) {
         return mobs.get_mut(hint);
     }
     mobs.iter_mut().find(|m| m.id == id)
 }
 
-fn guest_equipment_slot(g: &Guest, slot: EquipmentSlot) -> Option<&ItemStack> {
+pub(super) fn guest_equipment_slot(g: &Guest, slot: EquipmentSlot) -> Option<&ItemStack> {
     match slot {
         EquipmentSlot::MainHand => g.inventory.get(g.selected)?.as_ref(),
         EquipmentSlot::OffHand => g.offhand.as_ref(),
@@ -56,26 +68,30 @@ fn guest_equipment_slot(g: &Guest, slot: EquipmentSlot) -> Option<&ItemStack> {
     }
 }
 
-fn guest_equipment_changed(g: &Guest, heard: Option<&Equipment>) -> bool {
+pub(super) fn guest_equipment_changed(g: &Guest, last: Option<&Equipment>) -> bool {
     EquipmentSlot::ALL.into_iter().any(|slot| {
         let current = guest_equipment_slot(g, slot);
-        let prev = heard.and_then(|heard| heard[slot as usize].as_ref());
-        current != prev
+        let prev = last.and_then(|last| last[slot as usize].as_ref());
+        !equipment_stack_matches(current, prev)
     })
 }
 
 /// Retain only the slots needed for vanilla's `lastEquipmentItems` comparison,
 /// freeing the boxed table once every slot is empty again.
-fn store_equipment_heard(heard: &mut Option<Box<Equipment>>, index: usize, to: Option<ItemStack>) {
+pub(super) fn store_equipment_history(
+    history: &mut Option<Box<Equipment>>,
+    index: usize,
+    to: Option<ItemStack>,
+) {
     match to {
         Some(stack) => {
-            heard.get_or_insert_with(Default::default)[index] = Some(stack);
+            history.get_or_insert_with(Default::default)[index] = Some(stack);
         }
         None => {
-            if let Some(slots) = heard.as_deref_mut() {
+            if let Some(slots) = history.as_deref_mut() {
                 slots[index] = None;
                 if slots.is_empty() {
-                    *heard = None;
+                    *history = None;
                 }
             }
         }
@@ -98,6 +114,22 @@ fn equipment_view_metadata(stack: Option<&ItemStack>) -> Option<StackReadMetadat
 }
 
 impl Game<'_> {
+    /// Whether mobs and connected players should post `living_equipment_change`
+    /// this pass, returning the active world epoch when a mod subscribes and
+    /// sets `living_equipment_listened`.
+    pub(super) fn living_equipment_notify_epoch(&mut self) -> Option<WorldEpoch> {
+        if self.remote.is_some()
+            || self.options.execution_role.is_client()
+            || !mod_api::__private::listened(HookId::LivingEquipmentChange)
+        {
+            return None;
+        }
+        let epoch = self.native_lifecycle.epoch()?;
+        let mut listened = false;
+        self.native_living_equipment_listened(&mut listened);
+        listened.then_some(epoch)
+    }
+
     /// Lend `from` and `to` lazily to `living_equipment_change` without eagerly
     /// cloning stacks or encoding component patches.
     pub(super) fn dispatch_living_equipment_change(
@@ -120,147 +152,6 @@ impl Game<'_> {
             from: from_view,
             to: to_view,
         });
-    }
-
-    /// `LivingEntity.detectEquipmentUpdates` / `collectEquipmentChanges` for
-    /// the mobs that tick: compares each slot by borrow against what mods last
-    /// heard, cloning only changed slots into `equipment_heard` and lending
-    /// `from`/`to` lazily to `native_living_equipment_change`. A mob new to the
-    /// level counts from empty, as vanilla's `lastEquipmentItems` does. Only
-    /// while a mod listens (`native_living_equipment_listened`): a mob's first
-    /// tick after that counts from empty too.
-    pub(super) fn native_mobs_equipment(&mut self) {
-        if self.remote.is_some()
-            || self.options.execution_role.is_client()
-            || !mod_api::__private::listened(HookId::LivingEquipmentChange)
-        {
-            return;
-        }
-        let Some(epoch) = self.native_lifecycle.epoch() else {
-            return;
-        };
-        let mut listened = false;
-        self.native_living_equipment_listened(&mut listened);
-        if !listened {
-            return;
-        }
-        let ticking = self.entity_ticking_area();
-        let mut changed_mobs = Vec::new();
-        for (hint, m) in self.mobs.iter().enumerate() {
-            if m.removed || !ticking(m.position.x.floor() as i32, m.position.z.floor() as i32) {
-                continue;
-            }
-            if mob_equipment_changed(m) {
-                changed_mobs.push((hint, m.id));
-            }
-        }
-        for (hint, id) in changed_mobs {
-            let living = LivingRef::new(EntityRef::new(epoch, id));
-            for slot in EquipmentSlot::ALL {
-                let Some(m) = mob_by_hint_mut(&mut self.mobs, hint, id).filter(|m| !m.removed)
-                else {
-                    break;
-                };
-                let index = slot as usize;
-                let current = finalize::equipment_slot(m, slot);
-                let prev = m
-                    .extra
-                    .equipment_heard
-                    .as_deref()
-                    .and_then(|heard| heard[index].as_ref());
-                if equipment_read_matches(current.as_ref(), prev) {
-                    continue;
-                }
-                let to = current.map(|read| read.project().into_owned());
-                let from = m
-                    .extra
-                    .equipment_heard
-                    .as_deref_mut()
-                    .and_then(|heard| heard[index].take());
-                self.dispatch_living_equipment_change(living, slot, from.as_ref(), to.as_ref());
-                if let Some(m) = mob_by_hint_mut(&mut self.mobs, hint, id) {
-                    store_equipment_heard(&mut m.extra.equipment_heard, index, to);
-                }
-            }
-        }
-    }
-}
-
-impl Game<'_> {
-    /// `LivingEntity.detectEquipmentUpdates` / `collectEquipmentChanges` over
-    /// `PlayerEquipment` for the server's players: compares all eight
-    /// `EquipmentSlot`s by borrow, retaining only changed slots in
-    /// `equipment_heard` and lending `from`/`to` lazily. A hotbar selection
-    /// that changes `MainHand` counts; a player new to the level counts from
-    /// empty, as for mobs, and only while a mod listens.
-    pub(super) fn native_players_equipment(&mut self) {
-        if self.remote.is_some()
-            || self.options.execution_role.is_client()
-            || !mod_api::__private::listened(HookId::LivingEquipmentChange)
-        {
-            return;
-        }
-        let Some(epoch) = self.native_lifecycle.epoch() else {
-            return;
-        };
-        let mut listened = false;
-        self.native_living_equipment_listened(&mut listened);
-        if !listened {
-            return;
-        }
-        let mut changed_players = Vec::new();
-        {
-            let Some(host) = self.lan.as_ref() else {
-                return;
-            };
-            for g in host.hub.guests.iter().filter(|g| host.hub.here(g)) {
-                let Some(play) = host.play.get(&g.conn) else {
-                    continue;
-                };
-                if guest_equipment_changed(g, play.equipment_heard.as_deref()) {
-                    changed_players.push((g.conn, g.entity_id as u32));
-                }
-            }
-        }
-        for (conn, entity_id) in changed_players {
-            let living = LivingRef::new(EntityRef::new(epoch, entity_id));
-            for slot in EquipmentSlot::ALL {
-                let Some(host) = self.lan.as_mut() else {
-                    return;
-                };
-                let Some(g) = host
-                    .hub
-                    .guests
-                    .iter()
-                    .find(|g| g.conn == conn && host.hub.here(g))
-                else {
-                    break;
-                };
-                let Some(play) = host.play.get_mut(&conn) else {
-                    break;
-                };
-                let index = slot as usize;
-                let current = guest_equipment_slot(g, slot);
-                let prev = play
-                    .equipment_heard
-                    .as_deref()
-                    .and_then(|heard| heard[index].as_ref());
-                if current == prev {
-                    continue;
-                }
-                let to = current.cloned();
-                let from = play
-                    .equipment_heard
-                    .as_deref_mut()
-                    .and_then(|heard| heard[index].take());
-                self.dispatch_living_equipment_change(living, slot, from.as_ref(), to.as_ref());
-                if let Some(host) = self.lan.as_mut()
-                    && let Some(play) = host.play.get_mut(&conn)
-                {
-                    store_equipment_heard(&mut play.equipment_heard, index, to);
-                }
-            }
-        }
     }
 }
 

@@ -41,9 +41,10 @@ impl Game<'_> {
             return;
         };
         // PlayerList.respawn builds a new `ServerPlayer`, whose `lastEquipmentItems` starts
-        // empty: the mods hear each worn item again from empty (`native_players_equipment`).
+        // empty: the next body tick's `detectEquipmentUpdates` reports each worn item from empty.
         if let Some(play) = host.play.get_mut(&conn) {
-            play.equipment_heard = None;
+            play.last_equipment = None;
+            play.equipment_modifiers_seeded = false;
             play.inventory_heard = None;
             play.level_up_sound = Default::default();
         }
