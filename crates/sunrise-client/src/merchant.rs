@@ -46,14 +46,6 @@ pub struct Trader {
     /// The offers are not made yet (vanilla's `offers` is null): they are
     /// generated when first asked for, keeping the experience.
     pub unset: bool,
-    /// A trading screen is open on this merchant with a payment in it, so a
-    /// refresh of its prices makes the merchant say yes or no (`updateSellItem`).
-    pub paying: bool,
-    /// The trading player's reputation and Hero of the Village amplifier, read
-    /// by the game before the mobs tick: what `updateSpecialPrices` sees at a
-    /// work step, whatever a callback after the tick changes.
-    pub reputation: i32,
-    pub hero: Option<i32>,
 }
 /// What a restock step does to the offers (`Villager.restock`, and the
 /// `catchUpDemand` of `shouldRestock` with the restocks it missed).
@@ -83,21 +75,23 @@ impl RestockStep {
 impl Trader {
     /// `Villager.shouldRestock`.
     pub fn should_restock(&mut self, game_time: i64, day: i64) -> bool {
-        self.catch_up(game_time, day);
+        let _ = self.catch_up(game_time, day);
         self.restock_due(game_time)
     }
     /// The new-day half of `Villager.shouldRestock` (`resetNumberOfRestocks` /
-    /// `catchUpDemand`). True on a new day.
-    pub fn catch_up(&mut self, game_time: i64, day: i64) -> bool {
+    /// `catchUpDemand`). Returns the step applied to the offers on a new day.
+    pub fn catch_up(&mut self, game_time: i64, day: i64) -> Option<RestockStep> {
         let mut new_day = game_time > self.last_restock + 12000;
         new_day |= self.check_day > 0 && day > self.check_day;
         self.check_day = day;
-        if new_day {
-            self.last_restock = game_time;
-            RestockStep::CatchUp(2 - self.restocks_today).apply(&mut self.offers);
-            self.restocks_today = 0;
+        if !new_day {
+            return None;
         }
-        new_day
+        self.last_restock = game_time;
+        let step = RestockStep::CatchUp(2_i32.wrapping_sub(self.restocks_today));
+        step.apply(&mut self.offers);
+        self.restocks_today = 0;
+        Some(step)
     }
     /// `allowedToRestock && needsToRestock`.
     pub fn restock_due(&self, game_time: i64) -> bool {
@@ -233,8 +227,6 @@ pub struct Session {
     pub selection_hint: usize,
     pub active: Option<usize>,
     pub future_xp: i32,
-    /// A payment is in the menu (`Trader::paying`).
-    pub paying: bool,
     /// `Mob.ambientSoundTime`.
     pub ambient_sound_time: i32,
     /// `Villager.lastTradedPlayer` is set: the TRADE reputation event is due.
@@ -261,7 +253,6 @@ impl Session {
             selection_hint: 0,
             active: None,
             future_xp: 0,
-            paying: false,
             ambient_sound_time: 0,
             last_traded: false,
             client_side: false,
@@ -392,7 +383,7 @@ impl Session {
             TradeFeedback::Current => {
                 trade_update_pitch(&mut self.ambient_sound_time, &mut self.random)
             }
-            TradeFeedback::AtHurt(pitch) => pitch,
+            TradeFeedback::AtHurt(pitch) | TradeFeedback::AtWork(pitch) => pitch,
         };
         pitch.map(|pitch| (result.is_some(), pitch))
     }
@@ -404,6 +395,8 @@ pub enum TradeFeedback {
     Current,
     /// An accepted player hit already settled the living villager's timer and RNG.
     AtHurt(Option<f32>),
+    /// A work-step restock already settled the living villager's timer and RNG.
+    AtWork(Option<f32>),
 }
 
 /// `AbstractVillager.notifyTradeUpdated` uses `Mob.getAmbientSoundInterval` (80).

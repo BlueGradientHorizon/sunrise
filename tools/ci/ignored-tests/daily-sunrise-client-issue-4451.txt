@@ -899,7 +899,6 @@ sunrise-client game::lan_menus_tests::menu_owners_stay_reachable_through_nested_
 sunrise-client game::lan_menus_tests::removing_a_fake_player_drops_its_menu_owners lib daily resources
 sunrise-client game::lan_mount_menu::tests::horse_inventory_click_keeps_complete_body_stack lib daily resources
 sunrise-client game::lan_trading::tests::a_lowered_level_still_levels_up_with_the_next_trade_set lib daily resources
-sunrise-client game::lan_trading::tests::a_merchant_edit_reaches_the_guest_trading_with_it lib daily resources
 sunrise-client game::lan_trading::tests::a_trade_hook_fired_by_a_real_select_can_write_the_open_trade lib daily resources
 sunrise-client game::lan_trading::tests::a_type_change_reaches_the_open_session_before_a_level_up lib daily resources
 sunrise-client game::lan_trading::tests::changing_an_open_merchant_to_an_unknown_profession_closes_without_trading lib daily resources

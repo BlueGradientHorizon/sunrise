@@ -1473,7 +1473,6 @@ impl Game<'_> {
         let passenger_objects = self.retained_passenger_snapshot(uuid);
         let mut pending = self.creatures.pending.remove(level_id).unwrap_or_default();
         let primable = self.sulfur_cubes_adopted_explosive();
-        self.villager_trading_prices();
         let mut mobs = self.mobs.lift();
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
@@ -1511,6 +1510,7 @@ impl Game<'_> {
         // cube the body leaves behind (`AbstractCubeMob.remove`), captured as
         // the body goes because it has left the list by the time it splits.
         let mut gone = Vec::new();
+        let mut restocks = Vec::new();
         // The level's random and attachments, lent to the mobs (brain behaviours draw from
         // the random, and a hit's damage hooks get both) and taken back after their ticks.
         let lent = sunrise_client::health::LentLevel::take(&mut self.world);
@@ -1520,6 +1520,7 @@ impl Game<'_> {
             passenger_objects: &passenger_objects,
             blocked: &blocked,
             events: &mut events,
+            restocks: &mut restocks,
             pushes: &mut pending.pushes,
             dead: &mut dead,
             corpses: &mut corpses,
@@ -1580,7 +1581,9 @@ impl Game<'_> {
         self.creatures.ticked = ticked;
         // A work step's restock lands on the screen now, before any callback of
         // this tick can edit the offers (those edits are then the last write).
-        self.villager_restock_steps(&mut events);
+        for restock in restocks {
+            self.villager_offers_open(restock);
+        }
         // Completed brain actions are never fed back into the producer pass.
         if !events.is_empty() || !guest_events.is_empty() {
             pending.batches.push_back(MobOutputBatch {
@@ -3804,8 +3807,8 @@ impl Game<'_> {
                     child,
                 } => self.villager_birth(parent, partner, child),
                 MobEvent::WorkAtComposter { mob, pos } => self.villager_work_at_composter(mob, pos),
-                // Applied by `villager_restock_steps` right after the mob pass.
-                MobEvent::VillagerRestockStep { .. } => {}
+                // The borrowed tick routes these directly to the open trading screen.
+                MobEvent::VillagerRestockStep(_) => {}
                 MobEvent::GolemCheck { mob, needed } => self.villager_golem_check(mob, needed),
                 MobEvent::Firework { at, color, flight } => {
                     self.villager_firework(at, color, flight)

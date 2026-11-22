@@ -292,136 +292,283 @@ fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick {
         carried: None,
     }
 }
-/// A villager's work step restocks while a guest trades: the guest's screen, the packets, the
-/// autosave and the mob after close all hold the restock (it was lost on close before).
+const WORK_TICK: i64 = 3_000;
+
+/// A loaded composter with an adult farmer close enough to start work on its next AI tick.
+fn prepare_work(game: &mut Game<'_>, save: &std::path::Path) {
+    use sunrise_client::mobs::villager_brain;
+    use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+
+    game.world_root = save.to_path_buf();
+    game.enter_level(super::Dim::Overworld).unwrap();
+    game.options.dedicated = Some(Vec::new());
+    game.streaming
+        .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+    assert!(game.entity_ticking_area()(0, 0));
+    let composter = game
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:composter")
+        .unwrap();
+    let site = [1, 80, 1];
+    game.world
+        .set(site[0], site[1], site[2], composter)
+        .unwrap();
+    game.world.game_time = WORK_TICK;
+    game.world.day_time = WORK_TICK;
+    *game.world.random = LegacyRandom::new(4096);
+    let mob = &mut game.mobs[0];
+    mob.position = Vec3::new(1.5, 80.0, 0.5);
+    mob.previous = mob.position;
+    mob.no_gravity = true;
+    mob.extra.home = Some(site);
+    villager_brain::init(mob, WORK_TICK, WORK_TICK, 40);
+}
+
+fn tick_work(game: &mut Game<'_>) {
+    let worked_at = |game: &Game<'_>| {
+        sunrise_client::mobs::villager::ext(game.mob_object(40).unwrap())
+            .unwrap()
+            .brain
+            .as_ref()
+            .unwrap()
+            .mem
+            .last_worked_at_poi
+            .value()
+    };
+    assert_eq!(worked_at(game), None);
+    game.tick_creature_entities().unwrap();
+    assert_eq!(worked_at(game), Some(WORK_TICK));
+}
+
+fn work_screen<'a>(game: &'a Game<'_>) -> &'a super::lan_trading::GuestMerchant {
+    game.lan.as_ref().unwrap().menus[&12]
+        .merchant
+        .as_ref()
+        .unwrap()
+}
+
+fn work_screen_mut<'a>(game: &'a mut Game<'_>) -> &'a mut super::lan_trading::GuestMerchant {
+    game.lan
+        .as_mut()
+        .unwrap()
+        .menus
+        .get_mut(&12)
+        .unwrap()
+        .merchant
+        .as_mut()
+        .unwrap()
+}
+
+fn reloaded_trader(game: &Game<'_>) -> Box<Trader> {
+    let saved = sunrise_client::entity_nbt::mob_to_nbt(
+        game.mob_object(40).unwrap(),
+        [1, 2, 3, 4],
+        None,
+        Some(game.pack.assets.registry),
+        |_| None,
+        game.items(),
+    );
+    sunrise_client::entity_nbt::mob_from_nbt(
+        &saved,
+        game.res.mob_types(),
+        999,
+        Some(game.pack.assets.registry),
+    )
+    .unwrap()
+    .extra
+    .trade
+    .unwrap()
+}
+
+/// A new day at the workstation sends catch-up and restock in order to an already open screen.
 #[test]
 #[ignore = "daily"]
 fn a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob() {
-    with_guests(|game| {
-        open(game, 2);
-        // The offer is used up; a new day passed (catch-up keeps the used offers, then restock: two updates).
-        let live = |game: &mut Game<'_>, f: &dyn Fn(&mut Session)| {
-            let gm = game.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
-            f(&mut gm.merchant.as_mut().unwrap().merchant.session);
-        };
-        live(game, &|s| s.offers[0].uses = 10);
-        let t = game.mobs[0].extra.trade.as_mut().unwrap();
-        t.offers[0].uses = 10;
-        t.last_restock = -13_000;
-        t.restocks_today = 2;
-        let rx = record_packets(game);
-        let mut mob = game.mobs[0].clone();
-        let mut events = Vec::new();
-        {
-            let w = game.mob_world_base(&[]);
-            sunrise_client::mobs::villager_brain::restock_if_due(&mut mob, &w, &mut events);
-        }
-        game.mobs[0] = mob;
-        assert_eq!(events.len(), 2, "catch-up, then restock");
-        game.villager_restock_steps(&mut events);
-        let sent = packets(&rx);
-        let offers: Vec<_> = sent
-            .iter()
-            .filter_map(|p| match p {
-                Clientbound::MerchantOffers(o) => Some(o),
-                _ => None,
+    super::in_own_process(
+        "game::lan_trade_decisions_tests::a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob",
+        || {
+            with_guests(|game| {
+                let save = tempfile::tempdir().unwrap();
+                open(game, 2);
+                prepare_work(game, save.path());
+                work_screen_mut(game).merchant.session.offers[0].uses = 10;
+                let trader = game.mobs[0].extra.trade.as_mut().unwrap();
+                trader.offers[0].uses = 10;
+                trader.last_restock = -13_000;
+                trader.restocks_today = 2;
+
+                let rx = record_packets(game);
+                tick_work(game);
+                let sent = packets(&rx);
+                let uses: Vec<_> = sent
+                    .iter()
+                    .filter_map(|p| match p {
+                        Clientbound::MerchantOffers(o) => Some(o.offers[0].uses),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(uses, [10, 0]);
+                assert!(
+                    sent.iter()
+                        .any(|p| matches!(p, Clientbound::ContainerSetContent(_)))
+                );
+                let offer = &work_screen(game).merchant.session.offers[0];
+                assert_eq!((offer.uses, offer.demand), (0, 10));
+                let loaded = reloaded_trader(game);
+                assert_eq!(
+                    (
+                        loaded.offers[0].uses,
+                        loaded.offers[0].demand,
+                        loaded.restocks_today
+                    ),
+                    (0, 10, 1)
+                );
+
+                game.guest_close_all(12);
+                let trader = game.mobs[0].extra.trade.as_ref().unwrap();
+                assert_eq!(
+                    (
+                        trader.offers[0].uses,
+                        trader.offers[0].demand,
+                        trader.restocks_today
+                    ),
+                    (0, 10, 1)
+                );
             })
-            .collect();
-        assert_eq!(offers.len(), 2, "one MerchantOffers per step");
-        assert_eq!(offers[0].offers[0].uses, 10, "the catch-up step");
-        assert_eq!(offers[1].offers[0].uses, 0, "the restock step");
-        assert!(
-            sent.iter()
-                .any(|p| matches!(p, Clientbound::ContainerSetContent(_)))
-        );
-        let screen = game.lan.as_ref().unwrap().play[&12]
-            .merchant
-            .as_ref()
-            .unwrap();
-        assert_eq!(screen.merchant.session.offers[0].uses, 0);
-        // An autosave with the screen open writes the live offers with the clock.
-        let saved = sunrise_client::entity_nbt::mob_to_nbt(
-            &game.mobs[0],
-            [1, 2, 3, 4],
-            None,
-            Some(game.pack.assets.registry),
-            |_| None,
-            game.items(),
-        );
-        let loaded = sunrise_client::entity_nbt::mob_from_nbt(
-            &saved,
-            game.res.mob_types(),
-            999,
-            Some(game.pack.assets.registry),
-        )
-        .unwrap();
-        let t = loaded.extra.trade.as_ref().unwrap();
-        assert_eq!(t.offers[0].uses, 0);
-        assert_eq!(t.offers[0].demand, offers[1].offers[0].demand);
-        assert_eq!(t.restocks_today, 1);
-        // Close and reopen: the restock is still there.
-        game.guest_close_all(12);
-        let t = game.mobs[0].extra.trade.as_ref().unwrap();
-        assert_eq!((t.offers[0].uses, t.restocks_today), (0, 1));
-    });
+        },
+    );
 }
 
-/// A guest trades at a villager whose single offer is used up and costs 5 wheat; 4 are in the
-/// payment slot. Runs the villager's work-step restock (the brain) and returns its events.
-fn used_up_offer_work_step(game: &mut Game<'_>) -> Vec<sunrise_client::mobs::MobEvent> {
-    open(game, 1);
-    let gm = game.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
-    let screen = gm.merchant.as_mut().unwrap();
-    screen.slots = [Some(ItemStack::new("minecraft:wheat", 4)), None, None];
-    let offer = &mut screen.merchant.session.offers[0];
-    (offer.base_cost_a.stack.count, offer.uses) = (5, 10);
-    let t = game.mobs[0].extra.trade.as_mut().unwrap();
-    (t.offers[0].base_cost_a.stack.count, t.offers[0].uses) = (5, 10);
-    t.paying = true;
-    game.villager_trading_prices();
-    let mut mob = game.mobs[0].clone();
-    let mut events = Vec::new();
-    {
-        let w = game.mob_world_base(&[]);
-        sunrise_client::mobs::villager_brain::restock_if_due(&mut mob, &w, &mut events);
+/// A guest trading with the villager loses Hero of the Village in its named Pre or Post.
+struct RemoveHero {
+    before_work: bool,
+}
+
+impl RemoveHero {
+    fn remove(host: HostSide<'_>, entities: &[u32]) {
+        assert_eq!(entities, [40]);
+        let HostSide::Server(host) = host else {
+            panic!("server fixture");
+        };
+        let guest = host.living(host.entity(12).unwrap()).unwrap();
+        let hero = host.effect_key("minecraft:hero_of_the_village").unwrap();
+        assert!(guest.remove_effect(host, hero));
     }
-    game.mobs[0] = mob;
-    events
 }
 
-/// `Villager.restock` prices the screen and `updateSellItem` picks its result at the work step: a
-/// Hero of the Village the player loses afterwards (a callback after the tick) still counts.
+#[mod_api::__subscriptions]
+impl Hooks for RemoveHero {
+    fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        registrar.entity_tick_each("minecraft:villager");
+    }
+
+    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
+        event.listened = true;
+    }
+
+    fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
+        if self.before_work {
+            Self::remove(host, event.entities);
+        }
+    }
+
+    fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
+        if !self.before_work {
+            Self::remove(host, event.entities);
+        }
+    }
+}
+
+/// The result and the yes sound use the Hero discount seen during the work step, not after Post.
 #[test]
 #[ignore = "daily"]
 fn a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them() {
+    restock_after_hero_change(
+        "game::lan_trade_decisions_tests::a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them",
+        false,
+    );
+}
+
+/// If Pre takes the discount away, four wheat no longer buys an emerald.
+#[test]
+#[ignore = "daily"]
+fn a_restock_uses_price_changes_made_in_pre() {
+    restock_after_hero_change(
+        "game::lan_trade_decisions_tests::a_restock_uses_price_changes_made_in_pre",
+        true,
+    );
+}
+
+fn restock_after_hero_change(test: &str, before_work: bool) {
     use sunrise_client::effects::EffectInstance;
-    with_guests(|game| {
-        game.as_guest(12, |g| {
-            g.potions
-                .effects
-                .add(EffectInstance::new("hero_of_the_village", 1000, 0));
+    super::in_own_process(test, || {
+        let mods: Mods = vec![ModEntry::new(
+            "remove-hero",
+            Box::new(RemoveHero { before_work }),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_guests(|game| {
+                let save = tempfile::tempdir().unwrap();
+                open(game, 1);
+                prepare_work(game, save.path());
+                game.as_guest(12, |g| {
+                    g.potions
+                        .effects
+                        .add(EffectInstance::new("hero_of_the_village", 1000, 0));
+                });
+                let screen = work_screen_mut(game);
+                screen.slots = [Some(ItemStack::new("minecraft:wheat", 4)), None, None];
+                let offer = &mut screen.merchant.session.offers[0];
+                (offer.base_cost_a.stack.count, offer.uses) = (5, 10);
+                let trader = game.mobs[0].extra.trade.as_mut().unwrap();
+                (
+                    trader.offers[0].base_cost_a.stack.count,
+                    trader.offers[0].uses,
+                ) = (5, 10);
+                // The voice from opening the screen has finished its cooldown by work time.
+                game.mobs[0].ambient_timer = 0;
+                game.audio.capture = Some(Vec::new());
+
+                tick_work(game);
+
+                game.as_guest(12, |g| assert_eq!(g.hero_amplifier(), None));
+                let screen = work_screen(game);
+                assert_eq!(
+                    screen.slots[2],
+                    (!before_work).then(|| ItemStack::new("minecraft:emerald", 1))
+                );
+                assert_eq!(screen.merchant.session.hero, (!before_work).then_some(0));
+                let feedback: Vec<_> = game
+                    .audio
+                    .capture
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|sound| sound.event.as_str())
+                    .filter(|&event| {
+                        matches!(
+                            event,
+                            "minecraft:entity.villager.yes" | "minecraft:entity.villager.no"
+                        )
+                    })
+                    .collect();
+                assert_eq!(
+                    feedback,
+                    [if before_work {
+                        "minecraft:entity.villager.no"
+                    } else {
+                        "minecraft:entity.villager.yes"
+                    }]
+                );
+            })
         });
-        let mut events = used_up_offer_work_step(game);
-        assert_eq!(events.len(), 1);
-        game.villager_restock_steps(&mut events);
-        assert!(events.is_empty());
-        // A callback after the tick takes the effect away: the result stays.
-        game.as_guest(12, |g| g.potions.effects.clear());
-        let screen = game.lan.as_ref().unwrap().play[&12]
-            .merchant
-            .as_ref()
-            .unwrap();
-        assert_eq!(
-            screen.slots[2],
-            Some(ItemStack::new("minecraft:emerald", 1)),
-            "4 wheat pay the 5-wheat offer reduced by Hero of the Village"
-        );
-        assert_eq!(screen.merchant.session.hero, Some(0));
     });
 }
 
-/// Writes a diamond result, uses 3 and demand 17 to a villager's first offer in its own
-/// `EntityTick.Post` (a type named to `entity_tick_each`).
+/// Edits the restocked first offer in the villager's own named `EntityTick.Post`.
 struct EditInPost;
 #[mod_api::__subscriptions]
 impl Hooks for EditInPost {
@@ -434,88 +581,159 @@ impl Hooks for EditInPost {
     }
 
     fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {
+        assert_eq!(event.entities, [40]);
         let HostSide::Server(host) = host else {
             panic!("server fixture");
         };
         let villager = host.merchant(host.entity(40).unwrap()).unwrap();
         let mut offer = villager.offers(host).unwrap().remove(0);
-        let key = mod_api::__private::item_key("minecraft:diamond").unwrap();
-        offer.result = mod_api::ItemStack::new(key, 1).unwrap();
+        let emerald = mod_api::__private::item_key("minecraft:emerald").unwrap();
+        assert_eq!(
+            (offer.result.clone(), offer.uses, offer.demand),
+            (mod_api::ItemStack::new(emerald, 1).unwrap(), 0, 10)
+        );
+        let diamond = mod_api::__private::item_key("minecraft:diamond").unwrap();
+        offer.result = mod_api::ItemStack::new(diamond, 1).unwrap();
         (offer.uses, offer.demand) = (3, 17);
         assert!(villager.set_offer(host, 0, offer).unwrap());
-        assert_eq!(event.entities, [40]);
-        EDITED.set(true);
     }
 }
-thread_local! {
-    static EDITED: Cell<bool> = const { Cell::new(false) };
-}
 
-/// A native hook's offer edit in the villager's own `EntityTick.Post` is the last write: the
-/// restock reached the offers the player sees before any callback ran, so it neither resets the
-/// edit's uses nor recomputes its demand.
 #[test]
 #[ignore = "daily"]
 fn an_offer_edit_after_the_work_step_survives_the_restock() {
-    let mods: Mods = vec![ModEntry::new("edit-in-post", Box::new(EditInPost))].into();
-    mod_platform::testing::with_mods(mods, || {
-        with_guests(|game| {
-            game.world_root = std::env::temp_dir().join(format!(
-                "sunrise-restock-post-{}-{:?}",
-                std::process::id(),
-                std::thread::current().id()
-            ));
-            let _ = std::fs::remove_dir_all(&game.world_root);
-            game.enter_level(super::Dim::Overworld).unwrap();
-            game.options.dedicated = Some(Vec::new());
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-            assert!(
-                game.entity_ticking_area()(0, 0),
-                "fixture chunk ticks entities"
-            );
-            open(game, 1);
-            game.mobs[0].position = sunrise_core::geometry::Vec3::new(1.0, 80.0, 0.5);
-            let gm = game.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
-            let offer = &mut gm.merchant.as_mut().unwrap().merchant.session.offers[0];
-            offer.uses = 10;
-            let t = game.mobs[0].extra.trade.as_mut().unwrap();
-            t.offers[0].uses = 10;
-            game.mobs[0].no_ai = true;
-            game.mobs[0].no_gravity = true;
-            super::creatures::borrowed_tick::WORK_STEP.set(Some(40));
-            EDITED.set(false);
-            game.tick_creature_entities().unwrap();
-            assert!(EDITED.get(), "the villager's own Post ran");
-            let screen = game.lan.as_ref().unwrap().play[&12]
-                .merchant
-                .as_ref()
-                .unwrap();
-            let live = &screen.merchant.session.offers[0];
-            let got =
-                |o: &sunrise_client::merchant::MerchantOffer| (o.result.clone(), o.uses, o.demand);
-            let want = (ItemStack::new("minecraft:diamond", 1), 3, 17);
-            assert_eq!(got(live), want, "the live menu");
-            let saved = sunrise_client::entity_nbt::mob_to_nbt(
-                &game.mobs[0],
-                [1, 2, 3, 4],
-                None,
-                Some(game.pack.assets.registry),
-                |_| None,
-                game.items(),
-            );
-            let loaded = sunrise_client::entity_nbt::mob_from_nbt(
-                &saved,
-                game.res.mob_types(),
-                999,
-                Some(game.pack.assets.registry),
-            )
-            .unwrap();
-            let t = loaded.extra.trade.as_ref().unwrap();
-            assert_eq!(got(&t.offers[0]), want, "the saved, reloaded mob");
-        });
-    });
+    super::in_own_process(
+        "game::lan_trade_decisions_tests::an_offer_edit_after_the_work_step_survives_the_restock",
+        || {
+            let mods: Mods = vec![ModEntry::new("edit-in-post", Box::new(EditInPost))].into();
+            mod_platform::testing::with_mods(mods, || {
+                with_guests(|game| {
+                    let save = tempfile::tempdir().unwrap();
+                    open(game, 1);
+                    prepare_work(game, save.path());
+                    work_screen_mut(game).merchant.session.offers[0].uses = 10;
+                    game.mobs[0].extra.trade.as_mut().unwrap().offers[0].uses = 10;
+
+                    tick_work(game);
+
+                    let got = |o: &sunrise_client::merchant::MerchantOffer| {
+                        (o.result.clone(), o.uses, o.demand)
+                    };
+                    let want = (ItemStack::new("minecraft:diamond", 1), 3, 17);
+                    assert_eq!(got(&work_screen(game).merchant.session.offers[0]), want);
+                    assert_eq!(got(&reloaded_trader(game).offers[0]), want);
+                })
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_unused_offer_stays_unchanged_when_the_villager_starts_work() {
+    super::in_own_process(
+        "game::lan_trade_decisions_tests::an_unused_offer_stays_unchanged_when_the_villager_starts_work",
+        || {
+            with_guests(|game| {
+                let save = tempfile::tempdir().unwrap();
+                open(game, 1);
+                prepare_work(game, save.path());
+                let offer = work_screen(game).merchant.session.offers[0].clone();
+                let result = work_screen(game).slots[2].clone();
+                let trader = game.mobs[0].extra.trade.as_mut().unwrap();
+                // Signed int from RestocksToday: no Java subtraction on this same-day check.
+                trader.restocks_today = i32::MIN;
+                let rx = record_packets(game);
+
+                tick_work(game);
+
+                assert!(
+                    !packets(&rx)
+                        .iter()
+                        .any(|p| matches!(p, Clientbound::MerchantOffers(_)))
+                );
+                let screen = work_screen(game);
+                assert_eq!(screen.merchant.session.offers[0], offer);
+                assert_eq!(screen.slots[2], result);
+                let trader = game.mobs[0].extra.trade.as_ref().unwrap();
+                assert_eq!((trader.last_restock, trader.restocks_today), (0, i32::MIN));
+            })
+        },
+    );
+}
+
+struct FishBreath(Arc<std::sync::atomic::AtomicBool>);
+#[mod_api::__subscriptions]
+impl Hooks for FishBreath {
+    fn living_breathe(&self, host: &mut dyn ServerHost, event: &mut mod_api::LivingBreatheEvent) {
+        if event.entity.entity().id() == 41 {
+            let merchant = host.merchant(host.entity(40).unwrap()).unwrap();
+            assert_eq!(merchant.offers(host).unwrap()[0].uses, 0);
+            self.0.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_earlier_restock_does_not_skip_a_paused_mobs_first_action() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use sunrise_client::mobs::Mob;
+    use sunrise_core::geometry::Vec3;
+
+    super::in_own_process(
+        "game::lan_trade_decisions_tests::an_earlier_restock_does_not_skip_a_paused_mobs_first_action",
+        || {
+            crate::entry::install_client_hooks();
+            let breathed = Arc::new(AtomicBool::new(false));
+            let mods: Mods = vec![ModEntry::new(
+                "pufferfish-breath",
+                Box::new(FishBreath(Arc::clone(&breathed))),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                with_guests(|game| {
+                    let save = tempfile::tempdir().unwrap();
+                    open(game, 1);
+                    prepare_work(game, save.path());
+                    work_screen_mut(game).merchant.session.offers[0].uses = 10;
+                    game.mobs[0].extra.trade.as_mut().unwrap().offers[0].uses = 10;
+                    let make = |id, kind, x| {
+                        let mut mob = Mob::new(
+                            id,
+                            game.res.mob_types().get(kind).unwrap().clone(),
+                            Vec3::new(x, 80.0, 1.5),
+                            0.0,
+                        );
+                        mob.no_ai = true;
+                        mob.no_gravity = true;
+                        mob
+                    };
+                    let mut fish = make(41, "minecraft:pufferfish", 7.5);
+                    fish.extra.size = 2;
+                    // Outside normal body collision so a push cannot precede the sting,
+                    // but inside Pufferfish.aiStep's 0.3-block inflated hitbox.
+                    let pig = make(42, "minecraft:pig", 8.45);
+                    assert!(!fish.bounds().intersects(pig.bounds()));
+                    assert!(
+                        fish.bounds()
+                            .inflate(Vec3::new(0.3, 0.3, 0.3))
+                            .intersects(pig.bounds())
+                    );
+                    let health = pig.health;
+                    game.mobs.push(fish);
+                    game.mobs.push(pig);
+
+                    tick_work(game);
+
+                    assert!(breathed.load(Ordering::Relaxed));
+                    let pig = game.mob_object(42).unwrap();
+                    assert_eq!(pig.health, health - 3.0);
+                    assert!(pig.has_effect("minecraft:poison"));
+                })
+            });
+        },
+    );
 }
 
 #[test]

@@ -115,6 +115,7 @@ fn a_pearl_feels_the_water_its_box_touches() {
         asks_baby_spawn: false,
         border: None,
         section_writer: None,
+        trading_players: None,
     };
     let pw = ProjWorld {
         w: &w,
