@@ -87,7 +87,7 @@ impl Game<'_> {
             merging && mod_api::__private::has_part_hook(mod_api::HookId::OnEntityItemUpdate);
         let leave_hook = merging && mod_api::__private::listened(mod_api::HookId::EntityLeaveLevel);
         let mut next = 0;
-        while next < items.len() {
+        'items: while next < items.len() {
             let mut i = next;
             next += 1;
             sunrise_threads::work::set_entity(item_type);
@@ -267,7 +267,7 @@ impl Game<'_> {
                             });
                         (items, next) = (given.items, given.next);
                         let Some(at) = given.at else {
-                            continue;
+                            continue 'items;
                         };
                         i = at;
                     }
