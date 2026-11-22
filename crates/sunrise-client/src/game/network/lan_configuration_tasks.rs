@@ -328,9 +328,9 @@ impl Game<'_> {
             // ServerChunkCache.tick doesn't purge in a frozen level, nor
             // does pause-when-empty tick the cache (it only polls chunk work).
             if running {
-                let world = &self.world;
+                let streaming = &self.streaming;
                 self.tickets
-                    .tick_spawn(|center, radius| spawn_area_full(world, center, radius));
+                    .tick_spawn(|center| streaming.chunk_ready_for_saving(center));
             }
             self.update_chunk_tickets();
         }

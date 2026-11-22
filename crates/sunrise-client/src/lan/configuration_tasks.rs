@@ -122,6 +122,27 @@ impl Tasks {
             .remove(&id)
             .map_or_else(Vec::new, |entry| entry.queue)
     }
+    /// `getChunkRangeFuture` keeps the requested generation work alive apart from the ticket's age.
+    pub fn loading_spawns(&self, dimension: &'static str) -> impl Iterator<Item = (i32, i32)> + '_ {
+        self.sessions.values().filter_map(move |entry| {
+            let state = entry
+                .session
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            match state.spawn.as_ref() {
+                Some(SpawnTask::Load(spawn))
+                    if spawn.level.id == dimension
+                        && !state.closed
+                        && !entry.session.transport().closed() =>
+                {
+                    Some(spawn.chunk())
+                }
+                _ => None,
+            }
+        })
+    }
+
     /// Visit the next session without retaining a borrow across a task callback.
     pub fn next_session(
         &self,

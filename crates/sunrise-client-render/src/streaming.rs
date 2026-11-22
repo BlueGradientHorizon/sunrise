@@ -1821,6 +1821,16 @@ impl Streaming {
         }
         world.set_proto_light_support(key, support);
     }
+    /// `ChunkHolder.isReadyForSaving`: the centre has no generation or save
+    /// work holding it. With no holder, there is also no such work to wait for.
+    pub fn chunk_ready_for_saving(&self, key: (i32, i32)) -> bool {
+        !self.generating.contains(&key)
+            && !self.decorating_finals.contains(&key)
+            && !self.finishing.contains(&key)
+            && !self.lighting.contains_key(&key)
+            && !self.protos.get(&key).is_some_and(Option::is_none)
+    }
+
     /// `ChunkMap.getLatestStatus` for the loading screen's chunk map: the
     /// furthest step this column has reached, `None` before it is asked for.
     pub fn latest_status(

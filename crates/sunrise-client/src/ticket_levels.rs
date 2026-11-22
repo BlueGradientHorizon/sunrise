@@ -598,13 +598,19 @@ impl ChunkTickets {
     }
 
     /// `TicketStorage.canTicketExpire`: these types cannot expire before the holder is ready.
-    pub fn tick_spawn(&mut self, mut can_expire: impl FnMut((i32, i32), i32) -> bool) {
+    pub fn tick_spawn(&mut self, mut can_expire: impl FnMut((i32, i32)) -> bool) {
         self.spawn.retain_mut(|ticket| {
-            if can_expire(ticket.chunk, ticket.kind.radius()) {
+            if can_expire(ticket.chunk) {
                 ticket.ticks_left -= 1;
             }
             ticket.ticks_left >= 0
         });
+    }
+
+    pub fn holds_player_spawn(&self, center: (i32, i32)) -> bool {
+        self.spawn
+            .iter()
+            .any(|ticket| ticket.kind == SpawnTicketKind::Player && ticket.chunk == center)
     }
 
     pub fn spawn_areas(&self) -> impl Iterator<Item = ((i32, i32), i32)> + '_ {
@@ -1088,7 +1094,7 @@ mod tests {
         let mut tickets = ChunkTickets::default();
         tickets.add_spawn((32, -17), SpawnTicketKind::Player);
         for _ in 0..40 {
-            tickets.tick_spawn(|_, _| false);
+            tickets.tick_spawn(|_| false);
         }
         tickets.update(Some(Sources::default()));
         let levels = tickets.levels();
@@ -1099,15 +1105,15 @@ mod tests {
         assert_eq!(map.get(x + 4, z - 3), (UNLOADED, UNLOADED));
         assert!(!levels.block_ticking(x, z));
         for _ in 0..20 {
-            tickets.tick_spawn(|_, _| true);
+            tickets.tick_spawn(|_| true);
         }
         assert_eq!(tickets.spawn_areas().count(), 1);
         tickets.add_spawn((32, -17), SpawnTicketKind::Player);
         for _ in 0..20 {
-            tickets.tick_spawn(|_, _| true);
+            tickets.tick_spawn(|_| true);
         }
         assert_eq!(tickets.spawn_areas().count(), 1);
-        tickets.tick_spawn(|_, _| true);
+        tickets.tick_spawn(|_| true);
         tickets.update(Some(Sources::default()));
         assert_eq!(
             tickets.levels().0.as_ref().unwrap().get(x, z),

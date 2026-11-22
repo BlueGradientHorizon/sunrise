@@ -1733,6 +1733,16 @@ impl Game<'_> {
 
     /// A loading-only ticket needs chunk work, not an active simulation.
     pub(super) fn has_spawn_tickets(&self, dim: Dim) -> bool {
+        if self.lan.as_ref().is_some_and(|host| {
+            host.hub
+                .lan
+                .configuration_tasks
+                .loading_spawns(dim.id())
+                .next()
+                .is_some()
+        }) {
+            return true;
+        }
         if dim == self.dim {
             self.tickets.spawn_areas().next().is_some()
         } else {
