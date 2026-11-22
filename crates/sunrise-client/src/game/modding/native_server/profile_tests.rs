@@ -102,6 +102,8 @@ fn check_profile_reads(game: &mut Game<'_>, root: &std::path::Path, seen: &Mutex
         .unwrap()
         .config
         .singleplayer_profile = Some(("Owner".into(), 33));
+    host.hub.ops.insert(33, 0); // The hub's automatic owner level with commands off.
+    host.hub.ops.insert(12, 3); // An explicit LAN op entry.
     host.hub
         .update_guest(12, |guest| {
             guest.properties.push(AccountProperty {
@@ -133,8 +135,10 @@ fn check_profile_reads(game: &mut Game<'_>, root: &std::path::Path, seen: &Mutex
         (false, false, 33, "Owner", PermissionLevel::All),
         (true, false, 99, "oWnEr", PermissionLevel::Owners),
         (true, false, 33, "Other", PermissionLevel::All),
+        (true, false, 12, "guest12", PermissionLevel::All),
         (true, true, 12, "guest12", PermissionLevel::Gamemasters),
-        (false, true, 12, "guest12", PermissionLevel::All),
+        (false, true, 12, "guest12", PermissionLevel::Admins),
+        (false, true, 13, "guest13", PermissionLevel::All),
     ] {
         game.set_allow_commands(allow);
         game.lan.as_mut().unwrap().settings.guest_commands = guest_commands;
@@ -143,6 +147,13 @@ fn check_profile_reads(game: &mut Game<'_>, root: &std::path::Path, seen: &Mutex
             expected
         );
     }
+
+    game.lan.as_mut().unwrap().hub.ops.insert(33, 1);
+    assert_eq!(
+        game.players().profile_permission_level(33, "Owner"),
+        PermissionLevel::Owners,
+        "a listed integrated owner is level 4 even with commands off"
+    );
 
     let mut ops = OpList::new(root.join("ops.json"));
     ops.load_str(

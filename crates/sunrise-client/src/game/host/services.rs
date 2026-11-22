@@ -74,21 +74,42 @@ impl Players for Game<'_> {
                 .permission_level(uuid)
                 .map_or(PermissionLevel::All, PermissionLevel::from_level);
         }
-        // IntegratedServer.getProfilePermissions and PlayerList.isOp: the owner
-        // is an op when the world allows commands. LAN publishing separately
-        // sets guestCommandAccess, which grants guests the game master's level.
-        if self.allow_commands()
-            && let Some(host) = &self.lan
-            && let Some((owner, _)) = &host.hub.lan.shared.config.singleplayer_profile
-        {
-            if owner.eq_ignore_ascii_case(name) {
-                return PermissionLevel::Owners;
-            }
-            if host.settings.guest_commands {
-                return PermissionLevel::Gamemasters;
-            }
+        let Some(host) = &self.lan else {
+            return PermissionLevel::All;
+        };
+        let Some((owner, owner_uuid)) = &host.hub.lan.shared.config.singleplayer_profile else {
+            return PermissionLevel::All;
+        };
+        let is_owner = owner.eq_ignore_ascii_case(name);
+        let allow_commands = self.allow_commands();
+        // IntegratedServer.getCustomPermissionLevel: for non-owners this takes
+        // precedence over any entry, even when guest command access is off.
+        if !is_owner && allow_commands {
+            return if host.settings.guest_commands {
+                PermissionLevel::Gamemasters
+            } else {
+                PermissionLevel::All
+            };
         }
-        PermissionLevel::All
+        // No persisted op list on integrated servers. The hub also stores
+        // temporary LAN operator levels; its automatic 0 for the owner means
+        // commands are off, not that the owner's profile is listed as an op.
+        let op_level = host
+            .hub
+            .ops
+            .get(&uuid)
+            .copied()
+            .filter(|&level| uuid != *owner_uuid || level != 0);
+        // IntegratedServer.getProfilePermissions overrides an owner's level
+        // when PlayerList.isOp is true, either by entry or by Allow Commands.
+        if is_owner && (op_level.is_some() || allow_commands) {
+            return PermissionLevel::Owners;
+        }
+        // MinecraftServer.getProfilePermissions: the op entry's level, or
+        // ALL. The implicit-op case is already handled by the owner override.
+        op_level.map_or(PermissionLevel::All, |level| {
+            PermissionLevel::from_level(i32::from(level))
+        })
     }
     fn acting_player(&self) -> Option<PlayerRef> {
         self.native_acting_player()
