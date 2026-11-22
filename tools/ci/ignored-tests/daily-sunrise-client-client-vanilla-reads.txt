@@ -1,2 +1,3 @@
 # Client reads of vanilla state for mods (#4677): each on a client game built from the prepared resources.
 sunrise-client game::options::resize_state_tests::window_size_reads_the_size_window_resize_reports lib daily resources
+sunrise-client game::remote::tests::client_vanilla_reads_tests::a_client_counts_its_copies_ticks_and_a_respawned_player_starts_at_zero lib daily resources

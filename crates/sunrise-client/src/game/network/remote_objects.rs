@@ -415,6 +415,8 @@ impl Game<'_> {
         while cart < self.carts.len() {
             let (id, from, to, kind, fuse, fuel) = self.carts.update(cart, |c| {
                 let from = c.position;
+                // Entity.commonTick: the client's copy counts its own tickCount.
+                c.tick_count = c.tick_count.wrapping_add(1);
                 c.previous = c.position;
                 c.previous_yaw = c.yaw;
                 c.previous_pitch = c.pitch;

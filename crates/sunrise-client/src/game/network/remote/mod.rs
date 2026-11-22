@@ -2469,6 +2469,9 @@ pub(crate) mod tests {
     mod client_player_reads_tests {
         include!("client_player_reads_tests.rs");
     }
+    mod client_vanilla_reads_tests {
+        include!("client_vanilla_reads_tests.rs");
+    }
     mod client_read_tests {
         include!("client_read_tests.rs");
     }

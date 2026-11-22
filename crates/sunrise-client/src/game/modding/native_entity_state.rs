@@ -657,8 +657,10 @@ impl Game<'_> {
     }
     /// Ticks the entity has lived (`Entity.tickCount`): players, mobs, item
     /// entities, experience orbs and minecarts. Wraps as vanilla's `int` does.
+    /// On a client, its copies' own counters: the local player's and the lists
+    /// the client ticks (another player is one of its mobs).
     pub(super) fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
-        Some(match self.native_entity_target(entity)? {
+        Some(match self.native_entity_read_target(entity)? {
             Target::Player => self.player.as_ref()?.health.tick_count,
             Target::Guest(conn) => {
                 let guest = self.command_guest(conn)?;

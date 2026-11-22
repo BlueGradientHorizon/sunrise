@@ -100,6 +100,11 @@ its turn reads the motion kept in the guest record, or its carried count while a
 admitted player with no body has count 0. The value wraps like Java's `int`, and a stale handle or another entity
 kind returns `None`.
 
+On a client, the same read answers for the same kinds in the level the client shows, from the client's own copy: as in
+vanilla, each copy counts the client's ticks from when the server added it (`Entity.commonTick` in
+`ClientLevel.tickNonPassenger`), not the server's count. The new local player that a respawn or a dimension change
+makes starts again at 0.
+
 `MobRef::can_use_portal` reads the existing server portal decision for a mob in the current level, including mounts and player riders. It takes `&dyn Host`: `Some(false)` means the mob is ineligible, while `None` means a client, stale or unavailable handle, parked mob, or the separately modelled dragon. It does not load a level.
 
 `EntityRef::leash_holder` takes `&dyn Host` and reads the live lead of a mob or boat. `LeashHolder::Unleashed`

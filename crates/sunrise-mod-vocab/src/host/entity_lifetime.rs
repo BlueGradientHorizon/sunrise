@@ -19,9 +19,13 @@ pub trait EntityLifetimeBackend {
     /// block's, a pearl's End gateway state, or the level's for the other
     /// kinds its portal walk carries (zero when it keeps no state for one).
     fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32>;
-    /// Side: server.
+    /// Side: both.
     /// Ticks the entity has lived (`Entity.tickCount`): players, mobs, item
     /// entities, experience orbs and minecarts. Wraps as vanilla's `int` does.
+    /// On a client, the client copy's own counter, for an entity in the level
+    /// it shows: it counts the client's ticks from when the server added the
+    /// entity, and the new local player of a respawn or a dimension change
+    /// starts at 0.
     fn entity_tick_count(&self, entity: EntityRef) -> Option<i32>;
 }
 /// The handles' writes of the `entity_lifetime` area, implemented by the game and reached through [`BackendMut`].
