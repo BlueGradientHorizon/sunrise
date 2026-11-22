@@ -2298,19 +2298,12 @@ impl Game<'_> {
                     if guest.placed {
                         let back = self.dim;
                         let theirs = super::Dim::from_id(&guest.dimension);
-                        if self.enter_level(theirs).is_ok() {
-                            let conn = guest.conn;
-                            let (uuid, name, carrier) =
-                                (guest.uuid, guest.name.clone(), guest.entity_id as u32);
-                            guest.disconnect_pending = true;
-                            self.lan.as_mut()?.hub.guests.push(*guest);
-                            self.native_guest_logout(uuid, &name);
-                            // A player logging out carries no mob a mod seated on it.
-                            self.eject_player_riders(Some(carrier));
-                            self.guest_disconnected(conn);
-                            let at = self.guest_index(conn)?;
-                            *guest = self.lan.as_mut()?.hub.guests.remove(at);
-                        } else {
+                        if let Err(error) = self.enter_level(theirs) {
+                            log::error!(
+                                "Could not remove player {} in {}: {error}",
+                                guest.name,
+                                theirs.id()
+                            );
                             self.native_guest_logout(guest.uuid, &guest.name);
                             if let Some(menu) = guest.menu.as_mut()
                                 && let Some(closed) = menu.native_removed(
@@ -2322,6 +2315,18 @@ impl Game<'_> {
                             {
                                 self.deliver_menu_removed(closed);
                             }
+                        } else {
+                            let conn = guest.conn;
+                            let (uuid, name, carrier) =
+                                (guest.uuid, guest.name.clone(), guest.entity_id as u32);
+                            guest.disconnect_pending = true;
+                            self.lan.as_mut()?.hub.guests.push(*guest);
+                            self.native_guest_logout(uuid, &name);
+                            // A player logging out carries no mob a mod seated on it.
+                            self.eject_player_riders(Some(carrier));
+                            self.guest_disconnected(conn);
+                            let at = self.guest_index(conn)?;
+                            *guest = self.lan.as_mut()?.hub.guests.remove(at);
                         }
                         if let Err(e) = self.enter_level(back) {
                             log::error!("could not reopen {}: {e}", back.id());
