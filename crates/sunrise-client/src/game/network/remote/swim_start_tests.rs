@@ -32,6 +32,16 @@ impl Hooks for SwimRules {
     }
 }
 
+struct MutatesQuery;
+
+#[mod_api::__subscriptions]
+impl Hooks for MutatesQuery {
+    fn can_start_swimming(&self, _: &dyn Host, event: &mut CanStartSwimmingEvent) -> Option<bool> {
+        event.check = SwimmingCheck::ShallowWater;
+        None
+    }
+}
+
 fn water_column(game: &mut Game<'_>) {
     let water = game
         .pack
@@ -51,7 +61,11 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
         "game::remote::swim_start_tests::local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query",
         || {
             let rules = SwimRules::default();
-            let mods = vec![mod_api::ModEntry::new("swim", Box::new(rules.clone()))].into();
+            let mods = vec![
+                mod_api::ModEntry::new("rewrite-query", Box::new(MutatesQuery)),
+                mod_api::ModEntry::new("swim", Box::new(rules.clone())),
+            ]
+            .into();
             mod_platform::testing::with_mods(mods, || {
                 with_client_game(|game| {
                     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
@@ -136,6 +150,30 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                         std::mem::take(&mut *rules.0.lock().unwrap()),
                         [(LogicalSide::Client, SwimmingCheck::Entry, 42),]
                     );
+
+                    // A newly mounted sprinter is asked before the boat's sprint
+                    // decision stops sprinting. An affirmative answer cannot make
+                    // a passenger swim, and the next tick doesn't ask again.
+                    game.keys.clear();
+                    let p = game.player.as_mut().unwrap();
+                    p.swimming = false;
+                    p.set_sprinting(true).unwrap();
+                    game.boats.push(crate::game::boats::Boat::new(
+                        71,
+                        "oak".into(),
+                        Vec3::new(10.5, 64.5, 10.5),
+                        0.0,
+                    ));
+                    game.riding = Some(71);
+                    tick(game);
+                    let p = game.player.as_ref().unwrap();
+                    assert!(!p.swimming && !p.sprinting);
+                    assert_eq!(
+                        std::mem::take(&mut *rules.0.lock().unwrap()),
+                        [(LogicalSide::Client, SwimmingCheck::Entry, 42)]
+                    );
+                    tick(game);
+                    assert!(rules.0.lock().unwrap().is_empty());
                 });
             });
         },

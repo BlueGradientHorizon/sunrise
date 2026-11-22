@@ -113,6 +113,8 @@ are equivalent. The client never calls this hook.
 server's acting player. Return `Some(false)` to refuse or `Some(true)` to allow;
 the first answer wins. Return `None` to leave vanilla's answer in place. The
 player and `LogicalSide` are in the event, and the shared `Host` is read-only.
+Declare `side = "both"` and install the mod on both sides. Base the answer on facts
+available to both sides that tick; the server remains authoritative for position.
 For example, read the feet slot with `host.living(event.player.entity())` and
 return `Some(false)` on `SwimmingCheck::Entry` while a certain pair of boots is
 worn. Return `None` for callers your rule does not affect.

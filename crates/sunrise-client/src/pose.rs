@@ -308,16 +308,16 @@ impl MotionWorld<'_, '_, '_> {
     /// ground and collisions are what its look packet sends; `updatePlayerPose` sits it up.
     pub fn rider_tick(&mut self, direction: [f32; 2]) -> Result<()> {
         self.begin_fluid_tick()?;
-        self.finish_rider_tick(direction, None)
+        self.finish_rider_base_tick(None);
+        self.finish_rider_tick(direction)
     }
-    /// Resume `Entity.rideTick` after the local player's swimming decision.
-    pub fn finish_rider_tick(
-        &mut self,
-        direction: [f32; 2],
-        answer: Option<(crate::motion::SwimEntry, bool)>,
-    ) -> Result<()> {
+    /// Apply the rider's swimming decision before `LocalPlayer.aiStep`.
+    pub fn finish_rider_base_tick(&mut self, answer: Option<(crate::motion::SwimEntry, bool)>) {
         self.apply_swim_entry(answer);
         self.clear_passenger_flags();
+    }
+    /// `LivingEntity.aiStep` travels the rider after its sprint decision.
+    pub fn finish_rider_tick(&mut self, direction: [f32; 2]) -> Result<()> {
         self.rider_travel_tick(direction)?;
         self.passenger_sits_up()
     }

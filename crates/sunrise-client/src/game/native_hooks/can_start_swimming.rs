@@ -75,7 +75,7 @@ impl Game<'_> {
         let result = state.tick_with_context(
             keys,
             conditions,
-            window.clamp(0, 10),
+            window,
             self,
             |game, vanilla| {
                 // Only water has a swimmable fluid type in the current fluid table.

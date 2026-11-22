@@ -912,7 +912,7 @@ impl Game<'_> {
             .riding
             .filter(|_| self.screen != Screen::Dead)
             .and_then(|_| self.player.as_ref().map(|p| p.position));
-        let riding = self.screen != Screen::Dead && self.remote_ride(keys, sprint_window)?;
+        let riding = self.screen != Screen::Dead && self.remote_ride(keys);
         // LocalPlayer.isShiftKeyDown is the input's sneak, riding or not: the tick after a
         // dismount crouches (a passenger never does) on the sneak held to get off.
         if riding && let Some(p) = self.player.as_mut() {
@@ -934,6 +934,7 @@ impl Game<'_> {
             return Ok(None);
         };
         player.fluids.boat = boat;
+        player.is_passenger = riding;
         if !riding && !self.replay.playing() {
             self.previous_position = player.position;
         }
@@ -1055,9 +1056,15 @@ impl Game<'_> {
                 let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
                     return Ok(None);
                 };
+                motion_world!(side, player).finish_rider_base_tick(answer);
+                self.remote_rider_sprint(keys, sprint_window)?;
+                let side = game_side!(self);
+                let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
+                    return Ok(None);
+                };
                 let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
                 let mut passenger = motion_world!(side, player);
-                passenger.finish_rider_tick(keys.direction(), answer)?;
+                passenger.finish_rider_tick(keys.direction())?;
                 sunrise_world::entity_move::EntityMoveWorld::set_position(&mut passenger, seat)?;
                 // LivingEntity.aiStep: a passenger freezes in powder snow too, and the
                 // frostbite overlay shows it (#8156).

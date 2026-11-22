@@ -9,13 +9,15 @@ pub trait Hooks {
     /// The first `Some(true)` or `Some(false)` wins. If no listener answers,
     /// Sunrise uses vanilla's saved-eye and feet-cell entry checks, or the
     /// ordinary vanilla shallow-water result. This does not change the player's
-    /// fluid samples, flight or existing swim. Answer from the acting player
-    /// and facts available on both sides; the server still owns its position.
+    /// fluid samples, flight or existing swim. Declare `side = "both"` and
+    /// install the mod on both sides. Base the answer on facts available to
+    /// both sides that tick; the server remains authoritative for position.
     #[hook(
         side = "both",
         version = 1,
         contract = "replace",
         out = "can_start_swimming",
+        event_per_listener = true,
         host = "read",
         neoforge = "IEntityExtension.canStartSwimming"
     )]

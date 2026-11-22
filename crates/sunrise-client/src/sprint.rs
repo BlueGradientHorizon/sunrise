@@ -158,7 +158,8 @@ impl SprintState {
                     set_sprinting(context, true)?;
                     sprinting = true;
                 } else {
-                    self.trigger_time = window;
+                    // `Options.sprintWindow` uses `IntRange(0, 10)`.
+                    self.trigger_time = window.clamp(0, 10);
                 }
             }
             if keys.sprint {
