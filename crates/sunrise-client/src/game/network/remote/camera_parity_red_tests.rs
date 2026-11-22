@@ -300,7 +300,7 @@ fn interaction_camera_eye_rotation_move_and_teleport_26_3() {
         );
         game.handle_packet(C::SetEntityData(play::SetEntityData {
             id: 201,
-            values: vec![(6, 21, EntityDataValue::Id(0))],
+            values: vec![(6, serializer::POSE, EntityDataValue::Id(0))],
         }))
         .unwrap();
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 201 }))
@@ -1683,6 +1683,10 @@ fn camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26
 
         with_client_game(|game| {
             let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], false);
+            // Displays build their render state on their first tick, which needs a loaded chunk.
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(make_chunk(0, 0, 0, 0xF0)));
             game.view_frustum = None;
             game.settings.entity_shadows = false;
             game.settings.extras.own_name_tag = false;
