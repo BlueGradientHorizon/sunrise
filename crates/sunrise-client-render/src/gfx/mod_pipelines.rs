@@ -1223,12 +1223,12 @@ mod tests {
             let runs = [
                 PipelineRun {
                     slot: set.slot(req_handle).unwrap(),
-                    stage: (STAGES - 1) as u8,
+                    stage: (STAGES - 1) as u32,
                     quads: 1,
                 },
                 PipelineRun {
                     slot: set.slot(opt_handle).unwrap(),
-                    stage: (STAGES - 1) as u8,
+                    stage: (STAGES - 1) as u32,
                     quads: 1,
                 },
             ];
@@ -1261,8 +1261,8 @@ mod tests {
         let gpu = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             required_limits: wgpu::Limits {
                 max_buffer_size: limit,
-                max_uniform_buffer_binding_size: limit as u32,
-                max_storage_buffer_binding_size: limit as u32,
+                max_uniform_buffer_binding_size: limit,
+                max_storage_buffer_binding_size: limit,
                 ..wgpu::Limits::default()
             },
             ..Default::default()
@@ -1292,7 +1292,7 @@ mod tests {
             },
             PipelineRun {
                 slot: 0,
-                stage: (STAGES - 1) as u8,
+                stage: (STAGES - 1) as u32,
                 quads: 1,
             },
         ];

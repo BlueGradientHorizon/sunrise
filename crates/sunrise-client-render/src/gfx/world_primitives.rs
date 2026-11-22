@@ -1617,8 +1617,8 @@ mod tests {
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             required_limits: wgpu::Limits {
                 max_buffer_size: limit,
-                max_uniform_buffer_binding_size: limit as u32,
-                max_storage_buffer_binding_size: limit as u32,
+                max_uniform_buffer_binding_size: limit,
+                max_storage_buffer_binding_size: limit,
                 ..wgpu::Limits::default()
             },
             ..Default::default()
