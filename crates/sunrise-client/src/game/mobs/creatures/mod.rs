@@ -1699,22 +1699,10 @@ impl Game<'_> {
         self.native_mob_sizes();
         Ok(())
     }
-    /// Finish the death animation of a mob whose row has already left the level.
-    fn finish_mob_death_animation(
-        &mut self,
-        id: u32,
-        at: Vec3,
-        width: f64,
-        height: f64,
-        split: Option<Mob>,
-    ) {
-        self.last_hurt_by_player.remove(&id);
-        self.animate_mob_removal(id, at, width, height, split);
-    }
 
     /// `LivingEntity.tickDeath` broadcasts the poof before `remove`, which
     /// also splits a large cube before it reaches `Entity.setRemoved`.
-    fn animate_mob_removal(
+    fn finish_mob_death_animation(
         &mut self,
         id: u32,
         at: Vec3,
