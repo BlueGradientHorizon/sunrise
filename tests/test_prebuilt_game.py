@@ -673,11 +673,24 @@ class AllocatorSelectionTests(unittest.TestCase):
              patch.object(prebuilt_game, "head", return_value="fixture-commit"), \
              patch.object(prebuilt_game, "rustc_host", return_value="fixture-host"), \
              patch.object(prebuilt_game, "run", side_effect=capture), \
-             patch.dict(prebuilt_game.os.environ, {"CARGO_ENCODED_RUSTFLAGS": "-Cprefer-dynamic=no",
-                                                   "CARGO_TARGET_DIR": target}):
+             patch.object(prebuilt_game, "os", ScopedOs({
+                 "CARGO_ENCODED_RUSTFLAGS": "-Cprefer-dynamic=no",
+                 # An inherited unit count must not reach the SDK game.
+                 "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "16",
+                 "CARGO_TARGET_DIR": target})):
             # Its own target folder: the build takes that folder's lock, never the checkout's.
             with self.assertRaises(Captured):
                 prebuilt_game.build(Path(target) / "unused-sdk", False)
+
+
+class ScopedOs:
+    """`os` for the module under test, with its own environment: a fixture never writes the process's."""
+
+    def __init__(self, environ: dict[str, str]):
+        self.environ = environ
+
+    def __getattr__(self, name):
+        return getattr(os, name)
 
 
 class PrebuiltContentsTests(unittest.TestCase):

@@ -351,10 +351,13 @@ fallback text itself; parsing and native constructors follow the same rule.
 
 ## Particle identities
 
-Request a `ParticleKey` with `Registrar::particle_key` and retain it. Every parameter-family
-`ParticleOptions` constructor takes its key; use `simple(key)` for a simple particle.
+For vanilla or asset-only particles, retain a key from `Registrar::particle_key`. Pass it to
+`ParticleOptions::simple` for a simple particle, or to the corresponding built-in option
+constructor. For a native particle with typed data, use `Registrar::register_particle_type`
+and build requests with `ParticleType::options`. See the [particle provider guide](../how-to/client/particles-and-movement-queries.md#particle-providers).
+
 Unknown forward references refuse publication of the whole particle registry. Retained keys
-resolve to vanilla or custom named sprite providers without parsing identifiers per read.
+resolve without parsing identifiers per read.
 
 ## Placement and loot snapshots
 

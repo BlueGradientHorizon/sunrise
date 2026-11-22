@@ -59,6 +59,7 @@ pub(crate) mod pack_finders;
 pub(crate) mod particle_keys;
 pub(crate) mod particle_providers;
 mod particle_stacks;
+pub(crate) mod particle_types;
 // hidden: a module of game-side types; mods use their re-exports
 #[doc(hidden)]
 pub mod particles;
