@@ -931,7 +931,30 @@ impl Game<'_> {
     /// Closes the innermost transaction: `commit` hands its changes to the one around it, or
     /// at the root makes them final and tells the world; otherwise every storage it wrote goes
     /// back to how it was. Nothing happens with none open.
+    ///
+    /// Always switches into the top frame's recorded dimension for the entire close (retirement,
+    /// commit or rollback) and restores the caller's active dimension afterwards, so an abandoned
+    /// or cross-level frame never commits or restores its level-local snapshots into another level.
     fn close_storage_transaction(&mut self, commit: bool) {
+        let Some(owner) = self.transactions.last().map(|level| level.dimension) else {
+            return;
+        };
+        let owner = owner.unwrap_or(self.dim);
+        if self
+            .with_effect_level(owner, |game| {
+                game.close_storage_transaction_in_place(commit);
+            })
+            .is_none()
+        {
+            log::error!(
+                "Sunrise: could not switch to {} to close transaction; dropping level-local writes",
+                owner.id()
+            );
+            self.drop_unreachable_transaction_frame();
+        }
+    }
+    /// Closes the innermost transaction with its owning level already in place.
+    fn close_storage_transaction_in_place(&mut self, commit: bool) {
         let Some(level) = self.transactions.pop() else {
             return;
         };
@@ -959,6 +982,45 @@ impl Game<'_> {
         guard.game.close_level(level, commit);
         if retire {
             guard.game.world.block_entities.publish_retirement();
+        }
+    }
+    /// Defensive fallback if a frame's recorded dimension is no longer parked: pop the frame so
+    /// abandon loops always terminate and discard its level-local snapshots rather than restoring
+    /// them into the wrong active level.
+    fn drop_unreachable_transaction_frame(&mut self) {
+        let Some(mut level) = self.transactions.pop() else {
+            return;
+        };
+        self.transactions
+            .attachment_query_scopes
+            .leave(level.parent_attachment_query_scope);
+        let closing = if self.transactions.is_empty() {
+            TransactionLifecycle::RootClosing
+        } else {
+            TransactionLifecycle::Closing
+        };
+        let outer = self.transactions.closing.replace(closing);
+        let guard = ClosingPhase { game: self, outer };
+        let mut merchant_corrections = std::mem::take(&mut level.trades.refused_clicks);
+        merchant_corrections.append(&mut level.trades.correct_on_abort);
+        let departed = std::mem::take(&mut level.departed);
+        level.blocks.clear();
+        level.block_entities.clear();
+        level.removed_block_entities.clear();
+        level.slots.clear();
+        level.item_entities.clear();
+        level.level_random = None;
+        level.chunk_marks.clear();
+        level.after.clear();
+        let _ = std::mem::take(&mut level.lifetimes);
+        guard.game.roll_back(level);
+        guard.game.close_departures(departed);
+        if let Some(outer) = guard.game.transactions.last_mut() {
+            outer.trades.refused_clicks.extend(merchant_corrections);
+        } else {
+            for (conn, window) in merchant_corrections {
+                guard.game.resend_merchant_take(conn, window);
+            }
         }
     }
     /// What closing `level` does, with the closing phase already set.

@@ -1730,7 +1730,9 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
             struct NetherBlockHook {
                 pos: [i32; 3],
                 write_state: mod_api::BlockState,
-                /// 0 = direct (no Nether tx), 1 = nested Nether tx commits, 2 = nested Nether tx aborts.
+                second_write_state: mod_api::BlockState,
+                /// 0 = direct (no Nether tx), 1 = nested Nether tx commits, 2 = nested Nether tx
+                /// aborts, 3 = raw Nether tx left open, 4 = two-deep raw Nether txs left open.
                 tx_mode: Arc<AtomicUsize>,
                 calls: Arc<AtomicUsize>,
             }
@@ -1746,12 +1748,12 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                     }
                     self.calls.fetch_add(1, Ordering::SeqCst);
                     if let HostSide::Server(server) = host {
-                        let write = |server: &mut dyn mod_api::ServerHost| {
+                        let write_state = |server: &mut dyn mod_api::ServerHost, state| {
                             assert_eq!(
                                 e.level.set_block(
                                     server,
                                     self.pos,
-                                    self.write_state,
+                                    state,
                                     BlockUpdateFlags::NEIGHBORS,
                                 ),
                                 Ok(true)
@@ -1760,19 +1762,29 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                         match self.tx_mode.load(Ordering::SeqCst) {
                             1 => {
                                 let committed = mod_api::run_transaction(server, |server, _| {
-                                    write(server);
+                                    write_state(server, self.write_state);
                                     Ok::<(), ()>(())
                                 });
                                 assert!(committed.is_ok());
                             }
                             2 => {
                                 let aborted = mod_api::run_transaction(server, |server, _| {
-                                    write(server);
+                                    write_state(server, self.write_state);
                                     Err::<(), ()>(())
                                 });
                                 assert!(aborted.is_err());
                             }
-                            _ => write(server),
+                            3 => {
+                                let _abandoned = server.transaction_open();
+                                write_state(server, self.write_state);
+                            }
+                            4 => {
+                                let _outer_abandoned = server.transaction_open();
+                                write_state(server, self.write_state);
+                                let _inner_abandoned = server.transaction_open();
+                                write_state(server, self.second_write_state);
+                            }
+                            _ => write_state(server, self.write_state),
                         }
                     }
                     Flow::Continue
@@ -1794,8 +1806,10 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                 let diamond = state(game, "minecraft:diamond_block");
                 let netherrack = state(game, "minecraft:netherrack");
                 let emerald = state(game, "minecraft:emerald_block");
+                let iron = state(game, "minecraft:iron_block");
                 let gold = state(game, "minecraft:gold_block");
                 let emerald_api = emerald.try_into_api().unwrap();
+                let iron_api = iron.try_into_api().unwrap();
 
                 // Populate chunk (0, 0) in both dimensions with distinct blocks at the exact same coords.
                 if !game.world.chunks.contains_key(&(0, 0)) {
@@ -1831,6 +1845,7 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                     Box::new(NetherBlockHook {
                         pos,
                         write_state: emerald_api,
+                        second_write_state: iron_api,
                         tx_mode: Arc::clone(&tx_mode),
                         calls: Arc::clone(&calls),
                     }),
@@ -1985,6 +2000,203 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                     assert!(both_commit.is_ok());
                     assert_eq!(calls.load(Ordering::SeqCst), 5);
                     assert_eq!(block_in(game, super::Dim::Overworld), gold);
+                    assert_eq!(block_in(game, super::Dim::Nether), emerald);
+
+                    let defers_retirement_in = |game: &mut super::Game<'_>, dim: super::Dim| {
+                        game.with_effect_level(dim, |g| g.world.block_entities.defers_retirement())
+                            .unwrap()
+                    };
+
+                    // 6. Abandoned raw Nether transaction during an Overworld transaction that
+                    // ABORTS: the abandoned Nether frame must close in the Nether (restoring
+                    // netherrack and publishing Nether retirement) before Overworld restores
+                    // diamond_block, never restoring Nether's snapshot into Overworld.
+                    game.world.set(pos[0], pos[1], pos[2], diamond).unwrap();
+                    game.with_effect_level(super::Dim::Nether, |g| {
+                        g.world.set(pos[0], pos[1], pos[2], netherrack).unwrap();
+                    })
+                    .unwrap();
+                    tx_mode.store(3, Ordering::SeqCst);
+                    let abandoned_abort = mod_api::run_transaction(game, |game, _| {
+                        assert_eq!(
+                            game.level_set_block(overworld, pos, gold, BlockUpdateFlags::NEIGHBORS),
+                            Ok(true)
+                        );
+                        assert!(game.level_play_sound(
+                            nether,
+                            bell,
+                            at,
+                            SoundSource::Blocks,
+                            1.0,
+                            1.0,
+                            None,
+                        ));
+                        assert_eq!(game.dim, super::Dim::Overworld);
+                        assert_eq!(game.transactions.len(), 2);
+                        assert_eq!(block_in(game, super::Dim::Overworld), gold);
+                        assert_eq!(block_in(game, super::Dim::Nether), emerald);
+                        Err::<(), ()>(())
+                    });
+                    assert!(abandoned_abort.is_err());
+                    assert_eq!(calls.load(Ordering::SeqCst), 6);
+                    assert_eq!(game.dim, super::Dim::Overworld);
+                    assert!(game.transactions.is_empty());
+                    assert!(!defers_retirement_in(game, super::Dim::Overworld));
+                    assert!(!defers_retirement_in(game, super::Dim::Nether));
+                    assert_eq!(block_in(game, super::Dim::Overworld), diamond);
+                    assert_eq!(block_in(game, super::Dim::Nether), netherrack);
+
+                    // 7. Abandoned raw Nether transaction during an Overworld transaction that
+                    // COMMITS: the abandoned Nether child aborts in the Nether (restoring
+                    // netherrack) while the Overworld parent commits its own gold_block write.
+                    let abandoned_commit = mod_api::run_transaction(game, |game, _| {
+                        assert_eq!(
+                            game.level_set_block(overworld, pos, gold, BlockUpdateFlags::NEIGHBORS),
+                            Ok(true)
+                        );
+                        assert!(game.level_play_sound(
+                            nether,
+                            bell,
+                            at,
+                            SoundSource::Blocks,
+                            1.0,
+                            1.0,
+                            None,
+                        ));
+                        assert_eq!(game.dim, super::Dim::Overworld);
+                        assert_eq!(game.transactions.len(), 2);
+                        assert_eq!(block_in(game, super::Dim::Overworld), gold);
+                        assert_eq!(block_in(game, super::Dim::Nether), emerald);
+                        Ok::<(), ()>(())
+                    });
+                    assert!(abandoned_commit.is_ok());
+                    assert_eq!(calls.load(Ordering::SeqCst), 7);
+                    assert_eq!(game.dim, super::Dim::Overworld);
+                    assert!(game.transactions.is_empty());
+                    assert!(!defers_retirement_in(game, super::Dim::Overworld));
+                    assert!(!defers_retirement_in(game, super::Dim::Nether));
+                    assert_eq!(block_in(game, super::Dim::Overworld), gold);
+                    assert_eq!(block_in(game, super::Dim::Nether), netherrack);
+
+                    // 8. Two-deep abandoned raw Nether children during an Overworld transaction
+                    // that ABORTS: both Nether frames unwind in the Nether back to netherrack and
+                    // Overworld restores diamond_block.
+                    game.world.set(pos[0], pos[1], pos[2], diamond).unwrap();
+                    tx_mode.store(4, Ordering::SeqCst);
+                    let two_deep_abort = mod_api::run_transaction(game, |game, _| {
+                        assert_eq!(
+                            game.level_set_block(overworld, pos, gold, BlockUpdateFlags::NEIGHBORS),
+                            Ok(true)
+                        );
+                        assert!(game.level_play_sound(
+                            nether,
+                            bell,
+                            at,
+                            SoundSource::Blocks,
+                            1.0,
+                            1.0,
+                            None,
+                        ));
+                        assert_eq!(game.dim, super::Dim::Overworld);
+                        assert_eq!(game.transactions.len(), 3);
+                        assert_eq!(block_in(game, super::Dim::Overworld), gold);
+                        assert_eq!(block_in(game, super::Dim::Nether), iron);
+                        Err::<(), ()>(())
+                    });
+                    assert!(two_deep_abort.is_err());
+                    assert_eq!(calls.load(Ordering::SeqCst), 8);
+                    assert_eq!(game.dim, super::Dim::Overworld);
+                    assert!(game.transactions.is_empty());
+                    assert!(!defers_retirement_in(game, super::Dim::Overworld));
+                    assert!(!defers_retirement_in(game, super::Dim::Nether));
+                    assert_eq!(block_in(game, super::Dim::Overworld), diamond);
+                    assert_eq!(block_in(game, super::Dim::Nether), netherrack);
+
+                    // 9. Two-deep abandoned raw Nether children during an Overworld transaction
+                    // that COMMITS: both Nether frames abort in the Nether back to netherrack
+                    // while Overworld keeps its committed gold_block write.
+                    let two_deep_commit = mod_api::run_transaction(game, |game, _| {
+                        assert_eq!(
+                            game.level_set_block(overworld, pos, gold, BlockUpdateFlags::NEIGHBORS),
+                            Ok(true)
+                        );
+                        assert!(game.level_play_sound(
+                            nether,
+                            bell,
+                            at,
+                            SoundSource::Blocks,
+                            1.0,
+                            1.0,
+                            None,
+                        ));
+                        assert_eq!(game.dim, super::Dim::Overworld);
+                        assert_eq!(game.transactions.len(), 3);
+                        assert_eq!(block_in(game, super::Dim::Overworld), gold);
+                        assert_eq!(block_in(game, super::Dim::Nether), iron);
+                        Ok::<(), ()>(())
+                    });
+                    assert!(two_deep_commit.is_ok());
+                    assert_eq!(calls.load(Ordering::SeqCst), 9);
+                    assert_eq!(game.dim, super::Dim::Overworld);
+                    assert!(game.transactions.is_empty());
+                    assert!(!defers_retirement_in(game, super::Dim::Overworld));
+                    assert!(!defers_retirement_in(game, super::Dim::Nether));
+                    assert_eq!(block_in(game, super::Dim::Overworld), gold);
+                    assert_eq!(block_in(game, super::Dim::Nether), netherrack);
+
+                    // 10. Abandoned raw Nether root opened during `flush_native_sounds` outside
+                    // any Overworld transaction: `abort_open_transactions` from Overworld must
+                    // close the Nether frame in the Nether and keep Overworld untouched.
+                    game.world.set(pos[0], pos[1], pos[2], diamond).unwrap();
+                    tx_mode.store(3, Ordering::SeqCst);
+                    assert!(game.level_play_sound(
+                        nether,
+                        bell,
+                        at,
+                        SoundSource::Blocks,
+                        1.0,
+                        1.0,
+                        None,
+                    ));
+                    game.flush_native_sounds();
+                    assert_eq!(calls.load(Ordering::SeqCst), 10);
+                    assert_eq!(game.dim, super::Dim::Overworld);
+                    assert_eq!(game.transactions.len(), 1);
+                    assert_eq!(block_in(game, super::Dim::Overworld), diamond);
+                    assert_eq!(block_in(game, super::Dim::Nether), emerald);
+                    game.abort_open_transactions();
+                    assert_eq!(game.dim, super::Dim::Overworld);
+                    assert!(game.transactions.is_empty());
+                    assert!(!defers_retirement_in(game, super::Dim::Overworld));
+                    assert!(!defers_retirement_in(game, super::Dim::Nether));
+                    assert_eq!(block_in(game, super::Dim::Overworld), diamond);
+                    assert_eq!(block_in(game, super::Dim::Nether), netherrack);
+
+                    // 11. Explicit cross-level commit of a Nether seal while Overworld is active:
+                    // commits in the Nether, publishes Nether retirement, and restores Overworld.
+                    let nether_seal = game
+                        .with_effect_level(super::Dim::Nether, |g| {
+                            let seal = g.transaction_open();
+                            assert_eq!(
+                                g.level_set_block(
+                                    nether,
+                                    pos,
+                                    emerald,
+                                    BlockUpdateFlags::NEIGHBORS
+                                ),
+                                Ok(true)
+                            );
+                            seal
+                        })
+                        .unwrap();
+                    assert_eq!(game.dim, super::Dim::Overworld);
+                    assert_eq!(game.transactions.len(), 1);
+                    game.transaction_close(&nether_seal, true);
+                    assert_eq!(game.dim, super::Dim::Overworld);
+                    assert!(game.transactions.is_empty());
+                    assert!(!defers_retirement_in(game, super::Dim::Overworld));
+                    assert!(!defers_retirement_in(game, super::Dim::Nether));
+                    assert_eq!(block_in(game, super::Dim::Overworld), diamond);
                     assert_eq!(block_in(game, super::Dim::Nether), emerald);
                 });
             });
