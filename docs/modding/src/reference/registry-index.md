@@ -2,7 +2,11 @@
 
 Use the registry to distribute content and native mods (`.smod`), modpacks (`.spack`),
 resource packs, data packs, shaders-folder packs and Sunrise shader packs (`.sshader`).
-Submit a version with `cargo sunrise-mod publish --sunrise <stable release tag>` ([Publishing your mod](../how-to/publish.md#publishing-a-stable-source-version)).
+A native mod's version is written by `cargo sunrise-mod publish --sunrise <stable release tag>`
+([Publishing your mod](../how-to/publish.md#publishing-a-stable-source-version)), which checks the package's
+`[native] sunrise` pin against that release. For every other kind, a content-only mod included, write the
+`[[versions]]` row by hand: `sunrise`, your release asset's URL as `file`, its SHA-256, its signature, and the
+project's `key` on the entry ([The entry](#the-entry)).
 Reviewed package versions are pinned by SHA-256. The registry can also list unreviewed source for
 Nightly builds. The launcher and website read schema 1 of `index.json`.
 The format is defined by `sunrise_mod_package::index` and `sunrise_mod_package::modpack`.
@@ -99,12 +103,13 @@ packs, have independent requirements and do not get verdicts. Each decision is a
 - `made-for`: the target commit is the one the version was made for and its build requirements match.
 - `fits`: the target uses the same Minecraft version and manifest API, and everything the package uses is unchanged.
   For native mods, the comparison in [`cargo sunrise-mod fits`](sdk/04-fit.md) checks the API and declared game code.
-- `rebuild`: reserved for a registry finding that only the bodies of declared game functions changed. `review`
-  lists their paths so the author can check whether a patch overrides a game fix. Current SDKs cannot establish this
-  from their whole-function span hashes, so this writer does not emit it. The launcher's own check also still leaves
-  a native mod with changed function bodies out of its source build.
-- `breaks`: an API item or a declared game fingerprint changed, a used item disappeared, or a build requirement
-  no longer matches. `changed` names up to five items, including `minecraft` or `content-api` for those requirements.
+- `rebuild`: does not fit. Only the bodies of declared game functions changed, and the uses list and target
+  SDK both have separate declaration and body digests to prove it. `review` lists their paths so the author can
+  check whether a patch overrides a game fix. The version is not listed for this build or rebuilt automatically.
+- `breaks`: an API item or declared game code changed, a used item disappeared, or a build requirement no longer
+  matches. `changed` names up to five items, including `minecraft` or `content-api` for those requirements. A
+  function change names the path and says `body changed` or `declaration changed` when both digests are available;
+  with older evidence it reports only that the item changed.
 - `exact`: compatibility could not be judged, for example because the package has `[[native.module]]` or
   `[[native.bridge]]` rows, no uses list, or a comparison deferred to compilation. The `reason` says why. On another build Stable lists it only when a
   prebuilt binary exists for that build.
@@ -343,7 +348,9 @@ kept in the registry like any other project's.
 A `[[versions]]` row with `sunrise` must set `file` to the author's release asset, for example
 `https://github.com/you/example/releases/download/v0.1.0/example-0.1.0.smod`. Use the project's own
 GitHub repository (`source`, or `repo` if `source` is omitted), one plain tag segment, and the exact
-`<id>-<version>.smod` asset name using the full SemVer from the package. A bare filename is refused
+`<id>-<version>.<extension>` asset name: the row's `version`, a full SemVer, and the extension of
+the project's kind (`.smod`, `.spack`, `.zip`, `.sshader`). The row's version must agree with the package's
+own where the format carries one. A bare filename is refused
 on a stable row. The URL is immutable after publication, just like the source pin and digest.
 The registry checks the bytes from `--files/<sha256>`; the generated index still points to the package
 on the registry's `<id>-<version>` mirror. Rows without `sunrise` still use a bare filename.
@@ -421,11 +428,22 @@ or execute the repository. `repo` and `path` always come from the entry.
 
 The registry's CI keeps every listed file in a folder named by hash, `files/<sha256>` (no extension), which
 `registry check` and `registry build` read with `--files`. For a stable source row, the workflow fetches
-from the URL in `file`. For a row with only a filename, a maintainer puts `<sha256>.<extension>` in the
-registry's `staging` release for the workflow to fetch. Either way, the merged package is published under
+from the URL in `file`. A row with only a filename is from before stable releases: its file is already in the
+registry's releases or its `staging` release. Either way, the merged package is published under
 `<id>-<version>` with its asset name. `cargo sunrise-mod publish` uses the same hash-named layout locally
 for the new file, but its output is not a complete checkout. `registry check` needs the full checkout and
 all listed files to plan installations.
+
+For new or changed native mod versions, `registry review --files <dir>` compares the package's Cargo
+requirements, including those of packaged path dependencies, with `<sdk-data>/<commit>/Cargo.lock` from
+`--sdk-data <sdk-data>`. It warns when a crates.io requirement excludes every version the pinned game build
+uses but accepts another version on the same version line as one of them: the same nonzero major, the
+same `0.minor` with a nonzero minor, or the same `0.0.patch`. The build refuses to move the game's pin to
+another version on that line. This warning does not rule out a version on a different line that also
+satisfies the requirement. For example, `3.0.10` and `=3.0.5` both warn against the game's `3.0.6`; `>=2, <3` does not warn
+against `3.1.0`, and `0.0.2` does not warn against `0.0.1`. Loosen the requirement if your mod does not need the other
+version. If the game's lock is unavailable, review notes that it skipped
+the comparison. A different pin in the mod's own lockfile does not trigger a warning.
 
 Check a package on its own with:
 
@@ -444,7 +462,7 @@ Run these commands in your native mod’s project folder.
 | --- | --- |
 | `cargo sunrise-mod internals sync` | Checks a trusted native mod's library against an isolated copy of its pinned game source with the Rust version named by its signed SDK. Replaces top-level `internals` with compiler-discovered paths, kinds and hashes, including uses inside globs and macros. Removes unused declarations, preserves retained entries and prints additions/removals. Skips discovery when the mod neither depends on `sunrise-internals` nor declares `internals`. Never runs automatically on build. |
 | `cargo sunrise-mod internals add <path>…` | Adds each declared internal and its tool-written hash to top-level `internals` in your mod's `sunrise-mod.toml`. Reads `internals.json` from the pinned SDK, or discovers a catalog with the mod's `[[native.module]]` tables applied. Unknown paths, shape-only entries and paths available only under a `cfg` are refused before the manifest is changed. Existing declarations are refreshed, not duplicated. |
-| `cargo sunrise-mod update [--sunrise <build>]` | Moves the mod's pin to the current Nightly's build (or the build given: `nightly-<date>` or a sha); the next command fetches its SDK into `.sunrise/sdk/`. A native mod's pins are `[native] sunrise` and `[native] mixins`: `update` fetches the destination SDK's `sdk.json` (into `.sunrise/cache/<build>/`), writes its `mixins.rev` beside the new build, and changes nothing when that file is refused; `Cargo.toml` names the SDK by path, so it does not change. For a native mod's every declared internal, prints `missing`, `changed` (old signature → new signature), or `unchanged`, then refreshes the available hashes. Missing or gated declarations keep their old hash and must be removed or replaced before building. Build names: [the pin](sdk/03-in-a-project.md#the-pin). |
+| `cargo sunrise-mod update [--sunrise <build>]` | Moves the mod's pin to the current Nightly's build (or the build given: a release tag such as `nightly-<date>`, `26.3-0.1.0` or `dev-<date>-<short sha>`, or a sha); the next command fetches its SDK into `.sunrise/sdk/`. A native mod's pins are `[native] sunrise` and `[native] mixins`: `update` fetches the destination SDK's `sdk.json` (into `.sunrise/cache/<build>/`), writes its `mixins.rev` beside the new build, and changes nothing when that file is refused; `Cargo.toml` names the SDK by path, so it does not change. For a native mod's every declared internal, prints `missing`, `changed` (old signature → new signature), or `unchanged`, then refreshes the available hashes. Missing or gated declarations keep their old hash and must be removed or replaced before building. Build names: [build names](sdk/03-in-a-project.md#build-names). |
 
 The native-mod commands run in the mod's project folder and preserve the manifest's comments and
 layout. `sync` performs a metadata-only `cargo check` on the current host, using default features;

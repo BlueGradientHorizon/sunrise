@@ -216,6 +216,7 @@ fn a_save_is_refused_in_an_action_savepoint_a_special_item_is_drawn_in_isolated(
     use crate::game::native_special_renderers::frame_tests::{
         asked, draw_stick, install_special_stick,
     };
+    use sunrise_client::item_render::LayerGeometry;
     /// Every file under `root`, by its path relative to `root`, with a hash of its contents;
     /// a folder or file that can't be read fails the test.
     fn persisted(root: &std::path::Path) -> Vec<(std::path::PathBuf, u64)> {
@@ -256,8 +257,18 @@ fn a_save_is_refused_in_an_action_savepoint_a_special_item_is_drawn_in_isolated(
                 &menu,
                 |_, s| tests::placement(s),
                 |host| {
-                    draw_stick(host.game, 7);
-                    assert_eq!(asked(7), 1, "the stick wasn't drawn by its renderer");
+                    let drawn = draw_stick(host.game, 7);
+                    let [layer] = drawn.layers.as_slice() else {
+                        panic!("expected one layer from the special renderer");
+                    };
+                    let LayerGeometry::Quads(model) = &layer.geometry else {
+                        panic!("expected the special renderer's quad");
+                    };
+                    let [quad] = model.quads.as_slice() else {
+                        panic!("expected one submitted quad, not the missing model");
+                    };
+                    assert_eq!(quad.material.sprite, "minecraft:block/stone");
+                    assert_eq!(asked(7), 1);
                     assert!(Game::admit_entity_save().is_err());
                     assert_eq!(
                         host.game.save_all_reply().translation_key(),

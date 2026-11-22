@@ -213,6 +213,22 @@ python3 tools/parity_fuzz.py --replay scenarios.json                      # run 
 - **Grouping and shrinking.** Each diverging read is grouped by family, subject type, whether the read came after a reload, and first differing field. Each group's smallest scenario is shrunk (steps and NBT keys dropped, tick counts halved) while that group's divergence stays, trying all edits of a round in one batch. `report.json` in the work directory lists the groups, largest first, each with its seeds, its shrunk scenario as commands, and its differences.
 - **Triage before filing.** A group is a lead, not a bug: read the vanilla source for the field, check it isn't a seed-sync limit (above) or harness noise, and search existing issues first.
 
+### Fuzzing the shader-pack translator
+
+`tools/shader_fuzz.py` is a robustness fuzzer of `crates/sunrise-shaders`: no reference picture, only invariants every load must keep. The work is done by the `shader_fuzz` example of `sunrise-render-shaderpack`, the crate that holds the game's own pack inputs (`pack_atlas::game_inputs`, which `Renderer::pack_inputs` also calls). It adds no dependency.
+
+```sh
+python3 tools/shader_fuzz.py --smoke                                  # the seed programs unmutated, which must pass
+python3 tools/shader_fuzz.py --seed 1 --count 500                     # cases from the committed seed pack only
+python3 tools/shader_fuzz.py --corpus ~/shaderpacks --budget 1200 --jobs 4
+python3 tools/shader_fuzz.py --corpus ~/shaderpacks --replay 1234567  # one case again, by the seed a report gives
+```
+
+- **Corpus.** The hand-written seed pack (`crates/sunrise-render-shaderpack/examples/shader_fuzz/seeds/`), and with `--corpus` every pack (zip or folder) of a local folder. Third-party packs are read, never committed. A case takes one pack, one dimension's folder (as the game picks it), one or two programs (both stages, or compute shaders only) with what they include and the root `.properties` files, and flat or grid terrain inputs.
+- **Steps.** One to six mutations, each named and drawn from its own SplitMix64 seed: `declaration` (mixed declarators, `struct S {…} a, b;`, anonymous structs, interface, uniform and buffer blocks, arrays on the type or the name), `include` (chains past the preprocessor's depth, cycles, diamonds, paths out of the pack), `preprocessor` (deep and unbalanced conditionals, recursive and doubling macros, odd directives), `array_size`, `collide` (names of the game's inputs, the translator's `hz_` names, later keywords such as `sample`, `filter`, `input`), `numeric` (huge, NaN, negative, malformed literals), `truncate`, `encoding` (BOM, CRLF, invalid UTF-8, NUL), `duplicate`, `reorder`, and `properties` (`shaders.properties` values and keys; never `program.*`, which turns programs off without a note by design).
+- **Invariants.** Each case loads twice through `load_post` as the game loads a pack, in a worker process: no `panic`; within `--time-limit` (`time`) and `--memory-limit` (the worker's allocator refuses past it: `memory`; any other death is `crash`); every stage file within `--size-limit` once preprocessed (`size`); every loaded program's modules validate in naga as the translator validates them (`naga`); every note starts with a subject (a non-empty `` `key` ``, or a word without spaces before its first `: `; whether the word is one of the pack's names is not checked; the pack-wide `no program for …` note is accepted), and a program the unmutated case loaded, when only its own stage files changed, loads or has a note naming it (`refusal`); both loads give the same modules, interfaces, settings and notes (`determinism`).
+- **Grouping and shrinking.** A failure's group is its invariant, the first step after which it fails (`base` when the unmutated case already does) and its detail (panic location, naga error, program). Each group's smallest case is shrunk while the same failure stays: steps dropped, then files, then runs of lines halved down to single lines, then files again, within `--shrink-seconds`. For a `refusal`, the stage files of the programs that must load are never removed or emptied: without them the program would be missing, which needs no note. The shrunk case is a pack folder in the new run's `groups/` directory under `.local/shader-fuzz/runs/` (or `<work-dir>/runs/` when calling the Python driver with `--work-dir`) with `case.txt`; `report.json` lists every group with its seeds and the seed that replays it (with the same `--corpus`). Only `time` depends on timing: a case that takes about the limit can land either side of it.
+
 ## Reading vanilla
 
 Game jars, decompiled sources and reports live in the gitignored `.local/`, rebuilt from your own copy of the game;
@@ -258,11 +274,11 @@ when named or explicitly selected with local `--all`. LAN writes `results.json`
 with the host mode and each result beside its screenshots and logs. A skipped
 case is recorded explicitly and does not count as passing coverage.
 
-`known_flaky` in `tools/parity_hosts.json` lists harnesses that fail now and then for a
-cause not fixed yet, each with its reason. One that fails runs once more from
-scratch, and a pass then counts. `parity.py` prints a `RETRIED` line for it
-in its local summary; the daily keeps retry details in the private runner logs. No other harness gets this retry. Fix the cause, then take
-the harness off the list.
+A harness that fails while reusing oracle results runs once more from scratch, and stops reusing
+them if that run passes; it counts as failed either way, and its first failure is its outcome.
+`parity.py` prints the fresh run's outcome on its own line and a `RETRIED` line with both, and the
+daily keeps both runs' logs in the private runner logs. No rerun turns a failure into a pass: a
+harness that fails now and then is a daily red, fixed at its cause.
 
 The game-binary fixture audit keeps these complementary direct rule tests:
 

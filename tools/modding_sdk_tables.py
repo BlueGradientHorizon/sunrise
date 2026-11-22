@@ -189,7 +189,7 @@ def export_surface(root):
     """This checkout's `surface.json`, exported by its own `sunrise-stage`."""
     with tempfile.TemporaryDirectory() as folder:
         out = Path(folder) / "surface.json"
-        subprocess.run(["cargo", "run", "--quiet", "-p", "sunrise-mod-api-gen", "--bin", "sunrise-stage", "--",
+        subprocess.run(["cargo", "run", "--quiet", "-p", "sunrise-stage", "--bin", "sunrise-stage", "--",
                         "surface", str(root), str(out)],
                        cwd=root, check=True, stdout=sys.stderr)
         return json.loads(out.read_text())

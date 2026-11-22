@@ -290,6 +290,9 @@ struct MeshSettings {
     leaf_culling: LeafCullingMode,
     /// The section's frozen `section_visibility` plan; `None` on the no-mod path.
     visibility: Option<Arc<section_visibility::FrozenPlan>>,
+    /// The colours mods' tint sources gave the section's extra models, asked when the job was
+    /// scheduled (`Mesher::prepare_attached_tints`), with the resources used to prepare them.
+    attached_tints: Option<(Arc<WorkerContext>, Arc<crate::mesher::AttachedTints>)>,
 }
 enum Job {
     Generate(i32, i32),
@@ -652,6 +655,7 @@ pub struct Streaming {
     pub upload_backlog: usize,
     /// Sections waiting for the mods' `section_visibility` answers, and the answers kept.
     pub section_visibility: section_visibility::SectionPreparation,
+    attached_tint_preparation: mesh_job::TintPreparation,
     /// Dimension flags: sky light, Nether face shading.
     pub sky_light: bool,
     pub nether_shading: bool,
@@ -1141,10 +1145,13 @@ impl<G: ChunkGenerator> Jobs<G> {
                 Done::Lit(x, z, light_chunk(&borrow(&region), light, sky), seq)
             }
             Job::Mesh(x, sy, z, region, seq, settings) => {
-                let context = settings.visibility.as_ref().map_or_else(
-                    || shared.context.read().unwrap().clone(),
-                    |prepared| prepared.context.clone(),
-                );
+                let context = if let Some(prepared) = &settings.visibility {
+                    prepared.context.clone()
+                } else if let Some((context, _)) = &settings.attached_tints {
+                    context.clone()
+                } else {
+                    shared.context.read().unwrap().clone()
+                };
                 let recycled = shared.meshes.lock().unwrap().take();
                 let mesh = mesh_section(
                     &context,
@@ -1293,6 +1300,7 @@ impl Streaming {
             paused: false,
             upload_backlog: 0,
             section_visibility: Default::default(),
+            attached_tint_preparation: Default::default(),
             sky_light: true,
             nether_shading: false,
             shader_pack_lighting: false,
@@ -1331,6 +1339,7 @@ impl Streaming {
     /// were made with the old resources; their results are dropped.
     pub fn reload_resources(&mut self, world: &mut World, context: Arc<WorkerContext>) {
         *self.shared.context.write().unwrap() = context;
+        self.attached_tint_preparation = Default::default();
         self.reload_sections(world);
     }
     /// `LevelExtractor.allChanged`: discard mesh work made before the reload and
@@ -1385,15 +1394,16 @@ impl Streaming {
     /// from before its relight, then the new light; another server's is already
     /// right, which matters where the neighbours this light needs aren't all
     /// here).
-    pub fn replace_remote(&mut self, world: &mut World, chunk: Chunk) {
+    pub fn replace_remote(&mut self, world: &mut World, mut chunk: Chunk) {
         let key = (chunk.x, chunk.z);
         let Some(old) = world.chunks.get(&key).cloned() else {
             return self.insert_remote(world, chunk);
         };
         if !self.lit.contains(&key) {
+            keep_resent_extra_models(&old, &mut chunk);
             return self.insert_remote(world, chunk);
         }
-        take_resent_column(world, key, &old, chunk, self.relight_resent);
+        take_resent_column(world, &old, chunk, self.relight_resent);
     }
     /// A server's light update for a resident column: the sections whose
     /// light changed and their neighbours remesh
@@ -1523,6 +1533,9 @@ impl Streaming {
                 .remove(&(x + (i % 3) as i32 - 1, z + (i / 3) as i32 - 1));
         }
         self.decorated.insert((x, z));
+        for ([bx, by, bz], state) in writes.blocks {
+            let _ = world.set(bx, by, bz, sunrise_world::registry::BlockStateId(state));
+        }
         for (i, proto) in region.into_iter().enumerate() {
             // A final chunk keeps its own chunk: only what decoration wrote
             // into it goes there.
@@ -1533,17 +1546,25 @@ impl Streaming {
             self.light_views.remove(&key);
             self.protos.insert(key, Some(proto));
             self.written.insert(key);
+            // Features can change section occupancy in initialized neighbours too.
+            Self::publish_proto_light_support(world, key, self.proto_sections(key.0, key.1));
         }
-        for ([bx, by, bz], state) in writes.blocks {
-            let _ = world.set(bx, by, bz, sunrise_world::registry::BlockStateId(state));
-        }
-        self.publish_proto_light_support(world, (x, z));
         // After the blocks: the write of a block with a block entity made a
         // default one, which the generated one replaces.
+        let load = if writes.block_entities.is_empty() {
+            None
+        } else {
+            crate::spans::raw_flight_guard("load_block_entities")
+        };
+        let mut inserted = 0;
         for (pos, entity) in writes.block_entities {
             if world.chunks.contains_key(&(pos.0 >> 4, pos.2 >> 4)) {
                 world.block_entities.insert(pos, entity);
+                inserted += usize::from(load.is_some());
             }
+        }
+        if load.is_some() {
+            crate::spans::note_block_entity_loads(inserted);
         }
     }
     /// Saved proto chunks come back; those now out of range are dropped by
@@ -1626,10 +1647,11 @@ impl Streaming {
                 for dx in -1..=1 {
                     let neighbour = (key.0 + dx, key.1 + dz);
                     if neighbour != key && !world.chunks.contains_key(&neighbour) {
-                        let support = self.proto_light_support(world, neighbour);
-                        if !support.is_empty() {
-                            world.set_proto_light_support(neighbour, support);
-                        }
+                        Self::publish_proto_light_support(
+                            world,
+                            neighbour,
+                            self.proto_sections(neighbour.0, neighbour.1),
+                        );
                     }
                 }
             }
@@ -1757,33 +1779,25 @@ impl Streaming {
         (self.non_air_sections)(self.protos.get(&(x, z))?.as_ref()?)
     }
 
-    fn proto_light_support(&self, world: &World, key: (i32, i32)) -> SectionMask {
+    fn publish_proto_light_support(
+        world: &mut World,
+        key: (i32, i32),
+        sections: Option<SectionMask>,
+    ) {
+        // None means the proto is not initialized or is checked out, not that its
+        // published support was withdrawn. Eviction/promotion retire it separately.
+        let Some(sections) = sections else { return };
+        let first = world.layout().min_y() >> 4;
         let mut support = SectionMask::EMPTY;
-        if let Some(sections) = self.proto_sections(key.0, key.1) {
-            let first = world.layout().min_y() >> 4;
-            for s in sections
-                .iter()
-                .filter(|s| world.shape.has_section(first + *s as i32))
-            {
-                for padded in s..=s + 2 {
-                    support.insert(padded);
-                }
+        for s in sections
+            .iter()
+            .filter(|s| world.shape.has_section(first + *s as i32))
+        {
+            for padded in s..=s + 2 {
+                support.insert(padded);
             }
         }
-        support
-    }
-
-    fn publish_proto_light_support(&self, world: &mut World, key: (i32, i32)) {
-        if (-1..=1).any(|dz| {
-            (-1..=1).any(|dx| {
-                world
-                    .chunks
-                    .get(&(key.0 + dx, key.1 + dz))
-                    .is_some_and(|c| c.light_loaded)
-            })
-        }) {
-            world.set_proto_light_support(key, self.proto_light_support(world, key));
-        }
+        world.set_proto_light_support(key, support);
     }
     /// `ChunkMap.getLatestStatus` for the loading screen's chunk map: the
     /// furthest step this column has reached, `None` before it is asked for.
@@ -1993,7 +2007,11 @@ impl Streaming {
                         self.protos.insert((x, z), Some(proto));
                         if decorated || !self.decorates {
                             self.decorated.insert((x, z));
-                            self.publish_proto_light_support(world, (x, z));
+                            Self::publish_proto_light_support(
+                                world,
+                                (x, z),
+                                self.proto_sections(x, z),
+                            );
                         }
                     }
                 }
@@ -2427,7 +2445,11 @@ impl Streaming {
                     self.decoration_changed = true;
                 }
                 for key in initialized {
-                    self.publish_proto_light_support(world, key);
+                    Self::publish_proto_light_support(
+                        world,
+                        key,
+                        self.proto_sections(key.0, key.1),
+                    );
                 }
             }
         }
@@ -3017,7 +3039,30 @@ impl Streaming {
         if !self.set_forced(x, z, true) {
             return false;
         }
-        while !world.chunks.is_ticking_ready((x, z)) {
+        self.wait_for_column(world, |world| world.chunks.is_ticking_ready((x, z)));
+        true
+    }
+
+    /// `Level.getChunk` for a block read: obtain the full column, without leaving a
+    /// forced chunk ticket behind or waiting for the column to become entity-ticking.
+    pub fn load_full_column(&mut self, world: &mut World, chunk: (i32, i32)) -> bool {
+        if world.chunks.contains_key(&chunk) {
+            return true;
+        }
+        if self.paused || self.remote || self.shared.aborted.load(Ordering::Relaxed) {
+            return false;
+        }
+        self.extra.push((chunk, 0));
+        let loaded = self.wait_for_column(world, |world| world.chunks.contains_key(&chunk));
+        self.extra.pop();
+        loaded
+    }
+
+    fn wait_for_column(&mut self, world: &mut World, ready: impl Fn(&World) -> bool) -> bool {
+        while !ready(world) {
+            if self.shared.aborted.load(Ordering::Relaxed) {
+                return false;
+            }
             // Pump the existing generation queue. Keep unloads for the
             // normal owner update, which saves entities and notifies mods.
             let mut plan = self.plan_update(world);
@@ -3026,7 +3071,7 @@ impl Streaming {
             let (meshes, unloaded) = self.finish_update(world, plan);
             debug_assert!(unloaded.is_empty());
             self.free(meshes);
-            if !world.chunks.is_ticking_ready((x, z)) {
+            if !ready(world) {
                 self.wait(std::time::Duration::from_millis(5));
             }
         }
@@ -3740,19 +3785,27 @@ fn keep_unchanged_sections(
     }
     out
 }
+/// A resend keeps the client-owned models of cells that still hold the same block.
+fn keep_resent_extra_models(old: &Chunk, chunk: &mut Chunk) {
+    for (&old_cell, models) in &old.extra_models {
+        let (x, y, z) = old.dynamic_cell_coords(old_cell);
+        let (x, z) = (i32::from(x), i32::from(z));
+        if let Some(cell) = chunk.dynamic_cell(x, y, z)
+            && old.get(x, y, z) == chunk.get(x, y, z)
+        {
+            chunk.extra_models.insert(cell, models.clone());
+        }
+    }
+}
+
 /// Takes the server's new `chunk` over the resident column `old`: the sections
 /// whose blocks did not change keep `old`'s (with `chunk`'s biomes and light),
 /// and the sections whose blocks changed remesh. `relight` says the packet's
 /// light is from before the server's relight (a Sunrise server's bulk edit), so
 /// the column and its neighbours are lit here; another server's packet already
 /// carries the light vanilla applies, so no light job is queued for it.
-fn take_resent_column(
-    world: &mut World,
-    key: (i32, i32),
-    old: &Chunk,
-    mut chunk: Chunk,
-    relight: bool,
-) {
+pub fn take_resent_column(world: &mut World, old: &Chunk, mut chunk: Chunk, relight: bool) {
+    let key = (chunk.x, chunk.z);
     // The cells whose blocks changed, by section: they remesh with the neighbours within a block of them (as
     // vanilla's `setBlocksDirty`), not every section round each section changed (which, for the few blocks a
     // section often changes in a bulk edit, is mostly sections that did not).
@@ -3773,9 +3826,11 @@ fn take_resent_column(
             }
         }
     }
+    keep_resent_extra_models(old, &mut chunk);
     let kept = keep_unchanged_sections(old, &mut chunk, &mut cells);
     chunk.light_loaded = old.light_loaded;
     chunk.lit = true;
+    world.dirty_connection_group_diff(old, &chunk);
     world.install_light_column(chunk);
     world.revision = world.revision.wrapping_add(1);
     // A section with new biomes and the same blocks remeshes now (its tint), with its neighbours, whose tint
@@ -3895,6 +3950,58 @@ fn checkout_protos(
 mod tests {
     use super::section_visibility::tests::fixture;
     use super::*;
+
+    #[test]
+    #[ignore = "daily"]
+    fn decoration_updates_saved_column_light_through_neighbour_checkout() {
+        use crate::{chunk::MIN_Y, light::light_from_saved_layers};
+
+        let (mut world, mut streaming) = decoration_fixture();
+        streaming.non_air_sections = Arc::new(|proto| proto.downcast_ref::<SectionMask>().copied());
+        let neighbour = (1, 0);
+        streaming.shared.done.send(Done::Proto(
+            neighbour.0,
+            neighbour.1,
+            Box::new(SectionMask::single(6)),
+            true,
+        ));
+        streaming.plan_update(&mut world);
+
+        // A decoration centred at (0, 0) leaves its already initialized east
+        // neighbour with section 0 occupied instead of section 6.
+        streaming.decorating = 1;
+        streaming.protos.insert(neighbour, None);
+        let mut region: [Proto; 9] = std::array::from_fn(|_| Box::new(SectionMask::EMPTY) as Proto);
+        region[5] = Box::new(SectionMask::single(0));
+        streaming.shared.done.send(Done::Decorated(
+            0,
+            0,
+            Box::new(region),
+            Vec::new(),
+            FinalWrites::default(),
+        ));
+        streaming.plan_update(&mut world);
+
+        let SaveStep::Protos(checked_out) =
+            streaming.prepare_save(&mut world, false, std::time::Instant::now())
+        else {
+            panic!("expected proto saves");
+        };
+        assert!(checked_out.iter().any(|save| save.pos == neighbour));
+        assert_eq!(streaming.proto_sections(neighbour.0, neighbour.1), None);
+
+        // The arriving saved column touches the neighbour, but not the centre
+        // of decoration. It can only use the checked-out proto's published mask.
+        let mut saved = Chunk::empty(2, 0);
+        light_from_saved_layers::<&[u8]>(&mut saved, &[], true);
+        streaming.shared.done.send(Done::Generated(saved));
+        streaming.plan_update(&mut world);
+        let column = &world.chunks[&(2, 0)];
+        for b in 0..world.layout().sections() + 2 {
+            assert_eq!(column.stored_light_layers(b), Some([b < 3; 2]), "layer {b}");
+        }
+        assert_eq!(world.light(32, MIN_Y - 1, 0), 0);
+    }
 
     fn finish_jobs(streaming: &Streaming) -> usize {
         streaming
@@ -5492,6 +5599,43 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
+    fn a_resend_keeps_models_at_unchanged_resident_cells() {
+        if !crate::test_process::isolated(concat!(
+            "streaming::tests::",
+            stringify!(a_resend_keeps_models_at_unchanged_resident_cells)
+        )) {
+            return;
+        }
+        for lit in [false, true] {
+            let (mut world, mut streaming, stone) = fixture();
+            let resend = |first| {
+                let mut chunk = Chunk::empty(2, -3);
+                chunk.set(1, 10, 1, first);
+                chunk.set(2, 10, 1, stone);
+                chunk
+            };
+            let first = mod_api::__private::built::model_ref(1, 7);
+            let second = mod_api::__private::built::model_ref(1, 8);
+            let (x, y, z) = (33, 10, -47);
+            streaming.insert_remote(&mut world, resend(stone));
+            world.set_extra_models(x, y, z, &[first]).unwrap();
+            world.set_extra_models(x + 1, y, z, &[second]).unwrap();
+            for (state, expected) in [(stone, &[first][..]), (0, &[][..])] {
+                if !lit {
+                    streaming.lit.remove(&(2, -3));
+                }
+                streaming.replace_remote(&mut world, resend(state));
+                assert_eq!(world.extra_models(x, y, z), expected, "lit={lit}");
+                assert_eq!(world.extra_models(x + 1, y, z), [second], "lit={lit}");
+            }
+            world.unload_chunk((2, -3));
+            streaming.replace_remote(&mut world, resend(stone));
+            assert!(world.extra_models(x + 1, y, z).is_empty());
+        }
+    }
+
+    #[test]
     fn a_pad_only_resend_dirties_the_boundary_mesh_and_its_neighbours() {
         use crate::chunk::SECTIONS;
         use crate::light::light_from_layers;
@@ -5505,7 +5649,7 @@ mod tests {
             let mut new = old.clone();
             layers[pad].1 = Some(vec![0x77; 2048]);
             light_from_layers(&mut new, &layers, true);
-            take_resent_column(&mut world, (2, -3), &old, new, false);
+            take_resent_column(&mut world, &old, new, false);
             assert_eq!(world.dirty_sections.len(), 9);
             for z in -4..=-2 {
                 for x in 1..=3 {
@@ -5529,7 +5673,7 @@ mod tests {
             let mut new = old.clone();
             new.set(1, 10, 1, 2);
             Arc::make_mut(&mut new.sections[0]).light = crate::chunk::Light::Uniform(0xF0);
-            take_resent_column(&mut world, (2, -3), &old, new, relight);
+            take_resent_column(&mut world, &old, new, relight);
             let chunk = &world.chunks[&(2, -3)];
             assert_eq!(chunk.block(1, 10, 1).0, 2);
             // The packet's light is what the column shows.
@@ -5540,6 +5684,25 @@ mod tests {
             // its eight neighbours.
             assert_eq!(world.dirty_light.len(), if relight { 9 } else { 0 });
         }
+    }
+
+    #[test]
+    fn empty_resent_column_dirties_the_old_groups_even_with_unchanged_blocks() {
+        let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
+        let mut old = resident_column(&mut world, 0x50);
+        let mut resent = old.clone();
+        resent.set(5, 104, 5, 2);
+        old.set_connection_group(3, 64, 4, Some(42));
+        world.install_light_column(old.clone());
+        world.dirty_sections.clear();
+        take_resent_column(&mut world, &old, resent, true);
+
+        let group_section = (64 - crate::chunk::MIN_Y) >> 4;
+        let block_section = (104 - crate::chunk::MIN_Y) >> 4;
+        assert!((block_section - group_section).abs() > 1);
+        assert!(world.dirty_sections.contains(&(2, block_section, -3)));
+        assert!(world.dirty_sections.contains(&(2, group_section, -3)));
+        assert_eq!(world.connection_group(2 * 16 + 3, 64, -3 * 16 + 4), None);
     }
 }
 

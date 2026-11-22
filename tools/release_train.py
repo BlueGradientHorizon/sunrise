@@ -2,7 +2,8 @@
 """Decides when Sunrise releases, names the release and writes its notes (.github/workflows/release.yml).
 
     python3 tools/release_train.py decide --kind game [--head SHA] [--force]
-    python3 tools/release_train.py decide --kind game --channel nightly|snapshot [--head SHA] [--force] [--daily] [--exception TEXT]
+    python3 tools/release_train.py decide --kind game --channel nightly|dev [--head SHA] \\
+        [--force] [--daily] [--exception TEXT]
     python3 tools/release_train.py notes --kind game --tag v2026.10.15 --out dist/notes
     python3 tools/release_train.py gate --kind game --smoke dist/smoke-test.json [--blockers]   # before publishing
 
@@ -10,12 +11,12 @@ The game ships only the Nightly since 2026-10-28 (Ludovic): when `decide --kind 
 `nightly build` on the commit it decided (tools/ci/nightly.py), and "the last release" is the published Nightly.
 On the fork (CI tiers, owner 2026-11-13) `--channel` names the kind of build: `nightly` takes `daily-green` and
 refuses any other --head (an older commit had no daily run of its own, and no SDK) unless --exception names the
-owner's one-time grant for it (owner, 2026-11-17: an exception never changes the rule); `snapshot` takes main's head (or
+owner's one-time grant for it (owner, 2026-11-17: an exception never changes the rule); `dev` takes main's head (or
 a --head on main) and refuses a commit whose gate jobs (dyna-checks' main-push lint, verify, verify-static)
 did not all pass (pending is not passed). The next push cancels a main push run (dyna-ci.yml), so a publishing run
 (GATE_RERUN=1: release.yml's decide and nightly-build.yml's pick, real runs) waits for the commit's run and starts it again once when it was cancelled, in a
-group no push cancels (gate_again); otherwise it always builds, as snapshot-<date>-<short> (no batch rules,
-cap, pause or release-blocker: a snapshot is for testing main, never for players).
+group no push cancels (gate_again); otherwise it always builds, as dev-<date>-<short> (no batch rules,
+cap, pause or release-blocker: a Dev build is for testing main, never for players).
 
 Release branches (docs/release-flow.md "Release branches"): once an owner creates `nightly/<target>`, the daily
 fast-forwards it to each fully green commit and a Nightly builds its head instead of `daily-green`. A stable release,
@@ -455,18 +456,18 @@ def published_nightly():
     return json.loads(out) if out.strip() else None
 
 
-SNAPSHOT_RUN = "snapshot build"
+DEV_RUN = "dev build"
 STABLE_RUN = "stable build"
 
 
 def nightly_building():
     """The Nightly's run of `nightly build` under way or waiting, if any: the train starts no second one. A
-    snapshot's or a stable release's run (named `snapshot build <commit>` or `stable build <ref>` by
+    Dev or Stable run (named `dev build <commit>` or `stable build <ref>` by
     nightly-build.yml's run-name) has its own concurrency group and never holds a Nightly back; every other run of
     the workflow is a Nightly's."""
     runs = gh_json("run", "list", "--repo", REPO, "--workflow", NIGHTLY_WORKFLOW, "--limit", "20",
                    "--json", "databaseId,status,displayTitle")
-    others = (SNAPSHOT_RUN.split(), STABLE_RUN.split())
+    others = (DEV_RUN.split(), STABLE_RUN.split())
     return next((entry["databaseId"] for entry in runs
                  if entry["status"] in ("queued", "in_progress", "waiting", "pending", "requested")
                  and entry["displayTitle"].split(" ", 2)[:2] not in others), None)
@@ -563,7 +564,7 @@ NIGHTLY_BRANCH = f"nightly/{TARGET}"
 RELEASE_BRANCH = f"release/{TARGET}"
 # What a real run on each ref may publish. Any other ref is a dry run: it signs with a throwaway key.
 PUBLISHES = {
-    "refs/heads/main": {"daily", "nightly", "snapshot", "sdk"},
+    "refs/heads/main": {"daily", "nightly", "dev", "sdk"},
     f"refs/heads/{NIGHTLY_BRANCH}": {"nightly"},
     f"refs/heads/{RELEASE_BRANCH}": {"daily", "stable", "sdk"},
 }
@@ -778,7 +779,7 @@ def break_glass_legs(paths):
 
 
 # The crates that judge a release: its mod API surface (sunrise-stage), its packages and its signature.
-JUDGES = ("crates/sunrise-mod-api-gen", "crates/sunrise-mod-surface", "crates/sunrise-mod-package",
+JUDGES = ("crates/sunrise-stage", "crates/sunrise-mod-api-gen", "crates/sunrise-mod-surface", "crates/sunrise-mod-package",
           "crates/sunrise-release-sign")
 DEPENDENCY_KINDS = ("dependencies", "build-dependencies")
 
@@ -1011,7 +1012,7 @@ def push_gate_run(sha, branch="main"):
 
 
 def fork_gate_passed(sha, branch="main"):
-    """Whether the newest dyna-checks push run of `branch` (main: the snapshot's check) on sha passed every gate job."""
+    """Whether the newest dyna-checks push run of `branch` (main for a Dev build) on sha passed every gate job."""
     found = push_gate_run(sha, branch)
     return found is not None and gate_jobs_passed(found["id"], GATE)
 
@@ -1045,7 +1046,7 @@ def channel_head(channel, head, exception="", daily_run=""):
     """The commit a fork channel builds, or exits naming the check it failed. A nightly builds only the nightly
     branch's head once it exists, before that the commit
     `daily-green` points to (its default), unless `exception` names the owner's one-time grant for another commit
-    (docs/release-flow.md "Nightly channel"), which names that commit in full; it still needs the gate. A snapshot
+    (docs/release-flow.md "Nightly channel"), which names that commit in full; it still needs the gate. A Dev build
     takes no exception."""
     if channel == "nightly" and exception and not re.fullmatch(r"[0-9a-f]{40}", head or ""):
         raise SystemExit("::error::refused: an exception names the full 40-character commit it grants, not "
@@ -1060,6 +1061,12 @@ def channel_head(channel, head, exception="", daily_run=""):
         raise SystemExit(f"::error::refused: {head} is not a commit of this repository")
     if subprocess.run(["git", "merge-base", "--is-ancestor", sha, "refs/remotes/origin/main"], cwd=ROOT).returncode:
         raise SystemExit(f"::error::refused: {sha} is not on main; a {channel} builds only a commit of main")
+    # Both release.yml (before building the SDK) and nightly.py pick use this commit check.
+    if channel == "dev" and '"dev-"' not in run(
+        "git", "show", f"{sha}:crates/sunrise-core/src/release.rs", check=False
+    ):
+        raise SystemExit(f"::error::refused: {sha} predates Dev build support. "
+                         "Choose a commit that recognizes the dev- version prefix.")
     if channel == "nightly" and not exception and sha != green:
         pointer = f"the head of {NIGHTLY_BRANCH}" if branch else f"the commit `{DAILY_GREEN}` points to"
         raise SystemExit(f"::error::refused: {sha} is not {pointer} ({green or 'none yet'}); "
@@ -1079,7 +1086,7 @@ def channel_head(channel, head, exception="", daily_run=""):
 
 
 def build_tag(channel, date, sha):
-    """A build's tag and the version it installs as: `nightly-<date>-<short>` or `snapshot-<date>-<short>`
+    """A build's tag and the version it installs as: `nightly-<date>-<short>` or `dev-<date>-<short>`
     (sunrise_release_sign::Channel parses it; the launcher installs under it)."""
     return f"{channel}-{date}-{sha[:7]}"
 
@@ -1126,14 +1133,14 @@ def main():
     parser.add_argument("--head", help="the commit to release (default: the newest commit on main whose checks passed)")
     parser.add_argument("--daily", action="store_true",
                         help="decide: the daily run's nightly, without the batch-size and age rules")
-    parser.add_argument("--channel", choices=["nightly", "snapshot"],
+    parser.add_argument("--channel", choices=["nightly", "dev"],
                         help="decide: the fork's kind of build, which picks and checks the commit (see above)")
     parser.add_argument("--exception", default="",
                         help="decide --channel nightly: the owner's one-time grant for a commit that is not daily-green")
     parser.add_argument("--ref", help="decide: a real run's GITHUB_REF, which must publish the channel (PUBLISHES)")
     parser.add_argument("--daily-run", default="",
                         help="decide --channel nightly: the daily run promoting its own commit, <run id>/<attempt>")
-    parser.add_argument("--publish-kind", choices=["daily", "nightly", "snapshot", "stable", "sdk"],
+    parser.add_argument("--publish-kind", choices=["daily", "nightly", "dev", "stable", "sdk"],
                         help="authorize: what the run would publish")
     parser.add_argument("--dry-run", default="true", help="authorize: the run's dry_run input; only \"false\" may publish")
     parser.add_argument("--tag", help="notes: the release's tag")
@@ -1192,11 +1199,10 @@ def main():
         write_outputs({"release": "false", "reason": result["reason"]})
         return 0
     head = run("git", "rev-parse", head).strip()
-    if args.channel == "snapshot" and args.command == "decide":
-        # A snapshot is for testing a commit of main, never for players: the gate on its commit is its only rule (no
-        # batch, cap, pause or release-blocker), and its tag is its own (never `nightly`).
-        tag = build_tag("snapshot", now.date().isoformat(), head)
-        result = {"release": True, "reason": f"the gate passed on {head[:9]}: snapshot {tag}", "tag": tag,
+    if args.channel == "dev" and args.command == "decide":
+        # The Dev commit is eligible without Nightly's batch, cap, pause or release-blocker checks.
+        tag = build_tag("dev", now.date().isoformat(), head)
+        result = {"release": True, "reason": f"the gate passed on {head[:9]}: {tag}", "tag": tag,
                   "head": head, "urgent": False}
         print(json.dumps(result, indent=1))
         write_outputs({"release": "true", "reason": result["reason"], "tag": tag, "head": head, "urgent": "false"})
