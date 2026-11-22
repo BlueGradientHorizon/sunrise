@@ -206,10 +206,11 @@ fn rocket_impact_listener_can_save_the_advanced_rocket() {
                     })
                     .expect("impact save includes the resident rocket");
                 let saved_position = sunrise_client::entity_nbt::position(rocket).unwrap();
-                point(
-                    [saved_position.x, saved_position.y, saved_position.z],
-                    hits[0].projectile_pos,
+                assert_eq!(
+                    [saved_position.x, saved_position.y, saved_position.z].map(f64::to_bits),
+                    hits[0].projectile_pos.map(f64::to_bits),
                 );
+                assert!(hits[0].projectile_pos[0] > 0.5);
             });
         },
     );
