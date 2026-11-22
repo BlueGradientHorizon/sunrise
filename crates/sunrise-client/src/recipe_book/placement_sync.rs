@@ -398,8 +398,8 @@ impl Client {
         Some(Frame::Place { selection, use_max })
     }
     /// Only a current missing-ingredients reply authorizes ghost installation.
-    /// Consume only the reply to the current selection. Stale replies cannot
-    /// cancel a newer request's timeout or install its ghosts.
+    /// Consume only the reply to the current selection so stale replies cannot
+    /// install ghosts for a newer selection.
     pub fn reply(&mut self, selection: &Selection, outcome: Outcome) -> Option<Outcome> {
         if self.selection.as_ref() != Some(selection)
             || self.catalog.as_ref() != Some(&selection.catalog)

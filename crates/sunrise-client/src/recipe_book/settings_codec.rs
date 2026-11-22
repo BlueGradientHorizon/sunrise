@@ -31,7 +31,6 @@ pub fn encode(message: &Message) -> Result<Vec<u8>> {
         out.bool(flags.filtering);
     };
     match message {
-        Message::Busy => out.u8(7),
         Message::Hello => out.bytes(&[5, VERSION]),
         Message::Ready => out.bytes(&[6, VERSION]),
         Message::Offer(keys) => {
@@ -93,7 +92,6 @@ pub fn encode(message: &Message) -> Result<Vec<u8>> {
             key(&mut out, id)?;
             pair(&mut out, *flags);
         }
-        Message::Resnapshot => out.u8(4),
         Message::Placement(frame) => {
             out.u8(PLACEMENT_TAG);
             out.data.extend(super::placement_codec::encode(frame)?);
@@ -179,8 +177,6 @@ pub fn decode(data: &[u8]) -> Option<Message> {
                 }
             }
         }
-        4 => Message::Resnapshot,
-        7 => Message::Busy,
         5 | 6 if r.u8().ok()? == VERSION => {
             if tag == 5 {
                 Message::Hello

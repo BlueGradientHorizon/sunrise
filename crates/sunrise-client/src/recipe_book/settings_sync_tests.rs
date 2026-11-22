@@ -16,13 +16,10 @@ fn authoritative_screen_pair_reconnect_and_pending_intent() {
     let mut client = ClientView::default();
     assert!(client.receive(server.snapshot(&saved), &registered()));
     assert_eq!(client.books.get("demo:pot"), flags(false, false));
-    let now = Instant::now();
-    let (reply, changed) =
-        server.request(&mut saved, 7, 1, &id("demo:pot"), flags(true, false), now);
+    let (reply, changed) = server.request(&mut saved, 7, 1, &id("demo:pot"), flags(true, false));
     assert!(changed);
     assert!(client.receive(reply, &registered()));
-    let (reply, changed) =
-        server.request(&mut saved, 7, 2, &id("demo:pot"), flags(true, true), now);
+    let (reply, changed) = server.request(&mut saved, 7, 2, &id("demo:pot"), flags(true, true));
     assert!(changed);
     assert!(client.receive(reply, &registered()));
     assert_eq!(saved.get("demo:pot"), flags(true, true));
@@ -38,31 +35,28 @@ fn authoritative_screen_pair_reconnect_and_pending_intent() {
     let mut next = ClientView::default();
     assert!(next.receive(reconnected.snapshot(&saved), &registered()));
     assert_eq!(next.books.get("demo:pot"), flags(true, true));
-    let (reply, changed) =
-        server.request(&mut saved, 6, 99, &id("demo:pot"), flags(false, false), now);
+    let (reply, changed) = server.request(&mut saved, 6, 99, &id("demo:pot"), flags(false, false));
     assert!(!changed);
     assert!(matches!(reply, Message::Snapshot { .. }));
     assert!(
         !server
-            .request(&mut saved, 7, 2, &id("demo:pot"), flags(false, false), now)
+            .request(&mut saved, 7, 2, &id("demo:pot"), flags(false, false))
             .1
     );
     assert!(
         !server
-            .request(
-                &mut saved,
-                7,
-                4,
-                &id("unknown:book"),
-                flags(true, true),
-                now
-            )
+            .request(&mut saved, 7, 4, &id("unknown:book"), flags(true, true))
             .1
     );
     assert_eq!(saved.get("demo:pot"), flags(true, true));
+    // Refused requests leave the authority ready for the next valid intent without retry state.
+    let (reply, changed) = server.request(&mut saved, 7, 5, &id("demo:pot"), flags(false, true));
+    assert!(changed);
+    assert!(client.receive(reply, &registered()));
+    assert_eq!(client.books.get("demo:pot"), flags(false, true));
 }
 #[test]
-fn rejects_unknown_books_rate_excess_and_revision_gaps() {
+fn rejects_unknown_books_and_stale_updates_without_latching_later_valid_intent() {
     let mut books = CustomBooks::default();
     books.set(&id("absent:book"), flags(true, false));
     let mut server =
@@ -73,51 +67,47 @@ fn rejects_unknown_books_rate_excess_and_revision_gaps() {
     );
     let mut client = ClientView::default();
     assert!(client.receive(snapshot, &registered()));
-    let now = Instant::now();
-    for number in 1..=20 {
-        assert!(
-            !server
-                .request(
-                    &mut books,
-                    1,
-                    number,
-                    &id("demo:pot"),
-                    flags(false, false),
-                    now
-                )
-                .1
-        );
+    // Sequential valid toggles apply without a per-second request cap.
+    for number in 1..=25 {
+        let next = flags(number % 2 == 1, false);
+        let (reply, changed) = server.request(&mut books, 1, number, &id("demo:pot"), next);
+        assert!(changed);
+        assert!(client.receive(reply, &registered()));
     }
+    assert_eq!(books.get("demo:pot"), flags(true, false));
+    assert_eq!(client.books.get("demo:pot"), flags(true, false));
+    // Unnegotiated books are refused and do not mutate saved state.
     assert!(
         !server
-            .request(&mut books, 1, 21, &id("demo:pot"), flags(true, true), now)
+            .request(&mut books, 1, 26, &id("demo:oven"), flags(true, true))
             .1
     );
-    assert_eq!(books.get("demo:pot"), flags(false, false));
-    assert!(
-        !server
-            .request(
-                &mut books,
-                1,
-                22,
-                &id("demo:oven"),
-                flags(true, true),
-                now + Duration::from_secs(1)
-            )
-            .1
-    );
+    assert_eq!(books.get("demo:oven"), flags(false, false));
+    // Invalid/stale client frames leave established good authority/presentation alone
+    // and never latch later valid updates out.
     assert!(!client.receive(
         Message::Update {
             epoch: 1,
-            revision: 2,
+            revision: 99,
             key: id("demo:pot"),
-            flags: flags(true, true)
+            flags: flags(false, true),
         },
         &registered()
     ));
-    assert!(!client.ready);
-    assert_eq!(client.books.get("demo:pot"), flags(false, false));
-    assert!(client.receive(server.snapshot(&books), &registered()));
+    assert!(!client.receive(
+        Message::Snapshot {
+            epoch: 1,
+            revision: 26,
+            entries: vec![(id("absent:book"), flags(true, true))],
+        },
+        &registered()
+    ));
+    assert!(client.ready);
+    assert_eq!(client.books.get("demo:pot"), flags(true, false));
+    let (reply, changed) = server.request(&mut books, 1, 27, &id("demo:pot"), flags(false, true));
+    assert!(changed);
+    assert!(client.receive(reply, &registered()));
+    assert_eq!(client.books.get("demo:pot"), flags(false, true));
 }
 #[test]
 fn settings_codec_rejects_malformed_messages() {
@@ -125,7 +115,8 @@ fn settings_codec_rejects_malformed_messages() {
         encode(&Message::Offer(vec![id("demo:pot")])),
         Ok(b"\x00\x01\x08demo:pot".to_vec())
     );
-    assert_eq!(decode(&[4]), Some(Message::Resnapshot));
+    assert!(decode(&[4]).is_none());
+    assert!(decode(&[7]).is_none());
     let messages = [
         Message::Hello,
         Message::Ready,
@@ -147,7 +138,6 @@ fn settings_codec_rejects_malformed_messages() {
             key: id("demo:pot"),
             flags: flags(true, true),
         },
-        Message::Resnapshot,
     ];
     for message in messages {
         let encoded = encode(&message).unwrap();
@@ -266,16 +256,9 @@ fn identifier_length_is_a_wire_constraint_only() {
 }
 
 #[test]
-fn payload_budget_bounds_all_snapshot_producing_routes() {
-    let mut budget = RequestBudget::default();
-    let now = Instant::now();
-    for _ in 0..20 {
-        assert!(budget.accept(now));
-    }
-    for _ in 0..100 {
-        assert!(!budget.accept(now));
-    }
-    assert!(budget.accept(now + Duration::from_secs(1)));
+fn codec_rejects_wrong_versions_and_removed_retry_tags() {
+    assert!(decode(&[4]).is_none());
+    assert!(decode(&[7]).is_none());
     assert!(decode(&[5, 0]).is_none());
     assert!(decode(&[6, 1]).is_none());
 }
@@ -303,5 +286,10 @@ fn connected_replacement_removes_destination_only_flags() {
         },
         &registered()
     ));
+    assert!(client.ready);
     assert_eq!(client.books.get("demo:oven"), flags(false, false));
+    let (reply, changed) = server.request(&mut books, 12, 1, &id("demo:oven"), flags(true, false));
+    assert!(changed);
+    assert!(client.receive(reply, &registered()));
+    assert_eq!(client.books.get("demo:oven"), flags(true, false));
 }

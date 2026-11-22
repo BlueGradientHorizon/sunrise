@@ -204,6 +204,7 @@ impl Game<'_> {
                     }
                     self.ui.registries.custom_completions.clear();
                     self.set_registries(registries);
+                    self.begin_book_negotiation();
                 }
                 // handleTransfer: "Cannot transfer to server from
                 // singleplayer" (no ServerData), so the world just closes.

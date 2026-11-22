@@ -1,0 +1,1 @@
+sunrise-client game::native_hooks::book_screen::lifecycle_tests::non_sunrise_brand_connection_negotiates_and_brand_only_connection_cannot_place lib daily resources

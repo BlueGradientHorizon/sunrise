@@ -370,7 +370,6 @@ impl Game<'_> {
         let Some((open, filtering)) = self.mod_book_flags() else {
             return false;
         };
-        self.native_net.placement.deadline = None;
         let Some(batch) = self.batch_for_size() else {
             return false;
         };

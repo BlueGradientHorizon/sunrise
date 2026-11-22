@@ -1,13 +1,11 @@
 //! Connection-scoped authoritative custom book synchronization.
 use super::{BookFlags, CustomBooks, placement_sync::ResourceId};
 use std::collections::BTreeSet;
-use std::time::{Duration, Instant};
 
 pub use sunrise_protocol::custom_book::CHANNEL;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Message {
-    Busy,
     Hello,
     Ready,
     Offer(Vec<ResourceId>),
@@ -28,35 +26,7 @@ pub enum Message {
         key: ResourceId,
         flags: BookFlags,
     },
-    Resnapshot,
     Placement(super::placement_sync::Frame),
-}
-
-/// Connection payload budget, checked before decoding or allocating replies.
-pub struct RequestBudget {
-    window: Instant,
-    count: u32,
-}
-impl Default for RequestBudget {
-    fn default() -> Self {
-        Self {
-            window: Instant::now(),
-            count: 0,
-        }
-    }
-}
-impl RequestBudget {
-    pub fn accept(&mut self, now: Instant) -> bool {
-        if now.saturating_duration_since(self.window) >= Duration::from_secs(1) {
-            self.window = now;
-            self.count = 0;
-        }
-        if self.count >= 20 {
-            return false;
-        }
-        self.count += 1;
-        true
-    }
 }
 
 /// A new value is required for every connection, including reconnects.
@@ -65,8 +35,6 @@ pub struct Authority {
     pub revision: u64,
     keys: BTreeSet<ResourceId>,
     last_request: u64,
-    window: Instant,
-    requests: u32,
 }
 
 impl Authority {
@@ -87,8 +55,6 @@ impl Authority {
                 .filter(|id| registered.contains(id))
                 .collect(),
             last_request: 0,
-            window: Instant::now(),
-            requests: 0,
         }
     }
     pub fn server_update(&mut self, key: &str, flags: BookFlags) -> Option<Message> {
@@ -120,18 +86,12 @@ impl Authority {
         number: u64,
         key: &ResourceId,
         flags: BookFlags,
-        now: Instant,
     ) -> (Message, bool) {
-        if now.saturating_duration_since(self.window) >= Duration::from_secs(1) {
-            self.window = now;
-            self.requests = 0;
-        }
-        self.requests = self.requests.saturating_add(1);
-        if epoch != self.epoch
-            || number <= self.last_request
-            || self.requests > 20
-            || !self.keys.contains(key)
-        {
+        if epoch != self.epoch || number <= self.last_request || !self.keys.contains(key) {
+            log::warn!(
+                "[recipe book] refused stale or unnegotiated settings request for {} (epoch {epoch}, number {number})",
+                key.as_str()
+            );
             return (self.snapshot(books), false);
         }
         self.last_request = number;
@@ -181,7 +141,6 @@ impl ClientView {
                 let mut keys = BTreeSet::new();
                 for (key, flags) in entries {
                     if !registered.contains(&key) {
-                        self.ready = false;
                         return false;
                     }
                     books.set(&key, flags);
@@ -200,14 +159,11 @@ impl ClientView {
                 key,
                 flags,
             } => {
-                if self.epoch != Some(epoch) {
-                    return false;
-                }
                 if !self.ready
+                    || self.epoch != Some(epoch)
                     || self.revision.checked_add(1) != Some(revision)
                     || !self.keys.contains(&key)
                 {
-                    self.ready = false;
                     return false;
                 }
                 self.books.set(&key, flags);

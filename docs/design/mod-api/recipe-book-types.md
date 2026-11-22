@@ -277,17 +277,19 @@ trailing bytes and duplicate keys before applying anything. Placement catalogue
 parts fit individual frames; a catalogue can span multiple frames.
 
 Negotiation, snapshots and requests do work only on connection or a settings
-change. There is no per-tick mod scan or new tick allocation. A connection's
-request replay guard and rate allowance survive rejected requests and repeat
-offers. Disconnect removes the connection authority and clears pending client
+change. There is no per-tick mod scan, timer polling or new tick allocation.
+Admission uses the actual placed connection, negotiated book-channel capability
+and placement schema, never the client brand. A connection's request replay
+guard survives rejected requests and repeat offers. Disconnect and
+reconfiguration remove the connection authority and clear pending client
 intent; the saved server map remains independent of the client view.
 
-The response budget covers every payload, including malformed input and
-snapshot requests. Once exhausted, a negotiated peer receives a one-byte busy
-control reply instead of another large snapshot. The client disables the custom
-view and coalesces a retry after one second; a busy response schedules the next
-retry, and a successful authoritative snapshot cancels it. This bounds response
-amplification without leaving a lost resnapshot or pending UI intent unresolved.
+Settings apply directly on the ordered play stream with no per-second request
+budget, busy control reply or resnapshot retry protocol. Invalid or stale
+frames report once per actual input, leave established good authority and
+presentation untouched, and never latch later valid intent out. Genuine new
+menu openings, reconfigurations, reloads and authoritative knowledge changes
+drive catalogue refreshes.
 
 ## Toggle layout and large books
 

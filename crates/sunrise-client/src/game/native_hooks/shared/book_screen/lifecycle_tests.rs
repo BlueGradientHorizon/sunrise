@@ -180,7 +180,8 @@ fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
                     .expect("catalogue requested on opening");
                 assert_eq!(window.menu.as_str(), "bound:menu");
                 assert_eq!(window.nonce, nonce);
-                assert!(game.native_net.placement.deadline.is_some());
+                game.set_screen(Screen::Playing);
+                assert!(game.native_net.placement.client.window().is_none());
             });
         });
     });
@@ -522,13 +523,42 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                 },
             );
             assert_eq!(geometry(game), opened);
-            receive(game, Message::Busy);
+            // Removed retry/busy tags and stale/gap updates leave established
+            // good authority and presentation alone without latching later valid input out.
+            game.remote_book_settings(&[4]);
+            game.remote_book_settings(&[7]);
+            receive(
+                game,
+                Message::Update {
+                    epoch: 7,
+                    revision: 9,
+                    key: ResourceId::from_registered_book(&key),
+                    flags: BookFlags {
+                        open: false,
+                        filtering: false,
+                    },
+                },
+            );
+            assert!(game.native_net.book_view.ready);
+            assert_eq!(geometry(game), opened);
+            receive(
+                game,
+                Message::Update {
+                    epoch: 7,
+                    revision: 4,
+                    key: ResourceId::from_registered_book(&key),
+                    flags: BookFlags {
+                        open: false,
+                        filtering: true,
+                    },
+                },
+            );
             assert_eq!(geometry(game), closed);
             receive(
                 game,
                 Message::Snapshot {
                     epoch: 7,
-                    revision: 4,
+                    revision: 5,
                     entries: vec![(
                         ResourceId::from_registered_book(&key),
                         BookFlags {
@@ -857,11 +887,58 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                     assert_eq!(game.set_screen_slot("bound:menu", 1, None), Ok(()));
                 }
                 game.build_screen();
-                game.check_mod_book_placement_timeout();
                 game.ensure_mod_book_catalog();
                 assert!(kept(game));
                 assert_eq!(game.native_screen_slot(0), Some((30.0, 40.0)));
                 assert_eq!(game.native_screen_slot(1), None);
+
+                // A refused placement keeps the active catalogue and allows later valid intent
+                // without clearing or re-requesting.
+                use sunrise_client::recipe_book::placement_sync::{
+                    DisplayId, Frame, Outcome, Refusal,
+                };
+                let Frame::Place { selection, .. } = game
+                    .native_net
+                    .placement
+                    .client
+                    .select(
+                        DisplayId {
+                            recipe: ResourceId::try_from("bound:recipe".to_owned()).unwrap(),
+                            source: 0,
+                        },
+                        false,
+                    )
+                    .expect("placement selection")
+                else {
+                    panic!("placement frame");
+                };
+                game.remote_mod_book_placement(Frame::Reply {
+                    selection,
+                    outcome: Outcome::Refused(Refusal::Denied),
+                });
+                assert!(kept(game));
+                let Frame::Place {
+                    selection: second, ..
+                } = game
+                    .native_net
+                    .placement
+                    .client
+                    .select(
+                        DisplayId {
+                            recipe: ResourceId::try_from("bound:recipe".to_owned()).unwrap(),
+                            source: 0,
+                        },
+                        true,
+                    )
+                    .expect("later valid placement selection")
+                else {
+                    panic!("placement frame");
+                };
+                game.remote_mod_book_placement(Frame::Reply {
+                    selection: second,
+                    outcome: Outcome::Placed,
+                });
+                assert!(kept(game));
 
                 // The server replaces the menu in place, with no close packet.
                 open(game);
@@ -1072,5 +1149,185 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
                 })
             },
         );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn non_sunrise_brand_connection_negotiates_and_brand_only_connection_cannot_place() {
+    use sunrise_client::{
+        lan::{Out, PlayerSender},
+        recipe_book::{
+            placement_sync::{Frame, Refusal, schema},
+            settings_sync::CHANNEL,
+        },
+    };
+    use sunrise_protocol::packets::play::Clientbound as C;
+
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "bound",
+        Box::new(BoundBookMod::default()),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            let (tx12, rx12) = std::sync::mpsc::channel();
+            let (tx13, rx13) = std::sync::mpsc::channel();
+            game.lan.as_mut().unwrap().hub.update_guest(12, |guest| {
+                guest.brand = "other-client".into();
+                guest.sender = PlayerSender::new(tx12, Arc::default());
+            });
+            game.lan.as_mut().unwrap().hub.update_guest(13, |guest| {
+                guest.brand = "sunrise".into();
+                guest.sender = PlayerSender::new(tx13, Arc::default());
+            });
+            let drain = |rx: &std::sync::mpsc::Receiver<Out>| -> Vec<Message> {
+                let mut messages = Vec::new();
+                for out in rx.try_iter() {
+                    let bodies = match out {
+                        Out::Packet(body) => vec![body],
+                        Out::Packets(bodies) => bodies,
+                        Out::Disconnect(_) => panic!("unexpected disconnect"),
+                    };
+                    for body in bodies {
+                        let mut reader = sunrise_protocol::buf::Reader::new(&body);
+                        let id = reader.varint().unwrap();
+                        if let Ok(C::CustomPayload(p)) = C::decode(id, reader.rest())
+                            && p.channel == CHANNEL
+                        {
+                            messages.push(settings_codec::decode(&p.data).unwrap());
+                        }
+                    }
+                }
+                messages
+            };
+            let send = |game: &mut Game<'_>, conn: u32, message: &Message| {
+                game.guest_book_settings(conn, &settings_codec::encode(message).unwrap());
+            };
+            let book = ResourceId::try_from("bound:book".to_owned()).unwrap();
+
+            // Guest 13 has brand "sunrise" only, with no book-channel capability or offer:
+            // placement frames are dropped and never install server placement state.
+            send(
+                game,
+                13,
+                &Message::Placement(Frame::Hello {
+                    epoch: 1,
+                    schema: schema(),
+                }),
+            );
+            assert!(drain(&rx13).is_empty());
+            assert!(!game.native_net.placement.servers.contains_key(&13));
+
+            // Guest 12 has a non-Sunrise brand, yet negotiates capability, offer and placement.
+            send(game, 12, &Message::Hello);
+            assert_eq!(drain(&rx12), vec![Message::Ready]);
+            send(game, 12, &Message::Offer(vec![book.clone()]));
+            let replies = drain(&rx12);
+            let [
+                Message::Snapshot {
+                    epoch,
+                    revision,
+                    entries,
+                },
+            ] = replies.as_slice()
+            else {
+                panic!("expected initial snapshot for negotiated non-Sunrise guest");
+            };
+            let epoch = *epoch;
+            assert_eq!(*revision, 0);
+            assert_eq!(entries, &[(book.clone(), BookFlags::default())]);
+
+            // Refused settings leave the connection usable for later valid intent.
+            send(
+                game,
+                12,
+                &Message::Request {
+                    epoch: epoch + 99,
+                    number: 1,
+                    key: book.clone(),
+                    flags: BookFlags {
+                        open: true,
+                        filtering: false,
+                    },
+                },
+            );
+            assert!(matches!(
+                drain(&rx12).as_slice(),
+                [Message::Snapshot {
+                    epoch: snap_epoch,
+                    revision: 0,
+                    ..
+                }] if *snap_epoch == epoch
+            ));
+            send(
+                game,
+                12,
+                &Message::Request {
+                    epoch,
+                    number: 1,
+                    key: book.clone(),
+                    flags: BookFlags {
+                        open: true,
+                        filtering: true,
+                    },
+                },
+            );
+            assert_eq!(
+                drain(&rx12),
+                vec![Message::Update {
+                    epoch,
+                    revision: 1,
+                    key: book.clone(),
+                    flags: BookFlags {
+                        open: true,
+                        filtering: true,
+                    },
+                }]
+            );
+
+            // Placement schema refusal followed by valid negotiation works without retries.
+            send(
+                game,
+                12,
+                &Message::Placement(Frame::Hello {
+                    epoch,
+                    schema: schema() ^ 1,
+                }),
+            );
+            assert_eq!(
+                drain(&rx12),
+                vec![Message::Placement(Frame::Refused {
+                    epoch,
+                    number: 0,
+                    window: 0,
+                    nonce: 0,
+                    reason: Refusal::Unsupported,
+                })]
+            );
+            send(
+                game,
+                12,
+                &Message::Placement(Frame::Hello {
+                    epoch,
+                    schema: schema(),
+                }),
+            );
+            assert_eq!(
+                drain(&rx12),
+                vec![Message::Placement(Frame::Ready {
+                    epoch,
+                    schema: schema(),
+                })]
+            );
+            assert!(game.native_net.placement.servers.contains_key(&12));
+
+            // An unplaced guest cannot negotiate regardless of brand.
+            game.lan.as_mut().unwrap().hub.update_guest(13, |guest| {
+                guest.placed = false;
+            });
+            send(game, 13, &Message::Hello);
+            assert!(drain(&rx13).is_empty());
+        });
     });
 }
