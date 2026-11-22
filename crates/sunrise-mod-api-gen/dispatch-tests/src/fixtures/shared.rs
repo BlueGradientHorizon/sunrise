@@ -1,5 +1,5 @@
 //! Shared exception: dispatch infrastructure and cross-area fixture types/tests; no new hooks.
-use mod_api::mod_api::client::hud_layout::GuiDraw;
+use mod_api::mod_api::BlockEntityTypeKey;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use sunrise_core::game_mode::GameMode;
@@ -67,6 +67,36 @@ enum Flow {
 trait Host {}
 trait ServerHost: Host {}
 trait ClientHost: Host {}
+
+mod item {
+    pub(super) mod transaction {
+        // The game exercises the actual journal; these fixtures have no world state.
+        pub(in crate::tests) fn run_transaction<H: super::super::ServerHost + ?Sized, T, E>(
+            host: &mut H,
+            call: impl FnOnce(&mut H, &()) -> Result<T, E>,
+        ) -> Result<T, E> {
+            call(host, &())
+        }
+    }
+}
+
+/// Owner, hook and field for one generated dispatch refusal.
+type OutputRefusal = (&'static str, &'static str, &'static str);
+thread_local! {
+    static OUTPUT_REFUSALS: std::cell::RefCell<Option<Vec<OutputRefusal>>> = const { std::cell::RefCell::new(None) };
+}
+
+fn capture_output_refusals(call: impl FnOnce()) -> Vec<OutputRefusal> {
+    struct Restore(Option<Vec<OutputRefusal>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            OUTPUT_REFUSALS.replace(self.0.take());
+        }
+    }
+    let _restore = Restore(OUTPUT_REFUSALS.replace(Some(Vec::new())));
+    call();
+    OUTPUT_REFUSALS.take().unwrap()
+}
 trait WorldDrawContext {}
 trait DrawContext {
     fn mark(&mut self, value: u32);
@@ -153,11 +183,11 @@ mod generated {
             pub id: String,
         }
         pub(super) use super::super::ItemStack;
-        // The generated standalone-model dispatch builds the stub `Answered` and names the type through this path.
+        // Generated registration dispatch builds the stub `Answered` through this path.
         pub(super) use super::super::Answered;
         pub(super) use super::super::{
-            Command, Config, DeclarationError, Dispensed, Hand, InteractionResult, MapDecoration,
-            MapInfo, Screen, Zoom,
+            Command, CommandRegistration, Config, Dispensed, InteractionResult, MapDecoration,
+            MapInfo, Zoom,
         };
         #[derive(Clone)]
         pub struct FluidModel;
@@ -167,9 +197,8 @@ mod generated {
     }
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated.rs"));
     pub(super) use self::mod_api::InlineImageReplacement;
-    pub(super) use self::mod_api::{
-        BlockEntityTickReply, BlockFace, BlockKey, BlockState, CrosshairTarget,
-    };
+    use self::mod_api::StandaloneModelRegistration;
+    pub(super) use self::mod_api::{BlockFace, BlockKey, BlockState, CrosshairTarget};
     pub use sunrise_mod_api_macros::__subscriptions;
 }
 use generated::*;
@@ -214,23 +243,20 @@ fn receives_cancelled(hook: HookId) -> bool {
     MODS.get()
         .is_some_and(|installed| installed.subscribers.receives_cancelled(hook as usize))
 }
-fn entered(hook_id: HookId, hook: &'static str) -> impl Iterator<Item = &'static dyn Hooks> {
-    entered_with_id(hook_id, hook).map(|(_, hooks)| hooks)
-}
 fn entered_with_id(
     hook_id: HookId,
     hook: &'static str,
 ) -> impl Iterator<Item = (&'static str, &'static dyn Hooks)> {
-    listening(hook_id).map(move |(_, entry)| {
-        let ((), hooks) = enter_listener(entry, hook);
-        (entry.id, hooks)
-    })
+    runtime::entered_with_id_matching(hook_id, hook, |_| true)
 }
 fn listening(hook_id: HookId) -> impl Iterator<Item = (bool, &'static ModEntry)> {
     MODS.get().into_iter().flat_map(move |installed| {
         installed
             .subscribers
             .subscribers(hook_id as usize)
+            .filter(move |subscriber| {
+                !runtime::poisoned(hook_id, installed.mods[subscriber.index].id)
+            })
             .map(move |subscriber| {
                 (
                     subscriber.receives_cancelled,
@@ -359,7 +385,7 @@ impl Parts {
     fn menu<'k>(&self, _: impl FnOnce() -> Option<&'k str>) -> &[&'static dyn MenuPart] {
         &self.menus
     }
-    fn menu_screen(&self, _: &str, _: Option<&str>) -> &[&'static dyn MenuPart] {
+    fn menu_for_opener(&self, _: &str, _: Option<&str>) -> &[&'static dyn MenuPart] {
         &self.menus
     }
     fn fluid<'k>(&self, _: impl FnOnce() -> Option<&'k str>) -> &[&'static dyn FluidPart] {
@@ -391,14 +417,19 @@ fn any_mod_disabled() -> bool {
     DISABLED_BLOCK_PART.get().is_some()
 }
 fn entered_parts<'a, P: ?Sized>(
+    hook_id: HookId,
     parts: &'a [&'a P],
     _: &'static str,
-) -> impl Iterator<Item = &'a P> {
+) -> impl Iterator<Item = (&'static str, &'a P)> {
     let disabled = DISABLED_BLOCK_PART.get();
     parts
         .iter()
         .copied()
-        .filter(move |part| disabled != Some(std::ptr::from_ref(*part).cast()))
+        .filter(move |part| {
+            disabled != Some(std::ptr::from_ref(*part).cast())
+                && !runtime::poisoned(hook_id, "part")
+        })
+        .map(|part| ("part", part))
 }
 
 #[test]
@@ -623,8 +654,9 @@ impl MenuPart for Mod {
         let context = event.context;
         assert_eq!((context.player, context.pos), (Some(7), Some([1, 2, 3])));
         assert_eq!(event.container, MenuContainer::Grid);
-        assert_eq!(context.slots.len(), 2);
-        assert!(context.slots[1][0].is_none() && context.slots[1][1].is_some());
+        assert!(context.slot(MenuContainer::Grid, 0).is_none());
+        let stack = context.slot(MenuContainer::Grid, 1).unwrap();
+        assert_eq!((stack.item.as_ref(), stack.count), ("planks", 4));
         event.may_place = false;
         event.max_stack = self.id;
     }
@@ -731,5 +763,5 @@ fn part(id: u32, calls: &Arc<Mutex<Vec<u32>>>) -> &'static Mod {
 
 mod stubs {
     pub(super) use super::generated::mod_api::LivingRef;
-    pub(super) use crate::tests::mod_api::mod_api::{BlockEntityTickReply, DamageContainer};
+    pub(super) use crate::tests::mod_api::mod_api::DamageContainer;
 }

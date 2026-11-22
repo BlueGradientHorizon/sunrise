@@ -266,7 +266,7 @@ fn with_game_of(mods: Arc<[ModEntry]>, test: impl FnOnce(&mut Game<'_>)) {
 #[ignore = "daily"]
 fn a_mod_with_no_screen_hook_leaves_set_screen_plain() {
     with_game_of(vec![ModEntry::new("idle", Box::new(Idle))].into(), |game| {
-        game.keys.insert(KeyCode::KeyW);
+        game.insert_device_key(KeyCode::KeyW);
         game.set_screen(Screen::Mod);
         assert_eq!(game.screen, Screen::Mod);
         assert!(game.keys.is_empty());

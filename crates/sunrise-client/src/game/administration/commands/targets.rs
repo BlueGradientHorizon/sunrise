@@ -138,7 +138,12 @@ impl Game<'_> {
                 .general
                 .row(id)
                 .map(|row| [row.position.x, row.position.y, row.position.z])
-                .or_else(|| self.shown_remote_general(id as i32).map(|row| row.position)),
+                .or_else(|| {
+                    self.remote
+                        .as_ref()
+                        .and_then(|r| r.general.rows.get(&(id as i32)))
+                        .map(|row| row.position)
+                }),
         }
     }
     pub(in crate::game) fn target_type(&self, t: Target) -> String {

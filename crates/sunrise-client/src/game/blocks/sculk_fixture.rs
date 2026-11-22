@@ -420,9 +420,9 @@ impl Game<'_> {
         if s.trace_events {
             self.previous_position = Vec3::new(at[0], at[1], at[2]);
         }
-        self.keys.clear();
+        self.clear_device_keys();
         if s.sneak {
-            self.keys.insert(KeyCode::ShiftLeft);
+            self.insert_device_key(KeyCode::ShiftLeft);
         }
         self.sculk.tracker = WardenSpawnTracker::default();
         if let Some(level) = s.warning {
