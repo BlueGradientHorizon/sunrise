@@ -81,7 +81,9 @@ pub trait ScreensClientHost {
     /// doesn't pause a single-player game (as the inventory doesn't). Can replace
     /// any open vanilla screen, title screen, overlay (book, sign editor, dialog,
     /// or prompt), or another mod's screen, running the replaced screen's close
-    /// cleanup once hooks allow the transition. Returns `true` when `mod_id`'s
+    /// cleanup once hooks allow the transition. Replacing a server-pack prompt
+    /// leaves the server's request unanswered, as in vanilla `Gui.setScreen`.
+    /// Returns `true` when `mod_id`'s
     /// screen is open, and `false` when cancelled or redirected by
     /// `screen_opening`, while a world or connection is loading, or without a
     /// client window (a headless/dedicated server, the server thread, or
