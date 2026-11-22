@@ -492,6 +492,12 @@ pub mod serializer {
     pub const HUMANOID_ARM: i32 = 42;
     pub const DYE_COLOR: i32 = 43;
 }
+
+/// `HumanoidArm.BY_ID`: 1 is right; 0 and any out-of-range id select left.
+pub(crate) fn humanoid_arm_id(id: i32) -> i32 {
+    i32::from(id == 1)
+}
+
 fn validate_trusted_component(tag: &Tag, r: &Reader) -> Result<()> {
     if *tag == Tag::End {
         return Err(crate::Error::new("Expected non-null compound tag"));
@@ -643,8 +649,8 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
             }
         },
         // VarInt-encoded: direction, block states, optional ints, pose, the
-        // holder-registry variants (cat to zombie nautilus) and the
-        // enum states (sniffer to weathering copper), arm, dye.
+        // holder-registry variants (cat to zombie nautilus), the
+        // enum states (sniffer to weathering copper), and dye.
         BLOCK_STATE
         | OPTIONAL_BLOCK_STATE
         | DIRECTION
@@ -652,8 +658,8 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
         | POSE
         | CAT_VARIANT..=ZOMBIE_NAUTILUS_VARIANT
         | SNIFFER_STATE..=WEATHERING_COPPER_STATE
-        | HUMANOID_ARM
         | DYE_COLOR => Value::Id(r.varint()?),
+        HUMANOID_ARM => Value::Id(humanoid_arm_id(r.varint()?)),
         PARTICLE => Value::Particle(Particle::read(r)?),
         RESOLVABLE_PROFILE => Value::Profile(read_profile(r)?),
         PARTICLES => {
@@ -974,6 +980,38 @@ impl crate::retained::OwnedHeap for EntityData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arm_ids_decode_the_same_in_metadata_and_client_information() {
+        use crate::packets::configuration::ClientInformation;
+
+        for (wire_id, expected) in [(0, 0), (1, 1), (-1, 0), (2, 0)] {
+            let mut metadata = Writer::new();
+            EntityData::write(
+                &vec![(15, serializer::HUMANOID_ARM, Value::Id(wire_id))],
+                &mut metadata,
+            );
+            assert_eq!(
+                EntityData::read(&mut Reader::new(&metadata.data)).unwrap(),
+                [(15, serializer::HUMANOID_ARM, Value::Id(expected))]
+            );
+
+            let mut info = Writer::new();
+            ClientInformation::write(
+                &ClientInformation {
+                    main_hand: wire_id,
+                    ..ClientInformation::new(8)
+                },
+                &mut info,
+            );
+            assert_eq!(
+                ClientInformation::read(&mut Reader::new(&info.data))
+                    .unwrap()
+                    .main_hand,
+                expected
+            );
+        }
+    }
 
     #[test]
     fn round_trips_and_stops_at_unknown_serializers() {
