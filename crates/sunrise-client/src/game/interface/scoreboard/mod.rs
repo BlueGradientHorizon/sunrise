@@ -578,27 +578,37 @@ impl Game<'_> {
         self.score_player_killed_named(name, matches!(victim, Target::Player | Target::Guest(_)));
     }
     /// [`score_player_killed`](Self::score_player_killed) with the victim's
-    /// scoreboard name at hand: a guest's record is out of `self.lan` during
-    /// its turn (`ServerPlayer.die` runs there).
+    /// scoreboard name at hand.
     pub(super) fn score_player_killed_named(&mut self, victim_name: Option<String>, player: bool) {
-        let display = self.player_display_comp();
-        let me = self.acting_player_name().to_owned();
+        let killer = self.acting_player_name().to_owned();
+        self.score_player_kill_for(&killer, victim_name.as_deref(), player);
+    }
+
+    /// `ServerPlayer.awardKillScore` uses the killer as score holder, even
+    /// when the body installed for `ServerPlayer.die` belongs to the victim.
+    pub(super) fn score_player_kill_for(
+        &mut self,
+        killer: &str,
+        victim: Option<&str>,
+        player: bool,
+    ) {
+        let display = self.player_score_display(killer);
         let board = &mut self.score.board;
         let inc = |v: i32| v.wrapping_add(1);
-        board.for_all_objectives_with(sb::CRITERIA_TOTAL_KILLS, &me, Some(&display), inc);
+        board.for_all_objectives_with(sb::CRITERIA_TOTAL_KILLS, killer, Some(&display), inc);
         if player {
-            board.for_all_objectives_with(sb::CRITERIA_PLAYER_KILLS, &me, Some(&display), inc);
+            board.for_all_objectives_with(sb::CRITERIA_PLAYER_KILLS, killer, Some(&display), inc);
         }
         let color_of =
             |board: &Scoreboard, name: &str| board.players_team(name).and_then(|t| t.color.clone());
-        if let Some(victim_name) = victim_name {
-            if let Some(color) = color_of(board, &victim_name) {
+        if let Some(victim) = victim {
+            if let Some(color) = color_of(board, victim) {
                 let criteria = format!("teamkill.{color}");
-                board.for_all_objectives_with(&criteria, &me, Some(&display), inc);
+                board.for_all_objectives_with(&criteria, killer, Some(&display), inc);
             }
-            if let Some(color) = color_of(board, &me) {
+            if let Some(color) = color_of(board, killer) {
                 let criteria = format!("killedByTeam.{color}");
-                board.for_all_objectives(&criteria, &victim_name, inc);
+                board.for_all_objectives(&criteria, victim, inc);
             }
         }
     }
@@ -789,10 +799,13 @@ impl Game<'_> {
     }
     /// `Player.getDisplayName`: the name with the team's prefix, suffix and colour.
     pub(super) fn player_display_comp(&self) -> Comp {
-        let name = literal(self.acting_player_name());
-        match self.player_team() {
-            Some(t) => t.formatted_name_comp(&name),
-            None => name,
+        self.player_score_display(self.acting_player_name())
+    }
+    fn player_score_display(&self, name: &str) -> Comp {
+        let display = literal(name);
+        match self.score.board.players_team(name) {
+            Some(t) => t.formatted_name_comp(&display),
+            None => display,
         }
     }
     pub(super) fn player_display_text(&self) -> Text {

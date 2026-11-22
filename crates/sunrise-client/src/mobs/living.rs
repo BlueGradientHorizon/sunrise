@@ -3165,6 +3165,7 @@ mod tests {
                 asks_baby_spawn: false,
                 border: None,
                 section_writer: None,
+                trading_players: None,
             };
             let kind = std::sync::Arc::new(types.types["minecraft:pig"].clone());
             let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 0.5), 0.0);
@@ -3299,6 +3300,7 @@ mod tests {
                 asks_baby_spawn: false,
                 border: None,
                 section_writer: None,
+                trading_players: None,
             };
             let kind = std::sync::Arc::new(types.types["minecraft:pig"].clone());
             let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 0.5), 0.0);
@@ -3434,6 +3436,7 @@ mod tests {
             asks_baby_spawn: false,
             border: None,
             section_writer: None,
+            trading_players: None,
         };
         let kind = std::sync::Arc::new(types.types["minecraft:horse"].clone());
         let mut sank = 0.0;
@@ -3574,6 +3577,7 @@ mod tests {
                 mod_effects: None,
                 border: None,
                 section_writer: None,
+                trading_players: None,
             };
             let top = below.bounds().max_position().y;
             let mut zombie = mob(1, "minecraft:zombie", Vec3::new(8.5, top + 3.0, 8.5));
