@@ -41,7 +41,6 @@ impl Game<'_> {
                     .copied()
             },
             options,
-            super::draw_boundary::MAX_DRAW_VERTICES,
         );
         Ok(())
     }
@@ -76,40 +75,31 @@ fn engine_options(options: TerrainModelOptions<'_>) -> NativeModelRenderOptions<
     }
 }
 
-/// Appends each valid quad of `faces` under `draw`'s pose up to `vertex_limit`.
-fn draw_terrain_model(
+/// Appends each valid quad of `faces` under `draw`'s pose within `draw`'s device-derived batch
+/// capacity.
+pub(super) fn draw_terrain_model(
     draw: &mut BlockEntityDraw,
     faces: &[BakedFace],
     sprite_layer: impl Fn(&str) -> Option<u32>,
     options: TerrainModelOptions<'_>,
-    vertex_limit: usize,
 ) {
     let pose = draw.pose();
     let light = draw.element_ambient();
-    let vertices = draw.vertices_mut();
-    let start = vertices.len();
-    draw_model(
-        faces,
-        pose,
-        light,
-        engine_options(options),
-        sprite_layer,
-        |quad| {
-            if !super::draw_boundary::quad_allowed(
-                quad.map(|v| v.pos),
-                quad.map(|v| v.uv),
-                vertices.len(),
-                vertex_limit,
-            ) {
-                return vertices
-                    .len()
-                    .checked_add(4)
-                    .is_some_and(|end| end <= vertex_limit);
-            }
-            vertices.extend_from_slice(&quad);
-            true
-        },
-    );
+    let start = draw.vertices_len();
+    {
+        let mut scope = draw.quad_scope();
+        if !scope.has_room() {
+            return;
+        }
+        draw_model(
+            faces,
+            pose,
+            light,
+            engine_options(options),
+            sprite_layer,
+            |quad| scope.submit_quad(quad),
+        );
+    }
     draw.lit_since(start, BlockEntityDraw::cell_centre, draw.light() & 0xffff);
 }
 
@@ -125,7 +115,7 @@ mod tests {
     use sunrise_client::{
         block_entity_render::diffuse_lights,
         gfx::{
-            TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY, TERRAIN_MODEL_CUTOUT_OVERLAY,
+            EntityQuadCapacity, TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY, TERRAIN_MODEL_CUTOUT_OVERLAY,
             TERRAIN_MODEL_SOLID_OVERLAY,
         },
         mesher::Vertex,
@@ -160,17 +150,14 @@ mod tests {
 
     /// Full bright, a block east of the camera.
     fn drawn(faces: &[BakedFace], options: TerrainModelOptions<'_>) -> Vec<Vertex> {
-        drawn_with_limit(
-            faces,
-            options,
-            super::super::draw_boundary::MAX_DRAW_VERTICES,
-        )
+        drawn_with_budget(faces, options, EntityQuadCapacity::default_device(), 0)
     }
 
-    fn drawn_with_limit(
+    fn drawn_with_budget(
         faces: &[BakedFace],
         options: TerrainModelOptions<'_>,
-        vertex_limit: usize,
+        capacity: EntityQuadCapacity,
+        reserved_quads: usize,
     ) -> Vec<Vertex> {
         let mut draw = BlockEntityDraw::posed(
             0.0,
@@ -180,8 +167,9 @@ mod tests {
             Mat4::from_translation(Vec3::X),
             diffuse_lights(false),
             Vec::new(),
-        );
-        draw_terrain_model(&mut draw, faces, sprite, options, vertex_limit);
+        )
+        .with_quad_budget(capacity, reserved_quads);
+        draw_terrain_model(&mut draw, faces, sprite, options);
         draw.into_vertices()
     }
 
@@ -332,11 +320,15 @@ mod tests {
         );
         assert_eq!(vertices.len(), 4);
 
-        // Device/format vertex limit stops cleanly at whole quads without partial vertices.
-        let vertices = drawn_with_limit(
+        // Device-derived combined batch budget stops cleanly at whole quads without partial
+        // vertices, accounting for quads already reserved by other draw sources.
+        let capacity =
+            EntityQuadCapacity::from_max_buffer_size(EntityQuadCapacity::VERTEX_QUAD_BYTES * 5);
+        let vertices = drawn_with_budget(
             &[face(None, -1), face(None, -1), face(None, -1)],
             TerrainModelOptions::default(),
-            10,
+            capacity,
+            3,
         );
         assert_eq!(vertices.len(), 8);
     }

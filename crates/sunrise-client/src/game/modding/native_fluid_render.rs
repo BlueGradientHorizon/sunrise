@@ -1,7 +1,6 @@
 //! Still-fluid boxes under a block entity's pose (`BlockEntityDrawContext::fluid_box`), drawn
 //! with their own sorted translucent material (`FLUID_OVERLAY`).
 use super::{Game, native_block_entity_draw::BlockEntityDraw};
-use glam::Vec3;
 use mod_api::{FluidBoxOptions, FluidStack};
 use sunrise_client::{
     fluid_render::{NativeFluidRenderOptions, fluid_box, fluid_light},
@@ -40,14 +39,7 @@ impl Game<'_> {
         ) else {
             return;
         };
-        draw_fluid_box(
-            draw,
-            look,
-            stack,
-            bounds,
-            options,
-            super::draw_boundary::MAX_DRAW_VERTICES,
-        );
+        draw_fluid_box(draw, look, stack, bounds, options);
     }
 
     /// The look of `key`, once per resource generation: water and lava keep their own sprite,
@@ -78,7 +70,7 @@ impl Game<'_> {
 /// `minecraft:missingno`, matching vanilla `FluidStateModelSet.missingModel`). A missing sprite
 /// falls back to `minecraft:missingno` (matching `TextureAtlas.getSprite`). Returns `None` for
 /// `minecraft:empty` or if neither the sprite nor `minecraft:missingno` is loaded.
-fn fluid_box_look(
+pub(super) fn fluid_box_look(
     id: &str,
     look: Option<&sunrise_mod_package::content::FluidLook>,
     luminosity: u8,
@@ -105,7 +97,7 @@ fn fluid_box_look(
     })
 }
 
-fn draw_fluid_box(
+pub(super) fn draw_fluid_box(
     draw: &mut BlockEntityDraw,
     FluidBoxLook {
         layer,
@@ -115,7 +107,6 @@ fn draw_fluid_box(
     stack: &FluidStack,
     bounds: [f32; 6],
     options: FluidBoxOptions,
-    vertex_limit: usize,
 ) {
     if stack.amount == 0 {
         return;
@@ -133,37 +124,30 @@ fn draw_fluid_box(
         render_bottom: options.render_bottom,
         uv_shrink_ratio: options.uv_shrink_ratio,
     };
-    let vertices = draw.vertices_mut();
-    fluid_box(bounds, options, |quad| {
-        let corners = quad.map(|v| pose.transform_point3(Vec3::from_array(v.pos)).to_array());
-        let uvs = quad.map(|v| v.uv);
-        if !super::draw_boundary::quad_allowed(corners, uvs, vertices.len(), vertex_limit) {
-            return vertices
-                .len()
-                .checked_add(4)
-                .is_some_and(|end| end <= vertex_limit);
-        }
-        for (pos, uv) in corners.into_iter().zip(uvs) {
-            vertices.push(Vertex {
-                pos,
-                uv,
-                layer: FLUID_OVERLAY,
-                color,
-                light,
-                // The source TRANSLUCENT shader does not use normals for lighting.
-                normal: [0; 4],
-                glint_uv: [layer as f32, 0.0],
-            });
-        }
-        true
+    let mut scope = draw.quad_scope();
+    if !scope.has_room() {
+        return;
+    }
+    fluid_box(bounds, pose, options, |quad| {
+        let submitted = quad.map(|v| Vertex {
+            pos: v.pos,
+            uv: v.uv,
+            layer: FLUID_OVERLAY,
+            color,
+            light,
+            // The source TRANSLUCENT shader does not use normals for lighting.
+            normal: [0; 4],
+            glint_uv: [layer as f32, 0.0],
+        });
+        scope.submit_quad(submitted)
     });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::Mat4;
-    use sunrise_client::block_entity_render::diffuse_lights;
+    use glam::{Mat4, Vec3};
+    use sunrise_client::{block_entity_render::diffuse_lights, gfx::EntityQuadCapacity};
 
     fn stack(fluid: &str, amount: u32) -> FluidStack {
         mod_platform::__private::part_tests::game_thread();
@@ -192,14 +176,7 @@ mod tests {
                 7
             })
         }) {
-            draw_fluid_box(
-                &mut draw,
-                look,
-                stack,
-                bounds,
-                options,
-                super::super::draw_boundary::MAX_DRAW_VERTICES,
-            );
+            draw_fluid_box(&mut draw, look, stack, bounds, options);
         }
         draw.into_vertices()
     }
@@ -321,8 +298,11 @@ mod tests {
         );
         assert_eq!(vertices.len(), 6 * 4);
 
-        // Hitting the vertex-index limit stops cleanly at whole quads without partial vertices.
-        let mut draw = frame();
+        // Hitting the device-derived combined batch budget stops cleanly at whole quads without
+        // partial vertices, accounting for quads already reserved by other draw sources.
+        let capacity =
+            EntityQuadCapacity::from_max_buffer_size(EntityQuadCapacity::VERTEX_QUAD_BYTES * 5);
+        let mut draw = frame().with_quad_budget(capacity, 3);
         let look = look(&stack("minecraft:water", 1000), None, |_| Some(7)).unwrap();
         draw_fluid_box(
             &mut draw,
@@ -330,9 +310,46 @@ mod tests {
             &stack("minecraft:water", 1000),
             [0.0, 0.0, 0.0, 10.0, 1.0, 10.0],
             options,
-            10,
         );
         assert_eq!(draw.into_vertices().len(), 8);
+
+        // An overflowing pose skips invalid wide spans without enumerating them while retaining
+        // valid neighboring tiles.
+        let mut wide_overflow = BlockEntityDraw::posed(
+            0.0,
+            0,
+            0x30C0,
+            [0; 3],
+            Mat4::from_scale(Vec3::new(1.0, 1e38, 1.0)),
+            diffuse_lights(false),
+            Vec::new(),
+        );
+        draw_fluid_box(
+            &mut wide_overflow,
+            look,
+            &stack("minecraft:water", 1000),
+            [0.0, 10.0, 0.0, 1_000_000.0, 11.0, 1_000_000.0],
+            options,
+        );
+        assert!(wide_overflow.into_vertices().is_empty());
+
+        let mut partial_overflow = BlockEntityDraw::posed(
+            0.0,
+            0,
+            0x30C0,
+            [0; 3],
+            Mat4::from_scale(Vec3::new(1e38, 1e38, 1.0)),
+            diffuse_lights(false),
+            Vec::new(),
+        );
+        draw_fluid_box(
+            &mut partial_overflow,
+            look,
+            &stack("minecraft:water", 1000),
+            [0.0, 0.0, 0.0, 1_000_000.0, 10.0, 1.0],
+            options,
+        );
+        assert_eq!(partial_overflow.into_vertices().len(), 24 * 4);
     }
 
     #[test]
@@ -361,7 +378,6 @@ mod tests {
                 stack,
                 [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
                 options,
-                super::super::draw_boundary::MAX_DRAW_VERTICES,
             );
             draw.into_vertices()
         };

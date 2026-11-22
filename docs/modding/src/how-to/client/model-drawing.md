@@ -251,7 +251,8 @@ draw.terrain_model(self.belt, options)?;
   renderer sorts the quads of all translucent models far to near each frame, as vanilla's
   `sortOnUpload` does, so submission order does not matter.
 - A stale or unknown handle returns `ModelError` without appending geometry. Otherwise quads are
-  submitted individually up to the vertex-index buffer limit: missing sprites (including a missing
+  submitted individually up to the device's vertex and index buffer capacity for the combined
+  entity batch: missing sprites (including a missing
   shift target) fall back to `minecraft:missingno`, and quads with an unsupported render type or
   non-finite positions or UVs are skipped individually rather than refusing the whole model.
 
@@ -325,8 +326,8 @@ draw.fluid_box(&tank.stack, [0.125, 0.0625, 0.125, 0.875, level, 0.875], options
   and depth-writing. They draw with the block entities, before the level's translucent terrain,
   under shader packs too.
 - A stack of 0, an empty or unresolved fluid, or reversed or non-finite bounds draws nothing.
-  Valid quads are submitted individually up to the vertex-index buffer limit without artificial
-  coordinate or quad caps.
+  Valid quads are submitted individually up to the device's vertex and index buffer capacity for
+  the combined entity batch without artificial coordinate or quad caps.
 
 ## Before and after a living entity draws
 

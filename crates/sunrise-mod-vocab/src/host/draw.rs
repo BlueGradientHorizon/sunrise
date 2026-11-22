@@ -532,7 +532,7 @@ pub trait BlockEntityDrawContext {
     /// near, alpha blended, culled from behind and write depth, drawn with the block entities
     /// before the level's translucent terrain. An empty or unresolved stack, or reversed or
     /// non-finite bounds, draws nothing; valid quads are submitted individually up to the
-    /// vertex-index buffer limit.
+    /// device's vertex and index buffer capacity for the combined entity batch.
     fn fluid_box(&mut self, stack: &FluidStack, bounds: [f32; 6], options: FluidBoxOptions) {
         unimplemented!("BlockEntityDrawContext::draw_fluid_box")
     }
