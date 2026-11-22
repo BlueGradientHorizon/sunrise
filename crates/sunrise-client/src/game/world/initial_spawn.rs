@@ -30,7 +30,7 @@ impl Game<'_> {
             collision: self.collision,
             // PlayerSpawnFinder.getLevelRespawnPos: a ceiling starts the walk
             // at the destination generator's spawn height.
-            has_ceiling: self.dimension_type().has_ceiling,
+            has_ceiling: self.dimension_type().height.has_ceiling,
             spawn_height: self.spawn_origin.map_or(64, |(_, height)| height),
         }
     }
