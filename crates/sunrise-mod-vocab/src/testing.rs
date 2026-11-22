@@ -1117,6 +1117,15 @@ crate::impl_backend_mut_areas!(
     )
 );
 
+/// Use the game fixture's completed Parts registration in place of its earlier probe.
+// hidden: only the game test fixture scopes the controller table after loading Parts.
+#[doc(hidden)]
+pub fn with_installed_ticket_controllers<R>(f: impl FnOnce() -> R) -> R {
+    let _controllers =
+        RestoreControllers(TEST_CONTROLLERS.replace(Some(crate::parts::installed_controllers())));
+    f()
+}
+
 /// Scope the controller lookup rows prepared by the API-owned registration fixture.
 // hidden: API-owned test setup uses this vocabulary fixture, not mod authoring code.
 #[doc(hidden)]

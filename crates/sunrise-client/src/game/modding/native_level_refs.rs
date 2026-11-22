@@ -2472,7 +2472,11 @@ mod tests {
     }
     /// A game whose mods are `Machines` and `Other`, with their controllers registered.
     fn with_machines(test: impl FnOnce(&mut super::super::Game<'_>)) {
-        mod_platform::testing::with_mods(mods(), || with_chunk_streaming(test));
+        mod_platform::testing::with_mods(mods(), || {
+            with_chunk_streaming(|game| {
+                mod_api::testing::with_installed_ticket_controllers(|| test(game));
+            });
+        });
     }
 
     #[test]
@@ -2594,8 +2598,8 @@ mod tests {
                 [18, 64, 0],
                 [0, 63, 0],
                 [0, 65, 0],
-                [0, 64, -2],
-                [0, 64, 2],
+                [-1, 64, -2],
+                [-1, 64, 2],
             ] {
                 assert!(!overworld.has_water_ticket(game, pos), "{pos:?}");
             }
