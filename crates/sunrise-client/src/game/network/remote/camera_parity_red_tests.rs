@@ -2118,3 +2118,198 @@ fn spectated_rider_mount_attributes_26_3() {
         failures.join("\n")
     );
 }
+
+/// Vanilla 26.3 `ClientLevel.doAddParticle`, `ClientLevel.tickWeatherEffects`, and
+/// `AtmosphericFogEnvironment.updateRainFogState` unconditionally read `mainCamera().position()` /
+/// `blockPosition()` with no `isInitialized()` fallback: `Vec3.ZERO` before the first frame, the
+/// aligned camera position after the first frame, and the last aligned position after `Camera.reset()`.
+#[test]
+#[ignore = "run by tools/test_camera_parity.py"]
+fn particle_camera_before_first_frame_and_after_reset_26_3() {
+    use sunrise_client::particles::{ParticleOptions, ParticleType};
+
+    let witness = parity_witness();
+    let w = &witness["particle_camera_before_first_frame"];
+    let before = &w["before_first_frame"];
+    let after = &w["after_first_frame"];
+    let after_reset = &w["after_camera_reset_before_next_frame"];
+
+    let accepted = |game: &mut Game<'_>, pos: [f64; 3]| -> bool {
+        game.particles.clear();
+        game.particles
+            .add(&ParticleOptions::simple(ParticleType::Flame), pos, [0.0; 3]);
+        game.particles.len() == 1
+    };
+
+    with_client_game(|game| {
+        let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+        let plains = *world_biomes!(game).index.get("minecraft:plains").unwrap();
+        let desert = *world_biomes!(game).index.get("minecraft:desert").unwrap();
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        for (cx, cz) in [(0, 0), (-1, 0), (0, -1), (-1, -1)] {
+            game.world
+                .chunks
+                .insert((cx, cz), Arc::new(make_chunk(cx, cz, plains, 0xF0)));
+        }
+        game.world
+            .chunks
+            .insert((6, 6), Arc::new(make_chunk(6, 6, desert, 0x00)));
+        for x in -10..=10 {
+            for z in -10..=10 {
+                game.world.set(x, -1, z, stone).unwrap();
+            }
+        }
+        game.world.weather.raining = true;
+        game.world.weather.rain_level = (1.0, 1.0);
+        game.world.game_time = 1;
+        game.settings.particles = 0;
+        game.settings.weather_radius = 10;
+        game.settings.sunrise.weather = true;
+
+        add_entity(
+            game,
+            31,
+            "minecraft:interaction",
+            [96.5, 300.0, 96.5],
+            0.0,
+            0.0,
+        );
+        sync_interaction_size(game, 31, 0.1, 1.9059);
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 31 }))
+            .unwrap();
+
+        // Phase 1: tick before the first frame (Camera.update / alignWithEntity has never run).
+        game.view = Default::default();
+        game.fog.rain_fog_multiplier = 0.0;
+        game.particles.clear();
+        game.tick_fov();
+        game.tick_particles();
+
+        assert_eq!(
+            game.view.initialized,
+            before["initialized"].as_bool().unwrap(),
+            "before_first_frame: initialized"
+        );
+        assert_eq!(
+            game.particles.camera.map(f64::to_bits),
+            vec3_bits_expected(&before["camera_pos_bits"]),
+            "before_first_frame: particles.camera must be Vec3.ZERO (no camera_eye_position fallback)"
+        );
+        assert_eq!(
+            game.fog.rain_fog_multiplier.to_bits(),
+            hex_f32(&before["rain_fog_multiplier_bits"]),
+            "before_first_frame: rain_fog_multiplier must sample Camera.blockPosition() == (0,0,0)"
+        );
+        assert_eq!(
+            game.particles.len() as u64,
+            before["rain_splash_count"].as_u64().unwrap(),
+            "before_first_frame: rain splashes must center on (0,0,0)"
+        );
+        assert_eq!(
+            accepted(game, [0.5, 0.5, 0.5]),
+            before["accepted_at_origin"].as_bool().unwrap(),
+            "before_first_frame: accepted_at_origin"
+        );
+        assert_eq!(
+            accepted(game, [0.5, 65.62, 0.5]),
+            before["accepted_at_local_player_eye"].as_bool().unwrap(),
+            "before_first_frame: accepted_at_local_player_eye"
+        );
+        assert_eq!(
+            accepted(game, [96.5, 301.62, 96.5]),
+            before["accepted_at_camera_entity_eye"].as_bool().unwrap(),
+            "before_first_frame: accepted_at_camera_entity_eye"
+        );
+
+        // Phase 2: first frame aligns the camera; ticks now use the aligned position.
+        for _ in 0..40 {
+            game.tick_fov();
+        }
+        game.camera_view(1.0);
+        game.fog.rain_fog_multiplier = 0.0;
+        game.particles.clear();
+        game.world.game_time = 1;
+        game.tick_particles();
+
+        assert_eq!(
+            game.view.initialized,
+            after["initialized"].as_bool().unwrap(),
+            "after_first_frame: initialized"
+        );
+        assert_eq!(
+            game.particles.camera.map(f64::to_bits),
+            vec3_bits_expected(&after["camera_pos_bits"]),
+            "after_first_frame: particles.camera"
+        );
+        assert_eq!(
+            game.fog.rain_fog_multiplier.to_bits(),
+            hex_f32(&after["rain_fog_multiplier_bits"]),
+            "after_first_frame: rain_fog_multiplier"
+        );
+        assert_eq!(
+            game.particles.len() as u64,
+            after["rain_splash_count"].as_u64().unwrap(),
+            "after_first_frame: rain_splash_count"
+        );
+        assert_eq!(
+            accepted(game, [0.5, 0.5, 0.5]),
+            after["accepted_at_origin"].as_bool().unwrap(),
+            "after_first_frame: accepted_at_origin"
+        );
+        assert_eq!(
+            accepted(game, [0.5, 65.62, 0.5]),
+            after["accepted_at_local_player_eye"].as_bool().unwrap(),
+            "after_first_frame: accepted_at_local_player_eye"
+        );
+        assert_eq!(
+            accepted(game, [96.5, 301.62, 96.5]),
+            after["accepted_at_camera_entity_eye"].as_bool().unwrap(),
+            "after_first_frame: accepted_at_camera_entity_eye"
+        );
+
+        // Phase 3: after Camera.reset() (disconnect) + re-entering a level before the next frame,
+        // `initialized` is false and `Camera.position()` keeps the last aligned position.
+        game.client_logging_out();
+        assert_eq!(
+            game.view.initialized,
+            after_reset["initialized"].as_bool().unwrap(),
+            "after_camera_reset_before_next_frame: initialized after disconnect"
+        );
+        let _server2 = setup_remote_overworld(game, 2, [200.5, 64.0, 200.5], true);
+        game.tick_fov();
+        game.tick_particles();
+
+        assert_eq!(
+            game.view.initialized,
+            after_reset["initialized"].as_bool().unwrap(),
+            "after_camera_reset_before_next_frame: initialized before next frame"
+        );
+        assert_eq!(
+            game.particles.camera.map(f64::to_bits),
+            vec3_bits_expected(&after_reset["camera_pos_bits"]),
+            "after_camera_reset_before_next_frame: particles.camera must keep last aligned position"
+        );
+        assert_eq!(
+            accepted(game, [0.5, 0.5, 0.5]),
+            after_reset["accepted_at_origin"].as_bool().unwrap(),
+            "after_camera_reset_before_next_frame: accepted_at_origin"
+        );
+        assert_eq!(
+            accepted(game, [96.5, 301.62, 96.5]),
+            after_reset["accepted_at_last_camera_pos"]
+                .as_bool()
+                .unwrap(),
+            "after_camera_reset_before_next_frame: accepted_at_last_camera_pos"
+        );
+        assert_eq!(
+            accepted(game, [200.5, 65.62, 200.5]),
+            after_reset["accepted_at_new_entity_eye"].as_bool().unwrap(),
+            "after_camera_reset_before_next_frame: accepted_at_new_entity_eye"
+        );
+    });
+}

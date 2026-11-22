@@ -227,6 +227,28 @@ public final class VanillaCameraParityOracle {
         public int getRawBrightness(BlockPos pos, int darken) {
             return owner.brightnessMap.getOrDefault(pos, owner.defaultBrightness);
         }
+
+        @Override
+        public net.minecraft.world.level.lighting.LayerLightEventListener getLayerListener(LightLayer layer) {
+            return new net.minecraft.world.level.lighting.LayerLightEventListener() {
+                @Override
+                public net.minecraft.world.level.chunk.DataLayer getDataLayerData(SectionPos pos) { return null; }
+
+                @Override
+                public int getLightValue(BlockPos pos) {
+                    return layer == LightLayer.SKY
+                        ? owner.brightnessMap.getOrDefault(pos, owner.defaultBrightness)
+                        : 0;
+                }
+
+                @Override public void checkBlock(BlockPos pos) {}
+                @Override public boolean hasLightWork() { return false; }
+                @Override public int runLightUpdates() { return 0; }
+                @Override public void updateSectionStatus(SectionPos pos, boolean empty) {}
+                @Override public void setLightEnabled(net.minecraft.world.level.ChunkPos pos, boolean enabled) {}
+                @Override public void propagateLightSources(net.minecraft.world.level.ChunkPos pos) {}
+            };
+        }
     }
 
     static final class StubChunkCache extends ClientChunkCache {
@@ -239,6 +261,11 @@ public final class VanillaCameraParityOracle {
         @Override
         public LevelLightEngine getLightEngine() {
             return light;
+        }
+
+        @Override
+        public boolean hasChunk(int x, int z) {
+            return true;
         }
 
         @Override
@@ -272,12 +299,30 @@ public final class VanillaCameraParityOracle {
         }
     }
 
+    static final class StubParticleEngine extends net.minecraft.client.particle.ParticleEngine {
+        List<Vec3> created = new ArrayList<>();
+
+        StubParticleEngine() {
+            super(null, null);
+        }
+
+        @Override
+        public net.minecraft.client.particle.Particle createParticle(
+            net.minecraft.core.particles.ParticleOptions options,
+            double x, double y, double z, double xd, double yd, double zd
+        ) {
+            created.add(new Vec3(x, y, z));
+            return null;
+        }
+    }
+
     static final class StubClientLevel extends ClientLevel {
         Map<Integer, Entity> entities = new HashMap<>();
         TickRateManager tickRateManager = new TickRateManager();
         WorldBorder worldBorder = new WorldBorder();
         Map<BlockPos, Integer> brightnessMap = new HashMap<>();
         Map<BlockPos, BlockState> blocks = new HashMap<>();
+        Map<Long, Integer> heightmapY = new HashMap<>();
         int defaultBrightness = 15;
         DimensionType dimType;
         boolean flat = false;
@@ -300,6 +345,11 @@ public final class VanillaCameraParityOracle {
         @Override public boolean isTickingEntity(Entity e) { return entities.containsKey(e.getId()); }
         @Override public BlockState getBlockState(BlockPos p) { return blocks.getOrDefault(p, Blocks.AIR.defaultBlockState()); }
         @Override public FluidState getFluidState(BlockPos p) { return Fluids.EMPTY.defaultFluidState(); }
+        @Override public int getHeight(net.minecraft.world.level.levelgen.Heightmap.Types type, int x, int z) {
+            long key = ((long) x << 32) ^ (z & 0xffffffffL);
+            return heightmapY.getOrDefault(key, getMinY());
+        }
+        @Override public void playLocalSound(BlockPos pos, net.minecraft.sounds.SoundEvent sound, net.minecraft.sounds.SoundSource source, float volume, float pitch, boolean distanceDelay) { }
         @Override public int getMaxLocalRawBrightness(BlockPos pos) { return brightnessMap.getOrDefault(pos, defaultBrightness); }
         @Override public int getBrightness(LightLayer layer, BlockPos pos) {
             return layer == LightLayer.SKY ? brightnessMap.getOrDefault(pos, defaultBrightness) : 0;
@@ -391,6 +441,7 @@ public final class VanillaCameraParityOracle {
         lvl.worldBorder = new WorldBorder();
         lvl.brightnessMap = new HashMap<>();
         lvl.blocks = new HashMap<>();
+        lvl.heightmapY = new HashMap<>();
         lvl.defaultBrightness = 15;
         lvl.dimType = overworldDimType;
         lvl.chunkBiomes = new HashMap<>();
@@ -400,6 +451,7 @@ public final class VanillaCameraParityOracle {
         var cache = make(StubChunkCache.class);
         cache.light = light;
         lvl.chunkCache = cache;
+        field(ClientLevel.class, "chunkSource").set(lvl, cache);
         var levelData = new ClientLevel.ClientLevelData(net.minecraft.world.Difficulty.NORMAL, false, false);
         field(ClientLevel.class, "clientLevelData").set(lvl, levelData);
         field(Level.class, "levelData").set(lvl, levelData);
@@ -1932,6 +1984,156 @@ public final class VanillaCameraParityOracle {
         return out;
     }
 
+    static JsonObject recordParticleCameraBeforeFirstFrame() throws Exception {
+        var out = new JsonObject();
+        var align = method(Camera.class, "alignWithEntity", float.class);
+        var updateRainFog = method(
+            AtmosphericFogEnvironment.class, "updateRainFogState",
+            Camera.class, ClientLevel.class, DeltaTracker.class
+        );
+        var rainFogMulField = field(AtmosphericFogEnvironment.class, "rainFogMultiplier");
+
+        var lvl = newLevel();
+        var plains = ParityData.access.lookupOrThrow(Registries.BIOME).getOrThrow(Biomes.PLAINS);
+        var desert = ParityData.access.lookupOrThrow(Registries.BIOME).getOrThrow(Biomes.DESERT);
+        lvl.defaultBiome = plains;
+        lvl.chunkBiomes.put(((0L) << 32) ^ (0L & 0xffffffffL), plains);
+        lvl.chunkBiomes.put(((6L) << 32) ^ (6L & 0xffffffffL), desert);
+        lvl.brightnessMap.put(new BlockPos(0, 0, 0), 15);
+        lvl.brightnessMap.put(new BlockPos(96, 300, 96), 0);
+        lvl.brightnessMap.put(new BlockPos(96, 301, 96), 0);
+        field(Level.class, "rainLevel").setFloat(lvl, 1.0F);
+        field(Level.class, "oRainLevel").setFloat(lvl, 1.0F);
+        lvl.getLevelData().setGameTime(1L);
+        for (int x = -10; x <= 10; x++) {
+            for (int z = -10; z <= 10; z++) {
+                lvl.blocks.put(new BlockPos(x, -1, z), Blocks.STONE.defaultBlockState());
+                long key = ((long) x << 32) ^ (z & 0xffffffffL);
+                lvl.heightmapY.put(key, 0);
+            }
+        }
+
+        var local = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+        var interaction = (Interaction) spawnViaPacket(lvl, "minecraft:interaction", 31, 96.5, 300.0, 96.5, 0.0F, 0.0F, 0.0F);
+        interaction.getEntityData().assignValues(List.of(
+            SynchedEntityData.DataValue.create(interactionWidthAccessor(), 0.1F),
+            SynchedEntityData.DataValue.create(interactionHeightAccessor(), 1.9059F)
+        ));
+
+        var particles = make(StubParticleEngine.class);
+        particles.created = new ArrayList<>();
+        field(Minecraft.class, "particleEngine").set(minecraft, particles);
+        minecraft.player = local;
+        minecraft.level = lvl;
+        options.setCameraType(CameraType.FIRST_PERSON);
+        options.particles().set(net.minecraft.server.level.ParticleStatus.ALL);
+        options.weatherRadius().set(10);
+
+        var cam = attachCamera(lvl, interaction);
+        // Tick before the first frame (Camera.update / alignWithEntity has NOT run yet).
+        cam.tick();
+
+        var delta = new FixedDelta(1.0F, 1.0F, 1.0F);
+        var flame = net.minecraft.core.particles.ParticleTypes.FLAME;
+
+        var before = new JsonObject();
+        before.addProperty("initialized", cam.isInitialized());
+        before.add("camera_pos_bits", vec3Bits(cam.position()));
+        var beforeBlock = new JsonArray();
+        beforeBlock.add(cam.blockPosition().getX());
+        beforeBlock.add(cam.blockPosition().getY());
+        beforeBlock.add(cam.blockPosition().getZ());
+        before.add("camera_block_pos", beforeBlock);
+
+        particles.created.clear();
+        lvl.addParticle(flame, 0.5, 0.5, 0.5, 0.0, 0.0, 0.0);
+        before.addProperty("accepted_at_origin", particles.created.size() == 1);
+        particles.created.clear();
+        lvl.addParticle(flame, 0.5, 65.62, 0.5, 0.0, 0.0, 0.0);
+        before.addProperty("accepted_at_local_player_eye", particles.created.size() == 1);
+        particles.created.clear();
+        lvl.addParticle(flame, 96.5, 301.62, 96.5, 0.0, 0.0, 0.0);
+        before.addProperty("accepted_at_camera_entity_eye", particles.created.size() == 1);
+
+        var fogBefore = new AtmosphericFogEnvironment();
+        updateRainFog.invoke(fogBefore, cam, lvl, delta);
+        before.addProperty("rain_fog_multiplier_bits", fb(rainFogMulField.getFloat(fogBefore)));
+
+        particles.created.clear();
+        lvl.tickWeatherEffects();
+        before.addProperty("rain_splash_count", particles.created.size());
+        boolean allNearOrigin = !particles.created.isEmpty() && particles.created.stream().allMatch(
+            p -> Math.abs(p.x) <= 11.0 && Math.abs(p.z) <= 11.0
+        );
+        before.addProperty("rain_splashes_near_origin", allNearOrigin);
+        out.add("before_first_frame", before);
+
+        // First frame aligns the camera (Camera.update -> alignWithEntity + initialized = true).
+        for (int t = 0; t < 40; t++) cam.tick();
+        align.invoke(cam, 1.0F);
+        field(Camera.class, "initialized").setBoolean(cam, true);
+
+        var after = new JsonObject();
+        after.addProperty("initialized", cam.isInitialized());
+        after.add("camera_pos_bits", vec3Bits(cam.position()));
+        var afterBlock = new JsonArray();
+        afterBlock.add(cam.blockPosition().getX());
+        afterBlock.add(cam.blockPosition().getY());
+        afterBlock.add(cam.blockPosition().getZ());
+        after.add("camera_block_pos", afterBlock);
+
+        particles.created.clear();
+        lvl.addParticle(flame, 0.5, 0.5, 0.5, 0.0, 0.0, 0.0);
+        after.addProperty("accepted_at_origin", particles.created.size() == 1);
+        particles.created.clear();
+        lvl.addParticle(flame, 0.5, 65.62, 0.5, 0.0, 0.0, 0.0);
+        after.addProperty("accepted_at_local_player_eye", particles.created.size() == 1);
+        particles.created.clear();
+        lvl.addParticle(flame, 96.5, 301.62, 96.5, 0.0, 0.0, 0.0);
+        after.addProperty("accepted_at_camera_entity_eye", particles.created.size() == 1);
+
+        var fogAfter = new AtmosphericFogEnvironment();
+        updateRainFog.invoke(fogAfter, cam, lvl, delta);
+        after.addProperty("rain_fog_multiplier_bits", fb(rainFogMulField.getFloat(fogAfter)));
+
+        particles.created.clear();
+        lvl.tickWeatherEffects();
+        after.addProperty("rain_splash_count", particles.created.size());
+        out.add("after_first_frame", after);
+
+        // After Camera.reset() (disconnect / clearClientLevel), before next frame: last position survives.
+        cam.reset();
+        var lvl2 = newLevel();
+        var player2 = newPlayer(lvl2, 2, 200.5, 64.0, 200.5);
+        minecraft.player = player2;
+        minecraft.level = lvl2;
+        cam.setLevel(lvl2);
+        cam.setEntity(player2);
+        cam.tick();
+
+        var afterReset = new JsonObject();
+        afterReset.addProperty("initialized", cam.isInitialized());
+        afterReset.add("camera_pos_bits", vec3Bits(cam.position()));
+        var resetBlock = new JsonArray();
+        resetBlock.add(cam.blockPosition().getX());
+        resetBlock.add(cam.blockPosition().getY());
+        resetBlock.add(cam.blockPosition().getZ());
+        afterReset.add("camera_block_pos", resetBlock);
+
+        particles.created.clear();
+        lvl2.addParticle(flame, 0.5, 0.5, 0.5, 0.0, 0.0, 0.0);
+        afterReset.addProperty("accepted_at_origin", particles.created.size() == 1);
+        particles.created.clear();
+        lvl2.addParticle(flame, 96.5, 301.62, 96.5, 0.0, 0.0, 0.0);
+        afterReset.addProperty("accepted_at_last_camera_pos", particles.created.size() == 1);
+        particles.created.clear();
+        lvl2.addParticle(flame, 200.5, 65.62, 200.5, 0.0, 0.0, 0.0);
+        afterReset.addProperty("accepted_at_new_entity_eye", particles.created.size() == 1);
+        out.add("after_camera_reset_before_next_frame", afterReset);
+
+        return out;
+    }
+
     public static void main(String[] args) throws Exception {
         ParityData.init();
         var u = Class.forName("sun.misc.Unsafe");
@@ -1962,6 +2164,7 @@ public final class VanillaCameraParityOracle {
         root.add("camera_pick_exclusion", recordCameraPickExclusion());
         root.add("camera_visibility_all_kinds", recordCameraVisibilityAllKinds());
         root.add("spectated_rider_mount_attributes", recordSpectatedRiderMountAttributes());
+        root.add("particle_camera_before_first_frame", recordParticleCameraBeforeFirstFrame());
 
         var gson = new GsonBuilder().setPrettyPrinting().serializeNulls().create();
         Files.writeString(Path.of(args[0]), gson.toJson(root) + "\n", StandardCharsets.UTF_8);
