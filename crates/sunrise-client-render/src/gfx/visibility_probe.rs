@@ -433,19 +433,19 @@ pub fn verify_witness(path: &Path) -> Result<usize, String> {
                         }
                     }
                 }
-                if name == "outside_height_octree_above_rd2_square70" {
-                    if !expected_set.contains(&[0, 19, 0]) || expected_set.contains(&[2, 19, 0]) {
-                        return Err(format!(
-                            "case {name}: witness sanity check failed: expected (0,19,0) in and (2,19,0) out"
-                        ));
-                    }
+                if name == "outside_height_octree_above_rd2_square70"
+                    && (!expected_set.contains(&[0, 19, 0]) || expected_set.contains(&[2, 19, 0]))
+                {
+                    return Err(format!(
+                        "case {name}: witness sanity check failed: expected (0,19,0) in and (2,19,0) out"
+                    ));
                 }
-                if name == "outside_height_octree_below_rd2_square35" {
-                    if !expected_set.contains(&[0, -4, 0]) || expected_set.contains(&[2, -4, 0]) {
-                        return Err(format!(
-                            "case {name}: witness sanity check failed: expected (0,-4,0) in and (2,-4,0) out"
-                        ));
-                    }
+                if name == "outside_height_octree_below_rd2_square35"
+                    && (!expected_set.contains(&[0, -4, 0]) || expected_set.contains(&[2, -4, 0]))
+                {
+                    return Err(format!(
+                        "case {name}: witness sanity check failed: expected (0,-4,0) in and (2,-4,0) out"
+                    ));
                 }
                 if name == "genpvp_menu_looking_down" {
                     let view = crate::render_views::WorldView::new(
