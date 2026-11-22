@@ -10,7 +10,7 @@ read one cached answer. Removing the last subscriber restores the properties.
 On either side, `host.block_states().piston_push_reaction(state)` (or the same read
 through `LevelHost::block_states`) reads that resolved answer without calling the Part.
 `Ok(None)` means the block key or ordinal is unknown; `Err(LevelReadError::Unavailable)`
-means the tables or phase cannot serve the read. This is a state fact, not the
+means the backend or required block-state tables are unavailable. This is a state fact, not the
 entity reaction (`EntityRef::piston_push_reaction`) or a decision to move a block.
 
 The order is the reaction first, then the shared block-entity rule for any

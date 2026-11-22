@@ -94,8 +94,8 @@ first. `table_pos` is context for the [Part](../../concepts/parts/block-parts.md
 not a block the read validates. The default is 1.0 for a provider-tagged block and 0.0 otherwise.
 The read preserves the Part's answer, including signed fractions, NaN and infinity. Apply
 your own scan and transmitter checks if summing powers for a table; the read doesn't round or
-cap them. It doesn't load chunks or write to the world. A stale handle or unavailable view,
-state or phase refuses the query. A nested enchanting-power query for an active provider state
+cap them. It doesn't load chunks or write to the world. A stale handle or unavailable view
+or state refuses the query. A nested enchanting-power query for an active provider state
 is also refused, even at another level or position; it can still ask a different state.
 
 ## Block classes

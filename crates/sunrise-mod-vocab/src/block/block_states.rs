@@ -450,7 +450,7 @@ impl BlockStates<'_> {
     /// and client replay. Includes the active [`crate::BlockPart::piston_push_reaction`] answer
     /// resolved at load or reload. This read does not call Parts or test movement eligibility.
     /// `Ok(None)` for an unknown block or local ordinal; `Err(LevelReadError::Unavailable)`
-    /// when the tables or phase cannot serve the read.
+    /// when the backend or required block-state tables are unavailable.
     pub fn piston_push_reaction(
         &self,
         state: BlockState,

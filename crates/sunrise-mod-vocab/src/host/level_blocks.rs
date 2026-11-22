@@ -26,8 +26,8 @@ pub trait LevelBlocksBackend {
     /// not a block that the query looks up. The tag default is 1.0 for providers, 0.0 otherwise.
     /// Returns the Part's answer unchanged, even if it is non-finite. This read never loads
     /// chunks or applies transmitter, bookshelf offset or offer-cost rules.
-    /// Returns `Stale` for a stale handle, or `Unavailable` for an unreadable view or phase
-    /// or an unknown state. If an enchanting-power provider for this state is already active
+    /// Returns `Stale` for a stale handle, or `Unavailable` for an unreadable view or an
+    /// unknown state. If an enchanting-power provider for this state is already active
     /// on this thread in this game, returns `Unavailable` even at a different level or position.
     /// Delegation to another state is allowed.
     fn level_get_enchant_power_bonus(
