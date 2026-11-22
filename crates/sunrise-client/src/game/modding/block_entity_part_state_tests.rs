@@ -21,27 +21,24 @@ use sunrise_mod_runtime::attachments::{
 
 use super::{Dim, Game};
 
-fn i32_codec() -> AttachmentCodec<i32> {
-    AttachmentCodec {
-        encode: |n| Ok([("n".into(), Tag::Int(*n))].into()),
-        decode: |saved: &Compound| match saved.get(&"n".into()) {
-            Some(Tag::Int(n)) => Ok(*n),
-            _ => Err(AttachmentError::Decode),
-        },
-    }
-}
+const PROGRESS_CODEC: AttachmentCodec<i32> = AttachmentCodec {
+    encode: |n| {
+        if *n == i32::MIN {
+            return Err(AttachmentError::Encode);
+        }
+        Ok([("n".into(), Tag::Int(*n))].into())
+    },
+    decode: |saved: &Compound| match saved.get(&"n".into()) {
+        Some(Tag::Int(n)) => Ok(*n),
+        _ => Err(AttachmentError::Decode),
+    },
+};
 
 static PROGRESS: AttachmentType<i32> = AttachmentType {
     namespace: "part_state",
     name: "progress",
     default: || 0,
-    codec: Some(AttachmentCodec {
-        encode: |n| Ok([("n".into(), Tag::Int(*n))].into()),
-        decode: |saved: &Compound| match saved.get(&"n".into()) {
-            Some(Tag::Int(n)) => Ok(*n),
-            _ => Err(AttachmentError::Decode),
-        },
-    }),
+    codec: Some(PROGRESS_CODEC),
     copy_on_death: false,
     sync_codec: None,
 };
@@ -92,7 +89,8 @@ impl Hooks for StateMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
         let progress = r
             .register_attachment_type(
-                AttachmentDescriptor::new("part_state:progress", || 0_i32).serialize(i32_codec()),
+                AttachmentDescriptor::new("part_state:progress", || 0_i32)
+                    .serialize(PROGRESS_CODEC),
             )
             .unwrap();
         let scratch = r
@@ -192,7 +190,13 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
     const NAME: &str = "game::block_entity_part_state_tests::part_state_is_per_block_entity_through_ticks_transactions_and_replacement";
     with_state_mod(NAME, |game, keys| {
         let press_part = &keys.press;
-        let (a, b) = (press(game, (1, 64, 1)), press(game, (2, 64, 1)));
+        use super::api_values::TryIntoApi;
+        use sunrise_client::items::ItemStack;
+
+        let (a, b) = (
+            press_with_item_slot(game, (1, 64, 1)),
+            press(game, (2, 64, 1)),
+        );
         // Reads insert nothing.
         assert_eq!(press_part.state(game, a, Clone::clone), Ok(0));
         assert_eq!(stored(press_part, game, a), None);
@@ -257,7 +261,14 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         game.world.modified.clear();
         let aborted: Result<(), mod_api::TransactionError<()>> = (game as &mut dyn ServerHost)
             .transaction(|host, _| {
-                assert_eq!(press_part.edit_state(host, a, |_, _tx, n| *n = 11), Ok(()));
+                let stack = ItemStack::new("minecraft:stone", 1).try_into_api().unwrap();
+                assert_eq!(
+                    press_part.edit_state(host, a, |host, tx, n| {
+                        *n = 11;
+                        a.set_item_slot(host, tx, 0, Some(stack))
+                    }),
+                    Ok(Ok(true)),
+                );
                 assert_eq!(
                     press_part.state(host, a, Clone::clone),
                     Ok(11),
@@ -271,6 +282,10 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
             });
         assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
         assert_eq!(stored(press_part, game, a), Some(9));
+        let Some(BlockEntity::Mod(restored)) = game.world.block_entities.get(&(1, 64, 1)) else {
+            panic!("the holder must survive the abort");
+        };
+        assert!(restored.items.iter().all(Option::is_none));
         assert!(
             !game.world.modified.contains(&(0, 0)),
             "clean after the abort"
@@ -315,6 +330,40 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         });
         assert_eq!(changed, Err(PartStateError::Changed));
         assert_eq!(stored(press_part, game, a), Some(10));
+
+        // Refusing the draft's encoding keeps its prior bytes and undoes nested writes.
+        let saved = game
+            .world
+            .block_entities
+            .attachments((1, 64, 1))
+            .unwrap()
+            .to_nbt();
+        let refused = press_part.edit_state(game, a, |host, _tx, n| {
+            keys.scratch
+                .set(host, Holder::BlockEntity([1, 64, 1]), 8)
+                .unwrap();
+            *n = i32::MIN;
+        });
+        assert_eq!(
+            refused,
+            Err(PartStateError::Attachment {
+                namespace: "part_state",
+                name: "progress",
+                error: AttachmentError::Encode,
+            })
+        );
+        assert_eq!(
+            read_state(game, a, &keys.scratch, |value| value.copied()),
+            Ok(Some(1))
+        );
+        assert_eq!(
+            game.world
+                .block_entities
+                .attachments((1, 64, 1))
+                .unwrap()
+                .to_nbt(),
+            saved
+        );
 
         // An undecodable saved value refuses before the closure runs and keeps its bytes.
         let mut bad = Compound::new();

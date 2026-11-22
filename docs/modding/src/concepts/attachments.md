@@ -29,7 +29,7 @@ if let Ok(counter) = registrar.register_attachment_type(
 
 // Inside a server hook, or mixin code, with `host: &mut dyn ServerHost`:
 if !counter.has(host, Holder::Chunk([0, 0]))? { /* no counter stored */ }
-let old = counter.get(host, Holder::Chunk([0, 0]))?;
+let old = counter.get(host, Holder::Chunk([0, 0]), |value| *value)?;
 counter.set(host, Holder::Chunk([0, 0]), old + 1)?;
 Ok::<(), AttachmentError>(())
 ```
@@ -67,12 +67,14 @@ Use an issued `AttachmentKey<T>` to store mod data on a player, entity, block
 entity, chunk or level. Call `key.get`, `key.set`, `key.remove`, `key.has`,
 `key.get_existing` and `key.sync_data` with `&mut dyn Host` (or `get_in`,
 `set_in`, `remove_in`, `has_in`, `get_existing_in`, `sync_data_in` with
-`&mut dyn LevelRandomHost`) and a `Holder`. `T` is
-`Clone + Send + Sync + 'static`; `get` returns a clone and inserts the default on
-first access. `has` and `get_existing` read without inserting (NeoForge's `hasData`
-and `getExistingData`): `has` says whether a value is stored, saved or set, even
-before it decodes, and `get_existing` returns `None` instead of the default. Neither
-adds anything to the holder's saved data. `set` runs the optional persistence codec
+`&mut dyn LevelRandomHost`) and a `Holder`. `get` inserts the default on first
+access, then lends `&T` to the read closure. `has` and `get_existing` read without
+inserting (NeoForge's `hasData` and `getExistingDataOrNull`): `has` says whether a
+value is stored, even before it decodes, and `get_existing` lends `Option<&T>`,
+with `None` instead of the default. `with_decoded` lends the same option but never
+decodes a saved or synced value. The read returns only what the closure projects;
+copy or clone the data you need beyond the call. Reads and `set` need
+`T: Send + Sync + 'static`; `remove` also needs `Clone` to return the previous value. `set` runs the optional persistence codec
 before changing the value, returning an `AttachmentError` if persistence encoding
 fails. The sync codec runs only when there is a value to send to tracking clients.
 Keys are identified by `(namespace, name)` and bound to the installation that
@@ -90,8 +92,8 @@ no attachment storage; retrying does not help).
 `host.attachments()` exposes the host's `AttachmentStore` for custom storage
 adapters. Its `store` method accepts only an `AttachmentStoreWrite` prepared by
 the installed descriptor, not a caller-supplied name, erased value or NBT form.
-Ordinary mods write with `key.set(host, holder, value)`. Reading clones the
-value; copying a holder's data shares its stored values without cloning them.
+Ordinary mods write with `key.set(host, holder, value)`. Reading and copying a holder's
+data share its stored values without cloning them.
 
 `AttachmentHolder` keeps an existing typed handle when a system needs to store a holder
 identity: `Entity`, `Player`, `BlockEntity`, `Chunk` or `Level`. It is `Copy`, does not keep
@@ -226,10 +228,11 @@ and the copy is not synced on its own (the new mob's spawn carries its synced en
 ## Reading the original player
 
 `player_clone` supplies `event.original: OriginalPlayer<'_>` alongside the replacement's
-`event.player` UUID. During that hook, `event.original.attachment(&counter)` reads the old
-player's value even when `copy_on_death` is false or the type has no codec, returning its
-default without inserting it if absent; `counter.get(host, Holder::Player(event.player))` reads
-the replacement's retained value or fresh default. This works on death and on return from
+`event.player` UUID. During that hook, `event.original.attachment(&counter, |value| *value)`
+reads the old player's counter even when `copy_on_death` is false or the type has no codec,
+lending its default without inserting it if absent.
+`counter.get(host, Holder::Player(event.player), |value| *value)` reads the replacement's
+counter, inserting the default if absent. This works on death and on return from
 the End. The original's `has_attachment`, `existing_attachment` (decoding and caching a
 saved entry once without inserting a default), `with_decoded_attachment`, `set_attachment`,
 and `remove_attachment` work on the retained old player without touching the replacement.

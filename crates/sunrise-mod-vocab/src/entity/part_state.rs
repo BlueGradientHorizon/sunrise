@@ -70,9 +70,10 @@ pub trait EntityPartState: EntityPart + Sized {
         entity: EntityRef,
         read: impl FnOnce(&Self::Data) -> R,
     ) -> Result<R, PartStateError> {
-        self.state_existing(host, entity, |value| match value {
+        let key = self.state_key();
+        read_state(host, entity, key, |value| match value {
             Some(value) => read(value),
-            None => read(&self.state_key().descriptor().default_value()),
+            None => read(&key.descriptor().default_value()),
         })
     }
 

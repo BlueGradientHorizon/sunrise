@@ -117,17 +117,19 @@ if let Ok(progress) = r.register_attachment_type(
 let Some(entity) = event.subject.with_view(|view| view.handle()) else {
     return;
 };
-let done = Press::edit_state(event.subject.host(), entity, |_, progress| {
+let done = self.edit_state(event.subject.host(), entity, |_, _tx, progress| {
     *progress += 1;
     *progress >= 200
 });
 ```
 
-- `self.state(host, entity)` and `state_existing` read a snapshot through `&dyn Host` and never
-  insert the default. `edit_state` takes `&mut dyn ServerHost` and runs in a nested transaction
-  of its own. `PartStateError::Unavailable` means the host could not open the transaction and the
-  closure did not run. The closure gets a copy and the host, and no store borrow is held while it
-  runs. The result is stored when the closure returns.
+- `self.state(host, entity, |value| *value)` reads the counter from a snapshot through
+  `&dyn Host`, lending a default without inserting it when absent. `state_existing` lends
+  `Option<&T>` instead. `state_in` and `state_existing_in` do the same through `&dyn LevelHost`.
+- `edit_state` takes `&mut dyn ServerHost` and opens a nested transaction. The closure gets the
+  host, its `&TransactionContext`, and a mutable draft of the value. No store borrow is held
+  while it runs. The draft is encoded and stored through that journal when the closure returns.
+  `PartStateError::Unavailable` means the transaction could not open and the closure did not run.
 - Every call checks the key and handle first. A stale key from a prior installation gives
   `PartStateError::Attachment { error: AttachmentError::StaleKey, .. }`. A handle from another
   level gives `PartStateError::OtherLevel`. A removed, replaced or unloaded block entity gives

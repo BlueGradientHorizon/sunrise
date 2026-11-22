@@ -411,6 +411,57 @@ fn counter_on_disk(n: i32) -> Attachments {
 }
 
 #[test]
+fn read_loans_project_nonclone_values_from_the_live_holder_and_its_snapshot() {
+    struct Counter(i32);
+    let key = crate::parts::install_attachment_fixture(
+        "mapping",
+        AttachmentDescriptor::new("mapping:counter", || Counter(7)).serialize(AttachmentCodec {
+            encode: |n| Ok([("value".into(), Tag::Int(n.0))].into()),
+            decode: |data| match data.get(&"value".into()) {
+                Some(Tag::Int(n)) => Ok(Counter(*n)),
+                _ => Err(AttachmentError::Decode),
+            },
+        }),
+    );
+    let level =
+        AttachmentHolder::Level(LevelRef::new(WorldEpoch::new(19), DimensionKey::OVERWORLD));
+    let mut host = Store::default();
+    let mut disk = counter_on_disk(11);
+    disk.bind_index(&host.index, level);
+    host.maps.insert(Holder::Level, disk);
+    host.maps.insert(Holder::Entity(1), Attachments::default());
+
+    assert_eq!(
+        key.get_existing(&mut host, Holder::Entity(1), |value| value.map(|n| n.0)),
+        Ok(None)
+    );
+    assert!(!key.has(&mut host, Holder::Entity(1)).unwrap());
+    assert_eq!(key.get(&mut host, Holder::Entity(1), |n| n.0), Ok(7));
+    assert!(key.has(&mut host, Holder::Entity(1)).unwrap());
+    let project = |value: Option<&Counter>| value.map(|n| n.0);
+    assert_eq!(
+        key.with_decoded(&mut host, Holder::Level, project),
+        Ok(None)
+    );
+    assert_eq!(
+        key.get_existing(&mut host, Holder::Level, project),
+        Ok(Some(11))
+    );
+    assert_eq!(
+        key.with_decoded(&mut host, Holder::Level, project),
+        Ok(Some(11))
+    );
+
+    let capture = host.query(&key).unwrap();
+    key.set(&mut host, Holder::Level, Counter(13)).unwrap();
+    assert_eq!(key.get(&mut host, Holder::Level, |n| n.0), Ok(13));
+    assert_eq!(
+        capture.with_value(Default::default(), level, project),
+        Ok(Some(11))
+    );
+}
+
+#[test]
 fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_namespace() {
     let key = crate::parts::install_attachment_fixture(
         "mapping",

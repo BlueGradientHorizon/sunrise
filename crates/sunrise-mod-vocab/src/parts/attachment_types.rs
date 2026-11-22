@@ -497,11 +497,16 @@ impl<T: Send + Sync + 'static> AttachmentKey<T> {
     pub(crate) fn identity(&self) -> AttachmentIdentity {
         AttachmentIdentity(Arc::clone(&self.0) as Arc<dyn Any + Send + Sync>)
     }
-}
 
-impl<T: Send + Sync + 'static> AttachmentKey<T> {
     /// Lend a value for `read`, inserting the owner's default if absent. The loan
     /// does not outlive the call; copy or project only what you need to keep.
+    ///
+    /// ```compile_fail
+    /// use mod_vocab::{AttachmentKey, Holder, Host};
+    /// fn escape<'a>(host: &'a mut dyn Host, key: &'a AttachmentKey<u32>) -> &'a u32 {
+    ///     key.get(host, Holder::Level, |value| value).unwrap()
+    /// }
+    /// ```
     pub fn get<R>(
         &self,
         host: &mut dyn Host,

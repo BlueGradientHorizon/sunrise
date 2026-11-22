@@ -59,9 +59,10 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
         entity: BlockEntityRef,
         read: impl FnOnce(&Self::Data) -> R,
     ) -> Result<R, PartStateError> {
-        self.state_existing(host, entity, |value| match value {
+        let key = self.state_key();
+        read_state(host, entity, key, |value| match value {
             Some(value) => read(value),
-            None => read(&self.state_key().descriptor().default_value()),
+            None => read(&key.descriptor().default_value()),
         })
     }
 
@@ -84,9 +85,10 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
         entity: BlockEntityRef,
         read: impl FnOnce(&Self::Data) -> R,
     ) -> Result<R, PartStateError> {
-        self.state_existing_in(level, entity, |value| match value {
+        let key = self.state_key();
+        read_block_state_in(level, entity, key, |value| match value {
             Some(value) => read(value),
-            None => read(&self.state_key().descriptor().default_value()),
+            None => read(&key.descriptor().default_value()),
         })
     }
     /// The existing value through a read-only level, including tentative writes visible in
@@ -99,23 +101,7 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
         entity: BlockEntityRef,
         read: impl FnOnce(Option<&Self::Data>) -> R,
     ) -> Result<R, PartStateError> {
-        let key = self.state_key();
-        let (checked, epoch) = key
-            .live_with_epoch()
-            .map_err(|error| attachment(key, error))?;
-        level
-            .block_entity_part_snapshot(entity, checked.namespace(), checked.name())?
-            .query_checked(checked, epoch)
-            .map_err(|error| attachment(key, error))?
-            .with_value(
-                level.attachment_read_scope(),
-                AttachmentHolder::BlockEntity(entity),
-                read,
-            )
-            .map_err(|error| match error {
-                AttachmentRowError::Value(error) => attachment(key, error),
-                _ => PartStateError::Stale,
-            })
+        read_block_state_in(level, entity, self.state_key(), read)
     }
 
     /// Changes the block entity's value with `edit`, starting from the default when it has
@@ -132,6 +118,30 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
     {
         edit_part_state(host, entity, self.state_key(), edit)
     }
+}
+
+fn read_block_state_in<T: Send + Sync + 'static, R>(
+    level: &dyn LevelHost,
+    entity: BlockEntityRef,
+    key: &AttachmentKey<T>,
+    read: impl FnOnce(Option<&T>) -> R,
+) -> Result<R, PartStateError> {
+    let (checked, epoch) = key
+        .live_with_epoch()
+        .map_err(|error| attachment(key, error))?;
+    level
+        .block_entity_part_snapshot(entity, checked.namespace(), checked.name())?
+        .query_checked(checked, epoch)
+        .map_err(|error| attachment(key, error))?
+        .with_value(
+            level.attachment_read_scope(),
+            AttachmentHolder::BlockEntity(entity),
+            read,
+        )
+        .map_err(|error| match error {
+            AttachmentRowError::Value(error) => attachment(key, error),
+            _ => PartStateError::Stale,
+        })
 }
 
 /// Why a block entity's or an entity's Part state could not be read or changed. Nothing was
@@ -492,8 +502,7 @@ impl Drop for Editing {
 /// Runs in a transaction of its own, nested in the open one if any: the value is read
 /// (decoded once from its saved form, or the default when absent), lent to `edit` as a
 /// copy alongside the transaction context, with no store borrow held. It is stored back
-/// after `edit` returns, if the holder
-/// is still the one `entity` names and nothing else replaced the value meanwhile.
+/// after `edit` returns if `entity` still names the same holder and nothing replaced the value.
 /// Otherwise, or when the value does not encode, the transaction aborts with everything
 /// `edit` wrote and the old value stays, with its saved bytes. A panic in `edit` aborts it
 /// too. An undecodable saved value refuses before `edit` runs and is kept as it was.
