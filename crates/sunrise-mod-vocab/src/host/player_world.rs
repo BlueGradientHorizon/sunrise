@@ -129,7 +129,6 @@ pub trait PlayerWorldClientBackendMut {
     /// The view, head, previous body angle and packets are unchanged. `Ok(false)` for a stale,
     /// nonlocal, or unavailable player. Returns `Err(LevelWriteError::Unavailable)` when the
     /// host cannot write living state. Does not change frame extraction order.
-    #[access(WorldOnly)]
     fn player_set_body_yaw(&mut self, player: PlayerRef, yaw: f32)
     -> Result<bool, LevelWriteError>;
 }
