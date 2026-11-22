@@ -25,6 +25,23 @@ fn a_request_is_stored_and_only_an_operator_is_a_tick_time_subscriber() {
 }
 
 #[test]
+fn the_tick_time_snapshot_counts_joined_live_network_players_including_respawns() {
+    let mut hub = standing(false, vec![request(vec![0])]);
+    let conn = hub.guests[0].conn;
+    hub.ops.insert(hub.guests[0].uuid, 4);
+    drain(&mut hub);
+    assert_eq!(hub.tick_time_subscribers(), [conn]);
+
+    hub.guests.update(0, |g| g.placed = false);
+    assert!(hub.tick_time_subscribers().is_empty());
+    hub.guests.update(0, |g| g.respawning = true);
+    assert_eq!(hub.tick_time_subscribers(), [conn]);
+
+    hub.guests.update(0, |g| g.disconnect_pending = true);
+    assert!(hub.tick_time_subscribers().is_empty());
+}
+
+#[test]
 fn an_empty_request_unsubscribes_and_other_ids_do_not_subscribe() {
     let mut hub = standing(false, vec![request(vec![0]), request(vec![])]);
     hub.ops.insert(hub.guests[0].uuid, 4);
