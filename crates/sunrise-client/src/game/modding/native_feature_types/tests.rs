@@ -219,12 +219,12 @@ fn block_entity_data_must_fit_its_block_and_a_registry_is_required() {
 #[test]
 #[ignore = "daily"]
 fn a_panicking_feature_preserves_its_work_and_disables_only_its_registration() {
-    use mod_api::__private::game::take_callback_panic_notices;
+    use mod_api::__private::{HookPanicReport, take_hook_panics};
     use mod_api::{
         Hooks, ModEntry, PackageInfo, PackageKind, Registrar, RegistrationContext, Side,
     };
 
-    // The real error-toast queue is process-wide. Don't race other tests that drain it.
+    // Run the worldgen fixture in its own process.
     const CHILD: &str = "SUNRISE_FEATURE_PANIC_TEST_CHILD";
     if std::env::var_os(CHILD).is_none() {
         let output = std::process::Command::new(std::env::current_exe().unwrap())
@@ -330,13 +330,13 @@ fn a_panicking_feature_preserves_its_work_and_disables_only_its_registration() {
             );
             // The third Java Random.nextInt() from seed 0: only the first and last calls drew.
             assert_eq!(random.int_unbounded(), 1033096058);
-            let notices = take_callback_panic_notices();
-            let [notice] = notices.as_slice() else {
-                panic!("expected one notice, got {notices:?}")
-            };
-            assert_eq!(notice.mod_id, OWNER);
-            assert_eq!(notice.operation, "FeatureType::place");
-            assert!(notice.message.contains(PANIC), "{notice:?}");
+            assert_eq!(
+                take_hook_panics(),
+                [HookPanicReport {
+                    mod_id: OWNER,
+                    hook: "FeatureType::place",
+                }]
+            );
         });
     });
 }

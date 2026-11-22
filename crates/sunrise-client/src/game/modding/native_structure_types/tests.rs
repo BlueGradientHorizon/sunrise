@@ -1794,15 +1794,14 @@ fn placing_propagates_unwritten_and_contains_real_world_errors() {
 #[test]
 #[ignore = "daily"]
 fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices() {
-    use mod_api::__private::game::take_callback_panic_notices;
+    use mod_api::__private::{HookPanicReport, take_hook_panics};
     use mod_api::{
         Hooks, ModEntry, PackageInfo, PackageKind, Registrar, RegistrationContext, Side,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
     use sunrise_world::worldgen::structure::start::{Piece, StructureStart, place_in_chunk};
 
-    // The real error-toast queue is process-wide. Run in a child process so no concurrent
-    // test observes or drains this test's notices.
+    // Run the worldgen fixture in its own process.
     const CHILD: &str = "SUNRISE_STRUCTURE_PANIC_TEST_CHILD";
     if std::env::var_os(CHILD).is_none() {
         let output = std::process::Command::new(std::env::current_exe().unwrap())
@@ -2068,14 +2067,13 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
             .unwrap();
             assert_eq!(broken_piece_calls.load(Ordering::SeqCst), 1);
             assert_eq!(broken_piece_after_calls.load(Ordering::SeqCst), 1);
-            let notices = take_callback_panic_notices();
-            let [notice] = notices.as_slice() else {
-                panic!("expected one post_process panic notice, got {notices:?}");
-            };
-            assert_eq!(notice.mod_id, OWNER);
-            assert_eq!(notice.kind, "structure piece");
-            assert_eq!(notice.operation, "StructurePiece::post_process");
-            assert!(notice.message.contains(PIECE_PANIC), "{notice:?}");
+            assert_eq!(
+                take_hook_panics(),
+                [HookPanicReport {
+                    mod_id: OWNER,
+                    hook: "StructurePiece::post_process",
+                }]
+            );
 
             // Next chunk: post_process stays disabled with no second toast; after_place runs again.
             place_in_chunk(
@@ -2090,7 +2088,7 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
             .unwrap();
             assert_eq!(broken_piece_calls.load(Ordering::SeqCst), 1);
             assert_eq!(broken_piece_after_calls.load(Ordering::SeqCst), 2);
-            assert!(take_callback_panic_notices().is_empty());
+            assert!(take_hook_panics().is_empty());
             // Other operations on the same registration (load_piece) remain active.
             assert!(
                 types["extra:broken_piece"]
@@ -2112,14 +2110,13 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
             .unwrap();
             assert_eq!(broken_after_piece_calls.load(Ordering::SeqCst), 1);
             assert_eq!(broken_after_calls.load(Ordering::SeqCst), 1);
-            let notices = take_callback_panic_notices();
-            let [notice] = notices.as_slice() else {
-                panic!("expected one after_place panic notice, got {notices:?}");
-            };
-            assert_eq!(notice.mod_id, OWNER);
-            assert_eq!(notice.kind, "structure type");
-            assert_eq!(notice.operation, "StructureType::after_place");
-            assert!(notice.message.contains(AFTER_PANIC), "{notice:?}");
+            assert_eq!(
+                take_hook_panics(),
+                [HookPanicReport {
+                    mod_id: OWNER,
+                    hook: "StructureType::after_place",
+                }]
+            );
 
             place_in_chunk(
                 &broken_after_start,
@@ -2133,7 +2130,7 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
             .unwrap();
             assert_eq!(broken_after_piece_calls.load(Ordering::SeqCst), 2);
             assert_eq!(broken_after_calls.load(Ordering::SeqCst), 1);
-            assert!(take_callback_panic_notices().is_empty());
+            assert!(take_hook_panics().is_empty());
 
             // 3. Another structure type registered by the same mod remains unaffected.
             place_in_chunk(
@@ -2148,7 +2145,7 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
             .unwrap();
             assert_eq!(healthy_piece_calls.load(Ordering::SeqCst), 1);
             assert_eq!(healthy_after_calls.load(Ordering::SeqCst), 1);
-            assert!(take_callback_panic_notices().is_empty());
+            assert!(take_hook_panics().is_empty());
 
             assert_eq!(
                 world.writes,
