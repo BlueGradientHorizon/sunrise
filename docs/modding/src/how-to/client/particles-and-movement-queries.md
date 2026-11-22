@@ -5,8 +5,9 @@
 `ClientHost::add_particle` submits the API's `ParticleOptions`, a world position and
 velocity to the ordinary client particle queue. The client must have a loaded player
 and world. Non-finite numeric inputs are refused. A successful submission does not
-promise a visible particle: provider availability, sprite sets, distance and the
-player's particle settings apply. This method is not available on `ServerHost`.
+promise a visible particle: distance, the player's particle settings, provider availability
+and render-group admission still apply. A native provider can also decline the spawn.
+This method is not available on `ServerHost`.
 
 Particle options carry a `ParticleKey`, not an engine particle enum or a provider name.
 Request the key with `Registrar::particle_key` during registration and retain it. The game resolves
@@ -44,15 +45,31 @@ velocity and the level's light.
 
 ### Particle providers
 
-A particle provider (`Hooks::register_particle_providers`) gives a registered particle type its own
-construction, tick behavior and per-frame quad. The type is named by its ID (`mymod:spark`); its sprite set and
-spawn defaults come from `assets/<namespace>/particles/<path>.json`. Make a request with
-`ParticleOptions::simple` (or another typed option constructor) on the key returned by
-`Registrar::particle_key`. Register a factory on the client at startup:
+A native provider constructs one owned instance per spawn of a registered particle type. Give
+`Registrar::particle_key("mymod:spark")` the same ID you pass to `register_sprite_set`, and
+supply the sprite set in `assets/mymod/particles/spark.json`. Spawn with
+`ParticleOptions::simple(spark_key)`. The same registered key, typed options, Wire encoding
+and network packets work whether the type uses declarative motion or native code.
+
+This spark rises at the speed supplied by the caller. It starts on the first sprite, switches
+to the last sprite halfway through its life, and grows in its first rendered tick without
+changing its stored size.
 
 ```rust,ignore
-struct SparkProvider;
-struct Spark { rise: f64 }
+use mod_api::{
+    CustomParticle, Hooks, Identifier, ParticleLevelView, ParticleProvider, ParticleQuad,
+    ParticleSpawn, ParticleTickView, ParticleView, RegisterParticleProvidersEvent,
+    RegistrationContext, sunrise_mod,
+};
+
+struct SparkProvider {
+    last_frame: usize,
+}
+
+struct Spark {
+    rise: f64,
+    last_frame: usize,
+}
 
 impl ParticleProvider for SparkProvider {
     fn create_particle(
@@ -61,54 +78,71 @@ impl ParticleProvider for SparkProvider {
         particle: &mut dyn ParticleTickView,
     ) -> Option<Box<dyn CustomParticle>> {
         particle.set_lifetime(20);
-        Some(Box::new(Spark { rise: spawn.velocity[1] }))
+        particle.set_sprite_index(0);
+        Some(Box::new(Spark {
+            rise: spawn.velocity[1],
+            last_frame: self.last_frame,
+        }))
     }
 }
 
 impl CustomParticle for Spark {
     fn tick(&mut self, particle: &mut dyn ParticleTickView, _level: &dyn ParticleLevelView) {
-        if particle.advance_age() {
-            particle.move_by([0.0, self.rise, 0.0]);
-            particle.set_sprite_from_age();
+        if !particle.advance_age() {
+            return;
+        }
+        particle.move_by([0.0, self.rise, 0.0]);
+        if particle.age() == 10 {
+            particle.set_sprite_index(self.last_frame);
         }
     }
 
     fn extract(&self, particle: &dyn ParticleView, partial_tick: f32, quad: &mut ParticleQuad) {
-        // Grow during the first tick, without changing the particle's stored size.
         if particle.age() == 0 {
             quad.size *= partial_tick;
         }
     }
 }
 
-fn register_particle_providers(
-    &self,
-    _context: &RegistrationContext,
-    event: &mut RegisterParticleProvidersEvent<'_>,
-) {
-    event.register_sprite_set(Identifier::parse("mymod:spark").unwrap(), |_| SparkProvider);
+struct SparkMod;
+
+#[sunrise_mod]
+impl Hooks for SparkMod {
+    fn register_particle_providers(
+        &self,
+        _context: &RegistrationContext,
+        event: &mut RegisterParticleProvidersEvent<'_>,
+    ) {
+        event.register_sprite_set(
+            Identifier::parse_namespaced("mymod:spark").unwrap(),
+            |sprites| SparkProvider {
+                last_frame: sprites.frame_count() - 1,
+            },
+        );
+    }
 }
 ```
 
-The factory captures owned `Send + Sync + 'static` data and returns a `ParticleProvider`.
-The last accepted registration for an ID wins. Its factory runs once per sprite load, including
-reloads, with a `ParticleSpriteSet` whose `frame_count()` reports the number of frames. No atlas
-or engine handles are exposed. A missing set or failed bind is reported for the ID and its mod;
-that type does not spawn. Types without a registration still use their declarations.
+The listener runs at client startup. The last accepted factory for an ID runs once per sprite
+load, including reloads. It captures owned `Send + Sync + 'static` data and returns a concrete
+`ParticleProvider`. `ParticleSpriteSet::frame_count()` is nonzero; the descriptor exposes no
+atlas or engine handles. A missing set or failed bind is reported for the ID and its mod; that
+type does not spawn. Types without a registration still use declarative motion.
 
-After the camera-distance and Particles-setting checks, `create_particle` runs synchronously.
-`ParticleSpawn` borrows the original typed options, raw position and velocity, the loaded level
-and the engine's live provider RNG. The mutable `ParticleTickView` starts with the declaration's
-spawn defaults. Return `None` to decline this spawn, or return a fresh owned instance with its
-state in its own fields. It joins the ordinary FIFO; the render group can still reject it when
-admitting particles. The views are loans for that call only, not values to retain in the instance.
+After the applicable distance and Particles-setting checks, `create_particle` runs synchronously
+on the owning thread. `ParticleSpawn` lends the typed options, raw position and velocity slots,
+loaded level and the engine's live provider RNG. `ParticleTickView` starts with the declaration's
+spawn defaults. Return `None` to decline just this spawn without an error, or return `Some` with
+an owned instance whose ordinary Rust fields hold its state. It joins the normal pending FIFO;
+its render group can still refuse admission. Keep owned data, not loans from the callback.
 
 The default `CustomParticle::tick` calls `tick_base` for vanilla's lifetime check, movement and
-friction. If you override it, call `tick_base` or use `advance_age` to capture the previous pose
-and check the lifetime before applying your own motion. Age starts at zero and the base check
-removes the particle when its age at the start of the tick reaches its lifetime. Call `remove`
-to end it sooner. `move_by` uses the collision box and loaded level; `set_position` relocates the
-particle with its collision box, without changing the previous position used for interpolation.
+friction. An override can call `tick_base` or use `advance_age` to record the previous position
+and roll and check expiry before applying its own motion. Age starts at zero. Both operations
+remove the particle when its age at the start of the tick reaches its lifetime. Call `remove()`
+to end it sooner or to handle expiry yourself. `move_by` uses the collision box and loaded level.
+`set_position` relocates the collision box without changing the position that rendering
+interpolates from; call `set_previous_position` too to snap instead of interpolate.
 
 Use `set_sprite_index` for an exact frame or `set_sprite_from_age` for vanilla's
 `age * (frame_count - 1) / lifetime`. An invalid index or a zero divisor is reported and leaves
@@ -120,18 +154,19 @@ current roll is nonzero.
 
 `CustomParticle::extract` receives a read-only `ParticleView`, the frame's partial tick and a
 mutable `ParticleQuad` on the owning thread. The default draws the configured appearance.
-Override it to change this frame's size, RGBA, facing, roll or visibility. The sprite, light and
-render group still come from the particle. Colors use vanilla's `ARGB.colorFromFloat` (floor
-and mask each channel, without clamping). Fixed quaternions written to the quad are used as
-supplied. Hiding the quad, refusing the callback or producing non-finite vertices skips just
-that draw: it does not change the instance, tick state or lifetime. Update those in `tick` instead.
+Override it to change this frame's size, RGBA, facing, roll or visibility. The engine interpolates
+position at the partial tick and still uses the particle's sprite, light and render group. Colors
+use vanilla's `ARGB.colorFromFloat`. Fixed quaternions written directly to the quad are used as
+supplied. Set `quad.visible = false` to hide just this draw. A refused callback or non-finite
+vertices also skips just this draw. None of these changes the instance, tick state or lifetime.
 
 `ParticleLevelView` reads loaded `block_state(pos)` and stored `brightness(layer, pos)` during
 construction and tick. A missing chunk reads as air; the sky layer always reads zero in a
-dimension without sky light. The instance ticks on the particle engine's owning thread. A panic
-is reported in the log and error toast with the mod's name and disables that registration's
-panicking callback kind for the session; other callbacks continue. An extraction panic does not
-stop ticks. A phase refusal is reported without disabling the callback. Existing native instances are discarded when sprites reload.
+dimension without skylight. The callbacks run on the particle engine's owning thread. A panic
+is named in the log and client error toast and disables that registration's panicking callback
+kind for the session. A tick panic retires its instances; an extraction panic does not stop
+ticks. An ordinary refusal is reported without disabling the callback. Sprite reload discards
+live and pending native instances before rebinding factories.
 
 ### Particle render groups
 
@@ -139,9 +174,10 @@ In `Hooks::register_particle_groups`, call `event.register(id, factory)` with a 
 `Identifier` and a factory returning `ParticleGroup { blend, particles }`. The hook runs once at
 client startup; each accepted factory runs once per particle engine construction. The first
 registration for an ID wins, and a duplicate or a reserved `minecraft` ID never calls its factory.
-Reloading resources re-associates sprite sets with the groups already built; it does not call
-factories again. Provider registration is separate: a group chooses the draw layer and quota for
-the listed particle types, not how those particles move.
+On reload, sprite-set factories bind new providers, but group factories do not run again. The
+engine associates the sprite sets with the groups it already built. A group chooses the draw
+layer and applies vanilla's `ParticleGroup.add` admission rules to its listed types, whether
+those types have native instances or declarative motion.
 
 ## Client fireworks
 

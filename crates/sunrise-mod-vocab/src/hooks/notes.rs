@@ -1942,19 +1942,21 @@ once per tick, reaching the end after `lifetime` motion ticks. Omitted size keep
 spawn size; omitted alpha stays 1. Fading particles use the blended particle layer.
 Malformed declarations, unknown behaviour fields, non-finite or out-of-range numbers reject the
 whole behaviour object with a log warning, falling back to the existing particle behaviour;
-the sprite set still loads. Vanilla particle JSONs are unaffected. Resource reloads apply new
-declarations to newly spawned particles; live particles keep their spawn-time values.
-The engine copies fixed-size numeric data at spawn and performs no new allocations per particle
-tick. Declarations support linear size/opacity curves and constant gravity/friction; for per-particle
-code, call `event.register_sprite_set(id, factory)` in `register_particle_providers` ("Particle
-providers"). The game binds the factory when that type's sprites load. The declared spawn values
-seed each new instance; that instance owns its tick behavior.
+the sprite set still loads. Vanilla particle JSONs are unaffected. Sprite reload applies new
+declarations to future declarative spawns; existing declarative particles keep their spawn values.
+The engine copies fixed-size numeric data at spawn and performs no new allocations per declarative
+tick. For native behavior, call `event.register_sprite_set(id, factory)` in
+`register_particle_providers` ("Particle providers"). The bound provider receives the same
+registered options whether the request came from the client or a packet. The declaration seeds
+its spawn defaults, and the returned instance owns its subsequent tick and quad extraction.
+Sprite reload discards those native instances and rebinds their providers.
 
 `register_particle_groups(context, event)` binds a namespaced `Identifier` to a factory with
 `event.register(id, factory)` once at client startup. The factory captures owned data
 (`Send + Sync + 'static`) and returns a `ParticleGroup` with its blend and particle types,
 not its ID. The engine calls an accepted factory once per particle engine construction.
-A sprite reload resolves particle types against those groups without running factories again.
+A sprite reload binds provider factories again and resolves each type against the existing
+groups; it does not rerun group factories.
 
 
 - the open screen hears of a key press (`screen_key_pressed_pre`) and of each character it types (`screen_char_typed_pre`), as vanilla's `ScreenEvent.KeyPressed.Pre` and `.CharacterTyped.Pre`: the screen, vanilla's key name (`key.keyboard.e`; a key with no name fires nothing), whether the press is an auto-repeat, the character, GLFW's modifier bits (shift 1, control 2, alt 4, super 8), and `screen.mouse` for the pointer. A cancelled press goes no further — no focus move, no Escape-close, no inventory or hotbar key, no typing by the key itself — while its release still arrives and the characters no mod cancelled still reach the text box, as vanilla's separate `charTyped` comes for a cancelled `keyPressed` too. A cancelled character drops only that character and never reaches a text box, and the character hook's `field` is a copy of the focused box whose edits the box takes through its own filter, length limit and responders; control characters (Enter, Backspace, Tab, Delete, Escape, a Control letter) are keys and fire nothing. A key's characters fire after the key has acted, as GLFW's char callback comes after its key callback, so a key that closes the screen (the inventory key) reports no character (the closed screen hears none) and one that moves the focus types into the box it moved to. The input method's committed text fires the character hook too. They fire for the window and the control socket's `key` and `type` (not its `\b` backspace), after the fullscreen, screenshot, debug and narrator keys, never on the connect and loading screens, the prompts, books and sign editors drawn over gameplay, or while a world loads or saves.

@@ -1,0 +1,110 @@
+# The listener signature is unchanged and the event's nominal type is still
+# non-exhaustive. The removed event field and versioned hook record the break:
+# method:Hooks::register_particle_providers
+# type:RegisterParticleProvidersEvent
+# The surface calls inherent methods `handle:` (including the removed
+# method:ParticleProviderRegistry::into_providers and ParticleBatch accessors).
+# The removed IntoIterator method and engine-only exports are not inventory entries:
+# method:ParticleBatch::into_iter
+# fn:particle_batch_from_vec; fn:__private::particle_batch_from_vec
+# fn:particle_batch_into_vec; fn:__private::particle_batch_into_vec
+ids = [
+    "hook:register_particle_providers",
+    "hook:register_particle_providers.providers",
+    "type:RegisterParticleProvidersEvent.providers",
+    "handle:RegisterParticleProvidersEvent::register_sprite_set",
+    "trait:ParticleProviders",
+    "method:ParticleProviders::register",
+    "type:ParticleProviderRegistry",
+    "handle:ParticleProviderRegistry::into_providers",
+    "trait:ParticleProvider",
+    "method:ParticleProvider::tick",
+    "method:ParticleProvider::create_particle",
+    "type:ModParticle",
+    "type:ModParticle.position",
+    "type:ModParticle.previous",
+    "type:ModParticle.velocity",
+    "type:ModParticle.age",
+    "type:ModParticle.lifetime",
+    "type:ModParticle.size",
+    "type:ModParticle.rgba",
+    "type:ModParticle.frame",
+    "type:ModParticle.removed",
+    "type:ModParticle.state",
+    "type:ModParticle.facing",
+    "type:ModParticle.roll",
+    "type:ParticleFacing",
+    "type:ParticleBatch",
+    "handle:ParticleBatch::len",
+    "handle:ParticleBatch::is_empty",
+    "handle:ParticleBatch::get_mut",
+    "handle:ParticleBatch::iter_mut",
+    "type:ParticleSpriteSet",
+    "handle:ParticleSpriteSet::frame_count",
+    "type:ParticleSpawn",
+    "type:ParticleSpawn.options",
+    "type:ParticleSpawn.position",
+    "type:ParticleSpawn.velocity",
+    "type:ParticleSpawn.level",
+    "type:ParticleSpawn.random",
+    "trait:ParticleView",
+    "method:ParticleView::position",
+    "method:ParticleView::previous_position",
+    "method:ParticleView::velocity",
+    "method:ParticleView::age",
+    "method:ParticleView::lifetime",
+    "method:ParticleView::on_ground",
+    "method:ParticleView::is_alive",
+    "method:ParticleView::size",
+    "method:ParticleView::rgba",
+    "method:ParticleView::sprite_index",
+    "method:ParticleView::facing",
+    "method:ParticleView::roll",
+    "method:ParticleView::previous_roll",
+    "trait:ParticleTickView",
+    "method:ParticleTickView::set_position",
+    "method:ParticleTickView::set_previous_position",
+    "method:ParticleTickView::set_velocity",
+    "method:ParticleTickView::set_age",
+    "method:ParticleTickView::set_lifetime",
+    "method:ParticleTickView::set_gravity",
+    "method:ParticleTickView::set_friction",
+    "method:ParticleTickView::set_has_physics",
+    "method:ParticleTickView::set_size",
+    "method:ParticleTickView::set_rgba",
+    "method:ParticleTickView::set_sprite_index",
+    "method:ParticleTickView::set_sprite_from_age",
+    "method:ParticleTickView::set_facing",
+    "method:ParticleTickView::set_roll",
+    "method:ParticleTickView::move_by",
+    "method:ParticleTickView::advance_age",
+    "method:ParticleTickView::tick_base",
+    "method:ParticleTickView::remove",
+    "trait:CustomParticle",
+    "method:CustomParticle::tick",
+    "method:CustomParticle::extract",
+    "type:ParticleQuad",
+    "type:ParticleQuad.size",
+    "type:ParticleQuad.rgba",
+    "type:ParticleQuad.facing",
+    "type:ParticleQuad.roll",
+    "type:ParticleQuad.visible",
+]
+why = """
+NeoForge RegisterParticleProvidersEvent.registerSpriteSet associates a registered particle type with a sprite-set factory, and vanilla ParticleResources.reload binds the loaded sprites. Following ParticleProvider.createParticle and ParticleEngine.makeParticle/add/tick with ParticleGroup.add, a provider creates one owned instance with the live level and random before the engine admits it to its render group from the pending FIFO. Particle.tick/remove govern previous pose and lifetime, and SingleQuadParticle.extract builds a frame from that pose without changing the particle. Live views replace batch copies and fixed scratch storage; neither render output nor the shape of a batch decides when a particle dies. Registered ParticleOptions and their wire and network paths are unchanged.
+"""
+migrate = '''
+Keep `Hooks::register_particle_providers(&self, context: &RegistrationContext, event: &mut RegisterParticleProvidersEvent<'_>)`. Replace `event.providers.register(name, Arc::new(P))` with `event.register_sprite_set(Identifier::parse_namespaced(name).unwrap(), |sprites| P { ... })` (pass `&name` if you still have a `String`; unwrap only known namespaced IDs). Return a concrete `ParticleProvider`; the factory captures only owned `Send + Sync + 'static` data. Use `sprites.frame_count()` for the frame count of this load. The last accepted factory for an ID binds once per load with its nonempty sprite set. A missing set or failed bind is reported and does not use declarative motion. Drop `ParticleProviders`, `ParticleProviderRegistry` and `into_providers`; there is no registry to drain or edit.
+
+Replace `ParticleProvider::tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView)` with `create_particle(&self, spawn: &mut ParticleSpawn<'_>, particle: &mut dyn ParticleTickView) -> Option<Box<dyn CustomParticle>>`. Read the typed request and raw arguments from `spawn.options`, `spawn.position` and `spawn.velocity`; use `spawn.level` and `spawn.random` during construction. `particle` starts with the declaration's spawn defaults. Move the four scratch numbers in `ModParticle::state` into ordinary fields of your own `Instance` and return `Some(Box::new(Instance { ... }))`. Return `None` to deliberately decline just this spawn: nothing is queued and no error is reported. A returned instance still goes through group admission. It must own its data and be `Send + Sync + 'static`; it cannot retain callback loans.
+
+Move the old batch loop body into `CustomParticle::tick(&mut self, particle: &mut dyn ParticleTickView, level: &dyn ParticleLevelView)` on `Instance`. Remove `ParticleBatch`, `len`, `is_empty`, `get_mut`, `iter_mut`, `into_iter` and both batch conversion helpers; there is no batch to inspect or return. The default tick calls `particle.tick_base()`. For your own motion, first use `if !particle.advance_age() { return; }` to record previous position and roll and increment age; then update the particle. Age starts at zero. Both tick operations expire the particle when its pre-increment age reaches its lifetime. An override that uses neither operation controls expiry itself with `remove()`.
+
+Replace the old `position`, `previous`, `velocity`, `age` and `lifetime` fields with `position()`, `previous_position()`, `velocity()`, `age()` and `lifetime()`; write with the corresponding `set_position`, `set_previous_position`, `set_velocity`, `set_age` and `set_lifetime`. Use `move_by(delta)` for collision-aware motion. After teleporting with `set_position`, use `set_previous_position` too if you want to snap rather than interpolate. Replace `removed` reads with `!particle.is_alive()` and writes of `true` with `particle.remove()`; there is no write to revive it.
+
+Replace appearance fields `size`, `rgba`, `frame`, `facing` and `roll` with `size()`, `rgba()`, `sprite_index()`, `facing()` and `roll()` and their corresponding `set_*` methods. `set_sprite_index` takes an exact `usize` and does not clamp to the last frame; use `set_sprite_from_age()` for vanilla's age-driven selection. `previous_roll()` exposes the interpolation origin; a current roll of zero renders without a turn. Invalid setter input is reported and does not change that field or expire the particle. Do not encode `ParticleFacing`, `ModParticle` or `ParticleBatch` with `Wire`; only the facing vocabulary remains, as local presentation data.
+
+For frame-only drawing, implement `CustomParticle::extract(&self, particle: &dyn ParticleView, partial_tick: f32, quad: &mut ParticleQuad)`. Edit `quad.size`, `quad.rgba`, `quad.facing` and `quad.roll`, or set `quad.visible = false` to hide just this draw. Omit the override to draw the configured quad. The engine interpolates position from previous to current, and nonzero roll from previous roll, at `partial_tick`. Sprite, light and render group still come from the particle. A hidden quad, refused callback or non-finite geometry skips the draw, not the tick or lifetime; use the tick view for simulation changes. A panic is logged and shown in the client error toast under the mod's name and disables that registration's panicking callback kind for the session; ordinary refusals do not latch. Resource reload discards existing native instances and binds new providers.
+
+Keep the same sprite declaration (`assets/<namespace>/particles/<path>.json`), `Registrar::particle_key`, `ParticleOptions` constructors and particle send calls. The registered key, options' Wire form and network codecs are unchanged; a provider instance and its views never cross the wire.
+'''

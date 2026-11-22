@@ -3,8 +3,8 @@
 pub trait Hooks {
     /// Register the render groups a mod's particles draw in (NeoForge's `RegisterParticleGroupsEvent`).
     /// Called once at client startup. Use [`RegisterParticleGroupsEvent::register`] to bind an ID to
-    /// a factory run once per particle engine construction. Sprite loads and reloads only resolve
-    /// each particle type against the constructed groups.
+    /// a factory run once per particle engine construction. Sprite reload binds new particle
+    /// providers but resolves their types against the existing groups.
     #[notes = r#"## Particle groups
 
 `Hooks::register_particle_groups` is the client registration-phase counterpart of NeoForge
@@ -27,24 +27,22 @@ fn register_particle_groups(
 ```
 
 A group is vanilla's `ParticleRenderType` with the `ParticleGroup` the particle engine keeps for
-it. Its particles are counted, admitted, ticked and removed apart from every other group's, so
-each group has vanilla's own limit of 16384 live particles and a crowd in one cannot crowd out
-another, and they are drawn after the built-in particles, groups in registration order. The group
-decides the layer of its particles (`blend`), whatever their sprites hold. List each type by its
-namespaced ID, such as `example:spark` for `assets/example/particles/spark.json`. This works with
-or without a `register_particle_providers` provider, so a group adds no particle look or motion
-of its own: that stays in the declaration and the provider. A type no group lists draws in the
-built-in group as before, and the built-in particles are never moved. A type another group lists
-already, or no sprite set matches, is logged and left out.
+it. Each group uses vanilla's `ParticleGroup.add` admission rules and is ticked and drawn apart
+from other groups. Custom groups draw after the built-in particles, in registration order.
+A group picks its particles' layer (`blend`), not their motion. List each type by its namespaced
+ID, such as `example:spark` for `assets/example/particles/spark.json`. The group admits both
+particles with declarative motion and instances made by a bound native provider. A type no group
+lists draws in the built-in group; the built-in particles are never moved. A type another group
+already lists, or with no matching sprite set, is logged and left out.
 
 The game freezes factories in registration order. IDs in `minecraft`, IDs with an empty
 namespace or path, and duplicates are logged and dropped without invoking those factories.
 Each particle engine calls the accepted factories once when it is constructed. If a factory
 is disabled, refuses or panics, that engine omits the group; a duplicate never takes its place.
 When sprite sets load or reload, the game resolves each type's group from the resulting
-engine-owned definitions. A spawn, a tick and a draw use the resolved group handle, look nothing
-up by group name and scan no mod. Live provider-driven particles are dropped when resources reload, in
-a group as in the built-in one."#]
+engine-owned definitions. Spawning, ticking and drawing use the resolved group handle, with no
+lookup by group name. Sprite reload discards live and pending native instances in all groups
+before binding the new providers."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

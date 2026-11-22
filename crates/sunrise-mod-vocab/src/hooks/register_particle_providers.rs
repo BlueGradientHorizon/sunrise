@@ -1,37 +1,37 @@
 //! The `register_particle_providers` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// Register sprite-set factories for code-defined particle providers (NeoForge's
-    /// `RegisterParticleProvidersEvent`). Called once at client startup. Use
-    /// [`RegisterParticleProvidersEvent::register_sprite_set`] with the particle type's ID and a
-    /// factory that builds the provider after the matching sprite set loads.
+    /// Register sprite-set factories at client startup (NeoForge's `RegisterParticleProvidersEvent`).
+    /// Call [`RegisterParticleProvidersEvent::register_sprite_set`] with the ID used for
+    /// `Registrar::particle_key`. The accepted factory binds when that type's sprites load,
+    /// and its `ParticleProvider` creates one owned `CustomParticle` per successful spawn.
     #[notes = r#"## Particle providers
 
-A particle provider (NeoForge's `RegisterParticleProvidersEvent` and `ParticleProvider`) gives a registered
-particle type code. `Hooks::register_particle_providers` stages its sprite-set factory at client startup.
-The last accepted factory for an ID binds once per sprite load, with a `ParticleSpriteSet` describing
-that load's nonempty frame list. See the modding book's “Particle providers” for an implementation.
+Use `event.register_sprite_set(id, factory)` at client startup with the ID registered through
+`Registrar::particle_key` and the matching `assets/<namespace>/particles/<path>.json`.
+The last accepted factory for an ID binds once per sprite load with that load's nonempty
+`ParticleSpriteSet`. A missing set or failed bind is reported and the type does not spawn.
+See the modding book's “Particle providers” for a worked example.
 
-After the distance and Particles settings checks, the bound provider's `create_particle` receives a
-`ParticleSpawn` with the typed `ParticleOptions`, raw position and velocity slots, a read-only live level
-and the engine's provider random. A `ParticleTickView` starts with the declared spawn values, and changes
-are authoritative. Return `None` to decline a spawn, or a `Box<dyn CustomParticle>` to queue it for normal
-FIFO group admission. The particle's own fields hold its state.
+Once the applicable distance and Particles-setting checks pass, `ParticleProvider::create_particle`
+receives `ParticleSpawn` (typed options, raw position and velocity slots, live level and random)
+and a mutable `ParticleTickView` seeded with the declared spawn values. Return `None` to decline
+just this spawn without an error. A returned `Box<dyn CustomParticle>` is queued for ordinary
+FIFO group admission. The options and their network encoding are unchanged.
 
-The instance ticks on the owning thread, with the same live particle and level views lent only for the
-callback. Its default tick runs vanilla's base movement, interpolation and lifetime check. An override can
-call `tick_base`, or `advance_age` and then run its own movement, or `remove` to expire the particle. Sprite
-selection is explicit: `set_sprite_index` selects a frame directly and `set_sprite_from_age` uses vanilla's
-age/lifetime formula. Bad inputs to setters are reported and leave the field unchanged, not the particle dead.
+An instance holds its state in its own fields. On its owning thread, `CustomParticle::tick` can
+use `tick_base` for vanilla motion and expiry, or `advance_age` to record the previous position and
+roll and check expiry before applying custom motion. These operations remove the particle when
+the age at the start of the tick reaches its lifetime. `remove` retires it explicitly. Select an
+exact frame with `set_sprite_index` or animate with `set_sprite_from_age`. Invalid setter inputs
+are reported and leave the field unchanged. The particle and level views are scoped to the call.
 
-`CustomParticle::extract` starts with the vanilla quad appearance and can edit this frame's size, color,
-facing, roll and visibility. It reads the particle without changing it; the sprite, light and render group
-remain configured by the engine. Hidden, refused or non-finite geometry is not submitted and does not
-expire the particle. An extraction panic disables extraction, not ticking.
-
-A missing sprite set or failed bind spawns nothing. A panic is named in the log and client error toast;
-only the panicking callback kind for that registration is disabled, including across resource reloads.
-An ordinary phase refusal does not disable the callback. Reloads discard existing native instances."#]
+`CustomParticle::extract` reads the live pose and edits only this frame's `ParticleQuad`; the
+engine interpolates the pose and uses the configured sprite, lighting and render group.
+Hiding the quad, refusing the callback or producing non-finite geometry skips a draw, not a tick.
+A panic is named in the log and client error toast and disables that registration's panicking
+callback kind for the session. Ordinary refusals are reported without latching. Reloading sprites
+discards existing native instances and binds new providers."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",
