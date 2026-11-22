@@ -691,7 +691,7 @@ pub(crate) fn advance_transfer_index<R>(
     indices: &mut Range<usize>,
     inserting: Option<&R>,
 ) -> Option<usize> {
-    if indices.is_empty() {
+    if Range::is_empty(indices) {
         return None;
     }
     let index = handler.next_transfer_index(host, indices.clone(), inserting)?;
