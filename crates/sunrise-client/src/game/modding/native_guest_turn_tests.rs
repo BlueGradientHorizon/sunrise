@@ -1369,7 +1369,7 @@ fn tick_advancement_notice_precedes_recipe_reward() {
 }
 
 /// `PlayerRef::set_selected_slot` from inside the guest's own turn: their state is in place, so
-/// the slot is written there, and their client is still told (`leave_guest` sends nothing).
+/// the slot is written there, and their client is still told (the put-back at the end of `guest_turn` sends nothing).
 #[test]
 #[ignore = "daily"]
 fn set_selected_slot_tells_an_acting_guests_client() {
