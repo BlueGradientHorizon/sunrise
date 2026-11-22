@@ -71,6 +71,34 @@ impl std::fmt::Display for UpgradeError {
 
 impl std::error::Error for UpgradeError {}
 
+/// The metadata-only mod Host operation, shared by game and chunk worker hosts.
+#[doc(hidden)]
+pub fn upgrade_mod_nbt(
+    kind: mod_api::NbtDataType,
+    data_version: i32,
+    nbt: sunrise_core::nbt::Compound,
+) -> Result<sunrise_core::nbt::Compound, mod_api::NbtUpgradeError> {
+    use mod_api::{NbtDataType, NbtUpgradeError};
+
+    let kind = match kind {
+        NbtDataType::ItemStack => CompoundType::ItemStack,
+        NbtDataType::BlockState => CompoundType::BlockState,
+        NbtDataType::BlockEntity => CompoundType::BlockEntity,
+        NbtDataType::Entity => CompoundType::Entity,
+        NbtDataType::EntityTree => CompoundType::EntityTree,
+    };
+    upgrade_compound(kind, data_version, nbt).map_err(|error| match error {
+        UpgradeError::NegativeVersion(v) | UpgradeError::UnsupportedVersion(v) => {
+            NbtUpgradeError::UnsupportedVersion(v)
+        }
+        UpgradeError::FutureVersion(v) => NbtUpgradeError::FutureVersion(v),
+        UpgradeError::MalformedCompound => NbtUpgradeError::MalformedCompound,
+        UpgradeError::LegacyTablesUnavailable => NbtUpgradeError::LegacyTablesUnavailable,
+        UpgradeError::TooDeep => NbtUpgradeError::TooDeep,
+        UpgradeError::UpgradedTooDeep => NbtUpgradeError::UpgradedTooDeep,
+    })
+}
+
 /// `DataFixer.update` at one vanilla root reference. No world context is added or used.
 pub fn upgrade_compound(
     kind: CompoundType,
