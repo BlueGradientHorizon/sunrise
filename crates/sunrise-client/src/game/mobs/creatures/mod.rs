@@ -4132,12 +4132,14 @@ impl Game<'_> {
             }
             _ => p.kind.id.clone(),
         };
+        // Animal.spawnChildFromBreeding places the child at yaw zero. Its constructor still
+        // spends LivingEntity's yaw draw on the child's stream, not the level's.
         let mut child = self.create_mob_reason(
             &kind,
             [p.position.x, p.position.y, p.position.z],
             true,
             SpawnSite::Raw,
-            None,
+            Some(0.0),
         )?;
         'offspring: {
             let child = &mut child;
@@ -4298,8 +4300,16 @@ impl Game<'_> {
                 conn.and_then(|c| self.killer_uuid(c)),
                 conn.and_then(|c| self.player_entity_id_by_connection(c)),
             );
-            match self.breed_with_listeners(parent, partner, player, child) {
-                Some(baby) => child = baby,
+            match self.breed_with_listeners(parent, partner, player, child, |game, baby| {
+                game.finish_live_breeding(&p, partner, baby, experience)
+            }) {
+                // The levels' normal join hooks have now run if this was the root commit.
+                Some(joined) => {
+                    return joined.filter(|&id| {
+                        self.resident_target_dimension(super::commands::Target::Mob(id))
+                            == Some(self.dim)
+                    });
+                }
                 None => {
                     breeding_credit(&mut self.love_cause, parent, partner);
                     if let Some(q) = self.mobs.iter_mut().find(|m| m.id == partner) {
@@ -4310,12 +4320,23 @@ impl Game<'_> {
                 }
             }
         }
+        self.finish_live_breeding(&p, partner, child, experience)
+    }
+
+    fn finish_live_breeding(
+        &mut self,
+        p: &Mob,
+        partner: u32,
+        child: Mob,
+        experience: sunrise_client::mobs::BreedExperience,
+    ) -> Option<u32> {
+        let parent = p.id;
         let order = if sunrise_client::mobs::orb_after_child(p.species()) {
             OrbOrder::AfterChild
         } else {
             OrbOrder::BeforeChild
         };
-        self.finalize_breeding(&p, partner, Some(&child), order);
+        self.finalize_breeding(p, partner, Some(&child), order);
         let at = [p.position.x, p.position.y, p.position.z];
         match order {
             OrbOrder::AfterChild => {
