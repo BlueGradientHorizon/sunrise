@@ -270,7 +270,7 @@ impl Game<'_> {
     }
     /// Runs `op` on the guest's merchant menu (their inventory copied in and
     /// back), then syncs the client. False when the guest has no such window.
-    fn lan_merchant_op(
+    pub(in crate::game) fn lan_merchant_op(
         &mut self,
         conn: u32,
         window: Option<i32>,
@@ -895,15 +895,15 @@ impl Game<'_> {
 impl Game<'_> {
     /// The guest whose trading screen is open on mob `mob`.
     pub(super) fn lan_trade_conn(&self, mob: u32) -> Option<u32> {
+        self.lan_trade_screen(mob).map(|(conn, _)| conn)
+    }
+    /// The live trading screen and its guest, even during a borrowed guest turn.
+    pub(super) fn lan_trade_screen(&self, mob: u32) -> Option<(u32, &GuestMerchant)> {
         let host = self.lan.as_ref()?;
-        host.menus
-            .iter()
-            .find(|(_, p)| {
-                p.merchant
-                    .as_ref()
-                    .is_some_and(|m| m.merchant.mob == Some(mob))
-            })
-            .map(|(conn, _)| *conn)
+        host.menus.iter().find_map(|(&conn, state)| {
+            let screen = state.merchant.as_ref()?;
+            (screen.merchant.mob == Some(mob)).then_some((conn, screen))
+        })
     }
     /// The live session of a guest's open trading screen, whose offers,
     /// experience and level are newer than the mob's until the screen closes.
@@ -1320,6 +1320,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_merchant_edit_reaches_the_guest_trading_with_it() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::lan_trading::tests::a_merchant_edit_reaches_the_guest_trading_with_it",
+            "SUNRISE_MERCHANT_EDIT_CHILD",
+            &["game"],
+        ) {
+            return;
+        }
         with_game(|game| {
             let (villager, rx, first) = open_trade(game, 1);
 
@@ -1363,12 +1370,9 @@ mod tests {
                     .unwrap()
             );
             assert_eq!(sent_offers(), 3);
-            // The mob still has the old offers; the screen has the new ones.
-            assert_eq!(
-                game.mobs[0].extra.trade.as_ref().unwrap().offers,
-                vec![first]
-            );
+            // The mob's offers are the screen's (the brain restocks them).
             let live = vec![changed.clone(), second.clone()];
+            assert_eq!(game.mobs[0].extra.trade.as_ref().unwrap().offers, live);
             assert_eq!(villager.offers(game), Some(live.try_into_api().unwrap()));
             assert_eq!(villager.xp(game), Some(40));
             assert_eq!(villager.level(game), Some(3));

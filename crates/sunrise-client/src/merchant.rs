@@ -47,41 +47,61 @@ pub struct Trader {
     /// generated when first asked for, keeping the experience.
     pub unset: bool,
 }
-impl Trader {
-    fn update_demand(&mut self) {
-        for o in &mut self.offers {
-            o.update_demand();
+/// What a restock step does to the offers (`Villager.restock`, and the
+/// `catchUpDemand` of `shouldRestock` with the restocks it missed).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RestockStep {
+    CatchUp(i32),
+    Restock,
+}
+impl RestockStep {
+    pub fn apply(self, offers: &mut [MerchantOffer]) {
+        match self {
+            Self::CatchUp(missed) => {
+                if missed > 0 {
+                    offers.iter_mut().for_each(MerchantOffer::reset_uses);
+                }
+                for _ in 0..missed {
+                    offers.iter_mut().for_each(MerchantOffer::update_demand);
+                }
+            }
+            Self::Restock => {
+                offers.iter_mut().for_each(MerchantOffer::update_demand);
+                offers.iter_mut().for_each(MerchantOffer::reset_uses);
+            }
         }
     }
+}
+impl Trader {
     /// `Villager.shouldRestock`.
     pub fn should_restock(&mut self, game_time: i64, day: i64) -> bool {
+        let _ = self.catch_up(game_time, day);
+        self.restock_due(game_time)
+    }
+    /// The new-day half of `Villager.shouldRestock` (`resetNumberOfRestocks` /
+    /// `catchUpDemand`). Returns the step applied to the offers on a new day.
+    pub fn catch_up(&mut self, game_time: i64, day: i64) -> Option<RestockStep> {
         let mut new_day = game_time > self.last_restock + 12000;
         new_day |= self.check_day > 0 && day > self.check_day;
         self.check_day = day;
-        if new_day {
-            self.last_restock = game_time;
-            // resetNumberOfRestocks / catchUpDemand.
-            let missed = 2 - self.restocks_today;
-            if missed > 0 {
-                for o in &mut self.offers {
-                    o.reset_uses();
-                }
-            }
-            for _ in 0..missed {
-                self.update_demand();
-            }
-            self.restocks_today = 0;
+        if !new_day {
+            return None;
         }
+        self.last_restock = game_time;
+        let step = RestockStep::CatchUp(2_i32.wrapping_sub(self.restocks_today));
+        step.apply(&mut self.offers);
+        self.restocks_today = 0;
+        Some(step)
+    }
+    /// `allowedToRestock && needsToRestock`.
+    pub fn restock_due(&self, game_time: i64) -> bool {
         let allowed = self.restocks_today == 0
             || self.restocks_today < 2 && game_time > self.last_restock + 2400;
         allowed && self.offers.iter().any(|o| o.uses > 0)
     }
     /// `Villager.restock`.
     pub fn restock(&mut self, game_time: i64) {
-        self.update_demand();
-        for o in &mut self.offers {
-            o.reset_uses();
-        }
+        RestockStep::Restock.apply(&mut self.offers);
         self.last_restock = game_time;
         self.restocks_today += 1;
     }
@@ -363,7 +383,7 @@ impl Session {
             TradeFeedback::Current => {
                 trade_update_pitch(&mut self.ambient_sound_time, &mut self.random)
             }
-            TradeFeedback::AtHurt(pitch) => pitch,
+            TradeFeedback::AtHurt(pitch) | TradeFeedback::AtWork(pitch) => pitch,
         };
         pitch.map(|pitch| (result.is_some(), pitch))
     }
@@ -375,6 +395,8 @@ pub enum TradeFeedback {
     Current,
     /// An accepted player hit already settled the living villager's timer and RNG.
     AtHurt(Option<f32>),
+    /// A work-step restock already settled the living villager's timer and RNG.
+    AtWork(Option<f32>),
 }
 
 /// `AbstractVillager.notifyTradeUpdated` uses `Mob.getAmbientSoundInterval` (80).

@@ -77,6 +77,7 @@ pub(super) struct BorrowedMobTick<'a> {
     pub(super) passenger_objects: &'a [Seen],
     pub(super) blocked: &'a std::collections::HashSet<u32>,
     pub(super) events: &'a mut Vec<MobEvent>,
+    pub(super) restocks: &'a mut Vec<sunrise_client::mobs::villager_brain::RestockNotice>,
     pub(super) pushes: &'a mut sunrise_client::mobs::PendingPushes,
     pub(super) dead: &'a mut Vec<Mob>,
     pub(super) corpses: &'a mut Vec<Mob>,
@@ -673,34 +674,41 @@ impl Game<'_> {
                             &mut movement,
                         ),
                     };
-                    let progress =
-                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run_tick)) {
-                            Ok(progress) => progress,
-                            Err(payload) => {
-                                mobs[i].despawn = mod_api::Despawn::default();
-                                if seen_guest.is_none() {
-                                    base.player = w.player;
-                                } else if let Some(k) = lent {
-                                    spare =
-                                        w.player.map(|v| std::mem::replace(&mut guests[k].1, v));
-                                }
-                                sunrise_client::mobs::take_mob_pushes(
-                                    &mut events,
-                                    from,
-                                    &mut pushes,
-                                );
-                                route_player_events(
-                                    &mut events,
-                                    from,
-                                    seen_guest,
-                                    &guest_ids,
-                                    &mut guest_events,
-                                    mobs[i].id,
-                                );
-                                dispatch_panic = Some(payload);
-                                break;
+                    let progress = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run_tick));
+                    // Screen updates must run before the next callback. Take them out of this
+                    // villager's event tail now, before any continuation remembers an index in it.
+                    if mobs[i].species() == Species::Villager {
+                        for event in events.extract_if(from.., |event| {
+                            matches!(event, MobEvent::VillagerRestockStep(_))
+                        }) {
+                            let MobEvent::VillagerRestockStep(restock) = event else {
+                                unreachable!()
+                            };
+                            state.restocks.push(restock);
+                        }
+                    }
+                    let progress = match progress {
+                        Ok(progress) => progress,
+                        Err(payload) => {
+                            mobs[i].despawn = mod_api::Despawn::default();
+                            if seen_guest.is_none() {
+                                base.player = w.player;
+                            } else if let Some(k) = lent {
+                                spare = w.player.map(|v| std::mem::replace(&mut guests[k].1, v));
                             }
-                        };
+                            sunrise_client::mobs::take_mob_pushes(&mut events, from, &mut pushes);
+                            route_player_events(
+                                &mut events,
+                                from,
+                                seen_guest,
+                                &guest_ids,
+                                &mut guest_events,
+                                mobs[i].id,
+                            );
+                            dispatch_panic = Some(payload);
+                            break;
+                        }
+                    };
                     let kept = match progress {
                         sunrise_client::mobs::ai::TickProgress::Complete(kept) => {
                             movement = None;
@@ -942,7 +950,11 @@ impl Game<'_> {
                     &mut sections.borrow_mut(),
                 );
             }
+            // A work step's restock reaches the screen before any callback can edit it.
             let callback_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                for restock in state.restocks.drain(..) {
+                    self.villager_offers_open(restock);
+                }
                 if section_yield && let Some(sections) = section_table.as_ref() {
                     self.entity_sections_ticked_live(
                         &mut sections.borrow_mut(),

@@ -6,7 +6,7 @@
 pub(super) mod biome_facts;
 #[cfg(test)]
 mod borrowed_panic_tests;
-mod borrowed_tick;
+pub(in crate::game) mod borrowed_tick;
 mod breeding;
 mod combat_adaptations;
 mod conversion_identity;
@@ -1368,7 +1368,7 @@ impl Game<'_> {
     }
     /// The entity phase of `tick_creatures`: every mob's tick, deaths, and the
     /// projectiles and effects that follow from them.
-    pub(super) fn tick_creature_entities(&mut self) -> Result<()> {
+    pub(in crate::game) fn tick_creature_entities(&mut self) -> Result<()> {
         // Its steps as spans for `sunrise-report` (nothing is read while spans are off).
         let mut laps = sunrise_client::spans::laps();
         let blocked = self.mobs_below_off_level();
@@ -1487,6 +1487,7 @@ impl Game<'_> {
         // cube the body leaves behind (`AbstractCubeMob.remove`), captured as
         // the body goes because it has left the list by the time it splits.
         let mut gone = Vec::new();
+        let mut restocks = Vec::new();
         // The level's random and attachments, lent to the mobs (brain behaviours draw from
         // the random, and a hit's damage hooks get both) and taken back after their ticks.
         let lent = sunrise_client::health::LentLevel::take(&mut self.world);
@@ -1496,6 +1497,7 @@ impl Game<'_> {
             passenger_objects: &passenger_objects,
             blocked: &blocked,
             events: &mut events,
+            restocks: &mut restocks,
             pushes: &mut pending.pushes,
             dead: &mut dead,
             corpses: &mut corpses,
@@ -1554,6 +1556,11 @@ impl Game<'_> {
         snapshot.clear();
         self.creatures.seen_buf = snapshot;
         self.creatures.ticked = ticked;
+        // A work step's restock lands on the screen now, before any callback of
+        // this tick can edit the offers (those edits are then the last write).
+        for restock in restocks {
+            self.villager_offers_open(restock);
+        }
         // Completed brain actions are never fed back into the producer pass.
         if !events.is_empty() || !guest_events.is_empty() {
             pending.batches.push_back(MobOutputBatch {
@@ -3758,6 +3765,8 @@ impl Game<'_> {
                     child,
                 } => self.villager_birth(parent, partner, child),
                 MobEvent::WorkAtComposter { mob, pos } => self.villager_work_at_composter(mob, pos),
+                // The borrowed tick routes these directly to the open trading screen.
+                MobEvent::VillagerRestockStep(_) => {}
                 MobEvent::GolemCheck { mob, needed } => self.villager_golem_check(mob, needed),
                 MobEvent::Firework { at, color, flight } => {
                     self.villager_firework(at, color, flight)

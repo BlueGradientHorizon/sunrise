@@ -13,6 +13,31 @@ use sunrise_core::{geometry::Vec3, position::BlockPos};
 fn block_of(p: Vec3) -> [i32; 3] {
     [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
+impl villager_brain::TradingPlayers for Game<'_> {
+    fn trading_player(&self, villager: u32) -> Option<villager_brain::TradingPlayer> {
+        if let Some(station) = &self.station
+            && station
+                .merchant
+                .as_ref()
+                .is_some_and(|merchant| merchant.mob == Some(villager))
+        {
+            return Some(villager_brain::TradingPlayer {
+                uuid: self.level.player_uuid,
+                hero: self.hero_amplifier(),
+                paying: station.inputs.iter().any(Option::is_some),
+            });
+        }
+        let host = self.lan.as_ref()?;
+        let (conn, screen) = self.lan_trade_screen(villager)?;
+        let guest = host.hub.guest(conn)?;
+        Some(villager_brain::TradingPlayer {
+            uuid: Some(sunrise_client::lan::playerdata::uuid_ints(guest.uuid)),
+            hero: guest.effects.amplifier("hero_of_the_village"),
+            paying: screen.slots[..2].iter().any(Option::is_some),
+        })
+    }
+}
+
 impl Game<'_> {
     fn villager_index(&self, id: u32) -> Option<usize> {
         self.mobs
@@ -610,6 +635,41 @@ impl Game<'_> {
             });
         }
         self.lan_merchant_reputation(id, only, feedback);
+    }
+    /// `Villager.restock` / `shouldRestock` with a trading player, at the
+    /// brain's work step: the live offers on the screen take the step, priced
+    /// for the player as the work step saw them; `updateSellItem` then picks
+    /// the result and the yes/no voice. Later edits are the last write.
+    pub(in crate::game) fn villager_offers_open(&mut self, restock: villager_brain::RestockNotice) {
+        let villager_brain::RestockNotice {
+            mob: id,
+            step,
+            reputation,
+            hero,
+            pitch,
+        } = restock;
+        let refresh = |menu: &mut sunrise_client::menu::Menu, env: &sunrise_client::menu::Env| {
+            if let Some(session) = menu.merchant.as_mut() {
+                step.apply(&mut session.offers);
+                session.reputation = reputation;
+                session.hero = hero;
+                session.update_special_prices();
+            }
+            menu.merchant_update_with_feedback(env.items, TradeFeedback::AtWork(pitch));
+        };
+        let local = self
+            .station
+            .as_ref()
+            .and_then(|s| s.merchant.as_ref())
+            .is_some_and(|m| m.mob == Some(id));
+        if local {
+            self.menu_session(|menu, env, _| {
+                refresh(menu, env);
+                Some(true)
+            });
+        } else if let Some(conn) = self.lan_trade_conn(id) {
+            self.lan_merchant_op(conn, None, true, refresh);
+        }
     }
     /// `Villager.getPlayerReputation` of the local player.
     pub(super) fn villager_reputation(&self, id: u32) -> i32 {
