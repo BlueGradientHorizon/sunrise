@@ -317,11 +317,11 @@ impl Game<'_> {
                 .epoch()
                 .ok_or_else(|| "no active world epoch".to_owned())?;
             let player_id = self.native_acting_id();
-            let entity_id = self
-                .player_lookup_entity(player_id)
-                .unwrap_or_else(|| self.native_acting_entity());
-            let actor = mod_api::EntityRef::new(epoch, entity_id);
-            let player = mod_api::__private::game::player_ref(actor, player_id);
+            let player = self.player(player_id).unwrap_or_else(|| {
+                // A fake player can be the acting body without an online-player entry.
+                let actor = mod_api::EntityRef::new(epoch, self.native_acting_entity());
+                mod_api::__private::game::player_ref(actor, player_id)
+            });
             let level = self.level_ref(epoch, self.dim.key());
             let held = held
                 .try_into_api()
