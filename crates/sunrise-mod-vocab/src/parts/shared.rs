@@ -91,8 +91,7 @@ pub struct Parts {
     pub(crate) default_block_containers: HashMap<Box<str>, Vec<(usize, crate::ModContainer)>>,
     pub(crate) default_block_fluids: HashMap<Box<str>, Vec<(usize, crate::ModFluidTanks)>>,
     pub(crate) default_block_energy: HashMap<Box<str>, Vec<(usize, crate::ModEnergyBuffer)>>,
-    pub(crate) default_item_containers:
-        HashMap<Box<str>, Vec<(usize, Arc<dyn crate::ItemContainerProvider>)>>,
+    pub(crate) default_item_containers: HashMap<Box<str>, Vec<DefaultItemContainer>>,
     /// Item capability providers by capability name, then by item, in registration order.
     pub(crate) item_capabilities: Capabilities<NativeCapabilityProvider>,
     /// Entity capability providers by capability name, then by entity type, in registration

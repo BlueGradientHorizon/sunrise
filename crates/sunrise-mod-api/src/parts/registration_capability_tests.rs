@@ -150,4 +150,102 @@ mod tests {
             Some("minecraft:zombie")
         );
     }
+
+    #[test]
+    fn panicking_dynamic_item_container_provider_is_isolated_to_its_registration() {
+        struct Empty;
+        #[mod_api::__subscriptions]
+        impl Hooks for Empty {}
+
+        crate::testing::with_mods(
+            vec![
+                ModEntry::new("faulty", Box::new(Empty)),
+                ModEntry::new("healthy", Box::new(Empty)),
+            ]
+            .into(),
+            || {
+                let bad_calls = Arc::new(AtomicUsize::new(0));
+                let none_calls = Arc::new(AtomicUsize::new(0));
+                let winner_calls = Arc::new(AtomicUsize::new(0));
+                let sibling_calls = Arc::new(AtomicUsize::new(0));
+
+                let mut registrar = super::super::PartRegistrar::new("faulty");
+                let backpack = (&mut registrar as &mut dyn Registrar).item_key("test:panic_bag");
+                let pouch = (&mut registrar as &mut dyn Registrar).item_key("test:sibling_bag");
+                {
+                    let calls = Arc::clone(&bad_calls);
+                    (&mut registrar as &mut dyn Registrar).item_container(
+                        &backpack,
+                        move |_: &dyn Host| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            panic!("boom in dynamic item container provider");
+                        },
+                    );
+                }
+                {
+                    let calls = Arc::clone(&sibling_calls);
+                    (&mut registrar as &mut dyn Registrar).item_container(
+                        &pouch,
+                        move |_: &dyn Host| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            Some(12)
+                        },
+                    );
+                }
+
+                registrar.mod_id = "healthy";
+                registrar.mod_index = 1;
+                {
+                    let calls = Arc::clone(&none_calls);
+                    (&mut registrar as &mut dyn Registrar).item_container(
+                        &backpack,
+                        move |_: &dyn Host| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            None
+                        },
+                    );
+                }
+                {
+                    let calls = Arc::clone(&winner_calls);
+                    (&mut registrar as &mut dyn Registrar).item_container(
+                        &backpack,
+                        move |_: &dyn Host| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            Some(9)
+                        },
+                    );
+                }
+
+                assert!(registrar.refused.is_empty(), "{:?}", registrar.refused);
+                super::super::install_registrar(
+                    registrar,
+                    &crate::__private::part_tests::rule_schema(),
+                )
+                .unwrap();
+
+                let host = crate::testing::FakeHost::new();
+                for visit in [1, 2] {
+                    assert_eq!(
+                        mod_vocab::__private::parts_installation::item_container_slots(
+                            &host,
+                            "test:panic_bag",
+                        ),
+                        Some(9)
+                    );
+                    assert_eq!(bad_calls.load(Ordering::Relaxed), 1);
+                    assert_eq!(none_calls.load(Ordering::Relaxed), visit);
+                    assert_eq!(winner_calls.load(Ordering::Relaxed), visit);
+                }
+
+                assert_eq!(
+                    mod_vocab::__private::parts_installation::item_container_slots(
+                        &host,
+                        "test:sibling_bag",
+                    ),
+                    Some(12)
+                );
+                assert_eq!(sibling_calls.load(Ordering::Relaxed), 1);
+            },
+        );
+    }
 }

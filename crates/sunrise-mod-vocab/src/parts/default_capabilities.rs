@@ -1,6 +1,15 @@
 //! Type-bound declarations consumed by the game's default capability providers.
 use super::*;
 
+/// One registered dynamic item-container callback with its owner and per-registration panic state.
+#[derive(Clone)]
+pub(crate) struct DefaultItemContainer {
+    pub(crate) mod_id: &'static str,
+    pub(crate) mod_index: usize,
+    pub(crate) provider: Arc<dyn crate::ItemContainerProvider>,
+    pub(crate) panicked: Arc<std::sync::atomic::AtomicBool>,
+}
+
 /// A registered item's dynamic slot count. The item type is bound at registration; this
 /// callback runs only for an actual runtime lookup, never to infer whether it is registered.
 pub trait ItemContainerProvider: Send + Sync {
@@ -53,12 +62,6 @@ pub trait DefaultCapabilitiesCapabilityProviders {
     fn block_fluids(&self, block: &str) -> Option<crate::ModFluidTanks>;
     /// First enabled declaration of this block's energy buffer.
     fn block_energy(&self, block: &str) -> Option<crate::ModEnergyBuffer>;
-    /// Registered item callbacks in registration order, without a global mod scan.
-    fn item_container_provider(
-        &self,
-        item: &str,
-        index: &mut u32,
-    ) -> Option<Arc<dyn ItemContainerProvider>>;
 }
 
 impl DefaultCapabilitiesCapabilityProviders for InstalledProviders {
@@ -70,22 +73,6 @@ impl DefaultCapabilitiesCapabilityProviders for InstalledProviders {
     }
     fn block_energy(&self, block: &str) -> Option<crate::ModEnergyBuffer> {
         first_enabled(installed()?.keys.default_block_energy.get(block)?).cloned()
-    }
-    fn item_container_provider(
-        &self,
-        item: &str,
-        index: &mut u32,
-    ) -> Option<Arc<dyn ItemContainerProvider>> {
-        let providers = installed()?.keys.default_item_containers.get(item)?;
-        while (*index as usize) < providers.len() {
-            let at = *index as usize;
-            *index += 1;
-            let (mod_index, provider) = &providers[at];
-            if crate::mod_index_on(*mod_index) {
-                return Some(provider.clone());
-            }
-        }
-        None
     }
 }
 

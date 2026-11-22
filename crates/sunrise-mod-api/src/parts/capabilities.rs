@@ -88,6 +88,7 @@ impl PartRegistrar {
                 before_game,
                 order,
                 provider,
+                panicked: Default::default(),
             },
         );
     }
@@ -1091,5 +1092,113 @@ pub mod tests {
         assert_eq!(item(0, 1), (true, 1));
         assert_eq!(item(1, 1), (false, 27));
         assert_eq!(item(1, 2), (true, 3));
+    }
+
+    #[test]
+    fn panicking_before_game_provider_is_isolated_to_its_registration() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Empty;
+        #[mod_api::__subscriptions]
+        impl Hooks for Empty {}
+
+        crate::testing::with_mods(
+            vec![
+                ModEntry::new("faulty", Box::new(Empty)),
+                ModEntry::new("healthy", Box::new(Empty)),
+            ]
+            .into(),
+            || {
+                let bad_calls = Arc::new(AtomicUsize::new(0));
+                let none_calls = Arc::new(AtomicUsize::new(0));
+                let winner_calls = Arc::new(AtomicUsize::new(0));
+                let sibling_calls = Arc::new(AtomicUsize::new(0));
+
+                let mut registrar = PartRegistrar::new("faulty");
+                let target = registrar.block_entity_type_key("test:panic_target");
+                let sibling = registrar.block_entity_type_key("test:sibling_target");
+
+                {
+                    let calls = Arc::clone(&bad_calls);
+                    (&mut registrar as &mut dyn Registrar).block_entity_capability_before_game(
+                        &ITEMS,
+                        &target,
+                        move |_, _| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            panic!("boom in before-game capability provider");
+                        },
+                    );
+                }
+                {
+                    let calls = Arc::clone(&sibling_calls);
+                    (&mut registrar as &mut dyn Registrar).block_entity_capability(
+                        &ITEMS,
+                        &sibling,
+                        move |_, _| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            Some(Box::new(Marked(55)))
+                        },
+                    );
+                }
+
+                registrar.mod_id = "healthy";
+                registrar.mod_index = 1;
+                {
+                    let calls = Arc::clone(&none_calls);
+                    (&mut registrar as &mut dyn Registrar).block_entity_capability_before_game(
+                        &ITEMS,
+                        &target,
+                        move |_, _| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            None
+                        },
+                    );
+                }
+                {
+                    let calls = Arc::clone(&winner_calls);
+                    (&mut registrar as &mut dyn Registrar).block_entity_capability(
+                        &ITEMS,
+                        &target,
+                        move |_, _| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            Some(Box::new(Marked(77)))
+                        },
+                    );
+                }
+
+                assert!(registrar.refused.is_empty(), "{:?}", registrar.refused);
+                install_registrar(registrar, &rule_schema()).unwrap();
+
+                let target_pos = [0, 64, 0];
+                let sibling_pos = [1, 64, 0];
+                let mut world = FakeHost::new();
+                world
+                    .level
+                    .block_entity(target_pos)
+                    .of_type("test:panic_target");
+                world
+                    .level
+                    .block_entity(sibling_pos)
+                    .of_type("test:sibling_target");
+
+                for visit in [1, 2] {
+                    let found = here()
+                        .capability(&mut world, &ITEMS, target_pos, None)
+                        .expect("later legitimate provider should win");
+                    assert_eq!(found.owner(), "healthy");
+                    assert_eq!(found.size(&mut world), 77);
+                    assert_eq!(bad_calls.load(Ordering::Relaxed), 1);
+                    assert_eq!(none_calls.load(Ordering::Relaxed), visit);
+                    assert_eq!(winner_calls.load(Ordering::Relaxed), visit);
+                }
+
+                let same_mod = here()
+                    .capability(&mut world, &ITEMS, sibling_pos, None)
+                    .expect("separately registered callback of the same mod should still work");
+                assert_eq!(same_mod.owner(), "faulty");
+                assert_eq!(same_mod.size(&mut world), 55);
+                assert_eq!(sibling_calls.load(Ordering::Relaxed), 1);
+            },
+        );
     }
 }

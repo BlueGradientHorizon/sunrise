@@ -14,6 +14,8 @@ pub(crate) struct CapabilityPart<P> {
     /// the block entity type standing there as one list.
     pub(crate) order: usize,
     pub(crate) provider: P,
+    /// Set once this registered callback panicked: it is disabled for the rest of the session.
+    pub(crate) panicked: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Opaque native provider bound by the typed capability methods on `dyn Registrar`.
@@ -110,10 +112,11 @@ pub(crate) fn answered<T: ?Sized>(
 }
 
 /// Asks the borrowed `providers` in dispatch order (those registered `before_game`, then the
-/// others), checking each row's mod enablement right before it is used, and the game's own
-/// (`game`: whether it answers) once at the boundary between the two groups or after
+/// others), checking each row's mod and callback enablement right before it is used, and the
+/// game's own (`game`: whether it answers) once at the boundary between the two groups or after
 /// exhaustion, in the fork's chosen order (NeoForge's javadoc doesn't state one between mods'
-/// providers and the game's); the first to answer wins.
+/// providers and the game's); the first to answer wins. Each mod callback runs under its own
+/// per-registration panic containment; `game` runs outside mod containment.
 pub(crate) fn ask_providers<'a, T: ?Sized>(
     host: &mut dyn ServerHost,
     providers: impl Iterator<Item = &'a CapabilityPart<NativeCapabilityProvider>>,
@@ -122,7 +125,7 @@ pub(crate) fn ask_providers<'a, T: ?Sized>(
 ) -> Answer<T> {
     let mut game = Some(game);
     for part in providers {
-        if !crate::mod_index_on(part.mod_index) {
+        if !crate::callback_owner::enabled(part.mod_index, &part.panicked) {
             continue;
         }
         if !part.before_game
@@ -131,7 +134,14 @@ pub(crate) fn ask_providers<'a, T: ?Sized>(
         {
             return Answer::Game;
         }
-        if let Some(handler) = call(&part.provider, host) {
+        if let Ok(Some(handler)) = crate::callback_owner::call(
+            part.mod_id,
+            part.mod_index,
+            &part.panicked,
+            "capability provider",
+            "capability_provider",
+            || call(&part.provider, host),
+        ) {
             return Answer::Mod(Capability {
                 handler,
                 owner: Some(part.mod_id),

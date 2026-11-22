@@ -70,6 +70,11 @@ impl DefaultCapabilitiesRegistrar for PartRegistrar {
             .default_item_containers
             .entry(id.into())
             .or_default()
-            .push((self.mod_index, provider));
+            .push(DefaultItemContainer {
+                mod_id: self.mod_id,
+                mod_index: self.mod_index,
+                provider,
+                panicked: Default::default(),
+            });
     }
 }
