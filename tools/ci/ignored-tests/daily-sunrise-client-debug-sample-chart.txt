@@ -1,0 +1,1 @@
+sunrise-client game::native_hotbar_slot::hotbar_slot_tests::a_received_tick_sample_draws_the_full_and_method_bars lib daily child-process # Uses prepared resources.
