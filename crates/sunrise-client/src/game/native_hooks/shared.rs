@@ -1910,12 +1910,12 @@ pub(super) fn damage_pre(
     container.enable_live_reductions();
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
     let mut live = LiveDamageContainer(container);
-    HitLevel(level).native_living_damage_pre(
+    HitLevel(level).native_living_damage_pre(mod_api::__private::LivingDamagePreCall {
         entity,
         kind,
-        &source,
-        mod_api::DamageContainer::new(&mut live),
-    );
+        source: &source,
+        container: mod_api::DamageContainer::new(&mut live),
+    });
 }
 
 /// `native_living_damage_post` for the damage code.
