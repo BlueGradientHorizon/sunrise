@@ -481,9 +481,9 @@ fn world_glyph_copies_emit_per_glyph_before_decorations() {
     let text = crate::text::Text::styled(
         "ab",
         crate::text::Style {
-            bold: true,
-            underlined: true,
-            strikethrough: true,
+            bold: Some(true),
+            underlined: Some(true),
+            strikethrough: Some(true),
             color: Some(0xFFAA00),
             ..Default::default()
         },

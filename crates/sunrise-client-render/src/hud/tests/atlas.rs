@@ -2079,7 +2079,9 @@ fn animation_upload_region_preserves_unpadded_and_blurred_borders() {
     // Blurred repeating sprite wraps opposite horizontal edges (left border gets blue, right gets red).
     let (wx, wy, ww, wh, wbuf) = animation_upload_region(place(AtlasBorder::Wrap), &frame);
     assert_eq!((wx, wy, ww, wh), (9, 19, 4, 4));
-    let px = |buf: &[u8], x: usize, y: usize| &buf[(y * 4 + x) * 4..(y * 4 + x) * 4 + 4];
+    fn px(buf: &[u8], x: usize, y: usize) -> &[u8] {
+        &buf[(y * 4 + x) * 4..(y * 4 + x) * 4 + 4]
+    }
     assert_eq!(px(&wbuf, 0, 1), &[0, 0, 255, 255]);
     assert_eq!(px(&wbuf, 3, 1), &[255, 0, 0, 255]);
 
