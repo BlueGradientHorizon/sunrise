@@ -165,6 +165,7 @@ impacts or a piston's direct slime launch.
 When the collision actually bounces, the server runs `BlockPart::bounce_on` before it posts
 `BOUNCE` and commits the returned movement. This is a separate callback, with the captured effect
 state and vanilla's movement-affecting position (which can differ from the legacy position).
+`event.fall_distance` is the distance stored after fall handling, so a body that has just landed can report zero.
 
 `BlockPart::fall_on` runs at vanilla's landing moment on a read-only level random host.
 Hook version 2 exposes writable `event.distance` and `event.damage_multiplier`, not calculated
@@ -210,8 +211,12 @@ The backing contents are already written, before dirty/comparator updates. The d
 and item `STORAGE` handlers coalesce their implicit notice per backing block at root commit,
 for vanilla containers and engine-managed mod slots. Explicit `BlockEntityRef::set_changed`
 notifies immediately, even inside a transaction and for unchanged contents; abort does not retract
-it. Direct writes such as `BlockEntityRef::set_item_slot` and writes to storage a mod provides
-itself do not synthesize notifications; neither do rollback restores. A double container notifies
+it. Each Part runs in its own transaction. Keep using `host.transaction` for additional writes:
+a successful nested transaction merges into the Part's frame, but a panic in that Part discards
+its writes without undoing the backing change that raised the notice. The next Part can still
+run, and only the panicking callback is disabled for the session.
+Direct writes such as `BlockEntityRef::set_item_slot` and writes to storage a mod provides itself
+do not synthesize notifications; neither do rollback restores. A double container notifies
 each component, not again for the other half's comparator refresh. A listener's writes still apply,
 but its backing block does not re-enter; another block notifies normally.
 Entity/menu placeholder coordinates are not block notices. Explicit notices may read tentative items:

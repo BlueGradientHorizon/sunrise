@@ -200,7 +200,6 @@ fn with_opener(
     let mods = vec![ModEntry::new(name, Box::new(opener))].into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             // Levels' folders go under a world root of the test's own, never the checkout.
             let root = TempRoot::new(name);
             game.world_root = root.0.clone();
@@ -420,6 +419,16 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
 #[ignore = "daily"]
 fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
     use super::levels::IDLE_TICKS;
+    use super::native_entity_refs::tests::run_fresh_cases;
+
+    // A parallel world load can replace the process-wide dimension list during the idle ticks.
+    if run_fresh_cases(
+        "game::runtime_levels_tests::a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open",
+        "SUNRISE_RUNTIME_LEVEL_RESCUE_CHILD",
+        &["rescue"],
+    ) {
+        return;
+    }
     with_opener("rescue", "rescue:a", flat(), |game, seen| {
         tick_post(game);
         game.apply_runtime_levels();

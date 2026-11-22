@@ -91,9 +91,7 @@ fn fluid(id: &str) -> FluidResource {
     })
 }
 
-/// The writes run in the World phase: the boundary's access checks refuse a call outside one.
 fn in_world(test: impl FnOnce()) {
-    let _world = crate::world::phase::PhaseOwner::scope(crate::world::phase::ModPhase::World);
     test();
 }
 

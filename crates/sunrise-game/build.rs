@@ -1,5 +1,4 @@
-//! Gives the Windows executable Sunrise's icon and its stack, as sunrise-client's
-//! (`packaging/windows/exe.rs`).
+//! Sets the Windows stack reservation and embeds resources for `sunrise-client`.
 #[path = "../../packaging/windows/exe.rs"]
 mod windows_exe;
 
