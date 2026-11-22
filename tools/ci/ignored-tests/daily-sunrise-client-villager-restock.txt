@@ -1,0 +1,1 @@
+sunrise-client game::lan_trading::tests::a_merchant_edit_reaches_the_guest_trading_with_it lib daily child-process

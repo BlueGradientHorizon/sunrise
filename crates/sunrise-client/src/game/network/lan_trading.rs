@@ -1168,6 +1168,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_merchant_edit_reaches_the_guest_trading_with_it() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::lan_trading::tests::a_merchant_edit_reaches_the_guest_trading_with_it",
+            "SUNRISE_MERCHANT_EDIT_CHILD",
+            &["game"],
+        ) {
+            return;
+        }
         with_game(|game| {
             let (villager, rx, first) = open_trade(game, 1);
 
