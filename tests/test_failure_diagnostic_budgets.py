@@ -92,6 +92,21 @@ class Budgets(unittest.TestCase):
         self.assertIn('1 classified panic reasons; 0 identities withheld; 0 locations withheld; '
                       '1 payloads withheld', log)
 
+    def test_a_test_that_catches_its_own_panic_is_shown_by_the_panic_it_failed_on(self):
+        source = ['panic!("a listener fails");', '', 'assert_eq!(posts, 0, "aborted pass fired post callbacks");']
+        with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
+                patch.object(ci, 'source_lines', return_value=source):
+            log = self.render(
+                "thread 'guarded' panicked at crates/example.rs:1:1:\na listener fails\n"
+                "thread 'guarded' panicked at crates/example.rs:3:1:\n"
+                "assertion `left == right` failed: aborted pass fired post callbacks\n  left: 1\n right: 0\n"
+                "test guarded ... FAILED\n"
+            )
+        self.assertIn('panicked at crates/example.rs:3:1', log)
+        self.assertIn('message: aborted pass fired post callbacks', log)
+        self.assertNotIn('crates/example.rs:1:1', log)
+        self.assertNotIn('a listener fails', log)
+
     def test_a_shown_panic_message_allows_bounded_rustc_codes_not_diagnostic_text(self):
         with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
                 patch.object(ci, 'source_lines', return_value=['assert!(ok, "fixture did not compile");']):

@@ -544,7 +544,7 @@ def assertion_source(path, line):
 def failure_diagnostics(output):
     """One record per failed result occurrence, including repeated names across targets.
 
-    Panic contexts use libtest's name model and the first panic for that name.
+    Panic contexts use libtest's name model and the last panic for that name: the one the test failed on.
     They cannot disambiguate identical names in different targets.
     Beside the classified reason, a record shows the statement that panicked and any part of the payload (a
     message, an operand) that occurs verbatim in the tracked source around it (public_text): the checkout's own text,
@@ -559,6 +559,8 @@ def failure_diagnostics(output):
     # Collect compiler codes only after a panic that already exposed a tracked message.
     compiler_codes = {}
     pending_codes = None
+    # The test whose captured output the last panic was in, until a result line or another test's output starts.
+    same_output = None
     # The tracked (path, line) of the current panic, and whether its `left:`/`right:` operand lines may follow.
     where = None
     operands_pending = False
@@ -632,15 +634,23 @@ def failure_diagnostics(output):
         if found := RESULT.match(line):
             if found[2] == "FAILED":
                 failures.append(found[1])
+        if RESULT.match(line) or line.startswith("---- "):
+            same_output = None
         if panic:
             context = []
             thread_name = panic[1]
-            if thread_name not in contexts:
+            if thread_name in contexts and thread_name == same_output:
+                # A test that catches a panic it raises on purpose (a listener's) fails on its last one: a later
+                # panic in the same captured output replaces the earlier.
+                contexts[thread_name] = context
+                compiler_codes.pop(thread_name, None)
+            elif thread_name not in contexts:
                 if len(contexts) < DIAGNOSTIC_CONTEXTS:
                     contexts[thread_name] = context
                 else:
                     skipped_contexts += 1
                     continue
+            same_output = thread_name
             location = re.fullmatch(r"(.+\.rs):(\d+):(\d+)", panic[2])
             path = location[1] if location else ""
             if any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in path):
