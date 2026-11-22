@@ -6,9 +6,9 @@ Call `ClientHost::add_toast` from a client callback. The client draws it with
 its other toasts; you do not need a GUI layer or a render callback.
 
 ```rust,ignore
-use mod_api::{ClientHost, Identifier, ModToast, Text, ToastIcon, TextFormError};
+use mod_api::{AddToastError, ClientHost, Identifier, ModToast, Text, ToastIcon};
 
-fn show_notice(host: &dyn ClientHost) -> Result<(), TextFormError> {
+fn show_notice(host: &dyn ClientHost) -> Result<(), AddToastError> {
     let mut toast = ModToast::new(Text::literal("Finished"));
     toast.description = Some(Text::literal("Your order is ready."));
     toast.icon = Some(ToastIcon::Sprite(
@@ -20,7 +20,8 @@ fn show_notice(host: &dyn ClientHost) -> Result<(), TextFormError> {
 ```
 
 Use `ToastIcon::Item` for an item stack instead of a GUI-atlas sprite. Both
-the icon and description are optional. A namespaced kind replaces the visible
+the icon and description are optional. Invalid text or an invalid item stack
+returns `AddToastError` without queueing a toast. A namespaced kind replaces the visible
 or queued mod toast with that kind, in place; leave it unset to always add a
 separate toast. `display_ms` defaults to vanilla `SystemToastId`'s 5000 ms
 and is multiplied by the player's Notification Time setting.

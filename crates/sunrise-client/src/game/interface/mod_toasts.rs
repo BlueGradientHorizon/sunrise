@@ -3,7 +3,7 @@
 #[path = "mod_toasts/tests.rs"]
 mod tests;
 use super::Game;
-use mod_api::{Identifier, ModToast, TextFormError, ToastIcon, ToastKind};
+use mod_api::{AddToastError, Identifier, ModToast, ToastIcon, ToastKind};
 use std::cell::RefCell;
 use sunrise_client::{
     hud::HudBatch,
@@ -48,17 +48,22 @@ impl ModToasts {
 
 impl Game<'_> {
     /// Queue from a shared ClientHost without dispatching back into a running hook.
-    pub(in crate::game) fn add_toast(&self, request: ModToast) -> Result<(), TextFormError> {
-        let title = to_engine(&request.title)?;
-        let description = request.description.as_ref().map(to_engine).transpose()?;
+    pub(in crate::game) fn add_toast(&self, request: ModToast) -> Result<(), AddToastError> {
+        let title = to_engine(&request.title).map_err(AddToastError::Text)?;
+        let description = request
+            .description
+            .as_ref()
+            .map(to_engine)
+            .transpose()
+            .map_err(AddToastError::Text)?;
         let mut toast = SystemToast::new(title, description);
         if let Some(ms) = request.display_ms {
             toast = toast.with_display_time(ms as f64);
         }
         let icon = match request.icon {
-            Some(ToastIcon::Item(stack)) => {
-                super::api_values::stack_value(&stack).ok().map(Icon::Item)
-            }
+            Some(ToastIcon::Item(stack)) => Some(Icon::Item(
+                super::api_values::stack_value(&stack).map_err(AddToastError::Icon)?,
+            )),
             Some(ToastIcon::Sprite(sprite)) => Some(Icon::Sprite(sprite.to_string())),
             None | Some(_) => None,
         };

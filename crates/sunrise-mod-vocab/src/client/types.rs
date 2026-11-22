@@ -61,6 +61,25 @@ impl ModToast {
     }
 }
 
+/// Why a requested toast was not queued.
+// no wire: local refusal returned by ClientHost::add_toast.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AddToastError {
+    /// The host cannot submit notifications to a client window.
+    Unavailable,
+    /// The title or description could not be represented as game text.
+    Text(TextFormError),
+    /// The item stack could not be represented as an icon.
+    Icon(StackWriteError),
+}
+
+impl NoBackend for AddToastError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
 /// What a key did in an `input_key` event (GLFW's `action`: release 0, press 1, repeat 2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: a closed set the game matches without a wildcard

@@ -8,9 +8,8 @@ pub trait ScreensClientHost {
     /// it to `toast_add` as `ToastKind::Mod` before inserting or replacing anything.
     /// An accepted matching kind restarts the display time in place; a veto leaves any
     /// existing toast untouched. Calls from `toast_add` itself wait for the following update.
-    /// Returns an error without queueing anything if the title or description cannot be
-    /// represented as game text.
-    fn add_toast(&self, toast: ModToast) -> Result<(), TextFormError>;
+    /// Refuses the whole request if its text or item icon cannot be represented.
+    fn add_toast(&self, toast: ModToast) -> Result<(), AddToastError>;
     /// A copy of the open `world_preset_editor` screen's working dimension stems.
     /// Stays available to screen hooks while `world_preset_editor` is open alongside the bound
     /// [`PresetEditor`].

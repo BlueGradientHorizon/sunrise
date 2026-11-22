@@ -37,12 +37,28 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     let apple_key = host
                         .item_key(&Identifier::parse("minecraft:apple").unwrap())
                         .unwrap();
+                    let apple_stack = mod_api::ItemStack::new(apple_key, 1).unwrap();
                     let mut second = ModToast::new(Text::literal("Queued item"));
-                    second.icon = Some(ToastIcon::Item(
-                        mod_api::ItemStack::new(apple_key, 1).unwrap(),
-                    ));
+                    second.icon = Some(ToastIcon::Item(apple_stack.clone()));
                     host.add_toast(first).unwrap();
                     host.add_toast(second).unwrap();
+
+                    let mut bad_stack = apple_stack;
+                    bad_stack
+                        .set_components(
+                            [("minecraft:consumable".into(), mod_api::Tag::Int(1))]
+                                .into_iter()
+                                .collect(),
+                        )
+                        .unwrap();
+                    let mut refused = ModToast::new(Text::literal("Invalid icon"));
+                    refused.icon = Some(ToastIcon::Item(bad_stack));
+                    assert_eq!(
+                        host.add_toast(refused),
+                        Err(AddToastError::Icon(
+                            mod_api::StackWriteError::InvalidEffectPayload
+                        ))
+                    );
                     assert!(seen.lock().unwrap().is_empty(), "no synchronous dispatch");
 
                     let draw = |game: &mut Game<'_>| {
