@@ -297,7 +297,7 @@ mod tests {
     use super::*;
     use crate::resource_source::{Resource, ResourceSource};
     use mod_api::{
-        __private::game::{RegistrationContextNew, take_callback_panic_notices},
+        __private::{game::RegistrationContextNew, take_hook_panics},
         AnimationState, ModelPart, PartPose, RegistrationContext,
     };
     use std::{
@@ -652,9 +652,6 @@ mod tests {
     /// converter, apply callback, or interpolation disable that callback with a panic notice.
     #[test]
     fn converter_and_playback_panics_disable_with_notice_and_non_finite_does_not_latch() {
-        let _notice_lock = crate::mod_model_loaders::PANIC_NOTICE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let flaky_calls = Arc::new(AtomicUsize::new(0));
         let panic_convert_calls = Arc::new(AtomicUsize::new(0));
         let panic_apply_calls = Arc::new(AtomicUsize::new(0));
@@ -738,14 +735,14 @@ mod tests {
                     Some(&bound),
                 )
             };
-            let _ = take_callback_panic_notices();
+            let _ = take_hook_panics();
 
             // Non-finite converter fails the file cleanly without latching or panic notice.
             let flaky_json = r#"{"length":1,"animations":[{"bone":"head","target":"animfault:flaky_convert",
                 "keyframes":[{"timestamp":0,"target":[1,2,3],"interpolation":"linear"}]}]}"#;
             assert!(read(flaky_json).is_err());
             assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
-            assert!(take_callback_panic_notices().is_empty());
+            assert!(take_hook_panics().is_empty());
             assert!(read(flaky_json).is_ok());
             assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
 
@@ -754,12 +751,12 @@ mod tests {
                 "keyframes":[{"timestamp":0,"target":[1,2,3],"interpolation":"linear"}]}]}"#;
             assert!(read(panic_convert_json).is_err());
             assert_eq!(panic_convert_calls.load(Ordering::Relaxed), 1);
-            let notices = take_callback_panic_notices();
+            let notices = take_hook_panics();
             assert!(
                 notices
                     .iter()
                     .any(|notice| notice.mod_id == "anim_panicker"
-                        && notice.kind == "animation target"),
+                        && notice.hook == "convert_target"),
                 "expected converter panic notice, got {notices:?}"
             );
             assert!(read(panic_convert_json).is_err());
@@ -793,17 +790,17 @@ mod tests {
             baked.apply(&mut posed, &state, 10.0);
             assert_eq!(panic_interp_calls.load(Ordering::Relaxed), 1);
             assert_eq!(panic_apply_calls.load(Ordering::Relaxed), 1);
-            let notices = take_callback_panic_notices();
+            let notices = take_hook_panics();
             assert!(
-                notices.iter().any(|notice| notice.mod_id == "anim_panicker"
-                    && notice.kind == "animation interpolation"),
+                notices
+                    .iter()
+                    .any(|notice| notice.mod_id == "anim_panicker" && notice.hook == "interpolate"),
                 "expected interpolation panic notice, got {notices:?}"
             );
             assert!(
                 notices
                     .iter()
-                    .any(|notice| notice.mod_id == "anim_panicker"
-                        && notice.kind == "animation target"),
+                    .any(|notice| notice.mod_id == "anim_panicker" && notice.hook == "apply"),
                 "expected target panic notice, got {notices:?}"
             );
             // Second frame does not invoke either disabled callback.

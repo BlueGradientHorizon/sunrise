@@ -109,23 +109,22 @@ fn cancel_skips_the_invocation() {
 
 /// A replacement delta is armed instead of the requested one, still through
 /// every ordinary restriction the kind's physics applies.
+/// Any finite replacement is armed, however large: `Entity.move` has no
+/// per-axis ceiling.
 #[test]
 fn a_replacement_delta_is_armed() {
-    let (gate, _) = armed_with(Answer::Replace([0.0, 0.0, 1.0]));
-    assert!(!gate.skipped());
-    assert_eq!(gate.delta(), Vec3::new(0.0, 0.0, 1.0));
+    for delta in [[0.0, 0.0, 1.0], [65.0, 0.0, 0.0]] {
+        let (gate, _) = armed_with(Answer::Replace(delta));
+        assert!(!gate.skipped());
+        assert_eq!(gate.delta(), Vec3::new(delta[0], delta[1], delta[2]));
+    }
 }
 
-/// A replacement outside the ±64-block budget, or one that is not a finite
-/// number, is refused whole: the movement stands as it was (design #2308:
-/// reject, never clamp).
+/// A replacement that is not a finite number is refused whole: the movement
+/// stands as it was (design #2308: reject, never clamp).
 #[test]
 fn a_malformed_replacement_is_refused_whole() {
-    for delta in [
-        [f64::NAN, 0.0, 0.0],
-        [0.0, f64::INFINITY, 0.0],
-        [65.0, 0.0, 0.0],
-    ] {
+    for delta in [[f64::NAN, 0.0, 0.0], [0.0, f64::INFINITY, 0.0]] {
         let (gate, _) = armed_with(Answer::Malformed(delta));
         assert!(!gate.skipped(), "a malformed move must not skip it");
         assert_eq!(

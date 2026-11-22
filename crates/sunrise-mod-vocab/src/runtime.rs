@@ -394,6 +394,13 @@ pub(crate) fn invoke<T>(
     })
 }
 
+#[cold]
+pub(crate) fn report_output_refusal(mod_id: &str, hook: &str, field: &str) {
+    log::warn!(
+        "mod {mod_id} hook {hook} output {field} refused: its outputs are dropped and the preceding ones stand"
+    );
+}
+
 /// Registered codecs use the diagnostic fence independently of gameplay hook switches.
 /// Each invocation site owns its own panic disablement.
 pub(crate) fn invoke_registered_codec<T>(

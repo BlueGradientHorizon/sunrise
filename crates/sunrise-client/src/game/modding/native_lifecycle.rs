@@ -796,7 +796,7 @@ mod tests {
     fn panicking_scheduled_task_captures_do_not_interrupt_cancellation_or_close() {
         use crate::game::native_entity_refs::tests::run_fresh_cases;
         use mod_api::{
-            __private::{enter, game::take_callback_panic_notices},
+            __private::{HookPanicReport, enter, take_hook_panics},
             content::crash::current_native_mod,
         };
         use std::{cell::RefCell, rc::Rc};
@@ -869,15 +869,18 @@ mod tests {
                 ));
                 assert_eq!(Rc::strong_count(&healthy_capture), 1);
 
-                let notices = take_callback_panic_notices();
+                assert_eq!(
+                    take_hook_panics(),
+                    [CANCELLED, CLOSED].map(|mod_id| HookPanicReport {
+                        mod_id,
+                        hook: "schedule_task_drop",
+                    }),
+                );
                 let logs = sunrise_client::logging::recent_lines();
-                assert_eq!(notices.len(), 2, "{notices:?}");
-                for (notice, (owner, message)) in notices.iter().zip([
+                for (owner, message) in [
                     (CANCELLED, "cancelled capture panicked"),
                     (CLOSED, "closing capture panicked"),
-                ]) {
-                    assert_eq!(notice.mod_id, owner);
-                    assert!(notice.message.contains(message), "{notice:?}");
+                ] {
                     assert!(
                         logs.iter()
                             .any(|line| line.contains(owner) && line.contains(message))

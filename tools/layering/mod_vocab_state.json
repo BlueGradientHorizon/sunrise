@@ -29,11 +29,6 @@
     "category": "reentrancy guard",
     "reason": "Per-thread handoff for a fatal engine panic raised inside a delegated vanilla HUD body so wrapper containment cannot swallow it before the outermost wrapper exits."
   },
-  "callback_owner.rs::PANIC_NOTICES": {
-    "type": "Mutex<VecDeque<CallbackPanicNotice>>",
-    "category": "crash owner",
-    "reason": "Process-wide queue of retained-callback panic notices pushed when a mod callback is disabled, drained by the client's error toast queue."
-  },
   "callback_owner.rs::RETAINED_CALLBACK": {
     "type": "Cell<bool>",
     "category": "reentrancy guard",

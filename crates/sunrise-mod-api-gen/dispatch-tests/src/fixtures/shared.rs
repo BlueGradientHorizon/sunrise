@@ -77,34 +77,22 @@ mod item {
     }
 }
 
-fn capture_warnings(call: impl FnOnce()) -> Vec<String> {
-    thread_local! {
-        static WARNINGS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
-    }
-    struct WarningLog;
-    impl log::Log for WarningLog {
-        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
-            metadata.level() == log::Level::Warn
+/// Owner, hook and field for one generated dispatch refusal.
+type OutputRefusal = (&'static str, &'static str, &'static str);
+thread_local! {
+    static OUTPUT_REFUSALS: std::cell::RefCell<Option<Vec<OutputRefusal>>> = const { std::cell::RefCell::new(None) };
+}
+
+fn capture_output_refusals(call: impl FnOnce()) -> Vec<OutputRefusal> {
+    struct Restore(Option<Vec<OutputRefusal>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            OUTPUT_REFUSALS.replace(self.0.take());
         }
-        fn log(&self, record: &log::Record<'_>) {
-            if self.enabled(record.metadata()) {
-                WARNINGS.with(|warnings| {
-                    if let Some(warnings) = warnings.borrow_mut().as_mut() {
-                        warnings.push(record.args().to_string());
-                    }
-                });
-            }
-        }
-        fn flush(&self) {}
     }
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
-        log::set_logger(&WarningLog).unwrap();
-        log::set_max_level(log::LevelFilter::Warn);
-    });
-    WARNINGS.with(|warnings| *warnings.borrow_mut() = Some(Vec::new()));
+    let _restore = Restore(OUTPUT_REFUSALS.replace(Some(Vec::new())));
     call();
-    WARNINGS.with(|warnings| warnings.borrow_mut().take().unwrap())
+    OUTPUT_REFUSALS.take().unwrap()
 }
 trait WorldDrawContext {}
 trait DrawContext {

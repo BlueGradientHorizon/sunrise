@@ -4,7 +4,7 @@ use crate::{
     sprites::Sprites,
 };
 use mod_api::{
-    __private::game::{RegistrationContextNew, take_callback_panic_notices},
+    __private::{game::RegistrationContextNew, take_hook_panics},
     RegistrationContext,
 };
 use std::{
@@ -372,9 +372,6 @@ fn minecraft_namespace_is_accepted_and_last_writer_wins() {
 
 #[test]
 fn panic_disables_provider_with_notice_and_non_panic_err_does_not_latch() {
-    let _notice_lock = crate::mod_model_loaders::PANIC_NOTICE_TEST_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let panic_calls = Arc::new(AtomicUsize::new(0));
     let flaky_calls = Arc::new(AtomicUsize::new(0));
 
@@ -424,45 +421,45 @@ fn panic_disables_provider_with_notice_and_non_panic_err_does_not_latch() {
         mod_api::ModEntry::new("bsm_flaky", Box::new(Flaky(Arc::clone(&flaky_calls)))),
     ]
     .into();
-    let (definitions, kept) = mod_platform::testing::with_mods(mods, || {
+    mod_platform::testing::with_mods(mods, || {
         let mut definitions = Vec::new();
         mod_api::dispatch_register_block_state_models(
             &RegistrationContext::new(),
             &mut definitions,
         );
-        freeze(definitions)
+        let (definitions, kept) = freeze(definitions);
+        assert_eq!(kept, ["rendtest:bsm_panics", "rendtest:bsm_flaky"]);
+
+        let states = [BTreeMap::new()];
+        let cfg = serde_json::json!({});
+        let load_type =
+            |kind| instantiate(Some(&definitions), kind, "rendtest:lamp", &cfg, &states);
+
+        let _ = take_hook_panics();
+        let err = load_type("rendtest:bsm_panics").unwrap_err();
+        assert!(err.contains("bsm_panicker"), "{err:?}");
+        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+        let notices = take_hook_panics();
+        assert!(
+            notices.iter().any(|notice| notice.mod_id == "bsm_panicker"
+                && notice.hook == "instantiate_block_state_definition"),
+            "expected panic notice, got {notices:?}"
+        );
+        // Disabled after panic: second call does not invoke the callback again.
+        let err2 = load_type("rendtest:bsm_panics").unwrap_err();
+        assert!(err2.contains("disabled"), "{err2:?}");
+        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+
+        // Non-panic Err does not latch or queue a panic notice.
+        let err = load_type("rendtest:bsm_flaky").unwrap_err();
+        assert!(
+            err.contains("bsm_flaky") && err.contains("missing key"),
+            "{err:?}"
+        );
+        assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
+        assert!(take_hook_panics().is_empty());
+        let recovered = load_type("rendtest:bsm_flaky").unwrap();
+        assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
+        assert_eq!(recovered[0].as_ref().unwrap().model, "rendtest:block/on");
     });
-    assert_eq!(kept, ["rendtest:bsm_panics", "rendtest:bsm_flaky"]);
-
-    let states = [BTreeMap::new()];
-    let cfg = serde_json::json!({});
-    let load_type = |kind| instantiate(Some(&definitions), kind, "rendtest:lamp", &cfg, &states);
-
-    let _ = take_callback_panic_notices();
-    let err = load_type("rendtest:bsm_panics").unwrap_err();
-    assert!(err.contains("bsm_panicker"), "{err:?}");
-    assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-    let notices = take_callback_panic_notices();
-    assert!(
-        notices.iter().any(
-            |notice| notice.mod_id == "bsm_panicker" && notice.kind == "block state definition"
-        ),
-        "expected panic notice, got {notices:?}"
-    );
-    // Disabled after panic: second call does not invoke the callback again.
-    let err2 = load_type("rendtest:bsm_panics").unwrap_err();
-    assert!(err2.contains("disabled"), "{err2:?}");
-    assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-
-    // Non-panic Err does not latch or queue a panic notice.
-    let err = load_type("rendtest:bsm_flaky").unwrap_err();
-    assert!(
-        err.contains("bsm_flaky") && err.contains("missing key"),
-        "{err:?}"
-    );
-    assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
-    assert!(take_callback_panic_notices().is_empty());
-    let recovered = load_type("rendtest:bsm_flaky").unwrap();
-    assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
-    assert_eq!(recovered[0].as_ref().unwrap().model, "rendtest:block/on");
 }

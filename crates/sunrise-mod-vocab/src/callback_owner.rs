@@ -2,30 +2,12 @@
 use std::{
     any::Any,
     cell::{Cell, RefCell},
-    collections::VecDeque,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
-
-/// A retained mod callback panicked and was disabled for the rest of this session.
-// no wire: in-process notification drained by the client's error toast queue.
-// exhaustive: engine-only notification record produced by `callback_owner::call`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CallbackPanicNotice {
-    /// The `[mod] id` whose callback panicked.
-    pub mod_id: &'static str,
-    /// Callback category (for example `"menu screen"` or `"debug entry"`).
-    pub kind: &'static str,
-    /// Specific callback operation (for example `"menu_screen_draw"`).
-    pub operation: &'static str,
-    /// Panic message payload, if it was a string.
-    pub message: String,
-}
-
-static PANIC_NOTICES: Mutex<VecDeque<CallbackPanicNotice>> = Mutex::new(VecDeque::new());
 
 thread_local! {
     static CONTAINED: Cell<u32> = const { Cell::new(0) };
@@ -166,34 +148,6 @@ impl Drop for RetainedCallbackScope {
     fn drop(&mut self) {
         RETAINED_CALLBACK.set(self.0);
     }
-}
-
-/// Drain pending callback panic notices queued since the last call.
-pub fn take_callback_panic_notices() -> Vec<CallbackPanicNotice> {
-    let mut queue = PANIC_NOTICES
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    queue.drain(..).collect()
-}
-
-fn record_callback_panic(
-    owner: &'static str,
-    kind: &'static str,
-    operation: &'static str,
-    message: String,
-) {
-    let mut queue = PANIC_NOTICES
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    if queue.len() >= 32 {
-        queue.pop_front();
-    }
-    queue.push_back(CallbackPanicNotice {
-        mod_id: owner,
-        kind,
-        operation,
-        message,
-    });
 }
 
 /// Owner identity and poison state for one retained mod callback.
@@ -599,7 +553,6 @@ fn call_opt<T>(
                 None,
                 payload,
             );
-            record_callback_panic(owner, kind, operation, msg.clone());
             failure = Some(format!("{kind} callback panicked; it is disabled: {msg}"));
         } else {
             failure = Some(format!("{kind} callback panicked; it is disabled"));

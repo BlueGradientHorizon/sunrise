@@ -384,6 +384,7 @@ mod tests {
             ];
             mod_platform::testing::with_mods(mods.into(), || {
                 with_client_game(|game| {
+                    sunrise_client::logging::init(&game.save.root, "Client thread");
                     let mut editors = Vec::new();
                     Game::native_register_preset_editors(
                         &mod_api::RegistrationContext::new(),
@@ -435,15 +436,17 @@ mod tests {
                             .any(|v| v.color == 0xFF00FF00 && v.pos == [56.0, 24.0]),
                         "Render.Post did not paint outside the failed editor's clip"
                     );
-                    assert!(
-                        mod_api::__private::game::take_callback_panic_notices()
-                            .iter()
-                            .any(|notice| notice.mod_id == "editor_paint_failure"
-                                && notice.operation == "render"
-                                && notice
-                                    .message
-                                    .contains("preset editor failed after painting"))
+                    assert_eq!(
+                        mod_api::__private::take_hook_panics(),
+                        [mod_api::__private::HookPanicReport {
+                            mod_id: "editor_paint_failure",
+                            hook: "render",
+                        }],
                     );
+                    assert!(sunrise_client::logging::recent_lines().iter().any(|line| {
+                        line.contains("editor_paint_failure")
+                            && line.contains("preset editor failed after painting")
+                    }));
                 });
             });
         });

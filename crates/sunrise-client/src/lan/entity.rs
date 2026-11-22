@@ -2875,6 +2875,7 @@ mod tests {
                 view_distance: 10,
                 chunks: &chunks,
                 sources: None,
+                attachment_sender: None,
                 tracker: &mut tracker,
                 out: &mut out,
                 attachment_sender: None,

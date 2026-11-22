@@ -35,11 +35,6 @@ pub mod native {
     }
 }
 
-/// The finite, per-axis range shared by mod move requests and hook replacements.
-pub fn valid_mod_move_delta(delta: [f64; 3]) -> bool {
-    delta.iter().all(|v| v.is_finite() && v.abs() <= 64.0)
-}
-
 /// Switch an installed mod's dispatches on or off, returning whether it was found.
 pub fn set_mod_enabled(id: &str, on: bool) -> bool {
     crate::set_mod_enabled(id, on)

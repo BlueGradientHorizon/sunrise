@@ -1189,13 +1189,9 @@ pub(super) fn emit<'a>(
         } else {
             format!("{} ", restores.join(" "))
         };
-        // Answered collectors drain this private batch after each mod. A refused or panicked mod
-        // has no earlier entries to restore, and its entries must not leak to the next mod.
-        let clear_batch = if answered_collect_batch {
-            format!("{event}.{}.clear(); ", out.unwrap())
-        } else {
-            String::new()
-        };
+        // Accepted batches are already in the caller's output. Detach only the failed
+        // listener's private batch and run each destructor under its own panic fence.
+        let discarded = fresh_name("discarded", &mut used);
         let stack_restore = stack_outputs
             .iter()
             .map(|(output, _)| format!("*{event}.{output} = __previous_{output}.clone(); "))
@@ -1212,8 +1208,18 @@ pub(super) fn emit<'a>(
             let invocation = format!(
                 "super::runtime::invoke(HookId::{hook_id}, \"{name}\", {mod_id_expr}, || {expression})"
             );
+            let discard_batch = if answered_collect_batch {
+                let output = out.unwrap();
+                format!(
+                    "for {discarded} in core::mem::take({event}.{output}) {{ \
+                        super::runtime::discard_registration((HookId::{hook_id}, \"{name}\"), Some({mod_id_expr}), {discarded}); \
+                     }} "
+                )
+            } else {
+                String::new()
+            };
             if restore_statement.is_empty()
-                && clear_batch.is_empty()
+                && discard_batch.is_empty()
                 && stack_restore.is_empty()
                 && extra_restore.is_empty()
                 && report_panic.is_empty()
@@ -1225,7 +1231,7 @@ pub(super) fn emit<'a>(
                 }
             }
             format!(
-                "match {invocation} {{ Some(answer) => answer, None => {{ {report_panic}{restore_statement}{clear_batch}{stack_restore}{extra_restore}{on_abort} }} }}"
+                "match {invocation} {{ Some(answer) => answer, None => {{ {report_panic}{restore_statement}{discard_batch}{stack_restore}{extra_restore}{on_abort} }} }}"
             )
         };
         let run = |mod_id_expr: &str, on_abort: &str, expression: &str| {
@@ -1347,7 +1353,7 @@ pub(super) fn emit<'a>(
                     "{snapshot_statement}let {flow} = {invocation};
                      if let Err({field}) = {validator}({arguments}) {{
                          {restore_statement}
-                         log::warn!(\"mod {{}} hook {name} output {{{field}}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id);
+                         super::runtime::report_output_refusal({mod_entry}.id, \"{name}\", {field});
                          continue;
                      }}
                      {event}.cancelled |= {saved}.{previous_cancel} || matches!({flow}, Flow::Cancel);"

@@ -814,6 +814,92 @@ impl TryFrom<String> for ModelPart {
 mod tests {
     use super::*;
 
+    #[test]
+    fn panicking_layer_registration_discards_suppliers_without_stopping_dispatch() {
+        use crate::__private::{HookPanicReport, take_hook_panics};
+        use crate::{Hooks, ModEntry, RegistrationContext};
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Capture(Arc<AtomicUsize>, bool);
+        impl Drop for Capture {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                assert!(!self.1, "supplier capture panicked on drop");
+            }
+        }
+
+        struct Failing(Arc<AtomicUsize>);
+        #[crate::__subscriptions]
+        impl Hooks for Failing {
+            fn register_layer_definitions(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterLayerDefinitionsEvent<'_>,
+            ) {
+                for (id, panic_on_drop) in
+                    [("failing:first#main", true), ("failing:second#main", false)]
+                {
+                    let capture = Capture(self.0.clone(), panic_on_drop);
+                    event.register(id, move || {
+                        let _ = &capture;
+                        panic!("an aborted supplier must not run");
+                    });
+                }
+                panic!("registrar panicked after staging suppliers");
+            }
+        }
+
+        struct Healthy(&'static str);
+        #[crate::__subscriptions]
+        impl Hooks for Healthy {
+            fn register_layer_definitions(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterLayerDefinitionsEvent<'_>,
+            ) {
+                event.register(self.0, || {
+                    LayerDefinition::create(MeshDefinition::new(), 64, 64)
+                });
+            }
+        }
+
+        let dropped = Arc::new(AtomicUsize::new(0));
+        crate::testing::with_dispatch(
+            vec![
+                ModEntry::new("earlier", Box::new(Healthy("earlier:layer#main"))),
+                ModEntry::new("failing", Box::new(Failing(dropped.clone()))),
+                ModEntry::new("later", Box::new(Healthy("later:layer#main"))),
+            ]
+            .into(),
+            || {
+                let mut layers = Vec::new();
+                crate::dispatch_register_layer_definitions(
+                    &RegistrationContext::new(),
+                    &mut layers,
+                );
+                assert_eq!(dropped.load(Ordering::Relaxed), 2);
+                assert_eq!(
+                    layers
+                        .iter()
+                        .map(|layer| (layer.mod_id, layer.answer.id.as_str()))
+                        .collect::<Vec<_>>(),
+                    [
+                        ("earlier", "earlier:layer#main"),
+                        ("later", "later:layer#main")
+                    ],
+                );
+                assert_eq!(
+                    take_hook_panics(),
+                    [HookPanicReport {
+                        mod_id: "failing",
+                        hook: "register_layer_definitions",
+                    }]
+                );
+            },
+        );
+    }
+
     fn polygon(part: &ModelPart, i: usize) -> ([[f32; 3]; 4], [[f32; 2]; 4], [f32; 3]) {
         let p = &part.polygons[i];
         (

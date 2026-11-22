@@ -18,9 +18,6 @@ pub(crate) type ModelLoaderTable = BTreeMap<String, LoaderProvider>;
 
 static LOADERS: OnceLock<ModelLoaderTable> = OnceLock::new();
 
-#[cfg(test)]
-pub(crate) static PANIC_NOTICE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 fn freeze(loaders: Vec<Answered<ModelLoaderRegistration>>) -> (ModelLoaderTable, Vec<String>) {
     let mut bound = BTreeMap::new();
     let mut kept = Vec::new();
@@ -155,7 +152,7 @@ mod tests {
     use super::*;
     use crate::model_library::ParsedModels;
     use mod_api::{
-        __private::game::{RegistrationContextNew, take_callback_panic_notices},
+        __private::{game::RegistrationContextNew, take_hook_panics},
         Identifier, RegistrationContext,
     };
     use std::sync::{
@@ -374,9 +371,6 @@ mod tests {
 
     #[test]
     fn panic_disables_loader_with_notice_and_non_panic_err_does_not_latch() {
-        let _notice_lock = PANIC_NOTICE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let panic_calls = Arc::new(AtomicUsize::new(0));
         let flaky_calls = Arc::new(AtomicUsize::new(0));
 
@@ -431,37 +425,39 @@ mod tests {
             mod_api::ModEntry::new("loader_flaky", Box::new(Flaky(Arc::clone(&flaky_calls)))),
         ]
         .into();
-        let (loaders, kept) = mod_platform::testing::with_mods(mods, || {
+        mod_platform::testing::with_mods(mods, || {
             let mut loaders = Vec::new();
             mod_api::dispatch_register_model_loaders(&RegistrationContext::new(), &mut loaders);
-            freeze(loaders)
+            let (loaders, kept) = freeze(loaders);
+            assert_eq!(kept, ["rendtest:panics", "rendtest:flaky"]);
+
+            let textures =
+                BTreeMap::from([("side".to_owned(), "minecraft:block/panel".to_owned())]);
+            let panics = &loaders["rendtest:panics"].bake;
+            let flaky = &loaders["rendtest:flaky"].bake;
+            let _ = take_hook_panics();
+            assert!(panics("t:p", "{}", &textures).is_err());
+            assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+            let notices = take_hook_panics();
+            assert!(
+                notices
+                    .iter()
+                    .any(|notice| notice.mod_id == "loader_panicker"
+                        && notice.hook == "bake_model_loader"),
+                "expected panic notice, got {notices:?}"
+            );
+            // Disabled after panic: second call does not invoke the callback again.
+            assert!(panics("t:p", "{}", &textures).is_err());
+            assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+
+            // Non-panic Err does not latch or queue a panic notice.
+            assert!(flaky("t:f", "{}", &textures).is_err());
+            assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
+            assert!(take_hook_panics().is_empty());
+            let recovered = flaky("t:f", "{}", &textures).unwrap();
+            assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
+            assert_eq!(recovered.len(), 1);
+            assert_eq!(recovered[0].positions[0][0], 0.5);
         });
-        assert_eq!(kept, ["rendtest:panics", "rendtest:flaky"]);
-
-        let textures = BTreeMap::from([("side".to_owned(), "minecraft:block/panel".to_owned())]);
-        let panics = &loaders["rendtest:panics"].bake;
-        let flaky = &loaders["rendtest:flaky"].bake;
-        let _ = take_callback_panic_notices();
-        assert!(panics("t:p", "{}", &textures).is_err());
-        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-        let notices = take_callback_panic_notices();
-        assert!(
-            notices
-                .iter()
-                .any(|notice| notice.mod_id == "loader_panicker" && notice.kind == "model loader"),
-            "expected panic notice, got {notices:?}"
-        );
-        // Disabled after panic: second call does not invoke the callback again.
-        assert!(panics("t:p", "{}", &textures).is_err());
-        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-
-        // Non-panic Err does not latch or queue a panic notice.
-        assert!(flaky("t:f", "{}", &textures).is_err());
-        assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
-        assert!(take_callback_panic_notices().is_empty());
-        let recovered = flaky("t:f", "{}", &textures).unwrap();
-        assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
-        assert_eq!(recovered.len(), 1);
-        assert_eq!(recovered[0].positions[0][0], 0.5);
     }
 }

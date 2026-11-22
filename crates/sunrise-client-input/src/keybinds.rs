@@ -385,7 +385,10 @@ pub struct VanillaMappingSlot(usize);
 impl VanillaMappingSlot {
     /// Resolve a canonical mapping name (e.g. `key.jump`), not a key name.
     pub fn by_name(name: &str) -> Option<Self> {
-        static BY_NAME: LazyLock<HashMap<&'static str, VanillaMappingSlot>> = LazyLock::new(|| {
+        // Looked up per held-mapping read, which a server makes on every player turn.
+        static BY_NAME: LazyLock<
+            sunrise_core::fast_hash::FxHashMap<&'static str, VanillaMappingSlot>,
+        > = LazyLock::new(|| {
             VanillaMappingSlot::all()
                 .map(|slot| (slot.definition().0, slot))
                 .collect()

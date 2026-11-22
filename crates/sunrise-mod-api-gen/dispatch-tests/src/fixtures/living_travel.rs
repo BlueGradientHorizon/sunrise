@@ -80,7 +80,7 @@ fn a_refused_pair_rolls_back_its_cancel_and_later_listeners_hear_the_accepted_re
         let (refused_heard, refused) = setter("refused", [2.0, 0.0, 0.0], [7.0, 0.0, 0.0], cancel);
         let (later_heard, later) = setter("later", input, velocity, Cancel::None);
         install(vec![accepted, refused, later].into());
-        let warnings = capture_warnings(|| {
+        let refusals = capture_output_refusals(|| {
             for _ in 0..2 {
                 assert_eq!(
                     dispatch_travel([0.1, 0.0, 0.0], [1.0, 0.0, 0.0]),
@@ -89,11 +89,7 @@ fn a_refused_pair_rolls_back_its_cancel_and_later_listeners_hear_the_accepted_re
                 );
             }
         });
-        assert_eq!(
-            warnings,
-            ["mod refused hook living_travel output input refused: its outputs are dropped and the preceding ones stand";
-                2]
-        );
+        assert_eq!(refusals, [("refused", "living_travel", "input"); 2]);
         assert!(!runtime::poisoned(HookId::LivingTravel, "refused"));
         assert_eq!(
             *refused_heard.lock().unwrap(),
@@ -143,13 +139,13 @@ fn a_no_op_listener_does_not_propose_the_games_out_of_budget_velocity() {
     }
 
     install(vec![ModEntry::new("observe", Box::new(Observe))].into());
-    let warnings = capture_warnings(|| {
+    let refusals = capture_output_refusals(|| {
         assert_eq!(
             dispatch_travel([0.0; 3], [65.0, 0.0, 0.0]),
             ([0.0; 3], [65.0, 0.0, 0.0], false)
         );
     });
-    assert!(warnings.is_empty());
+    assert!(refusals.is_empty());
 }
 
 mod crate_root {
@@ -159,7 +155,9 @@ mod crate_root {
                 accepted: &[f64; 3],
                 delta: &[f64; 3],
             ) -> Result<(), &'static str> {
-                if accepted[0].to_bits() != delta[0].to_bits() && !delta[0].is_finite() {
+                if accepted.map(f64::to_bits) != delta.map(f64::to_bits)
+                    && delta.iter().any(|v| !v.is_finite())
+                {
                     Err("delta")
                 } else {
                     Ok(())

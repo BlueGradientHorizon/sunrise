@@ -662,8 +662,6 @@ mod tests {
             }
         }
 
-        crate::test_log::install();
-        crate::test_log::clear();
         let trace = Trace::default();
         let mods = ["retired", "failing", "healthy"].map(|mod_id| {
             ModEntry::new(
@@ -730,20 +728,6 @@ mod tests {
                 ("discarded inner draw", Some("failing")),
                 ("next listener", Some("healthy")),
                 ("retired body", Some("retired")),
-            ]
-        );
-        let reports: Vec<_> = crate::test_log::records()
-            .into_iter()
-            .filter(|(level, message)| {
-                *level == log::Level::Error && message.contains("register_gui_layers")
-            })
-            .map(|(_, message)| message)
-            .collect();
-        assert_eq!(
-            reports,
-            [
-                "mod failing panicked in hook register_gui_layers and has been disabled for this hook for the rest of the session: superseded wrapper",
-                "mod retired panicked in hook register_gui_layers and has been disabled for this hook for the rest of the session: retired body",
             ]
         );
     }

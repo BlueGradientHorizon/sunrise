@@ -12,7 +12,7 @@ struct Mover {
 enum Answer {
     Replace([f64; 3]),
     Panic,
-    Invalid,
+    Invalid([f64; 3]),
     Cancel,
     Continue,
 }
@@ -31,8 +31,8 @@ impl Hooks for Mover {
                 event.cancelled = true;
                 panic!("the fixture's move listener unwinds")
             }
-            Answer::Invalid => {
-                *event.delta = [f64::NAN, 0.0, 0.0];
+            Answer::Invalid(delta) => {
+                *event.delta = delta;
                 event.cancelled = true;
                 return Flow::Cancel;
             }
@@ -117,24 +117,22 @@ fn a_failed_receiver_cannot_clear_an_accepted_move_veto() {
 
 #[test]
 fn an_invalid_move_discards_its_delta_and_veto_and_reports_each_invocation() {
-    let delta = [3.0, 4.0, 5.0];
-    let (_, first) = mover("accepted", Answer::Replace(delta));
-    let (invalid_heard, invalid) = mover("invalid", Answer::Invalid);
-    let (later_heard, later) = mover("later", Answer::Continue);
-    install(vec![first, invalid, later].into());
+    let delta = [65.0, -66.0, 67.0];
+    for proposed in [[f64::NAN, 0.0, 0.0], [0.0, 0.0, f64::INFINITY]] {
+        let (_, first) = mover("accepted", Answer::Replace(delta));
+        let (invalid_heard, invalid) = mover("invalid", Answer::Invalid(proposed));
+        let (later_heard, later) = mover("later", Answer::Continue);
+        install(vec![first, invalid, later].into());
 
-    let warnings = capture_warnings(|| {
-        assert_eq!(dispatch([1.0; 3]), (delta, false));
-        assert_eq!(dispatch([2.0; 3]), (delta, false));
-    });
-    assert_eq!(
-        warnings,
-        ["mod invalid hook entity_move output delta refused: its outputs are dropped and the preceding ones stand";
-            2]
-    );
-    assert_eq!(*invalid_heard.lock().unwrap(), [(delta, false); 2]);
-    assert_eq!(*later_heard.lock().unwrap(), [(delta, false); 2]);
-    assert!(!runtime::poisoned(HookId::EntityMove, "invalid"));
+        let refusals = capture_output_refusals(|| {
+            assert_eq!(dispatch([1.0; 3]), (delta, false));
+            assert_eq!(dispatch([2.0; 3]), (delta, false));
+        });
+        assert_eq!(refusals, [("invalid", "entity_move", "delta"); 2]);
+        assert_eq!(*invalid_heard.lock().unwrap(), [(delta, false); 2]);
+        assert_eq!(*later_heard.lock().unwrap(), [(delta, false); 2]);
+        assert!(!runtime::poisoned(HookId::EntityMove, "invalid"));
+    }
 }
 
 mod root {
@@ -158,6 +156,26 @@ mod root {
                     None
                 }
             }
+        }
+
+        pub(super) fn report_output_refusal(
+            owner: &'static str,
+            hook: &'static str,
+            field: &'static str,
+        ) {
+            super::OUTPUT_REFUSALS.with_borrow_mut(|refusals| {
+                if let Some(refusals) = refusals {
+                    refusals.push((owner, hook, field));
+                }
+            });
+        }
+
+        pub(super) fn discard_registration<T>(
+            (hook, name): (super::HookId, &'static str),
+            owner: Option<&'static str>,
+            value: T,
+        ) {
+            invoke(hook, name, owner.unwrap_or("unknown"), || drop(value));
         }
 
         pub(super) fn listening_kind_owner(

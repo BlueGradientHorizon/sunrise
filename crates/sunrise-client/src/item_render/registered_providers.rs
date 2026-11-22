@@ -633,10 +633,7 @@ pub(super) fn decode_definition_without_specials(
 mod tests {
     use super::*;
     use mod_api::{
-        __private::{
-            game::{RegistrationContextNew, take_callback_panic_notices},
-            parts_installation::item_key,
-        },
+        __private::{game::RegistrationContextNew, parts_installation::item_key, take_hook_panics},
         ClientHost, Hooks, ItemStack, ItemTintInput, ModEntry, RegisterItemTintSourcesEvent,
         RegistrationContext,
         testing::FakeHost,
@@ -768,7 +765,7 @@ mod tests {
         ]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            let _ = take_callback_panic_notices();
+            let _ = take_hook_panics();
             let mut sources = Vec::new();
             mod_api::dispatch_register_item_tint_sources(&RegistrationContext::new(), &mut sources);
             let (factories, _) = bind_item_tint_factories(sources);
@@ -785,7 +782,7 @@ mod tests {
                 )
                 .is_err()
             );
-            assert!(take_callback_panic_notices().is_empty());
+            assert!(take_hook_panics().is_empty());
 
             // A nested null fails JSON->NBT validation without latching.
             assert!(
@@ -814,11 +811,11 @@ mod tests {
                 .is_err()
             );
             assert_eq!(
-                take_callback_panic_notices()
+                take_hook_panics()
                     .iter()
-                    .map(|notice| (notice.mod_id, notice.kind))
+                    .map(|notice| (notice.mod_id, notice.hook))
                     .collect::<Vec<_>>(),
-                [("panicking", "item tint source")]
+                [("panicking", "decode")]
             );
             // Subsequent calls stay disabled without panicking again, and other mods still decode.
             assert!(
@@ -828,7 +825,7 @@ mod tests {
                 )
                 .is_err()
             );
-            assert!(take_callback_panic_notices().is_empty());
+            assert!(take_hook_panics().is_empty());
             assert!(
                 decode_definition_without_specials(
                     r#"{"model":{"type":"minecraft:model","model":"minecraft:item/stick","tints":[{"type":"provtest:strict","color":65536}]}}"#,

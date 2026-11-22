@@ -1694,11 +1694,24 @@ pub(crate) fn refused_move_output(
     delta: &[f64; 3],
 ) -> Result<(), &'static str> {
     if accepted.map(f64::to_bits) != delta.map(f64::to_bits)
-        && !crate::__private::valid_mod_move_delta(*delta)
+        && delta.iter().any(|component| !component.is_finite())
     {
         return Err("delta");
     }
     Ok(())
+}
+
+#[test]
+fn move_replacements_accept_finite_components_without_an_axis_limit() {
+    let accepted = [65.0, -66.0, 67.0];
+    assert_eq!(refused_move_output(&[1.0; 3], &accepted), Ok(()));
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        for axis in 0..3 {
+            let mut proposed = accepted;
+            proposed[axis] = value;
+            assert_eq!(refused_move_output(&accepted, &proposed), Err("delta"));
+        }
+    }
 }
 
 /// Check each replaced vector against its own budget, without applying mod-output

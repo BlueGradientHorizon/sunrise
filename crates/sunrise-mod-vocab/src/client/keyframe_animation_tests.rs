@@ -1,7 +1,5 @@
 use super::*;
-use crate::{
-    Hooks, ModEntry, PartPose, callback_owner::take_callback_panic_notices, testing::with_dispatch,
-};
+use crate::{__private::take_hook_panics, Hooks, ModEntry, PartPose, testing::with_dispatch};
 use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -371,7 +369,7 @@ fn custom_callback_panic_disables_it_and_non_finite_does_not_latch() {
     with_dispatch(
         vec![ModEntry::new("faulty", Box::new(QuietMod))].into(),
         || {
-            let _ = take_callback_panic_notices();
+            let _ = take_hook_panics();
 
             let ip = Arc::clone(&interp_panic_calls);
             let bad_interp = bind_animation_interpolation(
@@ -391,12 +389,11 @@ fn custom_callback_panic_disables_it_and_non_finite_does_not_latch() {
             );
             assert_eq!(ch.sample(0.5, 1.0), None);
             assert_eq!(interp_panic_calls.load(Ordering::Relaxed), 1);
-            let notices = take_callback_panic_notices();
+            let notices = take_hook_panics();
             assert!(
                 notices
                     .iter()
-                    .any(|notice| notice.mod_id == "faulty"
-                        && notice.kind == "animation interpolation"),
+                    .any(|notice| notice.mod_id == "faulty" && notice.hook == "interpolate"),
                 "expected interpolation panic notice, got {notices:?}"
             );
             // Disabled for the session: second sample does not re-enter the panicked callback.
@@ -417,11 +414,11 @@ fn custom_callback_panic_disables_it_and_non_finite_does_not_latch() {
             let target_enum = AnimationTarget::Custom(bad_target.clone());
             target_enum.apply(&mut root, [1.0, 2.0, 3.0]);
             assert_eq!(target_panic_calls.load(Ordering::Relaxed), 1);
-            let notices = take_callback_panic_notices();
+            let notices = take_hook_panics();
             assert!(
                 notices
                     .iter()
-                    .any(|notice| notice.mod_id == "faulty" && notice.kind == "animation target"),
+                    .any(|notice| notice.mod_id == "faulty" && notice.hook == "apply"),
                 "expected target panic notice, got {notices:?}"
             );
             // Clones share the same CallbackOwner poison flag.
@@ -449,7 +446,7 @@ fn custom_callback_panic_disables_it_and_non_finite_does_not_latch() {
                 ],
             );
             assert_eq!(flaky_ch.sample(0.5, 1.0), None);
-            assert!(take_callback_panic_notices().is_empty());
+            assert!(take_hook_panics().is_empty());
             assert_eq!(flaky_ch.sample(0.5, 1.0), Some([1.0, 2.0, 3.0]));
             assert_eq!(flaky_interp_calls.load(Ordering::Relaxed), 2);
 
@@ -468,7 +465,7 @@ fn custom_callback_panic_disables_it_and_non_finite_does_not_latch() {
                 }),
             );
             assert!(convert_animation_target(&flaky_target, [1.0, 2.0, 3.0]).is_err());
-            assert!(take_callback_panic_notices().is_empty());
+            assert!(take_hook_panics().is_empty());
             assert_eq!(
                 convert_animation_target(&flaky_target, [1.0, 2.0, 3.0]).unwrap(),
                 [1.0, 2.0, 3.0]
@@ -491,7 +488,7 @@ fn failed_custom_interpolation_skips_only_that_channel_and_never_calls_target() 
     with_dispatch(
         vec![ModEntry::new("faulty", Box::new(QuietMod))].into(),
         || {
-            let _ = take_callback_panic_notices();
+            let _ = take_hook_panics();
             let calls_ref = Arc::clone(&target_calls);
             // Distinguishes an applied zero from no call: writes a non-zero marker even for [0; 3].
             let overwriting_target = bind_animation_target(
@@ -561,9 +558,11 @@ fn failed_custom_interpolation_skips_only_that_channel_and_never_calls_target() 
                 "failed channels must not call overwriting target"
             );
             assert_eq!(head.x_rot, 1.0, "healthy channel still applies");
-            assert!(take_callback_panic_notices().iter().any(
-                |notice| notice.mod_id == "faulty" && notice.kind == "animation interpolation"
-            ));
+            assert!(
+                take_hook_panics()
+                    .iter()
+                    .any(|notice| notice.mod_id == "faulty" && notice.hook == "interpolate")
+            );
 
             // Second apply: disabled channel skips without calling target either.
             let mut posed2 = root.clone();

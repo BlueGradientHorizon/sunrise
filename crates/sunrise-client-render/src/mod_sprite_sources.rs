@@ -192,7 +192,7 @@ mod tests {
         Listing, SpriteOrigin, SpriteSource, decode, list, test_mods::Mods,
     };
     use mod_api::{
-        __private::game::{RegistrationContextNew, take_callback_panic_notices},
+        __private::{HookPanicReport, game::RegistrationContextNew, take_hook_panics},
         RegistrationContext,
     };
     use std::sync::{
@@ -241,9 +241,9 @@ mod tests {
         }
         impl Drop for PanicOnDrop {
             fn drop(&mut self) {
-                self.drops.fetch_add(1, Ordering::Relaxed);
                 let table = self.table.upgrade().unwrap();
                 assert!(table.try_read().is_ok(), "sprite table is still locked");
+                self.drops.fetch_add(1, Ordering::Relaxed);
                 panic!("sprite capture destructor");
             }
         }
@@ -318,39 +318,28 @@ mod tests {
             mod_api::ModEntry::new("later_src", Box::new(Later)),
         ]
         .into();
-        let (kept, notices) = {
-            // Only the shared notice queue needs coordination; the provider table is local.
-            let _notice_lock = crate::mod_model_loaders::PANIC_NOTICE_TEST_LOCK
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let kept = mod_platform::testing::with_mods(mods, || {
-                let mut registrations = Vec::new();
-                mod_api::dispatch_register_sprite_sources(
-                    &RegistrationContext::new(),
-                    &mut registrations,
-                );
-                registrations
-                    .iter_mut()
-                    .find(|entry| entry.answer.id == id("srcreg:unattributed"))
-                    .unwrap()
-                    .mod_id = "missing_src_owner";
-                bind_into(&table, registrations)
-            });
-            (kept, take_callback_panic_notices())
-        };
-        for (owner, drops) in [
-            ("earlier_src", displaced_drops),
-            ("missing_src_owner", rejected_drops),
-        ] {
-            assert_eq!(drops.load(Ordering::Relaxed), 1);
-            assert!(
-                notices.iter().any(|notice| {
-                    notice.mod_id == owner
-                        && notice.operation == "drop_provider"
-                        && notice.message.contains("sprite capture destructor")
-                }),
-                "expected {owner}'s destructor panic outside the registry lock, got {notices:?}"
+        let (kept, notices) = mod_platform::testing::with_mods(mods, || {
+            let mut registrations = Vec::new();
+            mod_api::dispatch_register_sprite_sources(
+                &RegistrationContext::new(),
+                &mut registrations,
             );
+            registrations
+                .iter_mut()
+                .find(|entry| entry.answer.id == id("srcreg:unattributed"))
+                .unwrap()
+                .mod_id = "missing_src_owner";
+            let kept = bind_into(&table, registrations);
+            (kept, take_hook_panics())
+        });
+        assert_eq!(displaced_drops.load(Ordering::Relaxed), 1);
+        assert_eq!(rejected_drops.load(Ordering::Relaxed), 1);
+        assert_eq!(notices.len(), 2);
+        for mod_id in ["earlier_src", "missing_src_owner"] {
+            assert!(notices.contains(&HookPanicReport {
+                mod_id,
+                hook: "drop_provider",
+            }));
         }
         let Ok(table) = Arc::try_unwrap(table) else {
             panic!("unexpected sprite table owner");
@@ -411,9 +400,6 @@ mod tests {
 
     #[test]
     fn panic_disables_only_that_provider_with_notice_and_non_panic_err_does_not_latch() {
-        let _notice_lock = crate::mod_model_loaders::PANIC_NOTICE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let panic_calls = Arc::new(AtomicUsize::new(0));
         let flaky_calls = Arc::new(AtomicUsize::new(0));
         let healthy_calls = Arc::new(AtomicUsize::new(0));
@@ -473,7 +459,7 @@ mod tests {
             mod_api::ModEntry::new("src_healthy", Box::new(Healthy(Arc::clone(&healthy_calls)))),
         ]
         .into();
-        let (table, kept) = mod_platform::testing::with_mods(mods, || {
+        mod_platform::testing::with_mods(mods, || {
             let mut registrations = Vec::new();
             mod_api::dispatch_register_sprite_sources(
                 &RegistrationContext::new(),
@@ -481,66 +467,66 @@ mod tests {
             );
             let table = RwLock::new(SpriteSourceTable::new());
             let kept = bind_into(&table, registrations);
-            (table.into_inner().unwrap(), kept)
+            let table = table.into_inner().unwrap();
+            assert_eq!(kept, ["srctest:panics", "srctest:flaky", "srctest:healthy"]);
+
+            let registered = SourceReader::registered(Some(&table));
+            let atlas_source = |kind: &str| {
+                crate::resource_source::ResourceSource::indexed(
+                    [(
+                        "assets/minecraft/atlases/blocks.json".to_owned(),
+                        sunrise_assets::resource_source::Resource::bytes(
+                            format!(r#"{{"sources":[{{"type":"{kind}"}}]}}"#).into_bytes(),
+                        ),
+                    )]
+                    .into(),
+                )
+            };
+
+            let _ = take_hook_panics();
+            let first_panic = Listing::build(&atlas_source("srctest:panics"), &registered);
+            assert!(first_panic.sprites("minecraft:blocks").is_empty());
+            assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+            assert_eq!(
+                take_hook_panics(),
+                [HookPanicReport {
+                    mod_id: "src_panicker",
+                    hook: "sprite_source",
+                }],
+            );
+
+            // Disabled after panic: a second load does not invoke the panicking callback again.
+            let second_panic = Listing::build(&atlas_source("srctest:panics"), &registered);
+            assert!(second_panic.sprites("minecraft:blocks").is_empty());
+            assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+
+            // Non-panic Err does not latch or queue a panic notice.
+            let first_flaky = Listing::build(&atlas_source("srctest:flaky"), &registered);
+            assert!(first_flaky.sprites("minecraft:blocks").is_empty());
+            assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
+            assert!(take_hook_panics().is_empty());
+
+            let second_flaky = Listing::build(&atlas_source("srctest:flaky"), &registered);
+            assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
+            assert_eq!(
+                second_flaky
+                    .sprites("minecraft:blocks")
+                    .keys()
+                    .collect::<Vec<_>>(),
+                ["srctest:recovered"]
+            );
+
+            // Another mod's provider is unaffected by the panic.
+            let healthy = Listing::build(&atlas_source("srctest:healthy"), &registered);
+            assert_eq!(healthy_calls.load(Ordering::Relaxed), 1);
+            assert_eq!(
+                healthy
+                    .sprites("minecraft:blocks")
+                    .keys()
+                    .collect::<Vec<_>>(),
+                ["srctest:ok"]
+            );
         });
-        assert_eq!(kept, ["srctest:panics", "srctest:flaky", "srctest:healthy"]);
-
-        let registered = SourceReader::registered(Some(&table));
-        let atlas_source = |kind: &str| {
-            crate::resource_source::ResourceSource::indexed(
-                [(
-                    "assets/minecraft/atlases/blocks.json".to_owned(),
-                    sunrise_assets::resource_source::Resource::bytes(
-                        format!(r#"{{"sources":[{{"type":"{kind}"}}]}}"#).into_bytes(),
-                    ),
-                )]
-                .into(),
-            )
-        };
-
-        let _ = take_callback_panic_notices();
-        let first_panic = Listing::build(&atlas_source("srctest:panics"), &registered);
-        assert!(first_panic.sprites("minecraft:blocks").is_empty());
-        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-        let notices = take_callback_panic_notices();
-        assert!(
-            notices
-                .iter()
-                .any(|notice| notice.mod_id == "src_panicker" && notice.kind == "sprite source"),
-            "expected panic notice, got {notices:?}"
-        );
-
-        // Disabled after panic: a second load does not invoke the panicking callback again.
-        let second_panic = Listing::build(&atlas_source("srctest:panics"), &registered);
-        assert!(second_panic.sprites("minecraft:blocks").is_empty());
-        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-
-        // Non-panic Err does not latch or queue a panic notice.
-        let first_flaky = Listing::build(&atlas_source("srctest:flaky"), &registered);
-        assert!(first_flaky.sprites("minecraft:blocks").is_empty());
-        assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
-        assert!(take_callback_panic_notices().is_empty());
-
-        let second_flaky = Listing::build(&atlas_source("srctest:flaky"), &registered);
-        assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
-        assert_eq!(
-            second_flaky
-                .sprites("minecraft:blocks")
-                .keys()
-                .collect::<Vec<_>>(),
-            ["srctest:recovered"]
-        );
-
-        // Another mod's provider is unaffected by the panic.
-        let healthy = Listing::build(&atlas_source("srctest:healthy"), &registered);
-        assert_eq!(healthy_calls.load(Ordering::Relaxed), 1);
-        assert_eq!(
-            healthy
-                .sprites("minecraft:blocks")
-                .keys()
-                .collect::<Vec<_>>(),
-            ["srctest:ok"]
-        );
     }
 
     #[test]
