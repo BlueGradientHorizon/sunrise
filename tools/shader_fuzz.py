@@ -19,7 +19,7 @@ a program the unmutated case loaded loaded or named by a note, the same output t
 
 Failures are grouped by invariant, first failing step and detail. Each group's smallest case is shrunk while the
 same failure stays (steps, then files, then runs of lines) and written as a pack folder under
-.local/shader-fuzz/groups/; .local/shader-fuzz/report.json lists the groups with the seed that replays each. Exits 1
+the run's groups/ folder; its report.json lists the groups with the seed that replays each. Exits 1
 when any case fails.
 """
 
@@ -27,6 +27,7 @@ import argparse
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 try:
@@ -86,15 +87,22 @@ def main(argv=None):
     parser.add_argument("--size-limit", type=int, default=16, help="MiB a stage file may grow to, preprocessed")
     parser.add_argument("--shrink-seconds", type=int, default=120, help="per group")
     parser.add_argument("--binary", type=Path, help="an already built shader_fuzz")
-    parser.add_argument("--work-dir", type=Path, default=WORK)
+    parser.add_argument("--work-dir", type=Path, default=WORK, help="parent directory for separately stored runs")
     args = parser.parse_args(argv)
     binary = args.binary.resolve(strict=True) if args.binary else build()
-    done = subprocess.run([str(binary), *arguments(args)], cwd=lab.ROOT)
-    report_path = args.work_dir / "report.json"
-    if done.returncode not in (0, 1) or not report_path.exists():
-        print(f"shader_fuzz stopped (exit {done.returncode}) without a report", file=sys.stderr)
+    runs = args.work_dir.resolve() / "runs"
+    try:
+        runs.mkdir(parents=True, exist_ok=True)
+        args.work_dir = Path(tempfile.mkdtemp(prefix="run-", dir=runs))
+        done = subprocess.run([str(binary), *arguments(args)], cwd=lab.ROOT)
+        if done.returncode not in (0, 1):
+            print(f"shader_fuzz stopped (exit {done.returncode})", file=sys.stderr)
+            return 2
+        report_path = args.work_dir / "report.json"
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        print(f"shader_fuzz: {args.work_dir}: {error}", file=sys.stderr)
         return 2
-    report = json.loads(report_path.read_text(encoding="utf-8"))
     print("\n".join(summary(report)))
     return 1 if report["groups"] else 0
 

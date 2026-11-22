@@ -161,21 +161,94 @@ fn options(args: &[String]) -> Result<Options, String> {
 // ---------------------------------------------------------------------------------------------
 // Running cases
 
-/// Writes `files` as the pack folder `dir` (its `shaders` folder), anew.
-fn write_pack(dir: &Path, files: &Files) {
-    let root = dir.join("shaders");
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).expect("the work folder is writable");
-    for (path, bytes) in files {
-        if path.split('/').any(|p| p == ".." || p.is_empty()) {
-            continue;
-        }
-        let file = root.join(path);
-        if let Some(parent) = file.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::write(file, bytes);
+/// Explicit destinations may be new or empty. Claim an empty folder before any worker
+/// runs, so two processes cannot both observe it empty and start deleting scratch files.
+fn claim_folder(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    if std::fs::read_dir(dir)?.next().transpose()?.is_some() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "work directory is not empty",
+        ));
     }
+    std::fs::File::create_new(dir.join(".shader-fuzz-run"))?;
+    Ok(())
+}
+
+fn default_folder(base: &Path) -> std::io::Result<PathBuf> {
+    let runs = base.join("runs");
+    std::fs::create_dir_all(&runs)?;
+    for index in 0u64.. {
+        let dir = runs.join(format!("{}-{index}", std::process::id()));
+        match std::fs::create_dir(&dir) {
+            Ok(()) => return Ok(dir),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    unreachable!()
+}
+
+/// Only ordinary path components can be created below the run's shader directory.
+fn safe_component(part: &str) -> bool {
+    if part.is_empty()
+        || part.ends_with(['.', ' '])
+        || part.contains(['\\', ':', '<', '>', '"', '|', '?', '*'])
+        || part.chars().any(char::is_control)
+    {
+        return false;
+    }
+    let stem = part
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches(' ')
+        .to_ascii_uppercase();
+    let device = matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    );
+    let port = stem
+        .strip_prefix("COM")
+        .or_else(|| stem.strip_prefix("LPT"));
+    !device
+        && !port.is_some_and(|n| {
+            matches!(
+                n,
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+            )
+        })
+}
+
+/// Validate the whole pack before replacing any previous scratch data.
+fn write_pack(dir: &Path, files: &Files) -> std::io::Result<()> {
+    if let Some(path) = files.keys().find(|p| !p.split('/').all(safe_component)) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("invalid pack path {path:?}"),
+        ));
+    }
+    let root = dir.join("shaders");
+    match std::fs::remove_dir_all(&root) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    std::fs::create_dir_all(&root)?;
+    for (path, bytes) in files {
+        let file = root.join(path);
+        std::fs::create_dir_all(file.parent().unwrap())?;
+        std::fs::File::create_new(file)?.write_all(bytes)?;
+    }
+    Ok(())
+}
+
+/// An I/O error belongs to the driver; it must never be recorded as a translator finding.
+fn output<T>(path: &Path, result: std::io::Result<T>) -> T {
+    result.unwrap_or_else(|e| {
+        eprintln!("shader_fuzz: staging {}: {e}", path.display());
+        std::process::exit(2)
+    })
 }
 
 /// Runs cases in this process (tests; the time and memory bounds don't apply).
@@ -187,7 +260,7 @@ struct InProcess {
 #[cfg(test)]
 impl Evaluate for InProcess {
     fn eval(&mut self, files: &Files, request: &Request) -> Outcome {
-        write_pack(&self.dir, files);
+        write_pack(&self.dir, files).expect("test pack is writable");
         check::check(&self.dir, request)
     }
 }
@@ -334,7 +407,7 @@ impl Worker {
 impl Evaluate for Worker {
     fn eval(&mut self, files: &Files, request: &Request) -> Outcome {
         let dir = self.dir.clone();
-        write_pack(&dir, files);
+        output(&dir, write_pack(&dir, files));
         let limit = self.time_limit;
         let running = self.start();
         let sent = writeln!(running.input, "{}", request_json(&dir, request))
@@ -517,7 +590,7 @@ fn write_group(
     shrunk: &shrink::Shrunk,
 ) -> serde_json::Value {
     let first = &members[0];
-    write_pack(dir, &shrunk.files);
+    output(dir, write_pack(dir, &shrunk.files));
     let steps: Vec<String> = shrunk
         .steps
         .iter()
@@ -537,7 +610,8 @@ fn write_group(
         if first.case.flat { "flat" } else { "grid" },
         steps.join(", "),
     );
-    let _ = std::fs::write(dir.join("case.txt"), summary);
+    let summary_path = dir.join("case.txt");
+    output(&summary_path, std::fs::write(&summary_path, summary));
     serde_json::json!({
         "group": name,
         "invariant": first.failure.invariant,
@@ -563,13 +637,17 @@ fn main() {
         let mib = args.get(1).and_then(|m| m.parse().ok()).unwrap_or(2048);
         return worker(mib);
     }
-    let o = match options(&args) {
+    let mut o = match options(&args) {
         Ok(o) => o,
         Err(e) => {
             eprintln!("shader_fuzz: {e}");
             std::process::exit(2);
         }
     };
+    if !args.iter().any(|arg| arg == "--work-dir") {
+        o.work = output(&o.work, default_folder(&o.work));
+    }
+    output(&o.work, claim_folder(&o.work));
     let corpus = cases::corpus(o.corpus.as_deref());
     let names: Vec<&str> = corpus.iter().map(|s| s.name.as_str()).collect();
     println!("corpus: {}", names.join(", "));
@@ -580,7 +658,6 @@ fn main() {
     } else {
         Vec::new()
     };
-    let _ = std::fs::remove_dir_all(o.work.join("groups"));
     let run = Run {
         corpus: &corpus,
         o: &o,
@@ -630,11 +707,18 @@ fn main() {
                         &first.failure.signature(),
                         budget,
                     );
-                    let dir = o.work.join("groups").join(format!(
-                        "{:02}-{}",
-                        i + 1,
-                        first.failure.invariant
-                    ));
+                    let group = format!("{:02}-{}", i + 1, first.failure.invariant);
+                    let base = o.work.join("groups");
+                    if !safe_component(&group) || group.contains('/') {
+                        output(
+                            &base,
+                            Err::<(), _>(std::io::Error::new(
+                                std::io::ErrorKind::InvalidInput,
+                                "invalid group directory name",
+                            )),
+                        );
+                    }
+                    let dir = base.join(group);
                     let entry = write_group(&dir, name, members, &shrunk);
                     entries.lock().unwrap().insert(i, entry);
                 }
@@ -651,10 +735,11 @@ fn main() {
         "corpus_dir": o.corpus,
         "groups": entries,
     });
-    std::fs::create_dir_all(&o.work).expect("the work folder");
     let path = o.work.join("report.json");
-    std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap() + "\n")
-        .expect("the report is written");
+    output(
+        &path,
+        std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap() + "\n"),
+    );
     println!(
         "{} cases in {:.0} s: {failing} failures in {} groups",
         report["cases"],
@@ -691,6 +776,52 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&dir);
         dir
+    }
+
+    #[test]
+    fn storage_preserves_existing_results_and_claims_a_directory_once() {
+        let dir = temp();
+        let previous = dir.join("groups");
+        std::fs::create_dir_all(&previous).unwrap();
+        std::fs::write(previous.join("keep"), b"previous").unwrap();
+        assert!(claim_folder(&dir).is_err());
+        let first = default_folder(&dir).unwrap();
+        let second = default_folder(&dir).unwrap();
+        assert_ne!(first, second);
+        std::thread::scope(|scope| {
+            let a = scope.spawn(|| claim_folder(&first).is_ok());
+            let b = scope.spawn(|| claim_folder(&first).is_ok());
+            assert_ne!(a.join().unwrap(), b.join().unwrap());
+        });
+        assert_eq!(std::fs::read(previous.join("keep")).unwrap(), b"previous");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn storage_rejects_nonportable_paths_before_writing() {
+        let dir = temp();
+        let files = Files::from([("ok.glsl".into(), b"previous".to_vec())]);
+        write_pack(&dir, &files).unwrap();
+        for name in [
+            "../x",
+            "C:/x",
+            "a\\b",
+            "/x",
+            "./x",
+            "NUL.txt",
+            "sub/abc.",
+            "COM1",
+            "LPT².txt",
+            "file:stream",
+        ] {
+            let files = Files::from([(name.into(), Vec::new())]);
+            assert!(write_pack(&dir, &files).is_err(), "{name}");
+        }
+        assert_eq!(
+            std::fs::read(dir.join("shaders/ok.glsl")).unwrap(),
+            b"previous"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     fn opts(work: PathBuf) -> Options {
