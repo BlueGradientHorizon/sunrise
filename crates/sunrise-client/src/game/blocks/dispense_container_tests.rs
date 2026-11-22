@@ -200,6 +200,12 @@ fn dispenser_writes_follow_the_parked_level_handle() {
             .unwrap();
         let stack = mod_api::ItemStack::new(key, 2).unwrap();
         let remainder = mod_api::ItemStack::of(filled);
+        let chest_at = [8, 64, 8];
+        let chest = state(game, "minecraft:chest");
+        assert_eq!(
+            game.level_set_block(level, chest_at, chest, BlockUpdateFlags::NONE),
+            Ok(true)
+        );
         game.enter_command_level(Dim::Nether).unwrap();
         assert_eq!(
             level.dispense_default(game, [32, 64, 32], Direction::East, stack.clone()),
@@ -214,12 +220,6 @@ fn dispenser_writes_follow_the_parked_level_handle() {
                 remainder.clone()
             ),
             Err(LevelWriteError::InvalidDispenser)
-        );
-        let chest_at = [8, 64, 8];
-        let chest = state(game, "minecraft:chest");
-        assert_eq!(
-            game.level_set_block(level, chest_at, chest, BlockUpdateFlags::NONE),
-            Ok(true)
         );
         assert_eq!(
             level.dispense_with_remainder(

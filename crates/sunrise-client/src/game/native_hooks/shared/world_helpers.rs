@@ -16,7 +16,7 @@ impl Game<'_> {
         state: BlockStateId,
         flags: i32,
     ) -> bool {
-        if (self.serving.is_none() && self.options.dedicated.is_none())
+        if !self.is_logical_server()
             || dimension != self.dim.id()
             || self.pack.assets.registry.state(state).is_none()
         {
