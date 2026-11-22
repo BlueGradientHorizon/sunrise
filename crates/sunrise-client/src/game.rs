@@ -7137,20 +7137,13 @@ impl Game<'_> {
             .flatten();
         // A client's tick of the level it shows holds the colliders as it began, then carries
         // its own player with the one it stands on; a server's level tick holds its own scope.
-        let start = (!self.is_logical_server()).then(|| self.placed_moving_colliders());
-        let scope = start.clone().map(|placed| {
+        let _scope = (!self.is_logical_server()).then(|| {
             sunrise_client_render::moving_colliders::Scope::enter_level(
                 self.collider_level(),
-                placed,
+                self.placed_moving_colliders(),
             )
         });
-        let result = self.tick_body();
-        drop(scope);
-        if let (Some(start), Ok(())) = (&start, &result) {
-            self.carry_pass(start);
-            self.observe_carry_age(start);
-        }
-        result
+        self.tick_body()
     }
     fn tick_body(&mut self) -> Result<()> {
         self.expire_client_cracks();
@@ -14221,8 +14214,14 @@ pub(crate) fn run_with(
         .mods
         .select(&std::env::current_dir()?, &early_settings.mods.enabled);
     mods::validate_startup_packages(&options.mods)?;
-    api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
-    mods::install_registration_data(&vanilla_root, mods::runtime_files::sources(&options.mods))?;
+    let jar_store = sunrise_client::logging::game_home().join("jars");
+    let admission = options.mods.admit_startup_packages(&jar_store)?;
+    api_values::install_packages(admission.native_packages(), admission.content_packages())?;
+    mods::install_registration_data(
+        &vanilla_root,
+        mods::runtime_files::sources(&options.mods),
+        mods::package_files::sources(&admission),
+    )?;
     {
         crate::game::part_admission::admit_parts(mod_api::__private::mods())?;
         // The structure types those mods registered, handed to the engine before

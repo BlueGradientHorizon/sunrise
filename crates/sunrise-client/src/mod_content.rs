@@ -3771,16 +3771,48 @@ fn load_layers<'a>(jar_store: &Path, mods: &'a [ContentMod]) -> Result<Vec<ModLa
             )?);
         }
         if !m.content.files.is_empty() {
-            let source = m.content.source().to_owned();
-            layers.push(ModLayer::new(
-                m.id.clone(),
+            use crate::packs::Source;
+            let source = if let Some(content) = m.content.admitted_source() {
+                use std::hash::{DefaultHasher, Hash, Hasher};
+                use sunrise_assets::resource_source::ResourceSource;
+                use sunrise_mod_package::content::ReadError;
+                let reader = content.clone();
+                Source::Opened(ResourceSource::fixed(
+                    content.names(),
+                    move |name, limit| {
+                        let reader = reader.reader();
+                        limit
+                            .map_or_else(|| reader.read(name), |max| reader.read_head(name, max))
+                            .map_err(|error| {
+                                let kind = match error {
+                                    ReadError::NotFound(_) => std::io::ErrorKind::NotFound,
+                                    ReadError::Other(_) => std::io::ErrorKind::InvalidData,
+                                };
+                                std::io::Error::new(kind, error)
+                            })
+                    },
+                    move |name| {
+                        let mut hash = DefaultHasher::new();
+                        if content.is_archive() {
+                            content.reader().read(name).ok()?.hash(&mut hash);
+                        } else {
+                            let path = content.reader().path(name).ok()??;
+                            let meta = fs::metadata(path).ok()?;
+                            meta.len().hash(&mut hash);
+                            meta.modified().ok()?.hash(&mut hash);
+                        }
+                        Some(hash.finish())
+                    },
+                ))
+            } else {
+                let source = m.content.source().to_owned();
                 if source.is_dir() {
-                    crate::packs::Source::Dir(source)
+                    Source::Dir(source)
                 } else {
-                    crate::packs::Source::Zip(source)
-                },
-                None,
-            )?);
+                    Source::Zip(source)
+                }
+            };
+            layers.push(ModLayer::new(m.id.clone(), source, None)?);
         }
         loaded.push(ModLayers { source: m, layers });
     }
@@ -4079,7 +4111,7 @@ fn stamp(
             .clone()?,
     };
     let mut parts = vec![
-        "sunrise mod content 8".to_owned(),
+        "sunrise mod content 10".to_owned(),
         serde_json::to_string(inventory)?,
     ];
     parts.push(exe);
@@ -4109,11 +4141,20 @@ fn stamp(
             "{:?} {:?} {:?}",
             m.content.blocks, m.content.items, m.content.block_entity_types
         ));
-        let source = m.content.source();
         if m.content.files.is_empty() {
             // Declared in code only: nothing to read.
-        } else if source.is_dir() {
-            for file in &m.content.files {
+            continue;
+        }
+        let source = m.content.source();
+        let admitted = m.content.admitted_source();
+        if let Some(content) = admitted.as_ref().filter(|content| content.is_archive()) {
+            let reader = content.reader();
+            for file in m.content.files.iter() {
+                let digest = Sha256::digest(reader.read(file)?);
+                parts.push(format!("{file} {digest:x}"));
+            }
+        } else if admitted.is_some() || source.is_dir() {
+            for file in m.content.files.iter() {
                 parts.push(format!("{file} {}", hash(&source.join(file))?));
             }
         } else {
