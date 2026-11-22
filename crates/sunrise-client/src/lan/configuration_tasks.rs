@@ -159,6 +159,20 @@ impl PreparedSpawn {
     }
 }
 
+/// Keeps PrepareSpawnTask.Ready alive until game-thread placement, or until
+/// the connection or join is dropped.
+pub struct Configured(pub(crate) Arc<Session>);
+impl Configured {
+    pub fn spawn(&self) -> Option<PreparedSpawn> {
+        self.0.prepared_spawn()
+    }
+}
+impl Drop for Configured {
+    fn drop(&mut self) {
+        self.0.close();
+    }
+}
+
 pub enum SpawnTask {
     Start(u128),
     Find {

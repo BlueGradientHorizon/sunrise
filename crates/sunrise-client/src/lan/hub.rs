@@ -172,7 +172,7 @@ pub enum HostEvent {
     InputCredits(Vec<crate::net::ingress::ReceiveLease<NetEvent>>),
     RawPayload(Box<crate::raw_payloads::Delivery>),
     /// A guest entered the world; load their saved state.
-    Joined(u32, Option<super::configuration_tasks::PreparedSpawn>),
+    Joined(u32, Option<super::configuration_tasks::Configured>),
     /// A guest left (state to save, entities to drop).
     Left(Box<Guest>),
     Packet(u32, Box<S>),

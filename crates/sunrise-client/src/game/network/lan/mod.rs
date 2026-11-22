@@ -29,7 +29,7 @@ use sunrise_client::{
     lan::{
         self, NetConfig,
         chunks::ChunkEncoder,
-        configuration_tasks::PreparedSpawn,
+        configuration_tasks::Configured,
         data::{BIOME_REGISTRY, SyncData},
         entity::{EntityState, States},
         hub::{HostEvent, Hub, HubConfig, TickCtx, stuck_meta},
@@ -2986,8 +2986,9 @@ impl Game<'_> {
         conn: u32,
         entities: &[EntityState],
         spawn: [f64; 3],
-        prepared: Option<PreparedSpawn>,
+        configured: Option<Configured>,
     ) {
+        let prepared = configured.as_ref().and_then(Configured::spawn);
         let spawn_level = self.world_spawn_level();
         let back = self.dim;
         // `PrepareSpawnTask.Ready.spawn` waits for saved entities before the player loads.
@@ -2998,6 +2999,10 @@ impl Game<'_> {
                 log::error!("could not open {}: {e}", level.id());
                 return;
             }
+            self.tickets.add_spawn(
+                prepared.chunk(),
+                sunrise_client::ticket_levels::SpawnTicketKind::Player,
+            );
             self.spawn_loaded_entities();
             self.world.entities_pending.clear();
             if let Err(e) = self.enter_level(back) {
