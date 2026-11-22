@@ -1369,7 +1369,6 @@ mod tests {
     #[test]
     fn registered_settings_capture_by_known_keys_shares_the_load_snapshot() {
         let root = root("registered-known-keys");
-        fs::create_dir(root.join("reader")).unwrap();
         for key in ["first", "last"] {
             fs::write(root.join("reader").join(key), "true").unwrap();
         }
