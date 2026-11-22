@@ -1,10 +1,11 @@
 //! Native worker adapters for API-owned structure behaviours.
 use super::native_worldgen::WorkerResources;
+use mod_api::__private::game::CallbackOwner;
 use mod_api::{
-    BiomeId, ChunkPos, GenerationContext, HeightmapType, NoiseBlock, NoiseColumn, PieceContext,
-    RandomSource, StructurePiece, StructureType,
+    BiomeId, BlockKey, BlockMetadata, BlockState, ChunkPos, GenerationContext, HeightmapType,
+    NoiseBlock, NoiseColumn, PieceContext, RandomSource, StructurePiece, StructureType,
 };
-use mod_api::{BlockKey, BlockMetadata, BlockState};
+use std::error::Error;
 use std::sync::Arc;
 use sunrise_core::{
     bounding_box::BoundingBox,
@@ -52,25 +53,25 @@ impl sunrise_world::worldgen::structure::start::NoiseColumnTarget for Column {
 struct Draws<'a>(&'a mut dyn PieceRandom);
 impl RandomSource for Draws<'_> {
     fn next_int_bound(&mut self, bound: i32) -> i32 {
-        self.0.int(bound)
+        CallbackOwner::call_engine(|| self.0.int(bound))
     }
     fn next_long(&mut self) -> i64 {
-        self.0.long()
+        CallbackOwner::call_engine(|| self.0.long())
     }
     fn next_float(&mut self) -> f32 {
-        self.0.float()
+        CallbackOwner::call_engine(|| self.0.float())
     }
     fn next_double(&mut self) -> f64 {
-        self.0.double()
+        CallbackOwner::call_engine(|| self.0.double())
     }
     fn next_boolean(&mut self) -> bool {
-        self.0.boolean()
+        CallbackOwner::call_engine(|| self.0.boolean())
     }
     fn next_int(&mut self) -> i32 {
-        self.0.int_unbounded()
+        CallbackOwner::call_engine(|| self.0.int_unbounded())
     }
     fn next_gaussian(&mut self) -> f64 {
-        self.0.gaussian()
+        CallbackOwner::call_engine(|| self.0.gaussian())
     }
 }
 
@@ -91,37 +92,41 @@ impl GenerationContext for Start<'_> {
         self.chunk
     }
     fn seed(&self) -> i64 {
-        self.inner.seed()
+        CallbackOwner::call_engine(|| self.inner.seed())
     }
     fn sea_level(&self) -> i32 {
-        self.inner.sea_level()
+        CallbackOwner::call_engine(|| self.inner.sea_level())
     }
     fn min_y(&self) -> i32 {
-        self.inner.min_y()
+        CallbackOwner::call_engine(|| self.inner.min_y())
     }
     fn max_y(&self) -> i32 {
-        self.inner.max_y()
+        CallbackOwner::call_engine(|| self.inner.max_y())
     }
     fn random(&mut self) -> &mut dyn RandomSource {
         &mut self.random
     }
     fn base_height(&mut self, x: i32, z: i32, kind: HeightmapType) -> i32 {
-        self.inner.base_height(x, z, engine_heightmap(kind))
+        CallbackOwner::call_engine(|| self.inner.base_height(x, z, engine_heightmap(kind)))
     }
     fn base_columns(&mut self, x: i32, z: i32, kinds: &[HeightmapType]) -> Vec<Vec<bool>> {
-        self.inner
-            .base_columns_by(x, z, kinds.len(), &|index| engine_heightmap(kinds[index]))
+        CallbackOwner::call_engine(|| {
+            self.inner
+                .base_columns_by(x, z, kinds.len(), &|index| engine_heightmap(kinds[index]))
+        })
     }
     fn noise_column(&mut self, x: i32, z: i32) -> NoiseColumn {
-        let mut column = Column(NoiseColumn::default());
-        self.inner.noise_column_into(x, z, &mut column);
-        column.0
+        CallbackOwner::call_engine(|| {
+            let mut column = Column(NoiseColumn::default());
+            self.inner.noise_column_into(x, z, &mut column);
+            column.0
+        })
     }
     fn noise_biome(&mut self, quart: [i32; 3]) -> BiomeId {
-        mod_api::__private::biome_id(self.inner.noise_biome(quart).0)
+        CallbackOwner::call_engine(|| mod_api::__private::biome_id(self.inner.noise_biome(quart).0))
     }
     fn column_has_valid_biome(&mut self, x: i32, z: i32, min_y: i32, max_y: i32) -> bool {
-        self.inner.column_has_valid_biome(x, z, min_y, max_y)
+        CallbackOwner::call_engine(|| self.inner.column_has_valid_biome(x, z, min_y, max_y))
     }
     fn config(&self) -> Arc<Tag> {
         self.config.clone()
@@ -237,6 +242,11 @@ pub(crate) struct Adapter {
     /// The type's namespaced id (`modid:tower`), leaked once at registration
     /// for the piece tags' `"id"`.
     id: &'static str,
+    find_generation_point: CallbackOwner,
+    load_piece: CallbackOwner,
+    bounding_box: CallbackOwner,
+    beardifier: CallbackOwner,
+    add_additional_save_data: CallbackOwner,
 }
 
 impl ModStructureType for Adapter {
@@ -264,20 +274,22 @@ impl ModStructureType for Adapter {
             chunk,
             config,
         };
-        let found = self.inner.find_generation_point(&mut context)?;
-        let ty = self.inner.clone();
-        let id = self.id;
+        let found = self
+            .find_generation_point
+            .call(
+                "structure type",
+                "StructureType::find_generation_point",
+                || self.inner.find_generation_point(&mut context),
+            )
+            .ok()??;
         let pieces = found
             .pieces
             .into_iter()
-            .map(|piece| {
-                Box::new(ModPiece {
-                    beardifier: piece.beardifier().and_then(engine_beardifier),
-                    piece,
-                    ty: ty.clone(),
-                    id,
+            .filter_map(|piece| {
+                ModPiece::new(self, piece).map(|piece| {
+                    Box::new(piece)
+                        as Box<dyn sunrise_world::worldgen::structure::legacy::LegacyPiece>
                 })
-                    as Box<dyn sunrise_world::worldgen::structure::legacy::LegacyPiece>
             })
             .collect();
         Some((found.position, pieces))
@@ -288,14 +300,36 @@ impl ModStructureType for Adapter {
         tag: &Compound,
     ) -> Option<Box<dyn sunrise_world::worldgen::structure::legacy::LegacyPiece>> {
         let metadata = WorkerResources::get(registry).ok()?.metadata;
-        // Preserve the engine's existing bad-piece refusal. The API loader's diagnostic is typed.
-        let piece = self.inner.load_piece(metadata, tag).ok()?;
-        Some(Box::new(ModPiece {
-            beardifier: piece.beardifier().and_then(engine_beardifier),
-            piece,
-            ty: self.inner.clone(),
-            id: self.id,
-        }))
+        let loaded = self
+            .load_piece
+            .call("structure type", "StructureType::load_piece", || {
+                self.inner.load_piece(metadata, tag)
+            })
+            .ok()?;
+        let piece = match loaded {
+            Ok(piece) => piece,
+            Err(error) => {
+                let causes = std::fmt::from_fn(|f| {
+                    write!(f, "{error}")?;
+                    // StructureError displays its immediate cause; don't print that cause twice.
+                    let mut remaining = error.source().and_then(Error::source);
+                    while let Some(cause) = remaining {
+                        write!(f, ": {cause}")?;
+                        remaining = cause.source();
+                    }
+                    Ok(())
+                });
+                log::error!(
+                    "mod {}: structure type {} failed to load saved piece: {causes}",
+                    self.load_piece.id(),
+                    self.id,
+                );
+                return None;
+            }
+        };
+        let piece: Box<dyn sunrise_world::worldgen::structure::legacy::LegacyPiece> =
+            Box::new(ModPiece::new(self, piece)?);
+        Some(piece)
     }
 }
 
@@ -331,17 +365,46 @@ fn engine_beardifier(piece: mod_api::PieceBeardifier) -> Option<sunrise_core::de
 /// and the piece's box around the piece's own save data.
 struct ModPiece {
     piece: Arc<dyn StructurePiece>,
+    bounding_box: BoundingBox,
     beardifier: Option<sunrise_core::density::RigidPiece>,
     /// The type the piece belongs to, whose `after_place` runs for the start.
     ty: Arc<dyn StructureType>,
     id: &'static str,
+    add_additional_save_data: CallbackOwner,
+}
+impl ModPiece {
+    /// Adapt a mod piece at generation or load: obtain its immutable bounding box and
+    /// beardifier metadata under their callback owners, skipping the piece on failure.
+    fn new(adapter: &Adapter, piece: Arc<dyn StructurePiece>) -> Option<Self> {
+        let bounding_box = adapter
+            .bounding_box
+            .call("structure piece", "StructurePiece::bounding_box", || {
+                piece.bounding_box()
+            })
+            .ok()?;
+        let beardifier = adapter
+            .beardifier
+            .call("structure piece", "StructurePiece::beardifier", || {
+                piece.beardifier()
+            })
+            .ok()?
+            .and_then(engine_beardifier);
+        Some(Self {
+            piece,
+            bounding_box,
+            beardifier,
+            ty: adapter.inner.clone(),
+            id: adapter.id,
+            add_additional_save_data: adapter.add_additional_save_data.clone(),
+        })
+    }
 }
 impl sunrise_world::worldgen::structure::legacy::LegacyPiece for ModPiece {
     fn beardifier(&self) -> Option<sunrise_core::density::RigidPiece> {
         self.beardifier
     }
     fn bounding_box(&self) -> BoundingBox {
-        self.piece.bounding_box()
+        self.bounding_box
     }
     fn type_name(&self) -> &'static str {
         self.id
@@ -349,11 +412,17 @@ impl sunrise_world::worldgen::structure::legacy::LegacyPiece for ModPiece {
     fn save(&self) -> Option<Compound> {
         let mut tag = sunrise_world::worldgen::structure::legacy::piece_tag(
             self.id,
-            self.bounding_box(),
+            self.bounding_box,
             None,
             0,
         );
-        self.piece.add_additional_save_data(&mut tag);
+        self.add_additional_save_data
+            .call(
+                "structure piece",
+                "StructurePiece::add_additional_save_data",
+                || self.piece.add_additional_save_data(&mut tag),
+            )
+            .ok()?;
         Some(tag)
     }
     fn post_process(
@@ -383,17 +452,22 @@ impl std::fmt::Debug for ModPiece {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ModPiece")
             .field("id", &self.id)
-            .field("piece", &self.piece)
-            .finish()
+            .field("bounding_box", &self.bounding_box)
+            .finish_non_exhaustive()
     }
 }
 
 impl Adapter {
-    /// Wrap `ty` as the engine's type, under the namespaced `id`.
-    pub(crate) fn new(id: &str, ty: Arc<dyn StructureType>) -> Self {
+    /// Wrap `ty` as the engine's type, under the namespaced `id` registered by `mod_id`.
+    pub(crate) fn new(id: &str, mod_id: &'static str, ty: Arc<dyn StructureType>) -> Self {
         Self {
             inner: ty,
             id: Box::leak(id.to_owned().into_boxed_str()),
+            find_generation_point: CallbackOwner::for_mod(mod_id),
+            load_piece: CallbackOwner::for_mod(mod_id),
+            bounding_box: CallbackOwner::for_mod(mod_id),
+            beardifier: CallbackOwner::for_mod(mod_id),
+            add_additional_save_data: CallbackOwner::for_mod(mod_id),
         }
     }
     /// The engine's type behind an `Arc`, for the registration table.
@@ -415,8 +489,8 @@ pub(in crate::game) fn installed_structure_types()
 -> sunrise_world::worldgen::structure::mod_types::ModStructureTypes {
     mod_api::__private::structure_type_declarations()
         .into_iter()
-        .map(|(id, ty)| {
-            let adapter = Adapter::new(&id, ty).into_engine_type();
+        .map(|(id, mod_id, ty)| {
+            let adapter = Adapter::new(&id, mod_id, ty).into_engine_type();
             (id, adapter)
         })
         .collect()

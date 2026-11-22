@@ -62,7 +62,7 @@ impl StructureType for Boxes {
 /// nothing but its context, so two worlds of one seed see one structure.
 #[test]
 fn the_same_context_gives_the_same_pieces() {
-    let adapter = Adapter::new("testmod:boxes", Arc::new(Boxes));
+    let adapter = Adapter::new("testmod:boxes", "testmod", Arc::new(Boxes));
     let run = || {
         let mut random = WorldgenRandom::new(LegacyRandom::new(0));
         random.set_large_feature_seed(12345, 3, 7);
@@ -87,7 +87,7 @@ fn the_same_context_gives_the_same_pieces() {
 #[test]
 fn a_saved_piece_loads_back_the_same() {
     let resources = test_resources();
-    let adapter = Adapter::new("testmod:boxes", Arc::new(Boxes));
+    let adapter = Adapter::new("testmod:boxes", "testmod", Arc::new(Boxes));
     let mut random = WorldgenRandom::new(LegacyRandom::new(0));
     random.set_large_feature_seed(1, 0, 0);
     let (_, pieces) = adapter
@@ -166,6 +166,7 @@ fn the_engines_after_place_call_reaches_the_type() {
     let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let adapter = Adapter::new(
         "testmod:counting",
+        "testmod",
         Arc::new(Counting {
             calls: calls.clone(),
         }),
@@ -585,7 +586,12 @@ fn structure_config_is_converted_at_load_and_shared_by_starts() {
     let observed = Arc::new(std::sync::Mutex::new(Vec::new()));
     let types: ModStructureTypes = BTreeMap::from([(
         "probe:kind".to_owned(),
-        Adapter::new("probe:kind", Arc::new(ConfigObserver(observed.clone()))).into_engine_type(),
+        Adapter::new(
+            "probe:kind",
+            "probe",
+            Arc::new(ConfigObserver(observed.clone())),
+        )
+        .into_engine_type(),
     )]);
     let mut definitions = BTreeMap::from([(
         "probe:tower".to_owned(),
@@ -655,7 +661,12 @@ fn structure_bad_config_refuses_at_load_but_unknown_types_do_not_convert() {
     };
     let types: ModStructureTypes = BTreeMap::from([(
         "probe:kind".to_owned(),
-        Adapter::new("probe:kind", Arc::new(ConfigObserver(Default::default()))).into_engine_type(),
+        Adapter::new(
+            "probe:kind",
+            "probe",
+            Arc::new(ConfigObserver(Default::default())),
+        )
+        .into_engine_type(),
     )]);
     let definitions = BTreeMap::from([(
         "probe:tower".to_owned(),
@@ -698,14 +709,16 @@ fn compiled_book_piece_resolves_on_worker_load_and_refuses_bad_saved_values() {
     let registry = sunrise_world::registry::BlockRegistry::from_facts_json(br#"{"defaults":{"minecraft:air":0,"minecraft:oak_log":1},"states":[["a",true,false,"","minecraft:air"],["s",false,false,"",{"id":"minecraft:oak_log","properties":{"axis":"y"}}],["s",false,false,"",{"id":"minecraft:oak_log","properties":{"axis":"x"}}],["s",false,false,"",{"id":"minecraft:oak_log","properties":{"axis":"z"}}]]}"#.as_slice()).unwrap();
     crate::game::api_values::resolve_block_definitions(&registry).unwrap();
     let resources = resources_for_registry(registry);
-    let (_, implementation) = mod_api::__private::structure_type_declarations()
+    let (id, mod_id, implementation) = mod_api::__private::structure_type_declarations()
         .into_iter()
         .next()
         .unwrap();
+    assert_eq!(id, "mymod:tower");
+    assert_eq!(mod_id, "mymod");
     std::thread::spawn(move || {
         assert!(crate::game::api_values::block_state::current().is_err());
         let metadata = WorkerResources::get(resources.registry).unwrap().metadata;
-        let adapter = Adapter::new("mymod:tower", implementation.clone());
+        let adapter = Adapter::new(&id, mod_id, implementation.clone());
         let tag = Compound::from([
             ("block".into(), Tag::String("minecraft:oak_log".into())),
             ("axis".into(), Tag::String("x".into())),
@@ -836,7 +849,11 @@ fn piece_beardifier_shapes_terrain_and_is_resolved_once() {
         }
     }
     let calls = Arc::new(AtomicUsize::new(0));
-    let adapter = Adapter::new("probe:terrain", Arc::new(TerrainType(calls.clone())));
+    let adapter = Adapter::new(
+        "probe:terrain",
+        "probe",
+        Arc::new(TerrainType(calls.clone())),
+    );
     let resources = test_resources();
     let (_, generated) = adapter
         .find_generation_point(
@@ -937,4 +954,347 @@ fn unordered_beardifier_bounds_add_no_terrain_adjustment() {
         2,
     );
     assert_eq!(engine_beardifier(ordered).unwrap().ground_level_delta, 2);
+}
+
+#[test]
+fn repeated_returned_load_piece_errors_keep_the_loader_enabled() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Debug)]
+    struct InnerCause;
+    impl std::fmt::Display for InnerCause {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("corrupt coordinate array")
+        }
+    }
+    impl std::error::Error for InnerCause {}
+
+    #[derive(Debug)]
+    struct OuterCause(InnerCause);
+    impl std::fmt::Display for OuterCause {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("invalid saved box")
+        }
+    }
+    impl std::error::Error for OuterCause {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
+    }
+
+    struct FailingThenOk(Arc<AtomicUsize>);
+    impl StructureType for FailingThenOk {
+        fn find_generation_point(&self, _: &mut dyn GenerationContext) -> Option<FoundStructure> {
+            None
+        }
+        fn load_piece(
+            &self,
+            _: &dyn BlockMetadata,
+            tag: &Compound,
+        ) -> Result<Arc<dyn StructurePiece>, StructureError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            let ints = |key: &str| match tag.get(&key.into()) {
+                Some(Tag::IntArray(a)) if a.len() == 3 => Ok([a[0], a[1], a[2]]),
+                _ => Err(StructureError::new(OuterCause(InnerCause))),
+            };
+            Ok(Arc::new(BoxPiece {
+                min: ints("Min")?,
+                max: ints("Max")?,
+            }))
+        }
+    }
+
+    let resources = test_resources();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let adapter = Adapter::new(
+        "testmod:boxes",
+        "testmod",
+        Arc::new(FailingThenOk(calls.clone())),
+    );
+    let bad = Compound::from([("Min".into(), Tag::IntArray(vec![1, 64]))]);
+    assert!(adapter.load_piece(resources.registry, &bad).is_none());
+    assert!(adapter.load_piece(resources.registry, &bad).is_none());
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+    let good = Compound::from([
+        ("Min".into(), Tag::IntArray(vec![1, 64, 2])),
+        ("Max".into(), Tag::IntArray(vec![3, 66, 4])),
+    ]);
+    let loaded = adapter.load_piece(resources.registry, &good).unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
+    assert_eq!(
+        loaded.bounding_box(),
+        BoundingBox::new([1, 64, 2], [3, 66, 4])
+    );
+    assert_eq!(loaded.type_name(), "testmod:boxes");
+}
+
+#[test]
+fn start_panic_skips_only_that_callback_without_disabling_independent_type() {
+    use mod_api::{
+        Hooks, ModEntry, PackageInfo, PackageKind, Registrar, RegistrationContext, Side,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const OWNER: &str = "test_structures";
+    struct StartProbe {
+        panic_on_start: bool,
+        start_calls: Arc<AtomicUsize>,
+        load_calls: Arc<AtomicUsize>,
+    }
+    impl StructureType for StartProbe {
+        fn find_generation_point(&self, _: &mut dyn GenerationContext) -> Option<FoundStructure> {
+            self.start_calls.fetch_add(1, Ordering::SeqCst);
+            assert!(!self.panic_on_start, "start callback panicked");
+            Some(FoundStructure {
+                position: [0, 64, 0],
+                pieces: vec![Arc::new(BoxPiece {
+                    min: [0, 64, 0],
+                    max: [2, 66, 2],
+                })],
+            })
+        }
+        fn load_piece(
+            &self,
+            _: &dyn BlockMetadata,
+            _: &Compound,
+        ) -> Result<Arc<dyn StructurePiece>, StructureError> {
+            self.load_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Arc::new(BoxPiece {
+                min: [4, 64, 4],
+                max: [6, 66, 6],
+            }))
+        }
+    }
+
+    struct StructureMod {
+        broken_starts: Arc<AtomicUsize>,
+        broken_loads: Arc<AtomicUsize>,
+        healthy_starts: Arc<AtomicUsize>,
+        healthy_loads: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for StructureMod {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            r.register_structure_type(
+                "extra:broken",
+                StartProbe {
+                    panic_on_start: true,
+                    start_calls: self.broken_starts.clone(),
+                    load_calls: self.broken_loads.clone(),
+                },
+            );
+            r.register_structure_type(
+                "healthy",
+                StartProbe {
+                    panic_on_start: false,
+                    start_calls: self.healthy_starts.clone(),
+                    load_calls: self.healthy_loads.clone(),
+                },
+            );
+        }
+    }
+
+    let broken_starts = Arc::new(AtomicUsize::new(0));
+    let broken_loads = Arc::new(AtomicUsize::new(0));
+    let healthy_starts = Arc::new(AtomicUsize::new(0));
+    let healthy_loads = Arc::new(AtomicUsize::new(0));
+    let package = PackageInfo::new(
+        OWNER.into(),
+        "1.0.0".into(),
+        PackageKind::Code,
+        Side::Both,
+        vec![OWNER.into(), "extra".into()],
+        vec![],
+    );
+    let mods: mod_api::Mods = vec![ModEntry::new(
+        OWNER,
+        Box::new(StructureMod {
+            broken_starts: broken_starts.clone(),
+            broken_loads: broken_loads.clone(),
+            healthy_starts: healthy_starts.clone(),
+            healthy_loads: healthy_loads.clone(),
+        }),
+    )]
+    .into();
+    mod_platform::__private::with_test_package_inventory(vec![package], || {
+        mod_platform::testing::with_mods(mods.clone(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+            let facts = serde_json::json!({
+                "states": [
+                    ["air", true, false, "", {"id":"minecraft:air","properties":{}}],
+                    ["stone", false, false, "", {"id":"minecraft:stone","properties":{}}]
+                ],
+                "defaults":{"minecraft:air":0,"minecraft:stone":1}
+            });
+            let registry = sunrise_world::registry::BlockRegistry::from_facts_json(
+                facts.to_string().as_bytes(),
+            )
+            .unwrap();
+            crate::game::api_values::resolve_block_definitions(&registry).unwrap();
+            let resources = resources_for_registry(registry);
+            let declarations = mod_api::__private::structure_type_declarations();
+            assert!(
+                declarations
+                    .iter()
+                    .any(|(id, mod_id, _)| id == "extra:broken" && *mod_id == OWNER)
+            );
+            let types = installed_structure_types();
+            let broken = &types["extra:broken"];
+            let healthy = &types["test_structures:healthy"];
+            let empty = Arc::new(Tag::Compound(Compound::new()));
+            let mut random = WorldgenRandom::new(LegacyRandom::new(0));
+            assert!(
+                broken
+                    .find_generation_point(
+                        &mut StubContext,
+                        resources,
+                        ChunkPos::new(0, 0),
+                        &empty,
+                        &mut random,
+                    )
+                    .is_none()
+            );
+            assert!(
+                broken
+                    .find_generation_point(
+                        &mut StubContext,
+                        resources,
+                        ChunkPos::new(1, 0),
+                        &empty,
+                        &mut random,
+                    )
+                    .is_none()
+            );
+            assert_eq!(broken_starts.load(Ordering::SeqCst), 1);
+            let loaded = broken
+                .load_piece(resources.registry, &Compound::new())
+                .unwrap();
+            assert_eq!(broken_loads.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                loaded.bounding_box(),
+                BoundingBox::new([4, 64, 4], [6, 66, 6])
+            );
+            let (position, pieces) = healthy
+                .find_generation_point(
+                    &mut StubContext,
+                    resources,
+                    ChunkPos::new(0, 0),
+                    &empty,
+                    &mut random,
+                )
+                .unwrap();
+            assert_eq!(position, [0, 64, 0]);
+            assert_eq!(pieces.len(), 1);
+            assert_eq!(healthy_starts.load(Ordering::SeqCst), 1);
+            assert_eq!(healthy_loads.load(Ordering::SeqCst), 0);
+        });
+    });
+}
+
+#[test]
+fn piece_metadata_and_save_panics_stay_local_and_debug_skips_mod_fmt() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct HostilePiece {
+        panic_beardifier: bool,
+        panic_save: bool,
+        save_calls: Arc<AtomicUsize>,
+    }
+    impl std::fmt::Debug for HostilePiece {
+        fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            panic!("mod Debug must not run outside the callback boundary")
+        }
+    }
+    impl StructurePiece for HostilePiece {
+        fn bounding_box(&self) -> BoundingBox {
+            BoundingBox::new([1, 64, 2], [3, 66, 4])
+        }
+        fn beardifier(&self) -> Option<mod_api::PieceBeardifier> {
+            assert!(!self.panic_beardifier, "beardifier panicked");
+            None
+        }
+        fn post_process(&self, _: &mut dyn PieceContext) -> Result<(), StructureError> {
+            Ok(())
+        }
+        fn add_additional_save_data(&self, tag: &mut Compound) {
+            self.save_calls.fetch_add(1, Ordering::SeqCst);
+            tag.insert("partial".into(), Tag::Int(1));
+            assert!(!self.panic_save, "save panicked after partial write");
+        }
+    }
+
+    struct PairType(Arc<AtomicUsize>);
+    impl StructureType for PairType {
+        fn find_generation_point(&self, _: &mut dyn GenerationContext) -> Option<FoundStructure> {
+            Some(FoundStructure {
+                position: [1, 64, 2],
+                pieces: vec![
+                    Arc::new(HostilePiece {
+                        panic_beardifier: false,
+                        panic_save: true,
+                        save_calls: self.0.clone(),
+                    }),
+                    Arc::new(HostilePiece {
+                        panic_beardifier: false,
+                        panic_save: false,
+                        save_calls: self.0.clone(),
+                    }),
+                    Arc::new(HostilePiece {
+                        panic_beardifier: true,
+                        panic_save: false,
+                        save_calls: self.0.clone(),
+                    }),
+                ],
+            })
+        }
+        fn load_piece(
+            &self,
+            _: &dyn BlockMetadata,
+            _: &Compound,
+        ) -> Result<Arc<dyn StructurePiece>, StructureError> {
+            Err(StructureError::new(std::io::Error::other(
+                "fixture has no saved pieces",
+            )))
+        }
+    }
+
+    let resources = test_resources();
+    let save_calls = Arc::new(AtomicUsize::new(0));
+    let adapter = Adapter::new(
+        "testmod:hostile",
+        "testmod",
+        Arc::new(PairType(save_calls.clone())),
+    );
+    let mut random = WorldgenRandom::new(LegacyRandom::new(0));
+    let (_, pieces) = adapter
+        .find_generation_point(
+            &mut StubContext,
+            resources,
+            ChunkPos::new(0, 0),
+            &Arc::new(Tag::Compound(Compound::new())),
+            &mut random,
+        )
+        .unwrap();
+    assert_eq!(pieces.len(), 2);
+    let debug = format!("{:?}", pieces[0]);
+    assert!(debug.contains("ModPiece") && debug.contains("testmod:hostile"));
+    assert!(pieces[0].save().is_none());
+    assert!(pieces[1].save().is_none());
+    assert_eq!(save_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        pieces[0].bounding_box(),
+        BoundingBox::new([1, 64, 2], [3, 66, 4])
+    );
+    let other = Adapter::new("testmod:boxes", "testmod", Arc::new(Boxes));
+    let (_, other_pieces) = other
+        .find_generation_point(
+            &mut StubContext,
+            resources,
+            ChunkPos::new(0, 0),
+            &Arc::new(Tag::Compound(Compound::new())),
+            &mut random,
+        )
+        .unwrap();
+    assert!(other_pieces[0].save().is_some());
 }

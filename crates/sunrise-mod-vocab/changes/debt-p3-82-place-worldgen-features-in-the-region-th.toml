@@ -37,6 +37,15 @@ data must fit the current block, which need not have been written by this callba
 `ImposterProtoChunk(chunk, false)` stays read-only. Each returned error is logged with its source
 chain and the actual registering mod. A panic disables only that registration and queues the
 mod's error toast, without undoing placement work.
+
+Structure start generation, saved-piece loading, piece metadata (`bounding_box`, `beardifier`)
+and `add_additional_save_data` follow `Structure.generate`, `Structure.findValidGenerationPoint`,
+`StructurePiece`, `StructurePieceType`, `PiecesContainer.load` and NeoForge `RegisterEvent.register`.
+Each operation holds its own retained callback owner bound to the registering mod so a panic
+disables only that operation for that registration, leaving other operations and structure types
+active. Returned `load_piece` errors report the registering mod, type and full native source chain
+each time and omit only that piece without latching. Piece bounding boxes are captured once at
+generation or load like `StructurePiece`, and failed saves yield no partial tag.
 """
 migrate = """
 Replace `FeatureError(message)` with `FeatureError::new(std::io::Error::other(message))` and

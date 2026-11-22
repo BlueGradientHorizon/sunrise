@@ -139,7 +139,8 @@ impl PieceBeardifier {
 /// the engine's (`StructurePiece.createTag`: the type id, `BB`, `O`, `GD`)
 /// around [`add_additional_save_data`](StructurePiece::add_additional_save_data).
 pub trait StructurePiece: std::fmt::Debug + Send + Sync {
-    /// `StructurePiece.getBoundingBox`: the piece's box, in world blocks.
+    /// `StructurePiece.getBoundingBox`: the piece's immutable generation box, in world blocks.
+    /// Queried once at generation or load, never per chunk.
     fn bounding_box(&self) -> BoundingBox;
     /// Override terrain shaping, even when the structure's adjustment is `None`.
     /// Queried once at generation or load, never per chunk. An answer whose adjustment
@@ -319,16 +320,17 @@ pub trait PieceContext {
 /// A registered API behaviour; the game builds its engine adapter at startup.
 pub(crate) struct StructureTypeInfo {
     pub(crate) id: Box<str>,
+    pub(crate) mod_id: &'static str,
     pub(crate) ty: Arc<dyn StructureType>,
 }
 
 /// Registered structure behaviours, for the hidden game integration boundary.
 // hidden: the game's startup adapter reads the registered behaviours; mods declare them through the registrar.
 #[doc(hidden)]
-pub fn structure_type_declarations() -> Vec<(String, Arc<dyn StructureType>)> {
+pub fn structure_type_declarations() -> Vec<(String, &'static str, Arc<dyn StructureType>)> {
     crate::parts::installed_structure_type_list()
         .iter()
-        .map(|info| (info.id.to_string(), info.ty.clone()))
+        .map(|info| (info.id.to_string(), info.mod_id, info.ty.clone()))
         .collect()
 }
 
