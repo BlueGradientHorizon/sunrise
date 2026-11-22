@@ -60,9 +60,17 @@ fn a_block_placed_as_a_player_runs_set_placed_by() {
 #[ignore = "daily"]
 fn a_plain_write_before_placement_preserves_the_staged_chest_transfer() {
     use super::api_values::TryIntoApi;
+    use super::native_entity_refs::tests::run_fresh_cases;
     use mod_api::{BlockUpdateFlags, ITEMS, ItemResource, run_transaction};
     use sunrise_client::items::ItemStack;
 
+    if run_fresh_cases(
+        "game::native_player_place_tests::a_plain_write_before_placement_preserves_the_staged_chest_transfer",
+        "SUNRISE_TEST_STAGED_CHEST_TRANSFER",
+        &["server"],
+    ) {
+        return;
+    }
     const SOURCE: [i32; 3] = [5, 70, 2];
     const DEST: [i32; 3] = [2, 70, 2];
     with_guests(|game| {
