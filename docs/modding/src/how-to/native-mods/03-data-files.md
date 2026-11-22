@@ -102,7 +102,8 @@ layout refuses the package ([the manifest](../../reference/manifest.md)).
 
 A package may also carry `uses.json`, generated metadata that `cargo sunrise-mod build` writes from a scan of the
 same source files it packs. It is never read from the folder. The build leaves it out for a mod made for exactly one
-build, for source the scan cannot read, and for a mod built inside a game checkout.
+build, when the scan cannot determine which API items the source uses, and for a mod built inside a game
+checkout. A file I/O or manifest parse error still stops the build.
 
 `runtime/` holds the data files your code opens beside itself: each is listed in `[runtime]` with its SHA-512, any
 file type. They are not pack data and no reload touches them;
