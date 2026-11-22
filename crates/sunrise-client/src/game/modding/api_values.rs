@@ -5,6 +5,7 @@ mod ingredient_values;
 use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use sunrise_client::fast_hash::FxHashMap;
 #[cfg(test)]
 use sunrise_client::parallel::ListenSnapshot;
 use sunrise_client::parallel::TickThread;
@@ -858,8 +859,7 @@ pub(in crate::game) fn with_stack_view<R>(
             .get_or_init(|| project_stack(stack, metadata).ok())
             .clone()
     };
-    let overrides =
-        std::cell::RefCell::new(rustc_hash::FxHashMap::<String, Option<Tag>>::default());
+    let overrides = std::cell::RefCell::new(FxHashMap::<String, Option<Tag>>::default());
     let read_override = |id: &str| {
         let mut overrides = overrides.borrow_mut();
         if let Some(value) = overrides.get(id) {
