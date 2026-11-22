@@ -1,18 +1,48 @@
-//! `DedicatedServer.isTickTimeLoggingEnabled`: the real dedicated server sends a `DebugSample` tick
-//! sample only to an operator who asked for `dedicated_server_tick_time`. Needs the prepared
-//! resources; skipped without them.
+//! `DedicatedServer.endMetricsRecordingTick`: tick-time logging starts the tick after the
+//! snapshot first contains an operator who asked for `dedicated_server_tick_time`.
 use super::dedicated_walk::{boot, join, resources};
 use std::{
+    fs,
     io::Write,
+    path::Path,
     time::{Duration, Instant},
 };
 use sunrise_protocol::{
+    buf::Cursor,
     connection::Connection,
+    ids::play::clientbound::DEBUG_SAMPLE,
     packets::{
         Empty,
         play::{self, Clientbound as C, Serverbound as S},
+        status::Ping,
     },
 };
+
+const TICK_MARKER: &str = "sample-test-tick-boundary";
+
+/// A vanilla tick function marks every running server tick before its wait and sample.
+fn install_tick_marker(game: &Path) {
+    let pack = game.join("world/datapacks/tick-marker");
+    let format = sunrise_core::version::DATA_PACK_FORMAT;
+    fs::create_dir_all(pack.join("data/minecraft/tags/function")).unwrap();
+    fs::create_dir_all(pack.join("data/test/function")).unwrap();
+    fs::write(
+        pack.join("pack.mcmeta"),
+        serde_json::json!({"pack": {"description": "Tick marker", "min_format": format, "max_format": format}})
+            .to_string(),
+    )
+    .unwrap();
+    fs::write(
+        pack.join("data/minecraft/tags/function/tick.json"),
+        r#"{"values":["test:mark_tick"]}"#,
+    )
+    .unwrap();
+    fs::write(
+        pack.join("data/test/function/mark_tick.mcfunction"),
+        format!("tellraw @a[name=Sampler] \"{TICK_MARKER}\"\n"),
+    )
+    .unwrap();
+}
 
 /// A joined player that answers what keeps it in the world: teleports, chunk batches, keep-alives.
 struct Bot {
@@ -30,7 +60,20 @@ impl Bot {
             Err(e) if e.is_timed_out() => return None,
             Err(e) => panic!("connection lost: {e}"),
         };
-        let packet = C::decode(id, &payload).ok()?;
+        let packet = if id == DEBUG_SAMPLE {
+            // ClientboundDebugSamplePacket.write: VarInt length, four big-endian longs
+            // (TpsDebugDimensions), then the TICK_TIME enum ordinal as a VarInt.
+            let mut frame = Cursor::new(&payload);
+            assert_eq!(frame.varint().expect("sample length"), 4);
+            for _ in 0..4 {
+                frame.i64().expect("sample dimension");
+            }
+            assert_eq!(frame.varint().expect("sample kind"), 0);
+            assert_eq!(frame.remaining(), 0, "trailing bytes in DEBUG_SAMPLE");
+            C::decode(id, &payload).expect("valid DEBUG_SAMPLE")
+        } else {
+            C::decode(id, &payload).ok()?
+        };
         match &packet {
             C::PlayerPosition(p) => {
                 self.send(S::AcceptTeleportation(play::AcceptTeleportation {
@@ -62,50 +105,46 @@ impl Bot {
             play::DebugSubscriptionRequest { subscriptions },
         ));
     }
-    /// The tick samples seen until `done` says stop, or `limit` passes.
-    fn samples_until(
+    /// Require the boundary/acknowledgement; count samples before it in wire order.
+    fn until(
         &mut self,
-        limit: Duration,
+        expected: &str,
         mut done: impl FnMut(&C, &[Vec<i64>]) -> bool,
     ) -> Vec<Vec<i64>> {
-        let deadline = Instant::now() + limit;
+        let deadline = Instant::now() + Duration::from_secs(60);
         let mut samples = Vec::new();
         while Instant::now() < deadline {
             let Some(packet) = self.step() else { continue };
             if let C::DebugSample(s) = &packet {
-                assert_eq!(s.kind, play::DEBUG_SAMPLE_TICK_TIME);
                 samples.push(s.sample.clone());
             }
             if done(&packet, &samples) {
-                break;
+                return samples;
             }
         }
-        samples
+        panic!("did not receive {expected}; saw {} samples", samples.len());
     }
     fn until_chat(&mut self, marker: &str) -> Vec<Vec<i64>> {
-        self.samples_until(
-            Duration::from_secs(30),
+        self.until(
+            marker,
             |p, _| matches!(p, C::SystemChat(c) if format!("{:?}", c.content).contains(marker)),
         )
     }
-    fn first_sample(&mut self) -> Vec<Vec<i64>> {
-        let samples = self.samples_until(Duration::from_secs(60), |_, s| !s.is_empty());
-        assert!(!samples.is_empty(), "no sample arrived");
-        samples
-    }
     fn silence(&mut self) {
-        let seen = self.samples_until(Duration::from_millis(1500), |_, _| false);
-        assert!(seen.is_empty(), "samples after delivery stopped: {seen:?}");
+        // The first marker aligns to a tick; the next two close whole ticks.
+        for _ in 0..3 {
+            let samples = self.until_chat(TICK_MARKER);
+            assert!(samples.is_empty(), "unexpected samples: {samples:?}");
+        }
     }
 }
 
 #[test]
 #[ignore = "daily"]
 fn a_dedicated_server_sends_tick_samples_only_to_an_operator_who_asked() {
-    let Some(resources) = resources() else {
-        return;
-    };
+    let resources = resources().expect("SUNRISE_TEST_RESOURCES must name prepared resources");
     let scratch = tempfile::tempdir().unwrap();
+    install_tick_marker(&scratch.path().join("server"));
     let (_server, port, _read, _log, mut console) = boot(scratch.path(), &resources);
     let mut say = |line: &str| writeln!(console, "{line}").unwrap();
     let mut bot = Bot {
@@ -116,38 +155,60 @@ fn a_dedicated_server_sends_tick_samples_only_to_an_operator_who_asked() {
         .reader
         .set_read_timeout(Some(Duration::from_millis(50)))
         .unwrap();
+    bot.until_chat(TICK_MARKER);
 
-    // Not an operator: the request is stored and nothing is sent.
+    // The pong proves the preceding request was processed without operator permission.
     bot.request(vec![0]);
+    bot.send(S::PingRequest(Ping { time: 42 }));
+    assert!(
+        bot.until(
+            "pong",
+            |p, _| matches!(p, C::PongResponse(p) if p.time == 42)
+        )
+        .is_empty()
+    );
     bot.silence();
 
-    // An operator's request is honoured; teleporting far makes the chunks load in the waits.
+    // The permission event is sent by /op before this tick's tick function. The next
+    // marker ends the first eligible tick, and the one after it ends the sampled tick.
     say("op Sampler");
-    let mut samples = bot.first_sample();
-    say("tp Sampler 3000 100 3000");
-    samples.extend(bot.samples_until(Duration::from_secs(60), |_, s| s.iter().any(|v| v[2] > 0)));
+    assert!(
+        bot.until(
+            "operator permission",
+            |p, _| matches!(p, C::EntityEvent(e) if e.event == 28)
+        )
+        .is_empty()
+    );
+    assert!(bot.until_chat(TICK_MARKER).is_empty());
+    assert!(
+        bot.until_chat(TICK_MARKER).is_empty(),
+        "sample on first eligible tick"
+    );
+    let mut samples = bot.until_chat(TICK_MARKER);
+    assert_eq!(samples.len(), 1, "the next tick sends exactly one sample");
+
+    say("tp Sampler 3000.5 100 3000.5");
+    samples.extend(bot.until("teleport", |p, _| matches!(p, C::PlayerPosition(p) if p.position[0] == 3000.5 && p.position[2] == 3000.5)));
+    samples.extend(bot.until("sample with scheduled chunk work", |_, s| {
+        s.iter().any(|v| v[2] > 0)
+    }));
     for v in &samples {
-        assert_eq!(v.len(), 4, "{v:?}");
         assert!(v.iter().all(|n| *n >= 0), "{v:?}");
         assert!(
             v[0] >= v[1] + v[2] + v[3],
             "the tick holds method, tasks and idle: {v:?}"
         );
     }
-    assert!(
-        samples.iter().any(|v| v[2] > 0),
-        "chunk work in the wait is scheduled work: {samples:?}"
-    );
 
-    // Deop stops it; re-op resumes it.
+    // Deop stops the stream; re-op resumes it without another request.
     say("deop Sampler");
     say("tellraw Sampler \"deopped\"");
     bot.until_chat("deopped");
     bot.silence();
     say("op Sampler");
-    bot.first_sample();
+    bot.until("sample after re-op", |_, s| !s.is_empty());
 
-    // Clearing the request stops it; asking again resumes it.
+    // Require the command after the empty request as an acknowledgement before checking silence.
     bot.request(vec![]);
     bot.send(S::ChatCommand(play::ChatCommand {
         command: "tellraw @s \"cleared\"".into(),
@@ -155,5 +216,5 @@ fn a_dedicated_server_sends_tick_samples_only_to_an_operator_who_asked() {
     bot.until_chat("cleared");
     bot.silence();
     bot.request(vec![0]);
-    bot.first_sample();
+    bot.until("sample after resubscribing", |_, s| !s.is_empty());
 }

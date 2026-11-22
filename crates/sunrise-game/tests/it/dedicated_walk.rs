@@ -103,7 +103,7 @@ pub(crate) fn boot(
         .unwrap()
         .port();
     let game = scratch.join("server");
-    std::fs::create_dir(&game).unwrap();
+    std::fs::create_dir_all(&game).unwrap();
     std::fs::write(
         game.join("server.properties"),
         format!(
