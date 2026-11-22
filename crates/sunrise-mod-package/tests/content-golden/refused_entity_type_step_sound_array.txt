@@ -36,4 +36,4 @@ icon:
 None
 
 content:
-refused: data/refused_entity_type_step_sound_array/sunrise/entity_type/sample.json: invalid type: sequence, expected sounds.step: a sound id, "none" or {"sound", "volume", "pitch"} at line 1 column 53
+refused: data/refused_entity_type_step_sound_array/sunrise/entity_type/sample.json: sounds.step: invalid type: sequence, expected a sound id, "none" or {"sound", "volume", "pitch"} at line 1 column 53

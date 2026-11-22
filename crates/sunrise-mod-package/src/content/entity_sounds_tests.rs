@@ -132,27 +132,36 @@ capabilities = [\"registries\"]
 }
 
 #[test]
-fn entity_sounds_admission_rounds_decimal_once_to_f32() {
-    // Just above the midpoint between 1.0 and the next f32; reading as f64 can round to the
-    // midpoint, which then rounds down to 1.0.
-    let sounds = admit(r#"{"volume":1.0000000596046448,"voice_pitch":1.0000000596046448,"step":{"sound":"bird:step","volume":1.0000000596046448,"pitch":1.0000000596046448}}"#).unwrap();
-    let Some(StepOverride::Sound(step)) = sounds.step else {
-        panic!("missing step sound");
-    };
-    assert_eq!(
-        [
-            sounds.volume.unwrap(),
-            sounds.voice_pitch.unwrap(),
-            step.volume,
-            step.pitch
-        ]
-        .map(f32::to_bits),
-        [0x3f80_0001; 4],
-    );
+fn entity_sounds_admission_rounds_numbers_once_to_f32() {
+    // The decimal just above the midpoint and the negative integer outside i64 both land
+    // exactly on a midpoint if rounded to f64 first. The bits below are from Float.parseFloat.
+    for (number, bits) in [
+        ("1.0000000596046448", 0x3f80_0001),
+        ("-9223372586610589697", 0xdf00_0001),
+    ] {
+        let sounds = admit(&format!(
+            r#"{{"volume":{number},"voice_pitch":{number},"step":{{"sound":"bird:step","volume":{number},"pitch":{number}}}}}"#,
+        ))
+        .unwrap();
+        let Some(StepOverride::Sound(step)) = sounds.step else {
+            panic!("missing step sound");
+        };
+        assert_eq!(
+            [
+                sounds.volume.unwrap(),
+                sounds.voice_pitch.unwrap(),
+                step.volume,
+                step.pitch
+            ]
+            .map(f32::to_bits),
+            [bits; 4],
+            "{number}",
+        );
+    }
 }
 
-/// Refused at admission, naming the file and the key: numbers past `f32` (1e39) or past
-/// any JSON float (1e400), a duplicate scalar, the step's positional array, and unknown keys.
+/// Refused at admission, naming the file and the key: overflowing numbers, a duplicate
+/// scalar, the step's positional array or a numeric step, and unknown keys.
 #[test]
 fn entity_sounds_admission_refuses_bad_numbers_and_step_forms_by_key() {
     for (sounds, key) in [
@@ -181,6 +190,7 @@ fn entity_sounds_admission_refuses_bad_numbers_and_step_forms_by_key() {
             "duplicate field `volume`",
         ),
         (r#"{"step":["bird:step",1.0,0.8]}"#, "sounds.step"),
+        (r#"{"step":1e400}"#, "sounds.step"),
         (
             r#"{"step":{"sound":"bird:step","volume":1.0,"pitch":1.0,"range":16}}"#,
             "range",

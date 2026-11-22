@@ -36,4 +36,4 @@ icon:
 None
 
 content:
-refused: data/refused_entity_type_voice_pitch_range/sunrise/entity_type/sample.json: sounds.voice_pitch: number out of range at line 1 column 64
+refused: data/refused_entity_type_voice_pitch_range/sunrise/entity_type/sample.json: sounds.voice_pitch: number out of range at line 1 column 65

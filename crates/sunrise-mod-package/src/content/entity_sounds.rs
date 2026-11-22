@@ -1,5 +1,6 @@
 //! Declarative sound selection; omission remains distinct from explicit silence.
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Error as _};
+use serde_json::value::RawValue;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -66,16 +67,14 @@ impl<'de> Deserialize<'de> for StepOverride {
     /// positional array, and an untagged enum would hide which key is wrong.
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         use serde::de::{Error, MapAccess, Visitor, value::MapAccessDeserializer};
-        use std::fmt;
+        use std::{cell::Cell, fmt};
 
-        struct StepVisitor;
-        impl<'de> Visitor<'de> for StepVisitor {
+        struct StepVisitor<'a>(&'a Cell<bool>);
+        impl<'de> Visitor<'de> for StepVisitor<'_> {
             type Value = StepOverride;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(
-                    "sounds.step: a sound id, \"none\" or {\"sound\", \"volume\", \"pitch\"}",
-                )
+                f.write_str("a sound id, \"none\" or {\"sound\", \"volume\", \"pitch\"}")
             }
 
             fn visit_str<E: Error>(self, id: &str) -> Result<Self::Value, E> {
@@ -87,22 +86,38 @@ impl<'de> Deserialize<'de> for StepOverride {
             }
 
             fn visit_map<M: MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
-                // Forward the live map, not a Value: each float reads directly and a duplicate
-                // field cannot overwrite its first occurrence before it is checked.
+                // Forward the original map; each error already identifies the member it came from.
+                self.0.set(true);
                 StepSound::deserialize(MapAccessDeserializer::new(map)).map(StepOverride::Sound)
             }
         }
-        d.deserialize_any(StepVisitor)
+
+        // The parser can fail before entering the visitor (for example on a numeric overflow).
+        // Name the step in that case, without relabeling an error from a member of the map.
+        let entered_map = Cell::new(false);
+        d.deserialize_any(StepVisitor(&entered_map)).map_err(|e| {
+            if entered_map.get() {
+                e
+            } else {
+                D::Error::custom(format_args!("sounds.step: {e}"))
+            }
+        })
     }
 }
+
 /// A float as Java reads one into a `float`, refused unless finite, with its key.
 fn finite<'de, D: serde::Deserializer<'de>>(d: D, key: &str) -> Result<f32, D::Error> {
-    use serde::de::Error;
-    let value =
-        f32::deserialize(d).map_err(|e| D::Error::custom(format_args!("sounds.{key}: {e}")))?;
+    // Decode the JSON token itself: even serde_json's f32 visitor can round an
+    // integer outside i64 through f64 before handing it over.
+    let raw = Box::<RawValue>::deserialize(d)
+        .map_err(|e| D::Error::custom(format_args!("sounds.{key}: {e}")))?;
+    let value = raw
+        .get()
+        .parse::<f32>()
+        .map_err(|_| D::Error::custom(format_args!("sounds.{key}: expected a number")))?;
     if !value.is_finite() {
         return Err(D::Error::custom(format_args!(
-            "sounds.{key}: expected a finite float"
+            "sounds.{key}: number out of range"
         )));
     }
     Ok(value)
