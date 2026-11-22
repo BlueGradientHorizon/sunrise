@@ -29,6 +29,8 @@ use sunrise_world::{
     },
 };
 
+pub use crate::moving_colliders::overlaps as overlaps_moving_colliders;
+
 pub fn load<'r>(root: &Path, registry: &'r BlockRegistry) -> Result<BlockCollisionRegistry<'r>> {
     let file = BlockTableFile::open(&root.join("cached-collision.nbt"), registry)?;
     let cached = CachedCollisionRegistry::from_table(file.table("collision")?)?;
