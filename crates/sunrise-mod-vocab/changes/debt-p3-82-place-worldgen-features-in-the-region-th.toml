@@ -6,7 +6,14 @@ ids = [
   "type:StructureError.0",
   "handle:StructureError::new",
   "type:BlockStateError",
+  "trait:FeatureContext",
+  "method:FeatureType::place",
+  "method:FeatureContext::ensure_can_write",
   "method:FeatureContext::set_block",
+  "method:FeatureContext::block_entity",
+  "method:FeatureContext::height",
+  "method:FeatureContext::block",
+  "method:FeatureContext::block_in_tag",
 ]
 why = """
 `Feature.place`, `StructureStart.placeInChunk`, and `PiecesContainer.load` call generation and
@@ -21,6 +28,15 @@ The FEATURES writer now uses `WorldGenRegion.ensureCanWrite` for both checks and
 `ProtoChunk.getHeightAccessorForGeneration` supplies the vertical restriction during upgrades.
 Each far-chunk refusal logs the position and stage. `WorldGenRegion.setBlock` keeps its result even
 for admitted no-ops in proto or imposter storage; live writes keep `Level.setBlock`'s result.
+
+`Feature.place` uses its caller's level and random directly, and `WorldGenRegion.getHeight`
+reads current chunk heightmaps. Registered callbacks now do the same: we no longer stage writes,
+count custom work, or disable the type when a write is refused or a callback returns an error.
+Block-entity loading follows `WorldGenRegion.getBlockEntity` and `BlockEntity.loadWithComponents`:
+data must fit the current block, which need not have been written by this callback, and
+`ImposterProtoChunk(chunk, false)` stays read-only. Each returned error is logged with its source
+chain and the actual registering mod. A panic disables only that registration and queues the
+mod's error toast, without undoing placement work.
 """
 migrate = """
 Replace `FeatureError(message)` with `FeatureError::new(std::io::Error::other(message))` and
@@ -36,8 +52,18 @@ Replace `.0` or tuple destructuring with `error.to_string()` for diagnostics or
 `std::error::Error::source(&error)` to inspect or downcast the cause. Return the native error
 from the callback; neither wrapper supports `Wire` encoding or decoding anymore.
 
-The `FeatureContext::set_block` call is unchanged. During FEATURES, keep writes within one
-chunk of the center in X and Z. For a below-zero upgrade, write only at Y=-64 through -1
-throughout that region, as set by `BelowZeroRetrogen.UPGRADE_HEIGHT_ACCESSOR`; the target chunk's
-own upgrade state does not determine which writes are allowed.
+Keep calling `context.set_block(pos, state, flags)` but handle its immediate world result;
+`false` is not a fault and doesn't cancel prior writes. Use `context.ensure_can_write(pos)` to
+preflight the region policy; it doesn't guarantee a state change. During FEATURES, keep writes
+within one chunk of the center in X and Z. For a below-zero upgrade, write only at Y=-64 through
+-1 throughout that region, as set by `BelowZeroRetrogen.UPGRADE_HEIGHT_ACCESSOR`; the target
+chunk's own upgrade state does not determine which writes are allowed.
+
+`context.block(pos)`, `context.block_in_tag(pos, tag)` and `context.height(kind, x, z)` read
+the current level after completed writes and their effects. Read before modifying the level
+if you need the previous value. `context.block_entity(pos, nbt)` validates and applies data to
+the current block, so remove a preliminary `set_block` done only to mark it as this call's own.
+Callers of `FeatureType::place` need no signature change. When implementing it, don't rely on
+returning `Err` to undo writes or draws or skip later placements: finish any checks you need
+before writing. An `Err` still fails this invocation and reports the original cause.
 """
