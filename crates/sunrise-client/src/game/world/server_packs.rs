@@ -319,6 +319,7 @@ impl Game<'_> {
             }
             Some(false)
         };
+        self.refresh_screen_widgets();
         for (id, url, hash) in prompt.requests {
             self.server_packs.packs.push(id, &url, parse_sha1(&hash));
         }
@@ -488,6 +489,7 @@ impl Game<'_> {
         let mut layout = prompt.layout(atlas, (w, h));
         layout.declare_no();
         layout.draw(batch, atlas, self.cursor, [&yes, &no]);
+        self.draw_overlay_mounted_widgets(batch, "server_pack_prompt");
     }
 
     /// Admit new server reports in the receiving window. `SystemToast.addOrUpdate`
