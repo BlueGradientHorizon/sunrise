@@ -53,6 +53,22 @@ fn an_empty_request_unsubscribes_and_other_ids_do_not_subscribe() {
 }
 
 #[test]
+fn a_cleared_request_survives_the_frozen_inbox() {
+    let mut hub = standing(false, vec![request(vec![])]);
+    hub.ops.insert(hub.guests[0].uuid, 4);
+    hub.guests.update(0, |g| g.debug_subscriptions = vec![0]);
+
+    hub.keep_acknowledgements(0, &mut Vec::new());
+    assert_eq!(
+        hub.guests[0].debug_subscriptions,
+        [0],
+        "not applied while frozen"
+    );
+    drain(&mut hub);
+    assert!(hub.tick_time_subscribers().is_empty(), "applied on thaw");
+}
+
+#[test]
 fn a_request_does_not_reset_the_idle_timer() {
     let mut hub = standing(false, vec![request(vec![0])]);
     hub.guests.update(0, |g| g.last_action_tick = 7);
