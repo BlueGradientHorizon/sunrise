@@ -975,65 +975,25 @@ mod tests {
     }
 
     #[test]
-    fn positional_policy_arrays_decode_and_validate_at_parse() {
-        let parsed = manifest(
-            "owner",
-            "[dependencies]\ntarget = [\"^1\", false, \"both\", \"Context\", \"https://example.test\", \"after\"]\n\
-             [incompatible]\nold = [\"<2\", \"Conflicts\", \"https://example.test/old\", \"client\"]\n\
-             [discouraged]\nslow = [\"*\", \"Slow\", \"https://example.test/slow\", \"server\"]",
-        );
-        let dependency = from_manifest(&parsed.dependencies, Side::Client);
-        assert_eq!(dependency.len(), 1);
-        assert_eq!(dependency[0].id, "target");
-        assert!(!dependency[0].optional);
-        assert_eq!(dependency[0].side, Side::Both);
-        assert_eq!(dependency[0].reason.as_deref(), Some("Context"));
-        assert_eq!(dependency[0].url.as_deref(), Some("https://example.test"));
-        assert_eq!(dependency[0].order, mod_vocab::DependencyOrder::After);
-        let client_rules = rules(&parsed, Side::Client);
-        assert_eq!(client_rules.len(), 1);
-        assert_eq!(client_rules[0].id, "old");
-        assert_eq!(client_rules[0].reason.as_deref(), Some("Conflicts"));
-        assert_eq!(
-            client_rules[0].url.as_deref(),
-            Some("https://example.test/old")
-        );
-        let server_rules = rules(&parsed, Side::Server);
-        assert_eq!(server_rules.len(), 1);
-        assert_eq!(server_rules[0].id, "slow");
-        assert_eq!(server_rules[0].reason.as_deref(), Some("Slow"));
-        assert_eq!(
-            server_rules[0].url.as_deref(),
-            Some("https://example.test/slow")
-        );
-        let bad_url = crate::Manifest::parse(
-            "id='owner'\nname='Owner'\nversion='1'\n[dependencies]\ntarget = [\n  \"^1\",\n  false,\n  \"both\",\n  \"Context\",\n  \"http://example.test\",\n  \"after\",\n]\n",
-        )
-        .unwrap_err();
-        assert_eq!(
-            bad_url,
-            "sunrise-mod.toml: url is not https:// (line 10, column 3)"
-        );
+    fn positional_policy_arrays_are_refused() {
         for (table, fields) in [
             (
                 "dependencies",
                 "'^1', false, 'both', 'Context', 'https://example.test', 'after'",
             ),
             (
+                "incompatible",
+                "'<2', 'Conflicts', 'https://example.test/old', 'client'",
+            ),
+            (
                 "discouraged",
-                "'*', 'Slow', 'https://example.test', 'server'",
+                "'*', 'Slow', 'https://example.test/slow', 'server'",
             ),
         ] {
-            let trailing = crate::Manifest::parse(&format!(
-                "id='owner'\nname='Owner'\nversion='1'\n[{table}]\ntarget = [\n{fields},\n'extra',\n]\n"
-            ))
-            .unwrap_err();
-            assert!(
-                trailing.ends_with(
-                    "expected the end of the dependency policy array (line 7, column 1)"
-                ),
-                "{trailing}"
-            );
+            let parsed = crate::Manifest::parse(&format!(
+                "id='owner'\nname='Owner'\nversion='1'\n[{table}]\ntarget = [{fields}]"
+            ));
+            assert!(parsed.is_err(), "{table} accepted an array");
         }
     }
 

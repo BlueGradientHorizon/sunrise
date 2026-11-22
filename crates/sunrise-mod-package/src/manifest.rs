@@ -17,10 +17,7 @@ pub use runtime_files::{RUNTIME_DIR, RuntimeData, RuntimeTable};
 use mod_surface::uses::{ManifestFacts, USES_FILE};
 use serde::{
     Deserialize, Deserializer, Serialize,
-    de::{
-        self, Visitor,
-        value::{MapAccessDeserializer, SeqAccessDeserializer},
-    },
+    de::{self, Visitor, value::MapAccessDeserializer},
 };
 use std::{
     collections::BTreeMap,
@@ -351,35 +348,6 @@ where
 
         fn visit_str<E: de::Error>(self, value: &str) -> Result<V, E> {
             value.parse().map(self.version).map_err(E::custom)
-        }
-
-        fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<V, A::Error> {
-            struct EndOfPolicy;
-
-            impl<'de> de::DeserializeSeed<'de> for EndOfPolicy {
-                type Value = ();
-
-                fn deserialize<D: Deserializer<'de>>(
-                    self,
-                    deserializer: D,
-                ) -> Result<(), D::Error> {
-                    deserializer.deserialize_any(self)
-                }
-            }
-
-            impl Visitor<'_> for EndOfPolicy {
-                type Value = ();
-
-                fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    f.write_str("the end of the dependency policy array")
-                }
-            }
-
-            let details = T::deserialize(SeqAccessDeserializer::new(&mut seq))?;
-            // The struct visitor reads its fields but does not consume any extra elements.
-            // Ask the next element's own deserializer to reject it at its span.
-            let _ = seq.next_element_seed(EndOfPolicy)?;
-            Ok((self.details)(details))
         }
 
         fn visit_map<M: de::MapAccess<'de>>(self, map: M) -> Result<V, M::Error> {
