@@ -29,7 +29,10 @@ use sunrise_client::entity_rules::EntityRules;
 use sunrise_client::join_seq::{JoinSeq, Joined};
 use sunrise_client::mobs::Species;
 use sunrise_client::motion::MotionWorld;
-use sunrise_core::geometry::{Aabb, Axis, Direction, ShapeOp, Vec3, border::BorderGeometry};
+use sunrise_core::geometry::{
+    Aabb, Axis, COLLISION_EPSILON, Direction, ShapeOp, Vec3, border::BorderGeometry,
+    entity_collision_bounds,
+};
 use sunrise_core::position::BlockPos;
 use sunrise_world::{
     block_collision_scan::BlockCollisionWorld, collision_context::CollisionContext,
@@ -332,8 +335,8 @@ impl Game<'_> {
     /// shulker lid pushes: the entities it can collide with
     /// (`canCollideWith`, which for every mover but a vehicle is
     /// `canBeCollidedWith`): a boat, a living shulker, a happy ghast held
-    /// still. A pushed boat or minecart collides by `canVehicleCollide`
-    /// instead, which this doesn't cover, and the player moves itself.
+    /// still. Vehicles use `canVehicleCollide` instead (below for a lid
+    /// moving a boat); a player resolves its own move.
     fn pushed_entity_colliders(&self, target: MoveWho) -> Vec<Aabb> {
         match target {
             MoveWho::Entity(EntityHandle::Boat(_) | EntityHandle::Cart(_)) => Vec::new(),
@@ -441,15 +444,18 @@ impl Game<'_> {
         self.lid_breaks_attached(area, root);
     }
 
-    /// The client moves its player and the boat this player controls. The
-    /// other entities' restitution stays on the side that simulates them.
+    /// A lid's mover is simulated on both sides: the client displaces its
+    /// player and all boats the lid meets, not only the boat it drives.
+    /// Restitution still belongs to the side simulating each boat.
     pub(super) fn lid_push_local(&mut self, lid: Lid, area: Aabb, movement: Vec3) {
         let root = self.lid_root(lid);
-        let boat = self
-            .riding
-            .filter(|&id| self.controls_boat(id))
-            .and_then(|id| self.boats.iter().position(|boat| boat.id == id))
-            .and_then(|i| self.stable_push_target(MoveWho::Entity(EntityHandle::Boat(i))));
+        let boats: Vec<_> = self
+            .boats
+            .iter()
+            .enumerate()
+            .filter(|(_, boat)| boat.bounds().intersects(area))
+            .filter_map(|(i, _)| self.stable_push_target(MoveWho::Entity(EntityHandle::Boat(i))))
+            .collect();
         if self
             .player
             .as_ref()
@@ -458,15 +464,13 @@ impl Game<'_> {
         {
             let _ = self.move_local_player(lid.mover(), movement);
         }
-        if let Some(boat) = boat
-            && self.controls_boat(boat.id)
-            && let Some(target @ MoveWho::Entity(handle)) = self.resolve_push_target(boat)
-        {
+        for boat in boats {
+            let Some(target @ MoveWho::Entity(handle)) = self.resolve_push_target(boat) else {
+                continue;
+            };
             let body = self.listed_body(handle, None);
-            if !body.bounds.intersects(area)
-                || lid == Lid::Box && body.piston_reaction == PushReaction::IgnoreEntity
-            {
-                return;
+            if lid == Lid::Box && body.piston_reaction == PushReaction::IgnoreEntity {
+                continue;
             }
             let no_physics = self.pushed_no_physics(target);
             if !self.lid_spares(lid, root, target, no_physics) {
@@ -627,15 +631,33 @@ impl Game<'_> {
             return;
         }
         let movement = gate.delta();
+        let lid_move = matches!(mover, MoverType::ShulkerBox | MoverType::Shulker);
         // `Entity.move` with `noPhysics`: `setPos` the whole way.
         if no_physics {
             self.apply_push(&mut gate, target, movement);
             if let Some(target) = self.resolve_push_target(selected) {
+                if lid_move && let MoveWho::Entity(EntityHandle::Boat(i)) = target {
+                    self.record_boat_lid_movement(i, movement);
+                }
                 self.release_after_block_move(target);
             }
             return;
         }
-        let entities = self.pushed_entity_colliders(target);
+        let entities = match target {
+            MoveWho::Entity(EntityHandle::Boat(i)) if lid_move => {
+                // Entity.collide selects entities once from the sweep. EntityGetter
+                // grows the query by 1e-7; the normal boat rule excludes its riders.
+                let area =
+                    entity_collision_bounds(movement, body.bounds, body.step_height).inflate(
+                        Vec3::new(COLLISION_EPSILON, COLLISION_EPSILON, COLLISION_EPSILON),
+                    );
+                self.entity_collisions(Mover::Boat {
+                    id: self.boats[i].id,
+                    area,
+                })
+            }
+            _ => self.pushed_entity_colliders(target),
+        };
         let collision = self.pushed_living_collision(target);
         let Ok(moved) = pushed_movement(
             &mut gate,
@@ -656,15 +678,40 @@ impl Game<'_> {
         ) else {
             return;
         };
-        if moved.length_squared() > 1.0e-7
-            || movement.length_squared() - moved.length_squared() < 1.0e-7
-        {
+        let placed = moved.length_squared() > 1.0e-7
+            || movement.length_squared() - moved.length_squared() < 1.0e-7;
+        if placed {
+            if lid_move && let MoveWho::Entity(EntityHandle::Boat(i)) = target {
+                let boat = &self.boats[i];
+                let fall = self.vehicle_fall_reset(boat.fall_distance, body.position, moved);
+                self.boats.update(i, |boat| boat.fall_distance = fall);
+            }
             self.apply_push(&mut gate, target, moved);
         }
         let Some(target) = self.resolve_push_target(selected) else {
             return;
         };
+        if lid_move
+            && placed
+            && let MoveWho::Entity(EntityHandle::Boat(i)) = target
+        {
+            self.record_boat_lid_movement(i, moved);
+        }
         self.set_pushed_on_ground(target, movement, moved, None);
+        if lid_move && let MoveWho::Entity(EntityHandle::Boat(i)) = target {
+            let boat = &self.boats[i];
+            // AbstractBoat.checkFallDamage runs after grounding and before
+            // restitution, on the side authoritative for this boat.
+            if self.boat_can_simulate_movement(boat.id)
+                && self
+                    .remote
+                    .as_ref()
+                    .is_none_or(|r| r.passenger_vehicle(boat.id).is_none())
+            {
+                let fall = self.boat_fall(boat, moved.y);
+                self.boats.update(i, |boat| boat.fall_distance = fall);
+            }
+        }
         if let Some(target) =
             self.finish_pushed_restitution(selected, target, body.position, movement, moved)
         {

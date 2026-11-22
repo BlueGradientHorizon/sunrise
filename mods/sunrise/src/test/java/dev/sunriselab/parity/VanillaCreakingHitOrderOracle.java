@@ -8,6 +8,7 @@ import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
 import java.lang.reflect.Field;
 import java.util.UUID;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.SectionPos;
 import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
@@ -17,6 +18,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.monster.creaking.Creaking;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.CreakingHeartBlockEntity;
 import net.minecraft.world.level.gameevent.BlockPositionSource;
 import net.minecraft.world.level.gameevent.GameEvent;
@@ -24,28 +26,37 @@ import net.minecraft.world.level.gameevent.GameEventListener;
 import net.minecraft.world.level.gameevent.PositionSource;
 import net.minecraft.world.phys.Vec3;
 
-/** Observes an actual arrow collision and the next Creaking tick, without substituting its hurt logic. */
+/** Observes live arrow and in-wall hurt reactions without replacing the Creaking's tick. */
 final class VanillaCreakingHitOrderOracle {
     static JsonArray run(ServerPlayer player, EmbeddedChannel channel, JsonObject op) throws ReflectiveOperationException {
         ServerLevel level = player.level();
         if (!(level.getEntity(UUID.fromString(op.get("creaking").getAsString())) instanceof Creaking creaking)
-                || !(level.getEntity(UUID.fromString(op.get("arrow").getAsString())) instanceof AbstractArrow arrow)
                 || creaking.getHomePos() == null
                 || !(level.getBlockEntity(creaking.getHomePos()) instanceof CreakingHeartBlockEntity heart)
-                || !heart.isProtector(creaking) || arrow.getOwner() != null) {
-            throw new IllegalStateException("missing the live protector, its heart, or the ownerless arrow");
+                || !heart.isProtector(creaking)) {
+            throw new IllegalStateException("missing the live protector or its heart");
+        }
+        AbstractArrow arrow = null;
+        if (op.has("arrow")) {
+            if (!(level.getEntity(UUID.fromString(op.get("arrow").getAsString())) instanceof AbstractArrow hit)
+                    || hit.getOwner() != null) {
+                throw new IllegalStateException("missing the ownerless arrow");
+            }
+            arrow = hit;
         }
         Field animation = Creaking.class.getDeclaredField("invulnerabilityAnimationRemainingTicks");
         Field emitter = CreakingHeartBlockEntity.class.getDeclaredField("emitter");
         animation.setAccessible(true);
         emitter.setAccessible(true);
-        // Same precondition as the native case: a player hit has just started the emitter.
-        if (emitter.getInt(heart) != 0 || !creaking.hurtServer(level, level.damageSources().playerAttack(player), 1.0F)
-                || emitter.getInt(heart) != 100) {
-            throw new IllegalStateException("the player hit did not start the emitter synchronously");
+        if (arrow != null) {
+            // Same precondition as the native case: a player hit has just started the emitter.
+            if (emitter.getInt(heart) != 0 || !creaking.hurtServer(level, level.damageSources().playerAttack(player), 1.0F)
+                    || emitter.getInt(heart) != 100) {
+                throw new IllegalStateException("the player hit did not start the emitter synchronously");
+            }
+            animation.setInt(creaking, 0);
+            arrow.setDeltaMovement(-1.0, 0.0, 0.0);
         }
-        animation.setInt(creaking, 0);
-        arrow.setDeltaMovement(-1.0, 0.0, 0.0);
 
         JsonArray actions = new JsonArray();
         JsonArray sounds = new JsonArray();
@@ -86,16 +97,35 @@ final class VanillaCreakingHitOrderOracle {
         channel.pipeline().addLast(observer);
         try {
             JsonArray trace = new JsonArray();
-            level.tickNonPassenger(arrow);
-            trace.add(snapshot(actions, flashes[0], sounds, emitter.getInt(heart), animation.getInt(creaking)));
-            creaking.setNoAi(false);
-            level.tickNonPassenger(creaking);
-            trace.add(snapshot(actions, flashes[0], sounds, emitter.getInt(heart), animation.getInt(creaking)));
+            if (arrow != null) {
+                level.tickNonPassenger(arrow);
+                trace.add(snapshot(actions, flashes[0], sounds, emitter.getInt(heart), animation.getInt(creaking)));
+                creaking.setNoAi(false);
+                level.tickNonPassenger(creaking);
+                trace.add(snapshot(actions, flashes[0], sounds, emitter.getInt(heart), animation.getInt(creaking)));
+            } else {
+                creaking.setLastHurtByPlayer(player, 1);
+                level.tickNonPassenger(creaking);
+                trace.add(credit(snapshot(actions, flashes[0], sounds, emitter.getInt(heart), animation.getInt(creaking)), creaking));
+                level.setBlockAndUpdate(BlockPos.containing(creaking.getX(), creaking.getEyeY(), creaking.getZ()), Blocks.STONE.defaultBlockState());
+                level.tickNonPassenger(creaking);
+                trace.add(credit(snapshot(actions, flashes[0], sounds, emitter.getInt(heart), animation.getInt(creaking)), creaking));
+                // With no cooldown and no remembered player, the same wall cannot react again.
+                animation.setInt(creaking, 0);
+                level.tickNonPassenger(creaking);
+                trace.add(credit(snapshot(actions, flashes[0], sounds, emitter.getInt(heart), animation.getInt(creaking)), creaking));
+            }
             return trace;
         } finally {
             channel.pipeline().remove(observer);
             listeners.unregister(listener);
         }
+    }
+
+    private static JsonObject credit(JsonObject result, Creaking creaking) {
+        result.addProperty("remembered", creaking.getLastHurtByPlayer() != null);
+        result.addProperty("clock", creaking.getLastHurtByPlayerMemoryTime());
+        return result;
     }
 
     private static JsonObject snapshot(JsonArray action, int flashes, JsonArray sounds, int emitter, int animation) {

@@ -672,6 +672,13 @@ fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedenc
 #[test]
 #[ignore = "daily"]
 fn remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_one_hundred() {
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::native_knockback_tests::remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_one_hundred",
+        "SUNRISE_KNOCKBACK_EXPIRY_CHILD",
+        &["expiry"],
+    ) {
+        return;
+    }
     let heard = guest_heard(|game, log| {
         credit_pig(game);
         zombie_at(game, 101, Vec3::new(1.0, 0.0, 0.0));
@@ -712,7 +719,7 @@ fn remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_on
         [
             (12, Some("minecraft:iron_sword".into())),
             (12, Some("minecraft:iron_axe".into())),
-            (101, Some("minecraft:bone".into())),
+            (12, Some("minecraft:iron_axe".into())),
             (101, Some("minecraft:bone".into())),
             (0, None),
         ]

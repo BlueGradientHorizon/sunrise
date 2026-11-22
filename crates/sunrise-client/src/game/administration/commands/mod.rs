@@ -1027,8 +1027,10 @@ impl Game<'_> {
                     && !id.ends_with("get")
                     && let Ok(t) = self.entities(ctx, "target", false)
                 {
-                    let target = self.waypoint_target(t[0]);
-                    self.cmds.waypoint_dirty.push(target);
+                    // Players already have a live attribute dirty callback.
+                    if !matches!(t[0], Target::Player | Target::Guest(_)) {
+                        self.cmds.waypoint_dirty.push(t[0]);
+                    }
                 }
                 result
             }
