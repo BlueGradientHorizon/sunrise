@@ -84,20 +84,25 @@ impl Game<'_> {
         }
     }
     /// `GameRenderer.update`'s `requestedPostEffects`: `end_of_frame` (a resource
-    /// pack's own chain), then the server's `LocalPlayer.postEffects`. Only the
-    /// world is drawn through them.
-    pub(super) fn requested_post_effects(&self) -> Vec<String> {
+    /// pack's own chain), then the server's `LocalPlayer.postEffects`, then the
+    /// active spectated entity's chain. Only the world is drawn through them.
+    pub(super) fn fill_requested_post_effects(&self, out: &mut Vec<String>) {
+        out.clear();
         if self.title.is_some() || self.player.is_none() {
-            return Vec::new();
+            return;
         }
-        let spectated = self
-            .spectated_post_effect_active
-            .then_some(self.spectated_post_effect)
-            .flatten();
-        std::iter::once("minecraft:end_of_frame".to_owned())
-            .chain(self.post_effects.iter().cloned())
-            .chain(spectated.map(str::to_owned))
-            .collect()
+        out.push("minecraft:end_of_frame".to_owned());
+        out.extend(self.post_effects.iter().cloned());
+        if self.spectated_post_effect_active
+            && let Some(effect) = self.spectated_post_effect
+        {
+            out.push(effect.to_owned());
+        }
+    }
+    pub(super) fn requested_post_effects(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        self.fill_requested_post_effects(&mut out);
+        out
     }
     /// `Screen.extractBlurredBackground` over the panorama or the world and
     /// HUD, when `menuBackgroundBlurriness` is at least 1.
