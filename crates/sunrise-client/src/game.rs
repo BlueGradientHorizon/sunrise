@@ -14198,8 +14198,14 @@ pub(crate) fn run_with(
         .mods
         .select(&std::env::current_dir()?, &early_settings.mods.enabled);
     mods::validate_startup_packages(&options.mods)?;
-    api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
-    mods::install_registration_data(&vanilla_root, mods::runtime_files::sources(&options.mods))?;
+    let jar_store = sunrise_client::logging::game_home().join("jars");
+    let admission = options.mods.admit_startup_packages(&jar_store)?;
+    api_values::install_packages(admission.native_packages(), admission.content_packages())?;
+    mods::install_registration_data(
+        &vanilla_root,
+        mods::runtime_files::sources(&options.mods),
+        mods::package_files::sources(&admission),
+    )?;
     {
         crate::game::part_admission::admit_parts(mod_api::__private::mods())?;
         // The structure types those mods registered, handed to the engine before
