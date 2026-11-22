@@ -7198,7 +7198,16 @@ impl Game<'_> {
     fn title_input_active(&self) -> bool {
         self.title.is_some() && !matches!(self.screen, Screen::DebugOptions | Screen::Mod)
     }
+    #[cfg(test)]
     fn hud(&mut self, size: [u32; 2]) -> HudBatch {
+        self.hud_with_reload(size, None)
+    }
+
+    fn hud_with_reload(
+        &mut self,
+        size: [u32; 2],
+        reload_overlay: Option<(f32, sunrise_client::level_loading::OverlayFade)>,
+    ) -> HudBatch {
         // Gui.extractRenderState passes integer coordinates to the HUD and screen. Keep
         // the projected fractions for input, but draw and hit-test hover at the frame's pixel.
         let pointer = self.project_window_cursor(size);
@@ -7211,14 +7220,13 @@ impl Game<'_> {
         self.ui.room = sunrise_client::hud_kit::room::Room::new(gui.width, gui.height);
         // The pack prompt replaces the connecting screen (setScreen), but
         // in game it opens over the world.
+        self.settle_title_toasts();
         let mut batch = if (self.server_packs.prompt.is_some()
             || self.code_of_conduct.is_some()
             || self.dialog_open())
             && self.player.is_none()
         {
-            let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-            self.draw_every_toast(&mut batch, true, false);
-            batch
+            gui
         } else {
             self.hud_layers(size)
         };
@@ -7230,6 +7238,12 @@ impl Game<'_> {
         self.draw_code_of_conduct(&mut batch);
         self.draw_link_prompt(&mut batch);
         self.draw_command_prompt(&mut batch);
+        if let Some((bar, fade)) = reload_overlay {
+            self.draw_reload_overlay(&mut batch, bar, fade);
+        }
+        // Gui.extractRenderState draws toasts over the active screen or overlay,
+        // after the saving indicator and before the debug overlay.
+        self.draw_every_toast(&mut batch);
         // Gui.extractRenderState: the debug overlay comes after the screen
         // and the toasts, so it is over everything, menus included.
         self.draw_debug_overlay(&mut batch, size);
@@ -7252,6 +7266,21 @@ impl Game<'_> {
         self.pack.item_renderer.end_gui_frame();
         batch
     }
+    fn draw_reload_overlay(
+        &self,
+        batch: &mut HudBatch,
+        bar: f32,
+        fade: sunrise_client::level_loading::OverlayFade,
+    ) {
+        sunrise_client::level_loading::draw_loading_overlay(
+            batch,
+            &self.gui.atlas,
+            bar,
+            fade,
+            self.settings.file.bool("darkMojangStudiosBackground"),
+        );
+    }
+
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
         use sunrise_client::gui_layers::VanillaGuiLayer;
 
@@ -7278,7 +7307,6 @@ impl Game<'_> {
             // screen, after its own drawing.
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_every_toast(&mut batch, true, false);
             return batch;
         }
         if self.screen == Screen::Options && self.title.is_some() {
@@ -7286,10 +7314,8 @@ impl Game<'_> {
             self.draw_options(&mut batch, drawn);
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_every_toast(&mut batch, true, false);
             return batch;
         }
-        self.settle_title_toasts();
         if let Some(title) = &mut self.title {
             if std::mem::take(&mut title.onboarding_finished) {
                 // Options.onboardingAccessibilityFinished.
@@ -7316,7 +7342,6 @@ impl Game<'_> {
             }
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_every_toast(&mut batch, self.ui.hide_gui, false);
             return batch;
         }
         if self.title.is_some() {
@@ -7347,7 +7372,6 @@ impl Game<'_> {
             // toasts still come after, as over any screen.
             self.publish_screen_regions(&batch, None);
             self.draw_title_screen_with_post_hook(&mut batch);
-            self.draw_every_toast(&mut batch, self.ui.hide_gui, false);
             return batch;
         }
         let atlas_ptr: *const HudAtlas = &self.gui.atlas;
@@ -7356,7 +7380,6 @@ impl Game<'_> {
         // download while the connection screen shows.
         if self.remote_overlay(&mut batch) {
             self.publish_screen_regions(&batch, None);
-            self.draw_every_toast(&mut batch, self.ui.hide_gui, false);
             return batch;
         }
         // Hud.extractRenderState: F1 (keyToggleGui) hides camera overlays, the
@@ -7821,12 +7844,6 @@ impl Game<'_> {
         self.publish_screen_regions(&batch, region_screen);
         self.draw_screen_with_post_hook(&mut batch);
         self.draw_saving_indicator(&mut batch);
-        let presentation_hidden = replaying || self.overlay_holds_view();
-        self.draw_every_toast(
-            &mut batch,
-            presentation_hidden || self.ui.hide_gui || gui_canceled,
-            presentation_hidden,
-        );
         if self.server_packs.prompt.is_none() {
             self.remote_hud(&mut batch);
             self.draw_sign_editor(&mut batch);
@@ -10910,28 +10927,6 @@ impl Game<'_> {
             }
             return Ok(false);
         }
-        // A pack reload's `LoadingOverlay`: once opaque it covers the frame
-        // alone; while it fades in or out it is drawn over the frame's GUI.
-        let reload_overlay = self.reload_overlay_frame();
-        if let Some((bar, fade)) = reload_overlay.filter(|(_, fade)| fade.opaque()) {
-            if let Some(renderer) = &mut self.renderer {
-                let mut hud = HudBatch::new(
-                    [renderer.config.width, renderer.config.height],
-                    self.settings.gui_scale_inputs(),
-                );
-                sunrise_client::level_loading::draw_loading_overlay(
-                    &mut hud,
-                    &self.gui.atlas,
-                    bar,
-                    fade,
-                    self.settings.file.bool("darkMojangStudiosBackground"),
-                );
-                pr.lap("pr_loading");
-                drop(prepare);
-                return renderer.render(&loading_frame(&hud));
-            }
-            return Ok(false);
-        }
         let Some(size) = self
             .renderer
             .as_ref()
@@ -10939,6 +10934,22 @@ impl Game<'_> {
         else {
             return Ok(false);
         };
+        // An opaque LoadingOverlay needs no world or screen behind it; the
+        // ToastManager still draws in front of it.
+        let reload_overlay = self.reload_overlay_frame();
+        if let Some((bar, fade)) = reload_overlay.filter(|(_, fade)| fade.opaque()) {
+            let mut hud = HudBatch::new(size, self.settings.gui_scale_inputs());
+            self.draw_reload_overlay(&mut hud, bar, fade);
+            self.draw_every_toast(&mut hud);
+            self.pack.item_renderer.end_gui_frame();
+            pr.lap("pr_loading");
+            drop(prepare);
+            return self
+                .renderer
+                .as_mut()
+                .expect("renderer sized above")
+                .render(&loading_frame(&hud));
+        }
         pr.lap("pr_setup");
         let alpha = self.frame_world_partial_tick();
         self.refresh_client_pick(alpha as f32);
@@ -11302,17 +11313,11 @@ impl Game<'_> {
         pr.lap("pr_projection");
         let vanilla_skin = self.apply_player_skin_override(title);
         // GUI hooks project against this frame's camera, including its bob/spin and FOV.
-        let mut hud = sunrise_client::spans::time("hud", || self.hud(size));
-        self.flush_ime(&mut hud);
-        self.native_gui_render_post(&mut hud, self.ui.hide_gui, self.focused);
-        if let Some((bar, fade)) = reload_overlay {
-            sunrise_client::level_loading::draw_loading_overlay(
-                &mut hud,
-                &self.gui.atlas,
-                bar,
-                fade,
-                self.settings.file.bool("darkMojangStudiosBackground"),
-            );
+        let mut hud =
+            sunrise_client::spans::time("hud", || self.hud_with_reload(size, reload_overlay));
+        if reload_overlay.is_none() {
+            self.flush_ime(&mut hud);
+            self.native_gui_render_post(&mut hud, self.ui.hide_gui, self.focused);
         }
         self.resolve_inline_profiles(&hud.inline_profiles);
         pr.lap("pr_hud");

@@ -97,7 +97,7 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
         .into_iter()
         .enumerate()
         {
-            let batch = game.hud_layers([640, 480]);
+            let batch = game.hud([640, 480]);
             assert_eq!(take().as_slice(), expected);
             assert!(!batch.vertices.iter().any(|v| v.color == FAILED));
             assert!(batch.vertices.iter().any(|v| v.color == SIBLING));

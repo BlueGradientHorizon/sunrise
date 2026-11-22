@@ -420,7 +420,7 @@ mod tests {
                     assert!(!stock.vertices.is_empty());
                     game.title = Some(title);
                     game.screen = Screen::Playing;
-                    let frame = game.hud_layers(size);
+                    let frame = game.hud(size);
                     let (prefix, later) = frame.vertices.split_at(stock.vertices.len());
                     assert!(
                         prefix

@@ -998,7 +998,7 @@ fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
 
             // The normal toast collector names the failing mod and hook once.
             let mut batch = sunrise_client::hud::HudBatch::scratch([640, 480]);
-            game.draw_every_toast(&mut batch, true, true);
+            game.draw_every_toast(&mut batch);
             let [
                 crate::game::toast_manager::VisibleToast {
                     toast: crate::game::toast_manager::Toast::Diagnostic { toast, .. },

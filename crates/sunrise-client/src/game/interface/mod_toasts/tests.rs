@@ -1,11 +1,13 @@
 use super::*;
 use crate::game::{in_own_process, native_entity_refs::tests::with_client_game};
-use mod_api::{ClientHost, Flow, Hooks, ModEntry, Text, ToastAddEvent};
+use mod_api::{ClientHost, Flow, Hooks, ModEntry, ScreenRenderPostEvent, Text, ToastAddEvent};
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use sunrise_client::hud::rgba;
+
+const OPTIONS_MARKER: u32 = 0xFF5D_3E5D;
 
 #[test]
 #[ignore = "daily"]
@@ -21,6 +23,9 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
             .into();
             mod_platform::testing::with_mods(mods, || {
                 with_client_game(|game| {
+                    let saves = tempfile::tempdir().unwrap();
+                    game.show_title(game.new_title(saves.path().to_owned()));
+                    game.open_options(true);
                     let kind = Identifier::parse("toast_fixture:progress").unwrap();
                     let sprite_id = Identifier::parse("minecraft:icon/checkmark").unwrap();
                     let sprite = *game.gui.atlas.gui_rect("icon/checkmark").unwrap();
@@ -61,11 +66,7 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     );
                     assert!(seen.lock().unwrap().is_empty(), "no synchronous dispatch");
 
-                    let draw = |game: &mut Game<'_>| {
-                        let mut batch = HudBatch::new([960, 540], game.settings.gui_scale_inputs());
-                        game.draw_every_toast(&mut batch, false, false);
-                        batch
-                    };
+                    let draw = |game: &mut Game<'_>| game.hud([960, 540]);
                     draw(game);
                     assert_eq!(*seen.lock().unwrap(), ["Queued sprite", "Queued item"]);
                     assert_eq!(
@@ -88,11 +89,17 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                             Some(Instant::now() - Duration::from_millis(700));
                     }
                     let frame = draw(game);
+                    let options_end = frame
+                        .vertices
+                        .iter()
+                        .rposition(|v| v.color == OPTIONS_MARKER)
+                        .expect("the title Options path drew its screen post hook");
+                    let after_options = &frame.vertices[options_end + 1..];
                     assert!(
-                        frame.vertices.iter().any(|v| v.text != 0
+                        after_options.iter().any(|v| v.text != 0
                             && v.color == rgba(0x12, 0x34, 0x56, 255)
                             && v.pos[0] < frame.width),
-                        "edited title must draw"
+                        "edited toast title must draw after Options"
                     );
                     assert!(
                         frame.vertices.iter().any(|v| v.text != 0
@@ -121,6 +128,16 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                                 && v.pos[0] < frame.width),
                         "item icon must draw in the next toast"
                     );
+
+                    game.toggle_hide_gui();
+                    assert!(
+                        draw(game)
+                            .vertices
+                            .iter()
+                            .all(|v| v.color != rgba(0x12, 0x34, 0x56, 255)),
+                        "F1 hides the toast, not the Options screen"
+                    );
+                    game.toggle_hide_gui();
 
                     let mut cancelled = ModToast::new(Text::literal("Ignore replacement"));
                     cancelled.kind = Some(kind.clone());
@@ -164,6 +181,12 @@ struct Filter(Arc<Mutex<Vec<String>>>);
 
 #[mod_api::__subscriptions]
 impl Hooks for Filter {
+    fn screen_render_post(&self, _: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {
+        if event.screen.id == "options" {
+            event.draw.fill([1.0, 1.0, 2.0, 2.0], OPTIONS_MARKER);
+        }
+    }
+
     fn toast_add(&self, host: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
         if event.kind != ToastKind::Mod {
             return Flow::Continue;

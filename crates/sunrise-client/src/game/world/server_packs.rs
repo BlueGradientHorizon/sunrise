@@ -629,8 +629,8 @@ mod tests {
                         SystemToast::new(Text::tr("resourcePack.load_fail", &[]), None),
                     );
                     let size = [640, 480];
-                    let _ = game.hud_layers(size);
-                    let _ = game.hud_layers(size);
+                    let _ = game.hud(size);
+                    let _ = game.hud(size);
                     let [regular, error] = game.toast_manager.visible.as_mut_slice() else {
                         panic!("expected two visible notices")
                     };
@@ -676,15 +676,15 @@ mod tests {
                                 && vertex.pos[0] < batch.width
                         })
                     };
-                    let canceled = game.hud_layers(size);
-                    assert!(!has_toast(&canceled, 0.0), "ordinary toast is canceled");
+                    let canceled = game.hud(size);
+                    assert!(
+                        has_toast(&canceled, 0.0),
+                        "the HUD veto does not hide toasts"
+                    );
                     assert!(has_toast(&canceled, error_y), "audio error still draws");
                     game.key_pressed(KeyCode::F1, KeyCode::F1).unwrap();
                     game.handle_play_keybinds();
-                    assert!(
-                        !has_toast(&game.hud_layers(size), error_y),
-                        "F1 hides the notice"
-                    );
+                    assert!(!has_toast(&game.hud(size), error_y), "F1 hides the notice");
                 });
             },
         );
@@ -746,7 +746,7 @@ mod tests {
                         .is_none()
                 );
                 let mut batch = HudBatch::scratch([640, 480]);
-                window.draw_every_toast(&mut batch, true, false);
+                window.draw_every_toast(&mut batch);
                 let [entry] = window.toast_manager.visible.as_slice() else {
                     panic!("expected a visible toast")
                 };
@@ -837,7 +837,7 @@ mod tests {
 
                 let mut batch = HudBatch::scratch([640, 480]);
                 with_client_game(|other| {
-                    other.draw_every_toast(&mut batch, true, false);
+                    other.draw_every_toast(&mut batch);
                     assert!(other.toast_manager.visible.is_empty());
                     assert!(
                         observed.lock().unwrap().is_empty(),
@@ -845,7 +845,7 @@ mod tests {
                     );
                 });
 
-                window.draw_every_toast(&mut batch, true, false);
+                window.draw_every_toast(&mut batch);
                 let [entry] = window.toast_manager.visible.as_slice() else {
                     panic!("only the accepted notice should reach the queue");
                 };
@@ -857,7 +857,7 @@ mod tests {
                     toast.message.as_ref().unwrap().component()["with"][0]["text"],
                     ACCEPTED,
                 );
-                window.draw_every_toast(&mut batch, true, false);
+                window.draw_every_toast(&mut batch);
                 assert_eq!(observed.lock().unwrap().as_slice(), [ACCEPTED, CANCELLED]);
             });
         });
@@ -1018,8 +1018,8 @@ mod tests {
                 assert!(gui_canceled);
                 // Advance the existing slide past its entrance without sleeping.
                 let mut first = HudBatch::scratch([640, 480]);
-                game.draw_every_toast(&mut first, gui_canceled, false);
-                game.draw_every_toast(&mut first, gui_canceled, false);
+                game.draw_every_toast(&mut first);
+                game.draw_every_toast(&mut first);
                 let entry = &mut game.toast_manager.visible[0];
                 assert_eq!(entry.slot, 0);
                 let Toast::Diagnostic { toast, .. } = &mut entry.toast else {
@@ -1028,7 +1028,7 @@ mod tests {
                 toast.slide.origin =
                     Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
                 let mut visible = HudBatch::scratch([640, 480]);
-                game.draw_every_toast(&mut visible, gui_canceled, false);
+                game.draw_every_toast(&mut visible);
                 let mut drawn_text = visible.vertices.iter().filter(|v| {
                     v.text == 1
                         && (0.0..visible.width).contains(&v.pos[0])
@@ -1048,7 +1048,7 @@ mod tests {
                 game.set_hud_mode(mod_api::HudMode::NoHud);
                 assert!(game.ui.hide_gui);
                 let mut mod_hidden = HudBatch::scratch([640, 480]);
-                game.draw_every_toast(&mut mod_hidden, false, false);
+                game.draw_every_toast(&mut mod_hidden);
                 assert!(
                     !mod_hidden.vertices.is_empty(),
                     "NoHud does not hide diagnostics"
@@ -1058,7 +1058,7 @@ mod tests {
                 game.set_hud_mode(mod_api::HudMode::AllVisible);
                 assert!(game.ui.player_hides_gui);
                 let mut player_hidden = HudBatch::scratch([640, 480]);
-                game.draw_every_toast(&mut player_hidden, false, false);
+                game.draw_every_toast(&mut player_hidden);
                 assert!(
                     player_hidden.vertices.iter().any(|v| {
                         v.text == 1 && v.color == sunrise_client::hud::rgba(255, 85, 85, 255)
