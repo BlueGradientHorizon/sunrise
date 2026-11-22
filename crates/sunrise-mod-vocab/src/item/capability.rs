@@ -109,9 +109,20 @@ pub fn item_capability_present(view: &dyn LevelHost, site: BlockCapabilitySite) 
 /// A position a capability is asked of (its block, and the block entity there if any), by its
 /// level and position, and the side it is
 /// reached through (none: from no particular side): NeoForge's block capability context.
+///
+/// This is a local query address. At a serialization or network boundary, put the canonical
+/// dimension name, `pos`, and `side` in your own `Wire` type. Get the name with
+/// `level.dimension().id(host)`; if it returns `None`, do not encode the address. Do not send
+/// the `DimensionKey`: custom dimension slots can differ between processes. On receipt, use
+/// `host.level(&name)` and reconstruct the address only if it returns a level.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::BlockSide>();
+/// ```
+// no wire: local block-capability query context carrying a process-local LevelRef.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct BlockSide {
     /// The level.
     pub level: LevelRef,

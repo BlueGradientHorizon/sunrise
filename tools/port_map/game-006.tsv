@@ -70,7 +70,7 @@ LivingEntity.trapdoorUsableAsLadder	port	crates/sunrise-world/src/climbing.rs::o
 LivingEntity.isAlive	port	crates/sunrise-client/src/mobs.rs::Mob::alive	not removed and health above zero
 LivingEntity.setIgnoreFallDamageFromCurrentImpulse	port	crates/sunrise-world/src/living_fall.rs::ImpulseContext::set_ignore_fall_damage	40 ticks of grace
 LivingEntity.getDamageAfterArmorAbsorb	inline	crates/sunrise-client/src/mobs.rs::Mob::damage_with	the player's armor wear is health.rs hurt_armor; the mob path also scales armor effectiveness (breach)
-LivingEntity.getKillCredit	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::mob_died	the last player to hit it, else the last mob
+LivingEntity.getKillCredit	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::mob_die	the last player to hit it, else the last mob
 LivingEntity.getTicksSinceLastKineticHitFeedback	port	crates/sunrise-client/src/game/items/spear.rs::Game::kinetic_hit_ticks
 LivingEntity.swapHandItems	inline	crates/sunrise-client/src/game/network/remote/packets_entity.rs::Game::apply_entity_event_packet	entity event 55 swaps another player's hands; handled by `Game::apply_entity_event_packet`
 LivingEntity.getAttackRangeWith	inline	crates/sunrise-client/src/game.rs::Game::reach	gap: minor: only the spear's range is item specific (spear.rs REACH); other items use the default reach

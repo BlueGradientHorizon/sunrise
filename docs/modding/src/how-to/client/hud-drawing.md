@@ -24,8 +24,7 @@ layers remain in place for the next callback. Only a panic disables the register
 
 The client keeps the callback for the session and calls it as the mod that installed it. Capture
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`
-passed on each draw. A layer inserted with `register` does not dispatch under F1. A replaced or
-wrapped status slot still dispatches there. `gui_layer_pre` can cancel any slot that dispatches.
+passed on each draw. Inserted layers, replacements, wrappers and their layer hooks still dispatch under F1. `gui_layer_pre` can cancel any slot that dispatches.
 A vanilla anchor still determines the layer's position if its body doesn't draw that frame.
 
 ### Replacing or wrapping a layer
@@ -67,11 +66,14 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 wrapper omitted the previous body. If a retained painter or wrapper panics or is refused, its
 paint is discarded. A wrapper's completed `draw_previous()` calls keep their paint in order,
 without being called again. A panic disables just the offending callback for this session and
-reports the mod in the error log and the shared error toast. F1 hides the toast's paint, not the
-report. A refusal is reported without disabling the callback. A disabled wrapper leaves the
+reports the mod in the error log and the shared error toast. Callback failure toasts remain visible under F1, except for audio stream notices. A refusal is reported without disabling the callback. A disabled wrapper leaves the
 previous body to draw directly. If Pre cancels the slot, neither the
 installed body nor Post runs. For work that must happen even when the HUD is hidden, use the independent foreground
 `gui_render_post` hook.
+
+`render_gui_post` runs after the complete HUD walk and before the open screen. Focused chat
+paints separately in its screen. The original subtitle layer can defer paint to a screen
+background without running its hooks again. Cancel that layer to suppress scheduled paint.
 
 ## Status rows and fixed text positions
 
@@ -99,7 +101,7 @@ cancelled or replaced. The status slots still run their layer hooks and installe
 in creative or spectator mode, and off a mount. The original bodies check HUD visibility and the
 conditions for the row: survival or adventure for the player's rows, a mount with hearts for vehicle
 health. To hide your own paint under F1, check `host.hud_mode() == mod_api::HudMode::AllVisible`.
-A `Flow::Cancel` from `render_gui_pre` still skips those slots, even under F1. To replace all
+A `Flow::Cancel` from `render_gui_pre` skips the whole walk, including Post, even under F1. To replace all
 rows formerly drawn by `health_hud`, replace or wrap `player_health`, `armor_level`, `food_level`
 and `air_level`; `vehicle_health` is separate.
 You can keep a `GuiDraw` list: pass it to `draw.gui_paint(&draws)` and handle its returned error.
