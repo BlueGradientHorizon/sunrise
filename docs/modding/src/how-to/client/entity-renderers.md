@@ -58,7 +58,8 @@ here.
 
 A general entity type (`declare_general_entity`) has no vanilla look. Its render state carries the
 row's identity, age, pose and a frozen snapshot of its synced attachments
-([attachments](../../concepts/attachments.md)).
+([attachments](../../concepts/attachments.md)). A type declared with zero tracking chunks stays in
+the server simulation, but its rows are not sent to clients for rendering.
 
 ```rust,ignore
 static FUEL: AttachmentType<i32> = /* declared with sync: true */;
