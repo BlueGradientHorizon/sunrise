@@ -19,10 +19,12 @@ impl Hooks for SwimRules {
             .lock()
             .unwrap()
             .push((event.side, event.check, event.player.entity().id()));
-        let feet = host
-            .living(event.player.entity())?
-            .equipment(host, EquipmentSlot::Feet)?;
-        let item = mod_api::__private::item_key_id(feet.item())?;
+        let feet = host.living(event.player.entity())?.with_equipment(
+            host,
+            EquipmentSlot::Feet,
+            |feet| feet.item(),
+        )?;
+        let item = mod_api::__private::item_key_id(feet)?;
         match (event.check, item) {
             (SwimmingCheck::Entry, "minecraft:leather_boots")
             | (SwimmingCheck::ShallowWater, "minecraft:golden_boots") => Some(false),
@@ -83,7 +85,7 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                             portal_cooldown: 0,
                             sea_level: 63,
                         },
-                        false,
+                        RemoteDimensionEntry::Login,
                         sunrise_client::level_loading::Reason::Other,
                     );
                     let remote = game.remote.as_mut().unwrap();
