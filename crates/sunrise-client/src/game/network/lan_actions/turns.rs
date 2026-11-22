@@ -21,26 +21,28 @@ impl Game<'_> {
         conn: u32,
         f: impl FnOnce(&mut Self) -> R,
     ) -> Result<R, TurnRefused> {
-        let swap = self.enter_guest_at(gi, conn, self.dim)?;
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            crate::game::dedicated::crash_fixture("guest", || {
-                self.lan
-                    .as_ref()
-                    .is_some_and(|host| host.hub.guest(conn).is_some_and(|g| g.placed))
-            });
-            let dimension = (self.serving.is_some() || self.options.dedicated.is_some())
-                .then_some(self.dim.id());
-            let result = sunrise_client::block_contact::in_level(self.tick, dimension, || f(self));
-            self.drain_entity_inside();
+        let result = self.with_guest_swap_at(gi, conn, self.dim, |game| {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::game::dedicated::crash_fixture("guest", || {
+                    game.lan
+                        .as_ref()
+                        .is_some_and(|host| host.hub.guest(conn).is_some_and(|g| g.placed))
+                });
+                let dimension = (game.serving.is_some() || game.options.dedicated.is_some())
+                    .then_some(game.dim.id());
+                let result =
+                    sunrise_client::block_contact::in_level(game.tick, dimension, || f(game));
+                game.drain_entity_inside();
+                result
+            }));
+            // The restore clears the acting marker, so teardown learns of all interrupted turns
+            // from the record (#2704).
+            if result.is_err() {
+                game.record_open_turns();
+            }
             result
-        }));
-        // A panic interrupted this turn, and the swaps still open above it: the restore below
-        // clears the acting marker, so teardown learns of them from the record (#2704).
-        if result.is_err() {
-            self.record_open_turns();
-        }
-        // Commit the guest's progress and restore the outer player before propagating a panic.
-        self.leave_guest(swap);
+        })?;
+        // The guest's progress and the outer player were restored before propagating a panic.
         match result {
             Ok(result) => Ok(result),
             Err(payload) => std::panic::resume_unwind(payload),
@@ -68,7 +70,7 @@ impl Game<'_> {
         let swap = |game: &mut Self| {
             if let Some(host) = game.lan.as_mut() {
                 host.hub.guests.update(gi, |g| {
-                    // The fields `enter_guest_at` swaps.
+                    // The fields `guest_turn` swaps.
                     std::mem::swap(&mut game.inventory, &mut g.inventory);
                     std::mem::swap(&mut game.armor, &mut g.armor);
                     std::mem::swap(&mut game.location_armor, &mut g.location_armor);
@@ -141,32 +143,43 @@ impl Game<'_> {
         }
     }
 
-    /// The first half of `as_guest`: the guest's state in place of the
-    /// game's, which the returned swap keeps until `leave_guest`. The host
-    /// stays in `self.lan`, so the guest can reach other players. Guest turns
-    /// can nest: the acting guest and their queued packets are restored.
-    pub(in crate::game) fn enter_guest(&mut self, conn: u32) -> Option<GuestSwap> {
-        self.enter_guest_in_dimension(conn, self.dim)
-    }
-
-    /// Enter a guest after changing levels: the outer body is still in
-    /// `outer_dimension`, not necessarily the level now in place.
-    pub(in crate::game) fn enter_guest_in_dimension(
+    /// Run a command or fixture with the guest's player state in place, without the
+    /// packet/tick turn's block-contact scope or handling a panic from `f`. When the caller
+    /// has changed levels, the outer body is still in `outer_dimension`.
+    pub(in crate::game) fn with_guest_swap<R>(
         &mut self,
         conn: u32,
         outer_dimension: Dim,
-    ) -> Option<GuestSwap> {
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> Option<R> {
         let i = self.guest_index(conn)?;
-        self.enter_guest_at(i, conn, outer_dimension).ok()
+        self.with_guest_swap_at(i, conn, outer_dimension, f).ok()
     }
 
-    /// `enter_guest` for the guest at `i`, which must be `conn`.
-    pub(super) fn enter_guest_at(
+    fn with_guest_swap_at<R>(
         &mut self,
         i: usize,
         conn: u32,
         outer_dimension: Dim,
-    ) -> Result<GuestSwap, TurnRefused> {
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> Result<R, TurnRefused> {
+        let mut f = Some(f);
+        let mut result = None;
+        self.guest_turn(i, conn, outer_dimension, &mut |game| {
+            result = Some(f.take().unwrap()(game));
+        })?;
+        Ok(result.unwrap())
+    }
+
+    /// Save and restore the outer player in this stack frame, even for nested turns.
+    /// Erase the callback type so the swap code is shared by all callers.
+    fn guest_turn(
+        &mut self,
+        i: usize,
+        conn: u32,
+        outer_dimension: Dim,
+        run: &mut dyn FnMut(&mut Self),
+    ) -> Result<(), TurnRefused> {
         let spawn_protection = self.lan.as_ref().and_then(|host| {
             host.hub
                 .guests
@@ -305,7 +318,7 @@ impl Game<'_> {
         let (game_mode, guest_previous) = (g.game_mode, g.previous_game_mode);
         self.set_mode_raw(game_mode);
         self.sync_main_hand();
-        let previous_mode = std::mem::replace(
+        let outer_previous = std::mem::replace(
             &mut self.previous_mode,
             guest_previous.map(crate::game::game_mode::mode_from_id),
         );
@@ -470,91 +483,18 @@ impl Game<'_> {
         self.entity_reach = self.interaction_range("minecraft:entity_interaction_range", 3.0, 5.0);
         self.block_reach = self.interaction_range("minecraft:block_interaction_range", 4.5, 5.0);
         let building_boxes = std::mem::replace(&mut self.lan_building_boxes, other_boxes);
-        Ok(GuestSwap {
-            attachments,
-            conn,
-            i,
-            play,
-            player,
-            player_save_projection,
-            eye,
-            yaw,
-            pitch,
-            selected,
-            mode,
-            creative,
-            previous_mode,
-            abilities: outer_abilities,
-            entity_reach,
-            block_reach,
-            permission,
-            xp,
-            level_up_sound,
-            host_keys,
-            saved_mappings,
-            screen,
-            host_sign,
-            host_book,
-            host_command_block,
-            host_mount_menu,
-            craft_size,
-            craft_table,
-            craft_grid,
-            container,
-            mining,
-            destroy_delay,
-            using,
 
-            use_duration,
-            use_start,
-            use_delay,
-            shield_cooldown,
-            cooldowns,
-            xp_delay,
-            attack_ticks,
-            attack_item,
-            swing,
-            riding,
-            host_station,
-            sleeping,
-            sleep_timer,
-            spawn,
-            respawn,
-            message,
-            host_ender,
-            adv_loaded,
-            last_inventory,
-            levitation,
-            marks,
-            death_cause,
-            acting,
-            acting_fake,
-            known_movement,
-            packets,
-            entity_events,
-            equipment_breaks,
-            swings,
-            projectiles,
-            modifiers,
-            cooldown_events,
-            player_sounds,
-            block_sounds,
-            combat: host_combat,
-            building_boxes,
-        })
-    }
+        run(self);
 
-    /// The second half of `as_guest`: the guest's state back into their
-    /// record, the game's back in place, and what the turn changed sent.
-    pub(in crate::game) fn leave_guest(&mut self, swap: GuestSwap) {
+        // Commit the guest's changes and put the outer player back.
         let Some(host) = self.lan.as_ref() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
-        debug_assert_eq!(host.hub.guests.get(swap.i).map(|g| g.conn), Some(swap.conn));
+        debug_assert_eq!(host.hub.guests.get(i).map(|g| g.conn), Some(conn));
         // Recorded before the callbacks run, cleared only after a clean put-back (a record the
         // turn's own panic made stays).
-        let already_recorded = self.interrupted_turns.contains(&swap.conn);
-        self.record_interrupted_turn(swap.conn);
+        let already_recorded = self.interrupted_turns.contains(&conn);
+        self.record_interrupted_turn(conn);
         let turn_events = self
             .player
             .as_mut()
@@ -562,8 +502,8 @@ impl Game<'_> {
             .unwrap_or_default();
         // The callbacks a turn ends with (combat, armor, the totem, the food hook) can reach a
         // mod and panic. The swap is still restored below and the guest's progress written
-        // back; the panic resumes at the end (#2240). `as_guest_at` calls this after catching a
-        // panic of the turn itself, so a panic here then goes on in place of that one.
+        // back; the panic resumes at the end (#2240). `as_guest_at` catches a panic of the
+        // turn itself, so a panic here then goes on in place of that one.
         let callbacks = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if !turn_events.is_empty() {
                 self.record_combat(&turn_events);
@@ -579,7 +519,7 @@ impl Game<'_> {
             let food = self
                 .lan
                 .as_ref()
-                .and_then(|host| host.hub.guests.get(swap.i))
+                .and_then(|host| host.hub.guests.get(i))
                 .filter(|g| now.is_some_and(|now| g.food != now))
                 .map(|g| (g.uuid, g.name.clone(), g.food, g.saturation));
             if let Some(now) = now
@@ -607,83 +547,11 @@ impl Game<'_> {
                 (None, Some(payload))
             }
         };
-        let GuestSwap {
-            attachments,
-            conn,
-            i,
-            mut play,
-            mut player,
-            player_save_projection,
-            eye,
-            yaw,
-            pitch,
-            selected,
-            mode,
-            creative,
-            previous_mode: outer_previous,
-            abilities: outer_abilities,
-            entity_reach,
-            block_reach,
-            permission,
-            xp,
-            level_up_sound,
-            host_keys,
-            saved_mappings,
-            screen,
-            host_sign,
-            host_book,
-            host_command_block,
-            host_mount_menu,
-            craft_size,
-            craft_table,
-            craft_grid,
-            container,
-            mining,
-            destroy_delay,
-            using,
-
-            use_duration,
-            use_start,
-            use_delay,
-            shield_cooldown,
-            cooldowns,
-            xp_delay,
-            attack_ticks,
-            attack_item,
-            swing,
-            riding,
-            host_station,
-            sleeping,
-            sleep_timer,
-            spawn,
-            respawn,
-            message,
-            host_ender,
-            adv_loaded,
-            last_inventory,
-            levitation,
-            marks,
-            death_cause,
-            combat,
-            building_boxes,
-            acting,
-            acting_fake,
-            known_movement,
-            packets,
-            entity_events,
-            equipment_breaks,
-            swings,
-            projectiles,
-            modifiers,
-            cooldown_events,
-            player_sounds,
-            block_sounds,
-        } = swap;
         // `ServerPlayer.permissions()` back to the host's after the turn.
         self.ui.registries.permission = permission;
         self.sculk.swap_player(&mut play.sculk);
         // The guest's damage record back into their slot, the host's in place.
-        let guest_combat = std::mem::replace(&mut self.combat, combat);
+        let guest_combat = std::mem::replace(&mut self.combat, host_combat);
         self.guest_combat.insert(conn, guest_combat);
         play.modifiers = std::mem::replace(&mut self.applied_modifiers, modifiers);
         // What the guest shot is theirs (Projectile.setOwner).
@@ -1106,6 +974,7 @@ impl Game<'_> {
         if !already_recorded {
             self.interrupted_turns.retain(|&c| c != conn);
         }
+        Ok(())
     }
 
     /// `ServerLevel.broadcastDamageEvent` for a guest that took an unblocked hit.

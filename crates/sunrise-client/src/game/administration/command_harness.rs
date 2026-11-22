@@ -92,11 +92,9 @@ impl Game<'_> {
         };
         let (conn, dim, back) = (guest.conn, super::Dim::from_id(&guest.dimension), self.dim);
         self.enter_level(dim)?;
-        let swap = self
-            .enter_guest_in_dimension(conn, back)
+        let result = self
+            .with_guest_swap(conn, back, f)
             .ok_or("command harness: owner is already acting")?;
-        let result = f(self);
-        self.leave_guest(swap);
         if let Some(host) = self.lan.as_mut() {
             host.hub.sync_all_effects();
         }
@@ -160,8 +158,8 @@ impl Game<'_> {
                 plan,
             ))
         })?;
-        // Start travel after restoring the owner's body: change_level updates
-        // its hub record, which leave_guest would otherwise overwrite.
+        // Start travel after the turn restores the owner's body to the hub.
+        // Otherwise the turn would overwrite the hub record updated by change_level.
         self.in_owner_level(|g| {
             if g.lan.is_none() {
                 return Err("command harness: no hub".into());
