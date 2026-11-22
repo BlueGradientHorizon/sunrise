@@ -43,7 +43,9 @@ pub trait PlayerMessagesBackendMut {
     /// Side: server.
     /// `StopSoundCommand` for one player: their client stops the playing
     /// sounds that match `sound` (an event id) and `source`; `None` matches
-    /// any. True means sent.
+    /// any. True means sent (or queued for commit inside an open transaction).
+    /// Inside an open transaction, delivery waits for the outermost commit in call order across
+    /// deferred effects and is discarded on rollback or an aborted nested transaction.
     fn player_stop_sound(
         &mut self,
         player: PlayerRef,
@@ -53,7 +55,11 @@ pub trait PlayerMessagesBackendMut {
     /// Side: server.
     /// `PlaySoundCommand` for one player: plays sound event `sound` at the
     /// player, for them only, under `source`'s volume slider. The seed is the
-    /// level random's `nextLong`, drawn once per call. True means sent, not
+    /// request level's random `nextLong`, drawn once at the call outside a
+    /// transaction or at the outermost commit (in the request's level) inside
+    /// an open transaction; rolled-back transactions and aborted nested
+    /// transactions discard the sound without advancing the level's random.
+    /// True means sent (or queued for commit inside an open transaction), not
     /// heard.
     fn player_play_sound(
         &mut self,

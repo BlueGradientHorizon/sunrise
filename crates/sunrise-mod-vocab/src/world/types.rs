@@ -1810,7 +1810,9 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     ) -> bool {
         unimplemented!("LevelWriteHost::set_block_property")
     }
-    /// Play a sound for nearby players through `play_sound`.
+    /// Play a sound for nearby players through `play_sound`. Inside an open transaction the sound
+    /// waits for the outermost commit (discarded on abort), and the sound seed advances when it is
+    /// published; see the modding book's transactions chapter.
     fn play_sound(
         &mut self,
         _sound: &str,
@@ -1823,7 +1825,8 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     }
     /// `ServerLevel.sendParticles` through `native_send_particles`.
     /// Item particles require `options.item_stack`; invalid stacks return false, and so does an
-    /// item crumb whose colour has a component outside 0 to 1.
+    /// item crumb whose colour has a component outside 0 to 1. Inside an open transaction the
+    /// particles wait for the outermost commit and are discarded on abort.
     fn send_particles(
         &mut self,
         _options: &ParticleOptions,
@@ -1836,7 +1839,9 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
         unimplemented!("LevelWriteHost::send_particles")
     }
     /// `LevelAccessor.levelEvent(null, id, pos, data)` through `native_level_event`: the event
-    /// is queued with the write's own events, in order, and plays when the write is done.
+    /// is queued with the write's own events, in order. Inside an open transaction it plays at the
+    /// outermost commit, in call order with the other deferred effects, and is discarded on abort;
+    /// otherwise it plays when the write is done.
     /// `LevelRef::level_event` takes the same `id` and `data`.
     fn level_event(&mut self, _id: i32, _pos: [i32; 3], _data: i32) -> bool {
         unimplemented!("LevelWriteHost::level_event")

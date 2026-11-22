@@ -6,6 +6,9 @@ Match the hook's `HostSide` to distinguish the requests; the event's sound,
 source, volume and pitch describe that side's request, and original volume and
 pitch remain available after edits. Returning `Flow::Cancel` suppresses that
 request. A server cancellation sends no packet, so there is no client request.
+Sounds played from inside a `play_level_sound_at_position` or
+`play_level_sound_at_entity` listener are not re-dispatched to level-sound
+listeners; they are validated and delivered or journaled normally in call order.
 
 Incoming sound packets, including `/playsound`, ask the client level hooks.
 An entity-sound packet stays bound to its emitter. UI clicks, engine-local
@@ -35,6 +38,17 @@ plays at the requested position; only a genuinely entity-bound sound
 every player in range hears it, except the player in `except`. Pass the player whose own client already played the
 sound for its action; pass `None` to play it to everyone. The game finds that player's connection itself. A fake
 player has no client, so it leaves no one out; a stale player handle queues nothing and the call returns `false`.
+
+Inside an open transaction, `LevelRef::play_sound`, `EntityRef::play_sound`, `EntityRef::play_bound_sound`,
+`PlayerRef::play_sound`, and `PlayerRef::stop_sound` validate arguments at the call and defer pure packet delivery
+until the outermost commit, discarding on rollback or an aborted nested transaction. For transactional level and
+entity sounds, `play_level_sound_at_position` and `play_level_sound_at_entity` run synchronously at the call inside
+the transaction (so listeners can edit or cancel the sound and journal their own writes in the same transaction);
+commit replay runs no mod callbacks, replaying each resolved effect in its request level and delivering packets in
+journal order across all effect kinds. The server sound-seed stream (for level and entity sounds) and the request
+level's random (for `PlayerRef::play_sound`'s `nextLong` seed) advance at the call outside a transaction, at the
+outermost commit when published inside one, and remain untouched on rollback, nested abort, or listener
+cancellation. (By contrast, `HitHost::play_sound_at` and `play_sound_from` below queue immediately at the call.)
 
 ## Engine playback and live parameters
 

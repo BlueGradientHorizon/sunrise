@@ -16,6 +16,13 @@ pub trait LevelEffectsBackendMut {
     /// nothing. A `minecraft:` event must be registered; a mod's goes by name
     /// and is heard where its resources define it. True means queued, not
     /// heard.
+    /// Inside an open transaction, `play_level_sound_at_position` runs synchronously at the call
+    /// (so listeners can edit or cancel the sound and journal writes in their level's open
+    /// transaction), while packet delivery waits for the outermost commit, in journal order across
+    /// deferred effects, and is discarded on rollback or an aborted nested transaction. The server
+    /// sound-seed stream advances at the call outside a transaction, at the outermost commit when
+    /// a resolved sound publishes inside one, and stays untouched on rollback, nested abort, or
+    /// listener cancellation.
     fn level_play_sound(
         &mut self,
         level: LevelRef,
@@ -36,6 +43,9 @@ pub trait LevelEffectsBackendMut {
     /// A custom particle uses its registered stream codec and is sent only to Sunrise
     /// clients. The receiving factory reads the same decoded value for every spawn.
     /// True means queued, not drawn.
+    /// Inside an open transaction, delivery waits for the outermost commit in this level, in call
+    /// order across deferred effects, and is discarded on rollback or an aborted nested
+    /// transaction.
     fn level_send_particles(
         &mut self,
         level: LevelRef,
@@ -53,12 +63,17 @@ pub trait LevelEffectsBackendMut {
     /// block with state id `data`). No player is left out, the acting one
     /// included. False for an event that carries a block state (2001, 2014,
     /// 3008) when `data` isn't one.
+    /// Inside an open transaction, delivery waits for the outermost commit in this level, in call
+    /// order across deferred effects, and is discarded on rollback or an aborted nested
+    /// transaction.
     fn level_level_event(&mut self, level: LevelRef, id: i32, pos: [i32; 3], data: i32) -> bool;
     /// Side: server.
     /// Plays the break effect of `state` at `pos`: the particles and the sound of a block of
     /// that state breaking, for the players near it (`Level.levelEvent(2001, pos,
     /// Block.getId(state))`). Nothing is written: the block at `pos` stays. False off the level
     /// in place, for a stale handle and on a client.
+    /// Inside an open transaction, follows the same commit/rollback deferral as
+    /// [`level_level_event`](Self::level_level_event).
     fn level_block_break_effect(
         &mut self,
         level: LevelRef,
@@ -80,6 +95,9 @@ pub trait LevelEffectsBackendMut {
     /// the players of this level near `pos` get it. False for the same events
     /// and data `level_event` refuses, a parked level, a stale handle or a
     /// client.
+    /// Inside an open transaction, delivery waits for the outermost commit in this level, in call
+    /// order across deferred effects (checking `global_sound_events` at commit), and is discarded
+    /// on rollback or an aborted nested transaction.
     fn level_global_level_event(
         &mut self,
         level: LevelRef,

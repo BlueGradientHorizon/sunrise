@@ -921,7 +921,9 @@ impl Game<'_> {
         if broken.is_some() {
             let event =
                 sunrise_client::mobs::item_break::equipment_break_event(world_equipment_slot(slot));
-            self.entity_broadcast_event(living.entity(), event as u8);
+            // Non-player equipment writes above are unjournaled and take effect immediately; keep
+            // the coupled break event on the same immediate side of the rollback boundary.
+            self.broadcast_entity_event_immediate(living.entity(), event as u8);
         }
         broken
     }
