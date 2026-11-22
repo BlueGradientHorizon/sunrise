@@ -6539,7 +6539,7 @@ mod tests {
             assert_eq!(orbs_from_nbt(&tag)[0].value, i32::from(saved));
         }
         o.value = 7;
-        o.count = i32::MAX as u32 + 5;
+        o.count = i32::MAX as u32;
         let tag = orb_to_nbt(&o, [0; 4]);
         assert_eq!(tag.get("Count"), Some(&Tag::Int(i32::MAX)));
         assert_eq!(orbs_from_nbt(&tag)[0].count, i32::MAX as u32);

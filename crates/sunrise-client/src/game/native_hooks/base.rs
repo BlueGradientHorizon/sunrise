@@ -3925,23 +3925,21 @@ impl Game<'_> {
     ) {
         self.fire_food_level_changed(player, name, from, to, cancel);
     }
-    /// Before `player` picks up orb `orb` in `dimension` (`ExperienceOrb.playerTouch`,
-    /// NeoForge's `PlayerXpEvent.PickupXp`). Mutations to `value` and `count` take
-    /// effect on the live orb only when not canceled: `value` keeps vanilla signed
-    /// integer semantics (zero or negative values repair nothing and award no XP),
-    /// and setting `count` to `0` discards the orb without awarding XP or setting the
-    /// 2-tick pickup delay. Canceling leaves the orb and pickup delay unchanged.
-    /// Server-side.
+    /// Before `player` picks up `orb` in `dimension` (`ExperienceOrb.playerTouch`,
+    /// NeoForge's `PlayerXpEvent.PickupXp`). `orb` is the live [`ExperienceOrbRef`]
+    /// handle so reads and writes (`set_value`, `set_count`, `set_age`, or
+    /// `orb.entity().kill(host)`) act on the live orb immediately and later listeners
+    /// observe earlier edits. Canceling skips the pickup continuation (`takeXpDelay`
+    /// stays 0, no take/sound, no Mending/XP award, and no count decrement) while
+    /// leaving any writes already made through `orb` in place. Server-side.
     pub(in crate::game) fn native_pickup_xp(
         &mut self,
         player: u128,
         dimension: &str,
-        orb: u32,
-        value: &mut i32,
-        count: &mut u32,
+        orb: ExperienceOrbRef,
         canceled: &mut bool,
     ) {
-        self.fire_pickup_xp(player, dimension, orb, value, count, canceled);
+        self.fire_pickup_xp(player, dimension, orb, canceled);
     }
     /// A player's hit landed on the mob `entity` of type `kind`
     /// (`minecraft:zombie`), holding `stack`: where `Item.hurtEnemy` is called,

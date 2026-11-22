@@ -301,47 +301,25 @@ impl Game<'_> {
         // Swapping the guest in costs: only when a mod hears the pickup.
         let listened = (self.serving.is_some() || self.options.dedicated.is_some())
             && mod_api::__private::listened(mod_api::HookId::PickupXp);
-        if listened {
-            let mut value = self.orbs[index].value;
-            let mut count = self.orbs[index].count;
-            let (before_value, before_count) = (value, count);
+        if listened && let Some(epoch) = self.native_lifecycle.epoch() {
+            let orb = mod_api::ExperienceOrbRef::new(mod_api::EntityRef::new(epoch, orb_id));
             let mut canceled = false;
             let dimension = self.dim.id();
             let called = self.as_guest(conn, |game| {
                 let player = game.native_acting_id();
-                game.native_pickup_xp(
-                    player,
-                    dimension,
-                    orb_id,
-                    &mut value,
-                    &mut count,
-                    &mut canceled,
-                );
+                game.native_pickup_xp(player, dimension, orb, &mut canceled);
             });
             if called.is_none() || canceled {
                 return;
-            }
-            let Some(at_index) = self.orbs.locate(join) else {
-                return;
-            };
-            if value != before_value {
-                self.orbs[at_index].value = value;
-            }
-            if count != before_count {
-                self.orbs[at_index].count = count;
             }
         }
         let Some(index) = self.orbs.locate(join) else {
             return;
         };
-        let (orb_value, orb_count, orb_pos) = {
+        let (orb_value, orb_pos) = {
             let orb = &self.orbs[index];
-            (orb.value, orb.count, orb.position)
+            (orb.value, orb.position)
         };
-        if orb_count == 0 {
-            self.remove_orb(index);
-            return;
-        }
         // ExperienceOrb.playerTouch: delay, take, repair/award positive value,
         // then decrement count and discard at zero.
         if let Some(host) = self.lan.as_mut() {
