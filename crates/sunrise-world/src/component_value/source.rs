@@ -2486,7 +2486,7 @@ mod tests {
             ),
             (
                 r#"{object:"player",player:{name:"Steve",properties:{unused:[I;]}}}"#,
-                r#"{object:"player",player:{name:"Steve"}}"#,
+                r#"{player:{name:"Steve"}}"#,
             ),
         ] {
             let value = text_from_tag(&parse(input), &|_| false).unwrap();
