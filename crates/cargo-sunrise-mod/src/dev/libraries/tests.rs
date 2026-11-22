@@ -28,15 +28,8 @@ fn a_local_library_wins_and_its_version_cannot_be_replaced() {
             manifest: &local,
             sha256: None,
         };
-        let result = resolve::for_manifest(
-            &index,
-            &addon,
-            &[local],
-            "26.3",
-            Side::Client,
-            true,
-            |_, _| true,
-        );
+        let result =
+            resolve::for_manifest(&index, &addon, &[local], "26.3", Side::Client, |_, _| true);
         if fits {
             let selected = result.unwrap();
             assert_eq!(selected.local, ["library"]);
@@ -72,7 +65,7 @@ fn a_missing_requirement_names_the_mod_range_and_both_sources() {
 }
 
 #[test]
-fn the_install_planner_resolves_local_and_registry_edges_and_available_optional_libraries() {
+fn the_install_planner_resolves_required_edges_and_explicit_optional_libraries() {
     let addon = manifest(
         "addon",
         "1.0.0",
@@ -93,26 +86,27 @@ fn the_install_planner_resolves_local_and_registry_edges_and_available_optional_
         ("base", serde_json::json!([])),
         ("extra", serde_json::json!([])),
     ]);
-    let selected = resolve::for_manifest(
-        &index,
-        &addon,
-        &[resolve::LocalMod {
-            manifest: &local,
-            sha256: None,
-        }],
-        "26.3",
-        Side::Client,
-        true,
-        |_, _| true,
-    )
-    .unwrap();
-    assert_eq!(selected.local, ["local"]);
-    assert_eq!(
-        selected
-            .registry
-            .iter()
-            .map(|(p, _)| p.id.as_str())
-            .collect::<Vec<_>>(),
-        ["base", "bridge", "extra"]
-    );
+    assert!(index.left_out.is_empty(), "{:?}", index.left_out);
+    let extra = manifest("extra", "1.1.0", "");
+    for (supplied, expected) in [(None, &["local"][..]), (Some(&extra), &["extra", "local"])] {
+        let locals: Vec<_> = std::iter::once(&local)
+            .chain(supplied)
+            .map(|manifest| resolve::LocalMod {
+                manifest,
+                sha256: None,
+            })
+            .collect();
+        let selected =
+            resolve::for_manifest(&index, &addon, &locals, "26.3", Side::Client, |_, _| true)
+                .unwrap();
+        assert_eq!(selected.local, expected);
+        assert_eq!(
+            selected
+                .registry
+                .iter()
+                .map(|(p, _)| p.id.as_str())
+                .collect::<Vec<_>>(),
+            ["base", "bridge"]
+        );
+    }
 }

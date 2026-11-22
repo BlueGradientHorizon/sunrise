@@ -152,6 +152,7 @@ pub(crate) fn write_files(
         let name = name.as_ref();
         #[cfg(windows)]
         if name.split('/').any(|part| {
+            // Win32 strips trailing spaces/dots and can treat DOS device names as files.
             let stem = part
                 .split('.')
                 .next()

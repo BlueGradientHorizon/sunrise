@@ -227,16 +227,14 @@ pub struct ManifestPlan<'a> {
 }
 
 /// Plan a project's dependencies with the same version, side, cycle and takedown rules as
-/// [`install`]. When `optional` is set, also try to add eligible native optional libraries
-/// without changing the required selection. Explicit local optional libraries are never silently
-/// ignored on a conflict.
+/// [`install`]. Optional edges never add an indexed library; an explicit local library for
+/// such an edge is checked against the declaration just like a required library.
 pub fn for_manifest<'a>(
     index: &'a Index,
     manifest: &crate::Manifest,
     locals: &[LocalMod<'_>],
     game: &str,
     side: Side,
-    optional: bool,
     native_fits: impl Fn(&Project, &Version) -> bool,
 ) -> Result<ManifestPlan<'a>, String> {
     let mut fixed = BTreeMap::new();
@@ -287,51 +285,17 @@ pub fn for_manifest<'a>(
             }],
         );
     }
-    if optional {
-        // An explicitly supplied optional library counts as present when a selected mod
-        // declares it, whether that declaration came from disk or the registry.
-        for candidate in catalog.mods.values_mut().flatten() {
-            candidate
-                .required
-                .extend(candidate.optional.extract_if(.., |range| {
-                    fixed.contains_key(range.row.id.as_str()) && range.row.id != manifest.id
-                }));
-        }
+    // Explicit optional libraries count as present whether their declaration came from disk
+    // or the registry. A mismatch is a conflict, not a reason to omit the library.
+    for candidate in catalog.mods.values_mut().flatten() {
+        candidate
+            .required
+            .extend(candidate.optional.extract_if(.., |range| {
+                fixed.contains_key(range.row.id.as_str()) && range.row.id != manifest.id
+            }));
     }
-    let mut roots = Roots::from([(manifest.id.as_str(), Vec::new())]);
-    let mut budget = MAX_STATES;
-    let mut selected = catalog
-        .solve_with_budget(&roots, &Selected::new(), &mut budget)
-        .map_err(|failure| failure.reason)?;
-    if optional {
-        let mut tried = BTreeSet::new();
-        loop {
-            let targets: BTreeSet<_> = selected
-                .values()
-                .flat_map(|c| &c.optional)
-                .map(|range| range.row.id.as_str())
-                .filter(|id| !selected.contains_key(id) && !tried.contains(id))
-                .filter(|id| index.project(id).is_some_and(|p| p.kind == Kind::NativeMod))
-                .collect();
-            if targets.is_empty() || budget == 0 {
-                break;
-            }
-            for id in targets {
-                if selected.contains_key(id) || budget == 0 {
-                    continue;
-                }
-                tried.insert(id);
-                roots = selected
-                    .iter()
-                    .map(|(&id, c)| (id, vec![c.version]))
-                    .collect();
-                roots.insert(id, Vec::new());
-                if let Ok(next) = catalog.solve_with_budget(&roots, &Selected::new(), &mut budget) {
-                    selected = next;
-                }
-            }
-        }
-    }
+    let roots = Roots::from([(manifest.id.as_str(), Vec::new())]);
+    let selected = catalog.solve(&roots, &Selected::new())?;
     let mut plan = ManifestPlan {
         local: Vec::new(),
         registry: Vec::new(),

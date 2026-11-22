@@ -21,8 +21,9 @@ it must match its version requirement.
 are working on locally, pass `--with <path>` for its project folder or `.smod`; repeat the flag
 for more libraries. A local copy takes precedence over the registry and still has to satisfy the
 declared version. Otherwise the tool resolves the required libraries through the Sunrise mod
-registry for the project's Minecraft version, including their own requirements. It also supplies
-optional native libraries that fit that selection. A library pinned to another Sunrise build must
+registry for the project's Minecraft version, including their own requirements. To include an
+optional library, supply it with `--with`; an optional declaration alone never fetches one from the
+registry. A library pinned to another Sunrise build must
 carry a uses list that shows it fits the project's SDK. The tool does not change the library's pin.
 
 `check` type-checks the wired code without producing mod binaries, and `build` packages only the

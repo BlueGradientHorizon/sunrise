@@ -49,44 +49,29 @@ impl Libraries {
             }
             local.insert(id.clone(), LocalSource { path, package });
         }
-        // An entirely local closure needs no registry request. Also check transitive optional
-        // declarations on reachable local folders, not unrelated --with inputs.
+        // Walk libraries supplied with --with, including explicit optional libraries. Only an
+        // unsupplied required edge needs the index.
         let mut todo = vec![project];
         let mut seen = BTreeSet::new();
-        let mut online = false;
-        while let Some(manifest) = todo.pop() {
+        let mut index = Index::default();
+        'local_closure: while let Some(manifest) = todo.pop() {
             for dep in
                 sunrise_mod_package::dependencies::from_manifest(&manifest.dependencies, side)
             {
-                if seen.insert(dep.id.clone()) && dep.id != project.id {
-                    if let Some(source) = local.get(&dep.id) {
+                if let Some(source) = local.get(&dep.id) {
+                    if seen.insert(source.package.manifest.id.as_str()) {
                         todo.push(&source.package.manifest);
-                    } else {
-                        online = true;
                     }
+                } else if !dep.optional && dep.id != project.id {
+                    index = Registry::default().read_index().map_err(|error| format!(
+                        "{} needs {} {}. Supply the library with --with <path> or use the Sunrise mod registry. Could not read the mod registry: {error}",
+                        manifest.id, dep.id, dep.requirement
+                    ))?;
+                    break 'local_closure;
                 }
             }
         }
-        let mut libraries = Self {
-            local,
-            index: Index::default(),
-            side,
-        };
-        if online {
-            match Registry::default().read_index() {
-                Ok(index) => libraries.index = index,
-                Err(error) => {
-                    // An unavailable registry cannot supply a required dependency, but it must
-                    // not stop a complete local build from omitting an optional library.
-                    let game = &project.native.as_ref().expect("native project").game;
-                    libraries.plan(project, game).map_err(|missing| {
-                        format!("{missing}\nCould not read the mod registry: {error}")
-                    })?;
-                    eprintln!("Optional libraries: could not read the mod registry: {error}");
-                }
-            }
-        }
-        Ok(libraries)
+        Ok(Self { local, index, side })
     }
 
     fn plan(&self, project: &Manifest, game: &str) -> Result<resolve::ManifestPlan<'_>, String> {
@@ -104,7 +89,7 @@ impl Libraries {
                 sha256: archives.get(id).map(String::as_str),
             })
             .collect();
-        resolve::for_manifest(&self.index, project, &locals, game, self.side, true, |_, _| true)
+        resolve::for_manifest(&self.index, project, &locals, game, self.side, |_, _| true)
             .map_err(|error| format!("{}: {error}. Supply the library with --with <path> or use a matching version in the Sunrise mod registry.", project.id))
     }
 

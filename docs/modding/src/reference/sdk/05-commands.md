@@ -36,7 +36,8 @@ is [`native-build`'s](08-native-build.md), in process, with registry crates appr
 for the `client` side. It prints `Built <library>` and the build log's path, and exits non-zero with the error on failure.
 
 In `build`, `run` and project `check`, repeat `--with <path>` for local native library projects or `.smod` files.
-For declared dependencies not supplied locally, the tool reads the Sunrise mod registry, verifies the selected
+Optional libraries must be supplied with `--with`. For required dependencies not supplied locally, the tool
+reads the Sunrise mod registry, verifies the selected
 files against the index and caches their unpacked source in `registry/<id>/<version>/<sha256>/` in the tool's
 cache. An archive taken down from the registry is refused even if already cached. A different Sunrise pin must
 pass the native fit check before the library can be used.
