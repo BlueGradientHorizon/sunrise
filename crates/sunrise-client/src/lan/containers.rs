@@ -379,12 +379,13 @@ impl Hub {
         self.open_prepared_menu_window(conn, None, menu_kind, title, pos, slots, items, extra)
     }
 
-    /// Install a menu, using its reserved id if publication waited for an older close.
+    /// Install a menu, using its reserved id and generation if publication waited for a
+    /// transaction or an older close.
     #[allow(clippy::too_many_arguments)]
     pub fn open_prepared_menu_window(
         &mut self,
         conn: u32,
-        reserved: Option<i32>,
+        reserved: Option<(i32, u64)>,
         menu_kind: &str,
         title: Tag,
         pos: Option<(i32, i32, i32)>,
@@ -400,7 +401,9 @@ impl Hub {
         let i = self.guests.iter().position(|g| g.conn == conn)?;
         let encoded_extra = match extra {
             Some(data) => {
-                let next_window = reserved.unwrap_or_else(|| self.guests[i].next_window % 100 + 1);
+                let next_window = reserved
+                    .map(|(window, _)| window)
+                    .unwrap_or_else(|| self.guests[i].next_window % 100 + 1);
                 let message = sunrise_protocol::menu_extra::Message {
                     window: next_window,
                     pos: pos.map(|p| [p.0, p.1, p.2]),
@@ -418,8 +421,8 @@ impl Hub {
         };
         self.close_container_at(i);
         let window = self.guests.update(i, |g| {
-            let window = if let Some(window) = reserved {
-                g.activate_menu_window(window);
+            let window = if let Some((window, generation)) = reserved {
+                g.activate_menu_window(window, generation);
                 window
             } else {
                 g.next_menu_window()
@@ -494,7 +497,7 @@ impl Hub {
     pub fn open_prepared_native_menu(
         &mut self,
         conn: u32,
-        reserved: Option<i32>,
+        reserved: Option<(i32, u64)>,
         rows: u8,
         title: Tag,
         mut items: Vec<Option<ItemStack>>,

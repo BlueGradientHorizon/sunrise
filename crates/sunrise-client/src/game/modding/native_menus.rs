@@ -87,61 +87,126 @@ impl Game<'_> {
         uuid: u128,
         rows: u8,
         title: Text,
-        items: Vec<Option<ItemStack>>,
+        mut items: Vec<Option<ItemStack>>,
         replace: MenuReplace,
     ) -> Option<i32> {
         let conn = self.native_conn(uuid)?;
         if self.menu_click_in_progress(conn) {
             return None;
         }
-        self.open_native_after_close(conn, replace, move |game, reserved| {
-            let gi = game.guest_index(conn)?;
-            game.with_own_record(gi, |lan, _| {
-                lan.hub.open_prepared_native_menu(
-                    conn,
-                    reserved,
-                    rows,
-                    component_nbt(&title.component()),
-                    items,
-                )
-            })
-        })
+        let rows = rows.clamp(1, 6);
+        let size = usize::from(rows) * 9;
+        items.resize(size, None);
+        let registry_id: Box<str> = format!("minecraft:generic_9x{rows}").into_boxed_str();
+        self.lan
+            .as_ref()?
+            .hub
+            .registry_id("minecraft:menu", &registry_id)?;
+        let window = self.next_reserved_menu_window(conn)?;
+        let generation = sunrise_client::lan::guest::menu_generation();
+        self.stage_native_menu(super::transactions::StagedNativeMenu {
+            conn,
+            window,
+            generation,
+            registry_id,
+            title: component_nbt(&title.component()),
+            pos: None,
+            size,
+            items,
+            extra: None,
+            hidden: Vec::new(),
+            blockless_data: Vec::new(),
+            mod_type: None,
+            opening_item: None,
+            opener_block: None,
+            replace,
+            send_data_snapshot: false,
+        });
+        Some(window)
     }
 
-    /// Reserve an id when a transaction or an in-progress `removed` owns publication.
-    /// Publication uses the same replacement path in either case.
-    fn open_native_after_close(
+    pub(in crate::game) fn publish_staged_native_menu(
         &mut self,
-        conn: u32,
-        replace: MenuReplace,
-        open: impl FnOnce(&mut Game<'_>, Option<i32>) -> Option<i32> + Send + 'static,
+        staged: super::transactions::StagedNativeMenu,
+    ) {
+        let conn = staged.conn;
+        let window = staged.window;
+        self.publish_menu_open(
+            conn,
+            Some(window),
+            Box::new(move |game| {
+                if game.install_staged_native_menu(staged).is_none() {
+                    log::error!("Could not open reserved menu {window} for connection {conn}");
+                }
+            }),
+        );
+    }
+
+    fn install_staged_native_menu(
+        &mut self,
+        staged: super::transactions::StagedNativeMenu,
     ) -> Option<i32> {
-        let publish = move |game: &mut Game<'_>, reserved| {
-            if game.lan.as_ref()?.hub.guest(conn)?.disconnect_pending {
-                return None;
-            }
-            game.guest_replace_menu(conn, replace == MenuReplace::CloseFirst, |game| {
-                let window = open(game, reserved)?;
-                game.player_menu_opening(conn);
-                Some(window)
-            })
-        };
-        if self.menu_open_waits(conn) {
-            let window = self.lan.as_mut()?.hub.update_guest(conn, |guest| {
-                (!guest.disconnect_pending).then(|| guest.reserve_menu_window())
-            })??;
-            self.after_commit(super::transactions::After::MenuOpen(
-                conn,
-                Box::new(move |game| {
-                    if publish(game, Some(window)).is_none() {
-                        log::error!("Could not open reserved menu {window} for connection {conn}");
-                    }
-                }),
-            ));
-            Some(window)
-        } else {
-            publish(self, None)
+        let super::transactions::StagedNativeMenu {
+            conn,
+            window,
+            generation,
+            registry_id,
+            title,
+            pos,
+            items,
+            extra,
+            hidden,
+            blockless_data,
+            opening_item,
+            opener_block,
+            replace,
+            send_data_snapshot,
+            ..
+        } = staged;
+        if self.lan.as_ref()?.hub.guest(conn)?.disconnect_pending {
+            return None;
         }
+        self.guest_replace_menu_for_window(
+            conn,
+            Some(window),
+            replace == MenuReplace::CloseFirst,
+            |game| {
+                let gi = game.guest_index(conn)?;
+                // The first contents show the player's own inventory and cursor, in their turn too.
+                let installed = game.with_own_record(gi, |lan, _| {
+                    let opened = lan.hub.open_prepared_menu_window(
+                        conn,
+                        Some((window, generation)),
+                        &registry_id,
+                        title,
+                        pos,
+                        Slots::Native,
+                        items,
+                        extra,
+                    )?;
+                    if !hidden.is_empty()
+                        || !blockless_data.is_empty()
+                        || opening_item.is_some()
+                        || opener_block.is_some()
+                        || send_data_snapshot
+                    {
+                        lan.hub.guests.update(gi, |g| {
+                            let open = g.menu.as_mut().expect("the window was just installed");
+                            open.hidden = hidden;
+                            open.blockless_data = blockless_data;
+                            open.opening_item = opening_item;
+                            open.opener_block = opener_block;
+                            if send_data_snapshot {
+                                g.send_menu_data_snapshot();
+                            }
+                        });
+                    }
+                    Some(opened)
+                })?;
+                game.player_menu_opening(conn);
+                Some(installed)
+            },
+        )
     }
     /// `ServerPlayer.openMenu(provider, extraDataWriter)` for a content mod menu type and no
     /// block: the type's container slots show empty and their clicks reach the mods, as
@@ -225,38 +290,42 @@ impl Game<'_> {
             return Ok(None);
         };
         let window = self
-            .open_native_after_close(conn, replace, move |game, reserved| {
-                let gi = game.guest_index(conn)?;
-                // The first contents show the player's own inventory and cursor, in their turn too.
-                game.with_own_record(gi, |lan, _| {
-                    let window = lan.hub.open_prepared_menu_window(
-                        conn,
-                        reserved,
-                        &id,
-                        title,
-                        pos,
-                        Slots::Native,
-                        vec![None; kind.slots],
-                        Some(extra),
-                    )?;
-                    lan.hub.guests.update(gi, |g| {
-                        let open = g.menu.as_mut().expect("the window was just installed");
-                        open.hidden = hidden.iter().copied().map(usize::from).collect();
-                        open.blockless_data = data;
-                        open.opening_item = opening_item;
-                        open.opener_block = opener;
-                        g.send_menu_data_snapshot();
-                    });
-                    Some(window)
-                })
-            })
+            .next_reserved_menu_window(conn)
             .ok_or(OpenMenuError::PlayerUnavailable)?;
+        let generation = sunrise_client::lan::guest::menu_generation();
+        self.stage_native_menu(super::transactions::StagedNativeMenu {
+            conn,
+            window,
+            generation,
+            registry_id: id.as_str().into(),
+            title,
+            pos,
+            size: kind.slots,
+            items: vec![None; kind.slots],
+            extra: Some(extra),
+            hidden: hidden.iter().copied().map(usize::from).collect(),
+            blockless_data: data,
+            mod_type: Some(kind),
+            opening_item,
+            opener_block: opener,
+            replace,
+            send_data_snapshot: true,
+        });
         Ok(Some(window))
     }
     /// The native menu the player has open as window `window`, for its slots;
     /// None for another window, a menu the game opened, or a player not here.
     pub(super) fn menu(&self, uuid: u128, window: i32) -> Option<MenuRef> {
         let conn = self.native_conn(uuid)?;
+        if let Some(staged) = self.latest_staged_menu(conn) {
+            let super::transactions::StagedMenu::Native(staged) = staged else {
+                return None;
+            };
+            (staged.window == window).then_some(())?;
+            return self
+                .player_container_menu(self.player(uuid)?)
+                .filter(|menu| menu.fields().window == window);
+        }
         self.lan
             .as_ref()?
             .hub
@@ -277,7 +346,7 @@ impl Game<'_> {
         &mut self,
         uuid: u128,
         window: i32,
-        items: Vec<Option<ItemStack>>,
+        mut items: Vec<Option<ItemStack>>,
     ) -> Result<(), mod_api::MenuItemsRefusal> {
         use mod_api::MenuItemsRefusal;
         if self.remote.is_some() {
@@ -285,6 +354,28 @@ impl Game<'_> {
         }
         let conn = self.native_conn(uuid).ok_or(MenuItemsRefusal::NoPlayer)?;
         let transactional = !self.transactions.is_empty();
+        if let Some(staged) = self.latest_staged_menu(conn) {
+            let super::transactions::StagedMenu::Native(staged) = staged else {
+                return Err(MenuItemsRefusal::NotOpen);
+            };
+            if staged.window != window {
+                return Err(MenuItemsRefusal::NotOpen);
+            }
+            if staged.owned_slots().is_some() {
+                return Err(MenuItemsRefusal::OwnedSlots);
+            }
+            let generation = staged.generation;
+            let size = staged.size;
+            if let Some(player) = self.player(uuid) {
+                self.journal_menus(player);
+            }
+            items.resize(size, None);
+            let staged = self
+                .staged_native_menu_mut(conn, generation)
+                .ok_or(MenuItemsRefusal::NotOpen)?;
+            staged.items = items;
+            return Ok(());
+        }
         if transactional && let Some(player) = self.player(uuid) {
             self.journal_menus(player);
         }
@@ -304,8 +395,21 @@ impl Game<'_> {
     }
     /// Closes the player's native menu at the root commit, or immediately outside a transaction.
     pub(super) fn close_menu(&mut self, uuid: u128) {
-        if let Some(conn) = self.native_conn(uuid)
-            && let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn))
+        let Some(conn) = self.native_conn(uuid) else {
+            return;
+        };
+        if let Some(staged) = self.latest_staged_menu(conn) {
+            if let super::transactions::StagedMenu::Native(staged) = staged {
+                let (window, generation) = (staged.window, staged.generation);
+                self.reply_menu_click_for(
+                    conn,
+                    generation,
+                    super::lan_menus::ClickReply::Close(window),
+                );
+            }
+            return;
+        }
+        if let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn))
             && let Some(open) = guest
                 .menu
                 .as_ref()

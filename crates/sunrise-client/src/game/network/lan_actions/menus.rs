@@ -482,7 +482,7 @@ impl Game<'_> {
     /// replacement keeps its cursor and crafting inputs. The guest's level
     /// must be the one in place.
     pub(in crate::game) fn guest_close_all(&mut self, conn: u32) {
-        self.guest_replace_menu(conn, false, |_| ());
+        self.guest_replace_menu_for_window(conn, None, false, |_| ());
     }
 
     /// Replace a menu after the old owner and Close listeners have run. Opens requested
@@ -493,7 +493,22 @@ impl Game<'_> {
         tell: bool,
         open: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let (_, pending) = self.guest_remove_menus(conn, MenuRemoval::Live, tell);
+        let replacing_window = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+            .map(|guest| guest.next_window % 100 + 1);
+        self.guest_replace_menu_for_window(conn, replacing_window, tell, open)
+    }
+
+    pub(in crate::game) fn guest_replace_menu_for_window<R>(
+        &mut self,
+        conn: u32,
+        replacing_window: Option<i32>,
+        tell: bool,
+        open: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let (_, pending) = self.guest_remove_menus(conn, MenuRemoval::Live, tell, replacing_window);
         let result = open(self);
         for next in pending {
             next(self);
@@ -532,7 +547,7 @@ impl Game<'_> {
             } else if super::super::native_menus::open_menu_of(host, conn)
                 .is_some_and(|(active, ..)| active == window)
             {
-                self.guest_replace_menu(conn, tell, |_| ());
+                self.guest_replace_menu_for_window(conn, None, tell, |_| ());
             }
         }
         if back != theirs
@@ -554,18 +569,19 @@ impl Game<'_> {
 
     /// `Player.remove(CHANGED_DIMENSION)` removes both menus without dropping
     /// a cursor that still fits. Overflow belongs in the level the guest left.
-    /// Return the retired nonzero window in case the trip fails before sending a respawn.
-    pub(in crate::game) fn guest_close_menus_for_travel(&mut self, conn: u32) -> Option<i32> {
+    /// Return the retired nonzero window (for a failed trip before respawn) and any
+    /// reentrant opens queued during close, which run after `Hub::change_level` so
+    /// `change_level` never retires them or sends `Respawn` after their open.
+    pub(in crate::game) fn guest_close_menus_for_travel(
+        &mut self,
+        conn: u32,
+    ) -> (Option<i32>, Vec<super::super::lan_menus::MenuOpen>) {
         self.lan_crafting_removed(conn, Some(0), MenuRemoval::Live);
-        let (window, pending) = self.guest_remove_menus(conn, MenuRemoval::Live, false);
-        for open in pending {
-            open(self);
-        }
-        window
+        self.guest_remove_menus(conn, MenuRemoval::Live, false, None)
     }
 
     pub(in crate::game) fn guest_disconnected(&mut self, conn: u32) {
-        self.guest_remove_menus(conn, MenuRemoval::Disconnected, false);
+        self.guest_remove_menus(conn, MenuRemoval::Disconnected, false, None);
     }
 
     fn guest_remove_menus(
@@ -573,6 +589,7 @@ impl Game<'_> {
         conn: u32,
         removal: MenuRemoval,
         tell: bool,
+        replacing_window: Option<i32>,
     ) -> (Option<i32>, Vec<super::super::lan_menus::MenuOpen>) {
         let Some(host) = self.lan.as_mut() else {
             return (None, Vec::new());
@@ -595,7 +612,11 @@ impl Game<'_> {
             .map(|(window, ..)| window)
             .or_else(|| hub_menu.map(|(window, _)| window));
         if let Some(container) = window {
-            host.menus.entry(conn).or_default().closing = Some(Default::default());
+            host.menus.entry(conn).or_default().closing =
+                Some(super::super::lan_menus::ClosingMenu {
+                    opens: Vec::new(),
+                    last_reserved_window: replacing_window,
+                });
             if tell {
                 host.hub
                     .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));

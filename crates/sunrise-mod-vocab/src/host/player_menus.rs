@@ -59,8 +59,10 @@ pub trait PlayerMenusBackendMut {
     /// `PlayerUnavailable` (including a client that does not support the blockless layout, a
     /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
     /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open
-    /// does not close the old menu. In an ordinary transaction or a closing-menu callback,
-    /// the id is reserved and becomes usable after commit or after Close, respectively.
+    /// does not close the old menu. In an ordinary transaction, the returned id is staged
+    /// for transaction-scoped reads and slot/data writes while owner teardown, wire open and
+    /// Close/Open events publish at the root commit (an abort drops the staged menu without
+    /// advancing window ids). In a closing-menu callback, publication waits until Close returns.
     #[access(WorldOnly)]
     fn player_open_mod_menu(
         &mut self,

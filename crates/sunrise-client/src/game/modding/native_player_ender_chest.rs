@@ -101,8 +101,12 @@ impl Game<'_> {
         }
         let title = component_nbt(&title.component());
         if self.menu_open_waits(conn) {
+            let reserved_window = self
+                .reserve_opaque_menu_window(conn)
+                .ok_or(OpenMenuError::PlayerUnavailable)?;
             self.after_commit(super::transactions::After::MenuOpen(
                 conn,
+                Some(reserved_window),
                 Box::new(move |game| {
                     if !game.request_ender_menu(conn, title) {
                         log::error!("Could not open the ender chest menu for connection {conn}");

@@ -16,8 +16,10 @@ pub trait MenusServerHost {
     /// centring the mouse again. Packets for the old window are ignored. The
     /// items of an open menu change through its slots (`menu`), not by
     /// opening it again. An active speculative menu click refuses the open with `Ok(None)`.
-    /// In an ordinary transaction or a closing-menu callback, the returned id is reserved:
-    /// the new window is usable after commit and after the old menu's Close, respectively.
+    /// In an ordinary transaction, the returned id is staged for transaction-scoped reads
+    /// and slot/data writes while owner teardown, wire open and Close/Open events publish at
+    /// the root commit (and an abort drops the staged menu without advancing window ids).
+    /// In a closing-menu callback, publication waits until the old menu's Close returns.
     #[access(WorldOnly)]
     fn open_menu(
         &mut self,

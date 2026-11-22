@@ -731,7 +731,10 @@ impl Game<'_> {
         if end_portal && !riding {
             // EndPortalBlock.entityInside: the first exit from the End shows the credits.
             if self.dim == Dim::End && !host.hub.guest(conn).is_some_and(|g| g.seen_credits) {
-                let _ = self.guest_close_menus_for_travel(conn);
+                let (_, pending_opens) = self.guest_close_menus_for_travel(conn);
+                for open in pending_opens {
+                    open(self);
+                }
                 let Some(host) = self.lan.as_mut() else {
                     return;
                 };
@@ -972,12 +975,12 @@ impl Game<'_> {
             .or_else(|| self.end_destination(entering, target))
             .unwrap_or(Vec3::new(from.x * scale, from.y, from.z * scale));
         self.end_portal_travel = false;
-        let retired_window = if source != target {
+        let (retired_window, mut pending_opens) = if source != target {
             self.guest_close_menus_for_travel(conn)
         } else {
-            None
+            (None, Vec::new())
         };
-        if !self.enter_travel_destination(conn, target, retired_window) {
+        if !self.enter_travel_destination(conn, target, retired_window, &mut pending_opens) {
             return;
         }
         let Some(i) = self.guest_index(conn) else {
@@ -1006,6 +1009,9 @@ impl Game<'_> {
             });
         }
         self.bind_player_attachments(conn, false);
+        for open in pending_opens {
+            open(self);
+        }
         self.as_guest(conn, |g| {
             if credits_respawn {
                 // ServerGamePacketListenerImpl.handleClientCommand:
@@ -1048,18 +1054,23 @@ impl Game<'_> {
     }
 
     /// Menu removal is silent on a successful trip: the respawn closes the
-    /// old screen. On failure, close it explicitly unless a listener opened
-    /// a replacement during removal.
+    /// old screen, and any reentrant opens queued by close listeners run in the
+    /// destination after `Hub::change_level`. On failure, run those opens in the
+    /// source level and close the retired window explicitly unless one replaced it.
     fn enter_travel_destination(
         &mut self,
         conn: u32,
         dim: Dim,
         retired_window: Option<i32>,
+        pending_opens: &mut Vec<super::lan_menus::MenuOpen>,
     ) -> bool {
         let Err(e) = self.enter_level(dim) else {
             return true;
         };
         log::error!("could not open {}: {e}", dim.id());
+        for open in pending_opens.drain(..) {
+            open(self);
+        }
         if let Some(container) = retired_window
             && let Some(host) = self.lan.as_mut()
             && super::native_menus::open_menu_of(host, conn).is_none()
@@ -1622,26 +1633,28 @@ impl Game<'_> {
             };
             let back = self.dim;
             let source = Dim::from_id(&guest.dimension);
-            let retired_window = if t.dim != source {
+            let (retired_window, mut pending_opens) = if t.dim != source {
                 if let Err(e) = self.enter_level(source) {
                     log::error!("could not open {}: {e}", source.id());
                     continue;
                 }
-                let window = self.guest_close_menus_for_travel(t.conn);
+                let closed = self.guest_close_menus_for_travel(t.conn);
                 if let Some(host) = self.lan.as_mut() {
                     drop_hook(host, t.conn);
                 }
-                window
+                closed
             } else {
-                None
+                (None, Vec::new())
             };
             // Cursor overflow and opening a level can run listeners that
             // change the guest list. Look up the index only after both.
-            let index = if self.enter_travel_destination(t.conn, t.dim, retired_window) {
-                self.guest_index(t.conn)
-            } else {
-                None
-            };
+            let index =
+                if self.enter_travel_destination(t.conn, t.dim, retired_window, &mut pending_opens)
+                {
+                    self.guest_index(t.conn)
+                } else {
+                    None
+                };
             let Some(i) = index else {
                 if let Err(e) = self.enter_level(back) {
                     log::error!("could not reopen {}: {e}", back.id());
@@ -1679,6 +1692,9 @@ impl Game<'_> {
                 });
             }
             self.bind_player_attachments(t.conn, false);
+            for open in pending_opens {
+                open(self);
+            }
             self.as_guest(t.conn, |g| {
                 g.trigger_dimension(source, t.dim, origin);
                 // The mods hear the teleport into another level, with the

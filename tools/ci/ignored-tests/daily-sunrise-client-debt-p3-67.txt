@@ -6,3 +6,6 @@ sunrise-client game::native_menus::owned_slots_tests::owner_can_open_a_replaceme
 sunrise-client game::native_menus::owned_slots_tests::unsupported_crafting_close_does_not_report_the_inventory lib daily resources
 sunrise-client game::native_menus::owned_slots_tests::late_container_sync_invalidation_closes_in_its_original_level lib daily resources
 sunrise-client game::native_menus::owned_slots_tests::disconnect_reports_logout_then_removed_then_close_with_live_views lib daily resources
+sunrise-client game::native_menus::owned_slots_tests::staged_replacement_keeps_initialized_slots_on_commit_and_rolls_back_nested_edits lib daily resources
+sunrise-client game::native_menus::owned_slots_tests::aborted_window_reservations_do_not_collide_at_wraparound lib daily resources
+sunrise-client game::native_menus::owned_slots_tests::reentrant_open_during_travel_close_opens_after_change_level lib daily resources

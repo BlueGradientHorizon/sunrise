@@ -40,6 +40,9 @@ pub(super) type MenuOpen = Box<dyn FnOnce(&mut super::Game<'_>) + Send>;
 #[derive(Default)]
 pub(super) struct ClosingMenu {
     pub(super) opens: Vec<MenuOpen>,
+    /// The last window id reserved for this close or its queued reentrant opens, so
+    /// `Guest.next_window` only advances when a replacement actually publishes.
+    pub(super) last_reserved_window: Option<i32>,
 }
 
 /// An authoritative click reply, published only once the click's transaction has committed.
@@ -75,15 +78,19 @@ impl super::Game<'_> {
         }
     }
 
+    pub(super) fn reply_menu_click_for(&mut self, conn: u32, generation: u64, reply: ClickReply) {
+        self.after_commit(super::transactions::After::MenuClick(Box::new(
+            MenuClickReply {
+                conn,
+                generation,
+                reply,
+            },
+        )));
+    }
+
     pub(super) fn reply_menu_click(&mut self, conn: u32, reply: ClickReply) {
         if let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
-            self.after_commit(super::transactions::After::MenuClick(Box::new(
-                MenuClickReply {
-                    conn,
-                    generation: guest.menu_generation,
-                    reply,
-                },
-            )));
+            self.reply_menu_click_for(conn, guest.menu_generation, reply);
         }
     }
 
@@ -97,13 +104,21 @@ impl super::Game<'_> {
                 .is_some_and(|menus| menus.closing.is_some())
     }
 
-    pub(super) fn publish_menu_open(&mut self, conn: u32, open: MenuOpen) {
+    pub(super) fn publish_menu_open(
+        &mut self,
+        conn: u32,
+        reserved_window: Option<i32>,
+        open: MenuOpen,
+    ) {
         if let Some(closing) = self
             .lan
             .as_mut()
             .and_then(|host| host.menus.get_mut(&conn))
             .and_then(|menus| menus.closing.as_mut())
         {
+            if let Some(window) = reserved_window {
+                closing.last_reserved_window = Some(window);
+            }
             closing.opens.push(open);
         } else {
             open(self);

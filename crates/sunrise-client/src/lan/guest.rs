@@ -30,7 +30,7 @@ use sunrise_protocol::{
 /// the protocol's container id wraps back to the same number.
 static NEXT_MENU_GENERATION: AtomicU64 = AtomicU64::new(1);
 
-fn menu_generation() -> u64 {
+pub fn menu_generation() -> u64 {
     let mut generation = NEXT_MENU_GENERATION.load(Ordering::Relaxed);
     loop {
         let next = generation
@@ -588,21 +588,16 @@ impl Guest {
         self.ip_address = address.ip().to_string();
     }
 
-    /// Reserve the protocol id without changing the current menu or its cursor.
-    pub fn reserve_menu_window(&mut self) -> i32 {
-        self.next_window = self.next_window % 100 + 1;
-        self.next_window
-    }
-
     /// Allocate the next protocol window and a non-reusable menu identity.
     pub fn next_menu_window(&mut self) -> i32 {
-        let window = self.reserve_menu_window();
-        self.activate_menu_window(window);
+        let window = self.next_window % 100 + 1;
+        self.activate_menu_window(window, menu_generation());
         window
     }
 
-    pub(super) fn activate_menu_window(&mut self, window: i32) {
-        self.menu_generation = menu_generation();
+    pub(super) fn activate_menu_window(&mut self, window: i32, generation: u64) {
+        self.next_window = window;
+        self.menu_generation = generation;
         self.inactive_inventory_carried = self.carried.take();
         self.open_carried_sent = Some((window, None));
     }

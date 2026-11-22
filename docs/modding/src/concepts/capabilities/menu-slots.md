@@ -339,8 +339,10 @@ change in place: `host.menu(uuid, window)` is its `MenuRef` while the player sti
 another window, a closed menu or a player who left), and a write to `ItemPlace::MenuSlot { menu, slot }` in a
 transaction is sent with the next tick's container sync, one `ContainerSetSlot` per changed slot, as vanilla's
 `broadcastChanges` sends a menu a mod changed. Nothing reopens and the cursor stays where it is.
-Opening in an ordinary transaction or in the old menu's cleanup reserves the id without opening the screen.
-Use it after the root commit or in `player_container_open`, respectively. A close request in a transaction
+Opening a native menu inside an ordinary transaction stages it for transaction-scoped reads and slot/data
+writes while owner teardown, the open packet and Close/Open events publish at the root commit; an abort
+drops the staged menu without advancing window ids. Opening from the old menu's cleanup queues publication
+until Close returns; configure that replacement in `player_container_open`. A close request in a transaction
 runs all of the close at commit; an abort leaves the old menu and its slots intact.
 
 ```rust,ignore
