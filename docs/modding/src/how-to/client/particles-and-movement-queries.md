@@ -47,7 +47,26 @@ velocity and the level's light.
 A particle provider (`Hooks::register_particle_providers`) moves a mod's own particle type with code. The type is
 named by its id (`mymod:spark`), its sprite set and spawn values are the declarative
 `assets/<namespace>/particles/<path>.json`, and it is spawned with `ParticleOptions::simple` on the key
-`Registrar::particle_key` issued for the id.
+`Registrar::particle_key` issued for the ID. Register a factory on the client at startup:
+
+```rust,ignore
+fn register_particle_providers(
+    &self,
+    _context: &RegistrationContext,
+    event: &mut RegisterParticleProvidersEvent<'_>,
+) {
+    event.register_sprite_set(Identifier::parse("mymod:spark").unwrap(), |sprites| {
+        SparkProvider::new(sprites.frame_count())
+    });
+}
+```
+
+The factory captures owned `Send + Sync + 'static` data and returns a `ParticleProvider`.
+The last accepted registration for an ID wins. Its factory runs once per sprite load, including
+reloads, with a `ParticleSpriteSet` that describes the nonempty frame list for that load. No
+atlas data or engine handles are exposed. A missing set or failed bind is reported for the ID
+and its mod; that type does not spawn, rather than falling back to declarative motion. Types
+without a provider registration still use their declarations.
 
 The game calls `ParticleProvider::tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView)`
 once per type per tick, after it has aged the particles, with every live particle of the type; it is not called
@@ -69,7 +88,9 @@ without skylight always reads zero on the sky layer. Currently, an absent chunk 
 reads full sky where present and no block light; below a loaded column both layers read zero. The client light storage
 for padding sections and unloaded borders is tracked in [#2761](https://github.com/sunrise-org/sunrise/issues/2761).
 
-Dispatch reuses its batch storage once it has enough capacity.
+Dispatch reuses its batch storage once it has enough capacity. A provider callback panic is
+reported in the log and error toast with the mod's name, and disables that registration for the
+session. Live provider particles are discarded when the sprite sets reload.
 
 ### Particle render groups
 

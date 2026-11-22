@@ -1,13 +1,12 @@
 //! Code-defined particle providers, as a client mod registers them in `register_particle_providers`
 //! (NeoForge's `RegisterParticleProvidersEvent` and `ParticleProvider`).
 //!
-//! A provider owns one of the mod's own particle types, named by its id (`mymod:spark`) and spawned
-//! with `ParticleOptions::simple` on the key `Registrar::particle_key` issued for it. The particle is built as a declarative one is (the sprite set and the
-//! `sunrise:behaviour` of `assets/<namespace>/particles/<path>.json` give its spawn values) and the
-//! provider then moves it every tick. The game resolves a type's provider once, when the particle
-//! sprite sets load, so a tick goes to the provider that owns the particle and to no other.
-use crate::{BlockState, LightLayer};
-use std::{collections::BTreeMap, sync::Arc};
+//! A provider owns one of the mod's own particle types, named by its ID (`mymod:spark`) and spawned
+//! with `ParticleOptions::simple` on the key `Registrar::particle_key` issued for it. Its factory
+//! binds once per sprite load, after the game's sprite discovery. The sprite set and the
+//! `sunrise:behaviour` of `assets/<namespace>/particles/<path>.json` give the spawn values; the
+//! bound provider then moves the particle every tick.
+use crate::{BlockState, Identifier, LightLayer, RegisterParticleProvidersEvent};
 
 /// One particle of a provider's type, as its tick reads and writes it: the fields of vanilla's
 /// `Particle` a `tick` moves. Plain numbers, so a tick allocates nothing.
@@ -128,9 +127,9 @@ pub trait ParticleLevelView {
     fn brightness(&self, layer: LightLayer, pos: [i32; 3]) -> u8;
 }
 
-/// A mod's particle provider: NeoForge's `ParticleProvider`, held by the game for every particle
-/// of its type. Particles of a type share one provider, so per-particle data lives in
-/// [`ModParticle::state`], not in the provider.
+/// A mod's particle provider: NeoForge's `ParticleProvider`, created by a factory registered with
+/// [`RegisterParticleProvidersEvent::register_sprite_set`]. Particles of a type share the bound
+/// provider, so per-particle data lives in [`ModParticle::state`], not in the provider.
 ///
 /// A tick has no `Host`: the engine ticks particles inside the render crate, which reaches no
 /// gameplay. It does read the level through [`ParticleLevelView`].
@@ -142,93 +141,56 @@ pub trait ParticleProvider: Send + Sync + 'static {
     /// that is not finite expires the particle. Batch iteration preserves length and order.
     /// Set `removed` to expire a particle. If a callback returns a different length, the engine
     /// expires the batch's particles. Not called when no particle of the type is alive.
+    /// A failed call does not apply the batch. A panic disables this provider registration for
+    /// the session and is reported with its mod in the log and the client error toast.
     fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView);
 }
 
-/// The particle provider registry `register_particle_providers` hands out: NeoForge's
-/// `RegisterParticleProvidersEvent`.
-pub trait ParticleProviders {
-    /// `registerSpriteSet(type, provider)`: `provider` moves every particle of the type `name`
-    /// (`mymod:spark`), whose sprite set is `assets/mymod/particles/spark.json`. A later
-    /// registration for a name replaces the earlier one. A name no sprite set matches is logged
-    /// and its particles draw nothing, as any `named` type without its sprite set does.
-    fn register(&mut self, name: String, provider: Arc<dyn ParticleProvider>);
+/// The nonempty sprite set bound for a provider on this resource load. It describes the frames
+/// from the particle's JSON, in declaration order, without exposing atlas data or engine handles.
+// no wire: describes a sprite set bound for the current in-process resource load.
+// exhaustive: the game constructs this descriptor; the field is private.
+#[derive(Clone, Copy)]
+pub struct ParticleSpriteSet {
+    frame_count: usize,
 }
 
-// no wire: process-local listener or callback storage; trait objects are invoked through host dispatch, not serialized.
-/// The game's [`ParticleProviders`]: the registrations by name.
-#[derive(Default)]
-// exhaustive: its field is private; the game builds it
-pub struct ParticleProviderRegistry {
-    providers: BTreeMap<String, Arc<dyn ParticleProvider>>,
-}
-
-impl ParticleProviders for ParticleProviderRegistry {
-    fn register(&mut self, name: String, provider: Arc<dyn ParticleProvider>) {
-        self.providers.insert(name, provider);
+impl ParticleSpriteSet {
+    /// The number of frames in the bound set. Frame indices start at zero.
+    pub fn frame_count(&self) -> usize {
+        self.frame_count
     }
 }
 
-impl ParticleProviderRegistry {
-    /// Each type's provider, the last registration for a name winning.
-    pub fn into_providers(self) -> BTreeMap<String, Arc<dyn ParticleProvider>> {
-        self.providers
+/// Describe a sprite set the renderer has already loaded and found to be nonempty.
+pub fn particle_sprite_set(frame_count: usize) -> ParticleSpriteSet {
+    ParticleSpriteSet { frame_count }
+}
+
+impl RegisterParticleProvidersEvent<'_> {
+    /// Stage a factory for a particle type's `assets/<namespace>/particles/<path>.json` sprite set
+    /// (NeoForge's `registerSpriteSet`). Use the ID passed to `Registrar::particle_key`.
+    /// A phase-refused listener's entries are discarded. For each ID, only the last accepted
+    /// factory runs, once per load with that load's nonempty set. A missing set or failed bind
+    /// is reported and no particles of the type are spawned, rather than using declarative motion.
+    pub fn register_sprite_set<P: ParticleProvider>(
+        &mut self,
+        id: Identifier,
+        factory: impl Fn(ParticleSpriteSet) -> P + Send + Sync + 'static,
+    ) {
+        self.providers.push(ParticleProviderRegistration {
+            id,
+            factory: Box::new(move |sprites| Box::new(factory(sprites))),
+        });
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct Drift(f64);
-    impl ParticleProvider for Drift {
-        fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
-            for particle in particles {
-                particle.position[0] += self.0;
-            }
-        }
-    }
-
-    fn particle() -> ModParticle {
-        ModParticle {
-            position: [0.0; 3],
-            previous: [0.0; 3],
-            velocity: [0.0; 3],
-            age: 1,
-            lifetime: 20,
-            size: 0.1,
-            rgba: [1.0; 4],
-            frame: 0,
-            removed: false,
-            state: [0.0; 4],
-            facing: ParticleFacing::default(),
-            roll: 0.0,
-        }
-    }
-
-    struct Air;
-    impl ParticleLevelView for Air {
-        fn block_state(&self, _: [i32; 3]) -> BlockState {
-            unreachable!("the test providers read no blocks")
-        }
-        fn brightness(&self, _: LightLayer, _: [i32; 3]) -> u8 {
-            0
-        }
-    }
-
-    #[test]
-    fn a_later_registration_for_a_name_replaces_the_earlier_one() {
-        let mut registry = ParticleProviderRegistry::default();
-        registry.register("mymod:a".into(), Arc::new(Drift(1.0)));
-        registry.register("mymod:b".into(), Arc::new(Drift(2.0)));
-        registry.register("mymod:a".into(), Arc::new(Drift(3.0)));
-        let providers = registry.into_providers();
-        assert_eq!(providers.len(), 2);
-        let mut a = particle_batch_from_vec(vec![particle()]);
-        let mut b = particle_batch_from_vec(vec![particle()]);
-        providers["mymod:a"].tick(&mut a, &Air);
-        providers["mymod:b"].tick(&mut b, &Air);
-        let at = |batch: &mut ParticleBatch| batch.get_mut(0).unwrap().position[0];
-        assert_eq!((at(&mut a), at(&mut b)), (3.0, 2.0));
-    }
+/// A staged sprite-set factory; dispatch attributes it to the registering mod.
+// no wire: registration retains executable native code.
+#[non_exhaustive]
+pub struct ParticleProviderRegistration {
+    /// The registered particle type's ID.
+    pub id: Identifier,
+    /// Constructs the provider for the loaded nonempty sprite set.
+    pub factory: Box<dyn Fn(ParticleSpriteSet) -> Box<dyn ParticleProvider> + Send + Sync>,
 }

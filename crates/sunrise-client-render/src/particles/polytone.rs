@@ -1851,7 +1851,7 @@ mod tests {
             ModSet {
                 set: 0,
                 behaviour: None,
-                provider: None,
+                provider: super::super::native::Binding::Declarative,
                 group: None,
             },
         );
@@ -2646,7 +2646,7 @@ mod tests {
             ModSet {
                 set: 0,
                 behaviour: None,
-                provider: None,
+                provider: super::super::native::Binding::Declarative,
                 group: None,
             },
         );

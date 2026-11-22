@@ -99,13 +99,16 @@ impl Group {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{native::tests::Scene, *};
+    use super::super::{
+        native::tests::{Scene, provider_factories},
+        *,
+    };
     use super::{Group, ParticleGroup, freeze};
     use mod_api::{
         __private::game::RegistrationContextNew, Identifier, ParticleBatch, ParticleLevelView,
-        RegistrationContext,
+        ParticleProvider, RegistrationContext,
     };
-    use std::sync::Mutex;
+    use std::{collections::BTreeMap, sync::Mutex};
     use sunrise_assets::resource_source::Resource;
 
     fn group(id: &str, blend: ParticleBlend, particles: &[&str]) -> Group {
@@ -161,11 +164,12 @@ mod tests {
             assert!(calls.lock().unwrap().is_empty());
 
             let pack = Pack::new();
-            let mut engine = ParticleEngine::with_group_factories(
+            let mut engine = ParticleEngine::with_factories(
                 &pack.root,
                 &pack.atlas,
                 &HashSet::new(),
                 &factories,
+                Arc::default(),
             );
             let handles = |engine: &ParticleEngine| {
                 ["mymod:glow", "mymod:shade", "mymod:orbit", "mymod:plain"]
@@ -184,11 +188,12 @@ mod tests {
             assert_eq!(handles(&engine), [Some(0), Some(1), None, None]);
             assert_eq!(*calls.lock().unwrap(), ["glow", "shade"]);
 
-            let next = ParticleEngine::with_group_factories(
+            let next = ParticleEngine::with_factories(
                 &pack.root,
                 &pack.atlas,
                 &HashSet::new(),
                 &factories,
+                Arc::default(),
             );
             assert_eq!(handles(&next), [Some(0), Some(1), None, None]);
             assert_eq!(*calls.lock().unwrap(), ["glow", "shade", "glow", "shade"]);
@@ -249,10 +254,16 @@ mod tests {
                 atlas,
             }
         }
-        /// An engine whose groups are supplied as already constructed definitions.
+        /// An engine with the shade provider and already constructed group definitions.
         fn engine(&self, groups: Vec<Group>) -> ParticleEngine {
-            let mut e =
-                ParticleEngine::with_group_factories(&self.root, &self.atlas, &HashSet::new(), &[]);
+            let factories = provider_factories("mymod:shade", Arc::new(Stay));
+            let mut e = ParticleEngine::with_factories(
+                &self.root,
+                &self.atlas,
+                &HashSet::new(),
+                &[],
+                factories,
+            );
             e.groups = groups;
             e.resolve_groups();
             e
@@ -319,10 +330,7 @@ mod tests {
             [Some(0), Some(0), Some(1), None]
         );
         // A provider's particle is blended on its own, and an orbit type's declaration is opaque:
-        // each takes its group's blend.
-        e.providers.insert("mymod:shade".into(), Arc::new(Stay));
-        pack.reload(&mut e);
-        // Spawned in the reverse of the order the groups draw in.
+        // each takes its group's blend. Spawned in the reverse of the order the groups draw in.
         for (name, x) in [
             ("mymod:shade", 3.0),
             ("mymod:glow", 2.0),
@@ -365,8 +373,6 @@ mod tests {
             group("mymod:glow", ParticleBlend::Translucent, &["mymod:glow"]),
             group("mymod:shade", ParticleBlend::Opaque, &["mymod:shade"]),
         ]);
-        e.providers.insert("mymod:shade".into(), Arc::new(Stay));
-        pack.reload(&mut e);
         let options = ParticleOptions::named("mymod:glow");
         let mut full = e
             .make(&options, [0.0; 3], [0.0; 3], 1, SpawnScope::BARE)

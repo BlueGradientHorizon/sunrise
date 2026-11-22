@@ -29,8 +29,9 @@ use super::{
 use mod_api::__private::game::{
     BlockStateDefinitionRegistration, ItemModelRegistration, ItemTintSourceRegistration,
     JsonAnimationTypeRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
-    ParticleGroupRegistration, PresetEditorFactoryRegistration, RangeSelectPropertyRegistration,
-    SelectPropertyRegistration, SpriteSourceRegistration, StandaloneModelRegistration,
+    ParticleGroupRegistration, ParticleProviderRegistration, PresetEditorFactoryRegistration,
+    RangeSelectPropertyRegistration, SelectPropertyRegistration, SpriteSourceRegistration,
+    StandaloneModelRegistration,
 };
 use mod_api::GameMode;
 use mod_api::GameTests;
@@ -41,7 +42,7 @@ use mod_api::{
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
     ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
     EntityRenderers, GameRuleActor, HandRender, InsideEffects, InteractionAttempt, InteractionKey,
-    ItemEntityRef, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange, ParticleProviders,
+    ItemEntityRef, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
     PathComputationType, Placement, PlayerRef, PoiTypeExtensions, RecipeBookCategory, ScreenId,
     ScreenOpening, ScreenTarget, ScreenshotImage, ServerReloadListeners, ServerTickPhase,
     SpecialModelRenderers, TicketController, ToolUse, VillagerProfessions, WorldPhase,

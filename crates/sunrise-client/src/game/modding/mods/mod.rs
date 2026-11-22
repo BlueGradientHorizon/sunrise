@@ -706,18 +706,18 @@ pub(super) fn register_entity_renderers(role: ExecutionRole) {
     Game::native_register_entity_renderers(&RegistrationContext::new(), &mut registry);
     super::native_entity_renderers::register(registry.into_renderers());
 }
-/// The native mods' particle providers (`native_register_particle_providers`) and render groups
-/// (`native_register_particle_groups`) are registered once at startup. Each particle engine
-/// constructs its groups once; sprite-set loads associate types with those groups and providers.
+/// Native mods register particle provider and render group factories once at startup. Each
+/// engine constructs its groups once and binds its providers each time it loads the sprite sets.
 pub(super) fn register_particles(role: ExecutionRole) {
     if !role.is_client() {
         return;
     }
-    let mut registry = mod_api::ParticleProviderRegistry::default();
-    Game::native_register_particle_providers(&RegistrationContext::new(), &mut registry);
-    sunrise_client::particles::register_particle_providers(registry.into_providers());
+    let context = RegistrationContext::new();
+    let mut provider_factories = Vec::new();
+    Game::native_register_particle_providers(&context, &mut provider_factories);
+    sunrise_client::particles::register_particle_providers(provider_factories);
     let mut group_factories = Vec::new();
-    Game::native_register_particle_groups(&RegistrationContext::new(), &mut group_factories);
+    Game::native_register_particle_groups(&context, &mut group_factories);
     sunrise_client::particles::register_particle_groups(group_factories);
 }
 

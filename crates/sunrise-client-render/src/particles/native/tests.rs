@@ -2,10 +2,14 @@ use super::super::*;
 use super::ROLL_LIMIT;
 use crate::chunk::{Chunk, Light};
 use mod_api::{
-    BlockState, LightLayer, ModParticle, ParticleBatch, ParticleFacing, ParticleLevelView,
-    ParticleProvider,
+    __private::game::RegistrationContextNew, BlockState, Identifier, LightLayer, ModParticle,
+    ParticleBatch, ParticleFacing, ParticleLevelView, ParticleProvider, RegistrationContext,
 };
-use std::sync::Arc;
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+};
+use sunrise_assets::resource_source::Resource;
 use {
     sunrise_core::nbt::Tag,
     sunrise_world::{
@@ -84,35 +88,66 @@ impl Scene {
         }
     }
 }
+/// A scoped registration for fixtures that exercise a provider's existing batch behavior.
+pub(in crate::particles) fn provider_factories(
+    id: &str,
+    provider: Arc<dyn ParticleProvider>,
+) -> Arc<native::Factories> {
+    struct Shared(Arc<dyn ParticleProvider>);
+    impl ParticleProvider for Shared {
+        fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView) {
+            self.0.tick(particles, level);
+        }
+    }
+    struct Register(Identifier, Arc<dyn ParticleProvider>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Register {
+        fn register_particle_providers(
+            &self,
+            _: &RegistrationContext,
+            event: &mut mod_api::RegisterParticleProvidersEvent<'_>,
+        ) {
+            let provider = self.1.clone();
+            event.register_sprite_set(self.0.clone(), move |_| Shared(provider.clone()));
+        }
+    }
+
+    let id = Identifier::parse(id).unwrap();
+    let mods = vec![mod_api::ModEntry::new(
+        "provider_fixture",
+        Box::new(Register(id, provider)),
+    )];
+    mod_platform::testing::with_mods(mods.into(), || {
+        let mut staged = Vec::new();
+        mod_api::dispatch_register_particle_providers(&RegistrationContext::new(), &mut staged);
+        Arc::new(native::freeze(staged))
+    })
+}
+
 fn engine() -> ParticleEngine {
-    let mut e = ParticleEngine::new(
-        &ResourceSource::indexed(Default::default()),
-        &HashMap::new(),
-        &HashSet::new(),
-    );
+    fixture_engine(Arc::default())
+}
+
+fn fixture_engine(factories: Arc<native::Factories>) -> ParticleEngine {
+    let root = ResourceSource::indexed(BTreeMap::from([(
+        "assets/example/particles/orbit.json".into(),
+        Resource::bytes(br#"{"textures":["example:one","example:two"]}"#.to_vec()),
+    )]));
+    let rect = Rect {
+        u0: 0.0,
+        v0: 0.0,
+        u1: 1.0,
+        v1: 1.0,
+        w: 16,
+        h: 16,
+    };
+    let atlas = HashMap::from([
+        ("example:particle/one".into(), rect),
+        ("example:particle/two".into(), rect),
+    ]);
+    let mut e = ParticleEngine::with_factories(&root, &atlas, &HashSet::new(), &[], factories);
     // The game's table of block states; the providers here read none of them.
     e.set_block_state_source(|| Some(Arc::new(Vec::<BlockState>::new())));
-    e.mod_sets.insert(
-        "example:orbit".into(),
-        ModSet {
-            set: 0,
-            behaviour: None,
-            provider: None,
-            group: None,
-        },
-    );
-    e.set_sprites.push(vec![0, 1]);
-    e.rects = vec![
-        Some(Rect {
-            u0: 0.0,
-            v0: 0.0,
-            u1: 1.0,
-            v1: 1.0,
-            w: 16,
-            h: 16
-        });
-        2
-    ];
     e
 }
 #[test]
@@ -242,10 +277,7 @@ fn a_provider_runs_once_per_tick_on_all_its_particles() {
     assert_eq!(calls.0.lock().unwrap().len(), 1);
 }
 fn engine_with(provider: Arc<dyn ParticleProvider>) -> ParticleEngine {
-    let mut e = engine();
-    e.providers.insert("example:orbit".into(), provider.clone());
-    e.mod_sets.get_mut("example:orbit").unwrap().provider = Some((0, provider));
-    e
+    fixture_engine(provider_factories("example:orbit", provider))
 }
 fn provided(e: &mut ParticleEngine) -> Particle {
     e.make(
@@ -681,55 +713,131 @@ fn the_providers_level_view_reads_the_loaded_chunks_states() {
     });
 }
 #[test]
-fn a_type_resolves_to_its_provider_at_load_and_other_types_stay_declarative() {
-    let dir = std::env::temp_dir().join(format!("sunrise-provider-sets-{}", std::process::id()));
-    let particles = dir.join("assets/mymod/particles");
-    std::fs::create_dir_all(&particles).unwrap();
-    for name in ["orbit", "plain"] {
-        std::fs::write(
-            particles.join(format!("{name}.json")),
-            br#"{"textures":["mymod:one","mymod:two"],"sunrise:behaviour":{"lifetime":7,"size":[0.3,0.3]}}"#,
-        )
-        .unwrap();
+fn the_last_factory_binds_once_per_load_and_other_types_stay_declarative() {
+    struct Drift(f64);
+    impl ParticleProvider for Drift {
+        fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
+            for particle in particles {
+                particle.position[0] = self.0;
+            }
+        }
     }
-    let mut e = engine();
-    e.providers
-        .insert("mymod:orbit".into(), Arc::new(Probe::default()));
-    e.providers
-        .insert("mymod:unmatched".into(), Arc::new(Probe::default()));
-    e.reload(
-        &ResourceSource::directory(dir.clone()),
-        &HashMap::new(),
-        &HashSet::new(),
-    );
-    assert!(e.mod_sets["mymod:orbit"].provider.is_some());
-    assert!(e.mod_sets["mymod:plain"].provider.is_none());
-    assert!(!e.mod_sets.contains_key("mymod:unmatched"));
-    let orbit = e
-        .make(
-            &ParticleOptions::named("mymod:orbit"),
-            [0.0; 3],
-            [0.0; 3],
-            3,
-            SpawnScope::BARE,
+
+    struct Register {
+        position: u8,
+        binds: Arc<Mutex<Vec<(u8, usize)>>>,
+    }
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Register {
+        fn register_particle_providers(
+            &self,
+            _: &RegistrationContext,
+            event: &mut mod_api::RegisterParticleProvidersEvent<'_>,
+        ) {
+            let (position, binds) = (self.position, self.binds.clone());
+            event.register_sprite_set(Identifier::parse("mymod:orbit").unwrap(), move |sprites| {
+                let frames = sprites.frame_count();
+                binds.lock().unwrap().push((position, frames));
+                if frames == 3 {
+                    mod_api::__private::check_access(
+                        "fixture_provider_world_access",
+                        mod_api::__private::LoadAccess::WorldOnly,
+                    );
+                }
+                Drift(f64::from(position))
+            });
+        }
+    }
+
+    let binds = Arc::new(Mutex::new(Vec::new()));
+    let mods = [("first", 1), ("second", 2)].map(|(id, position)| {
+        mod_api::ModEntry::new(
+            id,
+            Box::new(Register {
+                position,
+                binds: binds.clone(),
+            }),
         )
-        .unwrap();
-    // The declared spawn values seed it, and its sprite is drawn by frame from the set.
-    assert!(orbit.provided.is_some());
-    assert_eq!((orbit.lifetime, orbit.size), (7, 0.3));
-    assert_eq!(orbit.set, Some(e.mod_sets["mymod:orbit"].set));
-    let plain = e
-        .make(
-            &ParticleOptions::named("mymod:plain"),
-            [0.0; 3],
-            [0.0; 3],
-            3,
-            SpawnScope::BARE,
-        )
-        .unwrap();
-    assert!(plain.provided.is_none());
-    assert!(matches!(plain.behaviour, Behaviour::Mod { .. }));
-    let _ = std::fs::remove_dir_all(dir);
+    });
+    mod_platform::testing::with_mods(Vec::from(mods).into(), || {
+        let mut staged = Vec::new();
+        mod_api::dispatch_register_particle_providers(&RegistrationContext::new(), &mut staged);
+        let factories = Arc::new(native::freeze(staged));
+        assert!(binds.lock().unwrap().is_empty());
+
+        let root = |orbit: &[&str]| {
+            ResourceSource::indexed(BTreeMap::from([
+                (
+                    "assets/mymod/particles/orbit.json".into(),
+                    Resource::bytes(
+                        serde_json::to_vec(&serde_json::json!({
+                            "textures": orbit,
+                            "sunrise:behaviour": {"lifetime": 7, "size": [0.3, 0.3]}
+                        }))
+                        .unwrap(),
+                    ),
+                ),
+                (
+                    "assets/mymod/particles/plain.json".into(),
+                    Resource::bytes(
+                        br#"{"textures":["mymod:one"],"sunrise:behaviour":{"lifetime":4}}"#
+                            .to_vec(),
+                    ),
+                ),
+            ]))
+        };
+        let atlas = HashMap::new();
+        let translucent = HashSet::new();
+        let mut e = ParticleEngine::with_factories(
+            &root(&["mymod:one", "mymod:two"]),
+            &atlas,
+            &translucent,
+            &[],
+            factories,
+        );
+        e.set_block_state_source(|| Some(Arc::new(Vec::<BlockState>::new())));
+        assert_eq!(*binds.lock().unwrap(), [(2, 2)]);
+
+        let scene = Scene::new();
+        let level = scene.level();
+        let spawn = |e: &mut ParticleEngine, name: &str| {
+            e.make(
+                &ParticleOptions::named(name),
+                [0.0; 3],
+                [0.0; 3],
+                3,
+                SpawnScope::BARE,
+            )
+        };
+        let mut orbit = spawn(&mut e, "mymod:orbit").unwrap();
+        assert_eq!((orbit.lifetime, orbit.size), (7, 0.3));
+        tick_one(&mut e, &mut orbit, &level);
+        assert_eq!(orbit.position[0], 2.0);
+        assert_eq!(*binds.lock().unwrap(), [(2, 2)]);
+        e.push(orbit);
+
+        use mod_api::__private::{ModPhase, PhaseOwner};
+        let _phase = PhaseOwner::scope(ModPhase::Reloading);
+        e.reload(
+            &root(&["mymod:one", "mymod:two", "mymod:three"]),
+            &atlas,
+            &translucent,
+        );
+        assert!(e.pending.is_empty());
+        assert_eq!(*binds.lock().unwrap(), [(2, 2), (2, 3)]);
+        assert!(spawn(&mut e, "mymod:orbit").is_none()); // refused; no declarative fallback
+        let plain = spawn(&mut e, "mymod:plain").unwrap();
+        assert_eq!(plain.lifetime, 4);
+        assert!(plain.provided.is_none() && matches!(plain.behaviour, Behaviour::Mod { .. }));
+
+        e.reload(&root(&["mymod:one"]), &atlas, &translucent);
+        assert_eq!(*binds.lock().unwrap(), [(2, 2), (2, 3), (2, 1)]);
+        assert!(spawn(&mut e, "mymod:orbit").unwrap().provided.is_some());
+
+        e.reload(&root(&[]), &atlas, &translucent);
+        assert_eq!(*binds.lock().unwrap(), [(2, 2), (2, 3), (2, 1)]);
+        assert!(spawn(&mut e, "mymod:orbit").is_none()); // missing set; binder not called
+    });
 }
 #[test]
 fn controlled_spawn_respects_distance_settings_and_declared_sprite_sets() {

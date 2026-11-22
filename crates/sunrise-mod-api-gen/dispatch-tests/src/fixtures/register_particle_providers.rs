@@ -1,3 +1,3 @@
 mod stubs {
-    pub(super) trait ParticleProviders {}
+    pub(super) struct ParticleProviderRegistration;
 }

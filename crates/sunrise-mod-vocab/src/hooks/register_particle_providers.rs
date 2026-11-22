@@ -1,20 +1,18 @@
 //! The `register_particle_providers` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// The code-defined particle providers of a mod's own particle types (NeoForge's
-    /// `RegisterParticleProvidersEvent`): `register(name, provider)`, and every particle of the
-    /// type `name` (`mymod:spark`, spawned with `ParticleOptions::simple` on its key) is moved each tick by
-    /// `ParticleProvider::tick`. The sprite set and the declarative spawn values stay in
-    /// `assets/<namespace>/particles/<path>.json`. A later registration for a name replaces the
-    /// earlier one; a name no sprite set matches is logged and draws nothing. Asked once at start
-    /// on the client, before resources load; the game resolves each type's provider when the
-    /// sprite sets load, on every resource load as well.
+    /// Register sprite-set factories for code-defined particle providers (NeoForge's
+    /// `RegisterParticleProvidersEvent`). Called once at client startup. Use
+    /// [`RegisterParticleProvidersEvent::register_sprite_set`] with the particle type's ID and a
+    /// factory that builds the provider after the matching sprite set loads.
     #[notes = r#"## Particle providers
 
 A particle provider (NeoForge's `RegisterParticleProvidersEvent` and `ParticleProvider`) gives a mod's own
-particle type code. `Hooks::register_particle_providers` registers one provider per type name once at start,
-before resources load, and the game resolves each type's provider when the particle sprite sets load, so a
-particle tick dispatches to the provider that owns it: no lookup, no scan over the mods.
+particle type code. `Hooks::register_particle_providers` stages factories at client startup, before resources
+load. The last registration for an ID wins. On initial load and each reload, the game binds the winning factory
+once with a `ParticleSpriteSet` describing that load's nonempty set. Use `frame_count()` to read its number of
+frames; the descriptor exposes no atlas or engine handle. Particle ticks dispatch to the bound provider with no
+provider-name lookup or scan over the mods.
 
 ```rust,ignore
 struct Orbit;
@@ -41,7 +39,7 @@ fn register_particle_providers(
     _context: &RegistrationContext,
     event: &mut RegisterParticleProvidersEvent<'_>,
 ) {
-    event.providers.register("example:orbit".into(), Arc::new(Orbit));
+    event.register_sprite_set(Identifier::parse("example:orbit").unwrap(), |_sprites| Orbit);
 }
 ```
 
@@ -64,16 +62,21 @@ enough capacity. A tick has no `Host`, since the engine ticks particles below ga
 level through `ParticleLevelView`: `block_state(pos)` and `brightness(layer, pos)`, both read-only. Light follows
 what the render level stores and the sky layer always reads zero in a dimension without skylight. The game asks for
 block states and builds the view only when a provider has a particle to tick; a registered provider with none alive
-is not visited. A type with no provider keeps its
-declarative motion, and live provider particles are dropped when resources reload, as a compiled
-controller's are."#]
+is not visited. A type with no registration keeps its declarative motion. If a registered type's sprite set
+is missing or its factory cannot bind, the game reports the type and its mod and spawns no particle for it.
+A provider callback panic is logged with its mod and shown in the error toast; that registration is disabled
+for the session. Live provider particles are dropped when resources reload, as a compiled controller's are."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        contract = "listen",
+        contract = "collect",
+        out = "providers",
         context = "registration",
-        neoforge = "RegisterParticleProvidersEvent"
+        answered_by = "mod",
+        registration_append = "custom",
+        neoforge = "RegisterParticleProvidersEvent",
+        version = 2
     )]
-    fn register_particle_providers(providers: &mut dyn ParticleProviders);
+    fn register_particle_providers(providers: &mut Vec<Answered<ParticleProviderRegistration>>);
 }

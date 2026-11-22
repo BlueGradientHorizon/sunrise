@@ -1,0 +1,16 @@
+ids = [
+    "hook:register_particle_providers",
+    "hook:register_particle_providers.providers",
+    "type:RegisterParticleProvidersEvent",
+    "type:RegisterParticleProvidersEvent.providers",
+    "trait:ParticleProviders",
+    "method:ParticleProviders::register",
+    "type:ParticleProviderRegistry",
+    "handle:ParticleProviderRegistry::into_providers",
+    "handle:RegisterParticleProvidersEvent::register_sprite_set",
+    "type:ParticleSpriteSet",
+    "handle:ParticleSpriteSet::frame_count",
+    "method:ParticleProvider::tick",
+]
+why = "Following NeoForge RegisterParticleProvidersEvent.registerSpriteSet and vanilla ParticleResources.register/reload and ParticleEngine.makeParticle, provider registrations now stage factories with the registering mod's identity. The last registration for each particle ID is bound to the nonempty sprite set on each load; a type with a failed bind does not silently use declaration-only motion. Provider callbacks use the owner's enablement and panic reporting. The tick batch and registered ParticleOptions and codecs are unchanged."
+migrate = "Keep the register_particle_providers(&self, context: &RegistrationContext, event: &mut RegisterParticleProvidersEvent<'_>) listener. Replace event.providers.register(\"mymod:spark\".into(), Arc::new(Spark(...))) with event.register_sprite_set(Identifier::parse(\"mymod:spark\").unwrap(), |sprites| Spark(...)). Return a concrete ParticleProvider from the closure; use move and clone owned captures if needed to build a fresh provider each time. If the provider needs the number of frames, read sprites.frame_count() inside the closure. Remove ParticleProviders and ParticleProviderRegistry imports, custom registry construction and into_providers calls: register via the event, not by writing or reading a map. Keep the matching particles/spark.json, ParticleOptions and the ParticleProvider::tick implementation."

@@ -20,11 +20,11 @@ use sunrise_core::{
 };
 use sunrise_world::block_collision::BlockCollisionRegistry;
 mod options;
-use mod_api::{ParticleBlend, ParticleProvider};
+use mod_api::{__private::game::particle_sprite_set, ParticleBlend};
 pub use options::ParticleOptions;
 use std::{
     array,
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     sync::Arc,
 };
 
@@ -235,15 +235,15 @@ enum DripStage {
 /// Every engine block state as a mod reads it, by state id, shared with the game.
 pub type BlockStates = Arc<dyn AsRef<[mod_api::BlockState]> + Send + Sync>;
 
-/// A native mod's sprite set: its handle in `set_sprites`, the behaviour its JSON declares,
-/// the provider that moves its particles, if a mod registered one, and the render group they
-/// draw in, if a mod listed the type in one. Resolved at load, so a spawn, a tick and a draw
-/// never look a provider or a group up by name.
+/// A native mod's sprite set: its handle in `set_sprites`, declared spawn values, resolved
+/// provider binding and render group. The binding distinguishes an unregistered type from one
+/// whose factory failed. After a spawn finds the set, its ticks and draws use the resolved
+/// provider and group directly.
 #[derive(Clone)]
 struct ModSet {
     set: u32,
     behaviour: Option<ModBehaviour>,
-    provider: Option<(u32, Arc<dyn ParticleProvider>)>,
+    provider: native::Binding,
     /// The handle of the registered group (`groups::registered`), none for the built-in one.
     group: Option<u32>,
 }
@@ -1149,9 +1149,8 @@ pub struct ParticleEngine {
     sets: HashMap<ParticleType, u32>,
     /// A native mod's sprite sets, by namespaced particle name.
     mod_sets: HashMap<String, ModSet>,
-    /// The code providers of mods' particle types, by name: `register_particle_providers`' registrations as
-    /// this engine was built, applied to `mod_sets` at every load.
-    providers: BTreeMap<String, Arc<dyn ParticleProvider>>,
+    /// Startup registrations by name. Each sprite load binds these factories into `mod_sets`.
+    provider_factories: Arc<native::Factories>,
     /// Where the providers' `ParticleLevelView` finds every engine block state as a mod reads
     /// it, asked only when a provider has particles to tick.
     block_state_source: fn() -> Option<BlockStates>,
@@ -1261,18 +1260,25 @@ impl ParticleEngine {
         atlas: &HashMap<String, Rect>,
         translucent: &HashSet<String>,
     ) -> Self {
-        Self::with_group_factories(root, atlas, translucent, groups::registered())
+        Self::with_factories(
+            root,
+            atlas,
+            translucent,
+            groups::registered(),
+            native::registered(),
+        )
     }
 
-    fn with_group_factories(
+    fn with_factories(
         root: &ResourceSource,
         atlas: &HashMap<String, Rect>,
         translucent: &HashSet<String>,
-        factories: &[groups::Factory],
+        group_factories: &[groups::Factory],
+        provider_factories: Arc<native::Factories>,
     ) -> Self {
         let mut engine = Self {
             particles: Vec::new(),
-            groups: groups::Group::all(factories),
+            groups: groups::Group::all(group_factories),
             pending: Vec::new(),
             spawned_in_tick: None,
             random: LegacyRandom::new(0x7061_7274),
@@ -1287,7 +1293,7 @@ impl ParticleEngine {
             atlas: HashMap::new(),
             sets: HashMap::new(),
             mod_sets: HashMap::new(),
-            providers: native::registered().clone(),
+            provider_factories,
             block_state_source: || None,
             options_to_api: None,
             provided_live: Arc::default(),
@@ -1356,9 +1362,15 @@ impl ParticleEngine {
         self.set_sprites.clear();
         self.item_sprites.clear();
         self.load_sprites(root);
-        for name in self.providers.keys() {
-            if !self.mod_sets.contains_key(name) {
-                log::warn!("Particle provider {name} has no particles/<path>.json sprite set");
+        for (slot, (name, factory)) in self.provider_factories.iter().enumerate() {
+            if let Some(set) = self.mod_sets.get_mut(name) {
+                let sprites = particle_sprite_set(self.set_sprites[set.set as usize].len());
+                set.provider = factory.bind(slot, sprites);
+            } else {
+                log::warn!(
+                    "Particle provider {name} from mod {} has no nonempty particles/<path>.json sprite set",
+                    factory.mod_id(),
+                );
             }
         }
         self.resolve_groups();
@@ -1464,17 +1476,12 @@ impl ParticleEngine {
                 })
                 .unwrap_or_default();
             if !sprites.is_empty() {
-                let provider = self
-                    .providers
-                    .iter()
-                    .position(|(name, _)| *name == key)
-                    .map(|slot| (slot as u32, self.providers[&key].clone()));
                 self.mod_sets.insert(
                     key,
                     ModSet {
                         set: self.set_sprites.len() as u32,
                         behaviour,
-                        provider,
+                        provider: native::Binding::Declarative,
                         group: None,
                     },
                 );
@@ -1940,6 +1947,8 @@ impl ParticleEngine {
         if let Some(name) = custom
             && let Some(registry) = &self.polytone
             && let Some(def) = registry.get(name)
+            // A registered native type does not become a pack-defined particle when unbound.
+            && (o.mod_particle.is_none() || !self.provider_factories.contains_key(name))
         {
             let (registry, def, name) = (registry.clone(), def.clone(), name.to_owned());
             let (particle, custom) = polytone::make(self, &registry, &name, &def, o, p, v, seed)?;
@@ -5650,7 +5659,7 @@ mod tests {
                     ModSet {
                         set: 0,
                         behaviour: Some(ModBehaviour::parse(&declaration).unwrap()),
-                        provider: None,
+                        provider: native::Binding::Declarative,
                         group: None,
                     },
                 );

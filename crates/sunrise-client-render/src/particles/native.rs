@@ -4,7 +4,9 @@ use super::{
     Behaviour, Particle, ParticleEngine, ParticleLevel, ParticleOptions, ParticleType, Sprite,
 };
 use mod_api::{
-    BlockState, LightLayer, ModParticle, ParticleFacing, ParticleLevelView, ParticleProvider,
+    __private::game::{CallbackOwner, ParticleProviderRegistration},
+    Answered, BlockState, Identifier, LightLayer, ModParticle, ParticleFacing, ParticleLevelView,
+    ParticleProvider, ParticleSpriteSet,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{collections::BTreeMap, fmt::Debug, sync::Arc, sync::OnceLock};
@@ -44,21 +46,125 @@ impl Clone for Box<dyn Controller> {
     }
 }
 
-/// The mods' particle providers by type name: set once at start, before the resources first load,
-/// and read by every engine built after.
-static REGISTERED: OnceLock<BTreeMap<String, Arc<dyn ParticleProvider>>> = OnceLock::new();
+pub(super) type Factories = BTreeMap<String, Factory>;
 
-/// Sets the mods' particle providers (`register_particle_providers`), once, before
-/// the resources first load; each engine then resolves its sprite sets' providers at every load.
-/// False when already set.
-pub fn register_particle_providers(providers: BTreeMap<String, Arc<dyn ParticleProvider>>) -> bool {
-    REGISTERED.set(providers).is_ok()
+/// Frozen before the first resource load. Each engine shares these factories, not their providers.
+static REGISTERED: OnceLock<Arc<Factories>> = OnceLock::new();
+
+/// Freeze attributed factories once at client startup. The last registration of an ID wins.
+/// Returns false if the registry was already frozen.
+pub fn register_particle_providers(providers: Vec<Answered<ParticleProviderRegistration>>) -> bool {
+    if let Err(rejected) = REGISTERED.set(Arc::new(freeze(providers))) {
+        for (id, factory) in rejected.iter() {
+            log::warn!(
+                "Particle provider {id} from mod {} was not registered: factories already frozen",
+                factory.mod_id(),
+            );
+        }
+        return false;
+    }
+    true
 }
 
-/// What [`register_particle_providers`] set; none before.
-pub(super) fn registered() -> &'static BTreeMap<String, Arc<dyn ParticleProvider>> {
-    static NONE: BTreeMap<String, Arc<dyn ParticleProvider>> = BTreeMap::new();
-    REGISTERED.get().unwrap_or(&NONE)
+pub(super) fn registered() -> Arc<Factories> {
+    REGISTERED.get().cloned().unwrap_or_default()
+}
+
+pub(super) fn freeze(providers: Vec<Answered<ParticleProviderRegistration>>) -> Factories {
+    let mut factories = BTreeMap::new();
+    for Answered { answer, mod_id, .. } in providers {
+        let Some(owner) = CallbackOwner::new(mod_id) else {
+            log::warn!(
+                "Particle provider {} has no installed owner {mod_id}",
+                answer.id
+            );
+            CallbackOwner::for_mod(mod_id).dispose(
+                "particle provider",
+                "drop_particle_provider_factory",
+                answer,
+            );
+            continue;
+        };
+        let key = answer.id.to_string();
+        if let Some(previous) = factories.insert(
+            key,
+            Factory {
+                registration: Some(answer),
+                owner,
+            },
+        ) {
+            let registration = previous.registration.as_ref().expect("frozen factory");
+            log::warn!(
+                "Particle provider {} from mod {} was replaced by mod {mod_id}",
+                registration.id,
+                previous.owner.id(),
+            );
+        }
+    }
+    factories
+}
+
+pub(super) struct Factory {
+    registration: Option<ParticleProviderRegistration>,
+    owner: CallbackOwner,
+}
+
+impl Factory {
+    pub(super) fn bind(&self, slot: usize, sprites: ParticleSpriteSet) -> Binding {
+        let registration = self.registration.as_ref().expect("frozen factory");
+        match self
+            .owner
+            .call("particle provider", "bind_particle_provider", || {
+                BoundProvider {
+                    id: registration.id.clone(),
+                    owner: self.owner.clone(),
+                    tick: Some((registration.factory)(sprites)),
+                }
+            }) {
+            Ok(provider) => Binding::Bound(slot, Arc::new(provider)),
+            Err(error) => {
+                log::warn!("Particle provider {}: {error}", registration.id);
+                Binding::Unavailable
+            }
+        }
+    }
+
+    pub(super) fn mod_id(&self) -> &'static str {
+        self.owner.id()
+    }
+}
+
+impl Drop for Factory {
+    fn drop(&mut self) {
+        self.owner.dispose(
+            "particle provider",
+            "drop_particle_provider_factory",
+            self.registration.take(),
+        );
+    }
+}
+
+#[derive(Clone)]
+pub(super) enum Binding {
+    Declarative,
+    Unavailable,
+    Bound(usize, Arc<BoundProvider>),
+}
+
+pub(super) struct BoundProvider {
+    id: Identifier,
+    owner: CallbackOwner,
+    tick: Option<Box<dyn ParticleProvider>>,
+}
+
+impl Drop for BoundProvider {
+    fn drop(&mut self) {
+        self.owner.dispose(
+            "particle provider",
+            "drop_particle_provider",
+            self.tick.take(),
+        );
+    }
 }
 
 /// How far from the origin a provider may move a particle: the world border's limit. Past it, or
@@ -75,9 +181,9 @@ const ROLL_LIMIT: f32 = f32::MAX / 2.0;
 /// every live particle of the type ([`Batch::run`]). Holds the provider the type resolved to when
 /// its sprite sets loaded, so a tick dispatches straight to it.
 pub(super) struct Provided {
-    provider: Arc<dyn ParticleProvider>,
+    provider: Arc<BoundProvider>,
     /// The provider's dense slot among the registered ones, which its batch is filled by.
-    slot: u32,
+    slot: usize,
     /// `ModParticle::state`, kept from one tick to the next.
     state: [f64; 4],
     /// The frame of the sprite set drawn, as the provider last saw it.
@@ -125,12 +231,7 @@ impl Debug for Provided {
     }
 }
 impl Provided {
-    pub(super) fn new(
-        provider: Arc<dyn ParticleProvider>,
-        slot: u32,
-        frame: u32,
-        live: &Arc<AtomicUsize>,
-    ) -> Self {
+    fn new(provider: Arc<BoundProvider>, slot: usize, frame: u32, live: &Arc<AtomicUsize>) -> Self {
         live.fetch_add(1, Ordering::Relaxed);
         Self {
             provider,
@@ -208,7 +309,7 @@ impl Batch {
         }
         for (i, p) in particles.iter().enumerate() {
             if let Some(provided) = p.provided.as_ref().filter(|q| q.pending) {
-                let slot = provided.slot as usize;
+                let slot = provided.slot;
                 if self.buckets.len() <= slot {
                     self.buckets.resize_with(slot + 1, Vec::new);
                 }
@@ -260,8 +361,27 @@ impl Batch {
             }
             let mut batch =
                 mod_api::__private::particle_batch_from_vec(std::mem::take(&mut self.views));
-            provider.tick(&mut batch, level);
+            let ran = provider
+                .owner
+                .call("particle provider", "tick_particle_provider", || {
+                    provider
+                        .tick
+                        .as_ref()
+                        .expect("bound provider")
+                        .tick(&mut batch, level);
+                });
             self.views = mod_api::__private::particle_batch_into_vec(batch);
+            if let Err(error) = ran {
+                log::warn!("Particle provider {}: {error}", provider.id);
+                for &i in bucket {
+                    particles[i]
+                        .provided
+                        .as_mut()
+                        .expect("a bucket holds provider particles")
+                        .pending = false;
+                }
+                continue;
+            }
             if self.views.len() != bucket.len() {
                 // A guest handed back a batch of another size: nothing of it can be matched to a particle.
                 for &i in bucket {
@@ -366,12 +486,21 @@ impl ParticleEngine {
         // A native mod's SimpleParticleType: vanilla's TextureSheetParticle with
         // the sprite set its particles/<name>.json names, no tint, 20..40 ticks.
         let entry = self.mod_sets.get(name)?;
-        let (set, behaviour, provider, group) = (
-            entry.set,
-            entry.behaviour,
-            entry.provider.clone(),
-            entry.group,
-        );
+        let (set, behaviour, group) = (entry.set, entry.behaviour, entry.group);
+        let provider = match &entry.provider {
+            Binding::Declarative => None,
+            Binding::Unavailable => return None,
+            Binding::Bound(slot, provider) => {
+                if !provider.owner.is_enabled() {
+                    log::warn!(
+                        "Particle provider {name}: mod {} callback is disabled",
+                        provider.owner.id()
+                    );
+                    return None;
+                }
+                Some((*slot, Arc::clone(provider)))
+            }
+        };
         let mut r = LegacyRandom::new(seed);
         let mut q = Particle::moving(&mut r, ParticleType::Smoke, p, v);
         q.ty = ParticleType::Smoke;
