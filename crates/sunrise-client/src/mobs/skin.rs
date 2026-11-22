@@ -190,22 +190,29 @@ impl SkinModels {
         model: &Arc<Part>,
         frame: &mut SkinFrame,
     ) -> Option<(&Stored, &mut Rotations)> {
-        self.place(model, frame);
-        match self.stored.get(&(Arc::as_ptr(model) as usize)) {
-            Some((_, Placed::Gpu(stored))) => Some((stored, &mut self.rotations)),
-            _ => None,
+        match self.place(model, frame) {
+            (Placed::Gpu(stored), rotations) => Some((stored, rotations)),
+            (Placed::Taken | Placed::Cpu, _) => None,
         }
     }
 
-    /// Where `model` is drawn, decided on its first sight and kept. `render::takes_part` is
-    /// asked then, for each of its parts, when a mixin replaced it: a model with a part a mod
-    /// takes is drawn on the CPU, where `render::compile_part` runs. Without a replacement,
-    /// that costs one slot read per new model.
-    fn place(&mut self, model: &Arc<Part>, frame: &mut SkinFrame) -> &Placed {
+    /// Where `model` is drawn, decided on its first sight and kept, with the rotations its
+    /// walk reuses. `render::takes_part` is asked then, for each of its parts, when a mixin
+    /// replaced it: a model with a part a mod takes is drawn on the CPU, where
+    /// `render::compile_part` runs. Without a replacement, that costs one slot read per new
+    /// model, and nothing on a model already placed.
+    fn place(&mut self, model: &Arc<Part>, frame: &mut SkinFrame) -> (&Placed, &mut Rotations) {
         let key = Arc::as_ptr(model) as usize;
-        let takes = self.takes();
+        #[cfg(test)]
+        let stand_in = self.takes;
+        #[cfg(not(test))]
+        let stand_in = None;
         let vertices = &mut self.vertices;
         let (_, placed) = self.stored.entry(key).or_insert_with(|| {
+            let takes = stand_in.or_else(|| {
+                super::render::parts_taken_hooked()
+                    .then_some(super::render::takes_part as fn(&str, &str) -> bool)
+            });
             if takes.is_some_and(|takes| part_taken(model, takes)) {
                 return (model.clone(), Placed::Taken);
             }
@@ -216,17 +223,7 @@ impl SkinModels {
             *vertices += (frame.new_model.len() - before) as u32;
             (model.clone(), stored.map_or(Placed::Cpu, Placed::Gpu))
         });
-        placed
-    }
-
-    /// `render::takes_part`, when a mixin replaced it.
-    fn takes(&self) -> Option<fn(&str, &str) -> bool> {
-        #[cfg(test)]
-        if self.takes.is_some() {
-            return self.takes;
-        }
-        super::render::parts_taken_hooked()
-            .then_some(super::render::takes_part as fn(&str, &str) -> bool)
+        (placed, &mut self.rotations)
     }
 
     /// An item model's runs, stored on first sight; `None` when it has no
@@ -458,7 +455,7 @@ impl<'a> Skin<'a> {
 
     /// How this model is drawn (decided on its first sight): posed here, or on the CPU.
     pub fn route(&mut self, model: &Arc<Part>) -> Route {
-        match self.models.place(model, self.frame) {
+        match self.models.place(model, self.frame).0 {
             Placed::Gpu(_) => Route::Gpu,
             Placed::Taken => Route::Taken,
             Placed::Cpu => Route::Cpu,

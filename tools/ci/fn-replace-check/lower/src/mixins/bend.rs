@@ -9,7 +9,9 @@ fn bend(
 ) -> ::core::ops::ControlFlow<()> {
     static SEEN: std::sync::Once = std::sync::Once::new();
     SEEN.call_once(|| fnr_lower::note("HEAD mobs::render::compile_part"));
-    let angle = poses.data::<fnr_lower::Bend>(&part.name).map(|bend| bend.angle);
+    let angle = poses
+        .data::<fnr_lower::Bend>(&part.name)
+        .map(|bend| bend.angle);
     match angle {
         Some(angle) if layer == Some("minecraft:player#main") && part.name == "right_arm" => {
             // The arm's polygons squashed to its upper half, then again turned about X at the

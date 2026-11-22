@@ -1378,7 +1378,7 @@ fn draw_normals(
     // `skips` is a name lookup: ask once per part, not once per polygon. A part
     // hidden this way still draws its children, so only the polygons are gated.
     if !poses.skips(part) {
-        emit_part(compile, layer, part, m, normals, paint, poses, quads);
+        emit_part(compile, layer, part, (m, normals), paint, poses, quads);
     }
     for c in &part.children {
         draw_normals(c, m, normals, poses, paint, layer, compile, quads);
@@ -1387,14 +1387,13 @@ fn draw_normals(
 /// One part's own geometry, as every draw of a baked model emits it: through the replaced
 /// [`compile_part`] when `compile` holds it, its polygons as they are otherwise. A part with
 /// neither polygons nor children (an empty leaf) has nothing a replacement could change, and
-/// is never handed to it.
-#[allow(clippy::too_many_arguments)]
+/// is never handed to it. `posed` is the part's matrix and normals, as [`posed`] and
+/// `ModelNormals::part` give them.
 pub(super) fn emit_part(
     compile: Option<CompilePart>,
     layer: Option<&str>,
     part: &Part,
-    matrix: glam::Mat4,
-    normals: ModelNormals,
+    (matrix, normals): (glam::Mat4, ModelNormals),
     paint: Paint,
     poses: &Poses,
     quads: &mut Quads<'_>,
@@ -2299,18 +2298,19 @@ fn render_visible(
     // energy swirl, which the CPU path changes after drawing), and with
     // improved transparency off the tagged layers too.
     let mut skin = skin;
-    // The last of the mob's draws (0 the body, 1 + i its layer i) whose model a mod takes a
-    // part of (`takes_part`): that model goes to the CPU, and the draws before it with it.
-    // The GPU's vertices follow the CPU's in the entity buffer, so a draw after it can stay
-    // on the GPU and still come after it; one before it can't.
-    let mut cpu_through = None;
+    // The first of the mob's draws (0 the body, 1 + i its layer i) whose model a mod takes a
+    // part of (`takes_part`): that model goes to the CPU, and the draws after it with it.
+    // The ordinary entity pass draws the GPU-posed vertices before the CPU's
+    // (`gfx::draw_frame`), so a draw before it can stay on the GPU and still come first; one
+    // after it can't. A taken body sends the whole mob to the CPU.
+    let mut cpu_from = None;
     let posable = match skin.as_deref_mut() {
         Some(skin) => {
             let tagged = skin.models.tagged;
-            let mut takes = |part: &std::sync::Arc<Part>, draw: usize| match skin.route(part) {
+            let mut placed = |part: &std::sync::Arc<Part>, draw: usize| match skin.route(part) {
                 super::skin::Route::Gpu => true,
                 super::skin::Route::Taken => {
-                    cpu_through = Some(draw);
+                    cpu_from.get_or_insert(draw);
                     true
                 }
                 super::skin::Route::Cpu => false,
@@ -2320,7 +2320,7 @@ fn render_visible(
                 && m.species() != Species::SulfurCube
                 && !translucent_body(m)
                 && energy_swirl(m, s.age).is_none()
-                && takes(&model, 0)
+                && placed(&model, 0)
                 && all_layers.iter().enumerate().all(|(i, layer)| {
                     // With improved transparency off, a translucent layer's tag
                     // is the only difference from a plain draw.
@@ -2331,7 +2331,7 @@ fn render_visible(
                             .equipment_model
                             .as_ref()
                             .or_else(|| m.kind.layer(&layer.model))
-                            .is_none_or(|part| takes(part, 1 + i))
+                            .is_none_or(|part| placed(part, 1 + i))
                 })
         }
         None => false,
@@ -2339,9 +2339,9 @@ fn render_visible(
     if !posable {
         skin = None;
     }
-    // The draws `cpu_through` sends to the CPU pass this instead of `skin`.
+    // The draws `cpu_from` sends to the CPU pass this instead of `skin`.
     let mut on_cpu: Option<&mut super::skin::Skin> = None;
-    let on_gpu = |draw: usize| cpu_through.is_none_or(|last| draw > last);
+    let on_gpu = |draw: usize| cpu_from.is_none_or(|first| draw < first);
     // The parts a mod's `render_player_pre` or `render_living_pre` hid this frame: the body and the
     // layers over its own model (`getParentModel`) draw without them, the armour and the other
     // layers below with every part.
@@ -5112,9 +5112,11 @@ mod compile_part_tests {
     }
 
     /// A mob whose body and layer are two models: a model a mod takes a part of is drawn on
-    /// the CPU, and so is every draw before it; the draws after it stay on the GPU, whose
-    /// vertices follow the CPU's, so the order of the mob's draws is the game's. The routing is
-    /// decided once per model and kept across frames.
+    /// the CPU, and so is every draw after it; the draws before it stay on the GPU. The
+    /// ordinary entity pass draws the GPU-posed vertices first, then the CPU's
+    /// (`gfx::draw_frame`: "the posed models' vertices come first"), so the submitted order is
+    /// the game's, body before layer, whichever model is taken. The routing is decided once per
+    /// model and kept across frames.
     #[test]
     fn a_taken_model_leaves_the_gpu_and_the_mobs_other_models_keep_their_order() {
         thread_local! {
@@ -5181,10 +5183,17 @@ mod compile_part_tests {
         assert_eq!(cpu.len(), 40);
         let (body, layer) = cpu.split_at(20);
         assert_ne!(bytes(body), bytes(layer), "two draws apart");
-        for (takes, on_cpu, asked) in [
-            (none as fn(&str, &str) -> bool, 0, 12),
-            (body_arm, 20, 11),
-            (outer_arm, 40, 11),
+        // Which draw a vertex belongs to, by its sprite: the body's or the layer's.
+        let drawn_by = |u: f32| if u < 0.5 { "body" } else { "layer" };
+        // (stand-in for takes_part, the first of the mob's 40 vertices drawn on the CPU, parts
+        // asked)
+        for (takes, cpu_from, asked) in [
+            (none as fn(&str, &str) -> bool, 40, 12),
+            // The body taken: the layer after it can't come first, so the whole mob is on the
+            // CPU.
+            (body_arm, 0, 11),
+            // The layer taken: the body stays on the GPU, drawn before it.
+            (outer_arm, 20, 11),
         ] {
             ASKED.with(|a| a.set(0));
             let mut models = super::super::skin::SkinModels::default();
@@ -5206,10 +5215,21 @@ mod compile_part_tests {
                     &mut out,
                     &mut skin,
                 );
-                // The CPU draws the start of the mob's draws, byte for byte; the GPU the rest.
-                assert_eq!(bytes(&out), bytes(&cpu[..on_cpu]));
+                // The CPU draws the end of the mob's draws, byte for byte; the GPU the start.
+                assert_eq!(bytes(&out), bytes(&cpu[cpu_from..]));
                 let posed: u32 = frame.jobs.iter().map(|job| job.count).sum();
-                assert_eq!(posed as usize, 40 - on_cpu);
+                assert_eq!(posed as usize, cpu_from);
+                // The order the entity pass submits: the posed jobs' vertices, then the CPU's.
+                let submitted: Vec<&str> = frame
+                    .jobs
+                    .iter()
+                    .flat_map(|job| std::iter::repeat_n(drawn_by(job.rect[0]), job.count as usize))
+                    .chain(out.iter().map(|v| drawn_by(v.uv[0])))
+                    .collect();
+                let game: Vec<&str> = cpu.iter().map(|v| drawn_by(v.uv[0])).collect();
+                assert_eq!(game[..20], ["body"; 20]);
+                assert_eq!(game[20..], ["layer"; 20]);
+                assert_eq!(submitted, game, "the body before its layer");
             }
             // Each model's parts asked once, on its first frame (a taken part ends its walk).
             assert_eq!(ASKED.with(std::cell::Cell::get), asked);

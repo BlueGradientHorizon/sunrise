@@ -4,9 +4,10 @@
 //! and uploaded each frame. Here each model's vertices are uploaded once, in
 //! model space, and a frame only sends each drawn part's matrices and one job
 //! per run of drawn parts; `entity_skin.wgsl` writes the same vertices, in the
-//! same order, into the entity vertex buffer, after the CPU's ordinary entities
-//! (`EntityBatch` leaves the gap). Every pass that draws ordinary entities
-//! then draws them as before.
+//! same order, into the entity vertex buffer, before the CPU's ordinary entities
+//! (`draw_frame` dispatches them at its start and counts them into the ordinary
+//! entities' draw). Every pass that draws ordinary entities then draws them as
+//! before, the posed vertices first.
 //!
 //! The game decides which draws come here (`SkinFrame`): models whose
 //! polygons all face an axis, drawn as ordinary opaque or cutout entities.
