@@ -95,23 +95,33 @@ impl TeamColor {
     ];
     /// The color's name as vanilla writes it (`dark_blue`).
     pub fn name(self) -> &'static str {
+        self.names().0
+    }
+
+    /// The color name and its corresponding display slot name.
+    fn names(self) -> (&'static str, &'static str) {
+        macro_rules! names {
+            ($name:literal) => {
+                ($name, concat!("sidebar.team.", $name))
+            };
+        }
         match self {
-            Self::Black => "black",
-            Self::DarkBlue => "dark_blue",
-            Self::DarkGreen => "dark_green",
-            Self::DarkAqua => "dark_aqua",
-            Self::DarkRed => "dark_red",
-            Self::DarkPurple => "dark_purple",
-            Self::Gold => "gold",
-            Self::Gray => "gray",
-            Self::DarkGray => "dark_gray",
-            Self::Blue => "blue",
-            Self::Green => "green",
-            Self::Aqua => "aqua",
-            Self::Red => "red",
-            Self::LightPurple => "light_purple",
-            Self::Yellow => "yellow",
-            Self::White => "white",
+            Self::Black => names!("black"),
+            Self::DarkBlue => names!("dark_blue"),
+            Self::DarkGreen => names!("dark_green"),
+            Self::DarkAqua => names!("dark_aqua"),
+            Self::DarkRed => names!("dark_red"),
+            Self::DarkPurple => names!("dark_purple"),
+            Self::Gold => names!("gold"),
+            Self::Gray => names!("gray"),
+            Self::DarkGray => names!("dark_gray"),
+            Self::Blue => names!("blue"),
+            Self::Green => names!("green"),
+            Self::Aqua => names!("aqua"),
+            Self::Red => names!("red"),
+            Self::LightPurple => names!("light_purple"),
+            Self::Yellow => names!("yellow"),
+            Self::White => names!("white"),
         }
     }
     /// The color with that name, or None for one vanilla doesn't have.
@@ -137,13 +147,13 @@ pub enum DisplaySlot {
 }
 
 impl DisplaySlot {
-    /// The slot's name as vanilla writes it (`sidebar.team.red`).
-    pub fn name(self) -> String {
+    /// The slot's static name as vanilla writes it (`sidebar.team.red`).
+    pub fn name(self) -> &'static str {
         match self {
-            Self::List => "list".to_owned(),
-            Self::Sidebar => "sidebar".to_owned(),
-            Self::BelowName => "below_name".to_owned(),
-            Self::TeamSidebar(color) => format!("sidebar.team.{}", color.name()),
+            Self::List => "list",
+            Self::Sidebar => "sidebar",
+            Self::BelowName => "below_name",
+            Self::TeamSidebar(color) => color.names().1,
         }
     }
     /// The slot with that name, or None for one vanilla doesn't have.
@@ -210,20 +220,43 @@ impl From<TextFormError> for ObjectiveError {
     }
 }
 
-/// One holder's score on an objective.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Why an objective's score or display-slot visit could not read the board.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct ScoreEntry {
-    /// The holder, as [`ScoreHolder::Name`]: the board's key.
-    pub holder: ScoreHolder,
+// no wire: this refusal is returned only by in-process objective visitors
+pub enum ObjectiveReadError {
+    /// The objective was removed or the handle is from an earlier world open.
+    Stale,
+    /// The server scoreboard is not readable from this side, phase or backend.
+    Unavailable,
+}
+
+impl crate::AccessRefusal for ObjectiveReadError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl crate::NoBackend for ObjectiveReadError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
+/// One holder's score, lent for the duration of a visitor callback.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+// no wire: the holder key is borrowed from the resident scoreboard
+pub struct ScoreEntry<'a> {
+    /// The board's holder key, including offline and hidden names.
+    pub holder: &'a str,
     /// The score.
     pub value: i32,
 }
 
-impl ScoreEntry {
-    /// An entry from its parts.
-    pub fn new(holder: ScoreHolder, value: i32) -> Self {
+impl<'a> ScoreEntry<'a> {
+    /// An entry borrowing the given holder key.
+    pub fn new(holder: &'a str, value: i32) -> Self {
         Self { holder, value }
     }
 }

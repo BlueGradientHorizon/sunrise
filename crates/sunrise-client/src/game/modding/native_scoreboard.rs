@@ -6,10 +6,12 @@
 //! the board gave the objective when it was added, so a removed objective stays stale when its
 //! name is added again.
 use super::Game;
+use core::ops::ControlFlow;
 use mod_api::__private::game::*;
 use mod_api::{
     ClientObjective, ClientScore, ClientScoreboard, DisplaySlot, NumberFormat, ObjectiveError,
-    ObjectiveRef, ObjectiveRenderType, ScoreEntry, ScoreHolder, TextFormError,
+    ObjectiveReadError, ObjectiveRef, ObjectiveRenderType, ScoreEntry, ScoreHolder,
+    ServerReadError, TextFormError, WorldEpoch,
 };
 use sunrise_client::{
     scoreboard::{self as sb, Comp, comp_text, literal},
@@ -88,6 +90,26 @@ impl Game<'_> {
         self.score
             .board
             .objective_by_identity(objective.fields().id)
+    }
+
+    fn objective_visit_state(
+        &self,
+        objective: ObjectiveRef,
+    ) -> Result<&sb::Objective, ObjectiveReadError> {
+        if !self.is_logical_server() {
+            return Err(ObjectiveReadError::Unavailable);
+        }
+        self.objective_state(objective)
+            .ok_or(ObjectiveReadError::Stale)
+    }
+
+    pub(super) fn scoreboard_visit_epoch(&self) -> Result<WorldEpoch, ServerReadError> {
+        if !self.is_logical_server() || self.remote.is_some() {
+            return Err(ServerReadError::Unavailable);
+        }
+        self.native_lifecycle
+            .epoch()
+            .ok_or(ServerReadError::Unavailable)
     }
 
     fn objective_handle(&self, objective: &sb::Objective) -> Option<ObjectiveRef> {
@@ -170,16 +192,18 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.getObjectives`.
-    pub(super) fn objectives(&self) -> Vec<ObjectiveRef> {
-        if self.remote.is_some() {
-            return Vec::new();
-        }
-        self.score
+    pub(super) fn visit_objectives(
+        &self,
+        visit: &mut dyn FnMut(ObjectiveRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, ServerReadError> {
+        let epoch = self.scoreboard_visit_epoch()?;
+        Ok(self
+            .score
             .board
             .objectives
             .iter()
-            .filter_map(|o| self.objective_handle(o))
-            .collect()
+            .map(|o| objective_ref(epoch, o.identity.0))
+            .try_for_each(visit))
     }
 
     /// `Scoreboard.addObjective`.
@@ -252,13 +276,13 @@ impl Game<'_> {
     }
 
     /// `Objective.getName`.
-    pub(super) fn objective_name(&self, objective: ObjectiveRef) -> Option<String> {
-        self.objective_state(objective).map(|o| o.name.clone())
+    pub(super) fn objective_name(&self, objective: ObjectiveRef) -> Option<&str> {
+        self.objective_state(objective).map(|o| o.name.as_str())
     }
 
     /// `Objective.getCriteria`.
-    pub(super) fn objective_criteria(&self, objective: ObjectiveRef) -> Option<String> {
-        self.objective_state(objective).map(|o| o.criteria.clone())
+    pub(super) fn objective_criteria(&self, objective: ObjectiveRef) -> Option<&str> {
+        self.objective_state(objective).map(|o| o.criteria.as_str())
     }
 
     /// `Objective.getDisplayName`.
@@ -302,13 +326,15 @@ impl Game<'_> {
     }
 
     /// The display slots that show the objective, in id order.
-    pub(super) fn objective_slots(&self, objective: ObjectiveRef) -> Option<Vec<DisplaySlot>> {
-        let name = &self.objective_state(objective)?.name;
-        Some(
-            DisplaySlot::all()
-                .filter(|slot| self.score.board.display.get(slot.name()) == Some(name))
-                .collect(),
-        )
+    pub(super) fn objective_visit_slots(
+        &self,
+        objective: ObjectiveRef,
+        visit: &mut dyn FnMut(DisplaySlot) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, ObjectiveReadError> {
+        let name = &self.objective_visit_state(objective)?.name;
+        Ok(DisplaySlot::all()
+            .filter(|slot| self.score.board.display.get(slot.name()) == Some(name))
+            .try_for_each(visit))
     }
 
     /// `Scoreboard.getPlayerScoreInfo`'s value.
@@ -323,16 +349,18 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.listPlayerScores`.
-    pub(super) fn objective_scores(&self, objective: ObjectiveRef) -> Option<Vec<ScoreEntry>> {
-        let name = &self.objective_state(objective)?.name;
-        Some(
-            self.score
-                .board
-                .list_scores(name)
-                .into_iter()
-                .map(|entry| ScoreEntry::new(ScoreHolder::Name(entry.owner), entry.value))
-                .collect(),
-        )
+    pub(super) fn objective_visit_scores(
+        &self,
+        objective: ObjectiveRef,
+        visit: &mut dyn for<'a> FnMut(ScoreEntry<'a>) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, ObjectiveReadError> {
+        let name = &self.objective_visit_state(objective)?.name;
+        Ok(self
+            .score
+            .board
+            .score_rows(name)
+            .map(|(holder, score)| ScoreEntry::new(holder, score.value))
+            .try_for_each(visit))
     }
 
     /// `ScoreAccess.locked`.
@@ -550,8 +578,12 @@ pub(in crate::game) mod tests {
     /// The API's slot and color names are the board's, in the board's order.
     #[test]
     fn slot_and_color_names_are_the_boards() {
-        let slots: Vec<_> = DisplaySlot::all().map(DisplaySlot::name).collect();
-        assert_eq!(slots, sb::display_slots());
+        let board_slots = sb::display_slots();
+        assert!(
+            DisplaySlot::all()
+                .map(DisplaySlot::name)
+                .eq(board_slots.iter().map(String::as_str))
+        );
         let colors: Vec<_> = TeamColor::ALL.iter().map(|c| c.name()).collect();
         assert_eq!(colors, sb::team_colors().collect::<Vec<_>>());
         for slot in DisplaySlot::all() {
@@ -658,10 +690,15 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn objectives_are_written_synced_saved_and_stale_once_removed() {
         with_game(|game| {
+            game.world_root = game.save.root.clone();
             let saved_board = open_lan(game);
             game.lan.as_mut().unwrap().hub.guests.push(guest(123, 1));
             let player = game.player(123).unwrap();
             let text = mod_api::Text::literal;
+            assert_eq!(
+                ScoreboardServerHost::visit_objectives(game, &mut |_| panic!("empty board")),
+                Ok(ControlFlow::Continue(()))
+            );
 
             // Adding refuses what the board refuses, and nothing else.
             let kills = ScoreboardServerHost::add_objective(
@@ -706,8 +743,26 @@ pub(in crate::game) mod tests {
                 );
             }
             assert_eq!(game.objective("kills"), Some(kills));
+            let mut first = Vec::new();
+            assert_eq!(
+                ScoreboardServerHost::visit_objectives(game, &mut |objective| {
+                    first.push(objective);
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first, [kills]);
             assert_eq!(kills.name(game), Some("kills"));
+            assert_eq!(kills.criteria(game), Some("dummy"));
             assert_eq!(kills.display_name(game), Ok(text("Kills")));
+            assert_eq!(
+                kills.visit_slots(game, &mut |_| panic!("no display slot")),
+                Ok(ControlFlow::Continue(()))
+            );
+            assert_eq!(
+                kills.visit_scores(game, &mut |_| panic!("no score")),
+                Ok(ControlFlow::Continue(()))
+            );
 
             // A player and that player's entity are one holder, keyed by the name.
             let as_player = ScoreHolder::Player(player);
@@ -720,7 +775,33 @@ pub(in crate::game) mod tests {
                 Some(5)
             );
             assert_eq!(game.score.board.score("guest1", "kills").unwrap().value, 5);
-            assert_eq!(kills.scores(game).unwrap().len(), 1);
+            kills
+                .set_score(game, ScoreHolder::Name("#zero".into()), 0)
+                .unwrap();
+            assert_eq!(
+                kills.score(game, ScoreHolder::Name("#zero".into())),
+                Some(0)
+            );
+            let mut scores = Vec::new();
+            assert_eq!(
+                kills.visit_scores(game, &mut |row| {
+                    scores.push((row.holder.to_owned(), row.value));
+                    ControlFlow::Continue(())
+                }),
+                Ok(ControlFlow::Continue(()))
+            );
+            // The fastutil board walks bucket 26 (#zero) before bucket 14 (guest1).
+            assert_eq!(
+                scores,
+                [(String::from("#zero"), 0), (String::from("guest1"), 5)]
+            );
+            assert_eq!(
+                kills.visit_scores(game, &mut |row| {
+                    assert_eq!(row, ScoreEntry::new("#zero", 0));
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
             // The command reads what the mod wrote, and the lock starts set.
             assert_eq!(kills.score_locked(game, as_entity.clone()), Some(true));
             assert!(kills.set_score_locked(game, as_entity, false));
@@ -754,12 +835,22 @@ pub(in crate::game) mod tests {
             assert_eq!(kills.score(game, offline), None);
 
             // Shown in the sidebar, a guest's view has it with its score.
+            let red_sidebar = DisplaySlot::TeamSidebar(TeamColor::Red);
+            assert!(game.set_display_slot(red_sidebar, Some(kills)));
             assert!(game.set_display_slot(DisplaySlot::Sidebar, Some(kills)));
             assert_eq!(
                 game.display_slot_objective(DisplaySlot::Sidebar),
                 Some(kills)
             );
-            assert_eq!(kills.slots(game), Some(vec![DisplaySlot::Sidebar]));
+            let mut slots = Vec::new();
+            assert_eq!(
+                kills.visit_slots(game, &mut |slot| {
+                    slots.push(slot);
+                    ControlFlow::Continue(())
+                }),
+                Ok(ControlFlow::Continue(()))
+            );
+            assert_eq!(slots, [DisplaySlot::Sidebar, red_sidebar]);
             game.lan_sync_scoreboard();
             let view = sunrise_client::lan::scoreboard::View::of(&game.score.board);
             assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].scoreboard, view);
@@ -804,6 +895,14 @@ pub(in crate::game) mod tests {
             assert_ne!(renamed, kills_again);
             assert_eq!(kills_again.name(game), None);
             assert_eq!(kills_again.display_name(game), Err(ObjectiveError::Stale));
+            assert_eq!(
+                kills_again.visit_scores(game, &mut |_| panic!("stale objective")),
+                Err(ObjectiveReadError::Stale)
+            );
+            assert_eq!(
+                kills_again.visit_slots(game, &mut |_| panic!("stale objective")),
+                Err(ObjectiveReadError::Stale)
+            );
             assert_eq!(
                 kills_again.set_score(game, ScoreHolder::Name("a".into()), 1),
                 Err(ObjectiveError::Stale)

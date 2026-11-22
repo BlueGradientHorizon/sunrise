@@ -17,10 +17,16 @@ pub trait LevelSavedDataBackend {
     #[access(WorldOnly)]
     fn level_raid_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<RaidRef>;
     /// Side: server.
-    /// Every raid `Raids` holds, in its iteration order, stopped ones
-    /// included until their next tick. None for a closed or stale level.
+    /// Visits every raid in the level's `Raids` map in its iteration order, including stopped
+    /// raids until their next tick. Return `ControlFlow::Break(())` to stop; `Ok(Continue(()))`
+    /// means the visit completed, including an empty map. A stale level or unavailable raid
+    /// map returns a [`LevelReadError`] without calling the visitor.
     #[access(WorldOnly)]
-    fn level_raids(&self, level: LevelRef) -> Option<Vec<RaidRef>>;
+    fn level_visit_raids(
+        &self,
+        level: LevelRef,
+        visit: &mut dyn FnMut(RaidRef) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
     /// Side: server.
     /// The world's respawn data (`LevelData.getRespawnData`): the world spawn, the level it is
     /// in and the way a player appearing there faces, as `/setworldspawn` sets them. The world

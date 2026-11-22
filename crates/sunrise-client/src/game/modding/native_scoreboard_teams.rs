@@ -7,8 +7,8 @@ use super::{Game, native_scoreboard::api_text};
 use core::ops::ControlFlow;
 use mod_api::__private::game::*;
 use mod_api::{
-    ClientTeam, CollisionRule, ScoreHolder, TeamColor, TeamError, TeamMembersReadError, TeamRef,
-    TeamVisibility, TextFormError,
+    ClientTeam, CollisionRule, ScoreHolder, ServerReadError, TeamColor, TeamError,
+    TeamMembersReadError, TeamRef, TeamVisibility, TextFormError,
 };
 use sunrise_client::{
     scoreboard::{self as sb, Comp, comp_text},
@@ -102,16 +102,18 @@ impl Game<'_> {
     }
 
     /// `Scoreboard.getPlayerTeams`.
-    pub(super) fn teams(&self) -> Vec<TeamRef> {
-        if self.remote.is_some() {
-            return Vec::new();
-        }
-        self.score
+    pub(super) fn visit_teams(
+        &self,
+        visit: &mut dyn FnMut(TeamRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, ServerReadError> {
+        let epoch = self.scoreboard_visit_epoch()?;
+        Ok(self
+            .score
             .board
             .teams
             .iter()
-            .filter_map(|t| self.team_handle(t))
-            .collect()
+            .map(|t| team_ref(epoch, t.identity.0))
+            .try_for_each(visit))
     }
 
     /// `/team add`.
@@ -140,8 +142,8 @@ impl Game<'_> {
     }
 
     /// `PlayerTeam.getName`.
-    pub(super) fn team_name(&self, team: TeamRef) -> Option<String> {
-        self.team_state(team).map(|t| t.name.clone())
+    pub(super) fn team_name(&self, team: TeamRef) -> Option<&str> {
+        self.team_state(team).map(|t| t.name.as_str())
     }
 
     /// `PlayerTeam.getDisplayName`.
@@ -395,11 +397,16 @@ mod tests {
     #[ignore = "daily"]
     fn teams_are_written_joined_synced_saved_and_stale_once_removed() {
         with_game(|game| {
+            game.world_root = game.save.root.clone();
             let saved_board = open_lan(game);
             game.lan.as_mut().unwrap().hub.guests.push(guest(123, 1));
             game.lan.as_mut().unwrap().hub.guests.push(guest(456, 2));
             let (a, b) = (game.player(123).unwrap(), game.player(456).unwrap());
             let text = mod_api::Text::literal;
+            assert_eq!(
+                ScoreboardServerHost::visit_teams(game, &mut |_| panic!("empty board")),
+                Ok(ControlFlow::Continue(()))
+            );
 
             // A name is any string; only a taken one is refused.
             let red = ScoreboardServerHost::add_team(game, "red").unwrap();
@@ -411,6 +418,15 @@ mod tests {
                 assert!(ScoreboardServerHost::add_team(game, odd).is_ok());
             }
             assert_eq!(game.team("red"), Some(red));
+            let mut first_team = Vec::new();
+            assert_eq!(
+                ScoreboardServerHost::visit_teams(game, &mut |team| {
+                    first_team.push(team);
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first_team, [red]);
             assert_eq!(red.name(game), Some("red"));
             let mut unexpected_visits = 0;
             let mut count = |_: &str| {

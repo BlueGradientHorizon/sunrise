@@ -402,11 +402,12 @@ impl WaterTicket {
 }
 
 /// A raid of a level (`Raid`), by the id `Raids` keeps it under, which the
-/// raids file saves. `level.raid_at(host, pos)`, `level.raids(host)`,
-/// `level.raid(host, id)` and `mob.raid(host)` make one. A handle resolves
-/// again on each call: it reads as `None` or `false` once the raid is gone,
-/// for a handle of an earlier open, for a closed level, and on a client.
-/// Reads and writes reach parked server levels without moving them into place.
+/// raids file saves. `level.raid_at(host, pos)`, `level.visit_raids(host, visit)`,
+/// `level.raid(host, id)` and `mob.raid(host)` supply handles. Each call resolves the handle
+/// again. Collection visits distinguish a gone raid or a stale level ([`RaidReadError::Stale`])
+/// from a phase or side that cannot read it ([`RaidReadError::Unavailable`]). Other calls
+/// return `None` or `false` on refusal. Reads and writes reach parked server levels without
+/// moving them into place.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct RaidRef {
@@ -1879,8 +1880,8 @@ pub enum GameRuleReadError {
 /// One of the scoreboard's objectives of an open server world (vanilla's `Objective`). It holds
 /// the world's epoch and an identity the board gave the objective when it was added, so an
 /// objective that was removed (even if its name was added again) or a handle from an earlier
-/// open reads as stale: reads answer `None` or [`ObjectiveError::Stale`] and writes change
-/// nothing.
+/// open reads as stale: reads answer `None`, [`ObjectiveError::Stale`] or
+/// [`ObjectiveReadError::Stale`], and writes change nothing.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct ObjectiveRef {

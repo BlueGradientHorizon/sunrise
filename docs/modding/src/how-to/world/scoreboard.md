@@ -1,11 +1,14 @@
 # Read and write the scoreboard
 
 A server mod reaches the world's scoreboard through objective handles, as it reaches a custom
-boss bar. `host.objective(name)` finds an objective, `host.objectives()` lists them,
-`host.add_objective(name, criteria, display_name, render_type)` adds one, and
+boss bar. `host.objective(name)` finds an objective, `host.visit_objectives(&mut visit)`
+visits their handles, `host.add_objective(name, criteria, display_name, render_type)` adds one, and
 `display_slot_objective` and `set_display_slot` read and change what each display slot shows.
 The handle, an `ObjectiveRef`, reads and writes the rest: the criteria, display name, render
-type, number format, display slots and the scores.
+type, number format, display slots and the scores. An objective's `name(host)` and
+`criteria(host)` and a team's `name(host)` borrow `&str` from the board. Use
+`.map(str::to_owned)` only if the text needs to outlive the host borrow. `DisplaySlot::name()`
+returns the slot's static name.
 
 ```rust,ignore
 let kills = host.add_objective("kills", "dummy", Text::literal("Kills"), ObjectiveRenderType::Integer)?;
@@ -40,8 +43,37 @@ A score holder is a `ScoreHolder`:
 An objective's handle holds the world's open and an identity the board gave the objective when
 it was added. After the objective is removed (by `remove` or by `/scoreboard objectives remove`)
 the handle stays stale for good, also when an objective of the same name is added again: reads
-answer `None` or `ObjectiveError::Stale`, and writes change nothing. Ask the host for the
-objective by name again to get a handle to the new one.
+answer `None`, `ObjectiveError::Stale` or `ObjectiveReadError::Stale`, and writes change nothing.
+Ask the host for the objective by name again to get a handle to the new one.
+
+## Visit scores and slots
+
+`objective.visit_scores(host, &mut visit)` visits `ScoreEntry<'_>` rows in the board's holder
+order (vanilla leaves the order unspecified). Each row lends its holder key as `&str` and gives
+its `i32` value. Zero scores are included; a holder without a score has no row. The visit does not
+filter offline or hidden holders. To keep a row, copy the key inside the callback.
+
+```rust,ignore
+use core::ops::ControlFlow::{Break, Continue};
+
+let mut first_match = None;
+let _ = kills.visit_scores(host, &mut |row| {
+    if row.value >= 5 {
+        first_match = Some((row.holder.to_owned(), row.value));
+        Break(())
+    } else {
+        Continue(())
+    }
+})?;
+```
+
+`objective.visit_slots(host, &mut visit)` visits the occupied slots for that objective in
+vanilla display-ID order. Both visits return `Ok(Break(()))` on an early stop or
+`Ok(Continue(()))` on completion, including an empty visit. A refused visit calls no visitor:
+`ObjectiveReadError::Stale` means the objective is gone, and `ObjectiveReadError::Unavailable`
+means the board cannot be read from this side or phase. The server-wide objective and team visits
+follow the same stop and completion convention; they return `ServerReadError::Unavailable` if
+the server scoreboard cannot be read.
 
 ## Writes
 
@@ -57,12 +89,10 @@ Inside `host.transaction` the writes apply at once, and an abort puts the board 
 when the transaction first wrote it. The board is copied once, when the first scoreboard write
 of the transaction happens, and not at all in a transaction that writes none.
 
-`scores()` lists in the board's own order. Vanilla's order is a hash map's, so do not rely on
-one.
-
 ## Teams
 
-`host.team(name)`, `host.teams()` and `host.add_team(name)` give `TeamRef` handles, and
+`host.team(name)` and `host.add_team(name)` give `TeamRef` handles.
+`host.visit_teams(&mut visit)` visits the board's resident team handles, and
 `host.holder_team(holder)` finds the team a holder is on. As an objective's, a team's handle holds
 an identity the board gave the team, so a removed team's handle stays stale after the same name is
 added again. A team name is any string; only a taken one is refused (`TeamError::NameTaken`).

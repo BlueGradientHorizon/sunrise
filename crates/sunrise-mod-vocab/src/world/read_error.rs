@@ -1,4 +1,4 @@
-//! Refusals of entity, level, server and registry reads.
+//! Refusals of entity, level, raid, server and registry reads.
 
 /// Why an `EntityRef` read cannot return its requested state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,6 +39,37 @@ impl crate::AccessRefusal for LevelReadError {
     }
 }
 impl crate::NoBackend for LevelReadError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
+/// Why a raid's members or heroes could not be visited.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+// no wire: this refusal is returned only by in-process raid visitors
+pub enum RaidReadError {
+    /// The raid no longer exists in its level, or that level was closed or reopened.
+    Stale,
+    /// The raid data is not readable from this side, phase or view.
+    Unavailable,
+}
+
+impl From<LevelReadError> for RaidReadError {
+    fn from(error: LevelReadError) -> Self {
+        match error {
+            LevelReadError::Stale => Self::Stale,
+            LevelReadError::Unavailable => Self::Unavailable,
+        }
+    }
+}
+
+impl crate::AccessRefusal for RaidReadError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+impl crate::NoBackend for RaidReadError {
     fn no_backend() -> Self {
         Self::Unavailable
     }

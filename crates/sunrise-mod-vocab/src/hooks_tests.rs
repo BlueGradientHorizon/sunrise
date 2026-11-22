@@ -2,6 +2,35 @@ use super::*;
 use crate::testing::FakeHost;
 
 #[test]
+fn resident_visitors_refuse_without_calling_a_listener_when_the_backend_is_absent() {
+    struct NoWorld;
+    impl Host for NoWorld {}
+    mod_api::impl_host_areas!(NoWorld);
+
+    let epoch = WorldEpoch::new(1);
+    let level = LevelRef::new(epoch, DimensionKey::OVERWORLD);
+    let raid = RaidRef::new(level, 1);
+    let objective = crate::__private::game::objective_ref(epoch, 1);
+    let player = crate::__private::game::player_ref(EntityRef::new(epoch, 1), 1);
+    assert_eq!(
+        level.visit_raids(&NoWorld, &mut |_| panic!("no raid map")),
+        Err(LevelReadError::Unavailable)
+    );
+    assert_eq!(
+        raid.visit_raiders(&NoWorld, &mut |_| panic!("no raid")),
+        Err(RaidReadError::Unavailable)
+    );
+    assert_eq!(
+        player.visit_discovered_recipes(&NoWorld, &mut |_| panic!("no recipe book")),
+        Err(EntityReadError::Unavailable)
+    );
+    assert_eq!(
+        objective.visit_scores(&NoWorld, &mut |_| panic!("no scoreboard")),
+        Err(ObjectiveReadError::Unavailable)
+    );
+}
+
+#[test]
 fn chat_line_exposes_text_conversion_failure() {
     // This function must type-check for every client host, so callers can
     // propagate a refused text conversion instead of losing the error.

@@ -72,6 +72,17 @@ current dimension, even when another dimension is ticking. On a client they
 identify the local player's level. Unknown, disconnected, replaced or stale handles
 return `None`.
 
+## Known recipes
+
+On the server, `player.has_discovered_recipe(host, id)` checks one recipe.
+`player.visit_discovered_recipes(host, &mut visit)` visits the qualified IDs in that
+player's resident recipe book, whether they are acting now or waiting between turns.
+Each ID is borrowed as `&str` for the call; use `id.to_owned()` inside the visitor
+if you need to retain one. Return `ControlFlow::Break(())` to stop or
+`ControlFlow::Continue(())` to keep visiting. An empty book completes with
+`Ok(Continue(()))`; `EntityReadError::Stale` and `EntityReadError::Unavailable` mean
+there is no readable book, and neither calls the visitor.
+
 ## Messages and visibility
 
 Send a message with `player.tell(host, text)`, `player.action_bar(host, text)` or

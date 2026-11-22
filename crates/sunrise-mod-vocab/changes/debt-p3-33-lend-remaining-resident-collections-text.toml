@@ -36,8 +36,39 @@ ids = [
     "method:Levels::visit_levels",
     "type:LevelReadError",
     "type:ServerReadError",
+    "method:prelude::ScoreboardServerHost::objectives",
+    "method:prelude::ScoreboardServerHost::visit_objectives",
+    "method:prelude::ScoreboardServerHost::teams",
+    "method:prelude::ScoreboardServerHost::visit_teams",
+    "handle:ObjectiveRef::name",
+    "handle:ObjectiveRef::criteria",
+    "handle:ObjectiveRef::scores",
+    "handle:ObjectiveRef::visit_scores",
+    "handle:ObjectiveRef::slots",
+    "handle:ObjectiveRef::visit_slots",
+    "handle:TeamRef::name",
+    "handle:DisplaySlot::name",
+    "type:ScoreEntry",
+    "type:ScoreEntry.holder",
+    "handle:ScoreEntry::new",
+    "type:ObjectiveReadError",
+    "type:ObjectiveReadError.Stale",
+    "type:ObjectiveReadError.Unavailable",
+    "handle:LevelRef::raids",
+    "handle:LevelRef::visit_raids",
+    "handle:RaidRef::raiders",
+    "handle:RaidRef::visit_raiders",
+    "handle:RaidRef::wave_raiders",
+    "handle:RaidRef::visit_wave_raiders",
+    "handle:RaidRef::heroes",
+    "handle:RaidRef::visit_heroes",
+    "type:RaidReadError",
+    "type:RaidReadError.Stale",
+    "type:RaidReadError.Unavailable",
+    "handle:PlayerRef::discovered_recipes",
+    "handle:PlayerRef::visit_discovered_recipes",
 ]
-why = "Riding and multipart reads no longer allocate a list for the caller. Resident riding handles follow vanilla Entity.addPassenger and Entity.getPassengers order, Entity.getIndirectPassengers pre-order, and ClientPacketListener.handleSetEntityPassengersPacket seat order. Multipart handles follow the resident order of vanilla EnderDragon.getSubEntities and NeoForge IEntityExtension.getParts (implemented by EnderDragon.getParts). Fluid reads lend the last body sample, as in vanilla Entity.getFluidHeight and Entity.isEyeInFluid and NeoForge IEntityExtension.getFluidTypeHeight, getMaxHeightFluidType and getFirstEyeInFluidType. Living reads visit the existing state behind vanilla LivingEntity.getActiveEffects, LivingEntity.getAttributes and AttributeInstance.getModifiers without building a list or copying IDs per call. Level, tracking, tick and rule visits read the resident state behind MinecraftServer.getAllLevels and getTickTimesNanos, ChunkMap's visible map, TrackedEntity.seenBy and getPlayers(pos, false), ServerLevel.getForceLoadedChunks and ForceLoadCommand.listForceLoad, and the feature-filtered GameRules.availableRules. They keep the existing order and empty-versus-unavailable distinction without copying the lists or rule names. NeoForge PacketDistributor.sendToPlayersTrackingEntity, sendToPlayersTrackingEntityAndSelf and sendToPlayersTrackingChunk use the same tracking membership; NeoForge TicketController.forceChunk scopes mod tickets by controller and owner."
+why = "Riding and multipart reads no longer allocate a list for the caller. Resident riding handles follow vanilla Entity.addPassenger and Entity.getPassengers order, Entity.getIndirectPassengers pre-order, and ClientPacketListener.handleSetEntityPassengersPacket seat order. Multipart handles follow the resident order of vanilla EnderDragon.getSubEntities and NeoForge IEntityExtension.getParts (implemented by EnderDragon.getParts). Fluid reads lend the last body sample, as in vanilla Entity.getFluidHeight and Entity.isEyeInFluid and NeoForge IEntityExtension.getFluidTypeHeight, getMaxHeightFluidType and getFirstEyeInFluidType. Living reads visit the existing state behind vanilla LivingEntity.getActiveEffects, LivingEntity.getAttributes and AttributeInstance.getModifiers without building a list or copying IDs per call. Level, tracking, tick and rule visits read the resident state behind MinecraftServer.getAllLevels and getTickTimesNanos, ChunkMap's visible map, TrackedEntity.seenBy and getPlayers(pos, false), ServerLevel.getForceLoadedChunks and ForceLoadCommand.listForceLoad, and the feature-filtered GameRules.availableRules. They keep the existing order and empty-versus-unavailable distinction without copying the lists or rule names. NeoForge PacketDistributor.sendToPlayersTrackingEntity, sendToPlayersTrackingEntityAndSelf and sendToPlayersTrackingChunk use the same tracking membership; NeoForge TicketController.forceChunk scopes mod tickets by controller and owner. Server scoreboard visits use the resident data behind vanilla Scoreboard.getObjectives, getPlayerTeams, listPlayerScores and getDisplayObjective. Names come from Objective.getName and getCriteria, PlayerTeam.getName and DisplaySlot.getSerializedName. Raid visits use the per-level map behind Raids.get and Raids.tick, and the members and heroes behind Raid.getAllRaiders, groupRaiderMap and heroesOfTheVillage. NeoForge Raid.spawnGroup changes how raider types are supplied, not how these collections are read. Recipe visits read the book behind ServerRecipeBook.known and contains. These visits retain existing visibility and order without building a list or copying names on each call."
 migrate = """
 - Replace `entity.passengers(host)` with `entity.visit_passengers(host, &mut |rider| { /* read rider */ ControlFlow::Continue(()) })`. The visit is available on either side and omits riders without a resident handle.
 - Replace `entity.indirect_passengers(host)` with `entity.visit_indirect_passengers(host, &mut |rider| { /* read rider */ ControlFlow::Continue(()) })`. This remains server-only and still finds resident riders below a retained, off-level intermediary.
@@ -52,4 +83,10 @@ migrate = """
 - Replace `level.loaded_chunks(host)` with `level.visit_loaded_chunks(host, &mut |chunk| { /* use ChunkRef */ ControlFlow::Continue(()) })`. The visit does not load anything. Replace `level.forced_chunks(host)` with `level.visit_forced_chunks(host, &mut |pos| { /* use [i32; 2] */ ControlFlow::Continue(()) })`. Replace `level.mod_forced_chunks(host, controller)` with `level.visit_mod_forced_chunks(host, controller, &mut |owner, pos, natural| { /* use TicketOwner, [i32; 2], bool */ ControlFlow::Continue(()) })`. For these visits and chunk watchers, handle `LevelReadError::Stale` for a stale level or `LevelReadError::Unavailable` for an unreadable side or phase (also for a controller the callback cannot use). A valid empty set completes with `Ok(ControlFlow::Continue(()))` and no callback.
 - Replace `level.game_rules(host)` with `level.visit_game_rules(host, &mut |id, value| { /* use &str and GameRuleValue */ ControlFlow::Continue(()) })`, keeping the same level refusal handling. Replace `host.game_rules()` with `host.visit_game_rules(&mut |id, value| { /* use &str and GameRuleValue */ ControlFlow::Continue(()) })`. Keep only the rules you need; call `id.to_owned()` inside the visitor if you retain its name.
 - Replace `host.levels().list_levels()` with `host.levels().visit_levels(&mut |level| { /* use LevelRef */ ControlFlow::Continue(()) })`; before a world opens there is nothing to visit. Replace `host.tick_times()` with `host.visit_tick_times(&mut |nanos| { /* use u64 */ ControlFlow::Continue(()) })`; if sorting or indexing is needed, push each duration into your own `Vec`. Server-wide visits return `ServerReadError::Unavailable` when they cannot be supplied (for example in an unreadable phase), not an empty visit.
+- Replace `host.objectives()` and `host.teams()` with `host.visit_objectives(&mut |objective| { /* use ObjectiveRef */ ControlFlow::Continue(()) })` and `host.visit_teams(&mut |team| { /* use TeamRef */ ControlFlow::Continue(()) })`. An unreadable server board returns `Err(ServerReadError::Unavailable)` rather than an empty list.
+- Replace `objective.slots(host)` with `objective.visit_slots(host, &mut |slot| { /* use DisplaySlot */ ControlFlow::Continue(()) })`. Replace `objective.scores(host)` with `objective.visit_scores(host, &mut |row| { /* use row.holder and row.value */ ControlFlow::Continue(()) })`. An old `None` becomes `Err(ObjectiveReadError::Stale)` for a removed or earlier-open objective, or `Err(ObjectiveReadError::Unavailable)` if the board cannot be read. Neither calls the visitor.
+- `ScoreEntry<'_>::holder` is `&str`, not `ScoreHolder::Name(String)`; compare it directly. To retain it, copy `row.holder.to_owned()` inside the visitor. Use `ScoreHolder::Name(owned_key)` for a later write. Replace `ScoreEntry::new(ScoreHolder::Name(key), value)` with `ScoreEntry::new(key.as_str(), value)` for a borrowed row in a fixture. `ScoreEntry` no longer implements Wire; for typed payloads use your own owned `#[derive(Wire)]` type with a `String` key and `i32` value.
+- `objective.name(host)`, `objective.criteria(host)` and `team.name(host)` now return `Option<&str>`. Drop `.as_deref()` from their results and add `.map(str::to_owned)` only when you need an owned value. `slot.name()` returns `&'static str`: use `map.get(slot.name())` for lookup, or `map.insert(slot.name().to_owned(), value)` for an owned map key.
+- Replace `level.raids(host)` with `level.visit_raids(host, &mut |raid| { /* use RaidRef */ ControlFlow::Continue(()) })`; distinguish a stale level from unavailable raid data with `LevelReadError`. Stopped entries still visit until the next raid tick removes them. Replace `raid.raiders(host)`, `raid.wave_raiders(host, wave)` and `raid.heroes(host)` with `raid.visit_raiders(host, &mut visit)`, `raid.visit_wave_raiders(host, wave, &mut visit)` and `raid.visit_heroes(host, &mut visit)`. The visitors take `EntityRef`, `EntityRef` and `u128`, respectively. Replace `None` handling with `RaidReadError::Stale` for a gone raid or level, and `RaidReadError::Unavailable` for an unreadable side, phase or map.
+- Replace `player.discovered_recipes(host)` with `player.visit_discovered_recipes(host, &mut |id| { /* use id: &str */ ControlFlow::Continue(()) })`. Call `id.to_owned()` inside the visitor to retain a key. Replace the old `None` check with `EntityReadError::Stale` for a stale player or `EntityReadError::Unavailable` when there is no readable server backend. An empty recipe book is a successful visit with no callbacks.
 """
