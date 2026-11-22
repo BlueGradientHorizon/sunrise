@@ -118,16 +118,12 @@ fn six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write() {
                         let entity = save::decode_block_entity_for_block(&tag, BLOCK).unwrap();
                         game.world.load_chunk_block_entities((0, 0), vec![entity]);
                     } else {
-                        let level = game.level(game.dim.id()).unwrap();
-                        assert_eq!(
-                            game.level_set_block(
-                                level,
-                                [POS.0, POS.1, POS.2],
-                                state,
-                                BlockUpdateFlags::NONE
-                            ),
-                            Ok(true),
-                        );
+                        assert!(game.set_block_live(
+                            [POS.0, POS.1, POS.2],
+                            state,
+                            BlockUpdateFlags::NONE.bits(),
+                            true,
+                        ));
                     }
                     let tables = game.native_containers();
                     game.world.block_entities.set_mod_containers(tables);
