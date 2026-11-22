@@ -97,9 +97,10 @@ impl Game<'_> {
             return Err(LevelReadError::Unavailable);
         }
         let BlockPos { x, y, z } = context.pos;
+        let Some(source) = super::api_values::placement_source_into_engine(context.source) else {
+            return Ok(None);
+        };
         if !context.hit.iter().all(|n| n.is_finite())
-            || !context.yaw.is_finite()
-            || !context.pitch.is_finite()
             || !(-30_000_000..30_000_000).contains(&x)
             || !(-30_000_000..30_000_000).contains(&z)
             || !world.is_loaded_at(x, y, z)
@@ -126,9 +127,7 @@ impl Game<'_> {
                 face: context.face,
                 hit: Vec3::new(context.hit[0], context.hit[1], context.hit[2]),
                 inside: context.inside,
-                yaw: context.yaw,
-                pitch: context.pitch,
-                sneaking: context.sneaking,
+                source,
                 item: item.to_owned(),
                 replace_clicked: context.replace_clicked,
             },

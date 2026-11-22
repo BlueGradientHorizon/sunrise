@@ -1,0 +1,13 @@
+ids = [
+    "hook:placement_context",
+    "hook:state_for_placement",
+    "type:world::snapshots::PlacementContext",
+    "type:world::snapshots::PlacementContext.pitch",
+    "type:world::snapshots::PlacementContext.sneaking",
+    "type:world::snapshots::PlacementContext.source",
+    "type:world::snapshots::PlacementContext.yaw",
+    "type:world::snapshots::PlacementSource",
+    "handle:world::snapshots::PlacementContext::directional",
+]
+why = "PlacementContext now carries a PlacementSource distinguishing a player placement (BlockPlaceContext: PlacementSource::Player { yaw, pitch, sneaking }) from a directional non-player placement (DirectionalPlaceContext: PlacementSource::Directional { direction }, such as a dispenser placing a shulker box or a falling block checking replaceability). Moving yaw, pitch and sneaking into PlacementSource::Player removes the invalid combination of player orientation fields on a non-player placement."
+migrate = "state_for_placement is SDK surface version 4 and placement_context is SDK surface version 3; rebuild against the updated SDK. Match context.source for PlacementSource::Player { yaw, pitch, sneaking } (vanilla getPlayer() != null) versus PlacementSource::Directional { direction } (vanilla DirectionalPlaceContext, getPlayer() == null), and use PlacementContext::directional for non-player placement queries."

@@ -156,7 +156,9 @@ pub trait LevelBlocksBackendMut {
     ///
     /// Returns `Ok(None)` for vanilla's `null`, a part's `Some(None)`, an unknown block
     /// or item key, an unloaded or out-of-bounds destination, or a non-finite hit or
-    /// rotation. `None` in `context.item` means an empty hand.
+    /// player rotation. `context.source` selects between player (`BlockPlaceContext`)
+    /// and directional (`DirectionalPlaceContext`) placement rules. `None` in
+    /// `context.item` means an empty hand.
     fn level_state_for_placement(
         &mut self,
         level: LevelRef,

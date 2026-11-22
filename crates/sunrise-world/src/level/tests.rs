@@ -2010,9 +2010,11 @@ impl World<'_> {
             face,
             hit,
             inside: false,
-            yaw,
-            pitch,
-            sneaking: false,
+            source: PlacementSource::Player {
+                yaw,
+                pitch,
+                sneaking: false,
+            },
             item: format!("minecraft:{item}"),
             can_use_game_master_blocks: false,
         };
@@ -4219,7 +4221,7 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
         clicked: BlockPos,
         face: Direction,
         item: String,
-        sneaking: bool,
+        source: PlacementSource,
         replace_clicked: bool,
         fluid: FluidState,
     }
@@ -4283,7 +4285,7 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
                 clicked: context.hit_pos,
                 face: context.face,
                 item: context.item.clone(),
-                sneaking: context.sneaking,
+                source: context.source,
                 replace_clicked: context.replace_clicked,
                 fluid,
             });
@@ -4301,7 +4303,7 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
         BlockPos,
         Direction,
         String,
-        bool,
+        PlacementSource,
         bool,
         FluidState,
     ) {
@@ -4313,7 +4315,7 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
             first.clicked,
             first.face,
             first.item.clone(),
-            first.sneaking,
+            first.source,
             first.replace_clicked,
             first.fluid,
         )
@@ -4349,9 +4351,11 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
         face: Direction::Up,
         hit: Vec3::new(0.5, 1.0, 0.5),
         inside: false,
-        yaw: 0.0,
-        pitch: 0.0,
-        sneaking: false,
+        source: PlacementSource::Player {
+            yaw: 0.0,
+            pitch: 0.0,
+            sneaking: false,
+        },
         item: "minecraft:furnace".into(),
         can_use_game_master_blocks: false,
     };
@@ -4363,14 +4367,21 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
     // It was asked with the block it decides for, where the block would go
     // (above the stone), the block clicked, the face clicked, the item in
     // hand, and the fluid of the position it goes in (none: dry stone).
-    let (state, pos, clicked, face, item, sneaking, replace_clicked, fluid) = asked(&level);
+    let (state, pos, clicked, face, item, source, replace_clicked, fluid) = asked(&level);
     assert_eq!(state, furnace);
     assert_eq!(pos, BlockPos::new(0, 1, 0));
     assert_eq!(clicked, ground);
     assert_eq!(face, Direction::Up);
     assert_eq!(item, "minecraft:furnace");
     assert!(!replace_clicked);
-    assert!(!sneaking);
+    assert_eq!(
+        source,
+        PlacementSource::Player {
+            yaw: 0.0,
+            pitch: 0.0,
+            sneaking: false,
+        }
+    );
     assert_eq!(fluid, FluidState::EMPTY);
     // Clicking a block that can be replaced: the block goes into it, and the
     // fluid already there (water) reaches the hook, which a waterlogged block
@@ -4379,15 +4390,26 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
     let water = f.registry.default_state("minecraft:water").unwrap();
     level.set_raw(BlockPos::new(0, 1, 0), water);
     ctx.clicked_pos = BlockPos::new(0, 1, 0);
-    ctx.sneaking = true;
+    ctx.source = PlacementSource::Player {
+        yaw: 0.0,
+        pitch: 0.0,
+        sneaking: true,
+    };
     assert_eq!(
         b.state_for_placement(&mut level, &mut ticks, furnace_block, &ctx),
         Some(facing("east"))
     );
-    let (_, pos, _, _, _, sneaking, replace_clicked, fluid) = asked(&level);
+    let (_, pos, _, _, _, source, replace_clicked, fluid) = asked(&level);
     assert_eq!(pos, BlockPos::new(0, 1, 0));
     assert!(replace_clicked);
-    assert!(sneaking);
+    assert_eq!(
+        source,
+        PlacementSource::Player {
+            yaw: 0.0,
+            pitch: 0.0,
+            sneaking: true,
+        }
+    );
     assert_eq!(fluid.kind(), FluidKind::Water);
     // Refused (vanilla's `null` return): there is no state, so the placement
     // fails and the stack is kept.
@@ -4413,18 +4435,18 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
     );
     // A dispenser places through the same state computation
     // (`ShulkerBoxDispenseBehavior`'s `DirectionalPlaceContext`): it places
-    // the hook's state too, with the dispenser's own view of the click.
+    // the hook's state too, with the dispenser's own directional source.
     level.answer = Some(Some(facing("east")));
     level.asked.borrow_mut().clear();
     let front = BlockPos::new(3, 1, 1);
     let dispenser = PlaceContext {
         clicked_pos: front,
         face: Direction::East,
-        hit: Vec3::new(3.0, 1.0, 1.5),
+        hit: Vec3::new(3.5, 1.0, 1.5),
         inside: false,
-        yaw: 270.0,
-        pitch: 0.0,
-        sneaking: false,
+        source: PlacementSource::Directional {
+            direction: Direction::East,
+        },
         item: "minecraft:furnace".into(),
         can_use_game_master_blocks: false,
     };
@@ -4438,11 +4460,41 @@ fn the_level_chooses_the_state_a_block_is_placed_in() {
         }
     );
     assert_eq!(level.block_state(front), facing("east"));
-    let (state, pos, _, _, item, _, replace_clicked, _) = asked(&level);
+    let (state, pos, _, _, item, source, replace_clicked, _) = asked(&level);
     assert_eq!(state, furnace);
     assert_eq!(pos, front);
     assert_eq!(item, "minecraft:furnace");
+    assert_eq!(
+        source,
+        PlacementSource::Directional {
+            direction: Direction::East,
+        }
+    );
     assert!(replace_clicked, "the front block is air: it is replaced");
+    // Vanilla `DirectionalPlaceContext`: vertical direction resolves
+    // `getHorizontalDirection()` to North (so a furnace faces South) and
+    // `getNearestLookingDirection()` to Down (so an observer faces Down).
+    level.answer = None;
+    let vertical_dispenser = PlaceContext {
+        clicked_pos: BlockPos::new(4, 1, 1),
+        face: Direction::Up,
+        hit: Vec3::new(4.5, 1.0, 1.5),
+        inside: false,
+        source: PlacementSource::Directional {
+            direction: Direction::Up,
+        },
+        item: "minecraft:furnace".into(),
+        can_use_game_master_blocks: false,
+    };
+    assert_eq!(
+        b.state_for_placement(&mut level, &mut ticks, furnace_block, &vertical_dispenser),
+        Some(facing("south"))
+    );
+    let observer = b.block(f.registry.default_state("minecraft:observer").unwrap());
+    let observer_state = b
+        .state_for_placement(&mut level, &mut ticks, observer, &vertical_dispenser)
+        .unwrap();
+    assert_eq!(b.facing(observer_state), Direction::Down);
     // A made-up id is not trusted: the fallback remains vanilla's state.
     level.answer = Some(Some(BlockStateId(u32::MAX)));
     assert_eq!(
@@ -4682,9 +4734,11 @@ fn survive_hooks_answer_for_the_block() {
             face: Direction::Up,
             hit: sunrise_core::geometry::Vec3::new(1.5, 2.0, 1.5),
             inside: false,
-            yaw: 0.0,
-            pitch: 0.0,
-            sneaking: false,
+            source: PlacementSource::Player {
+                yaw: 0.0,
+                pitch: 0.0,
+                sneaking: false,
+            },
             item: item.into(),
             can_use_game_master_blocks: false,
         };
@@ -4751,9 +4805,11 @@ fn a_level_can_answer_what_makes_a_campfire_signal() {
             face: Direction::Up,
             hit: sunrise_core::geometry::Vec3::new(0.5, 1.0, 0.5),
             inside: false,
-            yaw: 0.0,
-            pitch: 0.0,
-            sneaking: false,
+            source: PlacementSource::Player {
+                yaw: 0.0,
+                pitch: 0.0,
+                sneaking: false,
+            },
             item: "minecraft:campfire".into(),
             can_use_game_master_blocks: false,
         };

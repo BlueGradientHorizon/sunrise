@@ -379,13 +379,18 @@ they were the server's: a client's own shape update that refuses a block removes
 
 Before a block's placement state is selected, `ItemPart::placement_context` replaces the item's
 `BlockItem.updatePlacementContext` rewrite. It is keyed by the real pre-use `stack`, including its
-components. `placer` gives the player handle and the eyes at the time of the click via `eye_position()`
-(the acting player on the server, the predicting player on the client). It is `None` for a dispenser.
+components. `context.source` distinguishes a player placement
+(`PlacementSource::Player { yaw, pitch, sneaking }`, vanilla's `BlockPlaceContext` with a non-null
+player) from a non-player directional placement (`PlacementSource::Directional { direction }`,
+vanilla's `DirectionalPlaceContext`, such as a dispenser placing a shulker box). `placer` gives
+the live player handle and eye position at the time of the click via `eye_position()`
+(the acting player on the server, the predicting player on the client) and is `None` for a dispenser.
 `Some(Some(context))` rewrites the target and click, even if the player's original destination is
 occupied. The new destination must be loaded, in bounds and replaceable. The placing item cannot
-change and click and view values must be finite. `Some(None)` refuses. `None` keeps vanilla, which
+change and click and player view values must be finite. `Some(None)` refuses. `None` keeps vanilla, which
 checks the original destination before its own rewrite (such as scaffolding's column walk). A
-blocked dispenser still fails before this hook. `BlockPart::state_for_placement` then selects the
+blocked dispenser still fails before this hook. `BlockPart::state_for_placement` then receives the
+resolved `PlacementContext` (including `source`) and selects the
 candidate, which may be a registered state of another block. The game uses that
 candidate for survival, obstruction, and the written-block check that gates item data and placed-by
 callbacks. The held item does not change, and its double-height pre-clear still runs if applicable.

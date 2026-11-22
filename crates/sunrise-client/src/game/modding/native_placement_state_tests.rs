@@ -5,8 +5,8 @@ use super::{
 };
 use mod_api::{
     Block, BlockPart, BlockState, BlocksEvent, FenceGateInWallEvent, Hooks, LevelReadError,
-    LevelRef, LevelSide, ModEntry, Mods, PlacementContext, Registrar, RegistrationContext,
-    StateForPlacementEvent, WorldEpoch,
+    LevelRef, LevelSide, ModEntry, Mods, PlacementContext, PlacementSource, Registrar,
+    RegistrationContext, StateForPlacementEvent, WorldEpoch,
 };
 use std::sync::Arc;
 use sunrise_client::chunk::Chunk;
@@ -31,7 +31,10 @@ impl BlockPart for PlacementPart {
         };
         let default = level.block_state_default(event.state.block()).unwrap();
         assert_eq!(event.state, default);
-        if event.context.sneaking {
+        if matches!(
+            event.context.source,
+            PlacementSource::Player { sneaking: true, .. }
+        ) {
             return Some(None);
         }
         if event.context.inside {
@@ -40,6 +43,10 @@ impl BlockPart for PlacementPart {
                 u16::MAX,
             )));
         }
+        if let PlacementSource::Directional { direction } = event.context.source {
+            assert_eq!(direction, Direction::South);
+            return Some(level.block_state_id("minecraft:oak_log[axis=x]"));
+        }
         // A real non-replaceable block is clicked, but the query must use the
         // independent destination and replacement flag supplied by the caller.
         assert_eq!(event.context.pos, POS);
@@ -47,8 +54,14 @@ impl BlockPart for PlacementPart {
         assert!(event.context.replace_clicked);
         assert_eq!(event.context.face, Direction::East);
         assert_eq!(event.context.hit, [10.0, 70.75, 8.0]);
-        assert_eq!(event.context.yaw, -90.0);
-        assert_eq!(event.context.pitch, 35.0);
+        assert_eq!(
+            event.context.source,
+            PlacementSource::Player {
+                yaw: -90.0,
+                pitch: 35.0,
+                sneaking: false,
+            }
+        );
         assert_eq!(
             event.context.item,
             mod_api::__private::item_key("minecraft:oak_log")
@@ -113,7 +126,11 @@ fn vanilla_candidates_use_the_resolved_context_without_placing() {
             use super::api_values::TryIntoEngine;
             let level = game.level(game.dim.id()).unwrap();
             let mut context = PlacementContext::new(POS, Direction::East, None);
-            context.yaw = -90.0;
+            context.source = PlacementSource::Player {
+                yaw: -90.0,
+                pitch: 0.0,
+                sneaking: false,
+            };
             context.hit[1] += 0.75;
             let registry = game.pack.assets.registry;
             // A read must not change the destination or its neighbours, or enqueue the dry coral's
@@ -212,12 +229,20 @@ fn placement_refusals_are_typed() {
         let vine = game.block_key("minecraft:vine").unwrap();
         assert_eq!(level.state_for_placement(game, vine, &context), Ok(None));
         let mod_block = game.block_key(BLOCK).unwrap();
-        context.sneaking = true;
+        context.source = PlacementSource::Player {
+            yaw: 0.0,
+            pitch: 0.0,
+            sneaking: true,
+        };
         assert_eq!(
             level.state_for_placement(game, mod_block, &context),
             Ok(None)
         );
-        context.sneaking = false;
+        context.source = PlacementSource::Player {
+            yaw: 0.0,
+            pitch: 0.0,
+            sneaking: false,
+        };
         context.inside = true;
         assert_eq!(
             level.state_for_placement(game, mod_block, &context),
@@ -233,8 +258,11 @@ fn placement_refusals_are_typed() {
         ] {
             let mut invalid = context.clone();
             invalid.hit[1] = hit_y;
-            invalid.yaw = yaw;
-            invalid.pitch = pitch;
+            invalid.source = PlacementSource::Player {
+                yaw,
+                pitch,
+                sneaking: false,
+            };
             assert_eq!(
                 level.state_for_placement(game, mod_block, &invalid),
                 Ok(None)
@@ -291,8 +319,11 @@ fn another_blocks_state_is_returned_only_from_the_level_in_play() {
             context.hit_pos = POS.offset(2, 0, 0);
             context.replace_clicked = true;
             context.hit = [10.0, 70.75, 8.0];
-            context.yaw = -90.0;
-            context.pitch = 35.0;
+            context.source = PlacementSource::Player {
+                yaw: -90.0,
+                pitch: 35.0,
+                sneaking: false,
+            };
             game.world
                 .set(
                     10,
@@ -311,6 +342,18 @@ fn another_blocks_state_is_returned_only_from_the_level_in_play() {
             assert_eq!(
                 level.state_for_placement(game, mod_block, &context),
                 Ok(Some(log))
+            );
+            // A directional query reaches the part with `PlacementSource::Directional`.
+            let directional =
+                PlacementContext::directional(POS, Direction::South, Direction::Up, None);
+            let log_x = game
+                .block_state_id("minecraft:oak_log[axis=x]")
+                .unwrap()
+                .try_into_api()
+                .unwrap();
+            assert_eq!(
+                level.state_for_placement(game, mod_block, &directional),
+                Ok(Some(log_x))
             );
             let door = game.block_key("minecraft:oak_door").unwrap();
             let state = level

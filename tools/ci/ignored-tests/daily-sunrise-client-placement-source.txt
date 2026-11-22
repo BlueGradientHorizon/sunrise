@@ -1,0 +1,2 @@
+# Daily placement-source tests: real Game::use_hand, remote_can_place, and dispense_item dispatch.
+sunrise-client game::native_hooks::placement_context_tests::state_for_placement_distinguishes_player_and_dispenser_sources lib daily child-process

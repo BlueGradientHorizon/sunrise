@@ -48,16 +48,18 @@ fn a_gate_asks_its_neighbours_parts_for_wall_height() {
                 let neighbour = registry.default_state(name).unwrap();
                 game.with_level(|b, level, ticks| {
                     use sunrise_core::geometry::{Direction, Vec3};
-                    use sunrise_world::level::PlaceContext;
+                    use sunrise_world::level::{PlaceContext, PlacementSource};
                     let pos = BlockPos::new(0, 64, z);
                     let context = PlaceContext {
                         clicked_pos: pos,
                         face: Direction::Up,
                         hit: Vec3::new(0.5, 64.0, f64::from(z) + 0.5),
                         inside: false,
-                        yaw: 0.0,
-                        pitch: 0.0,
-                        sneaking: false,
+                        source: PlacementSource::Player {
+                            yaw: 0.0,
+                            pitch: 0.0,
+                            sneaking: false,
+                        },
                         item: "minecraft:oak_fence_gate".into(),
                         can_use_game_master_blocks: false,
                     };

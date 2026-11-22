@@ -2,6 +2,29 @@
 use crate::{BlockPos, Direction, ItemKey, PlayerRef};
 use sunrise_core::nbt::Tag;
 
+/// Who initiated a block placement: a player (`BlockPlaceContext`) or a
+/// directional non-player source (`DirectionalPlaceContext`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum PlacementSource {
+    /// A player's placement (`BlockPlaceContext`, non-null `getPlayer()`).
+    Player {
+        /// Placer yaw in degrees (`getYRot` / `getRotation`).
+        yaw: f32,
+        /// Placer pitch in degrees (`getXRot`).
+        pitch: f32,
+        /// Whether secondary use is active (`isSecondaryUseActive`).
+        sneaking: bool,
+    },
+    /// A non-player directional placement (`DirectionalPlaceContext`, `getPlayer() == null`),
+    /// such as a dispenser placing a shulker box or a falling block checking replaceability.
+    Directional {
+        /// The direction the placer acts along (`DirectionalPlaceContext`'s direction).
+        direction: Direction,
+    },
+}
+
 /// Inputs to selecting a block's placement state.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
@@ -17,12 +40,9 @@ pub struct PlacementContext {
     pub hit: [f64; 3],
     /// Whether the click originated inside the block's shape.
     pub inside: bool,
-    /// Placer yaw in degrees.
-    pub yaw: f32,
-    /// Placer pitch in degrees.
-    pub pitch: f32,
-    /// Whether secondary use is active.
-    pub sneaking: bool,
+    /// Who initiated the placement: a player's view and sneak state, or a
+    /// directional non-player source (`DirectionalPlaceContext`).
+    pub source: PlacementSource,
     /// The resolved item in the placing hand; `None` for an empty hand.
     pub item: Option<ItemKey>,
     /// Whether the clicked block itself is replaced.
@@ -30,7 +50,7 @@ pub struct PlacementContext {
 }
 
 impl PlacementContext {
-    /// A placement at `pos`, with a click on `face` and an optional held item.
+    /// A player placement at `pos`, with a click on `face` and an optional held item.
     /// The click starts at the block origin, with zero view angles and no flags set.
     pub fn new(pos: BlockPos, face: Direction, item: Option<ItemKey>) -> Self {
         Self {
@@ -39,11 +59,37 @@ impl PlacementContext {
             face,
             hit: [f64::from(pos.x), f64::from(pos.y), f64::from(pos.z)],
             inside: false,
-            yaw: 0.0,
-            pitch: 0.0,
-            sneaking: false,
+            source: PlacementSource::Player {
+                yaw: 0.0,
+                pitch: 0.0,
+                sneaking: false,
+            },
             item,
             replace_clicked: false,
+        }
+    }
+
+    /// A non-player directional placement at `pos` along `direction`, with a click on `face`
+    /// and an optional item (`DirectionalPlaceContext`), targeting the bottom center of `pos`.
+    pub fn directional(
+        pos: BlockPos,
+        direction: Direction,
+        face: Direction,
+        item: Option<ItemKey>,
+    ) -> Self {
+        Self {
+            pos,
+            hit_pos: pos,
+            face,
+            hit: [
+                f64::from(pos.x) + 0.5,
+                f64::from(pos.y),
+                f64::from(pos.z) + 0.5,
+            ],
+            inside: false,
+            source: PlacementSource::Directional { direction },
+            item,
+            replace_clicked: true,
         }
     }
 }

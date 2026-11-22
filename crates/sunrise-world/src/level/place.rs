@@ -16,7 +16,29 @@ use sunrise_core::{
     random::RandomSource,
 };
 
-/// A player's use-item-on-block action (`UseOnContext` inputs).
+/// Who initiated a block placement: a player (`BlockPlaceContext`) or a
+/// directional non-player source (`DirectionalPlaceContext`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PlacementSource {
+    /// A player's use-item-on-block placement (`BlockPlaceContext` with a non-null player).
+    Player {
+        /// Player view yaw in degrees (`getYRot` / `getRotation`).
+        yaw: f32,
+        /// Player view pitch in degrees (`getXRot`).
+        pitch: f32,
+        /// `isSecondaryUseActive` (sneaking).
+        sneaking: bool,
+    },
+    /// `DirectionalPlaceContext` (`getPlayer() == null`): a non-player placement
+    /// acting along `direction` (e.g. a dispenser placing a shulker box or a
+    /// falling block checking replaceability).
+    Directional {
+        /// The direction passed to `DirectionalPlaceContext`.
+        direction: Direction,
+    },
+}
+
+/// A block-item placement action (`UseOnContext` / `DirectionalPlaceContext` inputs).
 #[derive(Clone, Debug)]
 pub struct PlaceContext {
     /// The block that was hit (`BlockHitResult.getBlockPos`).
@@ -27,11 +49,8 @@ pub struct PlaceContext {
     pub hit: Vec3,
     /// `BlockHitResult.isInside`.
     pub inside: bool,
-    /// Player view rotation in degrees (`getYRot`, `getXRot`).
-    pub yaw: f32,
-    pub pitch: f32,
-    /// `isSecondaryUseActive` (sneaking).
-    pub sneaking: bool,
+    /// Who initiated the placement: a player's view/sneak state or a directional source.
+    pub source: PlacementSource,
     /// The item in hand (registry name, e.g. `minecraft:oak_stairs`).
     pub item: String,
     /// `Player.canUseGameMasterBlocks` (creative operator); gates command,
@@ -93,7 +112,8 @@ pub struct PlacementPreview {
 #[derive(Clone, Debug)]
 pub struct PlacementContext {
     /// Where the block would go (`getClickedPos`): the clicked block itself
-    /// when it can be replaced, else the block beside it.
+    /// when it can be replaced, else the block beside it (or always the clicked
+    /// block for `DirectionalPlaceContext`).
     pub pos: BlockPos,
     /// The block that was clicked (`getHitResult().getBlockPos`).
     pub hit_pos: BlockPos,
@@ -104,11 +124,8 @@ pub struct PlacementContext {
     /// `BlockHitResult.isInside`: the click hit the inside of the clicked
     /// block's shape.
     pub inside: bool,
-    /// The placer's rotation, in degrees (`getRotation`).
-    pub yaw: f32,
-    pub pitch: f32,
-    /// `isSecondaryUseActive`: the player placing it is sneaking.
-    pub sneaking: bool,
+    /// Who initiated the placement (`BlockPlaceContext` vs `DirectionalPlaceContext`).
+    pub source: PlacementSource,
     /// The item in the placer's hand (`getItemInHand().getItem()`), as its
     /// registry name: `minecraft:oak_stairs`.
     pub item: String,
@@ -188,31 +205,115 @@ fn rotation_segment_of(direction: Direction) -> i32 {
 }
 
 impl PlacementContext {
+    /// `UseOnContext.isSecondaryUseActive` / `DirectionalPlaceContext.isSecondaryUseActive`.
+    pub(crate) fn is_sneaking(&self) -> bool {
+        matches!(self.source, PlacementSource::Player { sneaking: true, .. })
+    }
+    /// `UseOnContext.getRotation` / `DirectionalPlaceContext.getRotation`.
+    fn rotation(&self) -> f32 {
+        match self.source {
+            PlacementSource::Player { yaw, .. } => yaw,
+            PlacementSource::Directional { direction } => {
+                (super::query::data_2d(direction) * 90) as f32
+            }
+        }
+    }
+    /// `UseOnContext.getHorizontalDirection` / `DirectionalPlaceContext.getHorizontalDirection`.
     fn horizontal_direction(&self) -> Direction {
-        from_y_rot(f64::from(self.yaw))
+        match self.source {
+            PlacementSource::Player { yaw, .. } => from_y_rot(f64::from(yaw)),
+            PlacementSource::Directional { direction } => {
+                if axis_of(direction) == Axis::Y {
+                    Direction::North
+                } else {
+                    direction
+                }
+            }
+        }
     }
+    /// `BlockPlaceContext.getNearestLookingDirections` /
+    /// `DirectionalPlaceContext.getNearestLookingDirections`.
     fn nearest_looking_directions(&self) -> [Direction; 6] {
-        let mut directions = ordered_by_nearest(self.yaw, self.pitch);
-        if self.replace_clicked {
-            return directions;
+        match self.source {
+            PlacementSource::Player { yaw, pitch, .. } => {
+                let mut directions = ordered_by_nearest(yaw, pitch);
+                if self.replace_clicked {
+                    return directions;
+                }
+                let target = self.face.opposite();
+                if let Some(index) = directions.iter().position(|d| *d == target)
+                    && index > 0
+                {
+                    directions.copy_within(0..index, 1);
+                    directions[0] = target;
+                }
+                directions
+            }
+            PlacementSource::Directional { direction } => match direction {
+                Direction::Down => [
+                    Direction::Down,
+                    Direction::North,
+                    Direction::East,
+                    Direction::South,
+                    Direction::West,
+                    Direction::Up,
+                ],
+                Direction::Up => [
+                    Direction::Down,
+                    Direction::Up,
+                    Direction::North,
+                    Direction::East,
+                    Direction::South,
+                    Direction::West,
+                ],
+                Direction::North => [
+                    Direction::Down,
+                    Direction::North,
+                    Direction::East,
+                    Direction::West,
+                    Direction::Up,
+                    Direction::South,
+                ],
+                Direction::South => [
+                    Direction::Down,
+                    Direction::South,
+                    Direction::East,
+                    Direction::West,
+                    Direction::Up,
+                    Direction::North,
+                ],
+                Direction::West => [
+                    Direction::Down,
+                    Direction::West,
+                    Direction::South,
+                    Direction::Up,
+                    Direction::North,
+                    Direction::East,
+                ],
+                Direction::East => [
+                    Direction::Down,
+                    Direction::East,
+                    Direction::South,
+                    Direction::Up,
+                    Direction::North,
+                    Direction::West,
+                ],
+            },
         }
-        let target = self.face.opposite();
-        if let Some(index) = directions.iter().position(|d| *d == target)
-            && index > 0
-        {
-            directions.copy_within(0..index, 1);
-            directions[0] = target;
-        }
-        directions
     }
+    /// `BlockPlaceContext.getNearestLookingDirection` /
+    /// `DirectionalPlaceContext.getNearestLookingDirection`.
     fn nearest_looking_direction(&self) -> Direction {
-        ordered_by_nearest(self.yaw, self.pitch)[0]
+        match self.source {
+            PlacementSource::Player { yaw, pitch, .. } => ordered_by_nearest(yaw, pitch)[0],
+            PlacementSource::Directional { .. } => Direction::Down,
+        }
     }
+    /// `BlockPlaceContext.getNearestLookingVerticalDirection`.
     fn nearest_looking_vertical(&self) -> Direction {
-        if self.pitch < 0.0 {
-            Direction::Up
-        } else {
-            Direction::Down
+        match self.source {
+            PlacementSource::Player { pitch, .. } if pitch < 0.0 => Direction::Up,
+            PlacementSource::Player { .. } | PlacementSource::Directional { .. } => Direction::Down,
         }
     }
     fn click_y(&self) -> f64 {
@@ -241,25 +342,31 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         for class in &data.chain {
             return match class {
                 Class::Candle => {
-                    (!ctx.sneaking && self.item_is(ctx, block) && b.table.int(state, p.candles) < 4)
+                    (!ctx.is_sneaking()
+                        && self.item_is(ctx, block)
+                        && b.table.int(state, p.candles) < 4)
                         || default(self)
                 }
                 Class::SeaPickle => {
-                    (!ctx.sneaking && self.item_is(ctx, block) && b.table.int(state, p.pickles) < 4)
+                    (!ctx.is_sneaking()
+                        && self.item_is(ctx, block)
+                        && b.table.int(state, p.pickles) < 4)
                         || default(self)
                 }
                 Class::TurtleEgg => {
-                    (!ctx.sneaking && self.item_is(ctx, block) && b.table.int(state, p.eggs) < 4)
+                    (!ctx.is_sneaking()
+                        && self.item_is(ctx, block)
+                        && b.table.int(state, p.eggs) < 4)
                         || default(self)
                 }
                 Class::FlowerBed => {
-                    (!ctx.sneaking
+                    (!ctx.is_sneaking()
                         && self.item_is(ctx, block)
                         && b.table.int(state, p.flower_amount) < 4)
                         || default(self)
                 }
                 Class::LeafLitter => {
-                    (!ctx.sneaking
+                    (!ctx.is_sneaking()
                         && self.item_is(ctx, block)
                         && b.table.int(state, p.segment_amount) < 4)
                         || default(self)
@@ -432,7 +539,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             }
             Class::Skull => {
                 let state = sup!()?;
-                Some(table.set_int(state, p.rotation, rotation_segment(ctx.yaw)))
+                Some(table.set_int(state, p.rotation, rotation_segment(ctx.rotation())))
             }
             Class::WallSkull => {
                 let mut state = sup!()?;
@@ -473,13 +580,15 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                     }
                 }
             }
-            Class::Banner => {
-                Some(table.set_int(default, p.rotation, rotation_segment(ctx.yaw + 180.0)))
-            }
+            Class::Banner => Some(table.set_int(
+                default,
+                p.rotation,
+                rotation_segment(ctx.rotation() + 180.0),
+            )),
             Class::StandingSign => Some(wl(table.set_int(
                 default,
                 p.rotation,
-                rotation_segment(ctx.yaw + 180.0),
+                rotation_segment(ctx.rotation() + 180.0),
             ))),
             Class::Barrel | Class::Command | Class::Dispenser => Some(table.set_dir(
                 default,
@@ -600,10 +709,10 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                 let below_hanging = b
                     .tag("minecraft:all_hanging_signs")
                     .is_some_and(|tag| b.in_set(above_state, tag));
-                let direction = from_y_rot(f64::from(ctx.yaw));
+                let direction = from_y_rot(f64::from(ctx.rotation()));
                 let mut attached_to_middle =
-                    !self.collision_face_full_at(above_pos, Direction::Down) || ctx.sneaking;
-                if below_hanging && !ctx.sneaking {
+                    !self.collision_face_full_at(above_pos, Direction::Down) || ctx.is_sneaking();
+                if below_hanging && !ctx.is_sneaking() {
                     if b.instance_of(above_state, Class::WallHangingSign) {
                         if axis_of(b.facing(above_state)) == axis_of(direction) {
                             attached_to_middle = false;
@@ -625,7 +734,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                 let segment = if !attached_to_middle {
                     rotation_segment_of(direction.opposite())
                 } else {
-                    rotation_segment(ctx.yaw + 180.0)
+                    rotation_segment(ctx.rotation() + 180.0)
                 };
                 Some(wl(table.set_int(
                     table.set_bool(default, p.attached, attached_to_middle),
@@ -777,7 +886,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                 let mut facing = horizontal.opposite();
                 let face = ctx.face;
                 if is_horizontal(face)
-                    && ctx.sneaking
+                    && ctx.is_sneaking()
                     && let Some(neighbour_facing) =
                         self.chest_candidate_partner_facing(default, pos, face.opposite())
                     && axis_of(neighbour_facing) != axis_of(face)
@@ -789,7 +898,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                         "left"
                     };
                 }
-                if kind == "single" && !ctx.sneaking {
+                if kind == "single" && !ctx.is_sneaking() {
                     if self.chest_candidate_partner_facing(default, pos, clockwise(facing))
                         == Some(facing)
                     {
@@ -1208,7 +1317,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                 } else {
                     return Some(None);
                 };
-                let thickness = self.speleothem_thickness_for(block, pos, tip, !ctx.sneaking);
+                let thickness = self.speleothem_thickness_for(block, pos, tip, !ctx.is_sneaking());
                 let state = table.set_dir(default, p.vertical_direction, tip);
                 Some(wl(table.set_text(state, p.thickness, thickness)))
             }
@@ -1644,14 +1753,12 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             face: input.face,
             hit: input.hit,
             inside: input.inside,
-            yaw: input.yaw,
-            pitch: input.pitch,
-            sneaking: input.sneaking,
+            source: input.source,
             item: input.item.clone(),
             replace_clicked: true,
         };
         ctx.replace_clicked = self.can_be_replaced(self.state(input.clicked_pos), &ctx);
-        if !ctx.replace_clicked {
+        if !ctx.replace_clicked && !matches!(ctx.source, PlacementSource::Directional { .. }) {
             ctx.pos = rel(input.clicked_pos, input.face);
         }
         let rewritten = match rewrite(self.level, &ctx) {
@@ -1661,8 +1768,15 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             }
             Some(None) => return None,
             None => {
-                // The default keeps BlockPlaceContext.canPlace before the item's rewrite.
-                if !ctx.replace_clicked && !self.can_be_replaced(self.state(ctx.pos), &ctx) {
+                // The default keeps BlockPlaceContext.canPlace / DirectionalPlaceContext.canPlace
+                // before the item's rewrite.
+                let can_place = match ctx.source {
+                    PlacementSource::Directional { .. } => ctx.replace_clicked,
+                    PlacementSource::Player { .. } => {
+                        ctx.replace_clicked || self.can_be_replaced(self.state(ctx.pos), &ctx)
+                    }
+                };
+                if !can_place {
                     return None;
                 }
                 if binding.kind == ItemKind::Scaffolding {
@@ -1828,7 +1942,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                 Some(ctx.clone())
             };
         }
-        let direction = if ctx.sneaking {
+        let direction = if ctx.is_sneaking() {
             if ctx.inside {
                 ctx.face.opposite()
             } else {
@@ -2004,9 +2118,7 @@ impl Behaviours {
             face: ctx.face,
             hit: ctx.hit,
             inside: ctx.inside,
-            yaw: ctx.yaw,
-            pitch: ctx.pitch,
-            sneaking: ctx.sneaking,
+            source: ctx.source,
             item: ctx.item.clone(),
             replace_clicked: true,
         };
@@ -2025,7 +2137,7 @@ impl Behaviours {
     }
     /// `getStateForPlacement` of `block` for `ctx` without placing anything
     /// (`None` when vanilla refuses the placement). The position is resolved
-    /// as `BlockPlaceContext` does.
+    /// as `BlockPlaceContext` (or `DirectionalPlaceContext`) does.
     pub fn state_for_placement<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
@@ -2040,14 +2152,12 @@ impl Behaviours {
             face: input.face,
             hit: input.hit,
             inside: input.inside,
-            yaw: input.yaw,
-            pitch: input.pitch,
-            sneaking: input.sneaking,
+            source: input.source,
             item: input.item.clone(),
             replace_clicked: true,
         };
         ctx.replace_clicked = sim.can_be_replaced(sim.state(input.clicked_pos), &ctx);
-        if !ctx.replace_clicked {
+        if !ctx.replace_clicked && !matches!(ctx.source, PlacementSource::Directional { .. }) {
             ctx.pos = rel(input.clicked_pos, input.face);
         }
         sim.state_for_placement(block, &ctx)
@@ -2070,9 +2180,11 @@ mod placed_against_tests {
                     face,
                     hit: Vec3::new(0.0, 0.0, 0.0),
                     inside: false,
-                    yaw: 0.0,
-                    pitch: 0.0,
-                    sneaking: false,
+                    source: PlacementSource::Player {
+                        yaw: 0.0,
+                        pitch: 0.0,
+                        sneaking: false,
+                    },
                     item: String::new(),
                     replace_clicked: false,
                 },
@@ -2090,5 +2202,144 @@ mod placed_against_tests {
             decision.context.pos = clicked;
             assert_eq!(decision.placed_against_pos(), clicked.offset(-x, -y, -z));
         }
+    }
+
+    #[test]
+    fn directional_place_context_matches_vanilla_overrides() {
+        let pos = BlockPos::new(4, 64, 8);
+        let make = |source: PlacementSource| PlacementContext {
+            pos,
+            hit_pos: pos,
+            face: Direction::Up,
+            hit: Vec3::new(4.5, 64.0, 8.5),
+            inside: false,
+            source,
+            item: String::new(),
+            replace_clicked: true,
+        };
+
+        // Player at yaw 0 looking south vs directional south: different source and looking dirs.
+        let player_south = make(PlacementSource::Player {
+            yaw: 0.0,
+            pitch: 0.0,
+            sneaking: true,
+        });
+        assert!(player_south.is_sneaking());
+        assert_eq!(player_south.horizontal_direction(), Direction::South);
+        assert_eq!(player_south.rotation(), 0.0);
+        assert_eq!(player_south.nearest_looking_direction(), Direction::South);
+
+        let expected: [(Direction, Direction, f32, [Direction; 6]); 6] = [
+            (
+                Direction::Down,
+                Direction::North,
+                -90.0,
+                [
+                    Direction::Down,
+                    Direction::North,
+                    Direction::East,
+                    Direction::South,
+                    Direction::West,
+                    Direction::Up,
+                ],
+            ),
+            (
+                Direction::Up,
+                Direction::North,
+                -90.0,
+                [
+                    Direction::Down,
+                    Direction::Up,
+                    Direction::North,
+                    Direction::East,
+                    Direction::South,
+                    Direction::West,
+                ],
+            ),
+            (
+                Direction::North,
+                Direction::North,
+                180.0,
+                [
+                    Direction::Down,
+                    Direction::North,
+                    Direction::East,
+                    Direction::West,
+                    Direction::Up,
+                    Direction::South,
+                ],
+            ),
+            (
+                Direction::South,
+                Direction::South,
+                0.0,
+                [
+                    Direction::Down,
+                    Direction::South,
+                    Direction::East,
+                    Direction::West,
+                    Direction::Up,
+                    Direction::North,
+                ],
+            ),
+            (
+                Direction::West,
+                Direction::West,
+                90.0,
+                [
+                    Direction::Down,
+                    Direction::West,
+                    Direction::South,
+                    Direction::Up,
+                    Direction::North,
+                    Direction::East,
+                ],
+            ),
+            (
+                Direction::East,
+                Direction::East,
+                270.0,
+                [
+                    Direction::Down,
+                    Direction::East,
+                    Direction::South,
+                    Direction::Up,
+                    Direction::North,
+                    Direction::West,
+                ],
+            ),
+        ];
+
+        for (direction, horizontal, rotation, ordered) in expected {
+            let ctx = make(PlacementSource::Directional { direction });
+            assert!(!ctx.is_sneaking(), "{direction:?}");
+            assert_eq!(ctx.horizontal_direction(), horizontal, "{direction:?}");
+            assert_eq!(ctx.rotation(), rotation, "{direction:?}");
+            assert_eq!(
+                ctx.nearest_looking_direction(),
+                Direction::Down,
+                "{direction:?}"
+            );
+            assert_eq!(ctx.nearest_looking_directions(), ordered, "{direction:?}");
+        }
+    }
+
+    #[test]
+    fn falling_block_landing_context_uses_directional_down() {
+        let pos = BlockPos::new(12, 70, -5);
+        let ctx = super::super::falling::landing_replace_context(pos);
+        assert_eq!(ctx.pos, pos);
+        assert_eq!(ctx.hit_pos, pos);
+        assert_eq!(ctx.face, Direction::Up);
+        assert_eq!(ctx.hit, Vec3::new(12.5, 70.0, -4.5));
+        assert!(!ctx.inside);
+        assert_eq!(
+            ctx.source,
+            PlacementSource::Directional {
+                direction: Direction::Down,
+            }
+        );
+        assert!(ctx.item.is_empty());
+        assert!(ctx.replace_clicked);
     }
 }

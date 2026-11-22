@@ -198,9 +198,11 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
         face: Direction::Up,
         hit: Vec3::new(4.5, 64.0, 4.5),
         inside: false,
-        yaw: 0.0,
-        pitch: 0.0,
-        sneaking: false,
+        source: sunrise_world::level::PlacementSource::Player {
+            yaw: 0.0,
+            pitch: 0.0,
+            sneaking: false,
+        },
         item: item.into(),
         can_use_game_master_blocks: false,
     };

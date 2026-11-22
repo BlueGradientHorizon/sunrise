@@ -43,7 +43,7 @@
 //! # Integration sketch
 //!
 //! ```ignore
-//! use sunrise_world::level::{self, Behaviours, LevelAccess, LevelEvent, PlaceContext, Ticks, flags};
+//! use sunrise_world::level::{self, Behaviours, LevelAccess, LevelEvent, PlaceContext, PlacementSource, Ticks, flags};
 //!
 //! struct GameLevel { chunks: Chunks, random: LegacyRandom, time: i64, events: Vec<LevelEvent> }
 //! impl level::BlockEntityNeighbors for GameLevel {}
@@ -79,7 +79,8 @@
 //!
 //! // Player actions:
 //! behaviours.place_block(&mut level, &mut ticks, &PlaceContext { clicked_pos, face, hit, inside: false,
-//!     yaw, pitch, sneaking, item: "minecraft:oak_stairs".into(), can_use_game_master_blocks: false });
+//!     source: PlacementSource::Player { yaw, pitch, sneaking }, item: "minecraft:oak_stairs".into(),
+//!     can_use_game_master_blocks: false });
 //! let state = level.block_state(pos);
 //! let block_hit = sunrise_core::geometry::BlockHit { block: pos, direction: face, location: hit, inside: false };
 //! behaviours.use_without_item(&mut level, &mut ticks, state, block_hit, player_context);
@@ -212,7 +213,7 @@ pub use interact::{InteractionResult, PlayerContext, PlayerEffect, UseBranch, hi
 pub use pistons::{BlockEventData, MovingPiston};
 pub use place::{
     AppliedPlacement, PlaceContext, PlaceOutcome, PlacementContext, PlacementPreview,
-    ResolvedPlacement,
+    PlacementSource, ResolvedPlacement,
 };
 pub use portal::PortalShape;
 pub use states::{BlockId, PropKey, StateTable};
