@@ -89,10 +89,10 @@ tick does not open a transaction for you. Use `event.subject.transaction` to mak
 a subject edit and a dropped-item write atomic:
 
 ```rust,ignore
-use mod_api::{BlockEntityTickScope, ItemEntityRef, ItemStack};
+use mod_api::{BlockEntityScope, ItemEntityRef, ItemStack};
 
 fn update(
-    tick: &mut BlockEntityTickScope<'_>,
+    tick: &mut BlockEntityScope<'_>,
     item: ItemEntityRef,
     replacement: ItemStack,
     progress: i32,
@@ -146,6 +146,12 @@ Entities a transaction spawns or removes follow the same commit and rollback rul
   own entities after the commit's batch, in the order it asked.
 - Travel between levels is not journaled: an entity that arrives in another level during an aborted
   transaction stays where it arrived.
+
+For batched projectiles and thrown tridents, `projectile_impact` runs in the same transaction
+as the captured hit. Canceling the hit does not abort listener writes. Discarding the
+projectile makes its handle stale during the callback; the outermost commit notifies
+`entity_leave_level` once if the entity was announced. If a listener aborts its own nested
+discard and only cancels the hit, the original projectile stays alive.
 
 ## Transaction authority
 

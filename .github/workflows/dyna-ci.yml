@@ -1,6 +1,6 @@
 name: dyna-checks
-# What the run tests, readable in the run list: a dispatch with `pr` runs on ref main but tests that pull request's head,
-# so it is named for it and never read as main's CI; the prepared-output dispatch likewise.
+# What the run tests, readable in the run list: a dispatch with `pr` runs on ref main but tests that pull request's
+# test merge with its base, so it is named for it and never read as main's CI; the prepared-output dispatch likewise.
 run-name: "${{ inputs.pr && format('PR #{0} gate', inputs.pr) || inputs.prepare-output-check && 'prepared output check' || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}"
 # A contributor's pull request (its head in a fork) gets the cheap checks (verify-static, format); the heavy ones
 # (everything that compiles) run on main's pushes, dispatches, and same-repository rollup or sync pull requests
@@ -28,7 +28,7 @@ on:
         type: boolean
         default: false
       pr:
-        description: Run the heavy checks on this pull request's head (a fork's too) and post them on it
+        description: Run the heavy checks on this pull request's test merge with its base (a fork's too) and post them on its head
         type: string
         default: ''
 defaults:
@@ -90,9 +90,11 @@ jobs:
       actions: read
       pull-requests: read
     outputs:
-      # Whether the heavy jobs run (tools/ci/pr_gate.py); a dispatch with `pr` runs them on that head.
+      # Whether the heavy jobs run (tools/ci/pr_gate.py); a dispatch with `pr` runs them on that pull request's test
+      # merge with its base, and reports them on its head (`pr_sha`).
       heavy: ${{ steps.gate.outputs.heavy == 'false' && 'false' || 'true' }}
       pr_sha: ${{ steps.gate.outputs.pr_sha }}
+      pr_merge: ${{ steps.gate.outputs.pr_merge }}
       # Whether this run's code may use our own runners: never a fork's pull request, dispatched or not.
       trusted: ${{ steps.gate.outputs.trusted || ((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'true' || 'false') }}
       # Off where selection needs none, and on a main push whose tree its merged head's pull_request run already
@@ -311,8 +313,9 @@ jobs:
       # Not diff-selected: any tracked file can contain a captured tool notice.
       - uses: actions/checkout@v4
         with:
-          # A dispatch with `pr`: that pull request's head; otherwise this event's commit.
-          ref: ${{ needs.changes.outputs.pr_sha }}
+          # A dispatch with `pr`: that pull request's test merge with its base, as a pull_request run checks out;
+          # otherwise this event's commit.
+          ref: ${{ needs.changes.outputs.pr_merge }}
       # The tree this gate checks, so a main push of the same tree can take its verdict (tools/ci/gate_reuse.py). Only
       # where the tree's own dyna-ci.yml runs (a push, a pull_request's test merge): a `pr` dispatch runs main's
       # definition on another tree. Best-effort: a failed record only loses the saving.
@@ -499,8 +502,9 @@ jobs:
         run: exit 1
       - uses: actions/checkout@v4
         with:
-          # A dispatch with `pr`: that pull request's head; otherwise this event's commit.
-          ref: ${{ needs.changes.outputs.pr_sha }}
+          # A dispatch with `pr`: that pull request's test merge with its base, as a pull_request run checks out;
+          # otherwise this event's commit.
+          ref: ${{ needs.changes.outputs.pr_merge }}
       - uses: actions/setup-python@v5
         if: needs.changes.outputs.tooling_required != 'false' && (env.RUNNER_KIND == 'github' || env.RUNNER_KIND == 'boat')
         with:
@@ -689,7 +693,6 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           PR: ${{ inputs.pr }}
-          GH_TOKEN: ${{ github.token }}
         run: python3 tools/ci/surface_report.py
       - name: Test Rust documentation examples
         id: test_rust_documentation_examples
@@ -777,8 +780,9 @@ jobs:
       - uses: actions/checkout@v4
         id: checkout
         with:
-          # A dispatch with `pr`: that pull request's head; otherwise this event's commit.
-          ref: ${{ needs.changes.outputs.pr_sha }}
+          # A dispatch with `pr`: that pull request's test merge with its base, as a pull_request run checks out;
+          # otherwise this event's commit.
+          ref: ${{ needs.changes.outputs.pr_merge }}
       # Public-tree ranges and sync ancestry need full history of this exact commit,
       # not every branch and tag. The Rust job only needs its checkout's HEAD and tracked files.
       - name: Fetch this commit's history
@@ -986,6 +990,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.changes.outputs.pr_sha }}
+          MERGE: ${{ needs.changes.outputs.pr_merge }}
           RESULTS: ${{ toJSON(needs) }}
           RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -995,7 +1000,7 @@ jobs:
           for job in ("lint", "verify", "verify-static"):
               result = json.loads(os.environ["RESULTS"])[job]["result"]
               body = {"state": states.get(result, "error"), "context": f"dispatched/{job}",
-                      "description": f"dyna-checks dispatched on this head: {result}", "target_url": os.environ["RUN"]}
+                      "description": f"{result} on test merge {os.environ['MERGE']}", "target_url": os.environ["RUN"]}
               request = urllib.request.Request(
                   f"{os.environ['GITHUB_API_URL']}/repos/{os.environ['GITHUB_REPOSITORY']}/statuses/{os.environ['SHA']}",
                   data=json.dumps(body).encode(), method="POST",

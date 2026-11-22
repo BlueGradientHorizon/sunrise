@@ -62,7 +62,7 @@ READERS = {
     ],
     # The daily Character comparator reads the original public-JDK API helper.
     "sunrise-core": ["tools/JavaCharacterTables.java"],
-    "sunrise-game": ["packaging/windows/exe.rs"],
+    "sunrise-game": ["packaging/windows/exe.rs", "packaging/macos/exe.rs"],
     # The ignored-test inventory reads the game's modules and the vocabulary's export fragments.
     "sunrise-game-discovery": ["crates/sunrise-client/src", "crates/sunrise-mod-vocab/src"],
     "sunrise-mod-api": MOD_API_GEN,
@@ -79,7 +79,7 @@ READERS = {
         "tools/mixins/narrow-reference-rule.patch",
     ],
     "sunrise-mod-render": MOD_API_GEN,
-    "sunrise-official": ["packaging/windows/exe.rs"],
+    "sunrise-official": ["packaging/windows/exe.rs", "packaging/macos/exe.rs"],
     "sunrise-perf": ["crates/sunrise-perf-format/tests/fixtures", "tests/fixtures/pacing_slow_frames.hzperf"],
     "sunrise-port-pack": ["docs/modpacks/atm10-mods.csv"],
     "sunrise-prepare": [
@@ -107,6 +107,8 @@ SCANNED = {"sunrise-client-core": ["crates"]}
 NOT_READS = {
     "sunrise-client": {"crates"}, "sunrise-client-lib": {"crates"}, "sunrise-mod-package": {"crates"},
     "sunrise-mod-vocab": {"."}, "sunrise-port-pack": {"mods"}, "sunrise-prepare": {"crates"},
+    # A package's source-file names (`package::source_file`), never this checkout's lock.
+    "sunrise-mod-source": {"Cargo.lock"},
     # shader_fuzz's `..` path parts, in the packs it writes and reads, beside its own seed pack.
     "sunrise-render-shaderpack": {"crates"},
     # Paths inside a staged game source or a test's scratch folder, never this checkout's files.

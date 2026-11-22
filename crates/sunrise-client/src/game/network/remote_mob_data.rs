@@ -462,6 +462,9 @@ fn swirls(list: &[Particle], builtin: &Builtin) -> Vec<ParticleOptions> {
     let channel = |argb: i32, shift: u32| ((argb >> shift) & 255) as f32 / 255.0;
     list.iter()
         .filter_map(|p| {
+            if let Some(ParticleData::Mod { name, options }) = &p.data {
+                return super::lan_particles::decode_mod_particle(name, options);
+            }
             let name = builtin.get("minecraft:particle_type")?.name(p.id)?;
             let ty = ParticleType::from_name(name)?;
             Some(match p.data {

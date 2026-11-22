@@ -26,7 +26,8 @@ pub trait EntitiesHost {
     /// `block_state`, `block`, `block_property`, `clip`, `collision_boxes`,
     /// `has_collisions`, and the fluid reads built on `block_state`
     /// (`fluid_shape`, `fluid_height`, `fluid_height_for_camera`,
-    /// `fluid_can_be_replaced_with`). Its other reads, its entity reads and
+    /// `fluid_can_be_replaced_with`). `get_enchant_power_bonus` uses the viewed level as context.
+    /// Its other reads, its entity reads and
     /// every write refuse it. It answers None while the server has the level
     /// closed; a close and a later open within the same client level make the
     /// old handle read again. A login, a reconfiguration or a respawn into

@@ -117,12 +117,6 @@
       "canonical_path": "crate::client::camera::CameraType"
     },
     {
-      "name": "CauldronFire",
-      "path": "crate::block::cauldron_interactions::CauldronFire",
-      "hash": "81acbbcd86849277",
-      "canonical_path": "crate::block::cauldron_interactions::CauldronFire"
-    },
-    {
       "name": "ChatVisibility",
       "path": "crate::entity::types::ChatVisibility",
       "hash": "a41766187068e728",
@@ -580,14 +574,6 @@
       "canonical_path": "crate::world::types::ProgressType"
     },
     {
-      "name": "ProvidedBy",
-      "path": "crate::ProvidedBy",
-      "hash": "fe10e188155f9b86",
-      "contract_change": "arismoko/horizon#3519 appends ProvidedBy::Block; the frozen hash was 5d265204eef1d102",
-      "canonical_path": "crate::parts::shared::ProvidedBy",
-      "alias_provenance": "rustc E0603 public re-export suggestion from generated direct-type test compilation"
-    },
-    {
       "name": "PushReaction",
       "path": "crate::content::content_declarations::PushReaction",
       "hash": "ca956b109ca86e24",
@@ -832,6 +818,7 @@
     "crate::content::payloads::PayloadPhase",
     "crate::content::payloads::PeerPolicy",
     "crate::item::item_stack::StackError",
+    "crate::parts::shared::ProvidedBy",
     "crate::world::phase::DataLoadOrigin",
     "crate::world::phase::LoopSide",
     "crate::world::phase::PackageKind"

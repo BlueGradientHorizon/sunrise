@@ -208,7 +208,7 @@ impl Streaming {
         first: bool,
         visibility: Option<Lease>,
     ) {
-        let settings = self.mesh_settings();
+        let mut settings = self.mesh_settings();
         if let Some(lease) = visibility {
             let context = self.shared.context.read().unwrap().clone();
             self.section_visibility.pending.push(VisibilityRequest {
@@ -223,6 +223,14 @@ impl Streaming {
             return;
         }
         let (x, sy, z) = key;
+        if region[1][1]
+            .as_ref()
+            .is_some_and(|c| !c.extra_models.is_empty())
+        {
+            let context = self.shared.context.read().unwrap().clone();
+            self.attached_tint_preparation
+                .prepare(&context, &mut settings, region, sy);
+        }
         let job = Job::Mesh(x, sy, z, region.clone(), self.sequence, settings);
         self.submit(Some((x, z)), if first { 2 } else { 0 }, job);
     }
@@ -278,10 +286,12 @@ impl Streaming {
         });
         settings.visibility = Some(Arc::new(FrozenPlan {
             plan,
-            context,
+            context: context.clone(),
             halo,
             _lease: lease.split(WORKER_BYTES),
         }));
+        self.attached_tint_preparation
+            .prepare(&context, &mut settings, &region, sy);
         let job = Job::Mesh(x, sy, z, region, seq, settings);
         self.submit(Some((x, z)), if first { 2 } else { 0 }, job);
     }

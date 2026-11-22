@@ -178,8 +178,8 @@ impl Game<'_> {
 
     /// Each column's height on `h` (none where its chunk is not loaded) and its blocks from `below` under it to
     /// `above` - 1 over it, bottom first (air outside the column and where it is not loaded), as indices into the
-    /// full states seen, with the biome's grass, foliage and water tints at the column's top (0 where it is not loaded;
-    /// unblended). `Err`, reading nothing, when `below + above` is 0 or more than the level's height, or the read
+    /// full states seen, with each column's biome JSON water colour at the column's top (`0xRRGGBB`, `0` where it is
+    /// not loaded). `Err`, reading nothing, when `below + above` is 0 or more than the level's height, or the read
     /// would be more than `MAX_READ` blocks.
     pub(super) fn read_loaded_block_columns(
         &self,
@@ -192,32 +192,24 @@ impl Game<'_> {
         let bases = self.loaded_column_heights(columns, h);
         let (palette, blocks) = column_blocks(&self.world, columns, &bases, below, above)
             .ok_or("the read is too big")?;
-        let biomes = self.res.biomes();
-        let mut tints = Vec::with_capacity(columns.len() * 3);
+        let biomes = world_biomes!(self);
+        let mut water_colors = Vec::with_capacity(columns.len());
         for (&(x, z), base) in columns.iter().zip(&bases) {
-            // (the biome tints at the column's top, as the block there is tinted)
-            match base.and_then(|b| {
-                self.world
-                    .chunks
-                    .get(&(x >> 4, z >> 4))
-                    .map(|c| c.biome(x, b - 1, z))
-            }) {
-                Some(id) => {
-                    let b = biomes.get(id);
-                    tints.extend([
-                        biomes.grass(id, f64::from(x), f64::from(z)),
-                        b.foliage,
-                        b.water,
-                    ]);
-                }
-                None => tints.extend([0, 0, 0]),
-            }
+            let water = base
+                .and_then(|b| {
+                    self.world
+                        .chunks
+                        .get(&(x >> 4, z >> 4))
+                        .map(|c| biomes.get(c.biome(x, b - 1, z)).water)
+                })
+                .unwrap_or(0);
+            water_colors.push(water);
         }
         Ok(ColumnBlocks {
             palette: super::api_values::block_edit::column_palette(palette)?,
             bases,
             blocks,
-            tints,
+            water_colors,
         })
     }
 
