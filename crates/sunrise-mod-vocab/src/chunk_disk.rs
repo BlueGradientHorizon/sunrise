@@ -101,21 +101,37 @@ pub struct OwningChunkDisk<'a> {
     job: &'a ChunkDiskContext,
     resources: &'a dyn WorldgenHost,
     config_root: std::sync::Arc<std::path::Path>,
+    upgrade_nbt: fn(NbtDataType, i32, Compound) -> Result<Compound, NbtUpgradeError>,
 }
 
 impl<'a> OwningChunkDisk<'a> {
-    /// Bind the captured identity to immutable resource-generation reads.
-    pub fn new(job: &'a ChunkDiskContext, resources: &'a dyn WorldgenHost) -> Self {
+    /// Bind immutable resource reads and the engine's standalone data fixer to the captured job.
+    pub fn new(
+        job: &'a ChunkDiskContext,
+        resources: &'a dyn WorldgenHost,
+        upgrade_nbt: fn(NbtDataType, i32, Compound) -> Result<Compound, NbtUpgradeError>,
+    ) -> Self {
         Self {
             job,
             resources,
             config_root: crate::world::phase::RegistrationData::resolved_config_dir(),
+            upgrade_nbt,
         }
     }
 }
 
 impl Host for OwningChunkDisk<'_> {}
-crate::impl_host_areas!(OwningChunkDisk<'_>, except(config, levels));
+crate::impl_host_areas!(OwningChunkDisk<'_>, except(levels, config, datafix));
+impl prelude::DatafixHost for OwningChunkDisk<'_> {
+    fn upgrade_nbt(
+        &self,
+        kind: NbtDataType,
+        data_version: i32,
+        nbt: Compound,
+    ) -> Result<Compound, NbtUpgradeError> {
+        (self.upgrade_nbt)(kind, data_version, nbt)
+    }
+}
 impl prelude::LevelsHost for OwningChunkDisk<'_> {
     fn is_loaded(&self, id: &str) -> bool {
         // Installed membership, as `LevelsHost` promises, not the startup-enabled `mods()` view.

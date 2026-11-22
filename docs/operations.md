@@ -69,7 +69,7 @@ is waiting, and closes it once the runners are back.
 
 | Runner label | What waits | What to do |
 | --- | --- | --- |
-| `sunrise-light` (bots) | Triage and claim commands, labels, overlap notes, the Mojang check | An organisation owner sets `SELF_HOSTED_CI` to `off` (Settings → Secrets and variables → Actions → Variables). Then everything runs on GitHub |
+| `sunrise-light` (bots) | Triage commands, labels, overlap notes, the Mojang check | An organisation owner sets `SELF_HOSTED_CI` to `off` (Settings → Secrets and variables → Actions → Variables). Then everything runs on GitHub |
 | `sunrise-checks` | `verify` of this repository's own pull requests ending in 0 or 1 | Same switch (`off` or `light`), then re-run the waiting checks. Forks' pull requests never use these runners |
 | `sunrise-game` | By-hand game tools | Use local tools or wait for the maintainer's runner |
 | `dyna-large` | Daily vanilla parity | Inspect Dyna's runner pool; no other CI workflow runs it |

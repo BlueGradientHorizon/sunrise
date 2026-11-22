@@ -215,10 +215,20 @@ impl LiveSectionHost {
     }
 }
 
-mod_api::impl_host_areas!(LiveSectionHost, except(config));
+mod_api::impl_host_areas!(LiveSectionHost, except(config, datafix));
 impl mod_api::prelude::ConfigHost for LiveSectionHost {
     fn config_dir(&self) -> &std::path::Path {
         &self.config_root
+    }
+}
+impl mod_api::prelude::DatafixHost for LiveSectionHost {
+    fn upgrade_nbt(
+        &self,
+        kind: mod_api::NbtDataType,
+        data_version: i32,
+        nbt: mod_api::Compound,
+    ) -> Result<mod_api::Compound, mod_api::NbtUpgradeError> {
+        super::Game::upgrade_nbt(kind, data_version, nbt)
     }
 }
 mod_api::impl_server_host_areas!(LiveSectionHost);

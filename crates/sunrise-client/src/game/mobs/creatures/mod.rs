@@ -1564,6 +1564,7 @@ impl Game<'_> {
         // The level's random and attachments, lent to the mobs (brain behaviours draw from
         // the random, and a hit's damage hooks get both) and taken back after their ticks.
         let lent = sunrise_client::health::LentLevel::take(&mut self.world);
+        let mut stand_result = Ok(());
         let (lent, dispatch_panic) = self.tick_borrowed_creatures(borrowed_tick::BorrowedMobTick {
             mobs: &mut mobs,
             snapshot: &mut snapshot,
@@ -1589,8 +1590,10 @@ impl Game<'_> {
             uuid,
             level_id,
             round: &mut round,
+            stand_result: &mut stand_result,
         });
-        if dispatch_panic.is_some() {
+        let aborted = dispatch_panic.is_some() || stand_result.is_err();
+        if aborted {
             // The aborted pass never applies retention, including previously
             // finished despawn answers. Do not carry those into the retry.
             for m in &mut mobs {
@@ -1614,7 +1617,7 @@ impl Game<'_> {
         // as it is instead of being copied into a new one, every mob a tick.
         self.mobs
             .restore(mobs, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
-        if dispatch_panic.is_some() {
+        if aborted {
             // These death callbacks have not run, and the borrowed block writes
             // must still invalidate paths on the next attempted pass.
             for mob in &dead {
@@ -1641,7 +1644,7 @@ impl Game<'_> {
                 guests: std::mem::take(&mut guest_events),
             });
         }
-        if dispatch_panic.is_none() {
+        if !aborted {
             // The successful final sweep consumed all pushes for surviving mobs.
             pending.pushes = Default::default();
         }
@@ -1652,7 +1655,9 @@ impl Game<'_> {
             // destructor panic may abort. panic=abort cannot recover at all.
             std::panic::resume_unwind(payload);
         }
+        stand_result?;
         self.native_tick_post_batch(round);
+        self.tick_armor_stands_before(sunrise_client::join_seq::JoinSeq::MAX)?;
         // ... and entity event 60 goes out as it is: the poof.
         // 🤖 Agent: the split follows the poof, as `LivingEntity.tickDeath`
         // broadcasts event 60 before it calls `remove`.
@@ -1681,6 +1686,16 @@ impl Game<'_> {
         }
         self.deliver_pending_mob_actions(level_id)?;
         self.finish_creature_entities(&mut laps, &primable)
+    }
+
+    fn apply_shulker_lid_push(&mut self, shulker: u32, area: Aabb, delta: [f64; 3]) {
+        let lid = Lid::Shulker(shulker);
+        let movement = Vec3::new(delta[0], delta[1], delta[2]);
+        if self.remote.is_some() {
+            self.lid_push_local(lid, area, movement);
+        } else {
+            self.lid_push(lid, area, movement);
+        }
     }
 
     fn deliver_pending_mob_actions(&mut self, level_id: &'static str) -> Result<()> {
@@ -2879,18 +2894,7 @@ impl Game<'_> {
                     shulker,
                     area,
                     delta,
-                } => {
-                    let (lid, delta) = (
-                        Lid::Shulker(shulker),
-                        Vec3::new(delta[0], delta[1], delta[2]),
-                    );
-                    // Use the same client push as a shulker box's lid.
-                    if self.remote.is_some() {
-                        self.lid_push_local(lid, area, delta);
-                    } else {
-                        self.lid_push(lid, area, delta);
-                    }
-                }
+                } => self.apply_shulker_lid_push(shulker, area, delta),
                 MobEvent::Wololo { mob } => {
                     if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
                         // DyeColor.RED.

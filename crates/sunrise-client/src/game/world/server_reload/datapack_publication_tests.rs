@@ -286,11 +286,11 @@ fn world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file() {
     use crate::game::native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game_at};
     use sunrise_client::lan::data::BIOME_REGISTRY;
 
-    // The frozen wire registry is process-wide, unlike the scoped publication below.
+    // World open replaces the process-wide wire snapshot for the session.
     if run_fresh_cases(
         "game::server_reload::tests::datapack_publication_tests::world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file",
-        "SUNRISE_DATAPACK_WIRE_BIOME_CHILD",
-        &["wire"],
+        "SUNRISE_PACK_BIOME_WIRE_CASE",
+        &["world-open"],
     ) {
         return;
     }

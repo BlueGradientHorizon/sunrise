@@ -370,12 +370,21 @@ mod owner {
         });
     }
 
-    /// A transaction that clears a stack of a guest in the Nether and aborts restores it, and
-    /// a stack given to them with a full inventory comes back to the mod, dropped nowhere.
+    /// An aborted write restores the Nether guest's inventory. A committed gift to that guest
+    /// with a full inventory drops the overflow in their level, not the caller's.
     #[test]
     #[ignore = "daily"]
     fn a_non_owner_guest_in_another_level_keeps_their_stack_through_an_abort() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
         use mod_api::prelude::*;
+
+        if run_fresh_cases(
+            "game::native_menu_inventory_tests::owner::a_non_owner_guest_in_another_level_keeps_their_stack_through_an_abort",
+            "SUNRISE_CROSS_LEVEL_INVENTORY_CASE",
+            &["overflow"],
+        ) {
+            return;
+        }
         with_guests(|game| {
             game.level.player_uuid = Some(playerdata::uuid_ints(12));
             assert_ne!(game.dim.id(), "minecraft:the_nether");
@@ -425,11 +434,16 @@ mod owner {
                 .unwrap();
             let dropped = game.dropped.len();
             let given = (game as &mut dyn ServerHost)
-                .transaction(|host, _| Ok::<_, ()>(player.give_stack(host, diamond.clone())));
-            assert_eq!(given, Ok(Ok(Some(diamond))));
+                .transaction(|host, _| Ok::<_, ()>(player.give_stack(host, diamond)));
+            assert_eq!(given, Ok(Ok(None)));
             assert_eq!(game.dropped.len(), dropped);
             game.enter_level(super::super::Dim::Nether).unwrap();
-            assert_eq!(game.dropped.len(), 0);
+            let [overflow] = game.dropped.as_ref() else {
+                panic!("the full guest's level should have one overflow drop");
+            };
+            assert_eq!(overflow.stack, ItemStack::new("minecraft:diamond", 1));
+            assert_eq!(overflow.pickup_delay, 0);
+            assert_eq!(overflow.target, Some(playerdata::uuid_ints(player.uuid())));
         });
     }
 }

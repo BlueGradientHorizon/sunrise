@@ -34,6 +34,7 @@ ids = [
     "handle:ExperienceOrbRef::set_value",
     "handle:ExperienceOrbRef::set_count",
     "handle:ExperienceOrbRef::set_age",
+    "trait:prelude::WorldEditServerHost",
     "method:prelude::WorldEditServerHost::edit_blocks",
     "method:prelude::WorldEditServerHost::structure_template",
     "method:prelude::WorldEditServerHost::place_template",
