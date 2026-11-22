@@ -197,15 +197,17 @@ pub struct VanillaMappings {
 }
 
 impl Default for VanillaMappings {
+    /// Built once and copied: a server takes a fresh set for every player turn.
     fn default() -> Self {
-        Self {
+        static DEFAULT: LazyLock<VanillaMappings> = LazyLock::new(|| VanillaMappings {
             states: std::array::from_fn(|index| match MAPPINGS[index].0 {
                 "key.sneak" | "key.sprint" => KeyState::toggle(true, true),
                 "key.attack" => KeyState::toggle(true, false),
                 "key.use" => KeyState::toggle(false, false),
                 _ => KeyState::plain(),
             }),
-        }
+        });
+        DEFAULT.clone()
     }
 }
 
