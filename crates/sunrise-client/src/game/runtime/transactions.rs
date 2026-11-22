@@ -281,8 +281,9 @@ pub(super) struct Level {
     /// The scoreboard before this transaction first wrote it (`journal_scoreboard`), whole.
     board: Option<sunrise_client::scoreboard::Scoreboard>,
     /// Each entity's, player's, chunk's and the level's attachment map before this transaction
-    /// first reached it (a block entity's is kept with it), keyed by the level it was accessed in.
-    attachments: HashMap<(Dim, Holder), KeptAttachments>,
+    /// first reached it (a block entity's is kept with it). Per-level holders are keyed by level;
+    /// player-owned attachment maps are keyed once per player/snapshot across dimensions.
+    attachments: HashMap<AttachmentKey, KeptAttachments>,
     /// Held once this transaction reaches an attachment map, until it closes: the save
     /// admission gate (`passes_settled`) refuses a save while a map may hold tentative
     /// values, which only the root commit makes saveable.
@@ -327,6 +328,26 @@ pub(super) struct Level {
 struct KeptSlot {
     stack: Option<ItemStack>,
     generation: Option<u64>,
+}
+
+/// Key for `Level::attachments`: per-level holders (`Entity`, `Chunk`, `Level`) are isolated by
+/// dimension, whereas player-owned attachment maps (`Player`, `OriginalPlayer`) live once per
+/// player/snapshot regardless of which level is swapped in.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum AttachmentKey {
+    Level(Dim, Holder),
+    Player(u128),
+    OriginalPlayer(u64),
+}
+
+impl AttachmentKey {
+    fn of(dim: Dim, holder: Holder) -> Self {
+        match holder {
+            Holder::Player(uuid) => Self::Player(uuid),
+            Holder::OriginalPlayer(token) => Self::OriginalPlayer(token),
+            other => Self::Level(dim, other),
+        }
+    }
 }
 
 struct KeptAttachments {
@@ -1063,10 +1084,11 @@ impl Game<'_> {
         if let Holder::BlockEntity([x, y, z]) = holder {
             return self.journal_block_entity((x, y, z));
         }
+        let key = AttachmentKey::of(dim, holder);
         let Some(level) = self.transactions.last() else {
             return;
         };
-        if level.attachments.contains_key(&(dim, holder)) {
+        if level.attachments.contains_key(&key) {
             return;
         }
         let entity_bound = if let Holder::Entity(id) = holder {
@@ -1089,7 +1111,7 @@ impl Game<'_> {
             return;
         };
         if let Some(level) = self.transactions.last_mut() {
-            level.attachments.insert((dim, holder), kept);
+            level.attachments.insert(key, kept);
         }
     }
     /// Keeps the inventory of the player whose state is in `Game` now, `uuid`, as it is, if a
@@ -2153,23 +2175,43 @@ impl Game<'_> {
                 }
             });
         }
-        for ((dim, holder), kept) in level.attachments {
-            let _ = self.with_effect_level(dim, |game| {
-                if let Ok(map) = game.attachment_slot(holder, mod_api::AttachmentAccess::Existing) {
-                    map.replace_contents(kept.contents);
-                    if !kept.indexed {
-                        map.unbind_index();
-                    }
-                }
-                if !kept.indexed
-                    && let Holder::Entity(id) = holder
-                    && let Some(id) = std::num::NonZeroU32::new(id)
-                {
-                    game.with_resident_slot(&dim.key(), id, |slot| {
-                        *slot = Default::default();
+        for (key, kept) in level.attachments {
+            match key {
+                AttachmentKey::Level(dim, holder) => {
+                    let _ = self.with_effect_level(dim, |game| {
+                        if let Ok(map) =
+                            game.attachment_slot(holder, mod_api::AttachmentAccess::Existing)
+                        {
+                            map.replace_contents(kept.contents);
+                            if !kept.indexed {
+                                map.unbind_index();
+                            }
+                        }
+                        if !kept.indexed
+                            && let Holder::Entity(id) = holder
+                            && let Some(id) = std::num::NonZeroU32::new(id)
+                        {
+                            game.with_resident_slot(&dim.key(), id, |slot| {
+                                *slot = Default::default();
+                            });
+                        }
                     });
                 }
-            });
+                AttachmentKey::Player(uuid) => {
+                    self.restore_player_attachments(uuid, kept);
+                }
+                AttachmentKey::OriginalPlayer(token) => {
+                    if let Ok(map) = self.attachment_slot(
+                        Holder::OriginalPlayer(token),
+                        mod_api::AttachmentAccess::Existing,
+                    ) {
+                        map.replace_contents(kept.contents);
+                        if !kept.indexed {
+                            map.unbind_index();
+                        }
+                    }
+                }
+            }
         }
         self.restore_travelled(std::mem::take(&mut level.travelled));
         // After the maps: putting a chunk's map back marks it again.
@@ -2197,7 +2239,8 @@ impl Game<'_> {
         for (uuid, kept) in level.player_health {
             // Restoration must also reach a body tentatively set to zero health:
             // native_as_player deliberately refuses dead bodies for public writes.
-            let _ = self.with_effect_level(kept.dim, |game| {
+            let restore_dim = self.player_restore_dim(uuid, kept.dim);
+            let _ = self.with_effect_level(restore_dim, |game| {
                 let target = if uuid == game.native_acting_id() {
                     Some(super::commands::Target::Player)
                 } else {
@@ -2247,7 +2290,8 @@ impl Game<'_> {
             }
         }
         for (uuid, kept) in level.players {
-            let _ = self.with_effect_level(kept.dim, |game| {
+            let restore_dim = self.player_restore_dim(uuid, kept.dim);
+            let _ = self.with_effect_level(restore_dim, |game| {
                 game.native_as_player(uuid, |g| {
                     g.level.player_extra = kept.player_extra;
                     g.inventory = kept.inventory;
@@ -2258,6 +2302,55 @@ impl Game<'_> {
                 });
             });
         }
+    }
+
+    /// Restore a player's single per-player attachment map directly wherever their state lives
+    /// now (acting body in `player_state` or parked guest in `lan.hub.guests`), independent of
+    /// which dimension is currently active.
+    fn restore_player_attachments(&mut self, uuid: u128, kept: KeptAttachments) {
+        let map = if self.lan_acting_uuid == Some(uuid) {
+            Some(&mut self.player_state.attachments)
+        } else {
+            let conn = self.lan.as_ref().and_then(|host| {
+                host.hub
+                    .guests
+                    .iter()
+                    .find(|guest| guest.placed && guest.uuid == uuid)
+                    .or_else(|| host.hub.guests.iter().find(|guest| guest.uuid == uuid))
+                    .map(|guest| guest.conn)
+            });
+            conn.filter(|conn| !self.lan_guest_swaps.contains(conn))
+                .and_then(|conn| {
+                    self.lan
+                        .as_mut()
+                        .and_then(|host| host.hub.guests.attachments_mut(conn))
+                })
+        };
+        if let Some(map) = map {
+            map.replace_contents(kept.contents);
+            if !kept.indexed {
+                map.unbind_index();
+            }
+        }
+    }
+
+    /// Dimension to use when restoring a player-owned journal entry: if the player is acting in
+    /// place, stay in the current level; otherwise prefer the guest's current dimension over the
+    /// level active at first write (which may differ if written from a cross-level listener).
+    fn player_restore_dim(&self, uuid: u128, fallback: Dim) -> Dim {
+        if self.lan_acting_uuid == Some(uuid) {
+            return self.dim;
+        }
+        self.lan
+            .as_ref()
+            .and_then(|host| {
+                host.hub
+                    .guests
+                    .iter()
+                    .find(|g| g.placed && g.uuid == uuid)
+                    .map(|g| Dim::from_id(&g.dimension))
+            })
+            .unwrap_or(fallback)
     }
 }
 

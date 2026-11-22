@@ -506,15 +506,20 @@ impl Drop for Departure {
 }
 
 fn remove_entity_attachment(
-    attachments: &mut HashMap<
-        (Dim, sunrise_mod_runtime::attachments::Holder),
-        super::KeptAttachments,
-    >,
+    attachments: &mut HashMap<super::AttachmentKey, super::KeptAttachments>,
     id: u32,
 ) -> Option<super::KeptAttachments> {
     let key = attachments
         .keys()
-        .find(|(_, holder)| *holder == sunrise_mod_runtime::attachments::Holder::Entity(id))
+        .find(|key| {
+            matches!(
+                key,
+                super::AttachmentKey::Level(
+                    _,
+                    sunrise_mod_runtime::attachments::Holder::Entity(entity),
+                ) if *entity == id
+            )
+        })
         .copied()?;
     attachments.remove(&key)
 }
