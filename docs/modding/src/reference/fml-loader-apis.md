@@ -15,5 +15,7 @@ A row marked **by design** is not a gap. A row that links an issue is a real gap
 | [`IModInfo.getUpdateURL`](https://aldak0.ru/javadoc/26.3.x/net/neoforged/neoforgespi/language/IModInfo.html) | None in a mod. The mod browser compares the installed version with the newest one in Sunrise's registry (see [Installing and using mods](../players/installing-mods.md)) | **By design for registry mods:** updates come from the registry, not from a URL a mod declares. A mod installed from outside the registry has no update check yet. |
 | [`ModList.getModFileById`](https://aldak0.ru/javadoc/26.3.x/net/neoforged/fml/ModList.html)`(id).getFile().getContents()` / [`IModFile.getContents`](https://aldak0.ru/javadoc/26.3.x/net/neoforged/neoforgespi/locating/IModFile.html) (a `JarContents`: `readFile`, `containsFile`, `visitContent`) | `RegistrationContext::package_files(id)`: `list(folder)` and `read(path)` over an enabled package's `assets/` and `data/` files (see [Data files](../how-to/native-mods/03-data-files.md#another-packages-files)) | Only the content files are served, read through content loading's own reader and checks; the package's code and manifest are not. |
 
-A mod that needs to know who else is loaded asks `LoadedMods`; one that needs a file reads it through the services
-above. If neither answers, file an issue naming the FML API and what the mod does with it.
+A mod that needs to know who else is loaded asks `LoadedMods`; one that needs a package's assets or data
+reads them through `RegistrationContext::package_files` (see [Data files](../how-to/native-mods/03-data-files.md#another-packages-files)).
+For config files, use the config-file service above. If none answers, file an issue naming the FML API and what
+the mod does with it.
