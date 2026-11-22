@@ -35,6 +35,7 @@ impl Game<'_> {
                 bob,
             )
         }));
+        self.wake_hoppers_near_dropped_item(self.next_entity);
         velocity
     }
 

@@ -1311,6 +1311,20 @@ impl Game<'_> {
             wake_hoppers_reaching(entities, item.bounds());
         }
     }
+    /// Wakes the sleeping hoppers an item dropped now reaches. A drop made
+    /// during the block entity pass (a loop slot's, another block entity's)
+    /// comes after the pass's scan, so a later hopper of the same pass would
+    /// otherwise stay asleep and miss it.
+    pub(in crate::game) fn wake_hoppers_near_dropped_item(&mut self, id: u32) {
+        if !self.world.block_entities.any_hopper_asleep() {
+            return;
+        }
+        // `push_item_entity` just pushed it; a join listener runs later.
+        let Some(item) = self.dropped.last().filter(|item| item.id == id) else {
+            return;
+        };
+        wake_hoppers_reaching(&mut self.world.block_entities, item.bounds());
+    }
     /// Wakes the sleeping hoppers a minecart or boat could be taken from.
     pub(super) fn wake_hoppers_near_vehicles(&mut self) {
         if !self.world.block_entities.any_hopper_asleep() {

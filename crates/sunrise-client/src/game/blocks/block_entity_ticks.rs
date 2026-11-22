@@ -371,18 +371,19 @@ impl Game<'_> {
                 continue;
             }
             // Ticks before this one can remove it (`TickingBlockEntity.isRemoved`).
+            let live = this.world.block_entities.is_live(ticker);
+            let inside = this.border.contains(f64::from(pos.0), f64::from(pos.2));
             if this.world.block_entities.is_asleep(&pos) {
                 // A sleeping hopper's slot still passes: its cooldown and
                 // `tickedGameTime` advance as vanilla's do, without a transfer
-                // attempt. The published loop therefore does not visit it.
-                if this.world.block_entities.is_hopper_asleep(&pos) {
+                // attempt, but only where its ticker would run. The published
+                // loop therefore does not visit it.
+                if live && inside && this.world.block_entities.is_hopper_asleep(&pos) {
                     this.tick_sleeping_hopper(pos);
                 }
                 continue;
             }
-            if !this.world.block_entities.is_live(ticker)
-                || !this.border.contains(f64::from(pos.0), f64::from(pos.2))
-            {
+            if !live || !inside {
                 continue;
             }
             let Some(entity) = this.world.block_entities.get(&pos) else {
@@ -1461,12 +1462,13 @@ mod slot_mutation_tests {
     }
 
     /// One a slot adds is not visited in this pass (the pass's list was taken when it started)
-    /// and is from the next.
+    /// and is from the next. The two tickers already there do not sleep, unlike an empty hopper,
+    /// so this stays about registration order.
     #[test]
     #[ignore = "daily"]
     fn an_added_entity_ticks_from_the_next_pass() {
         with_blocks(
-            &[(A, "minecraft:hopper"), (B, "minecraft:hopper")],
+            &[(A, "minecraft:spawner"), (B, "minecraft:spawner")],
             |game| {
                 let mut slot = Mutate::new(|tick| place(tick.game, C, "minecraft:hopper"));
                 game.tick_block_entities_with(&mut slot).unwrap();

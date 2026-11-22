@@ -83,7 +83,10 @@ The slot trait `BlockEntityTickSlot` has two methods, and both do nothing by def
 - `fn after(&mut self, tick: &mut BlockEntityTick<'_, '_>)` runs just after it ticked.
 
 `before` sees only the block entities vanilla would tick: in a block-ticking chunk, inside the world border,
-live and not asleep. The cursor `tick` has:
+live and not asleep. A sleeping hopper is one that had nothing to do; it still advances its transfer
+bookkeeping (cooldown and last-ticked time) as vanilla's does, but its transfer does not run and neither
+`before` nor `after` is called for it. Your slot sees it again once its inventory, the block above it or a
+reaching item or vehicle wakes it. The cursor `tick` has:
 
 | Member | What it is |
 | --- | --- |
