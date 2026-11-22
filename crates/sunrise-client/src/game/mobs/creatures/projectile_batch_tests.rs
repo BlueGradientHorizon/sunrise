@@ -640,29 +640,45 @@ fn wind_charges_retrace_only_after_gameplay_breaks_a_vehicle() {
     if run_fresh_cases(
         "game::creatures::projectile_batch_tests::wind_charges_retrace_only_after_gameplay_breaks_a_vehicle",
         CASE,
-        &["allow", "no-impacts", "discard-target"],
+        &[
+            "allow",
+            "no-impacts",
+            "cancel-second",
+            "miss",
+            "discard-target",
+        ],
     ) {
         return;
     }
     let case = std::env::var(CASE).unwrap();
-    let discard = case == "discard-target";
-    let action = if discard {
-        Action::DiscardTarget(71)
-    } else {
-        Action::Allow
+    let action = match case.as_str() {
+        "discard-target" => Action::DiscardTarget(71),
+        "cancel-second" => Action::CancelTarget(72),
+        _ => Action::Allow,
     };
-    let hears = case != "no-impacts";
-    with_probe(action, hears, |game, observed| {
-        // Same overlapping pair and five hits per boat as the vehicle parity harness.
-        for id in [71, 72] {
+    let (charges, boats, drops, survivors, bursts, targets): (_, _, _, _, _, &[u32]) =
+        match case.as_str() {
+            "miss" => (6, 0, 1, 1, 5, &[71; 5]),
+            "discard-target" => (2, 1, 0, 2, 0, &[71]),
+            "cancel-second" => (10, 1, 1, 5, 5, &[71, 71, 71, 71, 71, 72, 72, 72, 72, 72]),
+            "no-impacts" => (10, 0, 2, 0, 10, &[]),
+            _ => (10, 0, 2, 0, 10, &[71, 71, 71, 71, 71, 72, 72, 72, 72, 72]),
+        };
+    with_probe(action, case != "no-impacts", |game, observed| {
+        // Five hits break a boat, as in the vehicle parity harness. Stagger the pair so
+        // the reflight must update both the target and the contact coordinates.
+        for (id, y) in [(71, 64.0), (72, 63.875)]
+            .into_iter()
+            .take(if case == "miss" { 1 } else { 2 })
+        {
             game.boats.push(crate::game::boats::Boat::new(
                 id,
                 Arc::from("oak"),
-                Vec3::new(8.5, 64.0, 0.5),
+                Vec3::new(8.5, y, 0.5),
                 0.0,
             ));
         }
-        for i in 0..if discard { 1 } else { 10 } {
+        for i in 0..charges {
             let mut p = Projectile::new(
                 ProjectileKind::BreezeWindCharge,
                 Vec3::new(8.5, 64.8, 0.5),
@@ -674,30 +690,48 @@ fn wind_charges_retrace_only_after_gameplay_breaks_a_vehicle() {
             game.creatures.projectiles.push(p);
         }
         game.native_joins_skip();
+        let joins = game
+            .creatures
+            .projectiles
+            .iter()
+            .map(|p| p.join)
+            .collect::<Vec<_>>();
         game.tick_projectiles().unwrap();
-        if discard {
-            game.native_removals_flush();
-            assert_eq!(game.boats.len(), 1);
+        game.native_removals_flush();
+        let hits = observed.hits.lock().unwrap();
+        assert_eq!(hits.len(), targets.len());
+        for (i, (hit, target)) in hits.iter().zip(targets).enumerate() {
+            assert_eq!(hit.projectile, 80 + i as u32);
+            assert_eq!(hit.entity, Some(*target));
+            assert_eq!(hit.projectile_pos, hit.at);
+        }
+        if hits.len() == 10 {
+            assert!(hits[5].at[1] < hits[0].at[1], "the second boat is lower");
+        }
+        assert_eq!(observed.bursts.load(Ordering::Relaxed), bursts);
+        assert_eq!(game.boats.len(), boats);
+        if boats == 1 {
             assert_eq!(game.boats[0].id, 72);
             assert_eq!(game.boats[0].damage, 0.0);
-            assert_eq!(game.creatures.projectiles.len(), 1);
-            assert_eq!(
-                game.creatures.projectiles[0].position.components(),
-                observed.hits.lock().unwrap()[0].at
-            );
-            assert!(game.dropped.is_empty());
+        }
+        assert_eq!(
+            game.dropped
+                .iter()
+                .filter(|drop| &*drop.stack.item == "minecraft:oak_boat")
+                .map(|drop| drop.stack.count)
+                .sum::<u32>(),
+            drops
+        );
+        assert_eq!(game.creatures.projectiles.len(), survivors);
+        let at = if case == "discard-target" {
+            hits[0].at
         } else {
-            assert!(game.boats.is_empty());
-            assert!(game.creatures.projectiles.is_empty());
-            assert_eq!(
-                game.dropped
-                    .iter()
-                    .filter(|drop| &*drop.stack.item == "minecraft:oak_boat")
-                    .map(|drop| drop.stack.count)
-                    .sum::<u32>(),
-                2,
-            );
-            assert_eq!(observed.hits.lock().unwrap().len(), 10 * usize::from(hears));
+            [8.5, 64.8 - 0.5, 0.5]
+        };
+        for charge in game.creatures.projectiles.iter() {
+            assert_eq!(charge.join, joins[(charge.id - 80) as usize]);
+            assert_eq!(charge.age, 1);
+            assert_eq!(charge.position.components(), at);
         }
     });
 }

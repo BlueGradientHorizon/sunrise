@@ -4954,20 +4954,19 @@ impl Game<'_> {
                         return;
                     }
                     // AbstractWindCharge.tick: out of the world's top it bursts.
-                    if wind && keep && super::wind::above_the_top(self.world.shape, p.position.y) {
+                    if wind
+                        && keep
+                        && let Some(hit) = self.wind_ceiling_contact(p)
+                    {
                         hits.push(ProjectileHit {
                             projectile: p.clone(),
-                            hit: Hit::Block {
-                                pos: [0; 3],
-                                at: p.position,
-                                face: [0; 3],
-                            },
+                            hit,
                             shot_after_hit: false,
                         });
                         keep_flags[i] = false;
                         return;
                     }
-                    vehicle_winds.met(wind_before, hit);
+                    let wind_vehicle = vehicle_winds.met(wind_before, hit);
                     if hit != Hit::None {
                         if let Some(before) = before
                             && match hit {
@@ -4985,6 +4984,7 @@ impl Game<'_> {
                                 before,
                                 hit,
                                 target: self.native_impact_target(hit),
+                                wind_vehicle,
                                 hit_slot: hits.len(),
                                 events: events_from..arrow_events.len(),
                             });
@@ -5165,21 +5165,33 @@ impl Game<'_> {
             let contact = pending.remove(&join);
             let deferred_arrow =
                 contact.is_some() && p.arrow.is_some() && matches!(hit, Hit::Block { .. });
-            let reflight = self.take_broken_vehicle_flight(&p, hit, vehicle_winds);
-            let accepted = match contact {
-                Some(contact) => self.apply_captured_impact(p, hit, contact, reflight.is_some()),
-                None => Some(p),
-            };
-            if let Some(p) = accepted {
-                let landed = match reflight {
-                    Some(flight) => self.broken_vehicle_retick(flight),
-                    None => Some((p, hit)),
-                };
-                if let Some((p, hit)) = landed {
-                    self.apply_projectile_hit(&p, hit)?;
-                    if shot_after_hit {
-                        self.projectile_shoot_event(p.owner, p.guest, p.position.components());
+            let wind_flight = vehicle_winds.take(id, hit);
+            let landed = match (contact, wind_flight) {
+                (Some(contact), Some(before)) => {
+                    self.apply_vehicle_wind_impact(p, hit, contact, before)
+                }
+                (Some(contact), None) => self
+                    .apply_captured_impact(p, hit, contact)
+                    .map(|p| (p, hit)),
+                (None, Some(before)) if self.wind_vehicle_broken(hit) => {
+                    let (p, keep, hit) = self.broken_vehicle_retick(before);
+                    if keep {
+                        if let Some(ceiling) = self.wind_ceiling_contact(&p) {
+                            Some((p, ceiling))
+                        } else {
+                            self.add_projectile(p);
+                            None
+                        }
+                    } else {
+                        (hit != Hit::None).then_some((p, hit))
                     }
+                }
+                (None, _) => Some((p, hit)),
+            };
+            if let Some((p, hit)) = landed {
+                self.apply_projectile_hit(&p, hit)?;
+                if shot_after_hit {
+                    self.projectile_shoot_event(p.owner, p.guest, p.position.components());
                 }
             }
             if deferred_arrow {

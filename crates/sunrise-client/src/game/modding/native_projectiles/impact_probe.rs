@@ -18,6 +18,7 @@ pub(in crate::game) enum Action {
     ClearBlockOnImpact,
     ClearBlockOnShoot([i32; 3]),
     Cancel,
+    CancelTarget(u32),
     Discard,
     DiscardAndCancel,
     AbortDiscard,
@@ -48,6 +49,7 @@ pub(in crate::game) struct Observed {
     pub hits: Mutex<Vec<Seen>>,
     pub catches: AtomicUsize,
     pub lands: AtomicUsize,
+    pub bursts: AtomicUsize,
     pub game_events: Mutex<Vec<(&'static str, [f64; 3])>>,
     pub sections: Mutex<Vec<SectionCrossing>>,
     pub deaths: AtomicUsize,
@@ -98,6 +100,8 @@ impl Hooks for Probe {
                 Flow::Continue
             }
             Action::Cancel => Flow::Cancel,
+            Action::CancelTarget(id) if event.entity == Some(id) => Flow::Cancel,
+            Action::CancelTarget(_) => Flow::Continue,
             Action::DiscardTarget(id) => {
                 if event.entity == Some(id) {
                     assert!(host.entity(id).unwrap().discard(host));
@@ -148,6 +152,9 @@ impl Hooks for Probe {
             }
             "minecraft:entity_die" => {
                 self.observed.deaths.fetch_add(1, Ordering::Relaxed);
+            }
+            "minecraft:explode" => {
+                self.observed.bursts.fetch_add(1, Ordering::Relaxed);
             }
             "minecraft:projectile_shoot" => {
                 self.observed

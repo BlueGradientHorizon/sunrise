@@ -43,6 +43,8 @@ pub(super) struct Impact {
     pub before: Projectile,
     pub hit: Hit,
     pub target: Option<ImpactTarget>,
+    /// An earlier impact can break a wind charge's vehicle. Tell its real hit at apply.
+    pub wind_vehicle: bool,
     /// Where its hit is in the tick's `hits`.
     pub hit_slot: usize,
     /// Where its arrow events are in the tick's `arrow_events`.
@@ -370,18 +372,17 @@ impl Game<'_> {
         self.removal_pending(&target) || self.persist.removals.contains(&target)
     }
 
-    fn native_projectile_impact_canceled(&mut self, impact: &Impact) -> bool {
-        let p = &impact.before;
-        let (entity, entity_kind, block, face, at) = match impact.hit {
+    fn native_projectile_impact_canceled(&mut self, p: &Projectile, hit: Hit) -> bool {
+        let (entity, entity_kind, block, face, at) = match hit {
             Hit::Block { pos, at, face } => (None, String::new(), pos, face, at),
-            Hit::Entity {
-                who: Who::Mob(id),
-                at,
-            } => {
-                let (entity, kind) = self.native_impact_entity(id);
+            Hit::Entity { who, at } => {
+                let (entity, kind) = match who {
+                    Who::Mob(id) => self.native_impact_entity(id),
+                    Who::Player => (self.own_entity_id() as u32, "minecraft:player".into()),
+                };
                 (Some(entity), kind, [0; 3], [0; 3], at)
             }
-            _ => return false,
+            Hit::None => return false,
         };
         let mut canceled = false;
         self.native_projectile_impact(mod_api::__private::ProjectileImpactCall {
@@ -418,9 +419,10 @@ impl Game<'_> {
         let mut canceled = Vec::with_capacity(impacts.len());
         for impact in &impacts {
             canceled.push(
-                impact.index.is_some()
+                !impact.wind_vehicle
+                    && impact.index.is_some()
                     && self.entity(impact.before.id).is_some()
-                    && self.native_projectile_impact_canceled(impact),
+                    && self.native_projectile_impact_canceled(&impact.before, impact.hit),
             );
         }
         *projectiles = self.creatures.projectiles.lift();
@@ -503,36 +505,102 @@ impl Game<'_> {
         pending
     }
 
+    /// The contact still belongs to the same projectile with the same motion.
+    fn captured_projectile_index(&self, p: &Projectile) -> Option<usize> {
+        let i = self.creatures.projectiles.locate(p.join)?;
+        let live = &self.creatures.projectiles[i];
+        (live.position == p.position
+            && live.velocity == p.velocity
+            && live.owner == p.owner
+            && live.guest == p.guest
+            && live.owner_uuid == p.owner_uuid
+            && live.kind == p.kind
+            && live.stuck == p.stuck
+            && live.arrow.as_ref().map(|a| a.no_physics) == p.arrow.as_ref().map(|a| a.no_physics))
+        .then_some(i)
+    }
+
+    /// Tell the actual contact in tick order, once earlier hits have had a chance to break
+    /// the vehicle. A listener-invalidated contact never asks the world for another hit.
+    pub(super) fn apply_vehicle_wind_impact(
+        &mut self,
+        mut p: Projectile,
+        mut hit: Hit,
+        mut pending: PendingImpact,
+        mut before: Projectile,
+    ) -> Option<(Projectile, Hit)> {
+        let index = self.captured_projectile_index(&p)?;
+        if pending.target.is_some() && self.wind_vehicle_broken(hit) {
+            let from = p.position;
+            (p, pending.keep, hit) = self.broken_vehicle_retick(before.clone());
+            pending.target = self.native_impact_target(hit);
+            self.creatures.projectiles.store_back(index, p.clone());
+            self.entity_section_step(p.id, from.components(), p.position.components());
+            if self.projectile_removal_pending(p.id) {
+                return None;
+            }
+            let index = self.captured_projectile_index(&p)?;
+            if hit == Hit::None {
+                let ceiling = if pending.keep {
+                    self.wind_ceiling_contact(&p)
+                } else {
+                    None
+                };
+                if !pending.keep || ceiling.is_some() {
+                    self.creatures.projectiles.remove(index);
+                }
+                return ceiling.map(|hit| (p, hit));
+            }
+        }
+        if pending.target.is_none() || pending.target != self.native_impact_target(hit) {
+            return None;
+        }
+        let canceled = self.native_projectile_impact_canceled(&p, hit);
+        if self.projectile_removal_pending(p.id) {
+            return None;
+        }
+        if canceled {
+            let index = self.captured_projectile_index(&p)?;
+            if pending.target != self.native_impact_target(hit) {
+                return None;
+            }
+            // A plain veto keeps the projectile's original owner, as other cancel-only replays do.
+            before.has_been_shot = p.has_been_shot;
+            let (through, keep, _) = self.native_projectile_through(before);
+            if keep {
+                let to = through.position;
+                self.creatures.projectiles.store_back(index, through);
+                if !pending.keep
+                    && let Some(owner) = self.creatures.projectiles.extract(p.join)
+                {
+                    let end = self.creatures.projectiles.len();
+                    self.creatures.projectiles.put_back(end, owner);
+                }
+                self.entity_section_step(p.id, p.position.components(), to.components());
+            } else {
+                self.creatures.projectiles.remove(index);
+            }
+            return None;
+        }
+        self.apply_captured_impact(p, hit, pending)
+            .map(|p| (p, hit))
+    }
+
     /// Recheck and apply the captured response after the earlier callbacks.
-    /// A wind charge whose vehicle was already broken may resume its saved flight.
     pub(super) fn apply_captured_impact(
         &mut self,
         snapshot: Projectile,
         hit: Hit,
         pending: PendingImpact,
-        vehicle_broken: bool,
     ) -> Option<Projectile> {
-        let i = self.creatures.projectiles.locate(snapshot.join)?;
-        let live = &self.creatures.projectiles[i];
-        if live.position != snapshot.position
-            || live.velocity != snapshot.velocity
-            || live.owner != snapshot.owner
-            || live.guest != snapshot.guest
-            || live.owner_uuid != snapshot.owner_uuid
-            || live.kind != snapshot.kind
-            || live.stuck != snapshot.stuck
-            || live.arrow.as_ref().map(|a| a.no_physics)
-                != snapshot.arrow.as_ref().map(|a| a.no_physics)
-        {
-            return None;
-        }
+        let i = self.captured_projectile_index(&snapshot)?;
         if pending.canceled
             || pending.target.is_none()
-            || !vehicle_broken && pending.target != self.native_impact_target(hit)
+            || pending.target != self.native_impact_target(hit)
         {
             return None;
         }
-        let mut p = live.clone();
+        let mut p = self.creatures.projectiles[i].clone();
         if let (Some(_), Hit::Block { pos, .. }) = (&p.arrow, hit) {
             let from = p.position;
             {
