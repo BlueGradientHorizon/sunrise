@@ -115,7 +115,7 @@ impl<'a> OwningChunkDisk<'a> {
 }
 
 impl Host for OwningChunkDisk<'_> {}
-crate::impl_host_areas!(OwningChunkDisk<'_>, except(levels));
+crate::impl_host_areas!(OwningChunkDisk<'_>, except(config, levels));
 impl prelude::LevelsHost for OwningChunkDisk<'_> {
     fn is_loaded(&self, id: &str) -> bool {
         // Installed membership, as `LevelsHost` promises, not the startup-enabled `mods()` view.
