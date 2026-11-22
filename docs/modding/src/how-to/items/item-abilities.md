@@ -14,7 +14,11 @@ impl ItemPart for CarvingTool {
         context: &ItemAbilityContext<'_>,
         event: &mut CanPerformActionEvent<'_>,
     ) {
-        let _ = context.tags();
+        // Gameplay action sites lend a read-only `Host`; loot predicates lend `LootParamsView`.
+        let _in_loot_predicate = context.host().is_none() && context.loot().is_some();
+        let _tags = context.tags();
+        // Fast metadata reads avoid cloning components; call `event.stack.project()` only if needed.
+        let _item = event.stack.item();
         if event.ability == "shears_carve" {
             event.can_perform = true;
         }

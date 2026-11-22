@@ -34,6 +34,71 @@ Declare parameters read by a bound rule with `referenced_context_params`; a tabl
 set does not allow one logs a warning but still loads. At runtime an absent parameter remains
 absent. Named references reuse the same bound rule in every context set that references them.
 
+```rust,ignore
+use std::sync::Arc;
+use mod_api::{
+    Identifier, LootStackEditor, LootTypeContext, ModLootCondition, ModLootConditionCodec,
+    ModLootFunction, ModLootFunctionCodec,
+};
+
+struct ScaleCodec;
+
+struct ScaleRule {
+    factor: i32,
+}
+
+impl ModLootFunctionCodec for ScaleCodec {
+    fn decode(&self, data: &serde_json::Value) -> Result<Arc<dyn ModLootFunction>, String> {
+        let factor = data
+            .get("factor")
+            .and_then(|v| v.as_i64())
+            .and_then(|v| i32::try_from(v).ok())
+            .ok_or_else(|| "missing integer factor".to_string())?;
+        Ok(Arc::new(ScaleRule { factor }))
+    }
+}
+
+impl ModLootFunction for ScaleRule {
+    fn referenced_context_params(&self) -> Vec<Identifier> {
+        vec![Identifier::parse("minecraft:tool").unwrap()]
+    }
+
+    fn apply(
+        &self,
+        stack: &mut LootStackEditor<'_>,
+        context: &mut dyn LootTypeContext,
+    ) -> Result<(), String> {
+        // Read borrowed parameters first; release that borrow before drawing random.
+        let has_tool = context.params().tool().is_some();
+        let bonus = if has_tool { context.random().next_int_bound(2) } else { 0 };
+        let count = stack.view().count().saturating_mul(self.factor).saturating_add(bonus);
+        // Edit the live candidate in place; call `stack.to_owned()?` + `stack.replace(owned)?`
+        // only when you need an owned `LootStack`.
+        stack.set_count(count);
+        Ok(())
+    }
+}
+
+struct EnabledCodec;
+struct EnabledRule { enabled: bool }
+
+impl ModLootConditionCodec for EnabledCodec {
+    fn decode(&self, data: &serde_json::Value) -> Result<Arc<dyn ModLootCondition>, String> {
+        let enabled = data
+            .get("enabled")
+            .and_then(|v| v.as_bool())
+            .ok_or_else(|| "missing boolean enabled".to_string())?;
+        Ok(Arc::new(EnabledRule { enabled }))
+    }
+}
+
+impl ModLootCondition for EnabledRule {
+    fn test(&self, _context: &mut dyn LootTypeContext) -> Result<bool, String> {
+        Ok(self.enabled)
+    }
+}
+```
+
 Unknown loot types, malformed registered entries, failed codec decoders, and
 predicate/item-modifier reference cycles fail the candidate preparation, with a
 file/id, entry path and type in the diagnostic.

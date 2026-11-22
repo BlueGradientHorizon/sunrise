@@ -124,6 +124,90 @@ generation, running neither the modifier pass nor another stack splitter:
 For both methods, a missing table returns an error naming it and a visited table terminates with no
 output.
 
+```rust,ignore
+use std::sync::Arc;
+use mod_api::{
+    DataLoadContext, GlobalLootModifier, GlobalLootModifierSerializer, Identifier, ItemKey,
+    LootList, LootModifierContext, LootModifierError, LootModifierSettings, LootStack,
+};
+
+struct BonusSerializer {
+    bonus_item: ItemKey,
+}
+
+struct BonusModifier {
+    settings: LootModifierSettings,
+    bonus_item: ItemKey,
+    extra_table: Identifier,
+}
+
+impl GlobalLootModifierSerializer for BonusSerializer {
+    fn decode(
+        &self,
+        data: &serde_json::Value,
+        _load: &dyn DataLoadContext,
+    ) -> Result<Arc<dyn GlobalLootModifier>, LootModifierError> {
+        let settings = LootModifierSettings::decode(data)?;
+        let extra_table = data
+            .get("extra_table")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| LootModifierError::new("extra_table", "expected identifier string"))
+            .and_then(|raw| {
+                Identifier::parse(raw).map_err(|err| LootModifierError::new("extra_table", err))
+            })?;
+        Ok(Arc::new(BonusModifier {
+            settings,
+            bonus_item: self.bonus_item,
+            extra_table,
+        }))
+    }
+}
+
+impl GlobalLootModifier for BonusModifier {
+    fn priority(&self) -> Result<i32, LootModifierError> {
+        Ok(self.settings.priority)
+    }
+
+    fn condition(&self) -> Result<Option<serde_json::Value>, LootModifierError> {
+        Ok(self.settings.condition.clone())
+    }
+
+    fn apply(
+        &self,
+        context: &mut dyn LootModifierContext,
+        generated: &mut LootList<'_>,
+    ) -> Result<(), LootModifierError> {
+        // Edit existing entries in place without cloning the whole list.
+        if let Some(mut first) = generated.get_mut(0) {
+            let count = first.view().count().saturating_add(1);
+            first.set_count(count);
+        }
+        // Push an owned `LootStack` only when introducing a brand-new entry.
+        generated.push(LootStack::new(self.bonus_item, 1))?;
+        // Or append raw sub-rolls directly onto `generated` with zero snapshot copies.
+        context.append_raw(&self.extra_table, generated)?;
+        // Use `roll_raw` when inspecting sub-roll stacks before deciding what to keep.
+        let mut kept = Vec::new();
+        let mut capture_err = None;
+        context.roll_raw(&self.extra_table, &mut |stack| {
+            if capture_err.is_none() && stack.count() > 0 {
+                match stack.to_owned() {
+                    Ok(owned) => kept.push(owned),
+                    Err(err) => capture_err = Some(err),
+                }
+            }
+        })?;
+        if let Some(err) = capture_err {
+            return Err(err.into());
+        }
+        for stack in kept {
+            generated.push(stack)?;
+        }
+        Ok(())
+    }
+}
+```
+
 The server's root pass is after table functions and stack splitting, before caller consumption and
 container shuffle. Nested tables and raw sub-rolls do not run it. `loot_drops` and
 `container_loot_filled` are separate later moments, not aliases for global loot modifiers.
@@ -143,4 +227,4 @@ Each caller supplies vanilla's parameters for its roll, and only those; the rest
 | Vault display item | none | none | the vault's centre | 0 |
 | A mod's roll call | the entity it named, if any | the tool it gave | the origin it gave | 0 |
 
-The fishing owner is not a damage source: `damage` stays missing, and only a condition's `attacker` target reaches the owner. `place.level` is present on all of them. A player's entity carries their worn and held items.
+The fishing owner is not a damage source: `damage()` stays missing, and only a condition's `attacker` target reaches the owner. `level()` is present on all of them. A player's entity carries their worn and held items.
