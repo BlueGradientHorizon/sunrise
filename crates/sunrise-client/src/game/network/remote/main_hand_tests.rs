@@ -1,5 +1,6 @@
 use crate::game::{
-    lan::mob_meta, native_entity_refs::tests::with_client_game, villager_client::tests::meta_hub,
+    lan::mob_meta, native_entity_refs::tests::with_client_game, remote::tests::spawn_menu_test,
+    villager_client::tests::meta_hub,
 };
 use sunrise_client::{
     lan::entity::{Entities, EntityState, Viewer},
@@ -17,6 +18,7 @@ fn a_client_receives_a_mannequins_main_hand() {
             with_client_game(|game| {
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "MannequinArmTest").unwrap();
+                spawn_menu_test(game);
 
                 let kind = "minecraft:mannequin";
                 let network_kind = game
