@@ -97,7 +97,7 @@ pub(super) struct Hook {
     needs_sync: bool,
     tick_count: i32,
     life: i32,
-    ground: sunrise_world::ground_support::GroundState,
+    pub(super) ground: sunrise_world::ground_support::GroundState,
     nibble: i32,
     time_until_lured: i32,
     time_until_hooked: i32,
@@ -1676,6 +1676,48 @@ impl Game<'_> {
             EntityLookup::Taken | EntityLookup::Missing => None,
         }
     }
+    /// Update a cast bobber's support in the level that owns the hook.
+    pub(super) fn set_fishing_hook_ground(
+        &mut self,
+        id: u32,
+        on_ground: bool,
+    ) -> Result<bool, mod_api::LevelWriteError> {
+        let Some((hook, caster)) = self.fishing_hook_by_id(id) else {
+            return Ok(false);
+        };
+        let (at, bounds, mut ground) = (hook.position, hook.bounds(), hook.ground);
+        ground.on_ground = on_ground;
+        let mut scene = sunrise_client::collisions::SceneCollisions {
+            world: &self.world,
+            binding: self.collision,
+            subject: None,
+        };
+        let scan = scene.update_ground_support(
+            &mut ground,
+            at,
+            bounds,
+            None,
+            sunrise_client::motion::BodyMotion::entity_context(id, at),
+        );
+        let hook = match caster {
+            super::commands::Target::Guest(conn) if Some(conn) != self.lan_acting => self
+                .lan
+                .as_mut()
+                .and_then(|host| host.play.get_mut(&conn))
+                .and_then(|play| play.hook.as_mut()),
+            super::commands::Target::Player | super::commands::Target::Guest(_) => {
+                self.hook.as_mut()
+            }
+            _ => None,
+        };
+        let Some(hook) = hook else {
+            return Ok(false);
+        };
+        hook.ground = ground;
+        scan.map(|()| true)
+            .map_err(|_| mod_api::LevelWriteError::Unavailable)
+    }
+
     /// Takes a cast hook out of the level (`Entity.discard`).
     pub(in crate::game) fn remove_fishing_hook(&mut self, id: u32) {
         use sunrise_client::join_seq::residency::{Kind, Source, table::EntityLookup};
