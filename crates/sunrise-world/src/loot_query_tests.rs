@@ -2,15 +2,31 @@ use super::*;
 use serde_json::json;
 use std::rc::Rc;
 fn data(tables: Vec<(&str, Value)>) -> LootData {
+    let types = types::Types::capture();
+    let tables: Arc<LootTables> =
+        Arc::new(tables.into_iter().map(|(k, v)| (k.into(), v)).collect());
+    let predicates = Arc::default();
+    let modifiers = Arc::default();
+    let bindings = types
+        .bind_generation(
+            tables.clone(),
+            Arc::clone(&predicates),
+            Arc::clone(&modifiers),
+            Vec::new(),
+            HashMap::new(),
+        )
+        .unwrap();
     LootData {
         holder_sets: Default::default(),
         component_defaults: Arc::default(),
         copies_entity_nbt: false,
-        types: types::Types::capture(),
-        tables: Arc::new(tables.into_iter().map(|(k, v)| (k.into(), v)).collect()),
+        types,
+        bindings,
+        normalized: true,
+        tables,
         global_modifiers: Arc::default(),
-        modifiers: Arc::default(),
-        predicates: Arc::default(),
+        modifiers,
+        predicates,
         items: HashMap::new(),
         enchantments: vec![],
         primary_answers: Default::default(),
@@ -336,7 +352,9 @@ fn modifiers_run_once_after_split_and_raw_subrolls_share_random_and_guards() {
                 "test:refuse" => (1000, None, Arc::new(Refuse)),
                 _ => (
                     999,
-                    Some(json!({"type":"neoforge:loot_table_id","loot_table_id":"test:never"})),
+                    Some(types::PreparedCondition::stock(
+                        json!({"type":"neoforge:loot_table_id","loot_table_id":"test:never"}),
+                    )),
                     Arc::new(Skipped),
                 ),
             };

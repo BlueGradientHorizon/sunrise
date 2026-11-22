@@ -251,7 +251,7 @@ struct Enchantment {
     /// `slots`: the equipment slot groups the enchantment works in.
     slots: Vec<String>,
     /// `effects` (equipment_drops and others).
-    effects: Value,
+    effects: Arc<Value>,
 }
 impl Enchantment {
     fn min_cost(&self, level: i32) -> i32 {
@@ -269,6 +269,8 @@ mod holder_sets;
 pub struct LootData {
     holder_sets: holder_sets::Binding,
     types: types::Types,
+    bindings: types::Bindings,
+    normalized: bool,
     component_defaults: Arc<HashMap<String, Compound>>,
     copies_entity_nbt: bool,
     tables: Arc<LootTables>,
@@ -710,7 +712,7 @@ impl LootData {
         defaults: &crate::item_defaults::ItemDefaults,
         types: types::Types,
     ) -> io::Result<Self> {
-        Self::load_generation(root, overlay, defaults, types, None)
+        Self::load_generation(root, overlay, defaults, types, None, true)
     }
 
     /// Load server loot with the damage catalog already bound for this generation.
@@ -726,6 +728,25 @@ impl LootData {
             defaults,
             types::Types::capture(),
             Some(damage),
+            true,
+        )
+    }
+
+    /// Load server loot before native table-load hooks run, deferring codec
+    /// binding so the caller binds once via `apply_native_table_loads` or `prepare_types`.
+    pub fn load_unbound_with_damage(
+        root: &Path,
+        overlay: &PackOverlay,
+        defaults: &crate::item_defaults::ItemDefaults,
+        damage: &crate::damage_source::Catalog,
+    ) -> io::Result<Self> {
+        Self::load_generation(
+            root,
+            overlay,
+            defaults,
+            types::Types::capture(),
+            Some(damage),
+            false,
         )
     }
 
@@ -735,6 +756,7 @@ impl LootData {
         defaults: &crate::item_defaults::ItemDefaults,
         types: types::Types,
         damage: Option<&crate::damage_source::Catalog>,
+        prepare: bool,
     ) -> io::Result<Self> {
         let mut loaded = Self::load_table_candidate(root, overlay, defaults, types, damage)?;
         let mut recipes = HashMap::new();
@@ -768,7 +790,9 @@ impl LootData {
                 &loaded.tags,
             )?;
         }
-        loaded.prepare_types()?;
+        if prepare {
+            loaded.prepare_types()?;
+        }
         Ok(loaded)
     }
 
@@ -845,7 +869,7 @@ impl LootData {
                         .filter_map(Value::as_str)
                         .map(str::to_owned)
                         .collect(),
-                    effects: e["effects"].clone(),
+                    effects: Arc::new(e["effects"].clone()),
                 }
             })
             .collect();
@@ -912,12 +936,15 @@ impl LootData {
                 crate::tag_layers::TagLayers::bind(registry, &raw, contains),
             );
         }
+        let bindings = types::Bindings::empty(types.clone());
         let mut loaded = Self {
             holder_sets: Default::default(),
             copies_entity_nbt: false,
             component_defaults: copy::component_defaults(defaults)
                 .map_err(|reason| io::Error::new(io::ErrorKind::InvalidData, reason))?,
             types,
+            bindings,
+            normalized: false,
             tables,
             global_modifiers: Arc::default(),
             modifiers: Arc::new(modifiers),
@@ -1037,6 +1064,7 @@ impl LootData {
             query: query::current_query(),
             place: current_native_loot_place(),
             data: self,
+            local_bindings: None,
             random: LegacyRandom::new(0),
             biome: None,
             visited: Vec::new(),
@@ -1137,6 +1165,7 @@ impl LootData {
             query: query::current_query(),
             place: current_native_loot_place(),
             data: self,
+            local_bindings: None,
             random: random.clone(),
             biome: None,
             visited: Vec::new(),
@@ -1280,6 +1309,7 @@ struct Context<'a, R> {
     query: std::rc::Rc<query::LootQuery>,
     place: Option<Arc<LootPlace>>,
     data: &'a LootData,
+    local_bindings: Option<&'a types::RuleMap>,
     random: R,
     biome: Option<&'a str>,
     visited: Vec<String>,
@@ -1571,7 +1601,7 @@ impl<R: RandomSource> Context<'_, R> {
             Value::Object(_) => {
                 if self
                     .data
-                    .types
+                    .bindings
                     .conditional(m["type"].as_str().unwrap_or(""))
                     && !m["condition"].is_null()
                     && !self.condition(&m["condition"])
@@ -3280,7 +3310,7 @@ mod native_kinds_tests {
             min_cost: (0, 0),
             max_cost: (100, 0),
             slots: vec![],
-            effects: Value::Null,
+            effects: Arc::new(Value::Null),
         });
         data
     }
@@ -3372,7 +3402,7 @@ mod native_kinds_tests {
                     min_cost: (0, 0),
                     max_cost: (100, 0),
                     slots: vec![],
-                    effects: Value::Null,
+                    effects: Arc::new(Value::Null),
                 })
                 .collect();
             let total: i64 = weights.iter().map(|&w| i64::from(w)).sum();

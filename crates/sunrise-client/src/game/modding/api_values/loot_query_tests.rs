@@ -10,15 +10,16 @@ impl Hooks for Reader {
         );
     }
 }
-impl mod_api::ModLootCondition for Reader {
-    fn validate(&self, _: &mod_api::LootEntryData) -> Result<(), String> {
-        Ok(())
-    }
-    fn test(
+impl mod_api::ModLootConditionCodec for Reader {
+    fn decode(
         &self,
-        _: &mod_api::LootEntryData,
-        context: &mut dyn mod_api::LootTypeContext,
-    ) -> Result<bool, String> {
+        _: &serde_json::Value,
+    ) -> Result<std::sync::Arc<dyn mod_api::ModLootCondition>, String> {
+        Ok(std::sync::Arc::new(Reader))
+    }
+}
+impl mod_api::ModLootCondition for Reader {
+    fn test(&self, context: &mut dyn mod_api::LootTypeContext) -> Result<bool, String> {
         let params = context.params();
         assert_eq!(params.queried_table_id(), "minecraft:blocks/short_grass");
         let stack = params.queried_stack().unwrap();
@@ -62,15 +63,28 @@ fn queried_parameters_reach_native_mod_condition() {
                 .unwrap();
             crate::game::api_values::resolve_stack_boundary_test_items();
             let mut random = sunrise_core::random::LegacyRandom::new(0);
-            let holds = crate::game::loot_types::capture()
-                .test(
-                    "reader:query",
-                    &serde_json::json!({}),
-                    &ctx,
-                    &mut random,
-                    &Tags,
+            let types = crate::game::loot_types::capture();
+            let predicates = std::sync::Arc::new(std::collections::HashMap::from([(
+                "reader:pred".into(),
+                serde_json::json!({"type": "reader:query"}),
+            )]));
+            let bindings = types
+                .bind_generation(
+                    std::sync::Arc::default(),
+                    std::sync::Arc::clone(&predicates),
+                    std::sync::Arc::default(),
+                    Vec::new(),
+                    std::collections::HashMap::new(),
                 )
                 .unwrap();
+            let holds = bindings.test(
+                None,
+                "reader:query",
+                &predicates["reader:pred"],
+                &ctx,
+                &mut random,
+                &Tags,
+            );
             assert!(holds);
         },
     );

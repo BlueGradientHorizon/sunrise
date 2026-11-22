@@ -332,7 +332,7 @@ impl Game<'_> {
             };
         // Visit independently readable registries before consuming any result.
         // One rejected winner must not hide the other entries' diagnostics.
-        let loot = sunrise_world::loot::LootData::load_with_damage(
+        let loot = sunrise_world::loot::LootData::load_unbound_with_damage(
             root,
             &overlay,
             self.res.core.item_data.defaults(),
@@ -510,6 +510,8 @@ impl Game<'_> {
         let context = lan::sync::server_data_load(root, &self.res.core.item_data)?;
         if !mod_api::__private::mods().is_empty() {
             loot.apply_native_table_loads(&context)?;
+        } else {
+            loot.prepare_types()?;
         }
         let serializers = self
             .mods
@@ -519,6 +521,7 @@ impl Game<'_> {
             global_loot_modifiers::files(root, stack, modifier_files),
             &conditions,
             &context,
+            &loot,
         )?;
         loot.set_global_modifiers(modifiers);
         items.set_loot_data(&loot);
@@ -753,7 +756,7 @@ impl Game<'_> {
         }
         self.server_items = None;
         let overlay = pack_files(&self.world_tables);
-        let loot = match sunrise_world::loot::LootData::load_with_damage(
+        let loot = match sunrise_world::loot::LootData::load_unbound_with_damage(
             &self.options.resources,
             &overlay,
             self.res.item_defaults(),
@@ -777,6 +780,10 @@ impl Game<'_> {
                         self.server_loot.set(None);
                         return;
                     }
+                } else if let Err(error) = loot.prepare_types() {
+                    log::warn!("Sunrise: server loot tables refused: {error}");
+                    self.server_loot.set(None);
+                    return;
                 }
                 Some(Arc::new(loot))
             }
@@ -789,7 +796,7 @@ impl Game<'_> {
             && let Some(loot) = &loot
         {
             let mut items = self.items().clone();
-            items.set_loot_tables(loot.tables().clone());
+            items.set_loot_data(loot);
             self.server_items = Some(Arc::new(items));
         }
         if let Some(loot) = &loot {

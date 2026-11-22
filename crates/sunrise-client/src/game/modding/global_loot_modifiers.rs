@@ -28,10 +28,20 @@ impl Serializers {
     }
     fn decode(
         &self,
+        id: &str,
         kind: &str,
         data: &serde_json::Value,
         load: &LoadContext,
+        loot: &loot::LootData,
     ) -> Result<(DecodedModifier, Arc<dyn GlobalLootModifier>), String> {
+        let prepare_condition = |condition: Option<serde_json::Value>| {
+            condition
+                .map(|value| {
+                    loot.prepare_condition(value, &format!("loot_modifier {id} $.condition"))
+                        .map_err(|error| error.to_string())
+                })
+                .transpose()
+        };
         if kind == "neoforge:add_table" {
             let settings = LootModifierSettings::decode(data).map_err(|error| error.to_string())?;
             let table = data
@@ -41,7 +51,7 @@ impl Serializers {
             let table = Identifier::parse(table).map_err(|error| format!("table: {error}"))?;
             let decoded = DecodedModifier {
                 priority: settings.priority,
-                condition: settings.condition.clone(),
+                condition: prepare_condition(settings.condition.clone())?,
                 apply: Arc::new(AddTableModifier {
                     table: table.to_string(),
                 }),
@@ -56,9 +66,10 @@ impl Serializers {
         let instance = serializer
             .decode(data, &reader.context())
             .map_err(|error| error.to_string())?;
+        let condition = instance.condition().map_err(|error| error.to_string())?;
         let decoded = DecodedModifier {
             priority: instance.priority().map_err(|error| error.to_string())?,
-            condition: instance.condition().map_err(|error| error.to_string())?,
+            condition: prepare_condition(condition)?,
             apply: Arc::new(Adapter(instance.clone())),
         };
         Ok((decoded, instance))
@@ -68,6 +79,7 @@ impl Serializers {
         files: Vec<ModifierFile>,
         conditions: &sunrise_world::conditions::LoadConditions,
         load: &LoadContext,
+        loot: &loot::LootData,
     ) -> Result<
         (
             Arc<GlobalLootModifiers>,
@@ -81,7 +93,7 @@ impl Serializers {
             files,
             conditions,
             |id, kind, data| {
-                let (decoded, instance) = self.decode(kind, data, load)?;
+                let (decoded, instance) = self.decode(id, kind, data, load, loot)?;
                 instances.borrow_mut().insert(id.to_owned(), instance);
                 Ok(decoded)
             },

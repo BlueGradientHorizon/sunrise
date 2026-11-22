@@ -47,6 +47,7 @@ impl LootData {
             query: query::current_query(),
             place: current_native_loot_place(),
             data: self,
+            local_bindings: None,
             random: random.clone(),
             biome,
             visited: Vec::new(),
@@ -79,6 +80,7 @@ impl LootData {
             query: query::current_query(),
             place: current_native_loot_place(),
             data: self,
+            local_bindings: None,
             random: random.clone(),
             biome,
             visited: Vec::new(),
@@ -92,16 +94,34 @@ impl LootData {
         items
     }
 
-    /// Roll an unnamed root, sharing any caller-supplied queried parameters.
+    /// Roll an unnamed root, preparing it once before drawing and sharing any
+    /// caller-supplied queried parameters.
     pub fn roll_inline<R: RandomSource + Clone>(
         &self,
         table: &Value,
+        random: &mut R,
+    ) -> Vec<LootStack> {
+        let prepared = match self.prepare_inline_table(table) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                log::warn!("inline loot table refused: {error}");
+                return Vec::new();
+            }
+        };
+        self.roll_prepared_inline(&prepared, random)
+    }
+
+    /// Roll an already-prepared inline loot table, sharing any caller-supplied queried parameters.
+    pub fn roll_prepared_inline<R: RandomSource + Clone>(
+        &self,
+        table: &types::PreparedInlineTable,
         random: &mut R,
     ) -> Vec<LootStack> {
         let mut c = Context {
             query: query::current_query(),
             place: current_native_loot_place(),
             data: self,
+            local_bindings: Some(table.rules()),
             random: random.clone(),
             biome: None,
             visited: Vec::new(),
@@ -110,7 +130,7 @@ impl LootData {
             entity: None,
             enchanted_level: None,
         };
-        let items = c.roll_root(None, table);
+        let items = c.roll_root(None, table.value());
         *random = c.random;
         items
     }

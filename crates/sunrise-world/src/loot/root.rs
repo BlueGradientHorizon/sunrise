@@ -52,8 +52,12 @@ impl<R: RandomSource + Clone> global_modifiers::ModifierRoll for Context<'_, R> 
     fn next_gaussian(&mut self) -> f64 {
         self.random.next_gaussian()
     }
-    fn condition(&mut self, condition: &Value) -> bool {
-        Context::condition(self, condition)
+    fn condition(&mut self, condition: &types::PreparedCondition) -> bool {
+        let previous = self.local_bindings;
+        self.local_bindings = Some(condition.rules());
+        let result = Context::condition(self, condition.value());
+        self.local_bindings = previous;
+        result
     }
     fn roll_raw(&mut self, id: &str) -> Result<Vec<LootStack>, String> {
         let table = self

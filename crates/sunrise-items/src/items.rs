@@ -685,7 +685,7 @@ pub struct Items {
     /// Fluid tags in the same order.
     pub fluid_tag_order: HashMap<String, Vec<String>>,
     loot: Arc<sunrise_world::loot::LootTables>,
-    loot_types: sunrise_world::loot::types::Types,
+    loot_bindings: sunrise_world::loot::types::Bindings,
     loot_modifiers: Arc<HashMap<String, Value>>,
     global_modifiers: Arc<sunrise_world::loot::global_modifiers::GlobalLootModifiers>,
     /// `Registries.PREDICATE`: what a table's string condition names, which a
@@ -1404,7 +1404,7 @@ impl Items {
     /// Bind tables, predicates, modifiers and prepared instances from the same candidate.
     pub fn set_loot_data(&mut self, data: &sunrise_world::loot::LootData) {
         self.loot = data.tables().clone();
-        self.loot_types = data.types().clone();
+        self.loot_bindings = data.bindings().clone();
         self.loot_modifiers = Arc::clone(data.modifiers());
         self.predicates = data.predicates().clone();
         self.global_modifiers = data.global_modifiers().clone();
@@ -1733,10 +1733,17 @@ impl Items {
     ) -> Vec<ItemStack> {
         self.inline_loot_table_for_command(table, held, random, false)
     }
-    /// `LootCommand.dropFishingLoot`: output-list adapter; replacement keeps emitted empties.
-    pub fn inline_loot_table_for_command<R: RandomSource>(
+    /// Prepare an inline loot table at the argument boundary before drawing.
+    pub fn prepare_inline_loot_table(
         &self,
         table: &Value,
+    ) -> std::io::Result<sunrise_world::loot::types::PreparedInlineTable> {
+        self.loot_bindings.prepare_inline_table(table)
+    }
+    /// Roll an already-prepared inline loot table; replacement keeps emitted empties.
+    pub fn roll_prepared_inline_loot_table_for_command<R: RandomSource>(
+        &self,
+        table: &sunrise_world::loot::types::PreparedInlineTable,
         held: Option<&ItemStack>,
         random: &mut R,
         keep_empty: bool,
@@ -1746,6 +1753,7 @@ impl Items {
             query: sunrise_world::loot::query::current_query(),
             place: sunrise_world::loot::current_native_loot_place(),
             items: self,
+            local_bindings: Some(table.rules()),
             block: "",
             properties: &empty,
             held,
@@ -1760,7 +1768,24 @@ impl Items {
             location: None,
             keep_empty,
         };
-        ctx.roll_root(None, table, random)
+        ctx.roll_root(None, table.value(), random)
+    }
+    /// `LootCommand.dropFishingLoot`: output-list adapter; replacement keeps emitted empties.
+    pub fn inline_loot_table_for_command<R: RandomSource>(
+        &self,
+        table: &Value,
+        held: Option<&ItemStack>,
+        random: &mut R,
+        keep_empty: bool,
+    ) -> Vec<ItemStack> {
+        let prepared = match self.prepare_inline_loot_table(table) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                log::warn!("inline loot table refused: {error}");
+                return Vec::new();
+            }
+        };
+        self.roll_prepared_inline_loot_table_for_command(&prepared, held, random, keep_empty)
     }
     /// The id of the block's loot table (`minecraft:blocks/stone`), when it
     /// has one. `Blocks.wallVariant`: wall signs, banners, heads, fans and
@@ -1847,6 +1872,7 @@ impl Items {
             query: sunrise_world::loot::query::current_query(),
             place: sunrise_world::loot::current_native_loot_place(),
             items: self,
+            local_bindings: None,
             block,
             properties,
             held: roll.held,
@@ -1917,6 +1943,7 @@ impl Items {
             query: sunrise_world::loot::query::current_query(),
             place: sunrise_world::loot::current_native_loot_place(),
             items: self,
+            local_bindings: None,
             block: "",
             properties: &empty,
             held,
@@ -1959,6 +1986,7 @@ impl Items {
             query: sunrise_world::loot::query::current_query(),
             place: sunrise_world::loot::current_native_loot_place(),
             items: self,
+            local_bindings: None,
             block,
             properties,
             held: None,
@@ -1991,6 +2019,7 @@ impl Items {
             query: sunrise_world::loot::query::current_query(),
             place: sunrise_world::loot::current_native_loot_place(),
             items: self,
+            local_bindings: None,
             block: "",
             properties: &empty,
             held,
@@ -2131,6 +2160,7 @@ impl Items {
             query: sunrise_world::loot::query::current_query(),
             place: sunrise_world::loot::current_native_loot_place(),
             items: self,
+            local_bindings: None,
             block: "",
             properties: &empty,
             held,
@@ -2230,6 +2260,7 @@ struct LootContext<'a, R> {
     query: std::rc::Rc<sunrise_world::loot::query::LootQuery>,
     place: Option<Arc<sunrise_world::loot::LootPlace>>,
     items: &'a Items,
+    local_bindings: Option<&'a sunrise_world::loot::types::RuleMap>,
     block: &'a str,
     properties: &'a sunrise_world::chunk::BlockProperties,
     held: Option<&'a ItemStack>,
@@ -2454,17 +2485,13 @@ impl<R: RandomSource> LootContext<'_, R> {
                 .unwrap_or(true),
             // A registered condition answers using the current roll context.
             k if !c.is_null() && k.contains(':') && !k.starts_with("minecraft:") => {
-                if !self.items.loot_types.contains(k, false) {
+                if !self.items.loot_bindings.contains(k, false) {
                     return false;
                 }
                 let ctx = self.roll_facts();
-                match self.items.loot_types.test(k, c, &ctx, random, self.items) {
-                    Ok(holds) => holds,
-                    Err(reason) => {
-                        self.items.loot_types.warn_once(k, false, &reason);
-                        false
-                    }
-                }
+                self.items
+                    .loot_bindings
+                    .test(self.local_bindings, k, c, &ctx, random, self.items)
             }
             _ => false,
         }
@@ -2663,7 +2690,7 @@ impl<R: RandomSource> LootContext<'_, R> {
         for f in list {
             if self
                 .items
-                .loot_types
+                .loot_bindings
                 .conditional(f["type"].as_str().unwrap_or(""))
                 && !self.conditions(f, random)
             {
@@ -2984,18 +3011,20 @@ impl<R: RandomSource> LootContext<'_, R> {
                 // A mod's own kind: the function hook changes the stack, as it
                 // does in the main loot engine.
                 k if k.contains(':') && !k.starts_with("minecraft:") => {
-                    if !self.items.loot_types.contains(k, true) {
+                    if !self.items.loot_bindings.contains(k, true) {
                         continue;
                     }
                     let ctx = self.roll_facts();
                     mod_function(k, f, &ctx, self.items, stack, |kind, data, ctx, stack| {
-                        if let Err(reason) = self
-                            .items
-                            .loot_types
-                            .apply(kind, data, ctx, random, self.items, stack)
-                        {
-                            self.items.loot_types.warn_once(kind, true, &reason);
-                        }
+                        self.items.loot_bindings.apply(
+                            self.local_bindings,
+                            kind,
+                            data,
+                            ctx,
+                            random,
+                            self.items,
+                            stack,
+                        );
                     });
                 }
                 _ => {}
@@ -4584,6 +4613,7 @@ mod tests {
             query: sunrise_world::loot::query::current_query(),
             place: sunrise_world::loot::current_native_loot_place(),
             items,
+            local_bindings: None,
             block,
             properties: props,
             held,

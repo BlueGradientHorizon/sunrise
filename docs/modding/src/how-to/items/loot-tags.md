@@ -1,6 +1,6 @@
 # Reading tags in custom loot evaluation
 
-Registered `ModLootFunction` and `ModLootCondition` codecs read
+Bound `ModLootFunction` and `ModLootCondition` rules read
 `LootTypeContext::tags() -> &dyn Tags` alongside their borrowed `LootParamsView`
 and, for functions, scoped `&mut LootStackEditor<'_>`. This is a read-only view of
 the merged tags used by the current loot evaluator. The context supplies only its

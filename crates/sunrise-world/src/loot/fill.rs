@@ -77,6 +77,7 @@ impl LootData {
             query: query::current_query(),
             place: current_native_loot_place(),
             data: self,
+            local_bindings: None,
             random: random.clone(),
             biome: context.biome,
             visited: Vec::new(),

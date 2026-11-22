@@ -8,31 +8,10 @@ use std::rc::Rc;
 use sunrise_core::random::LegacyRandom;
 use sunrise_world::loot::query;
 struct QueryCodec;
-impl sunrise_world::loot::types::Registry for QueryCodec {
-    fn contains(&self, kind: &str, function: bool) -> bool {
-        !function && kind == "test:query"
-    }
-    fn validate(&self, _: &str, _: &Value, _: bool) -> std::result::Result<Vec<String>, String> {
-        Ok(Vec::new())
-    }
-    fn conditional(&self, _: &str) -> bool {
-        true
-    }
-    fn apply(
-        &self,
-        _: &str,
-        _: &Value,
-        _: &sunrise_world::loot::LootContext<'_>,
-        _: &mut dyn sunrise_world::loot::types::RollRandom,
-        _: &dyn sunrise_world::loot::LootTags,
-        _: &mut sunrise_world::loot::LootStack,
-    ) -> std::result::Result<(), String> {
-        Ok(())
-    }
+struct QueryCondition;
+impl sunrise_world::loot::types::BoundCondition for QueryCondition {
     fn test(
         &self,
-        _: &str,
-        _: &Value,
         ctx: &sunrise_world::loot::LootContext<'_>,
         _: &mut dyn sunrise_world::loot::types::RollRandom,
         _: &dyn sunrise_world::loot::LootTags,
@@ -43,10 +22,46 @@ impl sunrise_world::loot::types::Registry for QueryCodec {
         Ok(true)
     }
 }
+impl sunrise_world::loot::types::Registry for QueryCodec {
+    fn contains(&self, kind: &str, function: bool) -> bool {
+        !function && kind == "test:query"
+    }
+    fn conditional(&self, _: &str) -> bool {
+        true
+    }
+    fn decode_function(
+        &self,
+        kind: &str,
+        _: &Value,
+    ) -> std::result::Result<sunrise_world::loot::types::DecodedFunction, String> {
+        Err(format!("unknown loot function type {kind}"))
+    }
+    fn decode_condition(
+        &self,
+        _: &str,
+        _: &Value,
+    ) -> std::result::Result<sunrise_world::loot::types::DecodedCondition, String> {
+        Ok(sunrise_world::loot::types::DecodedCondition {
+            rule: Arc::new(QueryCondition),
+            referenced_params: Vec::new(),
+        })
+    }
+}
 fn data(tables: Vec<(&str, Value)>) -> Items {
     let mut items = Items::for_tests(HashMap::new());
-    items.loot_types = sunrise_world::loot::types::Types::new(Arc::new(QueryCodec));
-    items.loot = Arc::new(tables.into_iter().map(|(k, v)| (k.into(), v)).collect());
+    let types = sunrise_world::loot::types::Types::new(Arc::new(QueryCodec));
+    let loot: Arc<sunrise_world::loot::LootTables> =
+        Arc::new(tables.into_iter().map(|(k, v)| (k.into(), v)).collect());
+    items.loot_bindings = types
+        .bind_generation(
+            loot.clone(),
+            Arc::clone(&items.predicates),
+            Arc::clone(&items.loot_modifiers),
+            Vec::new(),
+            HashMap::new(),
+        )
+        .unwrap();
+    items.loot = loot;
     items
 }
 fn table(id: &str) -> Value {
@@ -484,6 +499,7 @@ fn queried_ability_tags_use_prepared_item_sets() {
         query: query::current_query(),
         place: sunrise_world::loot::current_native_loot_place(),
         items: &items,
+        local_bindings: None,
         block: "",
         properties: &props,
         held: Some(&tool),

@@ -18,7 +18,7 @@ pub trait ModifierRoll {
     fn next_double(&mut self) -> f64;
     fn next_boolean(&mut self) -> bool;
     fn next_gaussian(&mut self) -> f64;
-    fn condition(&mut self, condition: &Value) -> bool;
+    fn condition(&mut self, condition: &crate::loot::types::PreparedCondition) -> bool;
     fn roll_raw(&mut self, table: &str) -> Result<Vec<LootStack>, String>;
 }
 
@@ -35,7 +35,7 @@ pub trait ModifierApply: Send + Sync {
 /// Metadata captured by the owning type decoder, before sorting the generation.
 pub struct DecodedModifier {
     pub priority: i32,
-    pub condition: Option<Value>,
+    pub condition: Option<crate::loot::types::PreparedCondition>,
     pub apply: Arc<dyn ModifierApply>,
 }
 

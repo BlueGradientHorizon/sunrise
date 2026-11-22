@@ -251,8 +251,8 @@ mod tests {
     use super::*;
     include!("loot_tags_tests.rs");
     use mod_api::{
-        Hooks, LootEntryData, LootStackEditError, LootStackEditor, LootTypeContext, ModEntry,
-        ModLootFunction,
+        Hooks, LootStackEditError, LootStackEditor, LootTypeContext, ModEntry,
+        ModLootConditionCodec, ModLootFunction, ModLootFunctionCodec,
     };
     fn apply_type(
         kind: &str,
@@ -265,8 +265,33 @@ mod tests {
         if !types.contains(kind, true) {
             return;
         }
+        let mut entry = data.clone();
+        if let Some(object) = entry.as_object_mut() {
+            object.insert("type".into(), serde_json::Value::String(kind.into()));
+        }
+        let modifiers = std::sync::Arc::new(std::collections::HashMap::from([(
+            "test:entry".into(),
+            entry,
+        )]));
+        let bindings = types
+            .bind_generation(
+                std::sync::Arc::default(),
+                std::sync::Arc::default(),
+                std::sync::Arc::clone(&modifiers),
+                Vec::new(),
+                std::collections::HashMap::new(),
+            )
+            .unwrap();
         let mut random = sunrise_core::random::LegacyRandom::new(0);
-        let _ = types.apply(kind, data, ctx, &mut random, tags, stack);
+        bindings.apply(
+            None,
+            kind,
+            &modifiers["test:entry"],
+            ctx,
+            &mut random,
+            tags,
+            stack,
+        );
     }
     fn test_type(
         kind: &str,
@@ -279,8 +304,32 @@ mod tests {
         if !types.contains(kind, false) {
             return;
         }
+        let mut entry = data.clone();
+        if let Some(object) = entry.as_object_mut() {
+            object.insert("type".into(), serde_json::Value::String(kind.into()));
+        }
+        let predicates = std::sync::Arc::new(std::collections::HashMap::from([(
+            "test:entry".into(),
+            entry,
+        )]));
+        let bindings = types
+            .bind_generation(
+                std::sync::Arc::default(),
+                std::sync::Arc::clone(&predicates),
+                std::sync::Arc::default(),
+                Vec::new(),
+                std::collections::HashMap::new(),
+            )
+            .unwrap();
         let mut random = sunrise_core::random::LegacyRandom::new(0);
-        *holds = types.test(kind, data, ctx, &mut random, tags).unwrap();
+        *holds = bindings.test(
+            None,
+            kind,
+            &predicates["test:entry"],
+            ctx,
+            &mut random,
+            tags,
+        );
     }
     use mod_platform::testing::with_mods;
     use sunrise_core::nbt::Tag;
@@ -319,15 +368,16 @@ mod tests {
             );
         }
     }
-    impl mod_api::ModLootCondition for Facts {
-        fn validate(&self, _: &LootEntryData) -> Result<(), String> {
-            Ok(())
-        }
-        fn test(
+    impl ModLootConditionCodec for Facts {
+        fn decode(
             &self,
-            _: &LootEntryData,
-            context: &mut dyn LootTypeContext,
-        ) -> Result<bool, String> {
+            _: &serde_json::Value,
+        ) -> Result<std::sync::Arc<dyn mod_api::ModLootCondition>, String> {
+            Ok(std::sync::Arc::new(Facts))
+        }
+    }
+    impl mod_api::ModLootCondition for Facts {
+        fn test(&self, context: &mut dyn LootTypeContext) -> Result<bool, String> {
             let params = context.params();
             let victim = params.entity().unwrap();
             assert_eq!(victim.vehicle().unwrap().kind(), "minecraft:boat");
@@ -402,17 +452,15 @@ mod tests {
                     mod_api::__private::mods(),
                 )
                 .unwrap();
-                assert!(
-                    crate::game::loot_types::capture()
-                        .test(
-                            "facts:read",
-                            &serde_json::json!({}),
-                            &facts,
-                            &mut random,
-                            &TestTags,
-                        )
-                        .unwrap()
+                let mut holds = false;
+                test_type(
+                    "facts:read",
+                    &serde_json::json!({}),
+                    &facts,
+                    &mut holds,
+                    &TestTags,
                 );
+                assert!(holds);
             });
             assert_eq!(random.next_long(), LegacyRandom::new(71).next_long());
         });
@@ -425,13 +473,17 @@ mod tests {
             r.register_loot_function_type(&mod_api::Identifier::parse("edit:edit").unwrap(), Edit);
         }
     }
-    impl ModLootFunction for Edit {
-        fn validate(&self, _: &LootEntryData) -> Result<(), String> {
-            Ok(())
+    impl ModLootFunctionCodec for Edit {
+        fn decode(
+            &self,
+            _: &serde_json::Value,
+        ) -> Result<std::sync::Arc<dyn ModLootFunction>, String> {
+            Ok(std::sync::Arc::new(Edit))
         }
+    }
+    impl ModLootFunction for Edit {
         fn apply(
             &self,
-            _: &LootEntryData,
             stack: &mut LootStackEditor<'_>,
             context: &mut dyn LootTypeContext,
         ) -> Result<(), String> {
@@ -575,13 +627,17 @@ mod tests {
             );
         }
     }
-    impl ModLootFunction for ScopedInvalid {
-        fn validate(&self, _: &LootEntryData) -> Result<(), String> {
-            Ok(())
+    impl ModLootFunctionCodec for ScopedInvalid {
+        fn decode(
+            &self,
+            _: &serde_json::Value,
+        ) -> Result<std::sync::Arc<dyn ModLootFunction>, String> {
+            Ok(std::sync::Arc::new(ScopedInvalid(self.0.clone())))
         }
+    }
+    impl ModLootFunction for ScopedInvalid {
         fn apply(
             &self,
-            _: &LootEntryData,
             stack: &mut LootStackEditor<'_>,
             _: &mut dyn LootTypeContext,
         ) -> Result<(), String> {

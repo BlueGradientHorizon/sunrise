@@ -1,61 +1,102 @@
 use super::*;
 use mod_api::{Hooks, Identifier, LootTypeContext, Registrar, RegistrationContext};
 use serde_json::json;
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
+
 #[derive(Clone)]
-struct Codec(Arc<Mutex<Vec<(String, i32)>>>);
-impl ModLootFunction for Codec {
-    fn validate(&self, data: &LootEntryData) -> Result<(), String> {
-        data.value()["factor"]
-            .as_i64()
-            .map(|_| ())
-            .ok_or_else(|| "factor: expected integer".into())
+struct Codec {
+    observations: Arc<Mutex<Vec<(String, i32)>>>,
+    function_decodes: Arc<AtomicUsize>,
+    condition_decodes: Arc<AtomicUsize>,
+}
+impl Codec {
+    fn new(observations: Arc<Mutex<Vec<(String, i32)>>>) -> Self {
+        Self {
+            observations,
+            function_decodes: Arc::new(AtomicUsize::new(0)),
+            condition_decodes: Arc::new(AtomicUsize::new(0)),
+        }
     }
+}
+
+struct ScaleRule {
+    label: String,
+    factor: i32,
+    observations: Arc<Mutex<Vec<(String, i32)>>>,
+}
+impl ModLootFunctionCodec for Codec {
+    fn decode(&self, data: &serde_json::Value) -> Result<Arc<dyn ModLootFunction>, String> {
+        self.function_decodes.fetch_add(1, Ordering::Relaxed);
+        let factor = data["factor"]
+            .as_i64()
+            .ok_or_else(|| "factor: expected integer".to_owned())? as i32;
+        let label = data["label"].as_str().unwrap_or("scale").to_owned();
+        Ok(Arc::new(ScaleRule {
+            label,
+            factor,
+            observations: self.observations.clone(),
+        }))
+    }
+}
+impl ModLootFunction for ScaleRule {
     fn apply(
         &self,
-        data: &LootEntryData,
         stack: &mut mod_api::LootStackEditor<'_>,
         context: &mut dyn mod_api::LootTypeContext,
     ) -> Result<(), String> {
         assert!(context.params().origin().is_none());
         let draw = context.random().next_int_bound(5);
-        self.0
+        self.observations
             .lock()
             .unwrap()
-            .push((data.value()["label"].as_str().unwrap().into(), draw));
+            .push((self.label.clone(), draw));
         let count = stack
             .view()
             .count()
-            .wrapping_mul(data.value()["factor"].as_i64().unwrap() as i32)
+            .wrapping_mul(self.factor)
             .wrapping_add(draw);
         stack.set_count(count);
         Ok(())
     }
 }
-impl ModLootCondition for Codec {
-    fn validate(&self, data: &LootEntryData) -> Result<(), String> {
-        data.value()["pass"]
+
+struct GateRule {
+    label: String,
+    pass: bool,
+    observations: Arc<Mutex<Vec<(String, i32)>>>,
+}
+impl ModLootConditionCodec for Codec {
+    fn decode(&self, data: &serde_json::Value) -> Result<Arc<dyn ModLootCondition>, String> {
+        self.condition_decodes.fetch_add(1, Ordering::Relaxed);
+        let pass = data["pass"]
             .as_bool()
-            .map(|_| ())
-            .ok_or_else(|| "pass: expected boolean".into())
+            .ok_or_else(|| "pass: expected boolean".to_owned())?;
+        let label = data["label"].as_str().unwrap_or("gate").to_owned();
+        Ok(Arc::new(GateRule {
+            label,
+            pass,
+            observations: self.observations.clone(),
+        }))
     }
+}
+impl ModLootCondition for GateRule {
     fn referenced_context_params(&self) -> Vec<Identifier> {
         vec![Identifier::parse("minecraft:block_entity").unwrap()]
     }
-    fn test(
-        &self,
-        data: &LootEntryData,
-        context: &mut dyn LootTypeContext,
-    ) -> Result<bool, String> {
+    fn test(&self, context: &mut dyn LootTypeContext) -> Result<bool, String> {
         assert!(context.params().origin().is_none());
         let draw = context.random().next_int_bound(5);
-        self.0
+        self.observations
             .lock()
             .unwrap()
-            .push((data.value()["label"].as_str().unwrap().into(), draw));
-        Ok(data.value()["pass"].as_bool().unwrap())
+            .push((self.label.clone(), draw));
+        Ok(self.pass)
     }
 }
+
 #[mod_api::__subscriptions]
 impl Hooks for Codec {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
@@ -72,25 +113,62 @@ fn function(label: &str, factor: i32) -> serde_json::Value {
 }
 
 #[test]
-fn registered_types_preserve_both_evaluators_order_short_circuit_and_selected_random() {
+fn registered_types_bind_once_and_preserve_both_evaluators_order_short_circuit_and_selected_random()
+{
     use sunrise_core::random::{LegacyRandom, RandomSource};
     let observations = Arc::new(Mutex::new(Vec::new()));
+    let codec = Codec::new(observations.clone());
+    let fn_decodes = codec.function_decodes.clone();
+    let cond_decodes = codec.condition_decodes.clone();
     mod_platform::testing::with_mods(
-        vec![mod_api::ModEntry::new(
-            "test",
-            Box::new(Codec(observations.clone())),
-        )]
-        .into(),
+        vec![mod_api::ModEntry::new("test", Box::new(codec))].into(),
         || {
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
                 .unwrap();
             mod_api::__private::resolve_items(["minecraft:stick"]).unwrap();
             let root = tempfile::tempdir().unwrap();
             let folder = root.path().join("data/test/loot_table");
+            let pred_folder = root.path().join("data/test/predicate");
+            let mod_folder = root.path().join("data/test/item_modifier");
+            let ench_folder = root.path().join("data/test/enchantment");
             std::fs::create_dir_all(&folder).unwrap();
+            std::fs::create_dir_all(&pred_folder).unwrap();
+            std::fs::create_dir_all(&mod_folder).unwrap();
+            std::fs::create_dir_all(&ench_folder).unwrap();
             std::fs::write(
                 root.path().join("items.json"),
                 r#"{"minecraft:stick":{"minecraft:max_stack_size":64}}"#,
+            )
+            .unwrap();
+            std::fs::write(
+                pred_folder.join("shared.json"),
+                gate("shared pred", true).to_string(),
+            )
+            .unwrap();
+            std::fs::write(
+                mod_folder.join("shared.json"),
+                function("shared mod", 1).to_string(),
+            )
+            .unwrap();
+            std::fs::write(
+                ench_folder.join("drop_bonus.json"),
+                json!({
+                    "supported_items": ["minecraft:stick"],
+                    "weight": 1,
+                    "max_level": 1,
+                    "min_cost": {"base": 1, "per_level_above_first": 0},
+                    "max_cost": {"base": 10, "per_level_above_first": 0},
+                    "slots": ["mainhand"],
+                    "effects": {
+                        "minecraft:equipment_drops": [{
+                            "enchanted": "attacker",
+                            "affected": "victim",
+                            "requirements": gate("enchant drop", true),
+                            "effect": {"type": "minecraft:add", "value": 0.25}
+                        }]
+                    }
+                })
+                .to_string(),
             )
             .unwrap();
             let mut skipped = function("skipped body", 9);
@@ -112,6 +190,10 @@ fn registered_types_preserve_both_evaluators_order_short_circuit_and_selected_ra
                 capture(),
             )
             .unwrap();
+            // 8 inline functions in root + 1 named modifier = 9 function decodes.
+            assert_eq!(fn_decodes.load(Ordering::Relaxed), 9);
+            // 8 inline conditions in root + 1 named predicate + 1 enchantment equipment_drops requirement = 10 condition decodes.
+            assert_eq!(cond_decodes.load(Ordering::Relaxed), 10);
             let mut items = sunrise_items::items::Items::for_tests(HashMap::new());
             items.set_loot_data(&data);
             let mut expected_random = LegacyRandom::new(123);
@@ -141,28 +223,111 @@ fn registered_types_preserve_both_evaluators_order_short_circuit_and_selected_ra
                 + expected[9].1)
                 * 2
                 + expected[10].1;
-            for item_engine in [false, true] {
-                observations.lock().unwrap().clear();
-                let mut random = LegacyRandom::new(123);
-                let total = if item_engine {
-                    items
-                        .loot_table("test:root", false, None, &mut random)
-                        .iter()
-                        .map(|stack| stack.count as i32)
-                        .sum::<i32>()
-                } else {
-                    data.roll("test:root", &mut random, 0.0, None, None)
-                        .iter()
-                        .map(|stack| stack.count)
-                        .sum::<i32>()
-                };
-                assert_eq!(total, count);
-                assert_eq!(*observations.lock().unwrap(), expected);
-                assert_eq!(
-                    RandomSource::next_long(&mut random),
-                    RandomSource::next_long(&mut expected_random.clone())
-                );
+            // Repeated rolls across both evaluators perform zero decodes.
+            for _ in 0..3 {
+                for item_engine in [false, true] {
+                    observations.lock().unwrap().clear();
+                    let mut random = LegacyRandom::new(123);
+                    let total = if item_engine {
+                        items
+                            .loot_table("test:root", false, None, &mut random)
+                            .iter()
+                            .map(|stack| stack.count as i32)
+                            .sum::<i32>()
+                    } else {
+                        data.roll("test:root", &mut random, 0.0, None, None)
+                            .iter()
+                            .map(|stack| stack.count)
+                            .sum::<i32>()
+                    };
+                    assert_eq!(total, count);
+                    assert_eq!(*observations.lock().unwrap(), expected);
+                    assert_eq!(
+                        RandomSource::next_long(&mut random),
+                        RandomSource::next_long(&mut expected_random.clone())
+                    );
+                }
             }
+            assert_eq!(fn_decodes.load(Ordering::Relaxed), 9);
+            assert_eq!(cond_decodes.load(Ordering::Relaxed), 10);
+
+            // Enchantment equipment_drops requirement runs bound rule with zero decodes.
+            let mut attacker = loot::LootEntity::new("minecraft:player");
+            attacker.living = true;
+            let mut weapon = loot::LootStack::new("minecraft:stick", 1);
+            weapon.enchantments.push(("test:drop_bonus".into(), 1));
+            attacker.equipment.push(("mainhand".into(), weapon));
+            let params = loot::EntityLootParams {
+                this: loot::LootEntity::new("minecraft:zombie"),
+                damage: Some(loot::LootDamage {
+                    kind: "minecraft:player_attack".into(),
+                    source: Some(attacker),
+                    direct: None,
+                }),
+                ..Default::default()
+            };
+            observations.lock().unwrap().clear();
+            let chance = data.equipment_drop_chance(&params, 0.5);
+            assert!((chance - 0.75).abs() < 1e-6);
+            assert_eq!(observations.lock().unwrap().len(), 1);
+            assert_eq!(observations.lock().unwrap()[0].0, "enchant drop");
+            assert_eq!(cond_decodes.load(Ordering::Relaxed), 10);
+
+            // Inline table binds its own nodes once and reuses named predicates/modifiers without re-decoding.
+            let inline = json!({
+                "pools": [{
+                    "rolls": 1,
+                    "condition": "test:shared",
+                    "entries": [{"type": "minecraft:item", "name": "minecraft:stick", "modifier": ["test:shared", function("inline fn", 4)]}]
+                }]
+            });
+            let prepared = items.prepare_inline_loot_table(&inline).unwrap();
+            assert_eq!(fn_decodes.load(Ordering::Relaxed), 10);
+            assert_eq!(cond_decodes.load(Ordering::Relaxed), 10);
+            for _ in 0..2 {
+                let rolled = items.roll_prepared_inline_loot_table_for_command(
+                    &prepared,
+                    None,
+                    &mut LegacyRandom::new(7),
+                    false,
+                );
+                assert_eq!(rolled.len(), 1);
+            }
+            assert_eq!(fn_decodes.load(Ordering::Relaxed), 10);
+            assert_eq!(cond_decodes.load(Ordering::Relaxed), 10);
+
+            // Global modifier condition prepares its inline node once and reuses named predicates.
+            let prepared_cond = data
+                .prepare_condition(
+                    json!({"type":"minecraft:all_of","terms":["test:shared", gate("glm cond", true)]}),
+                    "loot_modifier test:m $.condition",
+                )
+                .unwrap();
+            assert_eq!(cond_decodes.load(Ordering::Relaxed), 11);
+            assert!(!prepared_cond.rules().is_empty());
+
+            // Reloading a modified table decodes into a fresh bound rule for the new generation.
+            let reloaded_table = json!({"pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:stick","modifier":function("reloaded", 5)}]}]});
+            std::fs::write(folder.join("root.json"), reloaded_table.to_string()).unwrap();
+            let reloaded = loot::LootData::load_with_types(
+                root.path(),
+                &loot::PackOverlay::NONE,
+                &defaults,
+                capture(),
+            )
+            .unwrap();
+            observations.lock().unwrap().clear();
+            let mut reload_rng = LegacyRandom::new(9);
+            let expected_draw = RandomSource::next_int_bound(&mut LegacyRandom::new(9), 5).unwrap();
+            let dropped = reloaded.roll("test:root", &mut reload_rng, 0.0, None, None);
+            assert_eq!(dropped.len(), 1);
+            assert_eq!(dropped[0].count, 5 + expected_draw);
+            assert_eq!(
+                *observations.lock().unwrap(),
+                vec![("reloaded".to_owned(), expected_draw)]
+            );
+
+            // Refusing a bad reload never mutates the already published generation.
             for (entry, expected) in [
                 (json!({"type":"test:absent"}), "unknown loot type"),
                 (json!({"type":"test:scale","factor":false}), "factor"),
@@ -187,7 +352,6 @@ fn registered_types_preserve_both_evaluators_order_short_circuit_and_selected_ra
                         && error.contains(expected),
                     "{error}"
                 );
-                // Refusing a candidate never mutates the already published generation.
                 observations.lock().unwrap().clear();
                 assert!(
                     !data
@@ -195,6 +359,150 @@ fn registered_types_preserve_both_evaluators_order_short_circuit_and_selected_ra
                         .is_empty()
                 );
             }
+        },
+    );
+}
+
+#[derive(Clone)]
+struct PanickingCodec {
+    decode_calls: Arc<AtomicUsize>,
+    apply_calls: Arc<AtomicUsize>,
+}
+struct PanickingRule {
+    apply_calls: Arc<AtomicUsize>,
+}
+impl ModLootFunctionCodec for PanickingCodec {
+    fn decode(&self, _: &serde_json::Value) -> Result<Arc<dyn ModLootFunction>, String> {
+        self.decode_calls.fetch_add(1, Ordering::Relaxed);
+        Ok(Arc::new(PanickingRule {
+            apply_calls: self.apply_calls.clone(),
+        }))
+    }
+}
+impl ModLootFunction for PanickingRule {
+    fn apply(
+        &self,
+        _: &mut mod_api::LootStackEditor<'_>,
+        _: &mut dyn mod_api::LootTypeContext,
+    ) -> Result<(), String> {
+        self.apply_calls.fetch_add(1, Ordering::Relaxed);
+        panic!("boom in panicking loot rule");
+    }
+}
+#[mod_api::__subscriptions]
+impl Hooks for PanickingCodec {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        r.item_key("minecraft:stick");
+        r.register_loot_function_type(&Identifier::parse("panicmod:boom").unwrap(), self.clone());
+    }
+}
+
+#[derive(Clone)]
+struct HealthyCodec {
+    apply_calls: Arc<AtomicUsize>,
+}
+impl ModLootFunctionCodec for HealthyCodec {
+    fn decode(&self, _: &serde_json::Value) -> Result<Arc<dyn ModLootFunction>, String> {
+        Ok(Arc::new(self.clone()))
+    }
+}
+impl ModLootFunction for HealthyCodec {
+    fn apply(
+        &self,
+        stack: &mut mod_api::LootStackEditor<'_>,
+        _: &mut dyn mod_api::LootTypeContext,
+    ) -> Result<(), String> {
+        self.apply_calls.fetch_add(1, Ordering::Relaxed);
+        stack.set_count(stack.view().count() + 10);
+        Ok(())
+    }
+}
+#[mod_api::__subscriptions]
+impl Hooks for HealthyCodec {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        r.item_key("minecraft:stick");
+        r.register_loot_function_type(&Identifier::parse("goodmod:add").unwrap(), self.clone());
+    }
+}
+
+#[test]
+fn panicking_rule_stays_poisoned_across_reloads_while_other_registrations_keep_running() {
+    use sunrise_core::random::LegacyRandom;
+    let panic_decodes = Arc::new(AtomicUsize::new(0));
+    let panic_applies = Arc::new(AtomicUsize::new(0));
+    let healthy_applies = Arc::new(AtomicUsize::new(0));
+    let bad = PanickingCodec {
+        decode_calls: panic_decodes.clone(),
+        apply_calls: panic_applies.clone(),
+    };
+    let good = HealthyCodec {
+        apply_calls: healthy_applies.clone(),
+    };
+    mod_platform::testing::with_mods(
+        vec![
+            mod_api::ModEntry::new("panicmod", Box::new(bad)),
+            mod_api::ModEntry::new("goodmod", Box::new(good)),
+        ]
+        .into(),
+        || {
+            mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
+                .unwrap();
+            mod_api::__private::resolve_items(["minecraft:stick"]).unwrap();
+            let root = tempfile::tempdir().unwrap();
+            let folder = root.path().join("data/test/loot_table");
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(
+                root.path().join("items.json"),
+                r#"{"minecraft:stick":{"minecraft:max_stack_size":64}}"#,
+            )
+            .unwrap();
+            let table = json!({"pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:stick",
+                "modifier":[{"type":"panicmod:boom"},{"type":"goodmod:add"}]}]}]});
+            std::fs::write(folder.join("root.json"), table.to_string()).unwrap();
+            let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
+            let data = loot::LootData::load_with_types(
+                root.path(),
+                &loot::PackOverlay::NONE,
+                &defaults,
+                capture(),
+            )
+            .unwrap();
+            assert_eq!(panic_decodes.load(Ordering::Relaxed), 1);
+            // First roll panics inside panicmod:boom, poisons its shared CallbackOwner,
+            // and still runs goodmod:add.
+            let first = data.roll("test:root", &mut LegacyRandom::new(1), 0.0, None, None);
+            assert_eq!(first[0].count, 11);
+            assert_eq!(panic_applies.load(Ordering::Relaxed), 1);
+            assert_eq!(healthy_applies.load(Ordering::Relaxed), 1);
+            // Second roll never invokes panicmod:boom again, while goodmod:add runs.
+            let second = data.roll("test:root", &mut LegacyRandom::new(1), 0.0, None, None);
+            assert_eq!(second[0].count, 11);
+            assert_eq!(panic_applies.load(Ordering::Relaxed), 1);
+            assert_eq!(healthy_applies.load(Ordering::Relaxed), 2);
+            // A fresh capture/reload still shares the poisoned CallbackOwner:
+            // panicmod:boom's decode is refused without invoking user code again.
+            let reload = loot::LootData::load_with_types(
+                root.path(),
+                &loot::PackOverlay::NONE,
+                &defaults,
+                capture(),
+            );
+            assert!(reload.is_err());
+            assert_eq!(panic_decodes.load(Ordering::Relaxed), 1);
+            // A reload that drops panicmod:boom still succeeds and runs goodmod:add.
+            let good_only = json!({"pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:stick",
+                "modifier":[{"type":"goodmod:add"}]}]}]});
+            std::fs::write(folder.join("root.json"), good_only.to_string()).unwrap();
+            let reloaded = loot::LootData::load_with_types(
+                root.path(),
+                &loot::PackOverlay::NONE,
+                &defaults,
+                capture(),
+            )
+            .unwrap();
+            let third = reloaded.roll("test:root", &mut LegacyRandom::new(1), 0.0, None, None);
+            assert_eq!(third[0].count, 11);
+            assert_eq!(healthy_applies.load(Ordering::Relaxed), 3);
         },
     );
 }

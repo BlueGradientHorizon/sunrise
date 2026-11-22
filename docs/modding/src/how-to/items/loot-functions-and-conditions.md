@@ -15,7 +15,7 @@ Ids belong to the declaring manifest's namespace. Duplicates refuse registration
 naming both owners; `minecraft:` and `neoforge:` are reserved. A built-in always
 resolves to the engine's built-in, never to a mod codec.
 
-## Entry data and validation
+## Entry data and load-time binding
 
 The data form is an object with `type` and the codec's own fields side by side:
 
@@ -23,20 +23,22 @@ The data form is an object with `type` and the codec's own fields side by side:
 {"type":"example:scale", "factor":3}
 ```
 
-`ModLootFunction` and `ModLootCondition` implement
-`validate(&LootEntryData) -> Result<(), String>`. Use `data.value()` to read the
-immutable JSON tree. Unknown fields are retained for the codec, not rejected by
-the engine. Validation runs at load, including tables edited by `loot_table_load`,
-not when the entry happens to roll. Declare parameters with
-`referenced_context_params`; a table whose context set does not allow one logs a
-warning but still loads. At runtime an absent parameter remains absent.
+Register a load-time codec implementing `ModLootFunctionCodec` or `ModLootConditionCodec`.
+Its `decode(&serde_json::Value) -> Result<Arc<dyn ModLootFunction | ModLootCondition>, String>`
+runs once per resource entry when data loads (including tables edited by `loot_table_load`,
+named predicates and item modifiers, enchantment `equipment_drops` requirements, global loot
+modifier conditions, and inline `/loot` tables prepared at the command boundary), producing an
+immutable bound rule. Unknown fields are retained for the codec, not rejected by the engine.
+Declare parameters read by a bound rule with `referenced_context_params`; a table whose context
+set does not allow one logs a warning but still loads. At runtime an absent parameter remains
+absent.
 
-Unknown loot types, malformed registered entries, failed codec validators,
-predicate/item-modifier reference cycles and refused Wire validation calls fail
-the candidate preparation, with a file/id, entry path and type in the diagnostic.
+Unknown loot types, malformed registered entries, failed codec decoders, and
+predicate/item-modifier reference cycles fail the candidate preparation, with a
+file/id, entry path and type in the diagnostic.
 Refusing a candidate leaves previously retained snapshots unchanged. Malformed
 winning pack JSON never falls back to a lower-priority file. Predicate and item
-modifier references, including references selected by tags, validate at load.
+modifier references, including references selected by tags, bind at load.
 Referenced tables retain the caller's context set during parameter validation;
 recursive table references stop traversal rather than recursing indefinitely.
 Built-in functions and conditions use the same preparation boundary. Declarative
@@ -56,33 +58,30 @@ Extreme numeric literals can still lose precision in the JSON representation
 not yet replace complete selector, coordinate and canonical text-size validation
 ([#2112](https://github.com/sunrise-org/sunrise/issues/2112)).
 
-`LootEntryData` is API-owned and derives `Wire`. Its one private JSON-value field
-uses the shared JSON tree encoding: length-prefixed UTF-8 JSON, with the shared
-Wire depth and size checks. An unrepresentable entry refuses load.
-
 ## Applying and testing
 
-A function's `apply` receives its entry, a scoped `&mut LootStackEditor<'_>` over the
-active candidate, and a scoped `&mut dyn LootTypeContext`, returning `Result<(), String>`.
-A condition's `test` receives its entry and that context, returning `Result<bool, String>`.
-The result allows a refused resource call to be diagnosed, not mistaken for a
-successful edit. Each editor write validates its own input before touching its target field;
-if a later write or the callback fails, earlier valid edits and random draws remain in
-place, matching vanilla's in-place `LootItemFunction.apply`. A condition call failure is
-diagnosed and does not pass. Callback failures warn once per type id in each retained data
-generation, not once per roll.
+A bound `ModLootFunction`'s `apply` receives a scoped `&mut LootStackEditor<'_>` over
+the active candidate and a scoped `&mut dyn LootTypeContext`, returning `Result<(), String>`.
+A bound `ModLootCondition`'s `test` receives that context, returning `Result<bool, String>`.
+Neither re-parses JSON during a roll. The result allows a refused resource call to be
+diagnosed, not mistaken for a successful edit. Each editor write validates its own input
+before touching its target field; if a later write or the callback fails, earlier valid edits
+and random draws remain in place, matching vanilla's in-place `LootItemFunction.apply`. A
+condition call failure is diagnosed and does not pass. Ordinary callback refusals are logged
+with the type id, bound resource location, owning mod and reason; panicking callbacks poison
+that registration's owner across reloads.
 
 The context lends `LootParamsView` through `params()`, authoritative tags through
 `tags()`, and the evaluator's actual selected random stream through `random()`.
 See [Reading tags](loot-tags.md). Reading parameters consumes no random. Use the
-roll's random directly, and end any parameter borrow before drawing. Codecs are
+roll's random directly, and end any parameter borrow before drawing. Bound rules are
 shared immutable declarations and must not keep random state between calls.
 
 Functions run entry first, then pool, then table. A `sequence` passes each
 function's output to the next. Conditions under `all_of` and `any_of` run in
-order and short-circuit, so skipped terms consume no random. A function's
+order and short-circuit, so skipped terms consume no random. A function codec's
 `conditional()` defaults to true: the engine tests its optional `condition`
-first and returns the original stack if false. A direct function can return
+first and returns the original stack if false. A direct function codec can return
 false from `conditional()` and own that field itself.
 
 `LootStackEditor` lends the current candidate through `view() -> LootStackView<'_>`,

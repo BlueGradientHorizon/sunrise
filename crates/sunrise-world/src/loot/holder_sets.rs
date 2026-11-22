@@ -277,7 +277,11 @@ impl Binding {
                     &data.tags,
                 )?;
             }
-            for (kind, effects) in enchantment.effects.as_object_mut().into_iter().flatten() {
+            for (kind, effects) in Arc::make_mut(&mut enchantment.effects)
+                .as_object_mut()
+                .into_iter()
+                .flatten()
+            {
                 self.walk(
                     &format!("enchantment {}.effects.{kind}", enchantment.name),
                     effects,
