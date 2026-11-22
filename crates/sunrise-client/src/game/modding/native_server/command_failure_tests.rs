@@ -32,7 +32,9 @@ impl mod_api::Hooks for FailingCommand {
         );
         for (usage, depth) in [
             ("rejectinvalid", mod_api::text::MAX_TEXT_DEPTH + 1),
-            ("rejectformatted", mod_api::text::MAX_TEXT_DEPTH - 1),
+            // Each parent contributes a compound and an `extra` list. The
+            // leaf makes 511 containers; only the formatted failure exceeds 512.
+            ("rejectformatted", mod_api::text::MAX_TEXT_DEPTH / 2),
         ] {
             event
                 .commands
@@ -106,8 +108,8 @@ fn executor_failure_respects_source_silence_and_stores_zero() {
                             text::Text::tr("command.failed", &[]).plain()
                         );
 
-                        // The raw API component at this depth passes validation, but
-                        // its encoded `extra` lists and the red parent exceed wire depth.
+                        // The original component fits on the wire; the red parent
+                        // and its `extra` list put the formatted failure over the limit.
                         let (tx, rx) = std::sync::mpsc::channel();
                         game.lan.as_mut().unwrap().hub.update_guest(12, |guest| {
                             guest.sender = PlayerSender::new(tx, Arc::default());
