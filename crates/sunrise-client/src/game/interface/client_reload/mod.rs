@@ -29,7 +29,22 @@ pub(super) struct StartupClientHost;
 impl Host for StartupClientHost {}
 mod_api::impl_host_areas!(StartupClientHost);
 impl ClientHost for StartupClientHost {}
-mod_api::impl_client_host_areas!(StartupClientHost, except(audio, client_render));
+mod_api::impl_client_host_areas!(StartupClientHost, except(audio, client_render, network));
+impl mod_api::prelude::NetworkClientHost for StartupClientHost {
+    fn build_play_packet(
+        &self,
+        request: &mod_api::PlayPacketRequest,
+    ) -> Result<mod_api::ServerboundPlayPacket, mod_api::PacketBuildError> {
+        super::native_packet_builders::build_play_packet_checked(request)
+    }
+
+    fn container_click(
+        &self,
+        _: &mod_api::ContainerClickRequest,
+    ) -> Result<mod_api::ServerboundPlayPacket, mod_api::PacketBuildError> {
+        Err(<mod_api::PacketBuildError as mod_api::AccessRefusal>::unavailable())
+    }
+}
 impl mod_api::prelude::ClientRenderClientHost for StartupClientHost {
     fn biome_tint(
         &self,

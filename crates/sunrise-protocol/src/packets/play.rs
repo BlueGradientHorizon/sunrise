@@ -1273,6 +1273,14 @@ impl SignLines {
     /// `ServerboundSignUpdatePacket.MAX_STRING_LENGTH`: maximum UTF-16 code units per line
     /// across the four fixed sign lines.
     pub const MAX_UTF16: usize = 384;
+
+    /// First line index exceeding [`Self::MAX_UTF16`] UTF-16 code units, matching
+    /// vanilla `Utf8String.write(buf, line, 384)` and `Utf8String.read(buf, 384)`.
+    pub fn first_oversize_line(lines: &[String; 4]) -> Option<usize> {
+        lines.iter().position(|line| {
+            line.encode_utf16().take(Self::MAX_UTF16 + 1).count() > Self::MAX_UTF16
+        })
+    }
 }
 impl Codec<[String; 4]> for SignLines {
     fn read(r: &mut Reader) -> Result<[String; 4]> {
@@ -1282,6 +1290,15 @@ impl Codec<[String; 4]> for SignLines {
             r.string(Self::MAX_UTF16)?,
             r.string(Self::MAX_UTF16)?,
         ])
+    }
+    fn validate(v: &[String; 4]) -> Result<()> {
+        if let Some(i) = Self::first_oversize_line(v) {
+            return Err(Error::new(format!(
+                "sign line {i} longer than {} chars",
+                Self::MAX_UTF16
+            )));
+        }
+        Ok(())
     }
     fn write(v: &[String; 4], w: &mut Writer) {
         for line in v {
@@ -1438,11 +1455,12 @@ packet_enum!(Serverbound, crate::ids::play::serverbound {
 });
 
 impl Serverbound {
-    /// The post-ID payload bytes, for already validated typed callers.
-    pub fn encode_payload(&self) -> Vec<u8> {
+    /// The post-ID payload bytes, validated with the packet's protocol codec.
+    pub fn try_encode_payload(&self) -> Result<Vec<u8>> {
+        self.validate()?;
         let mut w = Writer::new();
         self.write_payload(&mut w);
-        w.data
+        Ok(w.data)
     }
 }
 

@@ -831,3 +831,42 @@ fn an_entity_moved_into_another_level_is_told_once_at_its_next_crossing() {
         })
     });
 }
+
+#[test]
+fn live_section_host_builds_play_packets_and_refuses_container_click() {
+    use mod_api::{
+        ContainerClickRequest, PacketBuildError, PlayPacketRequest, prelude::NetworkClientHost,
+    };
+    use sunrise_protocol::{
+        ids::play::serverbound as sb,
+        packets::play::{Attack, Serverbound},
+    };
+
+    let host = LiveSectionHost(None);
+    {
+        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+        let packet =
+            NetworkClientHost::build_play_packet(&host, &PlayPacketRequest::Attack { entity: 9 })
+                .expect("valid Attack in World");
+        assert_eq!(packet.id.to_string(), "minecraft:attack");
+        assert_eq!(
+            Serverbound::decode(sb::ATTACK, &packet.body).unwrap(),
+            Serverbound::Attack(Attack { id: 9 })
+        );
+        assert_eq!(
+            NetworkClientHost::container_click(&host, &ContainerClickRequest::default()),
+            Err(PacketBuildError::Unavailable {
+                packet: "play_packet".into(),
+                field: "host".into(),
+            })
+        );
+    }
+    let _config = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Config);
+    assert_eq!(
+        NetworkClientHost::build_play_packet(&host, &PlayPacketRequest::Attack { entity: 9 }),
+        Err(PacketBuildError::Unavailable {
+            packet: "play_packet".into(),
+            field: "host".into(),
+        })
+    );
+}

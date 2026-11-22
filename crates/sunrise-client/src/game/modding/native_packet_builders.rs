@@ -2,6 +2,20 @@
 use super::Game;
 use mod_api::{ContainerClickRequest, PacketBuildError, PlayPacketRequest, ServerboundPlayPacket};
 
+/// Stateless client-host play packet encoder guarded by the same `Metadata` phase
+/// policy that the generated `Game` host forwarder enforces.
+pub(super) fn build_play_packet_checked(
+    request: &PlayPacketRequest,
+) -> Result<ServerboundPlayPacket, PacketBuildError> {
+    if !mod_api::__private::access_allowed(
+        "build_play_packet",
+        mod_api::__private::LoadAccess::Metadata,
+    ) {
+        return Err(<PacketBuildError as mod_api::AccessRefusal>::unavailable());
+    }
+    Game::build_play_packet(request)
+}
+
 impl Game<'_> {
     pub(super) fn build_play_packet(
         request: &PlayPacketRequest,

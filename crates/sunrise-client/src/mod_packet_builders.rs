@@ -15,7 +15,10 @@ fn encode_serverbound(packet: Serverbound) -> Result<ServerboundPlayPacket, Pack
         .ok_or_else(|| out_of_range(packet.name(), "id"))?;
     let id =
         mod_api::Identifier::from_parts("minecraft", name).map_err(|_| out_of_range(name, "id"))?;
-    Ok(ServerboundPlayPacket::new(id, packet.encode_payload()))
+    let body = packet
+        .try_encode_payload()
+        .map_err(|_| out_of_range(name, "payload"))?;
+    Ok(ServerboundPlayPacket::new(id, body))
 }
 
 fn out_of_range(packet: &str, field: impl Into<String>) -> PacketBuildError {
@@ -164,14 +167,11 @@ pub fn encode_play_packet(
         PlayPacketRequest::SignUpdate { pos, front, lines } => {
             let p = "sign_update";
             check_block_pos(p, *pos)?;
-            for (i, line) in lines.iter().enumerate() {
-                if line.encode_utf16().take(SignLines::MAX_UTF16 + 1).count() > SignLines::MAX_UTF16
-                {
-                    return Err(PacketBuildError::SignLineTooLong {
-                        packet: p.into(),
-                        field: format!("lines[{i}]"),
-                    });
-                }
+            if let Some(i) = SignLines::first_oversize_line(lines) {
+                return Err(PacketBuildError::SignLineTooLong {
+                    packet: p.into(),
+                    field: format!("lines[{i}]"),
+                });
             }
             Serverbound::SignUpdate(play::SignUpdate {
                 pos: *pos,

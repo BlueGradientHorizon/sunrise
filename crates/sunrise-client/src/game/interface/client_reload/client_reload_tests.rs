@@ -1197,5 +1197,72 @@ fn humanoid_arm_pose_mod_reads_mob_state_and_changes_the_model() {
     });
 }
 
+#[test]
+fn startup_reload_hook_builds_play_packets_and_enforces_phase_policy() {
+    use mod_api::{
+        AddClientReloadListenersEvent, ClientHost, ContainerClickRequest, Hooks, ModEntry,
+        PacketBuildError, PlayPacketRequest, ServerboundPlayPacket, prelude::NetworkClientHost,
+    };
+    use std::sync::Mutex;
+    use sunrise_protocol::{
+        ids::play::serverbound as sb,
+        packets::play::{Attack, Serverbound},
+    };
+
+    struct PacketBuilderProbe(Arc<Mutex<Vec<Result<ServerboundPlayPacket, PacketBuildError>>>>);
+
+    #[mod_api::__subscriptions]
+    impl Hooks for PacketBuilderProbe {
+        fn add_client_reload_listeners(
+            &self,
+            host: &dyn ClientHost,
+            _: &mut AddClientReloadListenersEvent<'_>,
+        ) {
+            self.0
+                .lock()
+                .unwrap()
+                .push(host.build_play_packet(&PlayPacketRequest::Attack { entity: 7 }));
+        }
+    }
+
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![ModEntry::new(
+        "packet_probe",
+        Box::new(PacketBuilderProbe(seen.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        let _ = register_startup_client_reload_listeners();
+    });
+
+    let results = seen.lock().unwrap();
+    assert_eq!(results.len(), 1);
+    let packet = results[0].as_ref().expect("valid Attack in Reloading");
+    assert_eq!(packet.id.to_string(), "minecraft:attack");
+    assert_eq!(
+        Serverbound::decode(sb::ATTACK, &packet.body).unwrap(),
+        Serverbound::Attack(Attack { id: 7 })
+    );
+
+    let _config = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Config);
+    assert_eq!(
+        NetworkClientHost::build_play_packet(
+            &StartupClientHost,
+            &PlayPacketRequest::Attack { entity: 7 }
+        ),
+        Err(PacketBuildError::Unavailable {
+            packet: "play_packet".into(),
+            field: "host".into(),
+        })
+    );
+    assert_eq!(
+        NetworkClientHost::container_click(&StartupClientHost, &ContainerClickRequest::default()),
+        Err(PacketBuildError::Unavailable {
+            packet: "play_packet".into(),
+            field: "host".into(),
+        })
+    );
+}
+
 #[path = "custom_arm_pose_tests.rs"]
 mod custom_arm_pose_tests;

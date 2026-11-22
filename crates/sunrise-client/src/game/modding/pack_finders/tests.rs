@@ -801,3 +801,46 @@ fn disabled_native_mods_skip_add_pack_finders_at_startup_and_after_toggle() {
         },
     );
 }
+
+#[test]
+fn discovery_host_builds_play_packets_and_enforces_phase_policy() {
+    use mod_api::{
+        ContainerClickRequest, PacketBuildError, PlayPacketRequest, prelude::NetworkClientHost,
+    };
+    use sunrise_protocol::{
+        ids::play::serverbound as sb,
+        packets::play::{Attack, Serverbound},
+    };
+
+    {
+        let _setup = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
+        let packet = NetworkClientHost::build_play_packet(
+            &DiscoveryHost,
+            &PlayPacketRequest::Attack { entity: 11 },
+        )
+        .expect("valid Attack in Setup");
+        assert_eq!(packet.id.to_string(), "minecraft:attack");
+        assert_eq!(
+            Serverbound::decode(sb::ATTACK, &packet.body).unwrap(),
+            Serverbound::Attack(Attack { id: 11 })
+        );
+    }
+    let _config = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Config);
+    assert_eq!(
+        NetworkClientHost::build_play_packet(
+            &DiscoveryHost,
+            &PlayPacketRequest::Attack { entity: 11 }
+        ),
+        Err(PacketBuildError::Unavailable {
+            packet: "play_packet".into(),
+            field: "host".into(),
+        })
+    );
+    assert_eq!(
+        NetworkClientHost::container_click(&DiscoveryHost, &ContainerClickRequest::default()),
+        Err(PacketBuildError::Unavailable {
+            packet: "play_packet".into(),
+            field: "host".into(),
+        })
+    );
+}

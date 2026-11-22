@@ -124,7 +124,22 @@ impl mod_api::prelude::TextHost for DiscoveryHost {
     }
 }
 impl ClientHost for DiscoveryHost {}
-mod_api::impl_client_host_areas!(DiscoveryHost, except(audio, client_render));
+mod_api::impl_client_host_areas!(DiscoveryHost, except(audio, client_render, network));
+impl mod_api::prelude::NetworkClientHost for DiscoveryHost {
+    fn build_play_packet(
+        &self,
+        request: &mod_api::PlayPacketRequest,
+    ) -> Result<mod_api::ServerboundPlayPacket, mod_api::PacketBuildError> {
+        super::native_packet_builders::build_play_packet_checked(request)
+    }
+
+    fn container_click(
+        &self,
+        _: &mod_api::ContainerClickRequest,
+    ) -> Result<mod_api::ServerboundPlayPacket, mod_api::PacketBuildError> {
+        Err(<mod_api::PacketBuildError as mod_api::AccessRefusal>::unavailable())
+    }
+}
 impl mod_api::prelude::ClientRenderClientHost for DiscoveryHost {
     fn biome_tint(
         &self,

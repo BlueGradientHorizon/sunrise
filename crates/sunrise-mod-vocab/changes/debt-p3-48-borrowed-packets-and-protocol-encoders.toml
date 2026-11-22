@@ -70,17 +70,24 @@ Follows vanilla Minecraft 26.3 and NeoForge 26.3:
   with `Vec3.LP_STREAM_CODEC` (`LpVec3`, which maps `NaN` to `0.0` and clamps large/infinite
   values to `±1.717_986_918_3e10`), `ServerboundAttackPacket`,
   `ServerboundPickItemFromBlockPacket`, `ServerboundPickItemFromEntityPacket`,
-  `ServerboundSignUpdatePacket` (`MAX_STRING_LENGTH = 384` UTF-16 code units),
+  `ServerboundSignUpdatePacket` (`MAX_STRING_LENGTH = 384` UTF-16 code units, enforced in
+  `sunrise-protocol`'s `SignLines` `Codec::validate` / `Serverbound::try_encode` /
+  `Serverbound::try_encode_payload` as well as `build_play_packet`),
   `ServerboundMovePlayerPacket` (`packFlags`), and `BlockPos.asLong`. Field validation matches
   vanilla's codecs and server handlers (`ServerGamePacketListenerImpl.handleMovePlayer` /
   `containsInvalidValues`, which refuses `NaN` positions and non-finite movement angles while
-  writing infinite positions unchanged, and `ServerGamePacketListenerImpl.handleUseItemOn`,
-  which checks finite hit cursor coordinates).
+  writing infinite positions unchanged, `ServerGamePacketListenerImpl.handleUseItem` /
+  `Entity.absSnapRotationTo`, which wraps packet angles with `Mth.wrapDegrees`, clamps pitch
+  to `[-90, 90]`, and ignores non-finite axes in `setYRot` / `setXRot`, and
+  `ServerGamePacketListenerImpl.handleUseItemOn`, which checks finite hit cursor coordinates).
 - Removes the arbitrary 8 KiB builder body cap; whole-packet framing limits are enforced at
   publication preparation in `send_packet` using vanilla `Varint21LengthFieldPrepender`
   (`MAX_VARINT21_BYTES = 3`, 2,097,151-byte encoded limit) and `CompressionDecoder`
   (`MAXIMUM_UNCOMPRESSED_LENGTH = 8388608`, 8 MiB uncompressed limit). `PacketBuildError` now
-  implements `AccessRefusal` for the host-owned `build_play_packet` boundary.
+  implements `AccessRefusal` for the host-owned `build_play_packet` boundary, and all
+  production `ClientHost` adapters (`Game`, `StartupClientHost`, `DiscoveryHost`,
+  `LiveSectionHost`) implement `NetworkClientHost::build_play_packet` with the same `Metadata`
+  phase guard instead of hitting a panicking default.
 """
 migrate = """
 Rebuild native mods against version 3 of `Hooks::client_packet` and `Hooks::client_packet_send`
