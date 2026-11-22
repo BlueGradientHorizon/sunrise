@@ -4067,7 +4067,7 @@ mod tests {
                     }
                     let console = matches!(source, mod_api::CommandSource::Console { .. });
                     heard.lock().unwrap().push((console, command.clone()));
-                    Some(1)
+                    Ok(1)
                 };
                 event.commands.extend([
                     mod_api::Command::new("typed give <who:player> <amount:integer> [message:text]"),
@@ -4386,7 +4386,7 @@ mod tests {
                         let heard = self.0.clone();
                         command.executes(move |_, _, invocation| {
                             heard.lock().unwrap().push(invocation.clone());
-                            Some(1)
+                            Ok(1)
                         })
                     }),
                 );
