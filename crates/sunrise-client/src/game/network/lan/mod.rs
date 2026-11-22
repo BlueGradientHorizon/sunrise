@@ -3673,7 +3673,6 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    mod main_hand_tests;
     use super::{
         EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags, mob_freeze_meta,
     };

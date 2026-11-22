@@ -1,4 +1,6 @@
-use crate::game::native_entity_refs::tests::with_client_game;
+use crate::game::{
+    lan::mob_meta, native_entity_refs::tests::with_client_game, villager_client::tests::meta_hub,
+};
 use sunrise_client::{
     lan::entity::{Entities, EntityState, Viewer},
     mobs::Mob,
@@ -10,7 +12,7 @@ use sunrise_protocol::{buf::Reader, connection::Pipe, packets::play::Clientbound
 #[ignore = "daily"]
 fn a_client_receives_a_mannequins_main_hand() {
     crate::game::in_own_process(
-        "game::lan::tests::main_hand_tests::a_client_receives_a_mannequins_main_hand",
+        "game::remote::tests::main_hand_tests::a_client_receives_a_mannequins_main_hand",
         || {
             with_client_game(|game| {
                 let (client, _server) = Pipe::pair();
@@ -32,7 +34,7 @@ fn a_client_receives_a_mannequins_main_hand() {
                     Vec3::new(0.5, 64.0, 0.5),
                     0.0,
                 );
-                let hub = super::meta_hub("MannequinArmTest");
+                let hub = meta_hub("MannequinArmTest");
                 let mut tracker = Default::default();
                 let mut entities = Entities::default();
                 let chunks = [(0, 0)].into_iter().collect();
@@ -45,7 +47,7 @@ fn a_client_receives_a_mannequins_main_hand() {
                         position: [0.5, 64.0, 0.5],
                         ..Default::default()
                     };
-                    super::super::mob_meta(
+                    mob_meta(
                         &mannequin,
                         &hub,
                         None,
