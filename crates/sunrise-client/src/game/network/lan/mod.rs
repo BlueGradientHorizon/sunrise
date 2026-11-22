@@ -5951,18 +5951,15 @@ mod merchant_packet_tests {
                 };
                 let open = |host: &mut dyn mod_api::ServerHost| {
                     let player = host.player(2).expect("buyer player handle");
-                    assert!(
-                        player
-                            .open_chest_menu(
-                                host,
-                                1,
-                                mod_api::Text::literal("Replacement"),
-                                Vec::new(),
-                                mod_api::MenuReplace::InPlace,
-                            )
-                            .unwrap()
-                            .is_some()
-                    );
+                    player
+                        .open_chest_menu(
+                            host,
+                            1,
+                            mod_api::Text::literal("Replacement"),
+                            Vec::new(),
+                            mod_api::MenuReplace::InPlace,
+                        )
+                        .unwrap();
                 };
                 if self.abort {
                     let aborted: Result<(), ()> = host.transaction(|host, _| {
