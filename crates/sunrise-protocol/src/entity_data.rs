@@ -37,8 +37,16 @@ pub enum Value {
     Profile(Profile),
     /// `OPTIONAL_GLOBAL_POS`: optional `(dimension, block_pos)`.
     OptGlobalPos(Option<(String, [i32; 3])>),
-    /// Inline `PAINTING_VARIANT` (holder id 0); registry holders stay `Value::Id(holder)`.
-    PaintingVariant(PaintingVariant),
+    /// `PAINTING_VARIANT` (`Holder<PaintingVariant>`): a resolved registry entry or inline variant.
+    PaintingVariant(PaintingHolder),
+}
+/// `Holder<PaintingVariant>`: either a resolved `minecraft:painting_variant` entry or an inline value.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PaintingHolder {
+    /// Resolved registry reference (`id` is 0-based; encoded on the wire as `id + 1`).
+    Reference { id: i32, name: String },
+    /// Inline `PaintingVariant.DIRECT_STREAM_CODEC` (encoded on the wire as `0`).
+    Direct(PaintingVariant),
 }
 /// `PaintingVariant.DIRECT_STREAM_CODEC`: inline painting variant when
 /// `PAINTING_VARIANT`'s holder id is 0.
@@ -177,6 +185,8 @@ pub enum ParticleData {
 /// `minecraft:particle_type` ids are registry ids and never negative, so this
 /// one cannot collide with a vanilla type.
 pub const MOD_PARTICLE_ID: i32 = -1;
+/// Number of built-in `minecraft:particle_type` entries in 26.3 (`0..=127`).
+pub const PARTICLE_TYPE_COUNT: i32 = 128;
 /// `PositionSource.STREAM_CODEC`: a `minecraft:position_source_type` id
 /// (block 0, entity 1), then that type's data.
 #[derive(Clone, Debug, PartialEq)]
@@ -195,12 +205,16 @@ impl Particle {
         let id = r.varint()?;
         // A native mod's type: the namespaced name follows the sentinel id.
         if id == MOD_PARTICLE_ID {
+            let name = r.string(32767)?;
+            if !name.contains(':') {
+                return Err(crate::Error::new(format!("No value with id {id}")));
+            }
             return Ok(Particle {
                 id,
-                data: Some(ParticleData::Mod(r.string(32767)?)),
+                data: Some(ParticleData::Mod(name)),
             });
         }
-        // `minecraft:particle_type` registry order as of 26.3.
+        // `minecraft:particle_type` registry order as of 26.3 (`IdMap.byIdOrThrow`).
         let data = match id {
             1 | 2 | 36 | 121 | 125 => Some(ParticleData::State(r.varint()?)),
             28 | 46 | 52 => Some(ParticleData::Color(r.i32()?)),
@@ -247,8 +261,8 @@ impl Particle {
                 let water = r.i32()?;
                 Some(ParticleData::GeyserBase(water, r.f32()?))
             }
-            // Every other registered particle carries no data.
-            _ => None,
+            0..PARTICLE_TYPE_COUNT => None,
+            other => return Err(crate::Error::new(format!("No value with id {other}"))),
         };
         Ok(Particle { id, data })
     }
@@ -341,6 +355,21 @@ pub mod serializer {
     pub const HUMANOID_ARM: i32 = 42;
     pub const DYE_COLOR: i32 = 43;
 }
+/// `ComponentSerialization.TRUSTED_STREAM_CODEC`: unlimited-heap NBT tag validated by `ComponentSerialization.CODEC`.
+fn read_trusted_component(r: &mut Reader) -> Result<Tag> {
+    let tag = r.nbt_within(sunrise_core::nbt::Limits {
+        max_bytes: usize::MAX,
+        max_nodes: usize::MAX,
+        max_depth: 512,
+    })?;
+    if tag == Tag::End {
+        return Err(crate::Error::new("Expected non-null compound tag"));
+    }
+    sunrise_world::component_value::source::from_component_tag("minecraft:custom_name", &tag)
+        .map_err(|e| crate::Error::new(format!("Failed to decode: {e}")))?;
+    Ok(tag)
+}
+
 fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
     use serializer::*;
     Ok(match kind {
@@ -368,14 +397,33 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
             None
         }),
         PAINTING_VARIANT => match r.varint()? {
-            0 => Value::PaintingVariant(PaintingVariant {
+            0 => Value::PaintingVariant(PaintingHolder::Direct(PaintingVariant {
                 width: r.varint()?,
                 height: r.varint()?,
                 asset_id: Ident::read(r)?,
-                title: if r.bool()? { Some(r.nbt()?) } else { None },
-                author: if r.bool()? { Some(r.nbt()?) } else { None },
-            }),
-            holder => Value::Id(holder),
+                title: if r.bool()? {
+                    Some(read_trusted_component(r)?)
+                } else {
+                    None
+                },
+                author: if r.bool()? {
+                    Some(read_trusted_component(r)?)
+                } else {
+                    None
+                },
+            })),
+            holder => {
+                let Some(id) = holder.checked_sub(1).filter(|&id| id >= 0) else {
+                    return Err(crate::Error::new(format!(
+                        "No value with id {}",
+                        holder.wrapping_sub(1)
+                    )));
+                };
+                let Some(name) = r.registry_name("minecraft:painting_variant", id) else {
+                    return Err(crate::Error::new(format!("No value with id {id}")));
+                };
+                Value::PaintingVariant(PaintingHolder::Reference { id, name })
+            }
         },
         // VarInt-encoded: direction, block states, optional ints, pose, the
         // holder-registry variants (cat to zombie nautilus) and the
@@ -392,8 +440,9 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
         PARTICLE => Value::Particle(Particle::read(r)?),
         RESOLVABLE_PROFILE => Value::Profile(read_profile(r)?),
         PARTICLES => {
-            let n = r.count(65536)?;
-            let mut list = Vec::with_capacity(n.min(64));
+            // ByteBufCodecs.list() has no 65536 wire cap; cap only the initial allocation.
+            let n = r.count(r.remaining())?;
+            let mut list = Vec::with_capacity(n.min(65536));
             for _ in 0..n {
                 list.push(Particle::read(r)?);
             }
@@ -450,7 +499,10 @@ fn write_value(kind: i32, v: &Value, w: &mut Writer) {
                 Pos::write(block, w);
             }
         }
-        Value::PaintingVariant(v) => {
+        Value::PaintingVariant(PaintingHolder::Reference { id, .. }) => {
+            w.varint(id + 1);
+        }
+        Value::PaintingVariant(PaintingHolder::Direct(v)) => {
             w.varint(0);
             w.varint(v.width);
             w.varint(v.height);
@@ -557,6 +609,18 @@ impl crate::retained::OwnedHeap for Value {
                 0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
             }
             Self::PaintingVariant(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+        }
+    }
+}
+impl crate::retained::OwnedHeap for PaintingHolder {
+    fn owned_heap_bytes(&self) -> usize {
+        match self {
+            Self::Reference { id, name } => 0usize
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(id))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(name)),
+            Self::Direct(field_0) => {
                 0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
             }
         }
@@ -821,6 +885,109 @@ mod tests {
                 (11, serializer::PARTICLES, Value::Particles(Vec::new())),
                 (12, serializer::BYTE, Value::Byte(4)),
             ]
+        );
+        // Unregistered 26.3 particle ids fail decode before payload dispatch.
+        for invalid_id in [PARTICLE_TYPE_COUNT, 999, -2] {
+            let mut bad = Writer::new();
+            bad.u8(10);
+            bad.varint(serializer::PARTICLE);
+            bad.varint(invalid_id);
+            bad.u8(0xFF);
+            assert!(
+                EntityData::read(&mut Reader::new(&bad.data)).is_err(),
+                "particle id {invalid_id} must fail"
+            );
+        }
+        // ByteBufCodecs.list() has no 65536 wire cap.
+        let mut many = Writer::new();
+        many.u8(10);
+        many.varint(serializer::PARTICLES);
+        many.varint(65_537);
+        for _ in 0..65_537 {
+            many.varint(0);
+        }
+        many.u8(0xFF);
+        let decoded = EntityData::read(&mut Reader::new(&many.data)).unwrap();
+        assert_eq!(decoded.len(), 1);
+        match &decoded[0].2 {
+            Value::Particles(list) => assert_eq!(list.len(), 65_537),
+            other => panic!("expected Particles, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn painting_variant_holders_resolve_and_inline_components_validate() {
+        let mut registries = crate::registry::Dynamic::default();
+        registries.registries.insert(
+            "minecraft:painting_variant".into(),
+            vec![("minecraft:kebab".into(), None)],
+        );
+        // Valid registry holder id 1 -> 0-based index 0 ("minecraft:kebab").
+        let mut w = Writer::new();
+        w.u8(9);
+        w.varint(serializer::PAINTING_VARIANT);
+        w.varint(1);
+        w.u8(0xFF);
+        let entries = EntityData::read(&mut Reader::new(&w.data).with_names(&registries)).unwrap();
+        assert_eq!(
+            entries,
+            vec![(
+                9,
+                serializer::PAINTING_VARIANT,
+                Value::PaintingVariant(PaintingHolder::Reference {
+                    id: 0,
+                    name: "minecraft:kebab".into(),
+                }),
+            )]
+        );
+        // Out-of-range, negative, and i32::MIN holders all fail decode without overflowing.
+        for bad_holder in [2, -1, i32::MIN] {
+            let mut bad = Writer::new();
+            bad.u8(9);
+            bad.varint(serializer::PAINTING_VARIANT);
+            bad.varint(bad_holder);
+            bad.u8(0xFF);
+            assert!(
+                EntityData::read(&mut Reader::new(&bad.data).with_names(&registries)).is_err(),
+                "painting holder {bad_holder} must fail decode"
+            );
+        }
+        // Inline painting variant rejects Tag::End, non-component tags, and empty compounds.
+        for bad_title in [Tag::End, Tag::Int(7), Tag::Compound(Default::default())] {
+            let mut bad = Writer::new();
+            bad.u8(9);
+            bad.varint(serializer::PAINTING_VARIANT);
+            bad.varint(0);
+            bad.varint(2);
+            bad.varint(1);
+            Ident::write(&"minecraft:alban".into(), &mut bad);
+            bad.bool(true);
+            bad.nbt(&bad_title);
+            bad.bool(false);
+            bad.u8(0xFF);
+            assert!(
+                EntityData::read(&mut Reader::new(&bad.data).with_names(&registries)).is_err(),
+                "inline painting variant with malformed title {bad_title:?} must fail"
+            );
+        }
+        // Valid inline painting variant with text components round-trips.
+        let inline = PaintingVariant {
+            width: 2,
+            height: 1,
+            asset_id: "minecraft:alban".into(),
+            title: Some(Tag::String("Inline".into())),
+            author: Some(Tag::compound([("text", Tag::String("Author".into()))])),
+        };
+        let expected = vec![(
+            9,
+            serializer::PAINTING_VARIANT,
+            Value::PaintingVariant(PaintingHolder::Direct(inline)),
+        )];
+        let mut ok = Writer::new();
+        EntityData::write(&expected, &mut ok);
+        assert_eq!(
+            EntityData::read(&mut Reader::new(&ok.data).with_names(&registries)).unwrap(),
+            expected
         );
     }
 

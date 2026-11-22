@@ -73,6 +73,9 @@ impl<'a> Reader<'a> {
     ) -> Option<&'a crate::item::consume_effects::AdmissionLookup<'a>> {
         self.names?.consume_effect_admissions()
     }
+    pub(crate) fn registry_name(&self, registry: &str, id: i32) -> Option<String> {
+        self.names?.name(registry, id)
+    }
 
     pub fn subreader(&mut self, size: usize) -> Result<Self> {
         Ok(Self {
