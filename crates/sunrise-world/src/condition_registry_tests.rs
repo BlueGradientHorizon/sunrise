@@ -115,46 +115,53 @@ fn only_typed_context_reads_partition_cached_conditions() {
         {"type":"neoforge:not","value":{"type":"neoforge:tag_empty","tag":"test:fuels"}},
         {"type":"test:flag","value":"neoforge:registered"}
     ]}]});
-    let literal_program = load.decode_file_conditions(&literal).unwrap();
-    literal_program.visit_context_reads(|read| panic!("unexpected context read: {read:?}"));
-    let program = load.decode_file_conditions(&file).unwrap();
-    let mut reads = Vec::new();
-    program.visit_context_reads(|read| reads.push(read));
-    assert_eq!(
-        reads,
-        [
-            ConditionContextRead::Registered {
-                registry: "test:spells",
-                entry: "test:flame",
-            },
-            ConditionContextRead::TagEmpty {
-                registry: "minecraft:item",
-                tag: "test:fuels",
-            },
-        ]
-    );
-
     let empty = load
         .clone()
         .with_registries([("test:spells", ["test:flame"])])
         .with_tags([("item", ["test:other"])]);
     let filled = empty.with_tags([("item", ["test:fuels"])]);
+    let missing_spell = filled
+        .clone()
+        .with_registries([("test:spells", ["test:spark"])]);
     assert!(empty.allows_file(&literal, "literal.json"));
     assert_eq!(
-        literal_program.allows_file_isolated(&filled, "literal.json"),
+        filled.allows_file_isolated(&literal, "literal.json"),
         Ok(true)
     );
     assert_eq!(count.load(Ordering::SeqCst), 1);
+    assert_eq!(empty.allows_file_isolated(&file, "nested.json"), Ok(false));
     assert_eq!(
-        program.allows_file_isolated(&empty, "nested.json"),
+        missing_spell.allows_file_isolated(&file, "nested.json"),
         Ok(false)
     );
-    assert_eq!(
-        program.allows_file_isolated(&filled, "nested.json"),
-        Ok(true)
-    );
+    assert_eq!(filled.allows_file_isolated(&file, "nested.json"), Ok(true));
     assert!(filled.allows_file(&file, "nested.json"));
     assert_eq!(count.load(Ordering::SeqCst), 2);
+
+    let literal_program = load.decode_file_conditions(&literal).unwrap();
+    assert!(matches!(
+        literal_program
+            .evaluation()
+            .advance(&filled, |registry| panic!(
+                "unexpected registry read: {registry}"
+            )),
+        Ok(ConditionProgress::Complete(true))
+    ));
+    let program = load.decode_file_conditions(&file).unwrap();
+    let mut evaluation = program.evaluation();
+    assert!(matches!(
+        evaluation.advance(&load, |_| true),
+        Ok(ConditionProgress::NeedsRegistry("test:spells"))
+    ));
+    assert!(matches!(
+        evaluation.advance(&empty, |registry| registry == "minecraft:item"),
+        Ok(ConditionProgress::NeedsRegistry("minecraft:item"))
+    ));
+    assert!(matches!(
+        evaluation.advance(&filled, |_| false),
+        Ok(ConditionProgress::Complete(true))
+    ));
+    assert_eq!(count.load(Ordering::SeqCst), 4);
     assert_eq!(load.check_errors(), Ok(()));
 }
 #[test]

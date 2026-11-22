@@ -1793,7 +1793,10 @@ mod tests {
         chunk_status::ChunkStatus,
         registry::BlockRegistry,
         retrogen::BelowZeroRetrogen,
-        worldgen::{biome_chunk::BiomeChunk, generator::GenBlockState, terrain::TerrainChunk},
+        worldgen::{
+            biome_chunk::BiomeChunk, generator::GenBlockState, tags::TagDefinitions,
+            terrain::TerrainChunk,
+        },
     };
     use sunrise_core::random::{LegacyRandom, RandomSource};
 

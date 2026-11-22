@@ -63,7 +63,8 @@ impl FeatureCodecContext<'_> {
                         &blocks.properties,
                         &blocks.double_plants,
                         &blocks.mossy_carpets,
-                    )?,
+                    )
+                    .map_err(|error| DecodeError::Registry(error.to_string()))?,
                 )?;
         }
         Ok(bindings)
