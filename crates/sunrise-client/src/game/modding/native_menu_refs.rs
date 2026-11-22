@@ -284,9 +284,16 @@ impl Game<'_> {
         Some(menu.fields().window)
     }
 
-    /// Registry menu type; the inventory menu has no MenuType in vanilla.
-    /// The outer None means an unavailable menu.
+    /// Registry menu type (`AbstractContainerMenu.getType`); the inventory and
+    /// mount menus have no MenuType in vanilla. The outer None means an unavailable menu.
     pub(super) fn menu_kind(&self, menu: MenuRef) -> Option<Option<String>> {
+        if self.remote.is_some() {
+            let name = self.native_client_menu_name(menu)?;
+            return Some(
+                (name != "inventory" && !name.starts_with(super::remote::MOUNT_MENU))
+                    .then(|| name.to_owned()),
+            );
+        }
         let guest = self.native_menu_guest(menu)?;
         match &guest.menu {
             Some(m) => Some(Some(
