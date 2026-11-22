@@ -112,10 +112,16 @@ under its feet with the highest top (a tie goes to the lower entity id). A colli
 collider is carried first, and the bodies on it take its whole displacement. A body that rides something is not carried itself; it
 follows its vehicle. The server carries the entities it simulates, and each Sunrise client its own player.
 
-Carrying never pushes through a wall and the collider is never stopped by what is in its way: a
-body caught between a collider and a wall stays where the collision leaves it, overlapping the collider, and
-a living body takes `in_wall` damage while a box covers its eyes, as it does in a block. (A vanilla armor stand takes no
-`in_wall` damage and so none here.) A vanilla client does not carry its player: only the Sunrise client does.
+After carrying, a collider that translated without turning shoves bodies in the path of its boxes,
+in its direction of travel. This also uses `MoveCause::Carried`. Changing a box's bounds does not
+sweep that box between the old and new shape. Turning colliders still carry, but do not shove yet.
+A shove does not cancel velocity into the collider; the ordinary entity move handles velocity when
+the body hits an obstacle. The client predicts a shove for its own player, and ordinary server movement
+checks still apply.
+
+Neither carrying nor shoving pushes through a wall, and the collider is never stopped by a body in
+its way. A squeezed body stays where the collision leaves it. A living body still takes `in_wall`
+damage while a box covers its eyes, as in a block. The shove itself does not deal impact damage.
 
 ### Players on a moving collider
 
