@@ -4829,13 +4829,13 @@ mod tests {
             ) -> std::result::Result<(), String> {
                 stack.set_count(-2);
                 stack.set_map(true);
-                stack.set_exploration(Some(ApiExplorationMap {
-                    destination: "minecraft:on_woodland_explorer_maps".into(),
-                    decoration: "minecraft:mansion".into(),
-                    zoom: 3,
-                    search_radius: 75,
-                    skip_existing_chunks: false,
-                }));
+                stack.set_exploration(Some(ApiExplorationMap::new(
+                    "minecraft:on_woodland_explorer_maps".into(),
+                    "minecraft:mansion".into(),
+                    3,
+                    75,
+                    false,
+                )));
                 stack.push_component(
                     "minecraft:potion_contents".into(),
                     Some(Tag::compound([

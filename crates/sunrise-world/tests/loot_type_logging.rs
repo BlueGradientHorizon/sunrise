@@ -127,7 +127,19 @@ fn ordinary_callback_refusals_report_each_call_with_type_location_and_reason() {
         place: None,
     };
     let mut random = sunrise_core::random::LegacyRandom::new(1);
-    let mut stack = LootStack::new("minecraft:stick", 1);
+    let mut stack = LootStack {
+        item: "minecraft:stick".into(),
+        count: 1,
+        damage: 0,
+        enchantments: Vec::new(),
+        potion: None,
+        map: false,
+        exploration: None,
+        ominous_amplifier: None,
+        stew_effects: Vec::new(),
+        names: Vec::new(),
+        components: Vec::new(),
+    };
     for _ in 0..2 {
         bindings
             .function(None, "test:broken", &modifiers["test:mod"])
