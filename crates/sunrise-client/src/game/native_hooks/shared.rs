@@ -3046,9 +3046,7 @@ impl Game<'_> {
                 let mut container = None;
                 self.native_block_entity_container(&state.name, &mut container);
                 container.map(|mut c| {
-                    c.slots = c
-                        .slots
-                        .min(usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS));
+                    c.slots = sunrise_client::containers::mod_container_slot_count(&c);
                     let n = c.slots;
                     for list in c.faces.iter_mut().chain([&mut c.inputs, &mut c.outputs]) {
                         list.retain(|&s| s < n);
