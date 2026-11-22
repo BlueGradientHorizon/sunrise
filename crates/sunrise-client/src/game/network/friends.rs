@@ -216,12 +216,12 @@ impl Game<'_> {
             &mut |phase, batch| self.draw_screen_phase(batch, phase),
         );
     }
-    pub(super) fn friends_screen_click(&mut self) {
+    pub(super) fn friends_screen_click(&mut self) -> bool {
         let view = self.friends_view();
         let Some(action) =
             friends_screen::click(&self.gui.atlas, self.gui_size(), self.cursor, &view)
         else {
-            return;
+            return false;
         };
         self.audio.play_button_click();
         match action {
@@ -246,6 +246,7 @@ impl Game<'_> {
             }
             Action::Done => self.set_screen(super::Screen::Paused),
         }
+        true
     }
 
     /// Whether the pause menu offers Play with Friends (a singleplayer world).

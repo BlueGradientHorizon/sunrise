@@ -24,7 +24,9 @@ impl Game<'_> {
         self.set_screen(Screen::Paused);
     }
 
-    pub(super) fn friends_screen_click(&mut self) {}
+    pub(super) fn friends_screen_click(&mut self) -> bool {
+        false
+    }
 
     pub(super) fn friends_shown(&self) -> bool {
         false

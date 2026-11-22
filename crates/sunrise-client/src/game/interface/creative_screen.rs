@@ -362,16 +362,16 @@ impl Game<'_> {
             true,
         );
     }
-    pub(super) fn click_creative(&mut self, right: bool) {
+    pub(super) fn click_creative(&mut self, right: bool) -> bool {
         if self.mod_browser_press(right) {
-            return;
+            return true;
         }
         let Some(size) = self
             .renderer
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
-            return;
+            return false;
         };
         let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
         let (ox, oy) = Self::creative_origin(&batch);
@@ -389,7 +389,7 @@ impl Game<'_> {
                 self.creative_screen.set_page(page as u32);
                 self.refresh_saved_hotbars();
             }
-            return;
+            return true;
         }
         // Only the clicked tab's index is needed: cloning the tabs here copied
         // every tab's items on each click, saved hotbars' stacks included.
@@ -408,7 +408,7 @@ impl Game<'_> {
             self.refresh_saved_hotbars();
             self.inv_drag = None;
             self.last_inv_click = None;
-            return;
+            return true;
         }
         if self.creative_inventory_open() {
             if Self::creative_trash_hovered(&batch, self.cursor) {
@@ -426,13 +426,14 @@ impl Game<'_> {
                 }
                 self.inv_drag = None;
                 self.inv_clicks = Default::default();
+                return true;
             } else if self.slot_at(&batch, cx, cy).is_some() || self.clicked_outside(&batch) {
-                self.inventory_press(right);
+                return self.inventory_press(right);
             }
-            return;
+            return false;
         }
         if !right && self.creative_search_click(ox, oy) {
-            return;
+            return true;
         }
         // Holding the scrollbar scrolls as the mouse moves (mouseDragged).
         if !right
@@ -440,11 +441,12 @@ impl Game<'_> {
                 .creative_screen
                 .press_scrollbar(cx - ox, cy - oy, &self.pack.names)
         {
-            return;
+            return true;
         }
         if self.slot_at(&batch, cx, cy).is_some() || self.clicked_outside(&batch) {
-            self.inventory_press(right);
+            return self.inventory_press(right);
         }
+        false
     }
     /// A click on the search tab's box (`EditBox.onClick`).
     pub(super) fn creative_search_click(&mut self, ox: f32, oy: f32) -> bool {

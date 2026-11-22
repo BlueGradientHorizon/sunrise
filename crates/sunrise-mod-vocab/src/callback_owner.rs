@@ -368,6 +368,51 @@ impl CallbackOwner {
     }
 }
 
+/// An engine-retained value whose destructor runs under its mod callback's owner.
+// no wire: retained callback values and their ownership are process-local.
+// exhaustive: engine-only wrapper with private state.
+pub struct CallbackValue<T> {
+    owner: CallbackOwner,
+    kind: &'static str,
+    drop_operation: &'static str,
+    value: Option<T>,
+}
+
+impl<T> CallbackValue<T> {
+    /// Retain `value` and dispose of it under `owner` when this wrapper drops.
+    pub fn new(
+        owner: CallbackOwner,
+        kind: &'static str,
+        drop_operation: &'static str,
+        value: T,
+    ) -> Self {
+        Self {
+            owner,
+            kind,
+            drop_operation,
+            value: Some(value),
+        }
+    }
+
+    /// The owner to use when invoking the retained callback.
+    pub fn owner(&self) -> &CallbackOwner {
+        &self.owner
+    }
+
+    /// Borrow the value, which is present until this wrapper is dropped.
+    pub fn value(&self) -> &T {
+        self.value.as_ref().expect("live callback value")
+    }
+}
+
+impl<T> Drop for CallbackValue<T> {
+    fn drop(&mut self) {
+        if let Some(value) = self.value.take() {
+            self.owner.dispose(self.kind, self.drop_operation, value);
+        }
+    }
+}
+
 pub(crate) fn enabled(index: usize, poisoned: &AtomicBool) -> bool {
     enabled_opt(Some(index), poisoned)
 }

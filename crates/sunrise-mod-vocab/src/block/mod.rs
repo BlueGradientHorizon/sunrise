@@ -2,6 +2,7 @@
 
 pub(crate) mod block_entity_data;
 pub(crate) mod block_entity_items;
+pub(crate) mod block_entity_scopes;
 pub(crate) mod block_entity_shapes;
 pub(crate) mod block_entity_type;
 pub(crate) mod block_entity_view;
@@ -27,6 +28,7 @@ pub mod fluid_util;
 pub(crate) mod item_place;
 pub(crate) mod part_state;
 pub(crate) mod poi_types;
+pub(crate) mod prepared_drops;
 pub(crate) mod rail_shape;
 pub(crate) mod types;
 pub(crate) mod unresolved_fluid;

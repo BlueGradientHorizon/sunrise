@@ -402,13 +402,8 @@ impl Containers<'_> {
             });
         }
         let entity = self.world.block_entities.get(&pos)?;
-        // A mod's block entity is a container when its block says so. The one
-        // ticking now is out of the world (an empty id marks its place): what
-        // went into its place would be lost when it comes back.
-        if let BlockEntity::Mod(m) = entity {
-            if m.id().is_empty() {
-                return None;
-            }
+        // A mod's block entity is a container when its block says so.
+        if matches!(entity, BlockEntity::Mod(_)) {
             let container = Arc::clone(self.world.block_entities.mod_container(state.0)?);
             return Some(View {
                 parts: vec![(pos, container.slots)],
@@ -881,6 +876,14 @@ impl Game<'_> {
         {
             let at = BlockPos::new(pos.0, pos.1, pos.2);
             self.native_contents_changed(level, at, self.world.block(pos.0, pos.1, pos.2), None);
+        }
+        self.container_changed_without_hook(pos);
+    }
+
+    /// `BlockEntity.setChanged` updates without dispatching `contents_changed` again.
+    pub(super) fn container_changed_without_hook(&mut self, pos: Pos) {
+        if pos.1 == super::minecarts::CART_KEY_Y {
+            return;
         }
         self.chiseled_bookshelf_synced(pos);
         if matches!(
