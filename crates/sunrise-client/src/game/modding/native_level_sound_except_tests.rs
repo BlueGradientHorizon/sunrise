@@ -2058,12 +2058,17 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                     // 6. Abandoned raw Nether transaction during an Overworld transaction that
                     // ABORTS: the abandoned Nether frame must close in the Nether (restoring
                     // netherrack and publishing Nether retirement) before Overworld restores
-                    // diamond_block, never restoring Nether's snapshot into Overworld.
+                    // diamond_block and the Overworld item's fields, never restoring Nether's
+                    // snapshot into Overworld.
                     game.world.set(pos[0], pos[1], pos[2], diamond).unwrap();
                     game.with_effect_level(super::Dim::Nether, |g| {
                         g.world.set(pos[0], pos[1], pos[2], netherrack).unwrap();
                     })
                     .unwrap();
+                    let stack = sunrise_client::items::ItemStack::new("minecraft:stone", 1);
+                    game.spawn_item(stack, at, [0.0; 3], 10);
+                    let entity = game.entity(game.dropped.last().unwrap().id).unwrap();
+                    let item = game.item_entity(entity).unwrap();
                     tx_mode.store(3, Ordering::SeqCst);
                     let abandoned_abort = mod_api::run_transaction(game, |game, _| {
                         assert_eq!(
@@ -2083,9 +2088,21 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
                         assert_eq!(game.transactions.len(), 2);
                         assert_eq!(block_in(game, super::Dim::Overworld), gold);
                         assert_eq!(block_in(game, super::Dim::Nether), emerald);
+                        // These writes are to the Overworld item even with Nether's frame on top.
+                        assert!(item.set_no_pickup_delay(game));
+                        let mut stack = item
+                            .with_stack(game, |stack| stack.project())
+                            .flatten()
+                            .unwrap();
+                        stack.set_count(2).unwrap();
+                        assert_eq!(item.set_stack(game, stack), Ok(true));
+                        assert_eq!(item.pickup_delay(game), Some(0));
+                        assert_eq!(item.with_stack(game, |stack| stack.count()), Some(2));
                         Err::<(), ()>(())
                     });
                     assert!(abandoned_abort.is_err());
+                    assert_eq!(item.pickup_delay(game), Some(10));
+                    assert_eq!(item.with_stack(game, |stack| stack.count()), Some(1));
                     assert_eq!(calls.load(Ordering::SeqCst), 6);
                     assert_eq!(game.dim, super::Dim::Overworld);
                     assert!(game.transactions.is_empty());
