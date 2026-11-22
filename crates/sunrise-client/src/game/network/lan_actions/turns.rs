@@ -266,7 +266,12 @@ impl Game<'_> {
         motion
             .collision_exclusions
             .clone_from(&g.collision_exclusions);
-        let _ = motion.set_health(g.health, false);
+        // The guest mirrors the body's last health. Do not run a health
+        // setter just for taking the body on loan: a pending max-health
+        // change has not reached LivingEntity.onAttributeUpdated yet.
+        if motion.health.health().to_bits() != g.health.to_bits() {
+            let _ = motion.set_health(g.health, false);
+        }
         motion.health.food.food = g.food;
         motion.health.food.saturation = g.saturation;
         let mut player = Some(*motion);
