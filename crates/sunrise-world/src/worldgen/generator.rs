@@ -3267,6 +3267,7 @@ mod tests {
         ));
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("biomes.json"), r#"{"test:Bad_Biome":"{}"}"#).unwrap();
+        fs::write(dir.join("biome_tags.json"), "{}").unwrap();
         let (registry, _) = BlockRegistry::from_facts_json_bytes(
             br#"{"states":[["minecraft:air",true,false,"x","minecraft:air"]],"defaults":{"minecraft:air":0}}"#,
         )
