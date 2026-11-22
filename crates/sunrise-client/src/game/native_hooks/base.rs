@@ -3448,9 +3448,11 @@ impl Game<'_> {
     /// any path: a lost connection, a kick, the server stopping or failing.
     /// Once for each player `native_player_logged_in` told of, and also for a
     /// kicked fake without a preceding login. Silent `remove_fake` sends no logout.
-    /// They've already
-    /// left `native_server_players`, except when the server stops, which tells
-    /// before it saves, with them still listed and able to get a last message.
+    /// The player is still in `native_server_players` when the hook fires. A
+    /// listener's edits persist only on leaves this server saves. A completed proxy
+    /// hand-over or a crash writes no logout save. Only when the server stops can
+    /// a player still get a last message. A kicked fake has already left the list
+    /// and is not saved.
     /// Server-side.
     pub(in crate::game) fn native_player_logged_out(&mut self, player: u128, name: &str) {
         self.fire_player_logged_out(player, name);

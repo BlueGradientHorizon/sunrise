@@ -458,7 +458,7 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
                 .hub
                 .guests
                 .update_all(|guest| guest.placed = false);
-            game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5]);
+            game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5], None);
             assert_eq!(
                 value_key.get(game, Holder::Player(12), Clone::clone),
                 Ok(41)
