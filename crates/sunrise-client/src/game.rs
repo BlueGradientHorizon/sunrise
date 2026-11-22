@@ -1671,6 +1671,11 @@ mod native_shaders;
 #[cfg(test)]
 #[path = "game/modding/native_shield_totem_tests.rs"]
 mod native_shield_totem_tests;
+#[path = "game/modding/native_singleplayer_owner.rs"]
+mod native_singleplayer_owner;
+#[cfg(test)]
+#[path = "game/modding/native_singleplayer_owner_tests.rs"]
+mod native_singleplayer_owner_tests;
 #[cfg(test)]
 #[path = "game/modding/native_small_reads_tests.rs"]
 mod native_small_reads_tests;

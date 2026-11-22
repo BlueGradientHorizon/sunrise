@@ -1,0 +1,3 @@
+# The integrated server's owner (Players::singleplayer_profile, PlayerRef::is_singleplayer_owner, #4636): on a real hub, integrated and dedicated.
+sunrise-client game::native_singleplayer_owner_tests::a_dedicated_server_has_no_singleplayer_owner lib daily resources
+sunrise-client game::native_singleplayer_owner_tests::the_integrated_owner_is_the_launch_profile_matched_by_name lib daily resources

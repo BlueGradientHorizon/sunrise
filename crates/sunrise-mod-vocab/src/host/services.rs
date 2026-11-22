@@ -172,6 +172,16 @@ pub trait Players {
     fn acting_player(&self) -> Option<PlayerRef> {
         unimplemented!("Players::acting_player")
     }
+    /// Side: server.
+    /// `MinecraftServer.getSingleplayerProfile`: the profile an integrated server launched
+    /// with, its owner's name, UUID and login properties, borrowed from the host. Available
+    /// before the owner joins and after they leave. The properties are the signed-in
+    /// account's, empty until the server's own background fetch has answered. None on a
+    /// dedicated server and on a client. [`PlayerRef::is_singleplayer_owner`] matches a
+    /// player to it by name.
+    fn singleplayer_profile(&self) -> Option<GameProfile<'_>> {
+        unimplemented!("Players::singleplayer_profile")
+    }
 }
 /// The runtime_levels service, reached through its host.
 /// Success from `open` or `unload` admits a queued request, not its completion.
