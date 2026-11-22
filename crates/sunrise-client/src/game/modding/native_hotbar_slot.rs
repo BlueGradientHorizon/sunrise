@@ -230,6 +230,53 @@ pub(super) mod hotbar_slot_tests {
 
     #[test]
     #[ignore = "daily"]
+    fn a_received_tick_sample_draws_the_full_and_method_bars() {
+        crate::game::in_own_process(
+            "game::native_hotbar_slot::hotbar_slot_tests::a_received_tick_sample_draws_the_full_and_method_bars",
+            || {
+                with_client_game(|game| {
+                    use sunrise_client::hud_layout::GuiDraw;
+
+                    let _reader = logged_in(game);
+                    game.debug = true;
+                    game.debug_charts.fps = true;
+                    game.clock.set_rate(20.0);
+                    game.handle_packet(C::DebugSample(play::DebugSample {
+                        sample: vec![25_000_000, 10_000_000, 0, 15_000_000],
+                        kind: play::DEBUG_SAMPLE_TICK_TIME,
+                    }))
+                    .unwrap();
+                    let draws = game.debug_charts.draw(
+                        &game.gui.atlas.font,
+                        484,
+                        100,
+                        0,
+                        &game.clock,
+                        true,
+                    );
+                    // At 50 mspt the 60-pixel chart gives 30 px to the full 25 ms and 12 px
+                    // to the 10 ms tick method. The first sample is just inside the right chart.
+                    let heights: Vec<_> = draws
+                        .iter()
+                        .filter_map(|draw| match draw {
+                            GuiDraw::Fill {
+                                x0: 243,
+                                x1: 244,
+                                y0,
+                                y1: 100,
+                                ..
+                            } if *y0 < 100 => Some(100 - y0),
+                            _ => None,
+                        })
+                        .collect();
+                    assert_eq!(heights, [30, 12]);
+                })
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn no_debug_request_goes_out_before_the_login() {
         // The game fixture replaces process-wide registries: a child of its own.
         const MODE: &str = "SUNRISE_HOTBAR_SLOT_NO_DEBUG_REQUEST_GOES_OUT_BEFORE_THE_LOGIN";

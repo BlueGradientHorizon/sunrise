@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Debug sample and debug subscription request bytes against the native Java stream codecs, and what
-their decoders (and a sample's logger) refuse: an unknown or over-32 subscription set, a sample past four values or of
-another kind."""
+"""Debug packet wire parity, including invalid subscriptions, unknown sample kinds and long arrays."""
 import json
 import os
 try:

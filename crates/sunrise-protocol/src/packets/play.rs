@@ -150,24 +150,6 @@ impl Codec<i32> for DebugSampleKind {
         w.varint(*v);
     }
 }
-/// A tick sample's long array: the client's logger holds [`DEBUG_SAMPLE_DIMENSIONS`] values, and
-/// vanilla's `System.arraycopy` of more throws in the handler, so the packet is refused.
-pub struct DebugSampleValues;
-impl Codec<Vec<i64>> for DebugSampleValues {
-    fn read(r: &mut Reader) -> Result<Vec<i64>> {
-        let sample = Longs::read(r)?;
-        if sample.len() > DEBUG_SAMPLE_DIMENSIONS {
-            return Err(Error::new(format!(
-                "debug sample of {} values, at most {DEBUG_SAMPLE_DIMENSIONS}",
-                sample.len()
-            )));
-        }
-        Ok(sample)
-    }
-    fn write(v: &Vec<i64>, w: &mut Writer) {
-        Longs::write(v, w);
-    }
-}
 /// `ByteBufCodecs.registry(DEBUG_SUBSCRIPTION)` in `collection(ReferenceOpenHashSet::new, 32)`:
 /// at most 32 ids, each registered; a repeated id is one member of the set.
 pub struct DebugSubscriptionSet;
@@ -191,7 +173,9 @@ impl Codec<Vec<i32>> for DebugSubscriptionSet {
     }
 }
 // ClientboundDebugSamplePacket: `LongArray` then the `RemoteDebugSampleType` ordinal (VarInt).
-packet!(DebugSample { sample: Vec<i64> => DebugSampleValues, kind: i32 => DebugSampleKind });
+// ClientboundDebugSamplePacket reads the array as-is. Its logger checks the
+// number of dimensions when the handler runs, which may be inside a bundle.
+packet!(DebugSample { sample: Vec<i64> => Longs, kind: i32 => DebugSampleKind });
 // ServerboundDebugSubscriptionRequestPacket: the `debug_subscription` ids wanted.
 packet!(DebugSubscriptionRequest { subscriptions: Vec<i32> => DebugSubscriptionSet });
 /// ClientboundCustomChatCompletionsPacket.Action, by id (`ByIdMap.continuous`

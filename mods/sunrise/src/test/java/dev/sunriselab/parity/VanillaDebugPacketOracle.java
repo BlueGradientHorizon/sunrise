@@ -10,7 +10,6 @@ import net.minecraft.network.protocol.game.ClientboundDebugSamplePacket;
 import net.minecraft.network.protocol.game.ServerboundDebugSubscriptionRequestPacket;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.util.debug.DebugSubscriptions;
-import net.minecraft.util.debugchart.LocalSampleLogger;
 import net.minecraft.util.debugchart.RemoteDebugSampleType;
 
 /** Debug sample / subscription request bodies through the native stream codecs. */
@@ -38,8 +37,8 @@ public final class VanillaDebugPacketOracle {
             out.add("{\"packet\":\"request\",\"ids\":" + ids + ",\"wire\":\"" + hex(buf) + "\"}");
         }
         out.add("{\"packet\":\"registry\",\"count\":" + BuiltInRegistries.DEBUG_SUBSCRIPTION.size() + "}");
-        // Refused input: the request's codec (unknown id, over 32), and a sample's codec plus the handler's
-        // logFullSample (a kind past the enum, more values than the logger's four: arraycopy throws).
+        // Codec only: the request checks the registry and list size, and the sample checks
+        // its enum. Oversized arrays fail later in the client handler, not while decoding.
         for (String body : new String[]{"00", "0100", "020000", "020100", "03010000", "010f", "0110", "01ffffffff0f", "ff",
                 "20" + "00".repeat(32), "21" + "00".repeat(33)}) {
             var buf = new RegistryFriendlyByteBuf(Unpooled.wrappedBuffer(HexFormat.of().parseHex(body)), access);
@@ -59,7 +58,6 @@ public final class VanillaDebugPacketOracle {
             String result;
             try {
                 var packet = ClientboundDebugSamplePacket.STREAM_CODEC.decode(buf);
-                new LocalSampleLogger(4).logFullSample(packet.sample());
                 result = "ok " + Arrays.toString(packet.sample()) + " " + packet.debugSampleType().ordinal();
             } catch (Throwable t) {
                 result = "error";
