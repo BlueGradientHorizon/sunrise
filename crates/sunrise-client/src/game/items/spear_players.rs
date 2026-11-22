@@ -267,12 +267,7 @@ impl Game<'_> {
                 {
                     let _ = p.ignite_for_ticks((s.ignite * 20.0) as i32);
                 }
-                let dismounted = s.dismounts
-                    && g.riding.is_some()
-                    && !g.items().entity_type_tags.contains(
-                        "minecraft:cannot_be_dismounted_by_item_usage",
-                        "minecraft:player",
-                    );
+                let dismounted = s.dismounts && g.riding.is_some();
                 if dismounted {
                     g.stop_riding();
                 }

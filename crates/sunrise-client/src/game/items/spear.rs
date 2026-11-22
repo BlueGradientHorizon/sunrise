@@ -310,12 +310,7 @@ impl Game<'_> {
             // ...and the attacker stops sprinting.
             self.stop_sprint_after_extra_knockback();
         }
-        let dismounted = dismounts
-            && self.mobs[index].extra.mount.is_some()
-            && !self
-                .items()
-                .entity_type_tags
-                .contains("minecraft:cannot_be_dismounted_by_item_usage", &kind);
+        let dismounted = dismounts && self.mobs[index].extra.mount.is_some();
         if dismounted {
             self.dismount_mob(id);
         }
