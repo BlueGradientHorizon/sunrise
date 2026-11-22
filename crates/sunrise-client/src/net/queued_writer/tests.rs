@@ -312,3 +312,20 @@ fn exhausted_held_play_credit_still_serves_control_replies_and_reconfiguration_a
         .unwrap();
     assert_eq!(peer.recv().unwrap(), (5, vec![55]));
 }
+
+#[test]
+fn close_and_wait_drains_pending_writes_and_closes_transport_before_returning() {
+    let (a, b) = Pipe::pair();
+    let (_, physical) = Connection::local(a).split();
+    let writer = QueuedWriter::new(physical).unwrap();
+    let mut peer = Connection::local(b);
+    peer.reader
+        .set_read_timeout(Some(Duration::from_millis(50)))
+        .unwrap();
+    writer.send(&[1, 11]).unwrap();
+    writer.close_and_wait();
+    assert!(!writer.accepts_packets());
+    assert_eq!(peer.recv().unwrap(), (1, vec![11]));
+    assert!(peer.recv().unwrap_err().is_end_of_stream());
+    writer.close_and_wait();
+}

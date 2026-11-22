@@ -438,7 +438,8 @@ pub(super) fn register_command_nodes(
 /// The live player body, or a guest record outside a player swap.
 pub(super) enum PlayerRead<'a> {
     Acting {
-        mode: i32,
+        /// Server authoritative mode, or the local player's resolved `PlayerInfo` mode on a client.
+        mode: Option<i32>,
         body: Option<&'a PlayerMotion>,
         /// The player's stored abilities, when it is a server player's turn.
         abilities: Option<PlayerAbilities>,
@@ -476,15 +477,15 @@ impl PlayerRead<'_> {
         }
     }
 
-    fn mode(&self) -> i32 {
+    fn mode(&self) -> Option<i32> {
         match self {
             Self::Acting { mode, .. } => *mode,
-            Self::Guest(guest) => guest.game_mode,
+            Self::Guest(guest) => Some(guest.game_mode),
         }
     }
 
     fn creative(&self) -> bool {
-        self.mode() == 1
+        self.mode() == Some(1)
     }
 
     fn may_build(&self) -> bool {
@@ -493,7 +494,7 @@ impl PlayerRead<'_> {
                 abilities: Some(a), ..
             } => a.may_build,
             Self::Guest(guest) => guest.abilities.may_build,
-            Self::Acting { mode, .. } => *mode < 2,
+            Self::Acting { mode, .. } => mode.is_some_and(|m| m < 2),
         }
     }
 
@@ -530,7 +531,7 @@ impl PlayerRead<'_> {
                     flying_speed: body.flying_speed,
                     ..Default::default()
                 };
-                a.update_for_mode(*mode);
+                a.update_for_mode(mode.unwrap_or(0));
                 a.flying = body.flying;
                 a
             }
@@ -978,7 +979,7 @@ impl Game<'_> {
         if self.lan_acting_uuid == Some(uuid) && !self.lan_acting_fake {
             return Some((
                 PlayerRead::Acting {
-                    mode: self.mode_id(),
+                    mode: Some(self.mode_id()),
                     body: self.player.as_ref(),
                     abilities: self.acting_abilities,
                     last_death: self.level.last_death.as_ref(),
@@ -1009,7 +1010,7 @@ impl Game<'_> {
             let body = self.player.as_ref()?;
             return Some((
                 PlayerRead::Acting {
-                    mode: self.mode_id(),
+                    mode: Some(self.mode_id()),
                     body: Some(body),
                     abilities: self.acting_abilities,
                     last_death: self.level.last_death.as_ref(),
@@ -1037,17 +1038,20 @@ impl Game<'_> {
 
     /// `player_handle_read` for the reads that work on both sides. On a
     /// client the local player (`Minecraft.player`) reads its own copy of
-    /// what the server sent (`LocalPlayer`): the game mode, food, abilities,
-    /// hotbar slot and experience. Any other player reads None there: the
-    /// client is not sent their state.
+    /// what the server sent (`LocalPlayer`): the entity's resolved `PlayerInfo`
+    /// game mode (`AbstractClientPlayer.gameMode`, None before `ADD_PLAYER`),
+    /// food, live `Abilities`, hotbar slot and experience. Any other player
+    /// reads None there: the client is not sent their state.
     pub(super) fn player_read_both(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
         if self.is_logical_server() {
             return self.player_handle_read(player);
         }
         (self.local_player()? == player).then(|| PlayerRead::Acting {
-            mode: self.mode_id(),
+            mode: self
+                .player_info_game_mode()
+                .map(sunrise_client::command::args::GameMode::id),
             body: self.player.as_ref(),
-            abilities: Some(self.client_abilities()),
+            abilities: self.client_abilities(),
             last_death: self.level.last_death.as_ref(),
         })
     }
@@ -1081,22 +1085,14 @@ impl Game<'_> {
         }))
     }
 
-    /// The local player's `Abilities` on a client: what its game mode gives
-    /// (`GameType.updatePlayerAbilities`, `mayBuild` among them), then the
-    /// flags and speeds `ClientPacketListener.handlePlayerAbilities` took, except
-    /// flying, which follows the local body's prediction between packets.
-    fn client_abilities(&self) -> PlayerAbilities {
-        let mut a = PlayerAbilities::default();
-        a.update_for_mode(self.mode_id());
-        if let Some(p) = self.remote_abilities() {
-            a.invulnerable = p.flags & 1 != 0;
-            a.may_fly = p.flags & 4 != 0;
-            a.instabuild = p.flags & 8 != 0;
-            a.flying_speed = p.flying_speed;
-            a.walking_speed = p.walking_speed;
+    /// Reads live `Remote::abilities` with predicted `flying` and `flying_speed` from the body.
+    fn client_abilities(&self) -> Option<PlayerAbilities> {
+        let mut a = *self.remote_abilities()?;
+        if let Some(body) = self.player.as_ref() {
+            a.flying = body.flying;
+            a.flying_speed = body.flying_speed;
         }
-        a.flying = self.player.as_ref().is_some_and(|body| body.flying);
-        a
+        Some(a)
     }
 
     pub(super) fn player_handle_read(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
@@ -1106,7 +1102,7 @@ impl Game<'_> {
             && self.lan_acting_entity == Some(player.fields().entity.id())
         {
             return Some(PlayerRead::Acting {
-                mode: self.mode_id(),
+                mode: Some(self.mode_id()),
                 body: self.player.as_ref(),
                 abilities: self.acting_abilities,
                 last_death: self.level.last_death.as_ref(),
@@ -1152,13 +1148,14 @@ impl Game<'_> {
         }))
     }
 
-    /// `ServerPlayerGameMode.getGameModeForPlayer`; Paper `HumanEntity#getGameMode`.
-    /// None for stale, offline or unavailable players (including displaced outer players).
+    /// `ServerPlayerGameMode.getGameModeForPlayer` on a server; `AbstractClientPlayer.gameMode`
+    /// (resolved `PlayerInfo`) on a client. None for stale, offline or unavailable players
+    /// (including displaced outer players), and on a client before `ADD_PLAYER` resolves the
+    /// entity's `PlayerInfo`. Distinct from `player_abilities`, which reads `LocalPlayer.abilities`.
     pub(super) fn player_game_mode(&self, player: PlayerRef) -> Option<GameMode> {
-        match self.player_read_both(player)? {
-            PlayerRead::Acting { .. } => Some(self.mode),
-            PlayerRead::Guest(guest) => GameMode::from_id(guest.game_mode),
-        }
+        self.player_read_both(player)?
+            .mode()
+            .and_then(GameMode::from_id)
     }
 
     /// Changes a player's game mode as `ServerPlayer.setGameMode` and
@@ -1291,9 +1288,10 @@ impl Game<'_> {
         (!(ran && dropped)).then_some(copy)
     }
 
-    /// `Player.isSpectator`; Paper `HumanEntity#getGameMode`.
+    /// `Player.isSpectator` (`gameMode() == GameType.SPECTATOR` on a client, authoritative
+    /// `ServerPlayerGameMode` on a server); Paper `HumanEntity#getGameMode`.
     pub(super) fn player_is_spectator(&self, player: PlayerRef) -> Option<bool> {
-        Some(self.player_read_both(player)?.mode() == 3)
+        Some(self.player_read_both(player)?.mode() == Some(3))
     }
 
     /// `Player.mayBuild`; Paper `HumanEntity#getGameMode`.
@@ -2182,7 +2180,7 @@ impl Game<'_> {
             }
         }
         Some(PlayerRead::Acting {
-            mode: self.mode_id(),
+            mode: Some(self.mode_id()),
             body: Some(self.native_live_acting_body()?),
             abilities: self.acting_abilities,
             last_death: self.level.last_death.as_ref(),
@@ -3094,7 +3092,7 @@ mod tests {
         }
     }
 
-    fn with_command_sources(test: impl FnOnce(&mut Game<'_>)) {
+    pub(super) fn with_command_sources(test: impl FnOnce(&mut Game<'_>)) {
         use sunrise_client::{
             chunk::Chunk, chunk::block_entity::BlockEntity, command_block::CommandBlock,
         };
@@ -3306,7 +3304,7 @@ mod tests {
         let mut guest = player_guest();
         guest.abilities.flying_speed = 0.08;
         let read = PlayerRead::Guest(&guest);
-        assert_eq!(read.mode(), 0);
+        assert_eq!(read.mode(), Some(0));
         assert_eq!(
             read.food(),
             None,
@@ -3330,7 +3328,7 @@ mod tests {
         guest.abilities.update_for_mode(1);
         guest.abilities.flying = true;
         let read = PlayerRead::Guest(&guest);
-        assert_eq!(read.mode(), 1);
+        assert_eq!(read.mode(), Some(1));
         assert_eq!(
             read.abilities(),
             Some(mod_api::PlayerAbilities::from(

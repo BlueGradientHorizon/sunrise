@@ -5391,7 +5391,7 @@ pub(super) mod tests {
                 ids(game, level, [2.5, 0.0, -1.0], [4.0, 1.0, 1.0]),
                 Ok(vec![])
             );
-            game.set_mode_id(3);
+            game.set_local_mode(sunrise_client::command::args::GameMode::Spectator);
             assert_eq!(
                 ids(game, level, [-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]),
                 Ok(vec![15])

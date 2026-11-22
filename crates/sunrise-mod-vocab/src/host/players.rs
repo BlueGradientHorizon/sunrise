@@ -165,17 +165,21 @@ pub trait PlayersClientBackendMut {
         settings: RecipeBookSettings,
     ) -> bool;
     /// Side: client.
-    /// Creative mode only: gives the local player `count` of `item`
-    /// (`minecraft:diamond`) as taking it from the creative inventory does
-    /// using `Inventory.add`'s slot order. Returns the count that did not fit;
-    /// a zero request does not change the inventory.
-    /// Refuses outside a client world (`Unavailable`), for a stale or non-local
-    /// handle (`Stale`), outside creative mode (`NotCreative`), or for an unknown
-    /// item (`UnknownItem`).
+    /// Creative mode only: puts `stack`, components and all, into the local player's
+    /// inventory as `Inventory.add` does: onto matching stacks (the selected slot, the off
+    /// hand, the hotbar, then the main inventory), then into empty slots, up to the stack's
+    /// effective maximum (`minecraft:max_stack_size` included). Every slot it changed goes to
+    /// the server at once as `MultiPlayerGameMode.handleCreativeModeItemAdd` does
+    /// (`ServerboundSetCreativeModeSlotPacket`; the off hand is slot 45), even while a
+    /// container menu is open. `Ok(Some(remainder))` is what did not fit; nothing is dropped.
+    /// Refuses outside a client world (`Unavailable`), for a stale or non-local handle
+    /// (`Stale`), outside creative mode (`NotCreative`), or for a stack the item boundary
+    /// refuses (`Stack`). A [`CreativeGiveError`] gives nothing.
+    #[forward_api_inputs]
+    #[forward_api_output]
     fn player_give_creative(
         &mut self,
         player: PlayerRef,
-        item: ItemKey,
-        count: u32,
-    ) -> Result<u32, CreativeGiveError>;
+        stack: &ItemStack,
+    ) -> Result<Option<ItemStack>, CreativeGiveError>;
 }

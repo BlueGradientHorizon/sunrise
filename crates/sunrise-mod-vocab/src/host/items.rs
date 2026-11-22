@@ -146,7 +146,9 @@ pub trait ItemsClientHost {
     /// reload, a different build, or without a live catalog, this returns an empty list.
     fn creative_search_items(&mut self) -> Vec<ItemStack>;
     /// Side: client.
-    /// Registered enchantments, in registry order.
+    /// Registered enchantments in registry order, including selection `weight` and `anvil_cost`
+    /// (the base anvil fee per enchantment level). This and the other enchantment reads use the
+    /// table built from the server's synced entries when available, and the local table otherwise.
     fn enchantments(&self) -> Vec<EnchantmentInfo>;
     /// Side: client.
     /// Registered potions (`Registries.POTION`), in registry order, each by its registry id:
@@ -158,7 +160,8 @@ pub trait ItemsClientHost {
     /// `Enchantment.getMinCost(level)`: the enchanting power needed, or None for an unknown id.
     fn enchantment_min_cost(&self, id: &str, level: u32) -> Option<i32>;
     /// Side: client.
-    /// Whether enchantment `id` can go on `item` (`Enchantment.isSupportedItem`).
+    /// Whether `item` is in enchantment `id`'s `supported_items` (`Enchantment.isSupportedItem`).
+    /// Does not consult Item Part overrides.
     fn enchantment_supports(&self, id: &str, item: ItemKey) -> bool;
 }
 /// The handles' reads of the `items` area, implemented by the game and reached through [`Backend`].

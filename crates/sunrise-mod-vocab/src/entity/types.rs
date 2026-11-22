@@ -1515,26 +1515,6 @@ impl NoBackend for MenuItemsRefusal {
     }
 }
 
-/// Why [`PlayerRef::give_creative`] refused the request.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
-#[non_exhaustive]
-pub enum CreativeGiveError {
-    /// Not in a client world, resources are not ready, or the call is unavailable in this phase.
-    Unavailable,
-    /// The handle is stale or does not name the local player.
-    Stale,
-    /// The local player is not in creative mode.
-    NotCreative,
-    /// The item key does not resolve to an item in this world.
-    UnknownItem,
-}
-
-impl NoBackend for CreativeGiveError {
-    fn no_backend() -> Self {
-        Self::Unavailable
-    }
-}
-
 /// A player's experience (`Player.experienceLevel`, `experienceProgress`,
 /// `totalExperience`).
 #[derive(Clone, Copy, Debug, PartialEq)]

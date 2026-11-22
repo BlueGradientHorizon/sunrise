@@ -1,8 +1,11 @@
-//! Recipe lookup, placement and client synchronization. The client uses its own
-//! recipes, with server-synced types taking precedence, and follows the server's
-//! book for known displays.
-use super::{Game, api_values::TryIntoApi};
-use mod_api::{LevelRef, RecipeInput, RecipeLookupError, RecipeMatch};
+//! Recipe lookup, placement, creative gives, and client synchronization. The client uses its
+//! own recipes, with server-synced types taking precedence, and follows the server's book for
+//! known displays.
+use super::{
+    Game,
+    api_values::{TryIntoApi, TryIntoEngine},
+};
+use mod_api::{CreativeGiveError, LevelRef, RecipeInput, RecipeLookupError, RecipeMatch};
 use std::sync::Arc;
 use sunrise_client::items::ItemStack;
 
@@ -259,6 +262,41 @@ impl Game<'_> {
         }
         self.mod_place_recipe(book_id, all);
         Ok(())
+    }
+    /// `give_creative`: `Inventory.add` of `stack` for a creative player, components kept and up
+    /// to the stack's own maximum, then `MultiPlayerGameMode.handleCreativeModeItemAdd` for
+    /// every slot it changed, sent now: the end of the tick's sync skips creative slots while
+    /// a server menu is open. What did not fit comes back and is not dropped.
+    pub(super) fn creative_give_stack(
+        &mut self,
+        stack: &mod_api::ItemStack,
+    ) -> Result<Option<mod_api::ItemStack>, CreativeGiveError> {
+        if self.is_logical_server() || self.player.is_none() || self.res.rest.get().is_none() {
+            return Err(CreativeGiveError::Unavailable);
+        }
+        if !self.creative {
+            return Err(CreativeGiveError::NotCreative);
+        }
+        let mut stack = stack.try_into_engine(self.items())?;
+        let max = self.stack_max_size(&stack);
+        let inventory = self.inventory[..36].to_vec();
+        let offhand = self.offhand.clone();
+        self.insert_stack_up_to(&mut stack, max);
+        for i in 0..36 {
+            if self.inventory[i] != inventory[i] {
+                self.remote_creative_slot_add(i);
+            }
+        }
+        if self.offhand != offhand {
+            self.remote_creative_slot_add(36);
+        }
+        if stack.count == 0 {
+            return Ok(None);
+        }
+        stack
+            .try_into_api()
+            .map(Some)
+            .map_err(|error| error.into_write_error().into())
     }
     /// The `book_id`s the player's recipe book holds now.
     pub(super) fn known_displays(&mut self) -> Arc<[i32]> {

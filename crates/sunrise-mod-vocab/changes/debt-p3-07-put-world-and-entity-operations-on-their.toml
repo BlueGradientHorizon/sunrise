@@ -55,7 +55,7 @@ ids = [
     "method:prelude::MenusServerHost::close_menu",
     "method:prelude::MenusServerHost::menu_set_items",
     "method:prelude::RecipesServerHost::place_recipe_in_grid",
-    "method:prelude::ItemsClientHost::give",
+    "method:prelude::ItemsClientHost::give_stack",
     "type:OpenMenuError",
     "type:MenuItemsRefusal",
     "type:CreativeGiveError",
@@ -85,5 +85,5 @@ Remove explicit imports of BlockStatesServerHost, BlockEntitiesServerHost and Cl
 - `host.close_menu(uuid)` → `menu.close_container(host)` on the player's open `MenuRef` (from `player.menu(host, window)` or `player.container_menu(host)`). It can also close during that player's turn. Inside a transaction, a true result queues close for outermost commit; abort keeps the window open.
 - `host.menu_set_items(uuid, window, items)` → `menu.set_items(host, items)` on the open `MenuRef`. `MenuItemsRefusal` gains `Unavailable` for non-world phases.
 - `host.place_recipe_in_grid(recipe, w, h, grid_slots, clear_slots, use_max_items)` → `menu.place_recipe_in_grid(host, recipe, w, h, &grid_slots, &clear_slots, use_max_items)` on the acting player's open `MenuRef` (e.g. `host.players().acting_player().and_then(|p| p.container_menu(host))`). Takes slices `&[u16]` instead of owned `Vec<u16>` and returns `Result<bool, RecipePlaceError>` instead of `Result<bool, String>`.
-- `host.give(item, count)` on `ClientHost` → `player.give_creative(host, item, count)` on the local `PlayerRef` (`host.local_player()`). Returns `Result<u32, CreativeGiveError>`: `Ok(0)` means all requested items fit (or nothing was requested); `Ok(n)` for `n > 0` tells how many did not fit, including a completely full inventory. Handle actual refusals with `Unavailable`, `Stale`, `NotCreative`, or `UnknownItem`.
+- `host.give_stack(&stack)` on `ClientHost` → `player.give_creative(host, &stack)` on the local `PlayerRef` (`host.local_player()`). Preserves stack components, immediate creative slot sync (`ServerboundSetCreativeModeSlotPacket`), and `Result<Option<ItemStack>, CreativeGiveError>`, adding `CreativeGiveError::Stale` when the handle is stale or not the local player.
 '''

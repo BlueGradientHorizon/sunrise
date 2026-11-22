@@ -272,7 +272,9 @@ including the inventory when no container is open. `MenuRef::slot_count`, `slot`
 read on either side; `slot` and `carried` return an outer `None` when the handle or slot is
 unavailable and `Some(None)` for an empty slot. Each read checks the world epoch and menu generation,
 so a handle cannot read a replacement, reopened or respawned menu. These methods do not click or
-change slots.
+change slots. `MenuRef::kind` returns `Some(Some(id))` for a supported registry-backed menu,
+`Some(None)` for the player's inventory menu or a mount's inventory on the client, and `None` for a stale,
+foreign or unavailable handle.
 
 Server hooks can also read the acting player's supported menu through
 `player.container_menu(host)`. Inventory, equipment, cursor and ender contents come from
@@ -567,3 +569,8 @@ or outside a world. Creative returns the underlying inventory menu's 46 slots,
 never creative tab wrappers; read the screen type to distinguish them.
 The answer is stable for one open menu. Cache it: each read builds one Vec
 from the layout table and content declaration, with one allocation.
+
+On the Creative screen, `menu.slot_boxes(host)` keeps the player's inventory menu order, not
+Creative's visible order: crafting `0..=4`, armor `5..=8`, main inventory `9..=35`, hotbar `36..=44`,
+and offhand `45`. A hidden index is `None`. The inventory tab hides crafting; item and Search
+tabs show only the hotbar. Creative catalog slots and the trash slot have no entries.

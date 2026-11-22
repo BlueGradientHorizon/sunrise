@@ -345,6 +345,9 @@ impl Game<'_> {
         motion.pitch = g.pitch;
         motion.sprinting = g.sprinting;
         let abilities = g.abilities;
+        let spectator = g.spectator();
+        motion.spectator = spectator;
+        motion.local_spectator = spectator;
         motion.may_fly = abilities.may_fly;
         motion.flying = abilities.flying;
         motion.flying_speed = abilities.flying_speed;

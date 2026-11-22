@@ -10,10 +10,20 @@ fn local_transfer_notice() -> Event {
     }
 }
 
+fn packet_error_notice() -> Event {
+    Event::Disconnected {
+        reason: sunrise_client::lang::get("disconnect.packetError"),
+        key: Some("disconnect.packetError".into()),
+        from_server: false,
+        after_login: true,
+    }
+}
+
 #[derive(Default)]
 struct ListenerTurn {
     opening: Option<RemoteOpening>,
     end: Option<Event>,
+    packet_error: bool,
 }
 
 impl Remote {
@@ -297,26 +307,22 @@ impl Game<'_> {
             self.route_connection_group_bundle(&group_packets, negotiated)?;
             return Ok(());
         }
-        // One PacketProcessor task: a handler failure leaves the prefix applied,
-        // skips the suffix, and disconnects via onPacketError.
-        let stop_on_packet_error = |game: &Self, turn: &mut ListenerTurn| {
-            if let Some(remote) = &game.remote {
-                remote.session.close_after_pending();
-            }
-            turn.end.get_or_insert_with(|| io.packet_error());
-        };
+        // One PacketProcessor task: a handler failure leaves the prefix applied and skips the suffix.
         for packet in packets {
             match io.bundle_member(packet) {
                 BundleStep::Event(event) => {
                     if let Err(error) = self.handle_remote_event(event, turn) {
                         log::warn!("Sunrise: bundle packet handler failed: {error}");
-                        stop_on_packet_error(self, turn);
+                        self.record_packet_error(turn, || io.packet_error());
+                        break;
+                    }
+                    if self.remote.is_none() || turn.packet_error {
                         break;
                     }
                 }
                 BundleStep::HandlerFailed => {
                     log::warn!("Sunrise: oversized debug sample in play bundle");
-                    stop_on_packet_error(self, turn);
+                    self.record_packet_error(turn, || io.packet_error());
                     break;
                 }
                 BundleStep::Payload(payload) => {
@@ -456,6 +462,7 @@ impl Game<'_> {
                 // offers its own far terrain, or none, and announces its
                 // own features again.
                 if let Some(remote) = &mut self.remote {
+                    remote.has_logical_player = false;
                     remote.viewed.clear();
                     remote.far_terrain = None;
                     remote.quiet_commands = false;
@@ -468,6 +475,11 @@ impl Game<'_> {
                     remote.session.reset_far_terrain();
                 }
                 self.remove_local_player_body();
+                self.post_effects.clear();
+                if let Some(r) = self.remote.as_mut() {
+                    r.camera = None;
+                }
+                self.clear_spectated_entity_post_effect();
                 self.set_screen(Screen::Playing);
                 self.capture(false);
                 // clearClientLevel drops the client level now, so its
@@ -487,6 +499,7 @@ impl Game<'_> {
                     self.native_net.holds.borrow_mut().clear();
                     r.reconfiguring = Some(ticks);
                     r.server_chat_tree = None;
+                    r.logged_in = false;
                 }
                 resume.acknowledge();
             }
@@ -508,6 +521,10 @@ impl Game<'_> {
                     r.clear_attachments();
                     r.players.clear();
                     r.tab_players.clear();
+                    r.tab_game_modes.clear();
+                    r.own_player_info = std::cell::OnceCell::new();
+                    r.level_player_infos.clear();
+                    r.has_logical_player = false;
                     r.listed.clear();
                     r.signatures = Default::default();
                     r.custom_completions.clear();
@@ -555,10 +572,26 @@ impl Game<'_> {
                 C::CustomPayload(p) if p.channel == sunrise_client::perf_net::CHANNEL => {
                     self.remote_perf_reply(&p.data)
                 }
-                packet => self.handle_packet(packet)?,
+                packet => match self.handle_packet(packet) {
+                    // ClientCommonPacketListenerImpl.onPacketError: close first and keep any earlier reason.
+                    Err(e) if e.is::<PacketError>() => {
+                        log::warn!("Sunrise: disconnected: {e}");
+                        self.record_packet_error(turn, packet_error_notice);
+                    }
+                    other => other?,
+                },
             },
         }
         Ok(())
+    }
+
+    /// `ClientCommonPacketListenerImpl.onPacketError`: close first and keep any earlier reason.
+    fn record_packet_error(&self, turn: &mut ListenerTurn, notice: impl FnOnce() -> Event) {
+        if let Some(remote) = &self.remote {
+            remote.session.close_after_pending();
+        }
+        turn.end.get_or_insert_with(notice);
+        turn.packet_error = true;
     }
 
     pub(in crate::game) fn apply_staged_attachment_sync(
@@ -568,6 +601,22 @@ impl Game<'_> {
         let (message, payload) = staged.into_message();
         self.observe_client_packet(&C::CustomPayload(payload));
         self.remote_attachment_sync(message);
+    }
+
+    /// `ClientCommonPacketListenerImpl.handlePostEffects`.
+    pub(super) fn apply_post_effects_packet(&mut self, p: play::PostEffects) -> Result<()> {
+        if !self
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.logged_in && r.reconfiguring.is_none())
+        {
+            return Err(PacketError(
+                "Cannot set player post effects before the player is created.",
+            )
+            .into());
+        }
+        self.post_effects = p.effects;
+        Ok(())
     }
 
     fn finish_remote_disconnect(&mut self, event: Event) -> Result<()> {
@@ -580,6 +629,9 @@ impl Game<'_> {
         else {
             unreachable!("listener only retains the disconnect notice");
         };
+        if let Some(remote) = &self.remote {
+            remote.session.shutdown_and_wait();
+        }
         self.reset_book_view();
         log::info!("Sunrise: disconnected: {reason}");
         let by = if from_server {
@@ -590,14 +642,37 @@ impl Game<'_> {
         self.connection_ended(&reason, key.as_deref(), by);
         // Only the common listener calls Minecraft.disconnect; a failed
         // ConnectScreen or login handshake just changes screens.
-        let reason = Some(Text::literal(reason));
+        let screen_reason = match key.as_deref() {
+            Some(k) if sunrise_client::lang::get(k) == reason => Text::translate(k, &[]),
+            _ => Text::literal(reason),
+        };
         if after_login {
-            self.leave_server(reason)
+            self.leave_server(Some(screen_reason))
         } else {
-            self.finish_leave_server(reason)
+            self.finish_leave_server(Some(screen_reason))
         }
     }
 }
+
+/// Protocol error raised while handling a play packet (`ClientCommonPacketListenerImpl.onPacketError`).
+#[derive(Debug)]
+pub(super) struct PacketError(pub(super) &'static str);
+
+impl std::fmt::Display for PacketError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+impl std::error::Error for PacketError {}
+
+#[cfg(test)]
+#[path = "bundle_parity_tests.rs"]
+mod bundle_parity_tests;
+
+#[cfg(test)]
+#[path = "post_effects_parity_tests.rs"]
+mod post_effects_parity_tests;
 
 #[cfg(test)]
 mod tests {

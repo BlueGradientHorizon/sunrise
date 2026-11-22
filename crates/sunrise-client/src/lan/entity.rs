@@ -13,7 +13,7 @@ use crate::{
 use std::sync::Arc;
 use sunrise_protocol::{
     buf::pack_degrees,
-    entity_data::{Particle, Value, serializer},
+    entity_data::{Value, serializer},
     general_entity,
     item::Stack,
     packets::configuration::CustomPayload,
@@ -1274,7 +1274,7 @@ fn names_mod_particle(packet: &play::Clientbound) -> bool {
         return false;
     };
     (data.values.iter()).any(|(_, _, value)| match value {
-        Value::Particles(list) => list.iter().any(Particle::sunrise_only),
+        Value::Particles(list) => list.has_sunrise_only(),
         Value::Particle(p) => p.sunrise_only(),
         _ => false,
     })

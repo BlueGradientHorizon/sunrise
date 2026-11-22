@@ -150,6 +150,40 @@ pub(super) fn tnt_camera_entity(t: &super::tnt::PrimedTnt) -> CameraEntity {
     }
 }
 
+/// `Camera.alignWithEntity`'s view of an `Interaction`: non-living, scalable
+/// dimensions (`EntityDimensions.scalable(width, height)` has `eyeHeight = height * 0.85F`).
+pub(super) fn interaction_camera_entity(
+    i: &super::interactions::RemoteInteraction,
+) -> CameraEntity {
+    let at = [i.position.x, i.position.y, i.position.z];
+    CameraEntity {
+        position: at,
+        previous: at,
+        x_rot: 0.0,
+        y_rot: 0.0,
+        x_rot_o: 0.0,
+        y_rot_o: 0.0,
+        eye_height: i.height * 0.85,
+        living: None,
+        mount: None,
+    }
+}
+
+/// Fallback view for any other tracked level entity (`Level.getEntity`).
+fn tracked_camera_entity(t: &super::remote::Tracked) -> CameraEntity {
+    CameraEntity {
+        position: t.position,
+        previous: t.position,
+        x_rot: 0.0,
+        y_rot: 0.0,
+        x_rot_o: 0.0,
+        y_rot_o: 0.0,
+        eye_height: 0.0,
+        living: None,
+        mount: None,
+    }
+}
+
 /// The effective spectator camera entity held by the client level.
 #[derive(Clone, Copy)]
 pub(super) enum SpectatedEntity<'a> {
@@ -158,6 +192,8 @@ pub(super) enum SpectatedEntity<'a> {
     Boat(&'a super::boats::Boat),
     Frame(&'a ItemFrame),
     Tnt(&'a super::tnt::PrimedTnt),
+    Interaction(&'a super::interactions::RemoteInteraction),
+    Tracked(&'a super::remote::Tracked),
 }
 
 impl SpectatedEntity<'_> {
@@ -168,6 +204,8 @@ impl SpectatedEntity<'_> {
             Self::Boat(b) => boat_camera_entity(b),
             Self::Frame(f) => frame_camera_entity(f),
             Self::Tnt(t) => tnt_camera_entity(t),
+            Self::Interaction(i) => interaction_camera_entity(i),
+            Self::Tracked(t) => tracked_camera_entity(t),
         }
     }
 }
@@ -180,6 +218,8 @@ pub(super) struct CameraEntities<'a> {
     pub boats: &'a [super::boats::Boat],
     pub frames: &'a [ItemFrame],
     pub tnts: &'a [super::tnt::PrimedTnt],
+    pub interactions: &'a std::collections::HashMap<i32, super::interactions::RemoteInteraction>,
+    pub tracked: Option<&'a std::collections::HashMap<i32, super::remote::Tracked>>,
 }
 
 impl<'a> CameraEntities<'a> {
@@ -197,10 +237,22 @@ impl<'a> CameraEntities<'a> {
         if let Some(f) = self.frames.iter().find(|f| f.id == id) {
             return Some(SpectatedEntity::Frame(f));
         }
-        self.tnts
-            .iter()
-            .find(|t| t.id == id)
-            .map(SpectatedEntity::Tnt)
+        if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
+            return Some(SpectatedEntity::Tnt(t));
+        }
+        if let Some(i) = self.interactions.get(&(id as i32)) {
+            return Some(SpectatedEntity::Interaction(i));
+        }
+        self.tracked
+            .and_then(|tracked| tracked.get(&(id as i32)))
+            .map(SpectatedEntity::Tracked)
+    }
+
+    /// `Camera.alignWithEntity`: the view out of the entity, `None` when the
+    /// level does not hold it.
+    #[cfg(test)]
+    pub(super) fn view(&self, id: u32) -> Option<CameraEntity> {
+        self.get(id).map(SpectatedEntity::snapshot)
     }
 }
 
@@ -209,6 +261,13 @@ impl<'a> CameraEntities<'a> {
 /// (`Hooks::register_entity_spectator_shaders`).
 pub(super) fn entity_post_effect(kind: &str) -> Option<&'static str> {
     sunrise_client_render::spectator_shaders::chain(kind)
+}
+
+/// `Hud.getCameraPlayer`: the local player or a spectated remote player.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::game) enum CameraPlayer {
+    Local,
+    Remote(u32),
 }
 
 impl Game<'_> {
@@ -223,10 +282,19 @@ impl Game<'_> {
         if let Some(r) = self.remote.as_mut() {
             r.camera = camera_after_packet(r.camera, r.entity_id, camera_id, in_level);
         }
-        // Minecraft.setCameraEntity, for an entity the level holds.
+        // Minecraft.setCameraEntity recomputes the spectated entity post effect in either perspective.
         if in_level || player {
             self.check_entity_post_effect(true);
         }
+    }
+    /// `GameRenderer.clearSpectatedEntityPostEffect`.
+    pub(super) fn clear_spectated_entity_post_effect(&mut self) {
+        self.spectated_post_effect = None;
+        self.spectated_post_effect_active = false;
+    }
+    /// `GameRenderer.toggleSpectatorPostEffect` (`key.toggleSpectatorShaderEffects` / F4).
+    pub(super) fn toggle_spectator_post_effect(&mut self) {
+        self.spectated_post_effect_active = !self.spectated_post_effect_active;
     }
     /// `GameRenderer.checkEntityPostEffect` for the camera entity, or for none
     /// (`first_person` false: the third-person view clears it).
@@ -237,6 +305,7 @@ impl Game<'_> {
             } else {
                 None
             };
+        self.spectated_post_effect_active = self.spectated_post_effect.is_some();
     }
     /// The entity a server attached the view to, when it is not the player.
     pub(in crate::game) fn remote_camera_id(&self) -> Option<u32> {
@@ -250,6 +319,29 @@ impl Game<'_> {
     pub(super) fn spectated_camera(&self) -> Option<SpectatedEntity<'_>> {
         self.camera_entities().get(self.remote_camera_id()?)
     }
+    /// `Hud.getCameraPlayer`: the camera entity when it is a player, else `None`.
+    pub(in crate::game) fn camera_player(&self) -> Option<CameraPlayer> {
+        if let Some(id) = self.remote_camera_id() {
+            let r = self.remote.as_ref()?;
+            if id == r.entity_id as u32 {
+                return self.player.is_some().then_some(CameraPlayer::Local);
+            }
+            return (r.level_players.contains_key(&(id as i32))
+                && self.mobs.iter().any(|m| m.id == id))
+            .then_some(CameraPlayer::Remote(id));
+        }
+        self.player.is_some().then_some(CameraPlayer::Local)
+    }
+    /// `camera.entity().isSpectator()`: for lava and powdered-snow fog (`setupFog`).
+    pub(in crate::game) fn camera_entity_is_spectator(&self) -> bool {
+        if let Some(id) = self.remote_camera_id() {
+            return self.remote.as_ref().is_some_and(|r| {
+                r.remote_player_info_game_mode(id as i32)
+                    == Some(sunrise_client::tab_list::SPECTATOR)
+            });
+        }
+        self.own_player_is_spectator()
+    }
     /// The view of the spectated camera entity.
     pub(super) fn spectated_camera_snapshot(&self) -> Option<CameraEntity> {
         self.spectated_camera().map(SpectatedEntity::snapshot)
@@ -262,6 +354,8 @@ impl Game<'_> {
             boats: &self.boats,
             frames: &self.item_frames,
             tnts: &self.tnts,
+            interactions: &self.interactions,
+            tracked: self.remote.as_ref().map(|r| &r.entities),
         }
     }
     /// The entity under a spectator's crosshair (`Minecraft.hitResult` as an

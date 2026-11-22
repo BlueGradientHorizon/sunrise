@@ -95,7 +95,7 @@ pub mod joml {
 
     /// `Math.sin(float)`: `java.lang.Math.sin` narrowed.
     pub fn sin(rad: f32) -> f32 {
-        f64::from(rad).sin() as f32
+        sunrise_core::jmath::sin(f64::from(rad)) as f32
     }
     /// `Math.cosFromSin(float, float)`.
     pub fn cos_from_sin(sin: f32, angle: f32) -> f32 {

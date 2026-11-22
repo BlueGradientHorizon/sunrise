@@ -507,6 +507,7 @@ mod tests {
             loaded_client(game);
             let local = game.local_player().unwrap();
             let diamond = mod_api::__private::item_key("minecraft:diamond").unwrap();
+            let diamonds = |count| mod_api::ItemStack::new(diamond, count).unwrap();
             let stale = mod_api::__private::game::player_ref(
                 mod_api::EntityRef::new(
                     mod_api::WorldEpoch::new(local.entity().epoch().get().wrapping_add(1)),
@@ -519,11 +520,11 @@ mod tests {
             {
                 let host: &mut dyn ClientHost = game;
                 assert_eq!(
-                    local.give_creative(host, diamond, 3),
+                    local.give_creative(host, &diamonds(3)),
                     Err(CreativeGiveError::NotCreative)
                 );
                 assert_eq!(
-                    stale.give_creative(host, diamond, 3),
+                    stale.give_creative(host, &diamonds(3)),
                     Err(CreativeGiveError::Stale)
                 );
             }
@@ -533,7 +534,7 @@ mod tests {
             game.offhand = None;
             {
                 let host: &mut dyn ClientHost = game;
-                assert_eq!(local.give_creative(host, diamond, 3), Ok(0));
+                assert_eq!(local.give_creative(host, &diamonds(3)), Ok(None));
             }
             assert_eq!(
                 game.inventory[game.selected]
@@ -547,11 +548,15 @@ mod tests {
                 .fill(Some(ItemStack::new("minecraft:stone", 64)));
             game.offhand = Some(ItemStack::new("minecraft:stone", 64));
             let selected = game.selected;
-            assert_eq!(local.give_creative(game, diamond, 1), Ok(1));
+            assert_eq!(
+                local.give_creative(game, &diamonds(1)),
+                Ok(Some(diamonds(1)))
+            );
             game.inventory[selected] = Some(ItemStack::new("minecraft:diamond", 63));
-            assert_eq!(local.give_creative(game, diamond, 0), Ok(0));
-            assert_eq!(game.inventory[selected].as_ref().unwrap().count, 63);
-            assert_eq!(local.give_creative(game, diamond, 2), Ok(1));
+            assert_eq!(
+                local.give_creative(game, &diamonds(2)),
+                Ok(Some(diamonds(1)))
+            );
             assert_eq!(game.inventory[selected].as_ref().unwrap().count, 64);
         });
     }
