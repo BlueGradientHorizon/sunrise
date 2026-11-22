@@ -347,6 +347,10 @@ pub(super) mod tests {
     }
 
     pub(in crate::game) fn spawn(game: &mut Game<'_>, id: u32, kind: &str) -> MerchantRef {
+        game.world
+            .chunks
+            .entry((0, 0))
+            .or_insert_with(|| std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
         let kind = game.res.mob_types().get(kind).unwrap().clone();
         game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
         let entity = game.entity(id).unwrap();

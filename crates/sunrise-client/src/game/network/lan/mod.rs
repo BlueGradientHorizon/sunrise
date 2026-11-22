@@ -6105,6 +6105,10 @@ mod merchant_packet_tests {
             guest.placed = true;
             guest.dimension = "minecraft:overworld".into();
             guest.sent_chunks.insert((0, 0));
+            game.world
+                .chunks
+                .entry((0, 0))
+                .or_insert_with(|| Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
             guest.inventory[0] = Some(sunrise_client::items::ItemStack::new(
                 "minecraft:emerald",
                 8,
