@@ -135,7 +135,7 @@ pub(in crate::game) fn zombie(game: &mut super::super::Game<'_>, id: u32, at: [f
         .unwrap()
         .clone();
     let mut m = Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
-    m.on_ground = true;
+    m.ground.on_ground = true;
     game.mobs.push(m);
 }
 
@@ -546,7 +546,7 @@ fn the_host_answers_without_panicking() {
 fn mob_of(game: &mut super::super::Game<'_>, id: u32, kind: &str, at: [f64; 3]) {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut m = Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0);
-    m.on_ground = true;
+    m.ground.on_ground = true;
     game.mobs.push(m);
 }
 
@@ -1077,7 +1077,7 @@ fn a_finalize_spawn_listener_keeps_the_mod_goals() {
             .unwrap()
             .clone();
         let mut m = Mob::new(60, kind, Vec3::new(3.5, 65.0, 3.5), 0.0);
-        m.on_ground = true;
+        m.ground.on_ground = true;
         let reason = sunrise_client::mobs::spawn_rules::Reason::Natural;
         game.finalize_with(&mut m, reason, None);
         assert!(
