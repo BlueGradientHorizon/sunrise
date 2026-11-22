@@ -95,7 +95,7 @@ impl Game<'_> {
 #[cfg(test)]
 pub(super) mod tests {
     use super::super::lan::LanSettings;
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{fixture_resident_column, with_game};
     use mod_api::__private::game::*;
     use mod_api::{SoundSource, WorldEpoch};
     use std::sync::{
@@ -239,6 +239,7 @@ pub(super) mod tests {
             assert!(game.player(99).is_none());
 
             // play_bound_sound: players in range get a SoundEntity packet.
+            fixture_resident_column(&mut game.world, (0, 0));
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             game.mobs
                 .push(Mob::new(40, kind, Vec3::new(2.0, 64.0, 2.0), 0.0));

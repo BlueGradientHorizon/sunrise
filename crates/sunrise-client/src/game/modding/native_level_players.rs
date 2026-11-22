@@ -203,7 +203,17 @@ mod tests {
     #[ignore = "daily"]
     fn entity_trackers_are_the_guests_that_hold_the_entity() {
         with_guests(|game| {
-            let _serving = super::super::integrated::tests::install_serving(game, false);
+            use super::super::integrated::{Integrated, Serving};
+
+            let serving = Serving::fixture(0);
+            let window = Integrated::fixture_for(&serving);
+            // The tracking pass reads the owner's Entity Distance from the server handle.
+            window.set_distances(
+                game.settings.render_distance,
+                game.settings.simulation_distance,
+                game.settings.entity_distance,
+            );
+            game.serving = Some(serving);
             place_host(game);
             game.next_entity = 100;
             let level = game.level(game.dim.id()).unwrap();
