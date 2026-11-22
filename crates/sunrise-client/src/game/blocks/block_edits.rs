@@ -24,6 +24,9 @@ impl Game<'_> {
     /// or filter past the end, or more than 65536 filters, and nothing is
     /// made.
     pub(super) fn apply_block_edit(&mut self, edit: &BlockEdit) -> Result<u64, BlockEditError> {
+        if self.has_foreign_transaction() {
+            return Err(BlockEditError::InTransaction);
+        }
         let super::api_values::block_edit::PreparedBlockEdit { palette, filters } =
             super::api_values::block_edit::prepare(edit)?;
         let runs = resolve_runs(edit, &palette, filters.len(), |h, x, z| {
@@ -79,12 +82,14 @@ impl Game<'_> {
             .tracked
             .iter()
             .filter(|&&((x, y, z), old, new)| {
-                name(old) != name(new)
-                    || !self
-                        .world
-                        .block_entities
-                        .get(&(x, y, z))
-                        .is_some_and(|e| e.fits(&name(new)))
+                let (was, now) = (name(old), name(new));
+                was != now
+                    || (!self.world.block_entities.is_taken(&(x, y, z))
+                        && !self
+                            .world
+                            .block_entities
+                            .get(&(x, y, z))
+                            .is_some_and(|e| e.fits(&now)))
             })
             .map(|&(_, _, new)| BlockStateId(new))
             .collect();
@@ -297,10 +302,11 @@ fn replace_block_entities(
         // (`BlockEntity.isValidBlockState`); a mismatched or missing one
         // makes way for the block's own.
         if was != now
-            || !world
-                .block_entities
-                .get(&(x, y, z))
-                .is_some_and(|e| e.fits(&now))
+            || (!world.block_entities.is_taken(&(x, y, z))
+                && !world
+                    .block_entities
+                    .get(&(x, y, z))
+                    .is_some_and(|e| e.fits(&now)))
         {
             world.block_entities.remove(&(x, y, z));
             if let Some(entity) = new_entity(&now) {
@@ -494,6 +500,221 @@ mod tests {
             }
             assert_eq!(explicit.sync(game), Ok(()));
             assert!(game.world.block_log.as_ref().unwrap().contains(&(4, 64, 0)));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn swapped_dimension_bulk_edits_refuse_and_never_touch_outer_transaction() {
+        use crate::game::{Dim, api_values::TryIntoApi, native_entity_refs::tests::with_game};
+        use mod_api::BlockUpdateFlags;
+
+        with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.world.block_log = Some(Vec::new());
+            let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+            let (stone, dirt, cobblestone) = (
+                state("minecraft:stone"),
+                state("minecraft:dirt"),
+                state("minecraft:cobblestone"),
+            );
+            let overworld = game.level("minecraft:overworld").unwrap();
+            assert_eq!(
+                overworld.set_block(
+                    game,
+                    [1, 64, 0],
+                    stone.try_into_api().unwrap(),
+                    BlockUpdateFlags::NONE
+                ),
+                Ok(true)
+            );
+            let back = game.enter_command_level(Dim::Nether).unwrap();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.world.block_log = Some(Vec::new());
+            let nether = game.level("minecraft:the_nether").unwrap();
+            assert_eq!(
+                nether.set_block(
+                    game,
+                    [1, 64, 0],
+                    dirt.try_into_api().unwrap(),
+                    BlockUpdateFlags::NONE
+                ),
+                Ok(true)
+            );
+            game.world.modified.clear();
+            game.world.dirty_light.clear();
+            game.world.bulk_log.clear();
+            game.enter_command_level(back).unwrap();
+            game.world.modified.clear();
+            game.world.dirty_light.clear();
+            game.world.bulk_log.clear();
+
+            let edit = BlockEdit {
+                palette: vec![cobblestone.try_into_api().unwrap()],
+                filters: vec![],
+                runs: vec![BlockRun {
+                    x: 1,
+                    y: 64,
+                    z: 0,
+                    block: 0,
+                    height: 1,
+                    surface: None,
+                    only: None,
+                }],
+            };
+
+            for commit in [false, true] {
+                let tx = game.transaction_open();
+                let back = game.enter_command_level(Dim::Nether).unwrap();
+                assert_eq!(
+                    overworld.edit_blocks(game, &edit),
+                    Err(BlockEditError::InTransaction)
+                );
+                assert_eq!(
+                    nether.edit_blocks(game, &edit),
+                    Err(BlockEditError::InTransaction)
+                );
+                let nested = game.transaction_open();
+                assert_eq!(
+                    nether.edit_blocks(game, &edit),
+                    Err(BlockEditError::InTransaction)
+                );
+                game.transaction_close(&nested, commit);
+                assert_eq!(game.world.block(1, 64, 0), dirt);
+                assert!(game.world.modified.is_empty());
+                assert!(game.world.dirty_light.is_empty());
+                assert!(game.world.bulk_log.is_empty());
+                game.enter_command_level(back).unwrap();
+                game.transaction_close(&tx, commit);
+                assert_eq!(game.world.block(1, 64, 0), stone);
+                assert!(game.world.modified.is_empty());
+                assert!(game.world.dirty_light.is_empty());
+                assert!(game.world.bulk_log.is_empty());
+                assert_eq!(
+                    game.levels
+                        .parked_world(Dim::Nether)
+                        .unwrap()
+                        .block(1, 64, 0),
+                    dirt
+                );
+            }
+
+            let back = game.enter_command_level(Dim::Nether).unwrap();
+            for commit in [false, true] {
+                let tx = game.transaction_open();
+                assert_eq!(nether.edit_blocks(game, &edit), Ok(1));
+                game.transaction_close(&tx, commit);
+                assert_eq!(
+                    game.world.block(1, 64, 0),
+                    if commit { cobblestone } else { dirt }
+                );
+                assert_eq!(game.world.modified.contains(&(0, 0)), commit);
+                assert_eq!(game.world.dirty_light.contains(&(0, 0)), commit);
+                assert_eq!(game.world.bulk_log.contains(&(0, 0)), commit);
+            }
+            game.enter_command_level(back).unwrap();
+            assert_eq!(game.world.block(1, 64, 0), stone);
+            assert!(game.world.modified.is_empty());
+            assert!(game.world.dirty_light.is_empty());
+            assert!(game.world.bulk_log.is_empty());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn aborted_bulk_replacement_restores_loaned_block_entity_lease() {
+        use crate::game::{api_values::TryIntoApi, native_entity_refs::tests::with_game};
+        use mod_api::BlockUpdateFlags;
+        use sunrise_client::items::ItemStack;
+
+        with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let level = game.level(game.dim.id()).unwrap();
+            let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+            let (chest, stone, hopper) = (
+                state("minecraft:chest"),
+                state("minecraft:stone"),
+                state("minecraft:hopper"),
+            );
+            let to_stone = [1, 64, 0];
+            let to_hopper = [2, 64, 0];
+            let diamond = ItemStack::new("minecraft:diamond", 1);
+            for pos in [to_stone, to_hopper] {
+                assert_eq!(
+                    level.set_block(
+                        game,
+                        pos,
+                        chest.try_into_api().unwrap(),
+                        BlockUpdateFlags::NONE
+                    ),
+                    Ok(true)
+                );
+                game.world
+                    .block_entities
+                    .get_mut(&(pos[0], pos[1], pos[2]))
+                    .unwrap()
+                    .slots_mut()[0] = Some(diamond.clone());
+            }
+            let h1 = game.block_entity(level, to_stone).unwrap();
+            let h2 = game.block_entity(level, to_hopper).unwrap();
+            let (lease1, entity1) = game.world.block_entities.take(&(1, 64, 0)).unwrap();
+            let (lease2, entity2) = game.world.block_entities.take(&(2, 64, 0)).unwrap();
+
+            let edit = BlockEdit {
+                palette: vec![
+                    stone.try_into_api().unwrap(),
+                    hopper.try_into_api().unwrap(),
+                ],
+                filters: vec![],
+                runs: [(to_stone, 0), (to_hopper, 1)]
+                    .into_iter()
+                    .map(|([x, y, z], block)| BlockRun {
+                        x,
+                        y,
+                        z,
+                        block,
+                        height: 1,
+                        surface: None,
+                        only: None,
+                    })
+                    .collect(),
+            };
+
+            let tx = game.transaction_open();
+            let nested = game.transaction_open();
+            assert_eq!(level.edit_blocks(game, &edit), Ok(2));
+            game.transaction_close(&nested, true);
+            assert!(game.block_entity(level, to_stone).is_none());
+            assert_ne!(game.block_entity(level, to_hopper), Some(h2));
+            assert!(game.block_entity(level, to_hopper).is_some());
+            game.transaction_close(&tx, false);
+
+            assert_eq!(game.world.block(1, 64, 0), chest);
+            assert_eq!(game.world.block(2, 64, 0), chest);
+            assert!(game.world.block_entities.put(lease1, entity1));
+            assert!(game.world.block_entities.put(lease2, entity2));
+            assert_eq!(game.block_entity(level, to_stone), Some(h1));
+            assert_eq!(game.block_entity(level, to_hopper), Some(h2));
+            for pos in [(1, 64, 0), (2, 64, 0)] {
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[0],
+                    Some(diamond.clone())
+                );
+            }
+
+            let (lease, entity) = game.world.block_entities.take(&(1, 64, 0)).unwrap();
+            let tx = game.transaction_open();
+            assert_eq!(level.edit_blocks(game, &edit), Ok(2));
+            game.transaction_close(&tx, true);
+            assert!(!game.world.block_entities.put(lease, entity));
+            assert_eq!(game.world.block(1, 64, 0), stone);
+            assert!(game.world.block_entities.get(&(1, 64, 0)).is_none());
         });
     }
 

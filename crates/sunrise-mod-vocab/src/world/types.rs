@@ -1894,7 +1894,8 @@ pub enum BlockEditError {
     Stale,
     /// The operation is unavailable on this side, phase or host.
     Unavailable,
-    /// A parked level cannot be edited while a Host transaction is open.
+    /// A Host transaction is open in another level (including when editing a parked level or
+    /// when a command has temporarily swapped dimensions).
     InTransaction,
     /// A palette entry is not a valid block state in the owning registry.
     InvalidState(BlockStateError),

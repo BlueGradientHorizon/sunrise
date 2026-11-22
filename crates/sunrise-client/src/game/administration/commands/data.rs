@@ -1964,7 +1964,7 @@ impl Game<'_> {
 }
 
 /// `Level.isInSpawnableBounds(BlockPos.containing(pos))`.
-pub(super) fn summon_position_ok([x, y, z]: [f64; 3]) -> bool {
+pub(in crate::game) fn summon_position_ok([x, y, z]: [f64; 3]) -> bool {
     (-30_000_000.0..30_000_000.0).contains(&x)
         && (-20_000_000.0..20_000_000.0).contains(&y)
         && (-30_000_000.0..30_000_000.0).contains(&z)
@@ -1976,7 +1976,7 @@ pub(super) fn summon_position_ok([x, y, z]: [f64; 3]) -> bool {
 /// compounds a player's NBT arrives in: `/summon`'s argument, `/data`'s and the
 /// `minecraft:entity_data` component's (`Game::apply_entity_nbt`), and
 /// `LevelRef::summon`, which takes `/summon`'s argument.
-pub(in crate::game) fn strip_finalize_tree(tag: &mut Tag) {
+fn strip_finalize_tree(tag: &mut Tag) {
     let Tag::Compound(c) = tag else { return };
     c.remove(&"sunrise:finalize".into());
     if let Some(Tag::List(passengers)) = c.get_mut(&"Passengers".into()) {

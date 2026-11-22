@@ -6,9 +6,7 @@ pub(super) mod compute;
 pub(in crate::game) mod data;
 mod difficulty;
 mod display_names;
-#[cfg(test)]
-pub(super) use data::summon_position_ok;
-pub(super) use data::{place_summoned, strip_finalize_tree};
+pub(super) use data::place_summoned;
 mod effects;
 pub(super) mod execute;
 pub(super) mod extra;

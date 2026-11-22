@@ -128,6 +128,7 @@ impl OpenTransactions {
         if let Some(level) = self.last_mut() {
             level.block_entities.entry(pos).or_insert_with(|| Kept {
                 entity: Some(BlockEntity::Mod(Box::new(loan.entity.clone()))),
+                taken: None,
                 generation: Some(loan.identity.generation),
                 attachments: loan.attachments.cloned(),
                 hopper,
@@ -340,6 +341,7 @@ struct KeptAttachments {
 
 struct Kept {
     entity: Option<BlockEntity>,
+    taken: Option<sunrise_client::block_entities::TakenLeaseSnapshot>,
     generation: Option<u64>,
     /// None where it had no map: an abort removes one a write made.
     attachments: Option<Attachments>,
@@ -359,6 +361,7 @@ impl Kept {
     ) -> Self {
         Self {
             entity: world.block_entities.get(&pos).cloned(),
+            taken: world.block_entities.taken_lease_snapshot(&pos),
             generation: world.block_entities.generation(&pos),
             attachments: world.block_entities.attachments(pos).cloned(),
             hopper: hoppers.get(&pos).copied(),
@@ -690,6 +693,12 @@ impl Game<'_> {
     pub(in crate::game) fn transaction_current(&self) -> Option<Transaction> {
         let level = self.transactions.last()?;
         Some(mod_api::__private::transaction_of(level.token))
+    }
+    /// Whether any open transaction belongs to a level other than the one currently in place.
+    pub(super) fn has_foreign_transaction(&self) -> bool {
+        self.transactions
+            .iter()
+            .any(|level| level.dimension != Some(self.dim))
     }
     /// Stage completion on the current frame, or on the callback's own frame even if it
     /// left a child open. A missing frame never publishes anything.
@@ -1062,18 +1071,22 @@ impl Game<'_> {
     /// Puts back the block entity at `pos` that a transaction removed, as `kept` holds it, with
     /// its generation, where none stands there now.
     fn restore_removed_block_entity(&mut self, pos: Pos, kept: &Kept) {
-        let Some(entity) = &kept.entity else {
-            return;
-        };
         if self.world.block_entities.get(&pos).is_some() {
             return;
         }
-        self.world.block_entities.insert(pos, entity.clone());
-        if let Some(generation) = kept.generation {
-            self.world
-                .block_entities
-                .restore_generation(pos, generation);
-            self.world.block_entities.reattach_retired(pos, generation);
+        if let Some(entity) = &kept.entity {
+            self.world.block_entities.insert(pos, entity.clone());
+            if let Some(generation) = kept.generation {
+                self.world
+                    .block_entities
+                    .restore_generation(pos, generation);
+                self.world.block_entities.reattach_retired(pos, generation);
+            }
+        } else if let Some(taken) = kept.taken {
+            self.world.block_entities.restore_taken_lease(pos, taken);
+            if let Some(generation) = kept.generation {
+                self.world.block_entities.reattach_retired(pos, generation);
+            }
         }
     }
     /// Removes the block entity at `pos`, kept whole by the open transaction, which puts it back
@@ -1545,6 +1558,7 @@ impl Game<'_> {
     }
     /// Hold a strict bulk write in the ordinary block rollback journal.
     pub(super) fn journal_bulk_block(&mut self, pos: Pos, was: BlockStateId) {
+        debug_assert!(!self.has_foreign_transaction());
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
@@ -1572,6 +1586,7 @@ impl Game<'_> {
     }
 
     pub(super) fn journal_bulk_holder(&mut self, pos: Pos) {
+        debug_assert!(!self.has_foreign_transaction());
         self.journal_block_entity(pos);
         if let Some(level) = self.transactions.last_mut() {
             level.removed_block_entities.insert(pos);
@@ -2027,7 +2042,7 @@ impl Game<'_> {
                         .restore_generation(pos, kept.generation.unwrap());
                 }
                 // One this transaction removed comes back.
-                (Some(_), None) if level.removed_block_entities.contains(&pos) => {
+                (Some(_), None) | (None, None) if level.removed_block_entities.contains(&pos) => {
                     self.restore_removed_block_entity(pos, &kept);
                 }
                 _ => {}

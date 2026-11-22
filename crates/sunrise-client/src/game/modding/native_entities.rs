@@ -3,7 +3,7 @@
 //! the entities Sunrise keeps without simulating them (displays, markers,
 //! interactions); `native_display_refs.rs` poses displays.
 #[cfg(test)]
-use super::commands::{place_summoned, summon_position_ok};
+use super::commands::{data::summon_position_ok, place_summoned};
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, LevelRef, LevelWriteError};
 use sunrise_core::geometry::Vec3;

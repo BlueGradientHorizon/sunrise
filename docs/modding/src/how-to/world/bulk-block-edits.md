@@ -16,8 +16,8 @@ All palette entries, predicates and run indices are prepared before any mutation
 NBT is not representable. At most 65,536 filters are allowed. Unloaded chunks and
 out-of-height portions of runs are skipped. Edits preserve strict block-entity behavior,
 notify no neighbors and send whole changed chunks. Refusals return a typed `BlockEditError`
-with nothing changed (`Stale`, `Unavailable`, `InTransaction` for a parked level inside an
-open Host transaction, `InvalidState`, `InvalidPredicate`, `PaletteOutOfRange`,
+with nothing changed (`Stale`, `Unavailable`, `InTransaction` when a Host transaction is
+open in another level, `InvalidState`, `InvalidPredicate`, `PaletteOutOfRange`,
 `FilterOutOfRange`, or `TooManyFilters`).
 
 ## Read column heights and slices
