@@ -67,14 +67,14 @@ impl Game<'_> {
             );
             return;
         }
-        let Some(format) = self.remote.as_ref().map(|r| r.chunk_format.clone()) else {
+        let Some(remote) = &self.remote else {
             return;
         };
         let column = match decoded {
-            Some((used, column)) if Arc::ptr_eq(used, &format) => column,
-            _ => format.column(p),
+            Some((used, column)) if Arc::ptr_eq(used, &remote.chunk_format) => column,
+            _ => remote.chunk_format.column(p),
         };
-        let chunk = match column {
+        let mut chunk = match column {
             Ok(chunk) => chunk,
             Err(e) => {
                 log::warn!("Sunrise: chunk {} {}: {e}", p.x, p.z);
@@ -82,9 +82,26 @@ impl Game<'_> {
             }
         };
         let (x, z) = (p.x, p.z);
+        let resident = self.world.chunks.get(&(x, z));
+        // Heightmap.Types.MOTION_BLOCKING has stream ID 4; the last occurrence
+        // wins, as in ClientboundLevelChunkPacketData's EnumMap codec.
+        let words = p
+            .chunk
+            .heightmaps
+            .iter()
+            .rev()
+            .find_map(|(kind, words)| (*kind == 4).then_some(words.as_slice()));
+        // LevelChunk.replaceWithPacketData reads the map after the sections. Do it
+        // before either streaming replacement path so it doesn't depend on mesh changes.
+        chunk.adopt_packet_motion_blocking(
+            resident.map(Arc::as_ref),
+            [remote.dimension.min_y, remote.dimension.height],
+            words,
+            &self.pack.assets.properties,
+        );
+        let resident = resident.is_some();
         self.supersede_group_predictions(&chunk);
         // A column sent again while it is resident (a bulk edit): only what changed is lit and meshed again.
-        let resident = self.world.chunks.contains_key(&(x, z));
         if resident {
             // LevelChunk.replaceWithPacketData clears the old block entities. Pots keep
             // their wobble outside the block entity store, so retire it here too.
