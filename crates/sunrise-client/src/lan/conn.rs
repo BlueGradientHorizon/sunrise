@@ -1239,6 +1239,7 @@ struct Parts {
     info: ClientInformation,
     brand: String,
     datapack_offer: Option<Vec<u8>>,
+    spawn: Option<super::configuration_tasks::PreparedSpawn>,
     channels: super::config_payloads::EngineChannels,
 }
 
@@ -1606,7 +1607,7 @@ fn login_and_configure(
         lost(shared, &format!("{name} ({})", uuid_string(uuid)), &text);
         return Ok(None);
     }
-    configuration_tasks::configure(
+    let configured = configuration_tasks::configure(
         c,
         shared,
         uuid,
@@ -1639,6 +1640,9 @@ fn login_and_configure(
             _ => {}
         }
     }
+    let spawn = configured
+        .as_ref()
+        .and_then(configuration_tasks::Configured::spawn);
     payload_transport.finish_configuration()?;
     let channels = std::mem::take(&mut c.channels);
     c.finish()?;
@@ -1652,6 +1656,7 @@ fn login_and_configure(
         info,
         brand,
         datapack_offer,
+        spawn,
     }))
 }
 
@@ -2123,7 +2128,7 @@ fn play(
     let mut session = Box::new(session);
     if shared
         .events
-        .send(NetEvent::Joined(Box::new(joined)))
+        .send(NetEvent::Joined(Box::new(joined), parts.spawn))
         .is_err()
     {
         session.left("server closed".to_owned());

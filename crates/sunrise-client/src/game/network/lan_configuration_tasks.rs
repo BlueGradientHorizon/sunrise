@@ -1,5 +1,5 @@
 //! Dispatch each configuring connection on the server's ordinary tick.
-use super::{Game, lan::LanHost};
+use super::{Dim, Game, lan::LanHost};
 use mod_api::{
     __private::{
         ConfigurationTaskOutcome, ConfigurationTaskRegistration, configuration_task_context,
@@ -7,14 +7,18 @@ use mod_api::{
     ConfigurationConnection, ConfigurationTaskError, PayloadBytes, PayloadId,
 };
 use std::{io, sync::Arc};
-use sunrise_client::lan::{Lan, NetConfig, configuration_tasks::Session, data::SyncData};
+use sunrise_client::{
+    lan::{
+        Lan, NetConfig,
+        configuration_tasks::{PreparedSpawn, Session, SpawnTask},
+        data::SyncData,
+        playerdata,
+    },
+    ticket_levels::{PLAYER_SPAWN_RADIUS, SpawnTicketKind},
+};
 
 pub(super) fn start(sync: Arc<SyncData>, net: NetConfig) -> io::Result<Lan> {
-    Lan::start_with_configuration_tasks(
-        sync,
-        net,
-        mod_api::__private::listened(mod_api::HookId::RegisterConfigurationTasks),
-    )
+    Lan::start_with_spawn_preparation(sync, net)
 }
 impl Game<'_> {
     fn configuration_callback(
@@ -60,17 +64,19 @@ impl Game<'_> {
                     .configuration_tasks
                     .insert(&request);
                 let mut registration = ConfigurationTaskRegistration::default();
-                if self.configuration_callback(&request.session, |game| {
-                    game.native_register_configuration_tasks(
-                        request.connection,
-                        request.player,
-                        &request.name,
-                        &mut registration,
-                    );
-                    registration
-                        .failure()
-                        .map_or(Ok(None), |error| Err(error.to_owned()))
-                }) {
+                if !mod_api::__private::listened(mod_api::HookId::RegisterConfigurationTasks)
+                    || self.configuration_callback(&request.session, |game| {
+                        game.native_register_configuration_tasks(
+                            request.connection,
+                            request.player,
+                            &request.name,
+                            &mut registration,
+                        );
+                        registration
+                            .failure()
+                            .map_or(Ok(None), |error| Err(error.to_owned()))
+                    })
+                {
                     self.lan
                         .as_mut()?
                         .hub
@@ -164,10 +170,121 @@ impl Game<'_> {
                         break;
                     }
                 }
+                if let Some(task) = session.take_spawn() {
+                    match self.tick_prepare_spawn(task) {
+                        Ok(task) => session.advance_spawn(task),
+                        Err(error) => session.fail(error),
+                    }
+                }
             }
         }
         self.lan.take()
     }
+
+    /// `PrepareSpawnTask`: resolve the place before play, load its FULL square,
+    /// then refresh the ticket while the client acknowledges configuration.
+    fn tick_prepare_spawn(&mut self, task: SpawnTask) -> Result<SpawnTask, String> {
+        let task = match task {
+            SpawnTask::Start(player) => {
+                let host = self.lan.as_ref().ok_or("Server closed")?;
+                let shapes = host.hub.config.levels;
+                let owner = host
+                    .owner
+                    .as_ref()
+                    .filter(|o| o.uuid == player)
+                    .and_then(|o| o.saved.as_deref());
+                let saved = playerdata::saved_position(&self.world_root, player, owner);
+                let dimension = saved
+                    .dimension
+                    .as_deref()
+                    .filter(|id| shapes.has(id))
+                    .map_or_else(|| self.world_spawn_level().id(), |id| Dim::from_id(id).id());
+                let rotation = saved.rotation.unwrap_or(self.level.world_spawn_angle);
+                if let Some(position) = saved.position {
+                    let prepared = PreparedSpawn {
+                        dimension,
+                        position,
+                        rotation,
+                    };
+                    let back = self.dim;
+                    self.enter_level(Dim::from_id(dimension))
+                        .map_err(|e| e.to_string())?;
+                    self.tickets
+                        .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
+                    self.enter_level(back).map_err(|e| e.to_string())?;
+                    return Ok(SpawnTask::Load(prepared));
+                }
+                SpawnTask::Find {
+                    dimension,
+                    suggestion: self.world_spawn_position().map(|v| v.floor() as i32),
+                    rotation,
+                    finder: None,
+                }
+            }
+            task => task,
+        };
+        let dimension = match &task {
+            SpawnTask::Find { dimension, .. } => dimension,
+            SpawnTask::Load(p) | SpawnTask::Ready(p) => &p.dimension,
+            SpawnTask::Start(_) => unreachable!(),
+        };
+        let back = self.dim;
+        self.enter_level(Dim::from_id(dimension))
+            .map_err(|e| e.to_string())?;
+        let task = match task {
+            SpawnTask::Find {
+                dimension,
+                suggestion,
+                rotation,
+                mut finder,
+            } => match self.search_spawn(suggestion, &mut finder) {
+                Ok(feet) => {
+                    let prepared = PreparedSpawn {
+                        dimension,
+                        position: [feet.x, feet.y, feet.z],
+                        rotation,
+                    };
+                    self.tickets
+                        .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
+                    SpawnTask::Load(prepared)
+                }
+                Err(chunk) => {
+                    self.tickets.add_spawn(chunk, SpawnTicketKind::Search);
+                    SpawnTask::Find {
+                        dimension,
+                        suggestion,
+                        rotation,
+                        finder,
+                    }
+                }
+            },
+            SpawnTask::Load(prepared) => {
+                if spawn_area_full(&self.world, prepared.chunk(), PLAYER_SPAWN_RADIUS) {
+                    SpawnTask::Ready(prepared)
+                } else {
+                    SpawnTask::Load(prepared)
+                }
+            }
+            SpawnTask::Ready(prepared) => {
+                self.tickets
+                    .add_spawn(prepared.chunk(), SpawnTicketKind::Player);
+                SpawnTask::Ready(prepared)
+            }
+            SpawnTask::Start(_) => unreachable!(),
+        };
+        self.enter_level(back).map_err(|e| e.to_string())?;
+        Ok(task)
+    }
+
+    pub(super) fn tick_spawn_tickets(&mut self) {
+        if self.tickets.spawn_areas().next().is_some() {
+            let world = &self.world;
+            self.tickets
+                .tick_spawn(|center, radius| spawn_area_full(world, center, radius));
+            self.update_chunk_tickets();
+        }
+    }
+
     pub(in crate::game) fn configuration_session(
         &self,
         connection: ConfigurationConnection,
@@ -201,4 +318,20 @@ impl Game<'_> {
             .map(|_| ())
             .map_err(ConfigurationTaskError::Payload)
     }
+}
+
+/// `ServerChunkCache.addTicketAndLoadWithRadius`: every chunk, including the corners, is FULL.
+fn spawn_area_full(
+    world: &sunrise_client::world::World,
+    (cx, cz): (i32, i32),
+    radius: i32,
+) -> bool {
+    (-radius..=radius).all(|z| {
+        (-radius..=radius).all(|x| {
+            world
+                .chunks
+                .get(&(cx + x, cz + z))
+                .is_some_and(|chunk| chunk.lit)
+        })
+    })
 }

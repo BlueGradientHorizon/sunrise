@@ -32,20 +32,20 @@ impl Game<'_> {
                 .is_some_and(|h| h.hub.viewed_open(dim.id()))
     }
 
-    /// A view pass for each level the viewed areas name that `ticked` does not hold.
+    /// A chunk pass for each idle level held by a view or a spawn preparation ticket.
     pub(super) fn run_view_passes(&mut self, ticked: &[Dim]) -> Result<()> {
-        if !self.lan.as_ref().is_some_and(|h| h.hub.viewed.active()) {
-            return Ok(());
-        }
         let viewed: Vec<Dim> = Dim::all()
             .into_iter()
-            .filter(|d| !ticked.contains(d) && self.needs_view_pass(*d))
+            .filter(|d| {
+                !ticked.contains(d) && (self.needs_view_pass(*d) || self.has_spawn_tickets(*d))
+            })
             .collect();
         for dim in viewed {
             let _span = sunrise_client::spans::guard("view_pass");
             self.enter_level(dim)?;
             self.update_dedicated_streaming();
             self.lan_update_streaming();
+            self.tick_spawn_tickets();
             self.update_world();
             // `LevelChunk.postProcessGeneration` comes before a chunk is sent
             // (`ChunkMap.prepareTickingChunk`, then `onChunkReadyToSend`), ticked or not.
@@ -53,7 +53,9 @@ impl Game<'_> {
             // Like LevelChunk.registerAllBlockEntitiesAfterLevelLoad, attaching a loaded
             // entity publishes it even when this level has no entity ticks.
             self.fire_pending_block_entity_loads();
-            self.view_pass_send();
+            if self.needs_view_pass(dim) {
+                self.view_pass_send();
+            }
         }
         Ok(())
     }
