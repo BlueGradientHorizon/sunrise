@@ -1578,7 +1578,10 @@ fn receive_play(
             ));
             return Err(Reason::plain(connection_lost(error, lang)));
         }
-        if let Some(rec) = recorder.lock().unwrap().as_ref()
+        // A malformed sample is not a recordable packet in either path. In
+        // a bundle only the ordered fault survives, never its body.
+        if oversized_sample.is_none()
+            && let Some(rec) = recorder.lock().unwrap().as_ref()
             && rec.is_active()
         {
             rec.received(&packet, id, &payload);

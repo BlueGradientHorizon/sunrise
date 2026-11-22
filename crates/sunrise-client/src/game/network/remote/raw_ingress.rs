@@ -648,9 +648,43 @@ mod tests {
         ) {
             return;
         }
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::net::{PacketRecorder, RecorderStatus};
+        use sunrise_protocol::ids::play::clientbound::{BUNDLE_DELIMITER, SET_HELD_SLOT};
+
+        struct RecordIds(Arc<Mutex<Vec<i32>>>);
+        impl PacketRecorder for RecordIds {
+            fn is_active(&self) -> bool {
+                true
+            }
+            fn received(&self, _: &C, id: i32, _: &[u8]) {
+                self.0.lock().unwrap().push(id);
+            }
+            fn record_packet(&self, _: i32, _: &[u8]) {}
+            fn status(&self) -> RecorderStatus {
+                RecorderStatus {
+                    active: true,
+                    path: Default::default(),
+                    elapsed: Duration::ZERO,
+                    packet_count: self.0.lock().unwrap().len() as u64,
+                    bytes_written: 0,
+                    error: None,
+                }
+            }
+            fn stop(self: Box<Self>) -> std::io::Result<std::path::PathBuf> {
+                Ok(Default::default())
+            }
+        }
+
         with_client_game(|game| {
             let (_reader, mut writer) = connect_play_test(game, |_, _| {});
             spawn_menu_test(game);
+            let recorded = Arc::new(Mutex::new(Vec::new()));
+            game.remote
+                .as_ref()
+                .unwrap()
+                .session
+                .start_recording(RecordIds(recorded.clone()), |_| {});
             let delimiter = C::BundleDelimiter(sunrise_protocol::packets::Empty);
             game.selected = 0;
             for packet in [
@@ -676,6 +710,16 @@ mod tests {
             let Some(Received::Event(Event::Bundle(bundle), _credit)) = backlog.remove(pos) else {
                 panic!("the receiver closed before handing the completed bundle to main");
             };
+            assert_eq!(
+                *recorded.lock().unwrap(),
+                [
+                    BUNDLE_DELIMITER,
+                    SET_HELD_SLOT,
+                    SET_HELD_SLOT,
+                    BUNDLE_DELIMITER
+                ],
+                "only the real bundle members surrounding the fault reach the recorder",
+            );
             use sunrise_client::net::BundleMember;
             assert!(matches!(
                 bundle.packets.as_slice(),
