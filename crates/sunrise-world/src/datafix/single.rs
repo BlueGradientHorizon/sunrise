@@ -1,5 +1,5 @@
 //! The world's datafix chain applied to one saved compound, without a chunk or level.
-use super::{CURRENT, Ty, dynamic, identifier, key, schema, tables, update};
+use super::{CURRENT, Ty, dynamic, identifier, key, schema, tables, try_update};
 use mod_api::{NbtDataType, NbtUpgradeError};
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 
@@ -69,24 +69,24 @@ pub fn upgrade_compound(
     }
     let mut value = Tag::Compound(tag);
     let mut prefix = None;
-    let run = std::panic::AssertUnwindSafe(|| {
-        if root == Ty::BlockEntity && !schema::block_entity_known(&value, from)
+    let mut run = || -> tables::Result {
+        if root == Ty::BlockEntity && !schema::block_entity_known(&value, from)?
             || matches!(root, Ty::Entity | Ty::EntityTree)
                 && from < schema::flat::END
-                && !schema::flat::entity_tree_known(&value, from)
+                && !schema::flat::entity_tree_known(&value, from)?
         {
-            return;
+            return Ok(());
         }
         // `Type.readAndWrite` lays the fixed keys over the source codec's remainder.
         // Tagged-choice roots leave the original compound there; the other roots don't.
         if tagged_choice {
             prefix = Some(value.clone());
         }
-        update(root, &mut value, data_version, CURRENT);
-    });
-    if let Err(error) = tables::standalone(run) {
+        try_update(root, &mut value, data_version, CURRENT)
+    };
+    if run().is_err() {
         dismantle(value);
-        return Err(error);
+        return Err(NbtUpgradeError::LegacyTablesUnavailable);
     }
     let Tag::Compound(mut upgraded) = value else {
         dismantle(value);
