@@ -10,7 +10,7 @@ players.
 | `host.commands()` | `run_command(line)` runs through the console command path with permission level 4. `feedback(text)` answers the command source. |
 | `host.messages()` | `broadcast(text)` fires the broadcast hook and writes to the server log. |
 | `host.players()` | `server_players()` returns `Vec<PlayerRef>` in join order. `acting_player()` returns the optional player whose state is active in the hook. `player_by_name(name)` finds a connected real player by case-insensitive account name, not nickname. |
-| `host.levels()` | `list_levels()` returns loaded server levels in vanilla dimension order, or an empty list before a server world opens. |
+| `host.levels()` | `visit_levels(&mut visit)` visits loaded server levels, Overworld, Nether and End first, then the active extra level and parked extra levels. Before a world opens it completes without calling the visitor. |
 
 The players list and name lookup include the single-player owner, even before
 opening the world to LAN. The owner joins the integrated server through memory
@@ -168,9 +168,11 @@ time. `level.set_game_rule(host, "keep_inventory", GameRuleValue::Bool(true))`
 does what `/gamerule` does and fires `game_rule_changed` with no actor. Both
 return `false` for a stale handle, a client, or a value the rule refuses.
 
-On a server, `host.tick_times()` returns the last 100 tick durations in
-nanoseconds (the tick numbered `n` at index `n % 100`; `tick_stats()` has the
-average). `host.server_view_distance()` and `host.server_simulation_distance()`
+On a server, `host.visit_tick_times(&mut visit)` visits the tick durations in
+nanoseconds in vanilla ring-slot order (tick `n` at index `n % 100`; `tick_stats()`
+has the average). As with `visit_levels`, return `ControlFlow::Break(())` to stop
+or `Continue(())` to keep visiting. An unreadable phase returns
+`Err(ServerReadError::Unavailable)`. `host.server_view_distance()` and `host.server_simulation_distance()`
 read the distances in chunks; `host.server_set_view_distance(d)` and
 `host.server_set_simulation_distance(d)` change them live for 2 to 32 on a
 dedicated server and return `false` otherwise. `server.properties` is not

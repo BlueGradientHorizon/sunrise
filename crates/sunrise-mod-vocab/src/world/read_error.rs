@@ -1,4 +1,4 @@
-//! Refusals of entity, level and registry reads.
+//! Refusals of entity, level, server and registry reads.
 
 /// Why an `EntityRef` read cannot return its requested state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,7 +29,7 @@ impl crate::NoBackend for EntityReadError {
 pub enum LevelReadError {
     /// The handle's level is gone or has been reopened.
     Stale,
-    /// The state is not readable from this side or phase.
+    /// The state is not readable from this side, phase or view.
     Unavailable,
 }
 
@@ -39,6 +39,26 @@ impl crate::AccessRefusal for LevelReadError {
     }
 }
 impl crate::NoBackend for LevelReadError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
+/// Why a server-wide view could not be visited.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+// no wire: this refusal is returned only by in-process server visitors
+pub enum ServerReadError {
+    /// The view has no backend or the current phase cannot read it.
+    Unavailable,
+}
+
+impl crate::AccessRefusal for ServerReadError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+impl crate::NoBackend for ServerReadError {
     fn no_backend() -> Self {
         Self::Unavailable
     }

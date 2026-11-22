@@ -5,7 +5,7 @@ use crate::{
 };
 use std::{
     collections::{
-        VecDeque,
+        BTreeSet, VecDeque,
         hash_map::{Iter, ValuesMut},
     },
     ops::Deref,
@@ -45,6 +45,8 @@ pub enum ChunkMembershipDelta {
 /// Tokens are process-wide: replacing the entire map also invalidates caches.
 pub struct ChunkMap {
     columns: Columns,
+    // The x-then-z projection of membership; gameplay still iterates the hash map.
+    ordered: BTreeSet<Key>,
     revision: u64,
     /// The oldest revision `recent_deltas` still answers for: the revision of
     /// the change it last dropped, or the revision that cleared them. A
@@ -68,6 +70,7 @@ impl Default for ChunkMap {
         let revision = next_revision();
         Self {
             columns: Columns::default(),
+            ordered: BTreeSet::new(),
             revision,
             min_valid_revision: revision,
             recent_deltas: VecDeque::new(),
@@ -220,6 +223,7 @@ impl ChunkMap {
         }
         let previous = self.columns.insert(key, chunk);
         if previous.is_none() {
+            self.ordered.insert(key);
             for z in key.1 - 1..=key.1 + 1 {
                 for x in key.0 - 1..=key.0 + 1 {
                     *self.near.entry((x, z)).or_insert(0) += 1;
@@ -234,6 +238,7 @@ impl ChunkMap {
         self.fresh.remove(key);
         let previous = self.columns.remove(key);
         if previous.is_some() {
+            self.ordered.remove(key);
             if let Some(observer) = &self.attachment_observer {
                 observer.unload(Holder::Chunk([key.0, key.1]));
             }
@@ -256,6 +261,7 @@ impl ChunkMap {
         if !self.columns.is_empty() {
             self.unload_attachments();
             self.columns.clear();
+            self.ordered.clear();
             self.fresh.clear();
             self.near.clear();
             self.revision = next_revision();
@@ -265,6 +271,11 @@ impl ChunkMap {
             self.min_valid_revision = self.revision;
         }
     }
+    /// Resident columns in lexical (x, z) order, independently of hash iteration.
+    pub fn ordered_keys(&self) -> impl ExactSizeIterator<Item = Key> + '_ {
+        self.ordered.iter().copied()
+    }
+
     /// Whether the column at `key` and its eight neighbours are all resident.
     pub fn surrounded(&self, key: Key) -> bool {
         self.near.get(&key) == Some(&9)

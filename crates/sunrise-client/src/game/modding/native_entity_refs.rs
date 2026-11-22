@@ -18,7 +18,7 @@ mod roll_loot_tests;
 #[path = "native_entity_refs/save_lending.rs"]
 mod save_lending;
 use super::{
-    Game,
+    Dim, Game,
     commands::Target,
     entity::{Entity as _, entity_lists_of, for_each_entity},
     remote::Remote,
@@ -250,15 +250,28 @@ impl Game<'_> {
             .as_ref()
             .map_or_else(|| self.dim.key(), |r| r.level_key)
     }
-    /// Loaded server levels, in vanilla dimension order. Empty without a server world.
-    pub(super) fn native_list_levels(&self) -> Vec<LevelRef> {
-        if !self.is_logical_server() || self.native_lifecycle.epoch().is_none() {
-            return Vec::new();
-        }
-        self.loaded_dims()
+    /// Loaded server levels in `MinecraftServer.getAllLevels` dimension order.
+    pub(super) fn native_visit_levels(
+        &self,
+        visit: &mut dyn FnMut(LevelRef) -> ControlFlow<()>,
+    ) -> ControlFlow<()> {
+        let Some(epoch) = self
+            .native_lifecycle
+            .epoch()
+            .filter(|_| self.is_logical_server())
+        else {
+            return ControlFlow::Continue(());
+        };
+        let builtins = [Dim::Overworld, Dim::Nether, Dim::End]
             .into_iter()
-            .filter_map(|dim| self.level(dim.id()))
-            .collect()
+            .filter(|dim| *dim == self.dim || self.levels.parked.contains_key(dim));
+        let extras = std::iter::once(self.dim)
+            .chain(self.levels.parked.keys().copied())
+            .filter(|dim| matches!(dim, Dim::Extra(_)));
+        builtins
+            .chain(extras)
+            .map(|dim| self.level_ref(epoch, dim.key()))
+            .try_for_each(visit)
     }
     fn level_entity_candidates(&self, level: LevelRef) -> impl Iterator<Item = EntityRef> + '_ {
         let mut after = None;
@@ -4477,7 +4490,15 @@ pub(super) mod tests {
         );
         let nether = game.level("minecraft:the_nether").unwrap();
         let host: &dyn mod_api::ServerHost = &game;
-        assert_eq!(host.levels().list_levels(), vec![level, nether]);
+        let mut visited = Vec::new();
+        assert_eq!(
+            host.levels().visit_levels(&mut |level| {
+                visited.push(level);
+                ControlFlow::Continue(())
+            }),
+            Ok(ControlFlow::Continue(()))
+        );
+        assert_eq!(visited, [level, nether]);
         let cube = vec![[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]];
         assert_eq!(
             game.level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Outline),

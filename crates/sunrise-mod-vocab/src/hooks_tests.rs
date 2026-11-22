@@ -760,7 +760,26 @@ fn level_queries_take_their_hosts(
 ) {
     let _: Result<core::ops::ControlFlow<()>, LevelReadError> =
         level.visit_online_players(read, &mut |_: PlayerRef| core::ops::ControlFlow::Break(()));
-    let _: Option<Vec<PlayerRef>> = chunk.watchers(read);
+    use core::ops::ControlFlow;
+    let _: Result<ControlFlow<()>, LevelReadError> =
+        chunk.visit_watchers(read, &mut |_: PlayerRef| ControlFlow::Break(()));
+    let _: Result<ControlFlow<()>, LevelReadError> =
+        level.visit_loaded_chunks(read, &mut |_: ChunkRef| ControlFlow::Break(()));
+    let _: Result<ControlFlow<()>, LevelReadError> =
+        level.visit_forced_chunks(read, &mut |_: [i32; 2]| ControlFlow::Break(()));
+    let _: Result<ControlFlow<()>, LevelReadError> = level.visit_game_rules(
+        read,
+        &mut |_: &str, _: GameRuleValue| ControlFlow::Break(()),
+    );
+    let _: Result<ControlFlow<()>, EntityReadError> =
+        shooter.visit_trackers(read, &mut |_: PlayerRef| ControlFlow::Break(()));
+    let _: Result<ControlFlow<()>, ServerReadError> =
+        server.visit_tick_times(&mut |_: u64| ControlFlow::Break(()));
+    let _: Result<ControlFlow<()>, ServerReadError> =
+        server.visit_game_rules(&mut |_: &str, _: GameRuleValue| ControlFlow::Break(()));
+    let _: Result<ControlFlow<()>, ServerReadError> = server
+        .levels()
+        .visit_levels(&mut |_: LevelRef| ControlFlow::Break(()));
     let _: Option<StructureSearchResult> = level.find_nearest_structure(
         read,
         "#minecraft:village",

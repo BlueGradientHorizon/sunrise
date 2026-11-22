@@ -212,8 +212,18 @@ for player in recipients {
 For typed payloads, `ToClient::send_in_level` and `ToClient::send_near` already handle
 collecting recipients before sending.
 
-Obtain a chunk with `host.chunk(level, pos)`, then call `chunk.watchers(host)` to ask which
-players were sent it and have it inside their view distance; fake players watch nothing.
+Obtain a chunk with `level.chunk_ref(host, pos)`, then call
+`chunk.visit_watchers(host, &mut visit)` to visit the players it was sent to and whose view
+still contains it, in server order. Fake players watch nothing. A valid parked level uses
+its own tracking rows; a valid unwatched chunk completes without calling the visitor.
+
+`level.visit_loaded_chunks(host, &mut visit)` visits resident chunks in x-then-z order,
+without loading anything. `level.visit_forced_chunks(host, &mut visit)` visits commanded
+chunk positions in `/forceload query` order. `level.visit_mod_forced_chunks(host, controller,
+&mut visit)` visits the calling mod's controller tickets in ticket order, passing the owner,
+position and natural-spawning flag separately. These visits use the same `ControlFlow` and
+`LevelReadError` convention as the online-player visit; a controller that the caller does
+not own returns `Unavailable`.
 
 `level.find_nearest_structure(host, structure, StructureSearch::new(origin, radius))` searches
 for a structure id or `#tag` and returns its structure and locate position. This is a

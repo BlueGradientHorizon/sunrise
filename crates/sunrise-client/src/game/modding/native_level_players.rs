@@ -3,7 +3,7 @@
 //! names its player once, excluding anyone who cannot resolve.
 use super::Game;
 use core::ops::ControlFlow;
-use mod_api::{ChunkRef, EntityRef, LevelReadError, LevelRef, PlayerRef};
+use mod_api::{ChunkRef, EntityReadError, EntityRef, LevelReadError, LevelRef, PlayerRef};
 
 impl Game<'_> {
     /// `ServerLevel.players`: the online players of an open server level, each once.
@@ -21,36 +21,48 @@ impl Game<'_> {
 
     /// `ChunkMap.TrackedEntity.seenBy`: the players of the level in place whose tracker holds
     /// the entity, other than the entity itself.
-    pub(super) fn entity_trackers(&self, entity: EntityRef) -> Option<Vec<PlayerRef>> {
-        let target = self.native_entity_target(entity)?;
+    pub(super) fn entity_visit_trackers(
+        &self,
+        entity: EntityRef,
+        visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, EntityReadError> {
+        let target = self.native_entity_target(entity).ok_or_else(|| {
+            if self.is_logical_server() {
+                EntityReadError::Stale
+            } else {
+                EntityReadError::Unavailable
+            }
+        })?;
         if self.target_level(target).key() != self.dim.key() {
-            return None;
+            return Err(EntityReadError::Unavailable);
         }
         let id = entity.id() as i32;
-        Some(
-            self.lan
-                .iter()
-                .flat_map(|h| h.hub.guests.iter().map(move |g| (&h.hub, g)))
-                .filter(|(hub, g)| hub.here(g) && g.entity_id != id && g.tracker.is_tracking(id))
-                .filter_map(|(_, g)| self.player(g.uuid))
-                .collect(),
-        )
+        Ok(self
+            .lan
+            .iter()
+            .flat_map(|h| h.hub.guests.iter().map(move |g| (&h.hub, g)))
+            .filter(|(hub, g)| hub.here(g) && g.entity_id != id && g.tracker.is_tracking(id))
+            .filter_map(|(_, g)| self.player(g.uuid))
+            .try_for_each(visit))
     }
 
     /// `ChunkMap.getPlayers(pos, false)`: the players the chunk was sent to and is
     /// inside the view of.
-    pub(super) fn chunk_watchers(&self, chunk: ChunkRef) -> Option<Vec<PlayerRef>> {
-        self.native_level_world(chunk.level())?;
+    pub(super) fn chunk_visit_watchers(
+        &self,
+        chunk: ChunkRef,
+        visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        self.native_level_world_result(chunk.level())?;
         let dimension = chunk.level().dimension_id();
         let [x, z] = chunk.pos();
-        Some(
-            self.lan
-                .iter()
-                .flat_map(|h| h.hub.guests.iter())
-                .filter(|g| g.tracks_chunk(dimension, (x, z)))
-                .filter_map(|g| self.player(g.uuid))
-                .collect(),
-        )
+        Ok(self
+            .lan
+            .iter()
+            .flat_map(|h| h.hub.guests.iter())
+            .filter(|g| g.tracks_chunk(dimension, (x, z)))
+            .filter_map(|g| self.player(g.uuid))
+            .try_for_each(visit))
     }
 }
 
@@ -61,7 +73,7 @@ mod tests {
         native_guest_turn_tests::{place_host, with_guests},
     };
     use super::{ControlFlow, Game};
-    use mod_api::{ChunkRef, LevelReadError, LevelRef, PlayerRef, WorldEpoch};
+    use mod_api::{ChunkRef, EntityReadError, LevelReadError, LevelRef, PlayerRef, WorldEpoch};
 
     /// Open the Nether and go back, so it is a parked level of the server.
     fn park_the_nether(game: &mut super::Game<'_>) {
@@ -69,8 +81,20 @@ mod tests {
         game.enter_level(Dim::Overworld).unwrap();
     }
 
-    fn uuids(players: Option<Vec<PlayerRef>>) -> Option<Vec<u128>> {
-        players.map(|players| players.into_iter().map(PlayerRef::uuid).collect())
+    fn uuids<E>(
+        enumerate: impl FnOnce(
+            &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
+        ) -> Result<ControlFlow<()>, E>,
+    ) -> Result<Vec<u128>, E> {
+        let mut uuids = Vec::new();
+        assert_eq!(
+            enumerate(&mut |player| {
+                uuids.push(player.uuid());
+                ControlFlow::Continue(())
+            })?,
+            ControlFlow::Continue(())
+        );
+        Ok(uuids)
     }
 
     fn collect_online_players(game: &Game<'_>, level: LevelRef) -> Vec<(u128, u32)> {
@@ -217,14 +241,17 @@ mod tests {
             for _ in 0..10 {
                 game.tick_lan(false);
             }
-            assert_eq!(uuids(game.entity_trackers(pig)), Some(vec![12, 13]));
             assert_eq!(
-                uuids(game.entity_trackers(own)),
-                Some(vec![13]),
+                uuids(|visit| pig.visit_trackers(game, visit)),
+                Ok(vec![12, 13])
+            );
+            assert_eq!(
+                uuids(|visit| own.visit_trackers(game, visit)),
+                Ok(vec![13]),
                 "not its own player"
             );
             assert!(
-                !uuids(game.entity_trackers(pig))
+                !uuids(|visit| pig.visit_trackers(game, visit))
                     .unwrap()
                     .contains(&fake.uuid())
             );
@@ -237,10 +264,13 @@ mod tests {
             for _ in 0..10 {
                 game.tick_lan(false);
             }
-            assert_eq!(uuids(game.entity_trackers(pig)), Some(vec![12]));
+            assert_eq!(uuids(|visit| pig.visit_trackers(game, visit)), Ok(vec![12]));
 
             let stale = mod_api::EntityRef::new(WorldEpoch::new(pig.epoch().get() + 1), pig.id());
-            assert_eq!(game.entity_trackers(stale), None);
+            assert_eq!(
+                uuids(|visit| stale.visit_trackers(game, visit)),
+                Err(EntityReadError::Stale)
+            );
 
             // A live guest in a parked level is not in the level in place: no trackers.
             let host = game.lan.as_mut().unwrap();
@@ -249,7 +279,10 @@ mod tests {
                 g.dimension = "minecraft:the_nether".to_owned();
             });
             let parked = game.player(13).unwrap().entity();
-            assert_eq!(game.entity_trackers(parked), None);
+            assert_eq!(
+                uuids(|visit| parked.visit_trackers(game, visit)),
+                Err(EntityReadError::Unavailable)
+            );
         });
     }
 
@@ -264,8 +297,8 @@ mod tests {
             let level = game.level(game.dim.id()).unwrap();
             let chunk = ChunkRef::new(level, [0, 0]);
             assert_eq!(
-                uuids(chunk.watchers(game)),
-                Some(vec![]),
+                uuids(|visit| chunk.visit_watchers(game, visit)),
+                Ok(vec![]),
                 "nothing sent yet"
             );
             let host = game.lan.as_mut().unwrap();
@@ -276,11 +309,14 @@ mod tests {
                     g.sent_chunks.insert((0, 0));
                 });
             }
-            assert_eq!(uuids(chunk.watchers(game)), Some(vec![12, 13]));
+            assert_eq!(
+                uuids(|visit| chunk.visit_watchers(game, visit)),
+                Ok(vec![12, 13])
+            );
             game.as_guest(12, |game| {
                 assert_eq!(
-                    uuids(chunk.watchers(game)),
-                    Some(vec![12, 13]),
+                    uuids(|visit| chunk.visit_watchers(game, visit)),
+                    Ok(vec![12, 13]),
                     "the acting guest is named once, by its own UUID"
                 );
             })
@@ -293,15 +329,15 @@ mod tests {
             assert_eq!(host.hub.guests[far].view_distance, 8);
             host.hub.guests.update(far, |g| g.center = Some((9, 0)));
             assert_eq!(
-                uuids(chunk.watchers(game)),
-                Some(vec![12, 13]),
+                uuids(|visit| chunk.visit_watchers(game, visit)),
+                Ok(vec![12, 13]),
                 "7 past the buffer"
             );
             let host = game.lan.as_mut().unwrap();
             host.hub.guests.update(far, |g| g.center = Some((10, 0)));
             assert_eq!(
-                uuids(chunk.watchers(game)),
-                Some(vec![12]),
+                uuids(|visit| chunk.visit_watchers(game, visit)),
+                Ok(vec![12]),
                 "8 past the buffer"
             );
 
@@ -311,24 +347,29 @@ mod tests {
                 g.dimension = "minecraft:the_nether".to_owned();
             });
             assert_eq!(
-                uuids(chunk.watchers(game)),
-                Some(vec![]),
+                uuids(|visit| chunk.visit_watchers(game, visit)),
+                Ok(vec![]),
                 "another level's chunk"
             );
             let nether = game.level("minecraft:the_nether").unwrap();
             assert_eq!(
-                uuids(ChunkRef::new(nether, [0, 0]).watchers(game)),
-                Some(vec![12])
+                uuids(|visit| ChunkRef::new(nether, [0, 0]).visit_watchers(game, visit)),
+                Ok(vec![12])
             );
 
             let stale = ChunkRef::new(
                 LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension()),
                 [0, 0],
             );
-            assert_eq!(stale.watchers(game), None);
             assert_eq!(
-                uuids(ChunkRef::new(level, [i32::MIN, i32::MAX]).watchers(game)),
-                Some(vec![])
+                uuids(|visit| stale.visit_watchers(game, visit)),
+                Err(LevelReadError::Stale)
+            );
+            assert_eq!(
+                uuids(
+                    |visit| ChunkRef::new(level, [i32::MIN, i32::MAX]).visit_watchers(game, visit)
+                ),
+                Ok(vec![])
             );
         });
     }

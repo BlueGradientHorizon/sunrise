@@ -174,13 +174,14 @@ pub trait Commands {
 /// The levels service, reached through its host.
 pub trait Levels {
     /// Side: server.
-    /// Loaded server levels, in vanilla dimension order. Empty without a server world.
-    fn list_levels(&self) -> Vec<LevelRef> {
-        crate::world::phase::unprovided(
-            "Levels::list_levels",
-            "list_levels",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+    /// Visit loaded server levels: Overworld, Nether and End first, then the active extra level
+    /// and the parked extra levels in server order. Return `Break(())` to stop. Without an open
+    /// world, the visit completes without a call. An unreadable phase returns `Unavailable`.
+    fn visit_levels(
+        &self,
+        visit: &mut dyn FnMut(LevelRef) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, ServerReadError> {
+        Err(ServerReadError::Unavailable)
     }
 }
 /// The messages service, reached through its host.

@@ -162,10 +162,11 @@ fn register(r: &mut dyn Registrar) {
   unavailable level, after the same token and encoding checks.
 - **To the players tracking an entity.** `send_tracking_entity(host, entity, and_self, &value)`
   sends to the entity's trackers (`ChunkMap.TrackedEntity.seenBy`, NeoForge's
-  `sendToPlayersTrackingEntity`; `EntityRef::trackers(host)` is the same list), and
+  `sendToPlayersTrackingEntity`; `entity.visit_trackers(host, &mut visit)` visits those
+  same players in server order), and
   also to the entity itself when it is a player and `and_self` is set
   (`sendToPlayersTrackingEntityAndSelf`), each player once. A stale or absent entity has no
-  trackers, so nothing is sent and the count is 0.
+  trackers. If no player matches `and_self` either, nothing is sent and the count is 0.
 - **The one-call send underneath.** `PayloadsServerHost::players_send_payload(players, id, bytes)`
   queues the same bytes on each listed player's connection with one boundary call, where
   `player_send_payload` crosses once per player; the group sends above use it. Each connection's

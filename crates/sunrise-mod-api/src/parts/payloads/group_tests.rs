@@ -2,9 +2,9 @@
 //! would give and records every one-player send.
 use super::*;
 use crate::{
-    Backend, BackendMut, ChunkRef, DimensionKey, EntityRef, Host, IPayloadContext, LevelReadError,
-    LevelRef, PayloadAccepted, PayloadBytes, PayloadSendError, PayloadToken, PlayerRef, Players,
-    ServerHost, ToClient, Wire, WorldEpoch,
+    Backend, BackendMut, ChunkRef, DimensionKey, EntityReadError, EntityRef, Host, IPayloadContext,
+    LevelReadError, LevelRef, PayloadAccepted, PayloadBytes, PayloadSendError, PayloadToken,
+    PlayerRef, Players, ServerHost, ToClient, Wire, WorldEpoch,
 };
 use core::ops::ControlFlow;
 use std::collections::HashMap;
@@ -87,13 +87,27 @@ impl crate::prelude::LevelEntitiesBackend for Double {
     }
 }
 impl crate::prelude::LevelChunksBackend for Double {
-    fn chunk_watchers(&self, _: ChunkRef) -> Option<Vec<PlayerRef>> {
-        Some(self.watchers.clone())
+    fn chunk_visit_watchers(
+        &self,
+        _: ChunkRef,
+        visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        Ok(self.watchers.iter().copied().try_for_each(visit))
     }
 }
 impl crate::prelude::EntityIdentityBackend for Double {
-    fn entity_trackers(&self, entity: EntityRef) -> Option<Vec<PlayerRef>> {
-        self.trackers.get(&entity.id()).cloned()
+    fn entity_visit_trackers(
+        &self,
+        entity: EntityRef,
+        visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, EntityReadError> {
+        Ok(self
+            .trackers
+            .get(&entity.id())
+            .ok_or(EntityReadError::Stale)?
+            .iter()
+            .copied()
+            .try_for_each(visit))
     }
 }
 impl crate::prelude::EntityPositionBackend for Double {

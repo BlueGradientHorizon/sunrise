@@ -28,9 +28,15 @@ pub trait EntityIdentityBackend {
     /// The players this entity is sent to (`ChunkMap.TrackedEntity.seenBy`), in the order the
     /// server keeps its players: those in the entity's level whose client has the entity from
     /// its tracking pass. A player is not among its own trackers. Fake players track nothing.
-    /// None on a client, and for a stale handle or an entity that is not in the level in place.
+    /// A stale handle returns `Stale`; a side, phase or level that cannot expose its tracking
+    /// state returns `Unavailable`. Return `Break(())` to stop, or `Continue(())` to visit the
+    /// next player. A readable entity with no trackers completes without a call.
     #[access(WorldOnly)]
-    fn entity_trackers(&self, entity: EntityRef) -> Option<Vec<PlayerRef>>;
+    fn entity_visit_trackers(
+        &self,
+        entity: EntityRef,
+        visit: &mut dyn FnMut(PlayerRef) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, EntityReadError>;
     /// Side: server.
     /// The entity's resolved type key (`Entity.getType`). Compare keys directly;
     /// request `key.id(host)` explicitly when its canonical name is needed.

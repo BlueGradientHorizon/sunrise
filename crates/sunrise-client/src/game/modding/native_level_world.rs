@@ -3,6 +3,7 @@
 //! difficulty and game rules on the server, and weather on both sides.
 //! Stale handles return `None`.
 use super::{Dim, Game};
+use core::ops::ControlFlow;
 use mod_api::{
     BoolGameRuleKey, FeatureFlags, LevelDimensionShape, LevelDimensionType, LevelReadError,
     LevelRef,
@@ -335,19 +336,14 @@ impl Game<'_> {
         self.command_clock_state(&clock).partial = 0.0;
         true
     }
-    /// Every game rule the world has (`GameRules`) with its current value, by `minecraft:` id
-    /// (`max_minecart_speed` only with minecart improvements): None for a stale handle and on
-    /// a client.
-    pub(super) fn level_game_rules(
+    /// Visit the server's available game rules once the named level resolves.
+    pub(super) fn level_visit_game_rules(
         &self,
         level: LevelRef,
-    ) -> Result<Vec<(String, GameRuleValue)>, LevelReadError> {
+        visit: &mut dyn FnMut(&str, mod_api::GameRuleValue) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
         self.native_level_world_result(level)?;
-        let rules = &self.ui.rules;
-        Ok(rules
-            .available_rules()
-            .filter_map(|r| Some((r.name.clone(), rules.get(&r.name)?)))
-            .collect())
+        Ok(self.visit_available_game_rules(visit))
     }
     /// The rain and thunder levels, each 0.0 to 1.0 (`Level.getRainLevel`,
     /// `getThunderLevel` at partial tick 1.0): both 0 in a level with no weather.
@@ -412,6 +408,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
+    use core::ops::ControlFlow;
     use mod_api::{GameRuleChangedEvent, GameRuleValue, Hooks, LevelHost, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
@@ -648,17 +645,26 @@ mod tests {
             host: &mut dyn ServerHost,
             event: &mut GameRuleChangedEvent<'_>,
         ) {
-            let rules = host
-                .level("minecraft:overworld")
-                .and_then(|level| level.game_rules(host).ok())
-                .unwrap_or_default();
-            let value = |id: &str| rules.iter().find(|(rule, _)| rule == id).map(|(_, v)| *v);
+            let (mut inventory, mut tick_speed, mut count) = (None, None, 0);
+            let level = host.level("minecraft:overworld").unwrap();
+            assert_eq!(
+                level.visit_game_rules(host, &mut |id, value| {
+                    count += 1;
+                    match id {
+                        "minecraft:keep_inventory" => inventory = Some(value),
+                        "minecraft:random_tick_speed" => tick_speed = Some(value),
+                        _ => {}
+                    }
+                    ControlFlow::Continue(())
+                }),
+                Ok(ControlFlow::Continue(()))
+            );
             self.0.lock().unwrap().push((
                 event.rule.to_owned(),
                 event.actor.is_some(),
-                value("minecraft:keep_inventory"),
-                value("minecraft:random_tick_speed"),
-                rules.len(),
+                inventory,
+                tick_speed,
+                count,
             ));
         }
     }
@@ -863,8 +869,17 @@ mod tests {
                 level.game_rule(game, "random_tick_speed"),
                 Ok(Some(GameRuleValue::Int(7)))
             );
-            let rules = level.game_rules(game).unwrap();
-            assert!(rules.contains(&("minecraft:random_tick_speed".into(), GameRuleValue::Int(7))));
+            let mut tick_speed = None;
+            assert_eq!(
+                level.visit_game_rules(game, &mut |id, value| {
+                    if id == "minecraft:random_tick_speed" {
+                        tick_speed = Some(value);
+                    }
+                    ControlFlow::Continue(())
+                }),
+                Ok(ControlFlow::Continue(()))
+            );
+            assert_eq!(tick_speed, Some(GameRuleValue::Int(7)));
             let stale =
                 mod_api::LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
             let gone = mod_api::LevelRef::new(
@@ -876,7 +891,10 @@ mod tests {
                     handle.game_rule(game, "keep_inventory"),
                     Err(LevelReadError::Stale)
                 );
-                assert_eq!(handle.game_rules(game), Err(LevelReadError::Stale));
+                assert_eq!(
+                    handle.visit_game_rules(game, &mut |_, _| panic!("refused rule visit")),
+                    Err(LevelReadError::Stale)
+                );
                 assert!(game.native_level_world(handle).is_none());
             }
             {
@@ -886,14 +904,20 @@ mod tests {
                     level.game_rule(game, "keep_inventory"),
                     Err(LevelReadError::Unavailable)
                 );
-                assert_eq!(level.game_rules(game), Err(LevelReadError::Unavailable));
+                assert_eq!(
+                    level.visit_game_rules(game, &mut |_, _| panic!("refused rule visit")),
+                    Err(LevelReadError::Unavailable)
+                );
             }
             game.options.execution_role = ExecutionRole::Client;
             assert_eq!(
                 level.game_rule(game, "keep_inventory"),
                 Err(LevelReadError::Unavailable)
             );
-            assert_eq!(level.game_rules(game), Err(LevelReadError::Unavailable));
+            assert_eq!(
+                level.visit_game_rules(game, &mut |_, _| panic!("refused rule visit")),
+                Err(LevelReadError::Unavailable)
+            );
             assert!(game.native_level_world(level).is_none());
         });
     }

@@ -43,9 +43,14 @@ pub trait LevelChunksBackend {
     /// it is inside the view of and was sent to, in the order the server keeps
     /// its players. A player watches it from its `chunk_watch` until it leaves
     /// the view. Fake players watch nothing. Loaded or not, a chunk nobody
-    /// watches gives an empty list. None on a client and for a stale handle.
+    /// watches completes without a call. A stale handle returns `Stale`; an unreadable side or
+    /// phase returns `Unavailable`. Return `Break(())` to stop and return it to the caller.
     #[access(WorldOnly)]
-    fn chunk_watchers(&self, chunk: ChunkRef) -> Option<Vec<PlayerRef>>;
+    fn chunk_visit_watchers(
+        &self,
+        chunk: ChunkRef,
+        visit: &mut dyn FnMut(PlayerRef) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
     /// Side: both.
     /// Whether `pos` is inside the world's height and its chunk is loaded
     /// (`Level.isLoaded`, which is false outside `isInValidBounds`): a block
@@ -54,11 +59,16 @@ pub trait LevelChunksBackend {
     /// (`ClientLevel.hasChunkAt`). API 381.
     #[access(WorldOnly)]
     fn level_is_loaded(&self, level: LevelRef, pos: [i32; 3]) -> bool;
-    /// Side: both.
-    /// Every loaded chunk of an open server level as handles, ordered by chunk x then z. None for
-    /// a stale handle or on a client. Loads nothing.
+    /// Side: server.
+    /// Visit the resident chunks of an open server level by chunk x then z. Loads nothing.
+    /// A stale level returns `Stale`; an unreadable side or phase returns `Unavailable`.
+    /// Return `Break(())` to stop or `Continue(())` to finish, including for an empty level.
     #[access(WorldOnly)]
-    fn level_loaded_chunks(&self, level: LevelRef) -> Option<Vec<ChunkRef>>;
+    fn level_visit_loaded_chunks(
+        &self,
+        level: LevelRef,
+        visit: &mut dyn FnMut(ChunkRef) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
 }
 /// The handles' writes of the `level_chunks` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
@@ -67,7 +77,7 @@ pub trait LevelChunksBackend {
 pub trait LevelChunksBackendMut {
     /// Side: server.
     /// Sends the loaded chunk whole again, with its light, block entities and biomes as they are
-    /// at the end of the tick, to every player watching it (`chunk_watchers`), as a chunk
+    /// at the end of the tick, to every player watching it ([`ChunkRef::visit_watchers`]), as a chunk
     /// `edit_blocks` changed is sent: one packet instead of a block update per changed block.
     /// Ok with nothing sent when no player is in the level. Each refusal queues nothing and is
     /// named by `ChunkRefusal`: `Stale`, `Client`, `NotInPlace` and `NotLoaded`.

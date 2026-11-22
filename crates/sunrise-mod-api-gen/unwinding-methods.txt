@@ -146,7 +146,6 @@ config::data_files
 config::dimension
 config::dist
 config::game_rule
-config::game_rules
 config::game_tests_enabled
 config::game_version
 config::instance_dir
@@ -168,7 +167,6 @@ config::setting_f64
 config::sunrise_version
 config::tick_rate_is_frozen
 config::tick_stats
-config::tick_times
 config::translate
 config::world_data_files
 config::world_dir
@@ -307,7 +305,6 @@ entity_identity::entity_owner
 entity_identity::entity_set_custom_name
 entity_identity::entity_set_custom_name_visible
 entity_identity::entity_sound_source
-entity_identity::entity_trackers
 entity_identity::entity_uuid
 entity_leash::entity_detach_leash
 entity_leash::entity_leash_holder
@@ -509,10 +506,8 @@ level_chunks::chunk_loaded
 level_chunks::chunk_resend
 level_chunks::chunk_sections_with_block
 level_chunks::chunk_status
-level_chunks::chunk_watchers
 level_chunks::level_chunk_ref
 level_chunks::level_is_loaded
-level_chunks::level_loaded_chunks
 level_collision::level_block_face_sturdy
 level_collision::level_block_floor_height
 level_collision::level_block_shape
@@ -592,9 +587,7 @@ level_tickets::chunk_forced
 level_tickets::chunk_set_forced
 level_tickets::chunk_set_mod_forced
 level_tickets::level_add_water_ticket
-level_tickets::level_forced_chunks
 level_tickets::level_has_water_ticket
-level_tickets::level_mod_forced_chunks
 level_tickets::water_ticket_remove
 level_ticking::level_block_random_tick
 level_ticking::level_block_tick

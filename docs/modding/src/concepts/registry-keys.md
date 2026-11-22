@@ -249,16 +249,21 @@ Use API-owned values rather than importing engine or package-loader types.
 `ServerHost::game_rule(id)` reads the one server-wide rule store without a
 `LevelRef`, including in `server_about_to_start` and `server_starting`.
 It returns `Result<GameRuleValue, GameRuleReadError>`; an unknown identifier gives
-`GameRuleReadError::UnknownRule`. `ServerHost::game_rules()` lists every available
-rule and its current value by namespaced id. Saved values and a new world's create-screen choices are installed
+`GameRuleReadError::UnknownRule`. `host.visit_game_rules(&mut visit)` visits every available
+rule as a borrowed namespaced ID and a typed value. Return `ControlFlow::Break(())` to
+stop or `Continue(())` to visit the rest. An unreadable phase returns
+`Err(ServerReadError::Unavailable)` without calling the visitor. Saved values and a new
+world's create-screen choices are installed
 before the first server hook, without firing `game_rule_changed` for loading.
 Level reads use the same store once the requested level exists.
 
 `mod_api::GameRuleValue` owns the `Bool(bool)` and `Int(i32)` cases, in that order.
 `level.game_rule(host, id)` returns `Result<Option<GameRuleValue>, LevelReadError>`:
 `Ok(None)` means unknown rule, `Stale` means a gone/reopened level, and `Unavailable`
-means the side or phase cannot read it. `level.game_rules(host)` returns the typed
-result containing every available rule, not an optional list. Use the boolean-key getter for a retained `BoolGameRuleKey`.
+means the side or phase cannot read it. `level.visit_game_rules(host, &mut visit)` lends
+the same IDs and values, with the same `LevelReadError` refusals. Feature-gated rules
+are shown only when enabled. Call `id.to_owned()` inside the visitor if you retain an ID.
+Use the boolean-key getter for a retained `BoolGameRuleKey`.
 
 `GameRuleDecl` records a mod's rule name, category and `GameRuleDefault`: either `Bool(value)`
 or `Int { default, min, max }`. Category references

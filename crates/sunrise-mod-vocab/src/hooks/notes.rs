@@ -684,7 +684,7 @@ handle, an entity the client doesn't track and a level it doesn't show:
   weather. A server can read any open level, including parked levels; a client reads only its current synchronized
   level after login. Stale handles and unavailable levels return `None`; the read never loads a level.
 - `level.seed(host)`, `difficulty` (`"normal"`, as `/difficulty` names it), `game_rule(host, "keep_inventory")` (a
-  `GameRuleValue`, `Bool` or `Int`; None for an unknown rule), `game_rules` (every rule as a `minecraft:` id and its
+  `GameRuleValue`, `Bool` or `Int`; `Ok(None)` for an unknown rule), `visit_game_rules` (every available rule as a borrowed namespaced id and its
   value), `is_raining` and `is_thundering` read its server settings.
   `level.is_raining_at(host, pos)` (`Level.isRainingAt`) asks about one position of any open level: it rains there, the
   position has full sky light with nothing motion-blocking or fluid above it, and its biome's precipitation at that
@@ -693,7 +693,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
   `contains("minecraft:redstone_experiments")`, `iter()`); every level of a world shares them. If the save
   omits its flag list, the world enables `minecraft:vanilla`.
 - `level.chunk_ref(host, [x, z])` makes a `ChunkRef` for any chunk of an open level (None past 30 million blocks).
-  `chunk.forced(host)` and `level.forced_chunks(host)` query `/forceload` tickets. `chunk.set_forced(host, bool)` adds
+  `chunk.forced(host)` and `level.visit_forced_chunks(host, &mut visit)` query `/forceload` tickets.
+  `chunk.set_forced(host, bool)` adds
   or removes one and returns whether the saved set changed. A successful add waits for the chunk to load, even in a
   parked level. If streaming is paused, the add records the ticket to take effect when its level starts streaming.
   Adds after generation stops return false; repeated adds and removals do not load chunks.
@@ -713,8 +714,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
   chunk joins the spawning chunks (`ChunkMap.collectSpawningChunks`, within 8 chunks of
   a player): it gets inhabited time, thunder and a spawn attempt. The local mob cap then lets mobs spawn there only
   while a non-spectator player is within 128 blocks of the chunk's centre, as vanilla's
-  `LocalMobCapCalculator` decides. `level.mod_forced_chunks(host, controller)` lists the controller's tickets as
-  `(owner, [x, z], natural_spawning)`. Tickets are saved in `data/sunrise/mod_chunk_tickets.dat`, never in vanilla's
+  `LocalMobCapCalculator` decides. `level.visit_mod_forced_chunks(host, controller, &mut visit)` visits the controller's tickets,
+  passing `owner`, `[x, z]` and `natural_spawning` to the visitor. Tickets are saved in `data/sunrise/mod_chunk_tickets.dat`, never in vanilla's
   `chunk_tickets.dat`, under the controller's id. When a world loads, the tickets of an id no loaded mod registers are
   dropped with a warning in the log, as NeoForge documents for a controller nobody registers; so are tickets from a
   file written before controllers, which are keyed by mod id. Outside a mod's hook, for another mod's controller, and for

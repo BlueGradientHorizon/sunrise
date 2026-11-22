@@ -18,20 +18,27 @@ pub trait LevelTicketsBackend {
     #[access(WorldOnly)]
     fn chunk_forced(&self, chunk: ChunkRef) -> Option<bool>;
     /// Side: server.
-    /// The level's force-loaded chunks (`/forceload query`), sorted as
-    /// the command lists them. None for a stale handle or on a client.
+    /// Visit the level's force-loaded chunk positions in `/forceload query` order (signed
+    /// packed chunk position). An empty set completes without a call. Return `Break(())` to
+    /// stop. A stale level returns `Stale`; an unreadable side or phase returns `Unavailable`.
     #[access(WorldOnly)]
-    fn level_forced_chunks(&self, level: LevelRef) -> Option<Vec<[i32; 2]>>;
+    fn level_visit_forced_chunks(
+        &self,
+        level: LevelRef,
+        visit: &mut dyn FnMut([i32; 2]) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
     /// Side: server.
-    /// The chunk tickets `controller` holds in the level, as (owner, chunk
-    /// position, natural_spawning), in order. None for a stale handle, on a
-    /// client, outside a mod's hook and for another mod's controller.
+    /// Visit the chunk tickets `controller` holds in the level, in ticket order, with their
+    /// owner, chunk position and natural-spawning flag. Return `Break(())` to stop. A stale
+    /// level returns `Stale`; an unreadable side or phase or a controller not owned by the
+    /// current callback's mod returns `Unavailable`. An empty set completes without a call.
     #[access(WorldOnly)]
-    fn level_mod_forced_chunks(
+    fn level_visit_mod_forced_chunks(
         &self,
         level: LevelRef,
         controller: TicketController,
-    ) -> Option<Vec<(TicketOwner, [i32; 2], bool)>>;
+        visit: &mut dyn FnMut(TicketOwner, [i32; 2], bool) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
 }
 /// The handles' writes of the `level_tickets` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

@@ -3,17 +3,15 @@
 //! reach any loaded level; both-side reads also reach the client's current level.
 //! A handle of an earlier open or an unloaded block reads `None` (or `false`).
 use super::Game;
+use core::ops::ControlFlow;
 use mod_api::world::mod_chunk_tickets::ModTicket;
 use mod_api::{
     BlockHit, BlockTransformPreview, ChunkRef, ChunkStatus, ClipBlock, ClipFluid, GlobalPos, Hand,
     Identifier, LevelReadError, LevelRef, LightLayer, MapState, PlayerRef, RespawnData,
-    TicketController, Vec3,
+    TicketController, TicketOwner, Vec3,
 };
 use sunrise_client::{streaming::Streaming, world::World};
-use sunrise_core::{
-    geometry::Direction,
-    position::{BlockPos, ChunkPos},
-};
+use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_items::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
 
@@ -338,22 +336,18 @@ impl Game<'_> {
             .contains_key(&(pos[0], pos[1]))
             .then_some(mod_api::__private::game::chunk_ref(level, pos))
     }
-    /// Every loaded chunk of an open server level as handles, ordered by chunk x then z. None
-    /// for a stale handle or on a client. Loads nothing.
-    pub(super) fn level_loaded_chunks(&self, level: LevelRef) -> Option<Vec<ChunkRef>> {
-        let mut positions: Vec<(i32, i32)> = self
-            .native_level_world(level)?
+    /// Visit resident chunks in x-then-z order without loading any.
+    pub(super) fn level_visit_loaded_chunks(
+        &self,
+        level: LevelRef,
+        visit: &mut dyn FnMut(ChunkRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        Ok(self
+            .native_level_world_result(level)?
             .chunks
-            .keys()
-            .copied()
-            .collect();
-        positions.sort_unstable();
-        Some(
-            positions
-                .into_iter()
-                .map(|(x, z)| mod_api::__private::game::chunk_ref(level, [x, z]))
-                .collect(),
-        )
+            .ordered_keys()
+            .map(|(x, z)| mod_api::__private::game::chunk_ref(level, [x, z]))
+            .try_for_each(visit))
     }
     /// Whether this chunk is loaded; false on a client or for a stale handle.
     pub(super) fn chunk_loaded(&self, chunk: ChunkRef) -> bool {
@@ -371,21 +365,28 @@ impl Game<'_> {
         self.native_level_world(level)?;
         chunk_in_world(pos).then_some(ChunkRef::new(level, pos))
     }
-    /// The streaming of the level a handle names now, or None for a stale or
-    /// foreign one.
-    fn native_level_streaming(&self, level: LevelRef) -> Option<&Streaming> {
-        self.native_level_world(level)?;
-        if level.dimension() == self.dim.key() {
-            return Some(&self.streaming);
+    /// The streaming of the server level a current handle names.
+    fn native_level_streaming(&self, level: LevelRef) -> Result<&Streaming, LevelReadError> {
+        if !self.is_logical_server() {
+            return Err(LevelReadError::Unavailable);
         }
-        self.levels.parked_streaming_of(level.dimension_id())
+        if !self.level_handle_current(level) {
+            return Err(LevelReadError::Stale);
+        }
+        if level.dimension() == self.dim.key() {
+            return Ok(&self.streaming);
+        }
+        self.levels
+            .parked_streaming_of(level.dimension_id())
+            .ok_or(LevelReadError::Stale)
     }
     /// Whether `/forceload` holds the chunk (`ServerLevel.getForcedChunks`),
     /// loaded or not; a mod's own ticket on it does not count. None for a stale handle or on a client.
     pub(super) fn chunk_forced(&self, chunk: ChunkRef) -> Option<bool> {
         let [x, z] = chunk.pos();
         Some(
-            self.native_level_streaming(chunk.level())?
+            self.native_level_streaming(chunk.level())
+                .ok()?
                 .commanded()
                 .contains(&(x, z)),
         )
@@ -401,7 +402,7 @@ impl Game<'_> {
     /// False for a stale handle, on a client, outside the world, or when
     /// adding after generation has stopped.
     pub(super) fn chunk_set_forced(&mut self, chunk: ChunkRef, forced: bool) -> bool {
-        if self.native_level_streaming(chunk.level()).is_none() || !chunk_in_world(chunk.pos()) {
+        if self.native_level_streaming(chunk.level()).is_err() || !chunk_in_world(chunk.pos()) {
             return false;
         }
         let [x, z] = chunk.pos();
@@ -488,7 +489,7 @@ impl Game<'_> {
         if !calling_mod_owns(controller) {
             return false;
         }
-        if self.native_level_streaming(chunk.level()).is_none() || !chunk_in_world(chunk.pos()) {
+        if self.native_level_streaming(chunk.level()).is_err() || !chunk_in_world(chunk.pos()) {
             return false;
         }
         let [x, z] = chunk.pos();
@@ -508,36 +509,33 @@ impl Game<'_> {
         };
         streaming.set_mod_forced(ticket, forced)
     }
-    /// The chunk tickets `controller` holds in the level, as (owner, chunk
-    /// position, natural_spawning), in order. None for a stale handle, on a
-    /// client, outside a mod's hook and for another mod's controller.
-    pub(super) fn level_mod_forced_chunks(
+    /// Visit the chunk tickets of the calling mod's own controller, in ticket order.
+    pub(super) fn level_visit_mod_forced_chunks(
         &self,
         level: LevelRef,
         controller: TicketController,
-    ) -> Option<Vec<(mod_api::TicketOwner, [i32; 2], bool)>> {
+        visit: &mut dyn FnMut(TicketOwner, [i32; 2], bool) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
         if !calling_mod_owns(controller) {
-            return None;
+            return Err(LevelReadError::Unavailable);
         }
-        let tickets = self.native_level_streaming(level)?.mod_tickets();
-        Some(
-            tickets
-                .of_controller(controller.slot())
-                .map(|t| (t.owner, [t.chunk.0, t.chunk.1], t.natural_spawning))
-                .collect(),
-        )
-    }
-    /// The level's force-loaded chunks (`/forceload query`), sorted as
-    /// the command lists them. None for a stale handle or on a client.
-    pub(super) fn level_forced_chunks(&self, level: LevelRef) -> Option<Vec<[i32; 2]>> {
-        let mut forced: Vec<(i32, i32)> = self
+        Ok(self
             .native_level_streaming(level)?
-            .commanded()
-            .iter()
-            .copied()
-            .collect();
-        forced.sort_unstable_by_key(|&(x, z)| ChunkPos::new(x, z).pack());
-        Some(forced.into_iter().map(|(x, z)| [x, z]).collect())
+            .mod_tickets()
+            .of_controller(controller.slot())
+            .try_for_each(|t| visit(t.owner, [t.chunk.0, t.chunk.1], t.natural_spawning)))
+    }
+    /// Visit commanded tickets in `ForceLoadCommand.listForceLoad` order.
+    pub(super) fn level_visit_forced_chunks(
+        &self,
+        level: LevelRef,
+        visit: &mut dyn FnMut([i32; 2]) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        Ok(self
+            .native_level_streaming(level)?
+            .commanded_in_order()
+            .map(|(x, z)| [x, z])
+            .try_for_each(visit))
     }
     /// The block state ID at `pos` (`Level.getBlockState`), without formatting a string.
     /// None for a chunk that isn't loaded or a `y` outside the world. On a client, the state
@@ -1029,7 +1027,8 @@ mod tests {
         Dim,
         native_entity_refs::tests::{run_fresh_cases, with_game},
     };
-    use mod_api::{ChunkRef, LevelRef, LightLayer, WorldEpoch};
+    use core::ops::ControlFlow;
+    use mod_api::{ChunkRef, LevelReadError, LevelRef, LightLayer, WorldEpoch};
     use sunrise_core::position::BlockPos;
 
     #[test]
@@ -1450,6 +1449,22 @@ mod tests {
         });
     }
 
+    fn collect_chunks<T>(
+        enumerate: impl FnOnce(
+            &mut dyn FnMut(T) -> ControlFlow<()>,
+        ) -> Result<ControlFlow<()>, LevelReadError>,
+    ) -> Result<Vec<T>, LevelReadError> {
+        let mut entries = Vec::new();
+        assert_eq!(
+            enumerate(&mut |entry| {
+                entries.push(entry);
+                ControlFlow::Continue(())
+            })?,
+            ControlFlow::Continue(())
+        );
+        Ok(entries)
+    }
+
     #[test]
     #[ignore = "daily"]
     fn loaded_chunks_lists_the_level_in_order_without_loading() {
@@ -1458,13 +1473,15 @@ mod tests {
 
         with_game(|game| {
             let level = game.level("minecraft:overworld").unwrap();
-            let before = level.loaded_chunks(game).unwrap().len();
+            let before = collect_chunks(|visit| level.visit_loaded_chunks(game, visit))
+                .unwrap()
+                .len();
             for pos in [(2, -1), (0, 5), (0, -3)] {
                 game.world
                     .chunks
                     .insert(pos, Arc::new(Chunk::empty(pos.0, pos.1)));
             }
-            let chunks = level.loaded_chunks(game).unwrap();
+            let chunks = collect_chunks(|visit| level.visit_loaded_chunks(game, visit)).unwrap();
             assert_eq!(chunks.len(), before + 3);
             let positions: Vec<[i32; 2]> = chunks.iter().map(|chunk| chunk.pos()).collect();
             assert!(
@@ -1473,7 +1490,11 @@ mod tests {
             );
             assert!(positions.contains(&[0, -3]) && positions.contains(&[2, -1]));
             let nether = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
-            assert_eq!(nether.loaded_chunks(game), None, "not opened yet");
+            assert_eq!(
+                collect_chunks(|visit| nether.visit_loaded_chunks(game, visit)),
+                Err(LevelReadError::Stale),
+                "not opened yet"
+            );
         });
     }
 
@@ -1838,7 +1859,10 @@ mod tests {
             let far = game.level_chunk_ref(level, [40, -7]).unwrap();
             let near = game.level_chunk_ref(level, [-3, 2]).unwrap();
             assert_eq!(game.chunk_forced(far), Some(false));
-            assert_eq!(game.level_forced_chunks(level), Some(vec![]));
+            assert_eq!(
+                collect_chunks(|visit| level.visit_forced_chunks(game, visit)),
+                Ok(vec![])
+            );
             // A synchronous load leaves existing columns for the normal owner
             // update to save and unload, including their entity data.
             let old = std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(-40, 40));
@@ -1859,12 +1883,15 @@ mod tests {
             assert_eq!(game.chunk_forced(far), Some(true));
             // The command's own set and order.
             assert!(game.streaming.forced.contains(&(40, -7)));
-            let listed = game.level_forced_chunks(level).unwrap();
+            let listed = collect_chunks(|visit| level.visit_forced_chunks(game, visit)).unwrap();
             // Signed packed positions: z first, then x.
             assert_eq!(listed, vec![[40, -7], [-3, 2]]);
             assert!(game.chunk_set_forced(far, false));
             assert!(!game.chunk_set_forced(far, false), "already clear");
-            assert_eq!(game.level_forced_chunks(level), Some(vec![[-3, 2]]));
+            assert_eq!(
+                collect_chunks(|visit| level.visit_forced_chunks(game, visit)),
+                Ok(vec![[-3, 2]])
+            );
             assert!(!game.streaming.forced.contains(&(40, -7)));
             // Unchanged adds and removals do not load a missing column.
             let pending = game.level_chunk_ref(level, [200, 200]).unwrap();
@@ -1926,7 +1953,10 @@ mod tests {
             assert!(!game.chunk_loaded(queued));
             assert!(game.chunk_set_forced(queued, true));
             assert!(!game.chunk_set_forced(queued, true));
-            assert_eq!(game.level_forced_chunks(level), Some(vec![[40, -7]]));
+            assert_eq!(
+                collect_chunks(|visit| level.visit_forced_chunks(game, visit)),
+                Ok(vec![[40, -7]])
+            );
             assert!(!game.chunk_loaded(queued), "paused streaming does no work");
 
             game.streaming.paused = false;
@@ -1941,10 +1971,16 @@ mod tests {
             game.streaming.abort_generation();
             let missing = game.level_chunk_ref(level, [60, -7]).unwrap();
             assert!(!game.chunk_set_forced(missing, true));
-            assert_eq!(game.level_forced_chunks(level), Some(vec![[40, -7]]));
+            assert_eq!(
+                collect_chunks(|visit| level.visit_forced_chunks(game, visit)),
+                Ok(vec![[40, -7]])
+            );
             assert!(game.chunk_set_forced(queued, false));
             assert!(!game.chunk_set_forced(queued, true));
-            assert_eq!(game.level_forced_chunks(level), Some(vec![]));
+            assert_eq!(
+                collect_chunks(|visit| level.visit_forced_chunks(game, visit)),
+                Ok(vec![])
+            );
         });
     }
 
@@ -1974,7 +2010,10 @@ mod tests {
             let stale = ChunkRef::new(stale_level, [0, 0]);
             assert_eq!(game.chunk_forced(stale), None);
             assert!(!game.chunk_set_forced(stale, true));
-            assert_eq!(game.level_forced_chunks(stale_level), None);
+            assert_eq!(
+                collect_chunks(|visit| stale_level.visit_forced_chunks(game, visit)),
+                Err(LevelReadError::Stale)
+            );
             assert!(game.level_chunk_ref(stale_level, [0, 0]).is_none());
             // A level the server has not opened.
             let other = if game.dim == Dim::Nether {
@@ -1998,8 +2037,14 @@ mod tests {
                 "parked level loaded before returning"
             );
             assert_eq!(game.dim, back, "forcing must not switch the acting level");
-            assert_eq!(game.level_forced_chunks(parked), Some(vec![[1, 1]]));
-            assert_eq!(game.level_forced_chunks(level), Some(vec![]));
+            assert_eq!(
+                collect_chunks(|visit| parked.visit_forced_chunks(game, visit)),
+                Ok(vec![[1, 1]])
+            );
+            assert_eq!(
+                collect_chunks(|visit| level.visit_forced_chunks(game, visit)),
+                Ok(vec![])
+            );
             assert!(game.levels_to_tick().contains(&other));
             assert!(game.chunk_set_forced(chunk, false));
             assert!(!game.levels_to_tick().contains(&other));
@@ -2190,6 +2235,18 @@ mod tests {
                 );
             }
         });
+    }
+
+    fn collect_mod_tickets(
+        game: &super::Game<'_>,
+        level: LevelRef,
+        controller: TicketController,
+    ) -> Result<Vec<(TicketOwner, [i32; 2], bool)>, LevelReadError> {
+        collect_chunks(|visit| {
+            level.visit_mod_forced_chunks(game, controller, &mut |owner, pos, natural| {
+                visit((owner, pos, natural))
+            })
+        })
     }
 
     fn in_mod(id: &'static str) -> mod_api::content::crash::ModGuard {
@@ -2540,35 +2597,41 @@ mod tests {
             assert!(game.chunk_set_mod_forced(chunk, quarry(), b, true, false));
             assert!(game.streaming.forced.contains(&(5, 6)));
             assert_eq!(game.chunk_forced(chunk), Some(false), "not /forceload's");
-            assert_eq!(game.level_forced_chunks(level), Some(vec![]));
+            assert_eq!(
+                collect_chunks(|visit| level.visit_forced_chunks(game, visit)),
+                Ok(vec![])
+            );
             // Two owners in one chunk release separately.
             assert!(game.chunk_set_mod_forced(chunk, quarry(), a, false, false));
             assert!(game.streaming.forced.contains(&(5, 6)));
             assert_eq!(
-                game.level_mod_forced_chunks(level, quarry()),
-                Some(vec![(b, [5, 6], false)])
+                collect_mod_tickets(game, level, quarry()),
+                Ok(vec![(b, [5, 6], false)])
             );
             // Another mod cannot use our controller, however it asks; its own is empty.
             drop(guard);
             let guard = in_mod("other");
-            assert_eq!(game.level_mod_forced_chunks(level, quarry()), None);
+            assert_eq!(
+                collect_mod_tickets(game, level, quarry()),
+                Err(LevelReadError::Unavailable)
+            );
             assert!(!game.chunk_set_mod_forced(chunk, quarry(), b, false, false));
             assert!(!game.chunk_set_mod_forced(chunk, quarry(), b, true, false));
             let vault = controller("other:vault");
-            assert_eq!(game.level_mod_forced_chunks(level, vault), Some(vec![]));
+            assert_eq!(collect_mod_tickets(game, level, vault), Ok(vec![]));
             assert!(game.chunk_set_mod_forced(chunk, vault, b, true, false));
             assert!(game.chunk_set_mod_forced(chunk, vault, b, false, false));
             drop(guard);
             // Our other controller is apart from the first: it neither lists nor releases its tickets.
             let guard = in_mod("machines");
             let drill = controller("machines:drill");
-            assert_eq!(game.level_mod_forced_chunks(level, drill), Some(vec![]));
+            assert_eq!(collect_mod_tickets(game, level, drill), Ok(vec![]));
             assert!(!game.chunk_set_mod_forced(chunk, drill, b, false, false));
             assert!(game.chunk_set_mod_forced(chunk, drill, b, true, false));
             assert!(game.chunk_set_mod_forced(chunk, drill, b, false, false));
             assert_eq!(
-                game.level_mod_forced_chunks(level, quarry()),
-                Some(vec![(b, [5, 6], false)])
+                collect_mod_tickets(game, level, quarry()),
+                Ok(vec![(b, [5, 6], false)])
             );
             drop(guard);
             // /forceload and a ticket on one chunk: the chunk stays until both go.
@@ -2620,7 +2683,7 @@ mod tests {
             reopen(game, known_slot);
             // Each ticket comes back under the controller that held it.
             let listed =
-                |game: &super::super::Game<'_>, c| game.level_mod_forced_chunks(level, c).unwrap();
+                |game: &super::super::Game<'_>, c| collect_mod_tickets(game, level, c).unwrap();
             assert_eq!(listed(game, quarry()).len(), 2);
             assert_eq!(listed(game, drill), vec![(block, [-9, 4], false)]);
             assert!(game.streaming.forced.contains(&(-9, 4)));
@@ -2746,8 +2809,8 @@ mod tests {
             assert!(game.streaming.forced.contains(&(13, 12)));
             assert!(game.levels_to_tick().contains(&game.dim));
             assert_eq!(
-                game.level_mod_forced_chunks(level, quarry()),
-                Some(vec![(owner, [11, 12], false), (owner, [13, 12], true)])
+                collect_mod_tickets(game, level, quarry()),
+                Ok(vec![(owner, [11, 12], false), (owner, [13, 12], true)])
             );
             // One owner holds both kinds on one chunk apart.
             assert!(game.chunk_set_mod_forced(plain, quarry(), owner, true, true));

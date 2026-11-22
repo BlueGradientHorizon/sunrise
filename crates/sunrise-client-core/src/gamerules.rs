@@ -266,11 +266,17 @@ impl RuleRegistry {
     pub fn registry_ids(&self) -> impl Iterator<Item = &str> {
         self.by_name.keys().map(String::as_str)
     }
-    pub fn available_rules(&self, minecart_improvements: bool) -> impl Iterator<Item = &Rule> {
+    fn available_rule_slots(
+        &self,
+        minecart_improvements: bool,
+    ) -> impl Iterator<Item = (usize, &Rule)> {
         self.rules
             .iter()
             .enumerate()
             .filter(move |(index, _)| minecart_improvements || *index != RULES.len())
+    }
+    pub fn available_rules(&self, minecart_improvements: bool) -> impl Iterator<Item = &Rule> {
+        self.available_rule_slots(minecart_improvements)
             .map(|(_, rule)| rule)
     }
     pub fn rule(&self, name: &str) -> Option<&Rule> {
@@ -497,6 +503,12 @@ impl GameRules {
     }
     pub fn available_rules(&self) -> impl Iterator<Item = &Rule> {
         self.registry.available_rules(self.minecart_improvements)
+    }
+    /// The available rules paired with their current values in the same registry order.
+    pub fn available_rule_values(&self) -> impl Iterator<Item = (&Rule, Value)> {
+        self.registry
+            .available_rule_slots(self.minecart_improvements)
+            .map(|(slot, rule)| (rule, self.values[slot]))
     }
     /// Look up a definition in this rule set's registry.
     pub fn rule(&self, name: &str) -> Option<&Rule> {

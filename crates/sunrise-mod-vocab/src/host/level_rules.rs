@@ -39,14 +39,16 @@ pub trait LevelRulesBackend {
         rule: &str,
     ) -> Result<Option<GameRuleValue>, LevelReadError>;
     /// Side: server.
-    /// Every game rule the world has (`GameRules`) with its current value, by `minecraft:` id
-    /// (`max_minecart_speed` only with minecart improvements). A gone/reopened level
-    /// returns `Stale`; an unreadable side or phase returns `Unavailable`.
+    /// Visit the world's available game rules (`GameRules.availableRules`) with their borrowed
+    /// namespaced IDs and typed values (`max_minecart_speed` only with minecart improvements).
+    /// Return `Break(())` to stop. A gone or reopened level returns `Stale`; an unreadable
+    /// side or phase returns `Unavailable`.
     #[access(WorldOnly)]
-    fn level_game_rules(
+    fn level_visit_game_rules(
         &self,
         level: LevelRef,
-    ) -> Result<Vec<(String, GameRuleValue)>, LevelReadError>;
+        visit: &mut dyn FnMut(&str, GameRuleValue) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
     /// Side: server.
     /// `LevelReader.enabledFeatures` of the level a handle names. Every level of a world shares
     /// the world's flags. None for a stale handle and on a client.

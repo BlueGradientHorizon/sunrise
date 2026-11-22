@@ -1,5 +1,6 @@
 //! The game's side of the `services` area (`sunrise-mod-api/src/host/services.rs`).
 use crate::game::{Game, api_values::TryIntoEngine};
+use core::ops::ControlFlow;
 use mod_api::{prelude::*, *};
 use std::sync::Arc;
 
@@ -66,9 +67,17 @@ impl Commands for Game<'_> {
     }
 }
 impl Levels for Game<'_> {
-    fn list_levels(&self) -> Vec<LevelRef> {
-        mod_api::__private::check_access("list_levels", mod_api::__private::LoadAccess::WorldOnly);
-        self.native_list_levels()
+    fn visit_levels(
+        &self,
+        visit: &mut dyn FnMut(LevelRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, ServerReadError> {
+        if !mod_api::__private::access_allowed(
+            "visit_levels",
+            mod_api::__private::LoadAccess::WorldOnly,
+        ) {
+            return Err(ServerReadError::Unavailable);
+        }
+        Ok(self.native_visit_levels(visit))
     }
 }
 impl Messages for Game<'_> {
