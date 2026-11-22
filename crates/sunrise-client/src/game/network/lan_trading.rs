@@ -690,7 +690,7 @@ impl Game<'_> {
         }
     }
     /// Refresh open guest prices after the actual villager reputation event.
-    pub(super) fn lan_merchant_reputation(&mut self, id: u32) {
+    pub(super) fn lan_merchant_reputation(&mut self, id: u32, only: Option<[i32; 4]>) {
         let conns: Vec<u32> = self
             .lan
             .as_ref()
@@ -720,6 +720,9 @@ impl Game<'_> {
             else {
                 continue;
             };
+            if only.is_some_and(|only| only != uuid) {
+                continue;
+            }
             let reputation = self.villager_reputation_of(id, uuid);
             self.lan_merchant_op(conn, None, true, |menu, env| {
                 if let Some(s) = menu.merchant.as_mut() {

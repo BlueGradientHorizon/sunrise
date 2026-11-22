@@ -2075,6 +2075,11 @@ impl Game<'_> {
             direct_kind: None,
             position: None,
             projectile_weapon: None,
+            // Looked up only: a hit on a villager makes one up for its gossip (`hurt_by`).
+            attacker_uuid: (player_uuid.is_none() && attacker != 0)
+                .then(|| self.known_attacker_uuid(attacker as u32))
+                .flatten()
+                .map(|uuid| (uuid, false)),
             player_uuid,
         }
     }

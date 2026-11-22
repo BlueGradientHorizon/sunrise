@@ -14,6 +14,8 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.Brain;
 import net.minecraft.world.entity.ai.memory.NearestVisibleLivingEntities;
 import net.minecraft.world.entity.ai.sensing.Sensing;
+import net.minecraft.world.entity.ai.gossip.GossipContainer;
+import net.minecraft.world.entity.ai.village.ReputationEventType;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -85,6 +87,19 @@ public final class VanillaVillagerWitnessOracle {
             out.write("cached " + witnesses(memory) + "\n");
             memory = new NearestVisibleLivingEntities(world, victim, candidates);
             out.write("fresh " + witnesses(memory) + "\n");
+            // Villager.setLastHurtByMob reports VILLAGER_HURT for any living attacker
+            // (ServerLevel.onReputationEvent just forwards it): a mob and two players.
+            var hurt = actor(world, 8, 0, 0, false);
+            field(Villager.class, "gossips").set(hurt, new GossipContainer());
+            var reps = new ArrayList<Integer>();
+            for (int i = 1; i <= 3; i++) {
+                var attacker = actor(world, 20 + i, 0, 0, false);
+                var uuid = new java.util.UUID(0L, i);
+                field(Entity.class, "uuid").set(attacker, uuid);
+                hurt.onReputationEventFrom(ReputationEventType.VILLAGER_HURT, attacker);
+                reps.add(hurt.getGossips().getReputation(uuid, t -> true));
+            }
+            out.write("hurt " + reps.toString().replace(" ", "") + "\n");
         }
     }
 }

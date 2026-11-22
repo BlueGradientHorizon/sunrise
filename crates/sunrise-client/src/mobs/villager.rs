@@ -365,8 +365,6 @@ pub struct Ext {
     pub sleeping_pos: Option<[i32; 3]>,
     /// `GOLEM_DETECTED_RECENTLY` expires at this game time.
     pub golem_until: i64,
-    /// The `last_hurt_by_time` of the player's hit already counted.
-    pub hurt_seen: i32,
     /// A zombie villager's cure under way.
     pub cure: Option<super::zombie_villager::Cure>,
     /// `CanContinueSleepingEvent.mayContinueSleeping`, set by the game before the tick
@@ -382,6 +380,30 @@ pub struct Ext {
 }
 pub fn ext(m: &Mob) -> Option<&Ext> {
     m.extra.villager.as_deref()
+}
+/// `Villager.setLastHurtByMob` of an accepted hit by `source`'s attacker (`uuid`, made up for
+/// this hit if `minted`): its gossip lands now, and the angry event, the hitting player's offers
+/// and a made-up UUID follow as a mob event.
+pub fn hurt_by(m: &mut Mob, source: &super::Damage, uuid: [i32; 4], minted: bool) {
+    let Some(who) = source.attacker else { return };
+    if m.species() != Species::Villager || source.kind.no_anger() {
+        return;
+    }
+    ext_mut(m).gossips.add(
+        uuid,
+        crate::gossip::GossipType::MinorNegative,
+        crate::gossip::REPUTATION_CHANGE_PER_EVENT,
+    );
+    let player = (who == super::Who::Player).then_some(uuid);
+    m.outbox.push(MobEvent::VillagerHurt {
+        mob: m.id,
+        angry: m.alive() && player.is_some(),
+        player,
+        attacker_uuid: match who {
+            super::Who::Mob(id) if minted => Some((id, uuid)),
+            _ => None,
+        },
+    });
 }
 pub fn ext_mut(m: &mut Mob) -> &mut Ext {
     m.extra.villager.get_or_insert_with(Box::default)

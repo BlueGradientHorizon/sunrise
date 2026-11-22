@@ -160,6 +160,7 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
             projectile: None,
             direct: None,
             player_uuid: None,
+            attacker_uuid: None,
             held: Default::default(),
             ..Default::default()
         };
@@ -188,6 +189,7 @@ fn the_bridge_names_the_attacker_and_what_it_holds() {
             projectile: None,
             direct: None,
             player_uuid: None,
+            attacker_uuid: None,
             held: [Some(ItemStack::new("minecraft:iron_sword", 1)), None],
             ..Default::default()
         };
@@ -338,6 +340,7 @@ fn the_attack_scope_nests_restores_and_a_guest_swap_hides_it() {
                             projectile: None,
                             direct: None,
                             player_uuid: None,
+                            attacker_uuid: None,
                             held: Default::default(),
                             ..Default::default()
                         };

@@ -1967,6 +1967,15 @@ pub enum MobEvent {
         mob: u32,
         slot: sunrise_core::equipment_slot::EquipmentSlot,
     },
+    /// `Villager.setLastHurtByMob`, its gossip already added at the hit: the angry
+    /// event (13), a player's open offers refreshed, and the UUID the gossip made up
+    /// for an attacker that had none.
+    VillagerHurt {
+        mob: u32,
+        angry: bool,
+        player: Option<[i32; 4]>,
+        attacker_uuid: Option<(u32, [i32; 4])>,
+    },
     /// `OfferFlowerGoal.stop`: the item goes to the target's antenna (saddle)
     /// slot if it is empty, as a guaranteed drop.
     Gift {
@@ -4424,7 +4433,7 @@ impl Mob {
         }
         self.last_direct = None;
         hurt_by::resolve(self, &source);
-        level.accepted_mob_hit(self);
+        level.accepted_mob_hit(self, &source);
         // dealDefaultKnockback, unless the damage type is tagged no_knockback or
         // the hit was blocked whole; a source without a position knocks in a
         // random direction.
@@ -6823,6 +6832,7 @@ mod allay_damage_identity_tests {
         let attack = crate::health::Attack {
             attacker: 7,
             player_uuid: Some(ACTUAL),
+            attacker_uuid: None,
             ..Default::default()
         };
         let mut level = test_level.level().attacked_by(&attack);

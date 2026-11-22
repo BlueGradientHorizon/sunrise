@@ -486,43 +486,26 @@ impl Game<'_> {
         };
         Some(sunrise_client::lan::playerdata::uuid_ints(uuid))
     }
-    /// `Villager.setLastHurtByMob` and `ServerLevel.onReputationEvent`: a hit
-    /// from a player counts against that player with the villager that was hit.
-    pub(super) fn villager_reputation_tick(&mut self) {
-        let mut angry = Vec::new();
-        for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
-            if m.species() != Species::Villager
-                || m.ai.last_hurt_by != Some(sunrise_client::mobs::Who::Player)
-            {
-                continue;
-            }
-            let time = m.ai.last_hurt_by_time;
-            let alive = m.alive();
-            let at = m.id;
-            if villager::ext(m).is_some_and(|e| e.hurt_seen == time) {
-                continue;
-            }
-            let Some(uuid) = self.last_hurt_by_player.get(&at).and_then(|credit| {
-                self.resolve_player_credit(*credit)
-                    .and_then(|who| self.player_uuid_of(who))
-            }) else {
-                continue;
-            };
-            let e = villager::ext_mut(&mut self.mobs[i]);
-            e.hurt_seen = time;
-            e.gossips.add(
-                uuid,
-                GossipType::MinorNegative,
-                gossip::REPUTATION_CHANGE_PER_EVENT,
-            );
-            if alive {
-                angry.push(at);
-            }
+    /// `Villager.setLastHurtByMob` after its gossip landed with the hit
+    /// (`hurt_by` in the credit loan): entity event 13 for a living villager hit by a
+    /// player, and `onReputationEventFrom` refreshing that player's open offers.
+    pub(super) fn villager_hurt_event(
+        &mut self,
+        mob: u32,
+        angry: bool,
+        player: Option<[i32; 4]>,
+        attacker_uuid: Option<(u32, [i32; 4])>,
+    ) {
+        if let Some((id, uuid)) = attacker_uuid {
+            self.persist.uuids.get_or_insert_with(id, || uuid);
+            self.minted_attackers.borrow_mut().remove(&id);
         }
-        // Villager.setLastHurtByMob: entity event 13.
-        for id in angry {
-            self.mob_event_particles(id, 13);
+        if angry {
+            self.mob_event_particles(mob, 13);
+        }
+        // onReputationEventFrom: only the player whose hit it was.
+        if let Some(uuid) = player {
+            self.villager_prices_changed(mob, Some(uuid));
         }
     }
     /// `Villager.tellWitnessesThatIWasMurdered`: the villagers that saw a
@@ -577,11 +560,17 @@ impl Game<'_> {
         // Villager.customServerAiStep after a trade: entity event 14.
         self.mob_event_particles(id, 14);
         // onReputationEventFrom refreshes the current trading player's prices.
-        if self
-            .station
-            .as_ref()
-            .and_then(|s| s.merchant.as_ref())
-            .is_some_and(|m| m.mob == Some(id))
+        self.villager_prices_changed(id, Some(uuid));
+    }
+    /// `Villager.updateSpecialPrices` for the players trading with villager `id`
+    /// (only the player `only`, when given).
+    fn villager_prices_changed(&mut self, id: u32, only: Option<[i32; 4]>) {
+        if only.is_none_or(|uuid| self.level.player_uuid == Some(uuid))
+            && self
+                .station
+                .as_ref()
+                .and_then(|s| s.merchant.as_ref())
+                .is_some_and(|m| m.mob == Some(id))
         {
             let reputation = self.villager_reputation(id);
             self.menu_session(|menu, env, _| {
@@ -593,7 +582,7 @@ impl Game<'_> {
                 Some(true)
             });
         }
-        self.lan_merchant_reputation(id);
+        self.lan_merchant_reputation(id, only);
     }
     /// `Villager.getPlayerReputation` of the local player.
     pub(super) fn villager_reputation(&self, id: u32) -> i32 {
