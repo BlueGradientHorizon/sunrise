@@ -381,7 +381,7 @@ impl Renderer {
             bytemuck::bytes_of(&crosshair_globals),
         );
         // Frustum culling and camera-relative origins.
-        let cull_proj = views.cull().view_proj(pose);
+        let cull_proj = views.cull().view_proj(glam::Mat4::IDENTITY);
         let view = Frustum::from_planes(frustum(cull_proj));
         let camera = frame.camera;
         let camera_section = camera_section(camera, self.layout.min_y());
@@ -1665,6 +1665,7 @@ impl Renderer {
             native_translucent_quads,
             banner_pattern_quads,
             glint_only_quads,
+            text_solid_quads,
         ] = self.entity_batch.update(
             entities,
             frame.additive,
@@ -1696,7 +1697,8 @@ impl Renderer {
             + native_cutout_mipped_quads
             + native_translucent_quads
             + banner_pattern_quads
-            + glint_only_quads;
+            + glint_only_quads
+            + text_solid_quads;
         laps.lap("r_draw_lists");
         // Where the tail of materials the classic and the improved passes
         // both draw ends: the shadows, particles and items count back from it.
@@ -1710,7 +1712,8 @@ impl Renderer {
             - native_cutout_mipped_quads
             - native_translucent_quads
             - banner_pattern_quads
-            - glint_only_quads;
+            - glint_only_quads
+            - text_solid_quads;
         let native_clouds = self.native.as_ref().is_none_or(|n| n.vanilla_clouds);
         // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
         // the native mesh in this same frame.
@@ -3028,7 +3031,8 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..banner_pattern_quads * 6,
-                    ((world_quads - glint_only_quads - banner_pattern_quads) * 4) as i32,
+                    ((world_quads - text_solid_quads - glint_only_quads - banner_pattern_quads) * 4)
+                        as i32,
                     0..1,
                 );
                 pass.set_bind_group(0, &self.group, &[]);
@@ -3040,7 +3044,19 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..glint_only_quads * 6,
-                    ((world_quads - glint_only_quads) * 4) as i32,
+                    ((world_quads - text_solid_quads - glint_only_quads) * 4) as i32,
+                    0..1,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
+            if text_solid_quads > 0 {
+                pass.stage(self.own_timing.as_mut(), "entity text solid");
+                pass.set_pipeline(&self.text_polygon_offset_pipeline);
+                self.bind_world_text(&mut pass, true, false);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..text_solid_quads * 6,
+                    ((world_quads - text_solid_quads) * 4) as i32,
                     0..1,
                 );
                 pass.set_bind_group(0, &self.group, &[]);
@@ -3107,6 +3123,7 @@ impl Renderer {
             // alpha/mipmap policies and ordinary opaque depth. Storage follows
             // the existing materials without moving their indices or frame tails.
             let mut first = world_quads
+                - text_solid_quads
                 - glint_only_quads
                 - banner_pattern_quads
                 - native_solid_quads
@@ -3172,6 +3189,7 @@ impl Renderer {
                 pass.draw_indexed(
                     0..native_translucent_quads * 6,
                     ((world_quads
+                        - text_solid_quads
                         - glint_only_quads
                         - banner_pattern_quads
                         - native_translucent_quads)

@@ -348,7 +348,7 @@ harnesses = [
   "interaction_input", "game_loop", "mipmap", "sprite_animation", "resource_pack", "pack_*", "server_resource_pack",
   "translucency", "block_tint", "face_visibility", "breaking_model", "crack_feedback", "stack_foil", "text_*",
   "float_text", "potion_effect_icon", "hdr_auto_flip", "environment_*", "level_environment_reads", "world_border*",
-  "world_options", "squid_client", "cursor_death", "interaction_*", "view_direction", "glint", "visibility",
+  "world_options", "squid_client", "cursor_death", "interaction_*", "view_direction", "displays", "glint", "visibility",
 ]
 lan = [
   "tab", "self", "nametags", "names", "titles", "chat", "hud", "sidebar", "border", "particles", "sparks", "swings",

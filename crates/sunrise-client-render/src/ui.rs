@@ -2153,12 +2153,32 @@ mod tests {
             u32::MAX,
         );
         // Twelve missing glyphs advance 72 px. At time zero the 58 px overrun is fully
-        // scrolled, so glyph 10 starts at x = 10 - 58 + 5 + 9*6, y = (20 + 40 - 9) / 2 + 1 + 10.
-        // Its 5×1 top stroke is fully visible; other quads extend past the clip.
+        // scrolled, so glyph 10 starts at x = 10 - 58 + 5 + 9*6 = 11, y = (20 + 40 - 9) / 2 + 1 + 10 = 36.
+        // Its 5×8 SpecialGlyphs.MISSING quad extends to y = 44, so the unshifted clip
+        // [10, 20, 24, 40] cuts its bottom to y = 40 (4/8 of its height visible) and its
+        // shadow at (12, 37) to [12, 37, 17, 40].
+        let missing = atlas.font.missing_rect().expect("missing glyph sprite");
+        let drawn = quads(&batch);
+        let glyph10 = drawn
+            .iter()
+            .find(|(rect, _)| *rect == [11.0, 36.0, 16.0, 40.0])
+            .expect("offset glyph 10 clipped at unshifted bottom y=40");
+        assert_quad(
+            *glyph10,
+            (
+                [11.0, 36.0, 16.0, 40.0],
+                [
+                    missing.u0,
+                    missing.v0,
+                    missing.u1,
+                    missing.v0 + (missing.v1 - missing.v0) * 4.0 / 8.0,
+                ],
+            ),
+        );
         assert!(
-            quads(&batch)
+            drawn
                 .iter()
-                .any(|(rect, _)| *rect == [11.0, 36.0, 16.0, 37.0])
+                .any(|(rect, _)| *rect == [12.0, 37.0, 17.0, 40.0])
         );
         assert!(
             batch.vertices.iter().all(|v| {

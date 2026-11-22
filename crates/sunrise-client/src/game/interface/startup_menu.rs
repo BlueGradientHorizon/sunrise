@@ -1571,11 +1571,16 @@ mod tests {
     use super::*;
 
     fn gui(root: &std::path::Path) -> UiResources {
-        UiResources {
-            atlas: HudAtlas::fonts(&sunrise_assets::resource_source::ResourceSource::directory(
+        let atlas = if root.exists() {
+            HudAtlas::fonts(&sunrise_assets::resource_source::ResourceSource::directory(
                 root.to_path_buf(),
             ))
-            .unwrap(),
+            .unwrap()
+        } else {
+            HudAtlas::boot()
+        };
+        UiResources {
+            atlas,
             panorama: Arc::new(sunrise_client::gfx::panorama::Faces::colour([
                 96, 110, 111, 255,
             ])),

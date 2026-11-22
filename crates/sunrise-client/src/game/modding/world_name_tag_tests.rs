@@ -350,7 +350,7 @@ fn labels_grow_past_initial_quad_hint_and_upload_glyphs() {
         let atlas = &mut game.gui.atlas;
         atlas.font = sunrise_client::font::Font::load(
             &source,
-            &Default::default(),
+            &atlas.sprites,
             &[],
             (atlas.width, atlas.height),
             (atlas.height / 2, atlas.height / 2),
