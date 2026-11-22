@@ -1048,7 +1048,7 @@ fn packet_decode_reason(
             sunrise_protocol::State::Configuration => "configuration",
             sunrise_protocol::State::Play => "play",
         };
-        let class_name = vanilla_clientbound_class_name(name);
+        let class_name = vanilla_clientbound_class_name(state, id);
         return Reason::generic_exception(
             format!(
                 "io.netty.handler.codec.DecoderException: java.io.IOException: Packet {protocol}/clientbound/minecraft:{name} ({class_name}) was larger than I expected, found {extra} bytes extra whilst reading packet clientbound/minecraft:{name}"
@@ -1064,31 +1064,204 @@ fn packet_decode_reason(
     )
 }
 
-/// Simple Java class name for vanilla clientbound packet types (used by `PacketDecoder` on extra bytes).
-fn vanilla_clientbound_class_name(name: &str) -> String {
-    match name {
-        "bundle_delimiter" => "ClientboundBundleDelimiterPacket".to_owned(),
-        "post_effects" => "ClientboundPostEffectsPacket".to_owned(),
-        "set_entity_data" => "ClientboundSetEntityDataPacket".to_owned(),
-        "add_entity" => "ClientboundAddEntityPacket".to_owned(),
-        "ping" => "ClientboundPingPacket".to_owned(),
-        "keep_alive" => "ClientboundKeepAlivePacket".to_owned(),
-        "disconnect" => "ClientboundDisconnectPacket".to_owned(),
-        "start_configuration" => "ClientboundStartConfigurationPacket".to_owned(),
-        "finish_configuration" => "ClientboundFinishConfigurationPacket".to_owned(),
-        other => {
-            let mut out = String::from("Clientbound");
-            for part in other.split('_') {
-                let mut chars = part.chars();
-                if let Some(first) = chars.next() {
-                    out.extend(first.to_uppercase());
-                    out.push_str(chars.as_str());
-                }
-            }
-            out.push_str("Packet");
-            out
-        }
-    }
+/// Registered vanilla 26.3 simple Java class names (`Packet.getClass().getSimpleName()`),
+/// indexed by protocol state and clientbound packet id (`StatusProtocols`, `LoginProtocols`,
+/// `ConfigurationProtocols`, `GameProtocols`).
+const STATUS_CLIENTBOUND_CLASSES: &[&str] = &[
+    "ClientboundStatusResponsePacket",
+    "ClientboundPongResponsePacket",
+];
+const LOGIN_CLIENTBOUND_CLASSES: &[&str] = &[
+    "ClientboundLoginDisconnectPacket",
+    "ClientboundHelloPacket",
+    "ClientboundLoginFinishedPacket",
+    "ClientboundLoginCompressionPacket",
+    "ClientboundCustomQueryPacket",
+    "ClientboundCookieRequestPacket",
+];
+const CONFIGURATION_CLIENTBOUND_CLASSES: &[&str] = &[
+    "ClientboundCookieRequestPacket",
+    "ClientboundCustomPayloadPacket",
+    "ClientboundDisconnectPacket",
+    "ClientboundFinishConfigurationPacket",
+    "ClientboundKeepAlivePacket",
+    "ClientboundPingPacket",
+    "ClientboundResetChatPacket",
+    "ClientboundRegistryDataPacket",
+    "ClientboundResourcePackPopPacket",
+    "ClientboundResourcePackPushPacket",
+    "ClientboundPostEffectsPacket",
+    "ClientboundStoreCookiePacket",
+    "ClientboundTransferPacket",
+    "ClientboundUpdateEnabledFeaturesPacket",
+    "ClientboundUpdateTagsPacket",
+    "ClientboundSelectKnownPacks",
+    "ClientboundCustomReportDetailsPacket",
+    "ClientboundServerLinksPacket",
+    "ClientboundClearDialogPacket",
+    "ClientboundShowDialogPacket",
+    "ClientboundCodeOfConductPacket",
+];
+const PLAY_CLIENTBOUND_CLASSES: &[&str] = &[
+    "ClientboundBundleDelimiterPacket",
+    "ClientboundAddEntityPacket",
+    "ClientboundAnimatePacket",
+    "ClientboundAwardStatsPacket",
+    "ClientboundBlockChangedAckPacket",
+    "ClientboundBlockDestructionPacket",
+    "ClientboundBlockEntityDataPacket",
+    "ClientboundBlockEventPacket",
+    "ClientboundBlockUpdatePacket",
+    "ClientboundBossEventPacket",
+    "ClientboundChangeDifficultyPacket",
+    "ClientboundChunkBatchFinishedPacket",
+    "ClientboundChunkBatchStartPacket",
+    "ClientboundChunksBiomesPacket",
+    "ClientboundClearTitlesPacket",
+    "ClientboundCommandSuggestionsPacket",
+    "ClientboundCommandsPacket",
+    "ClientboundContainerClosePacket",
+    "ClientboundContainerSetContentPacket",
+    "ClientboundContainerSetDataPacket",
+    "ClientboundContainerSetSlotPacket",
+    "ClientboundCookieRequestPacket",
+    "ClientboundCooldownPacket",
+    "ClientboundCustomChatCompletionsPacket",
+    "ClientboundCustomPayloadPacket",
+    "ClientboundDamageEventPacket",
+    "ClientboundDebugBlockValuePacket",
+    "ClientboundDebugChunkValuePacket",
+    "ClientboundDebugEntityValuePacket",
+    "ClientboundDebugEventPacket",
+    "ClientboundDebugSamplePacket",
+    "ClientboundDeleteChatPacket",
+    "ClientboundDisconnectPacket",
+    "ClientboundDisguisedChatPacket",
+    "ClientboundEntityEventPacket",
+    "ClientboundEntityPositionSyncPacket",
+    "ClientboundExplodePacket",
+    "ClientboundAddTransientBlockPacket",
+    "ClientboundForgetLevelChunkPacket",
+    "ClientboundGameEventPacket",
+    "ClientboundGameRuleValuesPacket",
+    "ClientboundGameTestHighlightPosPacket",
+    "ClientboundMountScreenOpenPacket",
+    "ClientboundHurtAnimationPacket",
+    "ClientboundInitializeBorderPacket",
+    "ClientboundKeepAlivePacket",
+    "ClientboundLevelChunkWithLightPacket",
+    "ClientboundLevelEventPacket",
+    "ClientboundLevelParticlesPacket",
+    "ClientboundLightUpdatePacket",
+    "ClientboundLoginPacket",
+    "ClientboundLowDiskSpaceWarningPacket",
+    "ClientboundMapItemDataPacket",
+    "ClientboundMerchantOffersPacket",
+    "Pos",
+    "PosRot",
+    "ClientboundMoveMinecartPacket",
+    "Rot",
+    "ClientboundMoveVehiclePacket",
+    "ClientboundOpenBookPacket",
+    "ClientboundOpenScreenPacket",
+    "ClientboundOpenSignEditorPacket",
+    "ClientboundPingPacket",
+    "ClientboundPongResponsePacket",
+    "ClientboundPlaceGhostRecipePacket",
+    "ClientboundPlayerAbilitiesPacket",
+    "ClientboundPlayerChatPacket",
+    "ClientboundPlayerCombatEndPacket",
+    "ClientboundPlayerCombatEnterPacket",
+    "ClientboundPlayerCombatKillPacket",
+    "ClientboundPlayerInfoRemovePacket",
+    "ClientboundPlayerInfoUpdatePacket",
+    "ClientboundPlayerLookAtPacket",
+    "ClientboundPlayerPositionPacket",
+    "ClientboundPlayerRotationPacket",
+    "ClientboundRecipeBookAddPacket",
+    "ClientboundRecipeBookRemovePacket",
+    "ClientboundRecipeBookSettingsPacket",
+    "ClientboundRemoveEntitiesPacket",
+    "ClientboundRemoveMobEffectPacket",
+    "ClientboundResetScorePacket",
+    "ClientboundResourcePackPopPacket",
+    "ClientboundResourcePackPushPacket",
+    "ClientboundPostEffectsPacket",
+    "ClientboundRespawnPacket",
+    "ClientboundRotateHeadPacket",
+    "ClientboundSectionBlocksUpdatePacket",
+    "ClientboundSelectAdvancementsTabPacket",
+    "ClientboundServerDataPacket",
+    "ClientboundSetActionBarTextPacket",
+    "ClientboundSetBorderCenterPacket",
+    "ClientboundSetBorderLerpSizePacket",
+    "ClientboundSetBorderSizePacket",
+    "ClientboundSetBorderWarningDelayPacket",
+    "ClientboundSetBorderWarningDistancePacket",
+    "ClientboundSetCameraPacket",
+    "ClientboundSetChunkCacheCenterPacket",
+    "ClientboundSetChunkCacheRadiusPacket",
+    "ClientboundSetCursorItemPacket",
+    "ClientboundSetDefaultSpawnPositionPacket",
+    "ClientboundSetDisplayObjectivePacket",
+    "ClientboundSetEntityDataPacket",
+    "ClientboundSetEntityLinkPacket",
+    "ClientboundSetEntityMotionPacket",
+    "ClientboundSetEquipmentPacket",
+    "ClientboundSetExperiencePacket",
+    "ClientboundSetHealthPacket",
+    "ClientboundSetHeldSlotPacket",
+    "ClientboundSetObjectivePacket",
+    "ClientboundSetPassengersPacket",
+    "ClientboundSetPlayerInventoryPacket",
+    "ClientboundSetPlayerTeamPacket",
+    "ClientboundSetScorePacket",
+    "ClientboundSetSimulationDistancePacket",
+    "ClientboundSetSubtitleTextPacket",
+    "ClientboundSetTimePacket",
+    "ClientboundSetTitleTextPacket",
+    "ClientboundSetTitlesAnimationPacket",
+    "ClientboundSoundEntityPacket",
+    "ClientboundSoundPacket",
+    "ClientboundStartConfigurationPacket",
+    "ClientboundStopSoundPacket",
+    "ClientboundStoreCookiePacket",
+    "ClientboundSwingAnimationPacket",
+    "ClientboundSystemChatPacket",
+    "ClientboundTabListPacket",
+    "ClientboundTagQueryPacket",
+    "ClientboundTakeItemEntityPacket",
+    "ClientboundTeleportEntityPacket",
+    "ClientboundTestInstanceBlockStatus",
+    "ClientboundTickingStatePacket",
+    "ClientboundTickingStepPacket",
+    "ClientboundTransferPacket",
+    "ClientboundUpdateAdvancementsPacket",
+    "ClientboundUpdateAttributesPacket",
+    "ClientboundUpdateMobEffectPacket",
+    "ClientboundUpdateRecipesPacket",
+    "ClientboundUpdateTagsPacket",
+    "ClientboundProjectilePowerPacket",
+    "ClientboundCustomReportDetailsPacket",
+    "ClientboundServerLinksPacket",
+    "ClientboundTrackedWaypointPacket",
+    "ClientboundClearDialogPacket",
+    "ClientboundShowDialogPacket",
+];
+
+fn vanilla_clientbound_class_name(state: sunrise_protocol::State, id: i32) -> &'static str {
+    let classes: &[&str] = match state {
+        sunrise_protocol::State::Status => STATUS_CLIENTBOUND_CLASSES,
+        sunrise_protocol::State::Login => LOGIN_CLIENTBOUND_CLASSES,
+        sunrise_protocol::State::Configuration => CONFIGURATION_CLIENTBOUND_CLASSES,
+        sunrise_protocol::State::Play => PLAY_CLIENTBOUND_CLASSES,
+        sunrise_protocol::State::Handshake => &[],
+    };
+    usize::try_from(id)
+        .ok()
+        .and_then(|i| classes.get(i))
+        .copied()
+        .unwrap_or("?")
 }
 
 /// `ClientHandshakePacketListenerImpl.handleHello`: the whole connection.
@@ -5301,10 +5474,50 @@ mod tests {
         truncated_post_effects.varint(1);
         let mut unregistered_id = ::sunrise_core::vanilla_bytes::Writer::new();
         unregistered_id.varint(999);
+        let mut move_pos_extra =
+            play::Clientbound::MoveEntityPos(play::MoveEntityPos(play::MoveEntity {
+                id: 1,
+                delta: Some(play::VecDelta::Linear([0; 3])),
+                rotation: None,
+                on_ground: true,
+            }))
+            .encode();
+        move_pos_extra.push(0x7F);
+        let mut move_minecart_extra =
+            play::Clientbound::MoveMinecartAlongTrack(play::MoveMinecartAlongTrack {
+                id: 1,
+                steps: Vec::new(),
+            })
+            .encode();
+        move_minecart_extra.push(0x7F);
+        let mut test_status_extra =
+            play::Clientbound::TestInstanceBlockStatus(play::TestInstanceBlockStatus {
+                status: Tag::String("ok".into()),
+                size: None,
+            })
+            .encode();
+        test_status_extra.push(0x7F);
+        let mut waypoint_extra = play::Clientbound::TrackedWaypoint(play::TrackedWaypoint {
+            operation: 1,
+            id: play::WaypointId::Uuid(1),
+            style: "minecraft:default".into(),
+            color: None,
+            target: play::WaypointTarget::Empty,
+        })
+        .encode();
+        waypoint_extra.push(0x7F);
         for (case_name, frame, also_bundled) in [
             ("bundle_delimiter_extra_bytes", delimiter_extra, true),
             ("truncated_post_effects", truncated_post_effects.data, false),
             ("unregistered_packet_id", unregistered_id.data, true),
+            ("move_entity_pos_extra_bytes", move_pos_extra, false),
+            ("move_minecart_extra_bytes", move_minecart_extra, false),
+            (
+                "test_instance_block_status_extra_bytes",
+                test_status_extra,
+                false,
+            ),
+            ("waypoint_extra_bytes", waypoint_extra, false),
         ] {
             for bundled in if also_bundled {
                 vec![false, true]
@@ -5504,7 +5717,119 @@ mod tests {
                     };
                     assert_eq!(got, expected_key, "config post_effects ({case_name})");
                 }
+                // Configuration select_known_packs with trailing bytes reports registered ClientboundSelectKnownPacks.
+                let bundle = network_witness("bundle.json");
+                let known_packs_case =
+                    &bundle["malformed_before_bundling"]["config_select_known_packs_extra_bytes"];
+                let raw_frame = network_hex(known_packs_case["frame_hex"].as_str().unwrap());
+                let (root, data) = empty_item_data("cfg-select-known-packs-extra");
+                let _dir = TempDirGuard(root);
+                let (client, server) = sunrise_protocol::connection::Pipe::pair();
+                let (mut reader, writer) = Connection::local(client).split();
+                reader
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let shared_writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+                let client_writer = shared_writer.clone();
+                let lang: Language = [("disconnect.genericReason".to_owned(), "%s".to_owned())]
+                    .into_iter()
+                    .collect();
+                let thread = std::thread::spawn(move || {
+                    drive_configuration(
+                        |send| {
+                            configure(
+                                &mut reader,
+                                &client_writer,
+                                &Arc::new(AtomicBool::new(true)),
+                                &lang,
+                                send,
+                                &Cookies::default(),
+                                &data,
+                                &crate::raw_payloads::Transport::empty(),
+                            )
+                        },
+                        |_| {},
+                    )
+                });
+                let mut server = Connection::local(server);
+                let _ = server.send(&raw_frame);
+                drop(server);
+                let reason = thread
+                    .join()
+                    .unwrap()
+                    .expect_err("select_known_packs extra bytes must disconnect");
+                drop(shared_writer);
+                assert_eq!(
+                    reason.key.as_deref(),
+                    known_packs_case["disconnect_key"].as_str()
+                );
+                assert_eq!(
+                    Some(reason.text.as_str()),
+                    known_packs_case["disconnect_text"].as_str(),
+                    "config select_known_packs full disconnect text"
+                );
             },
+        );
+    }
+
+    #[test]
+    fn vanilla_clientbound_class_tables_match_registered_ids() {
+        use sunrise_protocol::{State, ids};
+        assert_eq!(
+            STATUS_CLIENTBOUND_CLASSES.len(),
+            ids::status::clientbound::NAMES.len()
+        );
+        assert_eq!(
+            LOGIN_CLIENTBOUND_CLASSES.len(),
+            ids::login::clientbound::NAMES.len()
+        );
+        assert_eq!(
+            CONFIGURATION_CLIENTBOUND_CLASSES.len(),
+            ids::configuration::clientbound::NAMES.len()
+        );
+        assert_eq!(
+            PLAY_CLIENTBOUND_CLASSES.len(),
+            ids::play::clientbound::NAMES.len()
+        );
+        assert_eq!(
+            vanilla_clientbound_class_name(
+                State::Configuration,
+                ids::configuration::clientbound::SELECT_KNOWN_PACKS
+            ),
+            "ClientboundSelectKnownPacks"
+        );
+        assert_eq!(
+            vanilla_clientbound_class_name(State::Play, ids::play::clientbound::MOVE_ENTITY_POS),
+            "Pos"
+        );
+        assert_eq!(
+            vanilla_clientbound_class_name(
+                State::Play,
+                ids::play::clientbound::MOVE_ENTITY_POS_ROT
+            ),
+            "PosRot"
+        );
+        assert_eq!(
+            vanilla_clientbound_class_name(State::Play, ids::play::clientbound::MOVE_ENTITY_ROT),
+            "Rot"
+        );
+        assert_eq!(
+            vanilla_clientbound_class_name(
+                State::Play,
+                ids::play::clientbound::MOVE_MINECART_ALONG_TRACK
+            ),
+            "ClientboundMoveMinecartPacket"
+        );
+        assert_eq!(
+            vanilla_clientbound_class_name(
+                State::Play,
+                ids::play::clientbound::TEST_INSTANCE_BLOCK_STATUS
+            ),
+            "ClientboundTestInstanceBlockStatus"
+        );
+        assert_eq!(
+            vanilla_clientbound_class_name(State::Play, ids::play::clientbound::WAYPOINT),
+            "ClientboundTrackedWaypointPacket"
         );
     }
 
