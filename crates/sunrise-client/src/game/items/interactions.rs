@@ -203,18 +203,25 @@ mod tests {
         );
     }
 
-    const PARITY_WITNESS: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/witness/26.3/camera_parity/witness.json"
-    ));
+    fn parity_witness() -> serde_json::Value {
+        let path = std::env::var("SUNRISE_CAMERA_PARITY_WITNESS")
+            .expect("run through tools/test_camera_parity.py, which records the witness");
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read SUNRISE_CAMERA_PARITY_WITNESS={path} (run through tools/test_camera_parity.py): {err}"
+            )
+        });
+        serde_json::from_str(&raw).expect("valid 26.3 camera parity witness")
+    }
 
     fn hex_f64(v: &serde_json::Value) -> u64 {
         u64::from_str_radix(v.as_str().unwrap(), 16).unwrap()
     }
 
     #[test]
+    #[ignore = "run by tools/test_camera_parity.py"]
     fn interaction_unsynced_default_sync_and_pose_sync_seat_height_26_3() {
-        let witness: serde_json::Value = serde_json::from_str(PARITY_WITNESS).unwrap();
+        let witness = parity_witness();
         let life = &witness["interaction_lifecycle"];
 
         let mut i = RemoteInteraction::new([0.5, 300.0, 0.5]);
@@ -243,8 +250,9 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "run by tools/test_camera_parity.py"]
     fn interaction_negative_height_bounds_invert_downward_26_3() {
-        let witness: serde_json::Value = serde_json::from_str(PARITY_WITNESS).unwrap();
+        let witness = parity_witness();
         let life = &witness["interaction_lifecycle"];
         for (case_name, width, height) in [
             ("sync_negative_height", 0.5f32, -1.5f32),

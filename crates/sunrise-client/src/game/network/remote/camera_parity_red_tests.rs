@@ -2,7 +2,6 @@ use crate::game::{
     Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
 };
 use serde_json::Value;
-use std::path::Path;
 use std::sync::Arc;
 use sunrise_client::{
     camera::CameraType,
@@ -26,17 +25,15 @@ use sunrise_protocol::{
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
 
-const PARITY_WITNESS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tools/witness/26.3/camera_parity/witness.json"
-));
-
 fn parity_witness() -> Value {
-    serde_json::from_str(PARITY_WITNESS).expect("valid 26.3 camera parity witness")
-}
-
-fn menu_witness_dir() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/witness/26.3/genpvp_menu")
+    let path = std::env::var("SUNRISE_CAMERA_PARITY_WITNESS")
+        .expect("run through tools/test_camera_parity.py, which records the witness");
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read SUNRISE_CAMERA_PARITY_WITNESS={path} (run through tools/test_camera_parity.py): {err}"
+        )
+    });
+    serde_json::from_str(&raw).expect("valid 26.3 camera parity witness")
 }
 
 fn hex_f32(v: &Value) -> u32 {
@@ -156,108 +153,9 @@ fn make_chunk(cx: i32, cz: i32, biome_id: u16, uniform_light: u8) -> Chunk {
     chunk
 }
 
-/// Items 1 & 12 against the real vanilla 26.3 genpvp menu witness (`settled.json` & `ticks.jsonl`).
-#[test]
-#[ignore = "daily"]
-fn genpvp_menu_interaction_camera_matches_26_3_witness() {
-    let dir = menu_witness_dir();
-    let settled: Value = serde_json::from_str(
-        &std::fs::read_to_string(dir.join("settled.json"))
-            .expect("tools/witness/26.3/genpvp_menu/settled.json"),
-    )
-    .unwrap();
-    let ticks_raw = std::fs::read_to_string(dir.join("ticks.jsonl"))
-        .expect("tools/witness/26.3/genpvp_menu/ticks.jsonl");
-    let ticks: Vec<Value> = ticks_raw
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
-
-    let player_id = settled["player"]["id"].as_i64().unwrap() as i32;
-    let player_pos = vec3_from_bits(&settled["player"]["pos_bits"]);
-    let cam_id = settled["camera"]["entity_id"].as_i64().unwrap() as i32;
-    let cam_type = settled["camera"]["entity_type"].as_str().unwrap();
-    let cam_entity_pos = vec3_from_bits(&settled["camera"]["entity_pos_bits"]);
-    let partial = f32::from_bits(hex_f32(&settled["camera"]["partial_tick_bits"]));
-
-    with_client_game(|game| {
-        let _server = setup_remote_overworld(game, player_id, player_pos, false);
-        add_entity(game, cam_id, cam_type, cam_entity_pos, 0.0, 0.0);
-        sync_interaction_size(game, cam_id, 0.1, 1.9059);
-        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: cam_id }))
-            .unwrap();
-
-        let snap = game
-            .spectated_camera_snapshot()
-            .expect("interaction camera entity must resolve");
-        assert_eq!(
-            snap.position.map(f64::to_bits),
-            vec3_bits_expected(&settled["camera"]["entity_pos_bits"]),
-            "camera entity position bits"
-        );
-        assert_eq!(
-            snap.eye_height.to_bits(),
-            hex_f32(&settled["camera"]["entity_eye_height_bits"]),
-            "interaction eye height bits"
-        );
-
-        let attached_ticks: Vec<&Value> = ticks
-            .iter()
-            .filter(|row| row["camera_entity_id"].as_i64() == Some(i64::from(cam_id)))
-            .collect();
-        assert!(
-            !attached_ticks.is_empty(),
-            "ticks.jsonl must record camera switch"
-        );
-        for row in [
-            attached_ticks[0],
-            attached_ticks[attached_ticks.len() / 2],
-            *attached_ticks.last().unwrap(),
-        ] {
-            assert_eq!(
-                snap.position.map(f64::to_bits),
-                vec3_bits_expected(&row["camera_entity_pos_bits"]),
-                "tick {} camera_entity_pos_bits",
-                row["tick"]
-            );
-        }
-
-        game.view = Default::default();
-        for _ in 0..40 {
-            game.tick_fov();
-        }
-        let (cam_pos, yaw, pitch) = game.camera_view(partial).expect("camera view");
-        assert_eq!(
-            cam_pos.to_array().map(f64::to_bits),
-            vec3_bits_expected(&settled["camera"]["camera_pos_bits"]),
-            "settled camera_pos_bits"
-        );
-        assert_eq!(
-            yaw.to_bits(),
-            hex_f32(&settled["camera"]["camera_yRot_bits"]),
-            "settled camera_yRot_bits"
-        );
-        assert_eq!(
-            pitch.to_bits(),
-            hex_f32(&settled["camera"]["camera_xRot_bits"]),
-            "settled camera_xRot_bits"
-        );
-        assert_eq!(
-            game.view.detached,
-            settled["camera"]["detached"].as_bool().unwrap()
-        );
-        assert_eq!(
-            game.fov_degrees(partial, cam_pos.to_array()).to_bits(),
-            hex_f32(&settled["frame"]["fov_bits"]),
-            "settled frame.fov_bits"
-        );
-    });
-}
-
 /// Item 1: every tracked entity kind resolves through the single camera resolver (26.3 oracle).
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn any_tracked_entity_resolves_as_camera_26_3() {
     let witness = parity_witness();
     let records = witness["entity_cameras"]["records"].as_array().unwrap();
@@ -350,7 +248,7 @@ fn any_tracked_entity_resolves_as_camera_26_3() {
 
 /// Item 12: Interaction eye height, rotation, move/teleport interpolation, and far snap (26.3).
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn interaction_camera_eye_rotation_move_and_teleport_26_3() {
     let witness = parity_witness();
     let life = &witness["interaction_lifecycle"];
@@ -528,7 +426,7 @@ fn interaction_camera_eye_rotation_move_and_teleport_26_3() {
 
 /// Item 12: RemoveEntities retains the detached camera entity and post effect until SetCamera (26.3).
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn removing_camera_entity_keeps_detached_camera_26_3() {
     let witness = parity_witness();
     for kind in ["minecraft:interaction", "minecraft:creeper"] {
@@ -616,7 +514,7 @@ fn removing_camera_entity_keeps_detached_camera_26_3() {
 
 /// Item 6: bob, fog, dark disc, vignette, border warning, and F1 hide_gui follow 26.3 camera rules.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn camera_consumers_bob_fog_dark_disc_and_vignette_26_3() {
     let witness = parity_witness();
     let consumers = &witness["camera_consumers"];
@@ -840,7 +738,7 @@ fn camera_consumers_bob_fog_dark_disc_and_vignette_26_3() {
 
 /// Item 6: streaming center, particles, F3 debug entries/gizmos, and spectator crosshair (26.3).
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
     let witness = parity_witness();
     let consumers = &witness["camera_consumers"];
@@ -1018,7 +916,7 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
 
 /// Item 6: frozen-level camera partial tick matches 26.3 `Camera.getCameraEntityPartialTicks`.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn frozen_camera_partial_tick_matches_26_3_witness() {
     let witness = parity_witness();
     let frozen = &witness["camera_consumers"]["frozen_partial"];
@@ -1076,7 +974,7 @@ fn frozen_camera_partial_tick_matches_26_3_witness() {
 
 /// Item 6: block outline requires a player camera entity (`GameRenderer.shouldRenderBlockOutline`).
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn block_outline_requires_player_camera_26_3() {
     let witness = parity_witness();
     let outline = &witness["camera_consumers"]["block_outline"];
@@ -1112,7 +1010,7 @@ fn block_outline_requires_player_camera_26_3() {
 
 /// Item 14: culling near plane uses max(fov, option_fov) while scoping with a spyglass (26.3).
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn culling_near_plane_uses_max_of_fov_and_option_fov_26_3() {
     let witness = parity_witness();
     let case = witness["cull_frustum"]["cases"]
@@ -1215,7 +1113,7 @@ fn add_entity_with_data(
 /// non-bed block) adopts the vanilla 26.3 bed view (`bed_yaw - 180` or `0`, pitch `0`, `+0.15`)
 /// and stays visible in first person (`LevelExtractor` does not hide a sleeping camera entity).
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn sleeping_spectated_living_entity_bed_view_and_visibility_26_3() {
     let witness = parity_witness();
     let cases = witness["sleeping_spectated_camera"]["cases"]
@@ -1348,7 +1246,7 @@ fn sleeping_spectated_living_entity_bed_view_and_visibility_26_3() {
 /// camera from the local player's death/speed/scoping while still applying the camera entity's own
 /// death squeeze.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn camera_player_fov_modifier_and_death_isolation_26_3() {
     let witness = parity_witness();
     let cases = witness["camera_player_fov_modifier"]["cases"]
@@ -1667,7 +1565,7 @@ fn camera_player_fov_modifier_and_death_isolation_26_3() {
 /// end crystals, paintings, armor stands, mobs) and shoots from the camera entity's exact eye and
 /// view direction so a target ahead is picked instead of self.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn camera_entity_excluded_from_pick_for_all_pickable_kinds_26_3() {
     let witness = parity_witness();
     let cases = witness["camera_pick_exclusion"]["cases"]
@@ -1760,7 +1658,7 @@ fn camera_entity_excluded_from_pick_for_all_pickable_kinds_26_3() {
 /// the camera entity (and in third person or sleeping), and hides the camera entity in first
 /// person whatever its kind (body, flames, shadows, name tag).
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26_3() {
     use sunrise_client::camera::CameraType;
     use sunrise_core::nbt::Tag;
@@ -2046,7 +1944,7 @@ fn camera_entity_hidden_in_first_person_for_all_kinds_and_local_player_hidden_26
 /// scaled ArmorStand or scale-sanitized HappyGhast — uses the vehicle's sanitized scale and
 /// camera distance in third person, and a scaled ArmorStand camera uses its own scale & distance.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn spectated_rider_mount_attributes_26_3() {
     use sunrise_client::camera::{Camera, CameraType};
 

@@ -264,12 +264,16 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "run by tools/test_camera_parity.py"]
     fn cull_frustum_matches_26_3_witness_with_zoom_widen_and_bob() {
-        let witness: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../tools/witness/26.3/camera_parity/witness.json"
-        )))
-        .unwrap();
+        let path = std::env::var("SUNRISE_CAMERA_PARITY_WITNESS")
+            .expect("run through tools/test_camera_parity.py, which records the witness");
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "failed to read SUNRISE_CAMERA_PARITY_WITNESS={path} (run through tools/test_camera_parity.py): {err}"
+            )
+        });
+        let witness: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let f32_hex = |v: &serde_json::Value| {
             f32::from_bits(u32::from_str_radix(v.as_str().unwrap(), 16).unwrap())
         };

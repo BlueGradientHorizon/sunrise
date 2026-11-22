@@ -6,12 +6,17 @@ use sunrise_protocol::{
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
 
-const WITNESS: &str = include_str!("camera_death_witness.tsv");
-
 /// Generic living camera only (oracle drives a deathTime stand-in, not a real creeper); the camera player's own fov modifier is open.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn a_spectated_dying_living_entity_squeezes_the_fov_26_3() {
+    let path = std::env::var("SUNRISE_CAMERA_DEATH_WITNESS")
+        .expect("run through tools/test_camera_parity.py, which records the witness");
+    let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read SUNRISE_CAMERA_DEATH_WITNESS={path} (run through tools/test_camera_parity.py): {err}"
+        )
+    });
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "CameraDeathTest").unwrap();
@@ -57,7 +62,7 @@ fn a_spectated_dying_living_entity_squeezes_the_fov_26_3() {
         assert!(!game.controls_camera());
         game.settings.fov = 70.0;
         let mut wrong = Vec::new();
-        for row in WITNESS.lines().filter(|l| !l.starts_with('#')) {
+        for row in witness.lines().filter(|l| !l.starts_with('#')) {
             let [dead, partial, fov, hud] = row.split('\t').collect::<Vec<_>>()[..] else {
                 panic!("bad witness row {row}");
             };

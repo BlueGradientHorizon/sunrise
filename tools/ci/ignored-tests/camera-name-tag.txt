@@ -1,2 +1,0 @@
-# Camera-attached name tag witness.
-sunrise-client game::remote::tests::client_camera_tests::a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag lib daily resources

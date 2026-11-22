@@ -10,8 +10,15 @@ use sunrise_protocol::{
 /// The local player and a villager drawn over camera entity, camera type and
 /// sleeping, against what the real 26.3 `LevelExtractor` drew.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn local_player_and_camera_entity_draw_like_the_real_client() {
+    let path = std::env::var("SUNRISE_CAMERA_DRAW_WITNESS")
+        .expect("run through tools/test_camera_parity.py, which records the witness");
+    let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read SUNRISE_CAMERA_DRAW_WITNESS={path} (run through tools/test_camera_parity.py): {err}"
+        )
+    });
     with_client_game(|game| {
         game.native_lifecycle = Default::default();
         let (client, _server) = Pipe::pair();
@@ -55,10 +62,7 @@ fn local_player_and_camera_entity_draw_like_the_real_client() {
         }))
         .unwrap();
         let mut actual = Vec::new();
-        for row in include_str!("camera_draw_witness.txt")
-            .lines()
-            .filter(|l| !l.starts_with('#'))
-        {
+        for row in witness.lines().filter(|l| !l.starts_with('#')) {
             let f: Vec<&str> = row.split(' ').collect();
             game.remote.as_mut().unwrap().camera = (f[0] == "villager").then_some(31);
             game.camera_type = match f[1] {
@@ -79,7 +83,7 @@ fn local_player_and_camera_entity_draw_like_the_real_client() {
                 u8::from(!game.hides_as_camera(31)),
             ));
         }
-        let expected: Vec<String> = include_str!("camera_draw_witness.txt")
+        let expected: Vec<String> = witness
             .lines()
             .filter(|l| !l.starts_with('#'))
             .map(String::from)

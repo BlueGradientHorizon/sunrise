@@ -1,5 +1,5 @@
 //! A spectated rider backs off by its living vehicle's scale and camera distance (26.3 `Camera.alignWithEntity`).
-//! Expected frames are the real 26.3 camera on real vehicle classes (camera_mount_witness.json, tools/record_camera_mount_witness.py).
+//! Expected frames are recorded into `.local` by `tools/test_camera_parity.py` (`VanillaCameraOracle`).
 use crate::game::{
     Game, native_client_session::tests::logged_client, native_entity_refs::tests::with_client_game,
 };
@@ -198,9 +198,16 @@ fn setup(game: &mut Game<'_>, key: &Value, attributes_first: bool) {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance() {
-    let witness: Value = serde_json::from_str(include_str!("camera_mount_witness.json")).unwrap();
+    let path = std::env::var("SUNRISE_CAMERA_MOUNT_WITNESS")
+        .expect("run through tools/test_camera_parity.py, which records the witness");
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read SUNRISE_CAMERA_MOUNT_WITNESS={path} (run through tools/test_camera_parity.py): {err}"
+        )
+    });
+    let witness: Value = serde_json::from_str(&raw).unwrap();
     let records = witness["records"].as_array().unwrap();
     let mut failures = Vec::new();
     let mut guards = Vec::new();

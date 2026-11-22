@@ -9,14 +9,16 @@ use sunrise_protocol::{
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
 
-const WITNESS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tools/fixtures/26.3/set_camera_witness.tsv"
-));
-
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn set_camera_follows_the_real_26_3_clients_camera_for_every_entity_kind() {
+    let path = std::env::var("SUNRISE_SET_CAMERA_WITNESS")
+        .expect("run through tools/test_camera_parity.py, which records the witness");
+    let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read SUNRISE_SET_CAMERA_WITNESS={path} (run through tools/test_camera_parity.py): {err}"
+        )
+    });
     with_client_game(|game| {
         let camera = |game: &Game<'_>| (game as &dyn ClientHost).camera_entity();
         game.native_lifecycle = NativeLifecycle::default();
@@ -41,7 +43,7 @@ fn set_camera_follows_the_real_26_3_clients_camera_for_every_entity_kind() {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         let local = camera(game).unwrap();
         let mut mismatches = Vec::new();
-        for (n, row) in WITNESS.lines().filter(|l| !l.starts_with('#')).enumerate() {
+        for (n, row) in witness.lines().filter(|l| !l.starts_with('#')).enumerate() {
             let (kind, expected) = row.split_once('\t').unwrap();
             let target = 40 + n as i32;
             let kind_id = game

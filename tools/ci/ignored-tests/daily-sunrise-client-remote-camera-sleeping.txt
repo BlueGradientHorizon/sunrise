@@ -1,3 +1,0 @@
-# Daily row: a spectated sleeping villager's bed view, replayed from the recorded 26.3 Camera.alignWithEntity.
-# PACKAGE TEST TARGET daily REASON; exact logical libtest identities, sorted.
-sunrise-client game::remote_camera::camera_tests::a_spectated_sleeping_villager_shows_the_bed_view lib daily resources

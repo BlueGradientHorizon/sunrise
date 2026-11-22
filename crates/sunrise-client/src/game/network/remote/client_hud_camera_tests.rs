@@ -1,4 +1,4 @@
-// 26.3 witness: tools/hud_camera_witness/26.3 (real Hud, recorded by tools/record_hud_camera_witness.py).
+// 26.3 witness: real Hud, recorded into `.local` by `tools/test_camera_parity.py`.
 use crate::game::{
     Game, native_entity_refs::tests::with_client_game, native_lifecycle::NativeLifecycle,
 };
@@ -12,7 +12,6 @@ use sunrise_protocol::{
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
 
-const WITNESS: &str = include_str!("../../../../../../tools/hud_camera_witness/26.3/vanilla.jsonl");
 const SIZE: [u32; 2] = [427, 240];
 const LOCAL: i32 = 7;
 const WATCHED: i32 = 50;
@@ -328,10 +327,17 @@ fn set_up(game: &mut Game<'_>, case: &serde_json::Value) {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn hud_bars_follow_the_camera_player_like_26_3() {
+    let path = std::env::var("SUNRISE_HUD_CAMERA_WITNESS")
+        .expect("run through tools/test_camera_parity.py, which records the witness");
+    let witness = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read SUNRISE_HUD_CAMERA_WITNESS={path} (run through tools/test_camera_parity.py): {err}"
+        )
+    });
     let mut cases = 0;
-    for line in WITNESS.lines() {
+    for line in witness.lines() {
         cases += 1;
         let recorded: serde_json::Value = serde_json::from_str(line).unwrap();
         let case = &recorded["case"];

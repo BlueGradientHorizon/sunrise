@@ -2300,7 +2300,6 @@ sunrise-client game::remote::rider_tick_tests::a_riders_move_takes_the_look_of_t
 sunrise-client game::remote::tables::tests::a_servers_block_and_item_tags_replace_the_games lib daily resources
 sunrise-client game::remote::tests::a_servers_client_takes_its_speed_from_the_attributes_not_the_effect lib daily resources
 sunrise-client game::remote::tests::block_alias_survival_consumption_and_client_prediction lib daily resources
-sunrise-client game::remote::tests::camera_death_tests::a_spectated_dying_living_entity_squeezes_the_fov_26_3 lib daily resources
 sunrise-client game::remote::tests::chat_event_tests::mod_chat_needs_a_joined_player_and_what_the_chat_option_allows lib daily resources
 sunrise-client game::remote::tests::chat_event_tests::mods_replace_and_cancel_received_chat lib daily resources
 sunrise-client game::remote::tests::chat_window_and_input_tests::a_mod_chat_line_shows_locally_and_sends_nothing lib daily resources

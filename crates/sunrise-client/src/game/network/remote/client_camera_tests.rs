@@ -135,10 +135,16 @@ fn client_camera_entity_returns_to_player_after_removal() {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag() {
-    let witness: serde_json::Value =
-        serde_json::from_str(include_str!("witness/26.3/name_tag_camera.json")).unwrap();
+    let path = std::env::var("SUNRISE_NAME_TAG_CAMERA_WITNESS")
+        .expect("run through tools/test_camera_parity.py, which records the witness");
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read SUNRISE_NAME_TAG_CAMERA_WITNESS={path} (run through tools/test_camera_parity.py): {err}"
+        )
+    });
+    let witness: serde_json::Value = serde_json::from_str(&raw).unwrap();
     let shown = |camera_is_entity: bool| {
         witness["cases"]
             .as_array()

@@ -131,26 +131,42 @@ fn a_frame_camera_turns_with_its_facing() {
 }
 
 /// Minecraft 26.3: the real `Camera.alignWithEntity` (first person) on a real
-/// sleeping `Villager` and `RemotePlayer` at each bed facing, recorded by
-/// `tools/record_remote_camera_sleeping.py`: the view turns to the bed
+/// sleeping `Villager` and `RemotePlayer` at each bed facing, recorded into
+/// `.local` by `tools/test_camera_parity.py`: the view turns to the bed
 /// (`toYRot() - 180`, pitch 0) and drops 0.15.
 #[test]
-#[ignore = "daily"]
+#[ignore = "run by tools/test_camera_parity.py"]
 fn a_spectated_sleeping_villager_shows_the_bed_view() {
     use super::mob_camera_entity;
     use sunrise_client::camera::{Camera, CameraType};
 
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src/game/network/tests/fixtures/remote_camera_sleeping");
-    let cases = std::fs::read_to_string(dir.join("cases.jsonl")).unwrap();
-    let vanilla = std::fs::read_to_string(dir.join("vanilla.txt")).unwrap();
+    let dir = std::path::PathBuf::from(
+        std::env::var("SUNRISE_REMOTE_CAMERA_SLEEPING_DIR")
+            .expect("run through tools/test_camera_parity.py, which records the witness"),
+    );
+    let cases = std::fs::read_to_string(dir.join("cases.jsonl")).unwrap_or_else(|err| {
+        panic!(
+            "failed to read {} (run through tools/test_camera_parity.py): {err}",
+            dir.join("cases.jsonl").display()
+        )
+    });
+    let vanilla = std::fs::read_to_string(dir.join("vanilla.txt")).unwrap_or_else(|err| {
+        panic!(
+            "failed to read {} (run through tools/test_camera_parity.py): {err}",
+            dir.join("vanilla.txt").display()
+        )
+    });
     let frames: Vec<&str> = vanilla
         .lines()
         .filter(|l| l.starts_with("frame "))
         .collect();
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../.local/sunrise-client")
-        .join(sunrise_core::VANILLA_VERSION);
+    let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../.local/sunrise-client")
+                .join(sunrise_core::VANILLA_VERSION)
+        });
     let types = sunrise_client::mobs::MobTypes::load(&root).unwrap();
     let player_kind = crate::game::perspective::player_type(&root).expect("player mob type");
     let bits = |v: &serde_json::Value| u64::from_str_radix(v.as_str().unwrap(), 16).unwrap();
