@@ -88,7 +88,7 @@ sunrise-client game::block_entity_ticks::furnace_changed_tests::a_refuel_while_l
 sunrise-client game::block_entity_ticks::jukebox_stop_tests::a_jukebox_that_stops_tells_the_listeners lib daily resources
 sunrise-client game::block_entity_ticks::own_block_entity_tests::a_mods_block_entity_on_a_vanilla_block_is_only_its_own_mods lib daily resources
 sunrise-client game::block_entity_ticks::own_block_entity_tests::an_entity_replaced_by_another_mods_type_does_not_tick_as_the_old_one lib daily resources
-sunrise-client game::block_entity_ticks::own_block_entity_tests::each_slot_counts_only_its_own_mods_block_entities lib daily resources
+sunrise-client game::block_entity_ticks::own_block_entity_tests::each_slot_counts_only_its_own_mods_block_entities lib daily child-process
 sunrise-client game::block_entity_ticks::slot_guard_tests::a_slot_is_entered_as_its_mod_before_and_after_an_entry lib daily resources
 sunrise-client game::block_entity_ticks::slot_mutation_tests::a_caught_nested_panic_leaves_the_enclosing_pass_its_scratch lib daily resources
 sunrise-client game::block_entity_ticks::slot_mutation_tests::a_nested_pass_leaves_the_enclosing_pass_its_scratch lib daily resources
@@ -381,7 +381,6 @@ sunrise-client game::creatures::breeding_heart_tests::a_bred_turtle_posts_no_hea
 sunrise-client game::creatures::breeding_orb_tests::breeding_drops_one_orb_of_the_whole_roll lib daily resources
 sunrise-client game::creatures::breeding_tests::breeding_announces_the_orb_before_the_lower_id_child lib daily resources
 sunrise-client game::creatures::breeding_tests::camel_breeding_leaves_the_parent_stream_unchanged lib daily resources
-sunrise-client game::creatures::breeding_tests::empty_mod_never_defers_breeding_xp lib daily resources
 sunrise-client game::creatures::breeding_tests::equine_breeding_inheritance_precedes_same_tick_healing_and_grazing lib daily resources
 sunrise-client game::creatures::breeding_tests::first_chicken_breed_matches_without_mods_and_with_an_empty_mod lib daily resources
 sunrise-client game::creatures::breeding_tests::wolf_breeding_selects_either_coat_from_the_parent_stream lib daily resources
@@ -446,7 +445,6 @@ sunrise-client game::creatures::loaded_arrow_shot_tests::mob_launch_uses_only_th
 sunrise-client game::creatures::loaded_arrow_shot_tests::rocket_and_mob_trident_post_only_on_their_first_tick lib daily resources
 sunrise-client game::creatures::loaded_mob_arrow_permission_tests::loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit lib daily resources
 sunrise-client game::creatures::local_sound_event_tests::local_mob_events_play_without_entering_the_shared_capture lib daily resources
-sunrise-client game::creatures::mob_dispatch_panic_tests::mob_despawn_listener_panic_preserves_owned_rows_and_lent_random lib daily resources
 sunrise-client game::creatures::mob_griefing_tests::a_mod_denies_one_entity_griefing lib daily resources
 sunrise-client game::creatures::mob_pearl_hook_tests::mob_pearls_use_the_hook_and_recheck_listener_writes_without_player_side_effects lib daily resources
 sunrise-client game::creatures::mob_pearl_hook_tests::player_pearl_keeps_acting_context_cancellation_and_mutable_damage lib daily resources
@@ -456,11 +454,8 @@ sunrise-client game::creatures::projectile_batch_tests::canceled_impacts_keep_pr
 sunrise-client game::creatures::projectile_batch_tests::no_impact_expiration_retires_only_the_expired_owner lib daily resources
 sunrise-client game::creatures::pufferfish_player::pufferfish_sting_tests::a_silent_fish_damages_and_poisons_without_the_sting lib daily resources
 sunrise-client game::creatures::pufferfish_player::pufferfish_sting_tests::the_sting_event_goes_out_once_per_accepted_hit lib daily resources
-sunrise-client game::creatures::retained_limits_tests::interrupted_refusal_stays_latched_until_empty lib daily resources
-sunrise-client game::creatures::retained_limits_tests::push_only_failed_passes_are_refused_and_delivered_without_loss lib daily resources
-sunrise-client game::creatures::retained_limits_tests::repeated_producer_panic_has_bounded_batches lib daily resources
-sunrise-client game::creatures::retained_limits_tests::same_mob_guest_attack_survives_movement_panic lib daily resources
-sunrise-client game::creatures::retained_limits_tests::successful_mixed_producers_are_bounded_behind_a_repeatedly_failing_consumer lib daily resources
+sunrise-client game::creatures::retained_limits_tests::pending_pushes_deliver_once_and_do_not_cross_world_reset lib daily child-process
+sunrise-client game::creatures::retained_limits_tests::same_mob_guest_attack_survives_movement_panic lib daily child-process
 sunrise-client game::creatures::revenge_home_tests::a_zombie_takes_revenge_only_on_a_cow_inside_its_home lib daily resources
 sunrise-client game::creatures::spawn_egg_mob_tests::a_mooshroom_egg_child_rolls_the_colour_flip lib daily resources
 sunrise-client game::creatures::spawn_egg_mob_tests::an_egg_used_on_a_mob_posts_entity_interact lib daily resources
@@ -938,7 +933,6 @@ sunrise-client game::living_attributes::tests::a_stand_the_dragon_and_a_player_t
 sunrise-client game::living_attributes::tests::a_zombie_reads_its_defaults lib daily resources
 sunrise-client game::living_attributes::tests::gear_knockback_is_read_again_only_when_the_gear_changes lib daily resources
 sunrise-client game::living_attributes::tests::the_mob_attribute_packet_is_the_live_maps_instances lib daily resources
-sunrise-client game::load_conditions::tests::load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes lib daily resources
 sunrise-client game::loot_kill_guest_tests::an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not lib daily resources
 sunrise-client game::loot_kill_guest_tests::loot_kill_as_a_guest_is_killed_by_that_player lib daily resources
 sunrise-client game::mace::tests::a_damage_item_part_changes_the_wear_of_a_weapon_hit lib daily resources
@@ -1898,7 +1892,7 @@ sunrise-client game::native_render_pair_tests::a_canceled_living_pre_skips_the_m
 sunrise-client game::native_render_pair_tests::a_culled_entity_is_asked_neither_hook lib daily resources
 sunrise-client game::native_render_pair_tests::a_spectator_draws_no_layers_but_gets_its_post_hooks lib daily resources
 sunrise-client game::native_render_pair_tests::the_player_pair_wraps_the_living_pair lib daily resources
-sunrise-client game::native_render_pair_tests::two_entities_are_asked_in_the_draw_queues_order lib daily resources
+sunrise-client game::native_render_pair_tests::two_entities_are_asked_in_the_draw_queues_order lib daily child-process
 sunrise-client game::native_resources::tests::client_assets_read_the_winning_pack_file lib daily resources
 sunrise-client game::native_resources::tests::server_data_reads_mod_content_and_lets_it_override_the_game lib daily resources
 sunrise-client game::native_resources::tests::server_data_reads_vanilla_files_and_refuses_missing_ones lib daily resources
@@ -2473,7 +2467,7 @@ sunrise-client game::stations::tests::anvil_subscriber_probe_and_answer_cache li
 sunrise-client game::stations::tests::attribute_tooltip_hooks_hide_modifiers_and_add_lines_after_them lib daily resources
 sunrise-client game::stations::tests::gathered_tooltip_components_wrap_only_when_a_mod_sets_the_width lib daily resources
 sunrise-client game::stations::tests::resource_tooltip_uses_inventory_lines_and_explicit_flags lib daily resources
-sunrise-client game::stations::tests::tooltip_part_lines_come_after_the_name_and_never_for_a_hidden_tooltip lib daily resources
+sunrise-client game::stations::tests::tooltip_part_lines_come_after_the_name_and_never_for_a_hidden_tooltip lib daily child-process
 sunrise-client game::stations::tooltip::bundle_tests::bundle_cleared_lines_still_draws_image_at_content_top lib daily resources
 sunrise-client game::stations::tooltip::bundle_tests::bundle_empty_contents_keeps_image lib daily resources
 sunrise-client game::stations::tooltip::bundle_tests::bundle_empty_text_gathers_image_at_zero lib daily resources

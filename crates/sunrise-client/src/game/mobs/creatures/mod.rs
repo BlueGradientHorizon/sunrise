@@ -186,16 +186,10 @@ struct MobOutputBatch {
     normal: NormalMobActions,
     guests: Vec<(u32, u32, MobEvent)>,
 }
-// Backpressure applies to producer passes retained behind either producer or
-// consumer failure, never to healthy mob counts. Empty delivery resets the quota.
-// Sixteen retained passes permit 0.8 seconds of production at the vanilla tick rate.
-const MAX_PENDING_MOB_PASSES: usize = 16;
 #[derive(Default)]
 struct PendingMobBatch {
     batches: std::collections::VecDeque<MobOutputBatch>,
     pushes: sunrise_client::mobs::PendingPushes,
-    retained_passes: usize,
-    refusal_logged: bool,
 }
 
 /// Remove the current action before dispatch; retain only the unentered tail on unwind.
@@ -1379,23 +1373,6 @@ impl Game<'_> {
         let mut laps = sunrise_client::spans::laps();
         let blocked = self.mobs_below_off_level();
         let level_id = self.dim.id();
-        if let Some(pending) = self.creatures.pending.get_mut(level_id)
-            && (pending.refusal_logged || pending.retained_passes >= MAX_PENDING_MOB_PASSES)
-        {
-            if !pending.refusal_logged {
-                log::warn!(
-                    "Refusing mob production in {level_id}: {} retained producer passes (limit {MAX_PENDING_MOB_PASSES}); draining before retry",
-                    pending.retained_passes
-                );
-                pending.refusal_logged = true;
-            }
-            // No new producer work until the backlog drains. Unrelated projectile
-            // phases still advance; mob-specific follow-up must not reuse old ticks.
-            self.creatures.ticked.clear();
-            let primable = self.sulfur_cubes_adopted_explosive();
-            self.deliver_pending_mob_actions(level_id)?;
-            return self.finish_creature_entities(&mut laps, &primable);
-        }
         // `EntityEvent.Size` for the sizes that changed outside the mob ticks (spawns,
         // commands, a player's interaction), before the ticks move by them.
         self.native_mob_sizes();
@@ -1584,9 +1561,6 @@ impl Game<'_> {
                 guests: std::mem::take(&mut guest_events),
             });
         }
-        // A successful producer can still be retained behind a failing consumer.
-        // Count before any downstream callbacks; fully empty delivery resets it.
-        pending.retained_passes += 1;
         if dispatch_panic.is_none() {
             // The successful final sweep consumed all pushes for surviving mobs.
             pending.pushes = Default::default();
@@ -1658,10 +1632,6 @@ impl Game<'_> {
             }
             Ok(())
         }));
-        if pending.batches.is_empty() && pending.pushes.is_empty() {
-            pending.retained_passes = 0;
-            pending.refusal_logged = false;
-        }
         self.creatures.pending.insert(level_id, pending);
         match delivery {
             Ok(result) => result,
@@ -1705,22 +1675,10 @@ impl Game<'_> {
         self.native_mob_sizes();
         Ok(())
     }
-    /// Finish the death animation of a mob whose row has already left the level.
-    fn finish_mob_death_animation(
-        &mut self,
-        id: u32,
-        at: Vec3,
-        width: f64,
-        height: f64,
-        split: Option<Mob>,
-    ) {
-        self.last_hurt_by_player.remove(&id);
-        self.animate_mob_removal(id, at, width, height, split);
-    }
 
     /// `LivingEntity.tickDeath` broadcasts the poof before `remove`, which
     /// also splits a large cube before it reaches `Entity.setRemoved`.
-    fn animate_mob_removal(
+    fn finish_mob_death_animation(
         &mut self,
         id: u32,
         at: Vec3,
@@ -4132,12 +4090,14 @@ impl Game<'_> {
             }
             _ => p.kind.id.clone(),
         };
+        // Animal.spawnChildFromBreeding places the child at yaw zero. Its constructor still
+        // spends LivingEntity's yaw draw on the child's stream, not the level's.
         let mut child = self.create_mob_reason(
             &kind,
             [p.position.x, p.position.y, p.position.z],
             true,
             SpawnSite::Raw,
-            None,
+            Some(0.0),
         )?;
         'offspring: {
             let child = &mut child;
@@ -4298,8 +4258,16 @@ impl Game<'_> {
                 conn.and_then(|c| self.killer_uuid(c)),
                 conn.and_then(|c| self.player_entity_id_by_connection(c)),
             );
-            match self.breed_with_listeners(parent, partner, player, child) {
-                Some(baby) => child = baby,
+            match self.breed_with_listeners(parent, partner, player, child, |game, baby| {
+                game.finish_live_breeding(&p, partner, baby, experience)
+            }) {
+                // The levels' normal join hooks have now run if this was the root commit.
+                Some(joined) => {
+                    return joined.filter(|&id| {
+                        self.resident_target_dimension(super::commands::Target::Mob(id))
+                            == Some(self.dim)
+                    });
+                }
                 None => {
                     breeding_credit(&mut self.love_cause, parent, partner);
                     if let Some(q) = self.mobs.iter_mut().find(|m| m.id == partner) {
@@ -4310,12 +4278,23 @@ impl Game<'_> {
                 }
             }
         }
+        self.finish_live_breeding(&p, partner, child, experience)
+    }
+
+    fn finish_live_breeding(
+        &mut self,
+        p: &Mob,
+        partner: u32,
+        child: Mob,
+        experience: sunrise_client::mobs::BreedExperience,
+    ) -> Option<u32> {
+        let parent = p.id;
         let order = if sunrise_client::mobs::orb_after_child(p.species()) {
             OrbOrder::AfterChild
         } else {
             OrbOrder::BeforeChild
         };
-        self.finalize_breeding(&p, partner, Some(&child), order);
+        self.finalize_breeding(p, partner, Some(&child), order);
         let at = [p.position.x, p.position.y, p.position.z];
         match order {
             OrbOrder::AfterChild => {
