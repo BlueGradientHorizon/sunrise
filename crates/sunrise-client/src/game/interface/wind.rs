@@ -343,7 +343,8 @@ impl Game<'_> {
         if self.boats.iter().any(|b| b.id == id) || self.carts.iter().any(|c| c.id == id) {
             return Some((p, hit));
         }
-        let mut targets = self.projectile_targets_for(true);
+        let mut targets = self
+            .projectile_targets_for(super::creatures::TargetFilter::for_projectile(&again.kind));
         if again.owner != Some(Who::Player) || super::lan_pvp::meets_players(&again.kind) {
             targets.extend(self.lan_projectile_targets());
         }

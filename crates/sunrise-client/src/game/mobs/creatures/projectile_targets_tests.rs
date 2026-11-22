@@ -298,21 +298,20 @@ fn target_bounds(game: &Game<'_>, target: TrackedTarget) -> Aabb {
     }
 }
 
-fn summon_projectile(
-    game: &mut Game<'_>,
-    proj: &str,
-    y0: f64,
-    proj_seed: i64,
-) -> TrackedProj {
+fn summon_projectile(game: &mut Game<'_>, proj: &str, y0: f64, proj_seed: i64) -> TrackedProj {
     let owned = proj.ends_with("_owned") || proj.ends_with("_creative");
     if proj.ends_with("_creative") {
         game.set_mode(sunrise_client::command::args::GameMode::Creative);
     } else if proj.ends_with("_owned") {
         game.set_mode(sunrise_client::command::args::GameMode::Survival);
     }
-    let base = proj.trim_end_matches("_creative").trim_end_matches("_owned");
+    let base = proj
+        .trim_end_matches("_creative")
+        .trim_end_matches("_owned");
     let cmd = match base {
-        "arrow" => format!("summon minecraft:arrow 1.5 {y0} 4.5 {{pickup:1b,Motion:[1.0d,0.0d,0.0d]}}"),
+        "arrow" => {
+            format!("summon minecraft:arrow 1.5 {y0} 4.5 {{pickup:1b,Motion:[1.0d,0.0d,0.0d]}}")
+        }
         "spectral_arrow" => format!(
             "summon minecraft:spectral_arrow 1.5 {y0} 4.5 {{pickup:1b,Motion:[1.0d,0.0d,0.0d]}}"
         ),
@@ -413,8 +412,8 @@ fn check_case(game: &mut Game<'_>, case: &Case, proj_seed: i64, level_seed: i64)
     for expected in &case.ticks[1..] {
         super::super::sculk::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
         game.tick_server(false).unwrap();
-        let posted =
-            super::super::sculk::TEST_POSTED_EVENTS.with(|e| e.borrow_mut().take().unwrap_or_default());
+        let posted = super::super::sculk::TEST_POSTED_EVENTS
+            .with(|e| e.borrow_mut().take().unwrap_or_default());
 
         // Record new non-terrain item drops surviving the tick.
         for d in &game.dropped {
@@ -578,9 +577,7 @@ fn check_case(game: &mut Game<'_>, case: &Case, proj_seed: i64, level_seed: i64)
             let important = |id: &str| {
                 matches!(
                     id,
-                    "minecraft:entity_die"
-                        | "minecraft:block_change"
-                        | "minecraft:projectile_land"
+                    "minecraft:entity_die" | "minecraft:block_change" | "minecraft:projectile_land"
                 )
             };
             let exp_ev: Vec<&str> = expected

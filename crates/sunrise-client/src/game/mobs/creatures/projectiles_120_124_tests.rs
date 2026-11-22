@@ -156,6 +156,18 @@ fn setup_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resource
     game.build_registries();
     game.set_allow_commands(true);
     game.load_ticking_neighbourhood(0, 0);
+    // Match vanilla WorldPresets.FLAT: solid ground across the 5x5 neighbourhood for teleports.
+    let stone = game
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:stone")
+        .unwrap();
+    for x in -32..48 {
+        for z in -32..48 {
+            game.world.set(x, 0, z, stone).unwrap();
+        }
+    }
     assert!(game.run_command("forceload add 0 0"));
     assert!(game.run_command("difficulty normal"));
     if game
@@ -656,6 +668,22 @@ fn witness_trident_enderman_dodge_122() {
                 ));
                 break;
             }
+            let exp_tp = exp
+                .game_events
+                .iter()
+                .filter(|e| e.id == "minecraft:teleport")
+                .count();
+            let got_tp = events
+                .iter()
+                .filter(|&&e| e == "minecraft:teleport")
+                .count();
+            if got_tp != exp_tp {
+                failures.push(format!(
+                    "{label} t={}: teleport event count expected {exp_tp} got {got_tp}",
+                    exp.tick
+                ));
+                break;
+            }
         }
     }
 
@@ -733,14 +761,24 @@ fn witness_trident_enderman_dodge_122() {
             .iter()
             .filter(|e| e.id == "minecraft:projectile_land")
             .count();
+        let exp_tp = exp
+            .game_events
+            .iter()
+            .filter(|e| e.id == "minecraft:teleport")
+            .count();
+        let got_tp = events
+            .iter()
+            .filter(|&&e| e == "minecraft:teleport")
+            .count();
         if em.health.to_bits() != exp.target_health.to_bits()
             || teleported != exp.target_teleported
             || behind_hp.to_bits() != exp.behind_pig_health.to_bits()
             || hit_snd != 0
             || got_land != exp_land
+            || got_tp != exp_tp
         {
             failures.push(format!(
-                "122 mob_trident t={}: em_hp={} tp={teleported} behind_hp={behind_hp} snd={hit_snd} land={got_land}",
+                "122 mob_trident t={}: em_hp={} tp={teleported} behind_hp={behind_hp} snd={hit_snd} land={got_land} tp_ev={got_tp}",
                 exp.tick, em.health
             ));
             break;

@@ -5,8 +5,28 @@ use sunrise_client::mobs::{Species, Who};
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
 use sunrise_core::geometry::{Aabb, Vec3};
 
+/// Per-projectile target filters (`canHitEntity` overrides).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(in crate::game) struct TargetFilter {
+    pub skip_no_physics: bool,
+    pub skip_crystals: bool,
+}
+
+impl TargetFilter {
+    /// `AbstractHurtingProjectile` / `ShulkerBullet` skip `noPhysics`; wind charges skip crystals.
+    pub(in crate::game) fn for_projectile(kind: &ProjectileKind) -> Self {
+        Self {
+            skip_no_physics: projectile_skips_no_physics(kind),
+            skip_crystals: matches!(
+                kind,
+                ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge
+            ),
+        }
+    }
+}
+
 /// `AbstractHurtingProjectile.canHitEntity` / `ShulkerBullet.canHitEntity`: skip `noPhysics`.
-pub(in crate::game) fn projectile_skips_no_physics(kind: &ProjectileKind) -> bool {
+fn projectile_skips_no_physics(kind: &ProjectileKind) -> bool {
     matches!(
         kind,
         ProjectileKind::SmallFireball
@@ -49,12 +69,16 @@ pub(in crate::game) struct ProjectileTargets {
     pub targets: Vec<(Who, Aabb)>,
     /// Pickable targets excluding `noPhysics` (`AbstractHurtingProjectile` / `ShulkerBullet`).
     pub physics_targets: Vec<(Who, Aabb)>,
+    /// Pickable targets excluding `noPhysics` and End crystals (`AbstractWindCharge.canHitEntity`).
+    pub wind_targets: Vec<(Who, Aabb)>,
     /// LAN guests a projectile can hit.
     pub guests: Vec<(Who, Aabb)>,
     /// `targets` plus `guests`, when there are guests.
     pub targets_guests: Vec<(Who, Aabb)>,
     /// `physics_targets` plus `guests`, when there are guests.
     pub physics_targets_guests: Vec<(Who, Aabb)>,
+    /// `wind_targets` plus `guests`, when there are guests.
+    pub wind_targets_guests: Vec<(Who, Aabb)>,
     pub has_guests: bool,
     /// Breezes that deflect projectiles.
     pub breezes: Vec<u32>,
@@ -143,8 +167,15 @@ impl Game<'_> {
 
     /// Snapshot all entity target lists for the projectile tick loop.
     pub(in crate::game) fn projectile_tick_targets(&self) -> ProjectileTargets {
-        let targets = self.projectile_targets_for(false);
-        let physics_targets = self.projectile_targets_for(true);
+        let targets = self.projectile_targets_for(TargetFilter::default());
+        let physics_targets = self.projectile_targets_for(TargetFilter {
+            skip_no_physics: true,
+            skip_crystals: false,
+        });
+        let wind_targets = self.projectile_targets_for(TargetFilter {
+            skip_no_physics: true,
+            skip_crystals: true,
+        });
         let breezes = self
             .mobs
             .iter()
@@ -154,14 +185,16 @@ impl Game<'_> {
         // Mobs' projectiles also hit the guests (game/network/lan_mobs.rs).
         let guests = self.lan_projectile_targets();
         let has_guests = !guests.is_empty();
-        let (targets_guests, physics_targets_guests) = if has_guests {
+        let (targets_guests, physics_targets_guests, wind_targets_guests) = if has_guests {
             let mut tg = targets.clone();
             tg.extend_from_slice(&guests);
             let mut ptg = physics_targets.clone();
             ptg.extend_from_slice(&guests);
-            (tg, ptg)
+            let mut wtg = wind_targets.clone();
+            wtg.extend_from_slice(&guests);
+            (tg, ptg, wtg)
         } else {
-            (Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new())
         };
         let dead_guests = self.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
@@ -174,9 +207,11 @@ impl Game<'_> {
         ProjectileTargets {
             targets,
             physics_targets,
+            wind_targets,
             guests,
             targets_guests,
             physics_targets_guests,
+            wind_targets_guests,
             has_guests,
             breezes,
             guest_entities: self.lan_guest_entities(),
@@ -203,7 +238,10 @@ impl Game<'_> {
                 self.others.stamp(),
             ],
             dragon: self.dragon_part_boxes(),
-            player: self.player_view().filter(|p| p.alive).map(|p| p.bounds),
+            player: self
+                .player_view()
+                .filter(|p| p.alive && !self.spectator())
+                .map(|p| p.bounds),
         }
     }
 
@@ -296,31 +334,32 @@ impl Game<'_> {
 
     /// All entities a projectile can strike (`Entity.canBeHitByProjectile`).
     pub(in crate::game) fn projectile_targets(&self) -> Vec<(Who, Aabb)> {
-        self.projectile_targets_for(false)
+        self.projectile_targets_for(TargetFilter::default())
     }
 
-    /// All entities a projectile can strike, optionally excluding `noPhysics` entities.
-    pub(in crate::game) fn projectile_targets_for(
-        &self,
-        skip_no_physics: bool,
-    ) -> Vec<(Who, Aabb)> {
+    /// All entities a projectile can strike, applying per-projectile `canHitEntity` filters.
+    pub(in crate::game) fn projectile_targets_for(&self, filter: TargetFilter) -> Vec<(Who, Aabb)> {
         let mut targets: Vec<(Who, Aabb)> = self
             .mobs
             .iter()
-            .filter(|m| m.can_be_hit_by_projectile() && (!skip_no_physics || !m.no_physics(None)))
+            .filter(|m| {
+                m.can_be_hit_by_projectile() && (!filter.skip_no_physics || !m.no_physics(None))
+            })
             .map(|m| (Who::Mob(m.id), m.bounds()))
             .collect();
         if let Some(p) = self.player_view()
             && p.alive
+            && !self.spectator()
         {
             targets.push((Who::Player, p.bounds));
         }
         targets.extend(
             self.special_targets()
                 .into_iter()
+                .filter(|(id, _)| !filter.skip_crystals || *id < crate::game::dragon::CRYSTAL_IDS)
                 .map(|(id, b)| (Who::Mob(id), b)),
         );
-        targets.extend(self.pickable_object_targets_for(skip_no_physics));
+        targets.extend(self.pickable_object_targets_for(filter.skip_no_physics));
         targets
     }
 

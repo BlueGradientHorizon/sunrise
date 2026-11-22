@@ -680,10 +680,12 @@ impl Game<'_> {
         true
     }
     pub(super) fn tick_rockets(&mut self) {
-        let targets = if self.rockets.is_empty() {
+        let mut targets = if self.rockets.is_empty() {
             Vec::new()
         } else {
-            self.rocket_targets()
+            let mut t = self.projectile_targets();
+            t.extend(self.lan_projectile_targets());
+            t
         };
         let ticking = self.entity_ticking_area();
         let hears_impacts = !self.rockets.is_empty() && self.native_hears_impacts();
@@ -796,12 +798,35 @@ impl Game<'_> {
                     continue;
                 };
                 r = rocket;
-                match hit {
-                    ProjectileHit::Entity { .. } if !canceled => r.life = r.lifetime,
-                    ProjectileHit::Block { .. } if !canceled && !r.explosions.is_empty() => {
-                        r.life = r.lifetime;
+                if !canceled {
+                    match hit {
+                        ProjectileHit::Entity { at, .. } => {
+                            self.explode_rocket(&r);
+                            self.projectile_landed_event(r.id, r.owner, [at.x, at.y, at.z]);
+                            self.rockets.retire_extracted(r.id, r.join);
+                            if i < self.rockets.len() {
+                                targets = self.projectile_targets();
+                                targets.extend(self.lan_projectile_targets());
+                            }
+                            continue;
+                        }
+                        ProjectileHit::Block { at, .. } => {
+                            let explodes = !r.explosions.is_empty();
+                            if explodes {
+                                self.explode_rocket(&r);
+                            }
+                            self.projectile_landed_event(r.id, r.owner, [at.x, at.y, at.z]);
+                            if explodes {
+                                self.rockets.retire_extracted(r.id, r.join);
+                                if i < self.rockets.len() {
+                                    targets = self.projectile_targets();
+                                    targets.extend(self.lan_projectile_targets());
+                                }
+                                continue;
+                            }
+                        }
+                        ProjectileHit::None => {}
                     }
-                    _ => {}
                 }
             }
             r.update_rotation(old_rotation);
@@ -925,6 +950,46 @@ impl Game<'_> {
                     .map_or_else(|| self.acting_player(), FightWho::Guest)
             });
             self.rocket_blast_dragon(from, damage, reach, by);
+            // ArmorStand is a LivingEntity (`dealExplosionDamage` queries all LivingEntities).
+            let stand_ids: Vec<u32> = {
+                let world = self.mob_world_base(&[]);
+                self.armor_stands
+                    .iter()
+                    .filter_map(|a| {
+                        let bounds = a.bounds();
+                        if !bounds.intersects(reach) {
+                            return None;
+                        }
+                        let d2 = (a.position.x - from.x).powi(2)
+                            + (a.position.y - from.y).powi(2)
+                            + (a.position.z - from.z).powi(2);
+                        if d2 > 25.0 {
+                            return None;
+                        }
+                        let height = bounds.max_position().y - bounds.min_position().y;
+                        let sees = (0..2).any(|step| {
+                            let to = Vec3::new(
+                                a.position.x,
+                                a.position.y + height * 0.5 * f64::from(step),
+                                a.position.z,
+                            );
+                            world.clear_between(from, to, false)
+                        });
+                        sees.then_some(a.id)
+                    })
+                    .collect()
+            };
+            let causing = match owner {
+                Some(Who::Player) => Some(r.guest.map_or(
+                    super::commands::Target::Player,
+                    super::commands::Target::Guest,
+                )),
+                Some(Who::Mob(id)) => Some(super::commands::Target::Mob(id)),
+                None => None,
+            };
+            for id in stand_ids {
+                self.hurt_armor_stand(id, "minecraft:fireworks", causing, r.id, Some(at));
+            }
         }
         let camera = self.eye_position().unwrap_or(at);
         let v = [r.velocity.x, r.velocity.y, r.velocity.z];
@@ -994,29 +1059,6 @@ impl Game<'_> {
         let host = self.lan.as_ref()?;
         let g = host.hub.guests.iter().find(|g| g.conn == conn)?;
         Some(Who::Mob(g.entity_id as u32))
-    }
-    /// What a rocket can hit (`Projectile.canHitEntity`): living mobs, the
-    /// dragon's parts and crystals, the player and the guests.
-    fn rocket_targets(&self) -> Vec<(Who, Aabb)> {
-        let mut targets: Vec<(Who, Aabb)> = self
-            .mobs
-            .iter()
-            .filter(|m| m.alive())
-            .map(|m| (Who::Mob(m.id), m.bounds()))
-            .collect();
-        if let Some(p) = self.player_view()
-            && p.alive
-            && !self.spectator()
-        {
-            targets.push((Who::Player, p.bounds));
-        }
-        targets.extend(
-            self.special_targets()
-                .into_iter()
-                .map(|(id, b)| (Who::Mob(id), b)),
-        );
-        targets.extend(self.lan_projectile_targets());
-        targets
     }
     /// `ProjectileUtil.getHitResultOnMoveVector`: the nearest target on the
     /// move, short of the block it clips (`ClipContext.Block.COLLIDER`), each

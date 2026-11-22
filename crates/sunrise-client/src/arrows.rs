@@ -159,6 +159,14 @@ pub enum BlockReaction {
     /// `setBlock(pos, lit=true, 11)`: campfires and candles.
     Light(BlockStateId),
 }
+/// Remaining segment and entity hits of a piercing arrow's `stepMoveAndHit` tick.
+#[derive(Clone, Debug)]
+pub struct PierceStep {
+    pub end: Vec3,
+    pub block: Option<(Vec3, BlockPos, [i32; 3])>,
+    pub remaining_hits: Vec<(Who, Vec3)>,
+}
+
 /// The arrow part of `AbstractArrow` and its `Entity` state.
 #[derive(Clone)]
 pub struct ArrowState {
@@ -190,6 +198,10 @@ pub struct ArrowState {
     /// `piercingIgnoreEntityIds`: the entities a piercing arrow has gone
     /// through (cleared when it sticks in a block).
     pub pierced: Vec<Who>,
+    /// `piercedAndKilledEntities`: living victims killed by this piercing arrow.
+    pub pierced_killed: Vec<crate::advancements::EntityView>,
+    /// Pending `stepMoveAndHit` continuation for a piercing arrow this tick.
+    pub pierce_step: Option<PierceStep>,
     /// `Entity.remainingFireTicks`.
     pub fire_ticks: i32,
     /// The server's shared fire flag, independent of the client-local fire timer.
@@ -289,6 +301,8 @@ impl ArrowState {
             effect_color: -1,
             pierce: 0,
             pierced: Vec::new(),
+            pierced_killed: Vec::new(),
+            pierce_step: None,
             fire_ticks: 0,
             synced_fire: false,
             fall_distance: 0.0,
@@ -745,16 +759,108 @@ pub fn finish_entity_hit(p: &mut Projectile, scene: &ArrowScene, outcome: Entity
             }
         }
         EntityHit::Refused => ticker.turn_back(),
-        EntityHit::Dodged => {}
-        EntityHit::Deflected => {
-            // The deflection comes before `onHitEntity` adds the entity to
-            // `piercingIgnoreEntityIds`.
-            if (ticker.st.pierce as i8) > 0 {
-                ticker.st.pierced.pop();
+        EntityHit::Dodged => {
+            if trident {
+                ticker.st.dealt_damage = true;
             }
         }
+        EntityHit::Deflected => {}
     }
     ticker.finish();
+    p.stuck = st.in_ground;
+    let keep = !st.removed;
+    p.arrow = Some(st);
+    keep
+}
+
+/// `AbstractArrow.onHitEntity` pierce limit: records `who` or discards past `pierce + 1`.
+pub fn record_pierce_hit(p: &mut Projectile, who: Who) -> bool {
+    let Some(a) = p.arrow.as_mut() else {
+        return true;
+    };
+    if (a.pierce as i8) <= 0 {
+        return true;
+    }
+    if a.pierced.len() > usize::from(a.pierce) {
+        a.removed = true;
+        return false;
+    }
+    a.pierced.push(who);
+    true
+}
+
+/// Apply one entity hit's side effects inside `AbstractArrow.hitTargetsOrDeflectSelf`.
+pub fn apply_pierce_hit(p: &mut Projectile, outcome: EntityHit) {
+    let Some(mut st) = p.arrow.take() else {
+        return;
+    };
+    match outcome {
+        EntityHit::Hurt => {
+            let pitch = 1.2 / (p.entity_random().next_float() * 0.2 + 0.9);
+            let sound = if matches!(p.kind, ProjectileKind::Trident) {
+                ArrowSound::TridentHitGround
+            } else if st.crossbow_hit_sound {
+                ArrowSound::CrossbowHit
+            } else {
+                ArrowSound::HitGround
+            };
+            st.events.push(ArrowEvent::Sound {
+                sound,
+                volume: 1.0,
+                pitch,
+            });
+            if (st.pierce as i8) <= 0 {
+                st.removed = true;
+            }
+        }
+        EntityHit::Refused => {
+            deflect_reverse(&mut p.velocity, &mut p.yaw, &mut st, &mut p.random.0);
+        }
+        EntityHit::Dodged | EntityHit::Deflected => {}
+    }
+    p.arrow = Some(st);
+}
+
+/// Next iteration of `AbstractArrow.stepMoveAndHit` for a piercing arrow.
+pub fn step_pierce_next(
+    p: &mut Projectile,
+    scene: &ArrowScene,
+    targets: &[(Who, Aabb)],
+    end: Vec3,
+    block: Option<(Vec3, BlockPos, [i32; 3])>,
+) -> (Hit, Vec<(Who, Vec3)>) {
+    let Some(mut st) = p.arrow.take() else {
+        return (Hit::None, Vec::new());
+    };
+    let out = {
+        let mut ticker = Ticker {
+            p,
+            st: &mut st,
+            scene,
+            client: false,
+        };
+        let from = ticker.position();
+        ticker.step_once(from, end, block, targets, true)
+    };
+    p.stuck = st.in_ground;
+    p.arrow = Some(st);
+    out
+}
+
+/// Run drag, gravity, fluids, fire, and shoot event once after a piercing arrow's `stepMoveAndHit`.
+pub fn finish_pierce_tick(p: &mut Projectile, scene: &ArrowScene) -> bool {
+    let Some(mut st) = p.arrow.take() else {
+        return false;
+    };
+    {
+        let mut ticker = Ticker {
+            p,
+            st: &mut st,
+            scene,
+            client: false,
+        };
+        ticker.finish();
+    }
     p.stuck = st.in_ground;
     let keep = !st.removed;
     p.arrow = Some(st);
@@ -916,6 +1022,7 @@ impl Ticker<'_, '_, '_, '_> {
     /// The end of a tick in flight: drag and gravity, then `Projectile.tick`
     /// and `Entity.baseTick`'s fluid and fire phases.
     fn finish(&mut self) {
+        self.st.pierce_step = None;
         let physics = !self.st.no_physics;
         if !self.st.was_touching_water {
             self.p.velocity = self.p.velocity.scale(f64::from(0.99f32));
@@ -987,9 +1094,77 @@ impl Ticker<'_, '_, '_, '_> {
         self.p.velocity = Vec3::new(v.x * x, v.y * y, v.z * z);
         self.st.life = 0;
     }
-    /// `AbstractArrow.stepMoveAndHit`: the nearest entity on the way, else the
-    /// block. A piercing arrow that hits an entity here goes on from it next
-    /// tick (`finish_entity_hit`); vanilla's loop goes on within the same tick.
+    /// `AbstractArrow.findHitEntities` sorted by distance squared to entity position.
+    fn find_hit_entities(
+        &self,
+        from: Vec3,
+        end: Vec3,
+        targets: &[(Who, Aabb)],
+    ) -> Vec<(Who, Vec3)> {
+        let margin = f64::from(((self.p.age as i32 - 2) as f32 / 20.0).clamp(0.0, 0.3));
+        let area = bounds(from)
+            .expand_towards(self.p.velocity)
+            .inflate(Vec3::new(1.0, 1.0, 1.0));
+        // ThrownTrident.findHitEntity: none once it has dealt damage.
+        let targets = if self.st.dealt_damage { &[] } else { targets };
+        let mut hits: Vec<(Who, Vec3, f64)> = Vec::new();
+        for (who, b) in targets {
+            if Some(*who) == self.p.collision_owner() && !self.p.left_owner || !b.intersects(area) {
+                continue;
+            }
+            // canHitEntity: not an entity a piercing arrow has gone through.
+            if self.st.pierced.contains(who) {
+                continue;
+            }
+            if let Some(at) = self.entity_hit(b, from, end, margin) {
+                let c = b.center();
+                let d = from.distance_squared(Vec3::new(c.x, b.min_position().y, c.z));
+                hits.push((*who, at, d));
+            }
+        }
+        hits.sort_by(|a, b| a.2.total_cmp(&b.2));
+        hits.into_iter().map(|(w, at, _)| (w, at)).collect()
+    }
+    /// One iteration of `AbstractArrow.stepMoveAndHit` from `from` towards `end`.
+    fn step_once(
+        &mut self,
+        from: Vec3,
+        end: Vec3,
+        block: Option<(Vec3, BlockPos, [i32; 3])>,
+        targets: &[(Who, Aabb)],
+        impact: bool,
+    ) -> (Hit, Vec<(Who, Vec3)>) {
+        let hits = self.find_hit_entities(from, end, targets);
+        let next = hits.first().map_or(end, |h| h.1);
+        self.p.position = next;
+        self.apply_effects_from_blocks(from, next);
+        if let Some(&(who, at)) = hits.first() {
+            if !impact {
+                return (Hit::None, Vec::new());
+            }
+            return (Hit::Entity { who, at }, hits[1..].to_vec());
+        }
+        let Some((at, pos, face)) = block else {
+            return (Hit::None, Vec::new());
+        };
+        if self.st.removed {
+            return (Hit::None, Vec::new());
+        }
+        let state = self.scene.block(pos);
+        if self.scene.is_air(state) || !impact {
+            return (Hit::None, Vec::new());
+        }
+        self.on_hit_block(pos, state);
+        (
+            Hit::Block {
+                pos: [pos.x, pos.y, pos.z],
+                at,
+                face,
+            },
+            Vec::new(),
+        )
+    }
+    /// `AbstractArrow.stepMoveAndHit`: first entity (plus pierce continuation) or block.
     fn step_move_and_hit(
         &mut self,
         from: Vec3,
@@ -1003,70 +1178,15 @@ impl Ticker<'_, '_, '_, '_> {
             .then(|| self.block_position());
         let block = self.scene.clip(from, to, ignored);
         let end = block.map_or(to, |b| b.0);
-        // findHitEntities: ProjectileUtil.computeMargin and the search box.
-        let margin = f64::from(((self.p.age as i32 - 2) as f32 / 20.0).clamp(0.0, 0.3));
-        let area = bounds(from)
-            .expand_towards(self.p.velocity)
-            .inflate(Vec3::new(1.0, 1.0, 1.0));
-        let mut best: Option<(Who, Vec3, f64)> = None;
-        // ThrownTrident.findHitEntity: none once it has dealt damage.
-        let targets = if self.st.dealt_damage { &[] } else { targets };
-        for (who, b) in targets {
-            if Some(*who) == self.p.collision_owner() && !self.p.left_owner || !b.intersects(area) {
-                continue;
-            }
-            // canHitEntity: not an entity a piercing arrow has gone through.
-            if self.st.pierced.contains(who) {
-                continue;
-            }
-            if let Some(at) = self.entity_hit(b, from, end, margin) {
-                // Sorted by the distance to the entity's position (the
-                // stable sort keeps the first of equals).
-                let c = b.center();
-                let d = from.distance_squared(Vec3::new(c.x, b.min_position().y, c.z));
-                if best.is_none_or(|bb| d < bb.2) {
-                    best = Some((*who, at, d));
-                }
-            }
+        let (hit, rest) = self.step_once(from, end, block, targets, impact);
+        if matches!(hit, Hit::Entity { .. }) && (self.st.pierce as i8) > 0 && !self.trident() {
+            self.st.pierce_step = Some(PierceStep {
+                end,
+                block,
+                remaining_hits: rest,
+            });
         }
-        let next = best.map_or(end, |b| b.1);
-        self.p.position = next;
-        self.apply_effects_from_blocks(from, next);
-        if let Some((who, at, _)) = best {
-            // A canceled impact ends the search, the arrow where it would have hit.
-            if !impact {
-                return Hit::None;
-            }
-            // AbstractArrow.onHitEntity: past pierce level + 1 entities the
-            // arrow is discarded before it hurts the next one.
-            if (self.st.pierce as i8) > 0 {
-                if self.st.pierced.len() > usize::from(self.st.pierce) {
-                    self.st.removed = true;
-                    return Hit::None;
-                }
-                self.st.pierced.push(who);
-            }
-            return Hit::Entity { who, at };
-        }
-        let Some((at, pos, face)) = block else {
-            return Hit::None;
-        };
-        if self.st.removed {
-            return Hit::None;
-        }
-        let state = self.scene.block(pos);
-        if self.scene.is_air(state) {
-            return Hit::None;
-        }
-        if !impact {
-            return Hit::None;
-        }
-        self.on_hit_block(pos, state);
-        Hit::Block {
-            pos: [pos.x, pos.y, pos.z],
-            at,
-            face,
-        }
+        hit
     }
     /// `ProjectileUtil.getManyEntityHitResult` for one entity box: where the
     /// path enters it, else where it enters the box grown by `margin`, if a
@@ -1166,6 +1286,8 @@ impl Ticker<'_, '_, '_, '_> {
         self.p.set_critical(false);
         self.st.pierce = 0;
         self.st.pierced.clear();
+        self.st.pierced_killed.clear();
+        self.st.pierce_step = None;
     }
     /// `Projectile.mayInteract`: a mob's arrows need `mob_griefing`, or a
     /// mod's yes for the owner (NeoForge's `canEntityGrief(level, owner)`).

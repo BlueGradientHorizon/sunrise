@@ -3,8 +3,8 @@
 //! 8 damage plus Impaling, the reversed bounce off a hit, sticking, Loyalty's
 //! return to the owner, pickup) with `ThrownTridentRenderer`, and Channeling's
 //! lightning on a hit (`channeling.json`).
-use super::level_sounds::LevelSound;
 use super::Game;
+use super::level_sounds::LevelSound;
 use crate::game::collision_source::Mover;
 use mod_api::SoundSource;
 use sunrise_client::motion::MotionWorld;
@@ -813,9 +813,10 @@ impl Game<'_> {
                         );
                         t.dealt_damage = true;
                         let mut hurt_at = None;
+                        let mut dodged = false;
                         let aim = self.attacker_aim(owner_who);
-                        let mut attack = attacker_id
-                            .map_or_else(Default::default, |a| self.attack_of(a as i32));
+                        let mut attack =
+                            attacker_id.map_or_else(Default::default, |a| self.attack_of(a as i32));
                         attack.projectile = Some(t.id as i32);
                         attack.projectile_kind = sunrise_client::health::DirectEntity::Arrow;
                         Self::set_projectile_weapon(&mut attack, Some(&t.stack));
@@ -855,6 +856,12 @@ impl Game<'_> {
                                 if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
                                     is_mob = true;
                                     let from_pos = Some([t.position.x, t.position.y, t.position.z]);
+                                    let dmg = Damage {
+                                        kind: trident_source,
+                                        attacker: owner_who,
+                                        from: from_pos,
+                                        attacker_species: None,
+                                    };
                                     let hurt = m.damage_projectile(
                                         crate::game::entity::damage_level_of!(
                                             self,
@@ -863,23 +870,25 @@ impl Game<'_> {
                                             None
                                         ),
                                         damage,
-                                        Damage {
-                                            kind: trident_source,
-                                            attacker: owner_who,
-                                            from: from_pos,
-                                            attacker_species: None,
-                                        },
+                                        dmg,
                                         aim,
                                         [t.velocity.x, t.velocity.z],
                                     );
                                     if hurt {
-                                        hurt_at =
-                                            Some([m.position.x, m.position.y, m.position.z]);
+                                        hurt_at = Some([m.position.x, m.position.y, m.position.z]);
+                                    } else if m.species() == Species::Enderman
+                                        && sunrise_client::mobs::enderman::dodges(m, &dmg)
+                                    {
+                                        dodged = true;
                                     }
                                 }
                                 drop(credit);
                                 if owner_who.is_some() {
                                     self.thrower_dealt_absorbed(t.guest);
+                                }
+                                if is_mob {
+                                    self.settle_mob_hurt(id);
+                                    let _ = self.settle_hurt_teleports();
                                 }
                                 if !is_mob {
                                     if let Some(conn) = self.trident_guest_conn(id) {
@@ -923,21 +932,25 @@ impl Game<'_> {
                             };
                             self.thrower_hit(t.guest, &victim, direct, damage);
                         }
-                        // ThrownTrident.onHitEntity plays TRIDENT_HIT before Projectile.onHit's PROJECTILE_LAND.
-                        self.audio.play(
-                            "minecraft:item.trident.hit",
-                            Some([t.position.x, t.position.y, t.position.z]),
-                            1.0,
-                            1.0,
-                        );
+                        // ThrownTrident.onHitEntity gates hit sound and bounce on projectileReceivesSideEffectsOnHit.
+                        if !dodged {
+                            self.audio.play(
+                                "minecraft:item.trident.hit",
+                                Some([t.position.x, t.position.y, t.position.z]),
+                                1.0,
+                                1.0,
+                            );
+                        }
                         self.projectile_landed_event(
                             t.id,
                             owner_who,
                             [t.position.x, t.position.y, t.position.z],
                         );
-                        // ProjectileDeflection.REVERSE (-0.5) then multiply(0.02, 0.2, 0.02).
-                        let rev = t.velocity.scale(-0.5);
-                        t.velocity = Vec3::new(rev.x * 0.02, rev.y * 0.2, rev.z * 0.02);
+                        if !dodged {
+                            // ProjectileDeflection.REVERSE (-0.5) then multiply(0.02, 0.2, 0.02).
+                            let rev = t.velocity.scale(-0.5);
+                            t.velocity = Vec3::new(rev.x * 0.02, rev.y * 0.2, rev.z * 0.02);
+                        }
                         // Rebuild target boxes for later tridents in the same tick.
                         if i < self.tridents.len() {
                             targets = self.projectile_targets();
