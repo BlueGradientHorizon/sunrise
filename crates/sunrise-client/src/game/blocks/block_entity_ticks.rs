@@ -1214,12 +1214,11 @@ mod furnace_changed_tests {
         with_burns(|seen| {
             let mut game_resources = None;
             let mut game = server_game(&mut game_resources);
-            let state = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:furnace")
-                .unwrap();
+            let registry = &game.pack.assets.registry;
+            let default = registry.default_state("minecraft:furnace").unwrap();
+            let mut lit = registry.state(default).unwrap().clone();
+            lit.properties.insert("lit".into(), "true".into());
+            let state = registry.resolve(&lit).unwrap();
             let pos = (8, 64, 8);
             game.world.set(pos.0, pos.1, pos.2, state).unwrap();
             game.world.block_entities.insert(
@@ -1242,6 +1241,7 @@ mod furnace_changed_tests {
             game.world.modified.clear();
 
             game.tick_furnace(pos).expect("the furnace ticks");
+            assert_eq!(game.world.block(pos.0, pos.1, pos.2), state);
 
             let Some(BlockEntity::Furnace(f)) = game.world.block_entities.get(&pos) else {
                 panic!("no furnace");
@@ -1359,35 +1359,39 @@ mod furnace_changed_tests {
         }
         let save = tempfile::tempdir().unwrap();
         let root = save.path();
-        for (path, body) in [
-            (
-                "datapacks.json",
-                r#"{"enabled":["file/furnace"],"disabled":[]}"#,
-            ),
-            (
-                "datapacks/furnace/pack.mcmeta",
-                r#"{"pack":{"description":"furnace provider fixture"}}"#,
-            ),
-            (
-                "datapacks/furnace/data/test/context_int_provider/pack_only.json",
-                "37",
-            ),
-            (
-                "datapacks/furnace/data/test/context_float_provider/pack_only.json",
-                "1.75",
-            ),
-            (
-                "datapacks/furnace/data/minecraft/context_int_provider/cooking/time_coal.json",
-                "53",
-            ),
-            (
-                "datapacks/furnace/data/minecraft/context_float_provider/cooking/speed_default.json",
-                "1.5",
-            ),
-        ] {
-            let path = root.join(path);
+        let pack = root.join("datapacks/furnace");
+        let write = |path: &std::path::Path, body: &str| {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, body).unwrap();
+        };
+        write(
+            &root.join("datapacks.json"),
+            r#"{"enabled":["file/furnace"],"disabled":[]}"#,
+        );
+        write(
+            &pack.join("pack.mcmeta"),
+            r#"{"pack":{"description":"furnace provider fixture"}}"#,
+        );
+        let definitions = [
+            ("data/test/context_int_provider/pack_only.json", "37", "71"),
+            (
+                "data/test/context_float_provider/pack_only.json",
+                "1.75",
+                "2.25",
+            ),
+            (
+                "data/minecraft/context_int_provider/cooking/time_coal.json",
+                "53",
+                "83",
+            ),
+            (
+                "data/minecraft/context_float_provider/cooking/speed_default.json",
+                "1.5",
+                "2.5",
+            ),
+        ];
+        for (path, initial, _) in definitions {
+            write(&pack.join(path), initial);
         }
         let mut resources = None;
         let mut game = server_game(&mut resources);
@@ -1412,45 +1416,47 @@ mod furnace_changed_tests {
             .registry
             .default_state("minecraft:furnace")
             .unwrap();
-        for (x, burn, speed, duration, multiplier) in [
-            (
-                8,
-                "test:pack_only",
-                "minecraft:cooking/speed_default",
-                37,
-                1.5_f32,
-            ),
-            (
-                9,
-                "minecraft:cooking/time_coal",
-                "test:pack_only",
-                53,
-                1.75_f32,
-            ),
-        ] {
-            let pos = (x, 64, 8);
-            game.world.set(pos.0, pos.1, pos.2, state).unwrap();
-            let fuel = parse_stack(&format!(r#"{{id:"minecraft:diamond",count:1,components:{{"minecraft:cooking_fuel":{{burn_time:"{burn}",speed_multiplier:"{speed}"}}}}}}"#)).unwrap();
-            game.world.block_entities.insert(
-                pos,
-                BlockEntity::Furnace(Furnace {
-                    kind: FurnaceKind::Furnace,
-                    items: [Some(ItemStack::new("minecraft:raw_iron", 1)), fuel, None],
-                    lit_remaining: 0,
-                    lit_total: 0,
-                    cooking_timer: 0,
-                    cooking_total: 200,
-                    speed: 1.0,
-                    recipes_used: HashMap::new(),
-                }),
-            );
-            game.tick_furnace(pos).unwrap();
-            let Some(BlockEntity::Furnace(furnace)) = game.world.block_entities.get(&pos) else {
-                panic!("no furnace");
+        for reload in [false, true] {
+            if reload {
+                for (path, _, replacement) in definitions {
+                    write(&pack.join(path), replacement);
+                }
+                game.cmd_reload().unwrap();
+            }
+            let cases = if reload {
+                [(10, 71, 2.5_f32), (11, 83, 2.25_f32)]
+            } else {
+                [(8, 37, 1.5_f32), (9, 53, 1.75_f32)]
             };
-            assert!(furnace.items[1].is_none());
-            assert_eq!(furnace.lit_remaining, duration);
-            assert_eq!(furnace.speed.to_bits(), multiplier.to_bits());
+            for ((x, duration, multiplier), (burn, speed)) in cases.into_iter().zip([
+                ("test:pack_only", "minecraft:cooking/speed_default"),
+                ("minecraft:cooking/time_coal", "test:pack_only"),
+            ]) {
+                let pos = (x, 64, 8);
+                game.world.set(pos.0, pos.1, pos.2, state).unwrap();
+                let fuel = parse_stack(&format!(r#"{{id:"minecraft:diamond",count:1,components:{{"minecraft:cooking_fuel":{{burn_time:"{burn}",speed_multiplier:"{speed}"}}}}}}"#)).unwrap();
+                game.world.block_entities.insert(
+                    pos,
+                    BlockEntity::Furnace(Furnace {
+                        kind: FurnaceKind::Furnace,
+                        items: [Some(ItemStack::new("minecraft:raw_iron", 1)), fuel, None],
+                        lit_remaining: 0,
+                        lit_total: 0,
+                        cooking_timer: 0,
+                        cooking_total: 200,
+                        speed: 1.0,
+                        recipes_used: HashMap::new(),
+                    }),
+                );
+                game.tick_furnace(pos).unwrap();
+                let Some(BlockEntity::Furnace(furnace)) = game.world.block_entities.get(&pos)
+                else {
+                    panic!("no furnace");
+                };
+                assert!(furnace.items[1].is_none());
+                assert_eq!(furnace.lit_remaining, duration);
+                assert_eq!(furnace.speed.to_bits(), multiplier.to_bits());
+            }
         }
     }
 }

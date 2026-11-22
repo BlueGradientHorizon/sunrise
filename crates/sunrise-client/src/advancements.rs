@@ -1509,55 +1509,55 @@ pub fn conditions(v: &Value, ctx: &Entities, w: &dyn World) -> bool {
 }
 
 /// Every named predicate `v` reaches is loaded, and none reaches itself.
+/// `Validatable.validateHolder` checks every typed reference before boolean
+/// short-circuiting; this is evaluation, not registry/startup admission.
 pub fn references_valid(v: &Value, w: &dyn World) -> bool {
-    predicate_references(v, w, &mut BTreeSet::new()).is_ok()
-}
-
-enum InvalidReference {
-    Missing,
-    Cycle,
-}
-
-/// `Validatable.validateHolder`'s active-name rule, as a defensive check on
-/// this evaluation context. Check every typed reference before boolean
-/// short-circuiting; this does not implement registry/startup admission.
-fn predicate_references(
-    v: &Value,
-    w: &dyn World,
-    active: &mut BTreeSet<String>,
-) -> Result<(), InvalidReference> {
-    match v {
-        Value::String(id) => {
-            let id = full(id).into_owned();
-            if !active.insert(id.clone()) {
-                return Err(InvalidReference::Cycle);
-            }
-            let result = w
-                .predicate(&id)
-                .ok_or(InvalidReference::Missing)
-                .and_then(|v| predicate_references(v, w, active));
-            active.remove(&id);
-            result
-        }
-        Value::Array(list) => list
-            .iter()
-            .try_for_each(|v| predicate_references(v, w, active)),
-        Value::Object(o) => {
-            let kind = o
-                .get("condition")
-                .or_else(|| o.get("type"))
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            match &*full(kind) {
-                "minecraft:inverted" => predicate_references(&v["term"], w, active),
-                "minecraft:all_of" | "minecraft:any_of" => terms(v)
-                    .iter()
-                    .try_for_each(|v| predicate_references(v, w, active)),
-                _ => Ok(()),
-            }
-        }
-        _ => Ok(()),
+    enum Visit<'v> {
+        Condition(&'v Value),
+        Leave(std::borrow::Cow<'v, str>),
     }
+    let mut active = BTreeSet::new();
+    let mut pending = Vec::new();
+    let mut first = Some(Visit::Condition(v));
+    while let Some(visit) = first.take().or_else(|| pending.pop()) {
+        let v = match visit {
+            Visit::Condition(v) => v,
+            Visit::Leave(id) => {
+                active.remove(&id);
+                continue;
+            }
+        };
+        match v {
+            Value::String(id) => {
+                let id = full(id);
+                let Some(definition) = w.predicate(&id) else {
+                    return false;
+                };
+                if !active.insert(id.clone()) {
+                    return false;
+                }
+                pending.push(Visit::Leave(id));
+                pending.push(Visit::Condition(definition));
+            }
+            Value::Array(list) => pending.extend(list.iter().rev().map(Visit::Condition)),
+            Value::Object(o) => {
+                let kind = o
+                    .get("condition")
+                    .or_else(|| o.get("type"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                match &*full(kind) {
+                    "minecraft:inverted" => pending.push(Visit::Condition(&v["term"])),
+                    "minecraft:all_of" | "minecraft:any_of" => {
+                        pending.extend(terms(v).iter().rev().map(Visit::Condition));
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    true
 }
 
 /// `terms` as `HolderSetCodec` reads it: a list, or one holder alone; a `#tag` is not expanded.

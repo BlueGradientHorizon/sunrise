@@ -322,13 +322,9 @@ impl Game<'_> {
                 )
                 .map(Arc::new)
             };
-        // Like the other dynamic registry definitions, providers are bound
-        // by RegistryDataLoader at world open, not by a later tags/recipes reload.
-        let providers = if reload {
-            Ok(self.active_providers().clone())
-        } else {
-            Providers::load_with(root, &overlay)
-        };
+        // RegistryDataLoader.RELOADABLE_REGISTRIES: providers are staged and
+        // published with the other reloadable data, including on /reload.
+        let providers = Providers::load_with(root, &overlay);
         // Visit independently readable registries before consuming any result.
         // One rejected winner must not hide the other entries' diagnostics.
         let loot = sunrise_world::loot::LootData::load_with_damage(

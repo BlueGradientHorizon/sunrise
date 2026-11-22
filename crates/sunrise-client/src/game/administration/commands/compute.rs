@@ -3,7 +3,8 @@
 //! context of the source, optionally with a block or a target entity.
 use super::{Arg, Context, Game, R, Target, err};
 use serde_json::Value;
-use sunrise_client::providers::Evaluation;
+use std::borrow::Cow;
+use sunrise_client::providers::{ConditionContext, Evaluation};
 use sunrise_client::{
     advancements::{self as adv, EntityView},
     command::CommandError,
@@ -46,6 +47,38 @@ fn context_entities<'a>(
 
 /// An ArithmeticException's message.
 type Arith = String;
+
+struct ComputeCondition<'g, 'res> {
+    game: &'g mut Game<'res>,
+    context: &'g ComputeContext,
+}
+
+impl<'v> ConditionContext<'v> for ComputeCondition<'_, '_> {
+    fn named(&self, id: &str) -> Option<Cow<'v, Value>> {
+        self.game
+            .provider_file("minecraft:predicate", id)
+            .map(Cow::Owned)
+    }
+
+    fn kind<'n>(&self, condition: &'n Value) -> Option<&'n str> {
+        condition
+            .get("type")
+            .or_else(|| condition.get("condition"))?
+            .as_str()
+    }
+
+    fn chance<'n>(&self, condition: &'n Value) -> Option<&'n Value> {
+        Some(&condition["chance"])
+    }
+
+    fn singleton_terms(&self) -> bool {
+        false
+    }
+
+    fn leaf(&mut self, condition: &Value) -> bool {
+        self.game.compute_leaf(condition, self.context)
+    }
+}
 
 impl Game<'_> {
     /// A provider argument: its registry id (None when inline) and value.
@@ -177,10 +210,13 @@ impl Game<'_> {
     ) -> Result<i32, Arith> {
         let providers = self.active_providers().clone();
         let mut random = self.world.random.clone();
-        let mut condition = |condition: &Value, evaluation: &mut Evaluation<'_>| {
-            self.compute_condition(condition, c, evaluation)
-        };
-        let result = Evaluation::new(&providers, &mut random).int(v, &mut condition);
+        let result = Evaluation::new(&providers, &mut random).int(
+            v,
+            &mut ComputeCondition {
+                game: self,
+                context: c,
+            },
+        );
         self.world.random = random;
         result
     }
@@ -194,124 +230,87 @@ impl Game<'_> {
         let mut random = self.world.random.clone();
         let result = Evaluation::new(&providers, &mut random).float(
             v,
-            &mut |condition: &Value, evaluation: &mut Evaluation<'_>| {
-                self.compute_condition(condition, c, evaluation)
+            &mut ComputeCondition {
+                game: self,
+                context: c,
             },
         );
         self.world.random = random;
         result
     }
-    /// A loot condition in the compute context: references, the logical
-    /// combinators and `match_block` on the context's block state.
-    fn compute_condition(
-        &mut self,
-        cond: &Value,
-        c: &ComputeContext,
-        evaluation: &mut Evaluation<'_>,
-    ) -> bool {
-        match cond {
-            Value::String(id) => match self.provider_file("minecraft:predicate", id) {
-                Some(def) => self.compute_condition(&def, c, evaluation),
-                None => false,
-            },
-            Value::Array(list) => list
-                .iter()
-                .all(|x| self.compute_condition(x, c, evaluation)),
-            Value::Object(o) => {
-                let ty = o
-                    .get("type")
-                    .or_else(|| o.get("condition"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .trim_start_matches("minecraft:");
-                match ty {
-                    "inverted" => !o
-                        .get("term")
-                        .is_some_and(|x| self.compute_condition(x, c, evaluation)),
-                    "all_of" => o
-                        .get("terms")
-                        .and_then(Value::as_array)
-                        .into_iter()
-                        .flatten()
-                        .all(|x| self.compute_condition(x, c, evaluation)),
-                    "any_of" => o
-                        .get("terms")
-                        .and_then(Value::as_array)
-                        .into_iter()
-                        .flatten()
-                        .any(|x| self.compute_condition(x, c, evaluation)),
-                    "match_block" | "block_state_property" => {
-                        let Some(p) = c.block else {
-                            return false;
-                        };
-                        let state = self.world.block(p[0], p[1], p[2]);
-                        let Some(s) = self.pack.assets.registry.state(state) else {
-                            return false;
-                        };
-                        let name = s.name.to_string();
-                        let blocks_ok = match o.get("blocks").or_else(|| o.get("block")) {
-                            Some(Value::String(b)) => match b.strip_prefix('#') {
-                                Some(tag) => self
-                                    .res
-                                    .items()
-                                    .block_tags
-                                    .get(tag.trim_start_matches("minecraft:"))
-                                    .is_some_and(|set| {
-                                        set.contains(&*name)
-                                            || set.contains(name.trim_start_matches("minecraft:"))
-                                    }),
-                                None => *b == name,
-                            },
-                            Some(Value::Array(list)) => {
-                                list.iter().any(|b| b.as_str() == Some(&name))
-                            }
-                            _ => true,
-                        };
-                        let props_ok = o
-                            .get("state")
-                            .or_else(|| o.get("properties"))
-                            .and_then(Value::as_object)
-                            .into_iter()
-                            .flatten()
-                            .all(|(k, v)| s.properties.get(k).map(String::as_str) == v.as_str());
-                        blocks_ok && props_ok
-                    }
-                    "random_chance" => evaluation.random_chance(
-                        o.get("chance").unwrap_or(&Value::Null),
-                        &mut |condition: &Value, evaluation: &mut Evaluation<'_>| {
-                            self.compute_condition(condition, c, evaluation)
-                        },
-                    ),
-                    _ => {
-                        let source = self.command_source.unwrap_or_else(|| self.player_source());
-                        // Scores are read from the holder's board only where
-                        // an `entity_scores` leaf may ask.
-                        let scored = adv::asks_scores(cond);
-                        let view = |game: &mut Self, t| {
-                            if scored {
-                                game.entity_view_scored(t, cond)
-                            } else {
-                                game.entity_view_asked(t, cond)
-                            }
-                        };
-                        let this = source
-                            .entity
-                            .filter(|_| c.without_this.is_none())
-                            .map(|t| view(self, t));
-                        let target = c.target.map(|t| view(self, t));
-                        let interacting = c.interacting.map(|t| view(self, t));
-                        let entities = context_entities(
-                            c,
-                            this.as_ref(),
-                            source.pos,
-                            target.as_ref(),
-                            interacting.as_ref(),
-                        );
-                        self.conditions_hold_in(cond, &entities)
-                    }
-                }
+    /// Leaf predicates that read the command's world or entity context.
+    fn compute_leaf(&mut self, cond: &Value, c: &ComputeContext) -> bool {
+        let Some(o) = cond.as_object() else {
+            return false;
+        };
+        let kind = o
+            .get("type")
+            .or_else(|| o.get("condition"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim_start_matches("minecraft:");
+        match kind {
+            "match_block" | "block_state_property" => {
+                let Some(p) = c.block else {
+                    return false;
+                };
+                let state = self.world.block(p[0], p[1], p[2]);
+                let Some(s) = self.pack.assets.registry.state(state) else {
+                    return false;
+                };
+                let name = s.name.to_string();
+                let blocks_ok = match o.get("blocks").or_else(|| o.get("block")) {
+                    Some(Value::String(b)) => match b.strip_prefix('#') {
+                        Some(tag) => self
+                            .res
+                            .items()
+                            .block_tags
+                            .get(tag.trim_start_matches("minecraft:"))
+                            .is_some_and(|set| {
+                                set.contains(&*name)
+                                    || set.contains(name.trim_start_matches("minecraft:"))
+                            }),
+                        None => *b == name,
+                    },
+                    Some(Value::Array(list)) => list.iter().any(|b| b.as_str() == Some(&name)),
+                    _ => true,
+                };
+                let props_ok = o
+                    .get("state")
+                    .or_else(|| o.get("properties"))
+                    .and_then(Value::as_object)
+                    .into_iter()
+                    .flatten()
+                    .all(|(k, v)| s.properties.get(k).map(String::as_str) == v.as_str());
+                blocks_ok && props_ok
             }
-            _ => false,
+            _ => {
+                let source = self.command_source.unwrap_or_else(|| self.player_source());
+                // Scores are read from the holder's board only where
+                // an `entity_scores` leaf may ask.
+                let scored = adv::asks_scores(cond);
+                let view = |game: &mut Self, t| {
+                    if scored {
+                        game.entity_view_scored(t, cond)
+                    } else {
+                        game.entity_view_asked(t, cond)
+                    }
+                };
+                let this = source
+                    .entity
+                    .filter(|_| c.without_this.is_none())
+                    .map(|t| view(self, t));
+                let target = c.target.map(|t| view(self, t));
+                let interacting = c.interacting.map(|t| view(self, t));
+                let entities = context_entities(
+                    c,
+                    this.as_ref(),
+                    source.pos,
+                    target.as_ref(),
+                    interacting.as_ref(),
+                );
+                self.conditions_hold_in(cond, &entities)
+            }
         }
     }
 }
