@@ -279,10 +279,24 @@ mod tests {
         atlas: &str,
         definition: &str,
     ) -> Answered<TextureAtlasRegistration> {
-        Answered {
-            mod_id,
-            answer: registration(atlas, definition),
+        struct Atlas(TextureAtlasRegistration);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Atlas {
+            fn register_texture_atlases(
+                &self,
+                _: &mod_api::RegistrationContext,
+                event: &mut mod_api::RegisterTextureAtlasesEvent<'_>,
+            ) {
+                event.register(self.0.clone());
+            }
         }
+
+        let mods = vec![mod_api::ModEntry::new(
+            mod_id,
+            Box::new(Atlas(registration(atlas, definition))),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || collect_texture_atlases().pop().unwrap())
     }
 
     fn root(files: &[(&str, Vec<u8>)]) -> ResourceRoot {
