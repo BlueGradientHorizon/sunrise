@@ -1377,11 +1377,10 @@ impl Game<'_> {
                 }
             }
             C::SetChunkCacheRadius(p) => {
-                self.streaming.radius = self
-                    .settings
-                    .render_distance
-                    .min(p.distance.saturating_add(1))
-                    .max(2);
+                self.streaming.radius = crate::game::entity_culling::streaming_radius_for(
+                    self.settings.render_distance,
+                    Some(p.distance),
+                );
                 if let Some(r) = self.remote.as_mut() {
                     r.view_distance = p.distance;
                     let center = r.chunk_center;

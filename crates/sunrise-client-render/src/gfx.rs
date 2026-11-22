@@ -117,6 +117,8 @@ pub use frustum::{Cull, Frusta, JoinedFrusta, ShadowCull};
 use frustum::{block_entities_within_reach, frustum, shadow_casters, taa_frustum};
 pub use section_fade::{CHUNK_VISIBILITY_THRESHOLD, chunk_visibility, fade_millis};
 use section_fade::{FadeInputs, compiled_and_visible, section_instance, section_visibility};
+#[doc(hidden)]
+pub use section_upload::section_in_eye_view;
 pub use sunrise_render_core::SectionKey;
 pub use view::{View, ViewSet};
 
@@ -231,6 +233,8 @@ mod oit_features;
 pub(crate) mod output;
 mod output_apply;
 mod pack_entities;
+#[doc(hidden)]
+pub mod visibility_probe;
 // The pack's programs' inputs and helpers, from `sunrise-render-shaderpack`: the client's frame
 // only tells them what a `Frame` and the game's own values are.
 pub use sunrise_render_shaderpack::{
@@ -972,11 +976,8 @@ pub use view::test_frustum;
 /// fire_side's 0.01 pixel in front of its block, from z-fighting.
 /// The section the camera is in.
 fn camera_section(camera: DVec3, min_y: i32) -> SectionKey {
-    (
-        (camera.x.floor() as i32) >> 4,
-        (camera.y.floor() as i32 - min_y) >> 4,
-        (camera.z.floor() as i32) >> 4,
-    )
+    let (cx, cz) = resident::camera_column(camera);
+    (cx, resident::camera_section_y(camera, min_y), cz)
 }
 
 /// The near plane of the world's projection, in blocks.
