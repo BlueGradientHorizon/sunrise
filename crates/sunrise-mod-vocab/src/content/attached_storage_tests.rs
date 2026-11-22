@@ -103,7 +103,10 @@ fn a_fluid_tank_round_trips_through_its_codec_and_moves() {
         assert_eq!(tanks.amount(&mut host, 1), 250);
         // The codec of the saved attachment reads back to the same index and amount.
         let server: &mut dyn ServerHost = &mut host;
-        let held = fluids.get_existing(server, CHUNK).unwrap().unwrap();
+        let held = fluids
+            .get_existing(server, CHUNK, |value| value.cloned())
+            .unwrap()
+            .unwrap();
         let saved = (FLUID_STACKS.encode)(&held).unwrap();
         let reloaded = (FLUID_STACKS.decode)(&saved).unwrap();
         assert_eq!(reloaded[1], Some((water.clone(), 250)));
@@ -283,7 +286,10 @@ fn handler_and_codec_limits_agree() {
             Ok(0)
         );
         let server: &mut dyn ServerHost = &mut host;
-        let mut held = items.get_existing(server, CHUNK).unwrap().unwrap();
+        let mut held = items
+            .get_existing(server, CHUNK, |value| value.cloned())
+            .unwrap()
+            .unwrap();
         let saved = (ITEM_STACKS.encode)(&held).unwrap();
         let decoded = (ITEM_STACKS.decode)(&saved).unwrap();
         assert_eq!(decoded.len(), 4096);

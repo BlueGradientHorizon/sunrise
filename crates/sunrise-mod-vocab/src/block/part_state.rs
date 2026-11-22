@@ -26,13 +26,13 @@ use std::{cell::RefCell, fmt, sync::Arc};
 ///     }
 /// }
 /// // In a hook with `host: &mut dyn ServerHost` and the block entity's `entity`:
-/// let done = self.edit_state(host, entity, |_, progress| {
+/// let done = self.edit_state(host, entity, |_, _tx, progress| {
 ///     *progress += 1;
 ///     *progress >= 200
 /// })?;
 /// ```
 ///
-/// Reads take `&dyn Host` and return a snapshot. Edits take `&mut dyn ServerHost`, run in
+/// Reads take `&dyn Host` and lend a value from a snapshot. Edits take `&mut dyn ServerHost`, run in
 /// their own nested transaction and store the new value only when the closure returns.
 /// Every call first checks that `self.state_key()` belongs to the active installation and
 /// that `entity` is still the block entity it named, in the level this host is in: a
@@ -44,7 +44,7 @@ use std::{cell::RefCell, fmt, sync::Arc};
 /// of it, so a client reads the default.
 pub trait BlockEntityPartState: BlockEntityPart + Sized {
     /// The value each block entity of the Part's type keeps.
-    type Data: Clone + Send + Sync + 'static;
+    type Data: Send + Sync + 'static;
     /// The issued attachment key this Part keeps its per-block-entity state under.
     /// Register its [`AttachmentDescriptor`](crate::AttachmentDescriptor) during
     /// [`Hooks::register`](crate::Hooks::register) (or look up another package's key with
@@ -52,45 +52,53 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
     /// persistence codec the value is kept for the session only.
     fn state_key(&self) -> &AttachmentKey<Self::Data>;
 
-    /// The block entity's value, or the default when it has none. Inserts nothing.
-    fn state(&self, host: &dyn Host, entity: BlockEntityRef) -> Result<Self::Data, PartStateError> {
-        let key = self.state_key();
-        Ok(self
-            .state_existing(host, entity)?
-            .unwrap_or_else(|| key.descriptor().default_value()))
-    }
-
-    /// The block entity's value, or `None` when it has none. Inserts nothing.
-    fn state_existing(
+    /// Lend the block entity's value or its default. Inserts nothing.
+    fn state<R>(
         &self,
         host: &dyn Host,
         entity: BlockEntityRef,
-    ) -> Result<Option<Self::Data>, PartStateError> {
-        read_state(host, entity, self.state_key())
+        read: impl FnOnce(&Self::Data) -> R,
+    ) -> Result<R, PartStateError> {
+        self.state_existing(host, entity, |value| match value {
+            Some(value) => read(value),
+            None => read(&self.state_key().descriptor().default_value()),
+        })
+    }
+
+    /// Lend the block entity's value or `None`. Inserts nothing.
+    fn state_existing<R>(
+        &self,
+        host: &dyn Host,
+        entity: BlockEntityRef,
+        read: impl FnOnce(Option<&Self::Data>) -> R,
+    ) -> Result<R, PartStateError> {
+        read_state(host, entity, self.state_key(), read)
     }
 
     /// The value through a read-only level, or its default. Inserts nothing.
     /// No chunk loading or loot generation; unloaded/stale holders fail, clients read the
     /// default. Owning game thread only, never reachable from worker-thread hook bodies.
-    fn state_in(
+    fn state_in<R>(
         &self,
         level: &dyn crate::LevelHost,
         entity: BlockEntityRef,
-    ) -> Result<Self::Data, PartStateError> {
-        let key = self.state_key();
-        Ok(self
-            .state_existing_in(level, entity)?
-            .unwrap_or_else(|| key.descriptor().default_value()))
+        read: impl FnOnce(&Self::Data) -> R,
+    ) -> Result<R, PartStateError> {
+        self.state_existing_in(level, entity, |value| match value {
+            Some(value) => read(value),
+            None => read(&self.state_key().descriptor().default_value()),
+        })
     }
     /// The existing value through a read-only level, including tentative writes visible in
     /// its current transaction. No chunk loading or loot generation; unloaded/stale holders
     /// fail and clients return None. Owning game thread only, never reachable from
     /// worker-thread hook bodies.
-    fn state_existing_in(
+    fn state_existing_in<R>(
         &self,
         level: &dyn crate::LevelHost,
         entity: BlockEntityRef,
-    ) -> Result<Option<Self::Data>, PartStateError> {
+        read: impl FnOnce(Option<&Self::Data>) -> R,
+    ) -> Result<R, PartStateError> {
         let key = self.state_key();
         let (checked, epoch) = key
             .live_with_epoch()
@@ -99,9 +107,10 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
             .block_entity_part_snapshot(entity, checked.namespace(), checked.name())?
             .query_checked(checked, epoch)
             .map_err(|error| attachment(key, error))?
-            .get(
+            .with_value(
                 level.attachment_read_scope(),
                 AttachmentHolder::BlockEntity(entity),
+                read,
             )
             .map_err(|error| match error {
                 AttachmentRowError::Value(error) => attachment(key, error),
@@ -116,8 +125,11 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
         &self,
         host: &mut dyn ServerHost,
         entity: BlockEntityRef,
-        edit: impl FnOnce(&mut dyn ServerHost, &mut Self::Data) -> R,
-    ) -> Result<R, PartStateError> {
+        edit: impl FnOnce(&mut dyn ServerHost, &TransactionContext, &mut Self::Data) -> R,
+    ) -> Result<R, PartStateError>
+    where
+        Self::Data: Clone,
+    {
         edit_part_state(host, entity, self.state_key(), edit)
     }
 }
@@ -418,11 +430,12 @@ fn attachment<T: 'static>(key: &AttachmentKey<T>, error: AttachmentError) -> Par
 }
 
 /// [`BlockEntityPartState::state_existing`] for any issued key.
-pub fn read_state<H: PartStateHolder, T: Clone + Send + Sync + 'static>(
+pub fn read_state<H: PartStateHolder, T: Send + Sync + 'static, R>(
     host: &dyn Host,
     entity: H,
     key: &AttachmentKey<T>,
-) -> Result<Option<T>, PartStateError> {
+    read: impl FnOnce(Option<&T>) -> R,
+) -> Result<R, PartStateError> {
     let (checked, epoch) = key
         .live_with_epoch()
         .map_err(|error| attachment(key, error))?;
@@ -434,7 +447,7 @@ pub fn read_state<H: PartStateHolder, T: Clone + Send + Sync + 'static>(
         .map_err(|error| attachment(key, error))?;
     let scope = host.attachment_read_scope();
     scope
-        .and_then(|scope| query.get(scope, entity.attachment_holder()))
+        .and_then(|scope| query.with_value(scope, entity.attachment_holder(), read))
         .map_err(|error| match error {
             AttachmentRowError::Value(error) => attachment(key, error),
             _ => PartStateError::Stale,
@@ -478,7 +491,8 @@ impl Drop for Editing {
 ///
 /// Runs in a transaction of its own, nested in the open one if any: the value is read
 /// (decoded once from its saved form, or the default when absent), lent to `edit` as a
-/// copy while no store borrow is held, and stored back after `edit` returns, if the holder
+/// copy alongside the transaction context, with no store borrow held. It is stored back
+/// after `edit` returns, if the holder
 /// is still the one `entity` names and nothing else replaced the value meanwhile.
 /// Otherwise, or when the value does not encode, the transaction aborts with everything
 /// `edit` wrote and the old value stays, with its saved bytes. A panic in `edit` aborts it
@@ -488,15 +502,15 @@ pub fn edit_part_state<H: PartStateHolder, T: Clone + Send + Sync + 'static, R>(
     host: &mut dyn ServerHost,
     entity: H,
     key: &AttachmentKey<T>,
-    edit: impl FnOnce(&mut dyn ServerHost, &mut T) -> R,
+    edit: impl FnOnce(&mut dyn ServerHost, &TransactionContext, &mut T) -> R,
 ) -> Result<R, PartStateError> {
     let checked = key.live().map_err(|error| attachment(key, error))?;
     let _editing = Editing::enter(entity.attachment_holder(), key)?;
-    match host.transaction(|host, _| {
+    match host.transaction(|host, tx| {
         let at = entity.part_state_holder(host)?;
         let store = host.attachments();
         let current = checked
-            .get_existing(store, at)
+            .get_existing(store, at, |value| value.cloned())
             .map_err(|error| attachment(key, error))?;
         // The value's own allocation: each store makes a new one and a transaction puts
         // the same one back, so it changed exactly when this differs. Holding it keeps
@@ -505,13 +519,20 @@ pub fn edit_part_state<H: PartStateHolder, T: Clone + Send + Sync + 'static, R>(
             .decoded(at, checked.namespace(), checked.name())
             .map_err(|error| attachment(key, error))?;
         let mut value = current.unwrap_or_else(|| checked.default_value());
-        let answer = edit(host, &mut value);
-        entity.part_state_holder(host)?;
+        let answer = edit(host, tx, &mut value);
+        let checked = key.live().map_err(|error| attachment(key, error))?;
+        let at = entity.part_state_holder(host)?;
         let store = host.attachments();
         let now = store
             .decoded(at, checked.namespace(), checked.name())
             .map_err(|error| attachment(key, error))?;
-        if !same(revision.as_ref(), now.as_ref()) {
+        if !same(revision.as_ref(), now.as_ref())
+            || (now.is_none()
+                && store
+                    .raw(at, checked.namespace(), checked.name())
+                    .map_err(|error| attachment(key, error))?
+                    .is_some())
+        {
             return Err(PartStateError::Changed);
         }
         checked
@@ -589,9 +610,12 @@ mod tests {
             name: "state",
             error: AttachmentError::StaleKey,
         });
-        assert_eq!(read_state(&host, entity, &first), expected);
         assert_eq!(
-            edit_part_state(&mut host, entity, &first, |_, _| panic!("ran")),
+            read_state(&host, entity, &first, |value| value.cloned()),
+            expected
+        );
+        assert_eq!(
+            edit_part_state(&mut host, entity, &first, |_, _tx, _| panic!("ran")),
             expected
         );
     }

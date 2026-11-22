@@ -133,7 +133,7 @@ pub mod tests {
     impl EnergyHandler for EntityBattery {
         fn amount(&self, host: &mut dyn ServerHost) -> u32 {
             self.1
-                .get_existing(host, Holder::Entity(self.0.id()))
+                .get_existing(host, Holder::Entity(self.0.id()), |value| value.cloned())
                 .unwrap()
                 .unwrap_or(0)
         }
@@ -175,7 +175,7 @@ pub mod tests {
         }
         fn amount(&self, host: &mut dyn ServerHost, _: usize) -> u32 {
             self.1
-                .get_existing(host, Holder::Entity(self.0.id()))
+                .get_existing(host, Holder::Entity(self.0.id()), |value| value.cloned())
                 .unwrap()
                 .unwrap_or(0)
         }

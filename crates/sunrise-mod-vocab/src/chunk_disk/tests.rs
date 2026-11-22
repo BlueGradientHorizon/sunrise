@@ -44,7 +44,11 @@ fn context(phase: ChunkDiskPhase) -> ChunkDiskContext {
 fn read(key: &AttachmentKey<i32>, entries: &Compound) -> i32 {
     key.live()
         .unwrap()
-        .get(&mut Attachments::from_nbt(entries.clone()), Holder::Level)
+        .get(
+            &mut Attachments::from_nbt(entries.clone()),
+            Holder::Level,
+            Clone::clone,
+        )
         .unwrap()
 }
 fn run(job: &ChunkDiskJob) -> Compound {
@@ -124,7 +128,11 @@ fn capture_7_callback_8_live_9() {
             .unwrap();
         assert_eq!(read(&value, &run(&job)), 8);
         assert_eq!(
-            value.live().unwrap().get(&mut live, Holder::Level).unwrap(),
+            value
+                .live()
+                .unwrap()
+                .get(&mut live, Holder::Level, |value| *value)
+                .unwrap(),
             9
         );
         assert_eq!(read(&value, &run(&job)), 8);

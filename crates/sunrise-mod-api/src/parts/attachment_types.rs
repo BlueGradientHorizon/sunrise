@@ -379,7 +379,10 @@ mod tests {
         assert_eq!(owner_key, consumer_key);
 
         let mut host = crate::testing::FakeHost::default();
-        assert_eq!(consumer_key.get(&mut host, crate::Holder::Level), Ok(37));
+        assert_eq!(
+            consumer_key.get(&mut host, crate::Holder::Level, Clone::clone),
+            Ok(37)
+        );
         let batch: crate::AttachmentBatch =
             sunrise_mod_runtime::attachments::AttachmentBatch::empty().into();
         assert!(
@@ -407,7 +410,7 @@ mod tests {
         let owner_key_next = owner_key_next.lock().unwrap().take().unwrap();
         assert_ne!(owner_key, owner_key_next);
         assert_eq!(
-            consumer_key.get(&mut host, crate::Holder::Level),
+            consumer_key.get(&mut host, crate::Holder::Level, Clone::clone),
             Err(crate::AttachmentError::StaleKey)
         );
         let stale_batch: crate::AttachmentBatch =
@@ -427,7 +430,10 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        assert_eq!(owner_key_next.get(&mut host, crate::Holder::Level), Ok(37));
+        assert_eq!(
+            owner_key_next.get(&mut host, crate::Holder::Level, Clone::clone),
+            Ok(37)
+        );
     }
 
     #[test]
@@ -510,7 +516,10 @@ mod tests {
                     });
                 let key = key_slot.lock().unwrap().take().unwrap();
                 let mut host = crate::testing::FakeHost::default();
-                assert_eq!(key.get(&mut host, crate::Holder::Level), Ok(37));
+                assert_eq!(
+                    key.get(&mut host, crate::Holder::Level, Clone::clone),
+                    Ok(37)
+                );
             },
         );
     }

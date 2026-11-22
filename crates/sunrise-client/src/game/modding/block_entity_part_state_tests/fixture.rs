@@ -32,7 +32,7 @@ impl BlockEntityPart for Counter {
         let host = event.subject.host();
         match mode {
             1 => {
-                let refused = self.edit_state(host, entity, |_, _| panic!("ran"));
+                let refused = self.edit_state(host, entity, |_, _tx, _| panic!("ran"));
                 assert_eq!(
                     refused,
                     Err(PartStateError::Attachment {
@@ -42,20 +42,20 @@ impl BlockEntityPart for Counter {
                     })
                 );
                 assert_eq!(
-                    edit_part_state(host, entity, &self.mark, |_, m| *m = 1),
+                    edit_part_state(host, entity, &self.mark, |_, _tx, m| *m = 1),
                     Ok(())
                 );
             }
             _ => {
                 let aborted: Result<(), mod_api::TransactionError<()>> =
                     host.transaction(|host, _| {
-                        assert_eq!(self.edit_state(host, entity, |_, n| *n = 100), Ok(()));
+                        assert_eq!(self.edit_state(host, entity, |_, _tx, n| *n = 100), Ok(()));
                         Err(())
                     });
                 assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
-                let recursive = self.edit_state(host, entity, |host, n| {
+                let recursive = self.edit_state(host, entity, |host, _tx, n| {
                     *n += 1;
-                    self.edit_state(host, entity, |_, n| *n = 50)
+                    self.edit_state(host, entity, |_, _tx, n| *n = 50)
                 });
                 assert_eq!(recursive, Ok(Err(PartStateError::Reentrant)));
             }

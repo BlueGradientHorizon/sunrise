@@ -38,11 +38,11 @@ impl Hooks for Listener {
         // without recursively constructing the same entity.
         match host {
             HostSide::Server(host) => {
-                let _ = value.get(host, event.holder).unwrap();
+                let _ = value.get(host, event.holder, Clone::clone).unwrap();
                 value.set(host, event.holder, 41).unwrap();
             }
             HostSide::Client(host) => {
-                let _ = value.get(host, event.holder).unwrap();
+                let _ = value.get(host, event.holder, Clone::clone).unwrap();
                 value.set(host, event.holder, 41).unwrap();
             }
         }
@@ -96,7 +96,10 @@ fn spawn_summon_and_disk_load_initialize_before_first_attachment_read() {
                     crate::game::creatures::SpawnSite::Plain,
                 )
                 .unwrap();
-            assert_eq!(value_key.get(game, Holder::Entity(spawn)), Ok(41));
+            assert_eq!(
+                value_key.get(game, Holder::Entity(spawn), Clone::clone),
+                Ok(41)
+            );
             game.spawn_entity_from_nbt(tag("minecraft:pig", 100));
             let summoned = game
                 .persist
@@ -105,7 +108,10 @@ fn spawn_summon_and_disk_load_initialize_before_first_attachment_read() {
                 .find(|(_, uuid)| **uuid == [100, 2, 3, 4])
                 .map(|(id, _)| *id)
                 .unwrap();
-            assert_eq!(value_key.get(game, Holder::Entity(summoned)), Ok(41));
+            assert_eq!(
+                value_key.get(game, Holder::Entity(summoned), Clone::clone),
+                Ok(41)
+            );
             for (i, kind) in [
                 "minecraft:zombie",
                 "minecraft:arrow",
@@ -131,7 +137,11 @@ fn spawn_summon_and_disk_load_initialize_before_first_attachment_read() {
                     .unwrap()
                     .0;
                 let expected = Ok(41);
-                assert_eq!(value_key.get(game, Holder::Entity(id)), expected, "{kind}");
+                assert_eq!(
+                    value_key.get(game, Holder::Entity(id), Clone::clone),
+                    expected,
+                    "{kind}"
+                );
                 assert_eq!(
                     calls
                         .lock()
@@ -174,7 +184,10 @@ fn borrowed_spawn_first_read_and_dimension_transfer_keep_one_initialization() {
                 sunrise_core::geometry::Vec3::new(1.0, 70.0, 3.0),
                 0.0,
             ));
-            assert_eq!(value_key.get(game, Holder::Entity(id)), Ok(41));
+            assert_eq!(
+                value_key.get(game, Holder::Entity(id), Clone::clone),
+                Ok(41)
+            );
             game.native_joins_flush(false, 0);
             assert_eq!(calls.lock().unwrap().len(), 1);
             let uuid = game.uuid_for(id);
@@ -191,12 +204,18 @@ fn borrowed_spawn_first_read_and_dimension_transfer_keep_one_initialization() {
             game.enter_level(Dim::Nether).unwrap();
             let moved = game.load_mob_transferred(saved, None, Some(state)).unwrap();
             assert_eq!(game.persist.uuid_of(moved), Some(uuid));
-            assert_eq!(value_key.get(game, Holder::Entity(moved)), Ok(41));
+            assert_eq!(
+                value_key.get(game, Holder::Entity(moved), Clone::clone),
+                Ok(41)
+            );
             assert_eq!(calls.lock().unwrap().len(), 1);
             game.forget_entity(moved);
             game.mobs.retain(|mob| mob.id != moved);
             let replacement = game.load_mob(tag("minecraft:cow", uuid[0]), None).unwrap();
-            assert_eq!(value_key.get(game, Holder::Entity(replacement)), Ok(41));
+            assert_eq!(
+                value_key.get(game, Holder::Entity(replacement), Clone::clone),
+                Ok(41)
+            );
             assert_eq!(calls.lock().unwrap().len(), 2);
             // Non-Mob transfers must retain values that cannot be serialized at all.
             for (n, kind) in [
@@ -255,7 +274,7 @@ fn borrowed_spawn_first_read_and_dimension_transfer_keep_one_initialization() {
                     .0;
                 assert_ne!(source, arrived);
                 assert_eq!(
-                    value_key.get(game, Holder::Entity(arrived)),
+                    value_key.get(game, Holder::Entity(arrived), Clone::clone),
                     Ok(73),
                     "{kind}"
                 );
@@ -330,7 +349,10 @@ fn client_login_tracking_and_retracking_initialize_the_client_store_once() {
             }))
             .unwrap();
             let profile = game.remote.as_ref().unwrap().profile;
-            assert_eq!(value_key.get(game, Holder::Player(profile)), Ok(41));
+            assert_eq!(
+                value_key.get(game, Holder::Player(profile), Clone::clone),
+                Ok(41)
+            );
             let registry = game
                 .remote
                 .as_ref()
@@ -363,7 +385,7 @@ fn client_login_tracking_and_retracking_initialize_the_client_store_once() {
                 } else {
                     Holder::Entity(id as u32)
                 };
-                assert_eq!(value_key.get(game, holder), Ok(41));
+                assert_eq!(value_key.get(game, holder, Clone::clone), Ok(41));
                 game.handle_packet(packet()).unwrap();
                 assert_eq!(
                     calls
@@ -437,7 +459,10 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
                 .guests
                 .update_all(|guest| guest.placed = false);
             game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5]);
-            assert_eq!(value_key.get(game, Holder::Player(12)), Ok(41));
+            assert_eq!(
+                value_key.get(game, Holder::Player(12), Clone::clone),
+                Ok(41)
+            );
             game.bind_player_attachments(12, false);
             game.initialize_server_player(12, 12);
             assert_eq!(
@@ -451,7 +476,10 @@ fn server_players_initialize_on_join_and_new_respawn_but_not_rebind() {
                 .guests
                 .update(0, |guest| guest.dead = true);
             game.guest_respawn(12);
-            assert_eq!(value_key.get(game, Holder::Player(12)), Ok(41));
+            assert_eq!(
+                value_key.get(game, Holder::Player(12), Clone::clone),
+                Ok(41)
+            );
             assert_eq!(
                 calls.lock().unwrap().as_slice(),
                 &[(false, Holder::Player(12)), (false, Holder::Player(12))]
@@ -572,8 +600,11 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
                 .unwrap()
                 .0;
             // `Entity.load` after `EntityConstructing`: the saved value wins, the unsaved one stays.
-            assert_eq!(saved_key.get(game, Holder::Entity(id)), Ok(7));
-            assert_eq!(value_key.get(game, Holder::Entity(id)), Ok(41));
+            assert_eq!(saved_key.get(game, Holder::Entity(id), Clone::clone), Ok(7));
+            assert_eq!(
+                value_key.get(game, Holder::Entity(id), Clone::clone),
+                Ok(41)
+            );
             assert_eq!(
                 kinds.lock().unwrap().as_slice(),
                 &[(Holder::Entity(id), "minecraft:pig".to_owned())]
@@ -591,7 +622,7 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             let ghost = game.load_mob(child.clone(), Some(id)).unwrap();
             assert!(game.entity(ghost).is_none());
             assert_eq!(
-                saved_key.get(game, Holder::Entity(ghost)),
+                saved_key.get(game, Holder::Entity(ghost), Clone::clone),
                 Err(mod_api::AttachmentError::MissingHolder)
             );
             assert_eq!(
@@ -601,7 +632,7 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
                 ),
                 Ok(9)
             );
-            assert_eq!(saved_key.get(game, Holder::Entity(id)), Ok(7));
+            assert_eq!(saved_key.get(game, Holder::Entity(id), Clone::clone), Ok(7));
             assert_eq!(kinds.lock().unwrap().len(), 2);
             game.prune_entity_attachments();
             assert!(game.entity_attachments.contains_key(&ghost));
@@ -629,7 +660,10 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             let refused = game
                 .load_mob_transferred(tag("minecraft:pig", 200), Some(arrived), Some(parent_state))
                 .unwrap();
-            assert_eq!(saved_key.get(game, Holder::Entity(arrived)), Ok(9));
+            assert_eq!(
+                saved_key.get(game, Holder::Entity(arrived), Clone::clone),
+                Ok(9)
+            );
             assert!(game.entity(refused).is_none());
             assert_eq!(
                 kinds.lock().unwrap().len(),
@@ -652,7 +686,10 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             game.persist.off_level.remove(&refused);
             game.forget_entity(refused);
             game.prune_entity_attachments();
-            assert_eq!(saved_key.get(game, Holder::Entity(arrived)), Ok(9));
+            assert_eq!(
+                saved_key.get(game, Holder::Entity(arrived), Clone::clone),
+                Ok(9)
+            );
             let batch = game.query(&saved_key).unwrap();
             let mut rows = batch.iter();
             assert!(rows.try_next().unwrap().is_some());
@@ -660,7 +697,10 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             game.forget_entity(arrived);
             game.mobs.retain(|mob| mob.id != arrived);
             let rebuilt = game.load_mob(tag("minecraft:pig", 200), None).unwrap();
-            assert_eq!(saved_key.get(game, Holder::Entity(rebuilt)), Ok(41));
+            assert_eq!(
+                saved_key.get(game, Holder::Entity(rebuilt), Clone::clone),
+                Ok(41)
+            );
             assert_eq!(
                 kinds.lock().unwrap().len(),
                 3,
@@ -822,7 +862,10 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
             let holder = Holder::Entity(421);
             // Only an inspection outside dispatch: the constructor listener
             // performs the store, and there is no subsequent explicit store.
-            assert_eq!(value_key.get_existing(game, holder), Ok(Some(41)));
+            assert_eq!(
+                value_key.get_existing(game, holder, |value| value.cloned()),
+                Ok(Some(41))
+            );
             assert!(game.dragon.as_mut().unwrap().parts[0].2.is_bound());
             let batch = game.query(&value_key).unwrap();
             let mut rows = batch.iter();
@@ -861,7 +904,10 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
                     .unwrap()
                     .is_none()
             );
-            assert_eq!(value_key.get_existing(game, holder), Ok(Some(41)));
+            assert_eq!(
+                value_key.get_existing(game, holder, |value| value.cloned()),
+                Ok(Some(41))
+            );
             assert_eq!(
                 calls
                     .lock()
@@ -889,7 +935,10 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
                     .unwrap()
                     .is_none()
             );
-            assert_eq!(value_key.get_existing(game, holder), Ok(Some(41)));
+            assert_eq!(
+                value_key.get_existing(game, holder, |value| value.cloned()),
+                Ok(Some(41))
+            );
             assert_eq!(
                 calls
                     .lock()

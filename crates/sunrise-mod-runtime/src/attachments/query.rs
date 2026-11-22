@@ -218,34 +218,43 @@ impl<H: Copy, T: Send + Sync + 'static> AttachmentQuery<'_, H, T> {
     }
 }
 
-impl<H: Copy + Eq + Hash, T: Clone + Send + Sync + 'static> AttachmentQuery<'_, H, T> {
-    /// Read an owned captured value with an expected O(1) holder probe before decode.
-    /// Absent or not yet synced holders return `Ok(None)`, without initializing
-    /// defaults. Decode/type errors are preserved as `AttachmentRowError::Value`.
-    /// `None` does not mean the holder is alive: absent and not-live holders
-    /// alike return `Ok(None)` when absent from captured membership, without a
-    /// host liveness check. Only scoped residency probes report `StaleHolder`.
-    /// Later replacements, removals and rebinds require a fresh snapshot.
-    /// Scoped reads borrow the original frame tracker through decode and clone.
-    pub fn get(
+impl<H: Copy + Eq + Hash, T: Send + Sync + 'static> AttachmentQuery<'_, H, T> {
+    /// Lend a captured value with an expected O(1) holder probe before decode.
+    /// An absent holder lends `None` without initializing a default or checking residency.
+    /// Scoped reads borrow the original frame tracker throughout the loan; later changes
+    /// to membership and bindings require a fresh snapshot.
+    pub fn with_value<R>(
         &self,
         host: Option<&AttachmentQueryScopes>,
         holder: H,
-    ) -> Result<Option<T>, AttachmentRowError> {
+        read: impl FnOnce(Option<&T>) -> R,
+    ) -> Result<R, AttachmentRowError> {
         if let Some(scope) = &self.batch.scope {
             scope.check_on(host)?;
         }
         let Some(rows) = self.batch.rows.as_deref() else {
-            return Ok(None);
+            return Ok(read(None));
         };
         let Some(slot) = rows.slot_for(holder) else {
-            return Ok(None);
+            return Ok(read(None));
         };
-        rows[slot]
+        let value = rows[slot]
             .entry
             .read_in_installation(self.key, self.epoch)
-            .map(|value| Some(value.clone()))
-            .map_err(AttachmentRowError::Value)
+            .map_err(AttachmentRowError::Value)?;
+        Ok(read(Some(value)))
+    }
+
+    /// Clone a captured value; see [`Self::with_value`] for scope and absence semantics.
+    pub fn get(
+        &self,
+        host: Option<&AttachmentQueryScopes>,
+        holder: H,
+    ) -> Result<Option<T>, AttachmentRowError>
+    where
+        T: Clone,
+    {
+        self.with_value(host, holder, |value| value.cloned())
     }
 }
 

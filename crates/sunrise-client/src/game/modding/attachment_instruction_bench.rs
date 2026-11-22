@@ -71,7 +71,7 @@ fn attachment_instruction_count() {
             );
             attachment_measured_passes(game, &key, &holders, passes);
             for &holder in &holders {
-                assert_eq!(key.get(game, holder).unwrap(), passes as u32);
+                assert_eq!(key.get(game, holder, Clone::clone).unwrap(), passes as u32);
             }
         });
     });
@@ -86,7 +86,7 @@ fn attachment_measured_passes(
 ) {
     for _ in 0..passes {
         for &holder in holders {
-            let value = key.get(game, holder).unwrap();
+            let value = key.get(game, holder, Clone::clone).unwrap();
             key.set(game, holder, std::hint::black_box(value.wrapping_add(1)))
                 .unwrap();
         }

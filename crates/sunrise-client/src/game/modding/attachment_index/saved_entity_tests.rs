@@ -231,7 +231,7 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
                 "{kind} store_back"
             );
             assert_eq!(
-                value_key.get(game, Holder::Entity(entity.id())),
+                value_key.get(game, Holder::Entity(entity.id()), Clone::clone),
                 Ok(19),
                 "{kind}"
             );

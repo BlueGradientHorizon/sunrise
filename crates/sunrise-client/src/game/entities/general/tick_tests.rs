@@ -71,7 +71,7 @@ impl EntityPart for Counter {
             .expect("live resident general entity");
         let host = event.subject.host();
         let holder = Holder::Entity(entity.id());
-        let value = self.counter.get(host, holder).unwrap() + 1;
+        let value = self.counter.get(host, holder, Clone::clone).unwrap() + 1;
         self.counter.set(host, holder, value).unwrap();
         if self.panicking_on() == Some(entity.id())
             && !self.fired.swap(true, std::sync::atomic::Ordering::Relaxed)
@@ -334,7 +334,9 @@ fn tick(game: &mut Game<'_>) {
 
 /// A row's counter, read through the same host surface the part writes.
 fn counter(game: &mut Game<'_>, id: u32) -> i32 {
-    counter_key().get(game, Holder::Entity(id)).unwrap()
+    counter_key()
+        .get(game, Holder::Entity(id), Clone::clone)
+        .unwrap()
 }
 
 /// One robot row, its counter already at `value`.
@@ -644,7 +646,11 @@ fn a_reloaded_row_resumes_the_counter_and_refuses_its_old_handle() {
         let fresh = rows[0].id;
         assert_ne!(fresh, old);
         assert_eq!(counter(game, fresh), 41);
-        assert!(counter_key().get(game, Holder::Entity(old)).is_err());
+        assert!(
+            counter_key()
+                .get(game, Holder::Entity(old), Clone::clone)
+                .is_err()
+        );
         tick(game);
         assert_eq!(counter(game, fresh), 42);
     });

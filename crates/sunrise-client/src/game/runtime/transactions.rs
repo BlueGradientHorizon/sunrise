@@ -4233,7 +4233,9 @@ mod mod_capability_tests {
                     Holder::Player(guest),
                 );
                 let energy = |host: &mut dyn ServerHost, holder| {
-                    energy_key.get_existing(host, holder).unwrap()
+                    energy_key
+                        .get_existing(host, holder, |value| value.cloned())
+                        .unwrap()
                 };
 
                 let host: &mut dyn ServerHost = game;

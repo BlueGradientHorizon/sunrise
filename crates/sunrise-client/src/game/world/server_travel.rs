@@ -1913,9 +1913,9 @@ mod tests {
                     );
                     assert_eq!(game.persist.forced_meta.get(&leaf), Some(&[5, 6, 7, 8]));
                     assert_eq!(game.portals.entities[&leaf].cooldown, 19);
-                    assert_eq!(state.get(game, Holder::Entity(leaf)), Ok(77));
+                    assert_eq!(state.get(game, Holder::Entity(leaf), Clone::clone), Ok(77));
                     if !conflict {
-                        assert_eq!(state.get(game, Holder::Entity(held)), Ok(41));
+                        assert_eq!(state.get(game, Holder::Entity(held), Clone::clone), Ok(41));
                     }
                     assert!(game.mobs_below_off_level().contains(&leaf));
                     game.native_joins_flush(false, 0);
@@ -1938,7 +1938,7 @@ mod tests {
                         assert!(!game.persist.forced_meta.contains_key(&id));
                     }
                     game.enter_level(Dim::Nether).unwrap();
-                    assert_eq!(state.get(game, Holder::Entity(leaf)), Ok(77));
+                    assert_eq!(state.get(game, Holder::Entity(leaf), Clone::clone), Ok(77));
                     game.native_joins_flush(false, 0);
                     assert_eq!(*calls.lock().unwrap(), before);
                 })

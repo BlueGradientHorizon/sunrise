@@ -338,7 +338,10 @@ fn public_store_only_writes_the_issued_descriptor_type_and_policy() {
         wrong_type.set(ModStateHost::attachments(&mut host), Holder::Level, true),
         Err(AttachmentError::StaleKey)
     );
-    assert_eq!(key.get_existing(&mut host, Holder::Level), Ok(None));
+    assert_eq!(
+        key.get_existing(&mut host, Holder::Level, |value| value.cloned()),
+        Ok(None)
+    );
 
     key.set(&mut host, Holder::Level, 9).unwrap();
     let map = host.maps.get_mut(&Holder::Level).unwrap();
@@ -426,12 +429,15 @@ fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_names
         ..Default::default()
     };
     assert_eq!(
-        key.get_existing(&mut host, to),
+        key.get_existing(&mut host, to, |value| value.cloned()),
         Err(AttachmentError::Decode)
     );
     assert_eq!(host.maps[&to].to_nbt(), counter_on_disk(1).to_nbt());
     host.read_from = None;
-    assert_eq!(key.get_existing(&mut host, to), Ok(Some(1)));
+    assert_eq!(
+        key.get_existing(&mut host, to, |value| value.cloned()),
+        Ok(Some(1))
+    );
 
     let malformed: Compound = [("mapping".into(), Tag::Int(3))].into();
     host.maps
@@ -502,9 +508,9 @@ fn a_refused_promotion_or_default_drops_only_one_value() {
         let result = crate::runtime::contain_callback(
             || {
                 if default {
-                    key.get(host, to).err()
+                    key.get(host, to, Clone::clone).err()
                 } else {
-                    key.get_existing(host, to).err()
+                    key.get_existing(host, to, |value| value.cloned()).err()
                 }
             },
             |_| {},

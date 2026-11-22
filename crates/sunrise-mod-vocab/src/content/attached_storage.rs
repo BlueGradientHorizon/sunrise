@@ -94,21 +94,12 @@ impl<R: StackedResource> AttachedStacks<R> {
         if index >= self.size {
             return None;
         }
-        let checked = self.attachment.live().ok()?;
-        let borrowed = checked.with_decoded(host.attachments(), self.holder, |list| {
-            list.map(|list| list.get(index).and_then(|held| held.as_ref()).cloned())
-        });
-        match borrowed {
-            // The holder keeps a decoded list: the entry is read without a clone.
-            Ok(Some(held)) => held,
-            // Nothing decoded yet: `get_existing` decodes a saved value once, and the store
-            // keeps its decoded copy for the borrowed reads after it.
-            _ => checked
-                .get_existing(host.attachments(), self.holder)
-                .ok()
-                .flatten()
-                .and_then(|list| list.into_iter().nth(index).flatten()),
-        }
+        self.attachment
+            .get_existing(host, self.holder, |list| {
+                list.and_then(|list| list.get(index)?.clone())
+            })
+            .ok()
+            .flatten()
     }
     /// Index `index` set to `now`: whether the write went through. Indices past the handler's
     /// `size` that the holder keeps are preserved, so a write through a smaller view never
@@ -118,7 +109,7 @@ impl<R: StackedResource> AttachedStacks<R> {
             return false;
         };
         let mut list = checked
-            .get_existing(host.attachments(), self.holder)
+            .get_existing(host.attachments(), self.holder, |list| list.cloned())
             .ok()
             .flatten()
             .unwrap_or_default();
@@ -244,9 +235,7 @@ impl AttachedEnergy {
 impl EnergyHandler for AttachedEnergy {
     fn amount(&self, host: &mut dyn ServerHost) -> u32 {
         self.attachment
-            .get_existing(host, self.holder)
-            .ok()
-            .flatten()
+            .get_existing(host, self.holder, |value| value.copied().unwrap_or(0))
             .unwrap_or(0)
     }
     fn capacity(&self, _: &mut dyn ServerHost) -> u32 {

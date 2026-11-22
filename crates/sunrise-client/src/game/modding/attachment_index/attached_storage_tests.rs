@@ -76,7 +76,11 @@ fn attached_items_are_undone_by_an_abort_and_saved_by_their_codec() {
         assert_eq!(went, Ok(10));
         assert_eq!(slots.amount(host, 4), 10);
         // What the save writes reads back to the same index.
-        let held = keys.items.get_existing(host, CHUNK).unwrap().unwrap();
+        let held = keys
+            .items
+            .get_existing(host, CHUNK, |value| value.cloned())
+            .unwrap()
+            .unwrap();
         let reloaded = (ITEM_STACKS.decode)(&(ITEM_STACKS.encode)(&held).unwrap()).unwrap();
         assert_eq!(reloaded[4], Some((dirt, 10)));
         assert!(reloaded[..4].iter().all(Option::is_none));

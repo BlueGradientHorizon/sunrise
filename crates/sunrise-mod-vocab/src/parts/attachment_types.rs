@@ -499,10 +499,16 @@ impl<T: Send + Sync + 'static> AttachmentKey<T> {
     }
 }
 
-impl<T: Clone + Send + Sync + 'static> AttachmentKey<T> {
-    /// Read a value from `holder`, inserting the owner's default if absent.
-    pub fn get(&self, host: &mut dyn Host, holder: Holder) -> Result<T, AttachmentError> {
-        self.live()?.get(host.attachments(), holder)
+impl<T: Send + Sync + 'static> AttachmentKey<T> {
+    /// Lend a value for `read`, inserting the owner's default if absent. The loan
+    /// does not outlive the call; copy or project only what you need to keep.
+    pub fn get<R>(
+        &self,
+        host: &mut dyn Host,
+        holder: Holder,
+        read: impl FnOnce(&T) -> R,
+    ) -> Result<R, AttachmentError> {
+        self.live()?.get(host.attachments(), holder, read)
     }
 
     /// Whether `holder` currently carries a value; never inserts the default.
@@ -510,13 +516,15 @@ impl<T: Clone + Send + Sync + 'static> AttachmentKey<T> {
         self.live()?.has(host.attachments(), holder)
     }
 
-    /// Read a value from `holder` only if present; a saved or synced value decodes once.
-    pub fn get_existing(
+    /// Lend the existing value or `None`. Decodes a saved or synced value once,
+    /// and never inserts a default. On error `read` is not called.
+    pub fn get_existing<R>(
         &self,
         host: &mut dyn Host,
         holder: Holder,
-    ) -> Result<Option<T>, AttachmentError> {
-        self.live()?.get_existing(host.attachments(), holder)
+        read: impl FnOnce(Option<&T>) -> R,
+    ) -> Result<R, AttachmentError> {
+        self.live()?.get_existing(host.attachments(), holder, read)
     }
 
     /// Borrow an already-decoded value without inserting or decoding it.
@@ -540,11 +548,10 @@ impl<T: Clone + Send + Sync + 'static> AttachmentKey<T> {
     }
 
     /// Remove a value from `holder`, returning the previous value if one was present.
-    pub fn remove(
-        &self,
-        host: &mut dyn Host,
-        holder: Holder,
-    ) -> Result<Option<T>, AttachmentError> {
+    pub fn remove(&self, host: &mut dyn Host, holder: Holder) -> Result<Option<T>, AttachmentError>
+    where
+        T: Clone,
+    {
         self.live()?.remove(host.attachments(), holder)
     }
 
@@ -553,13 +560,14 @@ impl<T: Clone + Send + Sync + 'static> AttachmentKey<T> {
         self.live()?.sync_data(host.attachments(), holder)
     }
 
-    /// Read a value from `holder` through a [`LevelRandomHost`], inserting the default if absent.
-    pub fn get_in(
+    /// [`Self::get`] through a [`LevelRandomHost`].
+    pub fn get_in<R>(
         &self,
         level: &mut dyn LevelRandomHost,
         holder: Holder,
-    ) -> Result<T, AttachmentError> {
-        self.live()?.get(level.attachments(), holder)
+        read: impl FnOnce(&T) -> R,
+    ) -> Result<R, AttachmentError> {
+        self.live()?.get(level.attachments(), holder, read)
     }
 
     /// Whether `holder` currently carries a value in `level`; never inserts the default.
@@ -571,13 +579,14 @@ impl<T: Clone + Send + Sync + 'static> AttachmentKey<T> {
         self.live()?.has(level.attachments(), holder)
     }
 
-    /// Read a value from `holder` in `level` only if present.
-    pub fn get_existing_in(
+    /// [`Self::get_existing`] through a [`LevelRandomHost`].
+    pub fn get_existing_in<R>(
         &self,
         level: &mut dyn LevelRandomHost,
         holder: Holder,
-    ) -> Result<Option<T>, AttachmentError> {
-        self.live()?.get_existing(level.attachments(), holder)
+        read: impl FnOnce(Option<&T>) -> R,
+    ) -> Result<R, AttachmentError> {
+        self.live()?.get_existing(level.attachments(), holder, read)
     }
 
     /// Replace a value on `holder` in `level`.
@@ -595,7 +604,10 @@ impl<T: Clone + Send + Sync + 'static> AttachmentKey<T> {
         &self,
         level: &mut dyn LevelRandomHost,
         holder: Holder,
-    ) -> Result<Option<T>, AttachmentError> {
+    ) -> Result<Option<T>, AttachmentError>
+    where
+        T: Clone,
+    {
         self.live()?.remove(level.attachments(), holder)
     }
 
@@ -883,12 +895,15 @@ mod tests {
         assert!(first.is_live());
 
         let mut host = crate::testing::FakeHost::default();
-        assert_eq!(first.get(&mut host, Holder::Level), Ok(1));
+        assert_eq!(first.get(&mut host, Holder::Level, Clone::clone), Ok(1));
         first.set(&mut host, Holder::Level, 9).unwrap();
-        assert_eq!(first.get_existing(&mut host, Holder::Level), Ok(Some(9)));
+        assert_eq!(
+            first.get_existing(&mut host, Holder::Level, |value| value.cloned()),
+            Ok(Some(9))
+        );
 
         let mut level = FakeLevel(Attachments::default());
-        assert_eq!(first.get_in(&mut level, Holder::Level), Ok(1));
+        assert_eq!(first.get_in(&mut level, Holder::Level, Clone::clone), Ok(1));
         first.set_in(&mut level, Holder::Level, 4).unwrap();
         assert_eq!(first.remove_in(&mut level, Holder::Level), Ok(Some(4)));
         assert_eq!(first.has_in(&mut level, Holder::Level), Ok(false));
@@ -900,7 +915,7 @@ mod tests {
         assert!(second.is_live());
         assert_ne!(first, second);
         assert_eq!(
-            first.get(&mut host, Holder::Level),
+            first.get(&mut host, Holder::Level, Clone::clone),
             Err(AttachmentError::StaleKey)
         );
         assert_eq!(
@@ -920,10 +935,13 @@ mod tests {
             Err(AttachmentError::StaleKey)
         );
         assert_eq!(
-            first.get_in(&mut level, Holder::Level),
+            first.get_in(&mut level, Holder::Level, Clone::clone),
             Err(AttachmentError::StaleKey)
         );
-        assert_eq!(second.get_existing(&mut host, Holder::Level), Ok(Some(9)));
+        assert_eq!(
+            second.get_existing(&mut host, Holder::Level, |value| value.cloned()),
+            Ok(Some(9))
+        );
     }
 
     #[test]
@@ -1143,11 +1161,11 @@ mod tests {
             let expected = (!saved_copy).then_some(17);
             let read_copy = |level: &FakeLevel| {
                 let mut copy = FakeLevel(level.0.copy_on_death(registered_copy_on_death));
-                fresh.get_existing_in(&mut copy, Holder::Level)
+                fresh.get_existing_in(&mut copy, Holder::Level, |value| value.cloned())
             };
             assert_eq!(read_copy(&level), Ok(expected));
             assert_eq!(
-                fresh.get_existing_in(&mut level, Holder::Level),
+                fresh.get_existing_in(&mut level, Holder::Level, |value| value.cloned()),
                 Ok(Some(17))
             );
             assert_eq!(read_copy(&level), Ok(expected));

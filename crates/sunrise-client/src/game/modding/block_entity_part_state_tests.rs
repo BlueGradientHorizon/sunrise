@@ -66,7 +66,7 @@ impl BlockEntityPart for Press {
             Some(entity),
             "resident during its tick"
         );
-        self.edit_state(host, entity, |_, ticks| *ticks += 1)
+        self.edit_state(host, entity, |_, _tx, ticks| *ticks += 1)
             .unwrap();
     }
 }
@@ -181,7 +181,9 @@ fn press_with_item_slot(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntit
 }
 
 fn stored(press: &Press, game: &mut Game<'_>, entity: BlockEntityRef) -> Option<i32> {
-    press.state_existing(game, entity).unwrap()
+    press
+        .state_existing(game, entity, |value| value.cloned())
+        .unwrap()
 }
 
 #[test]
@@ -192,11 +194,14 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         let press_part = &keys.press;
         let (a, b) = (press(game, (1, 64, 1)), press(game, (2, 64, 1)));
         // Reads insert nothing.
-        assert_eq!(press_part.state(game, a), Ok(0));
+        assert_eq!(press_part.state(game, a, Clone::clone), Ok(0));
         assert_eq!(stored(press_part, game, a), None);
         game.with_level(|_, level, _| {
-            assert_eq!(press_part.state_in(level, a), Ok(0));
-            assert_eq!(press_part.state_existing_in(level, a), Ok(None));
+            assert_eq!(press_part.state_in(level, a, Clone::clone), Ok(0));
+            assert_eq!(
+                press_part.state_existing_in(level, a, |value| value.cloned()),
+                Ok(None)
+            );
         });
         assert_eq!(
             press_part
@@ -204,20 +209,26 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
                 .has(game, Holder::BlockEntity([1, 64, 1])),
             Ok(false)
         );
-        assert_eq!(press_part.edit_state(game, a, |_, n| *n = 7), Ok(()));
+        assert_eq!(press_part.edit_state(game, a, |_, _tx, n| *n = 7), Ok(()));
         assert_eq!(
             (stored(press_part, game, a), stored(press_part, game, b)),
             (Some(7), None)
         );
         game.with_level(|_, level, _| {
-            assert_eq!(press_part.state_in(level, a), Ok(7));
-            assert_eq!(press_part.state_existing_in(level, a), Ok(Some(7)));
+            assert_eq!(press_part.state_in(level, a, Clone::clone), Ok(7));
+            assert_eq!(
+                press_part.state_existing_in(level, a, |value| value.cloned()),
+                Ok(Some(7))
+            );
         });
         let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
         game.with_level(|_, level, _| {
-            assert_eq!(press_part.state_in(level, a), Err(PartStateError::Stale));
             assert_eq!(
-                press_part.state_existing_in(level, a),
+                press_part.state_in(level, a, Clone::clone),
+                Err(PartStateError::Stale)
+            );
+            assert_eq!(
+                press_part.state_existing_in(level, a, |value| value.cloned()),
                 Err(PartStateError::Stale)
             );
         });
@@ -227,8 +238,11 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         let role = game.options.execution_role;
         game.options.execution_role = super::execution_role::ExecutionRole::Client;
         let client_view = super::native_level_signals::ReadLevel { game, level };
-        assert_eq!(press_part.state_in(&client_view, a), Ok(0));
-        assert_eq!(press_part.state_existing_in(&client_view, a), Ok(None));
+        assert_eq!(press_part.state_in(&client_view, a, Clone::clone), Ok(0));
+        assert_eq!(
+            press_part.state_existing_in(&client_view, a, |value| value.cloned()),
+            Ok(None)
+        );
         game.options.dedicated = dedicated;
         game.options.execution_role = role;
 
@@ -236,15 +250,19 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         game.tick_mod_block_entity((1, 64, 1));
         game.tick_mod_block_entity((1, 64, 1));
         assert_eq!(stored(press_part, game, a), Some(9));
-        assert_eq!(press_part.state(game, b), Ok(0));
+        assert_eq!(press_part.state(game, b, Clone::clone), Ok(0));
 
         // An inner edit commits into the outer transaction, which then aborts: the value and
         // the chunk's unsaved mark go back, so a chunk that was clean is clean again.
         game.world.modified.clear();
         let aborted: Result<(), mod_api::TransactionError<()>> = (game as &mut dyn ServerHost)
             .transaction(|host, _| {
-                assert_eq!(press_part.edit_state(host, a, |_, n| *n = 11), Ok(()));
-                assert_eq!(press_part.state(host, a), Ok(11), "later steps see it");
+                assert_eq!(press_part.edit_state(host, a, |_, _tx, n| *n = 11), Ok(()));
+                assert_eq!(
+                    press_part.state(host, a, Clone::clone),
+                    Ok(11),
+                    "later steps see it"
+                );
                 assert!(
                     !sunrise_client::join_seq::visibility::passes_settled(),
                     "no save while it is tentative"
@@ -261,7 +279,7 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         // A panic inside an edit leaves no default behind.
         let host: &mut dyn ServerHost = game;
         let panicked = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            press_part.edit_state(host, b, |_, n| {
+            press_part.edit_state(host, b, |_, _tx, n| {
                 *n = 5;
                 panic!("edit fails");
             })
@@ -269,23 +287,26 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         assert!(panicked.is_err());
         assert!(game.transactions.is_empty());
         assert_eq!(stored(press_part, game, b), None);
-        assert_eq!(press_part.edit_state(game, b, |_, n| *n = 8), Ok(()));
+        assert_eq!(press_part.edit_state(game, b, |_, _tx, n| *n = 8), Ok(()));
         assert_eq!(stored(press_part, game, b), Some(8));
 
         // The same state can't be edited from inside its own edit; another key can.
-        let inner = press_part.edit_state(game, a, |host, n| {
+        let inner = press_part.edit_state(game, a, |host, _tx, n| {
             *n = 10;
             (
-                press_part.edit_state(host, a, |_, n| *n = 99),
-                edit_part_state(host, a, &keys.scratch, |_, n| *n = 1),
+                press_part.edit_state(host, a, |_, _tx, n| *n = 99),
+                edit_part_state(host, a, &keys.scratch, |_, _tx, n| *n = 1),
             )
         });
         assert_eq!(inner, Ok((Err(PartStateError::Reentrant), Ok(()))));
         assert_eq!(stored(press_part, game, a), Some(10));
-        assert_eq!(read_state(game, a, &keys.scratch), Ok(Some(1)));
+        assert_eq!(
+            read_state(game, a, &keys.scratch, |value| value.cloned()),
+            Ok(Some(1))
+        );
 
         // A value replaced while the closure ran refuses the edit and keeps the old one.
-        let changed = press_part.edit_state(game, a, |host, n| {
+        let changed = press_part.edit_state(game, a, |host, _tx, n| {
             *n = 12;
             press_part
                 .state_key()
@@ -316,11 +337,11 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
             name: "progress",
             error: AttachmentError::Decode,
         };
-        assert_eq!(press_part.state(game, b), Err(decode.clone()));
+        assert_eq!(press_part.state(game, b, Clone::clone), Err(decode.clone()));
         let mut ran = false;
         game.world.modified.clear();
         assert_eq!(
-            press_part.edit_state(game, b, |_, _| ran = true),
+            press_part.edit_state(game, b, |_, _tx, _| ran = true),
             Err(decode)
         );
         assert!(!ran);
@@ -340,13 +361,19 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         // A block entity of the same place in another level has its own value, and a
         // handle answers only in its own level.
         game.enter_level(Dim::Nether).unwrap();
-        assert_eq!(press_part.state(game, a), Err(PartStateError::OtherLevel));
+        assert_eq!(
+            press_part.state(game, a, Clone::clone),
+            Err(PartStateError::OtherLevel)
+        );
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let nether = press(game, (1, 64, 1));
-        assert_eq!(press_part.state(game, nether), Ok(0));
-        assert_eq!(press_part.edit_state(game, nether, |_, n| *n = 3), Ok(()));
+        assert_eq!(press_part.state(game, nether, Clone::clone), Ok(0));
+        assert_eq!(
+            press_part.edit_state(game, nether, |_, _tx, n| *n = 3),
+            Ok(())
+        );
         game.enter_level(Dim::Overworld).unwrap();
         assert_eq!(stored(press_part, game, a), Some(10));
 
@@ -354,9 +381,12 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         game.world.block_entities.remove(&(1, 64, 1));
         let replacement = press(game, (1, 64, 1));
         assert_ne!(replacement, a);
-        assert_eq!(press_part.state(game, a), Err(PartStateError::Stale));
         assert_eq!(
-            press_part.edit_state(game, a, |_, n| *n = 1),
+            press_part.state(game, a, Clone::clone),
+            Err(PartStateError::Stale)
+        );
+        assert_eq!(
+            press_part.edit_state(game, a, |_, _tx, n| *n = 1),
             Err(PartStateError::Stale)
         );
         assert_eq!(stored(press_part, game, replacement), None);
@@ -381,13 +411,16 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         game.update_world();
         let entity = press(game, pos);
         game.world.modified.clear();
-        assert_eq!(press_part.edit_state(game, entity, |_, n| *n = 7), Ok(()));
+        assert_eq!(
+            press_part.edit_state(game, entity, |_, _tx, n| *n = 7),
+            Ok(())
+        );
         assert!(
             game.world.modified.contains(&key),
             "an edit marks its chunk for the unload's save"
         );
         assert_eq!(
-            edit_part_state(game, entity, &keys.scratch, |_, n| *n = 4),
+            edit_part_state(game, entity, &keys.scratch, |_, _tx, n| *n = 4),
             Ok(())
         );
 
@@ -400,7 +433,10 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         }
         assert!(!game.world.chunks.contains_key(&key), "unloaded");
         assert!(game.world.block_entities.attachments(pos).is_none());
-        assert_eq!(press_part.state(game, entity), Err(PartStateError::Stale));
+        assert_eq!(
+            press_part.state(game, entity, Clone::clone),
+            Err(PartStateError::Stale)
+        );
 
         // Loaded back from the region file it was saved to, as streaming installs a column.
         game.save_level(true).unwrap();
@@ -413,10 +449,13 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
         let level = game.level(game.dim.id()).unwrap();
         let reloaded = game.block_entity(level, [pos.0, pos.1, pos.2]).unwrap();
         assert_ne!(reloaded, entity);
-        assert_eq!(press_part.state(game, entity), Err(PartStateError::Stale));
+        assert_eq!(
+            press_part.state(game, entity, Clone::clone),
+            Err(PartStateError::Stale)
+        );
         assert_eq!(stored(press_part, game, reloaded), Some(7));
         assert_eq!(
-            read_state(game, reloaded, &keys.scratch),
+            read_state(game, reloaded, &keys.scratch, |value| value.cloned()),
             Ok(None),
             "session only"
         );
@@ -570,14 +609,17 @@ fn a_removal_retires_its_state_only_at_the_root_commit() {
         let progress = press_part.state_key();
         let pos = (1, 64, 1);
         let a = press(game, pos);
-        assert_eq!(press_part.edit_state(game, a, |_, n| *n = 7), Ok(()));
+        assert_eq!(press_part.edit_state(game, a, |_, _tx, n| *n = 7), Ok(()));
 
         // Removed and replaced inside a transaction that then aborts: the handle is stale
         // while it is open, but the index keeps the map bound; the abort brings the very
         // binding back, and the tentative block entity's handle stays stale.
         let tentative = game.storage_scope(|game, _| {
             game.journal_remove_block_entity(pos);
-            assert_eq!(press_part.state(game, a), Err(PartStateError::Stale));
+            assert_eq!(
+                press_part.state(game, a, Clone::clone),
+                Err(PartStateError::Stale)
+            );
             assert_eq!(
                 indexed(game, a, progress),
                 Some(7),
@@ -585,15 +627,15 @@ fn a_removal_retires_its_state_only_at_the_root_commit() {
             );
             let tentative = press(game, pos);
             assert_eq!(
-                press_part.edit_state(game, tentative, |_, n| *n = 5),
+                press_part.edit_state(game, tentative, |_, _tx, n| *n = 5),
                 Ok(())
             );
             (tentative, false)
         });
-        assert_eq!(press_part.state(game, a), Ok(7));
+        assert_eq!(press_part.state(game, a, Clone::clone), Ok(7));
         assert_eq!(indexed(game, a, progress), Some(7));
         assert_eq!(
-            press_part.state(game, tentative),
+            press_part.state(game, tentative, Clone::clone),
             Err(PartStateError::Stale)
         );
         assert_eq!(indexed(game, tentative, progress), None);
@@ -608,7 +650,10 @@ fn a_removal_retires_its_state_only_at_the_root_commit() {
             // The root commit retires it.
             ((), true)
         });
-        assert_eq!(press_part.state(game, a), Err(PartStateError::Stale));
+        assert_eq!(
+            press_part.state(game, a, Clone::clone),
+            Err(PartStateError::Stale)
+        );
         assert_eq!(indexed(game, a, progress), None);
         assert!(game.world.block_entities.attachments(pos).is_none());
     });
@@ -628,7 +673,10 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
             .insert(key, Arc::new(Chunk::empty(key.0, key.1)));
         game.update_world();
         let entity = press(game, pos);
-        assert_eq!(press_part.edit_state(game, entity, |_, n| *n = 7), Ok(()));
+        assert_eq!(
+            press_part.edit_state(game, entity, |_, _tx, n| *n = 7),
+            Ok(())
+        );
         let reload = |game: &mut Game<'_>| {
             let chunk = game
                 .save
@@ -646,7 +694,10 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
         // A save asked for while an edit is tentative is refused; once it aborts, the save
         // writes the committed value.
         game.storage_scope(|game, _| {
-            assert_eq!(press_part.edit_state(game, entity, |_, n| *n = 9), Ok(()));
+            assert_eq!(
+                press_part.edit_state(game, entity, |_, _tx, n| *n = 9),
+                Ok(())
+            );
             assert!(game.save_level(true).is_err(), "refused while tentative");
             ((), false)
         });
@@ -656,13 +707,16 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
         // An unload due while a transaction is open waits for it to close, then saves the
         // committed value.
         game.storage_scope(|game, _| {
-            assert_eq!(press_part.edit_state(game, entity, |_, n| *n = 11), Ok(()));
+            assert_eq!(
+                press_part.edit_state(game, entity, |_, _tx, n| *n = 11),
+                Ok(())
+            );
             assert!(game.streaming.set_forced(key.0, key.1, false));
             for _ in 0..9 {
                 game.update_world();
             }
             assert!(game.world.chunks.contains_key(&key), "kept while tentative");
-            assert_eq!(press_part.state(game, entity), Ok(11));
+            assert_eq!(press_part.state(game, entity, Clone::clone), Ok(11));
             ((), false)
         });
         game.update_world();
@@ -681,14 +735,17 @@ fn one_position_replaced_twice_in_an_aborted_transaction_gets_its_original_back(
         let progress = press_part.state_key();
         let pos = (1, 64, 1);
         let original = press(game, pos);
-        assert_eq!(press_part.edit_state(game, original, |_, n| *n = 7), Ok(()));
+        assert_eq!(
+            press_part.edit_state(game, original, |_, _tx, n| *n = 7),
+            Ok(())
+        );
         let tentative = game.storage_scope(|game, _| {
             let mut tentative = Vec::new();
             for value in [20, 30] {
                 game.journal_remove_block_entity(pos);
                 let replacement = press(game, pos);
                 assert_eq!(
-                    press_part.edit_state(game, replacement, |_, n| *n = value),
+                    press_part.edit_state(game, replacement, |_, _tx, n| *n = value),
                     Ok(())
                 );
                 tentative.push(replacement);
@@ -700,10 +757,13 @@ fn one_position_replaced_twice_in_an_aborted_transaction_gets_its_original_back(
             );
             (tentative, false)
         });
-        assert_eq!(press_part.state(game, original), Ok(7));
+        assert_eq!(press_part.state(game, original, Clone::clone), Ok(7));
         assert_eq!(indexed(game, original, progress), Some(7));
         for handle in tentative {
-            assert_eq!(press_part.state(game, handle), Err(PartStateError::Stale));
+            assert_eq!(
+                press_part.state(game, handle, Clone::clone),
+                Err(PartStateError::Stale)
+            );
             assert_eq!(indexed(game, handle, progress), None);
         }
     });

@@ -62,6 +62,7 @@ fn value(chunk: &mut Chunk) -> i32 {
         .get(
             &mut Arc::make_mut(chunk.saved.as_mut().unwrap()).attachments,
             mod_api::Holder::Level,
+            Clone::clone,
         )
         .unwrap()
 }

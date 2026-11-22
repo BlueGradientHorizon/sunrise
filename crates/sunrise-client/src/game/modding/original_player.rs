@@ -510,18 +510,23 @@ mod tests {
                 AttachmentDescriptor::new("clone:unsaved", || 0i32),
             );
             assert_eq!(
-                event.original.attachment(&stale),
+                event.original.attachment(&stale, Clone::clone),
                 Err(mod_api::AttachmentError::StaleKey)
             );
 
             // A declared but absent key yields its default without writing either holder.
-            assert_eq!(event.original.attachment(&issued(&DEFAULTED)), Ok(41));
+            assert_eq!(
+                event.original.attachment(&issued(&DEFAULTED), Clone::clone),
+                Ok(41)
+            );
             assert_eq!(
                 event.original.has_attachment(&issued(&DEFAULTED)),
                 Ok(false)
             );
             assert_eq!(
-                event.original.existing_attachment(&issued(&DEFAULTED)),
+                event
+                    .original
+                    .existing_attachment(&issued(&DEFAULTED), |value| value.cloned()),
                 Ok(None)
             );
             assert_eq!(
@@ -544,7 +549,9 @@ mod tests {
                 Ok(None)
             );
             assert_eq!(
-                event.original.existing_attachment(&issued(&SAVED)),
+                event
+                    .original
+                    .existing_attachment(&issued(&SAVED), |value| value.cloned()),
                 Ok(Some(31))
             );
             assert_eq!(
@@ -564,32 +571,40 @@ mod tests {
                 Ok(None)
             );
             assert_eq!(
-                issued(&SAVED).get(host, Holder::Player(event.player)),
+                issued(&SAVED).get(host, Holder::Player(event.player), Clone::clone),
                 Ok(if self.death { 0 } else { 31 })
             );
 
             // Codec-less attachment exists only on original until explicitly written to replacement,
             // on both death and End credits return (NeoForge AttachmentInternals.copyEntityAttachments).
-            assert_eq!(event.original.attachment(&issued(&VALUE)), Ok(73));
+            assert_eq!(
+                event.original.attachment(&issued(&VALUE), Clone::clone),
+                Ok(73)
+            );
             assert_eq!(
                 issued(&VALUE).has(host, Holder::Player(event.player)),
                 Ok(false)
             );
-            assert_eq!(event.original.attachment(&issued(&RETAINED)), Ok(17));
+            assert_eq!(
+                event.original.attachment(&issued(&RETAINED), Clone::clone),
+                Ok(17)
+            );
             assert_eq!(
                 issued(&RETAINED)
                     .with_decoded(host, Holder::Player(event.player), |value| value.copied()),
                 Ok(None)
             );
             assert_eq!(
-                issued(&RETAINED).get(host, Holder::Player(event.player)),
+                issued(&RETAINED).get(host, Holder::Player(event.player), Clone::clone),
                 Ok(17)
             );
 
             // Writes and removals on original affect only original, leaving replacement untouched.
             assert_eq!(event.original.set_attachment(&issued(&VALUE), 100), Ok(()));
             assert_eq!(
-                event.original.existing_attachment(&issued(&VALUE)),
+                event
+                    .original
+                    .existing_attachment(&issued(&VALUE), |value| value.cloned()),
                 Ok(Some(100))
             );
             assert_eq!(
@@ -602,7 +617,7 @@ mod tests {
             );
             assert_eq!(event.original.has_attachment(&issued(&RETAINED)), Ok(false));
             assert_eq!(
-                issued(&RETAINED).get(host, Holder::Player(event.player)),
+                issued(&RETAINED).get(host, Holder::Player(event.player), Clone::clone),
                 Ok(17)
             );
 
@@ -611,7 +626,9 @@ mod tests {
                 .set(host, Holder::Player(event.player), 99)
                 .unwrap();
             assert_eq!(
-                event.original.existing_attachment(&issued(&VALUE)),
+                event
+                    .original
+                    .existing_attachment(&issued(&VALUE), |value| value.cloned()),
                 Ok(Some(100))
             );
             *self.heard.lock().unwrap() += 1;
@@ -636,16 +653,18 @@ mod tests {
                 Ok(false)
             );
             assert_eq!(
-                event.original.existing_attachment(&issued(&VALUE)),
+                event
+                    .original
+                    .existing_attachment(&issued(&VALUE), |value| value.cloned()),
                 Ok(Some(100))
             );
             assert_eq!(
-                issued(&VALUE).get(host, Holder::Player(event.player)),
+                issued(&VALUE).get(host, Holder::Player(event.player), Clone::clone),
                 Ok(99)
             );
             assert_eq!(event.original.has_attachment(&issued(&RETAINED)), Ok(false));
             assert_eq!(
-                issued(&RETAINED).get(host, Holder::Player(event.player)),
+                issued(&RETAINED).get(host, Holder::Player(event.player), Clone::clone),
                 Ok(17)
             );
             assert_eq!(
@@ -839,15 +858,21 @@ mod tests {
                 );
 
                 assert_eq!(
-                    event.original.existing_attachment(&issued(&VALUE)),
+                    event
+                        .original
+                        .existing_attachment(&issued(&VALUE), |value| value.cloned()),
                     Ok(Some(55))
                 );
                 assert_eq!(
-                    event.original.existing_attachment(&issued(&SAVED)),
+                    event
+                        .original
+                        .existing_attachment(&issued(&SAVED), |value| value.cloned()),
                     Ok(Some(66))
                 );
                 assert_eq!(
-                    event.original.existing_attachment(&issued(&RETAINED)),
+                    event
+                        .original
+                        .existing_attachment(&issued(&RETAINED), |value| value.cloned()),
                     Ok(Some(77))
                 );
                 assert_eq!(
@@ -859,7 +884,7 @@ mod tests {
                     Ok(!self.death)
                 );
                 assert_eq!(
-                    issued(&RETAINED).get(host, Holder::Player(event.player)),
+                    issued(&RETAINED).get(host, Holder::Player(event.player), Clone::clone),
                     Ok(77)
                 );
                 issued(&VALUE)
@@ -977,11 +1002,14 @@ mod tests {
                                 ]
                             );
                             assert_eq!(
-                                issued(&VALUE).get(game, Holder::Player(12)),
+                                issued(&VALUE).get(game, Holder::Player(12), Clone::clone),
                                 Ok(999),
                                 "the old UUID checkpoint must not overwrite the clone listener's write"
                             );
-                            assert_eq!(issued(&RETAINED).get(game, Holder::Player(12)), Ok(77));
+                            assert_eq!(
+                                issued(&RETAINED).get(game, Holder::Player(12), Clone::clone),
+                                Ok(77)
+                            );
                         } else {
                             game.handle_server_portal(12);
                             assert!(game.lan.as_ref().unwrap().play[&12].won_game);
@@ -1167,12 +1195,18 @@ mod tests {
                         issued(&SAVED).with_decoded(host, Holder::Player(12), |v| v.copied()),
                         Ok(None)
                     );
-                    assert_eq!(issued(&SAVED).get(host, Holder::Player(12)), Ok(31));
+                    assert_eq!(
+                        issued(&SAVED).get(host, Holder::Player(12), Clone::clone),
+                        Ok(31)
+                    );
                     assert_eq!(
                         issued(&RETAINED).with_decoded(host, Holder::Player(12), |v| v.copied()),
                         Ok(None)
                     );
-                    assert_eq!(issued(&RETAINED).get(host, Holder::Player(12)), Ok(17));
+                    assert_eq!(
+                        issued(&RETAINED).get(host, Holder::Player(12), Clone::clone),
+                        Ok(17)
+                    );
                 });
             });
         });
@@ -1196,7 +1230,7 @@ mod tests {
                 self.0.lock().unwrap().push(
                     event
                         .original
-                        .existing_attachment(&issued(&RETAINED))
+                        .existing_attachment(&issued(&RETAINED), |value| value.cloned())
                         .unwrap()
                         .unwrap(),
                 );
@@ -1228,7 +1262,7 @@ mod tests {
                             ((), false)
                         });
                         assert!(game.command_guest(12).unwrap().dead);
-                        assert_eq!(issued(&RETAINED).get(game, holder), Ok(17));
+                        assert_eq!(issued(&RETAINED).get(game, holder, Clone::clone), Ok(17));
                         assert!(seen.lock().unwrap().is_empty());
                         game.storage_scope(|game, _| {
                             issued(&RETAINED).set(game, holder, 29).unwrap();
@@ -1236,7 +1270,7 @@ mod tests {
                             ((), true)
                         });
                         assert!(!game.command_guest(12).unwrap().dead);
-                        assert_eq!(issued(&RETAINED).get(game, holder), Ok(29));
+                        assert_eq!(issued(&RETAINED).get(game, holder, Clone::clone), Ok(29));
                         assert_eq!(
                             &*seen.lock().unwrap(),
                             if subscribe { &[29][..] } else { &[] }
@@ -1278,9 +1312,14 @@ mod tests {
                             event.original.remove_attachment(&issued(&RETAINED)),
                             Ok(Some(17))
                         );
-                        assert_eq!(event.original.attachment(&issued(&DEFAULTED)), Ok(41));
                         assert_eq!(
-                            event.original.existing_attachment(&issued(&SAVED)),
+                            event.original.attachment(&issued(&DEFAULTED), Clone::clone),
+                            Ok(41)
+                        );
+                        assert_eq!(
+                            event
+                                .original
+                                .existing_attachment(&issued(&SAVED), |value| value.cloned()),
                             Ok(Some(31))
                         );
                         // Inner committed transaction must still roll back when outer aborts.
@@ -1290,11 +1329,13 @@ mod tests {
                         })
                         .unwrap();
                         assert_eq!(
-                            event.original.existing_attachment(&issued(&VALUE)),
+                            event
+                                .original
+                                .existing_attachment(&issued(&VALUE), |value| value.cloned()),
                             Ok(Some(445))
                         );
                         assert_eq!(
-                            issued(&VALUE).get(host, Holder::Player(event.player)),
+                            issued(&VALUE).get(host, Holder::Player(event.player), Clone::clone),
                             Ok(555)
                         );
                         Err(())
@@ -1305,7 +1346,9 @@ mod tests {
                     Ok(false)
                 );
                 assert_eq!(
-                    event.original.existing_attachment(&issued(&VALUE)),
+                    event
+                        .original
+                        .existing_attachment(&issued(&VALUE), |value| value.cloned()),
                     Ok(Some(73))
                 );
                 assert_eq!(event.original.has_attachment(&issued(&RETAINED)), Ok(true));
@@ -1335,11 +1378,13 @@ mod tests {
                     Ok(false)
                 );
                 assert_eq!(
-                    issued(&RETAINED).get(host, Holder::Player(event.player)),
+                    issued(&RETAINED).get(host, Holder::Player(event.player), Clone::clone),
                     Ok(17)
                 );
                 assert_eq!(
-                    event.original.existing_attachment(&issued(&VALUE)),
+                    event
+                        .original
+                        .existing_attachment(&issued(&VALUE), |value| value.cloned()),
                     Ok(Some(73))
                 );
                 assert_eq!(event.original.has_attachment(&issued(&RETAINED)), Ok(true));

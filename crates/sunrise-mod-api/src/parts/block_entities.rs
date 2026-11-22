@@ -300,9 +300,11 @@ pub mod tests {
         ) {
             HOARD_ASKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let BlockPos { x, y, z } = event.pos;
-            if let Ok(Some(count @ 1..)) = self
-                .1
-                .get_existing_in(level, Holder::BlockEntity([x, y, z]))
+            if let Ok(Some(count @ 1..)) =
+                self.1
+                    .get_existing_in(level, Holder::BlockEntity([x, y, z]), |value| {
+                        value.cloned()
+                    })
             {
                 event.drops.push(Some(crate::parts::items::tests::stack(
                     "minecraft:gold_ingot",

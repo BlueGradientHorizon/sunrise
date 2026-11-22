@@ -218,7 +218,10 @@ fn a_spawn_then_abort_leaves_no_entity_map_or_hook() {
         let pig = game.storage_scope(|game, _| {
             let pig = summon(game, "minecraft:pig", "{}").unwrap();
             assert!(game.entity(pig).is_some(), "in the level inside the action");
-            assert_eq!(mark_key().get(game, Holder::Entity(pig)), Ok(1));
+            assert_eq!(
+                mark_key().get(game, Holder::Entity(pig), Clone::clone),
+                Ok(1)
+            );
             assert_eq!(heard().constructed, [pig], "constructed at the spawn call");
             (pig, false)
         });
@@ -288,7 +291,10 @@ fn a_spawn_joins_at_the_root_commit() {
         });
         assert_eq!(heard().joined, [pig]);
         assert!(game.entity(pig).is_some());
-        assert_eq!(mark_key().get(game, Holder::Entity(pig)), Ok(1));
+        assert_eq!(
+            mark_key().get(game, Holder::Entity(pig), Clone::clone),
+            Ok(1)
+        );
     });
 }
 
@@ -416,7 +422,10 @@ fn a_removal_then_abort_keeps_the_row_map_and_rider() {
 
         assert_eq!(game.entity(boat.id()), Some(boat));
         assert_eq!(game.entity(pig.id()), Some(pig));
-        assert_eq!(mark_key().get(game, Holder::Entity(boat.id())), Ok(7));
+        assert_eq!(
+            mark_key().get(game, Holder::Entity(boat.id()), Clone::clone),
+            Ok(7)
+        );
         assert_eq!(game.entity_vehicle(cow), Some(boat));
         assert!(game.persist.removals.is_empty());
         game.native_leaves_flush();
@@ -572,7 +581,10 @@ fn another_writer_sees_the_spawn_and_its_writes_roll_back() {
 
         assert_eq!(game.entity(pig), None);
         assert!(!game.entity_attachments.contains_key(&pig));
-        assert_eq!(mark_key().get(game, Holder::Entity(witness)), Ok(1));
+        assert_eq!(
+            mark_key().get(game, Holder::Entity(witness), Clone::clone),
+            Ok(1)
+        );
     });
 }
 
@@ -1209,7 +1221,11 @@ fn a_parked_levels_pending_removal_is_hidden_from_another_level_until_it_aborts(
         // An attachment is reached through the level in place only (`attachment_slot` asks the
         // resident table for `self.dim`), so from the nether the overworld boat's is out of reach,
         // pending removal or not.
-        assert!(mark_key().get(game, Holder::Entity(boat)).is_err());
+        assert!(
+            mark_key()
+                .get(game, Holder::Entity(boat), Clone::clone)
+                .is_err()
+        );
         game.enter_level(Dim::Overworld).unwrap();
         game.storage_scope(|game, _| {
             assert!(game.entity_discard(game.entity(boat).unwrap()));
@@ -1219,7 +1235,11 @@ fn a_parked_levels_pending_removal_is_hidden_from_another_level_until_it_aborts(
                 "the parked level's boat reads as gone while its removal is pending"
             );
             assert!(!game.resident_source_target_visible(mod_api::DimensionKey::OVERWORLD, target));
-            assert!(mark_key().get(game, Holder::Entity(boat)).is_err());
+            assert!(
+                mark_key()
+                    .get(game, Holder::Entity(boat), Clone::clone)
+                    .is_err()
+            );
             game.enter_level(Dim::Overworld).unwrap();
             ((), false)
         });
@@ -1232,10 +1252,14 @@ fn a_parked_levels_pending_removal_is_hidden_from_another_level_until_it_aborts(
             "the abort put it back"
         );
         assert!(game.resident_source_target_visible(mod_api::DimensionKey::OVERWORLD, target));
-        assert!(mark_key().get(game, Holder::Entity(boat)).is_err());
+        assert!(
+            mark_key()
+                .get(game, Holder::Entity(boat), Clone::clone)
+                .is_err()
+        );
         game.enter_level(Dim::Overworld).unwrap();
         assert_eq!(
-            mark_key().get(game, Holder::Entity(boat)),
+            mark_key().get(game, Holder::Entity(boat), Clone::clone),
             Ok(7),
             "kept by the abort"
         );

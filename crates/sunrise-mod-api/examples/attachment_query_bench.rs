@@ -323,7 +323,11 @@ fn map_probes(keys: &BenchKeys) {
         let (_, counts) = measured(|| {
             for _ in 0..100_000 {
                 if operation == 0 {
-                    black_box(keys.value.get(&mut host, Holder::Entity(0)).unwrap());
+                    black_box(
+                        keys.value
+                            .get(&mut host, Holder::Entity(0), Clone::clone)
+                            .unwrap(),
+                    );
                 } else {
                     keys.value
                         .set(&mut host, Holder::Entity(0), black_box(42))
@@ -335,7 +339,11 @@ fn map_probes(keys: &BenchKeys) {
         let start = Instant::now();
         for _ in 0..100_000 {
             if operation == 0 {
-                black_box(keys.value.get(&mut host, Holder::Entity(0)).unwrap());
+                black_box(
+                    keys.value
+                        .get(&mut host, Holder::Entity(0), Clone::clone)
+                        .unwrap(),
+                );
             } else {
                 keys.value
                     .set(&mut host, Holder::Entity(0), black_box(42))
@@ -353,7 +361,10 @@ fn map_probes(keys: &BenchKeys) {
     let start = Instant::now();
     let (_, counts) = measured(|| {
         for _ in 0..100_000 {
-            let mut value = keys.vector.get(&mut host, Holder::Entity(0)).unwrap();
+            let mut value = keys
+                .vector
+                .get(&mut host, Holder::Entity(0), Clone::clone)
+                .unwrap();
             value[0] += 1;
             keys.vector
                 .set(&mut host, Holder::Entity(0), value)

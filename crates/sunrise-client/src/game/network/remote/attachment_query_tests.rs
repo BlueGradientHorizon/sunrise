@@ -94,7 +94,7 @@ fn synced_client_queries_follow_replacement_retirement_and_level_changes() {
             assert_eq!(values(game, &value_key), [73]);
             client(game).attachments.clear();
             let host: &mut dyn Host = game;
-            assert_eq!(value_key.get(host, Holder::Level), Ok(73));
+            assert_eq!(value_key.get(host, Holder::Level, Clone::clone), Ok(73));
             assert_eq!(values(game, &value_key), [73]);
             client(game).attachments.clear();
             sync(game, Holder::Level, 41);

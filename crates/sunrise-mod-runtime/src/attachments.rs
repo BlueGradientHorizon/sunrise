@@ -575,14 +575,15 @@ impl<T: 'static> CheckedAttachmentType<T> {
     }
 }
 
-impl<T: Clone + Send + Sync + 'static> CheckedAttachmentType<T> {
-    /// Read a value, inserting its default if absent.
-    pub fn get<S: AttachmentStore + ?Sized>(
+impl<T: Send + Sync + 'static> CheckedAttachmentType<T> {
+    /// Lend a value, inserting its default if absent.
+    pub fn get<S: AttachmentStore + ?Sized, R>(
         &self,
         store: &mut S,
         holder: Holder,
-    ) -> Result<T, AttachmentError> {
-        AttachmentOps::Checked(self).get(store, holder)
+        read: impl FnOnce(&T) -> R,
+    ) -> Result<R, AttachmentError> {
+        AttachmentOps::Checked(self).get(store, holder, read)
     }
     /// Whether a holder carries a value; never inserts the default.
     pub fn has<S: AttachmentStore + ?Sized>(
@@ -592,13 +593,18 @@ impl<T: Clone + Send + Sync + 'static> CheckedAttachmentType<T> {
     ) -> Result<bool, AttachmentError> {
         AttachmentOps::Checked(self).has(store, holder)
     }
-    /// Read a value only if present; a saved or synced value decodes once.
-    pub fn get_existing<S: AttachmentStore + ?Sized>(
+    /// Lend an existing value; a saved or synced value decodes once. Inserts no default.
+    pub fn get_existing<S: AttachmentStore + ?Sized, R>(
         &self,
         store: &mut S,
         holder: Holder,
-    ) -> Result<Option<T>, AttachmentError> {
-        AttachmentOps::Checked(self).get_existing(store, holder)
+        read: impl FnOnce(Option<&T>) -> R,
+    ) -> Result<R, AttachmentError> {
+        Ok(read(
+            AttachmentOps::Checked(self)
+                .existing(store, holder)?
+                .as_deref(),
+        ))
     }
     /// Read the decoded value through `read` without cloning it.
     pub fn with_decoded<S: AttachmentStore + ?Sized, R>(
@@ -623,7 +629,10 @@ impl<T: Clone + Send + Sync + 'static> CheckedAttachmentType<T> {
         &self,
         store: &mut S,
         holder: Holder,
-    ) -> Result<Option<T>, AttachmentError> {
+    ) -> Result<Option<T>, AttachmentError>
+    where
+        T: Clone,
+    {
         AttachmentOps::Checked(self).remove(store, holder)
     }
     /// Send the current value to the clients that see the holder.
@@ -660,18 +669,21 @@ impl<T: 'static> AttachmentOps<'_, T> {
     }
 }
 
-impl<T: Clone + Send + Sync + 'static> AttachmentOps<'_, T> {
-    fn get<S: AttachmentStore + ?Sized>(
+impl<T: Send + Sync + 'static> AttachmentOps<'_, T> {
+    fn get<S: AttachmentStore + ?Sized, R>(
         &self,
         store: &mut S,
         holder: Holder,
-    ) -> Result<T, AttachmentError> {
-        if let Some(value) = self.get_existing(store, holder)? {
-            return Ok(value);
-        }
-        let value = Arc::new((self.raw().default)());
-        self.keep(store, holder, Arc::clone(&value), AttachmentWrite::Default)?;
-        Ok((*value).clone())
+        read: impl FnOnce(&T) -> R,
+    ) -> Result<R, AttachmentError> {
+        let value = if let Some(value) = self.existing(store, holder)? {
+            value
+        } else {
+            let value = Arc::new((self.raw().default)());
+            self.keep(store, holder, Arc::clone(&value), AttachmentWrite::Default)?;
+            value
+        };
+        Ok(read(&value))
     }
     fn has<S: AttachmentStore + ?Sized>(
         &self,
@@ -684,19 +696,18 @@ impl<T: Clone + Send + Sync + 'static> AttachmentOps<'_, T> {
         }
         store.holds(holder, raw.namespace, raw.name)
     }
-    fn get_existing<S: AttachmentStore + ?Sized>(
+    fn existing<S: AttachmentStore + ?Sized>(
         &self,
         store: &mut S,
         holder: Holder,
-    ) -> Result<Option<T>, AttachmentError> {
+    ) -> Result<Option<Arc<T>>, AttachmentError> {
         let raw = self.raw();
         self.validate(store)?;
         if let Some(value) = store.decoded(holder, raw.namespace, raw.name)? {
             return value
-                .downcast_ref::<T>()
-                .cloned()
+                .downcast::<T>()
                 .map(Some)
-                .ok_or(AttachmentError::TypeMismatch);
+                .map_err(|_| AttachmentError::TypeMismatch);
         }
         let Some(binding) = store.raw(holder, raw.namespace, raw.name)? else {
             return Ok(None);
@@ -715,7 +726,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentOps<'_, T> {
             policy: raw.policy(),
             write: AttachmentWrite::Decoded,
         };
-        // Do not create a second T until the fallible store has accepted the write.
+        // The store and the read share one value, even if promotion is refused.
         let value = Arc::new(value);
         store.store(
             holder,
@@ -728,7 +739,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentOps<'_, T> {
                 promotion: Some(binding),
             },
         )?;
-        Ok(Some((*value).clone()))
+        Ok(Some(value))
     }
     fn with_decoded<S: AttachmentStore + ?Sized, R>(
         &self,
@@ -760,12 +771,17 @@ impl<T: Clone + Send + Sync + 'static> AttachmentOps<'_, T> {
         &self,
         store: &mut S,
         holder: Holder,
-    ) -> Result<Option<T>, AttachmentError> {
+    ) -> Result<Option<T>, AttachmentError>
+    where
+        T: Clone,
+    {
         if !self.has(store, holder)? {
             return Ok(None);
         }
         let raw = self.raw();
-        let value = self.get_existing(store, holder);
+        let value = self
+            .existing(store, holder)
+            .map(|value| value.as_deref().cloned());
         store.discard(holder, raw.namespace, raw.name, raw.sync_codec.is_some())?;
         value
     }
@@ -874,7 +890,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
         store: &mut S,
         holder: Holder,
     ) -> Result<T, AttachmentError> {
-        AttachmentOps::Raw(self).get(store, holder)
+        AttachmentOps::Raw(self).get(store, holder, T::clone)
     }
     /// Whether a holder carries a value, like NeoForge's `hasData`; never inserts the default.
     pub fn has<S: AttachmentStore + ?Sized>(
@@ -890,7 +906,10 @@ impl<T: Clone + Send + Sync + 'static> AttachmentType<T> {
         store: &mut S,
         holder: Holder,
     ) -> Result<Option<T>, AttachmentError> {
-        AttachmentOps::Raw(self).get_existing(store, holder)
+        Ok(AttachmentOps::Raw(self)
+            .existing(store, holder)?
+            .as_deref()
+            .cloned())
     }
     /// Read the decoded value through `read` without cloning it: what a read of one part of a
     /// large value costs. A saved value that has not decoded yet is not decoded, so `read` sees
@@ -2764,11 +2783,14 @@ mod tests {
         );
 
         let mut store = Attachments::default();
-        assert_eq!(sync_only.get(&mut store, Holder::Level), Ok(7));
+        assert_eq!(
+            sync_only.get(&mut store, Holder::Level, |value| *value),
+            Ok(7)
+        );
         assert_eq!(sync_only.has(&mut store, Holder::Level), Ok(true));
         sync_only.set(&mut store, Holder::Level, 11).unwrap();
         assert_eq!(
-            sync_only.get_existing(&mut store, Holder::Level),
+            sync_only.get_existing(&mut store, Holder::Level, |value| value.copied()),
             Ok(Some(11))
         );
         assert_eq!(

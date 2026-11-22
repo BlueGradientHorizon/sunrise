@@ -451,7 +451,7 @@ fn attachment_sync_follows_the_negotiated_route() {
                 game.integrated
                     .as_ref()
                     .unwrap()
-                    .call(move |server| key.get(server, Holder::Level))
+                    .call(move |server| key.get(server, Holder::Level, Clone::clone))
                     .unwrap()
             };
             assert_eq!(authority, Ok(12));

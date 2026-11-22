@@ -90,7 +90,7 @@ fn saved_mob_binding_survives_store_back_and_retires_at_sweep() {
         let after = index.lock().unwrap().work_count();
         assert_eq!(after, work);
         assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);
-        assert_eq!(value_key.get(game, Holder::Entity(id)), Ok(7));
+        assert_eq!(value_key.get(game, Holder::Entity(id), Clone::clone), Ok(7));
         assert_eq!(
             game.query(value_key)
                 .unwrap()
@@ -141,7 +141,10 @@ fn saved_mob_binding_tracks_serialized_transfer_and_parked_levels() {
         game.enter_level(Dim::Nether).unwrap();
         assert_eq!(source.lock().unwrap().snapshot(&key).len(), 1);
         game.enter_level(Dim::Overworld).unwrap();
-        assert_eq!(value_key.get(game, Holder::Entity(id)), Ok(11));
+        assert_eq!(
+            value_key.get(game, Holder::Entity(id), Clone::clone),
+            Ok(11)
+        );
         // Serialized portals discard the source owner before destination load.
         let state = game.take_transferred_entity_state(id);
         game.mobs.retain(|m| m.id != id);
@@ -160,7 +163,10 @@ fn saved_mob_binding_tracks_serialized_transfer_and_parked_levels() {
                 .len(),
             1
         );
-        assert_eq!(value_key.get(game, Holder::Entity(moved)), Ok(11));
+        assert_eq!(
+            value_key.get(game, Holder::Entity(moved), Clone::clone),
+            Ok(11)
+        );
         assert_eq!(
             row.set(game, 12),
             Err(mod_api::AttachmentRowError::StaleHolder)
@@ -242,7 +248,10 @@ fn mob_first_store_binds_and_nested_rollback_retires_authority() {
         tag.remove(&sunrise_mod_runtime::attachments::ATTACHMENTS_KEY.into());
         let id = game.load_mob(Tag::Compound(tag), None).unwrap();
         let holder = Holder::Entity(id);
-        assert_eq!(value_key.get_existing(game, holder), Ok(None));
+        assert_eq!(
+            value_key.get_existing(game, holder, |value| value.cloned()),
+            Ok(None)
+        );
         assert!(!game.mobs[0].attachment_lifetime.is_bound());
         let result: Result<(), AttachmentError> = game.storage_transaction(|host, _| {
             value_key.set(host, holder, 7)?;
@@ -260,7 +269,10 @@ fn mob_first_store_binds_and_nested_rollback_retires_authority() {
                 Err(AttachmentError::MissingHolder)
             });
             assert!(inner.is_err());
-            assert_eq!(value_key.get_existing(host, holder), Ok(Some(7)));
+            assert_eq!(
+                value_key.get_existing(host, holder, |value| value.cloned()),
+                Ok(Some(7))
+            );
             let committed: Result<(), AttachmentError> = host.storage_transaction(|host, _| {
                 value_key.set(host, holder, 9)?;
                 Ok(())
@@ -322,7 +334,10 @@ fn mob_taken_store_refuses_without_writing_and_missing_store_refuses() {
             taken,
             sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
         );
-        assert_eq!(value_key.get_existing(game, Holder::Entity(id)), Ok(None));
+        assert_eq!(
+            value_key.get_existing(game, Holder::Entity(id), |value| value.cloned()),
+            Ok(None)
+        );
         for id in [0, u32::MAX] {
             assert_eq!(
                 value_key.set(game, Holder::Entity(id), 1),
@@ -398,6 +413,9 @@ fn mob_inner_first_binding_commit_outer_abort_invalidates_retained_row() {
             batch.iter().try_next(),
             Err(mod_api::AttachmentRowError::OutsideTransaction)
         ));
-        assert_eq!(value_key.get_existing(game, holder), Ok(Some(17)));
+        assert_eq!(
+            value_key.get_existing(game, holder, |value| value.cloned()),
+            Ok(Some(17))
+        );
     });
 }

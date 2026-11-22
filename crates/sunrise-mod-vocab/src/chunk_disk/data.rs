@@ -26,7 +26,9 @@ impl ChunkDiskData {
         &mut self,
         key: &AttachmentKey<T>,
     ) -> Result<T, ChunkDiskFailure> {
-        self.edit(key, |checked, store| checked.get(store, Holder::Level))
+        self.edit(key, |checked, store| {
+            checked.get(store, Holder::Level, T::clone)
+        })
     }
 
     /// Replace only the snapshot's value through its persistence codec. Failed encoding

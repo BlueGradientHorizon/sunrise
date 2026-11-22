@@ -28,13 +28,13 @@ use std::fmt;
 ///     }
 /// }
 /// // In a hook with `host: &mut dyn ServerHost` and the robot's `entity`:
-/// let full = self.edit_state(host, entity, |_, charge| {
+/// let full = self.edit_state(host, entity, |_, _tx, charge| {
 ///     *charge += 1;
 ///     *charge >= 100
 /// })?;
 /// ```
 ///
-/// Reads take `&dyn Host` and return a snapshot; edits take `&mut dyn ServerHost`, run in
+/// Reads take `&dyn Host` and lend a value from a snapshot; edits take `&mut dyn ServerHost`, run in
 /// their own nested transaction and store the new value only when the closure returns, as
 /// [`BlockEntityPartState`]'s do. Every call first checks that `self.state_key()` belongs to
 /// the active installation and that `entity` is of the open world and still names a resident
@@ -55,7 +55,7 @@ use std::fmt;
 /// the default.
 pub trait EntityPartState: EntityPart + Sized {
     /// The value each entity of the Part's type keeps.
-    type Data: Clone + Send + Sync + 'static;
+    type Data: Send + Sync + 'static;
     /// The issued attachment key this Part keeps its per-entity state under.
     /// Register its [`AttachmentDescriptor`](crate::AttachmentDescriptor) during
     /// [`Hooks::register`](crate::Hooks::register) (or look up another package's key with
@@ -63,21 +63,27 @@ pub trait EntityPartState: EntityPart + Sized {
     /// persistence codec the value is kept for the session only.
     fn state_key(&self) -> &AttachmentKey<Self::Data>;
 
-    /// The entity's value, or the default when it has none. Inserts nothing.
-    fn state(&self, host: &dyn Host, entity: EntityRef) -> Result<Self::Data, PartStateError> {
-        let key = self.state_key();
-        Ok(self
-            .state_existing(host, entity)?
-            .unwrap_or_else(|| key.descriptor().default_value()))
-    }
-
-    /// The entity's value, or `None` when it has none. Inserts nothing.
-    fn state_existing(
+    /// Lend the entity's value or its default. Inserts nothing.
+    fn state<R>(
         &self,
         host: &dyn Host,
         entity: EntityRef,
-    ) -> Result<Option<Self::Data>, PartStateError> {
-        read_state(host, entity, self.state_key())
+        read: impl FnOnce(&Self::Data) -> R,
+    ) -> Result<R, PartStateError> {
+        self.state_existing(host, entity, |value| match value {
+            Some(value) => read(value),
+            None => read(&self.state_key().descriptor().default_value()),
+        })
+    }
+
+    /// Lend the entity's value or `None`. Inserts nothing.
+    fn state_existing<R>(
+        &self,
+        host: &dyn Host,
+        entity: EntityRef,
+        read: impl FnOnce(Option<&Self::Data>) -> R,
+    ) -> Result<R, PartStateError> {
+        read_state(host, entity, self.state_key(), read)
     }
 
     /// Changes the entity's value with `edit`, starting from the default when it has none,
@@ -88,8 +94,11 @@ pub trait EntityPartState: EntityPart + Sized {
         &self,
         host: &mut dyn ServerHost,
         entity: EntityRef,
-        edit: impl FnOnce(&mut dyn ServerHost, &mut Self::Data) -> R,
-    ) -> Result<R, PartStateError> {
+        edit: impl FnOnce(&mut dyn ServerHost, &TransactionContext, &mut Self::Data) -> R,
+    ) -> Result<R, PartStateError>
+    where
+        Self::Data: Clone,
+    {
         edit_part_state(host, entity, self.state_key(), edit)
     }
 }
