@@ -3807,6 +3807,8 @@ struct Game<'a> {
     expression_frame: sunrise_client::environment::Frame,
     /// `GameRenderer.spectatedEntityPostEffect` (`checkEntityPostEffect`).
     spectated_post_effect: Option<&'static str>,
+    /// `GameRenderer.spectatedEntityEffectActive` (`toggleSpectatorPostEffect`).
+    spectated_post_effect_active: bool,
     /// `LocalPlayer.experienceDisplayStartTick`: (last progress, seen a change, tick).
     experience_display: (f32, bool, u64),
     boats: sunrise_client::join_seq::JoinList<boats::Boat, false>,
@@ -13643,6 +13645,7 @@ impl<'a> Game<'a> {
             polytone_post_ticks: 0.0,
             expression_frame: Default::default(),
             spectated_post_effect: None,
+            spectated_post_effect_active: false,
             experience_display: Default::default(),
             boats: Default::default(),
             leash_boats: Vec::new(),

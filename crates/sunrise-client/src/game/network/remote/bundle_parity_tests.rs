@@ -197,8 +197,10 @@ fn dependent_entity_bundle_never_splits_across_poll_or_tick_26_3() {
         remote.logged_in = true;
         remote.entity_id = expected_cam_before;
         let entity_types = remote.builtin.get("minecraft:entity_type").unwrap();
+        let expected_eye_height_bits =
+            u32::from_str_radix(dep["entity_eye_height_bits"].as_str().unwrap(), 16).unwrap();
         let interaction_kind = entity_types.id(entity_type).unwrap();
-        let stand_kind = entity_types.id("minecraft:armor_stand").unwrap();
+        let creeper_kind = entity_types.id("minecraft:creeper").unwrap();
 
         // First half of bundle: AddEntity without closing delimiter.
         peer.send(&C::BundleDelimiter(Empty).encode()).unwrap();
@@ -234,7 +236,7 @@ fn dependent_entity_bundle_never_splits_across_poll_or_tick_26_3() {
             std::thread::yield_now();
         }
 
-        // Second half: SetEntityData + closing delimiter apply atomically in one poll.
+        // Second half: SetEntityData + SetCamera + closing delimiter apply atomically on the same Interaction.
         peer.send(
             &C::SetEntityData(play::SetEntityData {
                 id: expected_cam_after,
@@ -246,33 +248,49 @@ fn dependent_entity_bundle_never_splits_across_poll_or_tick_26_3() {
             .encode(),
         )
         .unwrap();
+        peer.send(
+            &C::SetCamera(play::SetCamera {
+                camera_id: expected_cam_after,
+            })
+            .encode(),
+        )
+        .unwrap();
         peer.send(&C::BundleDelimiter(Empty).encode()).unwrap();
 
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut applied = false;
         while Instant::now() < deadline {
             game.poll_remote().unwrap();
-            if game.interactions.contains_key(&expected_cam_after) {
-                assert!(expected_exists_after);
+            let exists = game.interactions.contains_key(&expected_cam_after);
+            let cam = game.remote_camera_id().map(|id| id as i32);
+            if exists || cam.is_some() {
+                assert!(exists && expected_exists_after);
                 let interaction = game.interactions.get(&expected_cam_after).unwrap();
                 assert_eq!(interaction.width.to_bits(), expected_width_bits);
                 assert_eq!(interaction.height.to_bits(), expected_height_bits);
+                assert_eq!(cam, Some(expected_cam_after));
+                let view = game
+                    .spectated_camera_snapshot()
+                    .expect("Interaction camera view");
+                assert_eq!(view.eye_height.to_bits(), expected_eye_height_bits);
                 applied = true;
                 break;
             }
             std::thread::yield_now();
         }
-        assert!(applied, "closed interaction bundle never applied");
+        assert!(
+            applied,
+            "closed interaction AddEntity+SetEntityData+SetCamera bundle never applied"
+        );
 
-        // Dependent AddEntity + SetCamera bundle applies atomically in one poll.
-        let stand_id = expected_cam_after + 1;
-        peer.send(&C::BundleDelimiter(Empty).encode()).unwrap();
+        // Switching camera from a creeper (with creeper shader) to the resident Interaction clears the shader.
+        let creeper_id = expected_cam_after + 1;
         peer.send(
             &C::AddEntity(play::AddEntity {
-                id: stand_id,
-                uuid: stand_id as u128,
-                kind: stand_kind,
-                position: [0.5, 300.0, 0.5],
+                id: creeper_id,
+                uuid: creeper_id as u128,
+                kind: creeper_kind,
+                position: [2.5, 300.0, 2.5],
                 velocity: [0.0; 3],
                 pitch: 0,
                 yaw: 0,
@@ -284,30 +302,40 @@ fn dependent_entity_bundle_never_splits_across_poll_or_tick_26_3() {
         .unwrap();
         peer.send(
             &C::SetCamera(play::SetCamera {
-                camera_id: stand_id,
+                camera_id: creeper_id,
             })
             .encode(),
         )
         .unwrap();
-        peer.send(&C::BundleDelimiter(Empty).encode()).unwrap();
-
         let deadline = Instant::now() + Duration::from_secs(5);
-        let mut cam_applied = false;
         while Instant::now() < deadline {
             game.poll_remote().unwrap();
-            let exists = game.armor_stands.iter().any(|s| s.id == stand_id as u32);
-            let cam = game.remote_camera_id().map(|id| id as i32);
-            if exists || cam.is_some() {
-                assert!(exists, "camera attached without stand in same poll");
-                assert_eq!(cam, Some(stand_id));
-                cam_applied = true;
+            if game.remote_camera_id() == Some(creeper_id as u32) {
                 break;
             }
             std::thread::yield_now();
         }
-        assert!(
-            cam_applied,
-            "closed AddEntity + SetCamera bundle never applied"
-        );
+        assert_eq!(game.remote_camera_id(), Some(creeper_id as u32));
+        assert_eq!(game.spectated_post_effect, Some("minecraft:creeper"));
+        assert!(game.spectated_post_effect_active);
+
+        peer.send(
+            &C::SetCamera(play::SetCamera {
+                camera_id: expected_cam_after,
+            })
+            .encode(),
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            game.poll_remote().unwrap();
+            if game.remote_camera_id() == Some(expected_cam_after as u32) {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        assert_eq!(game.remote_camera_id(), Some(expected_cam_after as u32));
+        assert_eq!(game.spectated_post_effect, None);
+        assert!(!game.spectated_post_effect_active);
     });
 }

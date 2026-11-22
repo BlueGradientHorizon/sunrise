@@ -207,7 +207,7 @@ impl ChunkGenerator for NoTerrain {
 /// A server entity the client tracks (position as last sent).
 pub(super) struct Tracked {
     kind: String,
-    position: [f64; 3],
+    pub(in crate::game) position: [f64; 3],
     /// `Entity.getPositionCodec`'s base: the position the server last
     /// reported (AddEntity, MoveEntity, EntityPositionSync), which a move
     /// packet's delta counts from. A TeleportEntity moves the entity but not

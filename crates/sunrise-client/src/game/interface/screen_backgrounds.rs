@@ -90,9 +90,13 @@ impl Game<'_> {
         if self.title.is_some() || self.player.is_none() {
             return Vec::new();
         }
+        let spectated = self
+            .spectated_post_effect_active
+            .then_some(self.spectated_post_effect)
+            .flatten();
         std::iter::once("minecraft:end_of_frame".to_owned())
             .chain(self.post_effects.iter().cloned())
-            .chain(self.spectated_post_effect.map(str::to_owned))
+            .chain(spectated.map(str::to_owned))
             .collect()
     }
     /// `Screen.extractBlurredBackground` over the panorama or the world and

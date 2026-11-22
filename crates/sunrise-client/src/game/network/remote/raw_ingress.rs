@@ -443,6 +443,10 @@ impl Game<'_> {
                 }
                 self.remove_local_player_body();
                 self.post_effects.clear();
+                if let Some(r) = self.remote.as_mut() {
+                    r.camera = None;
+                }
+                self.clear_spectated_entity_post_effect();
                 self.set_screen(Screen::Playing);
                 self.capture(false);
                 // clearClientLevel drops the client level now, so its

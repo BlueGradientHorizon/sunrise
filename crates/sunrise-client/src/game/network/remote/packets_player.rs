@@ -58,6 +58,7 @@ impl Game<'_> {
             r.reduced_debug_info = p.reduced_debug_info;
             r.do_limited_crafting = p.limited_crafting;
         }
+        self.clear_spectated_entity_post_effect();
         self.bind_local_player_residency();
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
@@ -187,6 +188,7 @@ impl Game<'_> {
             // handleRespawn: the new LocalPlayer is the camera.
             r.camera = None;
         }
+        self.clear_spectated_entity_post_effect();
         self.capture(true);
         if let Some((old_id, uuid)) = old_player {
             self.native_client_player_clone(
