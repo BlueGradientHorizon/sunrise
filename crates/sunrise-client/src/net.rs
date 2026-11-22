@@ -632,6 +632,15 @@ impl Session {
             writer.close_after_pending();
         }
     }
+    /// Stop output, drain preceding replies, and wait for transport shutdown to complete.
+    pub fn shutdown_and_wait(&self) {
+        self.events.close_reader_admission();
+        self.payloads.close();
+        let writer = self.writer.lock().unwrap().take();
+        if let Some(writer) = writer {
+            writer.close_and_wait();
+        }
+    }
     /// Whether recording is currently active.
     pub fn is_recording(&self) -> bool {
         self.recorder

@@ -605,7 +605,7 @@ impl Game<'_> {
             unreachable!("listener only retains the disconnect notice");
         };
         if let Some(remote) = &self.remote {
-            remote.session.close_after_pending();
+            remote.session.shutdown_and_wait();
         }
         self.reset_book_view();
         log::info!("Sunrise: disconnected: {reason}");
