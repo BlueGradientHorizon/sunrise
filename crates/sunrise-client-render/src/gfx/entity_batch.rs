@@ -999,9 +999,11 @@ mod tests {
 
     #[test]
     fn entity_quad_capacity_respects_vertex_index_and_storage_limits() {
-        let mut limits = wgpu::Limits::default();
-        limits.max_buffer_size = EntityQuadCapacity::VERTEX_QUAD_BYTES * 5 + 32;
-        limits.max_storage_buffer_binding_size = EntityQuadCapacity::VERTEX_QUAD_BYTES * 3 + 16;
+        let limits = wgpu::Limits {
+            max_buffer_size: EntityQuadCapacity::VERTEX_QUAD_BYTES * 5 + 32,
+            max_storage_buffer_binding_size: EntityQuadCapacity::VERTEX_QUAD_BYTES * 3 + 16,
+            ..Default::default()
+        };
 
         let plain = EntityQuadCapacity::from_limits(&limits, false);
         assert_eq!(plain.max_quads(), 5);
