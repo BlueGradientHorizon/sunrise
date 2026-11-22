@@ -558,14 +558,17 @@ pub mod tests {
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].mod_id, "provider");
         assert_eq!(errors[0].id, "test:typo_item");
-        let errors = mod_vocab::__private::resolve_entity_types(["test:later_entity"]).unwrap_err();
+        let errors = mod_vocab::__private::resolve_entity_types(["test:later_entity"], |_| None)
+            .unwrap_err();
         assert_eq!(
             errors,
             ["mod provider requested unknown entity type minecraft:pigg"]
         );
         mod_vocab::__private::resolve_items(["test:later_item", "test:typo_item"]).unwrap();
-        mod_vocab::__private::resolve_entity_types(["test:later_entity", "minecraft:pigg"])
-            .unwrap();
+        mod_vocab::__private::resolve_entity_types(["test:later_entity", "minecraft:pigg"], |_| {
+            None
+        })
+        .unwrap();
     }
 
     /// A handler that only tells which provider made it, by its slot count.

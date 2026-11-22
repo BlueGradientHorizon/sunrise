@@ -85,7 +85,7 @@ pub struct Parts {
     pub(crate) block_capabilities: Capabilities<NativeCapabilityProvider>,
     /// Canonical bindings by domain, retained independently of provider availability.
     pub(crate) block_capability_metadata: HashMap<&'static str, CapabilityMetadata>,
-    #[expect(
+    #[allow(
         dead_code,
         reason = "the mirrored authoring input consumes only the item bindings during registration"
     )]
