@@ -129,4 +129,35 @@ pub trait LevelChunksBackendMut {
     /// Each refusal queues nothing and is named by `ChunkRefusal`: `Stale` (stale handle or
     /// unloaded level), `Client` and `NotLoaded`.
     fn chunk_resend(&mut self, chunk: ChunkRef) -> Result<(), ChunkRefusal>;
+    /// Side: server.
+    /// Load chunk `pos` (`[x, z]`, in chunks) of the level from its save, or generate it, to
+    /// FULL, as vanilla's `Level.getChunk(x, z)` does (`ServerChunkCache.getChunk(x, z,
+    /// ChunkStatus.FULL, true)`), then read or write it with the level's other calls. True once
+    /// the chunk is full, its initial light done; a chunk already full answers true at once.
+    /// To light it, the 8 chunks around it are loaded too (vanilla only generates them part of
+    /// the way); they hold no ticket and unload with the next unload sweep.
+    ///
+    /// **The call blocks the server tick until the chunk is loaded or generated**, as
+    /// vanilla's does: a chunk that has never been generated can take a long while, so load the
+    /// chunks a mod needs ahead of time rather than many in one tick. There is no timeout, as in
+    /// vanilla; the call only gives up, false, if the level closes meanwhile.
+    ///
+    /// Like vanilla, the call places an `UNKNOWN` ticket at FULL's level on the chunk: it keeps
+    /// the chunk loaded, not ticking, through the next ticket purge and expires at the one after
+    /// (`TicketType.UNKNOWN`'s one-tick timeout), after which the chunk unloads as any other
+    /// with no ticket. Depending on when in the tick the call runs, the first purge can come in
+    /// the same tick. Nothing is forced or saved: to keep a chunk, use `ChunkRef::set_forced`
+    /// or a `TicketController`'s ticket.
+    ///
+    /// Works in any open level, not only the one in place. Loading a chunk of a parked level
+    /// does not put that level in place: block writes that need the level in place
+    /// (`set_block`) still answer `LevelWriteError::Unavailable` there. The `chunk_load`
+    /// listeners of each chunk the call brings in run during the call, while that chunk is
+    /// loaded and before the call returns, as NeoForge's `ChunkEvent.Load` does inside
+    /// `getChunk`. False for a
+    /// stale handle, on a client, for a level the server has not opened, for a chunk past
+    /// `ChunkPos.isValid` (beyond `ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE` on x or z, where
+    /// vanilla's block reads and writes stop, `Level.isInValidBounds`), and while the level's
+    /// generation is paused or stopped.
+    fn level_load_chunk(&mut self, level: LevelRef, pos: [i32; 2]) -> bool;
 }

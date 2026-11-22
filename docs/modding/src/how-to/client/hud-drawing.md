@@ -109,9 +109,11 @@ cancelled or replaced. The status slots still run their layer hooks and installe
 in creative or spectator mode, and off a mount. The original bodies check HUD visibility and the
 conditions for the row: survival or adventure for the player's rows, a mount with hearts for vehicle
 health. To hide your own paint under F1, check `host.hud_mode() == mod_api::HudMode::AllVisible`.
-A `Flow::Cancel` from `render_gui_pre` skips the whole walk, including Post, even under F1. To replace all
-rows formerly drawn by `health_hud`, replace or wrap `player_health`, `armor_level`, `food_level`
-and `air_level`; `vehicle_health` is separate.
+A `Flow::Cancel` from `render_gui_pre` skips the whole walk, including Post, even under F1.
+It does not suppress toasts, which draw after the active screen or overlay. F1 hides ordinary
+toasts and audio stream failure notices, but not other callback error toasts.
+To replace all rows formerly drawn by `health_hud`, replace or wrap `player_health`,
+`armor_level`, `food_level` and `air_level`; `vehicle_health` is separate.
 You can keep a `GuiDraw` list: pass it to `draw.gui_paint(&draws)` and handle its returned error.
 Sunrise's radial overlay keeps clear of the actual paint from installed status-layer bodies,
 including replacements and wrappers.

@@ -249,7 +249,7 @@ impl Game<'_> {
     pub(super) fn hud_disconnected(&mut self) {
         self.tab_list.reset();
         self.boss_overlay.reset();
-        self.adv.toasts.clear();
+        self.toast_manager = Default::default();
         self.debug_charts.reset();
         self.titles.clear();
         self.titles.reset_times();

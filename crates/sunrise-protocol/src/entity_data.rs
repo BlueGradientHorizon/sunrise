@@ -2,15 +2,11 @@
 //! the EntityDataSerializers id, and the serializer's value, ending with 0xFF.
 use crate::{
     Result,
-    buf::{Codec, Ident, Pos, Reader},
+    buf::{Codec, Ident, Opt, Pos, Reader, TrustedComponent},
     item::{Slot, Stack, Template},
     packets::login::PropertyCodec,
 };
-use sunrise_core::{
-    nbt::{self, Tag},
-    profile::AccountProperty,
-    vanilla_bytes::Writer,
-};
+use sunrise_core::{nbt::Tag, profile::AccountProperty, vanilla_bytes::Writer};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -498,26 +494,6 @@ pub(crate) fn humanoid_arm_id(id: i32) -> i32 {
     i32::from(id == 1)
 }
 
-fn validate_trusted_component(tag: &Tag, r: &Reader) -> Result<()> {
-    if *tag == Tag::End {
-        return Err(crate::Error::new("Expected non-null compound tag"));
-    }
-    sunrise_world::component_value::source::from_component_tag_with_items(
-        "minecraft:custom_name",
-        tag,
-        &|item| r.contains_registry_entry("minecraft:item", item),
-    )
-    .map_err(|e| crate::Error::new(format!("Failed to decode: {e}")))?;
-    Ok(())
-}
-
-/// `ComponentSerialization.TRUSTED_STREAM_CODEC`: unlimited-heap NBT tag validated by `ComponentSerialization.CODEC`.
-fn read_trusted_component(r: &mut Reader) -> Result<Tag> {
-    let tag = r.nbt_within(nbt::Limits::unlimited_heap())?;
-    validate_trusted_component(&tag, r)?;
-    Ok(tag)
-}
-
 /// `PaintingVariant.DIRECT_CODEC`: resolve a synchronized `minecraft:painting_variant` entry tag.
 fn decode_painting_variant_nbt(tag: &Tag, r: &Reader) -> Result<PaintingVariant> {
     let Tag::Compound(_) = tag else {
@@ -555,14 +531,14 @@ fn decode_painting_variant_nbt(tag: &Tag, r: &Reader) -> Result<PaintingVariant>
         .to_string();
     let title = match tag.get("title") {
         Some(t) => {
-            validate_trusted_component(t, r)?;
+            TrustedComponent::validate_tag(t, r)?;
             Some(t.clone())
         }
         None => None,
     };
     let author = match tag.get("author") {
         Some(a) => {
-            validate_trusted_component(a, r)?;
+            TrustedComponent::validate_tag(a, r)?;
             Some(a.clone())
         }
         None => None,
@@ -584,13 +560,8 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
         LONG => Value::Long(r.varlong()?),
         FLOAT => Value::Float(r.f32()?),
         STRING => Value::String(r.string(32767)?),
-        // ComponentSerialization.TRUSTED_STREAM_CODEC and its optional wrapper.
-        COMPONENT => Value::Text(r.nbt_within(nbt::Limits::unlimited_heap())?),
-        OPTIONAL_COMPONENT => Value::OptText(if r.bool()? {
-            Some(r.nbt_within(nbt::Limits::unlimited_heap())?)
-        } else {
-            None
-        }),
+        COMPONENT => Value::Text(TrustedComponent::read(r)?),
+        OPTIONAL_COMPONENT => Value::OptText(Opt::<TrustedComponent>::read(r)?),
         ITEM_STACK => Value::Item(Slot::read(r)?),
         BOOLEAN => Value::Bool(r.bool()?),
         ROTATIONS | VECTOR3 => Value::Floats(vec![r.f32()?, r.f32()?, r.f32()?]),
@@ -612,16 +583,8 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
                 width: r.varint()?,
                 height: r.varint()?,
                 asset_id: Ident::read(r)?,
-                title: if r.bool()? {
-                    Some(read_trusted_component(r)?)
-                } else {
-                    None
-                },
-                author: if r.bool()? {
-                    Some(read_trusted_component(r)?)
-                } else {
-                    None
-                },
+                title: Opt::<TrustedComponent>::read(r)?,
+                author: Opt::<TrustedComponent>::read(r)?,
             })),
             holder => {
                 let Some(id) = holder.checked_sub(1).filter(|&id| id >= 0) else {
@@ -976,6 +939,7 @@ impl crate::retained::OwnedHeap for EntityData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_core::nbt;
 
     #[test]
     fn arm_ids_decode_the_same_in_metadata_and_client_information() {
@@ -1093,6 +1057,18 @@ mod tests {
             assert_eq!(strings.len(), SIBLINGS as usize);
             assert!(strings.iter().all(|s| s == &text));
             assert_eq!(entries[1..], [(3, serializer::BYTE, Value::Byte(7))]);
+        }
+    }
+
+    #[test]
+    fn entity_components_reject_nbt_that_is_not_a_component() {
+        let mut tag = Writer::new();
+        tag.nbt(&Tag::Int(7));
+        for kind in [serializer::COMPONENT, serializer::OPTIONAL_COMPONENT] {
+            let mut w = component_entry(kind, &tag.data);
+            w.u8(0xff);
+            let err = EntityData::read(&mut Reader::new(&w.data)).unwrap_err();
+            assert!(err.to_string().starts_with("Failed to decode:"), "{err}");
         }
     }
 

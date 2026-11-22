@@ -16,6 +16,70 @@ pub enum ToastKind {
     System,
     /// A toast without one of the above families, including now-playing music.
     Other,
+    /// A notification submitted through `ClientHost::add_toast`.
+    Mod,
+}
+
+/// The optional 16×16 GUI icon of a [`ModToast`].
+// no wire: part of a local ClientHost::add_toast argument, not a wire field.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum ToastIcon {
+    /// Draw this stack's item model, without a count or durability overlay.
+    Item(ItemStack),
+    /// Draw a sprite from the GUI atlas, identified by its resource name.
+    Sprite(Identifier),
+}
+
+/// A client mod notification submitted through `ClientHost::add_toast`.
+// no wire: local ClientHost::add_toast argument, not a wire field.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct ModToast {
+    /// Title, drawn in yellow unless styled otherwise.
+    pub title: Text,
+    /// Optional text under the title.
+    pub description: Option<Text>,
+    /// Optional icon to the left of the text.
+    pub icon: Option<ToastIcon>,
+    /// An optional token for replacing a visible or queued mod toast. Use your mod's namespace.
+    /// Without a token, each accepted request is a separate toast.
+    pub kind: Option<Identifier>,
+    /// Milliseconds fully visible, before applying the user's Notification Time multiplier.
+    /// `None` uses vanilla `SystemToastId`'s default of 5000 ms.
+    pub display_ms: Option<u64>,
+}
+
+impl ModToast {
+    /// Create a notification with just a title and vanilla's default display time.
+    pub fn new(title: Text) -> Self {
+        Self {
+            title,
+            description: None,
+            icon: None,
+            kind: None,
+            display_ms: None,
+        }
+    }
+}
+
+/// Why a requested toast was not queued.
+// no wire: local refusal returned by ClientHost::add_toast.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AddToastError {
+    /// The host cannot submit notifications to a client window.
+    Unavailable,
+    /// The title or description could not be represented as game text.
+    Text(TextFormError),
+    /// The item stack could not be represented as an icon.
+    Icon(StackWriteError),
+}
+
+impl NoBackend for AddToastError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
 }
 
 /// What a key did in an `input_key` event (GLFW's `action`: release 0, press 1, repeat 2).

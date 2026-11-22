@@ -909,6 +909,62 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
     });
 }
 
+/// A chunk a mod loads (`LevelRef::load_chunk`, #4550) in an idle custom level in the tick its
+/// close is due keeps the level open, not ticking, with the chunk, while the `UNKNOWN` ticket
+/// lives; once the ticket expires, the idle level closes as before.
+#[test]
+#[ignore = "daily"]
+fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
+    use super::levels::IDLE_TICKS;
+    use super::native_entity_refs::tests::run_fresh_cases;
+
+    // A parallel world load can replace the process-wide dimension list during the idle ticks.
+    if run_fresh_cases(
+        "game::runtime_levels_tests::a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires",
+        "SUNRISE_RUNTIME_LEVEL_LOADING_TICKET_CHILD",
+        &["loading_ticket"],
+    ) {
+        return;
+    }
+    with_opener("loading", "loading:a", flat(), |game, seen| {
+        tick_post(game);
+        game.apply_runtime_levels();
+        seen.mode.store(IDLE, Ordering::SeqCst);
+        let dim = super::Dim::extra("loading:a").unwrap();
+        let level = game.level("loading:a").unwrap();
+        let chunk = ChunkRef::new(level, [5, 5]);
+        // Idle the custom level to one server tick short of its close.
+        for _ in 1..IDLE_TICKS {
+            game.tick_server(false).unwrap();
+        }
+        assert_eq!(game.levels.parked[&dim].idle, IDLE_TICKS - 1);
+        assert!(!game.chunk_loaded(chunk));
+        let host: &mut dyn ServerHost = game;
+        assert!(level.load_chunk(host, [5, 5]));
+        // The close falls due in this tick, and the ticket outlives it.
+        game.tick_server(false).unwrap();
+        assert!(
+            game.native_level_world(level).is_some(),
+            "the custom level stays open for the live ticket"
+        );
+        assert!(game.chunk_loaded(chunk));
+        assert!(
+            !game.levels_to_tick().contains(&dim),
+            "the ticket does not make the level tick"
+        );
+        assert!(seen.unloads.lock().unwrap().is_empty());
+        // The ticket expires within two purges; the idle level then closes.
+        for _ in 0..3 {
+            game.tick_server(false).unwrap();
+        }
+        assert!(
+            game.native_level_world(level).is_none(),
+            "the idle level closes once the ticket expired"
+        );
+        assert_eq!(*seen.unloads.lock().unwrap(), ["loading:a"]);
+    });
+}
+
 /// An unload whose save fails leaves the level open and in place: the mod can unload it again,
 /// and that unload goes through once the save can be written.
 #[test]

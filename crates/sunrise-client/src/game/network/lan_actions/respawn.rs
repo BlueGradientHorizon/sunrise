@@ -239,14 +239,9 @@ impl Game<'_> {
                     Ok(()) => {
                         let [x, y, z] = config.pos;
                         let chunk = (x >> 4, z >> 4);
-                        // ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE: the packed BlockPos range,
-                        // less the player view radius and FULL's 12 accumulated dependency rings.
-                        const MAX_CHUNK: i32 = (((1 << 25) - 1) >> 4) - 2 * (32 + 12 + 1);
-                        if !self.world.shape.contains_y(y)
-                            || chunk.0.abs().max(chunk.1.abs()) > MAX_CHUNK
-                        {
+                        if !self.world.shape.contains_y(y) {
                             false
-                        } else if self.load_full_column(chunk) {
+                        } else if self.load_full_chunk(None, chunk) {
                             self.is_anchor(self.world.block(x, y, z))
                         } else {
                             log::error!(

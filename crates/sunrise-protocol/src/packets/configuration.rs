@@ -3,7 +3,8 @@
 use crate::{
     Result,
     buf::{
-        Bool, Byte, Codec, Ident, Int, List, Long, Nbt, Opt, Reader, Str, StrN, UByte, Uuid, VarInt,
+        Bool, Byte, Codec, Ident, Int, List, Long, Nbt, Opt, Reader, Str, StrN, TrustedComponent,
+        TrustedNbt, UByte, Uuid, VarInt,
     },
     entity_data::humanoid_arm_id,
     packet, packet_enum,
@@ -16,7 +17,7 @@ packet!(CookieRequest { key: String => Ident });
 pub use super::custom_payload::CustomPayload;
 packet!(
     /// Common disconnect: a chat component (NBT).
-    Disconnect { reason: Tag => Nbt }
+    Disconnect { reason: Tag => TrustedComponent }
 );
 packet!(KeepAlive { id: i64 => Long });
 packet!(Ping { id: i32 => Int });
@@ -32,7 +33,7 @@ packet!(ResourcePackPush {
     url: String => Str,
     hash: String => StrN<40>,
     required: bool => Bool,
-    prompt: Option<Tag> => Opt<Nbt>,
+    prompt: Option<Tag> => Opt<TrustedComponent>,
 });
 packet!(StoreCookie { key: String => Ident, payload: Vec<u8> => crate::buf::Bytes });
 packet!(Transfer { host: String => Str, port: i32 => VarInt });
@@ -73,7 +74,7 @@ impl Codec<ServerLink> for ServerLink {
         let kind = if Bool::read(r)? {
             ServerLinkKind::Known(VarInt::read(r)?)
         } else {
-            ServerLinkKind::Custom(Nbt::read(r)?)
+            ServerLinkKind::Custom(TrustedComponent::read(r)?)
         };
         Ok(Self {
             kind,
@@ -102,7 +103,7 @@ packet!(
 packet!(
     /// ClientboundShowDialogPacket.CONTEXT_FREE_STREAM_CODEC: the dialog
     /// itself (`Dialog.DIRECT_CODEC` as NBT).
-    ShowDialog { dialog: Tag => Nbt }
+    ShowDialog { dialog: Tag => TrustedNbt }
 );
 packet!(
     /// ServerboundCustomClickActionPacket: a `custom` click event's id and

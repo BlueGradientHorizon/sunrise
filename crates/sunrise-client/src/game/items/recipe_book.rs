@@ -419,7 +419,10 @@ impl Game<'_> {
         if items.is_empty() {
             return;
         }
-        match self.adv.toasts.iter_mut().find(|t| t.is_recipe()) {
+        match self.toast_manager.find_mut(|entry| match entry {
+            super::toast_manager::Toast::Advancement(t) if t.is_recipe() => Some(t),
+            _ => None,
+        }) {
             Some(toast) => toast.add_recipes(items),
             None => self.add_advancement_toast(super::advancements::Toast::recipe(items)),
         }
