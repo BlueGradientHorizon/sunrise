@@ -217,10 +217,35 @@ pub enum StackResult {
     /// Replace the stack: `None` empties it.
     Set(Option<ItemStack>),
 }
-/// A listener's answer to [`StackedOnOther`], validated once and applied once. Setting a stack is
-/// allowed only on a cancelled click that is also `handled` (the listener did the click's work
-/// itself); on any other the click is refused and nothing changes. A replaced stack must be a
-/// valid stack (a known item, a count of at least one within the item's maximum).
+/// What a listener does to the clicked slot's stack in [`StackedOnOtherResult`].
+#[derive(Clone, Debug, Default, PartialEq)]
+// exhaustive: a clicked slot is left alone, directly written, or taken from
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum ClickedStackResult {
+    /// Leave the clicked slot unchanged.
+    #[default]
+    Keep,
+    /// Directly write the clicked slot (`Slot.set`): `None` clears the slot without running
+    /// `Slot.onTake` side effects.
+    Set(Option<ItemStack>),
+    /// Take `count` items from the clicked slot via `Slot.safeTake` / `Slot.onTake`, running the
+    /// slot's take side effects (such as furnace smelting experience, `recipes_used`, crafting
+    /// remainders, or potion take hooks). Valid only in `ItemPart` overrides (refused for global
+    /// listeners); `count` must be at least `1` and at most the slot's current stack size.
+    Take(u32),
+}
+/// A listener's answer to [`StackedOnOther`], validated once and applied once.
+///
+/// For global `Hooks::item_stacked_on_other` listeners (`StackedOnOtherDirection::Event`), setting
+/// a stack is allowed only on a cancelled click that is also `handled` (and
+/// [`ClickedStackResult::Take`] is refused); on any other answer the click is refused and nothing
+/// changes.
+///
+/// For `ItemPart::item_stacked_on_other` overrides (`CarriedOnOther` / `OtherStackedOnMe`),
+/// [`ClickedStackResult::Set`] performs a direct write (without `Slot.onTake` side effects, even
+/// when clearing a result/output slot to `None`), while [`ClickedStackResult::Take`] takes from
+/// the clicked slot through `Slot.safeTake` / `Slot.onTake`. A replaced stack must be a valid
+/// stack (a known item, a count of at least one within the item's maximum).
 #[derive(Clone, Debug, Default, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -230,8 +255,8 @@ pub struct StackedOnOtherResult {
     pub handled: bool,
     /// The cursor after the click.
     pub carried: StackResult,
-    /// The clicked slot after the click.
-    pub clicked: StackResult,
+    /// The clicked slot edit after the click.
+    pub clicked: ClickedStackResult,
 }
 /// The inputs and vanilla result of `AnvilMenu.createResult`, borrowed for
 /// the `anvil_update` callback. Edits by earlier listeners do not change these values.

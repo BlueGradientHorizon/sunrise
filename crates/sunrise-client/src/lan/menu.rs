@@ -1275,13 +1275,20 @@ impl crate::menu::StackedSlotTarget for HostedSlotTarget<'_, '_> {
     }
 
     fn take_partial(&mut self, amount: u32) -> Option<ItemStack> {
-        let mut slot = HostedSlotView {
-            view: self.view,
-            slot: self.slot,
-            rules: self.rules,
-            staged: None,
-        };
-        crate::menu::SlotView::safe_take(&mut slot, amount, amount)
+        if !self.may_pickup() {
+            return None;
+        }
+        let mut current = self.view.get(self.slot)?;
+        let moved = amount.min(current.count);
+        if moved == 0 {
+            return None;
+        }
+        let mut taken = current.clone();
+        taken.count = moved;
+        current.count -= moved;
+        self.view
+            .set(self.slot, (current.count > 0).then_some(current));
+        Some(taken)
     }
 }
 
@@ -1295,7 +1302,7 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
     let right = button == 1;
     let mut resume = crate::menu::StackedResume::VanillaAll;
     if let Some(outcome) = rules.stacked() {
-        resume = outcome.effective_resume();
+        resume = outcome.resume;
         let mut target = HostedSlotTarget {
             view,
             slot: i,
@@ -3522,7 +3529,7 @@ pub(crate) mod tests {
 
     #[test]
     fn hosted_stacked_outcome_shares_result_slot_and_safe_take_rules() {
-        use crate::menu::{StackedEditPolicy, StackedOutcome, StackedResume};
+        use crate::menu::{StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume};
         struct OutcomeRules<'a> {
             items: Items,
             may_pickup: bool,
@@ -3604,7 +3611,7 @@ pub(crate) mod tests {
             policy: StackedEditPolicy::Global,
             resume: StackedResume::Done,
             carried: Some(Some(ItemStack::new("minecraft:stick", 2))),
-            clicked: Some(None),
+            clicked: Some(StackedClickedEdit::Set(None)),
             refused: std::cell::Cell::new(false),
         };
         let rules = OutcomeRules {
@@ -3628,15 +3635,16 @@ pub(crate) mod tests {
             Some(ItemStack::new("minecraft:stick", 1))
         );
 
-        // 2. Part policy full take runs through `HostedSlotView::safe_take` even when `may_place`
-        //    is false, and is refused when `may_pickup` is false.
+        // 2. Part policy explicit full take (`Take(4)`) runs through `HostedSlotView::safe_take`
+        //    even when `may_place` is false, is refused when `may_pickup` is false, and partial
+        //    `Take(2)` is refused on a Result slot.
         let part_take = StackedOutcome {
             canceled: true,
             handled: true,
             policy: StackedEditPolicy::Part,
             resume: StackedResume::Done,
             carried: Some(Some(ItemStack::new("minecraft:stick", 5))),
-            clicked: Some(None),
+            clicked: Some(StackedClickedEdit::Take(4)),
             refused: std::cell::Cell::new(false),
         };
         let blocked_rules = OutcomeRules {
@@ -3646,6 +3654,24 @@ pub(crate) mod tests {
         };
         click(&mut view, &mut drag, 0, 0, input::PICKUP, &blocked_rules);
         assert!(part_take.refused.get());
+        assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
+
+        let partial_result_take = StackedOutcome {
+            canceled: true,
+            handled: true,
+            policy: StackedEditPolicy::Part,
+            resume: StackedResume::Done,
+            carried: None,
+            clicked: Some(StackedClickedEdit::Take(2)),
+            refused: std::cell::Cell::new(false),
+        };
+        let partial_rules = OutcomeRules {
+            items: Items::for_tests(Default::default()),
+            may_pickup: true,
+            outcome: &partial_result_take,
+        };
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &partial_rules);
+        assert!(partial_result_take.refused.get());
         assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
 
         part_take.refused.set(false);
@@ -3662,6 +3688,37 @@ pub(crate) mod tests {
             Some(ItemStack::new("minecraft:stick", 5))
         );
 
+        // 2b. Part policy direct clear (`Set(None)`) clears an occupied result slot directly when
+        //     `may_pickup` allows it, and is refused when `may_pickup` is false.
+        view.set(0, Some(ItemStack::new("minecraft:iron_ingot", 4)));
+        let part_clear = StackedOutcome {
+            canceled: true,
+            handled: true,
+            policy: StackedEditPolicy::Part,
+            resume: StackedResume::Done,
+            carried: Some(Some(ItemStack::new("minecraft:stick", 1))),
+            clicked: Some(StackedClickedEdit::Set(None)),
+            refused: std::cell::Cell::new(false),
+        };
+        let clear_blocked = OutcomeRules {
+            items: Items::for_tests(Default::default()),
+            may_pickup: false,
+            outcome: &part_clear,
+        };
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &clear_blocked);
+        assert!(part_clear.refused.get());
+        assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
+
+        part_clear.refused.set(false);
+        let clear_allowed = OutcomeRules {
+            items: Items::for_tests(Default::default()),
+            may_pickup: true,
+            outcome: &part_clear,
+        };
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &clear_allowed);
+        assert!(!part_clear.refused.get());
+        assert_eq!(view.get(0), None);
+
         // 3. Part policy occupied result-slot edit respects `item_max_stack`.
         view.set(0, Some(ItemStack::new("minecraft:iron_ingot", 4)));
         let oversize = StackedOutcome {
@@ -3670,7 +3727,10 @@ pub(crate) mod tests {
             policy: StackedEditPolicy::Part,
             resume: StackedResume::Done,
             carried: None,
-            clicked: Some(Some(ItemStack::new("minecraft:snowball", 17))),
+            clicked: Some(StackedClickedEdit::Set(Some(ItemStack::new(
+                "minecraft:snowball",
+                17,
+            )))),
             refused: std::cell::Cell::new(false),
         };
         let oversize_rules = OutcomeRules {

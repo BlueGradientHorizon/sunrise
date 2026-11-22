@@ -379,13 +379,24 @@ On each resolved pickup, dispatch follows vanilla
 
 `ItemPart` overrides represent both vanilla outcomes inside the transaction:
 
-- **Handled (stop)**: set `event.result.handled = true`, set `event.result.carried` and/or
-  `event.result.clicked` via `StackResult::Set(...)`, and return `Flow::Cancel`. Stops later
-  overrides and plain pickup. Taking from or directly editing an occupied output slot (such as a
-  furnace output) is permitted inside the transaction; taking runs the slot's take effects.
+- **Handled (stop)**: set `event.result.handled = true`, set `event.result.carried` via
+  `StackResult::Set(...)` and/or `event.result.clicked` via `ClickedStackResult::Set(...)` or
+  `ClickedStackResult::Take(count)`, and return `Flow::Cancel`. Stops later overrides and plain
+  pickup.
 - **Not handled (continue, optionally with edits)**: leave `event.result.handled = false`,
-  optionally set `event.result.carried` and/or `event.result.clicked`, and return `Flow::Continue`.
-  Later overrides and plain pickup observe the edited stacks.
+  optionally edit `event.result.carried` and/or `event.result.clicked`, and return
+  `Flow::Continue`. Later overrides and plain pickup observe the edited stacks.
+
+For `event.result.clicked`, direct writes and slot takes are distinct:
+
+- `ClickedStackResult::Set(stack)` writes the clicked slot directly (`Slot.set`), without running
+  `Slot.onTake` side effects — clearing an occupied furnace or crafting result slot with
+  `ClickedStackResult::Set(None)` produces no smelting experience, leaves `recipes_used` untouched,
+  and fires no take hooks.
+- `ClickedStackResult::Take(count)` takes `count` items from the clicked slot via `Slot.safeTake` /
+  `Slot.onTake` (spawning furnace XP, clearing `recipes_used`, consuming crafting inputs, and
+  firing take hooks such as `item_smelted` and `furnace_extract`). `ClickedStackResult::Take` is
+  refused for global listeners.
 
 Contradictory `ItemPart` answers (`Flow::Cancel` with `handled = false`, or `Flow::Continue` with
 `handled = true`), writing through the host to what the click read, returning an invalid stack,

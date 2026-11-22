@@ -58,6 +58,38 @@ pub enum StackedResume {
     Done,
 }
 
+/// Persistent quick-craft (drag) state of a [`super::Menu`], preserved across clicks by hosted
+/// menus that rebuild an engine [`super::Menu`] per packet.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct QuickCraftDrag {
+    pub(super) status: i32,
+    pub(super) ty: i32,
+    pub(super) slots: Vec<usize>,
+}
+
+impl QuickCraftDrag {
+    /// Whether a drag is currently in progress (`quickcraftStatus != 0`).
+    pub fn active(&self) -> bool {
+        self.status != 0
+    }
+}
+
+/// Clicked-slot edit carried by [`StackedOutcome`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum StackedClickedEdit {
+    /// Directly write the clicked slot (`Slot.set` / `setByPlayer`): `None` clears the slot
+    /// without running `Slot.onTake` side effects.
+    Set(Option<ItemStack>),
+    /// Take `u32` items from the clicked slot via `Slot.safeTake` / `Slot.onTake`.
+    Take(u32),
+    /// Take `take` items via `Slot.onTake`, then directly write `then` to the slot (when a
+    /// declining carried Part took items and the clicked Part replaced the remainder).
+    TakeThenSet { take: u32, then: Option<ItemStack> },
+    /// Directly write `set` to the slot, then take `take` items via `Slot.safeTake` / `Slot.onTake`
+    /// (when a declining carried Part wrote a stack and the clicked Part took from it).
+    SetThenTake { set: ItemStack, take: u32 },
+}
+
 /// What the mods decided about a pickup click (`item_stacked_on_other`), validated by the game
 /// before the click.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -68,30 +100,11 @@ pub struct StackedOutcome {
     pub resume: StackedResume,
     /// The cursor replacement to apply before resuming (if `Some`).
     pub carried: Option<Option<ItemStack>>,
-    /// The clicked slot replacement to apply before resuming (if `Some`).
-    pub clicked: Option<Option<ItemStack>>,
+    /// The clicked slot edit to apply before resuming (if `Some`).
+    pub clicked: Option<StackedClickedEdit>,
     /// Set by the click when the clicked slot's own rules refuse `clicked`: the click changed
     /// nothing and its decision is undone.
     pub refused: std::cell::Cell<bool>,
-}
-
-impl StackedOutcome {
-    /// Resolve where `pickup` should resume after applying any edits.
-    ///
-    /// Preserves compatibility with callers that construct a global outcome using only
-    /// `canceled` / `handled` with `resume: StackedResume::VanillaAll`.
-    pub fn effective_resume(&self) -> StackedResume {
-        match (self.policy, self.resume) {
-            (StackedEditPolicy::Global, StackedResume::VanillaAll) if self.canceled => {
-                if self.handled {
-                    StackedResume::Done
-                } else {
-                    StackedResume::Plain
-                }
-            }
-            (_, resume) => resume,
-        }
-    }
 }
 
 /// Slot category for [`super::apply_stacked_outcome`], shared by local/client [`super::Menu`] and

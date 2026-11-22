@@ -21,8 +21,8 @@ pub trait Hooks {
     /// Global listener contract (`Hooks::item_stacked_on_other`): `canceled` skips later override
     /// phases and vanilla's bundle override, and a cancelled click that is also `handled` is done
     /// with the stacks `result` sets (a cancelled click not `handled` runs plain pickup; setting a
-    /// stack on any other answer refuses the click). A global replacement cannot change a result
-    /// slot or take a stack from a filled brewing potion slot.
+    /// stack on any other answer or using `ClickedStackResult::Take` refuses the click). A global
+    /// replacement cannot change a result slot or take a stack from a filled brewing potion slot.
     ///
     /// `ItemPart` override contract (`CarriedOnOther` / `OtherStackedOnMe`): represents both
     /// vanilla outcomes inside the transaction:
@@ -30,6 +30,12 @@ pub trait Hooks {
     ///   `carried`/`clicked` edits). Stops later overrides and plain pickup.
     /// - Not handled (continue): leave `result.handled = false` and return `Flow::Continue` (with
     ///   optional `carried`/`clicked` edits, which are passed to later overrides and plain pickup).
+    ///
+    /// For `result.clicked`, `ClickedStackResult::Set(stack)` writes the slot directly (`Slot.set`,
+    /// without running `Slot.onTake` side effects — including clearing an occupied output/result
+    /// slot to `None` with no furnace XP or take events), while `ClickedStackResult::Take(count)`
+    /// takes from the slot through `Slot.safeTake` / `Slot.onTake` (running furnace XP,
+    /// `recipes_used`, crafting remainders, and take hooks).
     ///
     /// Contradictory `ItemPart` answers (`canceled != result.handled`), invalid stacks, writes
     /// through `Host` to what the click read, or panics refuse the click and roll back every
@@ -42,7 +48,7 @@ pub trait Hooks {
         part = "item",
         neoforge = "ItemStackedOnOtherEvent",
         cancellable = true,
-        version = 5
+        version = 6
     )]
     fn item_stacked_on_other(
         event: &mod_api::item::menu::StackedOnOther,

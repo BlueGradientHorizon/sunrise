@@ -189,6 +189,11 @@ impl Game<'_> {
 
         let seal = self.transaction_open();
         let saved_craft_grid = self.craft_grid.clone();
+        let saved_craft_result = self.remote.as_ref().and_then(|r| r.craft_result.clone());
+        let tracks_craft_result = matches!(
+            self.remote_menu().1.as_str(),
+            "inventory" | "minecraft:crafting"
+        );
         let mut all_predicted: Vec<Predicted> = Vec::with_capacity(clicks.len());
         let mut threw = false;
 
@@ -209,6 +214,9 @@ impl Game<'_> {
             if !modeled || engine_threw {
                 self.transaction_close(&seal, false);
                 self.craft_grid = saved_craft_grid;
+                if let Some(r) = self.remote.as_mut() {
+                    r.craft_result = saved_craft_result;
+                }
                 return None;
             }
 
@@ -260,13 +268,26 @@ impl Game<'_> {
                 if pickup == Pickup::Refused {
                     self.transaction_close(&seal, false);
                     self.craft_grid = saved_craft_grid;
+                    if let Some(r) = self.remote.as_mut() {
+                        r.craft_result = saved_craft_result;
+                    }
                     return Some(false);
                 }
                 let Some((predicted, dropped)) = step_result else {
                     self.transaction_close(&seal, false);
                     self.craft_grid = saved_craft_grid;
+                    if let Some(r) = self.remote.as_mut() {
+                        r.craft_result = saved_craft_result;
+                    }
                     return None;
                 };
+                if tracks_craft_result && let Some(r) = self.remote.as_mut() {
+                    for (.., changed, _) in &predicted {
+                        if let Some((_, result)) = changed.iter().find(|(slot, _)| *slot == 0) {
+                            r.craft_result = result.clone();
+                        }
+                    }
+                }
                 all_predicted.extend(predicted);
                 threw |= dropped;
             } else {
@@ -286,8 +307,18 @@ impl Game<'_> {
                 let Some((predicted, dropped)) = step_result.filter(|_| modeled) else {
                     self.transaction_close(&seal, false);
                     self.craft_grid = saved_craft_grid;
+                    if let Some(r) = self.remote.as_mut() {
+                        r.craft_result = saved_craft_result;
+                    }
                     return None;
                 };
+                if tracks_craft_result && let Some(r) = self.remote.as_mut() {
+                    for (.., changed, _) in &predicted {
+                        if let Some((_, result)) = changed.iter().find(|(slot, _)| *slot == 0) {
+                            r.craft_result = result.clone();
+                        }
+                    }
+                }
                 all_predicted.extend(predicted);
                 threw |= dropped;
             }
@@ -299,6 +330,9 @@ impl Game<'_> {
                 log::warn!("Refused menu click: {error}");
                 self.transaction_close(&seal, false);
                 self.craft_grid = saved_craft_grid;
+                if let Some(r) = self.remote.as_mut() {
+                    r.craft_result = saved_craft_result;
+                }
                 return Some(false);
             }
         };

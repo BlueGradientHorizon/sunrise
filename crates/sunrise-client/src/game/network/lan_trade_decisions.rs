@@ -130,7 +130,8 @@ impl Game<'_> {
         }
         let Some(mob) = self.lan.as_ref().and_then(|host| {
             let gm = host.play.get(&conn)?.merchant.as_ref()?;
-            (gm.window == p.container)
+            // A non-quick-craft click while a drag is active only resets the drag (`doClick`).
+            (gm.window == p.container && !gm.drag.active())
                 .then_some(gm.merchant.mob)
                 .flatten()
         }) else {
@@ -462,6 +463,7 @@ impl Game<'_> {
             .and_then(|p| p.merchant.as_mut())
             .expect("validated merchant window");
         gm.slots = std::array::from_fn(|slot| plan.menu.slot(slot).cloned());
+        gm.drag = plan.menu.quick_craft_state();
         gm.merchant.session = session;
         self.merchant_drops(conn, std::mem::take(&mut plan.menu.dropped));
     }

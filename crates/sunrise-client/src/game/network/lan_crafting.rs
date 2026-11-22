@@ -797,14 +797,14 @@ impl Game<'_> {
                 _ => {}
             }
             // FurnaceResultSlot.checkTakeAchievements and its observable effects may run
-            // only after the click, including any outer menu decision, is committed.
+            // only after the click, including any outer menu decision, is committed, and only for
+            // actual takes (`onTake` / `onQuickCraft`), never direct `Slot.set` edits.
             let smelted = std::mem::take(&mut menu.item_smelted);
             let extracted = if furnace {
-                items[2].as_ref().and_then(|output| {
-                    let taken = output
-                        .count
-                        .saturating_sub(menu.slot(2).map_or(0, |stack| stack.count));
-                    (taken > 0).then(|| (output.clone(), taken))
+                let mut takes = std::mem::take(&mut menu.furnace_extracted);
+                takes.pop().map(|(stack, last)| {
+                    let total = takes.into_iter().map(|(_, n)| n).sum::<u32>() + last;
+                    (stack, total)
                 })
             } else {
                 None

@@ -23,8 +23,9 @@ use sunrise_world::native_load_context::{LoopContext, LoopSide};
 mod models;
 pub use models::{
     AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlaceEdits, GrindstoneTakeEdits,
-    PendingGrindstoneTake, SlotContext, SlotRules, SlotView, StackedClick, StackedEditPolicy,
-    StackedOutcome, StackedResume, StackedSlotKind, StackedSlotTarget,
+    PendingGrindstoneTake, QuickCraftDrag, SlotContext, SlotRules, SlotView, StackedClick,
+    StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume, StackedSlotKind,
+    StackedSlotTarget,
 };
 mod slot_context;
 pub use slot_context::{apply_menu_slot_rules, lan_container};
@@ -817,6 +818,7 @@ impl Menu {
                 item_smithed: Vec::new(),
                 takes: None,
                 output_removed: 0,
+                furnace_extracted: Vec::new(),
                 equipped: Vec::new(),
                 merchant: None,
                 stone: Stonecutter::default(),
@@ -2155,10 +2157,17 @@ impl Menu {
 
     /// `FurnaceResultSlot.checkTakeAchievements`: what `carried` and
     /// `removeCount` were, kept for `ItemSmeltedEvent` when a server caller
-    /// listens; the count starts again.
+    /// listens, and recorded in `furnace_extracted` so callers can award
+    /// smelting experience only on actual takes; the count starts again.
     fn furnace_take(&mut self, env: &Env, carried: &ItemStack) {
         self.touch();
         let removed = std::mem::take(&mut self.state.output_removed);
+        let extracted = if removed > 0 { removed } else { carried.count };
+        if extracted > 0 {
+            self.state
+                .furnace_extracted
+                .push((carried.clone(), extracted));
+        }
         if self.state.item_smelted_hook && env.loop_context.side() == LoopSide::Server {
             let carried = (carried.count > 0).then(|| carried.clone());
             self.state.item_smelted.push((carried, removed));
@@ -3239,7 +3248,8 @@ pub(crate) mod tests {
             let handled = |clicked| StackedOutcome {
                 canceled: true,
                 handled: true,
-                clicked: Some(clicked),
+                resume: StackedResume::Done,
+                clicked: Some(StackedClickedEdit::Set(clicked)),
                 ..StackedOutcome::default()
             };
             // The result slot's onTake would not run: nothing goes in, nothing is taken out.
@@ -3276,7 +3286,8 @@ pub(crate) mod tests {
             let answer = StackedOutcome {
                 canceled: true,
                 handled: true,
-                clicked: Some(None),
+                resume: StackedResume::Done,
+                clicked: Some(StackedClickedEdit::Set(None)),
                 carried: Some(potion.clone()),
                 ..StackedOutcome::default()
             };

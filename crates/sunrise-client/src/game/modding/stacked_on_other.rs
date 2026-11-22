@@ -15,13 +15,13 @@ use crate::game::transactions::decision::{
     self, ActionTarget, GameHost, Identity, InvalidReason, MenuId, Outcome, Reply, Side,
     StaleReason,
 };
-use mod_api::item::menu::{StackResult, StackedOnOtherResult};
+use mod_api::item::menu::{ClickedStackResult, StackResult, StackedOnOtherResult};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
 use sunrise_client::menu::{
-    Env, Input, StackedClick, StackedEditPolicy, StackedOutcome, StackedResume,
+    Env, Input, StackedClick, StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume,
 };
 
 /// What a pickup click did: it ran, or the decision refused it and nothing changed.
@@ -309,8 +309,42 @@ fn fire(
     let mut working_carried = frozen.carried.clone();
     let mut working_clicked = frozen.clicked.clone();
     let mut carried_edited = false;
-    let mut clicked_edited = false;
+    let mut clicked_edit: Option<StackedClickedEdit> = None;
     let mut any_part_ran = false;
+
+    let apply_clicked_part = |working: &mut Option<ItemStack>,
+                              edit: &mut Option<StackedClickedEdit>,
+                              next: PartClickedEdit| {
+        match next {
+            PartClickedEdit::Set(stack) => {
+                *working = stack.clone();
+                *edit = match edit.take() {
+                    Some(StackedClickedEdit::Take(take)) => {
+                        Some(StackedClickedEdit::TakeThenSet { take, then: stack })
+                    }
+                    _ => Some(StackedClickedEdit::Set(stack)),
+                };
+            }
+            PartClickedEdit::Take(count) => {
+                if let Some(cur) = working.as_mut() {
+                    cur.count = cur.count.saturating_sub(count);
+                    if cur.count == 0 {
+                        *working = None;
+                    }
+                }
+                *edit = match edit.take() {
+                    Some(StackedClickedEdit::Take(prev)) => {
+                        Some(StackedClickedEdit::Take(prev.saturating_add(count)))
+                    }
+                    Some(StackedClickedEdit::Set(Some(set))) => {
+                        Some(StackedClickedEdit::SetThenTake { set, take: count })
+                    }
+                    None => Some(StackedClickedEdit::Take(count)),
+                    Some(other) => Some(other),
+                };
+            }
+        }
+    };
 
     // 2. Carried stack's `Item.overrideStackedOnOther`.
     if let Some(carried_stack) = working_carried.clone()
@@ -331,7 +365,7 @@ fn fire(
         let mut result = StackedOnOtherResult::default();
         let mut canceled = false;
         game.item_stacked_on_other_part(&carried_stack.item, &event, &mut result, &mut canceled);
-        let part = match answer_part(game, canceled, &result) {
+        let part = match answer_part(game, canceled, &result, working_clicked.as_ref()) {
             Ok(part) => part,
             Err(reason) => return Reply::Invalid(reason),
         };
@@ -340,8 +374,7 @@ fn fire(
             carried_edited = true;
         }
         if let Some(next_clicked) = part.clicked {
-            working_clicked = next_clicked;
-            clicked_edited = true;
+            apply_clicked_part(&mut working_clicked, &mut clicked_edit, next_clicked);
         }
         if part.handled {
             return finish(
@@ -352,7 +385,7 @@ fn fire(
                     policy: StackedEditPolicy::Part,
                     resume: StackedResume::Done,
                     carried: carried_edited.then_some(working_carried),
-                    clicked: clicked_edited.then_some(working_clicked),
+                    clicked: clicked_edit,
                     ..StackedOutcome::default()
                 },
             );
@@ -374,7 +407,7 @@ fn fire(
                 },
                 resume: StackedResume::VanillaCarried,
                 carried: carried_edited.then_some(working_carried),
-                clicked: clicked_edited.then_some(working_clicked),
+                clicked: clicked_edit,
                 ..StackedOutcome::default()
             },
         );
@@ -399,7 +432,7 @@ fn fire(
         let mut result = StackedOnOtherResult::default();
         let mut canceled = false;
         game.item_stacked_on_other_part(&clicked_stack.item, &event, &mut result, &mut canceled);
-        let part = match answer_part(game, canceled, &result) {
+        let part = match answer_part(game, canceled, &result, working_clicked.as_ref()) {
             Ok(part) => part,
             Err(reason) => return Reply::Invalid(reason),
         };
@@ -408,8 +441,7 @@ fn fire(
             carried_edited = true;
         }
         if let Some(next_clicked) = part.clicked {
-            working_clicked = next_clicked;
-            clicked_edited = true;
+            apply_clicked_part(&mut working_clicked, &mut clicked_edit, next_clicked);
         }
         if part.handled {
             return finish(
@@ -420,7 +452,7 @@ fn fire(
                     policy: StackedEditPolicy::Part,
                     resume: StackedResume::Done,
                     carried: carried_edited.then_some(working_carried),
-                    clicked: clicked_edited.then_some(working_clicked),
+                    clicked: clicked_edit,
                     ..StackedOutcome::default()
                 },
             );
@@ -437,31 +469,45 @@ fn fire(
             },
             resume: StackedResume::VanillaClicked,
             carried: carried_edited.then_some(working_carried),
-            clicked: clicked_edited.then_some(working_clicked),
+            clicked: clicked_edit,
             ..StackedOutcome::default()
         },
     )
 }
 
 /// The global listener's typed answer, validated once: a stack may be set only by a cancelled
-/// click that is also handled, and a set stack must be a valid one (a known item, a count within
-/// its maximum).
+/// click that is also handled, `ClickedStackResult::Take` is refused, and a set stack must be a
+/// valid one (a known item, a count within its maximum).
 fn answer_global(
     game: &Game<'_>,
     canceled: bool,
     result: &StackedOnOtherResult,
 ) -> std::result::Result<StackedOutcome, InvalidReason> {
-    let sets = |r: &StackResult| matches!(r, StackResult::Set(_));
-    if !(canceled && result.handled) && (sets(&result.carried) || sets(&result.clicked)) {
+    if matches!(result.clicked, ClickedStackResult::Take(_)) {
+        return Err(InvalidReason::Plan);
+    }
+    let carried_set = matches!(result.carried, StackResult::Set(_));
+    let clicked_set = matches!(result.clicked, ClickedStackResult::Set(_));
+    if !(canceled && result.handled) && (carried_set || clicked_set) {
         return Err(InvalidReason::Plan);
     }
     let items = game.items();
-    let convert = |r: &StackResult| match r {
-        StackResult::Keep => Ok(None),
-        StackResult::Set(stack) => stack
-            .try_into_engine(items)
-            .map(Some)
-            .map_err(|_| InvalidReason::Count),
+    let carried = match &result.carried {
+        StackResult::Keep => None,
+        StackResult::Set(stack) => Some(
+            stack
+                .try_into_engine(items)
+                .map_err(|_| InvalidReason::Count)?,
+        ),
+    };
+    let clicked = match &result.clicked {
+        ClickedStackResult::Keep => None,
+        ClickedStackResult::Set(stack) => Some(StackedClickedEdit::Set(
+            stack
+                .try_into_engine(items)
+                .map_err(|_| InvalidReason::Count)?,
+        )),
+        ClickedStackResult::Take(_) => return Err(InvalidReason::Plan),
     };
     let resume = if !canceled {
         StackedResume::VanillaAll
@@ -475,16 +521,21 @@ fn answer_global(
         handled: result.handled,
         policy: StackedEditPolicy::Global,
         resume,
-        carried: convert(&result.carried)?,
-        clicked: convert(&result.clicked)?,
+        carried,
+        clicked,
         ..StackedOutcome::default()
     })
+}
+
+enum PartClickedEdit {
+    Set(Option<ItemStack>),
+    Take(u32),
 }
 
 struct PartAnswer {
     handled: bool,
     carried: Option<Option<ItemStack>>,
-    clicked: Option<Option<ItemStack>>,
+    clicked: Option<PartClickedEdit>,
 }
 
 /// An `ItemPart` override's typed answer, representing both vanilla outcomes inside the
@@ -493,27 +544,47 @@ struct PartAnswer {
 /// - Not handled (continue): `Flow::Continue` with `result.handled == false` (optional stack
 ///   edits visible to later overrides and plain pickup).
 ///
-/// Contradictory combinations (`canceled != result.handled`) or invalid stacks refuse the click.
+/// Contradictory combinations (`canceled != result.handled`), `ClickedStackResult::Take` exceeding
+/// the clicked stack (or on an empty slot), or invalid stacks refuse the click.
 fn answer_part(
     game: &Game<'_>,
     canceled: bool,
     result: &StackedOnOtherResult,
+    current_clicked: Option<&ItemStack>,
 ) -> std::result::Result<PartAnswer, InvalidReason> {
     if canceled != result.handled {
         return Err(InvalidReason::Plan);
     }
     let items = game.items();
-    let convert = |r: &StackResult| match r {
-        StackResult::Keep => Ok(None),
-        StackResult::Set(stack) => stack
-            .try_into_engine(items)
-            .map(Some)
-            .map_err(|_| InvalidReason::Count),
+    let carried = match &result.carried {
+        StackResult::Keep => None,
+        StackResult::Set(stack) => Some(
+            stack
+                .try_into_engine(items)
+                .map_err(|_| InvalidReason::Count)?,
+        ),
+    };
+    let clicked = match &result.clicked {
+        ClickedStackResult::Keep => None,
+        ClickedStackResult::Set(stack) => Some(PartClickedEdit::Set(
+            stack
+                .try_into_engine(items)
+                .map_err(|_| InvalidReason::Count)?,
+        )),
+        ClickedStackResult::Take(count) => {
+            let Some(current) = current_clicked else {
+                return Err(InvalidReason::Plan);
+            };
+            if *count == 0 || *count > current.count {
+                return Err(InvalidReason::Count);
+            }
+            Some(PartClickedEdit::Take(*count))
+        }
     };
     Ok(PartAnswer {
         handled: result.handled,
-        carried: convert(&result.carried)?,
-        clicked: convert(&result.clicked)?,
+        carried,
+        clicked,
     })
 }
 

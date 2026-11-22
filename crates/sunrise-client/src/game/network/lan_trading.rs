@@ -8,7 +8,7 @@ use super::{
 };
 use sunrise_client::{
     items::ItemStack,
-    menu::{Env, Input, Kind, Menu},
+    menu::{Env, Input, Kind, Menu, QuickCraftDrag},
     merchant,
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -20,6 +20,8 @@ pub(super) struct GuestMerchant {
     state: i32,
     /// The payment slots and the result.
     pub(super) slots: [Option<ItemStack>; 3],
+    /// Persistent quick-craft (drag) state across rebuilt merchant menus.
+    pub(super) drag: QuickCraftDrag,
     pub(super) merchant: Box<MerchantState>,
     /// The offers the client was last sent.
     sent: Vec<merchant::MerchantOffer>,
@@ -127,6 +129,7 @@ impl Game<'_> {
             window,
             state: 0,
             slots: [None, None, None],
+            drag: QuickCraftDrag::default(),
             merchant: Box::new(state),
             sent: Vec::new(),
             sent_level: 0,
@@ -288,10 +291,14 @@ impl Game<'_> {
             return false;
         }
         let probe = matches!(run, MerchantRun::Probe);
+        let refused = match &run {
+            MerchantRun::Decided(Some(stacked)) => Some(&stacked.refused),
+            _ => None,
+        };
         let Some((mut menu, made)) = self.read_merchant_menu(conn, gm, run, op) else {
             return false;
         };
-        if probe {
+        if probe || refused.is_some_and(std::cell::Cell::get) {
             return true;
         }
         self.journal_guest_merchant(conn);
@@ -306,6 +313,7 @@ impl Game<'_> {
             menu.slot(1).cloned(),
             menu.slot(2).cloned(),
         ];
+        gm.drag = menu.quick_craft_state();
         if let Some(host) = self.lan.as_mut() {
             host.hub.guests.update(gi, |g| {
                 for i in 0..36 {
@@ -437,6 +445,7 @@ impl Game<'_> {
             menu.set_slot(&env, i, s.clone());
         }
         menu.merchant = Some(session);
+        menu.set_quick_craft_state(gm.drag.clone());
         let env = match &run {
             MerchantRun::Decided(stacked) => Env {
                 stacked: *stacked,
@@ -926,6 +935,7 @@ mod tests {
             window: 3,
             state: 0,
             slots: [None, None, None],
+            drag: QuickCraftDrag::default(),
             merchant: Box::new(MerchantState {
                 session: Box::new(session),
                 scroll: 0,

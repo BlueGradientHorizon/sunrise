@@ -7,7 +7,7 @@
 //! invalid answer and a failing listener; each undoes every write the listener made.
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::native_guest_turn_tests::with_guests;
-use mod_api::item::menu::StackResult;
+use mod_api::item::menu::{ClickedStackResult, StackResult};
 use mod_api::{
     Flow, Hooks, HostSide, ItemPlace, ItemResource, ItemStackedOnOtherEvent, ModEntry, Mods,
 };
@@ -27,6 +27,7 @@ struct Script {
     /// Set the cursor to this stack (item, count); `Some(None)` empties it.
     set_carried: Option<Option<(&'static str, u32)>>,
     set_clicked: Option<Option<(&'static str, u32)>>,
+    take_clicked: Option<u32>,
     dirt_rule: Option<(bool, u32)>,
     write_scoreboard: bool,
 }
@@ -117,14 +118,22 @@ impl Hooks for Listener {
         if s.panic {
             panic!("a listener failed");
         }
-        let set = |r: Option<Option<(&str, u32)>>| match r {
+        let set_carried = |r: Option<Option<(&str, u32)>>| match r {
             None => StackResult::Keep,
             Some(None) => StackResult::Set(None),
             Some(Some((item, count))) => StackResult::Set(Some(api_stack(item, count))),
         };
+        let set_clicked = |r: Option<Option<(&str, u32)>>| match r {
+            None => ClickedStackResult::Keep,
+            Some(None) => ClickedStackResult::Set(None),
+            Some(Some((item, count))) => ClickedStackResult::Set(Some(api_stack(item, count))),
+        };
         event.result.handled = s.handled;
-        event.result.carried = set(s.set_carried);
-        event.result.clicked = set(s.set_clicked);
+        event.result.carried = set_carried(s.set_carried);
+        event.result.clicked = match s.take_clicked {
+            Some(count) => ClickedStackResult::Take(count),
+            None => set_clicked(s.set_clicked),
+        };
         if s.cancel {
             event.cancelled = true;
             return Flow::Cancel;
@@ -490,7 +499,14 @@ fn a_lan_inventory_click_is_decided_the_same_way() {
             script(Script::default());
             assert_eq!(click(game), (3, 0, 0));
             assert_eq!(SEEN.with(|s| s.borrow().clone()), [(3, 0)]);
+            // A write to what the click read is stale.
+            script(Script {
+                write_dirt: Some(9),
+                ..Script::default()
+            });
+            assert_eq!(click(game), (0, 3, 0));
             // A write to the slot the click read, then a panic: undone, nothing changes.
+            // Run last because a panicking callback is retired for the rest of the session.
             script(Script {
                 write_dirt: Some(20),
                 panic: true,
@@ -498,12 +514,6 @@ fn a_lan_inventory_click_is_decided_the_same_way() {
             });
             assert_eq!(click(game), (0, 3, 0));
             assert!(game.lan.is_some());
-            // A write to what the click read is stale.
-            script(Script {
-                write_dirt: Some(9),
-                ..Script::default()
-            });
-            assert_eq!(click(game), (0, 3, 0));
             script(Script::default());
             assert_eq!(click(game), (3, 0, 0));
         });
@@ -952,10 +962,13 @@ mod item_part_tests {
         clicked_handled: Option<bool>,
         set_carried: Option<Option<(&'static str, u32)>>,
         set_clicked: Option<Option<(&'static str, u32)>>,
+        take_clicked: Option<u32>,
         carried_phase_set_carried: Option<Option<(&'static str, u32)>>,
         carried_phase_set_clicked: Option<Option<(&'static str, u32)>>,
+        carried_phase_take_clicked: Option<u32>,
         clicked_phase_set_carried: Option<Option<(&'static str, u32)>>,
         clicked_phase_set_clicked: Option<Option<(&'static str, u32)>>,
+        clicked_phase_take_clicked: Option<u32>,
         panic_on_carried: bool,
         write_scoreboard: bool,
     }
@@ -1057,12 +1070,17 @@ mod item_part_tests {
             {
                 panic!("item part panicked");
             }
-            let set = |r: Option<Option<(&str, u32)>>| match r {
+            let set_carried = |r: Option<Option<(&str, u32)>>| match r {
                 None => StackResult::Keep,
                 Some(None) => StackResult::Set(None),
                 Some(Some((item, count))) => StackResult::Set(Some(api_stack(item, count))),
             };
-            let (should_cancel, phase_handled, phase_carried, phase_clicked) =
+            let set_clicked = |r: Option<Option<(&str, u32)>>| match r {
+                None => ClickedStackResult::Keep,
+                Some(None) => ClickedStackResult::Set(None),
+                Some(Some((item, count))) => ClickedStackResult::Set(Some(api_stack(item, count))),
+            };
+            let (should_cancel, phase_handled, phase_carried, phase_clicked, phase_take) =
                 match event.event.direction {
                     StackedOnOtherDirection::CarriedOnOther => (
                         s.cancel_carried,
@@ -1074,6 +1092,11 @@ mod item_part_tests {
                         }),
                         s.carried_phase_set_clicked.or(if s.cancel_carried {
                             s.set_clicked
+                        } else {
+                            None
+                        }),
+                        s.carried_phase_take_clicked.or(if s.cancel_carried {
+                            s.take_clicked
                         } else {
                             None
                         }),
@@ -1091,12 +1114,20 @@ mod item_part_tests {
                         } else {
                             None
                         }),
+                        s.clicked_phase_take_clicked.or(if s.cancel_clicked {
+                            s.take_clicked
+                        } else {
+                            None
+                        }),
                     ),
-                    StackedOnOtherDirection::Event => (false, false, None, None),
+                    StackedOnOtherDirection::Event => (false, false, None, None, None),
                 };
             event.result.handled = phase_handled;
-            event.result.carried = set(phase_carried);
-            event.result.clicked = set(phase_clicked);
+            event.result.carried = set_carried(phase_carried);
+            event.result.clicked = match phase_take {
+                Some(count) => ClickedStackResult::Take(count),
+                None => set_clicked(phase_clicked),
+            };
             if should_cancel {
                 Flow::Cancel
             } else {
@@ -1591,6 +1622,38 @@ mod item_part_tests {
                     .count();
                 assert_eq!(drag_clicks, 3);
 
+                // 2b. Multi-gesture batch on a remote inventory carries predicted `craft_result`
+                //     from gesture 1 to gesture 2 so gesture 2 does not see a cleared result.
+                game.remote.as_mut().unwrap().craft_result =
+                    Some(ItemStack::new("minecraft:flint", 1));
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_clicked: Some(None),
+                    ..PartScript::default()
+                });
+                assert!(game.remote_menu_ops(&[
+                    (Some(200), 0, Input::Pickup),
+                    (Some(200), 0, Input::Pickup),
+                ]));
+                assert_eq!(
+                    observations().len(),
+                    2,
+                    "both gestures in the batch must dispatch CarriedOnOther"
+                );
+                assert_eq!(
+                    observations()[0].clicked,
+                    Some(("minecraft:flint".to_owned(), 1))
+                );
+                assert_eq!(
+                    observations()[1].clicked,
+                    None,
+                    "second gesture in remote batch must observe updated craft_result"
+                );
+                assert_eq!(game.remote.as_ref().unwrap().craft_result, None);
+                let _ = drain_packets(&mut reader);
+
                 // 3. Creative Survival Inventory tab pickup runs ItemPart on HostSide::Client and
                 //    sends SetCreativeModeSlot (never ContainerClick).
                 game.creative = true;
@@ -1980,6 +2043,260 @@ mod item_part_tests {
                     "direct pickup during active inventory drag must only reset drag"
                 );
                 assert!(game.lan.as_ref().unwrap().hub.guests[0].inventory[10].is_none());
+
+                // 3. LAN merchant (villager trading) menu preserves drag state across packets:
+                //    1-slot left/right drags dispatch ItemPart (and roll back on outer abort),
+                //    a direct PICKUP during an active drag ONLY resets the drag without firing
+                //    Parts or mutating slots, and a 2-slot drag does not dispatch Parts.
+                {
+                    use crate::game::native_merchant_refs::tests::{offer, spawn};
+                    use crate::game::trading::MerchantState;
+                    use sunrise_client::merchant::{Session, Trader};
+
+                    spawn(game, 61, "minecraft:villager");
+                    game.mobs[0].position = sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5);
+                    game.mobs[0].extra.trade = Some(Box::new(Trader {
+                        offers: vec![offer("minecraft:coal", "minecraft:diamond")],
+                        ..Trader::default()
+                    }));
+                    game.mobs[0].extra.flag2 = true;
+                    let session =
+                        Session::new(vec![offer("minecraft:coal", "minecraft:diamond")], true);
+                    game.lan_open_merchant(
+                        12,
+                        MerchantState {
+                            session: Box::new(session),
+                            scroll: 0,
+                            dragging: false,
+                            focused: None,
+                            mob: Some(61),
+                            name: None,
+                        },
+                    );
+                    let mwin = game.lan.as_ref().unwrap().play[&12]
+                        .merchant
+                        .as_ref()
+                        .unwrap()
+                        .window;
+
+                    // 1-slot left drag on merchant slot 0 dispatches CarriedOnOther and rolls
+                    // back slots, cursor, and drag state on outer abort.
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
+                    set_part_script(PartScript {
+                        cancel_carried: true,
+                        handled: true,
+                        set_carried: Some(None),
+                        set_clicked: Some(Some(("minecraft:diamond", 2))),
+                        ..PartScript::default()
+                    });
+                    let seal = game.transaction_open();
+                    game.lan_guest_packet(12, pkt(mwin, -999, 0, 5));
+                    game.lan_guest_packet(12, pkt(mwin, 0, 1, 5));
+                    assert!(trace().is_empty());
+                    game.lan_guest_packet(12, pkt(mwin, -999, 2, 5));
+                    assert_eq!(
+                        trace(),
+                        [("stick", StackedOnOtherDirection::CarriedOnOther)],
+                        "LAN merchant 1-slot left drag must dispatch ItemPart"
+                    );
+                    assert!(observations()[0].primary);
+                    assert_eq!(
+                        game.lan.as_ref().unwrap().play[&12]
+                            .merchant
+                            .as_ref()
+                            .unwrap()
+                            .slots[0]
+                            .as_ref()
+                            .map(|s| (&*s.item, s.count)),
+                        Some(("minecraft:diamond", 2))
+                    );
+                    game.transaction_close(&seal, false);
+                    assert!(
+                        game.lan.as_ref().unwrap().play[&12]
+                            .merchant
+                            .as_ref()
+                            .unwrap()
+                            .slots[0]
+                            .is_none()
+                    );
+                    assert_eq!(
+                        game.lan.as_ref().unwrap().hub.guests[0]
+                            .carried
+                            .as_ref()
+                            .map(|s| &*s.item),
+                        Some("minecraft:stick")
+                    );
+
+                    // 1-slot right drag on merchant slot 1 dispatches with primary == false.
+                    set_part_script(PartScript {
+                        cancel_carried: true,
+                        handled: true,
+                        set_carried: Some(None),
+                        set_clicked: Some(Some(("minecraft:emerald", 3))),
+                        ..PartScript::default()
+                    });
+                    game.lan_guest_packet(12, pkt(mwin, -999, 4, 5));
+                    game.lan_guest_packet(12, pkt(mwin, 1, 5, 5));
+                    game.lan_guest_packet(12, pkt(mwin, -999, 6, 5));
+                    assert_eq!(
+                        trace(),
+                        [("stick", StackedOnOtherDirection::CarriedOnOther)],
+                        "LAN merchant 1-slot right drag must dispatch ItemPart"
+                    );
+                    assert!(!observations()[0].primary);
+                    assert_eq!(
+                        game.lan.as_ref().unwrap().play[&12]
+                            .merchant
+                            .as_ref()
+                            .unwrap()
+                            .slots[1]
+                            .as_ref()
+                            .map(|s| (&*s.item, s.count)),
+                        Some(("minecraft:emerald", 3))
+                    );
+
+                    // Direct PICKUP interrupting an active drag on the merchant window ONLY resets
+                    // the drag: no Part fires, no slots change, and a stray drag-end does nothing.
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
+                    set_part_script(PartScript {
+                        cancel_carried: true,
+                        handled: true,
+                        set_carried: Some(None),
+                        set_clicked: Some(Some(("minecraft:diamond", 1))),
+                        ..PartScript::default()
+                    });
+                    game.lan_guest_packet(12, pkt(mwin, -999, 0, 5));
+                    game.lan_guest_packet(12, pkt(mwin, 0, 1, 5));
+                    game.lan_guest_packet(12, pkt(mwin, 0, 0, 0));
+                    assert!(
+                        trace().is_empty(),
+                        "direct pickup during active merchant drag must only reset drag"
+                    );
+                    assert!(
+                        game.lan.as_ref().unwrap().play[&12]
+                            .merchant
+                            .as_ref()
+                            .unwrap()
+                            .slots[0]
+                            .is_none()
+                    );
+                    assert_eq!(
+                        game.lan.as_ref().unwrap().hub.guests[0]
+                            .carried
+                            .as_ref()
+                            .map(|s| &*s.item),
+                        Some("minecraft:stick")
+                    );
+                    game.lan_guest_packet(12, pkt(mwin, -999, 2, 5));
+                    assert!(
+                        trace().is_empty(),
+                        "stray drag-end after merchant drag reset must do nothing"
+                    );
+
+                    // 2-slot left drag on merchant payment slots 0 & 1 does NOT dispatch Parts.
+                    game.lan
+                        .as_mut()
+                        .unwrap()
+                        .play
+                        .get_mut(&12)
+                        .unwrap()
+                        .merchant
+                        .as_mut()
+                        .unwrap()
+                        .slots = [None, None, None];
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 2));
+                    });
+                    set_part_script(PartScript {
+                        cancel_carried: true,
+                        handled: true,
+                        ..PartScript::default()
+                    });
+                    game.lan_guest_packet(12, pkt(mwin, -999, 0, 5));
+                    game.lan_guest_packet(12, pkt(mwin, 0, 1, 5));
+                    game.lan_guest_packet(12, pkt(mwin, 1, 1, 5));
+                    game.lan_guest_packet(12, pkt(mwin, -999, 2, 5));
+                    assert!(
+                        trace().is_empty(),
+                        "LAN merchant 2-slot drag must not dispatch Parts"
+                    );
+                    let mslots = &game.lan.as_ref().unwrap().play[&12]
+                        .merchant
+                        .as_ref()
+                        .unwrap()
+                        .slots;
+                    assert_eq!(mslots[0].as_ref().map(|s| s.count), Some(1));
+                    assert_eq!(mslots[1].as_ref().map(|s| s.count), Some(1));
+                }
+
+                // 4. LAN mount menu (also rebuilt per packet) preserves drag state across packets.
+                {
+                    use sunrise_client::mobs::Mob;
+                    use sunrise_core::geometry::Vec3;
+
+                    let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
+                    let mut horse = Mob::new(62, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
+                    horse.extra.tame = true;
+                    game.mobs.push(horse);
+                    game.lan_open_mount(12, 62);
+                    let mount_win = game.lan.as_ref().unwrap().play[&12]
+                        .mount_window
+                        .as_ref()
+                        .unwrap()
+                        .window;
+
+                    // 1-slot left drag onto player inventory slot 2 of the mount menu dispatches.
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                        guest.inventory = vec![None; guest.inventory.len()];
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
+                    set_part_script(PartScript {
+                        cancel_carried: true,
+                        handled: true,
+                        set_carried: Some(None),
+                        set_clicked: Some(Some(("minecraft:emerald", 2))),
+                        ..PartScript::default()
+                    });
+                    game.lan_guest_packet(12, pkt(mount_win, -999, 0, 5));
+                    game.lan_guest_packet(12, pkt(mount_win, 2, 1, 5));
+                    game.lan_guest_packet(12, pkt(mount_win, -999, 2, 5));
+                    assert_eq!(
+                        trace(),
+                        [("stick", StackedOnOtherDirection::CarriedOnOther)],
+                        "LAN mount 1-slot left drag must dispatch ItemPart"
+                    );
+                    assert_eq!(
+                        game.lan.as_ref().unwrap().hub.guests[0].inventory[9]
+                            .as_ref()
+                            .map(|s| (&*s.item, s.count)),
+                        Some(("minecraft:emerald", 2))
+                    );
+
+                    // Direct PICKUP during active mount drag ONLY resets drag.
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                        guest.inventory[10] = None;
+                        guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    });
+                    set_part_script(PartScript {
+                        cancel_carried: true,
+                        handled: true,
+                        set_carried: Some(None),
+                        set_clicked: Some(Some(("minecraft:diamond", 1))),
+                        ..PartScript::default()
+                    });
+                    game.lan_guest_packet(12, pkt(mount_win, -999, 0, 5));
+                    game.lan_guest_packet(12, pkt(mount_win, 3, 1, 5));
+                    game.lan_guest_packet(12, pkt(mount_win, 3, 0, 0));
+                    assert!(
+                        trace().is_empty(),
+                        "direct pickup during active mount drag must only reset drag"
+                    );
+                    assert!(game.lan.as_ref().unwrap().hub.guests[0].inventory[10].is_none());
+                }
             });
         });
     }
@@ -2100,9 +2417,11 @@ mod item_part_tests {
                     Some(("minecraft:flint", 4))
                 );
 
-                // Full take and partial take from Furnace output slot via ItemPart both run
-                // output take effects: XP orbs are spawned from `recipes_used` and `recipes_used`
-                // is cleared.
+                // Direct edits (`ClickedStackResult::Set`) vs explicit takes
+                // (`ClickedStackResult::Take`) on a local Furnace output slot: direct clearing
+                // (`Set(None)`) or count reduction (`Set(Some(...))`) writes the slot directly
+                // with NO XP orbs and preserves `recipes_used`, while `Take(4)` and `Take(2)` run
+                // `safe_take` / `on_take`, spawning XP orbs and clearing `recipes_used`.
                 let recipe = "minecraft:iron_ingot_from_smelting_raw_iron";
                 assert!(
                     game.res.recipes().cooking_experience(recipe) > 0.0,
@@ -2125,33 +2444,38 @@ mod item_part_tests {
                         }),
                     );
                 };
+
+                // Local direct clear (`Set(None)`): empties output with NO XP and preserves recipes_used.
                 seed_furnace(game, pos);
                 game.orbs.clear();
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
-                    set_carried: Some(Some(("minecraft:stick", 5))),
+                    set_carried: Some(Some(("minecraft:stick", 2))),
                     set_clicked: Some(None),
                     ..PartScript::default()
                 });
                 assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
                 assert_eq!(
                     game.carried.as_ref().map(|s| (&*s.item, s.count)),
-                    Some(("minecraft:stick", 5))
+                    Some(("minecraft:stick", 2))
                 );
                 assert!(game.world.block_entities.get(&pos).unwrap().slots()[2].is_none());
-                assert_eq!(
-                    game.orbs.iter().map(|o| o.points()).sum::<u32>(),
-                    7,
-                    "local furnace full take must pop smelting XP orbs (10 * 0.7 = 7)"
+                assert!(
+                    game.orbs.is_empty(),
+                    "local furnace direct clear Set(None) must spawn no XP orbs"
                 );
                 let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
                     panic!("expected furnace");
                 };
-                assert!(f.recipes_used.is_empty());
+                assert_eq!(
+                    f.recipes_used.get(recipe),
+                    Some(&10),
+                    "local furnace direct clear Set(None) must preserve recipes_used"
+                );
 
-                // Local partial take (4 -> 2) runs `remove` + `on_take` and pops XP too.
+                // Local direct count reduction (`Set(Some(iron_ingot x2))`): NO XP and preserves recipes_used.
                 seed_furnace(game, pos);
                 game.orbs.clear();
                 game.carried = Some(ItemStack::new("minecraft:stick", 1));
@@ -2169,22 +2493,110 @@ mod item_part_tests {
                         .map(|s| (&*s.item, s.count)),
                     Some(("minecraft:iron_ingot", 2))
                 );
+                assert!(
+                    game.orbs.is_empty(),
+                    "local furnace direct Set(Some) must spawn no XP orbs"
+                );
+                let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
+                    panic!("expected furnace");
+                };
+                assert_eq!(f.recipes_used.get(recipe), Some(&10));
+
+                // Local explicit full take (`Take(4)`): runs `safe_take` + `on_take`, spawns XP & clears recipes_used.
+                seed_furnace(game, pos);
+                game.orbs.clear();
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:stick", 5))),
+                    take_clicked: Some(4),
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert_eq!(
+                    game.carried.as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:stick", 5))
+                );
+                assert!(game.world.block_entities.get(&pos).unwrap().slots()[2].is_none());
                 assert_eq!(
                     game.orbs.iter().map(|o| o.points()).sum::<u32>(),
                     7,
-                    "local furnace partial take must pop smelting XP orbs"
+                    "local furnace explicit Take(4) must pop smelting XP orbs (10 * 0.7 = 7)"
                 );
                 let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
                     panic!("expected furnace");
                 };
                 assert!(f.recipes_used.is_empty());
+
+                // Local explicit partial take (`Take(2)`): runs `remove` + `on_take`, spawns XP & clears recipes_used.
+                seed_furnace(game, pos);
+                game.orbs.clear();
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:stick", 3))),
+                    take_clicked: Some(2),
+                    ..PartScript::default()
+                });
+                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[2]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:iron_ingot", 2))
+                );
+                assert_eq!(
+                    game.orbs.iter().map(|o| o.points()).sum::<u32>(),
+                    7,
+                    "local furnace explicit Take(2) must pop smelting XP orbs"
+                );
+                let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
+                    panic!("expected furnace");
+                };
+                assert!(f.recipes_used.is_empty());
+
+                // Invalid Part takes (`Take(0)`, `Take(5)` > 4) refuse and roll back.
+                for script in [
+                    PartScript {
+                        cancel_carried: true,
+                        handled: true,
+                        take_clicked: Some(0),
+                        write_scoreboard: true,
+                        ..PartScript::default()
+                    },
+                    PartScript {
+                        cancel_carried: true,
+                        handled: true,
+                        take_clicked: Some(5),
+                        write_scoreboard: true,
+                        ..PartScript::default()
+                    },
+                ] {
+                    seed_furnace(game, pos);
+                    game.orbs.clear();
+                    game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                    set_part_script(script);
+                    assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                    assert_eq!(
+                        game.world.block_entities.get(&pos).unwrap().slots()[2]
+                            .as_ref()
+                            .map(|s| (&*s.item, s.count)),
+                        Some(("minecraft:iron_ingot", 4))
+                    );
+                    assert!(game.orbs.is_empty());
+                    assert!(game.score.board.objective("part_pickup").is_none());
+                }
                 game.container = None;
             });
         });
 
-        // 3b. LAN guest ItemPart taking from a Furnace output slot runs the exact same shared
-        //     outcome/take path as local menus: XP orbs spawn at the guest, `recipes_used` clears,
-        //     `item_smelted` and `furnace_extract` fire on commit, and outer abort rolls all back.
+        // 3b. LAN guest ItemPart on a Furnace output slot preserves the exact same direct-edit vs
+        //     explicit-take distinction: `Set(None)` / `Set(Some)` produce NO XP, preserve
+        //     `recipes_used`, and fire NO `item_smelted` / `furnace_extract`, while `Take(4)` and
+        //     `Take(2)` spawn XP orbs, clear `recipes_used`, fire both hooks, and roll back cleanly
+        //     on outer abort.
         with_part_and_furnace_hooks_mod(|| {
             use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
             with_guests(|game| {
@@ -2239,7 +2651,8 @@ mod item_part_tests {
                     carried: None,
                 });
 
-                // LAN guest full take (4 -> None).
+                // LAN guest direct clear (`Set(None)`): clears output with NO XP, preserves
+                // `recipes_used`, and fires NO `item_smelted` or `furnace_extract`.
                 game.orbs.clear();
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                     guest.carried = Some(ItemStack::new("minecraft:stick", 1));
@@ -2247,7 +2660,7 @@ mod item_part_tests {
                 set_part_script(PartScript {
                     cancel_carried: true,
                     handled: true,
-                    set_carried: Some(Some(("minecraft:stick", 5))),
+                    set_carried: Some(Some(("minecraft:stick", 2))),
                     set_clicked: Some(None),
                     ..PartScript::default()
                 });
@@ -2262,29 +2675,30 @@ mod item_part_tests {
                         .carried
                         .as_ref()
                         .map(|s| (&*s.item, s.count)),
-                    Some(("minecraft:stick", 5))
+                    Some(("minecraft:stick", 2))
                 );
-                assert_eq!(
-                    game.orbs.iter().map(|o| o.points()).sum::<u32>(),
-                    7,
-                    "LAN guest furnace full take must spawn smelting XP orbs"
+                assert!(
+                    game.orbs.is_empty(),
+                    "LAN guest direct clear Set(None) must spawn no XP orbs"
                 );
                 let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
                     panic!("expected furnace");
                 };
-                assert!(f.recipes_used.is_empty());
                 assert_eq!(
-                    smelted_events(),
-                    [(Some(("minecraft:iron_ingot".to_owned(), 4)), 4)],
-                    "LAN guest full take must run FurnaceResultSlot.onTake -> item_smelted"
+                    f.recipes_used.get(recipe),
+                    Some(&10),
+                    "LAN guest direct clear Set(None) must preserve recipes_used"
                 );
-                assert_eq!(
-                    extracted_events(),
-                    [("minecraft:iron_ingot".to_owned(), 4)],
-                    "LAN guest full take must fire furnace_extract"
+                assert!(
+                    smelted_events().is_empty(),
+                    "LAN guest direct clear Set(None) must not fire item_smelted"
+                );
+                assert!(
+                    extracted_events().is_empty(),
+                    "LAN guest direct clear Set(None) must not fire furnace_extract"
                 );
 
-                // LAN guest partial take (4 -> 2).
+                // LAN guest direct count reduction (`Set(Some(iron_ingot x2))`): NO XP, NO hooks.
                 seed_furnace(game);
                 game.orbs.clear();
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
@@ -2304,24 +2718,15 @@ mod item_part_tests {
                         .map(|s| (&*s.item, s.count)),
                     Some(("minecraft:iron_ingot", 2))
                 );
-                assert_eq!(
-                    game.orbs.iter().map(|o| o.points()).sum::<u32>(),
-                    7,
-                    "LAN guest furnace partial take must spawn smelting XP orbs"
-                );
+                assert!(game.orbs.is_empty());
                 let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
                     panic!("expected furnace");
                 };
-                assert!(f.recipes_used.is_empty());
-                assert_eq!(
-                    smelted_events(),
-                    [(Some(("minecraft:iron_ingot".to_owned(), 2)), 2)],
-                    "LAN guest partial take must run remove + on_take -> item_smelted"
-                );
-                assert_eq!(extracted_events(), [("minecraft:iron_ingot".to_owned(), 2)]);
+                assert_eq!(f.recipes_used.get(recipe), Some(&10));
+                assert!(smelted_events().is_empty());
+                assert!(extracted_events().is_empty());
 
-                // Outer transaction abort on LAN guest furnace take restores furnace output and
-                // recipes_used without popping XP orbs or firing post-commit furnace hooks.
+                // LAN guest explicit full take (`Take(4)`).
                 seed_furnace(game);
                 game.orbs.clear();
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
@@ -2331,7 +2736,90 @@ mod item_part_tests {
                     cancel_carried: true,
                     handled: true,
                     set_carried: Some(Some(("minecraft:stick", 5))),
-                    set_clicked: Some(None),
+                    take_clicked: Some(4),
+                    ..PartScript::default()
+                });
+                game.lan_guest_packet(12, click_output.clone());
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                assert!(game.world.block_entities.get(&pos).unwrap().slots()[2].is_none());
+                assert_eq!(
+                    game.lan.as_ref().unwrap().hub.guests[0]
+                        .carried
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:stick", 5))
+                );
+                assert_eq!(
+                    game.orbs.iter().map(|o| o.points()).sum::<u32>(),
+                    7,
+                    "LAN guest furnace explicit Take(4) must spawn smelting XP orbs"
+                );
+                let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
+                    panic!("expected furnace");
+                };
+                assert!(f.recipes_used.is_empty());
+                assert_eq!(
+                    smelted_events(),
+                    [(Some(("minecraft:iron_ingot".to_owned(), 4)), 4)],
+                    "LAN guest explicit Take(4) must run FurnaceResultSlot.onTake -> item_smelted"
+                );
+                assert_eq!(
+                    extracted_events(),
+                    [("minecraft:iron_ingot".to_owned(), 4)],
+                    "LAN guest explicit Take(4) must fire furnace_extract"
+                );
+
+                // LAN guest explicit partial take (`Take(2)`).
+                seed_furnace(game);
+                game.orbs.clear();
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                });
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:stick", 3))),
+                    take_clicked: Some(2),
+                    ..PartScript::default()
+                });
+                game.lan_guest_packet(12, click_output.clone());
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[2]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:iron_ingot", 2))
+                );
+                assert_eq!(
+                    game.orbs.iter().map(|o| o.points()).sum::<u32>(),
+                    7,
+                    "LAN guest furnace explicit Take(2) must spawn smelting XP orbs"
+                );
+                let BlockEntity::Furnace(f) = game.world.block_entities.get(&pos).unwrap() else {
+                    panic!("expected furnace");
+                };
+                assert!(f.recipes_used.is_empty());
+                assert_eq!(
+                    smelted_events(),
+                    [(Some(("minecraft:iron_ingot".to_owned(), 2)), 2)],
+                    "LAN guest explicit Take(2) must run remove + on_take -> item_smelted"
+                );
+                assert_eq!(extracted_events(), [("minecraft:iron_ingot".to_owned(), 2)]);
+
+                // Outer transaction abort on LAN guest furnace `Take(4)` restores furnace output
+                // and recipes_used without popping XP orbs or firing post-commit furnace hooks.
+                seed_furnace(game);
+                game.orbs.clear();
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                });
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:stick", 5))),
+                    take_clicked: Some(4),
                     ..PartScript::default()
                 });
                 let seal = game.transaction_open();
@@ -2355,8 +2843,9 @@ mod item_part_tests {
             });
         });
 
-        // 4. Documented global listener contract is preserved: setting a stack without canceling
-        //    or directly editing a Furnace output slot is STILL refused for Hooks::item_stacked_on_other.
+        // 4. Documented global listener contract is preserved: setting a stack without canceling,
+        //    directly editing a Furnace output slot, or returning `ClickedStackResult::Take` are
+        //    ALL refused for Hooks::item_stacked_on_other.
         with_mod(|| {
             with_local(|game| {
                 let pos = (2, 64, 2);
@@ -2379,21 +2868,51 @@ mod item_part_tests {
                 );
                 game.container = Some(pos);
                 game.carried = Some(ItemStack::new("minecraft:stone", 1));
+                for bad in [
+                    Script {
+                        cancel: true,
+                        handled: true,
+                        set_clicked: Some(Some(("minecraft:diamond", 2))),
+                        ..Script::default()
+                    },
+                    Script {
+                        cancel: true,
+                        handled: true,
+                        set_clicked: Some(None),
+                        ..Script::default()
+                    },
+                    Script {
+                        cancel: true,
+                        handled: true,
+                        take_clicked: Some(4),
+                        ..Script::default()
+                    },
+                ] {
+                    script(bad);
+                    assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                    assert_eq!(
+                        game.world.block_entities.get(&pos).unwrap().slots()[2]
+                            .as_ref()
+                            .map(|s| (&*s.item, s.count)),
+                        Some(("minecraft:flint", 4)),
+                        "global listener output-slot write/take must remain refused"
+                    );
+                }
+                game.container = None;
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 4));
+                game.carried = Some(ItemStack::new("minecraft:stone", 1));
                 script(Script {
                     cancel: true,
                     handled: true,
-                    set_clicked: Some(Some(("minecraft:diamond", 2))),
+                    take_clicked: Some(2),
                     ..Script::default()
                 });
-                assert!(game.menu_ops(&[(Some(302), 0, Input::Pickup)]));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
                 assert_eq!(
-                    game.world.block_entities.get(&pos).unwrap().slots()[2]
-                        .as_ref()
-                        .map(|s| (&*s.item, s.count)),
+                    game.inventory[9].as_ref().map(|s| (&*s.item, s.count)),
                     Some(("minecraft:flint", 4)),
-                    "global listener output-slot write must remain refused"
+                    "global listener must refuse ClickedStackResult::Take even on ordinary slots"
                 );
-                game.container = None;
             });
         });
     }
