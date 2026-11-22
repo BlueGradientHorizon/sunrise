@@ -1242,6 +1242,17 @@ pub enum ReadError {
     Other(String),
 }
 
+impl ReadError {
+    fn from_io(name: &str, error: io::Error) -> Self {
+        let detail = format!("{name}: {error}");
+        if error.kind() == io::ErrorKind::NotFound {
+            Self::NotFound(detail)
+        } else {
+            Self::Other(detail)
+        }
+    }
+}
+
 impl std::fmt::Display for ReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1270,44 +1281,40 @@ impl FileReader<'_> {
     /// One content file's bytes.
     pub fn read(&self, name: &str) -> Result<Vec<u8>, ReadError> {
         check_path(name).map_err(ReadError::Other)?;
-        let mut archive;
-        let reader: Box<dyn Read + '_> = match self.0 {
-            FileLocation::Dir(root) => {
-                Box::new(std::fs::File::open(root.join(name)).map_err(|e| {
-                    let detail = format!("{name}: {e}");
-                    if e.kind() == io::ErrorKind::NotFound {
-                        ReadError::NotFound(detail)
-                    } else {
-                        ReadError::Other(detail)
-                    }
-                })?)
+        let read = |reader: &mut dyn Read| {
+            let mut out = Vec::new();
+            reader
+                .take(MAX_FILE + 1)
+                .read_to_end(&mut out)
+                .map_err(|error| ReadError::from_io(name, error))?;
+            if out.len() as u64 > MAX_FILE {
+                return Err(ReadError::Other(format!(
+                    "{name} is over {} MiB",
+                    MAX_FILE >> 20
+                )));
             }
+            Ok(out)
+        };
+        match self.0 {
+            FileLocation::Dir(root) => read(
+                &mut std::fs::File::open(root.join(name))
+                    .map_err(|error| ReadError::from_io(name, error))?,
+            ),
             FileLocation::Zip(zip) => {
-                archive = zip
+                let mut archive = zip
                     .lock()
                     .map_err(|e| ReadError::Other(format!("{name}: {e}")))?;
-                Box::new(archive.by_name(name).map_err(|e| {
+                let mut entry = archive.by_name(name).map_err(|e| {
                     let detail = format!("{name}: {e}");
                     if matches!(e, zip::result::ZipError::FileNotFound) {
                         ReadError::NotFound(detail)
                     } else {
                         ReadError::Other(detail)
                     }
-                })?)
+                })?;
+                read(&mut entry)
             }
-        };
-        let mut out = Vec::new();
-        reader
-            .take(MAX_FILE + 1)
-            .read_to_end(&mut out)
-            .map_err(|e| ReadError::Other(format!("{name}: {e}")))?;
-        if out.len() as u64 > MAX_FILE {
-            return Err(ReadError::Other(format!(
-                "{name} is over {} MiB",
-                MAX_FILE >> 20
-            )));
         }
-        Ok(out)
     }
     /// A content file's path on disk, checked as [`read`](Self::read) checks it (the name,
     /// the size), for a caller that copies it without reading it; `None` in an archive.

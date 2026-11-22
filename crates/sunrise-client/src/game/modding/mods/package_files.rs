@@ -261,6 +261,34 @@ mod tests {
     }
 
     #[test]
+    fn a_registration_handle_keeps_the_admitted_archive_after_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("demo.smod");
+        let replacement = dir.path().join("replacement.smod");
+        let manifest = "id='demo'\nname='Demo'\nversion='1.0'\napi='0.2'\nside='both'\n";
+        let archive = |bytes: &[u8]| {
+            sunrise_mod_package::Package::write_files(manifest, &[(SCRIPT, bytes)]).unwrap()
+        };
+        fs::write(&path, archive(b"original")).unwrap();
+        let mut mods = ModsState {
+            dev: vec![path.clone()],
+            ..Default::default()
+        };
+        mods.select(dir.path(), &Default::default());
+        validate_startup_packages(&mods).unwrap();
+        let admission = mods
+            .admit_startup_packages(&dir.path().join("jars"))
+            .unwrap();
+        with_registration(&admission, |cx| {
+            let files = cx.package_files("demo").unwrap();
+            assert_eq!(files.list("").collect::<Vec<_>>(), [SCRIPT]);
+            fs::write(&replacement, archive(b"replacement")).unwrap();
+            fs::rename(&replacement, &path).unwrap();
+            assert_eq!(files.read(SCRIPT).unwrap(), b"original");
+        });
+    }
+
+    #[test]
     fn registration_and_declaration_loading_share_the_admission_index_and_read_loose_bytes_live() {
         let dir = tempfile::tempdir().unwrap();
         let demo = folder(dir.path(), "demo", "");
