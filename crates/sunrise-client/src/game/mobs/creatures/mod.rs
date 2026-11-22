@@ -6966,9 +6966,9 @@ impl Game<'_> {
             false
         };
         let cannot = self
-            .res
-            .mob_data()
-            .entity_has("minecraft:cannot_be_age_locked", &m.kind.id);
+            .items()
+            .entity_type_tags
+            .contains("minecraft:cannot_be_age_locked", &m.kind.id);
         sunrise_client::mobs::ai::can_use_golden_dandelion(
             item,
             baby,

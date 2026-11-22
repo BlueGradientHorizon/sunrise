@@ -160,6 +160,9 @@ impl MapRegistries for WorldRegistries<'_> {
             "minecraft:item" => members(&self.items.item_tags),
             "minecraft:block" => members(&self.items.block_tags),
             "minecraft:fluid" => members(&self.items.fluid_tags),
+            sunrise_client::items::EntityTypeTags::REGISTRY => {
+                members(self.items.entity_type_tags.members())
+            }
             _ => {
                 if let Some(tags) = self
                     .bound_tags

@@ -262,8 +262,7 @@ fn block_space<'w, 'r>(m: &Mob, w: &'w MobWorld<'r>) -> BlockSpace<'w, 'r> {
         facts: w.facts,
         binding: w.collision,
         powder_walkable: w
-            .data
-            .entity_has("minecraft:powder_snow_walkable_mobs", &m.kind.id),
+            .entity_tag_bit(&m.kind, crate::items::EntityTypeTags::POWDER_SNOW_WALKABLE),
     }
 }
 fn entities_clear(m: &Mob, w: &MobWorld, bounds: Aabb) -> bool {

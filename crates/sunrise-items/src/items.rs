@@ -1,11 +1,14 @@
 //! Items from vanilla's default-component reports, block<->item mapping,
 //! tool mining rules and block loot tables (`LootTable`/`LootPool` semantics
 //! for the condition, entry and modifier types used by block drops).
+mod entity_type_tags;
 #[path = "ingredient_defaults.rs"]
-mod ingredient_defaults;
+pub(crate) mod ingredient_defaults;
+pub use entity_type_tags::EntityTypeTags;
 #[path = "loot_query.rs"]
 mod loot_query;
 use crate::{Result, blocks::BlockFacts};
+pub use ingredient_defaults::LoadEntityTags;
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
@@ -370,8 +373,6 @@ pub struct ItemInfo {
     /// `equippable.damage_on_hurt`: the item wears when its wearer is hurt
     /// (false for the elytra).
     pub equip_damage_on_hurt: bool,
-    /// `equippable.allowed_entities` resolved to entity type ids; None allows all.
-    pub equip_allowed: Option<HashSet<String>>,
     pub equip_sound: Option<String>,
     /// `jukebox_playable`: the jukebox song it plays.
     pub jukebox_song: Option<String>,
@@ -836,6 +837,7 @@ pub struct Items {
     pub block_tag_order: HashMap<String, Vec<String>>,
     /// Fluid tags in the same order.
     pub fluid_tag_order: HashMap<String, Vec<String>>,
+    pub entity_type_tags: Arc<EntityTypeTags>,
     loot: Arc<sunrise_world::loot::LootTables>,
     loot_bindings: sunrise_world::loot::types::Bindings,
     loot_modifiers: Arc<HashMap<String, Value>>,
@@ -870,6 +872,19 @@ impl Items {
         }
         items
     }
+
+    /// Replace the generation seen by both entity queries and enchantment effects.
+    pub fn set_entity_type_tags(&mut self, tags: EntityTypeTags) {
+        let ids = Arc::make_mut(&mut self.component_registry)
+            .by_registry
+            .entry(EntityTypeTags::REGISTRY.into())
+            .or_default();
+        ids.tags = tags.ordered().keys().cloned().collect();
+        ids.tags.sort();
+        Arc::make_mut(&mut self.enchantments).entity_tags = tags.members().clone();
+        self.entity_type_tags = Arc::new(tags);
+    }
+
     /// The states' names [`Self::block_tag_flags`] was built against.
     pub fn block_state_names(&self) -> Arc<[Arc<str>]> {
         Arc::clone(&self.block_tag_flags.names)
@@ -1120,7 +1135,14 @@ impl Items {
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
     ) -> Result<Self> {
-        let mut items = Self::load_registry(root, registry, facts, overlay, defaults)?;
+        let mut items = Self::load_registry(
+            root,
+            registry,
+            facts,
+            overlay,
+            defaults,
+            LoadEntityTags::Prepared,
+        )?;
         items.load_songs(root, overlay);
         items.load_resource_registries(root, overlay, defaults)?;
         items.load_table_loot(root, overlay, defaults)?;
@@ -1129,12 +1151,14 @@ impl Items {
 
     /// Load the item registry and tags before admitting dependent registries.
     /// The owning load must then install songs, instruments, enchantments and loot.
+    /// When the game already owns mob types, use their frozen registry order.
     pub fn load_registry(
         root: &Path,
         registry: &BlockRegistry,
         facts: &BlockFacts,
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
+        entity_tags: LoadEntityTags<'_>,
     ) -> Result<Self> {
         let mut block_for_item: HashMap<&str, BlockStateId> = HashMap::new();
         for (i, s) in facts.states.iter().enumerate() {
@@ -1153,10 +1177,15 @@ impl Items {
                 block_for_item.entry(item).or_insert(state);
             }
         }
-        let mut items =
-            Self::load_with(root, &block_for_item, &bindings, overlay, defaults, |id| {
-                registry.default_state(id).is_some()
-            })?;
+        let mut items = Self::load_with(
+            root,
+            &block_for_item,
+            &bindings,
+            overlay,
+            defaults,
+            entity_tags,
+            |id| registry.default_state(id).is_some(),
+        )?;
         items.block_items = Arc::new(
             facts
                 .states
@@ -1227,10 +1256,15 @@ impl Items {
     ) -> Result<Self> {
         let block_items = ingredient_defaults::block_items(root)?;
         let bindings = BlockBindings::load(root)?;
-        let mut items =
-            Self::load_with(root, &HashMap::new(), &bindings, overlay, defaults, |id| {
-                block_items.contains_key(id)
-            })?;
+        let mut items = Self::load_with(
+            root,
+            &HashMap::new(),
+            &bindings,
+            overlay,
+            defaults,
+            LoadEntityTags::Prepared,
+            |id| block_items.contains_key(id),
+        )?;
         items.load_songs(root, overlay);
         load_registries(&mut items)?;
         items.block_items = Arc::new(block_items);
@@ -1243,9 +1277,12 @@ impl Items {
         bindings: &BlockBindings,
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
+        entity_tags: LoadEntityTags<'_>,
         contains_block: impl Fn(&str) -> bool,
     ) -> Result<Self> {
-        let entity_tags = load_tags(root, "entity_type", overlay)?;
+        let (component_registry, entity_type_tags) =
+            ingredient_defaults::component_tables(root, overlay, entity_tags)?;
+        let entity_tags = entity_type_tags.members();
         let by_item = |name: &str| -> Result<HashMap<String, String>> {
             let path = root.join(name);
             match fs::read(&path) {
@@ -1375,16 +1412,6 @@ impl Items {
                     equip_damage_on_hurt: c["minecraft:equippable"]["damage_on_hurt"]
                         .as_bool()
                         .unwrap_or(true),
-                    equip_allowed: match &c["minecraft:equippable"]["allowed_entities"] {
-                        Value::String(spec) => Some(entity_spec(&entity_tags, spec)),
-                        Value::Array(list) => Some(
-                            list.iter()
-                                .filter_map(Value::as_str)
-                                .flat_map(|spec| entity_spec(&entity_tags, spec))
-                                .collect(),
-                        ),
-                        _ => None,
-                    },
                     equip_sound: c["minecraft:equippable"]["equip_sound"]
                         .as_str()
                         .map(str::to_owned),
@@ -1474,7 +1501,7 @@ impl Items {
                     attack_speed: modifier("minecraft:attack_speed"),
                 },
             );
-            if let Some(parsed) = worn_mob_visibility(c, &entity_tags) {
+            if let Some(parsed) = worn_mob_visibility(c, entity_tags) {
                 mob_visibility.insert(id.clone(), parsed);
             }
             order.push(id);
@@ -1484,7 +1511,8 @@ impl Items {
             items,
             block_items: Default::default(),
             suspicious_stew_effects: Arc::new(bindings.stew_effects_by_item()),
-            component_registry: ingredient_defaults::component_registry(root, &entity_tags)?,
+            component_registry,
+            entity_type_tags,
             mob_visibility,
             order,
             registry_order,
@@ -1528,7 +1556,7 @@ impl Items {
         defaults: &ItemDefaults,
     ) -> Result<()> {
         self.install_registries(
-            crate::enchant::Enchantments::load_with(root, overlay, defaults)?,
+            crate::enchant::Enchantments::load_definitions(root, overlay, defaults)?,
             load_instruments(root, overlay),
         );
         Ok(())
@@ -1537,9 +1565,10 @@ impl Items {
     /// Install the dependent registries and the component decoder's matching ids.
     pub fn install_registries(
         &mut self,
-        enchantments: crate::enchant::Enchantments,
+        mut enchantments: crate::enchant::Enchantments,
         instruments: HashMap<String, Instrument>,
     ) {
+        enchantments.entity_tags = self.entity_type_tags.members().clone();
         Arc::make_mut(&mut self.component_registry).enchantments = enchantments
             .list
             .iter()
@@ -1644,11 +1673,12 @@ impl Items {
     }
 
     /// Ordered bindings for data loaders, keyed by the vanilla registry directory.
-    pub fn ordered_tags(&self) -> [(&'static str, &sunrise_world::loot::RegistryTags); 3] {
+    pub fn ordered_tags(&self) -> [(&'static str, &sunrise_world::loot::RegistryTags); 4] {
         [
             ("block", &self.block_tag_order),
             ("item", &self.item_tag_order),
             ("fluid", &self.fluid_tag_order),
+            ("entity_type", self.entity_type_tags.ordered()),
         ]
     }
 

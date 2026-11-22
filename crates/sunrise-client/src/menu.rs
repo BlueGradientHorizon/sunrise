@@ -637,13 +637,7 @@ fn vanilla_may_place_for_role(
         Role::Plain | Role::CreativeDisplay | Role::Mod | Role::EnchantItem => true,
         Role::Armor(eq) => Menu::armor_may_place_with(env, can_equip, eq, stack),
         Role::MountEquip(slot) => mount.is_some_and(|mount| {
-            crate::mobs::equip::equippable_in_slot(
-                env.items,
-                &env.enchantments.entity_tags,
-                stack,
-                slot,
-                mount,
-            )
+            crate::mobs::equip::equippable_in_slot(env.items, stack, slot, mount)
         }),
         Role::Shulker => fits_inside_container_items(env.loop_context, stack),
         Role::Fuel => Menu::is_fuel(env, stack) || Menu::is_bucket(stack),

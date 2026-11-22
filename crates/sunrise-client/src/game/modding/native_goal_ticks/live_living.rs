@@ -10,7 +10,10 @@ use mod_api::{
     ItemStackView, LivingRef, Pose,
 };
 use std::ops::ControlFlow;
-use sunrise_client::mobs::{finalize, villager};
+use sunrise_client::{
+    items::EntityTypeTags,
+    mobs::{finalize, villager},
+};
 
 impl GoalCx<'_, '_> {
     fn live_living_mob(&self, living: LivingRef) -> Option<&Mob> {
@@ -136,7 +139,11 @@ impl GoalCx<'_, '_> {
     }
 
     pub(super) fn r_living_can_breathe_underwater(&self, living: LivingRef) -> Option<bool> {
-        Some(self.live_living_mob(living)?.kind.flags.breathes_water)
+        let mob = self.live_living_mob(living)?;
+        Some(
+            self.w
+                .entity_tag_bit(&mob.kind, EntityTypeTags::CAN_BREATHE_UNDER_WATER),
+        )
     }
     pub(super) fn r_living_has_line_of_sight(
         &self,

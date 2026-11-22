@@ -2,6 +2,7 @@
 //! resources' background load, and the world's own content tables.
 use super::*;
 use std::sync::atomic::{AtomicU64, Ordering};
+use sunrise_client::items::{EntityTypeTags, LoadEntityTags};
 
 static BIOME_KEYS_SESSION: AtomicU64 = AtomicU64::new(1);
 
@@ -12,8 +13,11 @@ fn next_biome_keys_session() -> u64 {
 impl Game<'_> {
     /// The server's data-pack enchantments, or the local world's registry.
     pub(super) fn item_enchantments(&self) -> &Arc<sunrise_client::enchant::Enchantments> {
-        match self.remote.as_ref().and_then(|r| r.enchantments.as_ref()) {
-            Some(e) => e,
+        match self.remote.as_ref() {
+            Some(remote) => remote
+                .enchantments
+                .as_ref()
+                .unwrap_or(&self.items().enchantments),
             None => &self.stations().enchantments,
         }
     }
@@ -280,6 +284,11 @@ impl Game<'_> {
             self.res.facts(),
             &tag_files,
             self.res.item_defaults(),
+            if reload {
+                LoadEntityTags::Reload(&self.items().entity_type_tags)
+            } else {
+                LoadEntityTags::Frozen(self.res.items().entity_type_tags.ids())
+            },
         )?;
         if reload {
             items.retain_unbound_tags(self.items());
@@ -321,11 +330,15 @@ impl Game<'_> {
                 .map(|state| state.name.to_string())
                 .collect(),
         );
+        view.ids.insert(
+            EntityTypeTags::REGISTRY.into(),
+            items.entity_type_tags.ids().iter().cloned().collect(),
+        );
         let mut pack_tags = HashMap::new();
         let gameplay_tags = WorldTables::PACK_TAG_REGISTRIES
             .into_iter()
             .chain(sunrise_client::neoforge_mob_maps::MAPS.map(|definition| definition.directory))
-            .filter(|directory| *directory != "item")
+            .filter(|directory| !matches!(*directory, "item" | "entity_type" | "damage_type"))
             .collect::<std::collections::BTreeSet<_>>();
         let mut bind_tags = |registry: &str,
                              view: &mut load_conditions::RegistryView|
@@ -357,7 +370,7 @@ impl Game<'_> {
             }
             Ok(())
         };
-        // Item, block and fluid tags already came from Items' owning loader.
+        // Item, block, fluid and entity type tags already came from Items' loader.
         let static_registries = builtin
             .registries
             .keys()
@@ -654,25 +667,20 @@ impl Game<'_> {
         }
         let builtin = neoforge_mob_maps::load(
             &overlay,
-            |directory| {
-                if directory == "item" {
-                    Some(&items.item_tags)
-                } else {
-                    pack_tags.get(directory)
-                }
+            |directory| match directory {
+                "item" => Some(&items.item_tags),
+                "entity_type" => Some(items.entity_type_tags.members()),
+                _ => pack_tags.get(directory),
             },
             |registry, id| match registry {
                 "minecraft:item" => items.items.contains_key(id),
                 "minecraft:villager_profession" => stations.professions.resolve(id).is_some(),
                 "minecraft:worldgen/biome" => biomes.table.contains(id),
-                "minecraft:entity_type" => {
-                    self.res.mob_types().contains_key(id)
-                        || items
-                            .component_registry
-                            .ids(registry)
-                            .binary_search_by(|known| known.as_str().cmp(id))
-                            .is_ok()
-                }
+                EntityTypeTags::REGISTRY => items
+                    .entity_type_tags
+                    .ids()
+                    .binary_search_by(|known| known.as_str().cmp(id))
+                    .is_ok(),
                 _ => items
                     .component_registry
                     .ids(registry)
@@ -877,10 +885,7 @@ impl Game<'_> {
 
 impl Game<'_> {
     pub(super) fn active_enchantment_definitions(&self) -> &sunrise_client::enchant::Enchantments {
-        match self.remote.as_ref().and_then(|r| r.enchantments.as_ref()) {
-            Some(e) => e,
-            None => &self.stations().enchantments,
-        }
+        self.item_enchantments()
     }
     /// Build and publish one server snapshot for this world load or reload.
     pub(super) fn load_server_loot(&mut self) {

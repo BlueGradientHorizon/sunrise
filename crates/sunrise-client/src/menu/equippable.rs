@@ -50,8 +50,7 @@ impl Menu {
         eq: usize,
         stack: &ItemStack,
     ) -> bool {
-        let tags = &env.enchantments.entity_tags;
-        let data = equippable_in_slot(env.items, tags, stack, ARMOR_SLOTS[eq], "minecraft:player");
+        let data = equippable_in_slot(env.items, stack, ARMOR_SLOTS[eq], "minecraft:player");
         match (can_equip, env.player_entity_id) {
             (Some(parts), Some(player)) if parts.listens(&stack.item) => parts.can_equip(
                 stack,

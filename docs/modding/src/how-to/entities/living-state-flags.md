@@ -63,6 +63,10 @@ deepest first, with water before lava on a tie. No contacts is a successful empt
 A retired handle returns `EntityReadError::Stale`; a parked or otherwise unreadable body
 returns `EntityReadError::Unavailable` without calling the visitor.
 
+On the server, `LivingRef::can_breathe_underwater(host)` reads whether the mob's type is currently in
+`minecraft:can_breathe_under_water`. It does not predict drowning: it ignores effects, species-specific
+breathing overrides and invulnerability.
+
 `EntityRef::is_swimming` reads the swimming flag, not the player's current pose.
 [Swimming eligibility](entity-hooks.md#swimming-eligibility) can change entry on
 both sides without changing either of the fluid reads above or the conditions

@@ -1887,7 +1887,7 @@ sunrise-client game::native_recipes::tests::recipe_for_refuses_mod_owned_types_i
 sunrise-client game::native_registry_ids_tests::a_client_answers_its_own_connections_registries lib daily resources
 sunrise-client game::native_registry_ids_tests::a_server_answers_vanilla_and_mod_ids lib daily resources
 sunrise-client game::native_render_pair_tests::a_canceled_entity_draws_no_name_tag lib daily resources
-sunrise-client game::native_render_pair_tests::a_canceled_living_pre_skips_the_model_and_the_post_hook lib daily resources
+sunrise-client game::native_render_pair_tests::a_canceled_living_pre_skips_the_model_and_the_post_hook lib daily child-process
 sunrise-client game::native_render_pair_tests::a_culled_entity_is_asked_neither_hook lib daily resources
 sunrise-client game::native_render_pair_tests::a_spectator_draws_no_layers_but_gets_its_post_hooks lib daily resources
 sunrise-client game::native_render_pair_tests::the_player_pair_wraps_the_living_pair lib daily resources
