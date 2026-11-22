@@ -33,8 +33,11 @@ participate in resource reloads.
 
 A native bundle accepts the manifest, optional icon, root `Cargo.toml`, `Cargo.lock` and `build.rs`,
 `.rs` and `.toml` files under `src/`, `assets/` and `data/`, a `runtime/` folder listed in `[runtime]`, and root text files (`README*`, `LICENSE*`,
-`LICENCE*`, `COPYING*`, `NOTICE*`). Source and resource size limits are checked separately;
-any other file causes the archive to be refused ([the manifest](../../reference/manifest.md)).
+`LICENCE*`, `COPYING*`, `NOTICE*`). Source and resource size limits are checked separately.
+Packing a project folder (`cargo sunrise-mod build`) takes only these files and leaves every other file out, so a
+`module.toml`, a `.rs` file outside `src/`, `.cargo/config.toml` or `rust-toolchain.toml` in the folder is never
+packaged or honoured by the build. An archive that carries any other file is refused
+([the manifest](../../reference/manifest.md)).
 
 `runtime/` holds the data files your code opens beside itself: each is listed in `[runtime]` with its SHA-512, any
 file type, up to 64 MiB a file, 256 MiB and 256 files in all. They are not pack data and no reload touches them;
