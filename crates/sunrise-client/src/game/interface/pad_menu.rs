@@ -266,6 +266,11 @@ fn beside(rect: Rect, targets: &[Rect]) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
+/// The controller's initial focus uses layout, independently of keyboard Tab order.
+fn first_controller_target(targets: impl Iterator<Item = Target>) -> Option<Target> {
+    targets.min_by_key(|t| (t.rect[1].round() as i32, t.rect[0].round() as i32))
+}
+
 /// Where letting go of A clicks: the armed button, if the focus is still on it. A row scrolled
 /// into view under A (`pad_reveal`) is found again a fraction of a pixel off.
 fn armed_click(armed: Option<Target>, focus: Option<Target>) -> Option<Target> {
@@ -340,12 +345,7 @@ impl Game<'_> {
             }
         }
         let warning = self.dialog_warning_icon();
-        let rest: Vec<Target> = targets
-            .iter()
-            .filter(|t| Some(t.rect) != warning)
-            .copied()
-            .collect();
-        key_focus::tab_step(&rest, None, true).map(|i| rest[i])
+        first_controller_target(targets.iter().copied().filter(|t| Some(t.rect) != warning))
     }
 
     pub(super) fn gui_batch(&self) -> Option<HudBatch> {
@@ -552,18 +552,7 @@ impl Game<'_> {
                 _ => {}
             }
         }
-        // Screen.setInitialFocus, as the keyboard's: the first control in tab
-        // order (Singleplayer on the title, the first option row), not
-        // whatever happened to register first.
-        key_focus::tab_step(targets, None, true)
-            .map(|i| targets[i])
-            .or_else(|| {
-                targets
-                    .iter()
-                    .find(|t| !matches!(t.kind, Kind::Tab(_)))
-                    .copied()
-            })
-            .or(targets.first().copied())
+        first_controller_target(targets.iter().copied()).or(targets.first().copied())
     }
 
     /// The pointer is over a slot or control.
