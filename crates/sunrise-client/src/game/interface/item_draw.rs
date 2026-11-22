@@ -1528,12 +1528,14 @@ mod tests {
     /// `items` atlas UV) and for an enchanted shield (`ENTITY_GLINT_TEXTURING` 0.5 +
     /// `shield_patterns` atlas UV).
     #[test]
+    #[ignore = "run by tools/test_glint_parity.py"]
     fn item_display_end_crystal_world_submit_uses_vanilla_glint_scale_and_atlas_uv_26_3() {
-        const WITNESS: &str = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../tools/witness/26.3/item_glint/witness.json"
-        ));
-        let witness: Value = serde_json::from_str(WITNESS).expect("valid 26.3 item_glint witness");
+        let witness_path = std::env::var("SUNRISE_ITEM_GLINT_WITNESS")
+            .expect("SUNRISE_ITEM_GLINT_WITNESS must be set (run via tools/test_glint_parity.py)");
+        let witness_text = std::fs::read_to_string(&witness_path)
+            .unwrap_or_else(|e| panic!("failed to read item glint witness {witness_path}: {e}"));
+        let witness: Value =
+            serde_json::from_str(&witness_text).expect("valid 26.3 item_glint witness");
         let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
