@@ -141,15 +141,17 @@ pub fn upgrade_compound(
         return Ok(tag);
     }
     let from = key(data_version as u32, 0);
-    if from < schema::flat::END {
-        tables::try_tables().map_err(|_| UpgradeError::LegacyTablesUnavailable)?;
-    }
     let value = Tag::Compound(tag);
-    if root == Ty::BlockEntity && !schema::block_entity_known(&value, from)
-        || matches!(root, Ty::Entity | Ty::EntityTree)
-            && from < schema::flat::END
-            && !schema::flat::entity_tree_known(&value, from)
-    {
+    let known = tables::standalone(|| {
+        if root == Ty::BlockEntity {
+            schema::block_entity_known(&value, from)
+        } else if matches!(root, Ty::Entity | Ty::EntityTree) && from < schema::flat::END {
+            schema::flat::entity_tree_known(&value, from)
+        } else {
+            true
+        }
+    })?;
+    if !known {
         return into_compound(value);
     }
     if tagged_choice {
@@ -237,13 +239,10 @@ fn upgraded_or_original(
 
 /// Run the shared chain. Legacy fixes can panic on malformed data; never return a partially fixed value.
 fn upgraded(root: Ty, mut value: Tag, data_version: i32) -> Result<Compound, UpgradeError> {
-    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        update(root, &mut value, data_version, CURRENT);
-    }))
-    .is_err()
-    {
+    let run = std::panic::AssertUnwindSafe(|| update(root, &mut value, data_version, CURRENT));
+    if let Err(error) = tables::standalone(run) {
         dismantle(value);
-        return Err(UpgradeError::MalformedCompound);
+        return Err(error);
     }
     let upgraded = into_compound(value)?;
     if within_depth(&upgraded) {

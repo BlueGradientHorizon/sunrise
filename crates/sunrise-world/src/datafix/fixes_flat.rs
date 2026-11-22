@@ -84,10 +84,10 @@ pub(super) fn register(out: &mut Vec<(Key, FixFn)>) {
         )
     }));
     out.push((key(1480, 0), |cx| {
-        legacy_block_rename(cx, &table(t::tables().coral))
+        legacy_block_rename(cx, &|id| table(t::tables().coral)(id))
     }));
     out.push((key(1480, 0), |cx| {
-        item_rename(cx, &table(t::tables().coral))
+        item_rename(cx, &|id| table(t::tables().coral)(id))
     }));
     out.push((key(1483, 0), |cx| {
         entity_rename(cx, &only("minecraft:puffer_fish", "minecraft:pufferfish"))
@@ -109,10 +109,10 @@ pub(super) fn register(out: &mut Vec<(Key, FixFn)>) {
     out.push((key(1484, 0), |cx| legacy_block_rename(cx, &table(SEAGRASS))));
     out.push((key(1484, 0), heightmap_renaming));
     out.push((key(1486, 0), |cx| {
-        entity_rename(cx, &table(t::tables().cod_salmon))
+        entity_rename(cx, &|id| table(t::tables().cod_salmon)(id))
     }));
     out.push((key(1486, 0), |cx| {
-        item_rename(cx, &table(t::tables().cod_salmon_eggs))
+        item_rename(cx, &|id| table(t::tables().cod_salmon_eggs)(id))
     }));
     const PRISMARINE: &[(&str, &str)] = &[
         (
@@ -169,15 +169,17 @@ pub(super) fn register(out: &mut Vec<(Key, FixFn)>) {
     }));
     out.push((key(1501, 0), advancements_rename));
     out.push((key(1502, 0), |cx| {
-        rename_names(cx, Ty::Recipe, &table(t::tables().recipes))
+        rename_names(cx, Ty::Recipe, &|id| table(t::tables().recipes)(id))
     }));
     out.push((key(1506, 0), level_generator_options));
     out.push((key(1510, 0), |cx| {
-        legacy_block_rename(cx, &table(t::tables().the_renamening_blocks))
+        legacy_block_rename(cx, &|id| table(t::tables().the_renamening_blocks)(id))
     }));
     out.push((key(1510, 0), |cx| item_rename(cx, &the_renamening_items)));
     out.push((key(1510, 0), |cx| {
-        rename_names(cx, Ty::Recipe, &table(t::tables().recipes_renamening))
+        rename_names(cx, Ty::Recipe, &|id| {
+            table(t::tables().recipes_renamening)(id)
+        })
     }));
     out.push((key(1510, 0), |cx| {
         entity_rename(cx, &the_renamening_entities)
@@ -189,7 +191,7 @@ pub(super) fn register(out: &mut Vec<(Key, FixFn)>) {
     out.push((key(1514, 0), |cx| display_name_to_component(cx, Ty::Team)));
     out.push((key(1514, 0), objective_render_type));
     out.push((key(1515, 0), |cx| {
-        legacy_block_rename(cx, &table(t::tables().coral_fans))
+        legacy_block_rename(cx, &|id| table(t::tables().coral_fans)(id))
     }));
     out.push((key(1624, 0), |cx| {
         cx.each(Ty::Chunk, chunk_leaves::trapped_chest_fix)
@@ -429,19 +431,23 @@ fn block_name_flattening(cx: &mut Cx) {
 
 /// `ItemStackTheFlatteningFix.updateItem`.
 fn update_item(name: &str, data: i32) -> Option<&'static str> {
-    static MAP: OnceLock<(HashMap<&'static str, &'static str>, Vec<&'static str>)> =
-        OnceLock::new();
-    let (map, ids) = MAP.get_or_init(|| {
-        let map: HashMap<_, _> = t::tables().item_flattening.iter().copied().collect();
-        let mut ids: Vec<&str> = t::tables()
-            .item_flattening
-            .iter()
-            .map(|(k, _)| &k[..k.find('.').expect("dot")])
-            .collect();
+    type ItemTable = (HashMap<&'static str, &'static str>, Vec<&'static str>);
+    static MAP: OnceLock<Result<ItemTable, &'static str>> = OnceLock::new();
+    let table = MAP.get_or_init(|| {
+        let entries = t::tables().item_flattening;
+        let mut ids = Vec::with_capacity(entries.len());
+        for (key, _) in entries {
+            let (id, damage) = key.rsplit_once('.').ok_or("missing item damage suffix")?;
+            if id.is_empty() || damage.parse::<i32>().is_err() {
+                return Err("invalid item flattening key");
+            }
+            ids.push(id);
+        }
         ids.sort_unstable();
         ids.dedup();
-        (map, ids)
+        Ok((entries.iter().copied().collect(), ids))
     });
+    let (map, ids) = t::required(table.as_ref());
     if ids.binary_search(&name).is_err() {
         return None;
     }

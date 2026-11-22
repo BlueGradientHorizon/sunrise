@@ -9,6 +9,9 @@
 //! vanilla's `register` calls (see `block_state_data.rs`).
 
 use serde::Deserialize;
+use std::cell::Cell;
+use std::fmt::Display;
+use std::panic::{UnwindSafe, catch_unwind, resume_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
@@ -210,7 +213,7 @@ fn load(path: &Path) -> std::io::Result<Tables> {
 
 /// Read the tables without panicking. Cache only success, and serialise the cold path because
 /// `load` allocates the tables for the lifetime of the process.
-pub(super) fn try_tables() -> std::io::Result<&'static Tables> {
+fn try_tables() -> std::io::Result<&'static Tables> {
     static TABLES: OnceLock<Tables> = OnceLock::new();
     static LOADING: Mutex<()> = Mutex::new(());
     if let Some(tables) = TABLES.get() {
@@ -226,21 +229,124 @@ pub(super) fn try_tables() -> std::io::Result<&'static Tables> {
     Ok(TABLES.get_or_init(|| tables))
 }
 
-/// The tables, read on first use. Upgrading data from before 1.13 without them would
-/// silently lose blocks and items, so a missing or damaged file stops here.
-pub fn tables() -> &'static Tables {
-    try_tables().unwrap_or_else(|e| {
-        panic!(
-            "{e} ({}): upgrading data saved before Minecraft 1.13 needs the data fixers' \
-             tables of the prepared resources; prepare them again (sunrise-prepare --prepare)",
+thread_local! {
+    static STANDALONE: Cell<bool> = const { Cell::new(false) };
+}
+
+struct TableUnavailable;
+
+/// The standalone upgrade already contains unwinds from the shared chain. Carry a
+/// distinct failure through its infallible walkers without running a panic hook.
+/// Ordinary save upgrades keep their diagnostic if a required table is missing.
+pub(super) fn required<T>(result: Result<T, impl Display>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(_) if STANDALONE.get() => resume_unwind(Box::new(TableUnavailable)),
+        Err(error) => panic!(
+            "{error} ({}): this upgrade needs the data fixers' tables of the prepared resources; \
+             prepare them again (sunrise-prepare --prepare)",
             path().display()
-        )
+        ),
+    }
+}
+
+pub(super) fn standalone<T>(
+    run: impl FnOnce() -> T + UnwindSafe,
+) -> Result<T, super::UpgradeError> {
+    let previous = STANDALONE.replace(true);
+    let result = catch_unwind(run);
+    STANDALONE.set(previous);
+    result.map_err(|failure| {
+        if failure.is::<TableUnavailable>() {
+            super::UpgradeError::LegacyTablesUnavailable
+        } else {
+            super::UpgradeError::MalformedCompound
+        }
     })
+}
+
+/// Load the legacy tables on the first lookup, not just because the source is old.
+pub fn tables() -> &'static Tables {
+    required(try_tables())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "daily"]
+    fn standalone_upgrade_only_refuses_at_a_failed_table_lookup() {
+        use crate::datafix::{CompoundType, UpgradeError, dynamic, upgrade_compound};
+        use sunrise_core::nbt::{Compound, Tag};
+
+        const CHILD: &str = "SUNRISE_DATAFIX_TABLE_REFUSAL_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let scratch = std::env::temp_dir().join(format!(
+                "sunrise-datafix-table-refusal-{}",
+                std::process::id()
+            ));
+            std::fs::create_dir(&scratch).unwrap();
+            let result = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--ignored",
+                    "--exact",
+                    "datafix::tables::tests::standalone_upgrade_only_refuses_at_a_failed_table_lookup",
+                ])
+                .env("SUNRISE_RESOURCES", &scratch)
+                .env(CHILD, "1")
+                .output();
+            std::fs::remove_dir_all(scratch).unwrap();
+            let result = result.unwrap();
+            let output = String::from_utf8_lossy(&result.stdout);
+            assert!(
+                result.status.success() && output.contains("1 passed"),
+                "{output}"
+            );
+            return;
+        }
+
+        let state = |name| Compound::from_iter([("Name".into(), dynamic::string(name))]);
+        let sign = state("minecraft:sign");
+        // 1.13.2 predates the sign rename (1802), but no fix on this path needs the tables.
+        assert_eq!(
+            upgrade_compound(CompoundType::BlockState, 1631, sign),
+            Ok(state("minecraft:oak_sign")),
+        );
+        // The coral-fan rename (1515) is in range but cannot see a block state here.
+        let sign = Compound::from_iter([("id".into(), dynamic::string("minecraft:sign"))]);
+        assert!(upgrade_compound(CompoundType::BlockEntity, 1510, sign).is_ok());
+        assert_eq!(
+            upgrade_compound(CompoundType::BlockState, 1400, state("minecraft:stone")),
+            Err(UpgradeError::LegacyTablesUnavailable),
+        );
+
+        let prepared = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let mut raw: serde_json::Value = crate::json_file::read(&prepared.join(FILE)).unwrap();
+        raw["BLOCK_STATE_DATA"] = serde_json::json!(["not a registration"]);
+        raw["ITEM_FLATTENING"] = serde_json::json!([["minecraft:wool", "minecraft:red_wool"]]);
+        std::fs::write(path(), serde_json::to_vec(&raw).unwrap()).unwrap();
+        assert_eq!(
+            upgrade_compound(CompoundType::BlockState, 1400, state("minecraft:stone")),
+            Err(UpgradeError::LegacyTablesUnavailable),
+        );
+        assert_eq!(
+            upgrade_compound(
+                CompoundType::ItemStack,
+                1343,
+                Compound::from_iter([("id".into(), dynamic::string("minecraft:wool"))]),
+            ),
+            Err(UpgradeError::LegacyTablesUnavailable),
+        );
+        assert_eq!(
+            upgrade_compound(
+                CompoundType::ItemStack,
+                1343,
+                Compound::from_iter([("id".into(), Tag::Int(35))]),
+            ),
+            Err(UpgradeError::MalformedCompound),
+        );
+    }
 
     /// The prepared file holds every table, each non-empty, and `BlockStateData` registers
     /// air at id 0 first, as its `bootstrap0` does.

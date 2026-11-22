@@ -87,59 +87,83 @@ pub struct Data {
     id_by_old_name: HashMap<String, i32>,
 }
 
-fn parse_props(s: &str) -> Vec<(String, String)> {
+fn parse_props(s: &str) -> std::io::Result<Vec<(String, String)>> {
     if s.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     s.split(';')
         .map(|kv| {
-            let (k, v) = kv.split_once('=').unwrap_or((kv, ""));
-            (k.to_owned(), v.to_owned())
+            let (k, v) = kv.split_once('=').ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "invalid block state property",
+                )
+            })?;
+            Ok((k.to_owned(), v.to_owned()))
         })
         .collect()
 }
 
-pub fn data() -> &'static Data {
-    static DATA: OnceLock<Data> = OnceLock::new();
-    DATA.get_or_init(|| {
-        let mut map: Vec<Option<u32>> = vec![None; 4096];
-        let mut defaults: Vec<Option<u32>> = vec![None; 256];
-        let mut instances = Vec::new();
-        let mut id_by_old = HashMap::new();
-        let mut id_by_old_name: HashMap<String, i32> = HashMap::new();
-        for line in super::tables::tables().block_state_data {
-            let f: Vec<&str> = line.split('\t').collect();
-            let id: usize = f[0].parse().expect("id");
-            let instance = instances.len() as u32;
-            instances.push(State {
-                name: f[1].to_owned(),
-                props: parse_props(f.get(2).copied().unwrap_or("")),
-            });
-            map[id] = Some(instance);
-            if defaults[id >> 4].is_none() {
-                defaults[id >> 4] = Some(instance);
-            }
-            for pair in f[3..].chunks(2) {
-                let old = State {
-                    name: pair[0].to_owned(),
-                    props: parse_props(pair.get(1).copied().unwrap_or("")),
-                };
-                id_by_old_name.entry(old.name.clone()).or_insert(id as i32);
-                id_by_old.insert(old, id as i32);
-            }
+fn parse_data(lines: &[&str]) -> std::io::Result<Data> {
+    let mut map: Vec<Option<u32>> = vec![None; 4096];
+    let mut defaults: Vec<Option<u32>> = vec![None; 256];
+    let mut instances = Vec::new();
+    let mut id_by_old = HashMap::new();
+    let mut id_by_old_name = HashMap::new();
+    let invalid = || {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "invalid block state registration",
+        )
+    };
+    for line in lines {
+        let fields: Vec<_> = line.split('\t').collect();
+        let [id, name, props, old @ ..] = fields.as_slice() else {
+            return Err(invalid());
+        };
+        let id = id.parse::<usize>().map_err(|_| invalid())?;
+        let slot = map.get_mut(id).ok_or_else(invalid)?;
+        let pairs = old.chunks_exact(2);
+        if name.is_empty() || !pairs.remainder().is_empty() {
+            return Err(invalid());
         }
-        for (i, slot) in map.iter_mut().enumerate() {
-            if slot.is_none() {
-                *slot = defaults[i >> 4];
-            }
+        let instance = instances.len() as u32;
+        instances.push(State {
+            name: (*name).to_owned(),
+            props: parse_props(props)?,
+        });
+        *slot = Some(instance);
+        defaults[id >> 4].get_or_insert(instance);
+        for pair in pairs {
+            let old = State {
+                name: pair[0].to_owned(),
+                props: parse_props(pair[1])?,
+            };
+            id_by_old_name.entry(old.name.clone()).or_insert(id as i32);
+            id_by_old.insert(old, id as i32);
         }
-        Data {
-            instances,
-            map,
-            id_by_old,
-            id_by_old_name,
+    }
+    if map[0].is_none() {
+        return Err(invalid());
+    }
+    for (i, slot) in map.iter_mut().enumerate() {
+        if slot.is_none() {
+            *slot = defaults[i >> 4];
         }
+    }
+    Ok(Data {
+        instances,
+        map,
+        id_by_old,
+        id_by_old_name,
     })
+}
+
+pub fn data() -> &'static Data {
+    use super::tables;
+    static DATA: OnceLock<std::io::Result<Data>> = OnceLock::new();
+    let data = DATA.get_or_init(|| parse_data(tables::tables().block_state_data));
+    tables::required(data.as_ref())
 }
 
 impl Data {
