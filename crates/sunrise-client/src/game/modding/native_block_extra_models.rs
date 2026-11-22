@@ -35,7 +35,16 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn outside_the_world_phase_the_setter_is_unavailable() {
-        super::super::native_entity_refs::tests::with_client_game(|game| {
+        use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+
+        if run_fresh_cases(
+            "game::native_block_extra_models::tests::outside_the_world_phase_the_setter_is_unavailable",
+            "SUNRISE_TEST_BLOCK_EXTRA_MODELS_CASE",
+            &["phase"],
+        ) {
+            return;
+        }
+        with_client_game(|game| {
             for phase in [ModPhase::Reloading, ModPhase::Setup, ModPhase::Config] {
                 let _phase = PhaseOwner::scope(phase);
                 assert_eq!(
