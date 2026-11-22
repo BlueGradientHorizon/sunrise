@@ -157,6 +157,7 @@ impl<'a> LiveSlotRules<'a> {
             player_slots: self.player_slots,
             player_armor: Some(self.player_armor),
             player_offhand: Some(self.player_offhand),
+            staged_slot: None,
         }
     }
 
