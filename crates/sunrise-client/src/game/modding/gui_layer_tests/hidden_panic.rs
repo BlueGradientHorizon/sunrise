@@ -104,7 +104,13 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
             assert_eq!(game.ui.room.bottom(), 125.0);
             if frame == 0 {
                 // The shared queue retains the failure under F1.
-                let [(Some(toast), _)] = game.server_packs.hook_panics.as_slice() else {
+                let [
+                    crate::game::toast_manager::VisibleToast {
+                        toast: crate::game::toast_manager::Toast::Diagnostic { toast, .. },
+                        ..
+                    },
+                ] = game.toast_manager.visible.as_slice()
+                else {
                     panic!("expected one mandatory mod error toast");
                 };
                 assert_eq!(

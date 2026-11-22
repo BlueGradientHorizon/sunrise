@@ -64,8 +64,6 @@ impl Slide {
 /// has passed since its last change, or until it is hidden.
 pub struct SystemToast {
     pub slide: Slide,
-    /// `ToastInstance.firstSlotIndex`: its 32-pixel slot once shown.
-    pub slot: Option<usize>,
     pub title: Text,
     pub message: Option<Text>,
     /// `changed`: the next update takes its time as `lastChanged`.
@@ -85,7 +83,6 @@ impl SystemToast {
     pub fn new(title: Text, message: Option<Text>) -> Self {
         Self {
             slide: Slide::default(),
-            slot: None,
             title,
             message,
             changed: false,

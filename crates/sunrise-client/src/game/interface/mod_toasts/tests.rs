@@ -63,13 +63,16 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
 
                     let draw = |game: &mut Game<'_>| {
                         let mut batch = HudBatch::new([960, 540], game.settings.gui_scale_inputs());
-                        game.draw_pack_toasts(&mut batch, false, false);
+                        game.draw_every_toast(&mut batch, false, false);
                         batch
                     };
                     draw(game);
                     assert_eq!(*seen.lock().unwrap(), ["Queued sprite", "Queued item"]);
                     assert_eq!(
-                        game.mod_toasts.visible[0].request.toast.display_time(),
+                        mod_entry(&game.toast_manager.visible[0].toast)
+                            .request
+                            .toast
+                            .display_time(),
                         5000.0
                     );
                     draw(game);
@@ -77,7 +80,10 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                         *seen.lock().unwrap(),
                         ["Queued sprite", "Queued item", "Follow-up"]
                     );
-                    for entry in &mut game.mod_toasts.visible {
+                    for entry in &mut game.toast_manager.visible {
+                        let Toast::Mod(entry) = &mut entry.toast else {
+                            panic!("expected mod toast")
+                        };
                         entry.request.toast.slide.origin =
                             Some(Instant::now() - Duration::from_millis(700));
                     }
@@ -96,8 +102,7 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                         "long description must wrap below the first description line"
                     );
                     assert_eq!(
-                        game.mod_toasts.visible[1].request.toast.slot,
-                        Some(3),
+                        game.toast_manager.visible[1].slot, 3,
                         "the first toast's three slots keep the next toast below it"
                     );
                     assert!(
@@ -121,7 +126,9 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     cancelled.kind = Some(kind.clone());
                     (&*game as &dyn ClientHost).add_toast(cancelled).unwrap();
                     draw(game);
-                    let shown = &mut game.mod_toasts.visible[0];
+                    let Toast::Mod(shown) = &mut game.toast_manager.visible[0].toast else {
+                        panic!("expected mod toast")
+                    };
                     assert_eq!(shown.request.toast.title.plain(), "Edited sprite");
                     assert_eq!(seen.lock().unwrap().last().unwrap(), "Ignore replacement");
 
@@ -132,11 +139,11 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     replacement.display_ms = Some(2500);
                     (&*game as &dyn ClientHost).add_toast(replacement).unwrap();
                     draw(game);
-                    let shown = &game.mod_toasts.visible[0];
-                    assert_eq!(game.mod_toasts.visible.len(), 3);
-                    assert!(game.mod_toasts.queued.is_empty());
+                    let shown = mod_entry(&game.toast_manager.visible[0].toast);
+                    assert_eq!(game.toast_manager.visible.len(), 3);
+                    assert!(game.toast_manager.queued.is_empty());
                     assert_eq!(shown.request.toast.title.plain(), "New content");
-                    assert_eq!(shown.request.toast.slot, Some(0));
+                    assert_eq!(game.toast_manager.visible[0].slot, 0);
                     assert_eq!(shown.request.toast.slide.origin, Some(old_origin));
                     assert_eq!(shown.request.toast.slide.portion, 1.0);
                     assert_eq!(shown.request.toast.display_time(), 2500.0);
@@ -144,6 +151,13 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
             });
         },
     );
+}
+
+fn mod_entry(toast: &Toast) -> &Entry {
+    let Toast::Mod(entry) = toast else {
+        panic!("expected mod toast")
+    };
+    entry
 }
 
 struct Filter(Arc<Mutex<Vec<String>>>);

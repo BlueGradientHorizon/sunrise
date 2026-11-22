@@ -2231,6 +2231,8 @@ mod tick_script;
 mod titles;
 #[path = "game/entities/tnt.rs"]
 mod tnt;
+#[path = "game/interface/toast_manager.rs"]
+mod toast_manager;
 #[path = "game/blocks/tool_modification.rs"]
 mod tool_modification;
 #[path = "game/items/totem.rs"]
@@ -3749,10 +3751,7 @@ struct Game<'a> {
     settings: Settings,
     look: look::LookCache,
     tutorial: tutorial::Tutorial,
-    tutorial_toasts: Vec<tutorial::HintToast>,
-    mod_toasts: mod_toasts::ModToasts,
-    /// The `SystemToastId.NARRATOR_TOGGLE` toast, wherever the player is.
-    narrator_toast: Option<sunrise_client::toasts::SystemToast>,
+    toast_manager: toast_manager::ToastManager,
     /// The open screen's narration (`Screen`'s narration state and timing).
     narration: sunrise_client::screen_narrator::ScreenNarrator,
     /// Where the options screen returns: true = title, false = pause menu.
@@ -7218,7 +7217,7 @@ impl Game<'_> {
             && self.player.is_none()
         {
             let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
-            self.draw_pack_toasts(&mut batch, true, false);
+            self.draw_every_toast(&mut batch, true, false);
             batch
         } else {
             self.hud_layers(size)
@@ -7231,9 +7230,6 @@ impl Game<'_> {
         self.draw_code_of_conduct(&mut batch);
         self.draw_link_prompt(&mut batch);
         self.draw_command_prompt(&mut batch);
-        // The ToastManager draws over every screen, the title and the
-        // options included: the narrator's toast follows the player there.
-        self.draw_narrator_toast(&mut batch);
         // Gui.extractRenderState: the debug overlay comes after the screen
         // and the toasts, so it is over everything, menus included.
         self.draw_debug_overlay(&mut batch, size);
@@ -7282,7 +7278,7 @@ impl Game<'_> {
             // screen, after its own drawing.
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_pack_toasts(&mut batch, true, false);
+            self.draw_every_toast(&mut batch, true, false);
             return batch;
         }
         if self.screen == Screen::Options && self.title.is_some() {
@@ -7290,7 +7286,7 @@ impl Game<'_> {
             self.draw_options(&mut batch, drawn);
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_pack_toasts(&mut batch, true, false);
+            self.draw_every_toast(&mut batch, true, false);
             return batch;
         }
         self.settle_title_toasts();
@@ -7302,10 +7298,6 @@ impl Game<'_> {
                     sunrise_client::options_file::V::Bool(false),
                 );
                 self.settings.save(&Self::options_path());
-            }
-            if let Some(sound) = title.update_toast(self.settings.notification_display_time as f32)
-            {
-                self.audio.play(sound, None, 1.0, 1.0);
             }
         }
         if let Some(title) = &self.title {
@@ -7324,10 +7316,7 @@ impl Game<'_> {
             }
             self.publish_screen_regions(&batch, None);
             self.draw_screen_with_post_hook(&mut batch);
-            self.draw_toasts(&mut batch, false);
-            self.draw_tutorial_toasts(&mut batch, false);
-            self.draw_pack_toasts(&mut batch, false, false);
-            self.draw_music_toast(&mut batch, false);
+            self.draw_every_toast(&mut batch, self.ui.hide_gui, false);
             return batch;
         }
         if self.title.is_some() {
@@ -7358,10 +7347,7 @@ impl Game<'_> {
             // toasts still come after, as over any screen.
             self.publish_screen_regions(&batch, None);
             self.draw_title_screen_with_post_hook(&mut batch);
-            self.draw_toasts(&mut batch, false);
-            self.draw_tutorial_toasts(&mut batch, false);
-            self.draw_pack_toasts(&mut batch, false, false);
-            self.draw_music_toast(&mut batch, false);
+            self.draw_every_toast(&mut batch, self.ui.hide_gui, false);
             return batch;
         }
         let atlas_ptr: *const HudAtlas = &self.gui.atlas;
@@ -7370,8 +7356,7 @@ impl Game<'_> {
         // download while the connection screen shows.
         if self.remote_overlay(&mut batch) {
             self.publish_screen_regions(&batch, None);
-            self.draw_pack_toasts(&mut batch, false, false);
-            self.draw_music_toast(&mut batch, false);
+            self.draw_every_toast(&mut batch, self.ui.hide_gui, false);
             return batch;
         }
         // Hud.extractRenderState: F1 (keyToggleGui) hides camera overlays, the
@@ -7836,7 +7821,12 @@ impl Game<'_> {
         self.publish_screen_regions(&batch, region_screen);
         self.draw_screen_with_post_hook(&mut batch);
         self.draw_saving_indicator(&mut batch);
-        self.draw_every_toast(&mut batch, self.replay.playing(), gui_canceled);
+        let presentation_hidden = replaying || self.overlay_holds_view();
+        self.draw_every_toast(
+            &mut batch,
+            presentation_hidden || self.ui.hide_gui || gui_canceled,
+            presentation_hidden,
+        );
         if self.server_packs.prompt.is_none() {
             self.remote_hud(&mut batch);
             self.draw_sign_editor(&mut batch);
@@ -13877,9 +13867,7 @@ impl<'a> Game<'a> {
             settings,
             look: Default::default(),
             tutorial,
-            tutorial_toasts: Vec::new(),
-            mod_toasts: Default::default(),
-            narrator_toast: None,
+            toast_manager: Default::default(),
             narration: Default::default(),
             options_from_title: false,
             dragging: false,

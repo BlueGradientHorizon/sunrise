@@ -2,9 +2,8 @@
 #[cfg(test)]
 #[path = "mod_toasts/tests.rs"]
 mod tests;
-use super::Game;
+use super::{Game, toast_manager::Toast};
 use mod_api::{AddToastError, Identifier, ModToast, ToastIcon, ToastKind};
-use std::cell::RefCell;
 use sunrise_client::{
     hud::HudBatch,
     items::ItemStack,
@@ -12,38 +11,20 @@ use sunrise_client::{
 };
 use sunrise_client_lib::api_text::to_engine;
 
-#[derive(Default)]
-pub(super) struct ModToasts {
-    pending: RefCell<Vec<Pending>>,
-    queued: Vec<Entry>,
-    visible: Vec<Entry>,
-}
-
-struct Pending {
-    toast: SystemToast,
+pub(super) struct Pending {
+    pub(super) toast: SystemToast,
     kind: Option<Identifier>,
     icon: Option<Icon>,
 }
 
-struct Entry {
-    request: Pending,
-    layout: SystemToastLayout,
-    // ToastInstance keeps the slots it took when it first became visible,
-    // even if addOrUpdate changes the toast's dimensions.
-    slots: u32,
+pub(super) struct Entry {
+    pub(super) request: Pending,
+    pub(super) layout: SystemToastLayout,
 }
 
 enum Icon {
     Item(ItemStack),
     Sprite(String),
-}
-
-impl ModToasts {
-    pub(super) fn slots(&self) -> u32 {
-        self.visible
-            .iter()
-            .fold(0, |used, entry| used | entry.slots)
-    }
 }
 
 impl Game<'_> {
@@ -67,7 +48,7 @@ impl Game<'_> {
             Some(ToastIcon::Sprite(sprite)) => Some(Icon::Sprite(sprite.to_string())),
             None | Some(_) => None,
         };
-        self.mod_toasts.pending.borrow_mut().push(Pending {
+        self.toast_manager.pending_mod.borrow_mut().push(Pending {
             toast,
             kind: request.kind,
             icon,
@@ -78,7 +59,7 @@ impl Game<'_> {
     pub(super) fn admit_mod_toasts(&mut self) {
         // Take one snapshot before invoking listeners. A request from toast_add is
         // for the next update, not a recursive add or part of this snapshot.
-        for mut request in std::mem::take(self.mod_toasts.pending.get_mut()) {
+        for mut request in std::mem::take(self.toast_manager.pending_mod.get_mut()) {
             if !self.admit_toast(
                 ToastKind::Mod,
                 &mut request.toast.title,
@@ -90,92 +71,34 @@ impl Game<'_> {
                 .toast
                 .layout(&self.gui.atlas, request.icon.is_some());
             if let Some(kind) = &request.kind
-                && let Some(entry) = self
-                    .mod_toasts
-                    .visible
-                    .iter_mut()
-                    .chain(&mut self.mod_toasts.queued)
-                    .find(|entry| entry.request.kind.as_ref() == Some(kind))
+                && let Some(entry) = self.toast_manager.find_mut(|entry| match entry {
+                    Toast::Mod(entry) if entry.request.kind.as_ref() == Some(kind) => Some(entry),
+                    _ => None,
+                })
             {
                 entry.request.toast.reset_from(request.toast);
                 entry.request.icon = request.icon;
                 entry.layout = layout;
             } else {
-                self.mod_toasts.queued.push(Entry {
-                    request,
-                    layout,
-                    slots: 0,
-                });
+                self.toast_manager
+                    .queued
+                    .push_back(Toast::Mod(Entry { request, layout }));
             }
         }
     }
 
-    /// `ToastManager.findFreeSlotsIndex`: the first consecutive run that fits.
-    pub(super) fn free_toast_slot(used: u32, count: usize) -> Option<usize> {
-        let last = Self::TOAST_SLOTS.checked_sub(count)?;
-        let mask = (1 << count) - 1;
-        (0..=last).find(|slot| used & (mask << slot) == 0)
-    }
-
-    pub(super) fn draw_mod_toasts(&mut self, batch: &mut HudBatch, hidden: bool) {
-        if self.mod_toasts.queued.is_empty() && self.mod_toasts.visible.is_empty() {
-            return;
-        }
-        let multiplier = self.settings.notification_display_time;
-        let mut sound_played = false;
-        self.mod_toasts.visible.retain_mut(|entry| {
-            let (sound, finished) = entry.request.toast.update(multiplier);
-            if let Some(show) = sound
-                && !std::mem::replace(&mut sound_played, true)
-            {
-                let event = if show {
-                    "minecraft:ui.toast.in"
-                } else {
-                    "minecraft:ui.toast.out"
-                };
-                self.audio.play(event, None, 1.0, 1.0);
-            }
-            !finished
-        });
-
-        let title_has_toast = self.title.as_ref().is_some_and(|title| title.has_toast());
-        let mut used = self.toast_slots_used() | u32::from(title_has_toast);
-        if used.count_ones() < Self::TOAST_SLOTS as u32 {
-            let started = self.mod_toasts.queued.extract_if(.., |entry| {
-                let count = entry.layout.slots();
-                let Some(slot) = Self::free_toast_slot(used, count) else {
-                    return false;
-                };
-                entry.request.toast.slot = Some(slot);
-                entry.slots = ((1 << count) - 1) << slot;
-                used |= entry.slots;
-                true
-            });
-            self.mod_toasts.visible.extend(started);
-        }
-        if hidden || self.ui.hide_gui {
-            return;
-        }
+    pub(super) fn draw_mod_toast(&self, batch: &mut HudBatch, entry: &Entry, slot: usize) {
         let atlas = &self.gui.atlas;
-        for entry in &self.mod_toasts.visible {
-            let Some(slot) = entry.request.toast.slot else {
-                continue;
-            };
-            let [x, y] = entry
-                .request
-                .toast
-                .draw_wrapped(&entry.layout, atlas, batch, slot);
-            // AdvancementToast's icon: 16 pixels square at (8, 8).
-            let (x, y) = (x + 8.0, y + 8.0);
-            match &entry.request.icon {
-                Some(Icon::Item(stack)) => {
-                    self.draw_item_model_with_owner(batch, stack, x, y, None)
-                }
-                Some(Icon::Sprite(id)) => {
-                    batch.sprite_scaled(atlas, id, x, y, 16.0, 16.0, u32::MAX)
-                }
-                None => {}
-            }
+        let [x, y] = entry
+            .request
+            .toast
+            .draw_wrapped(&entry.layout, atlas, batch, slot);
+        // AdvancementToast's icon: 16 pixels square at (8, 8).
+        let (x, y) = (x + 8.0, y + 8.0);
+        match &entry.request.icon {
+            Some(Icon::Item(stack)) => self.draw_item_model_with_owner(batch, stack, x, y, None),
+            Some(Icon::Sprite(id)) => batch.sprite_scaled(atlas, id, x, y, 16.0, 16.0, u32::MAX),
+            None => {}
         }
     }
 }
