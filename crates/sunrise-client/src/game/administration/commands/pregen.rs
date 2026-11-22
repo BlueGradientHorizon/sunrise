@@ -264,9 +264,9 @@ impl Game<'_> {
             if now >= until {
                 break;
             }
-            self.streaming
+            idle += self
+                .streaming
                 .wait((until - now).min(Duration::from_millis(5)));
-            idle += now.elapsed();
             self.update_world();
         }
         idle
