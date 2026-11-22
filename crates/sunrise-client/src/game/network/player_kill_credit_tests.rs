@@ -3,7 +3,7 @@
 //! counts and `player_kills` whatever killed them, and the wither rose a
 //! wither's kill leaves where they fell.
 use super::{chat::PLAYER_NAME, native_entity_refs::tests::run_fresh_cases, *};
-use mod_api::{Flow, Hooks, PlayerStatAwardEvent, ServerHost};
+use mod_api::{Flow, Hooks, PlayerStatAwardEvent, ServerHost, StatType};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_client::{
     chunk::Chunk,
@@ -370,6 +370,70 @@ fn a_guest_killing_another_guest_while_displaced_credits_the_kill() {
         assert_eq!(score(&game, KILLER, "player_kills_stat"), Some(2));
         assert_eq!(score(&game, PLAYER_NAME, "kills"), None);
         assert_eq!(game.stats.get("custom", "minecraft:player_kills"), 0);
+    });
+}
+
+struct ReadKillerBeforeAward;
+
+#[mod_api::__subscriptions]
+impl Hooks for ReadKillerBeforeAward {
+    fn player_stat_award(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut PlayerStatAwardEvent<'_>,
+    ) -> Flow {
+        if event.player == u128::from(KILLER_CONN)
+            && event.stat.as_str() == "minecraft:player_kills"
+            && let Some(killer) = host.players().player_by_name(event.name)
+            && killer.uuid() == event.player
+            && killer.stat(host, StatType::Custom, "minecraft:player_kills") == Some(7)
+        {
+            event.value = 3;
+        }
+        Flow::Continue
+    }
+}
+
+/// NeoForge's `StatAwardEvent` sees the killer's unchanged count in either turn arrangement.
+#[test]
+#[ignore = "daily"]
+fn a_stat_award_listener_reads_the_killers_pre_award_count() {
+    if fresh(
+        "a_stat_award_listener_reads_the_killers_pre_award_count",
+        &["parked", "displaced"],
+    ) {
+        return;
+    }
+    let mods = vec![mod_api::ModEntry::new(
+        "read_killer",
+        Box::new(ReadKillerBeforeAward),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        let mut resources = None;
+        let mut game = game(&mut resources);
+        add_guest_killer(&mut game);
+        add_objectives(&mut game);
+        game.as_guest(KILLER_CONN, |g| g.stats.custom("player_kills", 7))
+            .unwrap();
+        let hit = |g: &mut Game<'_>| {
+            kill(
+                g,
+                Attacker::Player(KILLER_ID, KILLER),
+                "minecraft:player_attack",
+            );
+        };
+        match std::env::var(FRESH).unwrap().as_str() {
+            "parked" => hit(&mut game),
+            "displaced" => game.as_guest(KILLER_CONN, hit).unwrap(),
+            case => panic!("unexpected fresh case {case}"),
+        }
+        assert_player_kill(&game, KILLER);
+        assert_eq!(
+            guest_stats(&game, KILLER_CONN).get("custom", "minecraft:player_kills"),
+            10
+        );
+        assert_eq!(score(&game, KILLER, "player_kills_stat"), Some(10));
     });
 }
 
