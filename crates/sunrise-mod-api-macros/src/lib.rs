@@ -291,6 +291,26 @@ pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
                 && !attr.path().is_ident("decline_unavailable")
                 && !attr.path().is_ident("manual_handle")
         });
+        // A shared published read answers from the installed table, without a live Game.
+        let published = match method
+            .attrs
+            .iter()
+            .position(|attr| attr.path().is_ident("published"))
+            .map(|index| method.attrs.remove(index).parse_args::<syn::Path>())
+        {
+            None => None,
+            Some(Ok(path)) => Some(path),
+            Some(Err(error)) => return error.to_compile_error().into(),
+        };
+        if let Some(path) = published {
+            let args = method.sig.inputs.iter().filter_map(|arg| match arg {
+                syn::FnArg::Typed(arg) => Some(arg.pat.clone()),
+                syn::FnArg::Receiver(_) => None,
+            });
+            method.default = Some(syn::parse_quote!({ crate::__private::#path(#(#args),*) }));
+            method.semi_token = None;
+            continue;
+        }
         method.default = Some(if decline {
             if !matches!(method.sig.output, syn::ReturnType::Default) {
                 return syn::Error::new_spanned(
