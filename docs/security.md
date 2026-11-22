@@ -96,13 +96,15 @@ and some are waiting for Ludovic:
   repository (`horizon-rust/horizon` and `arismoko/horizon` included) has no trusted keys and fails
   closed. Upstream's legacy checksum pins never authorize a Sunrise archive. The real private key
   exists only as a secret of the `release` environment, `RELEASE_SIGNING_KEY` or, after a rotation retired the
-  other, `RELEASE_SIGNING_KEY_NEXT` (either name can hold the active key); dry runs receive no release secrets
+  other, `RELEASE_SIGNING_KEY_NEXT` (either name can hold the active key for the game's releases); dry runs receive no release secrets
   and sign with an ephemeral test key instead. To rotate, first ship the next public key in
   `release-keys.txt` (and a new `verifier@X.Y.Z`, pinned in `packaging/server/install.sh` and `install.ps1`), with
   its private half set as whichever of `RELEASE_SIGNING_KEY` and `RELEASE_SIGNING_KEY_NEXT` is empty
   (`tools/ci/new_release_key.sh` sets it), so releases are signed with both; then retire the old key's secret and
   public key and pin a verifier built without it ([release-flow.md](release-flow.md#signed-checksums), "Rotating the
-  key"). Nightly title,
+  key"). Launchers are the exception: `launcher-bridge.yml` refuses a real publish without `RELEASE_SIGNING_KEY`,
+  because launchers from before the split trust only that key, so the key in `RELEASE_SIGNING_KEY` is not retired while
+  those launchers are supported. Nightly title,
   channel and exact-version signature binding remain unchanged.
 - **Upstream release machinery needs the council.** The workflows, the release and signing tools, the update-checking code
   and the installers are listed in `.github/CODEOWNERS`. Once main's protection requires code owners' reviews, a
@@ -143,7 +145,8 @@ and some are waiting for Ludovic:
   own version) against the release keys built into it, then the archive against `SHA256SUMS`. Any failure stops
   the install with its cause; nothing falls back to GitHub's SHA-256. So the anchor is the pin on main, fetched
   over HTTPS: it changes only by pull request, and must match what `tools/ci/pin_verifier.py` writes once
-  `gh attestation verify` has accepted every binary as built by `verifier.yml` on main
+  `gh attestation verify` has accepted `SHA256SUMS` and every binary as built by `verifier.yml` on main at the
+  dispatch commit
   (docs/release-flow.md, "The install scripts' verifier"). The verifier binaries are not code-signed, so macOS
   Gatekeeper and Windows SmartScreen don't vouch for them; the pin does. `--insecure-checksum-only`
   (`-InsecureChecksumOnly`) skips the signature, with a loud warning, for CI fixtures; no install command in these

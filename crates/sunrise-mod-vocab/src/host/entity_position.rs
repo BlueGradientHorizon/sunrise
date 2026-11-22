@@ -26,9 +26,8 @@ pub trait EntityPositionBackend {
     fn entity_on_ground(&self, entity: EntityRef) -> Option<bool>;
     /// Side: server.
     /// `Entity.getOnPos()`: the supporting block when available, otherwise the feet block with
-    /// vanilla's `1.0E-5F` subtracted from Y. Players and nonliving bodies that keep ground
-    /// support use the last move's retained `Entity.mainSupportingBlockPos`, not the current
-    /// ground flag or a new collision query.
+    /// vanilla's `1.0E-5F` subtracted from Y. Simulated bodies with retained support use
+    /// `Entity.mainSupportingBlockPos` from their last support check, not a new collision query.
     /// A dragon part, which never stands, has the block under its feet. None for a stale handle.
 
     fn entity_on_block(&self, entity: EntityRef) -> Option<[i32; 3]>;
@@ -64,6 +63,19 @@ pub trait EntityPositionBackendMut {
     /// when the host cannot write living state.
     fn entity_set_body_yaw(&mut self, entity: EntityRef, yaw: f32)
     -> Result<bool, LevelWriteError>;
+    /// Side: server.
+    /// `Entity.setOnGround`: set the live body's ground flag and check supporting
+    /// blocks under its current footprint without moving it. False clears retained
+    /// support; true retains the previous block on the first miss and clears it on
+    /// a second miss. Does not change velocity, fall distance, or collision flags.
+    /// `Ok(false)` for stale handles and bodies that don't keep ground state.
+    /// If the support scan fails, returns `Err(LevelWriteError::Unavailable)`;
+    /// the flag is still written, and the previous supporting block is retained.
+    fn entity_set_on_ground(
+        &mut self,
+        entity: EntityRef,
+        on_ground: bool,
+    ) -> Result<bool, LevelWriteError>;
     /// Side: server.
     /// Moves the entity to `pos` in its level (`Entity.teleportTo`), as
     /// `/tp` does: a player is placed there and told, a rider gets off, and a
