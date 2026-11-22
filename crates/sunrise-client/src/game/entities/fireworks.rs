@@ -974,7 +974,7 @@ impl Game<'_> {
                 }
             }
             if let Some(d) = self.dragon.as_ref().filter(|d| d.alive())
-                && d.part_box(0).intersects(reach)
+                && d.body_bounds().intersects(reach)
             {
                 candidates.push((
                     sunrise_client::projectiles::TargetOrder::entity(d.position, u64::from(d.id)),
@@ -1182,7 +1182,10 @@ impl Game<'_> {
         let live = self.live_proj_world(query, &[]);
         let block = live.clip(from, to);
         let entity_end = block.map_or(to, |(at, ..)| at);
-        let search_area = r.bounds().expand_towards(motion).inflate(Vec3::ONE);
+        let search_area = r
+            .bounds()
+            .expand_towards(motion)
+            .inflate(Vec3::new(1.0, 1.0, 1.0));
         let margin = compute_margin(r.life + 1);
         let mut best = NearestHit::new();
         self.visit_projectile_targets(query, &[], |c| {

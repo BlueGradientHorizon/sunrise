@@ -1780,7 +1780,7 @@ impl Game<'_> {
                 let entity_end = block_clip.map_or(to, |(at, ..)| at);
                 let search_area = bounds_at(from)
                     .expand_towards(t.velocity)
-                    .inflate(Vec3::ONE);
+                    .inflate(Vec3::new(1.0, 1.0, 1.0));
                 let margin = compute_margin(t.age as i32);
                 let mut best = NearestHit::new();
                 self.visit_projectile_targets(query, &[], |c| {
@@ -1810,7 +1810,7 @@ impl Game<'_> {
             if !t.left_owner {
                 let swept = bounds_at(t.position)
                     .expand_towards(t.velocity)
-                    .inflate(Vec3::ONE);
+                    .inflate(Vec3::new(1.0, 1.0, 1.0));
                 t.left_owner = owner.is_none_or(|o| self.outside_owner_collision_range(o, swept));
             }
             if let Some((who, hit_at)) = entity_hit {

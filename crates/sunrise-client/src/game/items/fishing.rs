@@ -1073,7 +1073,10 @@ impl Game<'_> {
         let mut old_yaw = h.yaw;
         // Projectile.tick: update leftOwner using the caster's full root-vehicle tree.
         if !h.left_owner {
-            let swept = h.bounds().expand_towards(h.velocity).inflate(Vec3::ONE);
+            let swept = h
+                .bounds()
+                .expand_towards(h.velocity)
+                .inflate(Vec3::new(1.0, 1.0, 1.0));
             h.left_owner =
                 self.outside_owner_collision_range(sunrise_client::mobs::Who::Player, swept);
         }
@@ -1150,7 +1153,10 @@ impl Game<'_> {
                 let block_hit = self.hook_block_hit(h.position, to);
                 let entity_end = block_hit.map_or(to, |hit| hit.location);
                 let margin = sunrise_client::projectiles::compute_margin(h.tick_count);
-                let search_area = h.bounds().expand_towards(h.velocity).inflate(Vec3::ONE);
+                let search_area = h
+                    .bounds()
+                    .expand_towards(h.velocity)
+                    .inflate(Vec3::new(1.0, 1.0, 1.0));
                 let mut best = sunrise_client::projectiles::NearestHit::new();
                 let query = super::creatures::TargetQuery {
                     include_guests: true,
@@ -2691,22 +2697,25 @@ mod tests {
         use super::{EntityCollision, Hook, State};
         let mut hook = Hook::remote(1, Vec3::ZERO, [0, 0, 0, 1]);
         hook.velocity = Vec3::new(2.0, -0.4, 1.0);
-        assert_eq!(
+        assert!(matches!(
             hook.hit_entity(10, true),
-            EntityCollision::Deflected { first: true }
-        );
+            EntityCollision::Deflected { first: true, rot } if (170.0..190.0).contains(&rot)
+        ));
         assert_eq!(hook.state, State::Flying);
         assert!(hook.needs_sync);
         assert_eq!(hook.velocity, Vec3::new(-1.0, 0.2, -0.5));
         assert_eq!(
             hook.hit_entity(10, true),
-            EntityCollision::Deflected { first: false }
+            EntityCollision::Deflected {
+                first: false,
+                rot: 0.0,
+            }
         );
         assert_eq!(hook.velocity, Vec3::new(-1.0, 0.2, -0.5));
-        assert_eq!(
+        assert!(matches!(
             hook.hit_entity(11, true),
-            EntityCollision::Deflected { first: true }
-        );
+            EntityCollision::Deflected { first: true, rot } if (170.0..190.0).contains(&rot)
+        ));
         assert_eq!(hook.velocity, Vec3::new(0.5, -0.1, 0.25));
     }
 
@@ -2723,14 +2732,15 @@ mod tests {
         assert_eq!(state.velocity, [-1.0, -0.0, -0.0]);
         assert!(!state.meta.iter().any(|entry| entry.0 == 8));
         assert_eq!(hook.hit_entity(20, false), EntityCollision::Hooked);
-        assert_eq!(hook.state, State::Hooked(20));
-        assert_eq!(hook.velocity, Vec3::ZERO);
+        assert_eq!(hook.hooked_in, Some(20));
+        assert_eq!(hook.state, State::Flying);
+        assert_eq!(hook.velocity, Vec3::new(-1.0, -0.0, -0.0));
     }
 
     #[test]
     #[ignore = "run by tools/test_breeze_hook_parity.py"]
     fn breeze_hook_parity_fixture() {
-        use super::{EntityCollision, Hook, State};
+        use super::{EntityCollision, Hook};
         use std::io::Write;
         let input =
             std::fs::read_to_string(std::env::var("SUNRISE_BREEZE_HOOK_INPUT").unwrap()).unwrap();
@@ -2750,7 +2760,7 @@ mod tests {
                 let response = hook.hit_entity(target.parse::<u32>().unwrap() + 10, true);
                 let sounds = i32::from(matches!(
                     response,
-                    EntityCollision::Deflected { first: true }
+                    EntityCollision::Deflected { first: true, .. }
                 ));
                 let landed = i32::from(matches!(response, EntityCollision::Hooked));
                 trace.push(format!(
@@ -2759,7 +2769,7 @@ mod tests {
                     hook.velocity.y.to_bits(),
                     hook.velocity.z.to_bits(),
                     i32::from(hook.needs_sync),
-                    i32::from(matches!(hook.state, State::Hooked(_)))
+                    i32::from(hook.hooked_in().is_some())
                 ));
             }
             writeln!(out, "{}", trace.join(" ")).unwrap();

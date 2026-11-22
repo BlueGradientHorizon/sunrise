@@ -98,7 +98,7 @@ pub(in crate::game) struct LiveProjWorld<'a, 'r> {
 }
 
 impl<'a, 'r> LiveProjWorld<'a, 'r> {
-    fn base(&self) -> ProjWorld<'_> {
+    fn base(&self) -> ProjWorld<'_, 'a> {
         ProjWorld {
             w: &self.w,
             targets: &[],
@@ -321,7 +321,7 @@ impl<'r> Game<'r> {
                         .find(|a| a.id == id)
                         .and_then(|a| a.vehicle)
                 })
-                .or_else(|| self.general.row(id).and_then(|r| r.mount))
+                .or_else(|| self.resident_entities.general.row(id).and_then(|r| r.mount))
                 .map(Who::Mob),
         }
     }
@@ -1092,7 +1092,11 @@ impl<'r> Game<'r> {
                 let bullet = self.remove_projectile_at(i);
                 let at = [bullet.position.x, bullet.position.y, bullet.position.z];
                 self.shulker_bullet_hurt(at);
-                self.entity_event_by("minecraft:entity_damage", at, Some(Who::Mob(bullet.id)));
+                self.entity_event_by(
+                    "minecraft:entity_damage",
+                    at,
+                    Some(Target::Projectile(bullet.id)),
+                );
                 return NonMobHit::Hurt;
             }
             if super::super::deflect::redirectable(&self.creatures.projectiles[i]) {

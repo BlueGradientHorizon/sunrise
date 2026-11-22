@@ -6255,12 +6255,14 @@ impl Game<'_> {
                 }
                 Hit::Block { pos, at: ba, face } => {
                     if hears {
-                        let rain = self.arrow_rain();
-                        sunrise_client::arrows::apply_block_contact(
-                            &mut arrow,
-                            &self.arrow_scene(&rain),
-                            BlockPos::new(pos[0], pos[1], pos[2]),
-                        );
+                        {
+                            let rain = self.arrow_rain();
+                            sunrise_client::arrows::apply_block_contact(
+                                &mut arrow,
+                                &self.arrow_scene(&rain),
+                                BlockPos::new(pos[0], pos[1], pos[2]),
+                            );
+                        }
                         self.flush_arrow_events(&mut arrow);
                     }
                     if face != [0; 3] {
@@ -6542,7 +6544,7 @@ impl Game<'_> {
                     self.entity_event_by(
                         "minecraft:entity_damage",
                         [p.position.x, p.position.y, p.position.z],
-                        Some(Who::Mob(p.id)),
+                        Some(super::commands::Target::Projectile(p.id)),
                     );
                 }
                 return Ok(());
@@ -7102,7 +7104,7 @@ impl Game<'_> {
                 self.entity_event_by(
                     "minecraft:entity_damage",
                     [p.position.x, p.position.y, p.position.z],
-                    Some(Who::Mob(p.id)),
+                    Some(super::commands::Target::Projectile(p.id)),
                 );
             }
             (ProjectileKind::DragonFireball, _) => {
@@ -7131,7 +7133,7 @@ impl Game<'_> {
                 self.entity_event_by(
                     "minecraft:entity_damage",
                     [p.position.x, p.position.y, p.position.z],
-                    Some(Who::Mob(p.id)),
+                    Some(super::commands::Target::Projectile(p.id)),
                 );
             }
             _ => {

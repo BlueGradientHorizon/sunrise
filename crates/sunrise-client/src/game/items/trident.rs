@@ -739,7 +739,7 @@ impl Game<'_> {
                     from.add_vector(Vec3::new(HALF, 0.5, HALF)),
                 )
                 .expand_towards(flight)
-                .inflate(Vec3::ONE);
+                .inflate(Vec3::new(1.0, 1.0, 1.0));
                 let mut best = sunrise_client::projectiles::NearestHit::new();
                 if !t.dealt_damage {
                     let query = super::creatures::TargetQuery {

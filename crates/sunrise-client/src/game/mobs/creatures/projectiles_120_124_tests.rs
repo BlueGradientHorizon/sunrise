@@ -2746,11 +2746,11 @@ fn witness_review_round1_regressions() {
                     .is_some_and(|(d, l)| d > l);
                 let got_has_destroy = events
                     .iter()
-                    .rposition(|&&(id, _, _)| id == "minecraft:entity_damage")
+                    .rposition(|&(id, _, _)| id == "minecraft:entity_damage")
                     .zip(
                         events
                             .iter()
-                            .position(|&&(id, _, _)| id == "minecraft:projectile_land"),
+                            .position(|&(id, _, _)| id == "minecraft:projectile_land"),
                     )
                     .is_some_and(|(d, l)| d > l);
                 if got_has_destroy != exp_has_destroy {
