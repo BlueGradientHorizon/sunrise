@@ -176,6 +176,20 @@ impl Game<'_> {
         if self.spectator() {
             return false;
         }
+        if let Some(hit) = self.crosshair_entity_hit() {
+            if self.falling.iter().any(|f| f.id as i32 == hit.id) {
+                return false;
+            }
+            if let Some(tnt_id) = self
+                .tnts
+                .iter()
+                .find(|t| t.id as i32 == hit.id)
+                .map(|t| t.id)
+            {
+                self.strike_general_row(tnt_id, "minecraft:tnt");
+                return true;
+            }
+        }
         // A painting nearer than the targeted block and mob breaks instead.
         if let Some((i, d)) = self.painting_hit()
             && self.mob_hit().is_none_or(|m| d < m.1)
