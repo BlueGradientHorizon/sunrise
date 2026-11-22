@@ -52,6 +52,7 @@ enum Request {
 }
 
 /// The runtime levels of one world open: pure bookkeeping, which the game applies.
+#[derive(Default)]
 pub(in crate::game) struct RuntimeTable {
     entries: BTreeMap<String, Entry>,
     /// Ids whose level is closed but whose files a delete could not all remove: not open, and not
@@ -64,21 +65,6 @@ pub(in crate::game) struct RuntimeTable {
     pub(super) fail_open_after_publication: bool,
     #[cfg(test)]
     pub(super) fail_erase: bool,
-}
-
-impl Default for RuntimeTable {
-    fn default() -> Self {
-        Self {
-            entries: BTreeMap::new(),
-            erasing: BTreeSet::new(),
-            queue: Vec::new(),
-            last_generation: 0,
-            #[cfg(test)]
-            fail_open_after_publication: false,
-            #[cfg(test)]
-            fail_erase: false,
-        }
-    }
 }
 
 impl RuntimeTable {
