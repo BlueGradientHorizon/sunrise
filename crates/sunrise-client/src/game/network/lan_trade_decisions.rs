@@ -72,6 +72,7 @@ type Restore = Box<dyn FnOnce(&mut Game<'_>)>;
 #[derive(Default)]
 pub(in crate::game) struct Journal {
     guests: HashMap<u32, Restore>,
+    windows: HashMap<u32, Restore>,
     mobs: HashMap<u32, Restore>,
     sequences: Option<sunrise_client::random_sequences::RandomSequences>,
     active: Option<u32>,
@@ -83,6 +84,9 @@ impl Journal {
         for (conn, kept) in child.guests {
             self.guests.entry(conn).or_insert(kept);
         }
+        for (conn, kept) in child.windows {
+            self.windows.entry(conn).or_insert(kept);
+        }
         for (id, kept) in child.mobs {
             self.mobs.entry(id).or_insert(kept);
         }
@@ -93,6 +97,9 @@ impl Journal {
     }
     pub(in crate::game) fn rollback(self, game: &mut Game<'_>) {
         for restore in self.guests.into_values() {
+            restore(game);
+        }
+        for restore in self.windows.into_values() {
             restore(game);
         }
         for restore in self.mobs.into_values() {
@@ -521,6 +528,40 @@ impl Game<'_> {
         );
     }
 
+    /// A replacement can close a funded window from a listener's transaction.
+    /// Keep the player's wire window with the trade and hold any open/close
+    /// packets until the frame commits.
+    pub(super) fn journal_merchant_replacement(&mut self, conn: u32) {
+        let Some(level) = self.transactions.last_mut() else {
+            return;
+        };
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let Some(menus) = host.menus.get(&conn).filter(|m| m.merchant.is_some()) else {
+            return;
+        };
+        let Some(guest) = host.hub.guest(conn) else {
+            return;
+        };
+        level.trades.windows.entry(conn).or_insert_with(|| {
+            let window = guest.menu_before_replacement();
+            let heard = menus.menu_heard.clone();
+            let owned = menus.owned_menu.clone();
+            Box::new(move |game| {
+                if let Some(host) = game.lan.as_mut() {
+                    host.hub.guests.update_connection(conn, window);
+                    let menus = host.menus.entry(conn).or_default();
+                    menus.menu_heard = heard;
+                    menus.owned_menu = owned;
+                }
+            })
+        });
+        level
+            .packets
+            .get_or_insert_with(sunrise_client::lan::conn::transaction_packets::Scope::begin);
+    }
+
     /// Keep the fields merchant operations own, not the mob's health, equipment or effects,
     /// which belong to their owning journals.
     pub(super) fn journal_merchant_mob(&mut self, id: u32) {
@@ -536,6 +577,7 @@ impl Game<'_> {
         let random = m.random.clone();
         let timer = m.ambient_timer;
         let trade = m.extra.trade.clone();
+        let trading = m.extra.flag2;
         let profession = m.extra.profession.clone();
         let level = m.extra.villager_level;
         let variant = m.extra.variant;
@@ -545,6 +587,7 @@ impl Game<'_> {
                 m.random = random;
                 m.ambient_timer = timer;
                 m.extra.trade = trade;
+                m.extra.flag2 = trading;
                 m.extra.profession = profession;
                 m.extra.villager_level = level;
                 m.extra.variant = variant;

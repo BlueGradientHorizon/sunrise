@@ -108,6 +108,7 @@ impl Game<'_> {
     /// tells the client, or `doCloseContainer` for a provider that skips the client's close.
     /// Either way the old menu's `removed` runs and the mods hear it close.
     pub(super) fn close_for_open(&mut self, conn: u32, replace: MenuReplace) {
+        self.journal_merchant_replacement(conn);
         match replace {
             MenuReplace::CloseFirst => self.guest_close_menus_and_tell(conn),
             MenuReplace::InPlace => self.guest_close_all(conn),

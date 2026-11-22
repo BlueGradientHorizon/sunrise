@@ -5709,7 +5709,11 @@ mod merchant_packet_tests {
     //! Vanilla notifyTrade changes the live offer while its frozen owner retains
     //! the last outbound offer packet. No sockets, server loop or world generation.
 
-    struct ReplaceOnTradeVoice;
+    use mod_api::HostTransaction;
+
+    struct ReplaceOnTradeVoice {
+        abort: bool,
+    }
 
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for ReplaceOnTradeVoice {
@@ -5722,17 +5726,28 @@ mod merchant_packet_tests {
                 let mod_api::HostSide::Server(host) = host else {
                     panic!("the trade voice is a server level sound");
                 };
-                assert!(
-                    host.open_menu(
-                        2,
-                        1,
-                        mod_api::Text::literal("Replacement"),
-                        Vec::new(),
-                        mod_api::MenuReplace::InPlace
-                    )
-                    .unwrap()
-                    .is_some()
-                );
+                let open = |host: &mut dyn mod_api::ServerHost| {
+                    assert!(
+                        host.open_menu(
+                            2,
+                            1,
+                            mod_api::Text::literal("Replacement"),
+                            Vec::new(),
+                            mod_api::MenuReplace::InPlace
+                        )
+                        .unwrap()
+                        .is_some()
+                    );
+                };
+                if self.abort {
+                    let aborted: Result<(), ()> = host.transaction(|host, _| {
+                        open(host);
+                        Err(())
+                    });
+                    assert_eq!(aborted, Err(()));
+                } else {
+                    open(host);
+                }
             }
             mod_api::Flow::Continue
         }
@@ -5764,6 +5779,7 @@ mod merchant_packet_tests {
                 "buyer-first",
                 "sound-replaces-menu",
                 "sound-replaces-suspended-menu",
+                "sound-replaces-suspended-menu-abort",
             ],
         ) {
             return;
@@ -6225,13 +6241,14 @@ mod merchant_packet_tests {
                 );
             };
             if case.starts_with("sound-replaces-") {
+                let abort = case.ends_with("-abort");
                 let mods = vec![mod_api::ModEntry::new(
                     "replace_on_trade_voice",
-                    Box::new(ReplaceOnTradeVoice),
+                    Box::new(ReplaceOnTradeVoice { abort }),
                 )]
                 .into();
                 mod_platform::testing::with_mods(mods, || {
-                    if case == "sound-replaces-suspended-menu" {
+                    if case.starts_with("sound-replaces-suspended-menu") {
                         let mut inner = crate::game::native_item_places::tests::guest(2);
                         inner.dimension = "minecraft:overworld".into();
                         game.lan.as_mut().unwrap().hub.guests.push(inner);
@@ -6261,24 +6278,57 @@ mod merchant_packet_tests {
                 });
                 let host = game.lan.as_ref().unwrap();
                 let buyer = host.hub.guest(1).unwrap();
+                let emeralds = buyer
+                    .inventory
+                    .iter()
+                    .flatten()
+                    .filter(|item| item.item.as_ref() == "minecraft:emerald")
+                    .map(|item| item.count)
+                    .sum::<u32>();
+                let (offers, contents) = packets(&rx);
+                if abort {
+                    assert!(
+                        buyer.menu.is_none(),
+                        "the aborted replacement did not remain open"
+                    );
+                    assert_eq!(
+                        emeralds, 0,
+                        "aborting did not duplicate the payment into inventory"
+                    );
+                    assert_eq!(
+                        buyer.carried.as_ref().unwrap().count,
+                        3,
+                        "the old cursor was restored"
+                    );
+                    let gm = host.menus[&1]
+                        .merchant
+                        .as_ref()
+                        .expect("merchant restored on abort");
+                    assert_eq!(gm.window, merchant_window);
+                    assert_eq!(gm.slots[0].as_ref().unwrap().count, 4);
+                    assert!(
+                        gm.slots[2].is_none(),
+                        "the hit's earlier reprice still applies"
+                    );
+                    assert!(
+                        contents.is_empty(),
+                        "no tentative replacement snapshot escaped"
+                    );
+                    assert_eq!(
+                        offers.len(),
+                        1,
+                        "the restored merchant window still receives its reprice"
+                    );
+                    assert_eq!(offers[0].container, merchant_window);
+                    return;
+                }
                 let replacement = buyer.menu.as_ref().expect("sound hook opened a new window");
                 assert_ne!(replacement.window, merchant_window);
                 assert!(
                     host.menus[&1].merchant.is_none(),
                     "the old merchant window was retired"
                 );
-                assert_eq!(
-                    buyer
-                        .inventory
-                        .iter()
-                        .flatten()
-                        .filter(|item| item.item.as_ref() == "minecraft:emerald")
-                        .map(|item| item.count)
-                        .sum::<u32>(),
-                    4,
-                    "the payment went back to the buyer during their own turn",
-                );
-                let (offers, contents) = packets(&rx);
+                assert_eq!(emeralds, 4, "the payment went back to the buyer");
                 assert!(offers.is_empty(), "no offer packet for the retired window");
                 let content = contents
                     .iter()

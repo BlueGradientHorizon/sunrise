@@ -653,7 +653,12 @@ impl Game<'_> {
             return false;
         };
         // `MerchantMenu.removed` takes only the cursor and payment slots.
-        // Return them to the buyer's own inventory even inside their turn.
+        // Save their destination through the same loan used to return them.
+        self.journal_guest_inventory(conn);
+        self.journal_trade_sequences();
+        if let Some(id) = gm.merchant.mob {
+            self.journal_merchant_mob(id);
+        }
         let carried = self.close_guest_menu_cursor(gi, gm.window);
         let [a, b, _] = gm.slots;
         let mob = gm
