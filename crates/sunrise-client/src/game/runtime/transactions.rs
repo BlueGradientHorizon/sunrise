@@ -597,7 +597,6 @@ pub(super) enum After {
     Changed(Pos),
     /// Detached mod entity state (not necessarily items) was edited.
     DirtyBlockEntity(Pos),
-    UpdatePlacedBlockEntity(Pos, u64),
     /// A detached menu listener removed its holder; spill any unreturned contents only on commit.
     LostMenuContents(Pos, Box<sunrise_client::containers::ModBlockEntity>),
     GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
@@ -630,6 +629,8 @@ pub(super) enum After {
     PlacementEffect(Box<sunrise_world::level::ticks::PlacementEffect>),
     PlacementSpill(Box<super::spill::Spill>),
     WitherPattern(sunrise_client::block_pattern::PatternMatch, Vec<[i32; 3]>),
+    /// Publish an update only if the staged block entity is still resident.
+    UpdatePlacedBlockEntity(Pos, u64),
     BlockGameEvent(
         &'static str,
         [i32; 3],
@@ -2067,17 +2068,17 @@ impl Game<'_> {
             After::WitherPattern(found, cells) => {
                 let _ = self.finish_wither_pattern(found, &cells);
             }
+            After::UpdatePlacedBlockEntity(pos, generation) => {
+                if self.world.block_entities.generation(&pos) == Some(generation) {
+                    self.block_entity_updated(pos);
+                }
+            }
             After::BlockGameEvent(id, pos, who, state) => {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
             After::Changed(pos) => self.container_changed(pos),
             After::DirtyBlockEntity(pos) => {
                 self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
-            }
-            After::UpdatePlacedBlockEntity(pos, generation) => {
-                if self.world.block_entities.generation(&pos) == Some(generation) {
-                    self.block_entity_updated(pos);
-                }
             }
             After::LostMenuContents(pos, taken) => self.drop_unreturned_mod_contents(pos, *taken),
             After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
