@@ -247,6 +247,11 @@ impl Game<'_> {
     pub(super) fn registry_entry_in_tag(&self, entry: &RegistryEntry, tag: &str) -> Option<bool> {
         let registry = entry.registry.to_string();
         let id = entry.id.to_string();
+        if registry == "minecraft:damage_type" && self.is_logical_server() {
+            self.native_lifecycle.epoch()?;
+            let damage = &self.health_resources.damage;
+            return damage.id(&id).map(|id| damage.in_tag(id, &normalized(tag)));
+        }
         if !self.registry_has_entry(&registry, &id) {
             return None;
         }

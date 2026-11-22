@@ -106,9 +106,11 @@ pub(super) fn block_items(root: &Path) -> Result<HashMap<String, String>> {
         .collect()
 }
 
-pub(crate) enum LoadEntityTags<'a> {
+/// Which entity registry to use when binding this item generation's tags.
+pub enum LoadEntityTags<'a> {
     Prepared,
     Frozen(&'a Arc<[String]>),
+    Reload(&'a Arc<EntityTypeTags>),
 }
 
 /// The entity membership and registry metadata used by ingredient component codecs.
@@ -149,6 +151,16 @@ pub(crate) fn component_tables(
             Arc::new(EntityTypeTags::load(root, overlay, ids)?)
         }
         LoadEntityTags::Frozen(ids) => Arc::new(EntityTypeTags::load(root, overlay, ids.clone())?),
+        LoadEntityTags::Reload(previous) => {
+            let tags = EntityTypeTags::load(root, overlay, previous.ids().clone())?;
+            // TagLoader.loadPendingTags keeps the prior bindings if none built.
+            // A successfully built empty tag is still a replacement.
+            if tags.ordered().is_empty() {
+                previous.clone()
+            } else {
+                Arc::new(tags)
+            }
+        }
     };
     let entities = registry
         .by_registry
@@ -166,4 +178,35 @@ pub(crate) fn component_tables(
         sunrise_client_core::registries::RegistryIds::default(),
     );
     Ok((Arc::new(registry), entity_type_tags))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entity_reload_retains_unbound_tags_but_applies_bound_empty_tags() {
+        let root = tempfile::tempdir().unwrap();
+        let tag = "test:walkers";
+        let cow = "minecraft:cow";
+        let previous = Arc::new(EntityTypeTags::from_ordered(
+            [(tag.into(), vec![cow.into()])].into(),
+            [cow.into()].into(),
+        ));
+        let reload = |bytes: &[u8]| {
+            let files = [("tags/test:entity_type/walkers".into(), vec![bytes.to_vec()])];
+            component_tables(
+                root.path(),
+                &PackOverlay::new(&files),
+                LoadEntityTags::Reload(&previous),
+            )
+            .unwrap()
+            .1
+        };
+        assert!(reload(br#"{"values":["test:missing"]}"#).contains(tag, cow));
+        assert_eq!(
+            reload(br#"{"values":[]}"#).ordered().get(tag),
+            Some(&Vec::new())
+        );
+    }
 }

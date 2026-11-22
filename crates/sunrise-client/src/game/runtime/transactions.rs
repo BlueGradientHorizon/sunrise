@@ -189,36 +189,6 @@ impl OpenTransactions {
         }
     }
 
-    /// Positions with a connection-group restore baseline for the level being edited.
-    pub(super) fn journaled_connection_group_positions(&self, dim: Dim) -> FxHashSet<Pos> {
-        self.iter()
-            .flat_map(|level| level.connection_groups.keys())
-            .filter_map(|&(owner, pos)| (owner == dim).then_some(pos))
-            .collect()
-    }
-
-    /// A permanent bulk edit invalidated these groups. Update the restore baseline and drop
-    /// older group writes at those cells throughout the enclosing transactions, in this level only.
-    pub(super) fn reconcile_bulk_connection_group_clears(
-        &mut self,
-        dim: Dim,
-        cleared: &FxHashSet<Pos>,
-    ) {
-        if cleared.is_empty() {
-            return;
-        }
-        for level in self.iter_mut() {
-            for &pos in cleared {
-                if let Some(was) = level.connection_groups.get_mut(&(dim, pos)) {
-                    *was = None;
-                }
-            }
-            level.after.retain(|after| {
-                !matches!(after, After::ConnectionGroup(owner, pos, _) if *owner == dim && cleared.contains(pos))
-            });
-        }
-    }
-
     /// Keep the first write to each field of a live general-entity subject.
     pub(super) fn journal_general_entity(
         &mut self,
@@ -291,6 +261,7 @@ pub(super) struct StrictBlockStep {
     pub(super) to: BlockStateId,
     // Before the first replacement on this cell; swapped for the new row at commit.
     pub(super) row: Option<Option<RemovedRow>>,
+    pub(super) clear_connection_group: bool,
 }
 
 pub(super) type StrictBlockSteps = indexmap::IndexMap<Pos, StrictBlockStep>;
@@ -361,7 +332,7 @@ pub(super) struct Level {
     blocks: HashMap<Pos, KeptBlock>,
     /// Each cell's original connection group before this transaction first changed it, used for
     /// silent rollback on abort and pre-replay restoration on root commit.
-    connection_groups: HashMap<(Dim, Pos), Option<u64>>,
+    connection_groups: HashMap<Pos, Option<u64>>,
     /// Level.random in this frame's own dimension before its first draw.
     level_random: Option<LegacyRandom>,
     /// Other levels drawn from at this depth. Only those draws allocate a map entry.
@@ -626,7 +597,7 @@ pub(super) enum After {
     ),
     /// An explicit `LevelRef::set_connection_group` write, replayed in order with block writes at
     /// the root commit so cross-position cascades (e.g. popping a supported block) clear it.
-    ConnectionGroup(Dim, Pos, Option<u64>),
+    ConnectionGroup(Pos, Option<u64>),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
     BlockGameEvent(
@@ -688,6 +659,7 @@ impl After {
             self,
             Self::Block(_)
                 | Self::BulkBlocks(..)
+                | Self::ConnectionGroup(..)
                 | Self::Changed(_)
                 | Self::ChangedWithoutHook(_)
                 | Self::QuickMoveChanged(_)
@@ -766,7 +738,14 @@ impl Level {
             });
     }
 
+    pub(super) fn keep_connection_group(&mut self, pos: Pos, group: Option<u64>) {
+        self.connection_groups.entry(pos).or_insert(group);
+    }
+
     fn merge_level_writes(&mut self, child: &mut Self) {
+        for (pos, group) in std::mem::take(&mut child.connection_groups) {
+            self.keep_connection_group(pos, group);
+        }
         // Slots before whole entities: a slot the outer transaction already kept the
         // whole entity of is older there, but one kept whole only by this child is not,
         // so the child's slot entries go up beside its capture.
@@ -1069,6 +1048,7 @@ impl Game<'_> {
                     removed_block_entities: std::mem::take(&mut level.removed_block_entities),
                     slots: std::mem::take(&mut level.slots),
                     blocks: std::mem::take(&mut level.blocks),
+                    connection_groups: std::mem::take(&mut level.connection_groups),
                     item_entities: std::mem::take(&mut level.item_entities),
                     general_entities: std::mem::take(&mut level.general_entities),
                     chunk_marks: std::mem::take(&mut level.chunk_marks),
@@ -1098,9 +1078,6 @@ impl Game<'_> {
             (true, Some(outer)) => {
                 outer.actions.merge(level.actions);
                 outer.trades.merge(level.trades);
-                for (pos, was) in level.connection_groups {
-                    outer.connection_groups.entry(pos).or_insert(was);
-                }
                 if let Some(before) = level.level_random {
                     if outer.dimension == level.dimension {
                         outer.keep_level_random(None, || before);
@@ -1796,8 +1773,8 @@ impl Game<'_> {
             .world
             .set_connection_group_stored(pos[0], pos[1], pos[2], group);
         if changed {
-            level.connection_groups.entry((dim, key)).or_insert(old);
-            level.after.push(After::ConnectionGroup(dim, key, group));
+            level.keep_connection_group(key, old);
+            level.after.push(After::ConnectionGroup(key, group));
         }
         changed
     }
@@ -1852,10 +1829,7 @@ impl Game<'_> {
         replay.level_host = level_host;
         replay.clear_connection_group |= clears_group;
         if old_group.is_some() {
-            level
-                .connection_groups
-                .entry((self.dim, key))
-                .or_insert(old_group);
+            level.keep_connection_group(key, old_group);
         }
         level.after.push(After::Block(BlockStep {
             pos: key,
@@ -2080,10 +2054,7 @@ impl Game<'_> {
                 } => self.audio.play(sound, Some(at), volume, pitch),
             },
             // Only reached through a root commit, which replays blocks and connection groups in order.
-            After::Block(_) | After::ConnectionGroup(_, _, _) => {}
-            After::BulkBlocks(publication, tracked, removed, _) => {
-                self.publish_bulk_edit(publication, tracked, removed);
-            }
+            After::Block(_) | After::BulkBlocks(..) | After::ConnectionGroup(..) => {}
             After::Drop(pos, stack) => {
                 self.spawn_item(stack, pos.map(|p| f64::from(p) + 0.5), [0.0; 3], 10);
             }
@@ -2181,14 +2152,6 @@ impl Game<'_> {
             }
         }
     }
-    fn connection_group_world_mut(&mut self, dim: Dim) -> Option<&mut World> {
-        if dim == self.dim {
-            Some(&mut self.world)
-        } else {
-            self.levels.parked_mut(dim).map(|level| &mut level.world)
-        }
-    }
-
     pub(in crate::game) fn pending_menu_data(&self, key: (u32, u64, usize)) -> Option<i32> {
         self.transactions
             .iter()
@@ -2241,37 +2204,46 @@ impl Game<'_> {
             packets.publish();
         }
         self.commit_menu_data(level.menu_data);
-        // Replay from the old group so committed callbacks see writes in order. A fresh
-        // publication entry survives only if the final group differs from that baseline.
-        let mut clean_groups = Vec::new();
-        for ((dim, (x, y, z)), was) in level.connection_groups {
-            if let Some(world) = self.connection_group_world_mut(dim) {
-                world.set_connection_group_stored(x, y, z, was);
-                if world
-                    .connection_group_log
-                    .as_ref()
-                    .is_some_and(|log| !log.contains(&(x, y, z)))
-                {
-                    clean_groups.push((dim, (x, y, z), was));
-                }
-            }
-        }
-        // For a mixed cell, work back from its final staged row to the row before its
-        // first edit. A strict step takes the row it installed from the next retirement,
-        // or from storage if it survived. Ordinary removal then observes its own row,
-        // never a row from a later strict edit. Other cells stay in final staged storage.
-        let mixed: indexmap::IndexSet<_> = level
+        // A strict cell is rewound to its storage before its first edit when an ordinary write
+        // shares it, or when its connection group is rewound below: replay then shows each
+        // callback the block and group together. For a rewound cell, work back from its final
+        // staged row to the row before its first edit. A strict step takes the row it installed
+        // from the next retirement, or from storage if it survived. Ordinary removal then
+        // observes its own row, never a row from a later strict edit. Other cells stay in final
+        // staged storage.
+        let rewound: indexmap::IndexSet<_> = level
             .after
             .iter()
             .filter_map(|after| match after {
                 After::Block(step) if level.blocks[&step.pos].strict => Some(step.pos),
                 _ => None,
             })
+            .chain(
+                level
+                    .connection_groups
+                    .keys()
+                    .copied()
+                    .filter(|pos| level.blocks.get(pos).is_some_and(|kept| kept.strict)),
+            )
             .collect();
+        // Replay from the old group so committed callbacks see writes in order. A fresh
+        // publication entry survives only if the final group differs from that baseline.
+        let mut clean_groups = Vec::new();
+        for (pos @ (x, y, z), was) in level.connection_groups {
+            self.world.set_connection_group_stored(x, y, z, was);
+            if self
+                .world
+                .connection_group_log
+                .as_ref()
+                .is_some_and(|log| !log.contains(&pos))
+            {
+                clean_groups.push((pos, was));
+            }
+        }
         let mut rows = HashMap::new();
         for after in level.after.iter_mut().rev() {
             match after {
-                After::Block(step) if mixed.contains(&step.pos) => {
+                After::Block(step) if rewound.contains(&step.pos) => {
                     if let Some(removed) = &mut step.removed {
                         let slot = rows
                             .entry(step.pos)
@@ -2279,9 +2251,9 @@ impl Game<'_> {
                         *slot = removed.take();
                     }
                 }
-                After::BulkBlocks(_, _, _, writes) if !mixed.is_empty() => {
+                After::BulkBlocks(_, _, _, writes) if !rewound.is_empty() => {
                     for (&pos, step) in writes {
-                        if mixed.contains(&pos)
+                        if rewound.contains(&pos)
                             && let Some(removed) = &mut step.row
                         {
                             let slot = rows
@@ -2294,7 +2266,7 @@ impl Game<'_> {
                 _ => {}
             }
         }
-        for &pos in &mixed {
+        for &pos in &rewound {
             let (x, y, z) = pos;
             self.world.set_stored(x, y, z, level.blocks[&pos].state);
             if let Some((row, generation)) = rows.remove(&pos).flatten() {
@@ -2303,7 +2275,7 @@ impl Game<'_> {
         }
         for after in &mut level.after {
             if let After::Block(step) = after
-                && !mixed.contains(&step.pos)
+                && !rewound.contains(&step.pos)
                 && let Some(Some(row)) = step.removed.take()
             {
                 let first = level.removed_block_entities.entry(step.pos).or_default();
@@ -2324,15 +2296,11 @@ impl Game<'_> {
                 After::ChangedWithoutHook(pos) if !told_silent.insert(pos) => {}
                 After::QuickMoveChanged(ref notice)
                     if !told_holders.insert((notice.dim, notice.holder)) => {}
-                After::ConnectionGroup(dim, pos, group) => {
-                    if let Some(world) = self.connection_group_world_mut(dim) {
-                        world.set_connection_group(pos.0, pos.1, pos.2, group, true);
-                    }
-                    if dim == self.dim {
-                        explicit_group_since_block.insert(pos);
-                    }
+                After::ConnectionGroup(pos @ (x, y, z), group) => {
+                    self.world.set_connection_group(x, y, z, group, true);
+                    explicit_group_since_block.insert(pos);
                 }
-                After::Block(step) if mixed.contains(&step.pos) => {
+                After::Block(step) if rewound.contains(&step.pos) => {
                     let (x, y, z) = step.pos;
                     explicit_group_since_block.remove(&step.pos);
                     if step.removed.is_some() && !step.replay.replay_removal {
@@ -2348,7 +2316,10 @@ impl Game<'_> {
                 }
                 After::BulkBlocks(publication, tracked, removed, steps) => {
                     for (pos, step) in steps {
-                        if mixed.contains(&pos) {
+                        if step.clear_connection_group {
+                            self.world.invalidate_replaced_group(pos);
+                        }
+                        if rewound.contains(&pos) {
                             let (x, y, z) = pos;
                             self.world.set_stored(x, y, z, step.to);
                             if let Some(row) = step.row {
@@ -2423,12 +2394,11 @@ impl Game<'_> {
                 after => self.run_after(after),
             }
         }
-        for (dim, (x, y, z), was) in clean_groups {
-            if let Some(world) = self.connection_group_world_mut(dim)
-                && world.connection_group(x, y, z) == was
-                && let Some(log) = world.connection_group_log.as_mut()
+        for (pos @ (x, y, z), was) in clean_groups {
+            if self.world.connection_group(x, y, z) == was
+                && let Some(log) = self.world.connection_group_log.as_mut()
             {
-                log.remove(&(x, y, z));
+                log.remove(&pos);
             }
         }
         // A crafting grid the transaction changed has its result made again, once for each
@@ -2610,10 +2580,8 @@ impl Game<'_> {
         for (pos, block) in level.blocks {
             self.world.set_stored(pos.0, pos.1, pos.2, block.state);
         }
-        for ((dim, (x, y, z)), group) in level.connection_groups {
-            if let Some(world) = self.connection_group_world_mut(dim) {
-                world.set_connection_group_stored(x, y, z, group);
-            }
+        for ((x, y, z), group) in level.connection_groups {
+            self.world.set_connection_group_stored(x, y, z, group);
         }
         if let Some(random) = level.level_random {
             *self.world.random = random;

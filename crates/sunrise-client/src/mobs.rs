@@ -609,9 +609,10 @@ impl NamedDamage {
     pub const NO_ANGER: u32 = 1 << 15;
     pub const BYPASSES_WOLF_ARMOR: u32 = 1 << 16;
     pub const SULFUR_CUBE_WITH_BLOCK_IMMUNE_TO: u32 = 1 << 17;
+    pub const PANIC_ENVIRONMENTAL_CAUSES: u32 = 1 << 18;
 
     /// Each flag with the damage tag it stands for.
-    const TAG_FLAGS: [(u32, &'static str); 18] = [
+    const TAG_FLAGS: [(u32, &'static str); 19] = [
         (Self::IS_FIRE, "minecraft:is_fire"),
         (Self::BYPASSES_ARMOR, "minecraft:bypasses_armor"),
         (Self::NO_KNOCKBACK, "minecraft:no_knockback"),
@@ -622,6 +623,10 @@ impl NamedDamage {
         (Self::BYPASSES_EFFECTS, "minecraft:bypasses_effects"),
         (Self::BYPASSES_RESISTANCE, "minecraft:bypasses_resistance"),
         (Self::PANIC_CAUSES, "minecraft:panic_causes"),
+        (
+            Self::PANIC_ENVIRONMENTAL_CAUSES,
+            "minecraft:panic_environmental_causes",
+        ),
         (Self::IS_PROJECTILE, "minecraft:is_projectile"),
         (Self::IS_EXPLOSION, "minecraft:is_explosion"),
         (Self::IS_FALL, "minecraft:is_fall"),
@@ -663,12 +668,30 @@ impl NamedDamage {
                 leaked
             }
         };
+        Some(Self::with_catalog_tags(catalog, id, name))
+    }
+
+    /// Contact keys already own the names for the installation's lifetime.
+    pub(crate) fn from_contact_key(
+        catalog: &sunrise_world::damage_source::Catalog,
+        key: mod_api::DamageTypeKey,
+    ) -> Option<Self> {
+        let name = mod_api::__private::parts_installation::damage_type_name(key)?;
+        Some(Self::with_catalog_tags(catalog, catalog.id(name)?, name))
+    }
+
+    fn with_catalog_tags(
+        catalog: &sunrise_world::damage_source::Catalog,
+        id: sunrise_world::damage_source::DamageTypeId,
+        name: &'static str,
+    ) -> Self {
         let tags = Self::TAG_FLAGS
             .iter()
             .filter(|(_, tag)| catalog.in_tag(id, tag))
             .fold(0, |tags, (flag, _)| tags | flag);
-        Some(Self { name, tags })
+        Self { name, tags }
     }
+
     pub const fn has(self, tag: u32) -> bool {
         self.tags & tag != 0
     }

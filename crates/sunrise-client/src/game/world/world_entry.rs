@@ -295,8 +295,17 @@ impl Game<'_> {
             self.res.facts(),
             &overlay,
             self.res.item_defaults(),
-            Some(self.res.items().entity_type_tags.ids()),
+            if reload {
+                sunrise_client::items::LoadEntityTags::Reload(&self.items().entity_type_tags)
+            } else {
+                sunrise_client::items::LoadEntityTags::Frozen(
+                    self.res.items().entity_type_tags.ids(),
+                )
+            },
         )?;
+        if reload {
+            items.retain_unbound_tags(self.items());
+        }
         class_tags::install(&mut items, self.res.facts());
         // Tag files are read before their tags are bound, so the tag readers below keep the
         // context without tags: there `neoforge:tag_empty` is unsupported, never answered from a
@@ -340,11 +349,12 @@ impl Game<'_> {
         let providers = Providers::load_with(root, &overlay);
         // Visit independently readable registries before consuming any result.
         // One rejected winner must not hide the other entries' diagnostics.
-        let loot = sunrise_world::loot::LootData::load_with_damage(
+        let loot = sunrise_world::loot::LootData::load_with_bound_tags(
             root,
             &overlay,
             self.res.core.item_data.defaults(),
             &health.damage,
+            &items.ordered_tags(),
         );
         let advancements = Arc::new(sunrise_client::advancements::Tree::load_with(
             &root.join("data"),
@@ -453,7 +463,7 @@ impl Game<'_> {
         let pack_tags: HashMap<_, _> = WorldTables::PACK_TAG_REGISTRIES
             .into_iter()
             .chain(sunrise_client::neoforge_mob_maps::MAPS.map(|definition| definition.directory))
-            .filter(|directory| !matches!(*directory, "item" | "entity_type"))
+            .filter(|directory| !matches!(*directory, "item" | "entity_type" | "damage_type"))
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .filter_map(|registry| {
@@ -653,6 +663,7 @@ impl Game<'_> {
             health,
             parts,
             wire,
+            wire_tags,
             datapack_registries,
         } = prepared;
         self.close_stonecutters_for_reload();
@@ -710,7 +721,7 @@ impl Game<'_> {
             &self.pack_files(),
             wire.clone(),
             advancements.clone(),
-            self.items().entity_type_tags.clone(),
+            wire_tags,
         );
         if self.lan.is_some()
             && let Some(sync) = wire
@@ -765,11 +776,12 @@ impl Game<'_> {
         }
         self.server_items = None;
         let overlay = pack_files(&self.world_tables);
-        let loot = match sunrise_world::loot::LootData::load_with_damage(
+        let loot = match sunrise_world::loot::LootData::load_with_bound_tags(
             &self.options.resources,
             &overlay,
             self.res.item_defaults(),
             &self.health_resources.damage,
+            &self.items().ordered_tags(),
         ) {
             Ok(mut loot) => {
                 if !mod_api::__private::mods().is_empty() {
@@ -866,8 +878,9 @@ impl Game<'_> {
         } = self.stage_world_tables(stack, true, root)?;
         let items = tables
             .as_ref()
-            .map_or_else(|| self.res.items(), |tables| &tables.items);
-        let parts = self.prepare_parts(items)?;
+            .map_or_else(|| self.res.shared_items(), |tables| tables.items.clone());
+        let parts = self.prepare_parts(&items)?;
+        let wire_tags = sunrise_client::lan::data::WorldTags::new(items.clone(), &health.damage);
         let overlay = pack_files(&tables);
         let kept = self
             .lan
@@ -884,7 +897,7 @@ impl Game<'_> {
                     let sources = lan::sync::prepare_server_sources(
                         root,
                         &self.res.core.item_data,
-                        items,
+                        &items,
                         &overlay,
                     )?;
                     sources.check()?;
@@ -899,7 +912,7 @@ impl Game<'_> {
                     &kept,
                     &sources,
                     &advancements,
-                    &items.entity_type_tags,
+                    &wire_tags,
                 )
                 .map_err(|error| format!("wire reload: {error}"))?,
             )
@@ -914,6 +927,7 @@ impl Game<'_> {
             health,
             parts,
             wire,
+            wire_tags,
             datapack_registries,
         })
     }

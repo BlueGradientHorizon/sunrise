@@ -328,8 +328,10 @@ impl World {
     ) {
         if self.chunks.contains_key(&chunk) {
             let incoming: FxHashSet<_> = entities.iter().map(|(pos, _)| *pos).collect();
-            self.block_entities
-                .unload(|p| (p.0 >> 4, p.2 >> 4) == chunk && !incoming.contains(p));
+            crate::spans::time("unload_block_entities", || {
+                self.block_entities
+                    .unload_column_where(chunk, |p| !incoming.contains(p));
+            });
         }
         self.block_entities.load_chunk(entities);
     }
@@ -625,24 +627,11 @@ impl World {
         self.group_lifetime = Some(behaviours);
     }
 
-    /// Commit the group lifetime of a resident storage replacement. Both the scalar and the
-    /// palette-run writer use this boundary; speculative storage uses `set_stored` instead.
-    pub(crate) fn block_storage_changed(
-        &mut self,
-        pos: (i32, i32, i32),
-        old: BlockStateId,
-        new: BlockStateId,
-    ) -> bool {
-        if self
-            .group_lifetime
+    /// Whether this transition ends the lifetime of a group at that cell.
+    pub(crate) fn replaces_connection_group(&self, old: BlockStateId, new: BlockStateId) -> bool {
+        self.group_lifetime
             .as_ref()
             .is_some_and(|b| !b.keeps_block_entity(old, new))
-        {
-            self.invalidate_replaced_group(pos);
-            true
-        } else {
-            false
-        }
     }
 
     /// A committed replacement (including a fresh block entity of the same state)
@@ -705,8 +694,10 @@ impl World {
         }
         let previous = Arc::make_mut(chunk).set(x & 15, y, z & 15, state.0);
         if previous != state.0 {
-            if !chunk.connection_groups.is_empty() {
-                self.block_storage_changed((x, y, z), BlockStateId(previous), state);
+            if !chunk.connection_groups.is_empty()
+                && self.replaces_connection_group(BlockStateId(previous), state)
+            {
+                self.invalidate_replaced_group((x, y, z));
             }
             self.block_entities
                 .state_changed((x, y, z), previous, state.0);

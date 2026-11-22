@@ -65,9 +65,9 @@
     "reason": "Empty or set-once resolved registry lookup returned when no installed Parts inventory supplies one."
   },
   "content/registry_keys.rs::resolved_entity_types::EMPTY": {
-    "type": "std::sync::OnceLock<sunrise_mod_runtime::registry_keys::Names>",
+    "type": "std::sync::OnceLock<sunrise_mod_runtime::registry_keys::EntityTypes>",
     "category": "immutable cache",
-    "reason": "Empty or set-once resolved registry lookup returned when no installed Parts inventory supplies one."
+    "reason": "Empty or set-once resolved registry lookup with living type metadata when no installed Parts inventory supplies one."
   },
   "content/registry_keys.rs::resolved_items::EMPTY": {
     "type": "std::sync::OnceLock<sunrise_mod_runtime::registry_keys::Names>",
