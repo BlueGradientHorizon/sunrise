@@ -107,21 +107,21 @@ impl Game<'_> {
         self.finish_local_mode_update(mode);
     }
     fn finish_local_mode_update(&mut self, mode: GameMode) {
-        if let Some(r) = self.remote.as_mut() {
-            self.creative = r.update_local_mode_abilities(mode.id());
-        } else {
-            self.creative = mode == GameMode::Creative;
-        }
+        let r = self
+            .remote
+            .as_mut()
+            .expect("set_local_mode requires a remote client");
+        self.creative = r.update_local_mode_abilities(mode.id());
         self.apply_remote_abilities();
         self.sync_remote_player_game_mode();
         self.mode_changed_under_inventory();
     }
-    /// `ServerPlayer.setGameMode` on a local/server world; delegates to `set_local_mode` on a remote client.
+    /// `ServerPlayer.setGameMode` on a local/server world.
     pub(super) fn set_mode(&mut self, mode: GameMode) {
-        if self.remote.is_some() {
-            self.set_local_mode(mode);
-            return;
-        }
+        debug_assert!(
+            self.remote.is_none(),
+            "set_mode is server-only; remote clients use set_local_mode"
+        );
         let changed = mode != self.mode;
         if changed {
             self.previous_mode = Some(self.mode);
@@ -144,11 +144,11 @@ impl Game<'_> {
             if let Some(p) = self.player.as_mut() {
                 p.flying = true;
                 p.spectator = true;
-                p.local_spectator = None;
+                p.local_spectator = true;
             }
         } else if let Some(p) = self.player.as_mut() {
             p.spectator = false;
-            p.local_spectator = None;
+            p.local_spectator = false;
             if !self.creative {
                 p.flying = false;
             }

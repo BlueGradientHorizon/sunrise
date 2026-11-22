@@ -1013,7 +1013,7 @@ impl Game<'_> {
         (self.local_player()? == player).then(|| PlayerRead::Acting {
             mode: self.mode_id(),
             body: self.player.as_ref(),
-            abilities: Some(self.client_abilities()),
+            abilities: self.client_abilities(),
             last_death: self.level.last_death.as_ref(),
         })
     }
@@ -1047,19 +1047,14 @@ impl Game<'_> {
         }))
     }
 
-    /// The local player's `Abilities` on a client: live `Remote::abilities` mutated in packet
-    /// arrival order, with predicted `flying` and spectator-scroll `flying_speed` from the body.
-    fn client_abilities(&self) -> PlayerAbilities {
-        let mut a = self.remote_abilities().copied().unwrap_or_else(|| {
-            let mut fallback = PlayerAbilities::default();
-            fallback.update_for_mode(self.mode_id());
-            fallback
-        });
+    /// Reads live `Remote::abilities` with predicted `flying` and `flying_speed` from the body.
+    fn client_abilities(&self) -> Option<PlayerAbilities> {
+        let mut a = *self.remote_abilities()?;
         if let Some(body) = self.player.as_ref() {
             a.flying = body.flying;
             a.flying_speed = body.flying_speed;
         }
-        a
+        Some(a)
     }
 
     pub(super) fn player_handle_read(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {

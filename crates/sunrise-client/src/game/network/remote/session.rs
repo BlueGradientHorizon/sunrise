@@ -200,7 +200,6 @@ impl Game<'_> {
         // A new LocalPlayer has no effects: the server sends what it has
         // (ClientboundUpdateMobEffectPacket on placement).
         self.potions = Default::default();
-        self.set_mode_id(0);
         self.experience = Experience {
             level: 0,
             progress: 0.0,
@@ -405,6 +404,7 @@ impl Game<'_> {
             server_links: Vec::new(),
             debug_query: Default::default(),
         });
+        self.set_local_mode_with_previous(sunrise_client::command::args::GameMode::Survival, None);
         // The level's TickRateManager follows the server's ticking packets.
         self.clock = sunrise_client::clock::FixedStep::client();
         // The player's advancements and statistics are the server's.
@@ -481,7 +481,6 @@ impl Game<'_> {
         self.carried = None;
         self.using = None;
 
-        self.set_mode_id(0);
         self.experience = Experience {
             level: 0,
             progress: 0.0,
@@ -663,6 +662,7 @@ impl Game<'_> {
             server_links: Vec::new(),
             debug_query: Default::default(),
         });
+        self.set_local_mode_with_previous(sunrise_client::command::args::GameMode::Survival, None);
         self.clock = sunrise_client::clock::FixedStep::client();
         self.adv = Default::default();
         self.stats = Default::default();
@@ -876,7 +876,6 @@ impl Game<'_> {
         r.level = spawn.dimension.clone();
         r.level_key = mod_api::__private::dimension_key(&spawn.dimension);
         r.hashed_seed = spawn.seed;
-        r.game_mode = mode.id();
         r.abilities = sunrise_client::lan::abilities::PlayerAbilities::default();
         // handleLogin/handleRespawn run adjustPlayer(newPlayer) before setLocalMode.
         r.abilities.update_for_mode(adjust_mode.id());

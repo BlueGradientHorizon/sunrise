@@ -47,14 +47,12 @@ impl Game<'_> {
 
     /// Sync `PlayerInfo` (`player.spectator`) and `MultiPlayerGameMode` (`player.local_spectator`) onto the body.
     pub(in crate::game) fn sync_remote_player_game_mode(&mut self) {
-        if self.remote.is_none() {
-            return;
-        }
+        debug_assert!(self.remote.is_some());
         let info_spectator = self.own_player_is_spectator();
         let local_spectator = self.spectator();
         if let Some(player) = self.player.as_mut() {
             player.spectator = info_spectator;
-            player.local_spectator = Some(local_spectator);
+            player.local_spectator = local_spectator;
         }
     }
 

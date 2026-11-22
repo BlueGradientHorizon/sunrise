@@ -265,7 +265,7 @@ impl Game<'_> {
                 player.entity_id = self.own_entity_id();
                 // Player.tick reads PlayerInfo (`noPhysics`); LocalPlayer.aiStep reads local mode.
                 player.spectator = self.own_player_is_spectator();
-                player.local_spectator = Some(self.spectator());
+                player.local_spectator = self.spectator();
                 player.velocity = delta;
                 self.take_carried_attributes(&mut player)?;
                 self.hook.discard();
