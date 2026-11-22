@@ -17,10 +17,12 @@ sunrise-client game::agent::face_pick_tests::attack_by_id_click_drained_by_an_it
 sunrise-client game::agent::face_pick_tests::attack_by_id_drains_behind_a_large_player_burst lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_drops_its_own_click_not_a_players_in_the_same_tick lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_ends_without_a_click_on_death_or_without_ticks lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_expiry_retires_only_its_queued_click lib daily child-process
 sunrise-client game::agent::face_pick_tests::attack_by_id_follows_the_listener_decision lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_hits_the_entity_it_turned_to lib daily resources
-sunrise-client game::agent::face_pick_tests::attack_by_id_reports_a_click_no_tick_took lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_reports_a_click_no_tick_took lib daily child-process
 sunrise-client game::agent::face_pick_tests::attack_by_id_reports_the_pick_the_click_was_taken_with lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_stop_retires_only_its_queued_click lib daily child-process
 sunrise-client game::agent::face_pick_tests::look_at_entity_replies_after_a_tick_pick_with_no_frame lib daily resources
 sunrise-client game::agent::face_pick_tests::look_at_entity_replies_with_the_entity_it_turned_to lib daily resources
 sunrise-client game::agent::face_pick_tests::look_at_entity_waits_for_a_running_turn lib daily resources
@@ -2046,7 +2048,7 @@ sunrise-client game::pad::parity_tests::a_spectators_bumpers_set_the_flying_spee
 sunrise-client game::pad::parity_tests::bumpers_step_the_hotbar_where_the_wheel_does lib daily resources
 sunrise-client game::pad::parity_tests::resolved_mapping_reads_live_state_and_binding lib daily resources
 sunrise-client game::pad::parity_tests::pad_number_actions_select_the_hotbar_as_their_keys_do lib daily resources
-sunrise-client game::pad::parity_tests::pad_smooth_camera_binding_toggles_the_cinematic_camera lib daily resources
+sunrise-client game::pad::parity_tests::pad_smooth_camera_binding_toggles_the_cinematic_camera lib daily child-process
 sunrise-client game::pad::parity_tests::readers_of_the_movement_keys_see_the_stick lib daily resources
 sunrise-client game::pad::parity_tests::the_mouse_letting_go_leaves_what_the_pad_holds_and_back lib daily resources
 sunrise-client game::pad::parity_tests::the_pads_attack_and_use_reach_what_the_mouse_tells_mods lib daily resources
