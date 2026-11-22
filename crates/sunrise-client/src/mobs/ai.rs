@@ -1767,8 +1767,7 @@ fn apply_entity_write(
             amount,
         } => {
             if let Some(named) =
-                mod_api::__private::parts_installation::damage_type_name(damage_type)
-                    .and_then(|name| super::NamedDamage::registered(w.side.damage_types(), name))
+                super::NamedDamage::from_contact_key(w.side.damage_types(), damage_type)
             {
                 m.damage(level, amount, Damage::of(DamageKind::Named(named)));
                 // The hurt's own teleport, inside it (#1697).
