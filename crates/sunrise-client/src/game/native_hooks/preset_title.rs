@@ -126,7 +126,7 @@ impl Game<'_> {
                 match key {
                     KeyCode::Escape => {
                         title.escape();
-                        self.reopen_data_packs(event_loop)?;
+                        self.reopen_data_packs()?;
                         self.save_title_options();
                         return Ok(());
                     }
@@ -135,7 +135,7 @@ impl Game<'_> {
                         if pressed {
                             self.save_title_options();
                             self.audio.play_button_click();
-                            self.title_action(event_loop, action)?;
+                            self.title_action(action)?;
                             return Ok(());
                         }
                     }

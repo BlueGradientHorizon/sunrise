@@ -11985,7 +11985,6 @@ impl Game<'_> {
     /// Dispatch the button to the top screen, not to the gameplay mappings underneath it.
     fn route_screen_button(
         &mut self,
-        event_loop: &dyn EventLoopCtl,
         button: MouseButton,
         code: i32,
         pressed: bool,
@@ -12078,8 +12077,8 @@ impl Game<'_> {
             if sound {
                 self.audio.play_button_click();
             }
-            self.title_action(event_loop, action)?;
-            self.reopen_data_packs(event_loop)?;
+            self.title_action(action)?;
+            self.reopen_data_packs()?;
             return Ok(handled);
         }
         if self.book.is_some() || self.sign_edit.is_some() {
@@ -12685,13 +12684,7 @@ impl Game<'_> {
                         self.key_focus_mouse_press(&event);
                     }
                     let mut handled = container_handled
-                        || self.route_screen_button(
-                            event_loop,
-                            button,
-                            code,
-                            pressed,
-                            double_click,
-                        )?;
+                        || self.route_screen_button(button, code, pressed, double_click)?;
                     if had_screen {
                         self.settle_title_mode();
                         title_settled = true;
