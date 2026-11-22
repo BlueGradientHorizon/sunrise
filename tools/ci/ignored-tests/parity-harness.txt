@@ -50,6 +50,3 @@ sunrise-client game::remote::tests::client_hud_camera_tests::hud_bars_follow_the
 sunrise-client game::remote::tests::set_camera_kinds_tests::set_camera_follows_the_real_26_3_clients_camera_for_every_entity_kind tools/test_camera_parity.py harness
 sunrise-client game::remote_camera::camera_mount_tests::a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance tools/test_camera_parity.py harness
 sunrise-client game::remote_camera::camera_tests::a_spectated_sleeping_villager_shows_the_bed_view tools/test_camera_parity.py harness
-sunrise-client game::crosshair_pick_tests::primed_tnt_and_falling_blocks_match_26_3_witness tools/test_crosshair_pick_parity.py harness
-sunrise-client game::crosshair_pick_tests::nested_ride_root_vehicle_exclusion_matches_26_3_witness tools/test_crosshair_pick_parity.py harness
-sunrise-client game::crosshair_pick_tests::singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3 tools/test_crosshair_pick_parity.py harness

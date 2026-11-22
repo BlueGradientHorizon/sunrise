@@ -14,6 +14,8 @@ import net.minecraft.client.*;
 import net.minecraft.client.multiplayer.ClientChunkCache;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.player.RemotePlayer;
 import net.minecraft.core.*;
@@ -30,9 +32,13 @@ import net.minecraft.world.TickRateManager;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.AttributeMap;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
 import net.minecraft.world.entity.player.Abilities;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
@@ -42,6 +48,9 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.level.dimension.DimensionType;
+import net.minecraft.world.level.entity.EntityTickList;
+import net.minecraft.world.level.entity.LevelCallback;
+import net.minecraft.world.level.entity.TransientEntitySectionManager;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.AABB;
@@ -134,9 +143,15 @@ public final class VanillaCrosshairPickOracle {
         StubChunkCache chunkCache;
         Holder<Biome> defaultBiome;
         net.minecraft.world.attribute.EnvironmentAttributeSystem envAttrs;
+        TransientEntitySectionManager<Entity> storage;
 
         StubClientLevel() {
             super(null, null, null, null, 0, 0, null, false, 0L, 0);
+        }
+
+        void addTracked(Entity e) {
+            entities.put(e.getId(), e);
+            storage.addEntity(e);
         }
 
         @Override public boolean isClientSide() { return true; }
@@ -146,24 +161,13 @@ public final class VanillaCrosshairPickOracle {
         @Override public TickRateManager tickRateManager() { return tickRateManager; }
         @Override public WorldBorder getWorldBorder() { return worldBorder; }
         @Override public net.minecraft.world.attribute.EnvironmentAttributeSystem environmentAttributes() { return envAttrs; }
-        @Override public Entity getEntity(int id) { return entities.get(id); }
-        @Override public Iterable<Entity> entitiesForRendering() { return entities.values(); }
+        @Override public Entity getEntity(int id) { return storage.getEntityGetter().get(id); }
+        @Override public Iterable<Entity> entitiesForRendering() { return storage.getEntityGetter().getAll(); }
         @Override public boolean isTickingEntity(Entity e) { return entities.containsKey(e.getId()); }
         @Override public BlockState getBlockState(BlockPos p) { return blocks.getOrDefault(p, Blocks.AIR.defaultBlockState()); }
         @Override public FluidState getFluidState(BlockPos p) { return Fluids.EMPTY.defaultFluidState(); }
         @Override public ClientChunkCache getChunkSource() { return chunkCache; }
         @Override public Holder<Biome> getBiome(BlockPos pos) { return defaultBiome; }
-
-        @Override
-        public List<Entity> getEntities(Entity except, AABB box, Predicate<? super Entity> pred) {
-            List<Entity> hits = new ArrayList<>();
-            for (Entity e : entities.values()) {
-                if (e != except && e.getBoundingBox().intersects(box) && pred.test(e)) {
-                    hits.add(e);
-                }
-            }
-            return hits;
-        }
     }
 
     static final class StubSoundManager extends net.minecraft.client.sounds.SoundManager {
@@ -180,6 +184,7 @@ public final class VanillaCrosshairPickOracle {
     static final class StubLocalPlayer extends LocalPlayer {
         boolean spectatorFlag;
         Pose pose = Pose.STANDING;
+        ItemStack mainHand = ItemStack.EMPTY;
 
         StubLocalPlayer() {
             super(null, null, null, null, null, net.minecraft.world.entity.player.Input.EMPTY, false, null, null);
@@ -189,8 +194,9 @@ public final class VanillaCrosshairPickOracle {
         @Override public boolean isUsingItem() { return false; }
         @Override public boolean isShiftKeyDown() { return false; }
         @Override public boolean isDescending() { return false; }
-        @Override public ItemStack getMainHandItem() { return ItemStack.EMPTY; }
-        @Override public ItemStack getItemBySlot(EquipmentSlot slot) { return ItemStack.EMPTY; }
+        @Override public ItemStack getMainHandItem() { return mainHand == null ? ItemStack.EMPTY : mainHand; }
+        @Override public ItemStack getItemBySlot(EquipmentSlot slot) { return slot == EquipmentSlot.MAINHAND ? getMainHandItem() : ItemStack.EMPTY; }
+        @Override public Vec3 getKnownMovement() { return Vec3.ZERO; }
         @Override public Pose getPose() { return pose; }
         @Override public void setPose(Pose p) { this.pose = p; }
     }
@@ -237,13 +243,45 @@ public final class VanillaCrosshairPickOracle {
         field(Level.class, "isClientSide").setBoolean(lvl, true);
         field(Level.class, "random").set(lvl, net.minecraft.util.RandomSource.create(0L));
         field(ClientLevel.class, "minecraft").set(lvl, minecraft);
+        var tickingEntities = new EntityTickList();
+        var players = new ArrayList<AbstractClientPlayer>();
+        var dragonParts = new ArrayList<EnderDragonPart>();
+        field(ClientLevel.class, "tickingEntities").set(lvl, tickingEntities);
+        field(ClientLevel.class, "players").set(lvl, players);
+        field(ClientLevel.class, "dragonParts").set(lvl, dragonParts);
+        var storage = new TransientEntitySectionManager<Entity>(Entity.class, new LevelCallback<Entity>() {
+            @Override public void onCreated(Entity entity) {}
+            @Override public void onDestroyed(Entity entity) {}
+            @Override public void onTickingStart(Entity entity) { tickingEntities.add(entity); }
+            @Override public void onTickingEnd(Entity entity) { tickingEntities.remove(entity); }
+            @Override public void onTrackingStart(Entity entity) {
+                if (entity instanceof AbstractClientPlayer player) {
+                    players.add(player);
+                } else if (entity instanceof EnderDragon dragon) {
+                    dragonParts.addAll(Arrays.asList(dragon.getSubEntities()));
+                }
+            }
+            @Override public void onTrackingEnd(Entity entity) {
+                entity.unRide();
+                if (entity instanceof AbstractClientPlayer player) {
+                    players.remove(player);
+                } else if (entity instanceof EnderDragon dragon) {
+                    dragonParts.removeAll(Arrays.asList(dragon.getSubEntities()));
+                }
+            }
+            @Override public void onSectionChange(Entity entity) {}
+        });
+        lvl.storage = storage;
+        field(ClientLevel.class, "entityStorage").set(lvl, storage);
         return lvl;
     }
 
     static StubLocalPlayer newPlayer(StubClientLevel lvl, int id, double x, double y, double z, float yaw, float pitch, double blockReach, double entityReach) throws Exception {
         var p = make(StubLocalPlayer.class);
         p.pose = Pose.STANDING;
+        p.mainHand = ItemStack.EMPTY;
         p.setId(id);
+        field(Entity.class, "uuid").set(p, new UUID(0L, id));
         field(Entity.class, "type").set(p, EntityTypes.PLAYER);
         field(Entity.class, "level").set(p, lvl);
         field(LocalPlayer.class, "minecraft").set(p, minecraft);
@@ -271,7 +309,7 @@ public final class VanillaCrosshairPickOracle {
         var conn = make(ClientPacketListener.class);
         field(ClientPacketListener.class, "playerInfoMap").set(conn, new HashMap<>());
         field(LocalPlayer.class, "connection").set(p, conn);
-        lvl.entities.put(id, p);
+        lvl.addTracked(p);
         minecraft.player = p;
         minecraft.level = lvl;
         return p;
@@ -302,7 +340,7 @@ public final class VanillaCrosshairPickOracle {
             rp.recreateFromPacket(pkt);
             rp.xo = x; rp.yo = y; rp.zo = z;
             rp.yRotO = yaw; rp.xRotO = pitch;
-            lvl.entities.put(id, rp);
+            lvl.addTracked(rp);
             return rp;
         }
         EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.parse(typeId));
@@ -318,7 +356,7 @@ public final class VanillaCrosshairPickOracle {
         }
         e.xo = x; e.yo = y; e.zo = z;
         e.yRotO = yaw; e.xRotO = pitch;
-        lvl.entities.put(id, e);
+        lvl.addTracked(e);
         return e;
     }
 
@@ -352,6 +390,11 @@ public final class VanillaCrosshairPickOracle {
         final Map<Integer, Integer> spawnData = new LinkedHashMap<>();
         final Map<Integer, String> blockStateNames = new LinkedHashMap<>();
         final List<int[]> rideEdges = new ArrayList<>();
+        final List<JsonObject> postMoves = new ArrayList<>();
+        final Map<Integer, Integer> playerModes = new LinkedHashMap<>();
+        final Map<Integer, Float> dragonHealth = new LinkedHashMap<>();
+        String mainHandItem;
+        float partialTick = 1.0F;
         Entity camera;
 
         Scene(String name, String category, double px, double py, double pz, float yaw, float pitch, double blockReach, double entityReach) throws Exception {
@@ -407,24 +450,57 @@ public final class VanillaCrosshairPickOracle {
             }
         }
 
+        @SuppressWarnings("unchecked")
+        void setPlayerMode(RemotePlayer rp, GameType mode) throws Exception {
+            var info = new PlayerInfo(rp.getGameProfile(), false);
+            field(PlayerInfo.class, "gameMode").set(info, mode);
+            var map = (Map<UUID, PlayerInfo>) field(ClientPacketListener.class, "playerInfoMap").get(player.connection);
+            map.put(rp.getUUID(), info);
+            playerModes.put(rp.getId(), mode.getId());
+        }
+
+        void moveTracked(Entity e, double x, double y, double z) {
+            snapEntity(e, x, y, z);
+            var m = new JsonObject();
+            m.addProperty("id", e.getId());
+            m.add("pos_bits", vec3Bits(e.position()));
+            postMoves.add(m);
+        }
+
+        void displaceCamera(double oldX, double oldY, double oldZ, double newX, double newY, double newZ, float partial) {
+            camera.setPos(newX, newY, newZ);
+            camera.xo = oldX;
+            camera.yo = oldY;
+            camera.zo = oldZ;
+            this.partialTick = partial;
+        }
+
+        void holdMainHand(String itemId, ItemStack stack) {
+            player.mainHand = stack;
+            this.mainHandItem = itemId;
+        }
+
         void aimAtPoint(Vec3 target) {
-            float[] rot = lookAt(camera.getEyePosition(1.0F), target);
+            float[] rot = lookAt(camera.getEyePosition(partialTick), target);
             setLook(camera, rot[0], rot[1]);
         }
 
         JsonObject record() throws Exception {
-            HitResult result = player.raycastHitResult(1.0F, camera);
-            Vec3 eye = camera.getEyePosition(1.0F);
-            Vec3 look = camera.getViewVector(1.0F);
+            HitResult result = player.raycastHitResult(partialTick, camera);
+            Vec3 eye = camera.getEyePosition(partialTick);
+            Vec3 look = camera.getViewVector(partialTick);
 
             var row = new JsonObject();
             row.addProperty("name", name);
             row.addProperty("category", category);
             row.addProperty("block_reach_bits", db(blockReach));
             row.addProperty("entity_reach_bits", db(entityReach));
+            row.addProperty("partial_tick_bits", fb(partialTick));
+            if (mainHandItem != null) row.addProperty("main_hand_item", mainHandItem); else row.add("main_hand_item", JsonNull.INSTANCE);
             row.addProperty("player_id", player.getId());
             row.addProperty("camera_id", camera.getId());
             row.add("camera_pos_bits", vec3Bits(camera.position()));
+            row.add("camera_prev_pos_bits", vec3Bits(new Vec3(camera.xo, camera.yo, camera.zo)));
             row.add("camera_eye_bits", vec3Bits(eye));
             row.addProperty("camera_eye_height_bits", fb(camera.getEyeHeight()));
             row.addProperty("camera_yRot_bits", fb(camera.getYRot()));
@@ -482,6 +558,33 @@ public final class VanillaCrosshairPickOracle {
             }
             row.add("rides", ridesArr);
 
+            var movesArr = new JsonArray();
+            for (var m : postMoves) movesArr.add(m);
+            row.add("moves", movesArr);
+
+            var modesObj = new JsonObject();
+            for (var entry : playerModes.entrySet()) modesObj.addProperty(String.valueOf(entry.getKey()), entry.getValue());
+            row.add("player_modes", modesObj);
+
+            var dragonHealthObj = new JsonObject();
+            for (var entry : dragonHealth.entrySet()) dragonHealthObj.addProperty(String.valueOf(entry.getKey()), fb(entry.getValue()));
+            row.add("dragon_health", dragonHealthObj);
+
+            var dragonPartsArr = new JsonArray();
+            for (Entity e : lvl.entities.values()) {
+                if (e instanceof EnderDragon dragon) {
+                    EnderDragonPart[] subs = dragon.getSubEntities();
+                    for (int i = 0; i < subs.length; i++) {
+                        var po = new JsonObject();
+                        po.addProperty("index", i);
+                        po.addProperty("id", subs[i].getId());
+                        po.add("pos_bits", vec3Bits(subs[i].position()));
+                        dragonPartsArr.add(po);
+                    }
+                }
+            }
+            row.add("dragon_parts", dragonPartsArr);
+
             var hitObj = new JsonObject();
             hitObj.addProperty("type", result.getType().name());
             hitObj.add("location_bits", vec3Bits(result.getLocation()));
@@ -515,8 +618,17 @@ public final class VanillaCrosshairPickOracle {
         var player = newPlayer(lvl, 1, 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
         Entity tnt = spawnViaPacket(lvl, "minecraft:tnt", 10, 0.5, 64.0, 2.5, 0.0F, 0.0F, 0);
         Entity fb = spawnViaPacket(lvl, "minecraft:falling_block", 11, 2.5, 64.0, 2.5, 0.0F, 0.0F, Block.getId(Blocks.SAND.defaultBlockState()));
+        Entity bullet = spawnViaPacket(lvl, "minecraft:shulker_bullet", 12, 4.5, 64.0, 2.5, 0.0F, 0.0F, 0);
+        Entity fireball = spawnViaPacket(lvl, "minecraft:fireball", 13, 6.5, 64.0, 2.5, 0.0F, 0.0F, 0);
+        Entity arrow = spawnViaPacket(lvl, "minecraft:arrow", 14, 8.5, 64.0, 2.5, 0.0F, 0.0F, 0);
         var out = new JsonObject();
-        for (var pair : List.of(Map.entry("tnt", tnt), Map.entry("falling_block", fb))) {
+        for (var pair : List.of(
+            Map.entry("tnt", tnt),
+            Map.entry("falling_block", fb),
+            Map.entry("shulker_bullet", bullet),
+            Map.entry("fireball", fireball),
+            Map.entry("arrow", arrow)
+        )) {
             Entity e = pair.getValue();
             InteractionResult inter = e.interact(player, InteractionHand.MAIN_HAND, Vec3.ZERO);
             var obj = new JsonObject();
@@ -930,6 +1042,139 @@ public final class VanillaCrosshairPickOracle {
         return cases;
     }
 
+    static JsonArray recordReviewParityCases() throws Exception {
+        var cases = new JsonArray();
+        BlockState stone = Blocks.STONE.defaultBlockState();
+        BlockState chest = Blocks.CHEST.defaultBlockState();
+
+        // R1 (Finding 1): Negative dragon id (-10) keeps wrapping arithmetic without underflow/u32::try_from failure.
+        {
+            var s = new Scene("dragon_negative_id_parts", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            EnderDragon dragon = (EnderDragon) s.add("minecraft:ender_dragon", -10, 0.5, 64.0, 2.5);
+            EnderDragonPart body = dragon.getSubEntities()[2];
+            body.setPos(0.5, 64.0, 2.5);
+            s.aimAtPoint(body.getBoundingBox().getCenter());
+            cases.add(s.record());
+        }
+        // R2 (Finding 1): Dragon id = Integer.MAX_VALUE - 2 wraps part ids across i32::MAX into i32::MIN.
+        {
+            var s = new Scene("dragon_wrapped_part_id_across_int_max", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            EnderDragon dragon = (EnderDragon) s.add("minecraft:ender_dragon", Integer.MAX_VALUE - 2, 0.5, 64.0, 2.5);
+            EnderDragonPart part3 = dragon.getSubEntities()[3];
+            part3.setPos(0.5, 64.0, 2.5);
+            s.aimAtPoint(part3.getBoundingBox().getCenter());
+            cases.add(s.record());
+        }
+        // R3 (Finding 6): Dying tracked dragon (health == 0) keeps its parts pickable.
+        {
+            var s = new Scene("dragon_dying_parts_still_pickable", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            EnderDragon dragon = (EnderDragon) s.add("minecraft:ender_dragon", 300, 0.5, 64.0, 2.5);
+            dragon.setHealth(0.0F);
+            s.dragonHealth.put(300, 0.0F);
+            EnderDragonPart head = dragon.getSubEntities()[0];
+            head.setPos(0.5, 65.0, 2.5);
+            s.aimAtPoint(head.getBoundingBox().getCenter());
+            cases.add(s.record());
+        }
+        // R4 (Finding 6): Spectating a dragon excludes all of its own sub-entity parts.
+        {
+            var s = new Scene("spectating_dragon_excludes_own_parts", "review_parity", 50.5, 64.0, 50.5, 0.0F, 0.0F, 4.5, 3.0);
+            s.player.spectatorFlag = true;
+            EnderDragon dragon = (EnderDragon) s.add("minecraft:ender_dragon", 300, 0.5, 64.0, 0.5);
+            EnderDragonPart head = dragon.getSubEntities()[0];
+            head.setPos(0.5, 64.0 + dragon.getEyeHeight() - 0.5, 1.5);
+            s.add("minecraft:pig", 320, 0.5, 64.0 + dragon.getEyeHeight() - 0.45, 2.6);
+            s.camera = dragon;
+            setLook(dragon, 0.0F, 0.0F);
+            cases.add(s.record());
+        }
+        // R5 (Finding 3): Spectator remote player is skipped by CAN_BE_PICKED so pig behind wins.
+        {
+            var s = new Scene("spectator_remote_player_excluded", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            RemotePlayer spec = (RemotePlayer) s.add("minecraft:player", 330, 0.5, 64.0, 1.8);
+            s.setPlayerMode(spec, GameType.SPECTATOR);
+            s.add("minecraft:pig", 331, 0.5, 65.0, 2.8);
+            cases.add(s.record());
+        }
+        // R6 (Finding 4): Shulker bullet inherits Projectile.getPickRadius() == 1.0F.
+        {
+            var s = new Scene("shulker_bullet_pick_radius_one", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            // Bullet box is 0.3125 wide (half=0.15625); at x=1.35 it is 0.85 off-axis (missed at 0.0 radius, hit at 1.0).
+            s.add("minecraft:shulker_bullet", 340, 1.35, 65.5, 2.5);
+            cases.add(s.record());
+        }
+        // R7 (Finding 7): LeashFenceKnotEntity is an ordinary pickable candidate and occludes a pig behind it.
+        {
+            var s = new Scene("leash_knot_occludes_mob", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            s.add("minecraft:leash_knot", 350, 0.0, 65.0, 2.0);
+            s.add("minecraft:pig", 351, 0.5, 65.0, 2.9);
+            cases.add(s.record());
+        }
+        // R8 (Finding 5): Equal-distance tie across X sections: negative-X section wins over earlier-spawned positive-X.
+        {
+            var s = new Scene("section_order_x_tie_negative_x_wins", "review_parity", 0.0, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            // Both pigs have width 0.9 (half=0.45): x=0.35 (section 0) and x=-0.35 (section -1) both cross x=0 at exact z=2.05.
+            s.add("minecraft:pig", 360, 0.35, 65.0, 2.5);
+            s.add("minecraft:pig", 361, -0.35, 65.0, 2.5);
+            cases.add(s.record());
+        }
+        // R9 (Finding 5): Moving an entity out of a section and back places it at the end of that section.
+        {
+            var s = new Scene("section_move_reorders_same_section_tie", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            Entity first = s.add("minecraft:pig", 370, 0.5, 65.0, 2.5);
+            s.add("minecraft:pig", 371, 0.5, 65.0, 2.5);
+            s.moveTracked(first, 20.5, 65.0, 2.5);
+            s.moveTracked(first, 0.5, 65.0, 2.5);
+            cases.add(s.record());
+        }
+        // R10 (Finding 5): Displaced camera at partialTick=0.5 sweeps its CURRENT bounding box.
+        {
+            var s = new Scene("displaced_camera_partial_tick_half", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            s.displaceCamera(0.5, 64.0, 0.5, 2.5, 64.0, 0.5, 0.5F);
+            // Eye at partial=0.5 is x=1.5; TNT at x=1.5, z=2.5 is inside the swept current box (x in [2.2..2.8] inflated by 1.0 -> [1.2..3.8]).
+            s.add("minecraft:tnt", 380, 1.5, 65.1, 2.5);
+            cases.add(s.record());
+        }
+        // R10b (Finding 5): Displaced camera at partialTick=0.0 sweeps CURRENT bounding box (at x=4.5), missing TNT ahead of old eye (at x=0.5).
+        {
+            var s = new Scene("displaced_camera_current_box_excludes_entity_ahead_of_old_eye", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            s.displaceCamera(0.5, 64.0, 0.5, 4.5, 64.0, 0.5, 0.0F);
+            s.add("minecraft:tnt", 381, 0.5, 65.1, 2.5);
+            cases.add(s.record());
+        }
+        // R11 (Finding 8): Active AttackRange item picks TNT in front of a pig over the full pickable population.
+        {
+            var s = new Scene("attack_range_picks_tnt_over_pig", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            s.holdMainHand("minecraft:wooden_spear", new ItemStack(Items.WOODEN_SPEAR));
+            s.add("minecraft:tnt", 390, 0.5, 65.1, 3.5);
+            s.add("minecraft:pig", 391, 0.5, 65.0, 4.2);
+            cases.add(s.record());
+        }
+        // R12 (Finding 8): Active AttackRange hitting a chest past min_reach keeps the block and does not fall back to TNT before min_reach.
+        {
+            var s = new Scene("attack_range_block_keeps_chest_not_tnt_before_min_reach", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            s.holdMainHand("minecraft:wooden_spear", new ItemStack(Items.WOODEN_SPEAR));
+            s.add("minecraft:tnt", 392, 0.5, 65.1, 1.8);
+            s.block(0, 65, 3, chest);
+            cases.add(s.record());
+        }
+        // R13 (Finding 9): Out-of-reach TNT (at 3.2) in front of chest (at 3.5) with reaches (3.0, 4.5) resolves to MISS.
+        {
+            var s = new Scene("out_of_reach_tnt_in_front_of_chest_is_miss", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            s.add("minecraft:tnt", 395, 0.5, 65.1, 4.19);
+            s.block(0, 65, 4, chest);
+            cases.add(s.record());
+        }
+        // R14 (Finding 9): Block at exact block_reach (4.5) fails strict < filterHitResult -> MISS.
+        {
+            var s = new Scene("block_at_exact_block_reach_is_miss", "review_parity", 0.5, 64.0, 0.5, 0.0F, 0.0F, 4.5, 3.0);
+            s.block(0, 65, 5, stone);
+            cases.add(s.record());
+        }
+
+        return cases;
+    }
+
     public static void main(String[] args) throws Exception {
         ParityData.init();
         var u = Class.forName("sun.misc.Unsafe");
@@ -954,6 +1199,7 @@ public final class VanillaCrosshairPickOracle {
         root.add("entity_traits", recordEntityTraits());
         root.add("tnt_and_falling", recordTntAndFallingCases());
         root.add("nested_rides", recordNestedRideCases());
+        root.add("review_parity", recordReviewParityCases());
 
         var gson = new GsonBuilder().setPrettyPrinting().serializeNulls().create();
         Files.writeString(Path.of(args[0]), gson.toJson(root) + "\n", StandardCharsets.UTF_8);

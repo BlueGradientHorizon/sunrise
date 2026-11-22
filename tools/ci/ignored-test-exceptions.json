@@ -958,29 +958,5 @@
     "path": "crates/sunrise-client/src/game/network/tests/remote_camera_tests.rs",
     "reason": "run by tools/test_camera_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_camera_parity.py records the vanilla 26.3 sleeping camera witness into .local and runs this test against it through SUNRISE_REMOTE_CAMERA_SLEEPING_DIR, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client",
-    "target": "lib",
-    "test": "game::crosshair_pick_tests::primed_tnt_and_falling_blocks_match_26_3_witness",
-    "path": "crates/sunrise-client/src/game/entities/crosshair_pick_tests.rs",
-    "reason": "run by tools/test_crosshair_pick_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_crosshair_pick_parity.py records the vanilla 26.3 crosshair pick witness into .local and runs this test against it through SUNRISE_CROSSHAIR_PICK_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client",
-    "target": "lib",
-    "test": "game::crosshair_pick_tests::nested_ride_root_vehicle_exclusion_matches_26_3_witness",
-    "path": "crates/sunrise-client/src/game/entities/crosshair_pick_tests.rs",
-    "reason": "run by tools/test_crosshair_pick_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_crosshair_pick_parity.py records the vanilla 26.3 crosshair pick witness into .local and runs this test against it through SUNRISE_CROSSHAIR_PICK_WITNESS, so no recorded vanilla data is committed."
-  },
-  {
-    "package": "sunrise-client",
-    "target": "lib",
-    "test": "game::crosshair_pick_tests::singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3",
-    "path": "crates/sunrise-client/src/game/entities/crosshair_pick_tests.rs",
-    "reason": "run by tools/test_crosshair_pick_parity.py",
-    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_crosshair_pick_parity.py records the vanilla 26.3 crosshair pick witness into .local and runs this test against it through SUNRISE_CROSSHAIR_PICK_WITNESS, so no recorded vanilla data is committed."
   }
 ]

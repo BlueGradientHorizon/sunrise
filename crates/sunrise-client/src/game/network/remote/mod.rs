@@ -2215,6 +2215,14 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
     }
 }
 
+#[cfg(test)]
+impl Game<'_> {
+    pub(in crate::game) fn test_remote_pick_click(&mut self) {
+        use sunrise_client::first_person::HandWorld as _;
+        RemoteHands(self).pick();
+    }
+}
+
 #[derive(Default)]
 pub(super) struct ClientMenu {
     current: Option<(i32, String)>,
