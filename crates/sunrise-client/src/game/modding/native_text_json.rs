@@ -1,9 +1,11 @@
-//! `text_from_json`: a text component read as `/tellraw` takes it.
+//! The host's persistent text forms, read as `ComponentSerialization.CODEC` takes them.
 use super::Game;
 use mod_api::text::TextFormError;
 use sunrise_client::command::Registries;
 use sunrise_client::text::Text;
 use sunrise_client::text_grammar::build;
+use sunrise_core::json_nbt::{JsonNbtError, tag_to_json};
+use sunrise_core::nbt::{self, Limits, Tag};
 
 impl Game<'_> {
     /// A component read as `/tellraw` takes it; None when it isn't one (an object with no
@@ -11,17 +13,32 @@ impl Game<'_> {
     pub(super) fn text_from_json(&self, json: &str) -> Read {
         Read(component_from_json(json, &self.ui.registries))
     }
+
+    pub(super) fn text_from_nbt(&self, tag: &Tag) -> Read {
+        Read(component_from_nbt(tag, &self.ui.registries))
+    }
+
+    pub(super) fn text_to_nbt(&self, text: &Text) -> Result<Tag, TextFormError> {
+        let component = text.component();
+        let tag = sunrise_client::scoreboard::component_tag(&component);
+        sunrise_client::component::discard_component(component);
+        // A path in the codec can include containers not in the Text tree (e.g. `extra`).
+        if !nbt::within_depth(&tag, Limits::default().max_depth) {
+            nbt::discard_tag(tag);
+            return Err(TextFormError::TooDeep);
+        }
+        Ok(tag)
+    }
 }
 
-/// What `text_from_json` read: the component, none, or the nesting refusal, crossing to the
-/// API as one `Result`.
+/// A component, none, or a refusal, crossing to the API as one `Result`.
 pub(super) struct Read(Result<Option<Text>, TextFormError>);
 
 impl crate::game::api_values::TryIntoApi for Read {
     type Api = Option<mod_api::Text>;
     type Error = TextFormError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        self.0.clone().and_then(|text| text.try_into_api())
+        self.0.as_ref().map_err(Clone::clone)?.try_into_api()
     }
 }
 
@@ -30,25 +47,36 @@ impl crate::game::api_values::TryIntoApi for Read {
 fn component_from_json(json: &str, registries: &Registries) -> Result<Option<Text>, TextFormError> {
     // JSON first: it decodes escapes and has a real `null`. SNBT is the fallback (and takes
     // the nesting beyond serde_json's own limit to the parser's 512).
-    let (value, snbt) = match serde_json::from_str::<serde_json::Value>(json) {
-        Ok(value) => (value, false),
-        Err(_) => {
-            let (value, used) = match sunrise_client::component::parse_snbt(json) {
-                Ok(parsed) => parsed,
-                // NBT's own limit of 512: the named refusal, not "not a component".
-                Err(error) if error.starts_with("arguments.nbtpath.too_deep at ") => {
-                    return Err(TextFormError::TooDeep);
-                }
-                Err(_) => return Ok(None),
-            };
-            if !json.as_bytes()[used..].iter().all(u8::is_ascii_whitespace) {
-                return Ok(None);
-            }
-            (value, true)
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(json) {
+        return Ok(build(&value, registries, false).map(Text::from));
+    }
+    let (tag, used) = match nbt::parse_snbt(json) {
+        Ok(parsed) => parsed,
+        // NBT's own limit of 512: the named refusal, not "not a component".
+        Err(error) if error.starts_with("arguments.nbtpath.too_deep at ") => {
+            return Err(TextFormError::TooDeep);
         }
+        Err(_) => return Ok(None),
+    };
+    let read = if json.as_bytes()[used..].iter().all(u8::is_ascii_whitespace) {
+        component_from_nbt(&tag, registries)
+    } else {
+        Ok(None)
+    };
+    nbt::discard_tag(tag);
+    read
+}
+
+fn component_from_nbt(tag: &Tag, registries: &Registries) -> Result<Option<Text>, TextFormError> {
+    let value = match tag_to_json(tag) {
+        Ok(value) => value,
+        Err(JsonNbtError::TooDeep) => return Err(TextFormError::TooDeep),
+        Err(_) => return Ok(None),
     };
     // Only the rebuilt value reaches the capture, so a failure anywhere leaves no partial text.
-    Ok(build(&value, registries, snbt).map(Text::from))
+    let text = build(&value, registries, true).map(Text::from);
+    sunrise_client::component::discard_component(value);
+    Ok(text)
 }
 
 #[cfg(test)]
@@ -368,6 +396,140 @@ mod tests {
         ] {
             assert!(component_from_json(accepted).is_some(), "{accepted}");
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn host_nbt_and_owned_stack_text_follow_component_semantics() {
+        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use mod_api::{Host, Identifier, ItemStack, Tag, Text, TextHover};
+        use serde_json::json;
+        use std::sync::Arc;
+
+        let name = concat!(
+            module_path!(),
+            "::host_nbt_and_owned_stack_text_follow_component_semantics"
+        );
+        if run_fresh_cases(name, "SUNRISE_ITEM_STACK_TEXT_CHILD", &["components"]) {
+            return;
+        }
+        with_game(|game| {
+            let renderer = Arc::get_mut(&mut game.pack.item_renderer).unwrap();
+            let prototypes = Arc::make_mut(&mut renderer.models.prototypes);
+            prototypes.insert(
+                "minecraft:stone".into(),
+                [
+                    ("minecraft:custom_name".into(), json!("Default custom")),
+                    ("minecraft:item_name".into(), json!("Default item")),
+                    ("minecraft:lore".into(), json!(["Default lore"])),
+                ]
+                .into(),
+            );
+            prototypes.insert("minecraft:stick".into(), Default::default());
+            let host: &dyn Host = game;
+
+            let mut label = Text::new(TextContent::Translatable {
+                key: "fixture.label".into(),
+                fallback: Some("Hello %s".into()),
+                arguments: vec![Text::literal("Ada")],
+            })
+            .append(Text::literal("!"));
+            label.style.bold = Some(true);
+            label.style.italic = Some(false);
+            label.style.hover = Some(TextHover::Text(Box::new(Text::literal("Hint"))));
+            // Synthetic expected form checked with 26.3 ComponentSerialization.CODEC and NbtOps.
+            let (expected, _) = sunrise_core::nbt::parse_snbt(concat!(
+                "{translate:'fixture.label',fallback:'Hello %s',with:['Ada'],",
+                "italic:0b,bold:1b,hover_event:{action:'show_text',value:'Hint'},extra:['!']}"
+            ))
+            .unwrap();
+            assert_eq!(host.text_to_nbt(&label), Ok(expected.clone()));
+            assert_eq!(host.text_from_nbt(&expected), Ok(Some(label.clone())));
+            let literal = Text::literal("§cLiteral");
+            let literal_tag = Tag::String("§cLiteral".into());
+            assert_eq!(host.text_to_nbt(&literal), Ok(literal_tag.clone()));
+            assert_eq!(host.text_from_nbt(&literal_tag), Ok(Some(literal.clone())));
+            assert_eq!(host.text_from_nbt(&Tag::Int(4)), Ok(None));
+            let deep_tag = (0..513).fold(Tag::String("leaf".into()), |tag, _| Tag::List(vec![tag]));
+            assert_eq!(host.text_from_nbt(&deep_tag), Err(TextFormError::TooDeep));
+
+            let too_deep = (0..512).fold(Text::literal("leaf"), |child, _| {
+                Text::literal("parent").append(child)
+            });
+            assert_eq!(host.text_to_nbt(&too_deep), Err(TextFormError::TooDeep));
+
+            for (id, defaults) in [("minecraft:stone", true), ("minecraft:stick", false)] {
+                let key = host.item_key(&Identifier::parse(id).unwrap()).unwrap();
+                let mut stack = ItemStack::of(key);
+                assert_eq!(
+                    stack.custom_name(host),
+                    Ok(defaults.then(|| Text::literal("Default custom")))
+                );
+                assert_eq!(
+                    stack.item_name(host),
+                    Ok(defaults.then(|| Text::literal("Default item")))
+                );
+                let mut lore = stack.lore(host).unwrap();
+                assert_eq!(
+                    lore,
+                    if defaults {
+                        vec![Text::literal("Default lore")]
+                    } else {
+                        vec![]
+                    }
+                );
+                lore.push(literal.clone());
+                stack.set_lore(host, &lore).unwrap();
+                stack.set_custom_name(host, Some(&label)).unwrap();
+                stack.set_item_name(host, Some(&literal)).unwrap();
+                assert_eq!(stack.custom_name(host), Ok(Some(label.clone())));
+                assert_eq!(stack.item_name(host), Ok(Some(literal.clone())));
+                assert_eq!(stack.lore(host), Ok(lore));
+
+                let before = stack.clone();
+                let invalid = [label.clone(), too_deep.clone()];
+                assert_eq!(stack.set_lore(host, &invalid), Err(TextFormError::TooDeep));
+                assert_eq!(
+                    stack.set_custom_name(host, Some(&too_deep)),
+                    Err(TextFormError::TooDeep)
+                );
+                assert_eq!(
+                    stack.set_item_name(host, Some(&too_deep)),
+                    Err(TextFormError::TooDeep)
+                );
+                assert_eq!(
+                    stack.set_lore(host, &vec![literal.clone(); 257]),
+                    Err(TextFormError::Malformed)
+                );
+                assert_eq!(stack, before);
+                let full = vec![literal.clone(); 256];
+                stack.set_lore(host, &full).unwrap();
+                assert_eq!(stack.lore(host), Ok(full));
+
+                stack.set_custom_name(host, None).unwrap();
+                stack.set_item_name(host, None).unwrap();
+                stack.set_lore(host, &[]).unwrap();
+                assert_eq!(stack.custom_name(host), Ok(None));
+                assert_eq!(stack.item_name(host), Ok(None));
+                assert_eq!(stack.lore(host), Ok(vec![]));
+                if defaults {
+                    let patch = stack.components().unwrap().as_nbt();
+                    assert_eq!(patch.len(), 3);
+                    for id in [
+                        "!minecraft:custom_name",
+                        "!minecraft:item_name",
+                        "!minecraft:lore",
+                    ] {
+                        assert_eq!(
+                            patch.get(&id.into()),
+                            Some(&Tag::Compound(Default::default()))
+                        );
+                    }
+                } else {
+                    assert!(stack.components().is_none());
+                }
+            }
+        });
     }
 
     /// Through the public host: literal valid components read, literal invalid ones are

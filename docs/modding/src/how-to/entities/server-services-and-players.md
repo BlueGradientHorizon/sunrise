@@ -197,9 +197,15 @@ A translation's `fallback` and an `nbt` component's `interpret`, `plain` and
 key is `index` is refused, as in vanilla; Sunrise follows vanilla there. JSON
 escapes such as `\u0041` are decoded.
 
-`host.text_from_legacy("§cRed")` reads `§` formatting codes as
+`host.text_to_nbt(&text)` encodes the component as vanilla's `ComponentSerialization.CODEC`
+with `NbtOps`, without resolving translations or adding styles. It returns `Result<Tag, TextFormError>`.
+`host.text_from_nbt(&tag)` reads that form with the same grammar and bounds as the SNBT input
+above, returning `Result<Option<Text>, TextFormError>`. An unstyled literal without siblings
+encodes as an NBT string. An NBT string is read literally, including `§` codes.
+
+`host.text_from_legacy("§cRed")` instead reads `§` formatting codes as
 the font draws them; `&` codes are not read, so replace `&` with `§` first.
-Both work on either side.
+These conversions work on either side.
 
 ## Server clock, rules and distances
 
