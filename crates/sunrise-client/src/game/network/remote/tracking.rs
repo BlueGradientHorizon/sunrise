@@ -42,6 +42,15 @@ impl Game<'_> {
             // their `register_goals` ran on the authoritative side (#1077).
             let mut mob = Mob::new_remote(id as u32, t, at, head);
             super::super::remote_mob_data::client_defaults(&mut mob);
+            if kind == "minecraft:player"
+                && let Some(r) = self.remote.as_ref()
+            {
+                mob.extra.spectator = r
+                    .level_players
+                    .get(&id)
+                    .and_then(|uuid| r.tab_players.get(uuid))
+                    .is_some_and(|t| t.game_mode == SPECTATOR);
+            }
             (mob.yaw, mob.previous_yaw) = (yaw, yaw);
             (mob.head_pitch, mob.previous_head_pitch) = (pitch, pitch);
             mob.persistent = true;

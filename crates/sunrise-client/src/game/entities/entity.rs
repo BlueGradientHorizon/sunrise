@@ -2159,7 +2159,7 @@ impl Entity for Mob {
         self.removed
     }
     fn is_pickable(&self) -> bool {
-        !self.removed
+        !self.removed && !(&*self.kind.id == "minecraft:player" && self.extra.spectator)
     }
     fn is_living(&self) -> bool {
         true

@@ -40,14 +40,15 @@ impl Game<'_> {
             | Target::DragonPart(_)
             | Target::Cushion(_) => true,
             Target::Other(id) => self.interactions.contains_key(&(id as i32)),
-            Target::Projectile(id) => self.creatures.projectiles.iter().any(|p| {
-                p.id == id
-                    && (super::deflect::redirectable(p)
-                        || matches!(
-                            p.kind,
-                            sunrise_client::projectiles::ProjectileKind::ShulkerBullet { .. }
-                        ))
-            }),
+            Target::Projectile(id) => self
+                .creatures
+                .projectiles
+                .iter()
+                .any(|p| p.id == id && self.projectile_is_pickable(p)),
+            Target::Trident(id) => self
+                .tridents
+                .iter()
+                .any(|t| t.id == id && self.trident_is_pickable(t)),
             _ => false,
         };
         if !attackable {
