@@ -80,7 +80,7 @@ helper = "src/mixins/client_draw.rs"
     }
     fs::write(
         resources.join("entity-types.json"),
-        r#"{"minecraft:zombie":{}}"#,
+        r#"{"minecraft:wolf":{}}"#,
     )
     .unwrap();
     let child = Command::new(env!("CARGO_BIN_EXE_cargo-sunrise-mod"))

@@ -16,7 +16,7 @@ fn client_draw() {
     let mut kind = MobTypes::load_for_server(&root, &attributes)
         .unwrap()
         .types
-        .remove("minecraft:zombie")
+        .remove("minecraft:wolf")
         .unwrap();
     let names = ["body", "head", "left_arm", "right_arm", "right_leg"];
     let corners = [
@@ -43,22 +43,24 @@ fn client_draw() {
             }
         })
         .collect();
-    // This is a zombie either way, not the inherently CPU-only player draw. Its synthetic
-    // model has identical parts in both cases; only the layer name the installed rows see differs.
+    // A wet wolf supplies a non-white body tint and can use the GPU. Both synthetic
+    // models have identical parts; only the layer name the installed rows see differs.
     let mut model = Part {
         name: "root".into(),
         pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
         polygons: Vec::new(),
         children,
-        layer: Some("minecraft:zombie#main".into()),
+        layer: Some("minecraft:wolf#main".into()),
     };
     kind.model = Arc::new(model.clone());
     let mut control = Mob::new(1, Arc::new(kind.clone()), Vec3::ZERO, 0.0);
     control.hurt_time = 4;
+    control.extra.flag2 = true;
     model.layer = Some("minecraft:player#main".into());
     kind.model = Arc::new(model);
     let mut selected = Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0);
     selected.hurt_time = control.hurt_time;
+    selected.extra.flag2 = control.extra.flag2;
     let data = MobData {
         states: Vec::new(),
         placements: Default::default(),
@@ -134,6 +136,7 @@ fn client_draw() {
     );
     assert_eq!(bytes(&bent[20..]), bytes(&plain[16..]), "right leg");
     let arm = &plain[12..16];
+    assert_eq!(arm[0].color, 0xFFBF_BFBF, "the wet-shade tint is exercised");
     assert_eq!(arm[0].light, light);
     assert_ne!(arm[0].layer, 0, "the hurt overlay is actually exercised");
     for segment in [&bent[12..16], &bent[16..20]] {
