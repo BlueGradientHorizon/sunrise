@@ -4,6 +4,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
+import com.mojang.serialization.Lifecycle;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
@@ -14,6 +15,7 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
@@ -22,8 +24,10 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import net.minecraft.client.Camera;
+import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.gui.Gui;
@@ -51,17 +55,25 @@ import net.minecraft.client.telemetry.WorldSessionTelemetryManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.MappedRegistry;
+import net.minecraft.core.RegistrationInfo;
+import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.Connection;
 import net.minecraft.network.DisconnectionDetails;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.PacketBundlePacker;
 import net.minecraft.network.PacketDecoder;
+import net.minecraft.network.PacketListener;
 import net.minecraft.network.PacketProcessor;
 import net.minecraft.network.ProtocolInfo;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.Packet;
@@ -73,31 +85,43 @@ import net.minecraft.network.protocol.common.ClientboundPostEffectsPacket;
 import net.minecraft.network.protocol.common.ServerboundKeepAlivePacket;
 import net.minecraft.network.protocol.common.ServerboundPongPacket;
 import net.minecraft.network.protocol.configuration.ClientboundFinishConfigurationPacket;
+import net.minecraft.network.protocol.configuration.ClientboundSelectKnownPacks;
 import net.minecraft.network.protocol.configuration.ConfigurationProtocols;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundBundleDelimiterPacket;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import net.minecraft.network.protocol.game.ClientboundLoginPacket;
+import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundMoveMinecartPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerRotationPacket;
 import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
 import net.minecraft.network.protocol.game.ClientboundSetCameraPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundStartConfigurationPacket;
+import net.minecraft.network.protocol.game.ClientboundTestInstanceBlockStatus;
+import net.minecraft.network.protocol.game.ClientboundTrackedWaypointPacket;
 import net.minecraft.network.protocol.game.CommonPlayerSpawnInfo;
 import net.minecraft.network.protocol.game.GameProtocols;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.ServerLinks;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntitySpawnRequest;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.Interaction;
 import net.minecraft.world.entity.decoration.painting.PaintingVariant;
 import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.spider.Spider;
+import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.flag.FeatureFlags;
+import net.minecraft.world.item.ItemStackTemplate;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
@@ -340,16 +364,6 @@ public final class VanillaNetworkParityOracle {
         }
 
         @Override
-        public void setCameraEntity(Entity entity) {
-            this.gameRenderer.mainCamera().setEntity(entity);
-        }
-
-        @Override
-        public Entity getCameraEntity() {
-            return this.gameRenderer.mainCamera().entity();
-        }
-
-        @Override
         public ChatAbilities computeChatAbilities() {
             return ChatAbilities.NO_RESTRICTIONS;
         }
@@ -384,7 +398,9 @@ public final class VanillaNetworkParityOracle {
         hud.chat = alloc(StubChat.class);
         put(gui, Gui.class, "hud", hud);
         put(mc, Minecraft.class, "gui", gui);
-        put(mc, Minecraft.class, "options", alloc(StubOptions.class));
+        StubOptions options = alloc(StubOptions.class);
+        put(options, Options.class, "cameraType", CameraType.FIRST_PERSON);
+        put(mc, Minecraft.class, "options", options);
         put(mc, Minecraft.class, "debugEntries", alloc(StubDebugEntries.class));
         LevelExtractor extractor = alloc(LevelExtractor.class);
         put(extractor, LevelExtractor.class, "debugRenderer", alloc(StubDebugRenderer.class));
@@ -414,6 +430,7 @@ public final class VanillaNetworkParityOracle {
         put(listener, ClientPacketListener.class, "level", level);
         put(listener, ClientPacketListener.class, "removedPlayerVehicleId", OptionalInt.empty());
         put(listener, ClientPacketListener.class, "clockManager", new net.minecraft.client.ClientClockManager());
+        put(listener, ClientPacketListener.class, "scoreboard", new net.minecraft.world.scores.Scoreboard());
         put(listener, ClientPacketListener.class, "playerInfoMap", new HashMap<>());
         put(listener, ClientPacketListener.class, "listedPlayers", new it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet<>());
         ClientDebugSubscriber dbg = alloc(ClientDebugSubscriber.class);
@@ -783,11 +800,23 @@ public final class VanillaNetworkParityOracle {
             new FriendlyByteBuf(truncPost).writeVarInt(postId).writeVarInt(1);
             ByteBuf unknownId = Unpooled.buffer();
             new FriendlyByteBuf(unknownId).writeVarInt(999);
+            ByteBuf movePosExtra = encodeFrame(play, new ClientboundMoveEntityPacket.Pos(1, net.minecraft.network.protocol.game.VecDelta.ZERO, true));
+            movePosExtra.writeByte(0x7F);
+            ByteBuf moveMinecartExtra = encodeFrame(play, new ClientboundMoveMinecartPacket(1, List.of()));
+            moveMinecartExtra.writeByte(0x7F);
+            ByteBuf testStatusExtra = encodeFrame(play, new ClientboundTestInstanceBlockStatus(Component.literal("ok"), Optional.empty()));
+            testStatusExtra.writeByte(0x7F);
+            ByteBuf waypointExtra = encodeFrame(play, ClientboundTrackedWaypointPacket.removeWaypoint(new UUID(0, 1)));
+            waypointExtra.writeByte(0x7F);
 
             for (var entry : List.of(
                 Map.entry("bundle_delimiter_extra_bytes", delimExtra),
                 Map.entry("truncated_post_effects", truncPost),
-                Map.entry("unregistered_packet_id", unknownId)
+                Map.entry("unregistered_packet_id", unknownId),
+                Map.entry("move_entity_pos_extra_bytes", movePosExtra),
+                Map.entry("move_minecart_extra_bytes", moveMinecartExtra),
+                Map.entry("test_instance_block_status_extra_bytes", testStatusExtra),
+                Map.entry("waypoint_extra_bytes", waypointExtra)
             )) {
                 RecordingConnection conn = new RecordingConnection();
                 EmbeddedChannel ch = new EmbeddedChannel(new PacketDecoder<>(play), new PacketBundlePacker(play.bundlerInfo()), conn);
@@ -798,7 +827,65 @@ public final class VanillaNetworkParityOracle {
                 malformed.add(entry.getKey(), r);
                 ch.finishAndReleaseAll();
             }
+
+            // Configuration select_known_packs with trailing byte reports ClientboundSelectKnownPacks (not ...Packet)
+            {
+                ByteBuf cfgSelectExtra = encodeFrame(ConfigurationProtocols.CLIENTBOUND, new ClientboundSelectKnownPacks(List.of()));
+                cfgSelectExtra.writeByte(0x7F);
+                String cfgSelectHex = toHex(cfgSelectExtra);
+                RecordingConnection conn = new RecordingConnection();
+                EmbeddedChannel ch = new EmbeddedChannel(new PacketDecoder<>(ConfigurationProtocols.CLIENTBOUND), conn);
+                ch.writeInbound(cfgSelectExtra);
+                JsonObject r = new JsonObject();
+                r.addProperty("frame_hex", cfgSelectHex);
+                r.addProperty("disconnect_key", conn.disconnectKey);
+                r.addProperty("disconnect_text", conn.disconnectText);
+                malformed.add("config_select_known_packs_extra_bytes", r);
+                ch.finishAndReleaseAll();
+            }
             root.add("malformed_before_bundling", malformed);
+        }
+
+        // 10b. Connection.disconnect closes channel before handleDisconnection notifies listener.onDisconnect
+        {
+            Connection realConn = new Connection(PacketFlow.CLIENTBOUND);
+            EmbeddedChannel ch = new EmbeddedChannel(realConn);
+            final boolean[] connectedInHook = new boolean[1];
+            final boolean[] channelOpenInHook = new boolean[1];
+            final int[] notifyCount = new int[1];
+            final String[] notifyText = new String[1];
+            PacketListener listener = new PacketListener() {
+                @Override
+                public PacketFlow flow() {
+                    return PacketFlow.CLIENTBOUND;
+                }
+                @Override
+                public net.minecraft.network.ConnectionProtocol protocol() {
+                    return net.minecraft.network.ConnectionProtocol.PLAY;
+                }
+                @Override
+                public void onDisconnect(DisconnectionDetails details) {
+                    connectedInHook[0] = realConn.isConnected();
+                    channelOpenInHook[0] = ch.isOpen();
+                    notifyCount[0]++;
+                    notifyText[0] = details.reason().getString();
+                }
+                @Override
+                public boolean isAcceptingMessages() {
+                    return realConn.isConnected();
+                }
+            };
+            put(realConn, Connection.class, "packetListener", listener);
+            realConn.disconnect(Component.literal("closed first"));
+            realConn.handleDisconnection();
+            realConn.handleDisconnection();
+            JsonObject r = new JsonObject();
+            r.addProperty("connected_during_on_disconnect", connectedInHook[0]);
+            r.addProperty("channel_open_during_on_disconnect", channelOpenInHook[0]);
+            r.addProperty("notify_count", notifyCount[0]);
+            r.addProperty("reason_text", notifyText[0]);
+            root.add("disconnect_notify_after_shutdown", r);
+            ch.finishAndReleaseAll();
         }
 
         // 11. Terminal packet as the 4,097th member: terminal check runs before bundle size limit
@@ -995,6 +1082,91 @@ public final class VanillaNetworkParityOracle {
             root.add("play_lifecycle", life);
         }
 
+        // 5. Server camera switch vs F5 perspective toggle for spectated entity post effects
+        {
+            StubMinecraft mc = makeMinecraft(gameDir);
+            StubWorld world = makeStubWorld();
+            RecordingConnection conn = new RecordingConnection();
+            ClientPacketListener listener = makePlayListener(mc, conn, world);
+            LocalPlayer player = makeRealPlayer(mc, world, listener, 1);
+            world.addEntity(player);
+            mc.player = player;
+            mc.setCameraEntity(player);
+            Creeper creeper = new Creeper(EntityTypes.CREEPER, world);
+            creeper.setId(20);
+            world.addEntity(creeper);
+            Spider spider = new Spider(EntityTypes.SPIDER, world);
+            spider.setId(21);
+            world.addEntity(spider);
+
+            JsonObject cam = new JsonObject();
+            // Start in third person back: server camera switch to creeper STILL activates creeper shader!
+            mc.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+            var setCreeper = alloc(ClientboundSetCameraPacket.class);
+            put(setCreeper, ClientboundSetCameraPacket.class, "cameraId", 20);
+            deliverFromNetThread(setCreeper, listener);
+            mc.packetProcessor().processQueuedPackets();
+            Identifier eff1 = mc.gameRenderer.spectatedEntityPostEffect();
+            boolean act1 = (Boolean) get(mc.gameRenderer, GameRenderer.class, "spectatedEntityEffectActive");
+            cam.addProperty("set_camera_creeper_in_third_person_effect", eff1 == null ? "none" : eff1.toString());
+            cam.addProperty("set_camera_creeper_in_third_person_active", act1);
+
+            // F5 THIRD_PERSON_BACK -> THIRD_PERSON_FRONT: isFirstPerson unchanged, keeps effect
+            CameraType prev = mc.options.getCameraType();
+            mc.options.setCameraType(prev.cycle());
+            if (prev.isFirstPerson() != mc.options.getCameraType().isFirstPerson()) {
+                mc.gameRenderer.checkEntityPostEffect(mc.options.getCameraType().isFirstPerson() ? mc.getCameraEntity() : null);
+            }
+            Identifier eff2 = mc.gameRenderer.spectatedEntityPostEffect();
+            boolean act2 = (Boolean) get(mc.gameRenderer, GameRenderer.class, "spectatedEntityEffectActive");
+            cam.addProperty("f5_third_back_to_front_effect", eff2 == null ? "none" : eff2.toString());
+            cam.addProperty("f5_third_back_to_front_active", act2);
+
+            // F5 THIRD_PERSON_FRONT -> FIRST_PERSON: enters first person, recomputes creeper effect
+            prev = mc.options.getCameraType();
+            mc.options.setCameraType(prev.cycle());
+            if (prev.isFirstPerson() != mc.options.getCameraType().isFirstPerson()) {
+                mc.gameRenderer.checkEntityPostEffect(mc.options.getCameraType().isFirstPerson() ? mc.getCameraEntity() : null);
+            }
+            Identifier eff3 = mc.gameRenderer.spectatedEntityPostEffect();
+            boolean act3 = (Boolean) get(mc.gameRenderer, GameRenderer.class, "spectatedEntityEffectActive");
+            cam.addProperty("f5_third_front_to_first_effect", eff3 == null ? "none" : eff3.toString());
+            cam.addProperty("f5_third_front_to_first_active", act3);
+
+            // F5 FIRST_PERSON -> THIRD_PERSON_BACK: leaves first person, clears effect
+            prev = mc.options.getCameraType();
+            mc.options.setCameraType(prev.cycle());
+            if (prev.isFirstPerson() != mc.options.getCameraType().isFirstPerson()) {
+                mc.gameRenderer.checkEntityPostEffect(mc.options.getCameraType().isFirstPerson() ? mc.getCameraEntity() : null);
+            }
+            Identifier eff4 = mc.gameRenderer.spectatedEntityPostEffect();
+            boolean act4 = (Boolean) get(mc.gameRenderer, GameRenderer.class, "spectatedEntityEffectActive");
+            cam.addProperty("f5_first_to_third_back_effect", eff4 == null ? "none" : eff4.toString());
+            cam.addProperty("f5_first_to_third_back_active", act4);
+
+            // Still in THIRD_PERSON_BACK: server camera switch to spider activates spider effect
+            var setSpider = alloc(ClientboundSetCameraPacket.class);
+            put(setSpider, ClientboundSetCameraPacket.class, "cameraId", 21);
+            deliverFromNetThread(setSpider, listener);
+            mc.packetProcessor().processQueuedPackets();
+            Identifier eff5 = mc.gameRenderer.spectatedEntityPostEffect();
+            boolean act5 = (Boolean) get(mc.gameRenderer, GameRenderer.class, "spectatedEntityEffectActive");
+            cam.addProperty("set_camera_spider_in_third_person_effect", eff5 == null ? "none" : eff5.toString());
+            cam.addProperty("set_camera_spider_in_third_person_active", act5);
+
+            // Server camera switch back to player in THIRD_PERSON_BACK clears effect
+            var setPlayer = alloc(ClientboundSetCameraPacket.class);
+            put(setPlayer, ClientboundSetCameraPacket.class, "cameraId", 1);
+            deliverFromNetThread(setPlayer, listener);
+            mc.packetProcessor().processQueuedPackets();
+            Identifier eff6 = mc.gameRenderer.spectatedEntityPostEffect();
+            boolean act6 = (Boolean) get(mc.gameRenderer, GameRenderer.class, "spectatedEntityEffectActive");
+            cam.addProperty("set_camera_player_in_third_person_effect", eff6 == null ? "none" : eff6.toString());
+            cam.addProperty("set_camera_player_in_third_person_active", act6);
+
+            root.add("camera_switch_and_perspective", cam);
+        }
+
         return root;
     }
 
@@ -1002,13 +1174,23 @@ public final class VanillaNetworkParityOracle {
         JsonObject root = new JsonObject();
         root.addProperty("game_version", "26.3");
 
-        // Synchronized minecraft:painting_variant registry names in wire order
+        // Synchronized minecraft:painting_variant registry entries in wire order
         var paintingReg = ParityData.access.lookupOrThrow(Registries.PAINTING_VARIANT);
         JsonArray paintingNames = new JsonArray();
+        JsonArray paintingDefs = new JsonArray();
         for (int i = 0; i < paintingReg.size(); i++) {
-            paintingNames.add(paintingReg.getKey(paintingReg.byIdOrThrow(i)).toString());
+            PaintingVariant pv = paintingReg.byIdOrThrow(i);
+            String pvName = paintingReg.getKey(pv).toString();
+            paintingNames.add(pvName);
+            JsonObject def = new JsonObject();
+            def.addProperty("name", pvName);
+            def.addProperty("width", pv.width());
+            def.addProperty("height", pv.height());
+            def.addProperty("asset_id", pv.assetId().toString());
+            paintingDefs.add(def);
         }
         root.add("painting_variants", paintingNames);
+        root.add("painting_variant_definitions", paintingDefs);
 
         // 1. Registered serializer IDs in 26.3
         JsonArray registered = new JsonArray();
@@ -1320,6 +1502,155 @@ public final class VanillaNetworkParityOracle {
             }
 
             root.add("metadata_assignment", assign);
+        }
+
+        // 7. Synchronized painting variant override (same name "minecraft:kebab", custom geometry/asset)
+        {
+            MappedRegistry<PaintingVariant> customPaintingReg = new MappedRegistry<>(Registries.PAINTING_VARIANT, Lifecycle.stable());
+            PaintingVariant overridden = new PaintingVariant(
+                4, 3, Identifier.parse("minecraft:aztec"), Optional.empty(), Optional.empty()
+            );
+            Holder.Reference<PaintingVariant> ref = customPaintingReg.register(
+                ResourceKey.create(Registries.PAINTING_VARIANT, Identifier.parse("minecraft:kebab")),
+                overridden,
+                RegistrationInfo.BUILT_IN
+            );
+            customPaintingReg.freeze();
+            RegistryAccess.Frozen customAccess = new RegistryAccess.ImmutableRegistryAccess(List.of(customPaintingReg)).freeze();
+            RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), customAccess);
+            ClientboundSetEntityDataPacket pkt = new ClientboundSetEntityDataPacket(
+                1, List.of(new SynchedEntityData.DataValue<>(9, EntityDataSerializers.PAINTING_VARIANT, ref))
+            );
+            ClientboundSetEntityDataPacket.STREAM_CODEC.encode(buf, pkt);
+            RegistryFriendlyByteBuf stripped = new RegistryFriendlyByteBuf(buf.duplicate(), customAccess);
+            stripped.readVarInt();
+            String dataHex = toHex(stripped);
+            ClientboundSetEntityDataPacket back = ClientboundSetEntityDataPacket.STREAM_CODEC.decode(
+                new RegistryFriendlyByteBuf(buf.duplicate(), customAccess)
+            );
+            @SuppressWarnings("unchecked")
+            Holder<PaintingVariant> decodedHolder = (Holder<PaintingVariant>) back.packedItems().get(0).value();
+            JsonObject syncObj = new JsonObject();
+            syncObj.addProperty("entity_data_hex", dataHex);
+            syncObj.addProperty("resolved_name", decodedHolder.unwrapKey().orElseThrow().identifier().toString());
+            syncObj.addProperty("resolved_width", decodedHolder.value().width());
+            syncObj.addProperty("resolved_height", decodedHolder.value().height());
+            syncObj.addProperty("resolved_asset_id", decodedHolder.value().assetId().toString());
+            root.add("painting_variant_sync_override", syncObj);
+        }
+
+        // 8. Hover-item registry resolution during Component decode (inline PaintingVariant title)
+        {
+            int setEntityDataId = new FriendlyByteBuf(encodeFrame(play, new ClientboundSetEntityDataPacket(1, List.of()))).readVarInt();
+            JsonObject hoverObj = new JsonObject();
+
+            // Unregistered hover item fails PacketDecoder before dispatch
+            CompoundTag badHover = new CompoundTag();
+            badHover.putString("action", "show_item");
+            badHover.putString("id", "minecraft:not_a_real_item");
+            CompoundTag badTitle = new CompoundTag();
+            badTitle.putString("text", "hover");
+            badTitle.put("hover_event", badHover);
+            RegistryFriendlyByteBuf badHoverData = new RegistryFriendlyByteBuf(Unpooled.buffer(), ParityData.access);
+            badHoverData.writeByte(9);
+            badHoverData.writeVarInt(34); // PAINTING_VARIANT
+            badHoverData.writeVarInt(0);  // inline
+            badHoverData.writeVarInt(2);
+            badHoverData.writeVarInt(1);
+            badHoverData.writeIdentifier(Identifier.parse("minecraft:alban"));
+            badHoverData.writeBoolean(true);
+            badHoverData.writeNbt(badTitle);
+            badHoverData.writeBoolean(false);
+            badHoverData.writeByte(0xFF);
+            ByteBuf badHoverFrame = Unpooled.buffer();
+            new FriendlyByteBuf(badHoverFrame).writeVarInt(setEntityDataId).writeVarInt(1);
+            badHoverFrame.writeBytes(badHoverData.duplicate());
+            RecordingConnection bhConn = new RecordingConnection();
+            EmbeddedChannel bhCh = new EmbeddedChannel(new PacketDecoder<>(play), bhConn);
+            bhCh.writeInbound(badHoverFrame);
+            bhCh.finishAndReleaseAll();
+            hoverObj.addProperty("unregistered_item_hex", toHex(badHoverData));
+            hoverObj.addProperty("unregistered_item_disconnect_key", bhConn.disconnectKey);
+            hoverObj.addProperty("unregistered_item_disconnect_text", bhConn.disconnectText);
+
+            // Registered hover item ("minecraft:diamond") succeeds decode
+            Component goodTitle = Component.literal("hover").setStyle(
+                Style.EMPTY.withHoverEvent(new HoverEvent.ShowItem(new ItemStackTemplate(Items.DIAMOND)))
+            );
+            Holder<PaintingVariant> goodInline = Holder.direct(new PaintingVariant(
+                2, 1, Identifier.parse("minecraft:alban"), Optional.of(goodTitle), Optional.empty()
+            ));
+            RegistryFriendlyByteBuf goodBody = new RegistryFriendlyByteBuf(Unpooled.buffer(), ParityData.access);
+            ClientboundSetEntityDataPacket.STREAM_CODEC.encode(
+                goodBody,
+                new ClientboundSetEntityDataPacket(1, List.of(new SynchedEntityData.DataValue<>(9, EntityDataSerializers.PAINTING_VARIANT, goodInline)))
+            );
+            RegistryFriendlyByteBuf goodStripped = new RegistryFriendlyByteBuf(goodBody.duplicate(), ParityData.access);
+            goodStripped.readVarInt();
+            ClientboundSetEntityDataPacket goodDecoded = ClientboundSetEntityDataPacket.STREAM_CODEC.decode(
+                new RegistryFriendlyByteBuf(goodBody.duplicate(), ParityData.access)
+            );
+            hoverObj.addProperty("registered_item_hex", toHex(goodStripped));
+            hoverObj.addProperty("registered_item_decoded_ok", goodDecoded.packedItems().size() == 1);
+            hoverObj.addProperty("registered_item_id", "minecraft:diamond");
+            root.add("hover_item_component_validation", hoverObj);
+        }
+
+        // 9. Per-entity-type SynchedEntityData serializer IDs from real entities in a real ClientLevel
+        {
+            Holder<net.minecraft.world.level.dimension.DimensionType> overworldType =
+                ParityData.access.lookupOrThrow(Registries.DIMENSION_TYPE).getOrThrow(BuiltinDimensionTypes.OVERWORLD);
+            var overworldSpawn = new CommonPlayerSpawnInfo(
+                overworldType, Level.OVERWORLD, 1L, GameType.SURVIVAL, Optional.empty(), false, true, Optional.empty(), 0, 63
+            );
+            var loginPacket = new ClientboundLoginPacket(
+                7, false, Set.of(Level.OVERWORLD), 20, 8, 8, false, true, false, overworldSpawn, false, false
+            );
+            StubMinecraft mc = makeMinecraft(gameDir);
+            RecordingConnection conn = new RecordingConnection();
+            ClientPacketListener listener = makePlayListener(mc, conn, null);
+            listener.handleLogin(loginPacket);
+            ClientLevel realLevel = mc.level;
+            if (realLevel == null) {
+                throw new IllegalStateException("handleLogin did not initialize real ClientLevel");
+            }
+            Field itemsByIdField = findField(SynchedEntityData.class, "itemsById");
+            TreeMap<String, JsonArray> byType = new TreeMap<>();
+            for (EntityType<?> type : BuiltInRegistries.ENTITY_TYPE) {
+                String key = EntityType.getKey(type).toString();
+                Entity entity;
+                if (type == EntityTypes.PLAYER) {
+                    entity = mc.player;
+                } else if (type == EntityTypes.FISHING_BOBBER) {
+                    entity = new FishingHook(EntityTypes.FISHING_BOBBER, realLevel);
+                } else {
+                    entity = type.create(realLevel, new EntitySpawnRequest(EntitySpawnReason.COMMAND, true));
+                }
+                if (entity == null) {
+                    throw new IllegalStateException("Failed to instantiate EntityType " + key);
+                }
+                SynchedEntityData.DataItem<?>[] items = (SynchedEntityData.DataItem<?>[]) itemsByIdField.get(entity.getEntityData());
+                JsonArray ids = new JsonArray();
+                for (int idx = 0; idx < items.length; idx++) {
+                    if (items[idx] == null) {
+                        throw new IllegalStateException("Null DataItem at index " + idx + " for " + key);
+                    }
+                    if (items[idx].getAccessor().id() != idx) {
+                        throw new IllegalStateException("Mismatched accessor id at " + idx + " for " + key);
+                    }
+                    int sid = EntityDataSerializers.getSerializedId(items[idx].getAccessor().serializer());
+                    if (sid < 0) {
+                        throw new IllegalStateException("Unregistered serializer at " + idx + " for " + key);
+                    }
+                    ids.add(sid);
+                }
+                byType.put(key, ids);
+            }
+            JsonObject schemaObj = new JsonObject();
+            for (var entry : byType.entrySet()) {
+                schemaObj.add(entry.getKey(), entry.getValue());
+            }
+            root.add("entity_type_serializers", schemaObj);
         }
 
         return root;

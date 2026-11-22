@@ -167,27 +167,15 @@ impl Game<'_> {
         true
     }
 
-    /// A `painting_variant` by its network id, from the server's registry.
+    /// A `painting_variant` by its network id, preferring the synced registry entry over local resources.
     fn remote_painting_variant(&self, id: i32) -> Option<super::paintings::Variant> {
         let r = self.remote.as_ref()?;
-        let name = r.registries.name("minecraft:painting_variant", id)?;
-        self.remote_painting_variant_by_name(id, name)
-    }
-
-    /// A resolved `painting_variant` from local resources or the synced registry entry data.
-    fn remote_painting_variant_by_name(
-        &self,
-        id: i32,
-        name: &str,
-    ) -> Option<super::paintings::Variant> {
-        if let Some(v) = self.painting_variants.get(name) {
-            return Some(v.clone());
+        let (name, tag) = r.registries.entry("minecraft:painting_variant", id)?;
+        if let Some(tag) = tag {
+            let json = sunrise_client::scoreboard::tag_to_json(tag);
+            return super::paintings::Variant::decode(name, &json).ok();
         }
-        let r = self.remote.as_ref()?;
-        let entries = r.registries.registries.get("minecraft:painting_variant")?;
-        let (_, tag) = entries.get(usize::try_from(id).ok()?)?;
-        let json = sunrise_client::scoreboard::tag_to_json(tag.as_ref()?);
-        super::paintings::Variant::decode(name, &json).ok()
+        self.painting_variants.get(name).cloned()
     }
 
     /// `handleSetEntityData` for an object: what changes how it looks.
@@ -247,29 +235,22 @@ impl Game<'_> {
                 {
                     p.facing = facing;
                 }
-                // Painting.DATA_PAINTING_VARIANT_ID: resolved registry holder or inline variant.
-                if let (9, Value::PaintingVariant(holder)) = (index, value) {
-                    let resolved = match holder {
-                        PaintingHolder::Reference { id: reg_id, name } => self
-                            .remote_painting_variant_by_name(*reg_id, name)
-                            .map(|v| (v.id, Some(Arc::from(v.asset)), v.width, v.height)),
-                        PaintingHolder::Direct(v) => Some((
-                            Arc::from(v.asset_id.as_str()),
-                            Some(Arc::from(
-                                v.asset_id.strip_prefix("minecraft:").unwrap_or(&v.asset_id),
-                            )),
-                            v.width,
-                            v.height,
-                        )),
+                // Painting.DATA_PAINTING_VARIANT_ID: holder already resolved during packet decode.
+                if let (9, Value::PaintingVariant(holder)) = (index, value)
+                    && let Some(p) = self.paintings.iter_mut().find(|p| p.id == id)
+                {
+                    let (variant_name, v) = match holder {
+                        PaintingHolder::Reference { name, variant, .. } => {
+                            (Arc::from(name.as_str()), variant)
+                        }
+                        PaintingHolder::Direct(v) => (Arc::from(v.asset_id.as_str()), v),
                     };
-                    if let Some((variant, asset, width, height)) = resolved
-                        && let Some(p) = self.paintings.iter_mut().find(|p| p.id == id)
-                    {
-                        p.variant = variant;
-                        p.asset = asset;
-                        p.width = width;
-                        p.height = height;
-                    }
+                    p.variant = variant_name;
+                    p.asset = Some(Arc::from(
+                        v.asset_id.strip_prefix("minecraft:").unwrap_or(&v.asset_id),
+                    ));
+                    p.width = v.width;
+                    p.height = v.height;
                 }
             } else if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
                 match (index, value) {

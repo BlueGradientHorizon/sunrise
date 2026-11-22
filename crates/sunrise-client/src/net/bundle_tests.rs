@@ -403,3 +403,61 @@ fn malformed_play_packets_fail_decode_before_bundling() {
         std::fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[test]
+fn bundled_large_simple_particles_stay_compact_in_memory() {
+    use sunrise_protocol::entity_data::{Value, serializer};
+    use sunrise_protocol::retained::OwnedHeap;
+
+    let (root, data) = empty_item_data("compact-particles-bundle");
+    let (client, server) = Pipe::pair();
+    let (reader, writer) = Connection::local(client).split();
+    let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+    let (send, events) = event_channel();
+    let mut server = Connection::local(server);
+    let delimiter = play::Clientbound::BundleDelimiter(Empty).encode();
+
+    const COUNT: usize = 65_537;
+    let mut frame = Writer::new();
+    frame.varint(sunrise_protocol::ids::play::clientbound::SET_ENTITY_DATA);
+    frame.varint(37);
+    frame.u8(10);
+    frame.varint(serializer::PARTICLES);
+    frame.varint(COUNT as i32);
+    for _ in 0..COUNT {
+        frame.varint(0);
+    }
+    frame.u8(0xFF);
+    let wire_len = frame.data.len();
+
+    server.send(&delimiter).unwrap();
+    server.send(&frame.data).unwrap();
+    server.send(&delimiter).unwrap();
+    drop(server);
+
+    let reader = play_reader(reader, writer.clone(), send, data, Transport::empty());
+    let Event::Bundle(bundle) = events
+        .recv_timeout_owned(Duration::from_secs(5))
+        .unwrap()
+        .into_parts()
+        .0
+    else {
+        panic!("expected completed bundle");
+    };
+    let [BundleMember::Packet(play::Clientbound::SetEntityData(pkt))] = &bundle.packets[..] else {
+        panic!("expected one SetEntityData member");
+    };
+    let Value::Particles(list) = &pkt.values[0].2 else {
+        panic!("expected Particles value");
+    };
+    assert_eq!(list.len(), COUNT);
+    assert_eq!(list.owned_heap_bytes(), COUNT);
+    assert!(
+        bundle.owned_bytes() < wire_len * 2,
+        "bundle heap {} should stay near wire size {wire_len}",
+        bundle.owned_bytes()
+    );
+    reader.join().unwrap().unwrap_err();
+    writer.lock().unwrap().take().unwrap().shutdown();
+    std::fs::remove_dir_all(root).unwrap();
+}

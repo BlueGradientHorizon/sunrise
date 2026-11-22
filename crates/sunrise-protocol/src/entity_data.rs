@@ -32,7 +32,7 @@ pub enum Value {
     /// so the rest of an entry list survives a particle slot.
     Particle(Particle),
     /// A particle list (PARTICLES: a VarInt count, then each particle).
-    Particles(Vec<Particle>),
+    Particles(Particles),
     /// A `ResolvableProfile` (a mannequin's DATA_PROFILE).
     Profile(Profile),
     /// `OPTIONAL_GLOBAL_POS`: optional `(dimension, block_pos)`.
@@ -44,7 +44,11 @@ pub enum Value {
 #[derive(Clone, Debug, PartialEq)]
 pub enum PaintingHolder {
     /// Resolved registry reference (`id` is 0-based; encoded on the wire as `id + 1`).
-    Reference { id: i32, name: String },
+    Reference {
+        id: i32,
+        name: String,
+        variant: PaintingVariant,
+    },
     /// Inline `PaintingVariant.DIRECT_STREAM_CODEC` (encoded on the wire as `0`).
     Direct(PaintingVariant),
 }
@@ -149,6 +153,129 @@ fn write_profile(p: &Profile, w: &mut Writer) {
 pub struct Particle {
     pub id: i32,
     pub data: Option<ParticleData>,
+}
+const COMPLEX_PARTICLE_TAG: u8 = 0xFF;
+
+/// Compact `EntityDataSerializers.PARTICLES` storage: simple vanilla particles
+/// (`0..128`, no payload) take one byte in `tags`; complex or mod particles
+/// store `0xFF` in `tags` and their full [`Particle`] in `extras`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Particles {
+    tags: Vec<u8>,
+    extras: Vec<Particle>,
+}
+/// Iterator over [`Particles`], borrowing complex entries and synthesizing simple ones inline.
+pub struct ParticlesIter<'a> {
+    tags: std::slice::Iter<'a, u8>,
+    extras: std::slice::Iter<'a, Particle>,
+}
+impl<'a> Iterator for ParticlesIter<'a> {
+    type Item = std::borrow::Cow<'a, Particle>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let &tag = self.tags.next()?;
+        if tag == COMPLEX_PARTICLE_TAG {
+            Some(std::borrow::Cow::Borrowed(
+                self.extras.next().expect("matching complex particle"),
+            ))
+        } else {
+            Some(std::borrow::Cow::Owned(Particle {
+                id: i32::from(tag),
+                data: None,
+            }))
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.tags.size_hint()
+    }
+}
+impl ExactSizeIterator for ParticlesIter<'_> {}
+
+impl Particles {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn len(&self) -> usize {
+        self.tags.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tags.is_empty()
+    }
+
+    pub fn push(&mut self, particle: Particle) {
+        if particle.data.is_none() && (0..PARTICLE_TYPE_COUNT).contains(&particle.id) {
+            self.tags.push(particle.id as u8);
+        } else {
+            self.tags.push(COMPLEX_PARTICLE_TAG);
+            self.extras.push(particle);
+        }
+    }
+
+    pub fn iter(&self) -> ParticlesIter<'_> {
+        ParticlesIter {
+            tags: self.tags.iter(),
+            extras: self.extras.iter(),
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<Particle> {
+        self.iter().map(std::borrow::Cow::into_owned).collect()
+    }
+
+    pub fn has_sunrise_only(&self) -> bool {
+        self.extras.iter().any(Particle::sunrise_only)
+    }
+
+    pub fn retain(&mut self, mut keep: impl FnMut(&Particle) -> bool) {
+        let mut extras = std::mem::take(&mut self.extras).into_iter();
+        let mut kept_extras = Vec::new();
+        self.tags.retain(|&tag| {
+            if tag == COMPLEX_PARTICLE_TAG {
+                let p = extras.next().expect("matching complex particle");
+                if keep(&p) {
+                    kept_extras.push(p);
+                    true
+                } else {
+                    false
+                }
+            } else {
+                let p = Particle {
+                    id: i32::from(tag),
+                    data: None,
+                };
+                keep(&p)
+            }
+        });
+        self.extras = kept_extras;
+    }
+
+    fn write(&self, w: &mut Writer) {
+        w.varint(self.tags.len() as i32);
+        let mut extras = self.extras.iter();
+        for &tag in &self.tags {
+            if tag == COMPLEX_PARTICLE_TAG {
+                extras.next().expect("matching complex particle").write(w);
+            } else {
+                w.varint(i32::from(tag));
+            }
+        }
+    }
+}
+
+impl From<Vec<Particle>> for Particles {
+    fn from(particles: Vec<Particle>) -> Self {
+        let mut out = Self {
+            tags: Vec::with_capacity(particles.len()),
+            extras: Vec::new(),
+        };
+        for p in particles {
+            out.push(p);
+        }
+        out
+    }
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum ParticleData {
@@ -361,6 +488,19 @@ pub mod serializer {
     pub const HUMANOID_ARM: i32 = 42;
     pub const DYE_COLOR: i32 = 43;
 }
+fn validate_trusted_component(tag: &Tag, r: &Reader) -> Result<()> {
+    if *tag == Tag::End {
+        return Err(crate::Error::new("Expected non-null compound tag"));
+    }
+    sunrise_world::component_value::source::from_component_tag_with_items(
+        "minecraft:custom_name",
+        tag,
+        &|item| r.contains_registry_entry("minecraft:item", item),
+    )
+    .map_err(|e| crate::Error::new(format!("Failed to decode: {e}")))?;
+    Ok(())
+}
+
 /// `ComponentSerialization.TRUSTED_STREAM_CODEC`: unlimited-heap NBT tag validated by `ComponentSerialization.CODEC`.
 fn read_trusted_component(r: &mut Reader) -> Result<Tag> {
     let tag = r.nbt_within(sunrise_core::nbt::Limits {
@@ -368,12 +508,66 @@ fn read_trusted_component(r: &mut Reader) -> Result<Tag> {
         max_nodes: usize::MAX,
         max_depth: 512,
     })?;
-    if tag == Tag::End {
-        return Err(crate::Error::new("Expected non-null compound tag"));
-    }
-    sunrise_world::component_value::source::from_component_tag("minecraft:custom_name", &tag)
-        .map_err(|e| crate::Error::new(format!("Failed to decode: {e}")))?;
+    validate_trusted_component(&tag, r)?;
     Ok(tag)
+}
+
+/// `PaintingVariant.DIRECT_CODEC`: resolve a synchronized `minecraft:painting_variant` entry tag.
+fn decode_painting_variant_nbt(tag: &Tag, r: &Reader) -> Result<PaintingVariant> {
+    let Tag::Compound(_) = tag else {
+        return Err(crate::Error::new("PaintingVariant must be a compound tag"));
+    };
+    let axis = |field: &str| -> Result<i32> {
+        let value = match tag.get(field) {
+            Some(Tag::Byte(v)) => i64::from(*v),
+            Some(Tag::Short(v)) => i64::from(*v),
+            Some(Tag::Int(v)) => i64::from(*v),
+            Some(Tag::Long(v)) => *v,
+            _ => {
+                return Err(crate::Error::new(format!(
+                    "PaintingVariant {field} must be an integer in 1..=16"
+                )));
+            }
+        };
+        if !(1..=16).contains(&value) {
+            return Err(crate::Error::new(format!(
+                "PaintingVariant {field} {value} outside 1..=16"
+            )));
+        }
+        Ok(value as i32)
+    };
+    let width = axis("width")?;
+    let height = axis("height")?;
+    let asset_raw = match tag.get("asset_id") {
+        Some(Tag::String(s)) => s
+            .to_string()
+            .map_err(|_| crate::Error::new("PaintingVariant asset_id: invalid UTF-16"))?,
+        _ => return Err(crate::Error::new("PaintingVariant asset_id is required")),
+    };
+    let asset_id = sunrise_core::identifier::Identifier::parse(&asset_raw)
+        .map_err(|e| crate::Error::new(format!("PaintingVariant asset_id: {e}")))?
+        .to_string();
+    let title = match tag.get("title") {
+        Some(t) => {
+            validate_trusted_component(t, r)?;
+            Some(t.clone())
+        }
+        None => None,
+    };
+    let author = match tag.get("author") {
+        Some(a) => {
+            validate_trusted_component(a, r)?;
+            Some(a.clone())
+        }
+        None => None,
+    };
+    Ok(PaintingVariant {
+        width,
+        height,
+        asset_id,
+        title,
+        author,
+    })
 }
 
 fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
@@ -425,10 +619,18 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
                         holder.wrapping_sub(1)
                     )));
                 };
-                let Some(name) = r.registry_name("minecraft:painting_variant", id) else {
+                let Some((name, tag)) = r.registry_entry("minecraft:painting_variant", id) else {
                     return Err(crate::Error::new(format!("No value with id {id}")));
                 };
-                Value::PaintingVariant(PaintingHolder::Reference { id, name })
+                let tag = tag.ok_or_else(|| {
+                    crate::Error::new(format!("Missing synchronized painting variant {name}"))
+                })?;
+                let variant = decode_painting_variant_nbt(tag, r)?;
+                Value::PaintingVariant(PaintingHolder::Reference {
+                    id,
+                    name: name.to_owned(),
+                    variant,
+                })
             }
         },
         // VarInt-encoded: direction, block states, optional ints, pose, the
@@ -446,13 +648,22 @@ fn read_value(kind: i32, r: &mut Reader) -> Result<Value> {
         PARTICLE => Value::Particle(Particle::read(r)?),
         RESOLVABLE_PROFILE => Value::Profile(read_profile(r)?),
         PARTICLES => {
-            // ByteBufCodecs.list() has no 65536 wire cap; cap only the initial allocation.
+            // ByteBufCodecs.list() has no 65536 wire cap; store simple particles in 1 byte.
             let n = r.count(r.remaining())?;
-            let mut list = Vec::with_capacity(n.min(65536));
+            let mut tags = Vec::with_capacity(n.min(65536));
+            let mut extras = Vec::new();
             for _ in 0..n {
-                list.push(Particle::read(r)?);
+                let particle = Particle::read(r)?;
+                if particle.data.is_none() && (0..PARTICLE_TYPE_COUNT).contains(&particle.id) {
+                    tags.push(particle.id as u8);
+                } else {
+                    tags.push(COMPLEX_PARTICLE_TAG);
+                    extras.push(particle);
+                }
             }
-            Value::Particles(list)
+            tags.shrink_to_fit();
+            extras.shrink_to_fit();
+            Value::Particles(Particles { tags, extras })
         }
         other => {
             return Err(crate::Error::new(format!(
@@ -493,10 +704,7 @@ fn write_value(kind: i32, v: &Value, w: &mut Writer) {
             }
         }
         Value::Particle(p) => p.write(w),
-        Value::Particles(list) => {
-            w.varint(list.len() as i32);
-            list.iter().for_each(|p| p.write(w));
-        }
+        Value::Particles(list) => list.write(w),
         Value::Profile(p) => write_profile(p, w),
         Value::OptGlobalPos(pos) => {
             w.bool(pos.is_some());
@@ -623,9 +831,10 @@ impl crate::retained::OwnedHeap for Value {
 impl crate::retained::OwnedHeap for PaintingHolder {
     fn owned_heap_bytes(&self) -> usize {
         match self {
-            Self::Reference { id, name } => 0usize
+            Self::Reference { id, name, variant } => 0usize
                 .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(id))
-                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(name)),
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(name))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(variant)),
             Self::Direct(field_0) => {
                 0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
             }
@@ -676,6 +885,14 @@ impl crate::retained::OwnedHeap for Particle {
         0usize
             .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(id))
             .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(data))
+    }
+}
+impl crate::retained::OwnedHeap for Particles {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self { tags, extras } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(tags))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(extras))
     }
 }
 impl crate::retained::OwnedHeap for ParticleData {
@@ -878,7 +1095,11 @@ mod tests {
             .iter()
             .map(|p| (10u8, serializer::PARTICLE, Value::Particle(p.clone())))
             .collect();
-        entries.push((11, serializer::PARTICLES, Value::Particles(all.to_vec())));
+        entries.push((
+            11,
+            serializer::PARTICLES,
+            Value::Particles(all.to_vec().into()),
+        ));
         entries.push((12, serializer::BYTE, Value::Byte(4)));
         let mut w = Writer::new();
         EntityData::write(&entries, &mut w);
@@ -891,7 +1112,11 @@ mod tests {
         assert_eq!(
             EntityData::read(&mut Reader::new(&bytes)).unwrap(),
             vec![
-                (11, serializer::PARTICLES, Value::Particles(Vec::new())),
+                (
+                    11,
+                    serializer::PARTICLES,
+                    Value::Particles(Particles::new())
+                ),
                 (12, serializer::BYTE, Value::Byte(4)),
             ]
         );
@@ -907,7 +1132,7 @@ mod tests {
                 "particle id {invalid_id} must fail"
             );
         }
-        // ByteBufCodecs.list() has no 65536 wire cap.
+        // ByteBufCodecs.list() has no 65536 wire cap, and simple particles stay 1 byte each.
         let mut many = Writer::new();
         many.u8(10);
         many.varint(serializer::PARTICLES);
@@ -919,7 +1144,10 @@ mod tests {
         let decoded = EntityData::read(&mut Reader::new(&many.data)).unwrap();
         assert_eq!(decoded.len(), 1);
         match &decoded[0].2 {
-            Value::Particles(list) => assert_eq!(list.len(), 65_537),
+            Value::Particles(list) => {
+                assert_eq!(list.len(), 65_537);
+                assert_eq!(crate::retained::OwnedHeap::owned_heap_bytes(list), 65_537);
+            }
             other => panic!("expected Particles, got {other:?}"),
         }
     }
@@ -927,11 +1155,31 @@ mod tests {
     #[test]
     fn painting_variant_holders_resolve_and_inline_components_validate() {
         let mut registries = crate::registry::Dynamic::default();
+        let kebab_tag = Tag::compound([
+            ("width", Tag::Int(1)),
+            ("height", Tag::Int(1)),
+            ("asset_id", Tag::String("minecraft:kebab".into())),
+        ]);
         registries.registries.insert(
             "minecraft:painting_variant".into(),
-            vec![("minecraft:kebab".into(), None)],
+            vec![
+                ("minecraft:kebab".into(), Some(kebab_tag)),
+                ("minecraft:missing_data".into(), None),
+                (
+                    "minecraft:bad_width".into(),
+                    Some(Tag::compound([
+                        ("width", Tag::Int(0)),
+                        ("height", Tag::Int(1)),
+                        ("asset_id", Tag::String("minecraft:kebab".into())),
+                    ])),
+                ),
+            ],
         );
-        // Valid registry holder id 1 -> 0-based index 0 ("minecraft:kebab").
+        registries.registries.insert(
+            "minecraft:item".into(),
+            vec![("minecraft:diamond".into(), None)],
+        );
+        // Valid registry holder id 1 -> 0-based index 0 ("minecraft:kebab") with resolved value.
         let mut w = Writer::new();
         w.u8(9);
         w.varint(serializer::PAINTING_VARIANT);
@@ -946,11 +1194,18 @@ mod tests {
                 Value::PaintingVariant(PaintingHolder::Reference {
                     id: 0,
                     name: "minecraft:kebab".into(),
+                    variant: PaintingVariant {
+                        width: 1,
+                        height: 1,
+                        asset_id: "minecraft:kebab".into(),
+                        title: None,
+                        author: None,
+                    },
                 }),
             )]
         );
-        // Out-of-range, negative, and i32::MIN holders all fail decode without overflowing.
-        for bad_holder in [2, -1, i32::MIN] {
+        // Missing data (holder 2), invalid data (holder 3), out-of-range, negative, and i32::MIN fail decode.
+        for bad_holder in [2, 3, 4, -1, i32::MIN] {
             let mut bad = Writer::new();
             bad.u8(9);
             bad.varint(serializer::PAINTING_VARIANT);
@@ -961,8 +1216,23 @@ mod tests {
                 "painting holder {bad_holder} must fail decode"
             );
         }
-        // Inline painting variant rejects Tag::End, non-component tags, and empty compounds.
-        for bad_title in [Tag::End, Tag::Int(7), Tag::Compound(Default::default())] {
+        // Inline painting variant rejects Tag::End, non-component tags, empty compounds, and unknown hover items.
+        let bad_hover_item = Tag::compound([
+            ("text", Tag::String("hover".into())),
+            (
+                "hover_event",
+                Tag::compound([
+                    ("action", Tag::String("show_item".into())),
+                    ("id", Tag::String("minecraft:not_a_real_item".into())),
+                ]),
+            ),
+        ]);
+        for bad_title in [
+            Tag::End,
+            Tag::Int(7),
+            Tag::Compound(Default::default()),
+            bad_hover_item,
+        ] {
             let mut bad = Writer::new();
             bad.u8(9);
             bad.varint(serializer::PAINTING_VARIANT);
@@ -979,12 +1249,21 @@ mod tests {
                 "inline painting variant with malformed title {bad_title:?} must fail"
             );
         }
-        // Valid inline painting variant with text components round-trips.
+        // Valid inline painting variant with text components and a registered hover item round-trips.
         let inline = PaintingVariant {
             width: 2,
             height: 1,
             asset_id: "minecraft:alban".into(),
-            title: Some(Tag::String("Inline".into())),
+            title: Some(Tag::compound([
+                ("text", Tag::String("Inline".into())),
+                (
+                    "hover_event",
+                    Tag::compound([
+                        ("action", Tag::String("show_item".into())),
+                        ("id", Tag::String("minecraft:diamond".into())),
+                    ]),
+                ),
+            ])),
             author: Some(Tag::compound([("text", Tag::String("Author".into()))])),
         };
         let expected = vec![(
@@ -1066,15 +1345,33 @@ mod tests {
 
     fn painting_registries(witness: &serde_json::Value) -> crate::registry::Dynamic {
         let mut registries = crate::registry::Dynamic::default();
-        let entries = witness["painting_variants"]
+        let entries = witness["painting_variant_definitions"]
             .as_array()
             .unwrap()
             .iter()
-            .map(|v| (v.as_str().unwrap().to_owned(), None))
+            .map(|v| {
+                let name = v["name"].as_str().unwrap().to_owned();
+                let tag = Tag::compound([
+                    ("width", Tag::Int(v["width"].as_i64().unwrap() as i32)),
+                    ("height", Tag::Int(v["height"].as_i64().unwrap() as i32)),
+                    (
+                        "asset_id",
+                        Tag::String(v["asset_id"].as_str().unwrap().into()),
+                    ),
+                ]);
+                (name, Some(tag))
+            })
             .collect();
         registries
             .registries
             .insert("minecraft:painting_variant".into(), entries);
+        let registered_item = witness["hover_item_component_validation"]["registered_item_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        registries
+            .registries
+            .insert("minecraft:item".into(), vec![(registered_item, None)]);
         registries
     }
 
@@ -1120,6 +1417,15 @@ mod tests {
         assert!(
             EntityData::read(&mut Reader::new(&bad_inline).with_names(&registries)).is_err(),
             "malformed inline painting component must fail decode"
+        );
+        let bad_hover = entity_data_hex(
+            witness["hover_item_component_validation"]["unregistered_item_hex"]
+                .as_str()
+                .unwrap(),
+        );
+        assert!(
+            EntityData::read(&mut Reader::new(&bad_hover).with_names(&registries)).is_err(),
+            "unregistered hover_event show_item must fail decode"
         );
         let bad_particle = entity_data_hex(
             witness["particle_metadata"]["unregistered_128_hex"]
@@ -1169,6 +1475,71 @@ mod tests {
             assert_eq!(pkt.id, entity_id, "{name}: entity_id");
             assert_eq!(pkt.values, entries, "{name}: packet entries");
         }
+        // Synchronized painting_variant override resolves to the synced definition at decode time.
+        let sync_override = &witness["painting_variant_sync_override"];
+        let mut override_reg = crate::registry::Dynamic::default();
+        override_reg.registries.insert(
+            "minecraft:painting_variant".into(),
+            vec![(
+                sync_override["resolved_name"].as_str().unwrap().to_owned(),
+                Some(Tag::compound([
+                    (
+                        "width",
+                        Tag::Int(sync_override["resolved_width"].as_i64().unwrap() as i32),
+                    ),
+                    (
+                        "height",
+                        Tag::Int(sync_override["resolved_height"].as_i64().unwrap() as i32),
+                    ),
+                    (
+                        "asset_id",
+                        Tag::String(sync_override["resolved_asset_id"].as_str().unwrap().into()),
+                    ),
+                ])),
+            )],
+        );
+        let override_bytes = entity_data_hex(sync_override["entity_data_hex"].as_str().unwrap());
+        let decoded_override =
+            EntityData::read(&mut Reader::new(&override_bytes).with_names(&override_reg))
+                .expect("synchronized painting override must decode");
+        assert_eq!(
+            decoded_override,
+            vec![(
+                9,
+                serializer::PAINTING_VARIANT,
+                Value::PaintingVariant(PaintingHolder::Reference {
+                    id: 0,
+                    name: sync_override["resolved_name"].as_str().unwrap().to_owned(),
+                    variant: PaintingVariant {
+                        width: sync_override["resolved_width"].as_i64().unwrap() as i32,
+                        height: sync_override["resolved_height"].as_i64().unwrap() as i32,
+                        asset_id: sync_override["resolved_asset_id"]
+                            .as_str()
+                            .unwrap()
+                            .to_owned(),
+                        title: None,
+                        author: None,
+                    },
+                }),
+            )]
+        );
+        // Registered hover_event show_item decodes cleanly.
+        let good_hover = entity_data_hex(
+            witness["hover_item_component_validation"]["registered_item_hex"]
+                .as_str()
+                .unwrap(),
+        );
+        assert!(
+            witness["hover_item_component_validation"]["registered_item_decoded_ok"]
+                .as_bool()
+                .unwrap()
+        );
+        assert_eq!(
+            EntityData::read(&mut Reader::new(&good_hover).with_names(&registries))
+                .expect("registered hover_event show_item must decode")
+                .len(),
+            1
+        );
         assert!(
             witness["particle_metadata"]["list_65537_ok"]
                 .as_bool()
@@ -1188,7 +1559,13 @@ mod tests {
         let decoded = EntityData::read(&mut Reader::new(&many.data).with_names(&registries))
             .expect("65537 simple particles must decode");
         match &decoded[0].2 {
-            Value::Particles(list) => assert_eq!(list.len(), expected_particles),
+            Value::Particles(list) => {
+                assert_eq!(list.len(), expected_particles);
+                assert_eq!(
+                    crate::retained::OwnedHeap::owned_heap_bytes(list),
+                    expected_particles
+                );
+            }
             other => panic!("expected Particles, got {other:?}"),
         }
     }

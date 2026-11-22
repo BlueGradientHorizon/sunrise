@@ -94,6 +94,12 @@ impl Session {
     /// A live play receive loop on a memory pipe: the real network-thread path, with the server's end returned.
     #[doc(hidden)]
     pub fn play_loop_probe() -> (Self, Connection) {
+        Self::play_loop_probe_with_registries(Arc::default())
+    }
+
+    /// [`Self::play_loop_probe`] with explicit synchronized registries for packet decode.
+    #[doc(hidden)]
+    pub fn play_loop_probe_with_registries(registries: Arc<Dynamic>) -> (Self, Connection) {
         static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let (mut reader, physical) = Connection::local(client).split();
@@ -141,7 +147,7 @@ impl Session {
         session.thread = Some(std::thread::spawn(move || {
             let _ = receive_play(
                 &mut reader,
-                Arc::default(),
+                registries,
                 &shared,
                 &configuring,
                 &Arc::new(Language::new()),

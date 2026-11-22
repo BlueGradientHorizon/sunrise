@@ -1575,6 +1575,33 @@ impl PlayIo {
     }
 }
 
+/// Registry view for decoding clientbound play packets: synchronized registries
+/// plus the loaded `minecraft:item` table for `Component` `hover_event` validation.
+struct PlayDecodeNames<'a> {
+    dynamic: &'a Dynamic,
+    items: &'a ItemData,
+}
+impl sunrise_protocol::item::Names for PlayDecodeNames<'_> {
+    fn name(&self, registry: &str, id: i32) -> Option<String> {
+        sunrise_protocol::item::Names::name(self.dynamic, registry, id)
+    }
+    fn consume_effect_kind(
+        &self,
+        id: i32,
+    ) -> Option<sunrise_protocol::item::consume_effects::Kind> {
+        sunrise_protocol::item::Names::consume_effect_kind(self.dynamic, id)
+    }
+    fn registry_entry(&self, registry: &str, id: i32) -> Option<(&str, Option<&Tag>)> {
+        sunrise_protocol::item::Names::registry_entry(self.dynamic, registry, id)
+    }
+    fn contains_entry(&self, registry: &str, name: &str) -> bool {
+        if registry == "minecraft:item" {
+            return self.items.defaults().entries().contains_key(name);
+        }
+        sunrise_protocol::item::Names::contains_entry(self.dynamic, registry, name)
+    }
+}
+
 fn receive_play(
     reader: &mut ConnReader,
     mut registries: Arc<Dynamic>,
@@ -1606,9 +1633,13 @@ fn receive_play(
     let mut bundle = PlayBundle::default();
     loop {
         let (id, payload) = reader.recv().map_err(|e| connection_lost(e, lang))?;
+        let decode_names = PlayDecodeNames {
+            dynamic: &registries,
+            items: resources,
+        };
         let packet = match play::Clientbound::decode_reader(
             id,
-            Reader::with_payload_codecs(&payload, &payloads.local.codecs).with_names(&*registries),
+            Reader::with_payload_codecs(&payload, &payloads.local.codecs).with_names(&decode_names),
         ) {
             Ok(p) => p,
             Err(err) => {
@@ -4909,7 +4940,47 @@ mod tests {
         std::sync::mpsc::Receiver<Result<Reason, Reason>>,
         JoinHandle<()>,
     ) {
-        let (root, data) = empty_item_data(name);
+        spawn_play_harness_with_items(name, lang, registries, "{}")
+    }
+
+    fn spawn_play_harness_with_items(
+        name: &str,
+        lang: Language,
+        registries: Arc<Dynamic>,
+        items_json: &str,
+    ) -> (
+        TempDirGuard,
+        Connection,
+        ingress::Consumer<Event>,
+        Arc<Mutex<Option<QueuedWriter>>>,
+        std::sync::mpsc::Receiver<Result<Reason, Reason>>,
+        JoinHandle<()>,
+    ) {
+        let root = std::env::temp_dir().join(format!(
+            "sunrise-net-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("items.json"), items_json).unwrap();
+        let inputs = sunrise_world::native_load_context::LoadInputs::new(
+            Default::default(),
+            root.join("settings"),
+        );
+        let data = Arc::new(
+            ItemData::load(
+                &root,
+                sunrise_world::native_load_context::LoadContext::new(
+                    sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
+                    Arc::new(inputs),
+                    [],
+                ),
+            )
+            .unwrap(),
+        );
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let (mut reader, writer) = Connection::local(client).split();
         reader
@@ -5442,25 +5513,41 @@ mod tests {
     fn unknown_entity_data_serializer_disconnects_play_session_like_26_3() {
         let witness = network_witness("entity_data.json");
         let mut reg = Dynamic::default();
-        let variants = witness["painting_variants"]
+        let variants = witness["painting_variant_definitions"]
             .as_array()
             .unwrap()
             .iter()
-            .map(|v| (v.as_str().unwrap().to_owned(), None))
+            .map(|v| {
+                let name = v["name"].as_str().unwrap().to_owned();
+                let tag = Tag::compound([
+                    ("width", Tag::Int(v["width"].as_i64().unwrap() as i32)),
+                    ("height", Tag::Int(v["height"].as_i64().unwrap() as i32)),
+                    (
+                        "asset_id",
+                        Tag::String(v["asset_id"].as_str().unwrap().into()),
+                    ),
+                ]);
+                (name, Some(tag))
+            })
             .collect();
         reg.registries
             .insert("minecraft:painting_variant".into(), variants);
         let registries = Arc::new(reg);
+        let registered_item = witness["hover_item_component_validation"]["registered_item_id"]
+            .as_str()
+            .unwrap();
+        let items_json = format!(r#"{{"{registered_item}":{{}}}}"#);
         let assert_disconnect =
             |name: &str, body: &[u8], expected_key: &str, expected_text: Option<&str>| {
                 let lang: Language = [("disconnect.genericReason".to_owned(), "%s".to_owned())]
                     .into_iter()
                     .collect();
                 let (_dir, mut server, events, shared_writer, done_rx, thread) =
-                    spawn_play_harness_with_registries(
+                    spawn_play_harness_with_items(
                         &format!("entity-data-{name}"),
                         lang,
                         registries.clone(),
+                        &items_json,
                     );
                 let mut frame = ::sunrise_core::vanilla_bytes::Writer::new();
                 frame.varint(sunrise_protocol::ids::play::clientbound::SET_ENTITY_DATA);
@@ -5518,6 +5605,42 @@ mod tests {
             bad_inline["connection_disconnect_key"].as_str().unwrap(),
             bad_inline["connection_disconnect_text"].as_str(),
         );
+        let hover = &witness["hover_item_component_validation"];
+        assert_disconnect(
+            "unregistered-hover-item",
+            &wrap_entity_data(hover["unregistered_item_hex"].as_str().unwrap()),
+            hover["unregistered_item_disconnect_key"].as_str().unwrap(),
+            hover["unregistered_item_disconnect_text"].as_str(),
+        );
+        // Registered hover item decodes cleanly in play and delivers SetEntityData.
+        {
+            let (_dir, mut server, events, shared_writer, done_rx, thread) =
+                spawn_play_harness_with_items(
+                    "entity-data-registered-hover-item",
+                    Language::new(),
+                    registries.clone(),
+                    &items_json,
+                );
+            let mut frame = ::sunrise_core::vanilla_bytes::Writer::new();
+            frame.varint(sunrise_protocol::ids::play::clientbound::SET_ENTITY_DATA);
+            frame.bytes(&wrap_entity_data(
+                hover["registered_item_hex"].as_str().unwrap(),
+            ));
+            server.send(&frame.data).unwrap();
+            let event = events
+                .recv_timeout_owned(Duration::from_secs(2))
+                .expect("registered hover item must deliver packet")
+                .into_parts()
+                .0;
+            assert!(matches!(
+                event,
+                Event::Packet(pkt) if matches!(*pkt, play::Clientbound::SetEntityData(_))
+            ));
+            drop(server);
+            let _ = done_rx.recv_timeout(Duration::from_millis(500));
+            drop(shared_writer);
+            let _ = thread.join();
+        }
         let bad_particle = &witness["particle_metadata"];
         assert_disconnect(
             "unregistered-particle-128",
