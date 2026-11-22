@@ -28,6 +28,10 @@ pub struct CallbackPanicNotice {
 
 static PANIC_NOTICES: Mutex<VecDeque<CallbackPanicNotice>> = Mutex::new(VecDeque::new());
 
+/// Serializes unit tests that drain the process-wide callback panic notice queue.
+#[cfg(test)]
+pub(crate) static PANIC_NOTICE_LOCK: Mutex<()> = Mutex::new(());
+
 thread_local! {
     static CONTAINED: Cell<u32> = const { Cell::new(0) };
     static CAUGHT: RefCell<Option<String>> = const { RefCell::new(None) };

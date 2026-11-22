@@ -165,13 +165,10 @@ pub fn isolated_failures() -> u64 {
     LISTENER_SERIAL.get().1
 }
 
-/// Mark `id`'s listener of `hook` poisoned for the session (#2414 ruling):
+/// Mark `id`'s listener of `hook` disabled for the session (#2414 ruling):
 /// it is skipped by that one hook alone — its other hooks and Parts are
-/// untouched, unlike a whole-mod disable. Called only from a listener's
-/// `catch_unwind` handler, so an installation is always in place.
-pub(crate) fn poison(hook: generated::HookId, id: &'static str) {
-    let (entered, trapped) = LISTENER_SERIAL.get();
-    LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+/// untouched, unlike a whole-mod disable. Does not advance [`isolated_failures`].
+fn disable_listener(hook: generated::HookId, id: &'static str) {
     let installed = installed().expect("a poison lands inside a dispatch");
     let mut poisons = installed.poisons.lock().unwrap();
     let sets =
@@ -184,7 +181,18 @@ pub(crate) fn poison(hook: generated::HookId, id: &'static str) {
         .store(false, std::sync::atomic::Ordering::Release);
 }
 
-/// Contain one flat listener without rolling back the live surface it was lent.
+/// Mark `id`'s listener of `hook` poisoned for the session (#2414 ruling) and
+/// advance [`isolated_failures`] so an enclosing owning action aborts its
+/// tentative Host writes. Called only from an isolated dispatch's failure
+/// handler, so an installation is always in place.
+pub(crate) fn poison(hook: generated::HookId, id: &'static str) {
+    let (entered, trapped) = LISTENER_SERIAL.get();
+    LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+    disable_listener(hook, id);
+}
+
+/// Contain one flat listener without rolling back the live surface it was lent
+/// or aborting an enclosing action.
 pub(crate) fn invoke_isolated_listener(
     hook: generated::HookId,
     mod_id: &'static str,
@@ -197,7 +205,7 @@ pub(crate) fn invoke_isolated_listener(
         Ok(Ok(())) => {}
         Ok(Err(refusal)) => refusal.report_each(),
         Err(message) => {
-            poison(hook, mod_id);
+            disable_listener(hook, mod_id);
             report_callback_panic(mod_id, "hook", operation, message);
         }
     }
@@ -661,7 +669,7 @@ impl ListenerScope {
 }
 
 thread_local! {
-    /// Listener entries (including nested hooks) and poisoned traps on this thread.
+    /// Listener entries (including nested hooks) and abort-signaling isolated traps on this thread.
     static LISTENER_SERIAL: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
 }
 
@@ -755,6 +763,58 @@ mod toggle_tests {
                 assert!(any_mod_disabled());
                 assert!(set_mod_enabled("b", true));
                 assert!(!any_mod_disabled());
+            },
+        );
+    }
+}
+
+#[cfg(test)]
+mod isolated_failure_tests {
+    use super::*;
+    use crate::callback_owner::{PANIC_NOTICE_LOCK, take_callback_panic_notices};
+
+    #[test]
+    fn contained_listener_panic_disables_and_reports_without_advancing_action_checkpoint() {
+        struct Quiet;
+        #[mod_api::__subscriptions]
+        impl crate::Hooks for Quiet {}
+
+        let _notice_lock = PANIC_NOTICE_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::testing::with_dispatch(
+            vec![ModEntry::new("broken", Box::new(Quiet))].into(),
+            || {
+                let _ = take_callback_panic_notices();
+                let before = isolated_failures();
+
+                invoke_isolated_listener(
+                    generated::HookId::BuildCreativeModeTabContents,
+                    "broken",
+                    "build_creative_mode_tab_contents",
+                    || panic!("creative editor boom"),
+                );
+
+                assert_eq!(isolated_failures(), before);
+                assert!(poisoned(
+                    generated::HookId::BuildCreativeModeTabContents,
+                    "broken"
+                ));
+                assert!(!poisoned(generated::HookId::FarmlandTrample, "broken"));
+                let notices = take_callback_panic_notices();
+                assert!(
+                    notices.iter().any(|notice| {
+                        notice.mod_id == "broken"
+                            && notice.kind == "hook"
+                            && notice.operation == "build_creative_mode_tab_contents"
+                            && notice.message.contains("creative editor boom")
+                    }),
+                    "expected creative panic notice, got {notices:?}"
+                );
+
+                poison(generated::HookId::FarmlandTrample, "broken");
+                assert_eq!(isolated_failures(), before.wrapping_add(1));
+                assert!(poisoned(generated::HookId::FarmlandTrample, "broken"));
             },
         );
     }
