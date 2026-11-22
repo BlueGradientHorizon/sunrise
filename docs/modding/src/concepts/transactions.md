@@ -53,7 +53,8 @@ At the outermost commit, default `ITEMS` and item `STORAGE` writes to vanilla co
 and engine-managed mod slots publish their implicit change notifications.
 Other deferred effects include jukebox playback, cauldron and composter block updates and
 item drops, including items placed at a block, thrown by a player or entity, or split off an
-item entity. Explicit mod-issued world notifications are not deferred with these effects.
+item entity. Explicit mod-issued sounds, particles and level, entity and player events are
+deferred too: see [Deferred level, entity, and player effects](#deferred-level-entity-and-player-effects).
 
 A world pickup or placement of fluid (`level.pickup_fluid`, `level.place_fluid`) writes
 its block at the call and the rest at the outermost commit; an aborted one leaves the world
@@ -111,11 +112,48 @@ fn update(
 }
 ```
 
-Other direct writes are not journaled: `LivingRef::set_equipment` and the armor-stand
-`slot_set` paths take effect immediately, even inside a transaction. Equipment sounds
-and equip/unequip events from `LivingRef::set_equipment` also happen immediately.
-An abort does not undo these writes or effects. Use journaled capability handlers
-when you need rollback.
+Other direct writes are not journaled: `LivingRef::set_equipment`, non-player
+`LivingRef::hurt_and_break`, and the armor-stand `slot_set` paths take effect immediately,
+even inside a transaction. Equipment sounds, equip/unequip events from
+`LivingRef::set_equipment`, and the equipment-break entity event from non-player
+`LivingRef::hurt_and_break` also happen immediately so the write and its notification stay
+on the same side of the rollback boundary. An abort does not undo these writes or effects.
+Use journaled capability handlers when you need rollback.
+
+## Deferred level, entity, and player effects
+
+An explicit server-side presentation effect joins the innermost open transaction in the level
+active at the call. It waits for the outermost commit for that owning level and is discarded on
+rollback or an aborted nested transaction. Delivery still uses the level named by the request,
+including for sounds or particles targeting a parked level. An independent transaction in another
+level publishes its own effects at its own commit.
+
+Calls covered by these rules:
+
+- `LevelRef::play_sound`, `LevelRef::send_particles`, `LevelRef::level_event`,
+  `LevelRef::block_break_effect`, `LevelRef::global_level_event` (and the `LevelWriteHost`
+  counterparts `play_sound`, `send_particles`, `level_event`)
+- `EntityRef::play_sound`, `EntityRef::play_bound_sound`, `EntityRef::broadcast_event`
+- `PlayerRef::play_sound`, `PlayerRef::stop_sound`
+
+An accepted `LevelRef::game_event` is posted at the call for vibration listeners, not deferred by
+this rule.
+
+Argument and handle validation still happens at the call, so invalid requests return `false`
+immediately. For directed sounds, `true` means the request was accepted, not that a client received
+or played it. A deferred request is discarded on abort or if the player no longer resolves at commit. For level and entity sounds, `play_level_sound_at_position` and
+`play_level_sound_at_entity` run synchronously at the call inside the open transaction, so
+listeners can edit or cancel the sound and have their writes or effects journaled (in the
+listener's level when a transaction is open in that level, and for player-owned state in the
+enclosing transaction); only the resolved effect record is deferred. On the outermost commit, pure
+delivery sends every deferred record in journal order across all effect kinds, replaying in each
+request's level (even if another level is active when the transaction commits) without running mod
+callbacks or draining unrelated queued effects.
+
+Outside a transaction, a queued level sound draws its seed at the call even if a later hook
+cancels it. Inside one, it draws a seed only when the resolved sound is published. Directed
+`PlayerRef::play_sound` draws from the request level's random at an immediate send or when
+published at commit. An aborted request does not advance either stream.
 
 ## Spawning and removing entities
 
@@ -146,6 +184,13 @@ Entities a transaction spawns or removes follow the same commit and rollback rul
   own entities after the commit's batch, in the order it asked.
 - Travel between levels is not journaled: an entity that arrives in another level during an aborted
   transaction stays where it arrived.
+
+`mob_split` and `baby_entity_spawn` open a transaction after constructing the pending children.
+An accepted list is validated and applied before deferred join callbacks run. A veto, empty list,
+stale inputs (including a parent marked for removal), invalid child or contained listener panic
+discards the children and rolls back journaled listener writes in that level. Work in another level
+commits at once when that level has no open transaction. Construction draws stay spent, and the
+parent's death or the parents' breeding cooldown is not undone.
 
 For batched projectiles and thrown tridents, `projectile_impact` runs in the same transaction
 as the captured hit. Canceling the hit does not abort listener writes. Discarding the
