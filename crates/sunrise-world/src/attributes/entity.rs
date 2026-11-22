@@ -366,6 +366,7 @@ impl Catalog {
             defaults,
         })
     }
+    #[inline]
     pub fn id(&self, name: &str) -> Option<AttributeId> {
         self.ids.get(name).copied()
     }

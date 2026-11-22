@@ -120,6 +120,7 @@ impl Catalog {
             tags: tags.tags,
         })
     }
+    #[inline]
     pub fn id(&self, name: &str) -> Option<DamageTypeId> {
         self.ids.get(name).copied()
     }
