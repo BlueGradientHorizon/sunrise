@@ -706,12 +706,8 @@ impl Game<'_> {
     /// frame, not per item (`GameRenderer.extractOptions`).
     pub(super) fn capture_glint_frame(&self) -> item_render::GlintFrame {
         item_render::GlintFrame {
-            millis: if self.clock.still() {
-                self.visual_millis() as f32
-            } else {
-                self.started.elapsed().as_secs_f32() * 1000.0
-            },
-            speed: self.settings.file.double("glintSpeed") as f32,
+            millis: self.visual_millis(),
+            speed: self.settings.file.double("glintSpeed"),
             alpha: self.settings.file.double("glintStrength") as f32,
             sprite: self
                 .gui
@@ -1804,7 +1800,7 @@ mod tests {
                     .prepare_glint_atlas(16384, (0, 2))
                     .unwrap();
                 game.glint_frame = item_render::GlintFrame {
-                    millis: 123_456.0,
+                    millis: 123_456,
                     speed: 0.5,
                     alpha: 0.75,
                     sprite: true,

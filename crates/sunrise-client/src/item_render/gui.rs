@@ -136,14 +136,14 @@ struct CitDraw<'a> {
     glint: &'a StackGlint,
     textures: &'a GlintTextures,
     rules: &'a [Rule],
-    millis: f32,
+    millis: i64,
 }
 
 /// The CIT glint layers over the item's clipped faces (`fans`, in draw order), bottom first:
 /// each layer is one run over all of them, blended as its rule says, at its intensity times
 /// the glint strength option (`HudBatch::glint_alpha`).
 fn emit_cit(batch: &mut HudBatch, fans: &[Vec<Point>], cit: CitDraw) {
-    let seconds = f64::from(cit.millis) / 1000.0;
+    let seconds = cit.millis as f64 / 1000.0;
     for (i, layer) in cit.glint.layers.iter().enumerate() {
         let Some(slot) = cit.textures.slot_of.get(layer.rule).copied().flatten() else {
             continue;
@@ -157,7 +157,15 @@ fn emit_cit(batch: &mut HudBatch, fans: &[Vec<Point>], cit: CitDraw) {
         }
         let glint = &cit.rules[layer.rule].glint;
         let color = vertex_color(slot, intensity);
-        let uv = |v: Point| layer_uv(v.cit_uv, cit.millis, glint.speed, glint.rotation, 8.0);
+        let uv = |v: Point| {
+            layer_uv(
+                v.cit_uv,
+                cit.millis as f32,
+                glint.speed,
+                glint.rotation,
+                8.0,
+            )
+        };
         let start = batch.vertices.len();
         for fan in fans {
             for k in 1..fan.len().saturating_sub(1) {
@@ -185,8 +193,8 @@ pub fn draw(
     batch: &mut HudBatch,
     x: f32,
     y: f32,
-    time: f32,
-    glint_speed: f32,
+    millis: i64,
+    glint_speed: f64,
     glint_alpha: f32,
 ) {
     draw_with_frame(
@@ -198,7 +206,7 @@ pub fn draw(
         x,
         y,
         GlintFrame {
-            millis: time * 1000.0,
+            millis,
             speed: glint_speed,
             alpha: glint_alpha,
             sprite: sprites.contains_key("misc/enchanted_glint_item"),

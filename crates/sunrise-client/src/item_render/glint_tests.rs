@@ -251,7 +251,7 @@ fn gui_glint_matches_pinned_vanilla_atlas_input() {
             &mut batch,
             0.0,
             0.0,
-            0.0,
+            0,
             0.0,
             0.75,
         );
@@ -668,7 +668,7 @@ fn prepared_item_atlas_matches_pinned_vanilla() {
         [437.0 / 1024.0, 163.0 / 512.0, 453.0 / 1024.0, 179.0 / 512.0]
     );
     let glint = Glint {
-        millis: 0.0,
+        millis: 0,
         speed: 0.0,
         alpha: 0.75,
         scale: 8.0,
@@ -754,7 +754,7 @@ fn external_item_atlas_oracle() {
             &mut batch,
             0.0,
             0.0,
-            0.0,
+            0,
             0.0,
             0.75,
         );
@@ -1096,8 +1096,22 @@ fn glint_uv_matches_vanilla_26_3_texture_transform_bits() {
     for entry in transforms {
         let name = entry["name"].as_str().unwrap();
         let scale = f32::from_bits(entry["scale_bits"].as_u64().unwrap() as u32);
-        let millis = entry["millis"].as_u64().unwrap() as f32;
-        let speed = f32::from_bits(entry["speed_f32_bits"].as_u64().unwrap() as u32);
+        let nanos = entry["nanos"].as_i64().unwrap();
+        let millis = entry["millis"].as_i64().unwrap();
+        assert_eq!(
+            std::time::Duration::from_nanos(nanos as u64).as_millis() as i64,
+            millis,
+            "26.3 {name} nanos={nanos} whole-ms truncation"
+        );
+        let speed = f64::from_bits(
+            u64::from_str_radix(entry["speed_f64_bits"].as_str().unwrap(), 16).unwrap(),
+        );
+        let expected_scroll = f32::from_bits(entry["scroll_ticks_bits"].as_u64().unwrap() as u32);
+        assert_eq!(
+            Glint::scroll_ticks(millis, speed).to_bits(),
+            expected_scroll.to_bits(),
+            "26.3 {name} millis={millis} speed={speed} scroll_ticks"
+        );
         let glint = Glint {
             millis,
             speed,
@@ -1182,8 +1196,8 @@ fn end_crystal_world_sink_uses_atlas_uv_and_item_glint_scale_26_3() {
         };
         let state = renderer.resolve(&stack, ctx, None, None, 83245, &NoEnv);
         for (millis, key) in [
-            (0.0f32, "glint_uv_t0_bits"),
-            (123_456.0f32, "glint_uv_t123456_bits"),
+            (0_i64, "glint_uv_t0_bits"),
+            (123_456_i64, "glint_uv_t123456_bits"),
         ] {
             let mut out = Vec::new();
             let mut sink = PairedWorldSink {
@@ -1246,8 +1260,8 @@ fn block_item_glint_uses_blocks_atlas_uv_26_3() {
         let expected_quads = witness["block_item"][ctx_name]["quads"].as_array().unwrap();
         let state = renderer.resolve(&stack, ctx, None, None, 0, &NoEnv);
         for (millis, key) in [
-            (0.0f32, "glint_uv_t0_bits"),
-            (123_456.0f32, "glint_uv_t123456_bits"),
+            (0_i64, "glint_uv_t0_bits"),
+            (123_456_i64, "glint_uv_t123456_bits"),
         ] {
             let mut out = Vec::new();
             state.submit(
@@ -1300,7 +1314,7 @@ fn block_item_glint_uses_blocks_atlas_uv_26_3() {
         &mut batch,
         pose,
         GlintFrame {
-            millis: 123_456.0,
+            millis: 123_456,
             speed: 0.5,
             alpha: 0.75,
             sprite: true,
@@ -1382,8 +1396,8 @@ fn compass_special_foil_uses_decal_uv_26_3() {
             .unwrap();
         let state = renderer.resolve(&stack, ctx, None, None, 0, &NoEnv);
         for (millis, key) in [
-            (0.0f32, "glint_uv_t0_bits"),
-            (123_456.0f32, "glint_uv_t123456_bits"),
+            (0_i64, "glint_uv_t0_bits"),
+            (123_456_i64, "glint_uv_t123456_bits"),
         ] {
             let mut out = Vec::new();
             let mut sink = PairedWorldSink {
@@ -1463,7 +1477,7 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
                 light: 0xF0F0,
                 lights: None,
                 glint: Some(Glint {
-                    millis: 123_456.0,
+                    millis: 123_456,
                     speed: 0.5,
                     alpha: 0.75,
                     scale: 8.0,
@@ -1515,7 +1529,7 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
                 light: 0xF0F0,
                 lights: None,
                 glint: Some(Glint {
-                    millis: 123_456.0,
+                    millis: 123_456,
                     speed: 0.5,
                     alpha: 0.75,
                     scale: 8.0,
@@ -1554,7 +1568,7 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
                 light: 0xF0F0,
                 lights: None,
                 glint: Some(Glint {
-                    millis: 123_456.0,
+                    millis: 123_456,
                     speed: 0.5,
                     alpha: 0.75,
                     scale: 8.0,
@@ -1582,7 +1596,7 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
         &mut batch,
         pose,
         GlintFrame {
-            millis: 123_456.0,
+            millis: 123_456,
             speed: 0.5,
             alpha: 0.75,
             sprite: true,
@@ -1660,7 +1674,7 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
             light: 0xF0F0,
             lights: None,
             glint: Some(Glint {
-                millis: 123_456.0,
+                millis: 123_456,
                 speed: 0.5,
                 alpha: 0.75,
                 scale: 8.0,

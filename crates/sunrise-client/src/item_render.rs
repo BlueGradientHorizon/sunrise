@@ -94,11 +94,11 @@ pub struct ItemQuad {
 #[derive(Clone, Copy, Debug)]
 pub struct Glint {
     /// `options.glintSpeed` (vanilla default 0.5).
-    pub speed: f32,
+    pub speed: f64,
     /// `options.glintStrength` / shader `GlintAlpha` (vanilla default 0.75).
     pub alpha: f32,
     /// `Util.getMillis()`.
-    pub millis: f32,
+    pub millis: i64,
     /// The transform's scale: `GLINT_TEXTURING`'s 8.0 for cuboid items (GUI and world),
     /// `ENTITY_GLINT_TEXTURING`'s 0.5 for entity-model special items (`Trident`, `Shield`), and
     /// `ARMOR_ENTITY_GLINT_TEXTURING`'s 0.16 for armour (entity.wgsl).
@@ -121,13 +121,13 @@ impl Glint {
         }
     }
     /// `Util.getMillis() * glintSpeed * 8.0` as vanilla's long.
-    fn ticks(millis: f32, speed: f32) -> i64 {
-        (f64::from(millis) * f64::from(speed) * 8.0) as i64
+    fn ticks(millis: i64, speed: f64) -> i64 {
+        (millis as f64 * speed * 8.0) as i64
     }
     /// The scroll clock modulo the common period of both offsets (110000 and
     /// 30000 divide 330000), for `globals.time.w`: the entity shader derives
     /// `ARMOR_ENTITY_GLINT_TEXTURING` from it.
-    pub fn scroll_ticks(millis: f32, speed: f32) -> f32 {
+    pub fn scroll_ticks(millis: i64, speed: f64) -> f32 {
         (Self::ticks(millis, speed) % 330_000) as f32
     }
     /// `TextureTransform.setupGlintTexturing(scale)` applied to the model UV:
@@ -158,9 +158,9 @@ impl Glint {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct GlintFrame {
     /// `Util.getMillis()` this frame.
-    pub millis: f32,
+    pub millis: i64,
     /// `OptionsRenderState.glintSpeed`.
-    pub speed: f32,
+    pub speed: f64,
     /// `OptionsRenderState.glintStrength`.
     pub alpha: f32,
     /// The atlas has `misc/enchanted_glint_item`.
@@ -2282,7 +2282,7 @@ mod tests {
     #[test]
     fn a_frame_glint_is_shared_by_every_item() {
         let frame = GlintFrame {
-            millis: 123_456.0,
+            millis: 123_456,
             speed: 0.5,
             alpha: 0.75,
             sprite: true,
@@ -2290,16 +2290,32 @@ mod tests {
         let world = frame.glint(0.5).expect("the atlas has the glint sprite");
         assert_eq!(
             (world.speed, world.alpha, world.millis),
-            (0.5, 0.75, 123_456.0)
+            (0.5, 0.75, 123_456)
         );
         assert_eq!(world.scale, 0.5);
         let uvs: Vec<_> = (0..1000)
             .map(|_| frame.glint(0.5).unwrap().uv([0.25, 0.75]))
             .collect();
         assert!(uvs.iter().all(|uv| *uv == uvs[0]));
-        assert_eq!(frame.scroll_ticks(), Glint::scroll_ticks(123_456.0, 0.5));
+        assert_eq!(frame.scroll_ticks(), Glint::scroll_ticks(123_456, 0.5));
         // 123456 ms * 0.5 * 8 = 493824 ticks, modulo 330000.
         assert_eq!(frame.scroll_ticks(), 163_824.0);
+        // Whole monotonic milliseconds truncate sub-millisecond elapsed time (`Util.getMillis`).
+        let sub_ms = std::time::Duration::from_micros(1_500).as_millis() as i64;
+        assert_eq!(sub_ms, 1);
+        assert_eq!(Glint::ticks(sub_ms, 0.5), 4);
+        assert_eq!(Glint::scroll_ticks(sub_ms, 0.5), 4.0);
+        // Double-precision speed avoids narrowing 0.7 to f32 before scaling.
+        assert_eq!(Glint::ticks(1_000, 0.7), 5_600);
+        assert_eq!(Glint::scroll_ticks(1_000, 0.7), 5_600.0);
+        // Whole milliseconds above 2^24 keep single-millisecond resolution.
+        let high_ms = (1_i64 << 24) + 1;
+        assert_eq!(Glint::ticks(high_ms, 0.5), high_ms * 4);
+        assert_eq!(Glint::scroll_ticks(high_ms, 0.5), 118_868.0);
+        assert_ne!(
+            Glint::scroll_ticks(high_ms, 0.5),
+            Glint::scroll_ticks(1_i64 << 24, 0.5)
+        );
         let missing = GlintFrame {
             sprite: false,
             ..frame

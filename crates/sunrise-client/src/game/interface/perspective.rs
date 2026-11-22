@@ -1936,7 +1936,7 @@ mod preview_tests {
         .flatten()
         .collect();
         let frame = GlintFrame {
-            millis: 1234.0,
+            millis: 1_234,
             speed: 0.5,
             alpha: 0.75,
             sprite: true,
@@ -1948,7 +1948,7 @@ mod preview_tests {
         let armor = sunrise_client::item_render::Glint {
             speed: 0.5,
             alpha: 0.75,
-            millis: 1234.0,
+            millis: 1_234,
             scale: 0.16,
         };
         let (pos, uv, glint_uv, is_armor) = glints[0];

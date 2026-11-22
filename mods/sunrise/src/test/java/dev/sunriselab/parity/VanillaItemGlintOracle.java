@@ -531,10 +531,15 @@ public final class VanillaItemGlintOracle {
     }
 
     static void setClock(GameRenderState gameRenderState, long millis, double glintSpeed) {
-        frozenNanos = millis * 1_000_000L;
+        setClockNanos(gameRenderState, millis * 1_000_000L, glintSpeed);
+    }
+
+    static void setClockNanos(GameRenderState gameRenderState, long nanos, double glintSpeed) {
+        frozenNanos = nanos;
         gameRenderState.optionsRenderState.glintSpeed = glintSpeed;
-        if (Util.getMillis() != millis) {
-            throw new IllegalStateException("Util.getMillis()=" + Util.getMillis() + " != " + millis);
+        long expectedMillis = nanos / 1_000_000L;
+        if (Util.getMillis() != expectedMillis) {
+            throw new IllegalStateException("Util.getMillis()=" + Util.getMillis() + " != " + expectedMillis);
         }
     }
 
@@ -870,12 +875,16 @@ public final class VanillaItemGlintOracle {
         };
         Object[][] clocks = new Object[][] {
             {0L, 0.5},
-            {12345L, 0.5},
-            {123456L, 0.5},
-            {123456L, 1.0},
-            {500000L, 0.25},
+            {1_500_000L, 0.5},
+            {1_000L * 1_000_000L, 0.7},
+            {12345L * 1_000_000L, 0.5},
+            {123456L * 1_000_000L, 0.5},
+            {123456L * 1_000_000L, 1.0},
+            {500000L * 1_000_000L, 0.25},
             {0L, 0.0},
-            {999999L, 0.5}
+            {999999L * 1_000_000L, 0.5},
+            {((1L << 24) + 1L) * 1_000_000L, 0.5},
+            {100_000_001L * 1_000_000L, 0.5}
         };
         Object[][] transformSpecs = new Object[][] {
             {"glint_texturing", TextureTransform.GLINT_TEXTURING, 8.0F},
@@ -888,9 +897,12 @@ public final class VanillaItemGlintOracle {
             TextureTransform tt = (TextureTransform) spec[1];
             float scale = (float) spec[2];
             for (Object[] clock : clocks) {
-                long millis = (long) clock[0];
+                long nanos = (long) clock[0];
                 double speed = (double) clock[1];
-                setClock(gameRenderState, millis, speed);
+                setClockNanos(gameRenderState, nanos, speed);
+                long millis = Util.getMillis();
+                long ticks = (long) (millis * speed * 8.0);
+                float scrollTicks = (float) (ticks % 330_000L);
                 Matrix4f mat = tt.createMatrix();
                 List<Object> samples = new ArrayList<>();
                 for (float[] uv : sampleUvs) {
@@ -907,9 +919,11 @@ public final class VanillaItemGlintOracle {
                         "to_string", tt.toString(),
                         "scale", scale,
                         "scale_bits", u32(scale),
+                        "nanos", nanos,
                         "millis", millis,
                         "speed", speed,
-                        "speed_f32_bits", u32((float) speed),
+                        "speed_f64_bits", String.format(Locale.ROOT, "%016x", Double.doubleToRawLongBits(speed)),
+                        "scroll_ticks_bits", u32(scrollTicks),
                         "matrix_cols_bits", matrixColsBits(mat),
                         "samples", samples
                     )
