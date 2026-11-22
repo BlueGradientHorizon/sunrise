@@ -63,7 +63,6 @@ pub trait EntityPositionBackendMut {
     /// `Ok(false)` for stale handles and bodies that don't keep ground state.
     /// If the support scan fails, returns `Err(LevelWriteError::Unavailable)`;
     /// the flag is still written, and the previous supporting block is retained.
-    #[access(WorldOnly)]
     fn entity_set_on_ground(
         &mut self,
         entity: EntityRef,
