@@ -270,3 +270,159 @@ fn entity_sounds_malformed_row_reports_entity_id() {
     }
     assert!(Sounds::load("bird:vulture", &serde_json::json!({})).is_ok());
 }
+
+/// The played sounds with their volume and pitch, as the server sends them.
+fn played(events: &[MobEvent]) -> Vec<(String, f32, f32)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            MobEvent::Sound(id, _, volume, pitch) => {
+                Some((full_id(id).into_owned(), *volume, *pitch))
+            }
+            MobEvent::SoundId(id, _, volume, pitch) => Some((id.clone(), *volume, *pitch)),
+            _ => None,
+        })
+        .collect()
+}
+/// A cow whose type carries the `sounds` declaration, as a content row's would.
+fn declared(sounds: serde_json::Value) -> Mob {
+    let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+    kind.sound_overrides =
+        Sounds::load("bird:vulture", &serde_json::json!({"sounds":sounds})).unwrap();
+    Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0)
+}
+
+#[test]
+fn entity_sounds_declared_step_plays_at_its_volume_and_pitch() {
+    let step = |sounds| declared_step(&declared(sounds).kind.sound_overrides);
+    // An override of `playStepSound` calling `playSound(step, volume, pitch)`.
+    assert_eq!(
+        step(serde_json::json!({"step":{"sound":"bird:step","volume":1.0,"pitch":0.8}})),
+        Some(Some((Cow::Borrowed("bird:step"), 1.0, 0.8)))
+    );
+    // The plain id keeps the block step's `soundType.getVolume() * 0.15F` and pitch.
+    assert_eq!(
+        step(serde_json::json!({"step":"bird:step"})),
+        Some(Some((Cow::Borrowed("bird:step"), 0.15, 1.0)))
+    );
+    assert_eq!(step(serde_json::json!({"step":"none"})), Some(None));
+    // An omitted step is the template's, from the block under the mob.
+    assert_eq!(step(serde_json::json!({"volume":1.0})), None);
+}
+
+#[test]
+fn entity_sounds_declared_volume_and_voice_pitch_reach_ambient_hurt_and_death() {
+    use sunrise_core::random::{LegacyRandom, RandomSource};
+    // `getVoicePitch`: two floats from the mob's random, spread around the base.
+    let pitch = |seed: i64, base: f32| {
+        let mut random = LegacyRandom::new(seed);
+        (random.next_float() - random.next_float()) * 0.2 + base
+    };
+    // `Mob.playAmbientSound` is `makeSound(getAmbientSound())`: `getSoundVolume`, `getVoicePitch`.
+    let ambient = |m: &mut Mob| {
+        m.random = LegacyRandom::new(7);
+        let mut events = vec![];
+        m.voice("bird:ambient", &mut events);
+        played(&events)
+    };
+    let sounds = serde_json::json!({"hurt":"bird:hurt","death":"bird:death","volume":0.25,"voice_pitch":0.5});
+    let mut adult = declared(sounds.clone());
+    assert_eq!(
+        ambient(&mut adult),
+        [("bird:ambient".to_owned(), 0.25, pitch(7, 0.5))]
+    );
+    // A baby's raised pitch is the base times vanilla's 1.5.
+    let mut baby = declared(sounds.clone());
+    baby.extra.age = -24000;
+    assert_eq!(
+        ambient(&mut baby),
+        [("bird:ambient".to_owned(), 0.25, pitch(7, 1.5 * 0.5))]
+    );
+    // `playHurtSound` and the death sound, from real hits.
+    for (amount, id) in [(1.0, "bird:hurt"), (1000.0, "bird:death")] {
+        let mut m = declared(sounds.clone());
+        let mut level = crate::health::TestLevel::new(0);
+        assert!(m.damage(&mut level.level(), amount, Damage::of(DamageKind::Generic)));
+        let heard = played(&std::mem::take(&mut m.outbox));
+        assert_eq!(heard.len(), 1, "{heard:?}");
+        assert_eq!((heard[0].0.as_str(), heard[0].1), (id, 0.25));
+    }
+    // Omitted keys keep the template's: a cow's `getSoundVolume` 0.4 and a pitch around 1.0.
+    let mut omitted = declared(serde_json::json!({}));
+    assert_eq!(
+        ambient(&mut omitted),
+        [("bird:ambient".to_owned(), 0.4, pitch(7, 1.0))]
+    );
+}
+
+#[test]
+fn entity_sounds_any_declared_interval_negates_and_multiplies_as_java_ints() {
+    for interval in [i32::MIN, -5, 0, i32::MAX] {
+        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+        kind.ambient_interval = interval;
+        // A hurt mob resets its ambient clock to `-getAmbientSoundInterval()`.
+        let mut m = Mob::new(1, Arc::new(kind.clone()), Vec3::ZERO, 0.0);
+        let mut level = crate::health::TestLevel::new(0);
+        assert!(m.damage(&mut level.level(), 1.0, Damage::of(DamageKind::Generic)));
+        assert_eq!(m.ambient_timer, interval.wrapping_neg());
+        // HappyGhast.getAmbientSoundInterval: `super` times 6 while ridden.
+        kind.species = crate::mobs::Species::HappyGhast;
+        let mut ghast = Mob::new(2, Arc::new(kind), Vec3::ZERO, 0.0);
+        ghast.extra.rider = Some(3);
+        assert_eq!(ghast.ambient_interval(), interval.wrapping_mul(6));
+    }
+}
+
+/// Runs `test` in a child process of its own: loading mob types fills process-wide
+/// tables (the sulfur cube's item lookup), which no other test may see filled.
+fn in_own_process(test: &str) -> bool {
+    const CHILD: &str = "SUNRISE_TEST_ENTITY_SOUNDS_CHILD";
+    let module = module_path!().split_once("::").unwrap().1;
+    let name = format!("{module}::{test}");
+    if std::env::var_os(CHILD).is_some_and(|value| value == name.as_str()) {
+        return true;
+    }
+    let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([&name, "--exact", "--include-ignored", "--test-threads=1"])
+        .env(CHILD, &name)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains("test result: ok. 1 passed;"),
+        "{name} failed in its own process:
+{stdout}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    false
+}
+
+#[test]
+fn entity_sounds_declared_interval_replaces_the_templates_at_load() {
+    if !in_own_process("entity_sounds_declared_interval_replaces_the_templates_at_load") {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let rows = serde_json::json!({
+        "bird:vulture": {"template":"minecraft:villager","sounds":{"ambient_interval":200}},
+        "bird:quiet": {"template":"minecraft:villager","sounds":{"ambient_interval":i32::MIN}},
+        "bird:plain": {"template":"minecraft:villager"},
+    });
+    std::fs::write(
+        dir.path().join("entity-types.json"),
+        serde_json::to_vec(&rows).unwrap(),
+    )
+    .unwrap();
+    let attributes = sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+        "data_version": sunrise_world::DATA_VERSION,
+        "attributes": [],
+        "entities": {},
+    }))
+    .unwrap();
+    let types = MobTypes::load_for_server(dir.path(), &attributes).unwrap();
+    let interval = |id: &str| types.types[id].ambient_interval;
+    assert_eq!(interval("bird:vulture"), 200);
+    assert_eq!(interval("bird:quiet"), i32::MIN);
+    // Omitted: the villager's `Mob.getAmbientSoundInterval`, 80.
+    assert_eq!(interval("bird:plain"), 80);
+}
