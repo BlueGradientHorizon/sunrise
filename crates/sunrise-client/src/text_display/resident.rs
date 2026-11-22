@@ -2,7 +2,10 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{items::ItemStack, scoreboard::component_tag, text::Text};
+use crate::{
+    items::ItemStack,
+    scoreboard::{Comp, component_tag},
+};
 use mod_api::{Billboard, ItemDisplayContext, TextAlignment, Transformation};
 use std::sync::Arc;
 use sunrise_protocol::{
@@ -24,7 +27,7 @@ pub enum DisplayContents {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DisplayText {
-    pub component: Arc<Text>,
+    pub component: Arc<Comp>,
     pub line_width: i32,
     pub background: i32,
     pub opacity: i8,
@@ -37,7 +40,7 @@ pub struct DisplayText {
 impl Default for DisplayText {
     fn default() -> Self {
         Self {
-            component: Arc::new(Text::empty()),
+            component: Arc::new(Comp::String(String::new())),
             line_width: 200,
             background: 0x4000_0000,
             opacity: -1,
@@ -205,11 +208,14 @@ impl DisplayState {
                     _ => false,
                 };
                 if !same_stack {
-                    put(
-                        23,
-                        serializer::ITEM_STACK,
-                        Value::Item(stack.as_deref().and_then(encode_stack)),
-                    );
+                    match stack.as_deref() {
+                        Some(stack) => {
+                            if let Some(encoded) = encode_stack(stack) {
+                                put(23, serializer::ITEM_STACK, Value::Item(Some(encoded)));
+                            }
+                        }
+                        None => put(23, serializer::ITEM_STACK, Value::Item(None)),
+                    }
                 }
                 if *context != old_context {
                     put(24, serializer::BYTE, Value::Byte(*context as i8));
@@ -221,10 +227,10 @@ impl DisplayState {
                     _ => None,
                 };
                 if !before.is_some_and(|old| Arc::ptr_eq(&old.component, &text.component)) {
-                    let component = component_tag(&text.component.component_view());
+                    let component = component_tag(&text.component);
                     let old = before.map_or_else(
                         || sunrise_core::nbt::Tag::String("".into()),
-                        |old| component_tag(&old.component.component_view()),
+                        |old| component_tag(&old.component),
                     );
                     if component != old {
                         put(23, serializer::COMPONENT, Value::Text(component));

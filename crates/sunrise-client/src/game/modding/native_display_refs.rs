@@ -245,12 +245,14 @@ impl Game<'_> {
         })
     }
 
-    pub(super) fn display_text(&self, display: DisplayRef) -> Option<&Text> {
-        Some(&self.display_text_state(display)?.component)
+    pub(super) fn display_text(&self, display: DisplayRef) -> Option<Text> {
+        Some(Text::from(
+            self.display_text_state(display)?.component.as_ref().clone(),
+        ))
     }
 
     pub(super) fn display_set_text(&mut self, display: DisplayRef, value: Text) -> bool {
-        self.display_edit_text(display, |text| text.component = Arc::new(value))
+        self.display_edit_text(display, |text| text.component = Arc::new(value.component()))
     }
 
     pub(super) fn display_line_width(&self, display: DisplayRef) -> Option<i32> {
@@ -698,6 +700,54 @@ mod tests {
             assert!(text.entity().discard(game));
             assert_eq!(text.kind(game), None);
             assert!(!text.set_width(game, 1.0));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn text_display_preserves_keybind_component_across_load_read_save_and_pairing() {
+        use mod_api::text::TextContent;
+        use sunrise_protocol::entity_data::{Value, serializer};
+
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            let keybind = Tag::compound([("keybind", Tag::String("key.jump".into()))]);
+            let tag = Tag::compound([
+                ("Pos", Tag::List(vec![Tag::Double(0.0f64.to_bits()); 3])),
+                ("Rotation", Tag::List(vec![Tag::Float(0.0f32.to_bits()); 2])),
+                ("text", keybind.clone()),
+            ]);
+            let id = game
+                .load_other_transferred(tag, "minecraft:text_display", None)
+                .unwrap();
+            let display = game.display(game.entity(id).unwrap()).unwrap();
+            let expected = mod_api::Text::new(TextContent::Keybind("key.jump".into()));
+            assert_eq!(display.text(game).unwrap(), Some(expected));
+
+            let entity = game.others.iter().find(|o| o.id == id).unwrap();
+            let saved = game.other_to_nbt(entity, [1, 2, 3, 4]);
+            assert_eq!(saved.get("text"), Some(&keybind));
+
+            let mut metadata = Vec::new();
+            entity
+                .display
+                .as_ref()
+                .unwrap()
+                .append_metadata(None, false, |_| None, &mut metadata);
+            assert!(metadata.contains(&(23, serializer::COMPONENT, Value::Text(keybind))));
+
+            let sprint = mod_api::Text::new(TextContent::Keybind("key.sprint".into()));
+            assert!(display.set_text(game, sprint.clone()).unwrap());
+            assert_eq!(display.text(game).unwrap(), Some(sprint));
+            let entity = game.others.iter().find(|o| o.id == id).unwrap();
+            let saved = game.other_to_nbt(entity, [1, 2, 3, 4]);
+            assert_eq!(
+                saved.get("text"),
+                Some(&Tag::compound([(
+                    "keybind",
+                    Tag::String("key.sprint".into()),
+                )]))
+            );
         });
     }
 }

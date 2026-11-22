@@ -177,6 +177,28 @@ impl DisplayTracking {
         }
     }
 
+    /// What this pass could actually send: without item codecs, a nonempty
+    /// item display's stack stays unsent so the next pass with codecs sends it.
+    fn sent(&self) -> Self {
+        if self.item_codecs.is_none()
+            && let DisplayContents::Item {
+                stack: Some(_),
+                context,
+            } = &self.state.contents
+        {
+            let mut state = (*self.state).clone();
+            state.contents = DisplayContents::Item {
+                stack: None,
+                context: *context,
+            };
+            return Self {
+                state: Arc::new(state),
+                item_codecs: None,
+            };
+        }
+        self.clone()
+    }
+
     fn append_metadata(
         &self,
         before: Option<&Self>,
@@ -497,7 +519,7 @@ impl ServerEntity {
             tracked_steps: Vec::new(),
             ticks_since_step: -1,
             meta: e.meta.clone(),
-            display: e.display.clone(),
+            display: e.display.as_ref().map(DisplayTracking::sent),
             equipment: e.equipment.clone(),
             attributes: e.attributes.clone(),
             was_on_ground: e.on_ground,
@@ -922,7 +944,7 @@ impl ServerEntity {
                 }));
             }
             self.meta.clone_from(&e.meta);
-            self.display.clone_from(&e.display);
+            self.display = e.display.as_ref().map(DisplayTracking::sent);
         }
         if e.attributes != self.attributes {
             let changed = changed_attributes(&e.attributes, &self.attributes);
@@ -2183,14 +2205,14 @@ mod tests {
 
     #[test]
     fn tracking_display_pairs_from_typed_fields_and_sends_a_return_to_default() {
-        use crate::{text::Text, text_display::resident::DisplayText};
+        use crate::{scoreboard::literal, text_display::resident::DisplayText};
         use mod_api::Billboard;
         use sunrise_core::nbt::Tag;
 
         let mut row = state(0.0);
         row.kind = "minecraft:text_display".into();
         let mut display = Arc::new(DisplayState::new(DisplayContents::Text(DisplayText {
-            component: Arc::new(Text::literal("live")),
+            component: Arc::new(literal("live")),
             line_width: 60,
             ..Default::default()
         })));
@@ -2216,6 +2238,56 @@ mod tests {
                         (23, serializer::COMPONENT, Value::Text(Tag::String("".into()))),
                         (24, serializer::INT, Value::Int(200)),
                     ]
+                ))
+        );
+        assert!(
+            !changes(&mut tracker, &row)
+                .iter()
+                .any(|packet| matches!(packet, play::Clientbound::SetEntityData(_)))
+        );
+    }
+
+    #[test]
+    fn item_display_without_codecs_sends_its_stack_once_codecs_are_available() {
+        use crate::items::ItemStack;
+        use mod_api::ItemDisplayContext;
+
+        let display = Arc::new(DisplayState::new(DisplayContents::Item {
+            stack: Some(Arc::new(ItemStack::new("minecraft:diamond", 3))),
+            context: ItemDisplayContext::Head,
+        }));
+        let mut row = state(0.0);
+        row.kind = "minecraft:item_display".into();
+        row.display = Some(DisplayTracking::new(&display, None));
+        let mut tracker = added(&row);
+        let mut pairing = Vec::new();
+        assert!(tracker.pairing(&row, Kind::Type(100), &Riding::default(), &mut pairing));
+        assert!(pairing.iter().any(|packet| matches!(packet,
+            play::Clientbound::SetEntityData(data)
+                if data.values == [(24, serializer::BYTE, Value::Byte(5))]
+        )));
+        // A later pass with codecs must still emit metadata id 23 for the stack.
+        let mut sync = SyncData::empty();
+        sync.builtin.registries.insert(
+            "minecraft:item".to_string(),
+            sunrise_protocol::registry::Ids::from_names(vec![
+                "minecraft:air".to_string(),
+                "minecraft:diamond".to_string(),
+            ]),
+        );
+        row.display = Some(DisplayTracking {
+            state: display,
+            item_codecs: Some((Arc::new(sync), Arc::new(Items::default()))),
+        });
+        assert!(
+            changes(&mut tracker, &row)
+                .iter()
+                .any(|packet| matches!(packet,
+                    play::Clientbound::SetEntityData(data) if data.values == [(
+                        23,
+                        serializer::ITEM_STACK,
+                        Value::Item(Some(Stack::new(1, 3))),
+                    )]
                 ))
         );
         assert!(

@@ -57,3 +57,20 @@ fn item_metadata_encodes_the_stack_only_when_sent() {
     emptied.append_metadata(Some(&changed), false, |_| panic!("no stack"), &mut metadata);
     assert_eq!(metadata, [(23, serializer::ITEM_STACK, Value::Item(None))]);
 }
+
+#[test]
+fn item_metadata_omits_nonempty_stack_when_encoder_is_unavailable() {
+    let stack = Arc::new(ItemStack {
+        item: "minecraft:diamond".into(),
+        count: 3,
+        damage: 0,
+        extra: None,
+    });
+    let display = DisplayState::new(DisplayContents::Item {
+        stack: Some(stack),
+        context: ItemDisplayContext::Head,
+    });
+    let mut metadata = Vec::new();
+    display.append_metadata(None, false, |_| None, &mut metadata);
+    assert_eq!(metadata, [(24, serializer::BYTE, Value::Byte(5))]);
+}
